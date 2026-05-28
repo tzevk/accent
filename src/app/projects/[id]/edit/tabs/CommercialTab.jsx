@@ -1,19 +1,17 @@
-const CURRENCY_OPTIONS = ["INR", "USD", "EUR", "GBP"];
-const PAYMENT_TERMS_OPTIONS = ["Net 30", "Net 45", "Net 60", "Advance"];
+const CURRENCY_OPTIONS = ['INR', 'USD', 'EUR', 'GBP'];
+const PAYMENT_TERMS_OPTIONS = ['Net 30', 'Net 45', 'Net 60', 'Advance'];
 const INVOICING_STATUS_OPTIONS = [
-  "Uninvoiced",
-  "Partially Invoiced",
-  "Invoiced",
-  "Paid",
+  'Uninvoiced',
+  'Partially Invoiced',
+  'Invoiced',
+  'Paid',
 ];
 
 export default function CommercialTab({ form, handleChange }) {
   return (
     <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
       <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-sm font-semibold text-black">
-          Commercial Details
-        </h2>
+        <h2 className="text-sm font-semibold text-black">Commercial Details</h2>
       </div>
       <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>

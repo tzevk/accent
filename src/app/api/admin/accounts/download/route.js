@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Download transaction receipt as PDF (placeholder - returns JSON for now)
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -46,13 +54,16 @@ export async function GET(request) {
     return NextResponse.json({
       success: true,
       message: 'PDF generation not yet implemented. Transaction data returned.',
-      data: transaction
+      data: transaction,
     });
-
   } catch (error) {
     console.error('Error downloading transaction:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to download transaction', error: error.message },
+      {
+        success: false,
+        message: 'Failed to download transaction',
+        error: error.message,
+      },
       { status: 500 }
     );
   } finally {

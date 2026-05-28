@@ -14,23 +14,75 @@ import {
   CheckCircleIcon,
   ArrowPathIcon,
   UserGroupIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 
 const PRIORITIES = [
-  { value: 'low', label: 'Low', color: 'bg-gray-100 text-gray-700 border-gray-300' },
-  { value: 'medium', label: 'Medium', color: 'bg-blue-100 text-blue-700 border-blue-300' },
-  { value: 'high', label: 'High', color: 'bg-orange-100 text-orange-700 border-orange-300' },
-  { value: 'urgent', label: 'Urgent', color: 'bg-red-100 text-red-700 border-red-300' }
+  {
+    value: 'low',
+    label: 'Low',
+    color: 'bg-gray-100 text-gray-700 border-gray-300',
+  },
+  {
+    value: 'medium',
+    label: 'Medium',
+    color: 'bg-blue-100 text-blue-700 border-blue-300',
+  },
+  {
+    value: 'high',
+    label: 'High',
+    color: 'bg-orange-100 text-orange-700 border-orange-300',
+  },
+  {
+    value: 'urgent',
+    label: 'Urgent',
+    color: 'bg-red-100 text-red-700 border-red-300',
+  },
 ];
 
 const STATUSES = [
-  { value: 'new', label: 'New', color: 'bg-blue-100 text-blue-800', icon: '🆕', nextStatus: 'under_review' },
-  { value: 'under_review', label: 'Under Review', color: 'bg-purple-100 text-purple-800', icon: '👀', nextStatus: 'in_progress' },
-  { value: 'in_progress', label: 'In Progress', color: 'bg-yellow-100 text-yellow-800', icon: '⚡', nextStatus: 'waiting_for_employee' },
-  { value: 'waiting_for_employee', label: 'Waiting for Employee', color: 'bg-orange-100 text-orange-800', icon: '⏳', nextStatus: 'in_progress' },
-  { value: 'resolved', label: 'Resolved', color: 'bg-green-100 text-green-800', icon: '✅', nextStatus: 'closed' },
-  { value: 'closed', label: 'Closed', color: 'bg-gray-100 text-gray-800', icon: '🔒', nextStatus: null }
+  {
+    value: 'new',
+    label: 'New',
+    color: 'bg-blue-100 text-blue-800',
+    icon: '🆕',
+    nextStatus: 'under_review',
+  },
+  {
+    value: 'under_review',
+    label: 'Under Review',
+    color: 'bg-purple-100 text-purple-800',
+    icon: '👀',
+    nextStatus: 'in_progress',
+  },
+  {
+    value: 'in_progress',
+    label: 'In Progress',
+    color: 'bg-yellow-100 text-yellow-800',
+    icon: '⚡',
+    nextStatus: 'waiting_for_employee',
+  },
+  {
+    value: 'waiting_for_employee',
+    label: 'Waiting for Employee',
+    color: 'bg-orange-100 text-orange-800',
+    icon: '⏳',
+    nextStatus: 'in_progress',
+  },
+  {
+    value: 'resolved',
+    label: 'Resolved',
+    color: 'bg-green-100 text-green-800',
+    icon: '✅',
+    nextStatus: 'closed',
+  },
+  {
+    value: 'closed',
+    label: 'Closed',
+    color: 'bg-gray-100 text-gray-800',
+    icon: '🔒',
+    nextStatus: null,
+  },
 ];
 
 export default function TicketManagementPage() {
@@ -60,7 +112,6 @@ export default function TicketManagementPage() {
       if (filterPriority) params.append('priority', filterPriority);
       if (filterRoutedTo) params.append('routed_to', filterRoutedTo);
 
-      
       const res = await fetch(`/api/tickets?${params}`);
       const data = await res.json();
       if (data.success) {
@@ -98,7 +149,11 @@ export default function TicketManagementPage() {
     }
   };
 
-  const handleUpdateStatus = async (ticketId, newStatus, resolutionNotes = null) => {
+  const handleUpdateStatus = async (
+    ticketId,
+    newStatus,
+    resolutionNotes = null
+  ) => {
     setUpdatingTicket(true);
     try {
       const payload = { id: ticketId, status: newStatus };
@@ -107,9 +162,9 @@ export default function TicketManagementPage() {
       const res = await fetch('/api/tickets', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
-      
+
       const data = await res.json();
       if (data.success) {
         fetchTickets();
@@ -136,9 +191,9 @@ export default function TicketManagementPage() {
       const res = await fetch('/api/tickets', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: ticketId, assigned_to: userId })
+        body: JSON.stringify({ id: ticketId, assigned_to: userId }),
       });
-      
+
       const data = await res.json();
       if (data.success) {
         fetchTickets();
@@ -165,7 +220,7 @@ export default function TicketManagementPage() {
       const res = await fetch(`/api/tickets/${ticketId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comment: newComment })
+        body: JSON.stringify({ comment: newComment }),
       });
 
       const data = await res.json();
@@ -180,41 +235,51 @@ export default function TicketManagementPage() {
     }
   };
 
-  const filteredTickets = tickets.filter(ticket => 
-    searchQuery === '' || 
-    ticket.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ticket.ticket_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ticket.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ticket.user_name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredTickets = tickets.filter(
+    (ticket) =>
+      searchQuery === '' ||
+      ticket.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.ticket_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.user_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const getStatusBadge = (status) => {
-    const statusConfig = STATUSES.find(s => s.value === status);
+    const statusConfig = STATUSES.find((s) => s.value === status);
     return statusConfig ? (
-      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusConfig.color} inline-flex items-center gap-1`}>
+      <span
+        className={`px-3 py-1 text-xs font-semibold rounded-full ${statusConfig.color} inline-flex items-center gap-1`}
+      >
         <span>{statusConfig.icon}</span>
         {statusConfig.label}
       </span>
-    ) : status;
+    ) : (
+      status
+    );
   };
 
   const getPriorityBadge = (priority) => {
-    const priorityConfig = PRIORITIES.find(p => p.value === priority);
+    const priorityConfig = PRIORITIES.find((p) => p.value === priority);
     return priorityConfig ? (
-      <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${priorityConfig.color}`}>
+      <span
+        className={`px-3 py-1 text-xs font-semibold rounded-full border ${priorityConfig.color}`}
+      >
         {priorityConfig.label}
       </span>
-    ) : priority;
+    ) : (
+      priority
+    );
   };
 
   const getTicketStats = () => {
     return {
-      new: tickets.filter(t => t.status === 'new').length,
-      under_review: tickets.filter(t => t.status === 'under_review').length,
-      in_progress: tickets.filter(t => t.status === 'in_progress').length,
-      waiting: tickets.filter(t => t.status === 'waiting_for_employee').length,
-      resolved: tickets.filter(t => t.status === 'resolved').length,
-      closed: tickets.filter(t => t.status === 'closed').length,
+      new: tickets.filter((t) => t.status === 'new').length,
+      under_review: tickets.filter((t) => t.status === 'under_review').length,
+      in_progress: tickets.filter((t) => t.status === 'in_progress').length,
+      waiting: tickets.filter((t) => t.status === 'waiting_for_employee')
+        .length,
+      resolved: tickets.filter((t) => t.status === 'resolved').length,
+      closed: tickets.filter((t) => t.status === 'closed').length,
     };
   };
 
@@ -230,7 +295,9 @@ export default function TicketManagementPage() {
             <ShieldCheckIcon className="h-8 w-8 text-indigo-600" />
             Ticket Management
           </h1>
-          <p className="text-gray-600 mt-2">Manage and resolve employee support tickets</p>
+          <p className="text-gray-600 mt-2">
+            Manage and resolve employee support tickets
+          </p>
         </div>
 
         {/* Stats Cards */}
@@ -243,25 +310,33 @@ export default function TicketManagementPage() {
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-purple-600">{stats.under_review}</p>
+              <p className="text-2xl font-bold text-purple-600">
+                {stats.under_review}
+              </p>
               <p className="text-xs text-gray-600 mt-1">Under Review</p>
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-yellow-600">{stats.in_progress}</p>
+              <p className="text-2xl font-bold text-yellow-600">
+                {stats.in_progress}
+              </p>
               <p className="text-xs text-gray-600 mt-1">In Progress</p>
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-orange-600">{stats.waiting}</p>
+              <p className="text-2xl font-bold text-orange-600">
+                {stats.waiting}
+              </p>
               <p className="text-xs text-gray-600 mt-1">Waiting</p>
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-green-600">{stats.resolved}</p>
+              <p className="text-2xl font-bold text-green-600">
+                {stats.resolved}
+              </p>
               <p className="text-xs text-gray-600 mt-1">Resolved</p>
             </div>
           </div>
@@ -288,29 +363,33 @@ export default function TicketManagementPage() {
                 />
               </div>
             </div>
-            
+
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
             >
               <option value="">All Statuses</option>
-              {STATUSES.map(status => (
-                <option key={status.value} value={status.value}>{status.label}</option>
+              {STATUSES.map((status) => (
+                <option key={status.value} value={status.value}>
+                  {status.label}
+                </option>
               ))}
             </select>
-            
+
             <select
               value={filterPriority}
               onChange={(e) => setFilterPriority(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
             >
               <option value="">All Priorities</option>
-              {PRIORITIES.map(priority => (
-                <option key={priority.value} value={priority.value}>{priority.label}</option>
+              {PRIORITIES.map((priority) => (
+                <option key={priority.value} value={priority.value}>
+                  {priority.label}
+                </option>
               ))}
             </select>
-            
+
             <select
               value={filterRoutedTo}
               onChange={(e) => setFilterRoutedTo(e.target.value)}
@@ -320,8 +399,11 @@ export default function TicketManagementPage() {
               <option value="hr">HR</option>
               <option value="admin">Admin</option>
             </select>
-            
-            {(filterStatus || filterPriority || filterRoutedTo || searchQuery) && (
+
+            {(filterStatus ||
+              filterPriority ||
+              filterRoutedTo ||
+              searchQuery) && (
               <button
                 onClick={() => {
                   setFilterStatus('');
@@ -347,7 +429,9 @@ export default function TicketManagementPage() {
         ) : filteredTickets.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
             <TicketIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No tickets found</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No tickets found
+            </h3>
             <p className="text-gray-500">Try adjusting your filters</p>
           </div>
         ) : (
@@ -362,12 +446,18 @@ export default function TicketManagementPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <span className="text-sm font-mono text-gray-500">#{ticket.ticket_number}</span>
+                        <span className="text-sm font-mono text-gray-500">
+                          #{ticket.ticket_number}
+                        </span>
                         {getStatusBadge(ticket.status)}
                         {getPriorityBadge(ticket.priority)}
                       </div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">{ticket.subject}</h3>
-                      <p className="text-gray-600 text-sm line-clamp-2 mb-2">{ticket.description}</p>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        {ticket.subject}
+                      </h3>
+                      <p className="text-gray-600 text-sm line-clamp-2 mb-2">
+                        {ticket.description}
+                      </p>
                       <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
                         <span className="flex items-center gap-1">
                           <UserIcon className="h-4 w-4" />
@@ -406,8 +496,13 @@ export default function TicketManagementPage() {
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full my-8">
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Ticket #{selectedTicket.ticket_number}</h2>
-                <p className="text-sm text-gray-500">By {selectedTicket.user_name} on {new Date(selectedTicket.created_at).toLocaleString()}</p>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Ticket #{selectedTicket.ticket_number}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  By {selectedTicket.user_name} on{' '}
+                  {new Date(selectedTicket.created_at).toLocaleString()}
+                </p>
               </div>
               <button
                 onClick={() => setShowViewModal(false)}
@@ -416,24 +511,36 @@ export default function TicketManagementPage() {
                 <XMarkIcon className="h-6 w-6 text-gray-500" />
               </button>
             </div>
-            
+
             <div className="p-6 space-y-6 max-h-[calc(90vh-200px)] overflow-y-auto">
               {/* Quick Actions */}
               <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-                <h4 className="font-semibold text-gray-900 mb-3">Quick Actions</h4>
+                <h4 className="font-semibold text-gray-900 mb-3">
+                  Quick Actions
+                </h4>
                 <div className="flex flex-wrap gap-2">
                   {STATUSES.map((status) => (
                     <button
                       key={status.value}
                       onClick={() => {
-                        if (status.value === 'resolved' || status.value === 'closed') {
+                        if (
+                          status.value === 'resolved' ||
+                          status.value === 'closed'
+                        ) {
                           const notes = prompt('Enter resolution notes:');
-                          if (notes) handleUpdateStatus(selectedTicket.id, status.value, notes);
+                          if (notes)
+                            handleUpdateStatus(
+                              selectedTicket.id,
+                              status.value,
+                              notes
+                            );
                         } else {
                           handleUpdateStatus(selectedTicket.id, status.value);
                         }
                       }}
-                      disabled={updatingTicket || selectedTicket.status === status.value}
+                      disabled={
+                        updatingTicket || selectedTicket.status === status.value
+                      }
                       className={`px-3 py-2 text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                         selectedTicket.status === status.value
                           ? `${status.color} font-semibold`
@@ -453,12 +560,17 @@ export default function TicketManagementPage() {
                 </label>
                 <select
                   value={selectedTicket.assigned_to || ''}
-                  onChange={(e) => handleAssignTicket(selectedTicket.id, e.target.value ? parseInt(e.target.value) : null)}
+                  onChange={(e) =>
+                    handleAssignTicket(
+                      selectedTicket.id,
+                      e.target.value ? parseInt(e.target.value) : null
+                    )
+                  }
                   disabled={updatingTicket}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
                 >
                   <option value="">Unassigned</option>
-                  {users.map(user => (
+                  {users.map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.full_name || user.username} - {user.email}
                     </option>
@@ -474,8 +586,12 @@ export default function TicketManagementPage() {
 
               {/* Subject & Description */}
               <div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-3">{selectedTicket.subject}</h3>
-                <p className="text-gray-700 whitespace-pre-wrap">{selectedTicket.description}</p>
+                <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                  {selectedTicket.subject}
+                </h3>
+                <p className="text-gray-700 whitespace-pre-wrap">
+                  {selectedTicket.description}
+                </p>
               </div>
 
               {/* Attachment */}
@@ -483,7 +599,9 @@ export default function TicketManagementPage() {
                 <div className="bg-gray-50 rounded-lg p-4 flex items-center gap-3">
                   <PaperClipIcon className="h-6 w-6 text-gray-400" />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">Attachment</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      Attachment
+                    </p>
                     <a
                       href={selectedTicket.attachment_url}
                       target="_blank"
@@ -499,12 +617,18 @@ export default function TicketManagementPage() {
               {/* Resolution Notes */}
               {selectedTicket.resolution_notes && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-green-800 mb-2">Resolution Notes</p>
-                  <p className="text-sm text-green-900 whitespace-pre-wrap">{selectedTicket.resolution_notes}</p>
+                  <p className="text-sm font-semibold text-green-800 mb-2">
+                    Resolution Notes
+                  </p>
+                  <p className="text-sm text-green-900 whitespace-pre-wrap">
+                    {selectedTicket.resolution_notes}
+                  </p>
                   {selectedTicket.resolved_at && (
                     <p className="text-xs text-green-700 mt-2">
-                      Resolved on {new Date(selectedTicket.resolved_at).toLocaleString()}
-                      {selectedTicket.resolved_by_name && ` by ${selectedTicket.resolved_by_name}`}
+                      Resolved on{' '}
+                      {new Date(selectedTicket.resolved_at).toLocaleString()}
+                      {selectedTicket.resolved_by_name &&
+                        ` by ${selectedTicket.resolved_by_name}`}
                     </p>
                   )}
                 </div>
@@ -520,12 +644,16 @@ export default function TicketManagementPage() {
                   {selectedTicket.comments?.map((comment) => (
                     <div key={comment.id} className="bg-gray-50 rounded-lg p-4">
                       <div className="flex items-start justify-between mb-2">
-                        <span className="font-medium text-gray-900">{comment.user_name}</span>
+                        <span className="font-medium text-gray-900">
+                          {comment.user_name}
+                        </span>
                         <span className="text-xs text-gray-500">
                           {new Date(comment.created_at).toLocaleString()}
                         </span>
                       </div>
-                      <p className="text-gray-700 text-sm whitespace-pre-wrap">{comment.comment}</p>
+                      <p className="text-gray-700 text-sm whitespace-pre-wrap">
+                        {comment.comment}
+                      </p>
                     </div>
                   ))}
 

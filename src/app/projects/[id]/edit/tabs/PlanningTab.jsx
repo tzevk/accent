@@ -1,4 +1,4 @@
-import { PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 export default function PlanningTab({
   newPlanningActivity,
@@ -10,9 +10,7 @@ export default function PlanningTab({
   return (
     <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
       <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-sm font-semibold text-black">
-          Project Planning
-        </h2>
+        <h2 className="text-sm font-semibold text-black">Project Planning</h2>
         <p className="text-xs text-gray-600 mt-1">
           Track activities, timelines, and deliverables
         </p>
@@ -35,10 +33,7 @@ export default function PlanningTab({
                   type="text"
                   value={newPlanningActivity.serialNumber}
                   onChange={(e) =>
-                    updatePlanningActivityField(
-                      "serialNumber",
-                      e.target.value,
-                    )
+                    updatePlanningActivityField('serialNumber', e.target.value)
                   }
                   placeholder="Auto"
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
@@ -52,10 +47,7 @@ export default function PlanningTab({
                   type="text"
                   value={newPlanningActivity.activity}
                   onChange={(e) =>
-                    updatePlanningActivityField(
-                      "activity",
-                      e.target.value,
-                    )
+                    updatePlanningActivityField('activity', e.target.value)
                   }
                   placeholder="Enter activity name..."
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
@@ -69,10 +61,7 @@ export default function PlanningTab({
                   type="text"
                   value={newPlanningActivity.quantity}
                   onChange={(e) =>
-                    updatePlanningActivityField(
-                      "quantity",
-                      e.target.value,
-                    )
+                    updatePlanningActivityField('quantity', e.target.value)
                   }
                   placeholder="e.g., 10 units"
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
@@ -89,10 +78,7 @@ export default function PlanningTab({
                   type="date"
                   value={newPlanningActivity.startDate}
                   onChange={(e) =>
-                    updatePlanningActivityField(
-                      "startDate",
-                      e.target.value,
-                    )
+                    updatePlanningActivityField('startDate', e.target.value)
                   }
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
                 />
@@ -105,10 +91,7 @@ export default function PlanningTab({
                   type="date"
                   value={newPlanningActivity.endDate}
                   onChange={(e) =>
-                    updatePlanningActivityField(
-                      "endDate",
-                      e.target.value,
-                    )
+                    updatePlanningActivityField('endDate', e.target.value)
                   }
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
                 />
@@ -122,8 +105,8 @@ export default function PlanningTab({
                   value={newPlanningActivity.actualCompletionDate}
                   onChange={(e) =>
                     updatePlanningActivityField(
-                      "actualCompletionDate",
-                      e.target.value,
+                      'actualCompletionDate',
+                      e.target.value
                     )
                   }
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
@@ -137,10 +120,7 @@ export default function PlanningTab({
                   type="text"
                   value={newPlanningActivity.timeRequired}
                   onChange={(e) =>
-                    updatePlanningActivityField(
-                      "timeRequired",
-                      e.target.value,
-                    )
+                    updatePlanningActivityField('timeRequired', e.target.value)
                   }
                   placeholder="e.g., 5 days"
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
@@ -155,8 +135,8 @@ export default function PlanningTab({
                   value={newPlanningActivity.actualTimeRequired}
                   onChange={(e) =>
                     updatePlanningActivityField(
-                      "actualTimeRequired",
-                      e.target.value,
+                      'actualTimeRequired',
+                      e.target.value
                     )
                   }
                   placeholder="e.g., 6 days"
@@ -225,29 +205,27 @@ export default function PlanningTab({
                         {activity.activity}
                       </td>
                       <td className="px-3 py-2 text-gray-900">
-                        {activity.quantity || "—"}
+                        {activity.quantity || '—'}
                       </td>
                       <td className="px-3 py-2 text-gray-900">
-                        {activity.startDate || "—"}
+                        {activity.startDate || '—'}
                       </td>
                       <td className="px-3 py-2 text-gray-900">
-                        {activity.endDate || "—"}
+                        {activity.endDate || '—'}
                       </td>
                       <td className="px-3 py-2 text-gray-900">
-                        {activity.actualCompletionDate || "—"}
+                        {activity.actualCompletionDate || '—'}
                       </td>
                       <td className="px-3 py-2 text-gray-900">
-                        {activity.timeRequired || "—"}
+                        {activity.timeRequired || '—'}
                       </td>
                       <td className="px-3 py-2 text-gray-900">
-                        {activity.actualTimeRequired || "—"}
+                        {activity.actualTimeRequired || '—'}
                       </td>
                       <td className="px-3 py-2 text-center">
                         <button
                           type="button"
-                          onClick={() =>
-                            removePlanningActivity(activity.id)
-                          }
+                          onClick={() => removePlanningActivity(activity.id)}
                           className="text-red-500 hover:text-red-700 transition-colors"
                           title="Remove activity"
                         >
@@ -261,7 +239,8 @@ export default function PlanningTab({
             </div>
           ) : (
             <div className="text-center py-8 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg">
-              No activities added yet. Use the form above to add planning activities.
+              No activities added yet. Use the form above to add planning
+              activities.
             </div>
           )}
         </div>

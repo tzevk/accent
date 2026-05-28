@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
-import { 
-  PlusIcon, 
-  TrashIcon, 
-  PencilIcon, 
+import {
+  PlusIcon,
+  TrashIcon,
+  PencilIcon,
   CheckIcon,
   XMarkIcon,
   MagnifyingGlassIcon,
-  BanknotesIcon
+  BanknotesIcon,
 } from '@heroicons/react/24/outline';
 
 export default function AccountHeadMasterPage() {
@@ -19,13 +19,13 @@ export default function AccountHeadMasterPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  
+
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     account_head_name: '',
-    is_active: true
+    is_active: true,
   });
 
   // Fetch account heads
@@ -50,9 +50,11 @@ export default function AccountHeadMasterPage() {
   }, []);
 
   // Filter account heads
-  const filteredAccountHeads = accountHeads.filter(item => {
+  const filteredAccountHeads = accountHeads.filter((item) => {
     if (!searchTerm) return true;
-    return item.account_head_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    return item.account_head_name
+      ?.toLowerCase()
+      .includes(searchTerm.toLowerCase());
   });
 
   // Show messages
@@ -70,7 +72,7 @@ export default function AccountHeadMasterPage() {
   const resetForm = () => {
     setFormData({
       account_head_name: '',
-      is_active: true
+      is_active: true,
     });
     setEditingId(null);
     setShowForm(false);
@@ -79,27 +81,31 @@ export default function AccountHeadMasterPage() {
   // Handle submit
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.account_head_name.trim()) {
       showError('Account head name is required');
       return;
     }
 
     try {
-      const url = editingId 
-        ? `/api/masters/account-heads?id=${editingId}` 
+      const url = editingId
+        ? `/api/masters/account-heads?id=${editingId}`
         : '/api/masters/account-heads';
-      
+
       const res = await fetch(url, {
         method: editingId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        showSuccess(editingId ? 'Account head updated successfully' : 'Account head created successfully');
+        showSuccess(
+          editingId
+            ? 'Account head updated successfully'
+            : 'Account head created successfully'
+        );
         resetForm();
         fetchAccountHeads();
       } else {
@@ -115,7 +121,7 @@ export default function AccountHeadMasterPage() {
   const handleEdit = (item) => {
     setFormData({
       account_head_name: item.account_head_name || '',
-      is_active: item.is_active !== false
+      is_active: item.is_active !== false,
     });
     setEditingId(item.id);
     setShowForm(true);
@@ -127,7 +133,7 @@ export default function AccountHeadMasterPage() {
 
     try {
       const res = await fetch(`/api/masters/account-heads?id=${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
 
       const data = await res.json();
@@ -148,7 +154,7 @@ export default function AccountHeadMasterPage() {
     <AccessGuard resource="activities" permission="read">
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Navbar />
-        
+
         <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
@@ -157,7 +163,9 @@ export default function AccountHeadMasterPage() {
                 <BanknotesIcon className="h-7 w-7 text-purple-600" />
                 Account Head Master
               </h1>
-              <p className="text-sm text-gray-500 mt-1">Manage account heads for cash voucher line items</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Manage account heads for cash voucher line items
+              </p>
             </div>
             <button
               onClick={() => setShowForm(true)}
@@ -188,7 +196,10 @@ export default function AccountHeadMasterPage() {
                   <h2 className="text-lg font-semibold text-gray-900">
                     {editingId ? 'Edit Account Head' : 'Add New Account Head'}
                   </h2>
-                  <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
+                  <button
+                    onClick={resetForm}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
                     <XMarkIcon className="h-5 w-5" />
                   </button>
                 </div>
@@ -201,7 +212,12 @@ export default function AccountHeadMasterPage() {
                     <input
                       type="text"
                       value={formData.account_head_name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, account_head_name: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          account_head_name: e.target.value,
+                        }))
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       placeholder="e.g., Office Supplies, Travel Expenses"
                       required
@@ -213,10 +229,18 @@ export default function AccountHeadMasterPage() {
                       type="checkbox"
                       id="is_active"
                       checked={formData.is_active}
-                      onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          is_active: e.target.checked,
+                        }))
+                      }
                       className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                     />
-                    <label htmlFor="is_active" className="text-sm text-gray-700">
+                    <label
+                      htmlFor="is_active"
+                      className="text-sm text-gray-700"
+                    >
                       Active
                     </label>
                   </div>
@@ -261,22 +285,36 @@ export default function AccountHeadMasterPage() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">#</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Account Head</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    #
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Account Head
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
+                    <td
+                      colSpan={4}
+                      className="px-6 py-8 text-center text-gray-500"
+                    >
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto"></div>
                     </td>
                   </tr>
                 ) : filteredAccountHeads.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
+                    <td
+                      colSpan={4}
+                      className="px-6 py-8 text-center text-gray-500"
+                    >
                       No account heads found
                     </td>
                   </tr>
@@ -290,11 +328,13 @@ export default function AccountHeadMasterPage() {
                         {item.account_head_name}
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                          item.is_active !== false 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                            item.is_active !== false
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
                           {item.is_active !== false ? 'Active' : 'Inactive'}
                         </span>
                       </td>

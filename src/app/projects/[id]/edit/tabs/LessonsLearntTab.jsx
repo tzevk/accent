@@ -1,4 +1,4 @@
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function LessonsLearntTab({
   newLessonDescRef,
@@ -26,9 +26,7 @@ export default function LessonsLearntTab({
               d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
             />
           </svg>
-          <h2 className="text-sm font-bold text-gray-900">
-            Lessons Learnt
-          </h2>
+          <h2 className="text-sm font-bold text-gray-900">Lessons Learnt</h2>
         </div>
         <p className="text-xs text-gray-500 mt-0.5">
           Capture learning from the project
@@ -65,9 +63,7 @@ export default function LessonsLearntTab({
             </thead>
             <tbody className="divide-y divide-gray-100">
               <tr className="bg-purple-25/30">
-                <td className="py-2 px-2 text-center text-gray-400">
-                  +
-                </td>
+                <td className="py-2 px-2 text-center text-gray-400">+</td>
                 <td className="py-2 px-2">
                   <input
                     ref={newLessonDescRef}
@@ -144,12 +140,9 @@ export default function LessonsLearntTab({
                     type="button"
                     onClick={addLessonRow}
                     disabled={
-                      !(
-                        newLesson.what_was_new &&
-                        newLesson.what_was_new.trim()
-                      )
+                      !(newLesson.what_was_new && newLesson.what_was_new.trim())
                     }
-                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newLesson.what_was_new && newLesson.what_was_new.trim() ? "bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newLesson.what_was_new && newLesson.what_was_new.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                     title="Add lesson"
                   >
                     Add
@@ -161,18 +154,26 @@ export default function LessonsLearntTab({
                   key={l.id}
                   className="hover:bg-gray-50 transition-colors align-top"
                 >
-                  <td className="py-2 px-2 text-center">
-                    {index + 1}
+                  <td className="py-2 px-2 text-center">{index + 1}</td>
+                  <td className="py-2 px-2">
+                    <input
+                      type="text"
+                      value={l.what_was_new || ''}
+                      onChange={(e) =>
+                        updateLessonRow(l.id, 'what_was_new', e.target.value)
+                      }
+                      className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                    />
                   </td>
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={l.what_was_new || ""}
+                      value={l.difficulty_faced || ''}
                       onChange={(e) =>
                         updateLessonRow(
                           l.id,
-                          "what_was_new",
-                          e.target.value,
+                          'difficulty_faced',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -181,12 +182,22 @@ export default function LessonsLearntTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={l.difficulty_faced || ""}
+                      value={l.what_you_learn || ''}
+                      onChange={(e) =>
+                        updateLessonRow(l.id, 'what_you_learn', e.target.value)
+                      }
+                      className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                    />
+                  </td>
+                  <td className="py-2 px-2">
+                    <input
+                      type="text"
+                      value={l.areas_of_improvement || ''}
                       onChange={(e) =>
                         updateLessonRow(
                           l.id,
-                          "difficulty_faced",
-                          e.target.value,
+                          'areas_of_improvement',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -195,41 +206,9 @@ export default function LessonsLearntTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={l.what_you_learn || ""}
+                      value={l.remark || ''}
                       onChange={(e) =>
-                        updateLessonRow(
-                          l.id,
-                          "what_you_learn",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
-                    />
-                  </td>
-                  <td className="py-2 px-2">
-                    <input
-                      type="text"
-                      value={l.areas_of_improvement || ""}
-                      onChange={(e) =>
-                        updateLessonRow(
-                          l.id,
-                          "areas_of_improvement",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
-                    />
-                  </td>
-                  <td className="py-2 px-2">
-                    <input
-                      type="text"
-                      value={l.remark || ""}
-                      onChange={(e) =>
-                        updateLessonRow(
-                          l.id,
-                          "remark",
-                          e.target.value,
-                        )
+                        updateLessonRow(l.id, 'remark', e.target.value)
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                     />

@@ -1,5 +1,5 @@
-import { Fragment } from "react";
-import { ClockIcon } from "@heroicons/react/24/outline";
+import { Fragment } from 'react';
+import { ClockIcon } from '@heroicons/react/24/outline';
 
 export default function MyActivitiesTab({
   sessionUser,
@@ -14,9 +14,7 @@ export default function MyActivitiesTab({
     const assignedUsers = act.assigned_users || [];
     return assignedUsers.some((assignment) => {
       const odUserId =
-        typeof assignment === "object"
-          ? assignment.user_id
-          : assignment;
+        typeof assignment === 'object' ? assignment.user_id : assignment;
       return String(odUserId) === String(sessionUser?.id);
     });
   });
@@ -25,27 +23,27 @@ export default function MyActivitiesTab({
     (acc, act) => {
       const assignedUsers = act.assigned_users || [];
       const myAssignment = assignedUsers.find((a) => {
-        const odUserId = typeof a === "object" ? a.user_id : a;
+        const odUserId = typeof a === 'object' ? a.user_id : a;
         return String(odUserId) === String(sessionUser?.id);
       });
-      if (myAssignment && typeof myAssignment === "object") {
+      if (myAssignment && typeof myAssignment === 'object') {
         acc.plannedHours += parseFloat(myAssignment.planned_hours) || 0;
         const dailyEntries = myAssignment.daily_entries || [];
         acc.actualHours += dailyEntries.reduce(
           (sum, e) => sum + (parseFloat(e.hours) || 0),
-          0,
+          0
         );
       }
       return acc;
     },
-    { plannedHours: 0, actualHours: 0 },
+    { plannedHours: 0, actualHours: 0 }
   );
 
   const remaining = totalsHeader.plannedHours - totalsHeader.actualHours;
 
   // Group by discipline
   const groupedByDiscipline = myActivities.reduce((acc, act) => {
-    const discipline = act.discipline || act.function_name || "Manual";
+    const discipline = act.discipline || act.function_name || 'Manual';
     if (!acc[discipline]) acc[discipline] = [];
     acc[discipline].push(act);
     return acc;
@@ -70,20 +68,28 @@ export default function MyActivitiesTab({
           {/* Total Hours Summary */}
           <div className="flex items-center gap-4 bg-white/80 rounded-lg px-4 py-2 border border-purple-100">
             <div className="text-center border-r border-gray-200 pr-4">
-              <span className="text-[10px] text-gray-500 uppercase block">Planned</span>
+              <span className="text-[10px] text-gray-500 uppercase block">
+                Planned
+              </span>
               <strong className="text-blue-600 text-lg">
                 {totalsHeader.plannedHours.toFixed(1)}h
               </strong>
             </div>
             <div className="text-center border-r border-gray-200 pr-4">
-              <span className="text-[10px] text-gray-500 uppercase block">Actual</span>
+              <span className="text-[10px] text-gray-500 uppercase block">
+                Actual
+              </span>
               <strong className="text-green-600 text-lg">
                 {totalsHeader.actualHours.toFixed(1)}h
               </strong>
             </div>
             <div className="text-center">
-              <span className="text-[10px] text-gray-500 uppercase block">Remaining</span>
-              <strong className={`text-lg ${remaining > 0 ? "text-orange-600" : "text-green-600"}`}>
+              <span className="text-[10px] text-gray-500 uppercase block">
+                Remaining
+              </span>
+              <strong
+                className={`text-lg ${remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}
+              >
                 {remaining.toFixed(1)}h
               </strong>
             </div>
@@ -109,20 +115,20 @@ export default function MyActivitiesTab({
                 (acc, act) => {
                   const assignedUsers = act.assigned_users || [];
                   const myAssignment = assignedUsers.find((a) => {
-                    const odUserId = typeof a === "object" ? a.user_id : a;
+                    const odUserId = typeof a === 'object' ? a.user_id : a;
                     return String(odUserId) === String(sessionUser?.id);
                   });
-                  if (myAssignment && typeof myAssignment === "object") {
+                  if (myAssignment && typeof myAssignment === 'object') {
                     acc.planned += parseFloat(myAssignment.planned_hours) || 0;
                     const dailyEntries = myAssignment.daily_entries || [];
                     acc.actual += dailyEntries.reduce(
                       (sum, e) => sum + (parseFloat(e.hours) || 0),
-                      0,
+                      0
                     );
                   }
                   return acc;
                 },
-                { planned: 0, actual: 0 },
+                { planned: 0, actual: 0 }
               );
 
               return (
@@ -133,7 +139,7 @@ export default function MyActivitiesTab({
                   {/* Discipline Header */}
                   <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
                     <span className="font-semibold text-gray-800 text-sm">
-                      {discipline}{" "}
+                      {discipline}{' '}
                       <span className="font-normal text-gray-400 text-xs">
                         ({acts.length})
                       </span>
@@ -149,48 +155,80 @@ export default function MyActivitiesTab({
                   </div>
 
                   {/* Activities Table */}
-                  <div style={{ overflow: "visible" }}>
-                    <table className="w-full text-xs" style={{ overflow: "visible" }}>
+                  <div style={{ overflow: 'visible' }}>
+                    <table
+                      className="w-full text-xs"
+                      style={{ overflow: 'visible' }}
+                    >
                       <thead>
                         <tr className="bg-gradient-to-r from-slate-50 to-slate-100">
-                          <th className="py-2.5 px-3" style={{ width: "3%" }}></th>
-                          <th className="py-2.5 px-3" style={{ width: "18%" }}></th>
-                          <th className="py-2.5 px-3" style={{ width: "20%" }}>
+                          <th
+                            className="py-2.5 px-3"
+                            style={{ width: '3%' }}
+                          ></th>
+                          <th
+                            className="py-2.5 px-3"
+                            style={{ width: '18%' }}
+                          ></th>
+                          <th className="py-2.5 px-3" style={{ width: '20%' }}>
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-700 uppercase tracking-wider">
                               Description
                             </span>
                           </th>
-                          <th className="py-2.5 px-2 text-center" style={{ width: "8%" }}>
+                          <th
+                            className="py-2.5 px-2 text-center"
+                            style={{ width: '8%' }}
+                          >
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">
                               Date
                             </span>
                           </th>
-                          <th colSpan={2} className="py-2.5 px-2 text-center" style={{ width: "12%" }}>
+                          <th
+                            colSpan={2}
+                            className="py-2.5 px-2 text-center"
+                            style={{ width: '12%' }}
+                          >
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 uppercase tracking-wider">
                               Hours
                             </span>
                           </th>
-                          <th colSpan={3} className="py-2.5 px-2 text-center" style={{ width: "18%" }}>
+                          <th
+                            colSpan={3}
+                            className="py-2.5 px-2 text-center"
+                            style={{ width: '18%' }}
+                          >
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-purple-700 uppercase tracking-wider">
                               Quantity
                             </span>
                           </th>
-                          <th className="py-2.5 px-2 text-center" style={{ width: "8%" }}>
+                          <th
+                            className="py-2.5 px-2 text-center"
+                            style={{ width: '8%' }}
+                          >
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-orange-700 uppercase tracking-wider">
                               Due
                             </span>
                           </th>
-                          <th className="py-2.5 px-2 text-center" style={{ width: "8%" }}>
+                          <th
+                            className="py-2.5 px-2 text-center"
+                            style={{ width: '8%' }}
+                          >
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">
                               Status
                             </span>
                           </th>
-                          <th className="py-2.5 px-3 text-center" style={{ width: "12%" }}>
+                          <th
+                            className="py-2.5 px-3 text-center"
+                            style={{ width: '12%' }}
+                          >
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 uppercase tracking-wider">
                               Notes
                             </span>
                           </th>
-                          <th className="py-2.5 px-1" style={{ width: "3%" }}></th>
+                          <th
+                            className="py-2.5 px-1"
+                            style={{ width: '3%' }}
+                          ></th>
                         </tr>
                         <tr className="border-b-2 border-slate-200 bg-white">
                           <th className="text-left py-2 px-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide">
@@ -222,51 +260,53 @@ export default function MyActivitiesTab({
                           <th className="py-2 px-1"></th>
                         </tr>
                       </thead>
-                      <tbody style={{ overflow: "visible" }}>
+                      <tbody style={{ overflow: 'visible' }}>
                         {acts.map((act, idx) => {
                           const assignedUsers = act.assigned_users || [];
                           const myAssignment = assignedUsers.find((a) => {
-                            const odUserId = typeof a === "object" ? a.user_id : a;
+                            const odUserId =
+                              typeof a === 'object' ? a.user_id : a;
                             return String(odUserId) === String(sessionUser?.id);
                           });
 
                           const qtyAssigned =
-                            myAssignment && typeof myAssignment === "object"
-                              ? myAssignment.qty_assigned || ""
-                              : "";
+                            myAssignment && typeof myAssignment === 'object'
+                              ? myAssignment.qty_assigned || ''
+                              : '';
                           const dailyEntries =
-                            myAssignment && typeof myAssignment === "object"
+                            myAssignment && typeof myAssignment === 'object'
                               ? myAssignment.daily_entries || []
                               : [];
                           const totalQtyDone = dailyEntries.reduce(
                             (sum, e) => sum + (parseFloat(e.qty_done) || 0),
-                            0,
+                            0
                           );
                           const totalActualHrs = dailyEntries.reduce(
                             (sum, e) => sum + (parseFloat(e.hours) || 0),
-                            0,
+                            0
                           );
                           const plannedHrs =
-                            myAssignment && typeof myAssignment === "object"
-                              ? myAssignment.planned_hours || ""
-                              : "";
+                            myAssignment && typeof myAssignment === 'object'
+                              ? myAssignment.planned_hours || ''
+                              : '';
                           const myDescription =
-                            myAssignment && typeof myAssignment === "object"
-                              ? myAssignment.description || ""
-                              : "";
+                            myAssignment && typeof myAssignment === 'object'
+                              ? myAssignment.description || ''
+                              : '';
                           const dueDate =
-                            myAssignment && typeof myAssignment === "object"
-                              ? myAssignment.due_date || ""
-                              : "";
+                            myAssignment && typeof myAssignment === 'object'
+                              ? myAssignment.due_date || ''
+                              : '';
                           const status =
-                            myAssignment && typeof myAssignment === "object"
-                              ? myAssignment.status || "Not Started"
-                              : "Not Started";
+                            myAssignment && typeof myAssignment === 'object'
+                              ? myAssignment.status || 'Not Started'
+                              : 'Not Started';
                           const remarks =
-                            myAssignment && typeof myAssignment === "object"
-                              ? myAssignment.remarks || ""
-                              : "";
-                          const balancedQty = (parseFloat(qtyAssigned) || 0) - totalQtyDone;
+                            myAssignment && typeof myAssignment === 'object'
+                              ? myAssignment.remarks || ''
+                              : '';
+                          const balancedQty =
+                            (parseFloat(qtyAssigned) || 0) - totalQtyDone;
 
                           return (
                             <Fragment key={act.id}>
@@ -284,7 +324,9 @@ export default function MyActivitiesTab({
                                     </span>
                                     <button
                                       type="button"
-                                      onClick={() => addDailyEntry(act.id, sessionUser?.id)}
+                                      onClick={() =>
+                                        addDailyEntry(act.id, sessionUser?.id)
+                                      }
                                       className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
                                     >
                                       <span>+</span> Add Day
@@ -299,8 +341,8 @@ export default function MyActivitiesTab({
                                       updateUserManhours(
                                         act.id,
                                         sessionUser?.id,
-                                        "description",
-                                        e.target.value,
+                                        'description',
+                                        e.target.value
                                       )
                                     }
                                     className="w-full px-2 py-1 text-xs text-slate-600 bg-white border border-slate-200 rounded-md focus:ring-2 focus:ring-gray-200 focus:border-gray-300 focus:outline-none transition-shadow"
@@ -315,7 +357,7 @@ export default function MyActivitiesTab({
                                 {/* Hours - Plan (Read-only) */}
                                 <td className="py-3 px-2 text-center bg-blue-50/60">
                                   <span className="inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold text-blue-700 bg-blue-100 rounded-md">
-                                    {plannedHrs || "–"}
+                                    {plannedHrs || '–'}
                                   </span>
                                 </td>
                                 {/* Hours - Actual */}
@@ -327,21 +369,21 @@ export default function MyActivitiesTab({
                                 {/* Qty - Assigned (Read-only) */}
                                 <td className="py-3 px-2 text-center bg-purple-50/60">
                                   <span className="inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold text-purple-700 bg-purple-100 rounded-md">
-                                    {qtyAssigned || "–"}
+                                    {qtyAssigned || '–'}
                                   </span>
                                 </td>
                                 {/* Qty - Done */}
                                 <td className="py-3 px-2 text-center bg-purple-50/60">
                                   <span className="inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold text-emerald-700 bg-emerald-100 rounded-md">
-                                    {totalQtyDone || "0"}
+                                    {totalQtyDone || '0'}
                                   </span>
                                 </td>
                                 {/* Qty - Balance */}
                                 <td className="py-3 px-2 text-center bg-purple-100/60">
                                   <span
-                                    className={`inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold rounded-md ${balancedQty > 0 ? "text-orange-700 bg-orange-100" : "text-emerald-700 bg-emerald-100"}`}
+                                    className={`inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold rounded-md ${balancedQty > 0 ? 'text-orange-700 bg-orange-100' : 'text-emerald-700 bg-emerald-100'}`}
                                   >
-                                    {qtyAssigned ? balancedQty : "–"}
+                                    {qtyAssigned ? balancedQty : '–'}
                                   </span>
                                 </td>
                                 <td className="py-3 px-2">
@@ -352,8 +394,8 @@ export default function MyActivitiesTab({
                                       updateUserManhours(
                                         act.id,
                                         sessionUser?.id,
-                                        "due_date",
-                                        e.target.value,
+                                        'due_date',
+                                        e.target.value
                                       )
                                     }
                                     className="w-full px-2 py-1 text-xs text-slate-600 bg-white border border-slate-200 rounded-md focus:ring-2 focus:ring-orange-200 focus:border-orange-300 focus:outline-none transition-shadow"
@@ -366,22 +408,26 @@ export default function MyActivitiesTab({
                                       updateUserManhours(
                                         act.id,
                                         sessionUser?.id,
-                                        "status",
-                                        e.target.value,
+                                        'status',
+                                        e.target.value
                                       )
                                     }
                                     className={`w-full px-2 py-1 text-xs font-medium rounded-md border focus:ring-2 focus:outline-none transition-shadow ${
-                                      status === "Completed"
-                                        ? "text-emerald-700 bg-emerald-50 border-emerald-200 focus:ring-emerald-200"
-                                        : status === "In Progress"
-                                          ? "text-blue-700 bg-blue-50 border-blue-200 focus:ring-blue-200"
-                                          : status === "On Hold"
-                                            ? "text-amber-700 bg-amber-50 border-amber-200 focus:ring-amber-200"
-                                            : "text-slate-600 bg-slate-50 border-slate-200 focus:ring-slate-200"
+                                      status === 'Completed'
+                                        ? 'text-emerald-700 bg-emerald-50 border-emerald-200 focus:ring-emerald-200'
+                                        : status === 'In Progress'
+                                          ? 'text-blue-700 bg-blue-50 border-blue-200 focus:ring-blue-200'
+                                          : status === 'On Hold'
+                                            ? 'text-amber-700 bg-amber-50 border-amber-200 focus:ring-amber-200'
+                                            : 'text-slate-600 bg-slate-50 border-slate-200 focus:ring-slate-200'
                                     }`}
                                   >
-                                    <option value="Not Started">Not Started</option>
-                                    <option value="In Progress">In Progress</option>
+                                    <option value="Not Started">
+                                      Not Started
+                                    </option>
+                                    <option value="In Progress">
+                                      In Progress
+                                    </option>
                                     <option value="Completed">Completed</option>
                                     <option value="On Hold">On Hold</option>
                                   </select>
@@ -394,8 +440,8 @@ export default function MyActivitiesTab({
                                       updateUserManhours(
                                         act.id,
                                         sessionUser?.id,
-                                        "remarks",
-                                        e.target.value,
+                                        'remarks',
+                                        e.target.value
                                       )
                                     }
                                     className="w-full px-2 py-1 text-xs text-slate-600 bg-white border border-slate-200 rounded-md focus:ring-2 focus:ring-amber-200 focus:border-amber-300 focus:outline-none transition-shadow"
@@ -410,29 +456,42 @@ export default function MyActivitiesTab({
                                 // Entry is locked if explicitly marked or from a previous day
                                 const today = new Date();
                                 today.setHours(0, 0, 0, 0);
-                                const entryDate = entry.date ? new Date(entry.date) : null;
+                                const entryDate = entry.date
+                                  ? new Date(entry.date)
+                                  : null;
                                 if (entryDate) entryDate.setHours(0, 0, 0, 0);
                                 const isLocked =
-                                  entry.isLocked === true || (entryDate && entryDate < today);
+                                  entry.isLocked === true ||
+                                  (entryDate && entryDate < today);
 
                                 // Calculate remaining qty balance up to this entry
                                 const doneUpToThisEntry = dailyEntries
                                   .slice(0, eIdx + 1)
-                                  .reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
+                                  .reduce(
+                                    (sum, e) =>
+                                      sum + (parseFloat(e.qty_done) || 0),
+                                    0
+                                  );
                                 const remainingQtyAfterThisEntry =
-                                  (parseFloat(qtyAssigned) || 0) - doneUpToThisEntry;
+                                  (parseFloat(qtyAssigned) || 0) -
+                                  doneUpToThisEntry;
 
                                 // Calculate remaining hours balance up to this entry
                                 const hoursUpToThisEntry = dailyEntries
                                   .slice(0, eIdx + 1)
-                                  .reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+                                  .reduce(
+                                    (sum, e) =>
+                                      sum + (parseFloat(e.hours) || 0),
+                                    0
+                                  );
                                 const remainingHoursAfterThisEntry =
-                                  (parseFloat(plannedHrs) || 0) - hoursUpToThisEntry;
+                                  (parseFloat(plannedHrs) || 0) -
+                                  hoursUpToThisEntry;
 
                                 return (
                                   <tr
                                     key={`${act.id}-day-${eIdx}`}
-                                    className={`border-b border-slate-100 transition-colors ${isLocked ? "bg-slate-50/50" : "hover:bg-slate-50/80"}`}
+                                    className={`border-b border-slate-100 transition-colors ${isLocked ? 'bg-slate-50/50' : 'hover:bg-slate-50/80'}`}
                                   >
                                     <td className="py-2.5 px-3"></td>
                                     <td className="py-2.5 px-3">
@@ -442,7 +501,10 @@ export default function MyActivitiesTab({
                                           Day {eIdx + 1}
                                         </span>
                                         {isLocked && (
-                                          <span className="text-amber-500 text-[10px]" title="Entry locked">
+                                          <span
+                                            className="text-amber-500 text-[10px]"
+                                            title="Entry locked"
+                                          >
                                             🔒
                                           </span>
                                         )}
@@ -451,14 +513,13 @@ export default function MyActivitiesTab({
                                     <td className="py-2.5 px-2 text-center">
                                       <span className="inline-flex items-center px-2 py-0.5 text-[11px] text-slate-600 bg-emerald-50 rounded font-medium">
                                         {entry.date
-                                          ? new Date(entry.date + "T00:00:00").toLocaleDateString(
-                                              "en-GB",
-                                              {
-                                                day: "2-digit",
-                                                month: "short",
-                                              },
-                                            )
-                                          : "–"}
+                                          ? new Date(
+                                              entry.date + 'T00:00:00'
+                                            ).toLocaleDateString('en-GB', {
+                                              day: '2-digit',
+                                              month: 'short',
+                                            })
+                                          : '–'}
                                       </span>
                                     </td>
                                     {/* Hours - Plan (empty for daily rows) */}
@@ -469,19 +530,19 @@ export default function MyActivitiesTab({
                                     <td className="py-2.5 px-2 text-center bg-blue-50/20">
                                       {isLocked ? (
                                         <span className="inline-flex items-center justify-center w-12 px-2 py-0.5 text-[11px] font-medium text-slate-600 bg-slate-100 rounded">
-                                          {entry.hours || "–"}
+                                          {entry.hours || '–'}
                                         </span>
                                       ) : (
                                         <input
                                           type="number"
-                                          value={entry.hours || ""}
+                                          value={entry.hours || ''}
                                           onChange={(e) =>
                                             updateDailyEntry(
                                               act.id,
                                               sessionUser?.id,
                                               eIdx,
-                                              "hours",
-                                              e.target.value,
+                                              'hours',
+                                              e.target.value
                                             )
                                           }
                                           className="w-12 px-2 py-0.5 text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded text-center focus:ring-1 focus:ring-blue-300 focus:border-blue-300 focus:outline-none"
@@ -499,19 +560,19 @@ export default function MyActivitiesTab({
                                     <td className="py-2.5 px-2 text-center bg-purple-50/20">
                                       {isLocked ? (
                                         <span className="inline-flex items-center justify-center w-12 px-2 py-0.5 text-[11px] font-medium text-slate-600 bg-slate-100 rounded">
-                                          {entry.qty_done || "–"}
+                                          {entry.qty_done || '–'}
                                         </span>
                                       ) : (
                                         <input
                                           type="number"
-                                          value={entry.qty_done || ""}
+                                          value={entry.qty_done || ''}
                                           onChange={(e) =>
                                             updateDailyEntry(
                                               act.id,
                                               sessionUser?.id,
                                               eIdx,
-                                              "qty_done",
-                                              e.target.value,
+                                              'qty_done',
+                                              e.target.value
                                             )
                                           }
                                           className="w-12 px-2 py-0.5 text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded text-center focus:ring-1 focus:ring-purple-300 focus:border-purple-300 focus:outline-none"
@@ -525,13 +586,15 @@ export default function MyActivitiesTab({
                                       <span
                                         className={`inline-flex items-center justify-center w-12 px-2 py-0.5 text-[11px] font-semibold rounded ${
                                           remainingQtyAfterThisEntry > 0
-                                            ? "text-orange-600 bg-orange-50"
+                                            ? 'text-orange-600 bg-orange-50'
                                             : remainingQtyAfterThisEntry === 0
-                                              ? "text-emerald-600 bg-emerald-50"
-                                              : "text-red-600 bg-red-50"
+                                              ? 'text-emerald-600 bg-emerald-50'
+                                              : 'text-red-600 bg-red-50'
                                         }`}
                                       >
-                                        {qtyAssigned ? remainingQtyAfterThisEntry : "–"}
+                                        {qtyAssigned
+                                          ? remainingQtyAfterThisEntry
+                                          : '–'}
                                       </span>
                                     </td>
                                     <td className="py-2.5 px-2"></td>
@@ -539,19 +602,19 @@ export default function MyActivitiesTab({
                                     <td className="py-2.5 px-3">
                                       {isLocked ? (
                                         <span className="text-[11px] text-slate-500">
-                                          {entry.remarks || "–"}
+                                          {entry.remarks || '–'}
                                         </span>
                                       ) : (
                                         <input
                                           type="text"
-                                          value={entry.remarks || ""}
+                                          value={entry.remarks || ''}
                                           onChange={(e) =>
                                             updateDailyEntry(
                                               act.id,
                                               sessionUser?.id,
                                               eIdx,
-                                              "remarks",
-                                              e.target.value,
+                                              'remarks',
+                                              e.target.value
                                             )
                                           }
                                           className="w-full px-2 py-0.5 text-[11px] text-slate-600 bg-white border border-slate-200 rounded focus:ring-1 focus:ring-amber-200 focus:border-amber-300 focus:outline-none"
@@ -564,7 +627,11 @@ export default function MyActivitiesTab({
                                         <button
                                           type="button"
                                           onClick={() =>
-                                            removeDailyEntry(act.id, sessionUser?.id, eIdx)
+                                            removeDailyEntry(
+                                              act.id,
+                                              sessionUser?.id,
+                                              eIdx
+                                            )
                                           }
                                           className="w-5 h-5 inline-flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                                           title="Remove"
@@ -609,7 +676,8 @@ export default function MyActivitiesTab({
                                         />
                                       </svg>
                                       <span className="text-xs">
-                                        No daily entries yet. Click &quot;+ Add Day&quot; to log your work.
+                                        No daily entries yet. Click &quot;+ Add
+                                        Day&quot; to log your work.
                                       </span>
                                     </div>
                                   </td>

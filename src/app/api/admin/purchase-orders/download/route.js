@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // Helper functions
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
-    minimumFractionDigits: 2
+    minimumFractionDigits: 2,
   }).format(amount || 0);
 }
 
@@ -17,19 +21,51 @@ function formatDate(dateString) {
   return date.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
-    year: 'numeric'
+    year: 'numeric',
   });
 }
 
 function numberToWords(num) {
-  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  
+  const ones = [
+    '',
+    'One',
+    'Two',
+    'Three',
+    'Four',
+    'Five',
+    'Six',
+    'Seven',
+    'Eight',
+    'Nine',
+    'Ten',
+    'Eleven',
+    'Twelve',
+    'Thirteen',
+    'Fourteen',
+    'Fifteen',
+    'Sixteen',
+    'Seventeen',
+    'Eighteen',
+    'Nineteen',
+  ];
+  const tens = [
+    '',
+    '',
+    'Twenty',
+    'Thirty',
+    'Forty',
+    'Fifty',
+    'Sixty',
+    'Seventy',
+    'Eighty',
+    'Ninety',
+  ];
+
   if (num === 0) return 'Zero';
   if (num < 0) return 'Minus ' + numberToWords(-num);
-  
+
   let words = '';
-  
+
   if (Math.floor(num / 10000000) > 0) {
     words += numberToWords(Math.floor(num / 10000000)) + ' Crore ';
     num %= 10000000;
@@ -62,7 +98,7 @@ function numberToWords(num) {
 function amountToWords(amount) {
   const rupees = Math.floor(amount);
   const paise = Math.round((amount - rupees) * 100);
-  
+
   let result = 'Rupees ' + numberToWords(rupees);
   if (paise > 0) {
     result += ' and ' + numberToWords(paise) + ' Paise';
@@ -88,12 +124,14 @@ function generatePurchaseOrderHTML(data) {
   const subtotal = parseFloat(data.subtotal) || 0;
   const cgstRate = 9;
   const sgstRate = 9;
-  const cgstAmount = subtotal * cgstRate / 100;
-  const sgstAmount = subtotal * sgstRate / 100;
+  const cgstAmount = (subtotal * cgstRate) / 100;
+  const sgstAmount = (subtotal * sgstRate) / 100;
   const netTotal = subtotal + cgstAmount + sgstAmount;
 
   // Extract state code from vendor address or GSTIN
-  const vendorStateCode = data.vendor_gstin ? data.vendor_gstin.substring(0, 2) : '27';
+  const vendorStateCode = data.vendor_gstin
+    ? data.vendor_gstin.substring(0, 2)
+    : '27';
   const vendorState = vendorStateCode === '27' ? 'Maharashtra' : '';
 
   // Generate items rows
@@ -336,7 +374,11 @@ function generatePurchaseOrderHTML(data) {
 // GET - Download purchase order as printable HTML
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -377,11 +419,14 @@ export async function GET(request) {
         'Content-Type': 'text/html; charset=utf-8',
       },
     });
-
   } catch (error) {
     console.error('Error downloading purchase order:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to download purchase order', error: error.message },
+      {
+        success: false,
+        message: 'Failed to download purchase order',
+        error: error.message,
+      },
       { status: 500 }
     );
   } finally {

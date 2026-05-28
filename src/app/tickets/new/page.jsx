@@ -7,14 +7,34 @@ import {
   PaperClipIcon,
   CheckCircleIcon,
   ArrowPathIcon,
-  ArrowLeftIcon
+  ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
 
 const PRIORITIES = [
-  { value: 'low', label: 'Low', color: 'text-gray-700', description: 'Can wait' },
-  { value: 'medium', label: 'Medium', color: 'text-blue-700', description: 'Normal' },
-  { value: 'high', label: 'High', color: 'text-orange-700', description: 'Needs attention' },
-  { value: 'urgent', label: 'Urgent', color: 'text-red-700', description: 'Critical' }
+  {
+    value: 'low',
+    label: 'Low',
+    color: 'text-gray-700',
+    description: 'Can wait',
+  },
+  {
+    value: 'medium',
+    label: 'Medium',
+    color: 'text-blue-700',
+    description: 'Normal',
+  },
+  {
+    value: 'high',
+    label: 'High',
+    color: 'text-orange-700',
+    description: 'Needs attention',
+  },
+  {
+    value: 'urgent',
+    label: 'Urgent',
+    color: 'text-red-700',
+    description: 'Critical',
+  },
 ];
 
 export default function CreateTicketPage() {
@@ -24,38 +44,41 @@ export default function CreateTicketPage() {
     subject: '',
     description: '',
     priority: 'medium',
-    attachment_url: ''
+    attachment_url: '',
   });
 
-  const handleSubmit = useCallback(async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    
-    try {
-      const res = await fetch('/api/tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      
-      const data = await res.json();
-      if (data.success) {
-        router.push(`/tickets/${data.data.id}`);
-      } else {
-        alert(data.error || 'Failed to create ticket');
+  const handleSubmit = useCallback(
+    async (e) => {
+      e.preventDefault();
+      setSubmitting(true);
+
+      try {
+        const res = await fetch('/api/tickets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          router.push(`/tickets/${data.data.id}`);
+        } else {
+          alert(data.error || 'Failed to create ticket');
+        }
+      } catch (error) {
+        console.error('Error creating ticket:', error);
+        alert('Failed to create ticket');
+      } finally {
+        setSubmitting(false);
       }
-    } catch (error) {
-      console.error('Error creating ticket:', error);
-      alert('Failed to create ticket');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [formData, router]);
+    },
+    [formData, router]
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <div className="flex pt-2 sm:pl-16">
         <div className="flex-1">
           <div className="px-2 sm:px-3 lg:px-4 py-2">
@@ -69,7 +92,9 @@ export default function CreateTicketPage() {
             </button>
 
             {/* Header */}
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">New Support Ticket</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-6">
+              New Support Ticket
+            </h1>
 
             {/* Form */}
             <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -83,7 +108,9 @@ export default function CreateTicketPage() {
                     type="text"
                     required
                     value={formData.subject}
-                    onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, subject: e.target.value })
+                    }
                     placeholder="Brief summary of your request"
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
                   />
@@ -97,7 +124,9 @@ export default function CreateTicketPage() {
                   <textarea
                     required
                     value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
                     placeholder="Please describe your request in detail..."
                     rows={5}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-transparent resize-none"
@@ -114,7 +143,9 @@ export default function CreateTicketPage() {
                       <button
                         key={priority.value}
                         type="button"
-                        onClick={() => setFormData({ ...formData, priority: priority.value })}
+                        onClick={() =>
+                          setFormData({ ...formData, priority: priority.value })
+                        }
                         className={`flex-1 py-2 px-3 text-sm font-medium rounded-lg border-2 transition-all ${
                           formData.priority === priority.value
                             ? 'border-[#64126D] bg-purple-50 text-[#64126D]'
@@ -130,12 +161,20 @@ export default function CreateTicketPage() {
                 {/* Attachment URL */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Attachment URL <span className="text-xs font-normal text-gray-400">(optional)</span>
+                    Attachment URL{' '}
+                    <span className="text-xs font-normal text-gray-400">
+                      (optional)
+                    </span>
                   </label>
                   <input
                     type="url"
                     value={formData.attachment_url}
-                    onChange={(e) => setFormData({ ...formData, attachment_url: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        attachment_url: e.target.value,
+                      })
+                    }
                     placeholder="https://example.com/file.pdf"
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
                   />

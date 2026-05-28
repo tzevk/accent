@@ -1,5 +1,10 @@
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS, getCurrentUser } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+  getCurrentUser,
+} from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { NextResponse } from 'next/server';
 
@@ -7,7 +12,10 @@ async function generateCompanyId(db) {
   const [rows] = await db.execute(
     `SELECT company_id FROM companies WHERE company_id REGEXP '^COM-[0-9]+$' ORDER BY CAST(SUBSTRING(company_id, 5) AS UNSIGNED) DESC LIMIT 1`
   );
-  const next = rows && rows.length > 0 ? parseInt(rows[0].company_id.replace('COM-', ''), 10) + 1 : 1;
+  const next =
+    rows && rows.length > 0
+      ? parseInt(rows[0].company_id.replace('COM-', ''), 10) + 1
+      : 1;
   return `COM-${String(next).padStart(5, '0')}`;
 }
 
@@ -18,28 +26,44 @@ export async function GET(request) {
     // RBAC: read companies OR read leads (leads page needs companies for dropdown)
     const user = await getCurrentUser(request);
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     // Allow if user has companies:read OR leads:read (for dropdowns in leads form)
-    const canReadCompanies = user.is_super_admin || 
+    const canReadCompanies =
+      user.is_super_admin ||
       hasPermission(user, RESOURCES.COMPANIES, PERMISSIONS.READ) ||
       hasPermission(user, RESOURCES.LEADS, PERMISSIONS.READ);
-    
+
     if (!canReadCompanies) {
-      return NextResponse.json({ success: false, error: 'Forbidden: missing permission' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: missing permission' },
+        { status: 403 }
+      );
     }
-    
+
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get('search') || '').trim().toLowerCase();
 
-    const allowedSortFields = { company_id: 'c.company_id', company_name: 'c.company_name', industry: 'c.industry', city: 'c.city', created_at: 'c.created_at' };
+    const allowedSortFields = {
+      company_id: 'c.company_id',
+      company_name: 'c.company_name',
+      industry: 'c.industry',
+      city: 'c.city',
+      created_at: 'c.created_at',
+    };
     const sortByParam = searchParams.get('sortBy') || 'company_name';
-    const sortOrderParam = (searchParams.get('sortOrder') || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    const sortOrderParam =
+      (searchParams.get('sortOrder') || 'asc').toLowerCase() === 'desc'
+        ? 'DESC'
+        : 'ASC';
     const sortField = allowedSortFields[sortByParam] || 'c.company_name';
 
     db = await dbConnect();
-    
+
     // Build base SQL and optionally apply a search WHERE clause (case-insensitive)
     let sql = `SELECT c.*, COALESCE(COUNT(DISTINCT l.id), 0) AS lead_count, COALESCE(COUNT(f.id), 0) AS follow_up_count
        FROM companies c
@@ -50,26 +74,39 @@ export async function GET(request) {
     const params = [];
     if (search) {
       sql += ` WHERE (LOWER(c.company_name) LIKE ? OR LOWER(c.company_id) LIKE ? OR LOWER(c.city) LIKE ? OR LOWER(c.contact_person) LIKE ? OR LOWER(c.industry) LIKE ?)`;
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      params.push(
+        `%${search}%`,
+        `%${search}%`,
+        `%${search}%`,
+        `%${search}%`,
+        `%${search}%`
+      );
     }
 
     sql += ` GROUP BY c.id ORDER BY ${sortField} ${sortOrderParam}`;
 
     const [rows] = await db.execute(sql, params);
-    
-    return Response.json({ 
-      success: true, 
-      data: rows 
+
+    return Response.json({
+      success: true,
+      data: rows,
     });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ 
-      success: false, 
-      error: 'Failed to fetch companies' 
-    }, { status: 500 });
+    return Response.json(
+      {
+        success: false,
+        error: 'Failed to fetch companies',
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) {
-      try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+      try {
+        db.release();
+      } catch (e) {
+        console.error('Error releasing connection:', e);
+      }
     }
   }
 }
@@ -77,14 +114,18 @@ export async function GET(request) {
 // POST - Create new company
 export async function POST(request) {
   // RBAC: create companies
-  const auth = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.CREATE);
+  const auth = await ensurePermission(
+    request,
+    RESOURCES.COMPANIES,
+    PERMISSIONS.CREATE
+  );
   if (auth instanceof Response) return auth;
-  
+
   let db;
   try {
     const data = await request.json();
     // console.log('Received data:', data);
-    
+
     const {
       company_id,
       company_name,
@@ -109,24 +150,38 @@ export async function POST(request) {
       sector,
       gstin,
       pan_number,
-      company_profile
+      company_profile,
     } = data;
 
     if (!company_name) {
-      return Response.json({ 
-        success: false, 
-        error: 'Company name is required' 
-      }, { status: 400 });
+      return Response.json(
+        {
+          success: false,
+          error: 'Company name is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
 
     // Auto-generate a COM-XXXXX ID if none supplied; otherwise validate uniqueness
-    const finalCompanyId = company_id ? company_id : await generateCompanyId(db);
+    const finalCompanyId = company_id
+      ? company_id
+      : await generateCompanyId(db);
     if (company_id) {
-      const [existing] = await db.execute('SELECT id FROM companies WHERE company_id = ? LIMIT 1', [company_id]);
+      const [existing] = await db.execute(
+        'SELECT id FROM companies WHERE company_id = ? LIMIT 1',
+        [company_id]
+      );
       if (existing && existing.length > 0) {
-        return Response.json({ success: false, error: 'Company with this company_id already exists' }, { status: 409 });
+        return Response.json(
+          {
+            success: false,
+            error: 'Company with this company_id already exists',
+          },
+          { status: 409 }
+        );
       }
     }
 
@@ -139,29 +194,65 @@ export async function POST(request) {
         mobile_number, sector, gstin, pan_number, company_profile
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        finalCompanyId, company_name, industry || null, company_size || null, 
-        website || null, phone || null, email || null, address || null, 
-        city || null, state || null, country || null, postal_code || null, 
-        description || null, founded_year || null, revenue || null, notes || null,
-        location || null, contact_person || null, designation || null,
-        mobile_number || null, sector || null, gstin || null, pan_number || null, company_profile || null
+        finalCompanyId,
+        company_name,
+        industry || null,
+        company_size || null,
+        website || null,
+        phone || null,
+        email || null,
+        address || null,
+        city || null,
+        state || null,
+        country || null,
+        postal_code || null,
+        description || null,
+        founded_year || null,
+        revenue || null,
+        notes || null,
+        location || null,
+        contact_person || null,
+        designation || null,
+        mobile_number || null,
+        sector || null,
+        gstin || null,
+        pan_number || null,
+        company_profile || null,
       ]
     );
     // Fetch the created company
-    const [rows] = await db.execute('SELECT * FROM companies WHERE id = ?', [result.insertId]);
+    const [rows] = await db.execute('SELECT * FROM companies WHERE id = ?', [
+      result.insertId,
+    ]);
     const created = rows && rows[0] ? rows[0] : { id: result.insertId };
 
-    return Response.json({ success: true, data: created, message: 'Company created successfully' });
+    return Response.json({
+      success: true,
+      data: created,
+      message: 'Company created successfully',
+    });
   } catch (error) {
     console.error('Database error details:', error);
     if (error && error.code === 'ER_DUP_ENTRY') {
-      return Response.json({ success: false, error: 'Duplicate entry' }, { status: 409 });
+      return Response.json(
+        { success: false, error: 'Duplicate entry' },
+        { status: 409 }
+      );
     }
-    return Response.json({ success: false, error: 'Failed to create company: ' + (error.message || String(error)) }, { status: 500 });
-  }
-  finally {
+    return Response.json(
+      {
+        success: false,
+        error: 'Failed to create company: ' + (error.message || String(error)),
+      },
+      { status: 500 }
+    );
+  } finally {
     if (db) {
-      try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+      try {
+        db.release();
+      } catch (e) {
+        console.error('Error releasing connection:', e);
+      }
     }
   }
 }

@@ -1,4 +1,4 @@
-import { DocumentIcon, PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { DocumentIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function DocumentationTab({
   newInputDocument,
@@ -86,10 +86,10 @@ export default function DocumentationTab({
                         className="h-8 w-8 rounded border border-blue-200 bg-blue-50 flex items-center justify-center"
                         style={{
                           backgroundImage: `url(${doc.thumbUrl})`,
-                          backgroundSize: "cover",
-                          backgroundPosition: "center",
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
                         }}
-                        title={doc.name || "Document thumbnail"}
+                        title={doc.name || 'Document thumbnail'}
                       >
                         {!doc.thumbUrl && (
                           <DocumentIcon className="h-4 w-4 text-blue-600" />

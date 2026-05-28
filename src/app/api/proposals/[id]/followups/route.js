@@ -1,18 +1,29 @@
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET follow-ups for a specific proposal
 export async function GET(request, { params }) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
   try {
     const { id } = await params;
-    
+
     if (!id) {
-      return Response.json({ success: false, error: 'Proposal ID is required' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'Proposal ID is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -48,7 +59,10 @@ export async function GET(request, { params }) {
     return Response.json({ success: true, data: rows });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ success: false, error: 'Failed to fetch follow-ups' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to fetch follow-ups' },
+      { status: 500 }
+    );
   } finally {
     if (db) await db.end();
   }
@@ -57,16 +71,23 @@ export async function GET(request, { params }) {
 // POST - Create new follow-up for a proposal
 export async function POST(request, { params }) {
   // RBAC check
-  const authResultPost = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
+  const authResultPost = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.UPDATE
+  );
   if (authResultPost.authorized === false) return authResultPost.response;
 
   let db;
   try {
     const { id } = await params;
     const data = await request.json();
-    
+
     if (!id) {
-      return Response.json({ success: false, error: 'Proposal ID is required' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'Proposal ID is required' },
+        { status: 400 }
+      );
     }
 
     const {
@@ -79,11 +100,17 @@ export async function POST(request, { params }) {
       next_follow_up_date,
       contacted_person,
       notes,
-      created_by
+      created_by,
     } = data;
 
     if (!follow_up_date || !description) {
-      return Response.json({ success: false, error: 'Follow-up date and description are required' }, { status: 400 });
+      return Response.json(
+        {
+          success: false,
+          error: 'Follow-up date and description are required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -124,7 +151,7 @@ export async function POST(request, { params }) {
         next_follow_up_date || null,
         contacted_person || null,
         notes || null,
-        created_by || null
+        created_by || null,
       ]
     );
 
@@ -137,7 +164,10 @@ export async function POST(request, { params }) {
     return Response.json({ success: true, data: rows[0] }, { status: 201 });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ success: false, error: 'Failed to create follow-up' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to create follow-up' },
+      { status: 500 }
+    );
   } finally {
     if (db) await db.end();
   }
@@ -146,18 +176,25 @@ export async function POST(request, { params }) {
 // PUT - Update a follow-up
 export async function PUT(request, { params }) {
   // RBAC check
-  const authResultPut = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
+  const authResultPut = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.UPDATE
+  );
   if (authResultPut.authorized === false) return authResultPut.response;
 
   let db;
   try {
     const { id } = await params;
     const data = await request.json();
-    
+
     const { followup_id } = data;
-    
+
     if (!followup_id) {
-      return Response.json({ success: false, error: 'Follow-up ID is required' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'Follow-up ID is required' },
+        { status: 400 }
+      );
     }
 
     const {
@@ -169,11 +206,17 @@ export async function PUT(request, { params }) {
       next_action,
       next_follow_up_date,
       contacted_person,
-      notes
+      notes,
     } = data;
 
     if (!follow_up_date || !description) {
-      return Response.json({ success: false, error: 'Follow-up date and description are required' }, { status: 400 });
+      return Response.json(
+        {
+          success: false,
+          error: 'Follow-up date and description are required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -203,7 +246,7 @@ export async function PUT(request, { params }) {
         contacted_person || null,
         notes || null,
         followup_id,
-        id
+        id,
       ]
     );
 
@@ -216,7 +259,10 @@ export async function PUT(request, { params }) {
     return Response.json({ success: true, data: rows[0] });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ success: false, error: 'Failed to update follow-up' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to update follow-up' },
+      { status: 500 }
+    );
   } finally {
     if (db) await db.end();
   }
@@ -225,7 +271,11 @@ export async function PUT(request, { params }) {
 // DELETE - Delete a follow-up
 export async function DELETE(request, { params }) {
   // RBAC check
-  const authResultDel = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.DELETE);
+  const authResultDel = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.DELETE
+  );
   if (authResultDel.authorized === false) return authResultDel.response;
 
   let db;
@@ -233,9 +283,12 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     const url = new URL(request.url);
     const followupId = url.searchParams.get('followup_id');
-    
+
     if (!followupId) {
-      return Response.json({ success: false, error: 'Follow-up ID is required' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'Follow-up ID is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -247,13 +300,22 @@ export async function DELETE(request, { params }) {
     );
 
     if (result.affectedRows === 0) {
-      return Response.json({ success: false, error: 'Follow-up not found' }, { status: 404 });
+      return Response.json(
+        { success: false, error: 'Follow-up not found' },
+        { status: 404 }
+      );
     }
 
-    return Response.json({ success: true, message: 'Follow-up deleted successfully' });
+    return Response.json({
+      success: true,
+      message: 'Follow-up deleted successfully',
+    });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ success: false, error: 'Failed to delete follow-up' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to delete follow-up' },
+      { status: 500 }
+    );
   } finally {
     if (db) await db.end();
   }

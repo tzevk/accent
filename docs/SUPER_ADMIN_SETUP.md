@@ -5,6 +5,7 @@ This guide explains how to create a new super admin user with full permissions a
 ## Overview
 
 Super admins have unrestricted access to all features and modules including:
+
 - **All Projects**: View, edit, and delete all projects regardless of team membership
 - **Project Activities**: View and edit all project activities and user assignments
 - **Reports**: Access all reports including project activities report
@@ -21,18 +22,18 @@ If you have an existing user that you want to promote to super admin:
 
 ```sql
 -- Update an existing user to be a super admin
-UPDATE users 
-SET is_super_admin = 1 
+UPDATE users
+SET is_super_admin = 1
 WHERE username = 'desired_username';
 
 -- Or by email
-UPDATE users 
-SET is_super_admin = 1 
+UPDATE users
+SET is_super_admin = 1
 WHERE email = 'user@example.com';
 
 -- Verify the change
-SELECT id, username, email, full_name, is_super_admin 
-FROM users 
+SELECT id, username, email, full_name, is_super_admin
+FROM users
 WHERE is_super_admin = 1;
 ```
 
@@ -43,10 +44,10 @@ To create a completely new super admin user:
 ```sql
 -- Insert a new super admin user
 INSERT INTO users (
-  username, 
-  password_hash, 
-  email, 
-  full_name, 
+  username,
+  password_hash,
+  email,
+  full_name,
   is_super_admin,
   account_type,
   status,
@@ -82,6 +83,7 @@ If you already have a super admin account, you can use the API:
 ```
 
 **Note**: Currently, the API doesn't expose the `is_super_admin` field in the POST endpoint. You'll need to either:
+
 1. Add it to the API route handler in [/src/app/api/users/route.js](src/app/api/users/route.js)
 2. Or use Method 1 (direct database update) after creating the user
 
@@ -90,6 +92,7 @@ If you already have a super admin account, you can use the API:
 To generate a bcrypt password hash for use in SQL:
 
 ### Using Node.js:
+
 ```javascript
 const bcrypt = require('bcrypt');
 const password = 'YourSecurePassword123!';
@@ -98,7 +101,9 @@ console.log(hash); // Use this in your SQL INSERT
 ```
 
 ### Using Online Tool:
+
 You can use an online bcrypt generator (search "bcrypt generator online")
+
 - Use rounds: 10
 - Input your password
 - Copy the resulting hash
@@ -121,16 +126,19 @@ When `is_super_admin = 1`, the user automatically:
 The system checks super admin status at multiple levels:
 
 #### 1. Frontend (React Components)
+
 ```javascript
 // Example from Navbar.jsx
 if (user.is_super_admin) return reportsMenuConfig; // Super admin sees all
 
 // Example from project-activities page
-const isSuperAdmin = user?.is_super_admin === true || user?.is_super_admin === 1;
+const isSuperAdmin =
+  user?.is_super_admin === true || user?.is_super_admin === 1;
 const hasAccess = isSuperAdmin || hasReportsPermission;
 ```
 
 #### 2. Backend (API Routes)
+
 ```javascript
 // Example from project routes
 const canSeeAllProjects = user.is_super_admin;
@@ -142,10 +150,11 @@ if (allowSuperAdmin && user.is_super_admin) {
 ```
 
 #### 3. Database Queries
+
 ```javascript
 // Projects are filtered by team unless super admin
 if (!canSeeAllProjects) {
-  filteredRows = rows.filter(project => 
+  filteredRows = rows.filter((project) =>
     isUserInProjectTeam(project.project_team, user.id, user.email)
   );
 }
@@ -156,22 +165,26 @@ if (!canSeeAllProjects) {
 After creating a super admin, verify they have access to:
 
 ### 1. Project Activities Report
+
 - Navigate to `/reports/project-activities`
 - Should see all projects with activities
 - Should be able to edit daily entries
 - No "Access Denied" messages
 
 ### 2. All Projects
+
 - Navigate to `/projects`
 - Should see ALL projects in the system
 - Not limited to team membership
 - Can edit and delete any project
 
 ### 3. Admin Dashboard
+
 - Navigate to `/admin/dashboard`
 - Should have full access without restrictions
 
 ### 4. User Management
+
 - Navigate to `/admin/accounts` or users section
 - Can create, edit, and delete users
 - Can manage permissions
@@ -188,6 +201,7 @@ After creating a super admin, verify they have access to:
 ### Database Structure
 
 The `users` table includes:
+
 ```sql
 CREATE TABLE users (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -210,6 +224,7 @@ CREATE TABLE users (
 ### No Role Required
 
 Super admins **do not need** a role assigned. The `is_super_admin` flag alone grants all permissions.
+
 - `role_id` can be NULL
 - `permissions` JSON can be NULL
 - System checks `is_super_admin` first before checking roles/permissions
@@ -219,9 +234,10 @@ Super admins **do not need** a role assigned. The `is_super_admin` flag alone gr
 ### Super Admin Cannot Access Project Activities
 
 1. Check database:
+
    ```sql
-   SELECT id, username, is_super_admin 
-   FROM users 
+   SELECT id, username, is_super_admin
+   FROM users
    WHERE username = 'your_admin_username';
    ```
 
@@ -251,6 +267,7 @@ Super admins **do not need** a role assigned. The `is_super_admin` flag alone gr
 **Current System**: Uses `is_super_admin` flag
 
 If you had users with special hard-coded access:
+
 1. Identify those users in the database
 2. Set their `is_super_admin = 1`
 3. They will now have the same level of access through the proper permission system
@@ -291,7 +308,7 @@ INSERT INTO users (
 );
 
 -- Step 4: Verify creation
-SELECT 
+SELECT
   u.id,
   u.username,
   u.email,

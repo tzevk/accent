@@ -7,7 +7,7 @@ import { randomUUID } from 'crypto';
 /**
  * GET /api/users/[id]/activities
  * Fetch all activities assigned to a specific user OR activity logs summary
- * 
+ *
  * Query params:
  * - status: Filter by status (Not Started, In Progress, On Hold, Completed, Cancelled)
  * - project_id: Filter by project
@@ -21,35 +21,43 @@ export async function GET(request, { params }) {
   try {
     const { id } = await params;
     const requestedUserId = parseInt(id);
-    
+
     // Get current user first to check if they're viewing their own activities
     const { getCurrentUser } = await import('@/utils/api-permissions');
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     // Users can ALWAYS view their own activities - no permission check needed
     const isOwnActivities = requestedUserId === currentUser.id;
-    
+
     // For viewing OTHER users' activities, require ACTIVITIES:READ permission
     if (!isOwnActivities) {
-      const canViewOthers = currentUser.is_super_admin || 
-                            hasPermission(currentUser, RESOURCES.ACTIVITIES, PERMISSIONS.READ) ||
-                            hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
-      
+      const canViewOthers =
+        currentUser.is_super_admin ||
+        hasPermission(currentUser, RESOURCES.ACTIVITIES, PERMISSIONS.READ) ||
+        hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
+
       if (!canViewOthers) {
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Forbidden: You can only view your own activities' 
-        }, { status: 403 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Forbidden: You can only view your own activities',
+          },
+          { status: 403 }
+        );
       }
     }
 
     // Determine if user can view detailed info about others
-    const canViewOthers = currentUser.is_super_admin || 
-                          hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
+    const canViewOthers =
+      currentUser.is_super_admin ||
+      hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
 
     let db;
     try {
@@ -65,21 +73,22 @@ export async function GET(request, { params }) {
       // Build activity logs summary if requested (for admin monitoring)
       let summary = null;
       if (canViewOthers) {
-      try {
-        let dateFilter = '';
-        const summaryParams = [requestedUserId];
-        
-        if (startDate) {
-          dateFilter += ' AND DATE(created_at) >= ?';
-          summaryParams.push(startDate);
-        }
-        if (endDate) {
-          dateFilter += ' AND DATE(created_at) <= ?';
-          summaryParams.push(endDate);
-        }
+        try {
+          let dateFilter = '';
+          const summaryParams = [requestedUserId];
 
-        // Get activity logs summary
-        const [logStats] = await db.execute(`
+          if (startDate) {
+            dateFilter += ' AND DATE(created_at) >= ?';
+            summaryParams.push(startDate);
+          }
+          if (endDate) {
+            dateFilter += ' AND DATE(created_at) <= ?';
+            summaryParams.push(endDate);
+          }
+
+          // Get activity logs summary
+          const [logStats] = await db.execute(
+            `
           SELECT 
             COUNT(*) as total_activities,
             COUNT(DISTINCT action_type) as unique_action_types,
@@ -90,10 +99,13 @@ export async function GET(request, { params }) {
             SUM(CASE WHEN action_type = 'view_page' THEN 1 ELSE 0 END) as pages_visited
           FROM user_activity_logs
           WHERE user_id = ? ${dateFilter}
-        `, summaryParams);
+        `,
+            summaryParams
+          );
 
-        // Get recent pages visited
-        const [recentPages] = await db.execute(`
+          // Get recent pages visited
+          const [recentPages] = await db.execute(
+            `
           SELECT 
             JSON_UNQUOTE(JSON_EXTRACT(details, '$.page')) as page,
             COUNT(*) as visits,
@@ -106,41 +118,51 @@ export async function GET(request, { params }) {
           GROUP BY page
           ORDER BY last_visit DESC
           LIMIT 15
-        `, summaryParams);
+        `,
+            summaryParams
+          );
 
-        // Get time stats from daily summary
-        const [timeStats] = await db.execute(`
+          // Get time stats from daily summary
+          const [timeStats] = await db.execute(
+            `
           SELECT 
             SUM(total_active_time) as total_active_seconds,
             SUM(total_idle_time) as total_idle_seconds,
             AVG(total_active_time) as avg_active_seconds
           FROM user_daily_summaries
           WHERE user_id = ? ${dateFilter.replace('created_at', 'summary_date')}
-        `, summaryParams);
+        `,
+            summaryParams
+          );
 
-        const totalSeconds = (timeStats[0]?.total_active_seconds || 0) + (timeStats[0]?.total_idle_seconds || 0);
-        const activeSeconds = timeStats[0]?.total_active_seconds || 0;
+          const totalSeconds =
+            (timeStats[0]?.total_active_seconds || 0) +
+            (timeStats[0]?.total_idle_seconds || 0);
+          const activeSeconds = timeStats[0]?.total_active_seconds || 0;
 
-        summary = {
-          total_activities: logStats[0]?.total_activities || 0,
-          unique_action_types: logStats[0]?.unique_action_types || 0,
-          days_active: logStats[0]?.days_active || 0,
-          work_items_touched: logStats[0]?.work_items_touched || 0,
-          creates: logStats[0]?.creates || 0,
-          updates: logStats[0]?.updates || 0,
-          pages_visited: logStats[0]?.pages_visited || 0,
-          unique_pages: recentPages.length,
-          recent_pages: recentPages,
-          total_hours: (totalSeconds / 3600).toFixed(1),
-          active_hours: (activeSeconds / 3600).toFixed(1),
-          active_percentage: totalSeconds > 0 ? Math.round((activeSeconds / totalSeconds) * 100) : 0
-        };
-      } catch (err) {
-        console.error('Failed to build summary:', err);
+          summary = {
+            total_activities: logStats[0]?.total_activities || 0,
+            unique_action_types: logStats[0]?.unique_action_types || 0,
+            days_active: logStats[0]?.days_active || 0,
+            work_items_touched: logStats[0]?.work_items_touched || 0,
+            creates: logStats[0]?.creates || 0,
+            updates: logStats[0]?.updates || 0,
+            pages_visited: logStats[0]?.pages_visited || 0,
+            unique_pages: recentPages.length,
+            recent_pages: recentPages,
+            total_hours: (totalSeconds / 3600).toFixed(1),
+            active_hours: (activeSeconds / 3600).toFixed(1),
+            active_percentage:
+              totalSeconds > 0
+                ? Math.round((activeSeconds / totalSeconds) * 100)
+                : 0,
+          };
+        } catch (err) {
+          console.error('Failed to build summary:', err);
+        }
       }
-    }
 
-    let query = `
+      let query = `
       SELECT 
         uaa.*,
         p.project_title as project_name,
@@ -155,47 +177,51 @@ export async function GET(request, { params }) {
       WHERE uaa.user_id = ?
     `;
 
-    const queryParams = [requestedUserId];
+      const queryParams = [requestedUserId];
 
-    if (status) {
-      query += ' AND uaa.status = ?';
-      queryParams.push(status);
-    }
+      if (status) {
+        query += ' AND uaa.status = ?';
+        queryParams.push(status);
+      }
 
-    if (projectId) {
-      query += ' AND uaa.project_id = ?';
-      queryParams.push(parseInt(projectId));
-    }
+      if (projectId) {
+        query += ' AND uaa.project_id = ?';
+        queryParams.push(parseInt(projectId));
+      }
 
-    if (priority) {
-      query += ' AND uaa.priority = ?';
-      queryParams.push(priority);
-    }
+      if (priority) {
+        query += ' AND uaa.priority = ?';
+        queryParams.push(priority);
+      }
 
-    if (overdue === 'true') {
-      query += ' AND uaa.due_date < CURDATE() AND uaa.status NOT IN (?, ?)';
-      queryParams.push('Completed', 'Cancelled');
-    }
+      if (overdue === 'true') {
+        query += ' AND uaa.due_date < CURDATE() AND uaa.status NOT IN (?, ?)';
+        queryParams.push('Completed', 'Cancelled');
+      }
 
-      query += ' ORDER BY uaa.due_date ASC, uaa.priority DESC, uaa.created_at DESC';
+      query +=
+        ' ORDER BY uaa.due_date ASC, uaa.priority DESC, uaa.created_at DESC';
 
       const [activities] = await db.execute(query, queryParams);
 
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         data: activities,
         count: activities.length,
-        summary: summary
+        summary: summary,
       });
     } finally {
       if (db) await db.end();
     }
   } catch (error) {
     console.error('GET user activities error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to fetch user activities' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch user activities',
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -207,8 +233,16 @@ export async function GET(request, { params }) {
 export async function POST(request, { params }) {
   let db;
   try {
-    const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.ASSIGN);
-    if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const auth = await ensurePermission(
+      request,
+      RESOURCES.ACTIVITIES,
+      PERMISSIONS.ASSIGN
+    );
+    if (!auth.authorized)
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
 
     const { id } = await params;
     const userId = parseInt(id);
@@ -225,14 +259,17 @@ export async function POST(request, { params }) {
       due_date,
       priority = 'Medium',
       estimated_hours,
-      notes
+      notes,
     } = data;
 
     if (!activity_name) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Activity name is required' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Activity name is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -244,10 +281,13 @@ export async function POST(request, { params }) {
     );
 
     if (userCheck.length === 0) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'User not found or inactive' 
-      }, { status: 404 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'User not found or inactive',
+        },
+        { status: 404 }
+      );
     }
 
     // If project_id is provided, verify it exists
@@ -258,67 +298,85 @@ export async function POST(request, { params }) {
       );
 
       if (projectCheck.length === 0) {
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Project not found' 
-        }, { status: 404 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Project not found',
+          },
+          { status: 404 }
+        );
       }
     }
 
     const assignmentId = randomUUID();
 
-    await db.execute(`
+    await db.execute(
+      `
       INSERT INTO user_activity_assignments (
         id, user_id, employee_id, project_id, activity_id, activity_name,
         discipline_id, discipline_name, assigned_by, due_date, priority,
         estimated_hours, notes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      assignmentId,
-      userId,
-      employee_id || null,
-      project_id || null,
-      activity_id || null,
-      activity_name,
-      discipline_id || null,
-      discipline_name || null,
-      currentUser.id,
-      due_date || null,
-      priority,
-      estimated_hours || null,
-      notes || null
-    ]);
+    `,
+      [
+        assignmentId,
+        userId,
+        employee_id || null,
+        project_id || null,
+        activity_id || null,
+        activity_name,
+        discipline_id || null,
+        discipline_name || null,
+        currentUser.id,
+        due_date || null,
+        priority,
+        estimated_hours || null,
+        notes || null,
+      ]
+    );
 
     // Log the assignment in activity_updates
     const updateId = randomUUID();
-    await db.execute(`
+    await db.execute(
+      `
       INSERT INTO activity_updates (
         id, activity_assignment_id, updated_by, update_type, new_value, comment
       ) VALUES (?, ?, ?, ?, ?, ?)
-    `, [
-      updateId,
-      assignmentId,
-      currentUser.id,
-      'assigned',
-      JSON.stringify({ activity_name, due_date, priority }),
-      'Activity assigned'
-    ]);
+    `,
+      [
+        updateId,
+        assignmentId,
+        currentUser.id,
+        'assigned',
+        JSON.stringify({ activity_name, due_date, priority }),
+        'Activity assigned',
+      ]
+    );
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Activity assigned successfully',
-      data: { id: assignmentId }
-    }, { status: 201 });
-
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Activity assigned successfully',
+        data: { id: assignmentId },
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('POST user activity error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to assign activity' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to assign activity',
+      },
+      { status: 500 }
+    );
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }
@@ -330,8 +388,16 @@ export async function POST(request, { params }) {
 export async function PUT(request, { params }) {
   let db;
   try {
-    const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.UPDATE);
-    if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const auth = await ensurePermission(
+      request,
+      RESOURCES.ACTIVITIES,
+      PERMISSIONS.UPDATE
+    );
+    if (!auth.authorized)
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
 
     const { id } = await params;
     const userId = parseInt(id);
@@ -344,14 +410,17 @@ export async function PUT(request, { params }) {
       progress_percentage,
       actual_hours,
       notes,
-      completion_date
+      completion_date,
     } = data;
 
     if (!activity_id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Activity ID is required' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Activity ID is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -363,10 +432,13 @@ export async function PUT(request, { params }) {
     );
 
     if (current.length === 0) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Activity not found or does not belong to this user' 
-      }, { status: 404 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Activity not found or does not belong to this user',
+        },
+        { status: 404 }
+      );
     }
 
     const currentActivity = current[0];
@@ -377,8 +449,12 @@ export async function PUT(request, { params }) {
     if (status && status !== currentActivity.status) {
       updates.push('status = ?');
       values.push(status);
-      changes.push({ field: 'status', old: currentActivity.status, new: status });
-      
+      changes.push({
+        field: 'status',
+        old: currentActivity.status,
+        new: status,
+      });
+
       // If status is Completed, set completion_date
       if (status === 'Completed' && !completion_date) {
         updates.push('completion_date = NOW()');
@@ -386,16 +462,30 @@ export async function PUT(request, { params }) {
       }
     }
 
-    if (progress_percentage !== undefined && progress_percentage !== currentActivity.progress_percentage) {
+    if (
+      progress_percentage !== undefined &&
+      progress_percentage !== currentActivity.progress_percentage
+    ) {
       updates.push('progress_percentage = ?');
       values.push(progress_percentage);
-      changes.push({ field: 'progress_percentage', old: currentActivity.progress_percentage, new: progress_percentage });
+      changes.push({
+        field: 'progress_percentage',
+        old: currentActivity.progress_percentage,
+        new: progress_percentage,
+      });
     }
 
-    if (actual_hours !== undefined && actual_hours !== currentActivity.actual_hours) {
+    if (
+      actual_hours !== undefined &&
+      actual_hours !== currentActivity.actual_hours
+    ) {
       updates.push('actual_hours = ?');
       values.push(actual_hours);
-      changes.push({ field: 'actual_hours', old: currentActivity.actual_hours, new: actual_hours });
+      changes.push({
+        field: 'actual_hours',
+        old: currentActivity.actual_hours,
+        new: actual_hours,
+      });
     }
 
     if (notes && notes !== currentActivity.notes) {
@@ -409,9 +499,9 @@ export async function PUT(request, { params }) {
     }
 
     if (updates.length === 0) {
-      return NextResponse.json({ 
-        success: true, 
-        message: 'No changes to update' 
+      return NextResponse.json({
+        success: true,
+        message: 'No changes to update',
       });
     }
 
@@ -430,34 +520,43 @@ export async function PUT(request, { params }) {
       if (change.field === 'status') updateType = 'status_change';
       if (change.field === 'actual_hours') updateType = 'hours_update';
 
-      await db.execute(`
+      await db.execute(
+        `
         INSERT INTO activity_updates (
           id, activity_assignment_id, updated_by, update_type, old_value, new_value
         ) VALUES (?, ?, ?, ?, ?, ?)
-      `, [
-        updateId,
-        activity_id,
-        currentUser.id,
-        updateType,
-        String(change.old),
-        String(change.new)
-      ]);
+      `,
+        [
+          updateId,
+          activity_id,
+          currentUser.id,
+          updateType,
+          String(change.old),
+          String(change.new),
+        ]
+      );
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Activity updated successfully' 
+    return NextResponse.json({
+      success: true,
+      message: 'Activity updated successfully',
     });
-
   } catch (error) {
     console.error('PUT user activity error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to update activity' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update activity',
+      },
+      { status: 500 }
+    );
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }
@@ -469,8 +568,16 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   let db;
   try {
-    const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.DELETE);
-    if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const auth = await ensurePermission(
+      request,
+      RESOURCES.ACTIVITIES,
+      PERMISSIONS.DELETE
+    );
+    if (!auth.authorized)
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
 
     const { id } = await params;
     const userId = parseInt(id);
@@ -478,10 +585,13 @@ export async function DELETE(request, { params }) {
     const activityId = searchParams.get('activity_id');
 
     if (!activityId) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Activity ID is required' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Activity ID is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -493,10 +603,13 @@ export async function DELETE(request, { params }) {
     );
 
     if (activity.length === 0) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Activity not found or does not belong to this user' 
-      }, { status: 404 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Activity not found or does not belong to this user',
+        },
+        { status: 404 }
+      );
     }
 
     await db.execute(
@@ -504,20 +617,26 @@ export async function DELETE(request, { params }) {
       [activityId, userId]
     );
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Activity deleted successfully' 
+    return NextResponse.json({
+      success: true,
+      message: 'Activity deleted successfully',
     });
-
   } catch (error) {
     console.error('DELETE user activity error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to delete activity' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to delete activity',
+      },
+      { status: 500 }
+    );
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }

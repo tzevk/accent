@@ -11,7 +11,7 @@ export function useSpellCheck() {
     // Function to enable spell check on an element
     const enableSpellCheck = (element) => {
       if (
-        element.tagName === 'INPUT' && 
+        element.tagName === 'INPUT' &&
         ['text', 'email', 'search', ''].includes(element.type || '')
       ) {
         element.spellcheck = true;
@@ -24,7 +24,11 @@ export function useSpellCheck() {
 
     // Enable spell check on all existing inputs
     const enableAllSpellChecks = () => {
-      document.querySelectorAll('input[type="text"], input[type="email"], input[type="search"], input:not([type]), textarea, [contenteditable="true"]').forEach(enableSpellCheck);
+      document
+        .querySelectorAll(
+          'input[type="text"], input[type="email"], input[type="search"], input:not([type]), textarea, [contenteditable="true"]'
+        )
+        .forEach(enableSpellCheck);
     };
 
     // Run initially
@@ -38,7 +42,11 @@ export function useSpellCheck() {
             // Check if the added node itself is an input/textarea
             enableSpellCheck(node);
             // Check children of the added node
-            node.querySelectorAll?.('input[type="text"], input[type="email"], input[type="search"], input:not([type]), textarea, [contenteditable="true"]')?.forEach(enableSpellCheck);
+            node
+              .querySelectorAll?.(
+                'input[type="text"], input[type="email"], input[type="search"], input:not([type]), textarea, [contenteditable="true"]'
+              )
+              ?.forEach(enableSpellCheck);
           }
         });
       });
@@ -46,7 +54,7 @@ export function useSpellCheck() {
 
     observer.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
     });
 
     return () => observer.disconnect();

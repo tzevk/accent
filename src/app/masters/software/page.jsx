@@ -1,20 +1,20 @@
-"use client";
+'use client';
 
 import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import { useEffect, useMemo, useState } from 'react';
-import { 
-  PlusIcon, 
-  TrashIcon, 
-  CheckIcon, 
-  PencilIcon, 
+import {
+  PlusIcon,
+  TrashIcon,
+  CheckIcon,
+  PencilIcon,
   XMarkIcon,
   FolderIcon,
   ComputerDesktopIcon,
   TagIcon,
   ChevronRightIcon,
   MagnifyingGlassIcon,
-  Squares2X2Icon
+  Squares2X2Icon,
 } from '@heroicons/react/24/outline';
 
 const EMPTY_VERSION = { name: '', release_date: '', notes: '' };
@@ -63,9 +63,17 @@ export default function SoftwareMasterPage() {
 
       if (!res.ok) {
         let txt = '';
-        try { txt = await res.text(); } catch { /* ignore */ }
-        const isHtml = String(txt || '').trim().startsWith('<');
-        const msg = isHtml ? `Request failed: ${res.status} ${res.statusText || ''}` : txt || `Failed to load software catalogue (status ${res.status})`;
+        try {
+          txt = await res.text();
+        } catch {
+          /* ignore */
+        }
+        const isHtml = String(txt || '')
+          .trim()
+          .startsWith('<');
+        const msg = isHtml
+          ? `Request failed: ${res.status} ${res.statusText || ''}`
+          : txt || `Failed to load software catalogue (status ${res.status})`;
         setError(msg);
         return;
       }
@@ -73,8 +81,12 @@ export default function SoftwareMasterPage() {
       const contentType = (res.headers.get('content-type') || '').toLowerCase();
       if (!contentType.includes('application/json')) {
         const txt = await res.text();
-        const isHtml = String(txt || '').trim().startsWith('<');
-        const msg = isHtml ? `Request failed: ${res.status} ${res.statusText || ''}` : txt || 'Expected JSON response';
+        const isHtml = String(txt || '')
+          .trim()
+          .startsWith('<');
+        const msg = isHtml
+          ? `Request failed: ${res.status} ${res.statusText || ''}`
+          : txt || 'Expected JSON response';
         setError(msg);
         return;
       }
@@ -104,14 +116,25 @@ export default function SoftwareMasterPage() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchSoftwareMaster(); }, []);
+  useEffect(() => {
+    fetchSoftwareMaster();
+  }, []);
 
   // Get selected category and its software list
-  const selectedCategory = useMemo(() => categories.find((c) => c.id === selectedCategoryId) || null, [categories, selectedCategoryId]);
-  const softwares = useMemo(() => (selectedCategory?.softwares || []), [selectedCategory]);
-  
+  const selectedCategory = useMemo(
+    () => categories.find((c) => c.id === selectedCategoryId) || null,
+    [categories, selectedCategoryId]
+  );
+  const softwares = useMemo(
+    () => selectedCategory?.softwares || [],
+    [selectedCategory]
+  );
+
   // Get selected software and its versions
-  const selectedSoftware = useMemo(() => softwares.find((s) => s.id === selectedSoftwareId) || null, [softwares, selectedSoftwareId]);
+  const selectedSoftware = useMemo(
+    () => softwares.find((s) => s.id === selectedSoftwareId) || null,
+    [softwares, selectedSoftwareId]
+  );
   // Reset software selection when category changes
   useEffect(() => {
     if (softwares.length > 0) {
@@ -128,8 +151,14 @@ export default function SoftwareMasterPage() {
     if (!searchTerm) return categories;
     const term = searchTerm.toLowerCase();
     return categories.filter((cat) => {
-      const matchCat = String(cat.name || '').toLowerCase().includes(term);
-      const matchSoftware = (cat.softwares || []).some((sw) => String(sw.name || '').toLowerCase().includes(term));
+      const matchCat = String(cat.name || '')
+        .toLowerCase()
+        .includes(term);
+      const matchSoftware = (cat.softwares || []).some((sw) =>
+        String(sw.name || '')
+          .toLowerCase()
+          .includes(term)
+      );
       return matchCat || matchSoftware;
     });
   }, [categories, searchTerm]);
@@ -140,9 +169,10 @@ export default function SoftwareMasterPage() {
     const softwareList = selectedCategory.softwares || [];
     if (!searchTerm) return softwareList;
     const term = searchTerm.toLowerCase();
-    return softwareList.filter(sw => 
-      sw.name.toLowerCase().includes(term) || 
-      (sw.provider || '').toLowerCase().includes(term)
+    return softwareList.filter(
+      (sw) =>
+        sw.name.toLowerCase().includes(term) ||
+        (sw.provider || '').toLowerCase().includes(term)
     );
   }, [selectedCategory, searchTerm]);
 
@@ -152,12 +182,23 @@ export default function SoftwareMasterPage() {
     const versionList = selectedSoftware.versions || [];
     if (!searchTerm) return versionList;
     const term = searchTerm.toLowerCase();
-    return versionList.filter(v => v.name.toLowerCase().includes(term));
+    return versionList.filter((v) => v.name.toLowerCase().includes(term));
   }, [selectedSoftware, searchTerm]);
 
   // Stats
-  const totalSoftware = categories.reduce((sum, c) => sum + (c.softwares?.length || 0), 0);
-  const totalVersions = categories.reduce((sum, c) => sum + (c.softwares || []).reduce((s2, sw) => s2 + (sw.versions?.length || 0), 0), 0);
+  const totalSoftware = categories.reduce(
+    (sum, c) => sum + (c.softwares?.length || 0),
+    0
+  );
+  const totalVersions = categories.reduce(
+    (sum, c) =>
+      sum +
+      (c.softwares || []).reduce(
+        (s2, sw) => s2 + (sw.versions?.length || 0),
+        0
+      ),
+    0
+  );
 
   // Add Category
   const handleAddCategory = async () => {
@@ -166,21 +207,21 @@ export default function SoftwareMasterPage() {
       setError('Please enter a category name');
       return;
     }
-    
+
     setLoading(true);
     setError('');
-    
+
     try {
       const res = await fetch('/api/software-master', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name, 
-          description: categoryForm.description || '', 
-          status: categoryForm.status || 'active' 
+        body: JSON.stringify({
+          name,
+          description: categoryForm.description || '',
+          status: categoryForm.status || 'active',
         }),
       });
-      
+
       if (res.ok) {
         await fetchSoftwareMaster();
         setCategoryForm(EMPTY_CATEGORY);
@@ -200,7 +241,7 @@ export default function SoftwareMasterPage() {
   // Update Category
   const handleUpdateCategory = async () => {
     if (!editingCategory || !editingCategory.name.trim()) return;
-    
+
     setLoading(true);
     try {
       const res = await fetch('/api/software-master', {
@@ -210,10 +251,10 @@ export default function SoftwareMasterPage() {
           id: editingCategory.id,
           name: editingCategory.name.trim(),
           description: editingCategory.description || '',
-          status: editingCategory.status || 'active'
-        })
+          status: editingCategory.status || 'active',
+        }),
       });
-      
+
       if (res.ok) {
         await fetchSoftwareMaster();
         setEditingCategory(null);
@@ -235,7 +276,9 @@ export default function SoftwareMasterPage() {
     if (!confirm('Delete this category and all its software?')) return;
     try {
       setLoading(true);
-      const res = await fetch(`/api/software-master?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/software-master?id=${id}`, {
+        method: 'DELETE',
+      });
       if (res.ok) {
         await fetchSoftwareMaster();
         if (selectedCategoryId === id) {
@@ -262,21 +305,21 @@ export default function SoftwareMasterPage() {
       setError('Please select a category first');
       return;
     }
-    
+
     setLoading(true);
     setError('');
-    
+
     try {
       const res = await fetch('/api/software', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          category_id: selectedCategoryId, 
-          name, 
-          provider: softwareForm.provider || '' 
+        body: JSON.stringify({
+          category_id: selectedCategoryId,
+          name,
+          provider: softwareForm.provider || '',
         }),
       });
-      
+
       if (res.ok) {
         await fetchSoftwareMaster();
         setSoftwareForm(EMPTY_SOFTWARE);
@@ -306,9 +349,9 @@ export default function SoftwareMasterPage() {
 
     const softwareLines = bulkSoftware
       .split(/\n/)
-      .map(line => line.trim())
-      .map(line => line.replace(/^[\s•\-\*\d\.]+/, '').trim())
-      .filter(line => line.length > 0);
+      .map((line) => line.trim())
+      .map((line) => line.replace(/^[\s•\-\*\d\.]+/, '').trim())
+      .filter((line) => line.length > 0);
 
     if (softwareLines.length === 0) {
       setError('No valid software names found');
@@ -326,13 +369,13 @@ export default function SoftwareMasterPage() {
         const res = await fetch('/api/software', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            category_id: selectedCategoryId, 
+          body: JSON.stringify({
+            category_id: selectedCategoryId,
             name,
-            provider: ''
+            provider: '',
           }),
         });
-        
+
         if (res.ok) {
           successCount++;
         } else {
@@ -346,20 +389,20 @@ export default function SoftwareMasterPage() {
     await fetchSoftwareMaster();
     setBulkSoftware('');
     setBulkMode(false);
-    
+
     if (failCount === 0) {
       showSuccess(`${successCount} software added successfully`);
     } else {
       showSuccess(`${successCount} added, ${failCount} failed`);
     }
-    
+
     setLoading(false);
   };
 
   // Update Software
   const handleUpdateSoftware = async () => {
     if (!editingSoftware || !editingSoftware.name.trim()) return;
-    
+
     setLoading(true);
     try {
       const res = await fetch('/api/software', {
@@ -368,10 +411,10 @@ export default function SoftwareMasterPage() {
         body: JSON.stringify({
           id: editingSoftware.id,
           name: editingSoftware.name.trim(),
-          provider: editingSoftware.provider || ''
-        })
+          provider: editingSoftware.provider || '',
+        }),
       });
-      
+
       if (res.ok) {
         await fetchSoftwareMaster();
         setEditingSoftware(null);
@@ -417,13 +460,20 @@ export default function SoftwareMasterPage() {
       setError('No software to delete');
       return;
     }
-    if (!confirm(`Delete all ${softwareCount} software from "${selectedCategory?.name}"? This action cannot be undone.`)) return;
-    
+    if (
+      !confirm(
+        `Delete all ${softwareCount} software from "${selectedCategory?.name}"? This action cannot be undone.`
+      )
+    )
+      return;
+
     setLoading(true);
     try {
       let deleted = 0;
       for (const sw of softwares) {
-        const res = await fetch(`/api/software?id=${sw.id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/software?id=${sw.id}`, {
+          method: 'DELETE',
+        });
         if (res.ok) deleted++;
       }
       await fetchSoftwareMaster();
@@ -447,22 +497,22 @@ export default function SoftwareMasterPage() {
       setError('Please select a software first');
       return;
     }
-    
+
     setLoading(true);
     setError('');
-    
+
     try {
       const res = await fetch('/api/software-versions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          software_id: selectedSoftwareId, 
-          name, 
+        body: JSON.stringify({
+          software_id: selectedSoftwareId,
+          name,
           release_date: versionForm.release_date || '',
-          notes: versionForm.notes || ''
+          notes: versionForm.notes || '',
         }),
       });
-      
+
       const data = await res.json();
       if (res.ok && data.success) {
         await fetchSoftwareMaster();
@@ -482,7 +532,7 @@ export default function SoftwareMasterPage() {
   // Update Version
   const handleUpdateVersion = async () => {
     if (!editingVersion || !editingVersion.name.trim()) return;
-    
+
     setLoading(true);
     try {
       const res = await fetch('/api/software-versions', {
@@ -492,10 +542,10 @@ export default function SoftwareMasterPage() {
           id: editingVersion.id,
           name: editingVersion.name.trim(),
           release_date: editingVersion.release_date || '',
-          notes: editingVersion.notes || ''
-        })
+          notes: editingVersion.notes || '',
+        }),
       });
-      
+
       const data = await res.json();
       if (res.ok && data.success) {
         await fetchSoftwareMaster();
@@ -517,7 +567,9 @@ export default function SoftwareMasterPage() {
     if (!confirm('Delete this version?')) return;
     try {
       setLoading(true);
-      const res = await fetch(`/api/software-versions?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/software-versions?id=${id}`, {
+        method: 'DELETE',
+      });
       const data = await res.json();
       if (res.ok && data.success) {
         await fetchSoftwareMaster();
@@ -540,7 +592,9 @@ export default function SoftwareMasterPage() {
         <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-20 max-w-[1800px] mx-auto">
           {/* Header */}
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Software Master</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Software Master
+            </h1>
             <p className="text-sm text-gray-600">
               Manage software categories, products and versions
             </p>
@@ -550,13 +604,23 @@ export default function SoftwareMasterPage() {
           {error && (
             <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg flex justify-between items-center">
               <span>{error}</span>
-              <button onClick={() => setError('')} className="text-red-500 hover:text-red-700 font-bold">×</button>
+              <button
+                onClick={() => setError('')}
+                className="text-red-500 hover:text-red-700 font-bold"
+              >
+                ×
+              </button>
             </div>
           )}
           {success && (
             <div className="mb-4 bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3 rounded-lg flex justify-between items-center">
               <span>{success}</span>
-              <button onClick={() => setSuccess(null)} className="text-green-500 hover:text-green-700 font-bold">×</button>
+              <button
+                onClick={() => setSuccess(null)}
+                className="text-green-500 hover:text-green-700 font-bold"
+              >
+                ×
+              </button>
             </div>
           )}
 
@@ -567,7 +631,9 @@ export default function SoftwareMasterPage() {
                 <FolderIcon className="h-5 w-5 text-[#7F2487]" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-gray-900">{categories.length}</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {categories.length}
+                </div>
                 <div className="text-xs text-gray-500">Categories</div>
               </div>
             </div>
@@ -576,7 +642,9 @@ export default function SoftwareMasterPage() {
                 <ComputerDesktopIcon className="h-5 w-5 text-[#4472C4]" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-gray-900">{totalSoftware}</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {totalSoftware}
+                </div>
                 <div className="text-xs text-gray-500">Total Software</div>
               </div>
             </div>
@@ -585,7 +653,9 @@ export default function SoftwareMasterPage() {
                 <TagIcon className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-gray-900">{totalVersions}</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {totalVersions}
+                </div>
                 <div className="text-xs text-gray-500">Total Versions</div>
               </div>
             </div>
@@ -595,7 +665,10 @@ export default function SoftwareMasterPage() {
               </div>
               <div>
                 <div className="text-2xl font-bold text-gray-900">
-                  {categories.filter(c => (c.softwares?.length || 0) === 0).length}
+                  {
+                    categories.filter((c) => (c.softwares?.length || 0) === 0)
+                      .length
+                  }
                 </div>
                 <div className="text-xs text-gray-500">Empty Categories</div>
               </div>
@@ -617,7 +690,6 @@ export default function SoftwareMasterPage() {
 
           {/* Three Panel Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
             {/* LEFT PANEL - Categories */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               {/* Panel Header */}
@@ -628,8 +700,12 @@ export default function SoftwareMasterPage() {
                       <FolderIcon className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-semibold text-white">Categories</h2>
-                      <p className="text-xs text-white/70">{categories.length} total</p>
+                      <h2 className="text-lg font-semibold text-white">
+                        Categories
+                      </h2>
+                      <p className="text-xs text-white/70">
+                        {categories.length} total
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -641,7 +717,9 @@ export default function SoftwareMasterPage() {
                   <input
                     type="text"
                     value={categoryForm.name}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                    onChange={(e) =>
+                      setCategoryForm({ ...categoryForm, name: e.target.value })
+                    }
                     placeholder="Enter new category name..."
                     className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
                     onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
@@ -663,7 +741,9 @@ export default function SoftwareMasterPage() {
                   <div className="p-8 text-center text-gray-500">
                     <FolderIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                     <p className="font-medium">No categories found</p>
-                    <p className="text-sm mt-1">Add your first category above</p>
+                    <p className="text-sm mt-1">
+                      Add your first category above
+                    </p>
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-100">
@@ -671,36 +751,50 @@ export default function SoftwareMasterPage() {
                       <div
                         key={category.id}
                         className={`group flex items-center gap-3 px-4 py-3 cursor-pointer transition-all ${
-                          selectedCategoryId === category.id 
-                            ? 'bg-purple-100 border-l-4 border-[#7F2487]' 
+                          selectedCategoryId === category.id
+                            ? 'bg-purple-100 border-l-4 border-[#7F2487]'
                             : 'hover:bg-gray-50 border-l-4 border-transparent'
                         }`}
                         onClick={() => setSelectedCategoryId(category.id)}
                       >
-                        <span className="text-sm text-gray-400 w-6">{index + 1}.</span>
-                        
+                        <span className="text-sm text-gray-400 w-6">
+                          {index + 1}.
+                        </span>
+
                         {editingCategory?.id === category.id ? (
                           <div className="flex-1 flex items-center gap-2">
                             <input
                               type="text"
                               value={editingCategory.name}
-                              onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                              onChange={(e) =>
+                                setEditingCategory({
+                                  ...editingCategory,
+                                  name: e.target.value,
+                                })
+                              }
                               className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
                               autoFocus
                               onClick={(e) => e.stopPropagation()}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleUpdateCategory();
-                                if (e.key === 'Escape') setEditingCategory(null);
+                                if (e.key === 'Escape')
+                                  setEditingCategory(null);
                               }}
                             />
                             <button
-                              onClick={(e) => { e.stopPropagation(); handleUpdateCategory(); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdateCategory();
+                              }}
                               className="p-1 text-green-600 hover:bg-green-50 rounded"
                             >
                               <CheckIcon className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={(e) => { e.stopPropagation(); setEditingCategory(null); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingCategory(null);
+                              }}
                               className="p-1 text-gray-500 hover:bg-gray-100 rounded"
                             >
                               <XMarkIcon className="w-4 h-4" />
@@ -716,12 +810,17 @@ export default function SoftwareMasterPage() {
                                 {category.softwares?.length || 0} software
                               </p>
                             </div>
-                            
+
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
-                                onClick={(e) => { 
-                                  e.stopPropagation(); 
-                                  setEditingCategory({ id: category.id, name: category.name, description: category.description, status: category.status }); 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingCategory({
+                                    id: category.id,
+                                    name: category.name,
+                                    description: category.description,
+                                    status: category.status,
+                                  });
                                 }}
                                 className="p-1.5 text-gray-400 hover:text-[#7F2487] hover:bg-purple-50 rounded"
                                 title="Edit category"
@@ -729,17 +828,24 @@ export default function SoftwareMasterPage() {
                                 <PencilIcon className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={(e) => { e.stopPropagation(); handleDeleteCategory(category.id); }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteCategory(category.id);
+                                }}
                                 className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
                                 title="Delete category"
                               >
                                 <TrashIcon className="w-4 h-4" />
                               </button>
                             </div>
-                            
-                            <ChevronRightIcon className={`w-4 h-4 text-gray-400 transition-transform ${
-                              selectedCategoryId === category.id ? 'text-[#7F2487]' : ''
-                            }`} />
+
+                            <ChevronRightIcon
+                              className={`w-4 h-4 text-gray-400 transition-transform ${
+                                selectedCategoryId === category.id
+                                  ? 'text-[#7F2487]'
+                                  : ''
+                              }`}
+                            />
                           </>
                         )}
                       </div>
@@ -759,12 +865,13 @@ export default function SoftwareMasterPage() {
                       <ComputerDesktopIcon className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-semibold text-white">Software</h2>
+                      <h2 className="text-lg font-semibold text-white">
+                        Software
+                      </h2>
                       <p className="text-xs text-white/70">
-                        {selectedCategory 
+                        {selectedCategory
                           ? `${selectedCategory.name} • ${selectedCategory.softwares?.length || 0} software`
-                          : `${totalSoftware} total`
-                        }
+                          : `${totalSoftware} total`}
                       </p>
                     </div>
                   </div>
@@ -772,13 +879,18 @@ export default function SoftwareMasterPage() {
               </div>
 
               {/* Add Software Form */}
-              <div className={`p-4 border-b border-gray-200 ${selectedCategoryId ? 'bg-blue-50/50' : 'bg-gray-50'}`}>
+              <div
+                className={`p-4 border-b border-gray-200 ${selectedCategoryId ? 'bg-blue-50/50' : 'bg-gray-50'}`}
+              >
                 {selectedCategoryId ? (
                   <div className="space-y-3">
                     {/* Mode Toggle */}
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-gray-500">
-                        Adding to: <span className="font-medium text-[#7F2487]">{selectedCategory?.name}</span>
+                        Adding to:{' '}
+                        <span className="font-medium text-[#7F2487]">
+                          {selectedCategory?.name}
+                        </span>
                       </p>
                       <div className="flex items-center gap-2">
                         {(selectedCategory?.softwares?.length || 0) > 0 && (
@@ -795,15 +907,19 @@ export default function SoftwareMasterPage() {
                           type="button"
                           onClick={() => setBulkMode(!bulkMode)}
                           className={`flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg font-semibold transition-all shadow-sm ${
-                            bulkMode 
-                              ? 'bg-[#4472C4] text-white shadow-blue-200' 
+                            bulkMode
+                              ? 'bg-[#4472C4] text-white shadow-blue-200'
                               : 'bg-[#7F2387] text-white hover:bg-[#64126D] shadow-purple-200'
                           }`}
                         >
                           {bulkMode ? (
-                            <><CheckIcon className="h-4 w-4" /> Bulk Mode ON</>
+                            <>
+                              <CheckIcon className="h-4 w-4" /> Bulk Mode ON
+                            </>
                           ) : (
-                            <><Squares2X2Icon className="h-4 w-4" /> Bulk Add</>
+                            <>
+                              <Squares2X2Icon className="h-4 w-4" /> Bulk Add
+                            </>
                           )}
                         </button>
                       </div>
@@ -819,30 +935,51 @@ export default function SoftwareMasterPage() {
                           <textarea
                             value={bulkSoftware}
                             onChange={(e) => setBulkSoftware(e.target.value)}
-                            placeholder={"• Software 1\n• Software 2\n• Software 3"}
+                            placeholder={
+                              '• Software 1\n• Software 2\n• Software 3'
+                            }
                             rows={5}
                             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent font-mono"
                           />
                         </div>
-                        
+
                         {/* Preview */}
                         {bulkSoftware.trim() && (
                           <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                            <p className="text-xs font-medium text-gray-600 mb-2">Preview:</p>
+                            <p className="text-xs font-medium text-gray-600 mb-2">
+                              Preview:
+                            </p>
                             <div className="flex flex-wrap gap-1">
                               {bulkSoftware
                                 .split(/\n/)
-                                .map(line => line.trim())
-                                .map(line => line.replace(/^[\s•\-\*\d\.]+/, '').trim())
-                                .filter(line => line.length > 0)
+                                .map((line) => line.trim())
+                                .map((line) =>
+                                  line.replace(/^[\s•\-\*\d\.]+/, '').trim()
+                                )
+                                .filter((line) => line.length > 0)
                                 .map((name, idx) => (
-                                  <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                    <span className="font-medium">{idx + 1}.</span> {name}
+                                  <span
+                                    key={idx}
+                                    className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs"
+                                  >
+                                    <span className="font-medium">
+                                      {idx + 1}.
+                                    </span>{' '}
+                                    {name}
                                   </span>
                                 ))}
                             </div>
                             <p className="text-xs text-gray-500 mt-2">
-                              {bulkSoftware.split(/\n/).map(l => l.trim()).map(l => l.replace(/^[\s•\-\*\d\.]+/, '').trim()).filter(l => l.length > 0).length} software
+                              {
+                                bulkSoftware
+                                  .split(/\n/)
+                                  .map((l) => l.trim())
+                                  .map((l) =>
+                                    l.replace(/^[\s•\-\*\d\.]+/, '').trim()
+                                  )
+                                  .filter((l) => l.length > 0).length
+                              }{' '}
+                              software
                             </p>
                           </div>
                         )}
@@ -850,7 +987,10 @@ export default function SoftwareMasterPage() {
                         <div className="flex items-center justify-between pt-2">
                           <button
                             type="button"
-                            onClick={() => { setBulkMode(false); setBulkSoftware(''); }}
+                            onClick={() => {
+                              setBulkMode(false);
+                              setBulkSoftware('');
+                            }}
                             className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
                           >
                             Cancel
@@ -871,18 +1011,32 @@ export default function SoftwareMasterPage() {
                         <input
                           type="text"
                           value={softwareForm.name}
-                          onChange={(e) => setSoftwareForm({ ...softwareForm, name: e.target.value })}
+                          onChange={(e) =>
+                            setSoftwareForm({
+                              ...softwareForm,
+                              name: e.target.value,
+                            })
+                          }
                           placeholder="Enter new software name..."
                           className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
-                          onKeyDown={(e) => e.key === 'Enter' && handleAddSoftware()}
+                          onKeyDown={(e) =>
+                            e.key === 'Enter' && handleAddSoftware()
+                          }
                         />
                         <input
                           type="text"
                           value={softwareForm.provider}
-                          onChange={(e) => setSoftwareForm({ ...softwareForm, provider: e.target.value })}
+                          onChange={(e) =>
+                            setSoftwareForm({
+                              ...softwareForm,
+                              provider: e.target.value,
+                            })
+                          }
                           placeholder="Provider"
                           className="w-32 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
-                          onKeyDown={(e) => e.key === 'Enter' && handleAddSoftware()}
+                          onKeyDown={(e) =>
+                            e.key === 'Enter' && handleAddSoftware()
+                          }
                         />
                         <button
                           onClick={handleAddSoftware}
@@ -911,13 +1065,18 @@ export default function SoftwareMasterPage() {
                   <div className="p-8 text-center text-gray-500">
                     <ComputerDesktopIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                     <p className="font-medium">Select a category</p>
-                    <p className="text-sm mt-1">Choose a category from the left panel to view and manage its software</p>
+                    <p className="text-sm mt-1">
+                      Choose a category from the left panel to view and manage
+                      its software
+                    </p>
                   </div>
                 ) : filteredSoftware.length === 0 ? (
                   <div className="p-8 text-center text-gray-500">
                     <ComputerDesktopIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                     <p className="font-medium">No software yet</p>
-                    <p className="text-sm mt-1">Add software to &ldquo;{selectedCategory?.name}&rdquo;</p>
+                    <p className="text-sm mt-1">
+                      Add software to &ldquo;{selectedCategory?.name}&rdquo;
+                    </p>
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-100">
@@ -925,36 +1084,50 @@ export default function SoftwareMasterPage() {
                       <div
                         key={software.id}
                         className={`group flex items-center gap-3 px-4 py-3 cursor-pointer transition-all ${
-                          selectedSoftwareId === software.id 
-                            ? 'bg-blue-100 border-l-4 border-[#4472C4]' 
+                          selectedSoftwareId === software.id
+                            ? 'bg-blue-100 border-l-4 border-[#4472C4]'
                             : 'hover:bg-gray-50 border-l-4 border-transparent'
                         }`}
                         onClick={() => setSelectedSoftwareId(software.id)}
                       >
-                        <span className="text-sm text-gray-400 w-6">{index + 1}.</span>
-                        
+                        <span className="text-sm text-gray-400 w-6">
+                          {index + 1}.
+                        </span>
+
                         {editingSoftware?.id === software.id ? (
                           <div className="flex-1 flex items-center gap-2">
                             <input
                               type="text"
                               value={editingSoftware.name}
-                              onChange={(e) => setEditingSoftware({ ...editingSoftware, name: e.target.value })}
+                              onChange={(e) =>
+                                setEditingSoftware({
+                                  ...editingSoftware,
+                                  name: e.target.value,
+                                })
+                              }
                               className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
                               autoFocus
                               onClick={(e) => e.stopPropagation()}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleUpdateSoftware();
-                                if (e.key === 'Escape') setEditingSoftware(null);
+                                if (e.key === 'Escape')
+                                  setEditingSoftware(null);
                               }}
                             />
                             <button
-                              onClick={(e) => { e.stopPropagation(); handleUpdateSoftware(); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdateSoftware();
+                              }}
                               className="p-1 text-green-600 hover:bg-green-50 rounded"
                             >
                               <CheckIcon className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={(e) => { e.stopPropagation(); setEditingSoftware(null); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingSoftware(null);
+                              }}
                               className="p-1 text-gray-500 hover:bg-gray-100 rounded"
                             >
                               <XMarkIcon className="w-4 h-4" />
@@ -967,15 +1140,20 @@ export default function SoftwareMasterPage() {
                                 {software.name}
                               </p>
                               <p className="text-xs text-gray-500">
-                                {software.provider || 'No provider'} • {software.versions?.length || 0} versions
+                                {software.provider || 'No provider'} •{' '}
+                                {software.versions?.length || 0} versions
                               </p>
                             </div>
-                            
+
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
-                                onClick={(e) => { 
-                                  e.stopPropagation(); 
-                                  setEditingSoftware({ id: software.id, name: software.name, provider: software.provider }); 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingSoftware({
+                                    id: software.id,
+                                    name: software.name,
+                                    provider: software.provider,
+                                  });
                                 }}
                                 className="p-1.5 text-gray-400 hover:text-[#4472C4] hover:bg-blue-50 rounded"
                                 title="Edit software"
@@ -983,17 +1161,24 @@ export default function SoftwareMasterPage() {
                                 <PencilIcon className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={(e) => { e.stopPropagation(); handleDeleteSoftware(software.id); }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteSoftware(software.id);
+                                }}
                                 className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
                                 title="Delete software"
                               >
                                 <TrashIcon className="w-4 h-4" />
                               </button>
                             </div>
-                            
-                            <ChevronRightIcon className={`w-4 h-4 text-gray-400 transition-transform ${
-                              selectedSoftwareId === software.id ? 'text-[#4472C4]' : ''
-                            }`} />
+
+                            <ChevronRightIcon
+                              className={`w-4 h-4 text-gray-400 transition-transform ${
+                                selectedSoftwareId === software.id
+                                  ? 'text-[#4472C4]'
+                                  : ''
+                              }`}
+                            />
                           </>
                         )}
                       </div>
@@ -1013,12 +1198,13 @@ export default function SoftwareMasterPage() {
                       <TagIcon className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-semibold text-white">Versions</h2>
+                      <h2 className="text-lg font-semibold text-white">
+                        Versions
+                      </h2>
                       <p className="text-xs text-white/70">
-                        {selectedSoftware 
+                        {selectedSoftware
                           ? `${selectedSoftware.name} • ${selectedSoftware.versions?.length || 0} versions`
-                          : `${totalVersions} total`
-                        }
+                          : `${totalVersions} total`}
                       </p>
                     </div>
                   </div>
@@ -1026,25 +1212,42 @@ export default function SoftwareMasterPage() {
               </div>
 
               {/* Add Version Form */}
-              <div className={`p-4 border-b border-gray-200 ${selectedSoftwareId ? 'bg-green-50/50' : 'bg-gray-50'}`}>
+              <div
+                className={`p-4 border-b border-gray-200 ${selectedSoftwareId ? 'bg-green-50/50' : 'bg-gray-50'}`}
+              >
                 {selectedSoftwareId ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">
-                      Adding to: <span className="font-medium text-[#4472C4]">{selectedSoftware?.name}</span>
+                      Adding to:{' '}
+                      <span className="font-medium text-[#4472C4]">
+                        {selectedSoftware?.name}
+                      </span>
                     </p>
                     <div className="flex gap-2">
                       <input
                         type="text"
                         value={versionForm.name}
-                        onChange={(e) => setVersionForm({ ...versionForm, name: e.target.value })}
+                        onChange={(e) =>
+                          setVersionForm({
+                            ...versionForm,
+                            name: e.target.value,
+                          })
+                        }
                         placeholder="Version (e.g., 14.5)"
                         className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddVersion()}
+                        onKeyDown={(e) =>
+                          e.key === 'Enter' && handleAddVersion()
+                        }
                       />
                       <input
                         type="date"
                         value={versionForm.release_date}
-                        onChange={(e) => setVersionForm({ ...versionForm, release_date: e.target.value })}
+                        onChange={(e) =>
+                          setVersionForm({
+                            ...versionForm,
+                            release_date: e.target.value,
+                          })
+                        }
                         className="w-36 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       />
                       <button
@@ -1073,13 +1276,18 @@ export default function SoftwareMasterPage() {
                   <div className="p-8 text-center text-gray-500">
                     <TagIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                     <p className="font-medium">Select a software</p>
-                    <p className="text-sm mt-1">Choose a software from the middle panel to view and manage its versions</p>
+                    <p className="text-sm mt-1">
+                      Choose a software from the middle panel to view and manage
+                      its versions
+                    </p>
                   </div>
                 ) : filteredVersions.length === 0 ? (
                   <div className="p-8 text-center text-gray-500">
                     <TagIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                     <p className="font-medium">No versions yet</p>
-                    <p className="text-sm mt-1">Add versions to &ldquo;{selectedSoftware?.name}&rdquo;</p>
+                    <p className="text-sm mt-1">
+                      Add versions to &ldquo;{selectedSoftware?.name}&rdquo;
+                    </p>
                   </div>
                 ) : (
                   <table className="w-full">
@@ -1110,12 +1318,18 @@ export default function SoftwareMasterPage() {
                               <input
                                 type="text"
                                 value={editingVersion.name}
-                                onChange={(e) => setEditingVersion({ ...editingVersion, name: e.target.value })}
+                                onChange={(e) =>
+                                  setEditingVersion({
+                                    ...editingVersion,
+                                    name: e.target.value,
+                                  })
+                                }
                                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                 autoFocus
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') handleUpdateVersion();
-                                  if (e.key === 'Escape') setEditingVersion(null);
+                                  if (e.key === 'Escape')
+                                    setEditingVersion(null);
                                 }}
                               />
                             ) : (
@@ -1129,13 +1343,25 @@ export default function SoftwareMasterPage() {
                               <input
                                 type="date"
                                 value={editingVersion.release_date || ''}
-                                onChange={(e) => setEditingVersion({ ...editingVersion, release_date: e.target.value })}
+                                onChange={(e) =>
+                                  setEditingVersion({
+                                    ...editingVersion,
+                                    release_date: e.target.value,
+                                  })
+                                }
                                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-transparent"
                               />
+                            ) : version.release_date ? (
+                              new Date(version.release_date).toLocaleDateString(
+                                'en-US',
+                                {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                }
+                              )
                             ) : (
-                              version.release_date 
-                                ? new Date(version.release_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-                                : '—'
+                              '—'
                             )}
                           </td>
                           <td className="px-4 py-3 text-center">
@@ -1159,19 +1385,23 @@ export default function SoftwareMasterPage() {
                             ) : (
                               <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
-                                  onClick={() => setEditingVersion({ 
-                                    id: version.id, 
-                                    name: version.name,
-                                    release_date: version.release_date || '',
-                                    notes: version.notes || ''
-                                  })}
+                                  onClick={() =>
+                                    setEditingVersion({
+                                      id: version.id,
+                                      name: version.name,
+                                      release_date: version.release_date || '',
+                                      notes: version.notes || '',
+                                    })
+                                  }
                                   className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
                                   title="Edit version"
                                 >
                                   <PencilIcon className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => handleDeleteVersion(version.id)}
+                                  onClick={() =>
+                                    handleDeleteVersion(version.id)
+                                  }
                                   className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
                                   title="Delete version"
                                 >

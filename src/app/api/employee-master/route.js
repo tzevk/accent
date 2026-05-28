@@ -1,18 +1,26 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Fetch all employees from employee master
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.EMPLOYEES,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit')) || 1000; // Default high limit for master data
-    
+
     connection = await dbConnect();
 
     // Get all active employees with essential fields for master dropdown
@@ -37,16 +45,15 @@ export async function GET(request) {
     return NextResponse.json({
       success: true,
       data: employees,
-      total: employees.length
+      total: employees.length,
     });
-
   } catch (error) {
     console.error('Error fetching employees from master:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: 'Failed to fetch employees from master',
-        data: []
+        data: [],
       },
       { status: 500 }
     );

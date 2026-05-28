@@ -8,19 +8,19 @@ import {
   ClockIcon,
   ChartBarIcon,
   TrophyIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
-import { 
-  BarChart, 
-  Bar, 
-  LineChart, 
+import {
+  BarChart,
+  Bar,
+  LineChart,
   Line,
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer 
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
 } from 'recharts';
 
 export default function ProductivityPage() {
@@ -58,7 +58,9 @@ export default function ProductivityPage() {
     setLoading(true);
     try {
       const endDate = new Date().toISOString().split('T')[0];
-      const startDate = new Date(Date.now() - parseInt(dateRange) * 24 * 60 * 60 * 1000)
+      const startDate = new Date(
+        Date.now() - parseInt(dateRange) * 24 * 60 * 60 * 1000
+      )
         .toISOString()
         .split('T')[0];
 
@@ -74,7 +76,7 @@ export default function ProductivityPage() {
       // Fetch screen time data
       const screenTimeResponse = await fetch(`/api/screen-time?${params}`);
       const screenTimeResult = await screenTimeResponse.json();
-      
+
       // Fetch work summary data
       const workSummaryResponse = await fetch(`/api/work-summary?${params}`);
       await workSummaryResponse.json();
@@ -98,29 +100,35 @@ export default function ProductivityPage() {
 
   const getDailyScreenTimeChart = () => {
     if (!screenTimeData?.daily) return [];
-    return screenTimeData.daily.map(day => ({
-      date: new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    return screenTimeData.daily.map((day) => ({
+      date: new Date(day.date).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      }),
       active: Math.round(day.active_time_minutes),
       idle: Math.round(day.idle_time_minutes),
-      total: Math.round(day.total_screen_time_minutes)
+      total: Math.round(day.total_screen_time_minutes),
     }));
   };
 
   const getTopPagesData = () => {
     if (!screenTimeData?.pages) return [];
-    return screenTimeData.pages.slice(0, 10).map(page => ({
+    return screenTimeData.pages.slice(0, 10).map((page) => ({
       name: page.page_path.split('/').pop() || 'Home',
       visits: page.visit_count,
-      minutes: Math.round(page.total_duration_seconds / 60)
+      minutes: Math.round(page.total_duration_seconds / 60),
     }));
   };
 
   const getProductivityScoreData = () => {
     if (!screenTimeData?.daily) return [];
-    return screenTimeData.daily.map(day => ({
-      date: new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    return screenTimeData.daily.map((day) => ({
+      date: new Date(day.date).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      }),
       productivity: Math.round(day.productivity_score || 0),
-      focus: Math.round(day.focus_score || 0)
+      focus: Math.round(day.focus_score || 0),
     }));
   };
 
@@ -135,7 +143,9 @@ export default function ProductivityPage() {
         <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Productivity Reports</h1>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Productivity Reports
+              </h1>
               <p className="mt-1 text-sm text-gray-500">
                 Analyze user activity, screen time, and productivity metrics
               </p>
@@ -156,14 +166,16 @@ export default function ProductivityPage() {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">User</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                User
+              </label>
               <select
                 value={selectedUser}
                 onChange={(e) => setSelectedUser(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Users</option>
-                {users.map(u => (
+                {users.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.full_name || u.username}
                   </option>
@@ -172,7 +184,9 @@ export default function ProductivityPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Time Period</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Time Period
+              </label>
               <select
                 value={dateRange}
                 onChange={(e) => setDateRange(e.target.value)}
@@ -206,9 +220,11 @@ export default function ProductivityPage() {
               <div>
                 <p className="text-sm text-gray-500">Avg Screen Time</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {loading ? '...' : screenTimeData?.stats?.avgScreenTimePerDay 
-                    ? `${Math.round(screenTimeData.stats.avgScreenTimePerDay)}m`
-                    : '0m'}
+                  {loading
+                    ? '...'
+                    : screenTimeData?.stats?.avgScreenTimePerDay
+                      ? `${Math.round(screenTimeData.stats.avgScreenTimePerDay)}m`
+                      : '0m'}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">per day</p>
               </div>
@@ -223,9 +239,11 @@ export default function ProductivityPage() {
               <div>
                 <p className="text-sm text-gray-500">Avg Active Time</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {loading ? '...' : screenTimeData?.stats?.avgActiveTimePerDay 
-                    ? `${Math.round(screenTimeData.stats.avgActiveTimePerDay)}m`
-                    : '0m'}
+                  {loading
+                    ? '...'
+                    : screenTimeData?.stats?.avgActiveTimePerDay
+                      ? `${Math.round(screenTimeData.stats.avgActiveTimePerDay)}m`
+                      : '0m'}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">per day</p>
               </div>
@@ -240,9 +258,11 @@ export default function ProductivityPage() {
               <div>
                 <p className="text-sm text-gray-500">Avg Productivity</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {loading ? '...' : screenTimeData?.stats?.avgProductivityScore 
-                    ? `${Math.round(screenTimeData.stats.avgProductivityScore)}%`
-                    : '0%'}
+                  {loading
+                    ? '...'
+                    : screenTimeData?.stats?.avgProductivityScore
+                      ? `${Math.round(screenTimeData.stats.avgProductivityScore)}%`
+                      : '0%'}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">score</p>
               </div>
@@ -256,7 +276,9 @@ export default function ProductivityPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* Daily Screen Time Chart */}
           <div className="lg:col-span-2 bg-white rounded-lg shadow-sm p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Daily Screen Time</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Daily Screen Time
+            </h3>
             {loading ? (
               <div className="h-80 flex items-center justify-center">
                 <ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
@@ -266,7 +288,13 @@ export default function ProductivityPage() {
                 <BarChart data={getDailyScreenTimeChart()}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
-                  <YAxis label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }} />
+                  <YAxis
+                    label={{
+                      value: 'Minutes',
+                      angle: -90,
+                      position: 'insideLeft',
+                    }}
+                  />
                   <Tooltip />
                   <Legend />
                   <Bar dataKey="active" fill="#10B981" name="Active Time" />
@@ -285,7 +313,9 @@ export default function ProductivityPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Productivity & Focus Scores */}
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Productivity & Focus Trends</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Productivity & Focus Trends
+            </h3>
             {loading ? (
               <div className="h-80 flex items-center justify-center">
                 <ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
@@ -295,11 +325,30 @@ export default function ProductivityPage() {
                 <LineChart data={getProductivityScoreData()}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
-                  <YAxis domain={[0, 100]} label={{ value: 'Score (%)', angle: -90, position: 'insideLeft' }} />
+                  <YAxis
+                    domain={[0, 100]}
+                    label={{
+                      value: 'Score (%)',
+                      angle: -90,
+                      position: 'insideLeft',
+                    }}
+                  />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="productivity" stroke="#3B82F6" name="Productivity" strokeWidth={2} />
-                  <Line type="monotone" dataKey="focus" stroke="#10B981" name="Focus" strokeWidth={2} />
+                  <Line
+                    type="monotone"
+                    dataKey="productivity"
+                    stroke="#3B82F6"
+                    name="Productivity"
+                    strokeWidth={2}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="focus"
+                    stroke="#10B981"
+                    name="Focus"
+                    strokeWidth={2}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -307,7 +356,9 @@ export default function ProductivityPage() {
 
           {/* Top Pages by Time */}
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Most Visited Pages</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Most Visited Pages
+            </h3>
             {loading ? (
               <div className="h-80 flex items-center justify-center">
                 <ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
@@ -316,7 +367,14 @@ export default function ProductivityPage() {
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={getTopPagesData()} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" label={{ value: 'Minutes', position: 'insideBottom', offset: -5 }} />
+                  <XAxis
+                    type="number"
+                    label={{
+                      value: 'Minutes',
+                      position: 'insideBottom',
+                      offset: -5,
+                    }}
+                  />
                   <YAxis dataKey="name" type="category" width={100} />
                   <Tooltip />
                   <Bar dataKey="minutes" fill="#8B5CF6" name="Time Spent" />
@@ -329,7 +387,9 @@ export default function ProductivityPage() {
         {/* Summary Stats */}
         {screenTimeData?.stats && (
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Summary Statistics</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Summary Statistics
+            </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm text-blue-600 font-medium">Total Days</p>
@@ -338,19 +398,31 @@ export default function ProductivityPage() {
                 </p>
               </div>
               <div className="p-4 bg-green-50 rounded-lg">
-                <p className="text-sm text-green-600 font-medium">Total Screen Time</p>
+                <p className="text-sm text-green-600 font-medium">
+                  Total Screen Time
+                </p>
                 <p className="text-2xl font-bold text-green-900 mt-1">
-                  {Math.round((screenTimeData.stats.totalScreenTimeMinutes || 0) / 60)}h
+                  {Math.round(
+                    (screenTimeData.stats.totalScreenTimeMinutes || 0) / 60
+                  )}
+                  h
                 </p>
               </div>
               <div className="p-4 bg-yellow-50 rounded-lg">
-                <p className="text-sm text-yellow-600 font-medium">Active Time</p>
+                <p className="text-sm text-yellow-600 font-medium">
+                  Active Time
+                </p>
                 <p className="text-2xl font-bold text-yellow-900 mt-1">
-                  {Math.round((screenTimeData.stats.totalActiveTimeMinutes || 0) / 60)}h
+                  {Math.round(
+                    (screenTimeData.stats.totalActiveTimeMinutes || 0) / 60
+                  )}
+                  h
                 </p>
               </div>
               <div className="p-4 bg-purple-50 rounded-lg">
-                <p className="text-sm text-purple-600 font-medium">Avg Focus Score</p>
+                <p className="text-sm text-purple-600 font-medium">
+                  Avg Focus Score
+                </p>
                 <p className="text-2xl font-bold text-purple-900 mt-1">
                   {Math.round(screenTimeData.stats.avgFocusScore || 0)}%
                 </p>

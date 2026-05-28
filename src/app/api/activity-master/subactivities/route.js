@@ -24,7 +24,11 @@ export async function GET() {
   } catch (error) {
     console.error('Sub-activities GET error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch sub-activities', details: error.message },
+      {
+        success: false,
+        error: 'Failed to fetch sub-activities',
+        details: error.message,
+      },
       { status: 500 }
     );
   } finally {
@@ -36,10 +40,19 @@ export async function POST(request) {
   let db;
   try {
     const body = await request.json();
-  const { activity_id, name, default_duration = 0, default_manhours = 0, default_rate = 0 } = body;
+    const {
+      activity_id,
+      name,
+      default_duration = 0,
+      default_manhours = 0,
+      default_rate = 0,
+    } = body;
 
     if (!activity_id || !name) {
-      return NextResponse.json({ success: false, error: 'Activity id and name are required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Activity id and name are required' },
+        { status: 400 }
+      );
     }
 
     const id = randomUUID();
@@ -61,7 +74,14 @@ export async function POST(request) {
     return NextResponse.json({ success: true, data: { id } }, { status: 201 });
   } catch (error) {
     console.error('Sub-activity POST error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create sub-activity', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to create sub-activity',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -71,8 +91,19 @@ export async function PUT(request) {
   let db;
   try {
     const body = await request.json();
-    const { id, name, default_duration, default_manhours, default_rate, activity_id } = body;
-    if (!id) return NextResponse.json({ success: false, error: 'Sub-activity id is required' }, { status: 400 });
+    const {
+      id,
+      name,
+      default_duration,
+      default_manhours,
+      default_rate,
+      activity_id,
+    } = body;
+    if (!id)
+      return NextResponse.json(
+        { success: false, error: 'Sub-activity id is required' },
+        { status: 400 }
+      );
 
     // Parse numeric values - preserve exact decimal values
     const parseDecimal = (val) => {
@@ -80,7 +111,7 @@ export async function PUT(request) {
       const parsed = parseFloat(val);
       return isNaN(parsed) ? null : parsed;
     };
-    
+
     const parsedDuration = parseDecimal(default_duration);
     const parsedManhours = parseDecimal(default_manhours);
     const parsedRate = parseDecimal(default_rate);
@@ -94,13 +125,30 @@ export async function PUT(request) {
          default_rate = COALESCE(?, default_rate),
          activity_id = COALESCE(?, activity_id)
        WHERE id = ?`,
-      [name ?? null, parsedDuration, parsedManhours, parsedRate, activity_id ?? null, id]
+      [
+        name ?? null,
+        parsedDuration,
+        parsedManhours,
+        parsedRate,
+        activity_id ?? null,
+        id,
+      ]
     );
 
-    return NextResponse.json({ success: true, message: 'Sub-activity updated' });
+    return NextResponse.json({
+      success: true,
+      message: 'Sub-activity updated',
+    });
   } catch (error) {
     console.error('Sub-activity PUT error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update sub-activity', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update sub-activity',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -111,15 +159,29 @@ export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    if (!id) return NextResponse.json({ success: false, error: 'Sub-activity id is required' }, { status: 400 });
+    if (!id)
+      return NextResponse.json(
+        { success: false, error: 'Sub-activity id is required' },
+        { status: 400 }
+      );
 
     db = await dbConnect();
     await db.execute('DELETE FROM sub_activities WHERE id = ?', [id]);
 
-    return NextResponse.json({ success: true, message: 'Sub-activity deleted' });
+    return NextResponse.json({
+      success: true,
+      message: 'Sub-activity deleted',
+    });
   } catch (error) {
     console.error('Sub-activity DELETE error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete sub-activity', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to delete sub-activity',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }

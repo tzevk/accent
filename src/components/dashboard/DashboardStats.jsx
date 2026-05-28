@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
+import {
   UserGroupIcon,
   DocumentTextIcon,
   BuildingOfficeIcon,
-  FolderIcon
+  FolderIcon,
 } from '@heroicons/react/24/outline';
 
 export default function DashboardStats() {
@@ -13,7 +13,7 @@ export default function DashboardStats() {
     leads: { total_leads: 0, under_discussion: 0, closed_won: 0 },
     proposals: { total: 0, pending: 0, approved: 0 },
     companies: { total: 0 },
-    projects: { total: 0, in_progress: 0, completed: 0 }
+    projects: { total: 0, in_progress: 0, completed: 0 },
   });
   const [loading, setLoading] = useState(true);
 
@@ -23,41 +23,54 @@ export default function DashboardStats() {
     const fetchStats = async () => {
       try {
         // Parallel fetch for better performance
-        const [leadsRes, proposalsRes, companiesRes, projectsRes] = await Promise.all([
-          fetch('/api/leads?limit=1'),
-          fetch('/api/proposals'),
-          fetch('/api/companies'),
-          fetch('/api/projects')
-        ]);
+        const [leadsRes, proposalsRes, companiesRes, projectsRes] =
+          await Promise.all([
+            fetch('/api/leads?limit=1'),
+            fetch('/api/proposals'),
+            fetch('/api/companies'),
+            fetch('/api/projects'),
+          ]);
 
         if (!mounted) return;
 
-        const [leadsData, proposalsData, companiesData, projectsData] = await Promise.all([
-          leadsRes.json(),
-          proposalsRes.json(),
-          companiesRes.json(),
-          projectsRes.json()
-        ]);
+        const [leadsData, proposalsData, companiesData, projectsData] =
+          await Promise.all([
+            leadsRes.json(),
+            proposalsRes.json(),
+            companiesRes.json(),
+            projectsRes.json(),
+          ]);
 
         if (!mounted) return;
 
-        if (leadsData.success && proposalsData.success && companiesData.success && projectsData.success) {
+        if (
+          leadsData.success &&
+          proposalsData.success &&
+          companiesData.success &&
+          projectsData.success
+        ) {
           const proposals = proposalsData.data || [];
           const projects = projectsData.data || [];
 
           setStats({
-            leads: leadsData.data?.stats || { total_leads: 0, under_discussion: 0, closed_won: 0 },
+            leads: leadsData.data?.stats || {
+              total_leads: 0,
+              under_discussion: 0,
+              closed_won: 0,
+            },
             proposals: {
               total: proposals.length,
-              pending: proposals.filter(p => p.status === 'pending').length,
-              approved: proposals.filter(p => p.status === 'approved').length
+              pending: proposals.filter((p) => p.status === 'pending').length,
+              approved: proposals.filter((p) => p.status === 'approved').length,
             },
             companies: { total: companiesData.data?.length || 0 },
             projects: {
               total: projects.length,
-              in_progress: projects.filter(p => p.status === 'in-progress').length,
-              completed: projects.filter(p => p.status === 'completed').length
-            }
+              in_progress: projects.filter((p) => p.status === 'in-progress')
+                .length,
+              completed: projects.filter((p) => p.status === 'completed')
+                .length,
+            },
           });
         }
       } catch (error) {
@@ -68,7 +81,9 @@ export default function DashboardStats() {
     };
 
     fetchStats();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const statCards = [
@@ -79,7 +94,7 @@ export default function DashboardStats() {
       icon: UserGroupIcon,
       color: 'bg-blue-500',
       lightBg: 'bg-blue-50',
-      textColor: 'text-blue-600'
+      textColor: 'text-blue-600',
     },
     {
       title: 'Proposals',
@@ -88,7 +103,7 @@ export default function DashboardStats() {
       icon: DocumentTextIcon,
       color: 'bg-green-500',
       lightBg: 'bg-green-50',
-      textColor: 'text-green-600'
+      textColor: 'text-green-600',
     },
     {
       title: 'Companies',
@@ -97,7 +112,7 @@ export default function DashboardStats() {
       icon: BuildingOfficeIcon,
       color: 'bg-purple-500',
       lightBg: 'bg-purple-50',
-      textColor: 'text-purple-600'
+      textColor: 'text-purple-600',
     },
     {
       title: 'Projects',
@@ -106,15 +121,18 @@ export default function DashboardStats() {
       icon: FolderIcon,
       color: 'bg-orange-500',
       lightBg: 'bg-orange-50',
-      textColor: 'text-orange-600'
-    }
+      textColor: 'text-orange-600',
+    },
   ];
 
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[1, 2, 3, 4].map(i => (
-          <div key={i} className="h-32 bg-gray-200 animate-pulse rounded-xl"></div>
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="h-32 bg-gray-200 animate-pulse rounded-xl"
+          ></div>
         ))}
       </div>
     );
@@ -128,13 +146,19 @@ export default function DashboardStats() {
           className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
         >
           <div className="flex items-center justify-between mb-4">
-            <div className={`w-12 h-12 ${stat.lightBg} rounded-lg flex items-center justify-center`}>
+            <div
+              className={`w-12 h-12 ${stat.lightBg} rounded-lg flex items-center justify-center`}
+            >
               <stat.icon className={`w-6 h-6 ${stat.textColor}`} />
             </div>
           </div>
           <div>
-            <p className="text-sm font-medium text-gray-600 mb-1">{stat.title}</p>
-            <p className="text-3xl font-bold text-gray-900 mb-1">{stat.value.toLocaleString()}</p>
+            <p className="text-sm font-medium text-gray-600 mb-1">
+              {stat.title}
+            </p>
+            <p className="text-3xl font-bold text-gray-900 mb-1">
+              {stat.value.toLocaleString()}
+            </p>
             <p className="text-xs text-gray-500">{stat.subtitle}</p>
           </div>
         </div>

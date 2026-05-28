@@ -8,41 +8,53 @@ import { getCurrentUser } from '@/utils/api-permissions';
  */
 export async function GET(request, { params }) {
   let db;
-  
+
   try {
     const { id } = await params;
-    
+
     // Auth check
     let user;
     try {
       user = await getCurrentUser(request);
     } catch (authErr) {
       console.error('Auth check failed:', authErr?.message);
-      return NextResponse.json({ success: false, error: 'Authentication failed' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'Authentication failed' },
+        { status: 500 }
+      );
     }
-    
+
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     // Only admin can access
     if (!user.is_super_admin && user.role?.code !== 'admin') {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     db = await dbConnect();
-    
+
     const [vouchers] = await db.execute(
       'SELECT * FROM cash_vouchers WHERE id = ?',
       [id]
     );
 
     if (vouchers.length === 0) {
-      return NextResponse.json({ success: false, error: 'Voucher not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Voucher not found' },
+        { status: 404 }
+      );
     }
 
     const voucher = vouchers[0];
-    
+
     // Parse line_items if it's a string
     if (voucher.line_items && typeof voucher.line_items === 'string') {
       try {
@@ -54,18 +66,25 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({
       success: true,
-      data: voucher
+      data: voucher,
     });
-    
   } catch (error) {
     console.error('Get cash voucher error:', error?.message, error?.stack);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch cash voucher', details: error?.message },
+      {
+        success: false,
+        error: 'Failed to fetch cash voucher',
+        details: error?.message,
+      },
       { status: 500 }
     );
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }
@@ -76,35 +95,50 @@ export async function GET(request, { params }) {
  */
 export async function PUT(request, { params }) {
   let db;
-  
+
   try {
     const { id } = await params;
     const body = await request.json();
-    
+
     // Auth check
     let user;
     try {
       user = await getCurrentUser(request);
     } catch (authErr) {
       console.error('Auth check failed:', authErr?.message);
-      return NextResponse.json({ success: false, error: 'Authentication failed' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'Authentication failed' },
+        { status: 500 }
+      );
     }
-    
+
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     // Only admin can access
     if (!user.is_super_admin && user.role?.code !== 'admin') {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     db = await dbConnect();
-    
+
     // Check if voucher exists
-    const [existing] = await db.execute('SELECT id FROM cash_vouchers WHERE id = ?', [id]);
+    const [existing] = await db.execute(
+      'SELECT id FROM cash_vouchers WHERE id = ?',
+      [id]
+    );
     if (existing.length === 0) {
-      return NextResponse.json({ success: false, error: 'Voucher not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Voucher not found' },
+        { status: 404 }
+      );
     }
 
     const {
@@ -120,7 +154,7 @@ export async function PUT(request, { params }) {
       checked_by,
       approved_by,
       receiver_signature,
-      notes
+      notes,
     } = body;
 
     // Update voucher
@@ -155,24 +189,31 @@ export async function PUT(request, { params }) {
         approved_by || null,
         receiver_signature || null,
         notes || null,
-        id
+        id,
       ]
     );
 
     return NextResponse.json({
       success: true,
-      message: 'Voucher updated successfully'
+      message: 'Voucher updated successfully',
     });
-    
   } catch (error) {
     console.error('Update cash voucher error:', error?.message, error?.stack);
     return NextResponse.json(
-      { success: false, error: 'Failed to update cash voucher', details: error?.message },
+      {
+        success: false,
+        error: 'Failed to update cash voucher',
+        details: error?.message,
+      },
       { status: 500 }
     );
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }
@@ -183,46 +224,62 @@ export async function PUT(request, { params }) {
  */
 export async function DELETE(request, { params }) {
   let db;
-  
+
   try {
     const { id } = await params;
-    
+
     // Auth check
     let user;
     try {
       user = await getCurrentUser(request);
     } catch (authErr) {
       console.error('Auth check failed:', authErr?.message);
-      return NextResponse.json({ success: false, error: 'Authentication failed' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'Authentication failed' },
+        { status: 500 }
+      );
     }
-    
+
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     // Only admin can access
     if (!user.is_super_admin && user.role?.code !== 'admin') {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     db = await dbConnect();
-    
+
     await db.execute('DELETE FROM cash_vouchers WHERE id = ?', [id]);
 
     return NextResponse.json({
       success: true,
-      message: 'Voucher deleted successfully'
+      message: 'Voucher deleted successfully',
     });
-    
   } catch (error) {
     console.error('Delete cash voucher error:', error?.message, error?.stack);
     return NextResponse.json(
-      { success: false, error: 'Failed to delete cash voucher', details: error?.message },
+      {
+        success: false,
+        error: 'Failed to delete cash voucher',
+        details: error?.message,
+      },
       { status: 500 }
     );
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }

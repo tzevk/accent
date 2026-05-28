@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.SETTINGS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
@@ -21,12 +29,21 @@ export async function GET(request) {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
 
-    const [rows] = await db.execute('SELECT id, category_id, name, provider, created_at, updated_at FROM softwares ORDER BY name');
+    const [rows] = await db.execute(
+      'SELECT id, category_id, name, provider, created_at, updated_at FROM softwares ORDER BY name'
+    );
 
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     console.error('Softwares GET error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to load softwares', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to load softwares',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -34,14 +51,22 @@ export async function GET(request) {
 
 export async function POST(request) {
   // RBAC check
-  const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  const authResultPost = await ensurePermission(
+    request,
+    RESOURCES.SETTINGS,
+    PERMISSIONS.UPDATE
+  );
   if (authResultPost.authorized === false) return authResultPost.response;
 
   let db;
   try {
     const body = await request.json();
     const { category_id, name, provider } = body;
-    if (!category_id || !name) return NextResponse.json({ success: false, error: 'category_id and name are required' }, { status: 400 });
+    if (!category_id || !name)
+      return NextResponse.json(
+        { success: false, error: 'category_id and name are required' },
+        { status: 400 }
+      );
 
     const id = randomUUID();
     db = await dbConnect();
@@ -54,12 +79,22 @@ export async function POST(request) {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
 
-    await db.execute('INSERT INTO softwares (id, category_id, name, provider) VALUES (?, ?, ?, ?)', [id, category_id, name, provider]);
+    await db.execute(
+      'INSERT INTO softwares (id, category_id, name, provider) VALUES (?, ?, ?, ?)',
+      [id, category_id, name, provider]
+    );
 
     return NextResponse.json({ success: true, data: { id } }, { status: 201 });
   } catch (error) {
     console.error('Softwares POST error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create software', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to create software',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -67,22 +102,40 @@ export async function POST(request) {
 
 export async function PUT(request) {
   // RBAC check
-  const authResultPut = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  const authResultPut = await ensurePermission(
+    request,
+    RESOURCES.SETTINGS,
+    PERMISSIONS.UPDATE
+  );
   if (authResultPut.authorized === false) return authResultPut.response;
 
   let db;
   try {
     const body = await request.json();
     const { id, name, provider, category_id } = body;
-    if (!id) return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
+    if (!id)
+      return NextResponse.json(
+        { success: false, error: 'id is required' },
+        { status: 400 }
+      );
 
     db = await dbConnect();
-    await db.execute('UPDATE softwares SET name = COALESCE(?, name), provider = COALESCE(?, provider), category_id = COALESCE(?, category_id) WHERE id = ?', [name ?? null, provider ?? null, category_id ?? null, id]);
+    await db.execute(
+      'UPDATE softwares SET name = COALESCE(?, name), provider = COALESCE(?, provider), category_id = COALESCE(?, category_id) WHERE id = ?',
+      [name ?? null, provider ?? null, category_id ?? null, id]
+    );
 
     return NextResponse.json({ success: true, message: 'Software updated' });
   } catch (error) {
     console.error('Softwares PUT error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update software', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update software',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -90,19 +143,30 @@ export async function PUT(request) {
 
 export async function DELETE(request) {
   // RBAC check
-  const authResultDel = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.DELETE);
+  const authResultDel = await ensurePermission(
+    request,
+    RESOURCES.SETTINGS,
+    PERMISSIONS.DELETE
+  );
   if (authResultDel.authorized === false) return authResultDel.response;
 
   let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    if (!id) return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
+    if (!id)
+      return NextResponse.json(
+        { success: false, error: 'id is required' },
+        { status: 400 }
+      );
 
     db = await dbConnect();
     try {
-      await db.execute('DELETE FROM software_versions WHERE software_id = ?', [id]);
-    } catch {} finally {
+      await db.execute('DELETE FROM software_versions WHERE software_id = ?', [
+        id,
+      ]);
+    } catch {
+    } finally {
       if (db) db.release();
     }
     await db.execute('DELETE FROM softwares WHERE id = ?', [id]);
@@ -110,6 +174,13 @@ export async function DELETE(request) {
     return NextResponse.json({ success: true, message: 'Software deleted' });
   } catch (error) {
     console.error('Softwares DELETE error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete software', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to delete software',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }

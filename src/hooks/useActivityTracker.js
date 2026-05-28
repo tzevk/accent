@@ -32,7 +32,7 @@ export function useActivityTracker() {
   // Send batched activity data to server
   const flushActivityBatch = useCallback(async () => {
     if (!user?.id || activityBatchRef.current.length === 0) return;
-    
+
     const batch = [...activityBatchRef.current];
     activityBatchRef.current = [];
 
@@ -45,8 +45,8 @@ export function useActivityTracker() {
           batch: true,
           activities: batch,
           userId: user.id,
-          timestamp: new Date().toISOString()
-        })
+          timestamp: new Date().toISOString(),
+        }),
       });
     } catch {
       // Silently fail - don't spam console
@@ -54,39 +54,45 @@ export function useActivityTracker() {
   }, [user?.id]);
 
   // Queue activity data (batched)
-  const queueActivityData = useCallback((data) => {
-    if (!user?.id) return;
-    activityBatchRef.current.push({
-      ...data,
-      userId: user.id,
-      timestamp: new Date().toISOString()
-    });
-  }, [user?.id]);
+  const queueActivityData = useCallback(
+    (data) => {
+      if (!user?.id) return;
+      activityBatchRef.current.push({
+        ...data,
+        userId: user.id,
+        timestamp: new Date().toISOString(),
+      });
+    },
+    [user?.id]
+  );
 
   // Send important activity data immediately
-  const sendActivityData = useCallback(async (data) => {
-    if (!user?.id) return;
+  const sendActivityData = useCallback(
+    async (data) => {
+      if (!user?.id) return;
 
-    try {
-      await fetch('/api/activity-logs/track-activity', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...data,
-          userId: user.id,
-          timestamp: new Date().toISOString()
-        })
-      });
-    } catch {
-      // Silently fail
-    }
-  }, [user?.id]);
+      try {
+        await fetch('/api/activity-logs/track-activity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            ...data,
+            userId: user.id,
+            timestamp: new Date().toISOString(),
+          }),
+        });
+      } catch {
+        // Silently fail
+      }
+    },
+    [user?.id]
+  );
 
   // Record user activity (batched, not immediate)
   const recordActivity = useCallback(() => {
     const now = Date.now();
-    
+
     // If was idle, mark as active again
     if (isIdleRef.current) {
       isIdleRef.current = false;
@@ -94,7 +100,7 @@ export function useActivityTracker() {
         actionType: 'status_change',
         resourceType: 'session',
         description: 'User became active',
-        details: { status: 'active' }
+        details: { status: 'active' },
       });
     }
 
@@ -103,26 +109,29 @@ export function useActivityTracker() {
   }, [queueActivityData]);
 
   // Track page navigation
-  const trackPageView = useCallback((pathname) => {
-    const now = Date.now();
-    const timeOnPreviousPage = now - pageStartTimeRef.current;
+  const trackPageView = useCallback(
+    (pathname) => {
+      const now = Date.now();
+      const timeOnPreviousPage = now - pageStartTimeRef.current;
 
-    // Only track if spent more than 2 seconds on previous page
-    if (currentPageRef.current && timeOnPreviousPage > 2000) {
-      queueActivityData({
-        actionType: 'view_page',
-        resourceType: 'page',
-        description: `Viewed ${currentPageRef.current}`,
-        details: {
-          page: currentPageRef.current,
-          durationMs: timeOnPreviousPage
-        }
-      });
-    }
+      // Only track if spent more than 2 seconds on previous page
+      if (currentPageRef.current && timeOnPreviousPage > 2000) {
+        queueActivityData({
+          actionType: 'view_page',
+          resourceType: 'page',
+          description: `Viewed ${currentPageRef.current}`,
+          details: {
+            page: currentPageRef.current,
+            durationMs: timeOnPreviousPage,
+          },
+        });
+      }
 
-    currentPageRef.current = pathname;
-    pageStartTimeRef.current = now;
-  }, [queueActivityData]);
+      currentPageRef.current = pathname;
+      pageStartTimeRef.current = now;
+    },
+    [queueActivityData]
+  );
 
   // Send heartbeat
   const sendHeartbeat = useCallback(() => {
@@ -139,8 +148,8 @@ export function useActivityTracker() {
         idleTime: idleTimeRef.current,
         activityCount: activityCountRef.current,
         isIdle: isIdleRef.current,
-        currentPage: currentPageRef.current
-      }
+        currentPage: currentPageRef.current,
+      },
     });
   }, [queueActivityData]);
 
@@ -155,7 +164,7 @@ export function useActivityTracker() {
         actionType: 'status_change',
         resourceType: 'session',
         description: 'User became idle',
-        details: { status: 'idle' }
+        details: { status: 'idle' },
       });
     }
 
@@ -204,9 +213,18 @@ export function useActivityTracker() {
 
     // Set up intervals - but delay start to not interfere with page load
     setTimeout(() => {
-      heartbeatIntervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
-      idleCheckIntervalRef.current = setInterval(checkIdle, IDLE_CHECK_INTERVAL);
-      batchIntervalRef.current = setInterval(flushActivityBatch, BATCH_INTERVAL);
+      heartbeatIntervalRef.current = setInterval(
+        sendHeartbeat,
+        HEARTBEAT_INTERVAL
+      );
+      idleCheckIntervalRef.current = setInterval(
+        checkIdle,
+        IDLE_CHECK_INTERVAL
+      );
+      batchIntervalRef.current = setInterval(
+        flushActivityBatch,
+        BATCH_INTERVAL
+      );
     }, 5000); // Wait 5 seconds after mount before starting intervals
 
     // Don't send initial session start immediately - queue it for the first batch
@@ -214,27 +232,30 @@ export function useActivityTracker() {
       actionType: 'status_change',
       resourceType: 'session',
       description: 'Session started',
-      details: { status: 'active' }
+      details: { status: 'active' },
     });
 
     // Handle browser close
     const handleBeforeUnload = () => {
       flushActivityBatch();
-      
+
       const totalSessionTime = Date.now() - sessionStartRef.current;
-      navigator.sendBeacon('/api/activity-logs/track-activity', JSON.stringify({
-        userId: user.id,
-        actionType: 'status_change',
-        resourceType: 'session',
-        description: 'Session ended',
-        details: {
-          status: 'ended',
-          totalSessionMs: totalSessionTime,
-          activeTime: activeTimeRef.current,
-          idleTime: idleTimeRef.current
-        },
-        timestamp: new Date().toISOString()
-      }));
+      navigator.sendBeacon(
+        '/api/activity-logs/track-activity',
+        JSON.stringify({
+          userId: user.id,
+          actionType: 'status_change',
+          resourceType: 'session',
+          description: 'Session ended',
+          details: {
+            status: 'ended',
+            totalSessionMs: totalSessionTime,
+            activeTime: activeTimeRef.current,
+            idleTime: idleTimeRef.current,
+          },
+          timestamp: new Date().toISOString(),
+        })
+      );
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -258,7 +279,15 @@ export function useActivityTracker() {
       clearInterval(batchIntervalRef.current);
       clearTimeout(activityTimeout);
     };
-  }, [user?.id, recordActivity, trackPageView, sendHeartbeat, sendActivityData, checkIdle, flushActivityBatch]);
+  }, [
+    user?.id,
+    recordActivity,
+    trackPageView,
+    sendHeartbeat,
+    sendActivityData,
+    checkIdle,
+    flushActivityBatch,
+  ]);
 
   return { recordActivity, trackPageView, isIdle: isIdleRef.current };
 }

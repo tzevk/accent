@@ -5,7 +5,14 @@ import { useSession } from '@/context/SessionContext';
 
 const IDLE_WARNING_THRESHOLD = 1 * 60 * 1000; // 1 minute (testing — change back to 30 * 60 * 1000)
 const IDLE_CHECK_INTERVAL = 5 * 1000; // Check every 5 seconds (testing — change back to 15 * 1000)
-const INTERACTION_EVENTS = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+const INTERACTION_EVENTS = [
+  'mousemove',
+  'mousedown',
+  'keydown',
+  'scroll',
+  'touchstart',
+  'click',
+];
 
 /**
  * useIdleMonitor - Monitors mouse/keyboard interaction idle time.
@@ -50,8 +57,8 @@ export function useIdleMonitor() {
           resourceType: 'idle_monitor',
           description: 'User resumed from extended idle',
           details: { status: 'resumed' },
-          timestamp: new Date().toISOString()
-        })
+          timestamp: new Date().toISOString(),
+        }),
       }).catch(() => {});
     }
   }, [isIdle, user?.id]);
@@ -76,7 +83,7 @@ export function useIdleMonitor() {
     };
 
     // Attach listeners
-    INTERACTION_EVENTS.forEach(evt => {
+    INTERACTION_EVENTS.forEach((evt) => {
       window.addEventListener(evt, throttledActivity, { passive: true });
     });
 
@@ -88,7 +95,7 @@ export function useIdleMonitor() {
       // Accumulate idle delta into cumulative total
       const delta = secs - prevIdleRef.current;
       if (delta > 0) {
-        setCumulativeIdleSeconds(prev => prev + delta);
+        setCumulativeIdleSeconds((prev) => prev + delta);
       }
       prevIdleRef.current = secs;
       setIdleSeconds(secs);
@@ -109,16 +116,16 @@ export function useIdleMonitor() {
             description: 'User idle for 30+ minutes',
             details: {
               status: 'idle_warning',
-              idleMinutes: Math.floor(elapsed / 60000)
+              idleMinutes: Math.floor(elapsed / 60000),
             },
-            timestamp: new Date().toISOString()
-          })
+            timestamp: new Date().toISOString(),
+          }),
         }).catch(() => {});
       }
     }, IDLE_CHECK_INTERVAL);
 
     return () => {
-      INTERACTION_EVENTS.forEach(evt => {
+      INTERACTION_EVENTS.forEach((evt) => {
         window.removeEventListener(evt, throttledActivity);
       });
       clearInterval(intervalRef.current);
@@ -126,5 +133,12 @@ export function useIdleMonitor() {
     };
   }, [user?.id, handleActivity]);
 
-  return { idleSeconds, cumulativeIdleSeconds, isIdle, dismiss, dismissed, handleActivity };
+  return {
+    idleSeconds,
+    cumulativeIdleSeconds,
+    isIdle,
+    dismiss,
+    dismissed,
+    handleActivity,
+  };
 }

@@ -1,9 +1,11 @@
 # Support Ticket System Documentation
 
 ## Overview
+
 A structured employee support ticket system with automatic routing to HR or Admin departments based on request category.
 
 ## Ticket Flow
+
 ```
 New → Under Review → In Progress → Waiting for Employee → Resolved → Closed
 ```
@@ -43,31 +45,35 @@ New → Under Review → In Progress → Waiting for Employee → Resolved → C
 ## Ticket Creation (Employee Side)
 
 ### Required Fields
+
 - **Subject**: Brief summary of the request
 - **Category**: Determines routing to HR or Admin
 - **Description**: Detailed explanation of the request
 - **Priority**: Low, Medium, High, or Urgent
 
 ### Optional Fields
+
 - **Attachment URL**: Link to supporting documents
 
 ### Categories & Routing
 
 #### HR Department
-| Category | Icon | Description |
-|----------|------|-------------|
-| Payroll | 💰 | Salary, deductions, tax issues |
-| Leave | 🏖️ | Leave applications, balance queries |
-| Policy | 📋 | Company policies, guidelines |
-| Confidential Matters | 🔒 | Private HR matters (restricted) |
+
+| Category             | Icon | Description                         |
+| -------------------- | ---- | ----------------------------------- |
+| Payroll              | 💰   | Salary, deductions, tax issues      |
+| Leave                | 🏖️   | Leave applications, balance queries |
+| Policy               | 📋   | Company policies, guidelines        |
+| Confidential Matters | 🔒   | Private HR matters (restricted)     |
 
 #### Admin Department
-| Category | Icon | Description |
-|----------|------|-------------|
-| Access Cards | 🪪 | ID cards, access permissions |
-| Seating | 💺 | Desk allocation, workspace requests |
-| Maintenance | 🔧 | Facility issues, repairs |
-| General Request | 📝 | Other administrative requests |
+
+| Category        | Icon | Description                         |
+| --------------- | ---- | ----------------------------------- |
+| Access Cards    | 🪪   | ID cards, access permissions        |
+| Seating         | 💺   | Desk allocation, workspace requests |
+| Maintenance     | 🔧   | Facility issues, repairs            |
+| General Request | 📝   | Other administrative requests       |
 
 ## Routing Logic
 
@@ -85,22 +91,24 @@ Tickets are automatically routed when created:
 
 ## Priority Levels
 
-| Priority | Color | Description |
-|----------|-------|-------------|
-| Low | Gray | Can wait, not blocking work |
-| Medium | Blue | Normal priority |
-| High | Orange | Needs attention soon |
-| Urgent | Red | Critical, blocking work |
+| Priority | Color  | Description                 |
+| -------- | ------ | --------------------------- |
+| Low      | Gray   | Can wait, not blocking work |
+| Medium   | Blue   | Normal priority             |
+| High     | Orange | Needs attention soon        |
+| Urgent   | Red    | Critical, blocking work     |
 
 ## Employee Features
 
 ### Dashboard View
+
 - Statistics cards showing ticket counts by status
 - Filter by status, priority, or department
 - Search by ticket number, subject, or description
 - Click any ticket to view full details
 
 ### Ticket Creation
+
 1. Click "Create Ticket" button
 2. Fill in required fields:
    - Subject
@@ -111,6 +119,7 @@ Tickets are automatically routed when created:
 3. Submit
 
 ### Ticket Tracking
+
 - View all your submitted tickets
 - Real-time status updates
 - Comment thread for communication
@@ -120,6 +129,7 @@ Tickets are automatically routed when created:
 ## Admin/HR Features
 
 ### Management Dashboard
+
 - View all tickets routed to your department
 - Filter by status, priority, category, and department
 - Search across all fields including employee names
@@ -183,23 +193,28 @@ CREATE TABLE ticket_comments (
 ### API Endpoints
 
 #### GET /api/tickets
+
 - List tickets (filtered by user or all for admins)
 - Query params: status, priority, routed_to, category, all
 
 #### POST /api/tickets
+
 - Create new ticket
 - Auto-generates ticket number (TKT-YYYYMM-####)
 - Auto-routes based on category
 
 #### GET /api/tickets/[id]
+
 - Get single ticket with comments
 - Includes user names, assignment info
 
 #### PUT /api/tickets
+
 - Update ticket status, priority, assignment
 - Admin/owner only
 
 #### POST /api/tickets/[id]
+
 - Add comment to ticket
 - Auto-updates status from "waiting_for_employee" when employee comments
 
@@ -223,6 +238,7 @@ src/
 ## User Experience
 
 ### Employee Flow
+
 1. Employee creates ticket → selects category
 2. System shows "Routed to [HR/Admin]" confirmation
 3. Employee tracks progress in dashboard
@@ -231,6 +247,7 @@ src/
 6. Sees resolution notes when completed
 
 ### Admin/HR Flow
+
 1. New tickets appear in dashboard
 2. Review and move to "Under Review"
 3. Assign to team member if needed
@@ -242,6 +259,7 @@ src/
 ## Best Practices
 
 ### For Employees
+
 - Choose the correct category for faster routing
 - Provide detailed descriptions
 - Attach relevant documents
@@ -249,6 +267,7 @@ src/
 - Review resolution notes before closing
 
 ### For Admin/HR
+
 - Acknowledge tickets quickly (New → Under Review)
 - Assign to appropriate team members
 - Add regular updates via comments
@@ -257,6 +276,7 @@ src/
 - Close tickets only when confirmed complete
 
 ## Future Enhancements
+
 - Email notifications on status changes
 - SLA tracking by priority level
 - Ticket templates for common requests

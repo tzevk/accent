@@ -22,7 +22,9 @@ export default function MyWorkLogsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingLog, setEditingLog] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split('T')[0]
+  );
   const [filterType, setFilterType] = useState('all');
   const [projects, setProjects] = useState([]);
 
@@ -35,7 +37,7 @@ export default function MyWorkLogsPage() {
     priority: 'medium',
     status: 'completed',
     time_spent: '',
-    project_id: ''
+    project_id: '',
   });
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function MyWorkLogsPage() {
 
       const response = await fetch(`/api/work-logs?${params}`);
       const data = await response.json();
-      
+
       if (data.success) {
         setLogs(data.data);
       }
@@ -85,21 +87,19 @@ export default function MyWorkLogsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     try {
       const method = editingLog ? 'PUT' : 'POST';
-      const body = editingLog 
-        ? { ...formData, id: editingLog.id }
-        : formData;
+      const body = editingLog ? { ...formData, id: editingLog.id } : formData;
 
       const response = await fetch('/api/work-logs', {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
-      
+
       if (data.success) {
         setShowForm(false);
         setEditingLog(null);
@@ -125,7 +125,7 @@ export default function MyWorkLogsPage() {
       priority: log.priority,
       status: log.status,
       time_spent: log.time_spent || '',
-      project_id: log.project_id || ''
+      project_id: log.project_id || '',
     });
     setShowForm(true);
   };
@@ -135,11 +135,11 @@ export default function MyWorkLogsPage() {
 
     try {
       const response = await fetch(`/api/work-logs?id=${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
 
       const data = await response.json();
-      
+
       if (data.success) {
         fetchLogs();
       } else {
@@ -161,39 +161,56 @@ export default function MyWorkLogsPage() {
       priority: 'medium',
       status: 'completed',
       time_spent: '',
-      project_id: ''
+      project_id: '',
     });
   };
 
   const getLogTypeColor = (type) => {
     switch (type) {
-      case 'plan': return 'bg-blue-100 text-blue-800';
-      case 'done': return 'bg-green-100 text-green-800';
-      case 'note': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'plan':
+        return 'bg-blue-100 text-blue-800';
+      case 'done':
+        return 'bg-green-100 text-green-800';
+      case 'note':
+        return 'bg-gray-100 text-gray-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getPriorityColor = (priority) => {
     switch (priority) {
-      case 'high': return 'bg-red-100 text-red-800';
-      case 'medium': return 'bg-yellow-100 text-yellow-800';
-      case 'low': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'high':
+        return 'bg-red-100 text-red-800';
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'low':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'completed': return <CheckCircleIcon className="w-5 h-5 text-green-600" />;
-      case 'in_progress': return <ClockIcon className="w-5 h-5 text-blue-600" />;
-      case 'blocked': return <ExclamationCircleIcon className="w-5 h-5 text-red-600" />;
-      default: return <ClockIcon className="w-5 h-5 text-gray-600" />;
+      case 'completed':
+        return <CheckCircleIcon className="w-5 h-5 text-green-600" />;
+      case 'in_progress':
+        return <ClockIcon className="w-5 h-5 text-blue-600" />;
+      case 'blocked':
+        return <ExclamationCircleIcon className="w-5 h-5 text-red-600" />;
+      default:
+        return <ClockIcon className="w-5 h-5 text-gray-600" />;
     }
   };
 
   if (authLoading) {
-    return <LoadingSpinner message="Loading Work Logs" subMessage="Fetching your entries..." />;
+    return (
+      <LoadingSpinner
+        message="Loading Work Logs"
+        subMessage="Fetching your entries..."
+      />
+    );
   }
 
   if (!user) {
@@ -204,7 +221,7 @@ export default function MyWorkLogsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -218,7 +235,9 @@ export default function MyWorkLogsPage() {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Date
+              </label>
               <input
                 type="date"
                 value={selectedDate}
@@ -227,7 +246,9 @@ export default function MyWorkLogsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Type
+              </label>
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
@@ -263,24 +284,32 @@ export default function MyWorkLogsPage() {
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">
                   {editingLog ? 'Edit Work Log' : 'Add Work Log'}
                 </h2>
-                
+
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Date *</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Date *
+                      </label>
                       <input
                         type="date"
                         value={formData.log_date}
-                        onChange={(e) => setFormData({ ...formData, log_date: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, log_date: e.target.value })
+                        }
                         required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Type *</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Type *
+                      </label>
                       <select
                         value={formData.log_type}
-                        onChange={(e) => setFormData({ ...formData, log_type: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, log_type: e.target.value })
+                        }
                         required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       >
@@ -292,11 +321,15 @@ export default function MyWorkLogsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Title *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Title *
+                    </label>
                     <input
                       type="text"
                       value={formData.title}
-                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, title: e.target.value })
+                      }
                       required
                       placeholder="Brief description of the task"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -304,10 +337,17 @@ export default function MyWorkLogsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Description
+                    </label>
                     <textarea
                       value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          description: e.target.value,
+                        })
+                      }
                       rows={4}
                       placeholder="Detailed description of what you plan to do or what you did..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -316,10 +356,14 @@ export default function MyWorkLogsPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Priority
+                      </label>
                       <select
                         value={formData.priority}
-                        onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, priority: e.target.value })
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       >
                         <option value="low">Low</option>
@@ -328,10 +372,14 @@ export default function MyWorkLogsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Status
+                      </label>
                       <select
                         value={formData.status}
-                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, status: e.target.value })
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       >
                         <option value="pending">Pending</option>
@@ -341,11 +389,18 @@ export default function MyWorkLogsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Time Spent (mins)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Time Spent (mins)
+                      </label>
                       <input
                         type="number"
                         value={formData.time_spent}
-                        onChange={(e) => setFormData({ ...formData, time_spent: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            time_spent: e.target.value,
+                          })
+                        }
                         placeholder="30"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       />
@@ -354,26 +409,41 @@ export default function MyWorkLogsPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Category
+                      </label>
                       <input
                         type="text"
                         value={formData.category}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, category: e.target.value })
+                        }
                         placeholder="e.g., Development, Meeting, Research"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Project</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Project
+                      </label>
                       <select
                         value={formData.project_id}
-                        onChange={(e) => setFormData({ ...formData, project_id: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            project_id: e.target.value,
+                          })
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       >
                         <option value="">-- Select Project --</option>
                         {projects.map((p) => (
-                          <option key={p.id ?? p.project_id} value={p.id ?? p.project_id}>
-                            {p.project_id ? `${p.project_id} — ` : ''}{p.name || `Project #${p.id}`}
+                          <option
+                            key={p.id ?? p.project_id}
+                            value={p.id ?? p.project_id}
+                          >
+                            {p.project_id ? `${p.project_id} — ` : ''}
+                            {p.name || `Project #${p.id}`}
                           </option>
                         ))}
                       </select>
@@ -408,33 +478,50 @@ export default function MyWorkLogsPage() {
         {/* Logs List */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading work logs...</div>
+            <div className="p-8 text-center text-gray-500">
+              Loading work logs...
+            </div>
           ) : logs.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <p>No work logs found for this date.</p>
-              <p className="text-sm mt-2">Click &quot;Add Work Log&quot; to create your first entry.</p>
+              <p className="text-sm mt-2">
+                Click &quot;Add Work Log&quot; to create your first entry.
+              </p>
             </div>
           ) : (
             <div className="divide-y divide-gray-200">
               {logs.map((log) => (
-                <div key={log.id} className="p-6 hover:bg-gray-50 transition-colors">
+                <div
+                  key={log.id}
+                  className="p-6 hover:bg-gray-50 transition-colors"
+                >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         {getStatusIcon(log.status)}
-                        <h3 className="text-lg font-semibold text-gray-900">{log.title}</h3>
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getLogTypeColor(log.log_type)}`}>
-                          {log.log_type === 'plan' ? 'Plan' : log.log_type === 'done' ? 'Done' : 'Note'}
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {log.title}
+                        </h3>
+                        <span
+                          className={`px-2 py-1 text-xs font-medium rounded-full ${getLogTypeColor(log.log_type)}`}
+                        >
+                          {log.log_type === 'plan'
+                            ? 'Plan'
+                            : log.log_type === 'done'
+                              ? 'Done'
+                              : 'Note'}
                         </span>
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getPriorityColor(log.priority)}`}>
+                        <span
+                          className={`px-2 py-1 text-xs font-medium rounded-full ${getPriorityColor(log.priority)}`}
+                        >
                           {log.priority}
                         </span>
                       </div>
-                      
+
                       {log.description && (
                         <p className="text-gray-600 mb-3">{log.description}</p>
                       )}
-                      
+
                       <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
                         <div className="flex items-center gap-1">
                           <CalendarIcon className="w-4 h-4" />
@@ -446,18 +533,24 @@ export default function MyWorkLogsPage() {
                             {log.time_spent} mins
                           </div>
                         )}
-                        {log.project_id && (() => {
-                          const proj = projects.find(p => String(p.id) === String(log.project_id) || String(p.project_id) === String(log.project_id));
-                          return proj ? (
-                            <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs font-medium">
-                              {proj.project_id ? `${proj.project_id} — ` : ''}{proj.name || `Project #${proj.id}`}
-                            </span>
-                          ) : (
-                            <span className="px-2 py-1 bg-gray-100 rounded text-xs">
-                              Project #{log.project_id}
-                            </span>
-                          );
-                        })()}
+                        {log.project_id &&
+                          (() => {
+                            const proj = projects.find(
+                              (p) =>
+                                String(p.id) === String(log.project_id) ||
+                                String(p.project_id) === String(log.project_id)
+                            );
+                            return proj ? (
+                              <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs font-medium">
+                                {proj.project_id ? `${proj.project_id} — ` : ''}
+                                {proj.name || `Project #${proj.id}`}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 bg-gray-100 rounded text-xs">
+                                Project #{log.project_id}
+                              </span>
+                            );
+                          })()}
                         {log.category && (
                           <span className="px-2 py-1 bg-gray-100 rounded text-xs">
                             {log.category}
@@ -468,7 +561,7 @@ export default function MyWorkLogsPage() {
                         </span>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-2 ml-4">
                       <button
                         onClick={() => handleEdit(log)}

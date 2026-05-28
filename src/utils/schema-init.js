@@ -1,9 +1,9 @@
 /**
  * Database Schema Initialization
- * 
+ *
  * This module handles all table creation and schema migrations.
  * It should be run ONCE at application startup, not on every API request.
- * 
+ *
  * Usage:
  * - Import and call ensureSchema() in your app initialization
  * - Or run via: node scripts/init-schema.js
@@ -22,7 +22,7 @@ export async function ensureSchema() {
   // Return cached promise if already initializing/initialized
   if (initPromise) return initPromise;
   if (schemaInitialized) return true;
-  
+
   initPromise = doSchemaInit();
   return initPromise;
 }
@@ -30,9 +30,9 @@ export async function ensureSchema() {
 async function doSchemaInit() {
   const startTime = Date.now();
   console.log('🔧 Initializing database schema...');
-  
+
   const db = await dbConnect();
-  
+
   try {
     // Run all schema creation in parallel where safe
     await Promise.all([
@@ -40,25 +40,25 @@ async function doSchemaInit() {
       initUsersTable(db),
       initBankMasterTable(db),
     ]);
-    
+
     // Tables with foreign keys - run after base tables
     await Promise.all([
       initLeadsTable(db),
       initProjectsTable(db),
       initProposalsTable(db),
     ]);
-    
+
     // Tables depending on the above
     await Promise.all([
       initFollowUpsTable(db),
       initWorkLogsTable(db),
       initUserActivityAssignmentsTable(db),
     ]);
-    
+
     schemaInitialized = true;
     const elapsed = Date.now() - startTime;
     console.log(`✅ Database schema initialized in ${elapsed}ms`);
-    
+
     return true;
   } catch (error) {
     console.error('❌ Schema initialization failed:', error);

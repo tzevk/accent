@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 /**
  * GET /api/payroll/salary-profile/batch
@@ -13,13 +17,17 @@ import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permission
  *   full  - if "1" returns all columns instead of the lightweight subset
  */
 export async function GET(request) {
-  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.EMPLOYEES,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
   try {
     const { searchParams } = new URL(request.url);
-    const idsParam = searchParams.get('ids');      // e.g. "1,2,3,4"
+    const idsParam = searchParams.get('ids'); // e.g. "1,2,3,4"
     const fullMode = searchParams.get('full') === '1';
 
     connection = await dbConnect();
@@ -56,11 +64,11 @@ export async function GET(request) {
 
     // Return as a map keyed by employee_id for O(1) lookup
     const dataMap = {};
-    rows.forEach(row => {
+    rows.forEach((row) => {
       dataMap[row.employee_id] = {
         ...row,
         pl_total: parseInt(row.pl_total) || 0,
-        gross_salary: parseFloat(row.gross_salary) || 0
+        gross_salary: parseFloat(row.gross_salary) || 0,
       };
     });
 

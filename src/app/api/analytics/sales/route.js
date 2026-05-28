@@ -1,5 +1,9 @@
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // Simple in-memory cache (per server instance) to reduce repeated aggregation cost
 // Keyed by period; stores both count and value payloads so metric switches are instant.
@@ -22,12 +26,19 @@ function getWindow(period) {
   else start.setDate(now.getDate() - 7); // weekly default
   // Normalize to 00:00
   start.setHours(0, 0, 0, 0);
-  return { start: start.toISOString().slice(0, 19).replace('T', ' '), end: now.toISOString().slice(0, 19).replace('T', ' ') };
+  return {
+    start: start.toISOString().slice(0, 19).replace('T', ' '),
+    end: now.toISOString().slice(0, 19).replace('T', ' '),
+  };
 }
 
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   const { searchParams } = new URL(request.url);
@@ -37,11 +48,22 @@ export async function GET(request) {
   const cacheKey = period; // aggregation independent of metric (we store both)
   const nowMs = Date.now();
   const cached = !nocache && salesCache.get(cacheKey);
-  if (cached && (nowMs - cached.ts) < CACHE_TTL_MS) {
+  if (cached && nowMs - cached.ts < CACHE_TTL_MS) {
     const pick = metric === 'value' ? cached.data.value : cached.data.count;
-    const total = metric === 'value' ? cached.data.totals.value : cached.data.totals.count;
-    const conversion = metric === 'value' ? cached.data.conversion.value : cached.data.conversion.count;
-    return Response.json({ success: true, data: pick, total, conversion, period, metric });
+    const total =
+      metric === 'value' ? cached.data.totals.value : cached.data.totals.count;
+    const conversion =
+      metric === 'value'
+        ? cached.data.conversion.value
+        : cached.data.conversion.count;
+    return Response.json({
+      success: true,
+      data: pick,
+      total,
+      conversion,
+      period,
+      metric,
+    });
   }
   let db;
   try {
@@ -50,9 +72,13 @@ export async function GET(request) {
 
     // Ensure helpful composite index exists (created_at, status) for time-window + group by
     try {
-      const [idxRows] = await db.execute(`SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name='proposals' AND index_name='idx_proposals_created_status' LIMIT 1`);
+      const [idxRows] = await db.execute(
+        `SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name='proposals' AND index_name='idx_proposals_created_status' LIMIT 1`
+      );
       if (!idxRows.length) {
-        await db.execute(`CREATE INDEX idx_proposals_created_status ON proposals (created_at, status)`);
+        await db.execute(
+          `CREATE INDEX idx_proposals_created_status ON proposals (created_at, status)`
+        );
       }
     } catch {
       // Silent fail; index creation is opportunistic
@@ -89,10 +115,22 @@ export async function GET(request) {
       { name: 'Approved', value: outAmount.Approved, color: '#10B981' },
       { name: 'Draft', value: outAmount.Draft, color: '#60A5FA' },
     ];
-    const totalCount = dataCount.reduce((a, d) => a + (Number(d.value) || 0), 0);
-    const totalValue = dataValue.reduce((a, d) => a + (Number(d.value) || 0), 0);
-    const conversionCount = totalCount > 0 ? Math.round(((outCount.Approved || 0) / totalCount) * 100) : 0;
-    const conversionValue = totalValue > 0 ? Math.round(((outAmount.Approved || 0) / totalValue) * 100) : 0;
+    const totalCount = dataCount.reduce(
+      (a, d) => a + (Number(d.value) || 0),
+      0
+    );
+    const totalValue = dataValue.reduce(
+      (a, d) => a + (Number(d.value) || 0),
+      0
+    );
+    const conversionCount =
+      totalCount > 0
+        ? Math.round(((outCount.Approved || 0) / totalCount) * 100)
+        : 0;
+    const conversionValue =
+      totalValue > 0
+        ? Math.round(((outAmount.Approved || 0) / totalValue) * 100)
+        : 0;
 
     // Cache both representations
     salesCache.set(cacheKey, {
@@ -101,16 +139,26 @@ export async function GET(request) {
         count: dataCount,
         value: dataValue,
         totals: { count: totalCount, value: totalValue },
-        conversion: { count: conversionCount, value: conversionValue }
-      }
+        conversion: { count: conversionCount, value: conversionValue },
+      },
     });
 
     const pick = metric === 'value' ? dataValue : dataCount;
     const total = metric === 'value' ? totalValue : totalCount;
     const conversion = metric === 'value' ? conversionValue : conversionCount;
-    return Response.json({ success: true, data: pick, total, conversion, period, metric });
+    return Response.json({
+      success: true,
+      data: pick,
+      total,
+      conversion,
+      period,
+      metric,
+    });
   } catch (error) {
     console.error('Sales analytics error:', error);
-    return Response.json({ success: false, error: 'Failed to load sales analytics' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to load sales analytics' },
+      { status: 500 }
+    );
   }
 }

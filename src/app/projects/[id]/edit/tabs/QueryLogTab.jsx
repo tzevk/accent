@@ -1,4 +1,4 @@
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function QueryLogTab({
   newQueryDescRef,
@@ -26,9 +26,7 @@ export default function QueryLogTab({
               d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          <h2 className="text-sm font-bold text-gray-900">
-            Query Log
-          </h2>
+          <h2 className="text-sm font-bold text-gray-900">Query Log</h2>
         </div>
         <p className="text-xs text-gray-500 mt-0.5">
           Log project queries and responses
@@ -184,7 +182,7 @@ export default function QueryLogTab({
                         newQuery.query_description.trim()
                       )
                     }
-                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newQuery.query_description && newQuery.query_description.trim() ? "bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newQuery.query_description && newQuery.query_description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                     title="Add query"
                   >
                     Add
@@ -196,18 +194,16 @@ export default function QueryLogTab({
                   key={q.id}
                   className="hover:bg-gray-50 transition-colors align-top"
                 >
-                  <td className="py-2 px-2 text-center">
-                    {index + 1}
-                  </td>
+                  <td className="py-2 px-2 text-center">{index + 1}</td>
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={q.query_description || ""}
+                      value={q.query_description || ''}
                       onChange={(e) =>
                         updateQueryRow(
                           q.id,
-                          "query_description",
-                          e.target.value,
+                          'query_description',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -216,12 +212,12 @@ export default function QueryLogTab({
                   <td className="py-2 px-2">
                     <input
                       type="date"
-                      value={q.query_issued_date || ""}
+                      value={q.query_issued_date || ''}
                       onChange={(e) =>
                         updateQueryRow(
                           q.id,
-                          "query_issued_date",
-                          e.target.value,
+                          'query_issued_date',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -230,12 +226,12 @@ export default function QueryLogTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={q.reply_from_client || ""}
+                      value={q.reply_from_client || ''}
                       onChange={(e) =>
                         updateQueryRow(
                           q.id,
-                          "reply_from_client",
-                          e.target.value,
+                          'reply_from_client',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -244,12 +240,12 @@ export default function QueryLogTab({
                   <td className="py-2 px-2">
                     <input
                       type="date"
-                      value={q.reply_received_date || ""}
+                      value={q.reply_received_date || ''}
                       onChange={(e) =>
                         updateQueryRow(
                           q.id,
-                          "reply_received_date",
-                          e.target.value,
+                          'reply_received_date',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -258,26 +254,18 @@ export default function QueryLogTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={q.query_updated_by || ""}
+                      value={q.query_updated_by || ''}
                       onChange={(e) =>
-                        updateQueryRow(
-                          q.id,
-                          "query_updated_by",
-                          e.target.value,
-                        )
+                        updateQueryRow(q.id, 'query_updated_by', e.target.value)
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                     />
                   </td>
                   <td className="py-2 px-2">
                     <select
-                      value={q.query_resolved || ""}
+                      value={q.query_resolved || ''}
                       onChange={(e) =>
-                        updateQueryRow(
-                          q.id,
-                          "query_resolved",
-                          e.target.value,
-                        )
+                        updateQueryRow(q.id, 'query_resolved', e.target.value)
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                     >
@@ -290,13 +278,9 @@ export default function QueryLogTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={q.remark || ""}
+                      value={q.remark || ''}
                       onChange={(e) =>
-                        updateQueryRow(
-                          q.id,
-                          "remark",
-                          e.target.value,
-                        )
+                        updateQueryRow(q.id, 'remark', e.target.value)
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                     />

@@ -42,7 +42,6 @@ export default function LiveMonitoringUserPage() {
         userData.id = userId;
       }
       setSelectedUser(userData);
-
     } catch (err) {
       setError(err?.message || 'Failed to load user dashboard');
     } finally {
@@ -98,4 +97,3 @@ export default function LiveMonitoringUserPage() {
   // Display the user's dashboard as it is
   return <UserDashboard verifiedUser={selectedUser} />;
 }
-

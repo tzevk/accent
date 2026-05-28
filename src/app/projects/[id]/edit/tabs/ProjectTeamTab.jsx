@@ -1,4 +1,9 @@
-import { UserIcon, PlusIcon, ChevronDownIcon, TrashIcon } from "@heroicons/react/24/outline";
+import {
+  UserIcon,
+  PlusIcon,
+  ChevronDownIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
 
 export default function ProjectTeamTab({
   toggleSection,
@@ -18,9 +23,7 @@ export default function ProjectTeamTab({
       <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
         <div className="flex items-center gap-2">
           <UserIcon className="h-4 w-4 text-[#7F2487]" />
-          <h2 className="text-sm font-bold text-gray-900">
-            Project Team
-          </h2>
+          <h2 className="text-sm font-bold text-gray-900">Project Team</h2>
         </div>
         <p className="text-xs text-gray-500 mt-0.5">
           Select team members from user master for this project
@@ -32,7 +35,7 @@ export default function ProjectTeamTab({
         <div className="border border-purple-100 rounded-lg overflow-hidden">
           <button
             type="button"
-            onClick={() => toggleSection("teamMemberAdd")}
+            onClick={() => toggleSection('teamMemberAdd')}
             className="w-full bg-gradient-to-br from-purple-25 via-white to-purple-25 px-4 py-3 flex items-center justify-between hover:bg-purple-50 transition-colors"
           >
             <div className="flex items-center gap-2">
@@ -42,7 +45,7 @@ export default function ProjectTeamTab({
               </h4>
             </div>
             <ChevronDownIcon
-              className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${openSections.teamMemberAdd ? "transform rotate-180" : ""}`}
+              className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${openSections.teamMemberAdd ? 'transform rotate-180' : ''}`}
             />
           </button>
 
@@ -53,9 +56,7 @@ export default function ProjectTeamTab({
                 <input
                   type="text"
                   value={teamMemberSearch}
-                  onChange={(e) =>
-                    setTeamMemberSearch(e.target.value)
-                  }
+                  onChange={(e) => setTeamMemberSearch(e.target.value)}
                   placeholder="Search users by name, email, or department..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]"
                 />
@@ -96,18 +97,16 @@ export default function ProjectTeamTab({
                           className="hover:bg-purple-50 transition-colors"
                         >
                           <td className="px-3 py-2 text-gray-900 font-mono text-xs">
-                            {user.employee_code ||
-                              user.employee_id ||
-                              user.id}
+                            {user.employee_code || user.employee_id || user.id}
                           </td>
                           <td className="px-3 py-2 text-gray-900 font-medium">
                             {user.full_name || user.username}
                           </td>
                           <td className="px-3 py-2 text-gray-600">
-                            {user.email || "-"}
+                            {user.email || '-'}
                           </td>
                           <td className="px-3 py-2 text-gray-600">
-                            {user.role_name || "-"}
+                            {user.role_name || '-'}
                           </td>
                           <td className="px-3 py-2 text-center">
                             <button
@@ -128,10 +127,10 @@ export default function ProjectTeamTab({
                   <UserIcon className="h-10 w-10 mx-auto text-gray-300 mb-2" />
                   <p className="text-sm">
                     {teamMemberSearch
-                      ? "No users found matching your search"
+                      ? 'No users found matching your search'
                       : allUsers.length === 0
-                        ? "No users loaded. Please refresh the page."
-                        : "All users have been added to the team"}
+                        ? 'No users loaded. Please refresh the page.'
+                        : 'All users have been added to the team'}
                   </p>
                 </div>
               )}
@@ -143,7 +142,7 @@ export default function ProjectTeamTab({
         <div className="border border-gray-200 rounded-lg overflow-hidden">
           <button
             type="button"
-            onClick={() => toggleSection("currentTeam")}
+            onClick={() => toggleSection('currentTeam')}
             className="w-full bg-gray-50 px-4 py-3 flex items-center justify-between hover:bg-gray-100 transition-colors"
           >
             <div className="flex items-center gap-2">
@@ -153,7 +152,7 @@ export default function ProjectTeamTab({
               </h4>
             </div>
             <ChevronDownIcon
-              className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${openSections.currentTeam ? "transform rotate-180" : ""}`}
+              className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${openSections.currentTeam ? 'transform rotate-180' : ''}`}
             />
           </button>
 
@@ -209,40 +208,25 @@ export default function ProjectTeamTab({
                             {member.email}
                           </td>
                           <td className="px-3 py-2 text-gray-600">
-                            {member.department || "-"}
+                            {member.department || '-'}
                           </td>
                           <td className="px-3 py-2 text-gray-600">
-                            {member.position || "-"}
+                            {member.position || '-'}
                           </td>
                           <td className="px-3 py-2">
                             <select
                               value={member.role}
                               onChange={(e) =>
-                                updateTeamMemberRole(
-                                  member.id,
-                                  e.target.value,
-                                )
+                                updateTeamMemberRole(member.id, e.target.value)
                               }
                               className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white hover:border-blue-400 focus:border-blue-500 focus:outline-none cursor-pointer"
                             >
-                              <option value="Team Member">
-                                Team Member
-                              </option>
-                              <option value="Project Lead">
-                                Project Lead
-                              </option>
-                              <option value="Designer">
-                                Designer
-                              </option>
-                              <option value="Engineer">
-                                Engineer
-                              </option>
-                              <option value="Drafter">
-                                Drafter
-                              </option>
-                              <option value="Coordinator">
-                                Coordinator
-                              </option>
+                              <option value="Team Member">Team Member</option>
+                              <option value="Project Lead">Project Lead</option>
+                              <option value="Designer">Designer</option>
+                              <option value="Engineer">Engineer</option>
+                              <option value="Drafter">Drafter</option>
+                              <option value="Coordinator">Coordinator</option>
                               <option value="QA/QC">QA/QC</option>
                               <option value="Site Supervisor">
                                 Site Supervisor
@@ -252,9 +236,7 @@ export default function ProjectTeamTab({
                           <td className="px-3 py-2 text-center">
                             <button
                               type="button"
-                              onClick={() =>
-                                removeTeamMember(member.id)
-                              }
+                              onClick={() => removeTeamMember(member.id)}
                               className="text-red-500 hover:text-red-700 p-1"
                               title="Remove from team"
                             >
@@ -297,9 +279,7 @@ export default function ProjectTeamTab({
                 <div className="text-2xl font-bold text-[#7F2487]">
                   {projectTeamMembers.length}
                 </div>
-                <div className="text-xs text-gray-600">
-                  Team Members
-                </div>
+                <div className="text-xs text-gray-600">Team Members</div>
               </div>
             </div>
           </div>

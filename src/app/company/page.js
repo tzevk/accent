@@ -4,7 +4,7 @@ import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
+import {
   PlusIcon,
   EyeIcon,
   PencilIcon,
@@ -22,7 +22,7 @@ import {
   MapPinIcon,
   DocumentTextIcon,
   UserIcon,
-  XMarkIcon
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Papa from 'papaparse';
 
@@ -32,14 +32,14 @@ export default function Company() {
   const [stats, setStats] = useState({
     total_companies: 0,
     with_leads: 0,
-    by_industry: {}
+    by_industry: {},
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [industryFilter, setIndustryFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
-  const [sortBy, setSortBy] = useState('created_at');
+  const [sortBy, setSortBy] = useState('company_id');
   const [sortOrder, setSortOrder] = useState('desc');
   const searchDebounceRef = useRef(null);
   const [activeTab, setActiveTab] = useState('list');
@@ -67,7 +67,7 @@ export default function Company() {
     sector: '',
     gstin: '',
     pan_number: '',
-    company_profile: ''
+    company_profile: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -80,7 +80,10 @@ export default function Company() {
   const fetchCompanies = async (searchOverride) => {
     try {
       setLoading(true);
-      const searchValue = typeof searchOverride !== 'undefined' ? searchOverride : debouncedSearchTerm;
+      const searchValue =
+        typeof searchOverride !== 'undefined'
+          ? searchOverride
+          : debouncedSearchTerm;
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: '20',
@@ -88,12 +91,12 @@ export default function Company() {
         sortOrder: sortOrder,
         ...(searchValue && { search: searchValue }),
         ...(industryFilter && { industry: industryFilter }),
-        ...(cityFilter && { city: cityFilter })
+        ...(cityFilter && { city: cityFilter }),
       });
 
       const response = await fetch(`/api/companies?${params}`);
       const result = await response.json();
-      
+
       if (result.success) {
         setCompanies(result.data);
         if (result.stats) {
@@ -102,8 +105,8 @@ export default function Company() {
           // Calculate stats from data if not provided
           setStats({
             total_companies: result.data.length,
-            with_leads: result.data.filter(c => c.lead_count > 0).length,
-            by_industry: {}
+            with_leads: result.data.filter((c) => c.lead_count > 0).length,
+            by_industry: {},
           });
         }
       }
@@ -120,7 +123,15 @@ export default function Company() {
       fetchCompanies();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, debouncedSearchTerm, industryFilter, cityFilter, sortBy, sortOrder, activeTab]);
+  }, [
+    currentPage,
+    debouncedSearchTerm,
+    industryFilter,
+    cityFilter,
+    sortBy,
+    sortOrder,
+    activeTab,
+  ]);
 
   // Debounce searchTerm
   useEffect(() => {
@@ -139,14 +150,14 @@ export default function Company() {
     setDebouncedSearchTerm('');
     setIndustryFilter('');
     setCityFilter('');
-    setSortBy('created_at');
+    setSortBy('company_id');
     setSortOrder('desc');
     setCurrentPage(1);
   };
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
@@ -161,15 +172,31 @@ export default function Company() {
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         alert('Company added successfully!');
         setFormData({
-          company_id: '', company_name: '', industry: '', company_size: '',
-          website: '', phone: '', email: '', address: '', city: '', state: '',
-          country: '', postal_code: '', description: '', founded_year: '',
-          revenue: '', notes: '', location: '', contact_person: '',
-          designation: '', mobile_number: '', sector: ''
+          company_id: '',
+          company_name: '',
+          industry: '',
+          company_size: '',
+          website: '',
+          phone: '',
+          email: '',
+          address: '',
+          city: '',
+          state: '',
+          country: '',
+          postal_code: '',
+          description: '',
+          founded_year: '',
+          revenue: '',
+          notes: '',
+          location: '',
+          contact_person: '',
+          designation: '',
+          mobile_number: '',
+          sector: '',
         });
         fetchCompanies();
         setActiveTab('list');
@@ -185,12 +212,19 @@ export default function Company() {
   };
 
   const handleDelete = async (id, companyName) => {
-    if (!confirm(`Are you sure you want to delete "${companyName}"? This action cannot be undone.`)) return;
+    if (
+      !confirm(
+        `Are you sure you want to delete "${companyName}"? This action cannot be undone.`
+      )
+    )
+      return;
 
     try {
-      const response = await fetch(`/api/companies/${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/companies/${id}`, {
+        method: 'DELETE',
+      });
       const result = await response.json();
-      
+
       if (result.success) {
         alert('Company deleted successfully!');
         fetchCompanies();
@@ -228,7 +262,7 @@ export default function Company() {
             console.error('CSV parsing error:', error);
             alert('Error parsing CSV file');
             setImporting(false);
-          }
+          },
         });
       } else {
         const formData = new FormData();
@@ -240,7 +274,7 @@ export default function Company() {
         });
 
         const result = await response.json();
-        
+
         if (result.success) {
           alert(`Successfully imported ${result.imported} companies!`);
           fetchCompanies();
@@ -259,33 +293,58 @@ export default function Company() {
 
   const processParsedData = async (data, fileType) => {
     try {
-      const validCompanies = data.filter(row => {
-        const hasCompanyId = row.company_id || row.Company_ID || row['Company ID'] || row.id || row.ID;
-        const hasCompanyName = row.company_name || row.Company_Name || row['Company Name'] || row.name || row.Name;
-        return hasCompanyId && hasCompanyName;
-      }).map(row => ({
-        company_id: row.company_id || row.Company_ID || row['Company ID'] || row.id || row.ID || '',
-        company_name: row.company_name || row.Company_Name || row['Company Name'] || row.name || row.Name || '',
-        industry: row.industry || row.Industry || '',
-        company_size: row.company_size || row.Company_Size || row['Company Size'] || '',
-        website: row.website || row.Website || '',
-        phone: row.phone || row.Phone || '',
-        email: row.email || row.Email || '',
-        address: row.address || row.Address || '',
-        city: row.city || row.City || '',
-        state: row.state || row.State || '',
-        country: row.country || row.Country || '',
-        postal_code: row.postal_code || row.Postal_Code || '',
-        description: row.description || row.Description || '',
-        founded_year: row.founded_year || row.Founded_Year || '',
-        revenue: row.revenue || row.Revenue || '',
-        notes: row.notes || row.Notes || '',
-        location: row.location || row.Location || '',
-        contact_person: row.contact_person || row.Contact_Person || '',
-        designation: row.designation || row.Designation || '',
-        mobile_number: row.mobile_number || row.Mobile || '',
-        sector: row.sector || row.Sector || ''
-      }));
+      const validCompanies = data
+        .filter((row) => {
+          const hasCompanyId =
+            row.company_id ||
+            row.Company_ID ||
+            row['Company ID'] ||
+            row.id ||
+            row.ID;
+          const hasCompanyName =
+            row.company_name ||
+            row.Company_Name ||
+            row['Company Name'] ||
+            row.name ||
+            row.Name;
+          return hasCompanyId && hasCompanyName;
+        })
+        .map((row) => ({
+          company_id:
+            row.company_id ||
+            row.Company_ID ||
+            row['Company ID'] ||
+            row.id ||
+            row.ID ||
+            '',
+          company_name:
+            row.company_name ||
+            row.Company_Name ||
+            row['Company Name'] ||
+            row.name ||
+            row.Name ||
+            '',
+          industry: row.industry || row.Industry || '',
+          company_size:
+            row.company_size || row.Company_Size || row['Company Size'] || '',
+          website: row.website || row.Website || '',
+          phone: row.phone || row.Phone || '',
+          email: row.email || row.Email || '',
+          address: row.address || row.Address || '',
+          city: row.city || row.City || '',
+          state: row.state || row.State || '',
+          country: row.country || row.Country || '',
+          postal_code: row.postal_code || row.Postal_Code || '',
+          description: row.description || row.Description || '',
+          founded_year: row.founded_year || row.Founded_Year || '',
+          revenue: row.revenue || row.Revenue || '',
+          notes: row.notes || row.Notes || '',
+          location: row.location || row.Location || '',
+          contact_person: row.contact_person || row.Contact_Person || '',
+          designation: row.designation || row.Designation || '',
+          mobile_number: row.mobile_number || row.Mobile || '',
+          sector: row.sector || row.Sector || '',
+        }));
 
       if (validCompanies.length === 0) {
         alert('No valid companies found in the file.');
@@ -300,7 +359,7 @@ export default function Company() {
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         alert(`Successfully imported ${result.imported} companies!`);
         fetchCompanies();
@@ -319,7 +378,7 @@ export default function Company() {
   const downloadTemplate = () => {
     const csvContent = `Company ID,Company Name,Industry,Company Size,Website,Phone,Email,City,State,Country,Contact Person,Designation,Sector,Notes
 COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@example.com,Mumbai,Maharashtra,India,John Smith,CEO,IT Services,Sample company`;
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -346,26 +405,27 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
             </div>
           </div>
         </div>
-        
+
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center">
             <UserGroupIcon className="h-8 w-8 text-blue-500" />
             <div className="ml-4">
               <p className="text-sm font-medium text-black">With Leads</p>
               <p className="text-2xl font-semibold text-gray-900">
-                {stats.with_leads || companies.filter(c => c.lead_count > 0).length}
+                {stats.with_leads ||
+                  companies.filter((c) => c.lead_count > 0).length}
               </p>
             </div>
           </div>
         </div>
-        
+
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center">
             <MapPinIcon className="h-8 w-8 text-green-500" />
             <div className="ml-4">
               <p className="text-sm font-medium text-black">Cities</p>
               <p className="text-2xl font-semibold text-gray-900">
-                {new Set(companies.map(c => c.city).filter(Boolean)).size}
+                {new Set(companies.map((c) => c.city).filter(Boolean)).size}
               </p>
             </div>
           </div>
@@ -376,13 +436,17 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
       <div className="bg-white rounded-lg border border-gray-200">
         <button
           type="button"
-          onClick={() => setShowImport(s => !s)}
+          onClick={() => setShowImport((s) => !s)}
           className="w-full flex items-center justify-between px-4 py-3 text-left"
         >
           <div className="flex items-center gap-2">
             <DocumentArrowUpIcon className="h-5 w-5 text-[#64126D]" />
-            <h3 className="text-base font-medium text-gray-900">Import Companies</h3>
-            <span className="ml-2 text-xs text-gray-500">CSV/Excel supported</span>
+            <h3 className="text-base font-medium text-gray-900">
+              Import Companies
+            </h3>
+            <span className="ml-2 text-xs text-gray-500">
+              CSV/Excel supported
+            </span>
           </div>
           {showImport ? (
             <ChevronUpIcon className="h-5 w-5 text-gray-500" />
@@ -400,7 +464,7 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                 <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
                 Download Template
               </button>
-              
+
               <label className="inline-flex items-center justify-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 transition-colors cursor-pointer">
                 <DocumentArrowUpIcon className="h-4 w-4 mr-2" />
                 {importing ? 'Importing...' : 'Import Excel/CSV'}
@@ -431,7 +495,8 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                    if (searchDebounceRef.current)
+                      clearTimeout(searchDebounceRef.current);
                     setDebouncedSearchTerm(searchTerm.trim());
                     setCurrentPage(1);
                     fetchCompanies(searchTerm.trim());
@@ -441,11 +506,14 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               />
             </div>
           </div>
-          
+
           <div className="sm:w-48">
             <select
               value={industryFilter}
-              onChange={(e) => { setIndustryFilter(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => {
+                setIndustryFilter(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
             >
               <option value="">All Industries</option>
@@ -458,11 +526,14 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               <option value="Other">Other</option>
             </select>
           </div>
-          
+
           <div className="sm:w-32">
             <select
               value={cityFilter}
-              onChange={(e) => { setCityFilter(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => {
+                setCityFilter(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
             >
               <option value="">All Cities</option>
@@ -497,7 +568,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
         ) : companies.length === 0 ? (
           <div className="p-8 text-center">
             <BuildingOfficeIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No companies found</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              No companies found
+            </h3>
             <p className="mt-1 text-sm text-gray-500">
               Get started by adding companies manually or importing from Excel.
             </p>
@@ -514,7 +587,7 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                     className="w-px whitespace-nowrap px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 transition-colors"
                     onClick={() => {
                       if (sortBy === 'company_id') {
-                        setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+                        setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
                       } else {
                         setSortBy('company_id');
                         setSortOrder('asc');
@@ -525,7 +598,11 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                     <span className="inline-flex items-center gap-1 ">
                       Company ID
                       {sortBy === 'company_id' ? (
-                        sortOrder === 'asc' ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />
+                        sortOrder === 'asc' ? (
+                          <ChevronUpIcon className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronDownIcon className="h-3.5 w-3.5" />
+                        )
                       ) : (
                         <span className="flex flex-col h-3.5 w-3.5 opacity-30">
                           <ChevronUpIcon className="h-2.5 w-2.5" />
@@ -538,7 +615,7 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                     className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 transition-colors"
                     onClick={() => {
                       if (sortBy === 'company_name') {
-                        setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+                        setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
                       } else {
                         setSortBy('company_name');
                         setSortOrder('asc');
@@ -549,7 +626,11 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                     <span className="inline-flex items-center gap-1">
                       Company & Contact
                       {sortBy === 'company_name' ? (
-                        sortOrder === 'asc' ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />
+                        sortOrder === 'asc' ? (
+                          <ChevronUpIcon className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronDownIcon className="h-3.5 w-3.5" />
+                        )
                       ) : (
                         <span className="flex flex-col h-3.5 w-3.5 opacity-30">
                           <ChevronUpIcon className="h-2.5 w-2.5" />
@@ -562,7 +643,7 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                     className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 transition-colors"
                     onClick={() => {
                       if (sortBy === 'industry') {
-                        setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+                        setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
                       } else {
                         setSortBy('industry');
                         setSortOrder('asc');
@@ -573,7 +654,11 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                     <span className="inline-flex items-center gap-1">
                       Industry & Size
                       {sortBy === 'industry' ? (
-                        sortOrder === 'asc' ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />
+                        sortOrder === 'asc' ? (
+                          <ChevronUpIcon className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronDownIcon className="h-3.5 w-3.5" />
+                        )
                       ) : (
                         <span className="flex flex-col h-3.5 w-3.5 opacity-30">
                           <ChevronUpIcon className="h-2.5 w-2.5" />
@@ -586,7 +671,7 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                     className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 transition-colors"
                     onClick={() => {
                       if (sortBy === 'city') {
-                        setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+                        setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
                       } else {
                         setSortBy('city');
                         setSortOrder('asc');
@@ -597,7 +682,11 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                     <span className="inline-flex items-center gap-1">
                       Location
                       {sortBy === 'city' ? (
-                        sortOrder === 'asc' ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />
+                        sortOrder === 'asc' ? (
+                          <ChevronUpIcon className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronDownIcon className="h-3.5 w-3.5" />
+                        )
                       ) : (
                         <span className="flex flex-col h-3.5 w-3.5 opacity-30">
                           <ChevronUpIcon className="h-2.5 w-2.5" />
@@ -616,7 +705,10 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {companies.map((company, index) => (
-                  <tr key={company.id} className="hover:bg-gray-50 odd:bg-white even:bg-gray-50">
+                  <tr
+                    key={company.id}
+                    className="hover:bg-gray-50 odd:bg-white even:bg-gray-50"
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
                         {(currentPage - 1) * 20 + index + 1}
@@ -632,7 +724,14 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                         <div className="relative">
                           <div className="h-10 w-10 bg-gradient-to-r from-[#64126D] to-[#86288F] text-white rounded-full flex items-center justify-center">
                             <span className="font-medium text-sm">
-                              {company.company_name ? company.company_name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() : 'C'}
+                              {company.company_name
+                                ? company.company_name
+                                    .split(' ')
+                                    .map((n) => n[0])
+                                    .join('')
+                                    .slice(0, 2)
+                                    .toUpperCase()
+                                : 'C'}
                             </span>
                           </div>
                           {company.lead_count > 0 && (
@@ -648,7 +747,12 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                           {company.contact_person && (
                             <div className="text-sm text-gray-500">
                               {company.contact_person}
-                              {company.designation && <span className="text-xs text-gray-400"> • {company.designation}</span>}
+                              {company.designation && (
+                                <span className="text-xs text-gray-400">
+                                  {' '}
+                                  • {company.designation}
+                                </span>
+                              )}
                             </div>
                           )}
                           {company.website && (
@@ -680,7 +784,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                       </div>
                       {(company.state || company.country) && (
                         <div className="text-sm text-gray-500">
-                          {[company.state, company.country].filter(Boolean).join(', ')}
+                          {[company.state, company.country]
+                            .filter(Boolean)
+                            .join(', ')}
                         </div>
                       )}
                     </td>
@@ -703,22 +809,26 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
-                        <button 
+                        <button
                           onClick={() => router.push(`/company/${company.id}`)}
                           className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors"
                           title="View Details"
                         >
                           <EyeIcon className="h-4 w-4" />
                         </button>
-                        <button 
-                          onClick={() => router.push(`/company/${company.id}/edit`)}
+                        <button
+                          onClick={() =>
+                            router.push(`/company/${company.id}/edit`)
+                          }
                           className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-full transition-colors"
                           title="Edit Company"
                         >
                           <PencilIcon className="h-4 w-4" />
                         </button>
-                        <button 
-                          onClick={() => handleDelete(company.id, company.company_name)}
+                        <button
+                          onClick={() =>
+                            handleDelete(company.id, company.company_name)
+                          }
                           className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"
                           title="Delete Company"
                         >
@@ -738,7 +848,12 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
       {companies.length > 0 && (
         <div className="flex items-center justify-between">
           <div className="flex items-center text-sm text-gray-700">
-            Showing {((currentPage - 1) * 20) + 1} to {Math.min(currentPage * 20, stats.total_companies || companies.length)} of {stats.total_companies || companies.length} companies
+            Showing {(currentPage - 1) * 20 + 1} to{' '}
+            {Math.min(
+              currentPage * 20,
+              stats.total_companies || companies.length
+            )}{' '}
+            of {stats.total_companies || companies.length} companies
           </div>
           <div className="flex items-center space-x-2">
             <button
@@ -754,7 +869,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
             </span>
             <button
               onClick={() => setCurrentPage(currentPage + 1)}
-              disabled={currentPage * 20 >= (stats.total_companies || companies.length)}
+              disabled={
+                currentPage * 20 >= (stats.total_companies || companies.length)
+              }
               className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 inline-flex items-center gap-1"
             >
               Next
@@ -771,8 +888,12 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
       {/* Header with actions */}
       <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Add New Company</h3>
-          <p className="text-sm text-gray-600 mt-1">Fill in the company details</p>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Add New Company
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Fill in the company details
+          </p>
         </div>
         <div className="flex space-x-3">
           <button
@@ -847,14 +968,17 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
 
       {/* Form Content */}
       <form id="add-company-form" onSubmit={handleSubmit} className="p-6">
-        
         {/* Company Details Tab */}
         {formActiveTab === 'details' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Company Information</h2>
-                <p className="text-gray-600 text-sm mt-1">Basic details about the company</p>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Company Information
+                </h2>
+                <p className="text-gray-600 text-sm mt-1">
+                  Basic details about the company
+                </p>
               </div>
               <div className="text-sm text-gray-500">
                 <span className="text-red-500">*</span> Required fields
@@ -863,7 +987,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Company ID</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Company ID
+                </label>
                 <input
                   type="text"
                   name="company_id"
@@ -891,7 +1017,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Industry
+                </label>
                 <select
                   name="industry"
                   value={formData.industry}
@@ -913,7 +1041,7 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                 </select>
               </div>
 
-              <div>
+              {/* <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Company Size</label>
                 <select
                   name="company_size"
@@ -929,10 +1057,12 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                   <option value="501-1000">501-1000 employees</option>
                   <option value="1000+">1000+ employees</option>
                 </select>
-              </div>
+              </div> */}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Sector</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Sector
+                </label>
                 <input
                   type="text"
                   name="sector"
@@ -944,18 +1074,26 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
-                <input
-                  type="url"
-                  name="website"
-                  value={formData.website}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
-                  placeholder="https://example.com"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Website
+                </label>
+                <div className="relative mt-1 rounded-md shadow-sm">
+                  {/* Visual Prefix */}
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <span className="text-gray-500 sm:text-sm">https://</span>
+                  </div>
+                  <input
+                    type="text" // Changed to text to prevent native browser validation errors if they omit https://
+                    name="website"
+                    value={formData.website}
+                    onChange={handleFormChange}
+                    className="w-full pl-16 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                    placeholder="example.com"
+                  />
+                </div>
               </div>
 
-              <div>
+              {/* <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Founded Year</label>
                 <input
                   type="number"
@@ -967,9 +1105,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
                   placeholder="e.g., 2010"
                 />
-              </div>
+              </div> */}
 
-              <div>
+              {/* <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Annual Revenue</label>
                 <input
                   type="text"
@@ -979,11 +1117,13 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
                   placeholder="e.g., $1M-$10M"
                 />
-              </div>
+              </div> */}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Description
+              </label>
               <textarea
                 name="description"
                 value={formData.description}
@@ -1001,14 +1141,20 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
           <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Contact Information</h2>
-                <p className="text-gray-600 text-sm mt-1">Primary contact details for this company</p>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Contact Information
+                </h2>
+                <p className="text-gray-600 text-sm mt-1">
+                  Primary contact details for this company
+                </p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Contact Person
+                </label>
                 <input
                   type="text"
                   name="contact_person"
@@ -1020,7 +1166,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Designation
+                </label>
                 <input
                   type="text"
                   name="designation"
@@ -1032,7 +1180,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
                 <input
                   type="email"
                   name="email"
@@ -1044,7 +1194,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone
+                </label>
                 <input
                   type="tel"
                   name="phone"
@@ -1056,7 +1208,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Number</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Mobile Number
+                </label>
                 <input
                   type="tel"
                   name="mobile_number"
@@ -1075,14 +1229,34 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
           <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Location Details</h2>
-                <p className="text-gray-600 text-sm mt-1">Company address and location information</p>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Location Details
+                </h2>
+                <p className="text-gray-600 text-sm mt-1">
+                  Company address and location information
+                </p>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Full Address
+              </label>
+              <textarea
+                name="address"
+                value={formData.address}
+                onChange={handleFormChange}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                placeholder="Complete street address"
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  City
+                </label>
                 <input
                   type="text"
                   name="city"
@@ -1094,7 +1268,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  State
+                </label>
                 <input
                   type="text"
                   name="state"
@@ -1106,7 +1282,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Country
+                </label>
                 <input
                   type="text"
                   name="country"
@@ -1118,7 +1296,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Postal Code
+                </label>
                 <input
                   type="text"
                   name="postal_code"
@@ -1130,7 +1310,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Location
+                </label>
                 <input
                   type="text"
                   name="location"
@@ -1141,18 +1323,6 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                 />
               </div>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Full Address</label>
-              <textarea
-                name="address"
-                value={formData.address}
-                onChange={handleFormChange}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
-                placeholder="Complete street address"
-              />
-            </div>
           </div>
         )}
 
@@ -1161,15 +1331,21 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
           <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Additional Information</h2>
-                <p className="text-gray-600 text-sm mt-1">Registration, profile and other details</p>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Additional Information
+                </h2>
+                <p className="text-gray-600 text-sm mt-1">
+                  Registration, profile and other details
+                </p>
               </div>
             </div>
 
             {/* Registration Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">GSTIN</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  GSTIN
+                </label>
                 <input
                   type="text"
                   name="gstin"
@@ -1182,7 +1358,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PAN Number
+                </label>
                 <input
                   type="text"
                   name="pan_number"
@@ -1197,7 +1375,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
 
             {/* Company Profile */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Company Profile</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Company Profile
+              </label>
               <textarea
                 name="company_profile"
                 value={formData.company_profile}
@@ -1209,7 +1389,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes
+              </label>
               <textarea
                 name="notes"
                 value={formData.notes}
@@ -1222,23 +1404,33 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
 
             {/* Company Summary Card */}
             <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Company Summary</h3>
+              <h3 className="text-sm font-medium text-gray-900 mb-3">
+                Company Summary
+              </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
                   <span className="text-gray-500">Company ID:</span>
-                  <p className="font-medium text-gray-900">{formData.company_id || '-'}</p>
+                  <p className="font-medium text-gray-900">
+                    {formData.company_id || '-'}
+                  </p>
                 </div>
                 <div>
                   <span className="text-gray-500">Industry:</span>
-                  <p className="font-medium text-gray-900">{formData.industry || '-'}</p>
+                  <p className="font-medium text-gray-900">
+                    {formData.industry || '-'}
+                  </p>
                 </div>
                 <div>
                   <span className="text-gray-500">Size:</span>
-                  <p className="font-medium text-gray-900">{formData.company_size || '-'}</p>
+                  <p className="font-medium text-gray-900">
+                    {formData.company_size || '-'}
+                  </p>
                 </div>
                 <div>
                   <span className="text-gray-500">City:</span>
-                  <p className="font-medium text-gray-900">{formData.city || '-'}</p>
+                  <p className="font-medium text-gray-900">
+                    {formData.city || '-'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -1252,16 +1444,22 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
     <AccessGuard resource="companies" permission="read" showNavbar={false}>
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Navbar />
-        
+
         <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-20 max-w-[1800px] mx-auto">
           {/* Header */}
           <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Company Master</h1>
-              <p className="text-gray-600 text-sm">Manage your company database</p>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Company Master
+              </h1>
+              <p className="text-gray-600 text-sm">
+                Manage your company database
+              </p>
             </div>
             <button
-              onClick={() => setActiveTab(activeTab === 'list' ? 'add' : 'list')}
+              onClick={() =>
+                setActiveTab(activeTab === 'list' ? 'add' : 'list')
+              }
               className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-4 py-2 rounded-lg inline-flex items-center space-x-2 transition-all duration-300 shadow-lg hover:shadow-xl text-sm font-medium"
             >
               <PlusIcon className="h-5 w-5" />
@@ -1270,7 +1468,9 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
           </div>
 
           {/* Content */}
-          {activeTab === 'list' ? renderCompaniesList() : renderAddCompanyForm()}
+          {activeTab === 'list'
+            ? renderCompaniesList()
+            : renderAddCompanyForm()}
         </div>
       </div>
     </AccessGuard>

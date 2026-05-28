@@ -1,4 +1,4 @@
-import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function SoftwareTab({
   selectedSoftwareCategory,
@@ -31,9 +31,7 @@ export default function SoftwareTab({
               d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
             />
           </svg>
-          <h2 className="text-sm font-bold text-gray-900">
-            Project Software
-          </h2>
+          <h2 className="text-sm font-bold text-gray-900">Project Software</h2>
         </div>
         <p className="text-xs text-gray-500 mt-0.5">
           Manage software and tools used in this project
@@ -57,8 +55,8 @@ export default function SoftwareTab({
                   value={selectedSoftwareCategory}
                   onChange={(e) => {
                     setSelectedSoftwareCategory(e.target.value);
-                    setSelectedSoftware("");
-                    setSelectedSoftwareVersion("");
+                    setSelectedSoftware('');
+                    setSelectedSoftwareVersion('');
                   }}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                 >
@@ -78,7 +76,7 @@ export default function SoftwareTab({
                   value={selectedSoftware}
                   onChange={(e) => {
                     setSelectedSoftware(e.target.value);
-                    setSelectedSoftwareVersion("");
+                    setSelectedSoftwareVersion('');
                   }}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                 >
@@ -96,9 +94,7 @@ export default function SoftwareTab({
                 </label>
                 <select
                   value={selectedSoftwareVersion}
-                  onChange={(e) =>
-                    setSelectedSoftwareVersion(e.target.value)
-                  }
+                  onChange={(e) => setSelectedSoftwareVersion(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                 >
                   <option value="">Select Version</option>
@@ -123,8 +119,8 @@ export default function SoftwareTab({
                   selectedSoftwareCategory &&
                   selectedSoftware &&
                   selectedSoftwareVersion
-                    ? "bg-[#7F2487] text-white hover:bg-[#6a1e73]"
-                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 }`}
               >
                 <PlusIcon className="h-3.5 w-3.5" />
@@ -182,23 +178,21 @@ export default function SoftwareTab({
                       {item.software_name}
                     </td>
                     <td className="px-3 py-2 text-gray-600">
-                      {item.provider || "-"}
+                      {item.provider || '-'}
                     </td>
                     <td className="px-3 py-2 text-gray-600">
                       {item.version_name}
                     </td>
                     <td className="px-3 py-2 text-gray-600">
-                      {item.release_date || "-"}
+                      {item.release_date || '-'}
                     </td>
                     <td className="px-3 py-2 text-gray-600">
-                      {item.notes || "-"}
+                      {item.notes || '-'}
                     </td>
                     <td className="px-3 py-2 text-center">
                       <button
                         type="button"
-                        onClick={() =>
-                          removeSoftwareItem(item.id)
-                        }
+                        onClick={() => removeSoftwareItem(item.id)}
                         className="text-red-500 hover:text-red-700 p-1"
                         title="Remove software"
                       >
@@ -225,12 +219,9 @@ export default function SoftwareTab({
                 d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
               />
             </svg>
-            <p className="text-sm font-medium">
-              No software added yet
-            </p>
+            <p className="text-sm font-medium">No software added yet</p>
             <p className="text-xs mt-1">
-              Select category, software, and version to add to the
-              project
+              Select category, software, and version to add to the project
             </p>
           </div>
         )}

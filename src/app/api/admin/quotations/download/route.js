@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Download quotation as PDF
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -15,7 +23,10 @@ export async function GET(request) {
     const source = searchParams.get('source') || 'project'; // 'project' or 'quotations'
 
     if (!id) {
-      return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'ID is required' },
+        { status: 400 }
+      );
     }
 
     connection = await dbConnect();
@@ -24,12 +35,18 @@ export async function GET(request) {
 
     if (source === 'project') {
       // Fetch from project_quotations first
-      const [rows] = await connection.execute(`
+      const [rows] = await connection.execute(
+        `
         SELECT * FROM project_quotations WHERE id = ?
-      `, [id]);
+      `,
+        [id]
+      );
 
       if (rows.length === 0) {
-        return NextResponse.json({ success: false, error: 'Quotation not found' }, { status: 404 });
+        return NextResponse.json(
+          { success: false, error: 'Quotation not found' },
+          { status: 404 }
+        );
       }
 
       quotationData = rows[0];
@@ -37,7 +54,7 @@ export async function GET(request) {
       // Try to fetch project details separately
       if (quotationData.project_id) {
         let proposalId = null;
-        
+
         try {
           const [projects] = await connection.execute(
             `SELECT name, client_name, description, company_id, proposal_id,
@@ -50,23 +67,38 @@ export async function GET(request) {
           if (projects.length > 0) {
             const p = projects[0];
             quotationData.project_name = p.name;
-            quotationData.client_name = quotationData.client_name || p.client_name;
+            quotationData.client_name =
+              quotationData.client_name || p.client_name;
             quotationData.project_description = p.description;
             proposalId = p.proposal_id;
-            
+
             // Map project fields to annexure fields if not already set in quotation
-            if (!quotationData.annexure_scope_of_work) quotationData.annexure_scope_of_work = p.scope_of_work;
-            if (!quotationData.annexure_input_document) quotationData.annexure_input_document = p.input_document || p.input_documents;
-            if (!quotationData.annexure_deliverables) quotationData.annexure_deliverables = p.deliverables || p.list_of_deliverables;
-            if (!quotationData.annexure_software) quotationData.annexure_software = p.software_included;
-            if (!quotationData.annexure_duration) quotationData.annexure_duration = p.duration;
-            if (!quotationData.annexure_site_visit) quotationData.annexure_site_visit = p.site_visit;
-            if (!quotationData.annexure_quotation_validity) quotationData.annexure_quotation_validity = p.quotation_validity;
-            if (!quotationData.annexure_mode_of_delivery) quotationData.annexure_mode_of_delivery = p.mode_of_delivery;
-            if (!quotationData.annexure_revision) quotationData.annexure_revision = p.revision;
-            if (!quotationData.annexure_exclusions) quotationData.annexure_exclusions = p.exclusion;
-            if (!quotationData.annexure_billing_payment_terms) quotationData.annexure_billing_payment_terms = p.billing_and_payment_terms;
-            
+            if (!quotationData.annexure_scope_of_work)
+              quotationData.annexure_scope_of_work = p.scope_of_work;
+            if (!quotationData.annexure_input_document)
+              quotationData.annexure_input_document =
+                p.input_document || p.input_documents;
+            if (!quotationData.annexure_deliverables)
+              quotationData.annexure_deliverables =
+                p.deliverables || p.list_of_deliverables;
+            if (!quotationData.annexure_software)
+              quotationData.annexure_software = p.software_included;
+            if (!quotationData.annexure_duration)
+              quotationData.annexure_duration = p.duration;
+            if (!quotationData.annexure_site_visit)
+              quotationData.annexure_site_visit = p.site_visit;
+            if (!quotationData.annexure_quotation_validity)
+              quotationData.annexure_quotation_validity = p.quotation_validity;
+            if (!quotationData.annexure_mode_of_delivery)
+              quotationData.annexure_mode_of_delivery = p.mode_of_delivery;
+            if (!quotationData.annexure_revision)
+              quotationData.annexure_revision = p.revision;
+            if (!quotationData.annexure_exclusions)
+              quotationData.annexure_exclusions = p.exclusion;
+            if (!quotationData.annexure_billing_payment_terms)
+              quotationData.annexure_billing_payment_terms =
+                p.billing_and_payment_terms;
+
             // Try to fetch company details
             if (p.company_id) {
               try {
@@ -79,7 +111,8 @@ export async function GET(request) {
                   quotationData.company_address = companies[0].address;
                   quotationData.company_phone = companies[0].phone;
                   quotationData.company_email = companies[0].email;
-                  quotationData.gst_number = quotationData.gst_number || companies[0].gst_number;
+                  quotationData.gst_number =
+                    quotationData.gst_number || companies[0].gst_number;
                 }
               } catch (compErr) {
                 // Companies table might have different structure
@@ -95,7 +128,8 @@ export async function GET(request) {
             );
             if (projects.length > 0) {
               quotationData.project_name = projects[0].name;
-              quotationData.client_name = quotationData.client_name || projects[0].client_name;
+              quotationData.client_name =
+                quotationData.client_name || projects[0].client_name;
               quotationData.project_description = projects[0].description;
               proposalId = projects[0].proposal_id;
             }
@@ -103,7 +137,7 @@ export async function GET(request) {
             // Ignore
           }
         }
-        
+
         // Try to fetch from proposals if project has proposal_id
         if (proposalId) {
           try {
@@ -117,17 +151,32 @@ export async function GET(request) {
             if (proposals.length > 0) {
               const prop = proposals[0];
               // Map proposal fields only if not already set
-              if (!quotationData.annexure_scope_of_work) quotationData.annexure_scope_of_work = prop.scope_of_work;
-              if (!quotationData.annexure_input_document) quotationData.annexure_input_document = prop.input_document || prop.input_documents;
-              if (!quotationData.annexure_deliverables) quotationData.annexure_deliverables = prop.list_of_deliverables || prop.deliverables;
-              if (!quotationData.annexure_software) quotationData.annexure_software = prop.software;
-              if (!quotationData.annexure_duration) quotationData.annexure_duration = prop.duration;
-              if (!quotationData.annexure_site_visit) quotationData.annexure_site_visit = prop.site_visit;
-              if (!quotationData.annexure_quotation_validity) quotationData.annexure_quotation_validity = prop.quotation_validity;
-              if (!quotationData.annexure_mode_of_delivery) quotationData.annexure_mode_of_delivery = prop.mode_of_delivery;
-              if (!quotationData.annexure_revision) quotationData.annexure_revision = prop.revision;
-              if (!quotationData.annexure_exclusions) quotationData.annexure_exclusions = prop.exclusions;
-              if (!quotationData.annexure_billing_payment_terms) quotationData.annexure_billing_payment_terms = prop.billing_payment_terms;
+              if (!quotationData.annexure_scope_of_work)
+                quotationData.annexure_scope_of_work = prop.scope_of_work;
+              if (!quotationData.annexure_input_document)
+                quotationData.annexure_input_document =
+                  prop.input_document || prop.input_documents;
+              if (!quotationData.annexure_deliverables)
+                quotationData.annexure_deliverables =
+                  prop.list_of_deliverables || prop.deliverables;
+              if (!quotationData.annexure_software)
+                quotationData.annexure_software = prop.software;
+              if (!quotationData.annexure_duration)
+                quotationData.annexure_duration = prop.duration;
+              if (!quotationData.annexure_site_visit)
+                quotationData.annexure_site_visit = prop.site_visit;
+              if (!quotationData.annexure_quotation_validity)
+                quotationData.annexure_quotation_validity =
+                  prop.quotation_validity;
+              if (!quotationData.annexure_mode_of_delivery)
+                quotationData.annexure_mode_of_delivery = prop.mode_of_delivery;
+              if (!quotationData.annexure_revision)
+                quotationData.annexure_revision = prop.revision;
+              if (!quotationData.annexure_exclusions)
+                quotationData.annexure_exclusions = prop.exclusions;
+              if (!quotationData.annexure_billing_payment_terms)
+                quotationData.annexure_billing_payment_terms =
+                  prop.billing_payment_terms;
             }
           } catch (propErr) {
             // Ignore - proposals table might have different structure
@@ -136,10 +185,16 @@ export async function GET(request) {
       }
     } else if (source === 'proposal') {
       // Fetch directly from proposals table
-      const [rows] = await connection.execute('SELECT * FROM proposals WHERE id = ? LIMIT 1', [id]);
+      const [rows] = await connection.execute(
+        'SELECT * FROM proposals WHERE id = ? LIMIT 1',
+        [id]
+      );
 
       if (rows.length === 0) {
-        return NextResponse.json({ success: false, error: 'Proposal not found' }, { status: 404 });
+        return NextResponse.json(
+          { success: false, error: 'Proposal not found' },
+          { status: 404 }
+        );
       }
 
       const p = rows[0];
@@ -163,17 +218,23 @@ export async function GET(request) {
         pan_number: p.pan_number || '',
         tan_number: p.tan_number || '',
         terms_and_conditions: p.terms_and_conditions || '',
-        annexure_scope_of_work: p.annexure_scope_of_work || p.scope_of_work || p.description || '',
-        annexure_input_document: p.annexure_input_document || p.input_document || '',
-        annexure_deliverables: p.annexure_deliverables || p.list_of_deliverables || '',
+        annexure_scope_of_work:
+          p.annexure_scope_of_work || p.scope_of_work || p.description || '',
+        annexure_input_document:
+          p.annexure_input_document || p.input_document || '',
+        annexure_deliverables:
+          p.annexure_deliverables || p.list_of_deliverables || '',
         annexure_software: p.annexure_software || p.software || '',
         annexure_duration: p.annexure_duration || p.duration || '',
         annexure_site_visit: p.annexure_site_visit || p.site_visit || '',
-        annexure_quotation_validity: p.annexure_quotation_validity || p.quotation_validity || '',
-        annexure_mode_of_delivery: p.annexure_mode_of_delivery || p.mode_of_delivery || '',
+        annexure_quotation_validity:
+          p.annexure_quotation_validity || p.quotation_validity || '',
+        annexure_mode_of_delivery:
+          p.annexure_mode_of_delivery || p.mode_of_delivery || '',
         annexure_revision: p.annexure_revision || p.revision || '',
         annexure_exclusions: p.annexure_exclusions || p.exclusions || '',
-        annexure_billing_payment_terms: p.annexure_billing_payment_terms || p.billing_payment_terms || '',
+        annexure_billing_payment_terms:
+          p.annexure_billing_payment_terms || p.billing_payment_terms || '',
         annexure_confidentiality: p.annexure_confidentiality || '',
         annexure_codes_standards: p.annexure_codes_standards || '',
         annexure_dispute_resolution: p.annexure_dispute_resolution || '',
@@ -191,16 +252,25 @@ export async function GET(request) {
             quotationData.company_address = companies[0].address;
             quotationData.company_phone = companies[0].phone;
             quotationData.company_email = companies[0].email;
-            quotationData.gst_number = quotationData.gst_number || companies[0].gst_number;
+            quotationData.gst_number =
+              quotationData.gst_number || companies[0].gst_number;
           }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
       }
     } else {
       // Fetch from quotations table
-      const [rows] = await connection.execute('SELECT * FROM quotations WHERE id = ?', [id]);
+      const [rows] = await connection.execute(
+        'SELECT * FROM quotations WHERE id = ?',
+        [id]
+      );
 
       if (rows.length === 0) {
-        return NextResponse.json({ success: false, error: 'Quotation not found' }, { status: 404 });
+        return NextResponse.json(
+          { success: false, error: 'Quotation not found' },
+          { status: 404 }
+        );
       }
 
       quotationData = rows[0];
@@ -216,7 +286,6 @@ export async function GET(request) {
         'Content-Disposition': `inline; filename="${quotationData.quotation_number || 'quotation'}.html"`,
       },
     });
-
   } catch (error) {
     console.error('Error generating quotation:', error);
     return NextResponse.json(
@@ -230,14 +299,14 @@ export async function GET(request) {
 
 function generateQuotationHTML(data, source) {
   const isProjectQuotation = source === 'project';
-  
+
   // Format date
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
     return new Date(dateStr).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
@@ -245,22 +314,76 @@ function generateQuotationHTML(data, source) {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
     }).format(amount || 0);
   };
 
   // Number to words conversion
   const numberToWords = (num) => {
-    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-    
+    const ones = [
+      '',
+      'One',
+      'Two',
+      'Three',
+      'Four',
+      'Five',
+      'Six',
+      'Seven',
+      'Eight',
+      'Nine',
+      'Ten',
+      'Eleven',
+      'Twelve',
+      'Thirteen',
+      'Fourteen',
+      'Fifteen',
+      'Sixteen',
+      'Seventeen',
+      'Eighteen',
+      'Nineteen',
+    ];
+    const tens = [
+      '',
+      '',
+      'Twenty',
+      'Thirty',
+      'Forty',
+      'Fifty',
+      'Sixty',
+      'Seventy',
+      'Eighty',
+      'Ninety',
+    ];
+
     if (num === 0) return 'Zero';
     if (num < 20) return ones[num];
-    if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 ? ' ' + ones[num % 10] : '');
-    if (num < 1000) return ones[Math.floor(num / 100)] + ' Hundred' + (num % 100 ? ' ' + numberToWords(num % 100) : '');
-    if (num < 100000) return numberToWords(Math.floor(num / 1000)) + ' Thousand' + (num % 1000 ? ' ' + numberToWords(num % 1000) : '');
-    if (num < 10000000) return numberToWords(Math.floor(num / 100000)) + ' Lakh' + (num % 100000 ? ' ' + numberToWords(num % 100000) : '');
-    return numberToWords(Math.floor(num / 10000000)) + ' Crore' + (num % 10000000 ? ' ' + numberToWords(num % 10000000) : '');
+    if (num < 100)
+      return (
+        tens[Math.floor(num / 10)] + (num % 10 ? ' ' + ones[num % 10] : '')
+      );
+    if (num < 1000)
+      return (
+        ones[Math.floor(num / 100)] +
+        ' Hundred' +
+        (num % 100 ? ' ' + numberToWords(num % 100) : '')
+      );
+    if (num < 100000)
+      return (
+        numberToWords(Math.floor(num / 1000)) +
+        ' Thousand' +
+        (num % 1000 ? ' ' + numberToWords(num % 1000) : '')
+      );
+    if (num < 10000000)
+      return (
+        numberToWords(Math.floor(num / 100000)) +
+        ' Lakh' +
+        (num % 100000 ? ' ' + numberToWords(num % 100000) : '')
+      );
+    return (
+      numberToWords(Math.floor(num / 10000000)) +
+      ' Crore' +
+      (num % 10000000 ? ' ' + numberToWords(num % 10000000) : '')
+    );
   };
 
   const grossAmount = parseFloat(data.gross_amount) || 0;
@@ -271,35 +394,68 @@ function generateQuotationHTML(data, source) {
   // Generate amount in words
   const rupees = Math.floor(netAmount);
   const paise = Math.round((netAmount - rupees) * 100);
-  let amountInWords = data.amount_in_words || ('Rupees ' + numberToWords(rupees) + (paise > 0 ? ' and ' + numberToWords(paise) + ' Paise' : '') + ' Only');
+  let amountInWords =
+    data.amount_in_words ||
+    'Rupees ' +
+      numberToWords(rupees) +
+      (paise > 0 ? ' and ' + numberToWords(paise) + ' Paise' : '') +
+      ' Only';
 
   // Parse scope items
   let scopeItems = [];
   if (data.scope_items) {
     try {
-      scopeItems = typeof data.scope_items === 'string' ? JSON.parse(data.scope_items) : data.scope_items;
+      scopeItems =
+        typeof data.scope_items === 'string'
+          ? JSON.parse(data.scope_items)
+          : data.scope_items;
     } catch (e) {
       if (data.scope_of_work) {
-        scopeItems = [{ sr_no: 1, description: data.scope_of_work, qty: data.enquiry_quantity || '1', rate: grossAmount, amount: grossAmount }];
+        scopeItems = [
+          {
+            sr_no: 1,
+            description: data.scope_of_work,
+            qty: data.enquiry_quantity || '1',
+            rate: grossAmount,
+            amount: grossAmount,
+          },
+        ];
       }
     }
   } else if (data.scope_of_work) {
-    scopeItems = [{ sr_no: 1, description: data.scope_of_work, qty: data.enquiry_quantity || '1', rate: grossAmount, amount: grossAmount }];
+    scopeItems = [
+      {
+        sr_no: 1,
+        description: data.scope_of_work,
+        qty: data.enquiry_quantity || '1',
+        rate: grossAmount,
+        amount: grossAmount,
+      },
+    ];
   }
 
   // Calculate total from items if not already set
-  const itemsTotal = scopeItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+  const itemsTotal = scopeItems.reduce(
+    (sum, item) => sum + (parseFloat(item.amount) || 0),
+    0
+  );
   const displayGrossAmount = grossAmount || itemsTotal;
 
   // Default terms if not set
-  const termsAndConditions = data.terms_and_conditions || `• Any additional work will be charged extra.
+  const termsAndConditions =
+    data.terms_and_conditions ||
+    `• Any additional work will be charged extra.
 • GST 18% extra as applicable on total project cost.
 • The proposal is based on client's enquiry and provided input data.
 • Work will start within 15 days after receipt of confirmed LOI/PO.
 • Mode of Payments: - Through Wire transfer to 'Accent Techno Solutions Pvt Ltd.' payable at Mumbai A/c No. 917020044935714, IFS Code: UTIB0001244`;
 
   // Generate scope items HTML
-  const scopeItemsHTML = scopeItems.length > 0 ? scopeItems.map(item => `
+  const scopeItemsHTML =
+    scopeItems.length > 0
+      ? scopeItems
+          .map(
+            (item) => `
     <tr>
       <td style="border: 1px solid #000; padding: 8px; text-align: center; vertical-align: top;">${item.sr_no || ''}</td>
       <td style="border: 1px solid #000; padding: 8px; vertical-align: top; white-space: pre-wrap;">${item.description || ''}</td>
@@ -307,7 +463,10 @@ function generateQuotationHTML(data, source) {
       <td style="border: 1px solid #000; padding: 8px; text-align: right; vertical-align: top;">${item.rate ? formatCurrency(item.rate) : ''}</td>
       <td style="border: 1px solid #000; padding: 8px; text-align: right; vertical-align: top;">${item.amount ? formatCurrency(item.amount) : ''}</td>
     </tr>
-  `).join('') : `
+  `
+          )
+          .join('')
+      : `
     <tr>
       <td style="border: 1px solid #000; padding: 6px; text-align: center;">1</td>
       <td style="border: 1px solid #000; padding: 6px;">${data.scope_of_work || data.subject || '-'}</td>
@@ -436,11 +595,11 @@ function generateQuotationHTML(data, source) {
             </tr>
             <tr>
               <td style="padding: 6px 8px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>GST @ ${gstPercentage}%:</strong></td>
-              <td style="padding: 6px 8px; text-align: right; border-top: 1px solid #000;">${formatCurrency(gstAmount || (displayGrossAmount * gstPercentage / 100))}</td>
+              <td style="padding: 6px 8px; text-align: right; border-top: 1px solid #000;">${formatCurrency(gstAmount || (displayGrossAmount * gstPercentage) / 100)}</td>
             </tr>
             <tr>
               <td style="padding: 8px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>Net Amount:</strong></td>
-              <td style="padding: 8px; text-align: right; border-top: 1px solid #000; font-weight: bold; font-size: 11px;">${formatCurrency(netAmount || (displayGrossAmount + (displayGrossAmount * gstPercentage / 100)))}</td>
+              <td style="padding: 8px; text-align: right; border-top: 1px solid #000; font-weight: bold; font-size: 11px;">${formatCurrency(netAmount || displayGrossAmount + (displayGrossAmount * gstPercentage) / 100)}</td>
             </tr>
           </table>
         </td>
@@ -576,11 +735,14 @@ function generateQuotationHTML(data, source) {
         <strong>11) Billing & Payment terms:</strong>
         <div style="margin-left: 18px;">
           <strong style="text-decoration: underline;">Payment terms:</strong>
-          <div style="white-space: pre-wrap; font-size: 10px;">${data.annexure_billing_payment_terms || `• Payment shall be released by the client within 7 days from the date of the invoice.
+          <div style="white-space: pre-wrap; font-size: 10px;">${
+            data.annexure_billing_payment_terms ||
+            `• Payment shall be released by the client within 7 days from the date of the invoice.
 • Payment shall be by way of RTGS transfer to ATSPL bank account.
 • The late payment charges will be 2% per month on the total bill amount if bills are not settled within the credit period of 30 days.
 • In case of project delays beyond two-month, software cost of ₹10,000/- per month will be charged.
-• Upon completion of the above scope of work, if a project is cancelled or held by the client for any reason then Accent Techno Solutions Private Limited is entitled to 100% invoice against the completed work.`}</div>
+• Upon completion of the above scope of work, if a project is cancelled or held by the client for any reason then Accent Techno Solutions Private Limited is entitled to 100% invoice against the completed work.`
+          }</div>
         </div>
       </div>
       

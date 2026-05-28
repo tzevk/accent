@@ -14,7 +14,10 @@ export async function GET(request) {
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -41,14 +44,14 @@ export async function GET(request) {
         LEFT JOIN user_activity_logs ual ON u.id = ual.user_id
         WHERE u.is_active = TRUE
         GROUP BY u.id
-        ORDER BY last_activity DESC`,
+        ORDER BY last_activity DESC`
       );
 
       // Add status and stats if requested
       const usersWithStatus = await Promise.all(
         allUsers.map(async (user) => {
           const status = getStatusFromActivity(user.last_activity);
-          
+
           let stats = null;
           if (includeStats) {
             stats = await getUserTodayStats(db, user.user_id);
@@ -57,7 +60,7 @@ export async function GET(request) {
           return {
             ...user,
             status,
-            ...stats
+            ...stats,
           };
         })
       );
@@ -66,7 +69,7 @@ export async function GET(request) {
     }
 
     // Get specific user(s)
-    const userIds = userIdParam.split(',').map(id => parseInt(id.trim()));
+    const userIds = userIdParam.split(',').map((id) => parseInt(id.trim()));
     const placeholders = userIds.map(() => '?').join(',');
 
     const [users] = await db.execute(
@@ -93,7 +96,7 @@ export async function GET(request) {
     const usersWithStatus = await Promise.all(
       users.map(async (user) => {
         const status = getStatusFromActivity(user.last_activity);
-        
+
         let stats = null;
         if (includeStats) {
           stats = await getUserTodayStats(db, user.user_id);
@@ -102,23 +105,24 @@ export async function GET(request) {
         // Calculate session duration if active
         let session_duration = null;
         if (user.session_start && status === 'online') {
-          session_duration = Math.floor((Date.now() - new Date(user.session_start).getTime()) / 1000);
+          session_duration = Math.floor(
+            (Date.now() - new Date(user.session_start).getTime()) / 1000
+          );
         }
 
         return {
           ...user,
           status,
           session_duration,
-          ...stats
+          ...stats,
         };
       })
     );
 
-    return NextResponse.json({ 
-      success: true, 
-      data: userIds.length === 1 ? usersWithStatus[0] : usersWithStatus 
+    return NextResponse.json({
+      success: true,
+      data: userIds.length === 1 ? usersWithStatus[0] : usersWithStatus,
     });
-
   } catch (error) {
     console.error('Error fetching user status:', error);
     return NextResponse.json(
@@ -140,7 +144,10 @@ export async function POST(request) {
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const body = await request.json();
@@ -149,11 +156,17 @@ export async function POST(request) {
     // Users can only update their own status unless they're admin
     const targetUserId = user_id || currentUser.id;
     if (targetUserId !== currentUser.id && currentUser.role !== 'Admin') {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     if (!status) {
-      return NextResponse.json({ success: false, error: 'Status is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Status is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -163,15 +176,18 @@ export async function POST(request) {
       `INSERT INTO user_activity_logs (
         user_id, action_type, resource_type, description, details, status
       ) VALUES (?, 'status_change', 'user_status', ?, ?, 'success')`,
-      [targetUserId, `Manual status update: ${status}`, JSON.stringify({ manual_status: status })]
+      [
+        targetUserId,
+        `Manual status update: ${status}`,
+        JSON.stringify({ manual_status: status }),
+      ]
     );
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: 'Status updated successfully',
-      data: { user_id: targetUserId, status }
+      data: { user_id: targetUserId, status },
     });
-
   } catch (error) {
     console.error('Error updating user status:', error);
     return NextResponse.json(
@@ -188,12 +204,14 @@ export async function POST(request) {
  */
 function getStatusFromActivity(lastActivity) {
   if (!lastActivity) return 'offline';
-  
-  const seconds = Math.floor((Date.now() - new Date(lastActivity).getTime()) / 1000);
-  
-  if (seconds < 120) return 'online';  // Active (< 2 min)
-  if (seconds < 600) return 'idle';    // Idle (< 10 min)
-  return 'offline';                     // Away (> 10 min)
+
+  const seconds = Math.floor(
+    (Date.now() - new Date(lastActivity).getTime()) / 1000
+  );
+
+  if (seconds < 120) return 'online'; // Active (< 2 min)
+  if (seconds < 600) return 'idle'; // Idle (< 10 min)
+  return 'offline'; // Away (> 10 min)
 }
 
 /**
@@ -249,6 +267,6 @@ async function getUserTodayStats(db, userId) {
     pages_viewed: summary[0]?.pages_viewed || 0,
     resources_modified: sessions[0]?.resources_modified || 0,
     total_clicks: screenTime[0]?.total_clicks || 0,
-    total_scrolls: screenTime[0]?.total_scrolls || 0
+    total_scrolls: screenTime[0]?.total_scrolls || 0,
   };
 }

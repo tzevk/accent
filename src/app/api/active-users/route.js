@@ -7,14 +7,20 @@ export async function GET() {
   try {
     const cookieStore = await cookies();
     const userCookie = cookieStore.get('user');
-    
+
     if (!userCookie) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const user = JSON.parse(userCookie.value);
     if (user.role !== 'Admin') {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     db = await dbConnect();
@@ -22,7 +28,8 @@ export async function GET() {
     // Get users who were active in the last 10 minutes
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
-    const [activeUsers] = await db.execute(`
+    const [activeUsers] = await db.execute(
+      `
       SELECT 
         u.id as user_id,
         u.full_name,
@@ -41,22 +48,27 @@ export async function GET() {
       WHERE ual.created_at >= ?
       GROUP BY u.id, u.full_name, u.username, u.role
       ORDER BY last_activity DESC
-    `, [tenMinutesAgo]);
+    `,
+      [tenMinutesAgo]
+    );
 
-    return NextResponse.json({ 
-      success: true, 
-      data: activeUsers.map(user => ({
+    return NextResponse.json({
+      success: true,
+      data: activeUsers.map((user) => ({
         ...user,
-        session_duration: user.session_duration || 0
-      }))
+        session_duration: user.session_duration || 0,
+      })),
     });
   } catch (error) {
     console.error('Active users GET error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to fetch active users', 
-      details: error.message 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch active users',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }

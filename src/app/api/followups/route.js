@@ -1,17 +1,25 @@
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET follow-ups (optionally filtered by lead_id)
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.LEADS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
   try {
     const url = new URL(request.url);
-  const leadId = url.searchParams.get('lead_id');
-  const companyId = url.searchParams.get('company_id');
+    const leadId = url.searchParams.get('lead_id');
+    const companyId = url.searchParams.get('company_id');
 
     db = await dbConnect();
 
@@ -33,25 +41,30 @@ export async function GET(request) {
       )
     `);
 
-      // Legacy compatibility: ensure optional columns exist (some deployments may have an older schema)
-      try {
-        const [[dbRow]] = await db.query('SELECT DATABASE() as dbName');
-        const dbName = dbRow?.dbName;
-        if (dbName) {
-          const [cols] = await db.execute(
-            `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'follow_ups' AND COLUMN_NAME = 'next_follow_up_date'`,
-            [dbName]
-          );
+    // Legacy compatibility: ensure optional columns exist (some deployments may have an older schema)
+    try {
+      const [[dbRow]] = await db.query('SELECT DATABASE() as dbName');
+      const dbName = dbRow?.dbName;
+      if (dbName) {
+        const [cols] = await db.execute(
+          `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'follow_ups' AND COLUMN_NAME = 'next_follow_up_date'`,
+          [dbName]
+        );
 
-          if (!cols || cols.length === 0) {
-            // Add the missing column
-            await db.execute(`ALTER TABLE follow_ups ADD COLUMN next_follow_up_date DATE NULL`);
-          }
+        if (!cols || cols.length === 0) {
+          // Add the missing column
+          await db.execute(
+            `ALTER TABLE follow_ups ADD COLUMN next_follow_up_date DATE NULL`
+          );
         }
-      } catch (err) {
-        // If anything goes wrong here, don't block main flow — log and continue
-        console.warn('Could not ensure follow_ups schema compatibility:', err.message || err);
       }
+    } catch (err) {
+      // If anything goes wrong here, don't block main flow — log and continue
+      console.warn(
+        'Could not ensure follow_ups schema compatibility:',
+        err.message || err
+      );
+    }
 
     const params = [];
     let where = '';
@@ -60,7 +73,10 @@ export async function GET(request) {
       params.push(leadId);
     } else if (companyId) {
       // leads table stores company_name (string), so resolve company_id -> company_name first
-      const [[dbRow]] = await db.query('SELECT company_name FROM companies WHERE id = ? LIMIT 1', [companyId]);
+      const [[dbRow]] = await db.query(
+        'SELECT company_name FROM companies WHERE id = ? LIMIT 1',
+        [companyId]
+      );
       const companyName = dbRow ? dbRow.company_name : null;
       if (!companyName) {
         // No such company, return empty list
@@ -82,7 +98,10 @@ export async function GET(request) {
     return Response.json({ success: true, data: rows });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ success: false, error: 'Failed to fetch follow-ups' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to fetch follow-ups' },
+      { status: 500 }
+    );
   } finally {
     if (db) await db.end();
   }
@@ -91,7 +110,11 @@ export async function GET(request) {
 // POST - Create new follow-up
 export async function POST(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.UPDATE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.LEADS,
+    PERMISSIONS.UPDATE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
@@ -105,19 +128,30 @@ export async function POST(request) {
       status,
       next_action,
       next_follow_up_date,
-      notes
+      notes,
     } = data;
 
     if (!lead_id || !follow_up_date || !description) {
-      return Response.json({ success: false, error: 'lead_id, follow_up_date and description are required' }, { status: 400 });
+      return Response.json(
+        {
+          success: false,
+          error: 'lead_id, follow_up_date and description are required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
 
     // Validate lead exists
-    const [leadRows] = await db.execute('SELECT id FROM leads WHERE id = ?', [lead_id]);
+    const [leadRows] = await db.execute('SELECT id FROM leads WHERE id = ?', [
+      lead_id,
+    ]);
     if (!leadRows || leadRows.length === 0) {
-      return Response.json({ success: false, error: 'Lead not found' }, { status: 404 });
+      return Response.json(
+        { success: false, error: 'Lead not found' },
+        { status: 404 }
+      );
     }
 
     // Insert follow-up
@@ -134,7 +168,7 @@ export async function POST(request) {
         status || 'Scheduled',
         next_action || null,
         next_follow_up_date || null,
-        notes || null
+        notes || null,
       ]
     );
 
@@ -149,10 +183,17 @@ export async function POST(request) {
 
     const created = rows && rows[0] ? rows[0] : { id: result.insertId };
 
-    return Response.json({ success: true, data: created, message: 'Follow-up created successfully' });
+    return Response.json({
+      success: true,
+      data: created,
+      message: 'Follow-up created successfully',
+    });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ success: false, error: 'Failed to create follow-up' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to create follow-up' },
+      { status: 500 }
+    );
   } finally {
     if (db) await db.end();
   }

@@ -1,12 +1,20 @@
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 export async function GET(request) {
   let connection;
   try {
-    const auth = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+    const auth = await ensurePermission(
+      request,
+      RESOURCES.EMPLOYEES,
+      PERMISSIONS.READ
+    );
     if (auth instanceof Response) return auth;
 
     connection = await dbConnect();
@@ -41,8 +49,8 @@ export async function GET(request) {
         Number(e.id),
         {
           employee_name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
-          employee_code: e.employee_id || ''
-        }
+          employee_code: e.employee_id || '',
+        },
       ])
     );
 
@@ -55,36 +63,51 @@ export async function GET(request) {
       status: e.status || '',
       employment_status: e.employment_status || '',
       hire_date: e.hire_date || null,
-      joining_date: e.joining_date || null
+      joining_date: e.joining_date || null,
     }));
 
     const salaryProfilesForSheet = salaryProfiles.map((row) => {
-      const emp = employeeLookup.get(Number(row.employee_id)) || { employee_name: '', employee_code: '' };
-      const rest = Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'employee_id'));
+      const emp = employeeLookup.get(Number(row.employee_id)) || {
+        employee_name: '',
+        employee_code: '',
+      };
+      const rest = Object.fromEntries(
+        Object.entries(row).filter(([key]) => key !== 'employee_id')
+      );
       return {
         employee_name: emp.employee_name,
         employee_code: emp.employee_code,
-        ...rest
+        ...rest,
       };
     });
 
     const structuresForSheet = structures.map((row) => {
-      const emp = employeeLookup.get(Number(row.employee_id)) || { employee_name: '', employee_code: '' };
-      const rest = Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'employee_id'));
+      const emp = employeeLookup.get(Number(row.employee_id)) || {
+        employee_name: '',
+        employee_code: '',
+      };
+      const rest = Object.fromEntries(
+        Object.entries(row).filter(([key]) => key !== 'employee_id')
+      );
       return {
         employee_name: emp.employee_name,
         employee_code: emp.employee_code,
-        ...rest
+        ...rest,
       };
     });
 
     const componentsForSheet = components.map((row) => {
-      const emp = employeeLookup.get(Number(row.employee_id)) || { employee_name: '', employee_code: '' };
-      const rest = Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'employee_id'));
+      const emp = employeeLookup.get(Number(row.employee_id)) || {
+        employee_name: '',
+        employee_code: '',
+      };
+      const rest = Object.fromEntries(
+        Object.entries(row).filter(([key]) => key !== 'employee_id')
+      );
       return {
         employee_name: emp.employee_name,
         employee_code: emp.employee_code,
-        ...rest
+        ...rest,
       };
     });
 
@@ -95,14 +118,14 @@ export async function GET(request) {
     const summarySheet = workbook.addWorksheet('Summary');
     summarySheet.columns = [
       { header: 'Metric', key: 'metric', width: 34 },
-      { header: 'Count', key: 'count', width: 20 }
+      { header: 'Count', key: 'count', width: 20 },
     ];
     summarySheet.addRows([
       { metric: 'Total Employees', count: employees.length },
       { metric: 'Total Salary Profile Rows', count: salaryProfiles.length },
       { metric: 'Total Salary Structure Rows', count: structures.length },
       { metric: 'Total Structure Component Rows', count: components.length },
-      { metric: 'Exported At', count: new Date().toISOString() }
+      { metric: 'Exported At', count: new Date().toISOString() },
     ]);
     summarySheet.getRow(1).font = { bold: true };
 
@@ -112,13 +135,15 @@ export async function GET(request) {
       employeesSheet.columns = employeeHeaders.map((key) => ({
         header: key,
         key,
-        width: Math.max(16, key.length + 4)
+        width: Math.max(16, key.length + 4),
       }));
       employeesForSheet.forEach((row) => employeesSheet.addRow(row));
       employeesSheet.getRow(1).font = { bold: true };
       employeesSheet.views = [{ state: 'frozen', ySplit: 1 }];
     } else {
-      employeesSheet.columns = [{ header: 'message', key: 'message', width: 48 }];
+      employeesSheet.columns = [
+        { header: 'message', key: 'message', width: 48 },
+      ];
       employeesSheet.addRow({ message: 'No employees found' });
       employeesSheet.getRow(1).font = { bold: true };
     }
@@ -129,14 +154,18 @@ export async function GET(request) {
       profilesSheet.columns = profileHeaders.map((key) => ({
         header: key,
         key,
-        width: Math.max(16, key.length + 4)
+        width: Math.max(16, key.length + 4),
       }));
       salaryProfilesForSheet.forEach((row) => profilesSheet.addRow(row));
       profilesSheet.getRow(1).font = { bold: true };
       profilesSheet.views = [{ state: 'frozen', ySplit: 1 }];
     } else {
-      profilesSheet.columns = [{ header: 'message', key: 'message', width: 48 }];
-      profilesSheet.addRow({ message: 'No employee salary profile rows found' });
+      profilesSheet.columns = [
+        { header: 'message', key: 'message', width: 48 },
+      ];
+      profilesSheet.addRow({
+        message: 'No employee salary profile rows found',
+      });
       profilesSheet.getRow(1).font = { bold: true };
     }
 
@@ -146,13 +175,15 @@ export async function GET(request) {
       structuresSheet.columns = structureHeaders.map((key) => ({
         header: key,
         key,
-        width: Math.max(16, key.length + 4)
+        width: Math.max(16, key.length + 4),
       }));
       structuresForSheet.forEach((row) => structuresSheet.addRow(row));
       structuresSheet.getRow(1).font = { bold: true };
       structuresSheet.views = [{ state: 'frozen', ySplit: 1 }];
     } else {
-      structuresSheet.columns = [{ header: 'message', key: 'message', width: 48 }];
+      structuresSheet.columns = [
+        { header: 'message', key: 'message', width: 48 },
+      ];
       structuresSheet.addRow({ message: 'No salary structure rows found' });
       structuresSheet.getRow(1).font = { bold: true };
     }
@@ -163,14 +194,18 @@ export async function GET(request) {
       componentsSheet.columns = componentHeaders.map((key) => ({
         header: key,
         key,
-        width: Math.max(16, key.length + 4)
+        width: Math.max(16, key.length + 4),
       }));
       componentsForSheet.forEach((row) => componentsSheet.addRow(row));
       componentsSheet.getRow(1).font = { bold: true };
       componentsSheet.views = [{ state: 'frozen', ySplit: 1 }];
     } else {
-      componentsSheet.columns = [{ header: 'message', key: 'message', width: 48 }];
-      componentsSheet.addRow({ message: 'No salary structure component rows found' });
+      componentsSheet.columns = [
+        { header: 'message', key: 'message', width: 48 },
+      ];
+      componentsSheet.addRow({
+        message: 'No salary structure component rows found',
+      });
       componentsSheet.getRow(1).font = { bold: true };
     }
 
@@ -180,13 +215,21 @@ export async function GET(request) {
     return new NextResponse(buffer, {
       status: 200,
       headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${filename}"`
-      }
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
     });
   } catch (error) {
     console.error('All users salary structure export error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to export salary structures for all users', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to export salary structures for all users',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }

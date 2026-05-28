@@ -12,7 +12,7 @@ import {
   ArrowPathIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 
 const ACTION_LABELS = {
@@ -23,7 +23,7 @@ const ACTION_LABELS = {
   login: 'Logged In',
   logout: 'Logged Out',
   export: 'Exported Data',
-  import: 'Imported Data'
+  import: 'Imported Data',
 };
 
 const ACTION_COLORS = {
@@ -34,7 +34,7 @@ const ACTION_COLORS = {
   login: 'bg-cyan-100 text-cyan-800',
   logout: 'bg-gray-100 text-gray-800',
   export: 'bg-yellow-100 text-yellow-800',
-  import: 'bg-indigo-100 text-indigo-800'
+  import: 'bg-indigo-100 text-indigo-800',
 };
 
 const RESOURCE_LABELS = {
@@ -45,7 +45,7 @@ const RESOURCE_LABELS = {
   projects: 'Projects',
   vendors: 'Vendors',
   proposals: 'Proposals',
-  documents: 'Documents'
+  documents: 'Documents',
 };
 
 function AuditLogsContent() {
@@ -53,7 +53,7 @@ function AuditLogsContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedRow, setExpandedRow] = useState(null);
-  
+
   // Filters
   const [filters, setFilters] = useState({
     search: '',
@@ -61,10 +61,10 @@ function AuditLogsContent() {
     resource: '',
     startDate: '',
     endDate: '',
-    userId: ''
+    userId: '',
   });
   const [showFilters, setShowFilters] = useState(false);
-  
+
   // Pagination
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -77,17 +77,17 @@ function AuditLogsContent() {
       const params = new URLSearchParams();
       params.append('page', page.toString());
       params.append('limit', limit.toString());
-      
+
       if (filters.action) params.append('action', filters.action);
       if (filters.resource) params.append('resource', filters.resource);
       if (filters.startDate) params.append('start_date', filters.startDate);
       if (filters.endDate) params.append('end_date', filters.endDate);
       if (filters.userId) params.append('user_id', filters.userId);
       if (filters.search) params.append('search', filters.search);
-      
+
       const res = await fetch(`/api/audit-logs?${params.toString()}`);
       const data = await res.json();
-      
+
       if (data.success) {
         setLogs(data.data || []);
         setTotalPages(Math.ceil((data.total || 0) / limit));
@@ -107,7 +107,7 @@ function AuditLogsContent() {
   }, [fetchLogs]);
 
   const handleFilterChange = (key, value) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+    setFilters((prev) => ({ ...prev, [key]: value }));
     setPage(1);
   };
 
@@ -118,7 +118,7 @@ function AuditLogsContent() {
       resource: '',
       startDate: '',
       endDate: '',
-      userId: ''
+      userId: '',
     });
     setPage(1);
   };
@@ -130,16 +130,16 @@ function AuditLogsContent() {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
   const renderChanges = (log) => {
     const oldVal = log.old_value;
     const newVal = log.new_value;
-    
+
     if (!oldVal && !newVal) return null;
-    
+
     // For permission changes, show a structured view
     if (log.action === 'update_permissions') {
       return (
@@ -147,50 +147,72 @@ function AuditLogsContent() {
           {/* Module Permissions Changes */}
           {(oldVal?.permissions || newVal?.permissions) && (
             <div>
-              <h5 className="text-sm font-medium text-gray-700 mb-2">Module Permissions</h5>
+              <h5 className="text-sm font-medium text-gray-700 mb-2">
+                Module Permissions
+              </h5>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-red-50 rounded-lg p-3">
-                  <p className="text-xs font-medium text-red-700 mb-1">Previous</p>
+                  <p className="text-xs font-medium text-red-700 mb-1">
+                    Previous
+                  </p>
                   <div className="flex flex-wrap gap-1">
                     {(oldVal?.permissions || []).length > 0 ? (
                       oldVal.permissions.slice(0, 10).map((p, i) => (
-                        <span key={i} className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded">
+                        <span
+                          key={i}
+                          className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded"
+                        >
                           {p}
                         </span>
                       ))
                     ) : (
-                      <span className="text-xs text-gray-500">No permissions</span>
+                      <span className="text-xs text-gray-500">
+                        No permissions
+                      </span>
                     )}
                     {(oldVal?.permissions || []).length > 10 && (
-                      <span className="text-xs text-red-600">+{oldVal.permissions.length - 10} more</span>
+                      <span className="text-xs text-red-600">
+                        +{oldVal.permissions.length - 10} more
+                      </span>
                     )}
                   </div>
                 </div>
                 <div className="bg-green-50 rounded-lg p-3">
-                  <p className="text-xs font-medium text-green-700 mb-1">Updated</p>
+                  <p className="text-xs font-medium text-green-700 mb-1">
+                    Updated
+                  </p>
                   <div className="flex flex-wrap gap-1">
                     {(newVal?.permissions || []).length > 0 ? (
                       newVal.permissions.slice(0, 10).map((p, i) => (
-                        <span key={i} className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                        <span
+                          key={i}
+                          className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded"
+                        >
                           {p}
                         </span>
                       ))
                     ) : (
-                      <span className="text-xs text-gray-500">No permissions</span>
+                      <span className="text-xs text-gray-500">
+                        No permissions
+                      </span>
                     )}
                     {(newVal?.permissions || []).length > 10 && (
-                      <span className="text-xs text-green-600">+{newVal.permissions.length - 10} more</span>
+                      <span className="text-xs text-green-600">
+                        +{newVal.permissions.length - 10} more
+                      </span>
                     )}
                   </div>
                 </div>
               </div>
             </div>
           )}
-          
+
           {/* Field Permissions Changes */}
           {(oldVal?.field_permissions || newVal?.field_permissions) && (
             <div>
-              <h5 className="text-sm font-medium text-gray-700 mb-2">Field Permissions</h5>
+              <h5 className="text-sm font-medium text-gray-700 mb-2">
+                Field Permissions
+              </h5>
               <div className="text-xs text-gray-500">
                 Field-level permission changes applied
               </div>
@@ -199,13 +221,15 @@ function AuditLogsContent() {
         </div>
       );
     }
-    
+
     // For other changes, show JSON diff
     return (
       <div className="mt-3 grid grid-cols-2 gap-4">
         {oldVal && (
           <div className="bg-red-50 rounded-lg p-3">
-            <p className="text-xs font-medium text-red-700 mb-1">Previous Value</p>
+            <p className="text-xs font-medium text-red-700 mb-1">
+              Previous Value
+            </p>
             <pre className="text-xs text-gray-700 overflow-auto max-h-40">
               {JSON.stringify(oldVal, null, 2)}
             </pre>
@@ -255,7 +279,9 @@ function AuditLogsContent() {
               onClick={fetchLogs}
               className="inline-flex items-center gap-2 rounded-lg border border-purple-200 text-[#64126D] px-3.5 py-2 hover:bg-purple-50"
             >
-              <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              <ArrowPathIcon
+                className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+              />
               Refresh
             </button>
           </div>
@@ -267,13 +293,17 @@ function AuditLogsContent() {
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {/* Search */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Search</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Search
+                </label>
                 <div className="relative">
                   <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <input
                     type="text"
                     value={filters.search}
-                    onChange={(e) => handleFilterChange('search', e.target.value)}
+                    onChange={(e) =>
+                      handleFilterChange('search', e.target.value)
+                    }
                     placeholder="Search..."
                     className="w-full pl-9 pr-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
                   />
@@ -282,7 +312,9 @@ function AuditLogsContent() {
 
               {/* Action Filter */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Action</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Action
+                </label>
                 <select
                   value={filters.action}
                   onChange={(e) => handleFilterChange('action', e.target.value)}
@@ -290,44 +322,60 @@ function AuditLogsContent() {
                 >
                   <option value="">All Actions</option>
                   {Object.entries(ACTION_LABELS).map(([key, label]) => (
-                    <option key={key} value={key}>{label}</option>
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
                   ))}
                 </select>
               </div>
 
               {/* Resource Filter */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Resource</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Resource
+                </label>
                 <select
                   value={filters.resource}
-                  onChange={(e) => handleFilterChange('resource', e.target.value)}
+                  onChange={(e) =>
+                    handleFilterChange('resource', e.target.value)
+                  }
                   className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
                 >
                   <option value="">All Resources</option>
                   {Object.entries(RESOURCE_LABELS).map(([key, label]) => (
-                    <option key={key} value={key}>{label}</option>
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
                   ))}
                 </select>
               </div>
 
               {/* Start Date */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">From Date</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  From Date
+                </label>
                 <input
                   type="date"
                   value={filters.startDate}
-                  onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                  onChange={(e) =>
+                    handleFilterChange('startDate', e.target.value)
+                  }
                   className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
                 />
               </div>
 
               {/* End Date */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">To Date</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  To Date
+                </label>
                 <input
                   type="date"
                   value={filters.endDate}
-                  onChange={(e) => handleFilterChange('endDate', e.target.value)}
+                  onChange={(e) =>
+                    handleFilterChange('endDate', e.target.value)
+                  }
                   className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
                 />
               </div>
@@ -363,7 +411,7 @@ function AuditLogsContent() {
             <div className="flex flex-col items-center justify-center py-12">
               <DocumentTextIcon className="h-12 w-12 text-gray-300 mb-3" />
               <p className="text-gray-500">No audit logs found</p>
-              {Object.values(filters).some(f => f) && (
+              {Object.values(filters).some((f) => f) && (
                 <button
                   onClick={clearFilters}
                   className="mt-2 text-sm text-[#64126D] hover:text-purple-700"
@@ -377,9 +425,7 @@ function AuditLogsContent() {
               <table className="min-w-full divide-y divide-purple-200">
                 <thead className="bg-purple-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-12">
-                      
-                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-12"></th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Timestamp
                     </th>
@@ -408,7 +454,9 @@ function AuditLogsContent() {
                         className={`hover:bg-gray-50 cursor-pointer transition-colors ${
                           expandedRow === log.id ? 'bg-purple-50' : ''
                         }`}
-                        onClick={() => setExpandedRow(expandedRow === log.id ? null : log.id)}
+                        onClick={() =>
+                          setExpandedRow(expandedRow === log.id ? null : log.id)
+                        }
                       >
                         <td className="px-6 py-4">
                           {log.old_value || log.new_value ? (
@@ -443,9 +491,12 @@ function AuditLogsContent() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                            ACTION_COLORS[log.action] || 'bg-gray-100 text-gray-800'
-                          }`}>
+                          <span
+                            className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+                              ACTION_COLORS[log.action] ||
+                              'bg-gray-100 text-gray-800'
+                            }`}
+                          >
                             {ACTION_LABELS[log.action] || log.action}
                           </span>
                         </td>
@@ -459,21 +510,27 @@ function AuditLogsContent() {
                           {log.ip_address || '-'}
                         </td>
                       </tr>
-                      {expandedRow === log.id && (log.old_value || log.new_value) && (
-                        <tr key={`${log.id}-details`}>
-                          <td colSpan={7} className="px-6 py-4 bg-gray-50">
-                            <div className="text-sm">
-                              <h4 className="font-medium text-gray-900 mb-2">Change Details</h4>
-                              {renderChanges(log)}
-                              {log.user_agent && (
-                                <div className="mt-3 text-xs text-gray-500">
-                                  <span className="font-medium">User Agent:</span> {log.user_agent}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
+                      {expandedRow === log.id &&
+                        (log.old_value || log.new_value) && (
+                          <tr key={`${log.id}-details`}>
+                            <td colSpan={7} className="px-6 py-4 bg-gray-50">
+                              <div className="text-sm">
+                                <h4 className="font-medium text-gray-900 mb-2">
+                                  Change Details
+                                </h4>
+                                {renderChanges(log)}
+                                {log.user_agent && (
+                                  <div className="mt-3 text-xs text-gray-500">
+                                    <span className="font-medium">
+                                      User Agent:
+                                    </span>{' '}
+                                    {log.user_agent}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                     </>
                   ))}
                 </tbody>
@@ -489,14 +546,14 @@ function AuditLogsContent() {
               </div>
               <div className="flex space-x-2">
                 <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                   className="px-3 py-1.5 border border-purple-200 rounded-lg text-sm font-medium text-[#64126D] bg-white hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Previous
                 </button>
                 <button
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
                   className="px-3 py-1.5 border border-purple-200 rounded-lg text-sm font-medium text-[#64126D] bg-white hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >

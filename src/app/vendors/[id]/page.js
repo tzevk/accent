@@ -4,7 +4,7 @@ import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
 import { fetchJSON } from '@/utils/http';
 import { useRouter } from 'next/navigation';
-import { 
+import {
   ArrowLeftIcon,
   PencilIcon,
   TrashIcon,
@@ -16,7 +16,7 @@ import {
   BanknotesIcon,
   ShieldCheckIcon,
   StarIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 
 export default function VendorDetails({ params }) {
@@ -28,8 +28,8 @@ export default function VendorDetails({ params }) {
     const fetchVendor = async () => {
       try {
         const vendorId = await params;
-  const result = await fetchJSON(`/api/vendors/${vendorId.id}`);
-        
+        const result = await fetchJSON(`/api/vendors/${vendorId.id}`);
+
         if (result.success) {
           setVendor(result.data);
         } else {
@@ -54,7 +54,7 @@ export default function VendorDetails({ params }) {
     return new Date(dateString).toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
     });
   };
 
@@ -76,10 +76,16 @@ export default function VendorDetails({ params }) {
   };
 
   const handleDelete = async () => {
-    if (window.confirm(`Are you sure you want to delete vendor "${vendor.vendor_name}"?`)) {
+    if (
+      window.confirm(
+        `Are you sure you want to delete vendor "${vendor.vendor_name}"?`
+      )
+    ) {
       try {
-        const result = await fetchJSON(`/api/vendors/${vendor.id}`, { method: 'DELETE' });
-        
+        const result = await fetchJSON(`/api/vendors/${vendor.id}`, {
+          method: 'DELETE',
+        });
+
         if (result.success) {
           alert('Vendor deleted successfully!');
           router.push('/vendors');
@@ -127,8 +133,12 @@ export default function VendorDetails({ params }) {
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <h2 className="text-xl font-semibold text-gray-900">Vendor not found</h2>
-            <p className="mt-2 text-gray-600">The vendor you&apos;re looking for doesn&apos;t exist.</p>
+            <h2 className="text-xl font-semibold text-gray-900">
+              Vendor not found
+            </h2>
+            <p className="mt-2 text-gray-600">
+              The vendor you&apos;re looking for doesn&apos;t exist.
+            </p>
             <button
               onClick={() => router.push('/vendors')}
               className="mt-4 bg-accent-primary text-white px-4 py-2 rounded-md hover:bg-accent-primary/90"
@@ -144,7 +154,7 @@ export default function VendorDetails({ params }) {
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
-      
+
       <div className="flex-1 overflow-hidden">
         <div className="h-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 max-w-[1800px] mx-auto w-full">
           {/* Header */}
@@ -157,7 +167,9 @@ export default function VendorDetails({ params }) {
                 <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{vendor.vendor_name}</h1>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {vendor.vendor_name}
+                </h1>
                 <p className="text-gray-600">Vendor Details</p>
               </div>
             </div>
@@ -192,24 +204,44 @@ export default function VendorDetails({ params }) {
                   </h3>
                   <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Vendor ID</label>
-                      <p className="text-sm text-gray-900 font-mono">{vendor.vendor_id || `#${vendor.id}`}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Vendor ID
+                      </label>
+                      <p className="text-sm text-gray-900 font-mono">
+                        {vendor.vendor_id || `#${vendor.id}`}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Vendor Name</label>
-                      <p className="text-sm text-gray-900">{vendor.vendor_name}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Vendor Name
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.vendor_name}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Vendor Type</label>
-                      <p className="text-sm text-gray-900">{vendor.vendor_type || 'N/A'}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Vendor Type
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.vendor_type || 'N/A'}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Industry / Category</label>
-                      <p className="text-sm text-gray-900">{vendor.industry_category || 'N/A'}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Industry / Category
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.industry_category || 'N/A'}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(vendor.status)}`}>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Status
+                      </label>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(vendor.status)}`}
+                      >
                         {vendor.status || 'Active'}
                       </span>
                     </div>
@@ -224,29 +256,43 @@ export default function VendorDetails({ params }) {
                   </h3>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
-                      <p className="text-sm text-gray-900">{vendor.contact_person || 'N/A'}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Contact Person
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.contact_person || 'N/A'}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
-                      <p className="text-sm text-gray-900">{vendor.contact_designation || 'N/A'}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Designation
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.contact_designation || 'N/A'}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Phone
+                      </label>
                       <p className="text-sm text-gray-900 flex items-center">
                         <PhoneIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {vendor.phone || 'N/A'}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Email
+                      </label>
                       <p className="text-sm text-gray-900 flex items-center">
                         <EnvelopeIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {vendor.email || 'N/A'}
                       </p>
                     </div>
                     <div className="lg:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Address
+                      </label>
                       <p className="text-sm text-gray-900 flex items-start">
                         <MapPinIcon className="h-4 w-4 mr-1 mt-0.5 text-gray-400 flex-shrink-0" />
                         <span>
@@ -255,20 +301,31 @@ export default function VendorDetails({ params }) {
                             vendor.address_city,
                             vendor.address_state,
                             vendor.address_country,
-                            vendor.address_pin
-                          ].filter(Boolean).join(', ') || 'N/A'}
+                            vendor.address_pin,
+                          ]
+                            .filter(Boolean)
+                            .join(', ') || 'N/A'}
                         </span>
                       </p>
                     </div>
                     <div className="lg:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Website
+                      </label>
                       <p className="text-sm text-gray-900 flex items-center">
                         <GlobeAltIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {vendor.website ? (
-                          <a href={vendor.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          <a
+                            href={vendor.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline"
+                          >
                             {vendor.website}
                           </a>
-                        ) : 'N/A'}
+                        ) : (
+                          'N/A'
+                        )}
                       </p>
                     </div>
                   </div>
@@ -282,25 +339,45 @@ export default function VendorDetails({ params }) {
                   </h3>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">GST / VAT / Tax ID</label>
-                      <p className="text-sm text-gray-900">{vendor.gst_vat_tax_id || 'N/A'}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        GST / VAT / Tax ID
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.gst_vat_tax_id || 'N/A'}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">PAN / Legal Reg No.</label>
-                      <p className="text-sm text-gray-900">{vendor.pan_legal_reg_no || 'N/A'}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        PAN / Legal Reg No.
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.pan_legal_reg_no || 'N/A'}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">MSME / SSI Registration</label>
-                      <p className="text-sm text-gray-900">{vendor.msme_ssi_registration || 'N/A'}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        MSME / SSI Registration
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.msme_ssi_registration || 'N/A'}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">ISO / ASME / API Certifications</label>
-                      <p className="text-sm text-gray-900">{vendor.iso_certifications || 'N/A'}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        ISO / ASME / API Certifications
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.iso_certifications || 'N/A'}
+                      </p>
                     </div>
                     {vendor.other_compliance_docs && (
                       <div className="lg:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Other Compliance Docs</label>
-                        <p className="text-sm text-gray-900">{vendor.other_compliance_docs}</p>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Other Compliance Docs
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {vendor.other_compliance_docs}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -314,29 +391,53 @@ export default function VendorDetails({ params }) {
                   </h3>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
-                      <p className="text-sm text-gray-900">{vendor.bank_name || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
-                      <p className="text-sm text-gray-900">{vendor.bank_account_no || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">IFSC / SWIFT Code</label>
-                      <p className="text-sm text-gray-900">{vendor.ifsc_swift_code || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Currency Preference</label>
-                      <p className="text-sm text-gray-900">{vendor.currency_preference || 'INR'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
-                      <p className="text-sm text-gray-900">{vendor.payment_terms || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Credit Limit</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Bank Name
+                      </label>
                       <p className="text-sm text-gray-900">
-                        {vendor.credit_limit ? `${vendor.currency_preference || 'INR'} ${parseFloat(vendor.credit_limit).toLocaleString()}` : 'N/A'}
+                        {vendor.bank_name || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Account Number
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.bank_account_no || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        IFSC / SWIFT Code
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.ifsc_swift_code || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Currency Preference
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.currency_preference || 'INR'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Payment Terms
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.payment_terms || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Credit Limit
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {vendor.credit_limit
+                          ? `${vendor.currency_preference || 'INR'} ${parseFloat(vendor.credit_limit).toLocaleString()}`
+                          : 'N/A'}
                       </p>
                     </div>
                   </div>
@@ -353,19 +454,31 @@ export default function VendorDetails({ params }) {
                   </h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Quality Rating</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Quality Rating
+                      </label>
                       {renderRating(vendor.avg_quality_rating)}
-                      <p className="text-xs text-gray-500 mt-1">{vendor.avg_quality_rating || 'Not rated'}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {vendor.avg_quality_rating || 'Not rated'}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Rating</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Delivery Rating
+                      </label>
                       {renderRating(vendor.avg_delivery_rating)}
-                      <p className="text-xs text-gray-500 mt-1">{vendor.avg_delivery_rating || 'Not rated'}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {vendor.avg_delivery_rating || 'Not rated'}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Reliability Rating</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Reliability Rating
+                      </label>
                       {renderRating(vendor.avg_reliability_rating)}
-                      <p className="text-xs text-gray-500 mt-1">{vendor.avg_reliability_rating || 'Not rated'}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {vendor.avg_reliability_rating || 'Not rated'}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -373,8 +486,12 @@ export default function VendorDetails({ params }) {
                 {/* Blacklist / Warning Notes */}
                 {vendor.blacklist_notes && (
                   <div className="bg-red-50 rounded-lg border border-red-200 p-6">
-                    <h3 className="text-lg font-medium text-red-900 mb-2">⚠️ Warning Notes</h3>
-                    <p className="text-sm text-red-800">{vendor.blacklist_notes}</p>
+                    <h3 className="text-lg font-medium text-red-900 mb-2">
+                      ⚠️ Warning Notes
+                    </h3>
+                    <p className="text-sm text-red-800">
+                      {vendor.blacklist_notes}
+                    </p>
                   </div>
                 )}
 
@@ -391,18 +508,25 @@ export default function VendorDetails({ params }) {
 
                 {/* Timeline */}
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Timeline</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Timeline
+                  </h3>
                   <div className="space-y-3">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-600">Created:</span>
-                      <span className="text-gray-900">{formatDate(vendor.created_at)}</span>
+                      <span className="text-gray-900">
+                        {formatDate(vendor.created_at)}
+                      </span>
                     </div>
-                    {vendor.updated_at && vendor.updated_at !== vendor.created_at && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-600">Last Updated:</span>
-                        <span className="text-gray-900">{formatDate(vendor.updated_at)}</span>
-                      </div>
-                    )}
+                    {vendor.updated_at &&
+                      vendor.updated_at !== vendor.created_at && (
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-gray-600">Last Updated:</span>
+                          <span className="text-gray-900">
+                            {formatDate(vendor.updated_at)}
+                          </span>
+                        </div>
+                      )}
                   </div>
                 </div>
               </div>

@@ -2,7 +2,12 @@
 
 import React from 'react';
 import StatusBadge from './StatusBadge';
-import { ClockIcon, DocumentTextIcon, ChartBarIcon, CursorArrowRaysIcon } from '@heroicons/react/24/outline';
+import {
+  ClockIcon,
+  DocumentTextIcon,
+  ChartBarIcon,
+  CursorArrowRaysIcon,
+} from '@heroicons/react/24/outline';
 
 /**
  * UserActivityCard Component
@@ -11,20 +16,24 @@ import { ClockIcon, DocumentTextIcon, ChartBarIcon, CursorArrowRaysIcon } from '
  * - Last seen time
  * - Current page/activity
  * - Today's statistics (screen time, activities, productivity)
- * 
+ *
  * Props:
  * - userData: object with user info
  * - activityData: object with activity stats
  * - compact: boolean (default false)
  */
-export default function UserActivityCard({ userData, activityData, compact = false }) {
+export default function UserActivityCard({
+  userData,
+  activityData,
+  compact = false,
+}) {
   const {
     full_name,
     username,
     role_name,
     last_activity,
     current_page,
-    session_duration
+    session_duration,
   } = userData || {};
 
   const {
@@ -32,7 +41,7 @@ export default function UserActivityCard({ userData, activityData, compact = fal
     activities_count = 0,
     productivity_score = 0,
     pages_viewed = 0,
-    resources_modified = 0
+    resources_modified = 0,
   } = activityData || {};
 
   // Format screen time
@@ -64,20 +73,26 @@ export default function UserActivityCard({ userData, activityData, compact = fal
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <StatusBadge 
-                lastActivity={last_activity} 
+              <StatusBadge
+                lastActivity={last_activity}
                 size="sm"
                 showLabel={false}
               />
-              <span className="text-sm font-medium text-gray-900">{full_name || username}</span>
+              <span className="text-sm font-medium text-gray-900">
+                {full_name || username}
+              </span>
             </div>
             {current_page && (
-              <p className="text-xs text-gray-500 truncate">{formatCurrentPage(current_page)}</p>
+              <p className="text-xs text-gray-500 truncate">
+                {formatCurrentPage(current_page)}
+              </p>
             )}
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-500">Today</p>
-            <p className="text-sm font-semibold text-gray-900">{formatScreenTime(total_screen_time_minutes)}</p>
+            <p className="text-sm font-semibold text-gray-900">
+              {formatScreenTime(total_screen_time_minutes)}
+            </p>
           </div>
         </div>
       </div>
@@ -90,7 +105,9 @@ export default function UserActivityCard({ userData, activityData, compact = fal
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">{full_name || username}</h3>
+            <h3 className="text-lg font-semibold text-gray-900">
+              {full_name || username}
+            </h3>
             <p className="text-sm text-gray-600">{role_name || 'No role'}</p>
           </div>
           <StatusBadge lastActivity={last_activity} size="md" />
@@ -119,7 +136,9 @@ export default function UserActivityCard({ userData, activityData, compact = fal
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-500">Screen Time</p>
-            <p className="text-lg font-bold text-gray-900">{formatScreenTime(total_screen_time_minutes)}</p>
+            <p className="text-lg font-bold text-gray-900">
+              {formatScreenTime(total_screen_time_minutes)}
+            </p>
             <p className="text-xs text-gray-400">Today</p>
           </div>
         </div>
@@ -131,7 +150,9 @@ export default function UserActivityCard({ userData, activityData, compact = fal
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-500">Activities</p>
-            <p className="text-lg font-bold text-gray-900">{activities_count}</p>
+            <p className="text-lg font-bold text-gray-900">
+              {activities_count}
+            </p>
             <p className="text-xs text-gray-400">{pages_viewed} pages</p>
           </div>
         </div>
@@ -143,7 +164,9 @@ export default function UserActivityCard({ userData, activityData, compact = fal
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-500">Productivity</p>
-            <p className={`text-lg font-bold ${getProductivityColor(productivity_score)}`}>
+            <p
+              className={`text-lg font-bold ${getProductivityColor(productivity_score)}`}
+            >
               {productivity_score.toFixed(0)}%
             </p>
             <p className="text-xs text-gray-400">Score</p>
@@ -157,7 +180,9 @@ export default function UserActivityCard({ userData, activityData, compact = fal
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-500">Changes</p>
-            <p className="text-lg font-bold text-gray-900">{resources_modified}</p>
+            <p className="text-lg font-bold text-gray-900">
+              {resources_modified}
+            </p>
             <p className="text-xs text-gray-400">Edits</p>
           </div>
         </div>
@@ -183,7 +208,8 @@ export default function UserActivityCard({ userData, activityData, compact = fal
  */
 export function UserActivityMini({ userData, activityData }) {
   const { last_activity, current_page } = userData || {};
-  const { total_screen_time_minutes = 0, activities_count = 0 } = activityData || {};
+  const { total_screen_time_minutes = 0, activities_count = 0 } =
+    activityData || {};
 
   const formatScreenTime = (minutes) => {
     if (!minutes) return '0m';

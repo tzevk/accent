@@ -1,16 +1,24 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // Function to parse CSV content
 function parseCSV(csvContent) {
   const lines = csvContent.trim().split('\n');
-  const headers = lines[0].split(',').map(header => header.trim().replace(/"/g, ''));
+  const headers = lines[0]
+    .split(',')
+    .map((header) => header.trim().replace(/"/g, ''));
   const data = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map(value => value.trim().replace(/"/g, ''));
+    const values = lines[i]
+      .split(',')
+      .map((value) => value.trim().replace(/"/g, ''));
     if (values.length === headers.length) {
       const row = {};
       headers.forEach((header, index) => {
@@ -26,13 +34,13 @@ function parseCSV(csvContent) {
 // Function to validate employee data
 function validateEmployeeData(employee, rowIndex) {
   const errors = [];
-  
+
   // Helper function to safely convert to string and trim
   const safeString = (value) => {
     if (value === null || value === undefined) return '';
     return String(value).trim();
   };
-  
+
   // Helper function to find column value with flexible header matching
   const getColumnValue = (employee, possibleHeaders) => {
     for (const header of possibleHeaders) {
@@ -42,37 +50,62 @@ function validateEmployeeData(employee, rowIndex) {
     }
     return null;
   };
-  
+
   console.log(`Validating row ${rowIndex + 2}:`, employee);
   console.log('Available columns:', Object.keys(employee));
-  
+
   // Required fields validation with flexible header matching
-  const srNoValue = getColumnValue(employee, ['SR.NO', 'SR NO', 'SRNO', 'Sr.No', 'Serial Number']);
+  const srNoValue = getColumnValue(employee, [
+    'SR.NO',
+    'SR NO',
+    'SRNO',
+    'Sr.No',
+    'Serial Number',
+  ]);
   const srNo = safeString(srNoValue);
   if (!srNo) {
-    errors.push(`Row ${rowIndex + 2}: SR.NO is required (available columns: ${Object.keys(employee).join(', ')})`);
+    errors.push(
+      `Row ${rowIndex + 2}: SR.NO is required (available columns: ${Object.keys(employee).join(', ')})`
+    );
   }
-  
-  const employeeCodeValue = getColumnValue(employee, ['Employee Code', 'EmployeeCode', 'Emp Code', 'EmpCode', 'Code']);
+
+  const employeeCodeValue = getColumnValue(employee, [
+    'Employee Code',
+    'EmployeeCode',
+    'Emp Code',
+    'EmpCode',
+    'Code',
+  ]);
   const employeeCode = safeString(employeeCodeValue);
   if (!employeeCode) {
-    errors.push(`Row ${rowIndex + 2}: Employee Code is required (available columns: ${Object.keys(employee).join(', ')})`);
+    errors.push(
+      `Row ${rowIndex + 2}: Employee Code is required (available columns: ${Object.keys(employee).join(', ')})`
+    );
   }
-  
-  const fullNameValue = getColumnValue(employee, ['Full Name', 'FullName', 'Name', 'Employee Name']);
+
+  const fullNameValue = getColumnValue(employee, [
+    'Full Name',
+    'FullName',
+    'Name',
+    'Employee Name',
+  ]);
   const fullName = safeString(fullNameValue);
   if (!fullName) {
-    errors.push(`Row ${rowIndex + 2}: Full Name is required (available columns: ${Object.keys(employee).join(', ')})`);
+    errors.push(
+      `Row ${rowIndex + 2}: Full Name is required (available columns: ${Object.keys(employee).join(', ')})`
+    );
   }
 
   // Parse full name into first and last name
   let firstName = '';
   let lastName = '';
-  
+
   if (fullName) {
-    const nameParts = fullName.split(' ').filter(part => part.trim() !== '');
+    const nameParts = fullName.split(' ').filter((part) => part.trim() !== '');
     if (nameParts.length < 2) {
-      errors.push(`Row ${rowIndex + 2}: Full Name should contain at least first and last name (got: "${fullName}")`);
+      errors.push(
+        `Row ${rowIndex + 2}: Full Name should contain at least first and last name (got: "${fullName}")`
+      );
     } else {
       firstName = nameParts[0];
       lastName = nameParts.slice(1).join(' '); // Join remaining parts as last name
@@ -82,7 +115,7 @@ function validateEmployeeData(employee, rowIndex) {
   // Generate email from name if not provided
   if (firstName && lastName) {
     const email = `${firstName.toLowerCase()}.${lastName.toLowerCase().replace(/\s+/g, '')}@accentcrm.com`;
-    
+
     return {
       isValid: errors.length === 0,
       errors,
@@ -91,28 +124,51 @@ function validateEmployeeData(employee, rowIndex) {
         first_name: firstName,
         last_name: lastName,
         email: email,
-        phone: safeString(getColumnValue(employee, ['Phone', 'Mobile', 'Contact'])) || null,
-        department: safeString(getColumnValue(employee, ['Department', 'Dept'])) || null,
-        position: safeString(getColumnValue(employee, ['Position', 'Designation', 'Role'])) || null,
-        hire_date: safeString(getColumnValue(employee, ['Hire Date', 'HireDate', 'Joining Date', 'Date of Joining'])) || null,
+        phone:
+          safeString(
+            getColumnValue(employee, ['Phone', 'Mobile', 'Contact'])
+          ) || null,
+        department:
+          safeString(getColumnValue(employee, ['Department', 'Dept'])) || null,
+        position:
+          safeString(
+            getColumnValue(employee, ['Position', 'Designation', 'Role'])
+          ) || null,
+        hire_date:
+          safeString(
+            getColumnValue(employee, [
+              'Hire Date',
+              'HireDate',
+              'Joining Date',
+              'Date of Joining',
+            ])
+          ) || null,
         status: 'active',
-        address: safeString(getColumnValue(employee, ['Address', 'Location'])) || null,
-        notes: safeString(getColumnValue(employee, ['Notes', 'Remarks', 'Comments'])) || null
-      }
+        address:
+          safeString(getColumnValue(employee, ['Address', 'Location'])) || null,
+        notes:
+          safeString(
+            getColumnValue(employee, ['Notes', 'Remarks', 'Comments'])
+          ) || null,
+      },
     };
   }
 
   return {
     isValid: false,
     errors,
-    data: null
+    data: null,
   };
 }
 
 // POST - Import employees from CSV
 export async function POST(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.CREATE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.EMPLOYEES,
+    PERMISSIONS.CREATE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   try {
@@ -120,10 +176,7 @@ export async function POST(request) {
     const file = formData.get('file');
 
     if (!file) {
-      return NextResponse.json(
-        { error: 'No file uploaded' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
     // Check file type
@@ -145,7 +198,7 @@ export async function POST(request) {
 
     // Read file content
     let parsedData;
-    
+
     try {
       const csvContent = await file.text();
       parsedData = parseCSV(csvContent);
@@ -165,26 +218,26 @@ export async function POST(request) {
 
     // Validate data
     console.log('Parsed data sample:', parsedData[0]); // Debug log
-    const validationResults = parsedData.map((employee, index) => 
+    const validationResults = parsedData.map((employee, index) =>
       validateEmployeeData(employee, index)
     );
 
-    const allErrors = validationResults.flatMap(result => result.errors);
+    const allErrors = validationResults.flatMap((result) => result.errors);
     console.log('Validation errors:', allErrors); // Debug log
-    
+
     if (allErrors.length > 0) {
       return NextResponse.json(
-        { 
+        {
           error: 'Validation failed',
-          details: allErrors
+          details: allErrors,
         },
         { status: 400 }
       );
     }
 
     const validEmployees = validationResults
-      .filter(result => result.isValid)
-      .map(result => result.data);
+      .filter((result) => result.isValid)
+      .map((result) => result.data);
 
     if (validEmployees.length === 0) {
       return NextResponse.json(
@@ -195,23 +248,23 @@ export async function POST(request) {
 
     // Database operations
     const connection = await dbConnect();
-    
+
     let successCount = 0;
     let errorCount = 0;
     const importErrors = [];
 
     try {
       // Check for existing employee IDs and emails
-      const existingIds = validEmployees.map(emp => emp.employee_id);
-      const existingEmails = validEmployees.map(emp => emp.email);
-      
+      const existingIds = validEmployees.map((emp) => emp.employee_id);
+      const existingEmails = validEmployees.map((emp) => emp.email);
+
       let existing = [];
-      
+
       if (existingIds.length > 0 && existingEmails.length > 0) {
         // Create placeholders for IN clause
         const idPlaceholders = existingIds.map(() => '?').join(',');
         const emailPlaceholders = existingEmails.map(() => '?').join(',');
-        
+
         const [result] = await connection.execute(
           `SELECT employee_id, email FROM employees WHERE employee_id IN (${idPlaceholders}) OR email IN (${emailPlaceholders})`,
           [...existingIds, ...existingEmails]
@@ -219,8 +272,10 @@ export async function POST(request) {
         existing = result;
       }
 
-      const existingEmployeeIds = new Set(existing.map(emp => emp.employee_id));
-      const existingEmployeeEmails = new Set(existing.map(emp => emp.email));
+      const existingEmployeeIds = new Set(
+        existing.map((emp) => emp.employee_id)
+      );
+      const existingEmployeeEmails = new Set(existing.map((emp) => emp.email));
 
       // Process each employee
       for (const employee of validEmployees) {
@@ -228,10 +283,12 @@ export async function POST(request) {
           // Skip if employee ID or email already exists
           if (existingEmployeeIds.has(employee.employee_id)) {
             errorCount++;
-            importErrors.push(`Employee ID ${employee.employee_id} already exists`);
+            importErrors.push(
+              `Employee ID ${employee.employee_id} already exists`
+            );
             continue;
           }
-          
+
           if (existingEmployeeEmails.has(employee.email)) {
             errorCount++;
             importErrors.push(`Email ${employee.email} already exists`);
@@ -255,17 +312,18 @@ export async function POST(request) {
               employee.hire_date,
               employee.status,
               employee.address,
-              employee.notes
+              employee.notes,
             ]
           );
 
           successCount++;
         } catch (insertError) {
           errorCount++;
-          importErrors.push(`Failed to import ${employee.employee_id}: ${insertError.message}`);
+          importErrors.push(
+            `Failed to import ${employee.employee_id}: ${insertError.message}`
+          );
         }
       }
-
     } finally {
       await connection.end();
     }
@@ -276,10 +334,9 @@ export async function POST(request) {
         total: validEmployees.length,
         success: successCount,
         errors: errorCount,
-        details: importErrors.length > 0 ? importErrors : undefined
-      }
+        details: importErrors.length > 0 ? importErrors : undefined,
+      },
     });
-
   } catch (error) {
     console.error('Error importing employees:', error);
     return NextResponse.json(
@@ -298,9 +355,39 @@ export async function GET(request) {
     if (format === 'excel' || format === 'xlsx') {
       // Create Excel template using ExcelJS
       const templateData = [
-        ['SR.NO', 'Employee Code', 'Full Name', 'Phone', 'Department', 'Position', 'Hire Date', 'Address', 'Notes'],
-        [1, 'EMP001', 'John Doe', '+1-555-0123', 'Engineering', 'Senior Developer', '2023-01-15', '123 Main St', 'Sample employee'],
-        [2, 'EMP002', 'Jane Smith', '+1-555-0124', 'Sales', 'Sales Manager', '2023-02-01', '456 Oak Ave', 'Sample employee']
+        [
+          'SR.NO',
+          'Employee Code',
+          'Full Name',
+          'Phone',
+          'Department',
+          'Position',
+          'Hire Date',
+          'Address',
+          'Notes',
+        ],
+        [
+          1,
+          'EMP001',
+          'John Doe',
+          '+1-555-0123',
+          'Engineering',
+          'Senior Developer',
+          '2023-01-15',
+          '123 Main St',
+          'Sample employee',
+        ],
+        [
+          2,
+          'EMP002',
+          'Jane Smith',
+          '+1-555-0124',
+          'Sales',
+          'Sales Manager',
+          '2023-02-01',
+          '456 Oak Ave',
+          'Sample employee',
+        ],
       ];
 
       const workbook = new ExcelJS.Workbook();
@@ -311,9 +398,11 @@ export async function GET(request) {
 
       return new Response(Buffer.from(buffer), {
         headers: {
-          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'Content-Disposition': 'attachment; filename="employee_template.xlsx"'
-        }
+          'Content-Type':
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition':
+            'attachment; filename="employee_template.xlsx"',
+        },
       });
     } else {
       // CSV template
@@ -324,11 +413,10 @@ export async function GET(request) {
       return new Response(csvTemplate, {
         headers: {
           'Content-Type': 'text/csv',
-          'Content-Disposition': 'attachment; filename="employee_template.csv"'
-        }
+          'Content-Disposition': 'attachment; filename="employee_template.csv"',
+        },
       });
     }
-
   } catch (error) {
     console.error('Error generating template:', error);
     return NextResponse.json(

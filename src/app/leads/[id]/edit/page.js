@@ -4,14 +4,13 @@ import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
-import { 
+import {
   ArrowLeftIcon,
   UserIcon,
   PhoneIcon,
   PencilIcon,
   TrashIcon,
   PlusIcon,
-  
 } from '@heroicons/react/24/outline';
 
 export default function EditLead({ params }) {
@@ -39,7 +38,7 @@ export default function EditLead({ params }) {
     lead_source: '',
     priority: '',
     designation: '',
-    notes: ''
+    notes: '',
   });
 
   // Follow-up state
@@ -51,7 +50,7 @@ export default function EditLead({ params }) {
     status: 'Scheduled',
     next_action: '',
     next_follow_up_date: '',
-    notes: ''
+    notes: '',
   });
   const [addingFollowUp, setAddingFollowUp] = useState(false);
 
@@ -60,7 +59,7 @@ export default function EditLead({ params }) {
       try {
         const leadId = await params;
         const result = await fetchJSON(`/api/leads/${leadId.id}`);
-        
+
         if (result.success) {
           const leadData = result.data;
           setLead(leadData);
@@ -76,11 +75,13 @@ export default function EditLead({ params }) {
             project_description: leadData.project_description || '',
             enquiry_type: leadData.enquiry_type || '',
             enquiry_status: leadData.enquiry_status || '',
-            enquiry_date: leadData.enquiry_date ? leadData.enquiry_date.split('T')[0] : '',
+            enquiry_date: leadData.enquiry_date
+              ? leadData.enquiry_date.split('T')[0]
+              : '',
             lead_source: leadData.lead_source || '',
             priority: leadData.priority || '',
             designation: leadData.designation || '',
-            notes: leadData.notes || ''
+            notes: leadData.notes || '',
           });
         } else {
           console.error('Error fetching lead:', result.error);
@@ -103,11 +104,11 @@ export default function EditLead({ params }) {
   useEffect(() => {
     const tab = searchParams.get('tab');
     const followupId = searchParams.get('followup');
-    
+
     if (tab === 'followups') {
       setActiveTab('followups');
     }
-    
+
     if (followupId && tab === 'followups') {
       setEditingFollowUp(parseInt(followupId));
     }
@@ -120,7 +121,9 @@ export default function EditLead({ params }) {
       try {
         const result = await fetchJSON(`/api/followups?lead_id=${lead.id}`);
         if (result.success) setFollowUps(result.data);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     };
     fetchFollowUps();
   }, [lead]);
@@ -128,20 +131,24 @@ export default function EditLead({ params }) {
   // Load specific follow-up for editing
   useEffect(() => {
     if (!editingFollowUp) return;
-    
+
     const loadFollowUp = async () => {
       try {
         const data = await fetchJSON(`/api/followups/${editingFollowUp}`);
         if (data.success) {
           const followUp = data.data;
           setFollowUpForm({
-            follow_up_date: followUp.follow_up_date ? followUp.follow_up_date.split('T')[0] : new Date().toISOString().split('T')[0],
+            follow_up_date: followUp.follow_up_date
+              ? followUp.follow_up_date.split('T')[0]
+              : new Date().toISOString().split('T')[0],
             follow_up_type: followUp.follow_up_type || 'Call',
             description: followUp.description || '',
             status: followUp.status || 'Scheduled',
             next_action: followUp.next_action || '',
-            next_follow_up_date: followUp.next_follow_up_date ? followUp.next_follow_up_date.split('T')[0] : '',
-            notes: followUp.notes || ''
+            next_follow_up_date: followUp.next_follow_up_date
+              ? followUp.next_follow_up_date.split('T')[0]
+              : '',
+            notes: followUp.notes || '',
           });
         }
       } catch (error) {
@@ -155,16 +162,16 @@ export default function EditLead({ params }) {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
   // Handle follow-up form change
   const handleFollowUpChange = (e) => {
     const { name, value } = e.target;
-    setFollowUpForm(prev => ({ ...prev, [name]: value }));
+    setFollowUpForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
@@ -179,7 +186,7 @@ export default function EditLead({ params }) {
         },
         body: JSON.stringify(formData),
       });
-      
+
       if (result.success) {
         alert('Lead updated successfully!');
         router.push(`/leads/${lead.id}`);
@@ -198,7 +205,7 @@ export default function EditLead({ params }) {
   const handleFollowUpSubmit = async (e) => {
     e.preventDefault();
     setAddingFollowUp(true);
-    
+
     try {
       // Basic client-side validation
       if (!followUpForm.follow_up_date || !followUpForm.description) {
@@ -212,12 +219,14 @@ export default function EditLead({ params }) {
         const result = await fetchJSON(`/api/followups/${editingFollowUp}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(followUpForm)
+          body: JSON.stringify(followUpForm),
         });
-        
+
         if (result.success) {
           // Update in local state
-          setFollowUps(prev => prev.map(f => f.id === editingFollowUp ? result.data : f));
+          setFollowUps((prev) =>
+            prev.map((f) => (f.id === editingFollowUp ? result.data : f))
+          );
           setEditingFollowUp(null);
           alert('Follow-up updated successfully!');
         } else {
@@ -230,19 +239,19 @@ export default function EditLead({ params }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...followUpForm,
-            lead_id: lead.id
-          })
+            lead_id: lead.id,
+          }),
         });
-        
+
         if (result.success) {
-          setFollowUps(prev => [result.data, ...prev]);
+          setFollowUps((prev) => [result.data, ...prev]);
           setShowAddFollowUp(false);
           alert('Follow-up created successfully!');
         } else {
           alert(result.error || 'Error adding follow-up');
         }
       }
-      
+
       // Reset form
       setFollowUpForm({
         follow_up_date: new Date().toISOString().split('T')[0],
@@ -251,9 +260,8 @@ export default function EditLead({ params }) {
         status: 'Scheduled',
         next_action: '',
         next_follow_up_date: '',
-        notes: ''
+        notes: '',
       });
-      
     } catch (error) {
       console.error('Error saving follow-up:', error);
       alert('Error saving follow-up: ' + error.message);
@@ -264,14 +272,14 @@ export default function EditLead({ params }) {
 
   const handleDeleteFollowUp = async (followUpId) => {
     if (!confirm('Are you sure you want to delete this follow-up?')) return;
-    
+
     try {
       const result = await fetchJSON(`/api/followups/${followUpId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
-      
+
       if (result.success) {
-        setFollowUps(prev => prev.filter(f => f.id !== followUpId));
+        setFollowUps((prev) => prev.filter((f) => f.id !== followUpId));
         if (editingFollowUp === followUpId) {
           setEditingFollowUp(null);
         }
@@ -309,8 +317,12 @@ export default function EditLead({ params }) {
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <h2 className="text-xl font-semibold text-gray-900">Lead not found</h2>
-            <p className="mt-2 text-gray-600">The lead you&apos;re trying to edit doesn&apos;t exist.</p>
+            <h2 className="text-xl font-semibold text-gray-900">
+              Lead not found
+            </h2>
+            <p className="mt-2 text-gray-600">
+              The lead you&apos;re trying to edit doesn&apos;t exist.
+            </p>
             <button
               onClick={() => router.push('/leads')}
               className="mt-4 bg-accent-primary text-white px-4 py-2 rounded-md hover:bg-accent-primary/90"
@@ -383,8 +395,12 @@ export default function EditLead({ params }) {
                   <div className="flex-shrink-0 mb-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h2 className="text-2xl font-bold text-gray-900">Edit Lead Details</h2>
-                        <p className="text-gray-600 mt-1">Update lead information and manage details</p>
+                        <h2 className="text-2xl font-bold text-gray-900">
+                          Edit Lead Details
+                        </h2>
+                        <p className="text-gray-600 mt-1">
+                          Update lead information and manage details
+                        </p>
                       </div>
                       <div className="text-sm text-gray-500">
                         <span className="text-red-500">*</span> Required fields
@@ -395,7 +411,6 @@ export default function EditLead({ params }) {
                   {/* Form Container - Scrollable */}
                   <div className="flex-1 overflow-y-auto">
                     <div className="space-y-6">
-                      
                       {/* Lead Information Section */}
                       <div className="mb-6">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-blue-100">
@@ -529,7 +544,9 @@ export default function EditLead({ params }) {
                               onChange={handleInputChange}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
                             />
-                            <p className="text-xs text-gray-500 mt-1">Email ID of person from whom inquiry was received</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Email ID of person from whom inquiry was received
+                            </p>
                           </div>
 
                           <div className="md:col-span-2">
@@ -544,7 +561,9 @@ export default function EditLead({ params }) {
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
                               placeholder="email1@example.com, email2@example.com, email3@example.com"
                             />
-                            <p className="text-xs text-gray-500 mt-1">Enter 2-6 additional email IDs separated by commas</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Enter 2-6 additional email IDs separated by commas
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -601,7 +620,9 @@ export default function EditLead({ params }) {
                               onChange={handleInputChange}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
                             >
-                              <option value="Under Discussion">Under Discussion</option>
+                              <option value="Under Discussion">
+                                Under Discussion
+                              </option>
                               <option value="Awaiting">Awaiting</option>
                               <option value="Awarded">Awarded</option>
                               <option value="Regretted">Regretted</option>
@@ -681,7 +702,9 @@ export default function EditLead({ params }) {
               <div className="space-y-4">
                 {/* Add Follow-up Button */}
                 <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-gray-900">Follow-ups</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Follow-ups
+                  </h3>
                   <button
                     onClick={() => setShowAddFollowUp(true)}
                     className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 flex items-center space-x-2"
@@ -695,7 +718,9 @@ export default function EditLead({ params }) {
                 {followUps.length === 0 ? (
                   <div className="text-center py-8">
                     <PhoneIcon className="mx-auto h-12 w-12 text-gray-400" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No follow-ups yet</h3>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">
+                      No follow-ups yet
+                    </h3>
                     <p className="mt-1 text-sm text-gray-500">
                       Get started by creating your first follow-up.
                     </p>
@@ -703,27 +728,42 @@ export default function EditLead({ params }) {
                 ) : (
                   <div className="space-y-4">
                     {followUps.map((followUp) => (
-                      <div key={followUp.id} className="bg-white border border-gray-200 rounded-lg p-4">
+                      <div
+                        key={followUp.id}
+                        className="bg-white border border-gray-200 rounded-lg p-4"
+                      >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-2">
-                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                followUp.follow_up_type === 'Call' ? 'bg-blue-100 text-blue-800' :
-                                followUp.follow_up_type === 'Email' ? 'bg-green-100 text-green-800' :
-                                followUp.follow_up_type === 'Meeting' ? 'bg-purple-100 text-purple-800' :
-                                followUp.follow_up_type === 'WhatsApp' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  followUp.follow_up_type === 'Call'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : followUp.follow_up_type === 'Email'
+                                      ? 'bg-green-100 text-green-800'
+                                      : followUp.follow_up_type === 'Meeting'
+                                        ? 'bg-purple-100 text-purple-800'
+                                        : followUp.follow_up_type === 'WhatsApp'
+                                          ? 'bg-yellow-100 text-yellow-800'
+                                          : 'bg-gray-100 text-gray-800'
+                                }`}
+                              >
                                 {followUp.follow_up_type}
                               </span>
                               <span className="text-sm text-gray-500">
-                                {new Date(followUp.follow_up_date).toLocaleDateString()}
+                                {new Date(
+                                  followUp.follow_up_date
+                                ).toLocaleDateString()}
                               </span>
-                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                followUp.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                                followUp.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  followUp.status === 'Completed'
+                                    ? 'bg-green-100 text-green-800'
+                                    : followUp.status === 'Pending'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-red-100 text-red-800'
+                                }`}
+                              >
                                 {followUp.status}
                               </span>
                             </div>
@@ -731,7 +771,9 @@ export default function EditLead({ params }) {
                               {followUp.description}
                             </h4>
                             {followUp.notes && (
-                              <p className="text-sm text-gray-600">{followUp.notes}</p>
+                              <p className="text-sm text-gray-600">
+                                {followUp.notes}
+                              </p>
                             )}
                           </div>
                           <div className="flex space-x-2 ml-4">
@@ -775,7 +817,7 @@ export default function EditLead({ params }) {
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                           />
                         </div>
-                        
+
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Follow-up Type
@@ -794,7 +836,7 @@ export default function EditLead({ params }) {
                             <option value="Site Visit">Site Visit</option>
                           </select>
                         </div>
-                        
+
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Status
@@ -811,7 +853,7 @@ export default function EditLead({ params }) {
                             <option value="Cancelled">Cancelled</option>
                           </select>
                         </div>
-                        
+
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             Next Follow-up Date
@@ -825,7 +867,7 @@ export default function EditLead({ params }) {
                           />
                         </div>
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Description
@@ -840,7 +882,7 @@ export default function EditLead({ params }) {
                           placeholder="Describe the follow-up activity..."
                         />
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Notes
@@ -854,7 +896,7 @@ export default function EditLead({ params }) {
                           placeholder="Additional notes..."
                         />
                       </div>
-                      
+
                       <div className="flex justify-end space-x-3">
                         <button
                           type="button"
@@ -871,7 +913,12 @@ export default function EditLead({ params }) {
                           disabled={addingFollowUp}
                           className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50"
                         >
-                          {addingFollowUp ? 'Saving...' : (editingFollowUp ? 'Update' : 'Create')} Follow-up
+                          {addingFollowUp
+                            ? 'Saving...'
+                            : editingFollowUp
+                              ? 'Update'
+                              : 'Create'}{' '}
+                          Follow-up
                         </button>
                       </div>
                     </form>

@@ -4,9 +4,9 @@ import { getCurrentUser } from '@/utils/api-permissions';
 
 /**
  * GET /api/employee-master/list
- * 
+ *
  * Optimized endpoint for employee master dropdown data.
- * 
+ *
  * Performance optimizations:
  * 1. No schema checks
  * 2. Only essential fields for dropdowns
@@ -14,22 +14,28 @@ import { getCurrentUser } from '@/utils/api-permissions';
  */
 export async function GET(request) {
   const startTime = Date.now();
-  
+
   try {
     // Auth check
     const user = await getCurrentUser(request);
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     // Allow any authenticated user to access employee-master (dropdown/reference data)
     // Specific employee operations (view details, edit, etc.) have stricter checks elsewhere
 
     const { searchParams } = new URL(request.url);
-    const limit = Math.max(1, Math.min(2000, parseInt(searchParams.get('limit')) || 1000));
+    const limit = Math.max(
+      1,
+      Math.min(2000, parseInt(searchParams.get('limit')) || 1000)
+    );
 
     const db = await dbConnect();
-    
+
     try {
       const [employees] = await db.execute(
         `SELECT 
@@ -55,14 +61,16 @@ export async function GET(request) {
         success: true,
         data: employees,
         total: employees.length,
-        _meta: { queryTimeMs: queryTime }
+        _meta: { queryTimeMs: queryTime },
       });
 
       // Cache for 60 seconds (master data changes infrequently)
-      response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
-      
+      response.headers.set(
+        'Cache-Control',
+        'private, max-age=60, stale-while-revalidate=120'
+      );
+
       return response;
-      
     } catch (dbError) {
       console.error('Database error in employee list:', dbError);
       return NextResponse.json(
@@ -71,10 +79,13 @@ export async function GET(request) {
       );
     } finally {
       if (db && typeof db.release === 'function') {
-        try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+        try {
+          db.release();
+        } catch (e) {
+          console.error('Error releasing connection:', e);
+        }
       }
     }
-    
   } catch (error) {
     console.error('Employee master list error:', error);
     return NextResponse.json(

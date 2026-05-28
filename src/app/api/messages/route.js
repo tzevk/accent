@@ -17,7 +17,10 @@ export async function GET(request) {
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -38,38 +41,48 @@ export async function GET(request) {
 
     if (type === 'inbox') {
       // Use conversation_members to filter messages user can see
-      whereClause = 'm.conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = ?) AND m.sender_id != ?';
+      whereClause =
+        'm.conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = ?) AND m.sender_id != ?';
       params.push(currentUser.id, currentUser.id);
       if (unreadOnly) {
         // Filter using timestamp comparison instead of read_status flag
-        whereClause += ' AND m.created_at > COALESCE((SELECT last_read_at FROM conversation_members WHERE conversation_id = m.conversation_id AND user_id = ?), "1970-01-01")';
+        whereClause +=
+          ' AND m.created_at > COALESCE((SELECT last_read_at FROM conversation_members WHERE conversation_id = m.conversation_id AND user_id = ?), "1970-01-01")';
         params.push(currentUser.id);
       }
     } else if (type === 'sent') {
       whereClause = 'm.sender_id = ?';
       params.push(currentUser.id);
     } else {
-      return NextResponse.json({ success: false, error: 'Invalid type parameter' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Invalid type parameter' },
+        { status: 400 }
+      );
     }
 
     if (search) {
-      whereClause += ' AND (m.subject LIKE ? OR m.body LIKE ? OR sender.full_name LIKE ?)';
+      whereClause +=
+        ' AND (m.subject LIKE ? OR m.body LIKE ? OR sender.full_name LIKE ?)';
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm, searchTerm);
     }
 
     // Get total count
-    const [countResult] = await db.execute(`
+    const [countResult] = await db.execute(
+      `
       SELECT COUNT(*) as total
       FROM messages m
       LEFT JOIN users sender ON m.sender_id = sender.id
       WHERE ${whereClause}
-    `, params);
+    `,
+      params
+    );
 
     const total = countResult[0].total;
 
     // Get messages
-    const [messages] = await db.execute(`
+    const [messages] = await db.execute(
+      `
       SELECT 
         m.id,
         m.sender_id,
@@ -92,17 +105,22 @@ export async function GET(request) {
       WHERE ${whereClause}
       ORDER BY m.created_at DESC
       LIMIT ? OFFSET ?
-    `, [...params, limit, offset]);
+    `,
+      [...params, limit, offset]
+    );
 
     // Get unread count using last_read_at comparison (scales better)
     // Works for both direct and group chats
-    const [unreadResult] = await db.execute(`
+    const [unreadResult] = await db.execute(
+      `
       SELECT COUNT(*) as unread_count
       FROM messages m
       JOIN conversation_members cm ON m.conversation_id = cm.conversation_id AND cm.user_id = ?
       WHERE m.sender_id != ?
         AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
-    `, [currentUser.id, currentUser.id]);
+    `,
+      [currentUser.id, currentUser.id]
+    );
 
     await db.end();
 
@@ -114,20 +132,25 @@ export async function GET(request) {
           page,
           limit,
           total,
-          totalPages: Math.ceil(total / limit)
+          totalPages: Math.ceil(total / limit),
         },
-        unread_count: unreadResult[0].unread_count
-      }
+        unread_count: unreadResult[0].unread_count,
+      },
     });
-
   } catch (error) {
     console.error('Error fetching messages:', error);
-    if (db) try { await db.end(); } catch {}
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to fetch messages',
-      details: error.message 
-    }, { status: 500 });
+    if (db)
+      try {
+        await db.end();
+      } catch {}
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch messages',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -140,41 +163,53 @@ export async function POST(request) {
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const body = await request.json();
-    const { 
-      receiver_id,        // For direct messages (legacy support)
-      conversation_id,    // For group/project chats (preferred)
-      subject, 
-      body: messageBody, 
-      related_module = 'none', 
+    const {
+      receiver_id, // For direct messages (legacy support)
+      conversation_id, // For group/project chats (preferred)
+      subject,
+      body: messageBody,
+      related_module = 'none',
       related_id = null,
-      attachments = [] // Array of { file_name, original_name, file_path, file_type, file_size }
+      attachments = [], // Array of { file_name, original_name, file_path, file_type, file_size }
     } = body;
 
     // Validation - need either receiver_id (direct) or conversation_id (group/project)
     if (!receiver_id && !conversation_id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Missing required field: receiver_id or conversation_id' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing required field: receiver_id or conversation_id',
+        },
+        { status: 400 }
+      );
     }
 
     if (!subject) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Missing required field: subject' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing required field: subject',
+        },
+        { status: 400 }
+      );
     }
 
     // Body is required unless there are attachments
     if (!messageBody && (!attachments || attachments.length === 0)) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Message body is required when no attachments are provided' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Message body is required when no attachments are provided',
+        },
+        { status: 400 }
+      );
     }
 
     // Note: No longer blocking self-send for group chats (sender is also a member)
@@ -196,10 +231,13 @@ export async function POST(request) {
 
       if (membership.length === 0) {
         await db.end();
-        return NextResponse.json({ 
-          success: false, 
-          error: 'You are not a member of this conversation' 
-        }, { status: 403 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'You are not a member of this conversation',
+          },
+          { status: 403 }
+        );
       }
 
       finalConversationId = conversation_id;
@@ -212,27 +250,49 @@ export async function POST(request) {
 
       if (receiverExists.length === 0) {
         await db.end();
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Receiver not found' 
-        }, { status: 404 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Receiver not found',
+          },
+          { status: 404 }
+        );
       }
 
       receiverName = receiverExists[0].full_name;
-      finalConversationId = await getOrCreateDirectConversation(currentUser.id, receiver_id, db);
+      finalConversationId = await getOrCreateDirectConversation(
+        currentUser.id,
+        receiver_id,
+        db
+      );
     }
 
     // Insert message (no receiver_id for group chats - receivers come from conversation_members)
     // For direct messages, include receiver_id for legacy compatibility
-    const insertQuery = receiver_id 
+    const insertQuery = receiver_id
       ? `INSERT INTO messages (sender_id, receiver_id, subject, body, related_module, related_id, conversation_id)
          VALUES (?, ?, ?, ?, ?, ?, ?)`
       : `INSERT INTO messages (sender_id, receiver_id, subject, body, related_module, related_id, conversation_id)
          VALUES (?, NULL, ?, ?, ?, ?, ?)`;
-    
+
     const insertParams = receiver_id
-      ? [currentUser.id, receiver_id, subject, messageBody, related_module, related_id, finalConversationId]
-      : [currentUser.id, subject, messageBody, related_module, related_id, finalConversationId];
+      ? [
+          currentUser.id,
+          receiver_id,
+          subject,
+          messageBody,
+          related_module,
+          related_id,
+          finalConversationId,
+        ]
+      : [
+          currentUser.id,
+          subject,
+          messageBody,
+          related_module,
+          related_id,
+          finalConversationId,
+        ];
 
     const [result] = await db.execute(insertQuery, insertParams);
 
@@ -241,17 +301,20 @@ export async function POST(request) {
     // Insert attachments if any
     if (attachments.length > 0) {
       for (const attachment of attachments) {
-        await db.execute(`
+        await db.execute(
+          `
           INSERT INTO message_attachments (message_id, file_name, original_name, file_path, file_type, file_size)
           VALUES (?, ?, ?, ?, ?, ?)
-        `, [
-          messageId,
-          attachment.file_name,
-          attachment.original_name,
-          attachment.file_path,
-          attachment.file_type,
-          attachment.file_size
-        ]);
+        `,
+          [
+            messageId,
+            attachment.file_name,
+            attachment.original_name,
+            attachment.file_path,
+            attachment.file_type,
+            attachment.file_size,
+          ]
+        );
       }
     }
 
@@ -265,19 +328,24 @@ export async function POST(request) {
       data: {
         message_id: messageId,
         conversation_id: finalConversationId,
-        receiver_name: receiverName // null for group chats
+        receiver_name: receiverName, // null for group chats
       },
-      message: 'Message sent successfully'
+      message: 'Message sent successfully',
     });
-
   } catch (error) {
     console.error('Error sending message:', error);
-    if (db) try { await db.end(); } catch {}
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to send message',
-      details: error.message 
-    }, { status: 500 });
+    if (db)
+      try {
+        await db.end();
+      } catch {}
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to send message',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -287,32 +355,35 @@ export async function POST(request) {
 async function getOrCreateDirectConversation(userA, userB, db) {
   // Sort IDs to ensure order-independence
   const [lowerId, higherId] = [userA, userB].sort((a, b) => a - b);
-  
+
   // Check if conversation already exists between these two users
-  const [existing] = await db.execute(`
+  const [existing] = await db.execute(
+    `
     SELECT c.id FROM conversations c
     JOIN conversation_members cp1 ON c.id = cp1.conversation_id AND cp1.user_id = ?
     JOIN conversation_members cp2 ON c.id = cp2.conversation_id AND cp2.user_id = ?
     WHERE c.type = 'direct'
     LIMIT 1
-  `, [lowerId, higherId]);
-  
+  `,
+    [lowerId, higherId]
+  );
+
   if (existing.length > 0) {
     return existing[0].id;
   }
-  
+
   // Create new conversation
   const [result] = await db.execute(
     `INSERT INTO conversations (type) VALUES ('direct')`
   );
   const conversationId = result.insertId;
-  
+
   // Add both members
   await db.execute(
     `INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?), (?, ?)`,
     [conversationId, lowerId, conversationId, higherId]
   );
-  
+
   return conversationId;
 }
 
@@ -347,15 +418,17 @@ async function ensureTablesExist(db) {
     } else {
       // Table exists - ensure receiver_id is nullable for group chats
       try {
-        await db.execute(`ALTER TABLE messages MODIFY COLUMN receiver_id INT DEFAULT NULL`);
+        await db.execute(
+          `ALTER TABLE messages MODIFY COLUMN receiver_id INT DEFAULT NULL`
+        );
       } catch (alterErr) {
         // Column might already be nullable or other constraint issue
         console.log('Could not alter receiver_id column:', alterErr.message);
       }
     }
 
-      // Create message_attachments table
-      await db.execute(`
+    // Create message_attachments table
+    await db.execute(`
         CREATE TABLE IF NOT EXISTS message_attachments (
           id INT AUTO_INCREMENT PRIMARY KEY,
           message_id INT NOT NULL,
@@ -369,8 +442,8 @@ async function ensureTablesExist(db) {
         )
       `);
 
-      // Create conversations table
-      await db.execute(`
+    // Create conversations table
+    await db.execute(`
         CREATE TABLE IF NOT EXISTS conversations (
           id BIGINT AUTO_INCREMENT PRIMARY KEY,
           type ENUM('direct', 'group', 'project') NOT NULL DEFAULT 'direct',
@@ -383,8 +456,8 @@ async function ensureTablesExist(db) {
         )
       `);
 
-      // Create conversation_members table
-      await db.execute(`
+    // Create conversation_members table
+    await db.execute(`
         CREATE TABLE IF NOT EXISTS conversation_members (
           id INT AUTO_INCREMENT PRIMARY KEY,
           conversation_id BIGINT NOT NULL,
@@ -398,9 +471,8 @@ async function ensureTablesExist(db) {
           FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
         )
       `);
-    }
-  catch (error) {
+  } catch (error) {
     console.error('Error ensuring message tables exist:', error);
     throw error;
   }
-} 
+}

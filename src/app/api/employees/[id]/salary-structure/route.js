@@ -6,15 +6,19 @@ export async function GET(request, { params }) {
   let connection;
   try {
     const { id } = await params;
-    
+
     if (!id) {
-      return NextResponse.json({ error: 'Employee ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Employee ID is required' },
+        { status: 400 }
+      );
     }
 
     connection = await dbConnect();
-    
+
     // Get all salary structures for the employee
-    const [structures] = await connection.execute(`
+    const [structures] = await connection.execute(
+      `
         SELECT 
           ss.*,
           (SELECT JSON_ARRAYAGG(
@@ -39,26 +43,31 @@ export async function GET(request, { params }) {
         FROM salary_structures ss
         WHERE ss.employee_id = ?
         ORDER BY ss.effective_from DESC, ss.version DESC
-      `, [id]);
+      `,
+      [id]
+    );
 
-      // Parse the JSON components
-      const parsedStructures = structures.map(s => ({
-        ...s,
-        components: s.components ? JSON.parse(s.components) : []
-      }));
+    // Parse the JSON components
+    const parsedStructures = structures.map((s) => ({
+      ...s,
+      components: s.components ? JSON.parse(s.components) : [],
+    }));
 
-      // Find the active structure
-      const activeSalaryStructure = parsedStructures.find(s => s.is_active === 1) || null;
+    // Find the active structure
+    const activeSalaryStructure =
+      parsedStructures.find((s) => s.is_active === 1) || null;
 
-      return NextResponse.json({
-        success: true,
-        salaryStructures: parsedStructures,
-        activeSalaryStructure
-      });
-
+    return NextResponse.json({
+      success: true,
+      salaryStructures: parsedStructures,
+      activeSalaryStructure,
+    });
   } catch (error) {
     console.error('Error fetching salary structures:', error);
-    return NextResponse.json({ error: error.message || 'Failed to fetch salary structures' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Failed to fetch salary structures' },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }
@@ -70,9 +79,12 @@ export async function POST(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    
+
     if (!id) {
-      return NextResponse.json({ error: 'Employee ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Employee ID is required' },
+        { status: 400 }
+      );
     }
 
     const {
@@ -93,64 +105,88 @@ export async function POST(request, { params }) {
       standard_working_days = 26,
       standard_hours_per_day = 8,
       remarks,
-      components = []
+      components = [],
     } = body;
 
     if (!effective_from) {
-      return NextResponse.json({ error: 'Effective from date is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Effective from date is required' },
+        { status: 400 }
+      );
     }
 
     connection = await dbConnect();
-    
+
     await connection.beginTransaction();
 
-      // Get the next version number for this employee
-      const [versionResult] = await connection.execute(
-        'SELECT COALESCE(MAX(version), 0) + 1 as next_version FROM salary_structures WHERE employee_id = ?',
-        [id]
-      );
-      const nextVersion = versionResult[0].next_version;
+    // Get the next version number for this employee
+    const [versionResult] = await connection.execute(
+      'SELECT COALESCE(MAX(version), 0) + 1 as next_version FROM salary_structures WHERE employee_id = ?',
+      [id]
+    );
+    const nextVersion = versionResult[0].next_version;
 
-      // Deactivate previous active structures and set effective_to date
-      await connection.execute(`
+    // Deactivate previous active structures and set effective_to date
+    await connection.execute(
+      `
         UPDATE salary_structures 
         SET is_active = 0, 
             effective_to = DATE_SUB(?, INTERVAL 1 DAY),
             updated_at = NOW()
         WHERE employee_id = ? AND is_active = 1
-      `, [effective_from, id]);
+      `,
+      [effective_from, id]
+    );
 
-      // Insert the new salary structure
-      const [result] = await connection.execute(`
+    // Insert the new salary structure
+    const [result] = await connection.execute(
+      `
         INSERT INTO salary_structures (
           employee_id, version, effective_from, is_active, pay_type,
           ctc, gross_salary, basic_salary, hourly_rate, daily_rate, ot_multiplier,
           pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, tds_applicable,
           pf_wage_ceiling, standard_working_days, standard_hours_per_day, remarks
         ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        id, nextVersion, effective_from, pay_type,
-        ctc || 0, gross_salary || 0, basic_salary || 0,
-        hourly_rate || null, daily_rate || null, ot_multiplier,
-        pf_applicable ? 1 : 0, esic_applicable ? 1 : 0, pt_applicable ? 1 : 0,
-        mlwf_applicable ? 1 : 0, tds_applicable ? 1 : 0,
-        pf_wage_ceiling, standard_working_days, standard_hours_per_day, remarks || null
-      ]);
+      `,
+      [
+        id,
+        nextVersion,
+        effective_from,
+        pay_type,
+        ctc || 0,
+        gross_salary || 0,
+        basic_salary || 0,
+        hourly_rate || null,
+        daily_rate || null,
+        ot_multiplier,
+        pf_applicable ? 1 : 0,
+        esic_applicable ? 1 : 0,
+        pt_applicable ? 1 : 0,
+        mlwf_applicable ? 1 : 0,
+        tds_applicable ? 1 : 0,
+        pf_wage_ceiling,
+        standard_working_days,
+        standard_hours_per_day,
+        remarks || null,
+      ]
+    );
 
-      const salaryStructureId = result.insertId;
+    const salaryStructureId = result.insertId;
 
-      // Insert salary components if provided
-      if (components && components.length > 0) {
-        for (let i = 0; i < components.length; i++) {
-          const comp = components[i];
-          await connection.execute(`
+    // Insert salary components if provided
+    if (components && components.length > 0) {
+      for (let i = 0; i < components.length; i++) {
+        const comp = components[i];
+        await connection.execute(
+          `
             INSERT INTO salary_structure_components (
               salary_structure_id, component_name, component_code, component_type,
               calculation_type, fixed_amount, percentage_value, percentage_of,
               max_amount, is_taxable, is_statutory, statutory_type,
               display_order, show_in_slip, is_active
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-          `, [
+          `,
+          [
             salaryStructureId,
             comp.component_name,
             comp.component_code,
@@ -164,20 +200,20 @@ export async function POST(request, { params }) {
             comp.is_statutory ? 1 : 0,
             comp.statutory_type || null,
             i,
-            comp.show_in_slip ? 1 : 0
-          ]);
-        }
+            comp.show_in_slip ? 1 : 0,
+          ]
+        );
       }
+    }
 
-      await connection.commit();
+    await connection.commit();
 
-      return NextResponse.json({
-        success: true,
-        message: 'Salary structure created successfully',
-        salaryStructureId,
-        version: nextVersion
-      });
-
+    return NextResponse.json({
+      success: true,
+      message: 'Salary structure created successfully',
+      salaryStructureId,
+      version: nextVersion,
+    });
   } catch (error) {
     console.error('Error creating salary structure:', error);
     if (connection) {
@@ -187,7 +223,10 @@ export async function POST(request, { params }) {
         console.error('Error rolling back transaction:', rollbackErr);
       }
     }
-    return NextResponse.json({ error: error.message || 'Failed to create salary structure' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Failed to create salary structure' },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }
@@ -199,9 +238,12 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    
+
     if (!id) {
-      return NextResponse.json({ error: 'Employee ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Employee ID is required' },
+        { status: 400 }
+      );
     }
 
     const {
@@ -223,15 +265,18 @@ export async function PUT(request, { params }) {
       standard_working_days = 26,
       standard_hours_per_day = 8,
       remarks,
-      components = []
+      components = [],
     } = body;
 
     if (!salary_structure_id) {
-      return NextResponse.json({ error: 'Salary structure ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Salary structure ID is required' },
+        { status: 400 }
+      );
     }
 
     connection = await dbConnect();
-    
+
     await connection.beginTransaction();
 
     // Verify the salary structure belongs to this employee
@@ -242,11 +287,15 @@ export async function PUT(request, { params }) {
 
     if (existing.length === 0) {
       await connection.rollback();
-      return NextResponse.json({ error: 'Salary structure not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Salary structure not found' },
+        { status: 404 }
+      );
     }
 
     // Update the salary structure
-    await connection.execute(`
+    await connection.execute(
+      `
       UPDATE salary_structures SET
         pay_type = ?,
         effective_from = ?,
@@ -267,26 +316,28 @@ export async function PUT(request, { params }) {
         remarks = ?,
         updated_at = NOW()
       WHERE id = ?
-    `, [
-      pay_type,
-      effective_from,
-      ctc || 0,
-      gross_salary || 0,
-      basic_salary || 0,
-      hourly_rate || null,
-      daily_rate || null,
-      ot_multiplier,
-      pf_applicable ? 1 : 0,
-      esic_applicable ? 1 : 0,
-      pt_applicable ? 1 : 0,
-      mlwf_applicable ? 1 : 0,
-      tds_applicable ? 1 : 0,
-      pf_wage_ceiling,
-      standard_working_days,
-      standard_hours_per_day,
-      remarks || null,
-      salary_structure_id
-    ]);
+    `,
+      [
+        pay_type,
+        effective_from,
+        ctc || 0,
+        gross_salary || 0,
+        basic_salary || 0,
+        hourly_rate || null,
+        daily_rate || null,
+        ot_multiplier,
+        pf_applicable ? 1 : 0,
+        esic_applicable ? 1 : 0,
+        pt_applicable ? 1 : 0,
+        mlwf_applicable ? 1 : 0,
+        tds_applicable ? 1 : 0,
+        pf_wage_ceiling,
+        standard_working_days,
+        standard_hours_per_day,
+        remarks || null,
+        salary_structure_id,
+      ]
+    );
 
     // Delete existing components and re-insert
     await connection.execute(
@@ -298,29 +349,32 @@ export async function PUT(request, { params }) {
     if (components && components.length > 0) {
       for (let i = 0; i < components.length; i++) {
         const comp = components[i];
-        await connection.execute(`
+        await connection.execute(
+          `
           INSERT INTO salary_structure_components (
             salary_structure_id, component_name, component_code, component_type,
             calculation_type, fixed_amount, percentage_value, percentage_of,
             max_amount, is_taxable, is_statutory, statutory_type,
             display_order, show_in_slip, is_active
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-        `, [
-          salary_structure_id,
-          comp.component_name,
-          comp.component_code,
-          comp.component_type || 'earning',
-          comp.calculation_type || 'fixed',
-          comp.fixed_amount || 0,
-          comp.percentage_value || null,
-          comp.percentage_of || null,
-          comp.max_amount || null,
-          comp.is_taxable ? 1 : 0,
-          comp.is_statutory ? 1 : 0,
-          comp.statutory_type || null,
-          i,
-          comp.show_in_slip ? 1 : 0
-        ]);
+        `,
+          [
+            salary_structure_id,
+            comp.component_name,
+            comp.component_code,
+            comp.component_type || 'earning',
+            comp.calculation_type || 'fixed',
+            comp.fixed_amount || 0,
+            comp.percentage_value || null,
+            comp.percentage_of || null,
+            comp.max_amount || null,
+            comp.is_taxable ? 1 : 0,
+            comp.is_statutory ? 1 : 0,
+            comp.statutory_type || null,
+            i,
+            comp.show_in_slip ? 1 : 0,
+          ]
+        );
       }
     }
 
@@ -328,9 +382,8 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json({
       success: true,
-      message: 'Salary structure updated successfully'
+      message: 'Salary structure updated successfully',
     });
-
   } catch (error) {
     console.error('Error updating salary structure:', error);
     if (connection) {
@@ -340,7 +393,10 @@ export async function PUT(request, { params }) {
         console.error('Error rolling back transaction:', rollbackErr);
       }
     }
-    return NextResponse.json({ error: error.message || 'Failed to update salary structure' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Failed to update salary structure' },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }
@@ -353,17 +409,23 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const salaryStructureId = searchParams.get('structureId');
-    
+
     if (!id) {
-      return NextResponse.json({ error: 'Employee ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Employee ID is required' },
+        { status: 400 }
+      );
     }
 
     if (!salaryStructureId) {
-      return NextResponse.json({ error: 'Salary structure ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Salary structure ID is required' },
+        { status: 400 }
+      );
     }
 
     connection = await dbConnect();
-    
+
     await connection.beginTransaction();
 
     // Verify the salary structure belongs to this employee
@@ -374,7 +436,10 @@ export async function DELETE(request, { params }) {
 
     if (existing.length === 0) {
       await connection.rollback();
-      return NextResponse.json({ error: 'Salary structure not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Salary structure not found' },
+        { status: 404 }
+      );
     }
 
     const wasActive = existing[0].is_active === 1;
@@ -386,10 +451,9 @@ export async function DELETE(request, { params }) {
     );
 
     // Delete the salary structure
-    await connection.execute(
-      'DELETE FROM salary_structures WHERE id = ?',
-      [salaryStructureId]
-    );
+    await connection.execute('DELETE FROM salary_structures WHERE id = ?', [
+      salaryStructureId,
+    ]);
 
     // If the deleted structure was active, make the latest remaining one active
     if (wasActive) {
@@ -413,9 +477,8 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({
       success: true,
-      message: 'Salary structure deleted successfully'
+      message: 'Salary structure deleted successfully',
     });
-
   } catch (error) {
     console.error('Error deleting salary structure:', error);
     if (connection) {
@@ -425,7 +488,10 @@ export async function DELETE(request, { params }) {
         console.error('Error rolling back transaction:', rollbackErr);
       }
     }
-    return NextResponse.json({ error: error.message || 'Failed to delete salary structure' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Failed to delete salary structure' },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }

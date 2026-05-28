@@ -5,12 +5,12 @@ import { useRouter, useParams } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import DocumentUpload from '@/components/DocumentUpload';
-import { 
+import {
   DocumentCurrencyDollarIcon,
   ArrowLeftIcon,
   PlusIcon,
   TrashIcon,
-  CheckIcon
+  CheckIcon,
 } from '@heroicons/react/24/outline';
 
 export default function EditInvoicePage() {
@@ -18,7 +18,7 @@ export default function EditInvoicePage() {
   const params = useParams();
   const invoiceId = params.id;
   const { loading: authLoading } = useSessionRBAC();
-  
+
   const [saving, setSaving] = useState(false);
   const [loadingInvoice, setLoadingInvoice] = useState(true);
   const [companies, setCompanies] = useState([]);
@@ -44,7 +44,7 @@ export default function EditInvoicePage() {
     notes: '',
     terms: '',
     due_date: '',
-    status: 'draft'
+    status: 'draft',
   });
 
   // Fetch invoice data
@@ -70,13 +70,16 @@ export default function EditInvoicePage() {
             po_value: inv.po_value || '',
             balance_po_value: inv.balance_po_value || '',
             description: inv.description || '',
-            items: inv.items && inv.items.length > 0 ? inv.items : [{ description: '', quantity: 1, rate: 0 }],
+            items:
+              inv.items && inv.items.length > 0
+                ? inv.items
+                : [{ description: '', quantity: 1, rate: 0 }],
             tax_rate: inv.tax_rate || 18,
             discount: inv.discount || 0,
             notes: inv.notes || '',
             terms: inv.terms || '',
             due_date: inv.due_date ? inv.due_date.split('T')[0] : '',
-            status: inv.status || 'draft'
+            status: inv.status || 'draft',
           });
         }
       } catch (error) {
@@ -108,31 +111,34 @@ export default function EditInvoicePage() {
 
   // Handle company selection
   const handleCompanySelect = (companyName) => {
-    const selectedCompany = companies.find(c => c.company_name === companyName);
+    const selectedCompany = companies.find(
+      (c) => c.company_name === companyName
+    );
     if (selectedCompany) {
       const addressParts = [
         selectedCompany.address,
         selectedCompany.city,
         selectedCompany.state,
         selectedCompany.country,
-        selectedCompany.postal_code
+        selectedCompany.postal_code,
       ].filter(Boolean);
-      
-      setFormData(prev => ({
+
+      setFormData((prev) => ({
         ...prev,
         client_name: selectedCompany.company_name || '',
         client_email: selectedCompany.email || '',
-        client_phone: selectedCompany.phone || selectedCompany.mobile_number || '',
+        client_phone:
+          selectedCompany.phone || selectedCompany.mobile_number || '',
         client_address: addressParts.join(', ') || '',
         client_pan: selectedCompany.pan_number || '',
         client_gstin: selectedCompany.gstin || '',
         client_state: selectedCompany.state || '',
-        client_state_code: selectedCompany.state_code || ''
+        client_state_code: selectedCompany.state_code || '',
       }));
     } else {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        client_name: companyName
+        client_name: companyName,
       }));
     }
   };
@@ -142,7 +148,7 @@ export default function EditInvoicePage() {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      minimumFractionDigits: 2
+      minimumFractionDigits: 2,
     }).format(amount || 0);
   };
 
@@ -150,7 +156,8 @@ export default function EditInvoicePage() {
   const calculateTotals = () => {
     const subtotal = formData.items.reduce((sum, item) => {
       // Use manual amount if set, otherwise calculate from qty * rate
-      const itemAmount = item.amount > 0 ? item.amount : (item.quantity * item.rate);
+      const itemAmount =
+        item.amount > 0 ? item.amount : item.quantity * item.rate;
       return sum + itemAmount;
     }, 0);
     const taxAmount = subtotal * (formData.tax_rate / 100);
@@ -161,7 +168,10 @@ export default function EditInvoicePage() {
   // Handle item change
   const handleItemChange = (index, field, value) => {
     const newItems = [...formData.items];
-    newItems[index][field] = field === 'quantity' || field === 'rate' || field === 'amount' ? parseFloat(value) || 0 : value;
+    newItems[index][field] =
+      field === 'quantity' || field === 'rate' || field === 'amount'
+        ? parseFloat(value) || 0
+        : value;
     setFormData({ ...formData, items: newItems });
   };
 
@@ -169,7 +179,10 @@ export default function EditInvoicePage() {
   const addItem = () => {
     setFormData({
       ...formData,
-      items: [...formData.items, { description: '', quantity: 1, rate: 0, amount: 0 }]
+      items: [
+        ...formData.items,
+        { description: '', quantity: 1, rate: 0, amount: 0 },
+      ],
     });
   };
 
@@ -191,7 +204,7 @@ export default function EditInvoicePage() {
     setSaving(true);
     try {
       const { subtotal, taxAmount, total } = calculateTotals();
-      
+
       const res = await fetch(`/api/admin/invoices/${invoiceId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -200,8 +213,8 @@ export default function EditInvoicePage() {
           subtotal,
           tax_amount: taxAmount,
           total,
-          balance_due: total
-        })
+          balance_due: total,
+        }),
       });
 
       const data = await res.json();
@@ -220,13 +233,17 @@ export default function EditInvoicePage() {
 
   // Delete invoice
   const handleDeleteInvoice = async () => {
-    if (!confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
+    if (
+      !confirm(
+        'Are you sure you want to delete this invoice? This action cannot be undone.'
+      )
+    ) {
       return;
     }
 
     try {
       const res = await fetch(`/api/admin/invoices/${invoiceId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
 
       const data = await res.json();
@@ -252,7 +269,7 @@ export default function EditInvoicePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
-      
+
       <main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -268,7 +285,9 @@ export default function EditInvoicePage() {
                 <DocumentCurrencyDollarIcon className="h-7 w-7 text-purple-600" />
                 Edit Invoice
               </h1>
-              <p className="text-sm text-gray-500 mt-1">Update invoice details</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Update invoice details
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -309,10 +328,14 @@ export default function EditInvoicePage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
           {/* Client Information */}
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Client Information</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Client Information
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Client Name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Client Name *
+                </label>
                 <select
                   value={formData.client_name}
                   onChange={(e) => handleCompanySelect(e.target.value)}
@@ -328,74 +351,109 @@ export default function EditInvoicePage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Client Email</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Client Email
+                </label>
                 <input
                   type="email"
                   value={formData.client_email}
-                  onChange={(e) => setFormData({ ...formData, client_email: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client_email: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Client Phone</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Client Phone
+                </label>
                 <input
                   type="text"
                   value={formData.client_phone}
-                  onChange={(e) => setFormData({ ...formData, client_phone: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client_phone: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div className="lg:col-span-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Client Address</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Client Address
+                </label>
                 <textarea
                   value={formData.client_address}
-                  onChange={(e) => setFormData({ ...formData, client_address: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client_address: e.target.value })
+                  }
                   rows={2}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">PAN No.</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PAN No.
+                </label>
                 <input
                   type="text"
                   value={formData.client_pan}
-                  onChange={(e) => setFormData({ ...formData, client_pan: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client_pan: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">GSTIN</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  GSTIN
+                </label>
                 <input
                   type="text"
                   value={formData.client_gstin}
-                  onChange={(e) => setFormData({ ...formData, client_gstin: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client_gstin: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Kind Attn.</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Kind Attn.
+                </label>
                 <input
                   type="text"
                   value={formData.kind_attn}
-                  onChange={(e) => setFormData({ ...formData, kind_attn: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, kind_attn: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  State
+                </label>
                 <input
                   type="text"
                   value={formData.client_state}
-                  onChange={(e) => setFormData({ ...formData, client_state: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client_state: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">State Code</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  State Code
+                </label>
                 <input
                   type="text"
                   value={formData.client_state_code}
-                  onChange={(e) => setFormData({ ...formData, client_state_code: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      client_state_code: e.target.value,
+                    })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
@@ -404,50 +462,75 @@ export default function EditInvoicePage() {
 
           {/* PO Information */}
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">PO Information</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              PO Information
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">PO Number</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PO Number
+                </label>
                 <input
                   type="text"
                   value={formData.po_number}
-                  onChange={(e) => setFormData({ ...formData, po_number: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, po_number: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">PO Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PO Date
+                </label>
                 <input
                   type="date"
                   value={formData.po_date}
-                  onChange={(e) => setFormData({ ...formData, po_date: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, po_date: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Original PO Value (₹)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Original PO Value (₹)
+                </label>
                 <input
                   type="number"
                   value={formData.po_value}
-                  onChange={(e) => setFormData({ ...formData, po_value: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, po_value: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Balance PO Value (₹)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Balance PO Value (₹)
+                </label>
                 <input
                   type="number"
                   value={formData.balance_po_value}
-                  onChange={(e) => setFormData({ ...formData, balance_po_value: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      balance_po_value: e.target.value,
+                    })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Due Date
+                </label>
                 <input
                   type="date"
                   value={formData.due_date}
-                  onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, due_date: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
@@ -457,7 +540,9 @@ export default function EditInvoicePage() {
           {/* Invoice Items */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Invoice Items</h3>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Invoice Items
+              </h3>
               <button
                 onClick={addItem}
                 className="flex items-center gap-1 px-3 py-1.5 text-sm bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors"
@@ -470,10 +555,18 @@ export default function EditInvoicePage() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase w-24">Qty</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase w-32">Rate (₹)</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase w-32">Amount</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Description
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase w-24">
+                      Qty
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase w-32">
+                      Rate (₹)
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase w-32">
+                      Amount
+                    </th>
                     <th className="px-4 py-3 w-12"></th>
                   </tr>
                 </thead>
@@ -484,7 +577,13 @@ export default function EditInvoicePage() {
                         <input
                           type="text"
                           value={item.description}
-                          onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              'description',
+                              e.target.value
+                            )
+                          }
                           className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                           placeholder="Item description"
                         />
@@ -493,7 +592,9 @@ export default function EditInvoicePage() {
                         <input
                           type="number"
                           value={item.quantity}
-                          onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                          onChange={(e) =>
+                            handleItemChange(index, 'quantity', e.target.value)
+                          }
                           className="w-full px-2 py-1 border border-gray-300 rounded text-center focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                           min="1"
                         />
@@ -502,7 +603,9 @@ export default function EditInvoicePage() {
                         <input
                           type="number"
                           value={item.rate}
-                          onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
+                          onChange={(e) =>
+                            handleItemChange(index, 'rate', e.target.value)
+                          }
                           className="w-full px-2 py-1 border border-gray-300 rounded text-right focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                           min="0"
                         />
@@ -510,8 +613,14 @@ export default function EditInvoicePage() {
                       <td className="px-4 py-3">
                         <input
                           type="number"
-                          value={item.amount > 0 ? item.amount : item.quantity * item.rate}
-                          onChange={(e) => handleItemChange(index, 'amount', e.target.value)}
+                          value={
+                            item.amount > 0
+                              ? item.amount
+                              : item.quantity * item.rate
+                          }
+                          onChange={(e) =>
+                            handleItemChange(index, 'amount', e.target.value)
+                          }
                           className="w-full px-2 py-1 border border-gray-300 rounded text-right focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                           min="0"
                         />
@@ -538,33 +647,49 @@ export default function EditInvoicePage() {
             <div className="w-full max-w-sm space-y-3 bg-gray-50 rounded-lg p-4">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Subtotal:</span>
-                <span className="font-medium">{formatCurrency(calculateTotals().subtotal)}</span>
+                <span className="font-medium">
+                  {formatCurrency(calculateTotals().subtotal)}
+                </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">GST Rate (%):</span>
                 <input
                   type="number"
                   value={formData.tax_rate}
-                  onChange={(e) => setFormData({ ...formData, tax_rate: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      tax_rate: parseFloat(e.target.value) || 0,
+                    })
+                  }
                   className="w-20 px-2 py-1 border border-gray-300 rounded text-right focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">GST Amount:</span>
-                <span className="font-medium">{formatCurrency(calculateTotals().taxAmount)}</span>
+                <span className="font-medium">
+                  {formatCurrency(calculateTotals().taxAmount)}
+                </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Discount (₹):</span>
                 <input
                   type="number"
                   value={formData.discount}
-                  onChange={(e) => setFormData({ ...formData, discount: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      discount: parseFloat(e.target.value) || 0,
+                    })
+                  }
                   className="w-24 px-2 py-1 border border-gray-300 rounded text-right focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
               <div className="flex justify-between text-lg font-bold border-t border-gray-300 pt-3">
                 <span>Total:</span>
-                <span className="text-purple-600">{formatCurrency(calculateTotals().total)}</span>
+                <span className="text-purple-600">
+                  {formatCurrency(calculateTotals().total)}
+                </span>
               </div>
             </div>
           </div>
@@ -572,19 +697,27 @@ export default function EditInvoicePage() {
           {/* Notes & Terms */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes
+              </label>
               <textarea
                 value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, notes: e.target.value })
+                }
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Terms & Conditions</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Terms & Conditions
+              </label>
               <textarea
                 value={formData.terms}
-                onChange={(e) => setFormData({ ...formData, terms: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, terms: e.target.value })
+                }
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
@@ -593,10 +726,14 @@ export default function EditInvoicePage() {
 
           {/* Status */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Status</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Invoice Status
+            </label>
             <select
               value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, status: e.target.value })
+              }
               className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             >
               <option value="draft">Draft</option>
@@ -610,7 +747,9 @@ export default function EditInvoicePage() {
           {/* Document Upload */}
           {invoiceId && (
             <div className="mt-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3">Attached Documents</label>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Attached Documents
+              </label>
               <DocumentUpload entityType="invoice" entityId={invoiceId} />
             </div>
           )}

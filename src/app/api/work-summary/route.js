@@ -1,14 +1,25 @@
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 import { dbConnect } from '@/utils/database';
 
 // GET - Fetch user daily work summary
 export async function GET(request) {
   let db;
   try {
-    const auth = await ensurePermission(request, RESOURCES.USERS, PERMISSIONS.READ);
+    const auth = await ensurePermission(
+      request,
+      RESOURCES.USERS,
+      PERMISSIONS.READ
+    );
     if (!auth.authorized) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -20,15 +31,24 @@ export async function GET(request) {
     // Non-admin users can only view their own summary
     const requestedUserId = userId ? parseInt(userId) : null;
     const currentUser = auth.user;
-    
-    if (!currentUser.is_super_admin && requestedUserId && requestedUserId !== currentUser.id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'You can only view your own work summary' 
-      }, { status: 403 });
+
+    if (
+      !currentUser.is_super_admin &&
+      requestedUserId &&
+      requestedUserId !== currentUser.id
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'You can only view your own work summary',
+        },
+        { status: 403 }
+      );
     }
 
-    const finalUserId = currentUser.is_super_admin ? requestedUserId : currentUser.id;
+    const finalUserId = currentUser.is_super_admin
+      ? requestedUserId
+      : currentUser.id;
 
     db = await dbConnect();
 
@@ -66,30 +86,56 @@ export async function GET(request) {
     // Calculate statistics
     const stats = {
       totalDays: summary.length,
-      totalWorkMinutes: summary.reduce((sum, day) => sum + (day.total_work_minutes || 0), 0),
-      totalActivities: summary.reduce((sum, day) => sum + (day.activities_completed || 0), 0),
-      totalResourcesCreated: summary.reduce((sum, day) => sum + (day.resources_created || 0), 0),
-      totalResourcesUpdated: summary.reduce((sum, day) => sum + (day.resources_updated || 0), 0),
-      averageWorkMinutesPerDay: summary.length > 0 
-        ? Math.round(summary.reduce((sum, day) => sum + (day.total_work_minutes || 0), 0) / summary.length)
-        : 0,
-      averageActivitiesPerDay: summary.length > 0
-        ? Math.round(summary.reduce((sum, day) => sum + (day.activities_completed || 0), 0) / summary.length)
-        : 0
+      totalWorkMinutes: summary.reduce(
+        (sum, day) => sum + (day.total_work_minutes || 0),
+        0
+      ),
+      totalActivities: summary.reduce(
+        (sum, day) => sum + (day.activities_completed || 0),
+        0
+      ),
+      totalResourcesCreated: summary.reduce(
+        (sum, day) => sum + (day.resources_created || 0),
+        0
+      ),
+      totalResourcesUpdated: summary.reduce(
+        (sum, day) => sum + (day.resources_updated || 0),
+        0
+      ),
+      averageWorkMinutesPerDay:
+        summary.length > 0
+          ? Math.round(
+              summary.reduce(
+                (sum, day) => sum + (day.total_work_minutes || 0),
+                0
+              ) / summary.length
+            )
+          : 0,
+      averageActivitiesPerDay:
+        summary.length > 0
+          ? Math.round(
+              summary.reduce(
+                (sum, day) => sum + (day.activities_completed || 0),
+                0
+              ) / summary.length
+            )
+          : 0,
     };
 
     return NextResponse.json({
       success: true,
       data: summary,
-      stats
+      stats,
     });
-
   } catch (error) {
     console.error('Error fetching work summary:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to fetch work summary' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch work summary',
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }

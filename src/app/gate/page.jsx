@@ -6,7 +6,7 @@ import { useSession } from '@/context/SessionContext';
 
 /**
  * Gate Route - Intermediate authentication checkpoint
- * 
+ *
  * Uses SessionContext to avoid duplicate API calls.
  * The session is already being fetched by SessionContext,
  * so we just wait for it and redirect based on role.
@@ -26,7 +26,8 @@ export default function GatePage() {
     }
 
     // Check if super admin
-    const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
+    const isSuperAdmin =
+      user.is_super_admin === true || user.is_super_admin === 1;
 
     if (isSuperAdmin) {
       // Super admin goes to admin dashboard
@@ -44,7 +45,9 @@ export default function GatePage() {
         <div className="relative">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-purple-200 border-t-purple-600"></div>
         </div>
-        <div className="text-gray-600 font-medium">Preparing your workspace...</div>
+        <div className="text-gray-600 font-medium">
+          Preparing your workspace...
+        </div>
         <div className="text-gray-400 text-sm">Please wait</div>
       </div>
     </div>

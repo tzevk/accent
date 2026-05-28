@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
-import { ChatBubbleLeftRightIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { useState, useEffect, useCallback } from 'react';
+import {
+  ChatBubbleLeftRightIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
 
 export default function DiscussionTab({
   id: projectId,
@@ -10,10 +13,10 @@ export default function DiscussionTab({
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
-    follow_up_date: new Date().toISOString().split("T")[0],
-    description: "",
-    responsible_person: "",
-    logged_by: currentUser?.full_name || currentUser?.username || "",
+    follow_up_date: new Date().toISOString().split('T')[0],
+    description: '',
+    responsible_person: '',
+    logged_by: currentUser?.full_name || currentUser?.username || '',
   });
 
   const fetchDiscussions = useCallback(async () => {
@@ -23,7 +26,7 @@ export default function DiscussionTab({
       const data = await res.json();
       if (data?.success) setDiscussions(data.data || []);
     } catch (e) {
-      console.error("Error fetching discussions:", e);
+      console.error('Error fetching discussions:', e);
     } finally {
       setLoading(false);
     }
@@ -39,7 +42,7 @@ export default function DiscussionTab({
         if (!prev.logged_by) {
           return {
             ...prev,
-            logged_by: currentUser.full_name || currentUser.username || "",
+            logged_by: currentUser.full_name || currentUser.username || '',
           };
         }
         return prev;
@@ -49,28 +52,28 @@ export default function DiscussionTab({
 
   const resetForm = () => {
     setFormData({
-      follow_up_date: new Date().toISOString().split("T")[0],
-      description: "",
-      responsible_person: "",
-      logged_by: currentUser?.full_name || currentUser?.username || "",
+      follow_up_date: new Date().toISOString().split('T')[0],
+      description: '',
+      responsible_person: '',
+      logged_by: currentUser?.full_name || currentUser?.username || '',
     });
     setEditingId(null);
   };
 
   const handleSubmit = async () => {
     if (!formData.follow_up_date || !formData.description.trim()) {
-      alert("Please fill in date and topic");
+      alert('Please fill in date and topic');
       return;
     }
 
     try {
       const url = `/api/projects/${projectId}/followups`;
-      const method = editingId ? "PUT" : "POST";
+      const method = editingId ? 'PUT' : 'POST';
       const body = editingId ? { id: editingId, ...formData } : formData;
 
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -79,41 +82,41 @@ export default function DiscussionTab({
         resetForm();
         fetchDiscussions();
       } else {
-        alert(data?.error || "Failed to save discussion");
+        alert(data?.error || 'Failed to save discussion');
       }
     } catch (e) {
-      console.error("Error saving discussion:", e);
-      alert("Failed to save discussion");
+      console.error('Error saving discussion:', e);
+      alert('Failed to save discussion');
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("Delete this discussion?")) return;
+    if (!confirm('Delete this discussion?')) return;
     try {
       const res = await fetch(
         `/api/projects/${projectId}/followups?followup_id=${id}`,
         {
-          method: "DELETE",
-        },
+          method: 'DELETE',
+        }
       );
       const data = await res.json();
       if (data?.success) {
         fetchDiscussions();
       } else {
-        alert(data?.error || "Failed to delete");
+        alert(data?.error || 'Failed to delete');
       }
     } catch (e) {
-      console.error("Error deleting discussion:", e);
-      alert("Failed to delete discussion");
+      console.error('Error deleting discussion:', e);
+      alert('Failed to delete discussion');
     }
   };
 
   const handleEdit = (item) => {
     setFormData({
-      follow_up_date: item.follow_up_date?.split("T")[0] || "",
-      description: item.description || "",
-      responsible_person: item.responsible_person || "",
-      logged_by: item.logged_by || item.created_by || "",
+      follow_up_date: item.follow_up_date?.split('T')[0] || '',
+      description: item.description || '',
+      responsible_person: item.responsible_person || '',
+      logged_by: item.logged_by || item.created_by || '',
     });
     setEditingId(item.id);
   };
@@ -171,7 +174,7 @@ export default function DiscussionTab({
               {/* Add/Edit Input Row */}
               <tr className="bg-purple-50 border-b-2 border-purple-200">
                 <td className="px-3 py-2 text-gray-400 text-xs">
-                  {editingId ? "#" : "New"}
+                  {editingId ? '#' : 'New'}
                 </td>
                 <td className="px-3 py-2">
                   <input
@@ -248,7 +251,7 @@ export default function DiscussionTab({
                       onClick={handleSubmit}
                       className="px-3 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700"
                     >
-                      {editingId ? "Update" : "Add"}
+                      {editingId ? 'Update' : 'Add'}
                     </button>
                   </div>
                 </td>
@@ -257,7 +260,10 @@ export default function DiscussionTab({
               {/* Data Rows */}
               {discussions.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-3 py-8 text-center text-gray-400">
+                  <td
+                    colSpan="6"
+                    className="px-3 py-8 text-center text-gray-400"
+                  >
                     No discussions yet. Add one above.
                   </td>
                 </tr>
@@ -270,23 +276,23 @@ export default function DiscussionTab({
                     <td className="px-3 py-2.5 text-gray-900">
                       {item.follow_up_date
                         ? new Date(item.follow_up_date).toLocaleDateString(
-                            "en-IN",
+                            'en-IN',
                             {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            },
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                            }
                           )
-                        : "—"}
+                        : '—'}
                     </td>
                     <td className="px-3 py-2.5 text-gray-700">
-                      {item.description || "—"}
+                      {item.description || '—'}
                     </td>
                     <td className="px-3 py-2.5 text-gray-700 text-sm">
-                      {item.responsible_person || "—"}
+                      {item.responsible_person || '—'}
                     </td>
                     <td className="px-3 py-2.5 text-gray-600 text-sm">
-                      {item.logged_by || item.created_by || "—"}
+                      {item.logged_by || item.created_by || '—'}
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center justify-center gap-1">

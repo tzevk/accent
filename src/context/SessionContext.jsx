@@ -1,6 +1,14 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+} from 'react';
 import { checkPermission, RESOURCES, PERMISSIONS } from '@/utils/permissions';
 
 const SessionContext = createContext({
@@ -9,9 +17,9 @@ const SessionContext = createContext({
   authenticated: false,
   can: () => false,
   refreshSession: () => {},
-  setUserData: () => {},  // New: direct setter for login
+  setUserData: () => {}, // New: direct setter for login
   RESOURCES,
-  PERMISSIONS
+  PERMISSIONS,
 });
 
 // Cache session data in memory to prevent multiple fetches
@@ -46,7 +54,10 @@ function persistToStorage(data) {
   if (typeof window === 'undefined') return;
   try {
     if (data?.authenticated && data?.user) {
-      sessionStorage.setItem('_session', JSON.stringify({ authenticated: true, user: data.user }));
+      sessionStorage.setItem(
+        '_session',
+        JSON.stringify({ authenticated: true, user: data.user })
+      );
     } else {
       sessionStorage.removeItem('_session');
     }
@@ -91,7 +102,7 @@ export function SessionProvider({ children }) {
     if (userData) {
       sessionCache = {
         authenticated: true,
-        user: userData
+        user: userData,
       };
       sessionCacheTime = Date.now();
       forceNextFetch = false;
@@ -107,28 +118,30 @@ export function SessionProvider({ children }) {
 
     const hasAuthCookies = () => {
       try {
-        return typeof document !== 'undefined' &&
+        return (
+          typeof document !== 'undefined' &&
           document.cookie.includes('auth=') &&
-          document.cookie.includes('user_id=');
+          document.cookie.includes('user_id=')
+        );
       } catch {
         return false;
       }
     };
-    
+
     // Check if we need to force fetch (cache was invalidated)
     if (forceNextFetch) {
       force = true;
       forceNextFetch = false;
     }
-    
+
     // Clear cache when forcing refresh
     if (force) {
       sessionCache = null;
       sessionCacheTime = 0;
     }
-    
+
     // Return cached data if still valid and not forcing refresh
-    if (!force && sessionCache && (now - sessionCacheTime) < CACHE_TTL) {
+    if (!force && sessionCache && now - sessionCacheTime < CACHE_TTL) {
       if (mountedRef.current) {
         setUser(sessionCache.user);
         setAuthenticated(sessionCache.authenticated);
@@ -145,13 +158,13 @@ export function SessionProvider({ children }) {
     fetchingRef.current = true;
 
     try {
-      const res = await fetch('/api/session', { 
+      const res = await fetch('/api/session', {
         credentials: 'include',
         headers: {
-          'Cache-Control': 'no-cache'
-        }
+          'Cache-Control': 'no-cache',
+        },
       });
-      
+
       if (!res.ok) {
         const status = res.status;
         const hasCookies = hasAuthCookies();
@@ -162,11 +175,16 @@ export function SessionProvider({ children }) {
           // Cookies exist but session API failed - retry once after short delay
           // This handles the race condition where cookies are set but /api/session hasn't seen them yet
           if (hasCookies) {
-            await new Promise(r => setTimeout(r, 100));
-            const retryRes = await fetch('/api/session', { credentials: 'include' });
+            await new Promise((r) => setTimeout(r, 100));
+            const retryRes = await fetch('/api/session', {
+              credentials: 'include',
+            });
             if (retryRes.ok) {
               const data = await retryRes.json();
-              sessionCache = { authenticated: data.authenticated || false, user: data.user || null };
+              sessionCache = {
+                authenticated: data.authenticated || false,
+                user: data.user || null,
+              };
               sessionCacheTime = Date.now();
               persistToStorage(sessionCache);
               if (mountedRef.current) {
@@ -214,7 +232,7 @@ export function SessionProvider({ children }) {
       const data = await res.json();
       sessionCache = {
         authenticated: data.authenticated || false,
-        user: data.user || null
+        user: data.user || null,
       };
       sessionCacheTime = now;
       persistToStorage(sessionCache);
@@ -259,7 +277,7 @@ export function SessionProvider({ children }) {
   useEffect(() => {
     mountedRef.current = true;
     fetchSession();
-    
+
     return () => {
       mountedRef.current = false;
     };
@@ -280,21 +298,22 @@ export function SessionProvider({ children }) {
     return fetchSession(true);
   }, [fetchSession]);
 
-  const value = useMemo(() => ({
-    user,
-    loading,
-    authenticated,
-    can,
-    refreshSession,
-    setUserData,
-    RESOURCES,
-    PERMISSIONS
-  }), [user, loading, authenticated, can, refreshSession, setUserData]);
+  const value = useMemo(
+    () => ({
+      user,
+      loading,
+      authenticated,
+      can,
+      refreshSession,
+      setUserData,
+      RESOURCES,
+      PERMISSIONS,
+    }),
+    [user, loading, authenticated, can, refreshSession, setUserData]
+  );
 
   return (
-    <SessionContext.Provider value={value}>
-      {children}
-    </SessionContext.Provider>
+    <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
   );
 }
 
@@ -315,12 +334,12 @@ export function setSessionData(userData) {
   if (userData) {
     sessionCache = {
       authenticated: true,
-      user: userData
+      user: userData,
     };
     sessionCacheTime = Date.now();
     forceNextFetch = false;
     persistToStorage(sessionCache);
-    
+
     // Also update the provider state if it's mounted
     if (updateProviderState) {
       updateProviderState(userData);

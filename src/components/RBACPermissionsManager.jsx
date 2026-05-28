@@ -4,11 +4,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { RESOURCES, PERMISSIONS } from '@/utils/rbac';
 
-export default function RBACPermissionsManager({ 
+export default function RBACPermissionsManager({
   type = 'user',
-  targetId, 
+  targetId,
   targetName,
-  onPermissionsUpdated
+  onPermissionsUpdated,
 }) {
   const [permissions, setPermissions] = useState({});
   const [loading, setLoading] = useState(true);
@@ -19,12 +19,12 @@ export default function RBACPermissionsManager({
       setLoading(true);
       const params = new URLSearchParams({
         type: 'all',
-        ...(type === 'user' ? { user_id: targetId } : { role_id: targetId })
+        ...(type === 'user' ? { user_id: targetId } : { role_id: targetId }),
       });
-      
+
       const res = await fetch(`/api/permissions?${params}`);
       const data = await res.json();
-      
+
       if (data.success) {
         setPermissions(data.data.user_permissions?.grouped || {});
       }
@@ -47,7 +47,7 @@ export default function RBACPermissionsManager({
     try {
       setSaving(true);
       if (!targetId) return;
-      
+
       const res = await fetch('/api/permissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,8 +55,8 @@ export default function RBACPermissionsManager({
           [type === 'user' ? 'user_id' : 'role_id']: targetId,
           permissions: newPermissions,
           type,
-          action: 'replace'
-        })
+          action: 'replace',
+        }),
       });
 
       const data = await res.json();
@@ -76,30 +76,32 @@ export default function RBACPermissionsManager({
   const togglePermission = (resource, permission) => {
     const key = `${resource}:${permission}`;
     const currentPerms = Object.entries(permissions).flatMap(([res, perms]) =>
-      Object.keys(perms).map(perm => `${res}:${perm}`)
+      Object.keys(perms).map((perm) => `${res}:${perm}`)
     );
-    
+
     const newPerms = currentPerms.includes(key)
-      ? currentPerms.filter(p => p !== key)
+      ? currentPerms.filter((p) => p !== key)
       : [...currentPerms, key];
-    
+
     updatePermissions(newPerms);
   };
 
   const toggleAll = (resource, grant) => {
     const currentPerms = Object.entries(permissions).flatMap(([res, perms]) =>
-      Object.keys(perms).map(perm => `${res}:${perm}`)
+      Object.keys(perms).map((perm) => `${res}:${perm}`)
     );
-    
-    const resourcePerms = Object.values(PERMISSIONS).map(p => `${resource}:${p}`);
-    
+
+    const resourcePerms = Object.values(PERMISSIONS).map(
+      (p) => `${resource}:${p}`
+    );
+
     let newPerms;
     if (grant) {
       newPerms = [...new Set([...currentPerms, ...resourcePerms])];
     } else {
-      newPerms = currentPerms.filter(p => !p.startsWith(`${resource}:`));
+      newPerms = currentPerms.filter((p) => !p.startsWith(`${resource}:`));
     }
-    
+
     updatePermissions(newPerms);
   };
 
@@ -125,7 +127,9 @@ export default function RBACPermissionsManager({
             Permissions: {targetName}
           </h3>
           <p className="text-sm text-gray-600 mt-1">
-            {type === 'user' ? 'User-specific permissions' : 'Role-based permissions'}
+            {type === 'user'
+              ? 'User-specific permissions'
+              : 'Role-based permissions'}
           </p>
         </div>
       </div>
@@ -138,26 +142,44 @@ export default function RBACPermissionsManager({
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">
                 Resource
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Read</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Create</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Update</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Delete</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Export</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Import</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Approve</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Assign</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Actions</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
+                Read
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
+                Create
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
+                Update
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
+                Delete
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
+                Export
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
+                Import
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
+                Approve
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
+                Assign
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {Object.values(RESOURCES).map(resource => (
+            {Object.values(RESOURCES).map((resource) => (
               <tr key={resource} className="hover:bg-gray-50">
                 <td className="px-6 py-4">
                   <span className="text-sm font-medium text-gray-900 capitalize">
                     {resource.replace('_', ' ')}
                   </span>
                 </td>
-                {Object.values(PERMISSIONS).map(permission => {
+                {Object.values(PERMISSIONS).map((permission) => {
                   const checked = hasPermission(resource, permission);
                   return (
                     <td key={permission} className="px-4 py-4 text-center">

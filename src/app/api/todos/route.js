@@ -31,9 +31,12 @@ export async function GET(request) {
   let db;
   try {
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     db = await dbConnect();
@@ -66,12 +69,15 @@ export async function GET(request) {
 
     return NextResponse.json({
       success: true,
-      data: todos
+      data: todos,
     });
   } catch (error) {
     console.error('Error fetching todos:', error);
     if (db) await db.end();
-    return NextResponse.json({ success: false, error: 'Failed to fetch todos' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch todos' },
+      { status: 500 }
+    );
   }
 }
 
@@ -83,19 +89,25 @@ export async function POST(request) {
   let db;
   try {
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const data = await request.json();
     const { title, description, priority, due_date } = data;
 
     if (!title || !title.trim()) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Title is required' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Title is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -109,26 +121,31 @@ export async function POST(request) {
         title.trim(),
         description?.trim() || null,
         priority || 'medium',
-        due_date || null
+        due_date || null,
       ]
     );
 
-    const [newTodo] = await db.execute(
-      'SELECT * FROM todos WHERE id = ?',
-      [result.insertId]
-    );
+    const [newTodo] = await db.execute('SELECT * FROM todos WHERE id = ?', [
+      result.insertId,
+    ]);
 
     await db.end();
 
-    return NextResponse.json({
-      success: true,
-      data: newTodo[0],
-      message: 'Todo created'
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: newTodo[0],
+        message: 'Todo created',
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error creating todo:', error);
     if (db) await db.end();
-    return NextResponse.json({ success: false, error: 'Failed to create todo' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to create todo' },
+      { status: 500 }
+    );
   }
 }
 
@@ -140,19 +157,25 @@ export async function PUT(request) {
   let db;
   try {
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const data = await request.json();
     const { id, title, description, priority, status, due_date } = data;
 
     if (!id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Todo ID is required' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Todo ID is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -166,7 +189,10 @@ export async function PUT(request) {
 
     if (existing.length === 0) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'Todo not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Todo not found' },
+        { status: 404 }
+      );
     }
 
     const updates = [];
@@ -206,22 +232,24 @@ export async function PUT(request) {
       );
     }
 
-    const [updatedTodo] = await db.execute(
-      'SELECT * FROM todos WHERE id = ?',
-      [id]
-    );
+    const [updatedTodo] = await db.execute('SELECT * FROM todos WHERE id = ?', [
+      id,
+    ]);
 
     await db.end();
 
     return NextResponse.json({
       success: true,
       data: updatedTodo[0],
-      message: 'Todo updated'
+      message: 'Todo updated',
     });
   } catch (error) {
     console.error('Error updating todo:', error);
     if (db) await db.end();
-    return NextResponse.json({ success: false, error: 'Failed to update todo' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to update todo' },
+      { status: 500 }
+    );
   }
 }
 
@@ -233,19 +261,25 @@ export async function DELETE(request) {
   let db;
   try {
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Todo ID is required' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Todo ID is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -259,16 +293,22 @@ export async function DELETE(request) {
     await db.end();
 
     if (result.affectedRows === 0) {
-      return NextResponse.json({ success: false, error: 'Todo not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Todo not found' },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Todo deleted'
+      message: 'Todo deleted',
     });
   } catch (error) {
     console.error('Error deleting todo:', error);
     if (db) await db.end();
-    return NextResponse.json({ success: false, error: 'Failed to delete todo' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete todo' },
+      { status: 500 }
+    );
   }
 }

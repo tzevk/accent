@@ -1,5 +1,5 @@
-import dotenv from "dotenv";
-import mysql from "mysql2/promise";
+import dotenv from 'dotenv';
+import mysql from 'mysql2/promise';
 
 // Load env from .env.local for server-side tools/scripts that may not automatically load it
 dotenv.config();
@@ -26,8 +26,8 @@ export async function dbConnect() {
   if (!pool) {
     let attempt = 0;
     let lastError;
-    const tryHosts = [host, host === "localhost" ? "127.0.0.1" : null].filter(
-      Boolean,
+    const tryHosts = [host, host === 'localhost' ? '127.0.0.1' : null].filter(
+      Boolean
     );
     while (attempt <= maxRetries) {
       const tryHost = tryHosts[Math.min(attempt, tryHosts.length - 1)];
@@ -53,9 +53,9 @@ export async function dbConnect() {
         test.release();
 
         // Add pool error handlers and monitoring
-        pool.on("connection", (connection) => {
-          connection.on("error", (err) => {
-            console.error("MySQL connection error:", err);
+        pool.on('connection', (connection) => {
+          connection.on('error', (err) => {
+            console.error('MySQL connection error:', err);
           });
         });
 
@@ -66,7 +66,7 @@ export async function dbConnect() {
         lastError = err;
         pool = null; // Reset pool on failure so next attempt can recreate it
         // Auto-create database if it doesn't exist, then recreate pool
-        if (err && (err.code === "ER_BAD_DB_ERROR" || err.errno === 1049)) {
+        if (err && (err.code === 'ER_BAD_DB_ERROR' || err.errno === 1049)) {
           const admin = await mysql.createConnection({
             host: tryHost,
             port,
@@ -76,7 +76,7 @@ export async function dbConnect() {
           });
           try {
             await admin.query(
-              `CREATE DATABASE IF NOT EXISTS \`${database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+              `CREATE DATABASE IF NOT EXISTS \`${database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
             );
           } finally {
             await admin.end();
@@ -86,7 +86,7 @@ export async function dbConnect() {
           continue;
         }
         // Retry for transient network errors
-        if (["ETIMEDOUT", "ECONNREFUSED", "ENOTFOUND"].includes(err?.code)) {
+        if (['ETIMEDOUT', 'ECONNREFUSED', 'ENOTFOUND'].includes(err?.code)) {
           attempt++;
           // small delay between retries
           await new Promise((r) => setTimeout(r, 300));
@@ -98,9 +98,9 @@ export async function dbConnect() {
     }
     if (!pool && lastError) {
       const enriched = new Error(
-        `DB_CONNECTION_FAILED: Could not connect to MySQL at ${host}:${port} after ${maxRetries + 1} attempt(s). Last error: ${lastError?.code || lastError?.message}`,
+        `DB_CONNECTION_FAILED: Could not connect to MySQL at ${host}:${port} after ${maxRetries + 1} attempt(s). Last error: ${lastError?.code || lastError?.message}`
       );
-      enriched.code = "DB_CONNECTION_FAILED";
+      enriched.code = 'DB_CONNECTION_FAILED';
       enriched.cause = lastError;
       throw enriched;
     }
@@ -117,8 +117,8 @@ export async function dbConnect() {
         await closePool();
         process.exit(0);
       };
-      process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-      process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+      process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+      process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     }
   }
 
@@ -136,12 +136,12 @@ export async function dbConnect() {
       if (
         (err.errno === 1203 ||
           err.errno === 1040 ||
-          err.code === "ER_CON_COUNT_ERROR" ||
-          err.code === "ER_TOO_MANY_USER_CONNECTIONS") &&
+          err.code === 'ER_CON_COUNT_ERROR' ||
+          err.code === 'ER_TOO_MANY_USER_CONNECTIONS') &&
         connAttempts <= MAX_CONN_RETRIES
       ) {
         console.warn(
-          `[DB] Too many connections (attempt ${connAttempts}/${MAX_CONN_RETRIES}), waiting before retry...`,
+          `[DB] Too many connections (attempt ${connAttempts}/${MAX_CONN_RETRIES}), waiting before retry...`
         );
         await new Promise((r) => setTimeout(r, 500 * connAttempts)); // 500ms, 1s, 1.5s
         continue;
@@ -154,26 +154,26 @@ export async function dbConnect() {
   const FORCE_RELEASE_MS = Number(process.env.DB_FORCE_RELEASE_MS || 8000);
   const releaseTimer = setTimeout(() => {
     console.warn(
-      "⚠️  Connection held for more than " +
+      '⚠️  Connection held for more than ' +
         FORCE_RELEASE_MS / 1000 +
-        "s, force releasing:",
+        's, force releasing:',
       {
         threadId: conn.threadId,
-        acquiredAt: conn._acquiredStack?.split("\n")[2]?.trim(),
-      },
+        acquiredAt: conn._acquiredStack?.split('\n')[2]?.trim(),
+      }
     );
-    if (conn && typeof conn.release === "function") {
+    if (conn && typeof conn.release === 'function') {
       try {
         conn.release();
       } catch (err) {
-        console.error("Error force-releasing connection:", err);
+        console.error('Error force-releasing connection:', err);
       }
     }
   }, FORCE_RELEASE_MS);
 
   // Track connection creation for debugging (only in development — Error().stack is expensive)
   conn._acquiredAt = Date.now();
-  if (process.env.NODE_ENV === "development") {
+  if (process.env.NODE_ENV === 'development') {
     conn._acquiredStack = new Error().stack;
   }
 
@@ -202,7 +202,7 @@ export async function closePool() {
     try {
       await pool.end();
     } catch (err) {
-      console.error("Error closing MySQL pool:", err);
+      console.error('Error closing MySQL pool:', err);
     }
     pool = null;
     globalThis.__dbPool = null;

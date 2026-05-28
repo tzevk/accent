@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.SETTINGS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
@@ -32,7 +40,14 @@ export async function GET(request) {
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     console.error('Document master GET error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to load documents master', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to load documents master',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -40,7 +55,11 @@ export async function GET(request) {
 
 export async function POST(request) {
   // RBAC check
-  const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  const authResultPost = await ensurePermission(
+    request,
+    RESOURCES.SETTINGS,
+    PERMISSIONS.UPDATE
+  );
   if (authResultPost.authorized === false) return authResultPost.response;
 
   let db;
@@ -49,7 +68,10 @@ export async function POST(request) {
     const { doc_key, name, status = 'active', description = '' } = body;
 
     if (!name || !doc_key) {
-      return NextResponse.json({ success: false, error: 'Document key and name are required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Document key and name are required' },
+        { status: 400 }
+      );
     }
 
     const id = randomUUID();
@@ -62,7 +84,14 @@ export async function POST(request) {
     return NextResponse.json({ success: true, data: { id } }, { status: 201 });
   } catch (error) {
     console.error('Document master POST error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create document type', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to create document type',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -70,7 +99,11 @@ export async function POST(request) {
 
 export async function PUT(request) {
   // RBAC check
-  const authResultPut = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  const authResultPut = await ensurePermission(
+    request,
+    RESOURCES.SETTINGS,
+    PERMISSIONS.UPDATE
+  );
   if (authResultPut.authorized === false) return authResultPut.response;
 
   let db;
@@ -79,7 +112,10 @@ export async function PUT(request) {
     const { id, doc_key, name, status, description } = body;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Document id is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Document id is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -96,7 +132,14 @@ export async function PUT(request) {
     return NextResponse.json({ success: true, message: 'Document updated' });
   } catch (error) {
     console.error('Document master PUT error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update document', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update document',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -104,7 +147,11 @@ export async function PUT(request) {
 
 export async function DELETE(request) {
   // RBAC check
-  const authResultDel = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.DELETE);
+  const authResultDel = await ensurePermission(
+    request,
+    RESOURCES.SETTINGS,
+    PERMISSIONS.DELETE
+  );
   if (authResultDel.authorized === false) return authResultDel.response;
 
   let db;
@@ -113,7 +160,10 @@ export async function DELETE(request) {
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Document id is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Document id is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -122,7 +172,14 @@ export async function DELETE(request) {
     return NextResponse.json({ success: true, message: 'Document deleted' });
   } catch (error) {
     console.error('Document master DELETE error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete document', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to delete document',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }

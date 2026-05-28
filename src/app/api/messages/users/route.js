@@ -4,11 +4,11 @@ import { getCurrentUser } from '@/utils/api-permissions';
 
 /**
  * GET /api/messages/users
- * 
+ *
  * Returns a list of all active users for the messaging system.
  * This endpoint does NOT require users:read permission — any authenticated
  * user can see other users for the purpose of sending messages.
- * 
+ *
  * Query params:
  *   - search: string (optional) — filter by name/email
  *   - limit: number (default: 200)
@@ -18,7 +18,10 @@ export async function GET(request) {
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -56,28 +59,33 @@ export async function GET(request) {
 
     const response = NextResponse.json({
       success: true,
-      data: users.map(u => ({
+      data: users.map((u) => ({
         id: u.id,
         name: u.full_name || u.username,
         full_name: u.full_name,
         username: u.username,
         email: u.email,
         department: u.department,
-        profile_photo_url: u.profile_photo_url
-      }))
+        profile_photo_url: u.profile_photo_url,
+      })),
     });
 
     // Cache for 2 minutes — user list doesn't change frequently
     response.headers.set('Cache-Control', 'private, max-age=120');
     return response;
-
   } catch (error) {
     console.error('Error fetching messaging users:', error);
-    if (db) try { db.release(); } catch {}
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to fetch users',
-      details: error.message 
-    }, { status: 500 });
+    if (db)
+      try {
+        db.release();
+      } catch {}
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch users',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }

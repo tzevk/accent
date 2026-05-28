@@ -6,7 +6,7 @@ export async function GET(request) {
   let db;
   try {
     db = await dbConnect();
-    
+
     // Get all active employees from employee master
     const [employees] = await db.query(
       `SELECT 
@@ -27,13 +27,16 @@ export async function GET(request) {
     return NextResponse.json({
       success: true,
       data: employees || [],
-      total: employees?.length || 0
+      total: employees?.length || 0,
     });
-
   } catch (error) {
     console.error('Error fetching employees:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch employees: ' + error.message, data: [] },
+      {
+        success: false,
+        error: 'Failed to fetch employees: ' + error.message,
+        data: [],
+      },
       { status: 500 }
     );
   } finally {

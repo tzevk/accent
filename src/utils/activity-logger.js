@@ -20,7 +20,7 @@ export async function logActivity({
   description = '',
   details = null,
   request = null,
-  status = 'success'
+  status = 'success',
 }) {
   let db;
   try {
@@ -39,11 +39,12 @@ export async function logActivity({
 
     if (request) {
       // Get IP address from various headers
-      ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-                  request.headers.get('x-real-ip') ||
-                  request.headers.get('cf-connecting-ip') ||
-                  null;
-      
+      ipAddress =
+        request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        request.headers.get('x-real-ip') ||
+        request.headers.get('cf-connecting-ip') ||
+        null;
+
       userAgent = request.headers.get('user-agent') || null;
     }
 
@@ -60,13 +61,12 @@ export async function logActivity({
         details ? JSON.stringify(details) : null,
         ipAddress,
         userAgent,
-        status
+        status,
       ]
     );
 
     // Update work session and daily summary asynchronously (don't block)
     updateWorkSession(normalizedUserId, actionType).catch(console.error);
-
   } catch (error) {
     console.error('Error logging activity:', error);
     // Don't throw - logging failures shouldn't break the main flow
@@ -85,10 +85,7 @@ export async function updateScreenTime(userId, screenData) {
   try {
     db = await dbConnect();
 
-    const {
-      activeTimeMs = 0,
-      idleTimeMs = 0
-    } = screenData;
+    const { activeTimeMs = 0, idleTimeMs = 0 } = screenData;
 
     // Convert milliseconds to minutes
     const activeMinutes = Math.floor(activeTimeMs / 60000);
@@ -132,7 +129,6 @@ export async function updateScreenTime(userId, screenData) {
          updated_at = CURRENT_TIMESTAMP`,
       [userId, totalMinutes, activeMinutes, idleMinutes]
     );
-
   } catch (error) {
     console.error('Error updating screen time:', error);
   } finally {
@@ -190,9 +186,22 @@ async function updateWorkSession(userId, actionType) {
          pages_viewed = pages_viewed + IF(? = 'view_page', 1, 0),
          first_login = COALESCE(first_login, IF(? = 'login', CURRENT_TIMESTAMP, NULL)),
          last_activity = CURRENT_TIMESTAMP`,
-      [userId, actionType, actionType, actionType, actionType, actionType, actionType, actionType, actionType, actionType, actionType, actionType, actionType]
+      [
+        userId,
+        actionType,
+        actionType,
+        actionType,
+        actionType,
+        actionType,
+        actionType,
+        actionType,
+        actionType,
+        actionType,
+        actionType,
+        actionType,
+        actionType,
+      ]
     );
-
   } catch (error) {
     console.error('Error updating work session:', error);
   } finally {
@@ -230,7 +239,6 @@ export async function endUserSession(userId) {
        SET uds.total_work_minutes = ws.total_minutes`,
       [userId]
     );
-
   } catch (error) {
     console.error('Error ending user session:', error);
   } finally {
@@ -248,7 +256,7 @@ export async function getUserActivityLogs({
   startDate = null,
   endDate = null,
   limit = 100,
-  offset = 0
+  offset = 0,
 }) {
   let db;
   try {
@@ -296,7 +304,6 @@ export async function getUserActivityLogs({
     const [logs] = await db.execute(query, params);
 
     return logs;
-
   } catch (error) {
     console.error('Error fetching activity logs:', error);
     return [];
@@ -334,15 +341,22 @@ export async function getUserCurrentStatus(userId) {
     );
 
     if (!result || result.length === 0) {
-      return { status: 'offline', lastActivity: null, currentPage: null, sessionDuration: null };
+      return {
+        status: 'offline',
+        lastActivity: null,
+        currentPage: null,
+        sessionDuration: null,
+      };
     }
 
     const user = result[0];
     const status = getStatusFromActivity(user.last_activity);
-    
+
     let sessionDuration = null;
     if (user.session_start && status === 'online') {
-      sessionDuration = Math.floor((Date.now() - new Date(user.session_start).getTime()) / 1000);
+      sessionDuration = Math.floor(
+        (Date.now() - new Date(user.session_start).getTime()) / 1000
+      );
     }
 
     return {
@@ -351,12 +365,16 @@ export async function getUserCurrentStatus(userId) {
       currentPage: user.current_page,
       sessionDuration,
       username: user.username,
-      fullName: user.full_name
+      fullName: user.full_name,
     };
-
   } catch (error) {
     console.error('Error getting user status:', error);
-    return { status: 'offline', lastActivity: null, currentPage: null, sessionDuration: null };
+    return {
+      status: 'offline',
+      lastActivity: null,
+      currentPage: null,
+      sessionDuration: null,
+    };
   } finally {
     if (db) await db.end();
   }
@@ -402,23 +420,24 @@ export async function getAllUsersStatus(userIds = null) {
     const [users] = await db.execute(query, params);
 
     // Add status to each user
-    const usersWithStatus = users.map(user => {
+    const usersWithStatus = users.map((user) => {
       const status = getStatusFromActivity(user.last_activity);
-      
+
       let sessionDuration = null;
       if (user.session_start && status === 'online') {
-        sessionDuration = Math.floor((Date.now() - new Date(user.session_start).getTime()) / 1000);
+        sessionDuration = Math.floor(
+          (Date.now() - new Date(user.session_start).getTime()) / 1000
+        );
       }
 
       return {
         ...user,
         status,
-        session_duration: sessionDuration
+        session_duration: sessionDuration,
       };
     });
 
     return usersWithStatus;
-
   } catch (error) {
     console.error('Error getting all users status:', error);
     return [];
@@ -432,10 +451,12 @@ export async function getAllUsersStatus(userIds = null) {
  */
 function getStatusFromActivity(lastActivity) {
   if (!lastActivity) return 'offline';
-  
-  const seconds = Math.floor((Date.now() - new Date(lastActivity).getTime()) / 1000);
-  
-  if (seconds < 120) return 'online';  // Active (< 2 min)
-  if (seconds < 600) return 'idle';    // Idle (< 10 min)
-  return 'offline';                     // Away (> 10 min)
+
+  const seconds = Math.floor(
+    (Date.now() - new Date(lastActivity).getTime()) / 1000
+  );
+
+  if (seconds < 120) return 'online'; // Active (< 2 min)
+  if (seconds < 600) return 'idle'; // Idle (< 10 min)
+  return 'offline'; // Away (> 10 min)
 }

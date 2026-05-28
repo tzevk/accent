@@ -10,10 +10,10 @@
  *  - holiday_master (for official holidays)
  */
 
-import PAYROLL_CONFIG, { 
-  calculatePF, 
-  calculateESIC, 
-  calculateProfessionalTax 
+import PAYROLL_CONFIG, {
+  calculatePF,
+  calculateESIC,
+  calculateProfessionalTax,
 } from './payroll-config';
 import { dbConnect } from './database';
 
@@ -24,7 +24,7 @@ import { dbConnect } from './database';
  */
 export async function getCurrentDA(forDate = new Date()) {
   const db = await dbConnect();
-  
+
   try {
     const [rows] = await db.execute(
       `SELECT da_amount 
@@ -34,13 +34,19 @@ export async function getCurrentDA(forDate = new Date()) {
        LIMIT 1`,
       [forDate]
     );
-    
-    return rows.length > 0 ? parseFloat(rows[0].da_amount) : PAYROLL_CONFIG.DA_FIXED_AMOUNT;
+
+    return rows.length > 0
+      ? parseFloat(rows[0].da_amount)
+      : PAYROLL_CONFIG.DA_FIXED_AMOUNT;
   } catch (error) {
     console.error('Error getting current DA:', error);
     return PAYROLL_CONFIG.DA_FIXED_AMOUNT; // Fallback to config default
   } finally {
-    try { db.release(); } catch (_) { /* ignore */ }
+    try {
+      db.release();
+    } catch (_) {
+      /* ignore */
+    }
   }
 }
 
@@ -52,43 +58,47 @@ export async function getCurrentDA(forDate = new Date()) {
  */
 export async function getHolidaysForMonth(month, includeOptional = false) {
   const db = await dbConnect();
-  
+
   try {
     const monthStr = month.substring(0, 7); // Extract YYYY-MM
     const [year, monthNum] = monthStr.split('-');
-    
+
     // Get first and last day of month
     const firstDay = `${year}-${monthNum}-01`;
     const lastDay = new Date(parseInt(year), parseInt(monthNum), 0).getDate();
     const lastDayStr = `${year}-${monthNum}-${String(lastDay).padStart(2, '0')}`;
-    
+
     let query = `
       SELECT id, name, date, type, is_optional
       FROM holiday_master 
       WHERE is_active = 1 
         AND date BETWEEN ? AND ?
     `;
-    
+
     if (!includeOptional) {
       query += ` AND is_optional = 0`;
     }
-    
+
     query += ` ORDER BY date ASC`;
-    
+
     const [rows] = await db.execute(query, [firstDay, lastDayStr]);
-    
-    return rows.map(row => ({
+
+    return rows.map((row) => ({
       id: row.id,
       name: row.name,
       date: row.date,
       type: row.type,
-      is_optional: row.is_optional
+      is_optional: row.is_optional,
     }));
   } catch (error) {
     console.error('Error getting holidays for month:', error);
     return [];
   } finally {
-    try { db.release(); } catch (_) { /* ignore */ }
+    try {
+      db.release();
+    } catch (_) {
+      /* ignore */
+    }
   }
 }
 
@@ -100,24 +110,30 @@ export async function getHolidaysForMonth(month, includeOptional = false) {
 export async function getWorkingDaysForMonth(month) {
   const monthStr = month.substring(0, 7);
   const [year, monthNum] = monthStr.split('-');
-  const totalDaysInMonth = new Date(parseInt(year), parseInt(monthNum), 0).getDate();
-  
+  const totalDaysInMonth = new Date(
+    parseInt(year),
+    parseInt(monthNum),
+    0
+  ).getDate();
+
   // Get official holidays from holiday_master
   const holidays = await getHolidaysForMonth(month, false);
-  const holidayDates = new Set(holidays.map(h => {
-    const d = new Date(h.date);
-    return d.getDate();
-  }));
-  
+  const holidayDates = new Set(
+    holidays.map((h) => {
+      const d = new Date(h.date);
+      return d.getDate();
+    })
+  );
+
   let sundays = 0;
   let weekdays = 0;
   let holidaysNotOnSunday = 0;
-  
+
   for (let day = 1; day <= totalDaysInMonth; day++) {
     const date = new Date(parseInt(year), parseInt(monthNum) - 1, day);
     const isSunday = date.getDay() === 0;
     const isHoliday = holidayDates.has(day);
-    
+
     if (isSunday) {
       sundays++;
     } else if (isHoliday) {
@@ -126,16 +142,16 @@ export async function getWorkingDaysForMonth(month) {
       weekdays++;
     }
   }
-  
+
   const workingDays = totalDaysInMonth - sundays - holidaysNotOnSunday;
-  
+
   return {
     totalDaysInMonth,
     sundays,
     holidays: holidays.length,
     holidaysNotOnSunday,
     workingDays,
-    holidayList: holidays
+    holidayList: holidays,
   };
 }
 
@@ -147,9 +163,14 @@ export async function getWorkingDaysForMonth(month) {
  * @param {string} defaultOutTime - Default out time (HH:MM format)
  * @returns {Promise<number>} Total working hours
  */
-export async function getEmployeeMonthlyHours(employeeId, month, defaultInTime = '09:00', defaultOutTime = '17:30') {
+export async function getEmployeeMonthlyHours(
+  employeeId,
+  month,
+  defaultInTime = '09:00',
+  defaultOutTime = '17:30'
+) {
   const db = await dbConnect();
-  
+
   try {
     // Get attendance records with in/out times
     const [records] = await db.execute(
@@ -163,43 +184,47 @@ export async function getEmployeeMonthlyHours(employeeId, month, defaultInTime =
          AND status IN ('P', 'HD', 'OT')`,
       [employeeId, month.substring(0, 7)]
     );
-    
+
     let totalHours = 0;
-    
+
     // Helper to parse time string to decimal hours
     const timeToDecimal = (timeStr) => {
       if (!timeStr) return null;
       const timePart = timeStr.toString().substring(0, 5);
       const [hours, minutes] = timePart.split(':').map(Number);
-      return hours + (minutes / 60);
+      return hours + minutes / 60;
     };
-    
+
     // Parse default times
     const defaultIn = timeToDecimal(defaultInTime);
     const defaultOut = timeToDecimal(defaultOutTime);
     const defaultDailyHours = defaultOut - defaultIn;
-    
-    records.forEach(record => {
+
+    records.forEach((record) => {
       const inTime = timeToDecimal(record.in_time) || defaultIn;
       const outTime = timeToDecimal(record.out_time) || defaultOut;
-      
+
       let hours = outTime > inTime ? outTime - inTime : defaultDailyHours;
-      
+
       // Half day = half hours
       if (record.status === 'HD') {
         hours = hours / 2;
       }
-      
+
       totalHours += hours;
     });
-    
+
     return totalHours;
   } catch (error) {
     console.error('Error getting employee monthly hours:', error);
     // Return default hours (160 for a month)
     return 160;
   } finally {
-    try { db.release(); } catch (_) { /* ignore */ }
+    try {
+      db.release();
+    } catch (_) {
+      /* ignore */
+    }
   }
 }
 
@@ -212,12 +237,12 @@ export async function getEmployeeMonthlyHours(employeeId, month, defaultInTime =
  */
 export async function getEmployeeAttendance(employeeId, month) {
   const db = await dbConnect();
-  
+
   try {
     // Get actual working days from holiday_master (excluding Sundays and official holidays)
     const workingDaysInfo = await getWorkingDaysForMonth(month);
     const standardWorkingDays = workingDaysInfo.workingDays;
-    
+
     // Get attendance records for the month
     const [records] = await db.execute(
       `SELECT 
@@ -229,7 +254,7 @@ export async function getEmployeeAttendance(employeeId, month) {
          AND DATE_FORMAT(attendance_date, '%Y-%m') = ?`,
       [employeeId, month.substring(0, 7)] // Extract YYYY-MM from month
     );
-    
+
     // Calculate attendance summary
     let daysPresent = 0;
     let daysAbsent = 0;
@@ -238,8 +263,8 @@ export async function getEmployeeAttendance(employeeId, month) {
     let holidays = workingDaysInfo.holidaysNotOnSunday; // Use holidays from holiday_master
     let halfDays = 0;
     let totalOvertimeHours = 0;
-    
-    records.forEach(record => {
+
+    records.forEach((record) => {
       switch (record.status) {
         case 'P': // Present
           daysPresent++;
@@ -269,22 +294,24 @@ export async function getEmployeeAttendance(employeeId, month) {
           holidays++;
           break;
       }
-      
+
       if (record.is_weekly_off) weeklyOff++;
       totalOvertimeHours += parseFloat(record.overtime_hours || 0);
     });
-    
+
     // If no attendance records found, assume full month present
     const hasAttendanceData = records.length > 0;
-    const effectivePresentDays = hasAttendanceData ? daysPresent : standardWorkingDays;
+    const effectivePresentDays = hasAttendanceData
+      ? daysPresent
+      : standardWorkingDays;
     const lossOfPayDays = hasAttendanceData ? daysAbsent : 0;
-    
+
     // Payable days = standard working days - explicit absences (LWP/UL only) - half day deductions.
     // Days without attendance records are NOT treated as absences — only explicit
     // unpaid leave/absent entries reduce pay. This prevents salary reduction when
     // attendance hasn't been fully entered for the month.
-    const payableDays = standardWorkingDays - lossOfPayDays - (halfDays * 0.5);
-    
+    const payableDays = standardWorkingDays - lossOfPayDays - halfDays * 0.5;
+
     return {
       standardWorkingDays,
       daysPresent: effectivePresentDays,
@@ -302,7 +329,7 @@ export async function getEmployeeAttendance(employeeId, month) {
       // Holiday list from holiday_master
       holidayList: workingDaysInfo.holidayList,
       // Working days breakdown
-      workingDaysBreakdown: workingDaysInfo
+      workingDaysBreakdown: workingDaysInfo,
     };
   } catch (error) {
     console.error('Error getting employee attendance:', error);
@@ -320,10 +347,14 @@ export async function getEmployeeAttendance(employeeId, month) {
       payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
       lopDays: 0,
       holidayList: [],
-      workingDaysBreakdown: null
+      workingDaysBreakdown: null,
     };
   } finally {
-    try { db.release(); } catch (_) { /* ignore */ }
+    try {
+      db.release();
+    } catch (_) {
+      /* ignore */
+    }
   }
 }
 
@@ -333,12 +364,16 @@ export async function getEmployeeAttendance(employeeId, month) {
  * @param {Date} forDate - Date to check (defaults to today)
  * @returns {Promise<object|null>} Salary profile or null
  */
-export async function getEmployeeSalaryProfile(employeeId, forDate = new Date()) {
+export async function getEmployeeSalaryProfile(
+  employeeId,
+  forDate = new Date()
+) {
   const db = await dbConnect();
-  
+
   // Format date for MySQL
-  const dateStr = typeof forDate === 'string' ? forDate : forDate.toISOString().split('T')[0];
-  
+  const dateStr =
+    typeof forDate === 'string' ? forDate : forDate.toISOString().split('T')[0];
+
   try {
     // Always fetch employee_salary_profile for individual component values
     const [legacyRows] = await db.execute(
@@ -363,19 +398,21 @@ export async function getEmployeeSalaryProfile(employeeId, forDate = new Date())
        LIMIT 1`,
       [employeeId]
     );
-    
+
     if (rows.length > 0) {
       const profile = rows[0];
-      
+
       // Use gross_salary (total earnings), NOT CTC.
       // CTC includes employer contributions (PF employer, ESIC employer, bonus, insurance, etc.)
       // and should NOT be used as the base for salary component calculations.
       // Only fall back to CTC if gross_salary is truly unavailable.
-      const grossSalary = (parseFloat(profile.gross_salary) || 0) > 0
-        ? parseFloat(profile.gross_salary)
-        : (legacyProfile ? (parseFloat(legacyProfile.gross_salary) || 0) : 0) > 0
-          ? parseFloat(legacyProfile.gross_salary)
-          : parseFloat(profile.ctc) || 0;
+      const grossSalary =
+        (parseFloat(profile.gross_salary) || 0) > 0
+          ? parseFloat(profile.gross_salary)
+          : (legacyProfile ? parseFloat(legacyProfile.gross_salary) || 0 : 0) >
+              0
+            ? parseFloat(legacyProfile.gross_salary)
+            : parseFloat(profile.ctc) || 0;
 
       // Merge: start with legacy profile (has individual components like basic, da, hra),
       // then overlay salary_structures values (has overall parameters and flags).
@@ -388,22 +425,33 @@ export async function getEmployeeSalaryProfile(employeeId, forDate = new Date())
         basic: profile.basic || (legacyProfile ? legacyProfile.basic : null),
         da: profile.da || (legacyProfile ? legacyProfile.da : null),
         hra: profile.hra || (legacyProfile ? legacyProfile.hra : null),
-        conveyance: profile.conveyance || (legacyProfile ? legacyProfile.conveyance : null),
-        call_allowance: profile.call_allowance || (legacyProfile ? legacyProfile.call_allowance : null),
-        other_allowances: profile.other_allowances || (legacyProfile ? legacyProfile.other_allowances : null),
+        conveyance:
+          profile.conveyance ||
+          (legacyProfile ? legacyProfile.conveyance : null),
+        call_allowance:
+          profile.call_allowance ||
+          (legacyProfile ? legacyProfile.call_allowance : null),
+        other_allowances:
+          profile.other_allowances ||
+          (legacyProfile ? legacyProfile.other_allowances : null),
         bonus: profile.bonus || (legacyProfile ? legacyProfile.bonus : null),
-        incentive: profile.incentive || (legacyProfile ? legacyProfile.incentive : null),
-        standard_working_days: profile.standard_working_days || 26
+        incentive:
+          profile.incentive || (legacyProfile ? legacyProfile.incentive : null),
+        standard_working_days: profile.standard_working_days || 26,
       };
     }
-    
+
     // Fallback to employee_salary_profile if no salary_structures record
     return legacyProfile;
   } catch (error) {
     console.error('Error getting employee salary profile:', error);
     return null;
   } finally {
-    try { db.release(); } catch (_) { /* ignore */ }
+    try {
+      db.release();
+    } catch (_) {
+      /* ignore */
+    }
   }
 }
 
@@ -416,22 +464,26 @@ export async function getEmployeeSalaryProfile(employeeId, forDate = new Date())
  * @param {boolean} options.include_bonus - Whether to include bonus (default: false)
  * @returns {Promise<object>} Complete payroll breakdown
  */
-export async function calculateEmployeePayroll(employeeId, month, options = {}) {
+export async function calculateEmployeePayroll(
+  employeeId,
+  month,
+  options = {}
+) {
   const includeBonus = options.include_bonus === true;
   // Get employee's salary profile
   const profile = await getEmployeeSalaryProfile(employeeId, month);
-  
+
   if (!profile) {
     // Return null instead of throwing - let caller handle missing profile
     return null;
   }
-  
+
   // Get current DA
   const daAmount = await getCurrentDA(month);
-  
+
   // Get attendance data for the month
   const attendance = await getEmployeeAttendance(employeeId, month);
-  
+
   // Full month values from salary profile — use as-is, no pro-rata multiplication
   const fullGross = parseFloat(profile.gross_salary || profile.gross) || 0;
   const fullOtherAllowances = parseFloat(profile.other_allowances) || 0;
@@ -444,19 +496,19 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
   const monthlyBonus = profile.monthly_bonus === 1;
   const incentiveApplicable = profile.incentive_applicable === 1;
   const insuranceApplicable = profile.insurance_applicable === 1;
-  
+
   // Use profile values directly — no attendance-based pro-rata
   const gross = fullGross;
   const otherAllowances = fullOtherAllowances;
   const lopDeduction = 0;
-  
+
   // ═══════════════════════════════════════════════════════════════════
   // EARNINGS (Using saved profile values or calculate from percentages)
   // ═══════════════════════════════════════════════════════════════════
-  
+
   // Use saved breakdown values if available, otherwise calculate
   let basic, da, hra, conveyance, callAllowance, bonus, incentive;
-  
+
   if (profile.basic && profile.da) {
     // Use saved values as-is
     basic = Math.round(parseFloat(profile.basic) || 0);
@@ -464,109 +516,156 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
     hra = Math.round(parseFloat(profile.hra) || 0);
     conveyance = Math.round(parseFloat(profile.conveyance) || 0);
     callAllowance = Math.round(parseFloat(profile.call_allowance) || 0);
-    bonus = (monthlyBonus || (includeBonus && bonusApplicable)) ? Math.round(parseFloat(profile.bonus) || 0) : 0;
-    incentive = incentiveApplicable ? Math.round(parseFloat(profile.incentive) || 0) : 0;
+    bonus =
+      monthlyBonus || (includeBonus && bonusApplicable)
+        ? Math.round(parseFloat(profile.bonus) || 0)
+        : 0;
+    incentive = incentiveApplicable
+      ? Math.round(parseFloat(profile.incentive) || 0)
+      : 0;
   } else {
     // Calculate from gross using PAYROLL_CONFIG percentages
     // Basic + DA = 60% of Gross
-    const basicDaTotal = Math.round(gross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100));
+    const basicDaTotal = Math.round(
+      gross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100)
+    );
     basic = basicDaTotal - Math.round(daAmount);
     da = Math.round(daAmount);
-    
+
     // HRA = 20% of Gross
     hra = Math.round(gross * (PAYROLL_CONFIG.HRA_PERCENT / 100));
-    
+
     // Conveyance = 10% of Gross
     conveyance = Math.round(gross * (PAYROLL_CONFIG.CONVEYANCE_PERCENT / 100));
-    
+
     // Call Allowance = 10% of Gross
-    callAllowance = Math.round(gross * (PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT / 100));
-    
+    callAllowance = Math.round(
+      gross * (PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT / 100)
+    );
+
     bonus = 0;
     incentive = 0;
   }
-  
-  const overtimeHours = parseFloat(attendance.totalOvertimeHours || 0);
-  const otRate = overtimeHours > 0
-    ? parseFloat((((basic + da) / 8) * overtimeHours).toFixed(2))
-    : 0;
 
-  const totalEarnings = basic + da + hra + conveyance + callAllowance + otherAllowances + bonus + incentive + otRate;
-  
+  const overtimeHours = parseFloat(attendance.totalOvertimeHours || 0);
+  const otRate =
+    overtimeHours > 0
+      ? parseFloat((((basic + da) / 8) * overtimeHours).toFixed(2))
+      : 0;
+
+  const totalEarnings =
+    basic +
+    da +
+    hra +
+    conveyance +
+    callAllowance +
+    otherAllowances +
+    bonus +
+    incentive +
+    otRate;
+
   // ═══════════════════════════════════════════════════════════════════
   // EMPLOYEE DEDUCTIONS (calculated on actual payable gross)
   // ═══════════════════════════════════════════════════════════════════
-  
+
   // PF: 12% of Gross (capped at wage ceiling)
   const pfBreakdown = calculatePF(gross, pfApplicable, '15000');
   const pfEmployee = pfBreakdown.employeeContribution;
-  
+
   // ESIC: 0.75% of Gross (only if eligible)
   const esicBreakdown = calculateESIC(gross, esicApplicable);
   const esicEmployee = esicBreakdown.employeeContribution;
-  
+
   // Professional Tax (Maharashtra slab) - fixed amount, not pro-rata
   const pt = ptApplicable ? calculateProfessionalTax(fullGross) : 0;
-  
+
   // MLWF - only applicable in June and December
   const mlwfMonth = new Date(month).getMonth() + 1; // 1-based month
   const isMLWFMonth = mlwfMonth === 6 || mlwfMonth === 12;
-  const mlwf = (mlwfApplicable && isMLWFMonth) ? (parseFloat(profile.mlwf) || 0) : 0;
-  
+  const mlwf =
+    mlwfApplicable && isMLWFMonth ? parseFloat(profile.mlwf) || 0 : 0;
+
   // Retention
-  const retention = retentionApplicable ? (parseFloat(profile.retention) || 0) : 0;
-  
+  const retention = retentionApplicable
+    ? parseFloat(profile.retention) || 0
+    : 0;
+
   // LWF, TDS, Other deductions
   const lwf = 0; // Usually ₹25 twice a year
   const tds = 0; // Calculated separately based on tax regime
   const otherDeductions = 0;
-  
-  const totalDeductions = pfEmployee + esicEmployee + pt + mlwf + retention + lwf + tds + otherDeductions;
-  
+
+  const totalDeductions =
+    pfEmployee +
+    esicEmployee +
+    pt +
+    mlwf +
+    retention +
+    lwf +
+    tds +
+    otherDeductions;
+
   // ═══════════════════════════════════════════════════════════════════
   // NET PAY
   // ═══════════════════════════════════════════════════════════════════
-  
+
   const netPay = totalEarnings - totalDeductions;
-  
+
   // ═══════════════════════════════════════════════════════════════════
   // EMPLOYER CONTRIBUTIONS
   // ═══════════════════════════════════════════════════════════════════
-  
+
   // Employer PF: 13% of Gross
   const pfEmployer = pfBreakdown.employerTotal;
-  
+
   // Employer ESIC: 3.25% of Gross
   const esicEmployer = esicBreakdown.employerContribution;
-  
+
   // Employer MLWF - only applicable in June and December
-  const mlwfEmployer = (mlwfApplicable && isMLWFMonth) ? (parseFloat(profile.mlwf_employer) || 0) : 0;
-  
+  const mlwfEmployer =
+    mlwfApplicable && isMLWFMonth ? parseFloat(profile.mlwf_employer) || 0 : 0;
+
   // Insurance (PA/Mediclaim)
-  const insurance = insuranceApplicable ? (parseFloat(profile.insurance) || 0) : 0;
-  
+  const insurance = insuranceApplicable
+    ? parseFloat(profile.insurance) || 0
+    : 0;
+
   // Gratuity: 4.81% of Basic (calculated on full basic, not pro-rata)
-  const fullBasic = parseFloat(profile.basic) || Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100) - daAmount);
-  const gratuity = Math.round(fullBasic * (PAYROLL_CONFIG.GRATUITY_PERCENT / 100));
-  
+  const fullBasic =
+    parseFloat(profile.basic) ||
+    Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100) - daAmount);
+  const gratuity = Math.round(
+    fullBasic * (PAYROLL_CONFIG.GRATUITY_PERCENT / 100)
+  );
+
   // PF Admin: 0.5% of wage base
   const pfAdmin = pfBreakdown.pfAdmin;
-  
+
   // EDLI: 0.5% of wage base
-  const edli = Math.round(pfBreakdown.wageBase * (PAYROLL_CONFIG.EDLI_PERCENT / 100));
-  
-  const totalEmployerContributions = pfEmployer + esicEmployer + mlwfEmployer + bonus + insurance + gratuity + pfAdmin + edli;
-  
+  const edli = Math.round(
+    pfBreakdown.wageBase * (PAYROLL_CONFIG.EDLI_PERCENT / 100)
+  );
+
+  const totalEmployerContributions =
+    pfEmployer +
+    esicEmployer +
+    mlwfEmployer +
+    bonus +
+    insurance +
+    gratuity +
+    pfAdmin +
+    edli;
+
   // ═══════════════════════════════════════════════════════════════════
   // TOTAL EMPLOYER COST (CTC)
   // ═══════════════════════════════════════════════════════════════════
-  
+
   const employerCost = totalEarnings + totalEmployerContributions;
-  
+
   return {
     month,
     employee_id: employeeId,
-    
+
     // Earnings
     gross,
     da_used: daAmount,
@@ -580,7 +679,7 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
     incentive,
     ot_rate: otRate,
     total_earnings: totalEarnings,
-    
+
     // Employee Deductions
     pf_employee: pfEmployee,
     esic_employee: esicEmployee,
@@ -591,10 +690,10 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
     tds,
     other_deductions: otherDeductions,
     total_deductions: totalDeductions,
-    
+
     // Net Pay
     net_pay: netPay,
-    
+
     // Employer Contributions
     pf_employer: pfEmployer,
     esic_employer: esicEmployer,
@@ -604,10 +703,10 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
     pf_admin: pfAdmin,
     edli,
     total_employer_contributions: totalEmployerContributions,
-    
+
     // Total Cost
     employer_cost: employerCost,
-    
+
     // Attendance Data
     attendance: {
       standard_working_days: attendance.standardWorkingDays,
@@ -620,26 +719,27 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
       payable_days: attendance.payableDays,
       lop_days: attendance.lopDays,
       overtime_hours: attendance.totalOvertimeHours,
-      has_attendance_data: attendance.hasAttendanceData
+      has_attendance_data: attendance.hasAttendanceData,
     },
-    
+
     // Full month values (before pro-rata)
     full_month: {
       gross: fullGross,
-      other_allowances: fullOtherAllowances
+      other_allowances: fullOtherAllowances,
     },
-    
+
     // LOP Deduction
     lop_deduction: lopDeduction,
-    
+
     // Privilege Leave (PL) data from salary profile
     pl_total: parseInt(profile.pl_total) || 21,
     pl_used: parseInt(profile.pl_used) || 0,
-    pl_balance: parseInt(profile.pl_balance) || (21 - (parseInt(profile.pl_used) || 0)),
-    
+    pl_balance:
+      parseInt(profile.pl_balance) || 21 - (parseInt(profile.pl_used) || 0),
+
     // Metadata
     payment_status: 'pending',
-    remarks: null
+    remarks: null,
   };
 }
 
@@ -675,14 +775,18 @@ async function ensurePayrollColumns(db) {
   if (_columnsEnsured) return;
   for (const col of PAYROLL_COLUMNS_TO_ADD) {
     try {
-      await db.query(`ALTER TABLE payroll_slips ADD COLUMN ${col.name} ${col.definition}`);
-    } catch (_) { /* column already exists */ }
+      await db.query(
+        `ALTER TABLE payroll_slips ADD COLUMN ${col.name} ${col.definition}`
+      );
+    } catch (_) {
+      /* column already exists */
+    }
   }
   _columnsEnsured = true;
 }
 
 // Helper to convert undefined to null
-const n = (val) => val === undefined ? null : val;
+const n = (val) => (val === undefined ? null : val);
 
 const INSERT_SLIP_SQL = `INSERT INTO payroll_slips (
   month, employee_id, gross, da_used, da, basic, hra, conveyance, call_allowance,
@@ -745,7 +849,7 @@ function payrollToParams(payroll) {
     n(payroll.pl_used) || 0,
     n(payroll.pl_balance) || 21,
     payroll.payment_status || 'pending',
-    payroll.remarks || null
+    payroll.remarks || null,
   ];
 }
 
@@ -758,31 +862,42 @@ function payrollToParams(payroll) {
  */
 export async function generatePayrollSlip(employeeId, month, options = {}) {
   const payroll = await calculateEmployeePayroll(employeeId, month, options);
-  
+
   if (!payroll) {
-    throw new Error(`No active salary profile found for employee ${employeeId}. Please set up salary structure first.`);
+    throw new Error(
+      `No active salary profile found for employee ${employeeId}. Please set up salary structure first.`
+    );
   }
-  
+
   const db = await dbConnect();
-  
+
   try {
     await ensurePayrollColumns(db);
-    
-    const [result] = await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
-    
+
+    const [result] = await db.execute(
+      INSERT_SLIP_SQL,
+      payrollToParams(payroll)
+    );
+
     return {
       ...payroll,
       id: result.insertId,
-      created_at: new Date()
+      created_at: new Date(),
     };
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') {
-      throw new Error(`Payroll slip already exists for employee ${employeeId} for month ${month}`);
+      throw new Error(
+        `Payroll slip already exists for employee ${employeeId} for month ${month}`
+      );
     }
-    
+
     throw error;
   } finally {
-    try { db.release(); } catch (_) { /* ignore */ }
+    try {
+      db.release();
+    } catch (_) {
+      /* ignore */
+    }
   }
 }
 
@@ -830,14 +945,15 @@ async function batchGetSalaryProfiles(db, employeeIds) {
   const profileMap = new Map();
   for (const row of ssRows) {
     const legacyProfile = legacyMap.get(row.employee_id) || {};
-    
+
     // Use gross_salary (total earnings), NOT CTC.
     // CTC includes employer contributions and should not be used as salary base.
-    const grossSalary = (parseFloat(row.gross_salary) || 0) > 0
-      ? parseFloat(row.gross_salary)
-      : (parseFloat(legacyProfile.gross_salary) || 0) > 0
-        ? parseFloat(legacyProfile.gross_salary)
-        : parseFloat(row.ctc) || 0;
+    const grossSalary =
+      (parseFloat(row.gross_salary) || 0) > 0
+        ? parseFloat(row.gross_salary)
+        : (parseFloat(legacyProfile.gross_salary) || 0) > 0
+          ? parseFloat(legacyProfile.gross_salary)
+          : parseFloat(row.ctc) || 0;
 
     profileMap.set(row.employee_id, {
       ...legacyProfile,
@@ -848,11 +964,13 @@ async function batchGetSalaryProfiles(db, employeeIds) {
       da: row.da || legacyProfile.da || null,
       hra: row.hra || legacyProfile.hra || null,
       conveyance: row.conveyance || legacyProfile.conveyance || null,
-      call_allowance: row.call_allowance || legacyProfile.call_allowance || null,
-      other_allowances: row.other_allowances || legacyProfile.other_allowances || null,
+      call_allowance:
+        row.call_allowance || legacyProfile.call_allowance || null,
+      other_allowances:
+        row.other_allowances || legacyProfile.other_allowances || null,
       bonus: row.bonus || legacyProfile.bonus || null,
       incentive: row.incentive || legacyProfile.incentive || null,
-      standard_working_days: row.standard_working_days || 26
+      standard_working_days: row.standard_working_days || 26,
     });
   }
 
@@ -875,17 +993,20 @@ async function batchGetAttendance(db, employeeIds, month) {
   // Get actual working days from holiday_master
   const workingDaysInfo = await getWorkingDaysForMonth(month);
   const standardWorkingDays = workingDaysInfo.workingDays;
-  
+
   const defaultSummary = () => ({
     standardWorkingDays,
     daysPresent: standardWorkingDays,
-    daysAbsent: 0, daysLeave: 0, 
-    weeklyOff: workingDaysInfo.sundays, 
-    holidays: workingDaysInfo.holidaysNotOnSunday, 
+    daysAbsent: 0,
+    daysLeave: 0,
+    weeklyOff: workingDaysInfo.sundays,
+    holidays: workingDaysInfo.holidaysNotOnSunday,
     halfDays: 0,
-    totalOvertimeHours: 0, hasAttendanceData: false,
-    payableDays: standardWorkingDays, lopDays: 0,
-    holidayList: workingDaysInfo.holidayList
+    totalOvertimeHours: 0,
+    hasAttendanceData: false,
+    payableDays: standardWorkingDays,
+    lopDays: 0,
+    holidayList: workingDaysInfo.holidayList,
   });
 
   if (employeeIds.length === 0) return new Map();
@@ -917,19 +1038,43 @@ async function batchGetAttendance(db, employeeIds, month) {
       continue;
     }
 
-    let daysPresent = 0, daysAbsent = 0, daysLeave = 0;
-    let weeklyOff = 0, holidays = 0, halfDays = 0, totalOvertimeHours = 0;
+    let daysPresent = 0,
+      daysAbsent = 0,
+      daysLeave = 0;
+    let weeklyOff = 0,
+      holidays = 0,
+      halfDays = 0,
+      totalOvertimeHours = 0;
 
     for (const record of empRecords) {
       switch (record.status) {
-        case 'P': daysPresent++; break;
-        case 'A': daysAbsent++; break;
-        case 'PL': case 'CL': case 'SL': case 'EL':
-          daysLeave++; daysPresent++; break;
-        case 'UL': case 'LWP': daysAbsent++; break;
-        case 'HD': halfDays++; daysPresent += 0.5; break;
-        case 'WO': weeklyOff++; break;
-        case 'H': holidays++; break;
+        case 'P':
+          daysPresent++;
+          break;
+        case 'A':
+          daysAbsent++;
+          break;
+        case 'PL':
+        case 'CL':
+        case 'SL':
+        case 'EL':
+          daysLeave++;
+          daysPresent++;
+          break;
+        case 'UL':
+        case 'LWP':
+          daysAbsent++;
+          break;
+        case 'HD':
+          halfDays++;
+          daysPresent += 0.5;
+          break;
+        case 'WO':
+          weeklyOff++;
+          break;
+        case 'H':
+          holidays++;
+          break;
       }
       if (record.is_weekly_off) weeklyOff++;
       totalOvertimeHours += parseFloat(record.overtime_hours || 0);
@@ -946,9 +1091,9 @@ async function batchGetAttendance(db, employeeIds, month) {
       totalOvertimeHours,
       hasAttendanceData: true,
       // Payable days = standard working days - explicit absences - half day deductions
-      payableDays: standardWorkingDays - daysAbsent - (halfDays * 0.5),
+      payableDays: standardWorkingDays - daysAbsent - halfDays * 0.5,
       lopDays: daysAbsent,
-      holidayList: workingDaysInfo.holidayList
+      holidayList: workingDaysInfo.holidayList,
     });
   }
 
@@ -960,7 +1105,14 @@ async function batchGetAttendance(db, employeeIds, month) {
  * Same logic as calculateEmployeePayroll but accepts pre-fetched data.
  * @param {boolean} includeBonus - Whether to include bonus (default: false)
  */
-function computePayroll(employeeId, month, profile, daAmount, attendance, includeBonus = false) {
+function computePayroll(
+  employeeId,
+  month,
+  profile,
+  daAmount,
+  attendance,
+  includeBonus = false
+) {
   const fullGross = parseFloat(profile.gross_salary || profile.gross) || 0;
   const fullOtherAllowances = parseFloat(profile.other_allowances) || 0;
   const pfApplicable = profile.pf_applicable === 1;
@@ -986,24 +1138,43 @@ function computePayroll(employeeId, month, profile, daAmount, attendance, includ
     hra = Math.round(parseFloat(profile.hra) || 0);
     conveyance = Math.round(parseFloat(profile.conveyance) || 0);
     callAllowance = Math.round(parseFloat(profile.call_allowance) || 0);
-    bonus = (monthlyBonus || (includeBonus && bonusApplicable)) ? Math.round(parseFloat(profile.bonus) || 0) : 0;
-    incentive = incentiveApplicable ? Math.round(parseFloat(profile.incentive) || 0) : 0;
+    bonus =
+      monthlyBonus || (includeBonus && bonusApplicable)
+        ? Math.round(parseFloat(profile.bonus) || 0)
+        : 0;
+    incentive = incentiveApplicable
+      ? Math.round(parseFloat(profile.incentive) || 0)
+      : 0;
   } else {
-    const basicDaTotal = Math.round(gross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100));
+    const basicDaTotal = Math.round(
+      gross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100)
+    );
     basic = basicDaTotal - Math.round(daAmount);
     da = Math.round(daAmount);
     hra = Math.round(gross * (PAYROLL_CONFIG.HRA_PERCENT / 100));
     conveyance = Math.round(gross * (PAYROLL_CONFIG.CONVEYANCE_PERCENT / 100));
-    callAllowance = Math.round(gross * (PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT / 100));
+    callAllowance = Math.round(
+      gross * (PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT / 100)
+    );
     bonus = 0;
     incentive = 0;
   }
 
   const overtimeHours = parseFloat(attendance.totalOvertimeHours || 0);
-  const otRate = overtimeHours > 0
-    ? parseFloat((((basic + da) / 8) * overtimeHours).toFixed(2))
-    : 0;
-  const totalEarnings = basic + da + hra + conveyance + callAllowance + otherAllowances + bonus + incentive + otRate;
+  const otRate =
+    overtimeHours > 0
+      ? parseFloat((((basic + da) / 8) * overtimeHours).toFixed(2))
+      : 0;
+  const totalEarnings =
+    basic +
+    da +
+    hra +
+    conveyance +
+    callAllowance +
+    otherAllowances +
+    bonus +
+    incentive +
+    otRate;
   const pfBreakdown = calculatePF(gross, pfApplicable, '15000');
   const pfEmployee = pfBreakdown.employeeContribution;
   const esicBreakdown = calculateESIC(gross, esicApplicable);
@@ -1011,31 +1182,73 @@ function computePayroll(employeeId, month, profile, daAmount, attendance, includ
   const pt = ptApplicable ? calculateProfessionalTax(fullGross) : 0;
   const mlwfMonth = new Date(month).getMonth() + 1;
   const isMLWFMonth = mlwfMonth === 6 || mlwfMonth === 12;
-  const mlwf = (mlwfApplicable && isMLWFMonth) ? (parseFloat(profile.mlwf) || 0) : 0;
-  const retention = retentionApplicable ? (parseFloat(profile.retention) || 0) : 0;
+  const mlwf =
+    mlwfApplicable && isMLWFMonth ? parseFloat(profile.mlwf) || 0 : 0;
+  const retention = retentionApplicable
+    ? parseFloat(profile.retention) || 0
+    : 0;
   const totalDeductions = pfEmployee + esicEmployee + pt + mlwf + retention;
   const netPay = totalEarnings - totalDeductions;
   const pfEmployer = pfBreakdown.employerTotal;
   const esicEmployer = esicBreakdown.employerContribution;
-  const mlwfEmployer = (mlwfApplicable && isMLWFMonth) ? (parseFloat(profile.mlwf_employer) || 0) : 0;
-  const insurance = insuranceApplicable ? (parseFloat(profile.insurance) || 0) : 0;
-  const fullBasic = parseFloat(profile.basic) || Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100) - daAmount);
-  const gratuity = Math.round(fullBasic * (PAYROLL_CONFIG.GRATUITY_PERCENT / 100));
+  const mlwfEmployer =
+    mlwfApplicable && isMLWFMonth ? parseFloat(profile.mlwf_employer) || 0 : 0;
+  const insurance = insuranceApplicable
+    ? parseFloat(profile.insurance) || 0
+    : 0;
+  const fullBasic =
+    parseFloat(profile.basic) ||
+    Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100) - daAmount);
+  const gratuity = Math.round(
+    fullBasic * (PAYROLL_CONFIG.GRATUITY_PERCENT / 100)
+  );
   const pfAdmin = pfBreakdown.pfAdmin;
-  const edli = Math.round(pfBreakdown.wageBase * (PAYROLL_CONFIG.EDLI_PERCENT / 100));
-  const totalEmployerContributions = pfEmployer + esicEmployer + mlwfEmployer + bonus + insurance + gratuity + pfAdmin + edli;
+  const edli = Math.round(
+    pfBreakdown.wageBase * (PAYROLL_CONFIG.EDLI_PERCENT / 100)
+  );
+  const totalEmployerContributions =
+    pfEmployer +
+    esicEmployer +
+    mlwfEmployer +
+    bonus +
+    insurance +
+    gratuity +
+    pfAdmin +
+    edli;
   const employerCost = totalEarnings + totalEmployerContributions;
 
   return {
-    month, employee_id: employeeId,
-    gross, da_used: daAmount, da, basic, hra, conveyance,
-    call_allowance: callAllowance, other_allowances: otherAllowances,
-    bonus, incentive, ot_rate: otRate, total_earnings: totalEarnings,
-    pf_employee: pfEmployee, esic_employee: esicEmployee, pt, mlwf, retention,
-    lwf: 0, tds: 0, other_deductions: 0, total_deductions: totalDeductions,
+    month,
+    employee_id: employeeId,
+    gross,
+    da_used: daAmount,
+    da,
+    basic,
+    hra,
+    conveyance,
+    call_allowance: callAllowance,
+    other_allowances: otherAllowances,
+    bonus,
+    incentive,
+    ot_rate: otRate,
+    total_earnings: totalEarnings,
+    pf_employee: pfEmployee,
+    esic_employee: esicEmployee,
+    pt,
+    mlwf,
+    retention,
+    lwf: 0,
+    tds: 0,
+    other_deductions: 0,
+    total_deductions: totalDeductions,
     net_pay: netPay,
-    pf_employer: pfEmployer, esic_employer: esicEmployer, mlwf_employer: mlwfEmployer,
-    insurance, gratuity, pf_admin: pfAdmin, edli,
+    pf_employer: pfEmployer,
+    esic_employer: esicEmployer,
+    mlwf_employer: mlwfEmployer,
+    insurance,
+    gratuity,
+    pf_admin: pfAdmin,
+    edli,
     total_employer_contributions: totalEmployerContributions,
     employer_cost: employerCost,
     attendance: {
@@ -1049,14 +1262,16 @@ function computePayroll(employeeId, month, profile, daAmount, attendance, includ
       payable_days: attendance.payableDays,
       lop_days: attendance.lopDays,
       overtime_hours: attendance.totalOvertimeHours,
-      has_attendance_data: attendance.hasAttendanceData
+      has_attendance_data: attendance.hasAttendanceData,
     },
     full_month: { gross: fullGross, other_allowances: fullOtherAllowances },
     lop_deduction: lopDeduction,
     pl_total: parseInt(profile.pl_total) || 21,
     pl_used: parseInt(profile.pl_used) || 0,
-    pl_balance: parseInt(profile.pl_balance) || (21 - (parseInt(profile.pl_used) || 0)),
-    payment_status: 'pending', remarks: null
+    pl_balance:
+      parseInt(profile.pl_balance) || 21 - (parseInt(profile.pl_used) || 0),
+    payment_status: 'pending',
+    remarks: null,
   };
 }
 
@@ -1067,12 +1282,26 @@ function computePayroll(employeeId, month, profile, daAmount, attendance, includ
  * @param {string|null} salaryType - Optional salary type filter
  * @returns {Promise<object>} Summary of generation results
  */
-export async function generateMonthlyPayroll(month, salaryType = null, includeBonus = false, bonusEmployeeIds = null) {
+export async function generateMonthlyPayroll(
+  month,
+  salaryType = null,
+  includeBonus = false,
+  bonusEmployeeIds = null
+) {
   const db = await dbConnect();
 
   try {
-    const validSalaryTypes = ['monthly', 'hourly', 'daily', 'contract', 'lumpsum', 'custom', 'payroll'];
-    const filterBySalaryType = salaryType && validSalaryTypes.includes(salaryType);
+    const validSalaryTypes = [
+      'monthly',
+      'hourly',
+      'daily',
+      'contract',
+      'lumpsum',
+      'custom',
+      'payroll',
+    ];
+    const filterBySalaryType =
+      salaryType && validSalaryTypes.includes(salaryType);
     const isPayrollFilter = salaryType === 'payroll';
     const isContractFilter = salaryType === 'contract';
 
@@ -1084,7 +1313,8 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
        WHERE (e.status = 'active' OR e.status IS NULL)
          AND ss.is_active = 1`;
     const ssParams = [];
-    if (isPayrollFilter) ssQuery += ` AND (esp.salary_type IS NULL OR esp.salary_type != 'contract')`;
+    if (isPayrollFilter)
+      ssQuery += ` AND (esp.salary_type IS NULL OR esp.salary_type != 'contract')`;
     else if (isContractFilter) ssQuery += ` AND esp.salary_type = 'contract'`;
     const [ssEmployees] = await db.execute(ssQuery, ssParams);
 
@@ -1095,7 +1325,8 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
          AND esp.is_active = 1
          AND esp.employee_id NOT IN (SELECT employee_id FROM salary_structures WHERE is_active = 1)`;
     const espParams = [];
-    if (isPayrollFilter) espQuery += ` AND (esp.salary_type IS NULL OR esp.salary_type != 'contract')`;
+    if (isPayrollFilter)
+      espQuery += ` AND (esp.salary_type IS NULL OR esp.salary_type != 'contract')`;
     else if (isContractFilter) espQuery += ` AND esp.salary_type = 'contract'`;
     else if (filterBySalaryType) {
       espQuery += ` AND (esp.salary_type = ? OR (esp.salary_type IS NULL AND ? = 'monthly'))`;
@@ -1108,8 +1339,10 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
       return { month, total: 0, success: 0, failed: 0, skipped: 0, errors: [] };
     }
 
-    const employeeIds = employees.map(e => e.employee_id);
-    const employeeNameMap = new Map(employees.map(e => [e.employee_id, e.name]));
+    const employeeIds = employees.map((e) => e.employee_id);
+    const employeeNameMap = new Map(
+      employees.map((e) => [e.employee_id, e.name])
+    );
 
     // ── 2. Check for existing slips (skip duplicates in bulk) ──
     const phExisting = employeeIds.map(() => '?').join(',');
@@ -1117,8 +1350,8 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
       `SELECT employee_id FROM payroll_slips WHERE month = ? AND employee_id IN (${phExisting})`,
       [month, ...employeeIds]
     );
-    const existingSet = new Set(existingSlips.map(r => r.employee_id));
-    const newIds = employeeIds.filter(id => !existingSet.has(id));
+    const existingSet = new Set(existingSlips.map((r) => r.employee_id));
+    const newIds = employeeIds.filter((id) => !existingSet.has(id));
 
     const results = {
       month,
@@ -1126,7 +1359,7 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
       success: 0,
       failed: 0,
       skipped: existingSet.size,
-      errors: []
+      errors: [],
     };
 
     if (newIds.length === 0) {
@@ -1139,7 +1372,10 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
        AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31') LIMIT 1`,
       [month]
     );
-    const daAmount = daRows.length > 0 ? parseFloat(daRows[0].da_amount) : PAYROLL_CONFIG.DA_FIXED_AMOUNT;
+    const daAmount =
+      daRows.length > 0
+        ? parseFloat(daRows[0].da_amount)
+        : PAYROLL_CONFIG.DA_FIXED_AMOUNT;
 
     const profileMap = await batchGetSalaryProfiles(db, newIds);
     const attendanceMap = await batchGetAttendance(db, newIds, month);
@@ -1158,7 +1394,7 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
         results.errors.push({
           employee_id: empId,
           name: employeeNameMap.get(empId),
-          error: `No active salary profile found for employee ${empId}`
+          error: `No active salary profile found for employee ${empId}`,
         });
         continue;
       }
@@ -1166,20 +1402,39 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
       const defaultAtt = {
         standardWorkingDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
         daysPresent: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-        daysAbsent: 0, daysLeave: 0, weeklyOff: 0, holidays: 0,
-        halfDays: 0, totalOvertimeHours: 0, hasAttendanceData: false,
-        payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26, lopDays: 0
+        daysAbsent: 0,
+        daysLeave: 0,
+        weeklyOff: 0,
+        holidays: 0,
+        halfDays: 0,
+        totalOvertimeHours: 0,
+        hasAttendanceData: false,
+        payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
+        lopDays: 0,
       };
       const attendance = attendanceMap.get(empId) || defaultAtt;
 
       try {
         // If bonusEmployeeIds is provided, only include bonus for those specific employees
-        const empIncludeBonus = includeBonus && (bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
-        const payroll = computePayroll(empId, month, profile, daAmount, attendance, empIncludeBonus);
+        const empIncludeBonus =
+          includeBonus &&
+          (bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
+        const payroll = computePayroll(
+          empId,
+          month,
+          profile,
+          daAmount,
+          attendance,
+          empIncludeBonus
+        );
         toInsert.push(payroll);
       } catch (err) {
         results.failed++;
-        results.errors.push({ employee_id: empId, name: employeeNameMap.get(empId), error: err.message });
+        results.errors.push({
+          employee_id: empId,
+          name: employeeNameMap.get(empId),
+          error: err.message,
+        });
       }
     }
 
@@ -1219,7 +1474,7 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
               results.errors.push({
                 employee_id: payroll.employee_id,
                 name: employeeNameMap.get(payroll.employee_id),
-                error: singleErr.message
+                error: singleErr.message,
               });
             }
           }
@@ -1232,7 +1487,11 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
   } catch (error) {
     throw error;
   } finally {
-    try { db.release(); } catch (_) { /* ignore */ }
+    try {
+      db.release();
+    } catch (_) {
+      /* ignore */
+    }
   }
 }
 
@@ -1243,7 +1502,12 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
  * @param {string} month - Payroll month (YYYY-MM-01 format)
  * @returns {Promise<object>} Summary { success, failed, skipped, errors }
  */
-export async function generatePayrollSlipsBatch(employeeIds, month, includeBonus = false, bonusEmployeeIds = null) {
+export async function generatePayrollSlipsBatch(
+  employeeIds,
+  month,
+  includeBonus = false,
+  bonusEmployeeIds = null
+) {
   if (!employeeIds || employeeIds.length === 0) {
     return { success: 0, failed: 0, skipped: 0, errors: [] };
   }
@@ -1256,11 +1520,18 @@ export async function generatePayrollSlipsBatch(employeeIds, month, includeBonus
       `SELECT employee_id FROM payroll_slips WHERE month = ? AND employee_id IN (${ph})`,
       [month, ...employeeIds]
     );
-    const existingSet = new Set(existingSlips.map(r => r.employee_id));
-    const newIds = employeeIds.filter(id => !existingSet.has(id));
+    const existingSet = new Set(existingSlips.map((r) => r.employee_id));
+    const newIds = employeeIds.filter((id) => !existingSet.has(id));
 
-    const results = { success: 0, failed: 0, skipped: existingSet.size, errors: [] };
-    if (newIds.length === 0) { return results; }
+    const results = {
+      success: 0,
+      failed: 0,
+      skipped: existingSet.size,
+      errors: [],
+    };
+    if (newIds.length === 0) {
+      return results;
+    }
 
     // Batch-fetch
     const [daRows] = await db.execute(
@@ -1268,7 +1539,10 @@ export async function generatePayrollSlipsBatch(employeeIds, month, includeBonus
        AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31') LIMIT 1`,
       [month]
     );
-    const daAmount = daRows.length > 0 ? parseFloat(daRows[0].da_amount) : PAYROLL_CONFIG.DA_FIXED_AMOUNT;
+    const daAmount =
+      daRows.length > 0
+        ? parseFloat(daRows[0].da_amount)
+        : PAYROLL_CONFIG.DA_FIXED_AMOUNT;
 
     const profileMap = await batchGetSalaryProfiles(db, newIds);
     const attendanceMap = await batchGetAttendance(db, newIds, month);
@@ -1278,26 +1552,47 @@ export async function generatePayrollSlipsBatch(employeeIds, month, includeBonus
       const profile = profileMap.get(empId);
       if (!profile) {
         results.failed++;
-        results.errors.push({ employee_id: empId, error: `No active salary profile found for employee ${empId}` });
+        results.errors.push({
+          employee_id: empId,
+          error: `No active salary profile found for employee ${empId}`,
+        });
         continue;
       }
       const defaultAtt = {
         standardWorkingDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
         daysPresent: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-        daysAbsent: 0, daysLeave: 0, weeklyOff: 0, holidays: 0,
-        halfDays: 0, totalOvertimeHours: 0, hasAttendanceData: false,
-        payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26, lopDays: 0
+        daysAbsent: 0,
+        daysLeave: 0,
+        weeklyOff: 0,
+        holidays: 0,
+        halfDays: 0,
+        totalOvertimeHours: 0,
+        hasAttendanceData: false,
+        payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
+        lopDays: 0,
       };
       const attendance = attendanceMap.get(empId) || defaultAtt;
       try {
         // If bonusEmployeeIds is provided, only include bonus for those specific employees
-        const empIncludeBonus = includeBonus && (bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
-        const payroll = computePayroll(empId, month, profile, daAmount, attendance, empIncludeBonus);
+        const empIncludeBonus =
+          includeBonus &&
+          (bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
+        const payroll = computePayroll(
+          empId,
+          month,
+          profile,
+          daAmount,
+          attendance,
+          empIncludeBonus
+        );
         await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
         results.success++;
       } catch (err) {
         if (err.code === 'ER_DUP_ENTRY') results.skipped++;
-        else { results.failed++; results.errors.push({ employee_id: empId, error: err.message }); }
+        else {
+          results.failed++;
+          results.errors.push({ employee_id: empId, error: err.message });
+        }
       }
     }
 
@@ -1306,7 +1601,11 @@ export async function generatePayrollSlipsBatch(employeeIds, month, includeBonus
   } catch (error) {
     throw error;
   } finally {
-    try { db.release(); } catch (_) { /* ignore */ }
+    try {
+      db.release();
+    } catch (_) {
+      /* ignore */
+    }
   }
 }
 
@@ -1317,7 +1616,7 @@ const payrollCalculator = {
   calculateEmployeePayroll,
   generatePayrollSlip,
   generatePayrollSlipsBatch,
-  generateMonthlyPayroll
+  generateMonthlyPayroll,
 };
 
 export default payrollCalculator;

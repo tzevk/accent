@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Fragment } from 'react';
 import { fetchJSON } from '@/utils/http';
-import { 
+import {
   ClipboardDocumentListIcon,
   CheckCircleIcon,
   PencilSquareIcon,
@@ -10,14 +10,21 @@ import {
   PlusIcon,
   PaperAirplaneIcon,
   ChevronDownIcon,
-  ChevronUpIcon
+  ChevronUpIcon,
 } from '@heroicons/react/24/outline';
 
 export default function ProjectActivityAssignments({ userId, preloadedData }) {
   const [assignments, setAssignments] = useState([]);
   const [stats, setStats] = useState({
-    totalAssignments: 0, totalProjects: 0, totalQtyAssigned: 0, totalQtyCompleted: 0,
-    totalPlannedHours: 0, totalActualHours: 0, completedCount: 0, inProgressCount: 0, notStartedCount: 0
+    totalAssignments: 0,
+    totalProjects: 0,
+    totalQtyAssigned: 0,
+    totalQtyCompleted: 0,
+    totalPlannedHours: 0,
+    totalActualHours: 0,
+    completedCount: 0,
+    inProgressCount: 0,
+    notStartedCount: 0,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -29,7 +36,12 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   const [successModal, setSuccessModal] = useState(false);
   const [sendingOtKey, setSendingOtKey] = useState(null);
   const [otRequestedKeys, setOtRequestedKeys] = useState({});
-  const [otModal, setOtModal] = useState({ open: false, activity: null, hours: '', remarks: '' });
+  const [otModal, setOtModal] = useState({
+    open: false,
+    activity: null,
+    hours: '',
+    remarks: '',
+  });
 
   const getOtHours = (activity) => {
     const planned = parseFloat(activity?.planned_hours) || 0;
@@ -40,18 +52,40 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   // Ensure each activity has an unlocked entry for today (allow multiple entries per date – additive)
   const ensureTodayEntry = (list) => {
     const today = new Date().toISOString().split('T')[0];
-    return list.map(a => {
-      const entries = (a.daily_entries || []).filter(e => e != null);
+    return list.map((a) => {
+      const entries = (a.daily_entries || []).filter((e) => e != null);
       // Check if there's already an unlocked (editable) entry for today
-      const hasUnlockedToday = entries.some(e => e.date === today && !e.isLocked);
+      const hasUnlockedToday = entries.some(
+        (e) => e.date === today && !e.isLocked
+      );
       if (!hasUnlockedToday) {
         // Lock all existing unlocked entries — if unfilled, store as null
-        const updated = entries.map(e => {
+        const updated = entries.map((e) => {
           if (e.isLocked) return e;
-          const filled = (e.qty_done !== '' && e.qty_done !== null) || (e.hours !== '' && e.hours !== null);
-          return { ...e, isLocked: true, qty_done: filled ? e.qty_done : null, hours: filled ? e.hours : null, remarks: e.remarks || null };
+          const filled =
+            (e.qty_done !== '' && e.qty_done !== null) ||
+            (e.hours !== '' && e.hours !== null);
+          return {
+            ...e,
+            isLocked: true,
+            qty_done: filled ? e.qty_done : null,
+            hours: filled ? e.hours : null,
+            remarks: e.remarks || null,
+          };
         });
-        return { ...a, daily_entries: [...updated, { date: today, qty_done: null, hours: null, remarks: null, isLocked: false }] };
+        return {
+          ...a,
+          daily_entries: [
+            ...updated,
+            {
+              date: today,
+              qty_done: null,
+              hours: null,
+              remarks: null,
+              isLocked: false,
+            },
+          ],
+        };
       }
       return { ...a, daily_entries: entries };
     });
@@ -59,7 +93,9 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
   const autoExpandAll = (list) => {
     const expanded = {};
-    list.forEach(a => { expanded[`${a.project_id}-${a.activity_id}`] = true; });
+    list.forEach((a) => {
+      expanded[`${a.project_id}-${a.activity_id}`] = true;
+    });
     setExpandedRows(expanded);
   };
 
@@ -79,17 +115,29 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
     if (!userId || preloadedData) return;
     const loadData = async () => {
       try {
-        const response = await fetch(`/api/users/${userId}/activity-assignments`);
-        if (response.status === 401 || response.status === 403) { setHasAccess(false); setLoading(false); return; }
+        const response = await fetch(
+          `/api/users/${userId}/activity-assignments`
+        );
+        if (response.status === 401 || response.status === 403) {
+          setHasAccess(false);
+          setLoading(false);
+          return;
+        }
         const res = await response.json();
         if (res.success) {
           const processed = ensureTodayEntry(res.data.assignments || []);
-          setAssignments(processed); setStats(res.data.stats || {});
+          setAssignments(processed);
+          setStats(res.data.stats || {});
           autoExpandAll(processed);
+        } else {
+          setHasAccess(false);
         }
-        else { setHasAccess(false); }
-      } catch (err) { console.error('Failed to load activity assignments:', err); setHasAccess(false); }
-      finally { setLoading(false); }
+      } catch (err) {
+        console.error('Failed to load activity assignments:', err);
+        setHasAccess(false);
+      } finally {
+        setLoading(false);
+      }
     };
     loadData();
   }, [userId, preloadedData]);
@@ -99,89 +147,182 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
       const res = await fetchJSON(`/api/users/${userId}/activity-assignments`);
       if (res.success) {
         const processed = ensureTodayEntry(res.data.assignments || []);
-        setAssignments(processed); setStats(res.data.stats || {});
+        setAssignments(processed);
+        setStats(res.data.stats || {});
         autoExpandAll(processed);
       }
-    } catch (err) { console.error('Failed to load activity assignments:', err); }
+    } catch (err) {
+      console.error('Failed to load activity assignments:', err);
+    }
   };
 
   const toggleExpand = (rowKey) => {
-    setExpandedRows(prev => ({ ...prev, [rowKey]: !prev[rowKey] }));
+    setExpandedRows((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }));
   };
 
   const addDailyEntry = async (activity) => {
     const dailyEntries = [...(activity.daily_entries || [])];
     const today = new Date().toISOString().split('T')[0];
     // Lock all currently unlocked entries before adding a new additional entry — unfilled as null
-    const lockedEntries = dailyEntries.map(e => {
+    const lockedEntries = dailyEntries.map((e) => {
       if (e.isLocked) return e;
-      const filled = (e.qty_done !== '' && e.qty_done !== null) || (e.hours !== '' && e.hours !== null);
-      return { ...e, isLocked: true, qty_done: filled ? e.qty_done : null, hours: filled ? e.hours : null, remarks: e.remarks || null };
+      const filled =
+        (e.qty_done !== '' && e.qty_done !== null) ||
+        (e.hours !== '' && e.hours !== null);
+      return {
+        ...e,
+        isLocked: true,
+        qty_done: filled ? e.qty_done : null,
+        hours: filled ? e.hours : null,
+        remarks: e.remarks || null,
+      };
     });
     // Add a new entry for today (additional entries per day are counted cumulatively)
-    const updatedEntries = [...lockedEntries, { date: today, qty_done: null, hours: null, remarks: null, isLocked: false }];
-    const totalQtyDone = updatedEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
-    const totalHours = updatedEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+    const updatedEntries = [
+      ...lockedEntries,
+      {
+        date: today,
+        qty_done: null,
+        hours: null,
+        remarks: null,
+        isLocked: false,
+      },
+    ];
+    const totalQtyDone = updatedEntries.reduce(
+      (sum, e) => sum + (parseFloat(e.qty_done) || 0),
+      0
+    );
+    const totalHours = updatedEntries.reduce(
+      (sum, e) => sum + (parseFloat(e.hours) || 0),
+      0
+    );
 
     setSaving(true);
     try {
       const res = await fetch(`/api/users/${userId}/activity-assignments`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: activity.project_id, activity_id: activity.activity_id, daily_entries: updatedEntries, qty_completed: totalQtyDone, actual_hours: totalHours })
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: activity.project_id,
+          activity_id: activity.activity_id,
+          daily_entries: updatedEntries,
+          qty_completed: totalQtyDone,
+          actual_hours: totalHours,
+        }),
       });
       const data = await res.json();
       if (data.success) {
         await loadAssignments();
-        setExpandedRows(prev => ({ ...prev, [`${activity.project_id}-${activity.activity_id}`]: true }));
-      } else { alert('Failed to add entry: ' + (data.error || 'Unknown error')); }
-    } catch (err) { console.error('Failed to add daily entry:', err); alert('Failed to add daily entry'); }
-    finally { setSaving(false); }
+        setExpandedRows((prev) => ({
+          ...prev,
+          [`${activity.project_id}-${activity.activity_id}`]: true,
+        }));
+      } else {
+        alert('Failed to add entry: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Failed to add daily entry:', err);
+      alert('Failed to add daily entry');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const updateDailyEntryLocal = (activityKey, entryIndex, field, value) => {
-    setAssignments(prev => prev.map(a => {
-      if (`${a.project_id}-${a.activity_id}` === activityKey) {
-        const entries = [...(a.daily_entries || [])];
-        if (entries[entryIndex]) entries[entryIndex] = { ...entries[entryIndex], [field]: value };
-        const totalQtyDone = entries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
-        const totalHours = entries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
-        return { ...a, daily_entries: entries, qty_completed: totalQtyDone, actual_hours: totalHours };
-      }
-      return a;
-    }));
+    setAssignments((prev) =>
+      prev.map((a) => {
+        if (`${a.project_id}-${a.activity_id}` === activityKey) {
+          const entries = [...(a.daily_entries || [])];
+          if (entries[entryIndex])
+            entries[entryIndex] = { ...entries[entryIndex], [field]: value };
+          const totalQtyDone = entries.reduce(
+            (sum, e) => sum + (parseFloat(e.qty_done) || 0),
+            0
+          );
+          const totalHours = entries.reduce(
+            (sum, e) => sum + (parseFloat(e.hours) || 0),
+            0
+          );
+          return {
+            ...a,
+            daily_entries: entries,
+            qty_completed: totalQtyDone,
+            actual_hours: totalHours,
+          };
+        }
+        return a;
+      })
+    );
   };
 
   const removeDailyEntry = async (activity, entryIndex) => {
     const entries = [...(activity.daily_entries || [])];
     entries.splice(entryIndex, 1);
-    const totalQtyDone = entries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
-    const totalHours = entries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+    const totalQtyDone = entries.reduce(
+      (sum, e) => sum + (parseFloat(e.qty_done) || 0),
+      0
+    );
+    const totalHours = entries.reduce(
+      (sum, e) => sum + (parseFloat(e.hours) || 0),
+      0
+    );
     setSaving(true);
     try {
       const res = await fetch(`/api/users/${userId}/activity-assignments`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: activity.project_id, activity_id: activity.activity_id, daily_entries: entries, qty_completed: totalQtyDone, actual_hours: totalHours })
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: activity.project_id,
+          activity_id: activity.activity_id,
+          daily_entries: entries,
+          qty_completed: totalQtyDone,
+          actual_hours: totalHours,
+        }),
       });
       const data = await res.json();
       if (data.success) await loadAssignments();
-    } catch (err) { console.error('Failed to remove entry:', err); }
-    finally { setSaving(false); }
+    } catch (err) {
+      console.error('Failed to remove entry:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveDailyEntries = async (activity) => {
     const entries = activity.daily_entries || [];
     // Lock all entries on submit — unfilled entries stored as null
-    const lockedEntries = entries.map(e => {
-      const filled = (e.qty_done !== '' && e.qty_done !== null) || (e.hours !== '' && e.hours !== null);
-      return { ...e, isLocked: true, qty_done: filled ? e.qty_done : null, hours: filled ? e.hours : null, remarks: e.remarks || null };
+    const lockedEntries = entries.map((e) => {
+      const filled =
+        (e.qty_done !== '' && e.qty_done !== null) ||
+        (e.hours !== '' && e.hours !== null);
+      return {
+        ...e,
+        isLocked: true,
+        qty_done: filled ? e.qty_done : null,
+        hours: filled ? e.hours : null,
+        remarks: e.remarks || null,
+      };
     });
-    const totalQtyDone = lockedEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
-    const totalHours = lockedEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+    const totalQtyDone = lockedEntries.reduce(
+      (sum, e) => sum + (parseFloat(e.qty_done) || 0),
+      0
+    );
+    const totalHours = lockedEntries.reduce(
+      (sum, e) => sum + (parseFloat(e.hours) || 0),
+      0
+    );
     setSaving(true);
     try {
       const res = await fetch(`/api/users/${userId}/activity-assignments`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: activity.project_id, activity_id: activity.activity_id, daily_entries: lockedEntries, qty_completed: totalQtyDone, actual_hours: totalHours })
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: activity.project_id,
+          activity_id: activity.activity_id,
+          daily_entries: lockedEntries,
+          qty_completed: totalQtyDone,
+          actual_hours: totalHours,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -189,33 +330,56 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
         setTimeout(() => setSuccessModal(false), 2000);
         // Reload to reflect locked state in the table
         await loadAssignments();
-      } else { alert('Failed to submit: ' + (data.error || 'Unknown error')); }
-    } catch (err) { console.error('Failed to save daily entries:', err); alert('Failed to submit entry'); }
-    finally { setSaving(false); }
+      } else {
+        alert('Failed to submit: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Failed to save daily entries:', err);
+      alert('Failed to submit entry');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const startEditing = (assignment) => {
     setEditingId(`${assignment.project_id}-${assignment.activity_id}`);
     setEditForm({
-      project_id: assignment.project_id, activity_id: assignment.activity_id,
+      project_id: assignment.project_id,
+      activity_id: assignment.activity_id,
       status: assignment.status || 'Not Started',
-      due_date: assignment.due_date ? new Date(assignment.due_date).toISOString().split('T')[0] : '',
-      remarks: assignment.remarks || ''
+      due_date: assignment.due_date
+        ? new Date(assignment.due_date).toISOString().split('T')[0]
+        : '',
+      remarks: assignment.remarks || '',
     });
   };
-  const cancelEditing = () => { setEditingId(null); setEditForm({}); };
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditForm({});
+  };
 
   const saveProgress = async () => {
     setSaving(true);
     try {
       const res = await fetch(`/api/users/${userId}/activity-assignments`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editForm)
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
       });
       const data = await res.json();
-      if (data.success) { await loadAssignments(); setEditingId(null); setEditForm({}); }
-      else { alert('Failed to save: ' + (data.error || 'Unknown error')); }
-    } catch (err) { console.error('Failed to save progress:', err); alert('Failed to save progress'); }
-    finally { setSaving(false); }
+      if (data.success) {
+        await loadAssignments();
+        setEditingId(null);
+        setEditForm({});
+      } else {
+        alert('Failed to save: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Failed to save progress:', err);
+      alert('Failed to save progress');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openOtApprovalModal = (activity) => {
@@ -229,7 +393,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
       open: true,
       activity,
       hours: String(defaultOtHours),
-      remarks: activity.remarks || ''
+      remarks: activity.remarks || '',
     });
   };
 
@@ -262,13 +426,15 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
           project_code: activity.project_code,
           activity_name: activity.activity_name,
           ot_hours: otHours,
-          remarks: otModal.remarks || ''
-        })
+          remarks: otModal.remarks || '',
+        }),
       });
 
       if (res?.success) {
-        setOtRequestedKeys(prev => ({ ...prev, [rowKey]: true }));
-        const ticketNumber = res?.data?.ticket_number ? ` (${res.data.ticket_number})` : '';
+        setOtRequestedKeys((prev) => ({ ...prev, [rowKey]: true }));
+        const ticketNumber = res?.data?.ticket_number
+          ? ` (${res.data.ticket_number})`
+          : '';
         alert(`${res.message || 'OT approval request sent'}${ticketNumber}`);
         closeOtApprovalModal();
       } else {
@@ -284,15 +450,15 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
   const getStatusBadge = (status) => {
     const map = {
-      'Completed': 'bg-green-100 text-green-700 border-green-200',
+      Completed: 'bg-green-100 text-green-700 border-green-200',
       'In Progress': 'bg-blue-100 text-blue-700 border-blue-200',
       'Not Started': 'bg-gray-100 text-[#4A1254] border-gray-200',
-      'On Hold': 'bg-yellow-100 text-yellow-700 border-yellow-200'
+      'On Hold': 'bg-yellow-100 text-yellow-700 border-yellow-200',
     };
     return map[status] || map['Not Started'];
   };
 
-  const filteredAssignments = assignments.filter(a => {
+  const filteredAssignments = assignments.filter((a) => {
     if (filter === 'all') return true;
     if (filter === 'pending') return a.status === 'Not Started';
     if (filter === 'in-progress') return a.status === 'In Progress';
@@ -304,14 +470,19 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
     if (!dateStr) return '–';
     const d = new Date(dateStr + 'T00:00:00');
     const day = d.toLocaleDateString('en-GB', { weekday: 'short' });
-    const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const date = d.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+    });
     return `${date} (${day})`;
   };
 
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-md border-2 border-purple-200 p-6 mb-6">
-        <div className="text-center text-[#4A1254] text-sm">Loading assignments...</div>
+        <div className="text-center text-[#4A1254] text-sm">
+          Loading assignments...
+        </div>
       </div>
     );
   }
@@ -328,22 +499,41 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
               <ClipboardDocumentListIcon className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-[#4A1254]">My Project Activities</h3>
-              <p className="text-xs text-[#4A1254]">{stats.totalAssignments} assignments across {stats.totalProjects} projects</p>
+              <h3 className="text-sm font-bold text-[#4A1254]">
+                My Project Activities
+              </h3>
+              <p className="text-xs text-[#4A1254]">
+                {stats.totalAssignments} assignments across{' '}
+                {stats.totalProjects} projects
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="px-2.5 py-1 bg-gray-100 text-[#4A1254] rounded-full text-xs font-semibold">{stats.notStartedCount} Pending</span>
-            <span className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">{stats.inProgressCount} In Progress</span>
-            <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">{stats.completedCount} Completed</span>
+            <span className="px-2.5 py-1 bg-gray-100 text-[#4A1254] rounded-full text-xs font-semibold">
+              {stats.notStartedCount} Pending
+            </span>
+            <span className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+              {stats.inProgressCount} In Progress
+            </span>
+            <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+              {stats.completedCount} Completed
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-2 mt-2">
-          {['all', 'pending', 'in-progress', 'completed'].map(f => (
-            <button key={f} onClick={() => setFilter(f)}
+          {['all', 'pending', 'in-progress', 'completed'].map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
               className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${filter === f ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 text-[#4A1254] hover:bg-gray-200'}`}
             >
-              {f === 'all' ? 'All' : f === 'pending' ? 'Pending' : f === 'in-progress' ? 'In Progress' : 'Completed'}
+              {f === 'all'
+                ? 'All'
+                : f === 'pending'
+                  ? 'Pending'
+                  : f === 'in-progress'
+                    ? 'In Progress'
+                    : 'Completed'}
             </button>
           ))}
         </div>
@@ -361,331 +551,681 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
             // Group assignments by project
             const projectGroups = {};
             const projectOrder = [];
-            filteredAssignments.forEach(a => {
+            filteredAssignments.forEach((a) => {
               const pid = a.project_id || 'unknown';
               if (!projectGroups[pid]) {
-                projectGroups[pid] = { project_code: a.project_code, project_name: a.project_name, activities: [] };
+                projectGroups[pid] = {
+                  project_code: a.project_code,
+                  project_name: a.project_name,
+                  activities: [],
+                };
                 projectOrder.push(pid);
               }
               projectGroups[pid].activities.push(a);
             });
-            return projectOrder.map(pid => {
+            return projectOrder.map((pid) => {
               const group = projectGroups[pid];
-              const groupQtyAssigned = group.activities.reduce((s, a) => s + (parseFloat(a.qty_assigned) || 0), 0);
-              const groupQtyDone = group.activities.reduce((s, a) => s + (parseFloat(a.qty_completed) || 0), 0);
-              const groupPlannedHrs = group.activities.reduce((s, a) => s + (parseFloat(a.planned_hours) || 0), 0);
-              const groupActualHrs = group.activities.reduce((s, a) => s + (parseFloat(a.actual_hours) || 0), 0);
-              const groupOtHrs = Math.max(0, Math.round((groupActualHrs - groupPlannedHrs) * 100) / 100);
+              const groupQtyAssigned = group.activities.reduce(
+                (s, a) => s + (parseFloat(a.qty_assigned) || 0),
+                0
+              );
+              const groupQtyDone = group.activities.reduce(
+                (s, a) => s + (parseFloat(a.qty_completed) || 0),
+                0
+              );
+              const groupPlannedHrs = group.activities.reduce(
+                (s, a) => s + (parseFloat(a.planned_hours) || 0),
+                0
+              );
+              const groupActualHrs = group.activities.reduce(
+                (s, a) => s + (parseFloat(a.actual_hours) || 0),
+                0
+              );
+              const groupOtHrs = Math.max(
+                0,
+                Math.round((groupActualHrs - groupPlannedHrs) * 100) / 100
+              );
               return (
                 <div key={pid} className="mb-4 last:mb-0">
                   {/* Project Header */}
                   <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-[#64126D] to-[#7F2487] text-white">
                     <div className="flex items-center gap-3">
-                      <span className="font-mono text-xs font-bold bg-white/20 px-2 py-0.5 rounded">{group.project_code || '–'}</span>
-                      <span className="text-sm font-bold">{group.project_name || 'Unknown Project'}</span>
-                      <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{group.activities.length} {group.activities.length === 1 ? 'activity' : 'activities'}</span>
+                      <span className="font-mono text-xs font-bold bg-white/20 px-2 py-0.5 rounded">
+                        {group.project_code || '–'}
+                      </span>
+                      <span className="text-sm font-bold">
+                        {group.project_name || 'Unknown Project'}
+                      </span>
+                      <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
+                        {group.activities.length}{' '}
+                        {group.activities.length === 1
+                          ? 'activity'
+                          : 'activities'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-4 text-xs font-semibold">
-                      <span>Qty: {groupQtyDone}/{groupQtyAssigned}</span>
-                      <span>Hrs: {groupActualHrs}/{groupPlannedHrs}</span>
+                      <span>
+                        Qty: {groupQtyDone}/{groupQtyAssigned}
+                      </span>
+                      <span>
+                        Hrs: {groupActualHrs}/{groupPlannedHrs}
+                      </span>
                       <span>OT: {groupOtHrs}</span>
                     </div>
                   </div>
                   <table className="w-full text-sm">
                     <thead className="bg-[#64126D]/10">
                       <tr className="divide-x divide-[#64126D]/10">
-                        <th className="text-center py-2 px-4 font-bold text-[#64126D] uppercase tracking-wider text-xs">Activity</th>
-                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Plan Hrs</th>
-                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Manhours</th>
-                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">OT Hrs</th>
-                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Qty Asgn</th>
-                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Qty Done</th>
-                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Balance</th>
-                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Due Date</th>
-                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Status</th>
-                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Actions</th>
+                        <th className="text-center py-2 px-4 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                          Activity
+                        </th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                          Plan Hrs
+                        </th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                          Manhours
+                        </th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                          OT Hrs
+                        </th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                          Qty Asgn
+                        </th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                          Qty Done
+                        </th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                          Balance
+                        </th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                          Due Date
+                        </th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                          Status
+                        </th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-              {group.activities.map((activity) => {
-                const rowKey = `${activity.project_id}-${activity.activity_id}`;
-                const isEditing = editingId === rowKey;
-                const isExpanded = expandedRows[rowKey];
-                const isDuePast = activity.due_date && new Date(activity.due_date) < new Date() && activity.status !== 'Completed';
-                const dailyEntries = activity.daily_entries || [];
-                const qtyAssigned = parseFloat(activity.qty_assigned) || 0;
-                const qtyDone = parseFloat(activity.qty_completed) || 0;
-                const balance = qtyAssigned - qtyDone;
-                const otHours = getOtHours(activity);
-                const hasRequestedOt = !!otRequestedKeys[rowKey];
+                      {group.activities.map((activity) => {
+                        const rowKey = `${activity.project_id}-${activity.activity_id}`;
+                        const isEditing = editingId === rowKey;
+                        const isExpanded = expandedRows[rowKey];
+                        const isDuePast =
+                          activity.due_date &&
+                          new Date(activity.due_date) < new Date() &&
+                          activity.status !== 'Completed';
+                        const dailyEntries = activity.daily_entries || [];
+                        const qtyAssigned =
+                          parseFloat(activity.qty_assigned) || 0;
+                        const qtyDone = parseFloat(activity.qty_completed) || 0;
+                        const balance = qtyAssigned - qtyDone;
+                        const otHours = getOtHours(activity);
+                        const hasRequestedOt = !!otRequestedKeys[rowKey];
 
-                return (
-                  <Fragment key={rowKey}>
-                    {/* Main Activity Row */}
-                    <tr className={`hover:bg-purple-50/40 transition-colors divide-x divide-gray-200 ${isDuePast ? 'bg-red-50/40' : ''}`}>
-                      {/* Activity */}
-                      <td className="py-3 px-4 align-middle">
-                        <div className="font-semibold text-[#4A1254] text-sm">{activity.activity_name}</div>
-                        {activity.activity_description && <div className="text-xs text-[#4A1254]/70 truncate max-w-[220px]" title={activity.activity_description}>{activity.activity_description}</div>}
-                      </td>
+                        return (
+                          <Fragment key={rowKey}>
+                            {/* Main Activity Row */}
+                            <tr
+                              className={`hover:bg-purple-50/40 transition-colors divide-x divide-gray-200 ${isDuePast ? 'bg-red-50/40' : ''}`}
+                            >
+                              {/* Activity */}
+                              <td className="py-3 px-4 align-middle">
+                                <div className="font-semibold text-[#4A1254] text-sm">
+                                  {activity.activity_name}
+                                </div>
+                                {activity.activity_description && (
+                                  <div
+                                    className="text-xs text-[#4A1254]/70 truncate max-w-[220px]"
+                                    title={activity.activity_description}
+                                  >
+                                    {activity.activity_description}
+                                  </div>
+                                )}
+                              </td>
 
-                      {/* Plan Hrs */}
-                      <td className="py-3 px-3 text-center align-middle text-[#4A1254]">{activity.planned_hours || 0}</td>
+                              {/* Plan Hrs */}
+                              <td className="py-3 px-3 text-center align-middle text-[#4A1254]">
+                                {activity.planned_hours || 0}
+                              </td>
 
-                      {/* Manhours */}
-                      <td className="py-3 px-3 text-center align-middle font-bold text-black">{activity.actual_hours || 0}</td>
+                              {/* Manhours */}
+                              <td className="py-3 px-3 text-center align-middle font-bold text-black">
+                                {activity.actual_hours || 0}
+                              </td>
 
-                      {/* OT Hrs */}
-                      <td className="py-3 px-3 text-center align-middle">
-                        <span className={`font-bold ${otHours > 0 ? 'text-orange-600' : 'text-gray-400'}`}>{otHours}</span>
-                      </td>
+                              {/* OT Hrs */}
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span
+                                  className={`font-bold ${otHours > 0 ? 'text-orange-600' : 'text-gray-400'}`}
+                                >
+                                  {otHours}
+                                </span>
+                              </td>
 
-                      {/* Qty Asgn */}
-                      <td className="py-3 px-3 text-center align-middle text-[#4A1254]">{qtyAssigned}</td>
+                              {/* Qty Asgn */}
+                              <td className="py-3 px-3 text-center align-middle text-[#4A1254]">
+                                {qtyAssigned}
+                              </td>
 
-                      {/* Qty Done */}
-                      <td className="py-3 px-3 text-center align-middle font-bold text-black">{qtyDone}</td>
+                              {/* Qty Done */}
+                              <td className="py-3 px-3 text-center align-middle font-bold text-black">
+                                {qtyDone}
+                              </td>
 
-                      {/* Balance */}
-                      <td className="py-3 px-3 text-center align-middle">
-                        <span className={`font-semibold ${balance > 0 ? 'text-amber-600' : balance === 0 ? 'text-green-600' : 'text-red-500'}`}>{balance}</span>
-                      </td>
+                              {/* Balance */}
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span
+                                  className={`font-semibold ${balance > 0 ? 'text-amber-600' : balance === 0 ? 'text-green-600' : 'text-red-500'}`}
+                                >
+                                  {balance}
+                                </span>
+                              </td>
 
-                      {/* Due Date */}
-                      <td className="py-3 px-3 text-center align-middle">
-                          <span className={`text-xs font-bold ${isDuePast ? 'text-red-500' : 'text-[#64126D]'}`}>{formatShortDate(activity.due_date)}</span>
-                      </td>
+                              {/* Due Date */}
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span
+                                  className={`text-xs font-bold ${isDuePast ? 'text-red-500' : 'text-[#64126D]'}`}
+                                >
+                                  {formatShortDate(activity.due_date)}
+                                </span>
+                              </td>
 
-                      {/* Status */}
-                      <td className="py-3 px-3 text-center align-middle">
-                        {isEditing ? (
-                          <select value={editForm.status} onChange={(e) => setEditForm({...editForm, status: e.target.value})}
-                            className="px-2 py-1 text-xs border border-gray-300 rounded">
-                            <option value="Not Started">Not Started</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Completed">Completed</option>
-                            <option value="On Hold">On Hold</option>
-                          </select>
-                        ) : (
-                          <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadge(activity.status)}`}>{activity.status}</span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3 px-3 text-center align-middle">
-                        <div className="flex items-center justify-center gap-1">
-                          {isEditing ? (
-                            <>
-                              <button onClick={saveProgress} disabled={saving} className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors" title="Save">
-                                <CheckCircleIcon className="w-4 h-4" />
-                              </button>
-                              <button onClick={cancelEditing} className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors" title="Cancel">
-                                <XMarkIcon className="w-4 h-4" />
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button onClick={() => addDailyEntry(activity)} disabled={saving}
-                                className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded transition-colors" title="Add Daily Entry">
-                                <PlusIcon className="w-4 h-4" />
-                              </button>
-                              <button onClick={() => startEditing(activity)}
-                                className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Edit Status/Date">
-                                <PencilSquareIcon className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => openOtApprovalModal(activity)}
-                                disabled={sendingOtKey === rowKey || hasRequestedOt || otHours <= 0}
-                                className="p-1.5 text-orange-600 hover:bg-orange-100 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                title={hasRequestedOt ? 'OT approval sent' : otHours > 0 ? 'Send OT Approval to PM' : 'No OT hours to approve'}
-                              >
-                                <PaperAirplaneIcon className="w-4 h-4" />
-                              </button>
-                              {dailyEntries.length > 0 && (
-                                <button onClick={() => toggleExpand(rowKey)}
-                                  className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors" title={isExpanded ? 'Collapse' : 'Expand'}>
-                                  {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-
-                    {/* Daily Entry Sub-Rows */}
-                    {isExpanded && dailyEntries.length > 0 && (
-                      <tr>
-                        <td colSpan={10} className="px-4 py-3 bg-purple-50/40">
-                          <div className="ml-4 border-l-2 border-purple-300 pl-4">
-                            <div className="text-xs font-bold text-[#4A1254] uppercase mb-2 tracking-wide">Daily Work Progress</div>
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-[#64126D] uppercase divide-x divide-[#64126D]/20">
-                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Date</th>
-                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Qty Asgn</th>
-                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Qty Done</th>
-                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Balance</th>
-                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Manhours</th>
-                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">% Done</th>
-                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Remarks</th>
-                                  <th className="text-center py-1.5 pl-3 font-extrabold w-10"></th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(() => {
-                                  let runningBalance = qtyAssigned;
-                                  let cumDone = 0;
-                                  let lastWeek = null;
-                                  // Helper: get ISO week number
-                                  const getWeek = (dateStr) => {
-                                    if (!dateStr) return null;
-                                    const d = new Date(dateStr);
-                                    d.setHours(0, 0, 0, 0);
-                                    d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-                                    const jan4 = new Date(d.getFullYear(), 0, 4);
-                                    return Math.round(((d - jan4) / 86400000 + jan4.getDay() + 1) / 7);
-                                  };
-                                  // Pre-compute weekly totals for summary
-                                  const weekTotals = {};
-                                  const weekMonths = {};
-                                  dailyEntries.forEach(e => {
-                                    const w = getWeek(e.date);
-                                    if (!w) return;
-                                    if (!weekTotals[w]) weekTotals[w] = { qty: 0, hours: 0, count: 0 };
-                                    weekTotals[w].qty += parseFloat(e.qty_done) || 0;
-                                    weekTotals[w].hours += parseFloat(e.hours) || 0;
-                                    weekTotals[w].count++;
-                                    if (!weekMonths[w] && e.date) {
-                                      const d = new Date(e.date);
-                                      weekMonths[w] = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+                              {/* Status */}
+                              <td className="py-3 px-3 text-center align-middle">
+                                {isEditing ? (
+                                  <select
+                                    value={editForm.status}
+                                    onChange={(e) =>
+                                      setEditForm({
+                                        ...editForm,
+                                        status: e.target.value,
+                                      })
                                     }
-                                  });
-                                  const rows = [];
-                                  dailyEntries.forEach((entry, eIdx) => {
-                                    const week = getWeek(entry.date);
-                                    // Insert week header when week changes
-                                    if (week && week !== lastWeek) {
-                                      const wt = weekTotals[week] || { qty: 0, hours: 0, count: 0 };
-                                      rows.push(
-                                        <tr key={`week-${week}`} className="bg-purple-100/60">
-                                          <td colSpan={8} className="py-1.5 px-3">
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">Week {week} &middot; {weekMonths[week] || ''}</span>
-                                              <div className="flex items-center gap-4 text-[10px] text-purple-600 font-semibold">
-                                                <span>{wt.count} {wt.count === 1 ? 'day' : 'days'}</span>
-                                                <span>Qty: {wt.qty}</span>
-                                                <span>Hrs: {wt.hours}</span>
-                                              </div>
-                                            </div>
-                                          </td>
+                                    className="px-2 py-1 text-xs border border-gray-300 rounded"
+                                  >
+                                    <option value="Not Started">
+                                      Not Started
+                                    </option>
+                                    <option value="In Progress">
+                                      In Progress
+                                    </option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="On Hold">On Hold</option>
+                                  </select>
+                                ) : (
+                                  <span
+                                    className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadge(activity.status)}`}
+                                  >
+                                    {activity.status}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Actions */}
+                              <td className="py-3 px-3 text-center align-middle">
+                                <div className="flex items-center justify-center gap-1">
+                                  {isEditing ? (
+                                    <>
+                                      <button
+                                        onClick={saveProgress}
+                                        disabled={saving}
+                                        className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors"
+                                        title="Save"
+                                      >
+                                        <CheckCircleIcon className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={cancelEditing}
+                                        className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors"
+                                        title="Cancel"
+                                      >
+                                        <XMarkIcon className="w-4 h-4" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() => addDailyEntry(activity)}
+                                        disabled={saving}
+                                        className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded transition-colors"
+                                        title="Add Daily Entry"
+                                      >
+                                        <PlusIcon className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => startEditing(activity)}
+                                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                                        title="Edit Status/Date"
+                                      >
+                                        <PencilSquareIcon className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          openOtApprovalModal(activity)
+                                        }
+                                        disabled={
+                                          sendingOtKey === rowKey ||
+                                          hasRequestedOt ||
+                                          otHours <= 0
+                                        }
+                                        className="p-1.5 text-orange-600 hover:bg-orange-100 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title={
+                                          hasRequestedOt
+                                            ? 'OT approval sent'
+                                            : otHours > 0
+                                              ? 'Send OT Approval to PM'
+                                              : 'No OT hours to approve'
+                                        }
+                                      >
+                                        <PaperAirplaneIcon className="w-4 h-4" />
+                                      </button>
+                                      {dailyEntries.length > 0 && (
+                                        <button
+                                          onClick={() => toggleExpand(rowKey)}
+                                          className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors"
+                                          title={
+                                            isExpanded ? 'Collapse' : 'Expand'
+                                          }
+                                        >
+                                          {isExpanded ? (
+                                            <ChevronUpIcon className="w-4 h-4" />
+                                          ) : (
+                                            <ChevronDownIcon className="w-4 h-4" />
+                                          )}
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+
+                            {/* Daily Entry Sub-Rows */}
+                            {isExpanded && dailyEntries.length > 0 && (
+                              <tr>
+                                <td
+                                  colSpan={10}
+                                  className="px-4 py-3 bg-purple-50/40"
+                                >
+                                  <div className="ml-4 border-l-2 border-purple-300 pl-4">
+                                    <div className="text-xs font-bold text-[#4A1254] uppercase mb-2 tracking-wide">
+                                      Daily Work Progress
+                                    </div>
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="text-[#64126D] uppercase divide-x divide-[#64126D]/20">
+                                          <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">
+                                            Date
+                                          </th>
+                                          <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">
+                                            Qty Asgn
+                                          </th>
+                                          <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">
+                                            Qty Done
+                                          </th>
+                                          <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">
+                                            Balance
+                                          </th>
+                                          <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">
+                                            Manhours
+                                          </th>
+                                          <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">
+                                            % Done
+                                          </th>
+                                          <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">
+                                            Remarks
+                                          </th>
+                                          <th className="text-center py-1.5 pl-3 font-extrabold w-10"></th>
                                         </tr>
-                                      );
-                                      lastWeek = week;
-                                    }
-                                    const isLocked = entry.isLocked;
-                                    const entryQtyDone = parseFloat(entry.qty_done) || 0;
-                                    const dayQtyAsgn = runningBalance;
-                                    runningBalance = runningBalance - entryQtyDone;
-                                    cumDone += entryQtyDone;
-                                    const cumPct = qtyAssigned > 0 ? Math.min(100, Math.round((cumDone / qtyAssigned) * 100)) : 0;
-                                    const barColor = cumPct >= 75 ? '#059669' : cumPct >= 40 ? '#d97706' : '#7e22ce';
-                                    // Count same-date entries for labelling additional entries
-                                    const sameDateCount = dailyEntries.filter((x, xi) => xi <= eIdx && x.date === entry.date).length;
-                                    rows.push(
-                                    <tr key={eIdx} className={`divide-x divide-gray-200 ${isLocked ? 'bg-gray-50/60 text-[#4A1254]/60' : 'text-[#4A1254] bg-white'}`}>
-                                      <td className="py-1.5 px-3 text-center">
-                                        <div className="flex items-center justify-center gap-1">
-                                          {isLocked && <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>}
-                                          <span className="text-xs font-bold text-[#64126D]">{formatShortDate(entry.date)}</span>
-                                          {sameDateCount > 1 && <span className="text-[9px] font-semibold text-purple-500 bg-purple-100 px-1 rounded">#{sameDateCount}</span>}
-                                        </div>
-                                      </td>
-                                      <td className="py-1.5 px-3 text-center">
-                                        <span className="text-xs font-medium text-[#4A1254]">{dayQtyAsgn}</span>
-                                      </td>
-                                      <td className="py-1.5 px-3 text-center">
-                                        {isLocked ? (
-                                          <span className="font-bold text-black">{entry.qty_done || 0}</span>
-                                        ) : (
-                                          <input type="number" value={entry.qty_done || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'qty_done', e.target.value)}
-                                            min="0"
-                                            className="w-16 px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none" />
-                                        )}
-                                      </td>
-                                      <td className="py-1.5 px-3 text-center">
-                                        <span className={`text-xs font-semibold ${runningBalance > 0 ? 'text-amber-600' : runningBalance === 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                          {runningBalance}
-                                        </span>
-                                      </td>
-                                      <td className="py-1.5 px-3 text-center">
-                                        {isLocked ? (
-                                          <span className="font-bold text-black">{entry.hours || 0}</span>
-                                        ) : (
-                                          <input type="number" value={entry.hours || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'hours', e.target.value)}
-                                            min="0" step="0.5"
-                                            className="w-16 px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none" />
-                                        )}
-                                      </td>
-                                      <td className="py-1.5 px-3 text-center">
-                                        <div className="flex items-center gap-1.5 justify-center">
-                                          <div className="w-14 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                            <div className="h-full rounded-full transition-all" style={{ width: `${cumPct}%`, backgroundColor: barColor }} />
-                                          </div>
-                                          <span className="text-[10px] font-bold tabular-nums" style={{ color: barColor }}>{cumPct}%</span>
-                                        </div>
-                                      </td>
-                                      <td className="py-1.5 px-3 text-center">
-                                        {isLocked ? (
-                                          <span className="text-xs truncate max-w-[220px] inline-block" title={entry.remarks}>{entry.remarks || '–'}</span>
-                                        ) : (
-                                          <input type="text" value={entry.remarks || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'remarks', e.target.value)}
-                                            placeholder="Remarks..."
-                                            className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none" />
-                                        )}
-                                      </td>
-                                      <td className="py-1.5 pl-3 text-center">
-                                        {!isLocked && (
-                                          <div className="flex items-center gap-1 justify-center">
-                                            <button onClick={() => { saveDailyEntries(activity); }} disabled={saving}
-                                              className="px-2.5 py-1 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded transition-colors disabled:opacity-50" title="Submit entry">
-                                              {saving ? '...' : 'Submit'}
-                                            </button>
-                                            <button onClick={() => removeDailyEntry(activity, eIdx)} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove entry">
-                                              <XMarkIcon className="w-3.5 h-3.5" />
-                                            </button>
-                                          </div>
-                                        )}
-                                      </td>
-                                    </tr>
-                                    );
-                                  });
-                                  return rows;
-                                })()}
-                              </tbody>
-                            </table>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
+                                      </thead>
+                                      <tbody>
+                                        {(() => {
+                                          let runningBalance = qtyAssigned;
+                                          let cumDone = 0;
+                                          let lastWeek = null;
+                                          // Helper: get ISO week number
+                                          const getWeek = (dateStr) => {
+                                            if (!dateStr) return null;
+                                            const d = new Date(dateStr);
+                                            d.setHours(0, 0, 0, 0);
+                                            d.setDate(
+                                              d.getDate() +
+                                                3 -
+                                                ((d.getDay() + 6) % 7)
+                                            );
+                                            const jan4 = new Date(
+                                              d.getFullYear(),
+                                              0,
+                                              4
+                                            );
+                                            return Math.round(
+                                              ((d - jan4) / 86400000 +
+                                                jan4.getDay() +
+                                                1) /
+                                                7
+                                            );
+                                          };
+                                          // Pre-compute weekly totals for summary
+                                          const weekTotals = {};
+                                          const weekMonths = {};
+                                          dailyEntries.forEach((e) => {
+                                            const w = getWeek(e.date);
+                                            if (!w) return;
+                                            if (!weekTotals[w])
+                                              weekTotals[w] = {
+                                                qty: 0,
+                                                hours: 0,
+                                                count: 0,
+                                              };
+                                            weekTotals[w].qty +=
+                                              parseFloat(e.qty_done) || 0;
+                                            weekTotals[w].hours +=
+                                              parseFloat(e.hours) || 0;
+                                            weekTotals[w].count++;
+                                            if (!weekMonths[w] && e.date) {
+                                              const d = new Date(e.date);
+                                              weekMonths[w] = d.toLocaleString(
+                                                'default',
+                                                {
+                                                  month: 'short',
+                                                  year: 'numeric',
+                                                }
+                                              );
+                                            }
+                                          });
+                                          const rows = [];
+                                          dailyEntries.forEach(
+                                            (entry, eIdx) => {
+                                              const week = getWeek(entry.date);
+                                              // Insert week header when week changes
+                                              if (week && week !== lastWeek) {
+                                                const wt = weekTotals[week] || {
+                                                  qty: 0,
+                                                  hours: 0,
+                                                  count: 0,
+                                                };
+                                                rows.push(
+                                                  <tr
+                                                    key={`week-${week}`}
+                                                    className="bg-purple-100/60"
+                                                  >
+                                                    <td
+                                                      colSpan={8}
+                                                      className="py-1.5 px-3"
+                                                    >
+                                                      <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">
+                                                          Week {week} &middot;{' '}
+                                                          {weekMonths[week] ||
+                                                            ''}
+                                                        </span>
+                                                        <div className="flex items-center gap-4 text-[10px] text-purple-600 font-semibold">
+                                                          <span>
+                                                            {wt.count}{' '}
+                                                            {wt.count === 1
+                                                              ? 'day'
+                                                              : 'days'}
+                                                          </span>
+                                                          <span>
+                                                            Qty: {wt.qty}
+                                                          </span>
+                                                          <span>
+                                                            Hrs: {wt.hours}
+                                                          </span>
+                                                        </div>
+                                                      </div>
+                                                    </td>
+                                                  </tr>
+                                                );
+                                                lastWeek = week;
+                                              }
+                                              const isLocked = entry.isLocked;
+                                              const entryQtyDone =
+                                                parseFloat(entry.qty_done) || 0;
+                                              const dayQtyAsgn = runningBalance;
+                                              runningBalance =
+                                                runningBalance - entryQtyDone;
+                                              cumDone += entryQtyDone;
+                                              const cumPct =
+                                                qtyAssigned > 0
+                                                  ? Math.min(
+                                                      100,
+                                                      Math.round(
+                                                        (cumDone /
+                                                          qtyAssigned) *
+                                                          100
+                                                      )
+                                                    )
+                                                  : 0;
+                                              const barColor =
+                                                cumPct >= 75
+                                                  ? '#059669'
+                                                  : cumPct >= 40
+                                                    ? '#d97706'
+                                                    : '#7e22ce';
+                                              // Count same-date entries for labelling additional entries
+                                              const sameDateCount =
+                                                dailyEntries.filter(
+                                                  (x, xi) =>
+                                                    xi <= eIdx &&
+                                                    x.date === entry.date
+                                                ).length;
+                                              rows.push(
+                                                <tr
+                                                  key={eIdx}
+                                                  className={`divide-x divide-gray-200 ${isLocked ? 'bg-gray-50/60 text-[#4A1254]/60' : 'text-[#4A1254] bg-white'}`}
+                                                >
+                                                  <td className="py-1.5 px-3 text-center">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                      {isLocked && (
+                                                        <svg
+                                                          xmlns="http://www.w3.org/2000/svg"
+                                                          className="h-3 w-3 text-gray-400 shrink-0"
+                                                          viewBox="0 0 20 20"
+                                                          fill="currentColor"
+                                                        >
+                                                          <path
+                                                            fillRule="evenodd"
+                                                            d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                                                            clipRule="evenodd"
+                                                          />
+                                                        </svg>
+                                                      )}
+                                                      <span className="text-xs font-bold text-[#64126D]">
+                                                        {formatShortDate(
+                                                          entry.date
+                                                        )}
+                                                      </span>
+                                                      {sameDateCount > 1 && (
+                                                        <span className="text-[9px] font-semibold text-purple-500 bg-purple-100 px-1 rounded">
+                                                          #{sameDateCount}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  </td>
+                                                  <td className="py-1.5 px-3 text-center">
+                                                    <span className="text-xs font-medium text-[#4A1254]">
+                                                      {dayQtyAsgn}
+                                                    </span>
+                                                  </td>
+                                                  <td className="py-1.5 px-3 text-center">
+                                                    {isLocked ? (
+                                                      <span className="font-bold text-black">
+                                                        {entry.qty_done || 0}
+                                                      </span>
+                                                    ) : (
+                                                      <input
+                                                        type="number"
+                                                        value={
+                                                          entry.qty_done || ''
+                                                        }
+                                                        onChange={(e) =>
+                                                          updateDailyEntryLocal(
+                                                            rowKey,
+                                                            eIdx,
+                                                            'qty_done',
+                                                            e.target.value
+                                                          )
+                                                        }
+                                                        min="0"
+                                                        className="w-16 px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+                                                      />
+                                                    )}
+                                                  </td>
+                                                  <td className="py-1.5 px-3 text-center">
+                                                    <span
+                                                      className={`text-xs font-semibold ${runningBalance > 0 ? 'text-amber-600' : runningBalance === 0 ? 'text-green-600' : 'text-red-500'}`}
+                                                    >
+                                                      {runningBalance}
+                                                    </span>
+                                                  </td>
+                                                  <td className="py-1.5 px-3 text-center">
+                                                    {isLocked ? (
+                                                      <span className="font-bold text-black">
+                                                        {entry.hours || 0}
+                                                      </span>
+                                                    ) : (
+                                                      <input
+                                                        type="number"
+                                                        value={
+                                                          entry.hours || ''
+                                                        }
+                                                        onChange={(e) =>
+                                                          updateDailyEntryLocal(
+                                                            rowKey,
+                                                            eIdx,
+                                                            'hours',
+                                                            e.target.value
+                                                          )
+                                                        }
+                                                        min="0"
+                                                        step="0.5"
+                                                        className="w-16 px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+                                                      />
+                                                    )}
+                                                  </td>
+                                                  <td className="py-1.5 px-3 text-center">
+                                                    <div className="flex items-center gap-1.5 justify-center">
+                                                      <div className="w-14 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                        <div
+                                                          className="h-full rounded-full transition-all"
+                                                          style={{
+                                                            width: `${cumPct}%`,
+                                                            backgroundColor:
+                                                              barColor,
+                                                          }}
+                                                        />
+                                                      </div>
+                                                      <span
+                                                        className="text-[10px] font-bold tabular-nums"
+                                                        style={{
+                                                          color: barColor,
+                                                        }}
+                                                      >
+                                                        {cumPct}%
+                                                      </span>
+                                                    </div>
+                                                  </td>
+                                                  <td className="py-1.5 px-3 text-center">
+                                                    {isLocked ? (
+                                                      <span
+                                                        className="text-xs truncate max-w-[220px] inline-block"
+                                                        title={entry.remarks}
+                                                      >
+                                                        {entry.remarks || '–'}
+                                                      </span>
+                                                    ) : (
+                                                      <input
+                                                        type="text"
+                                                        value={
+                                                          entry.remarks || ''
+                                                        }
+                                                        onChange={(e) =>
+                                                          updateDailyEntryLocal(
+                                                            rowKey,
+                                                            eIdx,
+                                                            'remarks',
+                                                            e.target.value
+                                                          )
+                                                        }
+                                                        placeholder="Remarks..."
+                                                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+                                                      />
+                                                    )}
+                                                  </td>
+                                                  <td className="py-1.5 pl-3 text-center">
+                                                    {!isLocked && (
+                                                      <div className="flex items-center gap-1 justify-center">
+                                                        <button
+                                                          onClick={() => {
+                                                            saveDailyEntries(
+                                                              activity
+                                                            );
+                                                          }}
+                                                          disabled={saving}
+                                                          className="px-2.5 py-1 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded transition-colors disabled:opacity-50"
+                                                          title="Submit entry"
+                                                        >
+                                                          {saving
+                                                            ? '...'
+                                                            : 'Submit'}
+                                                        </button>
+                                                        <button
+                                                          onClick={() =>
+                                                            removeDailyEntry(
+                                                              activity,
+                                                              eIdx
+                                                            )
+                                                          }
+                                                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                                          title="Remove entry"
+                                                        >
+                                                          <XMarkIcon className="w-3.5 h-3.5" />
+                                                        </button>
+                                                      </div>
+                                                    )}
+                                                  </td>
+                                                </tr>
+                                              );
+                                            }
+                                          );
+                                          return rows;
+                                        })()}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               );
-            })
+            });
           })()
         )}
       </div>
 
       {/* Success Modal */}
       {successModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setSuccessModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3 animate-in" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+          onClick={() => setSuccessModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3 animate-in"
+            onClick={(e) => e.stopPropagation()}
+          >
             <CheckCircleIcon className="w-12 h-12 text-green-500" />
-            <p className="text-sm font-semibold text-[#4A1254]">Submitted Successfully!</p>
+            <p className="text-sm font-semibold text-[#4A1254]">
+              Submitted Successfully!
+            </p>
             <p className="text-xs text-[#4A1254]">Your entry has been saved.</p>
           </div>
         </div>
@@ -693,36 +1233,55 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
       {/* OT Approval Modal */}
       {otModal.open && otModal.activity && (
-        <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/40 p-4 sm:p-6" onClick={closeOtApprovalModal}>
-          <div className="w-full sm:max-w-md bg-white rounded-xl shadow-2xl border border-purple-200 mt-14" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-end bg-black/40 p-4 sm:p-6"
+          onClick={closeOtApprovalModal}
+        >
+          <div
+            className="w-full sm:max-w-md bg-white rounded-xl shadow-2xl border border-purple-200 mt-14"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="px-5 py-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-white rounded-t-xl">
-              <h4 className="text-sm font-bold text-[#4A1254]">Send OT Approval</h4>
+              <h4 className="text-sm font-bold text-[#4A1254]">
+                Send OT Approval
+              </h4>
               <p className="text-xs text-[#4A1254]/80 mt-0.5">
-                {otModal.activity.project_code || 'N/A'} - {otModal.activity.activity_name || 'Activity'}
+                {otModal.activity.project_code || 'N/A'} -{' '}
+                {otModal.activity.activity_name || 'Activity'}
               </p>
             </div>
 
             <div className="px-5 py-4 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#4A1254] mb-1">OT Hours</label>
+                <label className="block text-xs font-semibold text-[#4A1254] mb-1">
+                  OT Hours
+                </label>
                 <input
                   type="number"
                   min="0"
                   step="0.5"
                   value={otModal.hours}
-                  onChange={(e) => setOtModal(prev => ({ ...prev, hours: e.target.value }))}
+                  onChange={(e) =>
+                    setOtModal((prev) => ({ ...prev, hours: e.target.value }))
+                  }
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500"
                   placeholder="Enter OT hours"
                 />
-                <p className="text-[11px] text-gray-500 mt-1">Suggested: {getOtHours(otModal.activity)} hours</p>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Suggested: {getOtHours(otModal.activity)} hours
+                </p>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#4A1254] mb-1">Remark</label>
+                <label className="block text-xs font-semibold text-[#4A1254] mb-1">
+                  Remark
+                </label>
                 <textarea
                   rows={3}
                   value={otModal.remarks}
-                  onChange={(e) => setOtModal(prev => ({ ...prev, remarks: e.target.value }))}
+                  onChange={(e) =>
+                    setOtModal((prev) => ({ ...prev, remarks: e.target.value }))
+                  }
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500"
                   placeholder="Add reason/details for OT approval"
                 />
@@ -755,10 +1314,25 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
       {assignments.length > 0 && (
         <div className="px-6 py-4 bg-purple-50/50 border-t-2 border-purple-100 flex items-center justify-between text-sm">
           <div className="flex items-center gap-5">
-            <span className="text-[#4A1254]"><span className="font-bold text-purple-700">{stats.totalQtyCompleted}</span> / {stats.totalQtyAssigned} units</span>
-            <span className="text-[#4A1254]"><span className="font-bold text-blue-700">{stats.totalActualHours}</span> / {stats.totalPlannedHours} hrs</span>
+            <span className="text-[#4A1254]">
+              <span className="font-bold text-purple-700">
+                {stats.totalQtyCompleted}
+              </span>{' '}
+              / {stats.totalQtyAssigned} units
+            </span>
+            <span className="text-[#4A1254]">
+              <span className="font-bold text-blue-700">
+                {stats.totalActualHours}
+              </span>{' '}
+              / {stats.totalPlannedHours} hrs
+            </span>
           </div>
-          <div className="font-semibold text-purple-700">{Math.round((stats.completedCount / stats.totalAssignments) * 100) || 0}% done</div>
+          <div className="font-semibold text-purple-700">
+            {Math.round(
+              (stats.completedCount / stats.totalAssignments) * 100
+            ) || 0}
+            % done
+          </div>
         </div>
       )}
     </div>

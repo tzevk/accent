@@ -1,4 +1,3 @@
-
 import { dbConnect } from './database.js';
 
 /**

@@ -8,7 +8,7 @@ import { useActivityTracker } from '@/hooks/useActivityTracker';
  */
 export default function ActivityTracker() {
   useActivityTracker();
-  
+
   // This component doesn't render anything visible
   return null;
 }

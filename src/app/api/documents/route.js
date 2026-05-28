@@ -9,11 +9,14 @@ export async function GET() {
     return documentMasterModule.GET();
   } catch (error) {
     console.error('Documents API error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to load documents', 
-      details: error.message 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to load documents',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -24,11 +27,14 @@ export async function POST(request) {
     return documentMasterModule.POST(request);
   } catch (error) {
     console.error('Documents API POST error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to create document', 
-      details: error.message 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to create document',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -38,11 +44,14 @@ export async function PUT(request) {
     return documentMasterModule.PUT(request);
   } catch (error) {
     console.error('Documents API PUT error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to update document', 
-      details: error.message 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update document',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -52,10 +61,13 @@ export async function DELETE(request) {
     return documentMasterModule.DELETE(request);
   } catch (error) {
     console.error('Documents API DELETE error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to delete document', 
-      details: error.message 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to delete document',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }

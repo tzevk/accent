@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ClockIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import {
+  ClockIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+} from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
 export default function ActivityAssignmentsSection({ userId }) {
@@ -17,13 +21,13 @@ export default function ActivityAssignmentsSection({ userId }) {
         setLoading(true);
         const response = await fetch(`/api/users/${userId}/dashboard`);
         const data = await response.json();
-        
+
         // Handle unauthorized gracefully - just don't show this section
         if (response.status === 401 || response.status === 403) {
           setError('unauthorized');
           return;
         }
-        
+
         if (data.success) {
           setDashboardData(data.data);
         } else {
@@ -45,7 +49,10 @@ export default function ActivityAssignmentsSection({ userId }) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="animate-pulse bg-white rounded-xl border border-purple-200 p-6">
+          <div
+            key={i}
+            className="animate-pulse bg-white rounded-xl border border-purple-200 p-6"
+          >
             <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
             <div className="h-8 bg-gray-200 rounded w-1/2"></div>
           </div>
@@ -76,7 +83,7 @@ export default function ActivityAssignmentsSection({ userId }) {
       icon: ClockIcon,
       iconBg: 'bg-blue-50',
       iconColor: 'text-blue-600',
-      href: `/users/${userId}/activities?status=In Progress`
+      href: `/users/${userId}/activities?status=In Progress`,
     },
     {
       title: 'Not Started',
@@ -84,7 +91,7 @@ export default function ActivityAssignmentsSection({ userId }) {
       icon: ExclamationTriangleIcon,
       iconBg: 'bg-amber-50',
       iconColor: 'text-amber-600',
-      href: `/users/${userId}/activities?status=Not Started`
+      href: `/users/${userId}/activities?status=Not Started`,
     },
     {
       title: 'Overdue',
@@ -93,7 +100,7 @@ export default function ActivityAssignmentsSection({ userId }) {
       iconBg: 'bg-red-50',
       iconColor: 'text-red-600',
       href: `/users/${userId}/activities?overdue=true`,
-      alert: overdue_count > 0
+      alert: overdue_count > 0,
     },
     {
       title: 'Completed',
@@ -101,8 +108,8 @@ export default function ActivityAssignmentsSection({ userId }) {
       icon: CheckCircleIcon,
       iconBg: 'bg-green-50',
       iconColor: 'text-green-600',
-      href: `/users/${userId}/activities?status=Completed`
-    }
+      href: `/users/${userId}/activities?status=Completed`,
+    },
   ];
 
   return (
@@ -110,8 +117,12 @@ export default function ActivityAssignmentsSection({ userId }) {
       {/* Section Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">My Activity Assignments</h2>
-          <p className="text-sm text-gray-500">Track your assigned tasks and deadlines</p>
+          <h2 className="text-lg font-semibold text-gray-900">
+            My Activity Assignments
+          </h2>
+          <p className="text-sm text-gray-500">
+            Track your assigned tasks and deadlines
+          </p>
         </div>
         <Link
           href={`/users/${userId}/activities`}
@@ -141,12 +152,13 @@ export default function ActivityAssignmentsSection({ userId }) {
                 </span>
               )}
             </div>
-            <div className="text-3xl font-bold text-gray-900 mb-1">{card.value}</div>
+            <div className="text-3xl font-bold text-gray-900 mb-1">
+              {card.value}
+            </div>
             <div className="text-sm text-gray-600">{card.title}</div>
           </Link>
         ))}
       </div>
-
     </div>
   );
 }

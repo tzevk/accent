@@ -8,7 +8,10 @@ export async function GET(request, { params }) {
   try {
     const authResult = await getServerAuth();
     if (!authResult.authenticated) {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { id } = await params;
@@ -20,7 +23,10 @@ export async function GET(request, { params }) {
     );
 
     if (!invoices || invoices.length === 0) {
-      return NextResponse.json({ success: false, message: 'Invoice not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, message: 'Invoice not found' },
+        { status: 404 }
+      );
     }
 
     const invoice = invoices[0];
@@ -37,7 +43,10 @@ export async function GET(request, { params }) {
     return NextResponse.json({ success: true, data: invoice });
   } catch (error) {
     console.error('Error fetching invoice:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: error.message },
+      { status: 500 }
+    );
   } finally {
     if (connection) await connection.end();
   }
@@ -49,7 +58,10 @@ export async function PUT(request, { params }) {
   try {
     const authResult = await getServerAuth();
     if (!authResult.authenticated) {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { id } = await params;
@@ -80,15 +92,21 @@ export async function PUT(request, { params }) {
       notes,
       terms,
       due_date,
-      status
+      status,
     } = body;
 
     connection = await dbConnect();
 
     // Check if invoice exists
-    const [existingInvoice] = await connection.execute('SELECT id FROM invoices WHERE id = ?', [id]);
+    const [existingInvoice] = await connection.execute(
+      'SELECT id FROM invoices WHERE id = ?',
+      [id]
+    );
     if (!existingInvoice || existingInvoice.length === 0) {
-      return NextResponse.json({ success: false, message: 'Invoice not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, message: 'Invoice not found' },
+        { status: 404 }
+      );
     }
 
     // Update invoice
@@ -135,7 +153,10 @@ export async function PUT(request, { params }) {
         po_date || null,
         po_value || null,
         balance_po_value || null,
-        description || (items && items.length > 0 ? items.map(i => i.description).join(', ') : null),
+        description ||
+          (items && items.length > 0
+            ? items.map((i) => i.description).join(', ')
+            : null),
         JSON.stringify(items || []),
         subtotal || 0,
         tax_rate || 0,
@@ -147,14 +168,20 @@ export async function PUT(request, { params }) {
         terms || null,
         due_date || null,
         status || 'draft',
-        id
+        id,
       ]
     );
 
-    return NextResponse.json({ success: true, message: 'Invoice updated successfully' });
+    return NextResponse.json({
+      success: true,
+      message: 'Invoice updated successfully',
+    });
   } catch (error) {
     console.error('Error updating invoice:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: error.message },
+      { status: 500 }
+    );
   } finally {
     if (connection) await connection.end();
   }
@@ -166,7 +193,10 @@ export async function DELETE(request, { params }) {
   try {
     const authResult = await getServerAuth();
     if (!authResult.authenticated) {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { id } = await params;
@@ -174,18 +204,30 @@ export async function DELETE(request, { params }) {
     connection = await dbConnect();
 
     // Check if invoice exists
-    const [existingInvoice] = await connection.execute('SELECT id FROM invoices WHERE id = ?', [id]);
+    const [existingInvoice] = await connection.execute(
+      'SELECT id FROM invoices WHERE id = ?',
+      [id]
+    );
     if (!existingInvoice || existingInvoice.length === 0) {
-      return NextResponse.json({ success: false, message: 'Invoice not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, message: 'Invoice not found' },
+        { status: 404 }
+      );
     }
 
     // Delete invoice
     await connection.execute('DELETE FROM invoices WHERE id = ?', [id]);
 
-    return NextResponse.json({ success: true, message: 'Invoice deleted successfully' });
+    return NextResponse.json({
+      success: true,
+      message: 'Invoice deleted successfully',
+    });
   } catch (error) {
     console.error('Error deleting invoice:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: error.message },
+      { status: 500 }
+    );
   } finally {
     if (connection) await connection.end();
   }

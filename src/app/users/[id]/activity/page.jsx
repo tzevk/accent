@@ -13,7 +13,7 @@ import {
   ChartBarIcon,
   DocumentTextIcon,
   CursorArrowRaysIcon,
-  FunnelIcon
+  FunnelIcon,
 } from '@heroicons/react/24/outline';
 
 export default function UserActivityDetailPage() {
@@ -36,10 +36,9 @@ export default function UserActivityDetailPage() {
   const [logLimit, setLogLimit] = useState(50);
 
   // Check permissions
-  const canView = sessionUser && (
-    sessionUser.role === 'Admin' || 
-    sessionUser.id === parseInt(userId)
-  );
+  const canView =
+    sessionUser &&
+    (sessionUser.role === 'Admin' || sessionUser.id === parseInt(userId));
 
   useEffect(() => {
     if (!authLoading && !canView) {
@@ -51,7 +50,7 @@ export default function UserActivityDetailPage() {
     if (canView) {
       fetchAllData();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, dateRange, startDate, endDate, actionFilter, logLimit, canView]);
 
   const fetchAllData = async () => {
@@ -60,7 +59,7 @@ export default function UserActivityDetailPage() {
       fetchUserData(),
       fetchActivityLogs(),
       fetchScreenTime(),
-      fetchWorkSummary()
+      fetchWorkSummary(),
     ]);
     setLoading(false);
   };
@@ -70,7 +69,7 @@ export default function UserActivityDetailPage() {
       // Get user basic info and current status
       const [userRes, statusRes] = await Promise.all([
         fetch(`/api/users?id=${userId}`),
-        fetch(`/api/user-status?user_id=${userId}`)
+        fetch(`/api/user-status?user_id=${userId}`),
       ]);
 
       const userData = await userRes.json();
@@ -92,7 +91,7 @@ export default function UserActivityDetailPage() {
     try {
       const params = new URLSearchParams({
         user_id: userId,
-        limit: logLimit
+        limit: logLimit,
       });
 
       if (actionFilter !== 'all') {
@@ -118,7 +117,7 @@ export default function UserActivityDetailPage() {
     try {
       const params = new URLSearchParams({
         user_id: userId,
-        type: 'daily'
+        type: 'daily',
       });
 
       const dates = getDateRangeParams();
@@ -141,7 +140,7 @@ export default function UserActivityDetailPage() {
   const fetchWorkSummary = async () => {
     try {
       const params = new URLSearchParams({
-        user_id: userId
+        user_id: userId,
       });
 
       const dates = getDateRangeParams();
@@ -195,7 +194,7 @@ export default function UserActivityDetailPage() {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
@@ -208,7 +207,7 @@ export default function UserActivityDetailPage() {
       delete: 'bg-red-100 text-red-800',
       view_page: 'bg-purple-100 text-purple-800',
       click: 'bg-gray-100 text-gray-800',
-      status_change: 'bg-indigo-100 text-indigo-800'
+      status_change: 'bg-indigo-100 text-indigo-800',
     };
     return colors[actionType] || 'bg-gray-100 text-gray-800';
   };
@@ -249,7 +248,7 @@ export default function UserActivityDetailPage() {
   return (
     <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col overflow-hidden">
       <Navbar />
-      
+
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-24 pb-8 max-w-[1800px] mx-auto w-full">
@@ -273,8 +272,8 @@ export default function UserActivityDetailPage() {
                   </p>
                 </div>
                 {activityData && (
-                  <StatusBadge 
-                    lastActivity={activityData.last_activity} 
+                  <StatusBadge
+                    lastActivity={activityData.last_activity}
                     size="lg"
                   />
                 )}
@@ -283,7 +282,7 @@ export default function UserActivityDetailPage() {
 
             {/* Activity Card */}
             <div className="mb-6">
-              <UserActivityCard 
+              <UserActivityCard
                 userData={{ ...userData, ...activityData }}
                 activityData={activityData}
               />
@@ -294,7 +293,9 @@ export default function UserActivityDetailPage() {
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
                   <CalendarIcon className="w-5 h-5 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-700">Date Range:</span>
+                  <span className="text-sm font-medium text-gray-700">
+                    Date Range:
+                  </span>
                 </div>
 
                 <div className="flex gap-2">
@@ -441,7 +442,9 @@ export default function UserActivityDetailPage() {
             {/* Activity Timeline */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">Activity Timeline</h2>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Activity Timeline
+                </h2>
                 <select
                   value={logLimit}
                   onChange={(e) => setLogLimit(parseInt(e.target.value))}
@@ -462,27 +465,38 @@ export default function UserActivityDetailPage() {
                 ) : (
                   <div className="divide-y divide-gray-100">
                     {logs.map((log) => (
-                      <div key={log.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
+                      <div
+                        key={log.id}
+                        className="px-6 py-4 hover:bg-gray-50 transition-colors"
+                      >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
-                              <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getActionBadgeColor(log.action_type)}`}>
+                              <span
+                                className={`px-2.5 py-1 rounded-full text-xs font-medium ${getActionBadgeColor(log.action_type)}`}
+                              >
                                 {log.action_type.replace('_', ' ')}
                               </span>
                               <span className="text-xs text-gray-500">
                                 {formatDateTime(log.created_at)}
                               </span>
                               {log.status && (
-                                <span className={`text-xs font-medium ${
-                                  log.status === 'success' ? 'text-green-600' :
-                                  log.status === 'failed' ? 'text-red-600' :
-                                  'text-yellow-600'
-                                }`}>
+                                <span
+                                  className={`text-xs font-medium ${
+                                    log.status === 'success'
+                                      ? 'text-green-600'
+                                      : log.status === 'failed'
+                                        ? 'text-red-600'
+                                        : 'text-yellow-600'
+                                  }`}
+                                >
                                   {log.status}
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-gray-900 mb-1">{log.description}</p>
+                            <p className="text-sm text-gray-900 mb-1">
+                              {log.description}
+                            </p>
                             {log.resource_type && (
                               <p className="text-xs text-gray-500">
                                 Resource: {log.resource_type}
@@ -495,7 +509,11 @@ export default function UserActivityDetailPage() {
                                   View details
                                 </summary>
                                 <pre className="mt-2 p-3 bg-gray-50 rounded text-xs overflow-auto">
-                                  {JSON.stringify(JSON.parse(log.details), null, 2)}
+                                  {JSON.stringify(
+                                    JSON.parse(log.details),
+                                    null,
+                                    2
+                                  )}
                                 </pre>
                               </details>
                             )}

@@ -30,7 +30,10 @@ export async function GET() {
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching account heads:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch account heads' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch account heads' },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -44,7 +47,10 @@ export async function POST(request) {
     const { account_head_name, is_active = true, created_by } = body;
 
     if (!account_head_name?.trim()) {
-      return NextResponse.json({ success: false, error: 'Account head name is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Account head name is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -55,13 +61,16 @@ export async function POST(request) {
       [account_head_name.trim(), is_active ? 1 : 0, created_by || null]
     );
 
-    return NextResponse.json({ 
-      success: true, 
-      data: { id: result.insertId, account_head_name, is_active } 
+    return NextResponse.json({
+      success: true,
+      data: { id: result.insertId, account_head_name, is_active },
     });
   } catch (error) {
     console.error('Error creating account head:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create account head' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to create account head' },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -73,16 +82,22 @@ export async function PUT(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    
+
     if (!id) {
-      return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'ID is required' },
+        { status: 400 }
+      );
     }
 
     const body = await request.json();
     const { account_head_name, is_active } = body;
 
     if (!account_head_name?.trim()) {
-      return NextResponse.json({ success: false, error: 'Account head name is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Account head name is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -96,7 +111,10 @@ export async function PUT(request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error updating account head:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update account head' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to update account head' },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -108,9 +126,12 @@ export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    
+
     if (!id) {
-      return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'ID is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -119,7 +140,10 @@ export async function DELETE(request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting account head:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete account head' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete account head' },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }

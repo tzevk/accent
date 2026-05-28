@@ -1,16 +1,28 @@
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 export async function POST(request) {
   // RBAC check - converting proposal to project requires proposals:approve
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.APPROVE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.APPROVE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
   try {
     const body = await request.json();
     const proposalIdentifier = body.proposalId || body.id || null;
-    if (!proposalIdentifier) return NextResponse.json({ success: false, error: 'proposalId required' }, { status: 400 });
+    if (!proposalIdentifier)
+      return NextResponse.json(
+        { success: false, error: 'proposalId required' },
+        { status: 400 }
+      );
 
     const { dbConnect } = await import('@/utils/database');
     db = await dbConnect();
@@ -18,14 +30,22 @@ export async function POST(request) {
     // Try to find proposal by numeric id or proposal_id string
     let rows;
     if (Number(proposalIdentifier)) {
-      [rows] = await db.execute('SELECT * FROM proposals WHERE id = ?', [proposalIdentifier]);
+      [rows] = await db.execute('SELECT * FROM proposals WHERE id = ?', [
+        proposalIdentifier,
+      ]);
     } else {
-      [rows] = await db.execute('SELECT * FROM proposals WHERE proposal_id = ? OR id = ?', [proposalIdentifier, proposalIdentifier]);
+      [rows] = await db.execute(
+        'SELECT * FROM proposals WHERE proposal_id = ? OR id = ?',
+        [proposalIdentifier, proposalIdentifier]
+      );
     }
 
     if (!rows || rows.length === 0) {
       await db.end?.();
-      return NextResponse.json({ success: false, error: 'Proposal not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Proposal not found' },
+        { status: 404 }
+      );
     }
     const proposal = rows[0];
 
@@ -35,9 +55,12 @@ export async function POST(request) {
     const year = now.getFullYear();
     const currentPattern = `-${month}-${year}`;
 
-    const [existingProjects] = await db.execute('SELECT project_id FROM projects WHERE project_id LIKE ? ORDER BY project_id DESC', [`%${currentPattern}`]);
+    const [existingProjects] = await db.execute(
+      'SELECT project_id FROM projects WHERE project_id LIKE ? ORDER BY project_id DESC',
+      [`%${currentPattern}`]
+    );
     let maxSerial = 0;
-    existingProjects.forEach(p => {
+    existingProjects.forEach((p) => {
       if (p.project_id && p.project_id.endsWith(currentPattern)) {
         const serialPart = p.project_id.split('-')[0];
         const serial = parseInt(serialPart, 10);
@@ -57,7 +80,10 @@ export async function POST(request) {
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
     const projectData = {
-      name: proposal.proposal_title || proposal.title || `Project from ${proposal.id}`,
+      name:
+        proposal.proposal_title ||
+        proposal.title ||
+        `Project from ${proposal.id}`,
       description: proposal.description || proposal.project_description || null,
       company_id: proposal.company_id || null,
       start_date: proposal.planned_start_date || null,
@@ -67,7 +93,7 @@ export async function POST(request) {
       status: 'NEW',
       priority: proposal.priority || 'MEDIUM',
       progress: 0,
-      notes: proposal.notes || null
+      notes: proposal.notes || null,
     };
 
     const [result] = await db.execute(insertSql, [
@@ -95,7 +121,7 @@ export async function POST(request) {
       proposal.input_document || null,
       proposal.list_of_deliverables || null,
       proposal.kickoff_meeting || null,
-      proposal.in_house_meeting || null
+      proposal.in_house_meeting || null,
     ]);
 
     // Insert project_scope row with annexure fields from proposal
@@ -115,32 +141,53 @@ export async function POST(request) {
       proposal.site_visit || proposal.siteVisit || '',
       proposal.quotation_validity || '',
       proposal.exclusion || proposal.exclusions || '',
-      proposal.billing_and_payment_terms || proposal.billing_payment_terms || proposal.billing || '',
-      proposal.other_terms_and_conditions || proposal.other_terms || proposal.terms_and_conditions || '',
+      proposal.billing_and_payment_terms ||
+        proposal.billing_payment_terms ||
+        proposal.billing ||
+        '',
+      proposal.other_terms_and_conditions ||
+        proposal.other_terms ||
+        proposal.terms_and_conditions ||
+        '',
       proposal.created_by || 'system',
-      proposal.updated_by || 'system'
+      proposal.updated_by || 'system',
     ]);
 
     // Update proposal status and link project_id
     const convertedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    await db.execute('UPDATE proposals SET status = ?, project_id = ?, converted_at = ? WHERE id = ?', ['CONVERTED', result.insertId, convertedAt, proposal.id]);
+    await db.execute(
+      'UPDATE proposals SET status = ?, project_id = ?, converted_at = ? WHERE id = ?',
+      ['CONVERTED', result.insertId, convertedAt, proposal.id]
+    );
 
-    const [created] = await db.execute('SELECT * FROM projects WHERE id = ?', [result.insertId]);
-    const [scope] = await db.execute('SELECT * FROM project_scope WHERE project_id = ?', [project_id]);
+    const [created] = await db.execute('SELECT * FROM projects WHERE id = ?', [
+      result.insertId,
+    ]);
+    const [scope] = await db.execute(
+      'SELECT * FROM project_scope WHERE project_id = ?',
+      [project_id]
+    );
     await db.end?.();
 
     let createdProject = null;
     try {
       if (created && created.length > 0) createdProject = created[0];
     } catch (e) {
-      console.warn('Unexpected created result shape in convert route:', e?.message || e, { created });
+      console.warn(
+        'Unexpected created result shape in convert route:',
+        e?.message || e,
+        { created }
+      );
     } finally {
       if (db) db.release();
     }
 
     if (!createdProject) {
       createdProject = {
-        id: result && typeof result.insertId === 'number' ? result.insertId : null,
+        id:
+          result && typeof result.insertId === 'number'
+            ? result.insertId
+            : null,
         project_id: project_id || null,
         name: projectData.name || null,
         company_id: projectData.company_id || null,
@@ -148,14 +195,30 @@ export async function POST(request) {
         start_date: projectData.start_date || null,
         end_date: projectData.end_date || null,
         budget: projectData.budget || null,
-        status: projectData.status || 'NEW'
+        status: projectData.status || 'NEW',
       };
-      console.warn('Created project row not retrievable in convert route; returning fallback object', { fallback: createdProject });
+      console.warn(
+        'Created project row not retrievable in convert route; returning fallback object',
+        { fallback: createdProject }
+      );
     }
 
-    return NextResponse.json({ success: true, data: { project: createdProject, project_id: createdProject.project_id, scope: scope[0] } }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          project: createdProject,
+          project_id: createdProject.project_id,
+          scope: scope[0],
+        },
+      },
+      { status: 201 }
+    );
   } catch (err) {
     console.error('Convert route error:', err);
-    return NextResponse.json({ success: false, error: 'Conversion failed', details: err.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Conversion failed', details: err.message },
+      { status: 500 }
+    );
   }
 }

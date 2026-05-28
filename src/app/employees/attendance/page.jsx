@@ -1,6 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from 'react';
 import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -17,18 +23,73 @@ import {
 } from '@heroicons/react/24/outline';
 
 const STATUS_OPTIONS = [
-  { value: 'P', label: 'Present', color: 'bg-green-500', textColor: 'text-green-700', bgLight: 'bg-green-100' },
-  { value: 'A', label: 'Absent', color: 'bg-red-500', textColor: 'text-red-700', bgLight: 'bg-red-100' },
-  { value: 'HD', label: 'Half Day', color: 'bg-yellow-500', textColor: 'text-yellow-700', bgLight: 'bg-yellow-100' },
-  { value: 'WO', label: 'Weekly Off', color: 'bg-blue-400', textColor: 'text-blue-700', bgLight: 'bg-blue-100' },
-  { value: 'H', label: 'Holiday', color: 'bg-purple-500', textColor: 'text-purple-700', bgLight: 'bg-purple-100' },
-  { value: 'PL', label: 'Privilege Leave', color: 'bg-teal-500', textColor: 'text-teal-700', bgLight: 'bg-teal-100' },
-  { value: 'CL', label: 'Casual Leave', color: 'bg-cyan-500', textColor: 'text-cyan-700', bgLight: 'bg-cyan-100' },
-  { value: 'SL', label: 'Sick Leave', color: 'bg-orange-500', textColor: 'text-orange-700', bgLight: 'bg-orange-100' },
-  { value: 'LWP', label: 'Leave Without Pay', color: 'bg-gray-500', textColor: 'text-gray-700', bgLight: 'bg-gray-100' },
+  {
+    value: 'P',
+    label: 'Present',
+    color: 'bg-green-500',
+    textColor: 'text-green-700',
+    bgLight: 'bg-green-100',
+  },
+  {
+    value: 'A',
+    label: 'Absent',
+    color: 'bg-red-500',
+    textColor: 'text-red-700',
+    bgLight: 'bg-red-100',
+  },
+  {
+    value: 'HD',
+    label: 'Half Day',
+    color: 'bg-yellow-500',
+    textColor: 'text-yellow-700',
+    bgLight: 'bg-yellow-100',
+  },
+  {
+    value: 'WO',
+    label: 'Weekly Off',
+    color: 'bg-blue-400',
+    textColor: 'text-blue-700',
+    bgLight: 'bg-blue-100',
+  },
+  {
+    value: 'H',
+    label: 'Holiday',
+    color: 'bg-purple-500',
+    textColor: 'text-purple-700',
+    bgLight: 'bg-purple-100',
+  },
+  {
+    value: 'PL',
+    label: 'Privilege Leave',
+    color: 'bg-teal-500',
+    textColor: 'text-teal-700',
+    bgLight: 'bg-teal-100',
+  },
+  {
+    value: 'CL',
+    label: 'Casual Leave',
+    color: 'bg-cyan-500',
+    textColor: 'text-cyan-700',
+    bgLight: 'bg-cyan-100',
+  },
+  {
+    value: 'SL',
+    label: 'Sick Leave',
+    color: 'bg-orange-500',
+    textColor: 'text-orange-700',
+    bgLight: 'bg-orange-100',
+  },
+  {
+    value: 'LWP',
+    label: 'Leave Without Pay',
+    color: 'bg-gray-500',
+    textColor: 'text-gray-700',
+    bgLight: 'bg-gray-100',
+  },
 ];
 
-const getStatusInfo = (code) => STATUS_OPTIONS.find(s => s.value === code) || STATUS_OPTIONS[0];
+const getStatusInfo = (code) =>
+  STATUS_OPTIONS.find((s) => s.value === code) || STATUS_OPTIONS[0];
 
 export default function AttendancePage() {
   useSessionRBAC();
@@ -52,7 +113,13 @@ export default function AttendancePage() {
 
   // Attendance entry modal
   const [modal, setModal] = useState(null); // { empId, empName, dateStr, dateLabel }
-  const [modalForm, setModalForm] = useState({ status: '', in_time: '', out_time: '', overtime_hours: '', remarks: '' });
+  const [modalForm, setModalForm] = useState({
+    status: '',
+    in_time: '',
+    out_time: '',
+    overtime_hours: '',
+    remarks: '',
+  });
   const modalRef = useRef(null);
 
   // Compute days in month
@@ -76,12 +143,15 @@ export default function AttendancePage() {
   }, [selectedYear, selectedMonth, daysInMonth]);
 
   const monthLabel = useMemo(() => {
-    return new Date(selectedYear, selectedMonth - 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    return new Date(selectedYear, selectedMonth - 1).toLocaleDateString(
+      'en-IN',
+      { month: 'long', year: 'numeric' }
+    );
   }, [selectedMonth, selectedYear]);
 
   // Departments list from employees
   const departments = useMemo(() => {
-    const deptSet = new Set(employees.map(e => e.department).filter(Boolean));
+    const deptSet = new Set(employees.map((e) => e.department).filter(Boolean));
     return Array.from(deptSet).sort();
   }, [employees]);
 
@@ -90,14 +160,15 @@ export default function AttendancePage() {
     let list = employees;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      list = list.filter(e =>
-        `${e.first_name} ${e.last_name}`.toLowerCase().includes(q) ||
-        (e.employee_id && e.employee_id.toLowerCase().includes(q)) ||
-        (e.department && e.department.toLowerCase().includes(q))
+      list = list.filter(
+        (e) =>
+          `${e.first_name} ${e.last_name}`.toLowerCase().includes(q) ||
+          (e.employee_id && e.employee_id.toLowerCase().includes(q)) ||
+          (e.department && e.department.toLowerCase().includes(q))
       );
     }
     if (departmentFilter) {
-      list = list.filter(e => e.department === departmentFilter);
+      list = list.filter((e) => e.department === departmentFilter);
     }
     return list;
   }, [employees, searchQuery, departmentFilter]);
@@ -105,9 +176,12 @@ export default function AttendancePage() {
   // Holiday date set for quick lookup
   const holidayDateSet = useMemo(() => {
     const set = new Set();
-    holidays.forEach(h => {
+    holidays.forEach((h) => {
       const d = new Date(h.date);
-      if (d.getMonth() + 1 === selectedMonth && d.getFullYear() === selectedYear) {
+      if (
+        d.getMonth() + 1 === selectedMonth &&
+        d.getFullYear() === selectedYear
+      ) {
         set.add(d.getDate());
       }
     });
@@ -135,7 +209,7 @@ export default function AttendancePage() {
       const data = await res.json();
       if (data.success && data.summary) {
         const map = {};
-        data.summary.forEach(emp => {
+        data.summary.forEach((emp) => {
           map[emp.employee_id] = emp.days || {};
         });
         setAttendanceData(map);
@@ -165,13 +239,15 @@ export default function AttendancePage() {
         setSalaryProfiles({});
         return;
       }
-      const ids = employeeList.map(e => e.id).filter(Boolean);
+      const ids = employeeList.map((e) => e.id).filter(Boolean);
       if (ids.length === 0) {
         setSalaryProfiles({});
         return;
       }
 
-      const res = await fetch(`/api/payroll/salary-profile/batch?ids=${ids.join(',')}&full=1`);
+      const res = await fetch(
+        `/api/payroll/salary-profile/batch?ids=${ids.join(',')}&full=1`
+      );
       const data = await res.json();
       if (data.success && data.data) {
         setSalaryProfiles(data.data);
@@ -187,19 +263,20 @@ export default function AttendancePage() {
   // Load data
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchEmployees(), fetchAttendance(), fetchHolidays()])
-      .finally(() => setLoading(false));
+    Promise.all([fetchEmployees(), fetchAttendance(), fetchHolidays()]).finally(
+      () => setLoading(false)
+    );
   }, [fetchEmployees, fetchAttendance, fetchHolidays]);
 
   // Default all unmarked days to Present while preserving existing statuses.
   useEffect(() => {
     if (loading || employees.length === 0 || monthDates.length === 0) return;
 
-    setAttendanceData(prev => {
+    setAttendanceData((prev) => {
       let changed = false;
       const updated = { ...prev };
 
-      employees.forEach(emp => {
+      employees.forEach((emp) => {
         const empDays = { ...(updated[emp.id] || {}) };
         monthDates.forEach(({ dateStr }) => {
           if (!empDays[dateStr]?.status) {
@@ -246,12 +323,18 @@ export default function AttendancePage() {
   // Open modal to mark/edit attendance for a single cell
   const openModal = (emp, dateStr, dateLabel) => {
     const existing = attendanceData[emp.id]?.[dateStr] || {};
-    setModal({ empId: emp.id, empName: `${emp.first_name} ${emp.last_name}`, dateStr, dateLabel });
+    setModal({
+      empId: emp.id,
+      empName: `${emp.first_name} ${emp.last_name}`,
+      dateStr,
+      dateLabel,
+    });
     setModalForm({
       status: existing.status || '',
       in_time: existing.in_time || '',
       out_time: existing.out_time || '',
-      overtime_hours: existing.overtime_hours != null ? String(existing.overtime_hours) : '',
+      overtime_hours:
+        existing.overtime_hours != null ? String(existing.overtime_hours) : '',
       remarks: existing.remarks || '',
     });
   };
@@ -261,7 +344,10 @@ export default function AttendancePage() {
   // Auto-compute OT from in/out times: hours beyond 8h, only if > 2h
   const computedOT = useMemo(() => {
     if (!modalForm.in_time || !modalForm.out_time) return null;
-    const toDecimal = (t) => { const [h, m] = t.split(':').map(Number); return h + m / 60; };
+    const toDecimal = (t) => {
+      const [h, m] = t.split(':').map(Number);
+      return h + m / 60;
+    };
     const worked = toDecimal(modalForm.out_time) - toDecimal(modalForm.in_time);
     if (worked <= 0) return null;
     const ot = worked - 8;
@@ -270,11 +356,15 @@ export default function AttendancePage() {
 
   const saveModal = () => {
     if (!modal || !modalForm.status) return;
-    const otHours = modalForm.overtime_hours !== '' ? parseFloat(modalForm.overtime_hours) || 0
-      : (computedOT != null ? computedOT : 0);
+    const otHours =
+      modalForm.overtime_hours !== ''
+        ? parseFloat(modalForm.overtime_hours) || 0
+        : computedOT != null
+          ? computedOT
+          : 0;
     // Only store OT if > 2 hours
     const finalOT = otHours > 2 ? otHours : 0;
-    setAttendanceData(prev => {
+    setAttendanceData((prev) => {
       const empDays = { ...(prev[modal.empId] || {}) };
       empDays[modal.dateStr] = {
         status: modalForm.status,
@@ -291,9 +381,9 @@ export default function AttendancePage() {
 
   // Mark all Sundays as WO for all employees
   const markSundaysAsWO = () => {
-    setAttendanceData(prev => {
+    setAttendanceData((prev) => {
       const updated = { ...prev };
-      employees.forEach(emp => {
+      employees.forEach((emp) => {
         const empDays = { ...(updated[emp.id] || {}) };
         monthDates.forEach(({ dateStr, isSunday }) => {
           if (isSunday) {
@@ -309,9 +399,9 @@ export default function AttendancePage() {
 
   // Mark holidays for all employees
   const markHolidays = () => {
-    setAttendanceData(prev => {
+    setAttendanceData((prev) => {
       const updated = { ...prev };
-      employees.forEach(emp => {
+      employees.forEach((emp) => {
         const empDays = { ...(updated[emp.id] || {}) };
         monthDates.forEach(({ dateStr, day }) => {
           if (holidayDateSet.has(day)) {
@@ -327,9 +417,9 @@ export default function AttendancePage() {
 
   // Mark all days as Present (overrides existing statuses)
   const markAllPresent = () => {
-    setAttendanceData(prev => {
+    setAttendanceData((prev) => {
       const updated = { ...prev };
-      employees.forEach(emp => {
+      employees.forEach((emp) => {
         const empDays = { ...(updated[emp.id] || {}) };
         monthDates.forEach(({ dateStr }) => {
           empDays[dateStr] = { ...(empDays[dateStr] || {}), status: 'P' };
@@ -375,7 +465,10 @@ export default function AttendancePage() {
 
       const data = await res.json();
       if (data.success) {
-        setSaveMessage({ type: 'success', text: `Saved ${data.successCount} records successfully!` });
+        setSaveMessage({
+          type: 'success',
+          text: `Saved ${data.successCount} records successfully!`,
+        });
         setHasChanges(false);
       } else {
         setSaveMessage({ type: 'error', text: data.error || 'Failed to save' });
@@ -391,14 +484,28 @@ export default function AttendancePage() {
   // Compute summary stats for an employee
   const getEmployeeSummary = (empId) => {
     const days = attendanceData[empId] || {};
-    const summary = { P: 0, A: 0, HD: 0, WO: 0, H: 0, PL: 0, CL: 0, SL: 0, LWP: 0, totalHours: 0, totalOTHours: 0, totalOTAmount: 0 };
+    const summary = {
+      P: 0,
+      A: 0,
+      HD: 0,
+      WO: 0,
+      H: 0,
+      PL: 0,
+      CL: 0,
+      SL: 0,
+      LWP: 0,
+      totalHours: 0,
+      totalOTHours: 0,
+      totalOTAmount: 0,
+    };
     const profile = salaryProfiles[empId] || {};
     const basicDa =
       parseFloat(profile.basic_plus_da || 0) ||
-      ((parseFloat(profile.basic || 0) || 0) + (parseFloat(profile.da || 0) || 0));
-    const perHourRate = basicDa > 0 ? (basicDa / 8) : 0;
+      (parseFloat(profile.basic || 0) || 0) +
+        (parseFloat(profile.da || 0) || 0);
+    const perHourRate = basicDa > 0 ? basicDa / 8 : 0;
 
-    Object.values(days).forEach(d => {
+    Object.values(days).forEach((d) => {
       if (d.status && summary[d.status] !== undefined) {
         summary[d.status]++;
       }
@@ -409,7 +516,7 @@ export default function AttendancePage() {
           const outStr = d.out_time.toString().substring(0, 5);
           const [inH, inM] = inStr.split(':').map(Number);
           const [outH, outM] = outStr.split(':').map(Number);
-          const hrs = (outH + outM / 60) - (inH + inM / 60);
+          const hrs = outH + outM / 60 - (inH + inM / 60);
           if (hrs > 0) summary.totalHours += hrs;
         } else {
           summary.totalHours += d.status === 'HD' ? 4 : 8;
@@ -422,16 +529,35 @@ export default function AttendancePage() {
         summary.totalOTAmount += perHourRate * ot;
       }
     });
-    summary.payable = summary.P + (summary.HD * 0.5) + summary.PL + summary.CL + summary.SL;
+    summary.payable =
+      summary.P + summary.HD * 0.5 + summary.PL + summary.CL + summary.SL;
     return summary;
   };
 
   // Export to CSV
   const exportCSV = () => {
-    const headers = ['Employee ID', 'Employee Name', 'Department', ...monthDates.map(d => d.day), 'Present', 'Absent', 'Half Day', 'WO', 'Holiday', 'PL', 'CL', 'SL', 'LWP', 'Payable Days', 'Total Hours', 'OT Hours', 'OT Amount'];
-    const rows = filteredEmployees.map(emp => {
+    const headers = [
+      'Employee ID',
+      'Employee Name',
+      'Department',
+      ...monthDates.map((d) => d.day),
+      'Present',
+      'Absent',
+      'Half Day',
+      'WO',
+      'Holiday',
+      'PL',
+      'CL',
+      'SL',
+      'LWP',
+      'Payable Days',
+      'Total Hours',
+      'OT Hours',
+      'OT Amount',
+    ];
+    const rows = filteredEmployees.map((emp) => {
       const summary = getEmployeeSummary(emp.id);
-      const dayStatuses = monthDates.map(d => {
+      const dayStatuses = monthDates.map((d) => {
         const dayData = attendanceData[emp.id]?.[d.dateStr];
         return dayData?.status || '';
       });
@@ -440,12 +566,25 @@ export default function AttendancePage() {
         `${emp.first_name} ${emp.last_name}`,
         emp.department || '',
         ...dayStatuses,
-        summary.P, summary.A, summary.HD, summary.WO, summary.H, summary.PL, summary.CL, summary.SL, summary.LWP,
-        summary.payable.toFixed(1), summary.totalHours.toFixed(1), summary.totalOTHours.toFixed(1), summary.totalOTAmount.toFixed(2),
+        summary.P,
+        summary.A,
+        summary.HD,
+        summary.WO,
+        summary.H,
+        summary.PL,
+        summary.CL,
+        summary.SL,
+        summary.LWP,
+        summary.payable.toFixed(1),
+        summary.totalHours.toFixed(1),
+        summary.totalOTHours.toFixed(1),
+        summary.totalOTAmount.toFixed(2),
       ];
     });
 
-    const csvContent = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const csvContent = [headers, ...rows]
+      .map((r) => r.map((v) => `"${v}"`).join(','))
+      .join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -461,14 +600,24 @@ export default function AttendancePage() {
         {/* Attendance Entry Modal */}
         {modal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-            <div ref={modalRef} className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div
+              ref={modalRef}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md"
+            >
               {/* Modal Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                 <div>
-                  <h3 className="text-base font-semibold text-gray-900">{modal.empName}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{modal.dateLabel}</p>
+                  <h3 className="text-base font-semibold text-gray-900">
+                    {modal.empName}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {modal.dateLabel}
+                  </p>
                 </div>
-                <button onClick={closeModal} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                <button
+                  onClick={closeModal}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                >
                   <XMarkIcon className="h-5 w-5" />
                 </button>
               </div>
@@ -476,13 +625,17 @@ export default function AttendancePage() {
               <div className="px-5 py-4 space-y-4">
                 {/* Status */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">Status <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Status <span className="text-red-500">*</span>
+                  </label>
                   <div className="grid grid-cols-3 gap-2">
-                    {STATUS_OPTIONS.map(s => (
+                    {STATUS_OPTIONS.map((s) => (
                       <button
                         key={s.value}
                         type="button"
-                        onClick={() => setModalForm(f => ({ ...f, status: s.value }))}
+                        onClick={() =>
+                          setModalForm((f) => ({ ...f, status: s.value }))
+                        }
                         className={`py-2 px-3 rounded-lg text-xs font-semibold border-2 transition-all ${
                           modalForm.status === s.value
                             ? `${s.bgLight} ${s.textColor} border-current`
@@ -498,25 +651,39 @@ export default function AttendancePage() {
                 {/* In / Out Times */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">In Time</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      In Time
+                    </label>
                     <div className="relative">
                       <ClockIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <input
                         type="time"
                         value={modalForm.in_time}
-                        onChange={e => setModalForm(f => ({ ...f, in_time: e.target.value }))}
+                        onChange={(e) =>
+                          setModalForm((f) => ({
+                            ...f,
+                            in_time: e.target.value,
+                          }))
+                        }
                         className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Out Time</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Out Time
+                    </label>
                     <div className="relative">
                       <ClockIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <input
                         type="time"
                         value={modalForm.out_time}
-                        onChange={e => setModalForm(f => ({ ...f, out_time: e.target.value }))}
+                        onChange={(e) =>
+                          setModalForm((f) => ({
+                            ...f,
+                            out_time: e.target.value,
+                          }))
+                        }
                         className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                       />
                     </div>
@@ -524,47 +691,71 @@ export default function AttendancePage() {
                 </div>
 
                 {/* OT info */}
-                {computedOT !== null && (() => {
-                  const [ih, im] = modalForm.in_time.split(':').map(Number);
-                  const [oh, om] = modalForm.out_time.split(':').map(Number);
-                  const worked = (oh + om / 60) - (ih + im / 60);
-                  const extra = worked - 8;
-                  let msg, cls;
-                  if (computedOT > 2) {
-                    msg = `⏱ Auto OT: ${computedOT.toFixed(2)} hrs (time beyond 8h shift)`;
-                    cls = 'bg-orange-50 text-orange-700 border border-orange-200';
-                  } else if (extra > 0) {
-                    msg = `OT not applicable — extra ${extra.toFixed(2)} hrs must exceed 2 hrs to qualify`;
-                    cls = 'bg-gray-50 text-gray-500 border border-gray-200';
-                  } else {
-                    msg = `Worked ${worked > 0 ? worked.toFixed(2) : 0} hrs — no overtime`;
-                    cls = 'bg-gray-50 text-gray-500 border border-gray-200';
-                  }
-                  return <div className={`text-xs px-3 py-2 rounded-lg ${cls}`}>{msg}</div>;
-                })()}
+                {computedOT !== null &&
+                  (() => {
+                    const [ih, im] = modalForm.in_time.split(':').map(Number);
+                    const [oh, om] = modalForm.out_time.split(':').map(Number);
+                    const worked = oh + om / 60 - (ih + im / 60);
+                    const extra = worked - 8;
+                    let msg, cls;
+                    if (computedOT > 2) {
+                      msg = `⏱ Auto OT: ${computedOT.toFixed(2)} hrs (time beyond 8h shift)`;
+                      cls =
+                        'bg-orange-50 text-orange-700 border border-orange-200';
+                    } else if (extra > 0) {
+                      msg = `OT not applicable — extra ${extra.toFixed(2)} hrs must exceed 2 hrs to qualify`;
+                      cls = 'bg-gray-50 text-gray-500 border border-gray-200';
+                    } else {
+                      msg = `Worked ${worked > 0 ? worked.toFixed(2) : 0} hrs — no overtime`;
+                      cls = 'bg-gray-50 text-gray-500 border border-gray-200';
+                    }
+                    return (
+                      <div className={`text-xs px-3 py-2 rounded-lg ${cls}`}>
+                        {msg}
+                      </div>
+                    );
+                  })()}
 
                 {/* Manual OT override */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">OT Hours <span className="text-gray-400 font-normal">(override — applied only if &gt; 2 hrs)</span></label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    OT Hours{' '}
+                    <span className="text-gray-400 font-normal">
+                      (override — applied only if &gt; 2 hrs)
+                    </span>
+                  </label>
                   <input
                     type="number"
                     min="0"
                     step="0.5"
-                    placeholder={computedOT != null ? `Auto: ${computedOT > 2 ? computedOT : 0}` : '0'}
+                    placeholder={
+                      computedOT != null
+                        ? `Auto: ${computedOT > 2 ? computedOT : 0}`
+                        : '0'
+                    }
                     value={modalForm.overtime_hours}
-                    onChange={e => setModalForm(f => ({ ...f, overtime_hours: e.target.value }))}
+                    onChange={(e) =>
+                      setModalForm((f) => ({
+                        ...f,
+                        overtime_hours: e.target.value,
+                      }))
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   />
                 </div>
 
                 {/* Remarks */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Remarks</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Remarks
+                  </label>
                   <input
                     type="text"
                     placeholder="Optional note..."
                     value={modalForm.remarks}
-                    onChange={e => setModalForm(f => ({ ...f, remarks: e.target.value }))}
+                    onChange={(e) =>
+                      setModalForm((f) => ({ ...f, remarks: e.target.value }))
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   />
                 </div>
@@ -597,7 +788,9 @@ export default function AttendancePage() {
                 <CalendarDaysIcon className="h-8 w-8" />
                 <div>
                   <h1 className="text-2xl font-bold">Attendance Management</h1>
-                  <p className="text-purple-200 text-sm">Mark and manage employee attendance</p>
+                  <p className="text-purple-200 text-sm">
+                    Mark and manage employee attendance
+                  </p>
                 </div>
               </div>
 
@@ -644,8 +837,10 @@ export default function AttendancePage() {
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
               >
                 <option value="">All Departments</option>
-                {departments.map(d => (
-                  <option key={d} value={d}>{d}</option>
+                {departments.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
                 ))}
               </select>
 
@@ -681,10 +876,15 @@ export default function AttendancePage() {
 
             {/* Status Legend */}
             <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-100">
-              {STATUS_OPTIONS.map(s => (
-                <div key={s.value} className="flex items-center gap-1.5 text-xs">
+              {STATUS_OPTIONS.map((s) => (
+                <div
+                  key={s.value}
+                  className="flex items-center gap-1.5 text-xs"
+                >
                   <span className={`w-3 h-3 rounded-sm ${s.color}`}></span>
-                  <span className="text-gray-600">{s.value} - {s.label}</span>
+                  <span className="text-gray-600">
+                    {s.value} - {s.label}
+                  </span>
                 </div>
               ))}
             </div>
@@ -693,7 +893,9 @@ export default function AttendancePage() {
           {/* Save Bar */}
           {hasChanges && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 flex items-center justify-between">
-              <p className="text-sm text-yellow-800 font-medium">You have unsaved changes</p>
+              <p className="text-sm text-yellow-800 font-medium">
+                You have unsaved changes
+              </p>
               <button
                 onClick={saveAttendance}
                 disabled={saving}
@@ -706,10 +908,18 @@ export default function AttendancePage() {
 
           {/* Save Message */}
           {saveMessage && (
-            <div className={`rounded-xl p-3 mb-4 flex items-center gap-2 ${
-              saveMessage.type === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'
-            }`}>
-              {saveMessage.type === 'success' ? <CheckCircleIcon className="h-5 w-5" /> : <XCircleIcon className="h-5 w-5" />}
+            <div
+              className={`rounded-xl p-3 mb-4 flex items-center gap-2 ${
+                saveMessage.type === 'success'
+                  ? 'bg-green-50 border border-green-200 text-green-800'
+                  : 'bg-red-50 border border-red-200 text-red-800'
+              }`}
+            >
+              {saveMessage.type === 'success' ? (
+                <CheckCircleIcon className="h-5 w-5" />
+              ) : (
+                <XCircleIcon className="h-5 w-5" />
+              )}
               <p className="text-sm font-medium">{saveMessage.text}</p>
             </div>
           )}
@@ -733,31 +943,52 @@ export default function AttendancePage() {
                       <th className="sticky left-0 z-20 bg-gray-50 px-3 py-3 text-left text-[11px] font-semibold text-gray-600 uppercase min-w-[200px]">
                         Employee
                       </th>
-                      {monthDates.map(d => (
+                      {monthDates.map((d) => (
                         <th
                           key={d.day}
                           className={`px-1 py-2 text-center text-[10px] font-semibold uppercase min-w-[36px] ${
-                            d.isSunday ? 'bg-blue-50 text-blue-700' : holidayDateSet.has(d.day) ? 'bg-purple-50 text-purple-700' : 'text-gray-600'
+                            d.isSunday
+                              ? 'bg-blue-50 text-blue-700'
+                              : holidayDateSet.has(d.day)
+                                ? 'bg-purple-50 text-purple-700'
+                                : 'text-gray-600'
                           }`}
                         >
                           <div>{d.dayName}</div>
                           <div className="text-[11px] font-bold">{d.day}</div>
                         </th>
                       ))}
-                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-green-700 uppercase bg-green-50 min-w-[32px]">P</th>
-                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-red-700 uppercase bg-red-50 min-w-[32px]">A</th>
-                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-yellow-700 uppercase bg-yellow-50 min-w-[32px]">HD</th>
-                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-blue-700 uppercase bg-blue-50 min-w-[32px]">WO</th>
-                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-teal-700 uppercase bg-teal-50 min-w-[44px]">Pay</th>
-                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-indigo-700 uppercase bg-indigo-50 min-w-[44px]">Hrs</th>
-                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-orange-700 uppercase bg-orange-50 min-w-[32px]">OT</th>
+                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-green-700 uppercase bg-green-50 min-w-[32px]">
+                        P
+                      </th>
+                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-red-700 uppercase bg-red-50 min-w-[32px]">
+                        A
+                      </th>
+                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-yellow-700 uppercase bg-yellow-50 min-w-[32px]">
+                        HD
+                      </th>
+                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-blue-700 uppercase bg-blue-50 min-w-[32px]">
+                        WO
+                      </th>
+                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-teal-700 uppercase bg-teal-50 min-w-[44px]">
+                        Pay
+                      </th>
+                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-indigo-700 uppercase bg-indigo-50 min-w-[44px]">
+                        Hrs
+                      </th>
+                      <th className="px-2 py-3 text-center text-[10px] font-semibold text-orange-700 uppercase bg-orange-50 min-w-[32px]">
+                        OT
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {filteredEmployees.map((emp) => {
                       const summary = getEmployeeSummary(emp.id);
                       return (
-                        <tr key={emp.id} className="hover:bg-gray-50/50 transition-colors">
+                        <tr
+                          key={emp.id}
+                          className="hover:bg-gray-50/50 transition-colors"
+                        >
                           <td className="sticky left-0 z-10 bg-white px-3 py-2 border-r border-gray-100">
                             <div className="text-xs font-medium text-gray-900 truncate">
                               {emp.first_name} {emp.last_name}
@@ -766,21 +997,35 @@ export default function AttendancePage() {
                               {emp.employee_id} • {emp.department || 'N/A'}
                             </div>
                           </td>
-                          {monthDates.map(d => {
+                          {monthDates.map((d) => {
                             const dayData = attendanceData[emp.id]?.[d.dateStr];
                             const status = dayData?.status || '';
-                            const statusInfo = status ? getStatusInfo(status) : null;
+                            const statusInfo = status
+                              ? getStatusInfo(status)
+                              : null;
                             return (
                               <td
                                 key={d.dateStr}
                                 className={`px-0.5 py-1 text-center cursor-pointer transition-colors ${
-                                  d.isSunday ? 'bg-blue-50/50' : holidayDateSet.has(d.day) ? 'bg-purple-50/50' : ''
+                                  d.isSunday
+                                    ? 'bg-blue-50/50'
+                                    : holidayDateSet.has(d.day)
+                                      ? 'bg-purple-50/50'
+                                      : ''
                                 }`}
-                                onClick={() => openModal(emp, d.dateStr, `${d.dayName}, ${d.day} ${monthLabel}`)}
+                                onClick={() =>
+                                  openModal(
+                                    emp,
+                                    d.dateStr,
+                                    `${d.dayName}, ${d.day} ${monthLabel}`
+                                  )
+                                }
                                 title={`${emp.first_name} ${emp.last_name} - ${d.dayName} ${d.day}: ${status ? getStatusInfo(status).label : 'Click to mark'}`}
                               >
                                 {status ? (
-                                  <span className={`inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold ${statusInfo.bgLight} ${statusInfo.textColor}`}>
+                                  <span
+                                    className={`inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold ${statusInfo.bgLight} ${statusInfo.textColor}`}
+                                  >
                                     {status}
                                   </span>
                                 ) : (
@@ -792,13 +1037,29 @@ export default function AttendancePage() {
                             );
                           })}
                           {/* Summary columns */}
-                          <td className="px-2 py-2 text-center text-xs font-bold text-green-700 bg-green-50/50">{summary.P}</td>
-                          <td className="px-2 py-2 text-center text-xs font-bold text-red-700 bg-red-50/50">{summary.A}</td>
-                          <td className="px-2 py-2 text-center text-xs font-bold text-yellow-700 bg-yellow-50/50">{summary.HD}</td>
-                          <td className="px-2 py-2 text-center text-xs font-bold text-blue-700 bg-blue-50/50">{summary.WO}</td>
-                          <td className="px-2 py-2 text-center text-xs font-bold text-teal-700 bg-teal-50/50">{summary.payable.toFixed(1)}</td>
-                          <td className="px-2 py-2 text-center text-xs font-bold text-indigo-700 bg-indigo-50/50">{summary.totalHours.toFixed(1)}</td>
-                          <td className="px-2 py-2 text-center text-xs font-bold text-orange-700 bg-orange-50/50">{summary.totalOTHours > 0 ? summary.totalOTHours.toFixed(1) : '–'}</td>
+                          <td className="px-2 py-2 text-center text-xs font-bold text-green-700 bg-green-50/50">
+                            {summary.P}
+                          </td>
+                          <td className="px-2 py-2 text-center text-xs font-bold text-red-700 bg-red-50/50">
+                            {summary.A}
+                          </td>
+                          <td className="px-2 py-2 text-center text-xs font-bold text-yellow-700 bg-yellow-50/50">
+                            {summary.HD}
+                          </td>
+                          <td className="px-2 py-2 text-center text-xs font-bold text-blue-700 bg-blue-50/50">
+                            {summary.WO}
+                          </td>
+                          <td className="px-2 py-2 text-center text-xs font-bold text-teal-700 bg-teal-50/50">
+                            {summary.payable.toFixed(1)}
+                          </td>
+                          <td className="px-2 py-2 text-center text-xs font-bold text-indigo-700 bg-indigo-50/50">
+                            {summary.totalHours.toFixed(1)}
+                          </td>
+                          <td className="px-2 py-2 text-center text-xs font-bold text-orange-700 bg-orange-50/50">
+                            {summary.totalOTHours > 0
+                              ? summary.totalOTHours.toFixed(1)
+                              : '–'}
+                          </td>
                         </tr>
                       );
                     })}
@@ -808,7 +1069,10 @@ export default function AttendancePage() {
 
               {/* Footer */}
               <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex items-center justify-between text-xs text-gray-500">
-                <span>Showing {filteredEmployees.length} of {employees.length} employees</span>
+                <span>
+                  Showing {filteredEmployees.length} of {employees.length}{' '}
+                  employees
+                </span>
                 <span>Click on a cell to open the attendance entry modal</span>
               </div>
             </div>

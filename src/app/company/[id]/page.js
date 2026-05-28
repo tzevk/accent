@@ -3,14 +3,14 @@
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
+import {
   ArrowLeftIcon,
   BuildingOfficeIcon,
   PencilIcon,
   PhoneIcon,
   EnvelopeIcon,
   LinkIcon,
-  MapIcon
+  MapIcon,
 } from '@heroicons/react/24/outline';
 
 export default function CompanyView({ params }) {
@@ -24,7 +24,7 @@ export default function CompanyView({ params }) {
         const companyId = await params;
         const response = await fetch(`/api/companies/${companyId.id}`);
         const result = await response.json();
-        
+
         if (result.success) {
           setCompany(result.data);
         } else {
@@ -76,7 +76,7 @@ export default function CompanyView({ params }) {
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
-      
+
       <div className="flex-1 overflow-hidden">
         <div className="h-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 max-w-[1800px] mx-auto w-full">
           {/* Header */}
@@ -96,7 +96,7 @@ export default function CompanyView({ params }) {
                   <p className="text-gray-600 text-sm">Company Details</p>
                 </div>
               </div>
-              
+
               <button
                 onClick={() => router.push(`/company/${company.id}/edit`)}
                 className="px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors flex items-center space-x-1"
@@ -116,13 +116,15 @@ export default function CompanyView({ params }) {
                   <BuildingOfficeIcon className="h-5 w-5 mr-2" />
                   Company Information
                 </h3>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Company Name
                     </label>
-                    <p className="text-gray-900 font-semibold">{company.company_name}</p>
+                    <p className="text-gray-900 font-semibold">
+                      {company.company_name}
+                    </p>
                   </div>
 
                   {company.industry && (
@@ -177,7 +179,7 @@ export default function CompanyView({ params }) {
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                   Contact Information
                 </h3>
-                
+
                 <div className="space-y-4">
                   {company.website && (
                     <div className="flex items-center space-x-3">
@@ -186,8 +188,12 @@ export default function CompanyView({ params }) {
                         <label className="block text-sm font-medium text-gray-700">
                           Website
                         </label>
-                        <a 
-                          href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                        <a
+                          href={
+                            company.website.startsWith('http')
+                              ? company.website
+                              : `https://${company.website}`
+                          }
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:text-blue-800"
@@ -205,7 +211,7 @@ export default function CompanyView({ params }) {
                         <label className="block text-sm font-medium text-gray-700">
                           Email
                         </label>
-                        <a 
+                        <a
                           href={`mailto:${company.email}`}
                           className="text-blue-600 hover:text-blue-800"
                         >
@@ -222,7 +228,7 @@ export default function CompanyView({ params }) {
                         <label className="block text-sm font-medium text-gray-700">
                           Phone
                         </label>
-                        <a 
+                        <a
                           href={`tel:${company.phone}`}
                           className="text-blue-600 hover:text-blue-800"
                         >
@@ -232,7 +238,10 @@ export default function CompanyView({ params }) {
                     </div>
                   )}
 
-                  {(company.address || company.city || company.state || company.country) && (
+                  {(company.address ||
+                    company.city ||
+                    company.state ||
+                    company.country) && (
                     <div className="flex items-start space-x-3">
                       <MapIcon className="h-5 w-5 text-gray-400 mt-0.5" />
                       <div>
@@ -240,15 +249,13 @@ export default function CompanyView({ params }) {
                           Address
                         </label>
                         <div className="text-gray-900">
-                          {company.address && (
-                            <p>{company.address}</p>
-                          )}
+                          {company.address && <p>{company.address}</p>}
                           <p>
-                            {[company.city, company.state, company.postal_code].filter(Boolean).join(', ')}
+                            {[company.city, company.state, company.postal_code]
+                              .filter(Boolean)
+                              .join(', ')}
                           </p>
-                          {company.country && (
-                            <p>{company.country}</p>
-                          )}
+                          {company.country && <p>{company.country}</p>}
                         </div>
                       </div>
                     </div>
@@ -262,7 +269,9 @@ export default function CompanyView({ params }) {
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">
                     Notes
                   </h3>
-                  <p className="text-gray-700 whitespace-pre-wrap">{company.notes}</p>
+                  <p className="text-gray-700 whitespace-pre-wrap">
+                    {company.notes}
+                  </p>
                 </div>
               )}
 
@@ -277,7 +286,8 @@ export default function CompanyView({ params }) {
                       Created
                     </label>
                     <p className="text-gray-900">
-                      {new Date(company.created_at).toLocaleDateString()} at {new Date(company.created_at).toLocaleTimeString()}
+                      {new Date(company.created_at).toLocaleDateString()} at{' '}
+                      {new Date(company.created_at).toLocaleTimeString()}
                     </p>
                   </div>
                   <div>
@@ -285,7 +295,8 @@ export default function CompanyView({ params }) {
                       Last Updated
                     </label>
                     <p className="text-gray-900">
-                      {new Date(company.updated_at).toLocaleDateString()} at {new Date(company.updated_at).toLocaleTimeString()}
+                      {new Date(company.updated_at).toLocaleDateString()} at{' '}
+                      {new Date(company.updated_at).toLocaleTimeString()}
                     </p>
                   </div>
                 </div>

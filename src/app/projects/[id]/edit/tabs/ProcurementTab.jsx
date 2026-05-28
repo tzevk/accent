@@ -1,8 +1,8 @@
 const PROCUREMENT_STATUS_OPTIONS = [
-  "Not Started",
-  "In Progress",
-  "Completed",
-  "On Hold",
+  'Not Started',
+  'In Progress',
+  'Completed',
+  'On Hold',
 ];
 
 export default function ProcurementTab({ form, handleChange }) {

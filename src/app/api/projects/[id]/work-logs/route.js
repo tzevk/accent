@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 /**
  * GET /api/projects/[id]/work-logs
@@ -16,16 +20,24 @@ import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permission
 export async function GET(request, { params }) {
   let db;
   try {
-    const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
+    const auth = await ensurePermission(
+      request,
+      RESOURCES.PROJECTS,
+      PERMISSIONS.READ
+    );
     if (!auth.authorized) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { id } = await params;
     const projectId = id;
 
     const { searchParams } = new URL(request.url);
-    const endDate = searchParams.get('end_date') || new Date().toISOString().split('T')[0];
+    const endDate =
+      searchParams.get('end_date') || new Date().toISOString().split('T')[0];
     const startDate =
       searchParams.get('start_date') ||
       new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
@@ -122,7 +134,9 @@ export async function GET(request, { params }) {
     }));
 
     // Sort users alphabetically
-    grouped.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+    grouped.sort((a, b) =>
+      (a.full_name || '').localeCompare(b.full_name || '')
+    );
 
     return NextResponse.json({
       success: true,

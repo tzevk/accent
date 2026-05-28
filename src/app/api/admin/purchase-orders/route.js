@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Fetch purchase orders
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -67,13 +75,20 @@ export async function GET(request) {
     const [purchaseOrders] = await connection.execute(query, params);
 
     // Parse JSON items for each purchase order
-    const parsedPurchaseOrders = purchaseOrders.map(po => ({
+    const parsedPurchaseOrders = purchaseOrders.map((po) => ({
       ...po,
-      items: typeof po.items === 'string' ? JSON.parse(po.items) : po.items
+      items: typeof po.items === 'string' ? JSON.parse(po.items) : po.items,
     }));
 
     // Get stats
-    let stats = { total: 0, draft: 0, pending: 0, approved: 0, completed: 0, cancelled: 0 };
+    let stats = {
+      total: 0,
+      draft: 0,
+      pending: 0,
+      approved: 0,
+      completed: 0,
+      cancelled: 0,
+    };
     try {
       const [statsResult] = await connection.execute(`
         SELECT 
@@ -97,15 +112,18 @@ export async function GET(request) {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
       },
-      stats
+      stats,
     });
-
   } catch (error) {
     console.error('Error fetching purchase orders:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to fetch purchase orders', error: error.message },
+      {
+        success: false,
+        message: 'Failed to fetch purchase orders',
+        error: error.message,
+      },
       { status: 500 }
     );
   } finally {
@@ -116,7 +134,11 @@ export async function GET(request) {
 // POST - Create new purchase order
 export async function POST(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.WRITE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.WRITE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -140,7 +162,7 @@ export async function POST(request) {
       delivery_date,
       status = 'draft',
       company_id,
-      project_id
+      project_id,
     } = body;
 
     if (!vendor_name) {
@@ -185,14 +207,18 @@ export async function POST(request) {
 
     // Add project_id column if it doesn't exist (for existing tables)
     try {
-      await connection.execute(`ALTER TABLE purchase_orders ADD COLUMN project_id INT, ADD INDEX idx_project_id (project_id)`);
+      await connection.execute(
+        `ALTER TABLE purchase_orders ADD COLUMN project_id INT, ADD INDEX idx_project_id (project_id)`
+      );
     } catch (e) {
       // Column likely already exists, ignore
     }
 
     // Add company_id column if it doesn't exist (for existing tables)
     try {
-      await connection.execute(`ALTER TABLE purchase_orders ADD COLUMN company_id INT`);
+      await connection.execute(
+        `ALTER TABLE purchase_orders ADD COLUMN company_id INT`
+      );
     } catch (e) {
       // Column likely already exists, ignore
     }
@@ -203,7 +229,7 @@ export async function POST(request) {
       const [lastPO] = await connection.execute(
         'SELECT po_number FROM purchase_orders ORDER BY id DESC LIMIT 1'
       );
-      
+
       let nextNumber = 1;
       if (lastPO.length > 0 && lastPO[0].po_number) {
         const match = lastPO[0].po_number.match(/PO-(\d+)/);
@@ -248,7 +274,7 @@ export async function POST(request) {
           status,
           company_id || null,
           project_id || null,
-          poNumber
+          poNumber,
         ]
       );
       result = { insertId: existingPO[0].id };
@@ -276,7 +302,7 @@ export async function POST(request) {
           delivery_date || null,
           status,
           company_id || null,
-          project_id || null
+          project_id || null,
         ]
       );
     }
@@ -289,17 +315,26 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      message: existingPO.length > 0 ? 'Purchase order updated successfully' : 'Purchase order created successfully',
+      message:
+        existingPO.length > 0
+          ? 'Purchase order updated successfully'
+          : 'Purchase order created successfully',
       data: {
         ...newPO[0],
-        items: typeof newPO[0].items === 'string' ? JSON.parse(newPO[0].items) : newPO[0].items
-      }
+        items:
+          typeof newPO[0].items === 'string'
+            ? JSON.parse(newPO[0].items)
+            : newPO[0].items,
+      },
     });
-
   } catch (error) {
     console.error('Error creating purchase order:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to create purchase order', error: error.message },
+      {
+        success: false,
+        message: 'Failed to create purchase order',
+        error: error.message,
+      },
       { status: 500 }
     );
   } finally {
@@ -310,7 +345,11 @@ export async function POST(request) {
 // PUT - Update existing purchase order
 export async function PUT(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.WRITE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.WRITE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -336,7 +375,7 @@ export async function PUT(request) {
       status,
       quotation_no,
       quotation_date,
-      kind_attn
+      kind_attn,
     } = body;
 
     if (!id) {
@@ -349,10 +388,17 @@ export async function PUT(request) {
     connection = await dbConnect();
 
     // Add new columns if they don't exist
-    const newColumns = ['vendor_gstin', 'quotation_no', 'quotation_date', 'kind_attn'];
+    const newColumns = [
+      'vendor_gstin',
+      'quotation_no',
+      'quotation_date',
+      'kind_attn',
+    ];
     for (const col of newColumns) {
       try {
-        await connection.execute(`ALTER TABLE purchase_orders ADD COLUMN ${col} VARCHAR(255)`);
+        await connection.execute(
+          `ALTER TABLE purchase_orders ADD COLUMN ${col} VARCHAR(255)`
+        );
       } catch (e) {
         // Column likely already exists, ignore
       }
@@ -399,7 +445,7 @@ export async function PUT(request) {
         quotation_no || null,
         quotation_date || null,
         kind_attn || null,
-        id
+        id,
       ]
     );
 
@@ -414,14 +460,20 @@ export async function PUT(request) {
       message: 'Purchase order updated successfully',
       data: {
         ...updatedPO[0],
-        items: typeof updatedPO[0].items === 'string' ? JSON.parse(updatedPO[0].items) : updatedPO[0].items
-      }
+        items:
+          typeof updatedPO[0].items === 'string'
+            ? JSON.parse(updatedPO[0].items)
+            : updatedPO[0].items,
+      },
     });
-
   } catch (error) {
     console.error('Error updating purchase order:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to update purchase order', error: error.message },
+      {
+        success: false,
+        message: 'Failed to update purchase order',
+        error: error.message,
+      },
       { status: 500 }
     );
   } finally {
@@ -432,7 +484,11 @@ export async function PUT(request) {
 // DELETE - Delete purchase order
 export async function DELETE(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.DELETE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.DELETE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -467,13 +523,16 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: `Purchase order ${existingPO[0].po_number} deleted successfully`
+      message: `Purchase order ${existingPO[0].po_number} deleted successfully`,
     });
-
   } catch (error) {
     console.error('Error deleting purchase order:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to delete purchase order', error: error.message },
+      {
+        success: false,
+        message: 'Failed to delete purchase order',
+        error: error.message,
+      },
       { status: 500 }
     );
   } finally {

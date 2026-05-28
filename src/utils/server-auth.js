@@ -7,9 +7,9 @@ import { getCurrentUser } from '@/utils/api-permissions';
  */
 export async function getServerAuth() {
   try {
-  const cookieStore = await cookies();
-  const authCookie = cookieStore.get('auth');
-  const userIdCookie = cookieStore.get('user_id');
+    const cookieStore = await cookies();
+    const authCookie = cookieStore.get('auth');
+    const userIdCookie = cookieStore.get('user_id');
 
     if (!authCookie || !userIdCookie) {
       return { authenticated: false, user: null, error: 'No active session' };
@@ -17,8 +17,8 @@ export async function getServerAuth() {
 
     const mockRequest = {
       cookies: {
-        get: (name) => cookieStore.get(name)
-      }
+        get: (name) => cookieStore.get(name),
+      },
     };
 
     const user = await getCurrentUser(mockRequest);
@@ -39,10 +39,13 @@ export async function getServerAuth() {
  */
 export async function requireServerAuth(redirectPath = '/') {
   const auth = await getServerAuth();
-  
+
   if (!auth.authenticated) {
-    return { authenticated: false, redirectTo: `/signin?from=${encodeURIComponent(redirectPath)}` };
+    return {
+      authenticated: false,
+      redirectTo: `/signin?from=${encodeURIComponent(redirectPath)}`,
+    };
   }
-  
+
   return { authenticated: true, user: auth.user };
 }

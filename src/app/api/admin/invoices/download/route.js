@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // Helper functions
 function formatCurrency(amount) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
-    minimumFractionDigits: 2
+    minimumFractionDigits: 2,
   }).format(amount || 0);
 }
 
@@ -17,19 +21,51 @@ function formatDate(dateString) {
   return date.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
-    year: 'numeric'
+    year: 'numeric',
   });
 }
 
 function numberToWords(num) {
-  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  
+  const ones = [
+    '',
+    'One',
+    'Two',
+    'Three',
+    'Four',
+    'Five',
+    'Six',
+    'Seven',
+    'Eight',
+    'Nine',
+    'Ten',
+    'Eleven',
+    'Twelve',
+    'Thirteen',
+    'Fourteen',
+    'Fifteen',
+    'Sixteen',
+    'Seventeen',
+    'Eighteen',
+    'Nineteen',
+  ];
+  const tens = [
+    '',
+    '',
+    'Twenty',
+    'Thirty',
+    'Forty',
+    'Fifty',
+    'Sixty',
+    'Seventy',
+    'Eighty',
+    'Ninety',
+  ];
+
   if (num === 0) return 'Zero';
   if (num < 0) return 'Minus ' + numberToWords(-num);
-  
+
   let words = '';
-  
+
   if (Math.floor(num / 10000000) > 0) {
     words += numberToWords(Math.floor(num / 10000000)) + ' Crore ';
     num %= 10000000;
@@ -62,7 +98,7 @@ function numberToWords(num) {
 function amountToWords(amount) {
   const rupees = Math.floor(amount);
   const paise = Math.round((amount - rupees) * 100);
-  
+
   let result = 'Rupees ' + numberToWords(rupees);
   if (paise > 0) {
     result += ' and ' + numberToWords(paise) + ' Paise';
@@ -88,8 +124,8 @@ function generateInvoiceHTML(data) {
   const subtotal = parseFloat(data.subtotal) || 0;
   const cgstRate = 9;
   const sgstRate = 9;
-  const cgstAmount = subtotal * cgstRate / 100;
-  const sgstAmount = subtotal * sgstRate / 100;
+  const cgstAmount = (subtotal * cgstRate) / 100;
+  const sgstAmount = (subtotal * sgstRate) / 100;
   const totalGst = cgstAmount + sgstAmount;
   const totalAfterTax = subtotal + totalGst;
 
@@ -100,7 +136,8 @@ function generateInvoiceHTML(data) {
       const qty = parseFloat(item.quantity) || 1;
       const rate = parseFloat(item.rate) || parseFloat(item.unit_price) || 0;
       const amount = item.amount > 0 ? parseFloat(item.amount) : qty * rate;
-      const rowBg = index % 2 === 0 ? 'background: #fff;' : 'background: #fafafa;';
+      const rowBg =
+        index % 2 === 0 ? 'background: #fff;' : 'background: #fafafa;';
       itemsHTML += `
         <tr style="${rowBg}">
           <td style="border: 1px solid #eee; padding: 10px 8px; text-align: center; color: #666;">${index + 1}</td>
@@ -402,7 +439,11 @@ function generateInvoiceHTML(data) {
 // GET - Download invoice as printable HTML
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -443,11 +484,14 @@ export async function GET(request) {
         'Content-Type': 'text/html; charset=utf-8',
       },
     });
-
   } catch (error) {
     console.error('Error downloading invoice:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to download invoice', error: error.message },
+      {
+        success: false,
+        message: 'Failed to download invoice',
+        error: error.message,
+      },
       { status: 500 }
     );
   } finally {

@@ -1,21 +1,30 @@
 import { dbConnect } from '@/utils/database';
 import { randomUUID } from 'crypto';
-import { ensurePermission, getCurrentUser, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  getCurrentUser,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 
 // GET - Fetch all activities for a project
 export async function GET(request, { params }) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROJECTS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
   try {
     const { id } = await params;
     const projectId = parseInt(id);
-    
+
     db = await dbConnect();
-    
+
     const [activities] = await db.execute(
       `SELECT * FROM project_activities 
        WHERE project_id = ? 
@@ -23,16 +32,19 @@ export async function GET(request, { params }) {
       [projectId]
     );
 
-    return Response.json({ 
-      success: true, 
-      data: activities 
+    return Response.json({
+      success: true,
+      data: activities,
     });
   } catch (error) {
     console.error('GET project activities error:', error);
-    return Response.json({ 
-      success: false, 
-      error: 'Failed to fetch project activities' 
-    }, { status: 500 });
+    return Response.json(
+      {
+        success: false,
+        error: 'Failed to fetch project activities',
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -43,24 +55,32 @@ export async function POST(request, { params }) {
   // Check permission to edit project activities
   const user = await getCurrentUser(request);
   if (!user) {
-    return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    return Response.json(
+      { success: false, error: 'Unauthorized' },
+      { status: 401 }
+    );
   }
-  
-  const hasUpdatePermission = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-  
+
+  const hasUpdatePermission =
+    user.is_super_admin ||
+    hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+
   if (!hasUpdatePermission) {
-    return Response.json({ 
-      success: false, 
-      error: 'You do not have permission to add project activities' 
-    }, { status: 403 });
+    return Response.json(
+      {
+        success: false,
+        error: 'You do not have permission to add project activities',
+      },
+      { status: 403 }
+    );
   }
-  
+
   let db;
   try {
     const { id } = await params;
     const projectId = parseInt(id);
     const data = await request.json();
-    
+
     const {
       activity_id,
       activity_name,
@@ -77,17 +97,20 @@ export async function POST(request, { params }) {
     } = data;
 
     if (!activity_name) {
-      return Response.json({ 
-        success: false, 
-        error: 'Activity name is required' 
-      }, { status: 400 });
+      return Response.json(
+        {
+          success: false,
+          error: 'Activity name is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
-    
+
     let finalActivityId = activity_id;
     let finalDisciplineId = discipline_id;
-    
+
     // If save_to_master is true and this is a custom activity, save it to activities_master
     if (save_to_master && !activity_id && discipline_id) {
       try {
@@ -97,15 +120,20 @@ export async function POST(request, { params }) {
           [newActivityId, discipline_id, activity_name]
         );
         finalActivityId = newActivityId;
-        console.log(`✅ Saved custom activity "${activity_name}" to master with ID: ${newActivityId}`);
+        console.log(
+          `✅ Saved custom activity "${activity_name}" to master with ID: ${newActivityId}`
+        );
       } catch (masterError) {
-        console.error('Warning: Failed to save to activities_master:', masterError);
+        console.error(
+          'Warning: Failed to save to activities_master:',
+          masterError
+        );
         // Continue anyway - we'll still save to project_activities
       } finally {
         if (db) db.release();
       }
     }
-    
+
     // Create the project activity record
     const projectActivityId = randomUUID();
     await db.execute(
@@ -129,23 +157,29 @@ export async function POST(request, { params }) {
         manhours_actual || 0,
         status || 'Pending',
         progress_percentage || 0,
-        notes || null
+        notes || null,
       ]
     );
 
-    return Response.json({ 
-      success: true,
-      message: 'Activity added successfully',
-      id: projectActivityId,
-      activity_id: finalActivityId
-    }, { status: 201 });
+    return Response.json(
+      {
+        success: true,
+        message: 'Activity added successfully',
+        id: projectActivityId,
+        activity_id: finalActivityId,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('POST project activities error:', error);
-    return Response.json({ 
-      success: false, 
-      error: 'Failed to add activity',
-      details: error.message
-    }, { status: 500 });
+    return Response.json(
+      {
+        success: false,
+        error: 'Failed to add activity',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -154,24 +188,32 @@ export async function PUT(request, { params }) {
   // Check permission to edit project activities
   const user = await getCurrentUser(request);
   if (!user) {
-    return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    return Response.json(
+      { success: false, error: 'Unauthorized' },
+      { status: 401 }
+    );
   }
-  
-  const hasUpdatePermission = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-  
+
+  const hasUpdatePermission =
+    user.is_super_admin ||
+    hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+
   if (!hasUpdatePermission) {
-    return Response.json({ 
-      success: false, 
-      error: 'You do not have permission to update project activities' 
-    }, { status: 403 });
+    return Response.json(
+      {
+        success: false,
+        error: 'You do not have permission to update project activities',
+      },
+      { status: 403 }
+    );
   }
-  
+
   let db;
   try {
     const { id } = await params;
     const projectId = parseInt(id);
     const data = await request.json();
-    
+
     const {
       activity_record_id, // ID of the project_activities record
       activity_name,
@@ -181,18 +223,21 @@ export async function PUT(request, { params }) {
       manhours_actual,
       status,
       progress_percentage,
-      notes
+      notes,
     } = data;
 
     if (!activity_record_id) {
-      return Response.json({ 
-        success: false, 
-        error: 'Activity record ID is required' 
-      }, { status: 400 });
+      return Response.json(
+        {
+          success: false,
+          error: 'Activity record ID is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
-    
+
     await db.execute(
       `UPDATE project_activities SET 
         activity_name = COALESCE(?, activity_name),
@@ -215,21 +260,24 @@ export async function PUT(request, { params }) {
         progress_percentage !== undefined ? progress_percentage : null,
         notes || null,
         activity_record_id,
-        projectId
+        projectId,
       ]
     );
 
-    return Response.json({ 
+    return Response.json({
       success: true,
-      message: 'Activity updated successfully'
+      message: 'Activity updated successfully',
     });
   } catch (error) {
     console.error('PUT project activities error:', error);
-    return Response.json({ 
-      success: false, 
-      error: 'Failed to update activity',
-      details: error.message
-    }, { status: 500 });
+    return Response.json(
+      {
+        success: false,
+        error: 'Failed to update activity',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -240,18 +288,26 @@ export async function DELETE(request, { params }) {
   // Check permission to edit project activities
   const user = await getCurrentUser(request);
   if (!user) {
-    return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    return Response.json(
+      { success: false, error: 'Unauthorized' },
+      { status: 401 }
+    );
   }
-  
-  const hasUpdatePermission = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-  
+
+  const hasUpdatePermission =
+    user.is_super_admin ||
+    hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+
   if (!hasUpdatePermission) {
-    return Response.json({ 
-      success: false, 
-      error: 'You do not have permission to delete project activities' 
-    }, { status: 403 });
+    return Response.json(
+      {
+        success: false,
+        error: 'You do not have permission to delete project activities',
+      },
+      { status: 403 }
+    );
   }
-  
+
   let db;
   try {
     const { id } = await params;
@@ -260,30 +316,36 @@ export async function DELETE(request, { params }) {
     const activityRecordId = searchParams.get('activity_record_id');
 
     if (!activityRecordId) {
-      return Response.json({ 
-        success: false, 
-        error: 'Activity record ID is required' 
-      }, { status: 400 });
+      return Response.json(
+        {
+          success: false,
+          error: 'Activity record ID is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
-    
+
     await db.execute(
       'DELETE FROM project_activities WHERE id = ? AND project_id = ?',
       [activityRecordId, projectId]
     );
 
-    return Response.json({ 
+    return Response.json({
       success: true,
-      message: 'Activity removed successfully'
+      message: 'Activity removed successfully',
     });
   } catch (error) {
     console.error('DELETE project activities error:', error);
-    return Response.json({ 
-      success: false, 
-      error: 'Failed to remove activity',
-      details: error.message
-    }, { status: 500 });
+    return Response.json(
+      {
+        success: false,
+        error: 'Failed to remove activity',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }

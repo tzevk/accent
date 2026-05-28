@@ -6,12 +6,12 @@ import Navbar from './Navbar';
 
 /**
  * AccessGuard - A component that checks if the user has permission to view a page
- * 
+ *
  * Usage:
  * <AccessGuard resource="employees" permission="read">
  *   <YourPageContent />
  * </AccessGuard>
- * 
+ *
  * Props:
  * - resource: The RBAC resource to check (e.g., 'employees', 'leads', 'users')
  * - permission: The permission to check (default: 'read')
@@ -19,12 +19,12 @@ import Navbar from './Navbar';
  * - fallback: Optional custom fallback component for access denied
  * - showNavbar: Whether to show Navbar in the access denied screen (default: true)
  */
-export default function AccessGuard({ 
-  resource, 
-  permission = 'read', 
-  children, 
+export default function AccessGuard({
+  resource,
+  permission = 'read',
+  children,
   fallback,
-  showNavbar = true 
+  showNavbar = true,
 }) {
   const { loading, user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
 
@@ -67,12 +67,17 @@ export default function AccessGuard({
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <LockClosedIcon className="h-8 w-8 text-red-600" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                Access Denied
+              </h2>
               <p className="text-gray-600 mb-4">
                 You don&apos;t have permission to access this page.
               </p>
               <p className="text-sm text-gray-500 mb-6">
-                Required permission: <span className="font-mono bg-gray-100 px-2 py-1 rounded">{resource}:{permission}</span>
+                Required permission:{' '}
+                <span className="font-mono bg-gray-100 px-2 py-1 rounded">
+                  {resource}:{permission}
+                </span>
               </p>
               <button
                 onClick={() => window.history.back()}
@@ -96,13 +101,14 @@ export default function AccessGuard({
  */
 export function useAccessCheck(resource, permission = 'read') {
   const { loading, user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
-  
+
   const resourceKey = resource?.toUpperCase();
   const permissionKey = permission?.toUpperCase();
   const rbacResource = RESOURCES[resourceKey] || resource;
   const rbacPermission = PERMISSIONS[permissionKey] || permission;
-  
-  const hasAccess = !loading && (user?.is_super_admin || can(rbacResource, rbacPermission));
-  
+
+  const hasAccess =
+    !loading && (user?.is_super_admin || can(rbacResource, rbacPermission));
+
   return { loading, hasAccess, user };
 }

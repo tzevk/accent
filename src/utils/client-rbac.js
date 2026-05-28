@@ -11,6 +11,6 @@ export function useSessionRBAC() {
     user: session.user,
     can: session.can,
     RESOURCES,
-    PERMISSIONS
+    PERMISSIONS,
   };
 }

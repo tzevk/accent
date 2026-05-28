@@ -29,7 +29,11 @@ function formatFileSize(bytes) {
  *   entityId    - the numeric ID of the entity
  *   className   - optional extra CSS classes
  */
-export default function DocumentUpload({ entityType, entityId, className = '' }) {
+export default function DocumentUpload({
+  entityType,
+  entityId,
+  className = '',
+}) {
   const [documents, setDocuments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -42,7 +46,9 @@ export default function DocumentUpload({ entityType, entityId, className = '' })
   const fetchDocuments = useCallback(async () => {
     if (!entityId) return;
     try {
-      const res = await fetch(`/api/document-upload?entity_type=${entityType}&entity_id=${entityId}`);
+      const res = await fetch(
+        `/api/document-upload?entity_type=${entityType}&entity_id=${entityId}`
+      );
       const data = await res.json();
       if (data.success) {
         setDocuments(data.data || []);
@@ -93,10 +99,12 @@ export default function DocumentUpload({ entityType, entityId, className = '' })
   const handleDelete = async (docId) => {
     if (!confirm('Delete this document?')) return;
     try {
-      const res = await fetch(`/api/document-upload?id=${docId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/document-upload?id=${docId}`, {
+        method: 'DELETE',
+      });
       const data = await res.json();
       if (data.success) {
-        setDocuments(prev => prev.filter(d => d.id !== docId));
+        setDocuments((prev) => prev.filter((d) => d.id !== docId));
       } else {
         setError(data.error || 'Delete failed');
       }
@@ -126,11 +134,18 @@ export default function DocumentUpload({ entityType, entityId, className = '' })
   };
 
   const getFileIcon = (doc) => {
-    const ext = (doc.original_name || doc.file_name || '').toLowerCase().split('.').pop();
-    if (['jpg', 'jpeg', 'png'].includes(ext)) return <PhotoIcon className="h-5 w-5 text-green-500" />;
-    if (['pdf'].includes(ext)) return <DocumentTextIcon className="h-5 w-5 text-red-500" />;
-    if (['doc', 'docx'].includes(ext)) return <DocumentTextIcon className="h-5 w-5 text-blue-500" />;
-    if (['pptx', 'ppt'].includes(ext)) return <DocumentIcon className="h-5 w-5 text-orange-500" />;
+    const ext = (doc.original_name || doc.file_name || '')
+      .toLowerCase()
+      .split('.')
+      .pop();
+    if (['jpg', 'jpeg', 'png'].includes(ext))
+      return <PhotoIcon className="h-5 w-5 text-green-500" />;
+    if (['pdf'].includes(ext))
+      return <DocumentTextIcon className="h-5 w-5 text-red-500" />;
+    if (['doc', 'docx'].includes(ext))
+      return <DocumentTextIcon className="h-5 w-5 text-blue-500" />;
+    if (['pptx', 'ppt'].includes(ext))
+      return <DocumentIcon className="h-5 w-5 text-orange-500" />;
     return <DocumentIcon className="h-5 w-5 text-gray-500" />;
   };
 
@@ -144,9 +159,10 @@ export default function DocumentUpload({ entityType, entityId, className = '' })
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
         className={`relative border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all
-          ${dragActive 
-            ? 'border-purple-500 bg-purple-50' 
-            : 'border-gray-300 hover:border-purple-400 hover:bg-gray-50'
+          ${
+            dragActive
+              ? 'border-purple-500 bg-purple-50'
+              : 'border-gray-300 hover:border-purple-400 hover:bg-gray-50'
           }
           ${uploading ? 'opacity-60 pointer-events-none' : ''}
         `}
@@ -163,13 +179,18 @@ export default function DocumentUpload({ entityType, entityId, className = '' })
         <p className="text-sm font-medium text-gray-700">
           {uploading ? 'Uploading…' : 'Click or drag files to upload'}
         </p>
-        <p className="text-xs text-gray-500 mt-1">PDF, DOCX, PPTX, JPG, PNG (max 20MB)</p>
+        <p className="text-xs text-gray-500 mt-1">
+          PDF, DOCX, PPTX, JPG, PNG (max 20MB)
+        </p>
       </div>
 
       {/* Error */}
       {error && (
         <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          <XMarkIcon className="h-4 w-4 cursor-pointer" onClick={() => setError(null)} />
+          <XMarkIcon
+            className="h-4 w-4 cursor-pointer"
+            onClick={() => setError(null)}
+          />
           {error}
         </div>
       )}
@@ -184,14 +205,20 @@ export default function DocumentUpload({ entityType, entityId, className = '' })
           </div>
           <ul className="divide-y divide-gray-100">
             {documents.map((doc) => (
-              <li key={doc.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors">
+              <li
+                key={doc.id}
+                className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+              >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   {getFileIcon(doc)}
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 truncate">{doc.original_name}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {doc.original_name}
+                    </p>
                     <p className="text-xs text-gray-500">
                       {formatFileSize(doc.file_size)}
-                      {doc.created_at && ` • ${new Date(doc.created_at).toLocaleDateString()}`}
+                      {doc.created_at &&
+                        ` • ${new Date(doc.created_at).toLocaleDateString()}`}
                     </p>
                   </div>
                 </div>

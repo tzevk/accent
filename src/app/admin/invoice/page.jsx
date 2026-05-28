@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
-import { 
+import {
   DocumentCurrencyDollarIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
@@ -14,21 +14,26 @@ import {
   ChevronRightIcon,
   PlusIcon,
   PencilIcon,
-  TrashIcon
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 
 export default function InvoicePage() {
   const router = useRouter();
   const { user, loading: authLoading } = useSessionRBAC();
-  
+
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
-  
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  });
+
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  
+
   // Stats
   const [stats, setStats] = useState({
     total: 0,
@@ -36,37 +41,51 @@ export default function InvoicePage() {
     sent: 0,
     paid: 0,
     overdue: 0,
-    cancelled: 0
+    cancelled: 0,
   });
 
   // Fetch invoices
-  const fetchInvoices = useCallback(async (page = 1) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: pagination.limit.toString()
-      });
-      
-      if (statusFilter !== 'all') params.append('status', statusFilter);
+  const fetchInvoices = useCallback(
+    async (page = 1) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: pagination.limit.toString(),
+        });
 
-      const res = await fetch(`/api/admin/invoices?${params}`);
-      const data = await res.json();
-      
-      if (data.success) {
-        setInvoices(data.data || []);
-        setPagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });
-        setStats(data.stats || { total: 0, draft: 0, sent: 0, paid: 0, overdue: 0, cancelled: 0 });
-      } else {
+        if (statusFilter !== 'all') params.append('status', statusFilter);
+
+        const res = await fetch(`/api/admin/invoices?${params}`);
+        const data = await res.json();
+
+        if (data.success) {
+          setInvoices(data.data || []);
+          setPagination(
+            data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 }
+          );
+          setStats(
+            data.stats || {
+              total: 0,
+              draft: 0,
+              sent: 0,
+              paid: 0,
+              overdue: 0,
+              cancelled: 0,
+            }
+          );
+        } else {
+          setInvoices([]);
+        }
+      } catch (error) {
+        console.error('Error fetching invoices:', error);
         setInvoices([]);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching invoices:', error);
-      setInvoices([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, pagination.limit]);
+    },
+    [statusFilter, pagination.limit]
+  );
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -75,7 +94,7 @@ export default function InvoicePage() {
   }, [authLoading, user, statusFilter, fetchInvoices]);
 
   // Filter invoices by search term
-  const filteredInvoices = invoices.filter(inv => {
+  const filteredInvoices = invoices.filter((inv) => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
@@ -108,7 +127,7 @@ export default function InvoicePage() {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      minimumFractionDigits: 2
+      minimumFractionDigits: 2,
     }).format(amount || 0);
   };
 
@@ -118,7 +137,7 @@ export default function InvoicePage() {
     return new Date(dateString).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
@@ -134,13 +153,17 @@ export default function InvoicePage() {
 
   // Handle delete
   const handleDelete = async (invoice) => {
-    if (!confirm(`Are you sure you want to delete invoice ${invoice.invoice_number}? This action cannot be undone.`)) {
+    if (
+      !confirm(
+        `Are you sure you want to delete invoice ${invoice.invoice_number}? This action cannot be undone.`
+      )
+    ) {
       return;
     }
 
     try {
       const res = await fetch(`/api/admin/invoices/${invoice.id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
       const data = await res.json();
       if (data.success) {
@@ -165,7 +188,7 @@ export default function InvoicePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -174,7 +197,9 @@ export default function InvoicePage() {
               <DocumentCurrencyDollarIcon className="h-7 w-7 text-purple-600" />
               Invoices
             </h1>
-            <p className="text-sm text-gray-500 mt-1">View and download invoices</p>
+            <p className="text-sm text-gray-500 mt-1">
+              View and download invoices
+            </p>
           </div>
           <button
             onClick={() => router.push('/admin/invoice/create')}
@@ -188,27 +213,39 @@ export default function InvoicePage() {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-gray-900">{stats.total || 0}</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {stats.total || 0}
+            </div>
             <div className="text-sm text-gray-600">Total</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-gray-600">{stats.draft || 0}</div>
+            <div className="text-2xl font-bold text-gray-600">
+              {stats.draft || 0}
+            </div>
             <div className="text-sm text-gray-600">Draft</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-blue-600">{stats.sent || 0}</div>
+            <div className="text-2xl font-bold text-blue-600">
+              {stats.sent || 0}
+            </div>
             <div className="text-sm text-gray-600">Sent</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-green-600">{stats.paid || 0}</div>
+            <div className="text-2xl font-bold text-green-600">
+              {stats.paid || 0}
+            </div>
             <div className="text-sm text-gray-600">Paid</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-red-600">{stats.overdue || 0}</div>
+            <div className="text-2xl font-bold text-red-600">
+              {stats.overdue || 0}
+            </div>
             <div className="text-sm text-gray-600">Overdue</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-gray-500">{stats.cancelled || 0}</div>
+            <div className="text-2xl font-bold text-gray-500">
+              {stats.cancelled || 0}
+            </div>
             <div className="text-sm text-gray-600">Cancelled</div>
           </div>
         </div>
@@ -229,7 +266,7 @@ export default function InvoicePage() {
                 />
               </div>
             </div>
-            
+
             {/* Status Filter */}
             <div className="flex items-center gap-2">
               <FunnelIcon className="h-5 w-5 text-gray-400" />
@@ -246,14 +283,16 @@ export default function InvoicePage() {
                 <option value="cancelled">Cancelled</option>
               </select>
             </div>
-            
+
             {/* Refresh */}
             <button
               onClick={() => fetchInvoices(pagination.page)}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               title="Refresh"
             >
-              <ArrowPathIcon className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+              <ArrowPathIcon
+                className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`}
+              />
             </button>
           </div>
         </div>
@@ -275,33 +314,69 @@ export default function InvoicePage() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Invoice #</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Client</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Amount</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Issue Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Due Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Download</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Invoice #
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Client
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Description
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Amount
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Issue Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Due Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
+                      Download
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {filteredInvoices.map((invoice) => (
-                    <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={invoice.id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
                       <td className="px-6 py-4">
-                        <span className="font-medium text-purple-600">{invoice.invoice_number}</span>
+                        <span className="font-medium text-purple-600">
+                          {invoice.invoice_number}
+                        </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900">{invoice.client_name}</div>
-                        <div className="text-sm text-gray-500">{invoice.client_email}</div>
+                        <div className="font-medium text-gray-900">
+                          {invoice.client_name}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {invoice.client_email}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 text-gray-600 max-w-[200px] truncate">{invoice.description}</td>
-                      <td className="px-6 py-4 font-semibold text-gray-900">{formatCurrency(invoice.total)}</td>
-                      <td className="px-6 py-4 text-gray-600">{formatDate(invoice.created_at)}</td>
-                      <td className="px-6 py-4 text-gray-600">{formatDate(invoice.due_date)}</td>
+                      <td className="px-6 py-4 text-gray-600 max-w-[200px] truncate">
+                        {invoice.description}
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-gray-900">
+                        {formatCurrency(invoice.total)}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {formatDate(invoice.created_at)}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {formatDate(invoice.due_date)}
+                      </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusStyle(invoice.status)}`}>
-                          {invoice.status?.charAt(0).toUpperCase() + invoice.status?.slice(1)}
+                        <span
+                          className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusStyle(invoice.status)}`}
+                        >
+                          {invoice.status?.charAt(0).toUpperCase() +
+                            invoice.status?.slice(1)}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -335,12 +410,14 @@ export default function InvoicePage() {
               </table>
             </div>
           )}
-          
+
           {/* Pagination */}
           {pagination.totalPages > 1 && (
             <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
               <span className="text-sm text-gray-600">
-                Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
+                Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
+                {Math.min(pagination.page * pagination.limit, pagination.total)}{' '}
+                of {pagination.total}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -350,7 +427,9 @@ export default function InvoicePage() {
                 >
                   <ChevronLeftIcon className="h-4 w-4" />
                 </button>
-                <span className="px-3 py-1 text-sm">{pagination.page} / {pagination.totalPages}</span>
+                <span className="px-3 py-1 text-sm">
+                  {pagination.page} / {pagination.totalPages}
+                </span>
                 <button
                   onClick={() => fetchInvoices(pagination.page + 1)}
                   disabled={pagination.page === pagination.totalPages}

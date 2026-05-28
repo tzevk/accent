@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useState, useEffect, Fragment, useMemo } from "react";
-import { useSessionRBAC } from "@/utils/client-rbac";
-import Navbar from "@/components/Navbar";
+import { useState, useEffect, Fragment, useMemo } from 'react';
+import { useSessionRBAC } from '@/utils/client-rbac';
+import Navbar from '@/components/Navbar';
 import {
   MagnifyingGlassIcon,
   ChevronDownIcon,
@@ -18,32 +18,33 @@ import {
   CalendarDaysIcon,
   ChartBarIcon,
   BriefcaseIcon,
-} from "@heroicons/react/24/outline";
+} from '@heroicons/react/24/outline';
 
 /* ── helpers ────────────────────────────────────────────────────────── */
 const statusCls = (s) => {
-  const n = (s || "").toLowerCase();
-  if (n.includes("completed") || n.includes("done"))
-    return "bg-emerald-50 text-emerald-700 ring-emerald-600/20";
-  if (n.includes("progress") || n.includes("active"))
-    return "bg-blue-50 text-blue-700 ring-blue-600/20";
-  if (n.includes("hold") || n.includes("pending"))
-    return "bg-amber-50 text-amber-700 ring-amber-600/20";
-  if (n.includes("cancel"))
-    return "bg-red-50 text-red-700 ring-red-600/20";
-  return "bg-gray-50 text-gray-600 ring-gray-500/20";
+  const n = (s || '').toLowerCase();
+  if (n.includes('completed') || n.includes('done'))
+    return 'bg-emerald-50 text-emerald-700 ring-emerald-600/20';
+  if (n.includes('progress') || n.includes('active'))
+    return 'bg-blue-50 text-blue-700 ring-blue-600/20';
+  if (n.includes('hold') || n.includes('pending'))
+    return 'bg-amber-50 text-amber-700 ring-amber-600/20';
+  if (n.includes('cancel')) return 'bg-red-50 text-red-700 ring-red-600/20';
+  return 'bg-gray-50 text-gray-600 ring-gray-500/20';
 };
 
-function ProgressBar({ pct, color = "purple", className = "" }) {
+function ProgressBar({ pct, color = 'purple', className = '' }) {
   const c = Math.min(100, Math.max(0, pct));
   const bg =
-    color === "blue"
-      ? "bg-blue-500"
-      : color === "green"
-      ? "bg-emerald-500"
-      : "bg-purple-500";
+    color === 'blue'
+      ? 'bg-blue-500'
+      : color === 'green'
+        ? 'bg-emerald-500'
+        : 'bg-purple-500';
   return (
-    <div className={`w-full bg-gray-100 rounded-full h-1.5 overflow-hidden ${className}`}>
+    <div
+      className={`w-full bg-gray-100 rounded-full h-1.5 overflow-hidden ${className}`}
+    >
       <div
         className={`${bg} h-full rounded-full transition-all duration-500`}
         style={{ width: `${c}%` }}
@@ -53,28 +54,33 @@ function ProgressBar({ pct, color = "purple", className = "" }) {
 }
 
 const fmt = (d) => {
-  if (!d) return "\u2013";
-  return new Date(d + "T00:00:00").toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "2-digit",
+  if (!d) return '\u2013';
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: '2-digit',
   });
 };
 const fmtShort = (d) => {
-  if (!d) return "\u2013";
-  return new Date(d + "T00:00:00").toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
+  if (!d) return '\u2013';
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
   });
 };
 
 /* ── main ───────────────────────────────────────────────────────────── */
 export default function ProjectActivitiesReport() {
-  const { loading: authLoading, user, can, RESOURCES, PERMISSIONS } =
-    useSessionRBAC();
+  const {
+    loading: authLoading,
+    user,
+    can,
+    RESOURCES,
+    PERMISSIONS,
+  } = useSessionRBAC();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const [expandedProjects, setExpandedProjects] = useState({});
   const [expandedActivities, setExpandedActivities] = useState({});
   const [expandedMembers, setExpandedMembers] = useState({});
@@ -82,7 +88,7 @@ export default function ProjectActivitiesReport() {
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const isSuperAdmin =
     user?.is_super_admin === true || user?.is_super_admin === 1;
@@ -93,28 +99,37 @@ export default function ProjectActivitiesReport() {
 
     let fieldPerms = user.field_permissions;
     if (typeof fieldPerms === 'string') {
-      try { fieldPerms = JSON.parse(fieldPerms); } catch { fieldPerms = null; }
+      try {
+        fieldPerms = JSON.parse(fieldPerms);
+      } catch {
+        fieldPerms = null;
+      }
     }
 
-    const reportAccessSection = fieldPerms?.modules?.reports?.sections?.report_access;
+    const reportAccessSection =
+      fieldPerms?.modules?.reports?.sections?.report_access;
     if (!reportAccessSection?.enabled) return false;
 
-    const projectActivitiesPerm = reportAccessSection.fields?.project_activities?.permission;
-    if (projectActivitiesPerm === 'view' || projectActivitiesPerm === 'edit') return true;
+    const projectActivitiesPerm =
+      reportAccessSection.fields?.project_activities?.permission;
+    if (projectActivitiesPerm === 'view' || projectActivitiesPerm === 'edit')
+      return true;
 
     // Backward compatibility for existing saved permissions.
     const legacyPerm = reportAccessSection.fields?.project_reports?.permission;
     return legacyPerm === 'view' || legacyPerm === 'edit';
   }, [user, isSuperAdmin]);
 
-  const hasReportsPermission =
-    can && can(RESOURCES.REPORTS, PERMISSIONS.READ);
-  const hasAccess = isSuperAdmin || hasReportsPermission || hasProjectActivitiesFieldPermission;
+  const hasReportsPermission = can && can(RESOURCES.REPORTS, PERMISSIONS.READ);
+  const hasAccess =
+    isSuperAdmin || hasReportsPermission || hasProjectActivitiesFieldPermission;
   // Allow editing of daily entries for super admins or users with report update permission
-  const canEditEntries = isSuperAdmin || (can && can(RESOURCES.REPORTS, PERMISSIONS.UPDATE));
+  const canEditEntries =
+    isSuperAdmin || (can && can(RESOURCES.REPORTS, PERMISSIONS.UPDATE));
 
   // Allow re-activating completed projects
-  const canUpdateProjects = isSuperAdmin || (can && can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE));
+  const canUpdateProjects =
+    isSuperAdmin || (can && can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE));
   const [activatingProjectId, setActivatingProjectId] = useState(null);
 
   useEffect(() => {
@@ -126,16 +141,18 @@ export default function ProjectActivitiesReport() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/reports/project-activities", { cache: "no-store" });
+      const res = await fetch('/api/reports/project-activities', {
+        cache: 'no-store',
+      });
       const data = await res.json();
       if (data.success) {
         setProjects(data.data || []);
       } else {
-        setError(data.error || "Unknown error");
+        setError(data.error || 'Unknown error');
       }
     } catch (err) {
-      console.error("Failed to load project activities:", err);
-      setError("Failed to connect to server.");
+      console.error('Failed to load project activities:', err);
+      setError('Failed to connect to server.');
     } finally {
       setLoading(false);
     }
@@ -150,12 +167,15 @@ export default function ProjectActivitiesReport() {
       const res = await fetch(`/api/projects/${project.project_id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'Active' })
+        body: JSON.stringify({ status: 'Active' }),
       });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data?.success) {
-        alert('Failed to activate project: ' + (data?.error || data?.details || `HTTP ${res.status}`));
+        alert(
+          'Failed to activate project: ' +
+            (data?.error || data?.details || `HTTP ${res.status}`)
+        );
         return;
       }
 
@@ -197,10 +217,10 @@ export default function ProjectActivitiesReport() {
   const startEditing = (pId, aId, uId, idx, entry) => {
     setEditingEntry(`${pId}-${aId}-${uId}-${idx}`);
     setEditForm({
-      date: entry.date || "",
-      qty_done: entry.qty_done || "",
-      hours: entry.hours || "",
-      remarks: entry.remarks || "",
+      date: entry.date || '',
+      qty_done: entry.qty_done || '',
+      hours: entry.hours || '',
+      remarks: entry.remarks || '',
     });
   };
   const cancelEditing = () => {
@@ -209,7 +229,7 @@ export default function ProjectActivitiesReport() {
   };
 
   const deleteEntry = async (pId, aId, uId, member, idx) => {
-    if (!confirm("Are you sure you want to delete this entry?")) return;
+    if (!confirm('Are you sure you want to delete this entry?')) return;
     setSaving(true);
     try {
       const entries = [...(member.daily_entries || [])];
@@ -222,12 +242,17 @@ export default function ProjectActivitiesReport() {
         (s, e) => s + ((e && parseFloat(e.hours)) || 0),
         0
       );
-      
-      console.log('Deleting entry at index:', idx, 'Remaining entries:', entries.length);
-      
+
+      console.log(
+        'Deleting entry at index:',
+        idx,
+        'Remaining entries:',
+        entries.length
+      );
+
       const res = await fetch(`/api/users/${uId}/activity-assignments`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           project_id: pId,
           activity_id: aId,
@@ -243,11 +268,11 @@ export default function ProjectActivitiesReport() {
         cancelEditing();
       } else {
         console.error('Delete failed:', data.error);
-        alert("Delete failed: " + (data.error || "Unknown"));
+        alert('Delete failed: ' + (data.error || 'Unknown'));
       }
     } catch (err) {
       console.error('Delete error:', err);
-      alert("Failed to delete entry");
+      alert('Failed to delete entry');
     } finally {
       setSaving(false);
     }
@@ -259,22 +284,22 @@ export default function ProjectActivitiesReport() {
     try {
       // editingEntry is `${pId}-${aId}-${uId}-${idx}` but activity_id can be a UUID (contains '-')
       // so we must extract the last segment as the index.
-      const lastDash = editingEntry.lastIndexOf("-");
+      const lastDash = editingEntry.lastIndexOf('-');
       const idx = Number(editingEntry.slice(lastDash + 1));
       if (!Number.isFinite(idx) || idx < 0) {
-        throw new Error("Invalid edit index");
+        throw new Error('Invalid edit index');
       }
       const entries = [...(member.daily_entries || [])];
-      
+
       // Ensure the entry is a proper object with required fields
       const oldEntry = entries[idx];
       entries[idx] = {
-        date: editForm.date || "",
+        date: editForm.date || '',
         qty_done: parseFloat(editForm.qty_done) || 0,
         hours: parseFloat(editForm.hours) || 0,
-        remarks: editForm.remarks || "",
+        remarks: editForm.remarks || '',
       };
-      
+
       const totQ = entries.reduce(
         (s, e) => s + ((e && parseFloat(e.qty_done)) || 0),
         0
@@ -283,13 +308,28 @@ export default function ProjectActivitiesReport() {
         (s, e) => s + ((e && parseFloat(e.hours)) || 0),
         0
       );
-      
-      console.log('[saveEdited] project_id:', pId, 'activity_id:', aId, 'user_id:', uId);
-      console.log('[saveEdited] Old entry:', { date: oldEntry?.date, qty_done: oldEntry?.qty_done, hours: oldEntry?.hours });
-      console.log('[saveEdited] New entry:', { date: entries[idx].date, qty_done: entries[idx].qty_done, hours: entries[idx].hours });
+
+      console.log(
+        '[saveEdited] project_id:',
+        pId,
+        'activity_id:',
+        aId,
+        'user_id:',
+        uId
+      );
+      console.log('[saveEdited] Old entry:', {
+        date: oldEntry?.date,
+        qty_done: oldEntry?.qty_done,
+        hours: oldEntry?.hours,
+      });
+      console.log('[saveEdited] New entry:', {
+        date: entries[idx].date,
+        qty_done: entries[idx].qty_done,
+        hours: entries[idx].hours,
+      });
       console.log('[saveEdited] All entries count:', entries.length);
       console.log('[saveEdited] Totals - qty:', totQ, 'hours:', totH);
-      
+
       const payload = {
         project_id: pId,
         activity_id: aId,
@@ -298,33 +338,43 @@ export default function ProjectActivitiesReport() {
         actual_hours: totH,
       };
       console.log('[saveEdited] Full payload:', JSON.stringify(payload));
-      
+
       const res = await fetch(`/api/users/${uId}/activity-assignments`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      
+
       const data = await res.json();
-      console.log('[saveEdited] Response status:', res.status, 'success:', data.success, 'error:', data.error);
-      
+      console.log(
+        '[saveEdited] Response status:',
+        res.status,
+        'success:',
+        data.success,
+        'error:',
+        data.error
+      );
+
       if (!res.ok) {
         console.error('[saveEdited] Non-2xx response:', res.status, data);
-        alert("Save failed: " + (data?.error || data?.details || `HTTP ${res.status}`));
+        alert(
+          'Save failed: ' +
+            (data?.error || data?.details || `HTTP ${res.status}`)
+        );
       } else if (data.success) {
         console.log('[saveEdited] Save successful, reloading data...');
         // Add a small delay to ensure DB write completes
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, 300));
         await loadData();
         console.log('[saveEdited] Data reloaded');
         cancelEditing();
       } else {
         console.error('[saveEdited] Save failed:', data.error);
-        alert("Save failed: " + (data.error || "Unknown"));
+        alert('Save failed: ' + (data.error || 'Unknown'));
       }
     } catch (err) {
       console.error('[saveEdited] Exception:', err);
-      alert("Failed to save: " + err.message);
+      alert('Failed to save: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -379,34 +429,34 @@ export default function ProjectActivitiesReport() {
   const filtered = useMemo(
     () =>
       projects.filter((p) => {
-        if (statusFilter !== "all") {
-          const s = (p.project_status || "active").toLowerCase();
+        if (statusFilter !== 'all') {
+          const s = (p.project_status || 'active').toLowerCase();
           if (
-            statusFilter === "active" &&
-            !s.includes("active") &&
-            !s.includes("progress")
+            statusFilter === 'active' &&
+            !s.includes('active') &&
+            !s.includes('progress')
           )
             return false;
           if (
-            statusFilter === "completed" &&
-            !s.includes("completed") &&
-            !s.includes("done")
+            statusFilter === 'completed' &&
+            !s.includes('completed') &&
+            !s.includes('done')
           )
             return false;
-          if (statusFilter === "hold" && !s.includes("hold")) return false;
+          if (statusFilter === 'hold' && !s.includes('hold')) return false;
         }
         if (!search) return true;
         const q = search.toLowerCase();
         return (
-          (p.project_name || "").toLowerCase().includes(q) ||
-          (p.project_code || "").toLowerCase().includes(q) ||
-          (p.client_name || "").toLowerCase().includes(q) ||
-          String(p.project_id || "").includes(q) ||
+          (p.project_name || '').toLowerCase().includes(q) ||
+          (p.project_code || '').toLowerCase().includes(q) ||
+          (p.client_name || '').toLowerCase().includes(q) ||
+          String(p.project_id || '').includes(q) ||
           p.activities?.some(
             (a) =>
-              (a.activity_name || "").toLowerCase().includes(q) ||
+              (a.activity_name || '').toLowerCase().includes(q) ||
               a.members?.some((m) =>
-                (m.user_name || "").toLowerCase().includes(q)
+                (m.user_name || '').toLowerCase().includes(q)
               )
           )
         );
@@ -432,9 +482,7 @@ export default function ProjectActivitiesReport() {
       <div className="min-h-screen bg-gray-50">
         <Navbar />
         <div className="flex items-center justify-center h-[70vh]">
-          <div className="animate-pulse text-gray-400 text-sm">
-            Loading...
-          </div>
+          <div className="animate-pulse text-gray-400 text-sm">Loading...</div>
         </div>
       </div>
     );
@@ -467,9 +515,8 @@ export default function ProjectActivitiesReport() {
         {/* header */}
         <div className="mb-5">
           <p className="text-xs text-gray-400 mb-0.5">
-            Home{" "}
-            <span className="mx-1 text-gray-300">/</span> Reports{" "}
-            <span className="mx-1 text-gray-300">/</span>{" "}
+            Home <span className="mx-1 text-gray-300">/</span> Reports{' '}
+            <span className="mx-1 text-gray-300">/</span>{' '}
             <span className="text-gray-600">Project Activities</span>
           </p>
           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -495,8 +542,8 @@ export default function ProjectActivitiesReport() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-white border border-gray-200 rounded-md hover:border-gray-300 transition disabled:opacity-40"
               >
                 <ArrowPathIcon
-                  className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
-                />{" "}
+                  className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`}
+                />{' '}
                 Refresh
               </button>
             </div>
@@ -509,27 +556,27 @@ export default function ProjectActivitiesReport() {
             {[
               {
                 icon: BriefcaseIcon,
-                label: "Projects",
+                label: 'Projects',
                 value: grand.projects,
-                color: "text-purple-500",
+                color: 'text-purple-500',
               },
               {
                 icon: ChartBarIcon,
-                label: "Activities",
+                label: 'Activities',
                 value: grand.activities,
-                color: "text-blue-500",
+                color: 'text-blue-500',
               },
               {
                 icon: UserIcon,
-                label: "Assignments",
+                label: 'Assignments',
                 value: grand.members,
-                color: "text-emerald-500",
+                color: 'text-emerald-500',
               },
               {
                 icon: CalendarDaysIcon,
-                label: "Total in DB",
+                label: 'Total in DB',
                 value: projects.length,
-                color: "text-amber-500",
+                color: 'text-amber-500',
               },
             ].map((c) => (
               <div
@@ -564,18 +611,18 @@ export default function ProjectActivitiesReport() {
           </div>
           <div className="inline-flex bg-white border border-gray-200 rounded-lg p-0.5 shadow-sm">
             {[
-              ["all", "All"],
-              ["active", "Active"],
-              ["completed", "Completed"],
-              ["hold", "On Hold"],
+              ['all', 'All'],
+              ['active', 'Active'],
+              ['completed', 'Completed'],
+              ['hold', 'On Hold'],
             ].map(([v, l]) => (
               <button
                 key={v}
                 onClick={() => setStatusFilter(v)}
                 className={`text-[11px] px-3 py-1.5 rounded-md font-medium transition ${
                   statusFilter === v
-                    ? "bg-purple-600 text-white shadow-sm"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
               >
                 {l}
@@ -585,7 +632,7 @@ export default function ProjectActivitiesReport() {
           {!loading && (
             <span className="text-[11px] text-gray-400">
               {filtered.length} of {projects.length}
-              {search ? " (filtered)" : ""}
+              {search ? ' (filtered)' : ''}
             </span>
           )}
         </div>
@@ -613,7 +660,7 @@ export default function ProjectActivitiesReport() {
           <div className="bg-white rounded-xl border border-gray-100 p-14 text-center">
             <FolderIcon className="w-10 h-10 mx-auto mb-2 text-gray-300" />
             <p className="text-gray-500 font-medium text-sm">
-              {search ? "No matching projects." : "No projects yet."}
+              {search ? 'No matching projects.' : 'No projects yet.'}
             </p>
           </div>
         ) : (
@@ -682,15 +729,16 @@ function ProjectCard({
 }) {
   const statusText = (project.project_status || '').toString();
   const statusLower = statusText.toLowerCase();
-  const isCompleted = statusLower.includes('completed') || statusLower.includes('done');
+  const isCompleted =
+    statusLower.includes('completed') || statusLower.includes('done');
   const isActivating = activatingProjectId === project.project_id;
 
   return (
     <div
       className={`rounded-xl border transition-all duration-200 ${
         isExpanded
-          ? "bg-white border-purple-200 shadow-lg ring-1 ring-purple-100"
-          : "bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300"
+          ? 'bg-white border-purple-200 shadow-lg ring-1 ring-purple-100'
+          : 'bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300'
       }`}
     >
       {/* header */}
@@ -709,7 +757,7 @@ function ProjectCard({
       >
         <ChevronRightIcon
           className={`w-4 h-4 mt-1 flex-shrink-0 text-gray-400 group-hover:text-purple-500 transition-transform duration-200 ${
-            isExpanded ? "rotate-90 text-purple-500" : ""
+            isExpanded ? 'rotate-90 text-purple-500' : ''
           }`}
         />
 
@@ -728,7 +776,7 @@ function ProjectCard({
                 project.project_status
               )}`}
             >
-              {project.project_status || "Active"}
+              {project.project_status || 'Active'}
             </span>
 
             {canUpdateProjects && isCompleted && (
@@ -774,10 +822,7 @@ function ProjectCard({
               <span className="text-[10px] text-gray-400 font-semibold tabular-nums w-7 text-right">
                 {t.oP}%
               </span>
-              <ProgressBar
-                pct={t.oP}
-                color={t.oP >= 80 ? "green" : "purple"}
-              />
+              <ProgressBar pct={t.oP} color={t.oP >= 80 ? 'green' : 'purple'} />
             </div>
             <div className="flex items-center gap-3 text-[10px]">
               <span className="text-gray-400">{t.acts} act</span>
@@ -808,7 +853,7 @@ function ProjectCard({
               Hours <b className="text-blue-700">{t.hP}%</b>
             </span>
             <span className="ml-auto text-[10px] text-gray-400">
-              {t.acts} {t.acts === 1 ? "activity" : "activities"}
+              {t.acts} {t.acts === 1 ? 'activity' : 'activities'}
             </span>
           </div>
 
@@ -828,7 +873,7 @@ function ProjectCard({
                   <div
                     key={activity.id}
                     className={`border-b border-gray-50 last:border-b-0 ${
-                      isOpen ? "bg-gray-50/30" : ""
+                      isOpen ? 'bg-gray-50/30' : ''
                     }`}
                   >
                     {/* activity row */}
@@ -838,7 +883,7 @@ function ProjectCard({
                     >
                       <ChevronRightIcon
                         className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${
-                          isOpen ? "rotate-90 text-gray-600" : ""
+                          isOpen ? 'rotate-90 text-gray-600' : ''
                         }`}
                       />
                       <div className="flex-1 min-w-0">
@@ -847,12 +892,12 @@ function ProjectCard({
                             {activity.activity_name}
                           </span>
                           {activity.discipline &&
-                            activity.discipline !== "General" && (
+                            activity.discipline !== 'General' && (
                               <span className="text-[9px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded font-medium">
                                 {activity.discipline}
                               </span>
                             )}
-                          {activity.source === "table" && (
+                          {activity.source === 'table' && (
                             <span className="text-[8px] text-amber-600 bg-amber-50 px-1 py-0.5 rounded ring-1 ring-amber-200">
                               DB
                             </span>
@@ -879,7 +924,7 @@ function ProjectCard({
                         </div>
                         <span className="text-gray-400 text-[10px]">
                           {members.length} mbr
-                          {members.length !== 1 ? "s" : ""}
+                          {members.length !== 1 ? 's' : ''}
                         </span>
                       </div>
                     </button>
@@ -938,25 +983,26 @@ function ProjectCard({
                                   const overdue =
                                     member.due_date &&
                                     new Date(member.due_date) < new Date() &&
-                                    (member.status || "").toLowerCase() !==
-                                      "completed";
+                                    (member.status || '').toLowerCase() !==
+                                      'completed';
 
                                   return (
                                     <Fragment key={mKey}>
                                       <tr
                                         className={`border-b border-gray-100 transition-colors ${
                                           overdue
-                                            ? "bg-red-50/30"
+                                            ? 'bg-red-50/30'
                                             : mi % 2 === 0
-                                            ? "bg-white"
-                                            : "bg-gray-50/40"
+                                              ? 'bg-white'
+                                              : 'bg-gray-50/40'
                                         } hover:bg-purple-50/30`}
                                       >
                                         <td className="py-2.5 px-3 pl-14">
                                           <div className="flex items-center gap-2.5">
                                             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center flex-shrink-0 shadow-sm">
                                               <span className="text-[10px] font-bold text-purple-700">
-                                                {(member.user_name || "?")[0].toUpperCase()}
+                                                {(member.user_name ||
+                                                  '?')[0].toUpperCase()}
                                               </span>
                                             </div>
                                             <span className="text-[12px] text-gray-800 font-medium">
@@ -973,10 +1019,10 @@ function ProjectCard({
                                         <td
                                           className={`py-2.5 px-3 text-right text-[12px] font-semibold tabular-nums ${
                                             bal > 0
-                                              ? "text-amber-600"
+                                              ? 'text-amber-600'
                                               : bal === 0
-                                              ? "text-emerald-600"
-                                              : "text-red-600"
+                                                ? 'text-emerald-600'
+                                                : 'text-red-600'
                                           }`}
                                         >
                                           {bal}
@@ -990,8 +1036,8 @@ function ProjectCard({
                                         <td
                                           className={`py-2.5 px-3 text-center text-[11px] tabular-nums ${
                                             overdue
-                                              ? "text-red-600 font-bold"
-                                              : "text-gray-500"
+                                              ? 'text-red-600 font-bold'
+                                              : 'text-gray-500'
                                           }`}
                                         >
                                           {fmtShort(member.due_date)}
@@ -1002,7 +1048,7 @@ function ProjectCard({
                                               member.status
                                             )}`}
                                           >
-                                            {member.status || "Not Started"}
+                                            {member.status || 'Not Started'}
                                           </span>
                                         </td>
                                         <td className="py-2.5 pr-3 text-center">
@@ -1073,11 +1119,36 @@ function ProjectCard({
                                                     const eKey = `${project.project_id}-${activity.id}-${member.user_id}-${eIdx}`;
                                                     const editing =
                                                       editingEntry === eKey;
-                                                    const cumDone = daily.slice(0, eIdx + 1).reduce((s, e) => s + (parseFloat(e.qty_done) || 0), 0);
-                                                    const cumHrs = daily.slice(0, eIdx + 1).reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
-                                                    const mQA = parseFloat(member.qty_assigned) || 0;
-                                                    const mPH = parseFloat(member.planned_hours) || 0;
-                                                    const runBal = mQA - cumDone;
+                                                    const cumDone = daily
+                                                      .slice(0, eIdx + 1)
+                                                      .reduce(
+                                                        (s, e) =>
+                                                          s +
+                                                          (parseFloat(
+                                                            e.qty_done
+                                                          ) || 0),
+                                                        0
+                                                      );
+                                                    const cumHrs = daily
+                                                      .slice(0, eIdx + 1)
+                                                      .reduce(
+                                                        (s, e) =>
+                                                          s +
+                                                          (parseFloat(
+                                                            e.hours
+                                                          ) || 0),
+                                                        0
+                                                      );
+                                                    const mQA =
+                                                      parseFloat(
+                                                        member.qty_assigned
+                                                      ) || 0;
+                                                    const mPH =
+                                                      parseFloat(
+                                                        member.planned_hours
+                                                      ) || 0;
+                                                    const runBal =
+                                                      mQA - cumDone;
                                                     return (
                                                       <tr
                                                         key={eIdx}
@@ -1089,13 +1160,12 @@ function ProjectCard({
                                                               type="date"
                                                               value={
                                                                 editForm.date ||
-                                                                ""
+                                                                ''
                                                               }
                                                               onChange={(e) =>
                                                                 setEditForm({
                                                                   ...editForm,
-                                                                  date: e
-                                                                    .target
+                                                                  date: e.target
                                                                     .value,
                                                                 })
                                                               }
@@ -1118,7 +1188,7 @@ function ProjectCard({
                                                               type="number"
                                                               value={
                                                                 editForm.qty_done ||
-                                                                ""
+                                                                ''
                                                               }
                                                               min="0"
                                                               step="0.01"
@@ -1139,9 +1209,15 @@ function ProjectCard({
                                                             </span>
                                                           )}
                                                         </td>
-                                                        <td className={`py-1.5 px-3 text-right font-semibold tabular-nums ${
-                                                          runBal > 0 ? "text-amber-600" : runBal === 0 ? "text-emerald-600" : "text-red-600"
-                                                        }`}>
+                                                        <td
+                                                          className={`py-1.5 px-3 text-right font-semibold tabular-nums ${
+                                                            runBal > 0
+                                                              ? 'text-amber-600'
+                                                              : runBal === 0
+                                                                ? 'text-emerald-600'
+                                                                : 'text-red-600'
+                                                          }`}
+                                                        >
                                                           {runBal}
                                                         </td>
                                                         <td className="py-1.5 px-3 text-right text-gray-500 tabular-nums">
@@ -1153,7 +1229,7 @@ function ProjectCard({
                                                               type="number"
                                                               value={
                                                                 editForm.hours ||
-                                                                ""
+                                                                ''
                                                               }
                                                               min="0"
                                                               step="0.5"
@@ -1179,7 +1255,7 @@ function ProjectCard({
                                                               type="text"
                                                               value={
                                                                 editForm.remarks ||
-                                                                ""
+                                                                ''
                                                               }
                                                               placeholder="Remarks..."
                                                               onChange={(e) =>
@@ -1195,7 +1271,7 @@ function ProjectCard({
                                                           ) : (
                                                             <span className="text-gray-500">
                                                               {entry.remarks ||
-                                                                "\u2013"}
+                                                                '\u2013'}
                                                             </span>
                                                           )}
                                                         </td>
@@ -1257,7 +1333,9 @@ function ProjectCard({
                                                                       eIdx
                                                                     )
                                                                   }
-                                                                  disabled={saving}
+                                                                  disabled={
+                                                                    saving
+                                                                  }
                                                                   className="text-gray-400 hover:text-red-600 transition disabled:opacity-40"
                                                                 >
                                                                   <TrashIcon className="w-3.5 h-3.5" />
@@ -1270,19 +1348,55 @@ function ProjectCard({
                                                     );
                                                   })}
                                                   {(() => {
-                                                    const totQD = daily.reduce((s, e) => s + (parseFloat(e.qty_done) || 0), 0);
-                                                    const totHrs = daily.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
-                                                    const totBal = (parseFloat(member.qty_assigned) || 0) - totQD;
+                                                    const totQD = daily.reduce(
+                                                      (s, e) =>
+                                                        s +
+                                                        (parseFloat(
+                                                          e.qty_done
+                                                        ) || 0),
+                                                      0
+                                                    );
+                                                    const totHrs = daily.reduce(
+                                                      (s, e) =>
+                                                        s +
+                                                        (parseFloat(e.hours) ||
+                                                          0),
+                                                      0
+                                                    );
+                                                    const totBal =
+                                                      (parseFloat(
+                                                        member.qty_assigned
+                                                      ) || 0) - totQD;
                                                     return (
                                                       <tr className="bg-gray-50 border-t border-gray-200 font-semibold">
-                                                        <td className="py-1.5 px-3 text-gray-600">Total</td>
-                                                        <td className="py-1.5 px-3 text-right text-gray-600 tabular-nums">{parseFloat(member.qty_assigned) || 0}</td>
-                                                        <td className="py-1.5 px-3 text-right text-purple-600 tabular-nums">{totQD}</td>
-                                                        <td className={`py-1.5 px-3 text-right tabular-nums ${totBal > 0 ? "text-amber-600" : totBal === 0 ? "text-emerald-600" : "text-red-600"}`}>{totBal}</td>
-                                                        <td className="py-1.5 px-3 text-right text-gray-600 tabular-nums">{parseFloat(member.planned_hours) || 0}</td>
-                                                        <td className="py-1.5 px-3 text-right text-blue-600 tabular-nums">{totHrs}</td>
+                                                        <td className="py-1.5 px-3 text-gray-600">
+                                                          Total
+                                                        </td>
+                                                        <td className="py-1.5 px-3 text-right text-gray-600 tabular-nums">
+                                                          {parseFloat(
+                                                            member.qty_assigned
+                                                          ) || 0}
+                                                        </td>
+                                                        <td className="py-1.5 px-3 text-right text-purple-600 tabular-nums">
+                                                          {totQD}
+                                                        </td>
+                                                        <td
+                                                          className={`py-1.5 px-3 text-right tabular-nums ${totBal > 0 ? 'text-amber-600' : totBal === 0 ? 'text-emerald-600' : 'text-red-600'}`}
+                                                        >
+                                                          {totBal}
+                                                        </td>
+                                                        <td className="py-1.5 px-3 text-right text-gray-600 tabular-nums">
+                                                          {parseFloat(
+                                                            member.planned_hours
+                                                          ) || 0}
+                                                        </td>
+                                                        <td className="py-1.5 px-3 text-right text-blue-600 tabular-nums">
+                                                          {totHrs}
+                                                        </td>
                                                         <td className="py-1.5 px-3"></td>
-                                                        {canEditEntries && <td></td>}
+                                                        {canEditEntries && (
+                                                          <td></td>
+                                                        )}
                                                       </tr>
                                                     );
                                                   })()}
@@ -1312,8 +1426,8 @@ function ProjectCard({
                                     style={{
                                       color:
                                         at.qA - at.qD > 0
-                                          ? "#d97706"
-                                          : "#059669",
+                                          ? '#d97706'
+                                          : '#059669',
                                     }}
                                   >
                                     {at.qA - at.qD}

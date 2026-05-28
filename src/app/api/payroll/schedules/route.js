@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET /api/payroll/schedules - Get all or specific payroll component schedules
 export async function GET(request) {
@@ -10,10 +14,11 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const componentType = searchParams.get('component_type');
     const activeOnly = searchParams.get('active_only') === 'true';
-    const currentDate = searchParams.get('date') || new Date().toISOString().split('T')[0];
+    const currentDate =
+      searchParams.get('date') || new Date().toISOString().split('T')[0];
 
     const db = await dbConnect();
-    
+
     try {
       let query = `
         SELECT 
@@ -32,32 +37,30 @@ export async function GET(request) {
         FROM payroll_schedules
         WHERE 1=1
       `;
-      
+
       const params = [];
-      
+
       if (componentType) {
         query += ` AND component_type = ?`;
         params.push(componentType);
       }
-      
+
       if (activeOnly) {
         query += ` AND is_active = 1 AND effective_from <= ? AND (effective_to IS NULL OR effective_to >= ?)`;
         params.push(currentDate, currentDate);
       }
-      
+
       query += ` ORDER BY component_type, effective_from DESC`;
-      
+
       const [rows] = await db.query(query, params);
-      
+
       return NextResponse.json({
         success: true,
-        data: rows
+        data: rows,
       });
-      
     } finally {
       await db.end();
     }
-    
   } catch (error) {
     console.error('Error fetching payroll schedules:', error);
     return NextResponse.json(
@@ -82,18 +85,27 @@ export async function POST(request) {
       is_active = 1,
       min_salary = null,
       max_salary = null,
-      remarks = null
+      remarks = null,
     } = body;
 
-    if (!component_type || !value_type || value === undefined || !effective_from) {
+    if (
+      !component_type ||
+      !value_type ||
+      value === undefined ||
+      !effective_from
+    ) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: component_type, value_type, value, effective_from' },
+        {
+          success: false,
+          error:
+            'Missing required fields: component_type, value_type, value, effective_from',
+        },
         { status: 400 }
       );
     }
 
     const db = await dbConnect();
-    
+
     try {
       await db.beginTransaction();
 
@@ -101,7 +113,17 @@ export async function POST(request) {
         `INSERT INTO payroll_schedules 
           (component_type, value_type, value, effective_from, effective_to, is_active, min_salary, max_salary, remarks)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [component_type, value_type, value, effective_from, effective_to, is_active, min_salary, max_salary, remarks]
+        [
+          component_type,
+          value_type,
+          value,
+          effective_from,
+          effective_to,
+          is_active,
+          min_salary,
+          max_salary,
+          remarks,
+        ]
       );
 
       await db.commit();
@@ -118,17 +140,15 @@ export async function POST(request) {
           is_active,
           min_salary,
           max_salary,
-          remarks
-        }
+          remarks,
+        },
       });
-
     } catch (error) {
       await db.rollback();
       throw error;
     } finally {
       await db.end();
     }
-
   } catch (error) {
     console.error('Error creating payroll schedule:', error);
     return NextResponse.json(
@@ -153,7 +173,7 @@ export async function PUT(request) {
       is_active,
       min_salary,
       max_salary,
-      remarks
+      remarks,
     } = body;
 
     if (!id) {
@@ -164,7 +184,7 @@ export async function PUT(request) {
     }
 
     const db = await dbConnect();
-    
+
     try {
       await db.beginTransaction();
 
@@ -180,7 +200,17 @@ export async function PUT(request) {
           max_salary = ?,
           remarks = ?
         WHERE id = ?`,
-        [value_type, value, effective_from, effective_to, is_active, min_salary, max_salary, remarks, id]
+        [
+          value_type,
+          value,
+          effective_from,
+          effective_to,
+          is_active,
+          min_salary,
+          max_salary,
+          remarks,
+          id,
+        ]
       );
 
       if (result.affectedRows === 0) {
@@ -195,16 +225,14 @@ export async function PUT(request) {
 
       return NextResponse.json({
         success: true,
-        message: 'Schedule updated successfully'
+        message: 'Schedule updated successfully',
       });
-
     } catch (error) {
       await db.rollback();
       throw error;
     } finally {
       await db.end();
     }
-
   } catch (error) {
     console.error('Error updating payroll schedule:', error);
     return NextResponse.json(
@@ -230,7 +258,7 @@ export async function DELETE(request) {
     }
 
     const db = await dbConnect();
-    
+
     try {
       await db.beginTransaction();
 
@@ -251,16 +279,14 @@ export async function DELETE(request) {
 
       return NextResponse.json({
         success: true,
-        message: 'Schedule deleted successfully'
+        message: 'Schedule deleted successfully',
       });
-
     } catch (error) {
       await db.rollback();
       throw error;
     } finally {
       await db.end();
     }
-
   } catch (error) {
     console.error('Error deleting payroll schedule:', error);
     return NextResponse.json(

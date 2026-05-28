@@ -8,7 +8,7 @@ require('dotenv').config({ path: '.env.local' });
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    connectionLimit: 2
+    connectionLimit: 2,
   });
   const db = await pool.getConnection();
 
@@ -19,7 +19,7 @@ require('dotenv').config({ path: '.env.local' });
     WHERE e.employee_id = 'ATS0001' 
     ORDER BY ps.month DESC LIMIT 3
   `);
-  
+
   if (slips.length > 0) {
     for (const slip of slips) {
       console.log('=== Payroll Slip for', slip.month, '===');
@@ -49,10 +49,23 @@ require('dotenv').config({ path: '.env.local' });
     console.log('No payroll slips found for ATS0001');
   }
 
-  const [das] = await db.execute('SELECT * FROM da_schedule ORDER BY effective_from DESC');
+  const [das] = await db.execute(
+    'SELECT * FROM da_schedule ORDER BY effective_from DESC'
+  );
   console.log('\n=== All DA Schedules ===');
-  das.forEach(d => {
-    console.log('id=' + d.id + ' amount=' + d.da_amount + ' from=' + d.effective_from + ' to=' + d.effective_to + ' active=' + d.is_active);
+  das.forEach((d) => {
+    console.log(
+      'id=' +
+        d.id +
+        ' amount=' +
+        d.da_amount +
+        ' from=' +
+        d.effective_from +
+        ' to=' +
+        d.effective_to +
+        ' active=' +
+        d.is_active
+    );
   });
 
   db.release();

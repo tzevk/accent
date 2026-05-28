@@ -5,9 +5,9 @@ import { hasPermission } from '@/utils/rbac';
 
 /**
  * GET /api/proposals/list
- * 
+ *
  * Optimized endpoint for proposals list page.
- * 
+ *
  * Performance optimizations:
  * 1. Single DB connection for all queries
  * 2. Parallel query execution using Promise.all
@@ -18,7 +18,7 @@ import { hasPermission } from '@/utils/rbac';
 export async function GET(request) {
   const startTime = Date.now();
   let db;
-  
+
   try {
     // Auth check - wrap in try-catch since getCurrentUser can throw on DB errors
     let user;
@@ -26,21 +26,34 @@ export async function GET(request) {
       user = await getCurrentUser(request);
     } catch (authErr) {
       console.error('Auth check failed:', authErr?.message);
-      return NextResponse.json({ success: false, error: 'Authentication failed' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'Authentication failed' },
+        { status: 500 }
+      );
     }
-    
+
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     // Permission check - ensure user object is valid before checking permissions
     if (!user.id) {
-      return NextResponse.json({ success: false, error: 'Invalid user session' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Invalid user session' },
+        { status: 401 }
+      );
     }
-    
-    const canReadProposals = user.is_super_admin || hasPermission(user, 'proposals', 'read');
+
+    const canReadProposals =
+      user.is_super_admin || hasPermission(user, 'proposals', 'read');
     if (!canReadProposals) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -48,12 +61,20 @@ export async function GET(request) {
     const status = searchParams.get('status') || '';
 
     db = await dbConnect();
-    
+
     try {
       // Execute queries with full error handling
       let proposals = [];
-      let stats = { total: 0, draft: 0, sent: 0, approved: 0, rejected: 0, pending: 0, total_value: 0 };
-      
+      let stats = {
+        total: 0,
+        draft: 0,
+        sent: 0,
+        approved: 0,
+        rejected: 0,
+        pending: 0,
+        total_value: 0,
+      };
+
       try {
         // Use SELECT * to get all available columns (schema may vary)
         const [proposalsResult] = await db.execute(`
@@ -73,7 +94,7 @@ export async function GET(request) {
           proposals = [];
         }
       }
-      
+
       try {
         // Stats query - only use status which should exist
         const [statsResult] = await db.execute(`
@@ -94,7 +115,7 @@ export async function GET(request) {
           approved: Number(statsRow.approved) || 0,
           rejected: Number(statsRow.rejected) || 0,
           pending: Number(statsRow.pending) || 0,
-          total_value: 0
+          total_value: 0,
         };
       } catch (statsErr) {
         console.warn('Stats query failed:', statsErr?.message);
@@ -104,17 +125,18 @@ export async function GET(request) {
       // Apply filters
       if (search) {
         const s = search.toLowerCase();
-        proposals = proposals.filter(p => 
-          (p.title || '').toLowerCase().includes(s) ||
-          (p.proposal_id || '').toLowerCase().includes(s) ||
-          (p.client_name || '').toLowerCase().includes(s) ||
-          (p.company_name || '').toLowerCase().includes(s)
+        proposals = proposals.filter(
+          (p) =>
+            (p.title || '').toLowerCase().includes(s) ||
+            (p.proposal_id || '').toLowerCase().includes(s) ||
+            (p.client_name || '').toLowerCase().includes(s) ||
+            (p.company_name || '').toLowerCase().includes(s)
         );
       }
-      
+
       if (status) {
-        proposals = proposals.filter(p => 
-          (p.status || '').toLowerCase() === status.toLowerCase()
+        proposals = proposals.filter(
+          (p) => (p.status || '').toLowerCase() === status.toLowerCase()
         );
       }
 
@@ -126,29 +148,40 @@ export async function GET(request) {
         stats,
         _meta: {
           queryTimeMs: queryTime,
-          filtered: proposals.length
-        }
+          filtered: proposals.length,
+        },
       });
 
       // Cache for 30 seconds
-      response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
-      
+      response.headers.set(
+        'Cache-Control',
+        'private, max-age=30, stale-while-revalidate=60'
+      );
+
       return response;
-      
     } finally {
       // Release handled in outer finally
     }
-    
   } catch (error) {
     console.error('Proposals list error:', error?.message, error?.stack);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch proposals', details: error?.message, stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined },
+      {
+        success: false,
+        error: 'Failed to fetch proposals',
+        details: error?.message,
+        stack:
+          process.env.NODE_ENV === 'development' ? error?.stack : undefined,
+      },
       { status: 500 }
     );
   } finally {
     // Always release DB connection
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }

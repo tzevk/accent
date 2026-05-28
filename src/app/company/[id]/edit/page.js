@@ -4,14 +4,14 @@ import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
+import {
   ArrowLeftIcon,
   BuildingOfficeIcon,
   UserIcon,
   MapPinIcon,
   DocumentTextIcon,
   CheckIcon,
-  XMarkIcon
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 export default function EditCompany({ params }) {
@@ -44,7 +44,7 @@ export default function EditCompany({ params }) {
     sector: '',
     gstin: '',
     pan_number: '',
-    company_profile: ''
+    company_profile: '',
   });
 
   useEffect(() => {
@@ -53,7 +53,7 @@ export default function EditCompany({ params }) {
         const companyId = await params;
         const response = await fetch(`/api/companies/${companyId.id}`);
         const result = await response.json();
-        
+
         if (result.success) {
           const companyData = result.data;
           setCompany(companyData);
@@ -81,7 +81,7 @@ export default function EditCompany({ params }) {
             sector: companyData.sector || '',
             gstin: companyData.gstin || '',
             pan_number: companyData.pan_number || '',
-            company_profile: companyData.company_profile || ''
+            company_profile: companyData.company_profile || '',
           });
         } else {
           console.error('Error fetching company:', result.error);
@@ -102,9 +102,9 @@ export default function EditCompany({ params }) {
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -122,7 +122,7 @@ export default function EditCompany({ params }) {
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         alert('Company updated successfully!');
         router.push('/company');
@@ -162,8 +162,12 @@ export default function EditCompany({ params }) {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <BuildingOfficeIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h2 className="mt-4 text-xl font-semibold text-gray-900">Company not found</h2>
-            <p className="mt-2 text-gray-600">The company you&apos;re trying to edit doesn&apos;t exist.</p>
+            <h2 className="mt-4 text-xl font-semibold text-gray-900">
+              Company not found
+            </h2>
+            <p className="mt-2 text-gray-600">
+              The company you&apos;re trying to edit doesn&apos;t exist.
+            </p>
             <button
               onClick={() => router.push('/company')}
               className="mt-4 bg-gradient-to-r from-[#64126D] to-[#86288F] text-white px-4 py-2 rounded-md hover:from-[#86288F] hover:to-[#64126D] transition-all"
@@ -193,11 +197,15 @@ export default function EditCompany({ params }) {
                   <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
                 </button>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Edit Company</h1>
-                  <p className="text-gray-600 text-sm">{company.company_name}</p>
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    Edit Company
+                  </h1>
+                  <p className="text-gray-600 text-sm">
+                    {company.company_name}
+                  </p>
                 </div>
               </div>
-              
+
               <div className="flex space-x-3">
                 <button
                   onClick={handleCancel}
@@ -276,14 +284,17 @@ export default function EditCompany({ params }) {
           <div className="h-full overflow-y-auto bg-white rounded-b-lg border border-t-0 border-gray-200">
             <div className="p-6">
               <form id="edit-company-form" onSubmit={handleSubmit}>
-                
                 {/* Company Details Tab */}
                 {activeTab === 'details' && (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <h2 className="text-xl font-bold text-gray-900">Company Information</h2>
-                        <p className="text-gray-600 text-sm mt-1">Basic details about the company</p>
+                        <h2 className="text-xl font-bold text-gray-900">
+                          Company Information
+                        </h2>
+                        <p className="text-gray-600 text-sm mt-1">
+                          Basic details about the company
+                        </p>
                       </div>
                       <div className="text-sm text-gray-500">
                         <span className="text-red-500">*</span> Required fields
@@ -443,8 +454,12 @@ export default function EditCompany({ params }) {
                   <div className="space-y-6">
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <h2 className="text-xl font-bold text-gray-900">Contact Information</h2>
-                        <p className="text-gray-600 text-sm mt-1">Primary contact details for this company</p>
+                        <h2 className="text-xl font-bold text-gray-900">
+                          Contact Information
+                        </h2>
+                        <p className="text-gray-600 text-sm mt-1">
+                          Primary contact details for this company
+                        </p>
                       </div>
                     </div>
 
@@ -527,8 +542,12 @@ export default function EditCompany({ params }) {
                   <div className="space-y-6">
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <h2 className="text-xl font-bold text-gray-900">Location Details</h2>
-                        <p className="text-gray-600 text-sm mt-1">Company address and location information</p>
+                        <h2 className="text-xl font-bold text-gray-900">
+                          Location Details
+                        </h2>
+                        <p className="text-gray-600 text-sm mt-1">
+                          Company address and location information
+                        </p>
                       </div>
                     </div>
 
@@ -625,8 +644,12 @@ export default function EditCompany({ params }) {
                   <div className="space-y-6">
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <h2 className="text-xl font-bold text-gray-900">Additional Information</h2>
-                        <p className="text-gray-600 text-sm mt-1">Registration, profile and other details</p>
+                        <h2 className="text-xl font-bold text-gray-900">
+                          Additional Information
+                        </h2>
+                        <p className="text-gray-600 text-sm mt-1">
+                          Registration, profile and other details
+                        </p>
                       </div>
                     </div>
 
@@ -694,29 +717,38 @@ export default function EditCompany({ params }) {
 
                     {/* Company Summary Card */}
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <h3 className="text-sm font-medium text-gray-900 mb-3">Company Summary</h3>
+                      <h3 className="text-sm font-medium text-gray-900 mb-3">
+                        Company Summary
+                      </h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                           <span className="text-gray-500">Company ID:</span>
-                          <p className="font-medium text-gray-900">{formData.company_id || '-'}</p>
+                          <p className="font-medium text-gray-900">
+                            {formData.company_id || '-'}
+                          </p>
                         </div>
                         <div>
                           <span className="text-gray-500">Industry:</span>
-                          <p className="font-medium text-gray-900">{formData.industry || '-'}</p>
+                          <p className="font-medium text-gray-900">
+                            {formData.industry || '-'}
+                          </p>
                         </div>
                         <div>
                           <span className="text-gray-500">Size:</span>
-                          <p className="font-medium text-gray-900">{formData.company_size || '-'}</p>
+                          <p className="font-medium text-gray-900">
+                            {formData.company_size || '-'}
+                          </p>
                         </div>
                         <div>
                           <span className="text-gray-500">City:</span>
-                          <p className="font-medium text-gray-900">{formData.city || '-'}</p>
+                          <p className="font-medium text-gray-900">
+                            {formData.city || '-'}
+                          </p>
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
-
               </form>
             </div>
           </div>

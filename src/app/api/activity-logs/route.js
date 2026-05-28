@@ -1,14 +1,25 @@
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 import { getUserActivityLogs } from '@/utils/activity-logger';
 import { dbConnect } from '@/utils/database';
 
 // GET - Fetch activity logs with filters
 export async function GET(request) {
   try {
-    const auth = await ensurePermission(request, RESOURCES.USERS, PERMISSIONS.READ);
+    const auth = await ensurePermission(
+      request,
+      RESOURCES.USERS,
+      PERMISSIONS.READ
+    );
     if (!auth.authorized) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -24,15 +35,24 @@ export async function GET(request) {
     // Non-admin users can only view their own logs
     const requestedUserId = userId ? parseInt(userId) : null;
     const currentUser = auth.user;
-    
-    if (!currentUser.is_super_admin && requestedUserId && requestedUserId !== currentUser.id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'You can only view your own activity logs' 
-      }, { status: 403 });
+
+    if (
+      !currentUser.is_super_admin &&
+      requestedUserId &&
+      requestedUserId !== currentUser.id
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'You can only view your own activity logs',
+        },
+        { status: 403 }
+      );
     }
 
-    const finalUserId = currentUser.is_super_admin ? requestedUserId : currentUser.id;
+    const finalUserId = currentUser.is_super_admin
+      ? requestedUserId
+      : currentUser.id;
 
     const logs = await getUserActivityLogs({
       userId: finalUserId,
@@ -41,15 +61,16 @@ export async function GET(request) {
       startDate,
       endDate,
       limit,
-      offset
+      offset,
     });
 
     // Get total count for pagination
     let db;
     try {
       db = await dbConnect();
-      
-      let countQuery = 'SELECT COUNT(*) as total FROM user_activity_logs WHERE 1=1';
+
+      let countQuery =
+        'SELECT COUNT(*) as total FROM user_activity_logs WHERE 1=1';
       const countParams = [];
 
       if (finalUserId) {
@@ -85,20 +106,21 @@ export async function GET(request) {
           page,
           limit,
           total,
-          totalPages: Math.ceil(total / limit)
-        }
+          totalPages: Math.ceil(total / limit),
+        },
       });
-
     } catch (error) {
       if (db) await db.end();
       throw error;
     }
-
   } catch (error) {
     console.error('Error fetching activity logs:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to fetch activity logs' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch activity logs',
+      },
+      { status: 500 }
+    );
   }
 }

@@ -5,8 +5,11 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
 import { useSessionRBAC } from '@/utils/client-rbac';
-import { RESOURCES as RBAC_RESOURCES, PERMISSIONS as RBAC_PERMISSIONS } from '@/utils/rbac';
-import { 
+import {
+  RESOURCES as RBAC_RESOURCES,
+  PERMISSIONS as RBAC_PERMISSIONS,
+} from '@/utils/rbac';
+import {
   ArrowLeftIcon,
   PencilIcon,
   TrashIcon,
@@ -17,7 +20,7 @@ import {
   FlagIcon,
   UserIcon,
   BuildingOfficeIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 
 export default function LeadDetails({ params }) {
@@ -25,14 +28,15 @@ export default function LeadDetails({ params }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const { loading: rbacLoading, can } = useSessionRBAC();
-  const canConvert = !rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.CONVERT);
+  const canConvert =
+    !rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.CONVERT);
 
   useEffect(() => {
     const fetchLead = async () => {
       try {
         const leadId = await params;
         const result = await fetchJSON(`/api/leads/${leadId.id}`);
-        
+
         if (result.success) {
           setLead(result.data);
         } else {
@@ -57,7 +61,7 @@ export default function LeadDetails({ params }) {
     return new Date(dateString).toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
     });
   };
 
@@ -102,12 +106,16 @@ export default function LeadDetails({ params }) {
   };
 
   const handleDelete = async () => {
-    if (window.confirm(`Are you sure you want to delete this lead from "${lead.company_name}"?`)) {
+    if (
+      window.confirm(
+        `Are you sure you want to delete this lead from "${lead.company_name}"?`
+      )
+    ) {
       try {
         const result = await fetchJSON(`/api/leads/${lead.id}`, {
           method: 'DELETE',
         });
-        
+
         if (result.success) {
           alert('Lead deleted successfully!');
           router.push('/leads');
@@ -128,12 +136,17 @@ export default function LeadDetails({ params }) {
       return;
     }
 
-    if (!window.confirm(`Convert lead for "${lead.company_name}" to a proposal?`)) return;
+    if (
+      !window.confirm(`Convert lead for "${lead.company_name}" to a proposal?`)
+    )
+      return;
 
     try {
       // Build proposal payload from lead
       const payload = {
-        title: lead.project_description ? `${lead.company_name} - ${lead.project_description.slice(0, 60)}` : `Proposal for ${lead.company_name}`,
+        title: lead.project_description
+          ? `${lead.company_name} - ${lead.project_description.slice(0, 60)}`
+          : `Proposal for ${lead.company_name}`,
         client: lead.company_name,
         contact_name: lead.contact_name || null,
         contact_email: lead.contact_email || null,
@@ -144,13 +157,13 @@ export default function LeadDetails({ params }) {
         value: null,
         status: 'pending',
         due_date: null,
-        notes: lead.notes || null
+        notes: lead.notes || null,
       };
 
       const result = await fetchJSON('/api/proposals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, lead_id: lead.id })
+        body: JSON.stringify({ ...payload, lead_id: lead.id }),
       });
 
       if (!result.success) {
@@ -165,7 +178,10 @@ export default function LeadDetails({ params }) {
           const d = new Date(lead.enquiry_date);
           if (!isNaN(d.getTime())) {
             formattedEnquiryDate = d.toISOString().split('T')[0];
-          } else if (typeof lead.enquiry_date === 'string' && lead.enquiry_date.includes('T')) {
+          } else if (
+            typeof lead.enquiry_date === 'string' &&
+            lead.enquiry_date.includes('T')
+          ) {
             formattedEnquiryDate = lead.enquiry_date.split('T')[0];
           } else {
             formattedEnquiryDate = lead.enquiry_date;
@@ -187,27 +203,39 @@ export default function LeadDetails({ params }) {
         enquiry_date: formattedEnquiryDate,
         lead_source: lead.lead_source || null,
         priority: lead.priority || 'Medium',
-        notes: lead.notes || null
+        notes: lead.notes || null,
       };
 
       const updResult = await fetchJSON(`/api/leads/${lead.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateBody)
+        body: JSON.stringify(updateBody),
       });
 
       if (!updResult.success) {
-        alert('Proposal created but failed to update lead status: ' + (updResult.error || 'Unknown'));
+        alert(
+          'Proposal created but failed to update lead status: ' +
+            (updResult.error || 'Unknown')
+        );
       }
 
       const createdId = result.data && result.data.id;
-      const proposalId = result.data && (result.data.proposal_id || result.data.proposalId || (result.data.proposal && (result.data.proposal.proposal_id || result.data.proposal.proposalId)));
-      
+      const proposalId =
+        result.data &&
+        (result.data.proposal_id ||
+          result.data.proposalId ||
+          (result.data.proposal &&
+            (result.data.proposal.proposal_id ||
+              result.data.proposal.proposalId)));
+
       if (createdId) {
         const qp = proposalId ? `?pid=${encodeURIComponent(proposalId)}` : '';
         router.push(`/proposals/${createdId}/edit${qp}`);
       } else {
-        alert('Proposal created: ' + (proposalId || ('ID ' + (result.data && result.data.id))));
+        alert(
+          'Proposal created: ' +
+            (proposalId || 'ID ' + (result.data && result.data.id))
+        );
         router.push('/leads');
       }
     } catch (error) {
@@ -236,8 +264,12 @@ export default function LeadDetails({ params }) {
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <h2 className="text-xl font-semibold text-gray-900">Lead not found</h2>
-            <p className="mt-2 text-gray-600">The lead you&apos;re looking for doesn&apos;t exist.</p>
+            <h2 className="text-xl font-semibold text-gray-900">
+              Lead not found
+            </h2>
+            <p className="mt-2 text-gray-600">
+              The lead you&apos;re looking for doesn&apos;t exist.
+            </p>
             <button
               onClick={() => router.push('/leads')}
               className="mt-4 bg-accent-primary text-white px-4 py-2 rounded-md hover:bg-accent-primary/90"
@@ -253,7 +285,7 @@ export default function LeadDetails({ params }) {
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
-      
+
       <div className="flex-1 overflow-hidden">
         <div className="h-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 max-w-[1800px] mx-auto w-full">
           {/* Header */}
@@ -266,7 +298,9 @@ export default function LeadDetails({ params }) {
                 <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{lead.company_name}</h1>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {lead.company_name}
+                </h1>
                 <p className="text-gray-600">Lead Details</p>
               </div>
             </div>
@@ -280,7 +314,10 @@ export default function LeadDetails({ params }) {
                   <span>Convert to Proposal</span>
                 </button>
               ) : lead.enquiry_status === 'Converted to Proposal' ? (
-                <div className="px-4 py-2 rounded-md bg-gray-100 text-gray-500 flex items-center space-x-2" title="Already converted to proposal">
+                <div
+                  className="px-4 py-2 rounded-md bg-gray-100 text-gray-500 flex items-center space-x-2"
+                  title="Already converted to proposal"
+                >
                   <DocumentTextIcon className="h-4 w-4" />
                   <span>Already Converted</span>
                 </div>
@@ -315,52 +352,74 @@ export default function LeadDetails({ params }) {
                   </h3>
                   <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
-                      <p className="text-sm text-gray-900">{lead.company_name || 'N/A'}</p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Company Name
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {lead.company_name || 'N/A'}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Contact Person
+                      </label>
                       <p className="text-sm text-gray-900 flex items-center">
                         <UserIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {lead.contact_name || 'N/A'}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Contact Email
+                      </label>
                       <p className="text-sm text-gray-900 flex items-center">
                         <EnvelopeIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {lead.contact_email || 'N/A'}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Phone
+                      </label>
                       <p className="text-sm text-gray-900 flex items-center">
                         <PhoneIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {lead.phone || 'N/A'}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Location
+                      </label>
                       <p className="text-sm text-gray-900 flex items-center">
                         <MapPinIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {lead.city || 'N/A'}
                       </p>
                     </div>
                     <div className="lg:col-span-2 xl:col-span-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Inquiry Email</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Inquiry Email
+                      </label>
                       <p className="text-sm text-gray-900 flex items-center">
                         <EnvelopeIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {lead.inquiry_email || 'N/A'}
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5">Email ID of person from whom inquiry was received</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Email ID of person from whom inquiry was received
+                      </p>
                     </div>
                     <div className="lg:col-span-2 xl:col-span-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">CC Emails</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        CC Emails
+                      </label>
                       <p className="text-sm text-gray-900 flex items-start">
                         <EnvelopeIcon className="h-4 w-4 mr-1 mt-0.5 text-gray-400 flex-shrink-0" />
-                        <span className="break-all">{lead.cc_emails || 'N/A'}</span>
+                        <span className="break-all">
+                          {lead.cc_emails || 'N/A'}
+                        </span>
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5">Additional email IDs (comma-separated)</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Additional email IDs (comma-separated)
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -373,25 +432,39 @@ export default function LeadDetails({ params }) {
                   </h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Project Description</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Project Description
+                      </label>
                       <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded-md">
                         {lead.project_description || 'No description provided'}
                       </p>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Enquiry Type</label>
-                        <p className="text-sm text-gray-900">{lead.enquiry_type || 'N/A'}</p>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Enquiry Type
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {lead.enquiry_type || 'N/A'}
+                        </p>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Lead Source</label>
-                        <p className="text-sm text-gray-900">{lead.lead_source || 'N/A'}</p>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Lead Source
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {lead.lead_source || 'N/A'}
+                        </p>
                       </div>
                     </div>
                     {lead.notes && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                        <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded-md">{lead.notes}</p>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Notes
+                        </label>
+                        <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded-md">
+                          {lead.notes}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -402,23 +475,36 @@ export default function LeadDetails({ params }) {
               <div className="space-y-6">
                 {/* Status & Priority */}
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Status & Priority</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Status & Priority
+                  </h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Current Status</label>
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(lead.enquiry_status)}`}>
-                        {lead.enquiry_status?.replace('_', ' ').toUpperCase() || 'N/A'}
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Current Status
+                      </label>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(lead.enquiry_status)}`}
+                      >
+                        {lead.enquiry_status?.replace('_', ' ').toUpperCase() ||
+                          'N/A'}
                       </span>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-                      <p className={`text-sm font-medium flex items-center ${getPriorityColor(lead.priority)}`}>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Priority
+                      </label>
+                      <p
+                        className={`text-sm font-medium flex items-center ${getPriorityColor(lead.priority)}`}
+                      >
                         <FlagIcon className="h-4 w-4 mr-1" />
                         {lead.priority?.toUpperCase() || 'N/A'}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Enquiry Date</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Enquiry Date
+                      </label>
                       <p className="text-sm text-gray-900 flex items-center">
                         <CalendarIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {formatDate(lead.enquiry_date)}
@@ -429,16 +515,22 @@ export default function LeadDetails({ params }) {
 
                 {/* Timeline */}
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Timeline</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Timeline
+                  </h3>
                   <div className="space-y-3">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-600">Created:</span>
-                      <span className="text-gray-900">{formatDate(lead.created_at)}</span>
+                      <span className="text-gray-900">
+                        {formatDate(lead.created_at)}
+                      </span>
                     </div>
                     {lead.updated_at && lead.updated_at !== lead.created_at && (
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-gray-600">Last Updated:</span>
-                        <span className="text-gray-900">{formatDate(lead.updated_at)}</span>
+                        <span className="text-gray-900">
+                          {formatDate(lead.updated_at)}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -446,11 +538,15 @@ export default function LeadDetails({ params }) {
 
                 {/* Lead ID */}
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Lead Information</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Lead Information
+                  </h3>
                   <div className="space-y-3">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-600">Lead ID:</span>
-                      <span className="text-gray-900 font-mono">#{lead.id}</span>
+                      <span className="text-gray-900 font-mono">
+                        #{lead.id}
+                      </span>
                     </div>
                   </div>
                 </div>

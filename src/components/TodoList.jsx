@@ -9,19 +9,19 @@ import {
   FlagIcon,
   PencilIcon,
   ClipboardDocumentListIcon,
-  ClockIcon
+  ClockIcon,
 } from '@heroicons/react/24/outline';
 
 const PRIORITY_COLORS = {
   high: 'text-red-600 bg-red-50 border-red-200',
   medium: 'text-amber-600 bg-amber-50 border-amber-200',
-  low: 'text-green-600 bg-green-50 border-green-200'
+  low: 'text-green-600 bg-green-50 border-green-200',
 };
 
 const PRIORITY_LABELS = {
   high: 'High',
   medium: 'Medium',
-  low: 'Low'
+  low: 'Low',
 };
 
 // Helper to get today's date in YYYY-MM-DD format
@@ -47,7 +47,7 @@ export default function TodoList() {
     description: '',
     priority: 'medium',
     due_date: getTodayDate(),
-    due_time: getCurrentTime()
+    due_time: getCurrentTime(),
   });
 
   const fetchTodos = useCallback(async () => {
@@ -84,18 +84,18 @@ export default function TodoList() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...newTodo,
-          due_date: dueDateTime
-        })
+          due_date: dueDateTime,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        setTodos(prev => [data.data, ...prev]);
-        setNewTodo({ 
-          title: '', 
-          description: '', 
-          priority: 'medium', 
+        setTodos((prev) => [data.data, ...prev]);
+        setNewTodo({
+          title: '',
+          description: '',
+          priority: 'medium',
           due_date: getTodayDate(),
-          due_time: getCurrentTime()
+          due_time: getCurrentTime(),
         });
         setShowAddForm(false);
       }
@@ -110,14 +110,16 @@ export default function TodoList() {
       const res = await fetch('/api/todos', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: todo.id, status: newStatus })
+        body: JSON.stringify({ id: todo.id, status: newStatus }),
       });
       const data = await res.json();
       if (data.success) {
         if (newStatus === 'completed' && !showCompleted) {
-          setTodos(prev => prev.filter(t => t.id !== todo.id));
+          setTodos((prev) => prev.filter((t) => t.id !== todo.id));
         } else {
-          setTodos(prev => prev.map(t => t.id === todo.id ? data.data : t));
+          setTodos((prev) =>
+            prev.map((t) => (t.id === todo.id ? data.data : t))
+          );
         }
       }
     } catch (error) {
@@ -130,7 +132,7 @@ export default function TodoList() {
       const res = await fetch(`/api/todos?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
-        setTodos(prev => prev.filter(t => t.id !== id));
+        setTodos((prev) => prev.filter((t) => t.id !== id));
       }
     } catch (error) {
       console.error('Error deleting todo:', error);
@@ -142,11 +144,11 @@ export default function TodoList() {
       const res = await fetch('/api/todos', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, ...updates })
+        body: JSON.stringify({ id, ...updates }),
       });
       const data = await res.json();
       if (data.success) {
-        setTodos(prev => prev.map(t => t.id === id ? data.data : t));
+        setTodos((prev) => prev.map((t) => (t.id === id ? data.data : t)));
         setEditingId(null);
       }
     } catch (error) {
@@ -161,31 +163,49 @@ export default function TodoList() {
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    
+
     // Format time if available
     const hasTime = dateStr.includes('T') && !dateStr.endsWith('00:00:00');
-    const timeStr = hasTime ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
-    
+    const timeStr = hasTime
+      ? date.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        })
+      : '';
+
     const dateOnly = new Date(date);
     dateOnly.setHours(0, 0, 0, 0);
-    
+
     if (dateOnly < today) {
-      return { text: `Overdue${timeStr ? ' • ' + timeStr : ''}`, class: 'text-red-600 bg-red-50' };
+      return {
+        text: `Overdue${timeStr ? ' • ' + timeStr : ''}`,
+        class: 'text-red-600 bg-red-50',
+      };
     } else if (dateOnly.toDateString() === today.toDateString()) {
-      return { text: `Today${timeStr ? ' • ' + timeStr : ''}`, class: 'text-amber-600 bg-amber-50' };
+      return {
+        text: `Today${timeStr ? ' • ' + timeStr : ''}`,
+        class: 'text-amber-600 bg-amber-50',
+      };
     } else if (dateOnly.toDateString() === tomorrow.toDateString()) {
-      return { text: `Tomorrow${timeStr ? ' • ' + timeStr : ''}`, class: 'text-blue-600 bg-blue-50' };
+      return {
+        text: `Tomorrow${timeStr ? ' • ' + timeStr : ''}`,
+        class: 'text-blue-600 bg-blue-50',
+      };
     } else {
-      const dateText = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      return { 
-        text: `${dateText}${timeStr ? ' • ' + timeStr : ''}`, 
-        class: 'text-gray-600 bg-gray-50' 
+      const dateText = date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+      return {
+        text: `${dateText}${timeStr ? ' • ' + timeStr : ''}`,
+        class: 'text-gray-600 bg-gray-50',
       };
     }
   };
 
-  const pendingCount = todos.filter(t => t.status !== 'completed').length;
-  const completedCount = todos.filter(t => t.status === 'completed').length;
+  const pendingCount = todos.filter((t) => t.status !== 'completed').length;
+  const completedCount = todos.filter((t) => t.status === 'completed').length;
 
   return (
     <div className="w-64 lg:w-72 xl:w-80 bg-white border-r border-gray-200 flex flex-col h-full">
@@ -204,7 +224,7 @@ export default function TodoList() {
                 description: '',
                 priority: 'medium',
                 due_date: getTodayDate(),
-                due_time: getCurrentTime()
+                due_time: getCurrentTime(),
               });
               setShowAddForm(!showAddForm);
             }}
@@ -218,7 +238,8 @@ export default function TodoList() {
         {/* Stats */}
         <div className="flex items-center space-x-4 text-xs">
           <span className="text-gray-500">
-            <span className="font-medium text-gray-900">{pendingCount}</span> pending
+            <span className="font-medium text-gray-900">{pendingCount}</span>{' '}
+            pending
           </span>
           {completedCount > 0 && (
             <button
@@ -233,22 +254,29 @@ export default function TodoList() {
 
       {/* Add Form */}
       {showAddForm && (
-        <form onSubmit={handleAddTodo} className="p-3 border-b border-gray-100 bg-gray-50">
+        <form
+          onSubmit={handleAddTodo}
+          className="p-3 border-b border-gray-100 bg-gray-50"
+        >
           <input
             type="text"
             value={newTodo.title}
-            onChange={(e) => setNewTodo(prev => ({ ...prev, title: e.target.value }))}
+            onChange={(e) =>
+              setNewTodo((prev) => ({ ...prev, title: e.target.value }))
+            }
             placeholder="What needs to be done?"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 mb-2"
             autoFocus
           />
-          
+
           {/* Priority */}
           <div className="mb-2">
             <label className="block text-xs text-gray-500 mb-1">Priority</label>
             <select
               value={newTodo.priority}
-              onChange={(e) => setNewTodo(prev => ({ ...prev, priority: e.target.value }))}
+              onChange={(e) =>
+                setNewTodo((prev) => ({ ...prev, priority: e.target.value }))
+              }
               className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
             >
               <option value="low">🟢 Low Priority</option>
@@ -256,17 +284,24 @@ export default function TodoList() {
               <option value="high">🔴 High Priority</option>
             </select>
           </div>
-          
+
           {/* Date and Time */}
           <div className="mb-3">
-            <label className="block text-xs text-gray-500 mb-1">Due Date & Time</label>
+            <label className="block text-xs text-gray-500 mb-1">
+              Due Date & Time
+            </label>
             <div className="flex items-center space-x-2">
               <div className="flex-1 relative">
                 <CalendarIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                 <input
                   type="date"
                   value={newTodo.due_date}
-                  onChange={(e) => setNewTodo(prev => ({ ...prev, due_date: e.target.value }))}
+                  onChange={(e) =>
+                    setNewTodo((prev) => ({
+                      ...prev,
+                      due_date: e.target.value,
+                    }))
+                  }
                   className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                 />
               </div>
@@ -275,13 +310,18 @@ export default function TodoList() {
                 <input
                   type="time"
                   value={newTodo.due_time}
-                  onChange={(e) => setNewTodo(prev => ({ ...prev, due_time: e.target.value }))}
+                  onChange={(e) =>
+                    setNewTodo((prev) => ({
+                      ...prev,
+                      due_time: e.target.value,
+                    }))
+                  }
                   className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                 />
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-2">
             <button
               type="submit"
@@ -294,12 +334,12 @@ export default function TodoList() {
               type="button"
               onClick={() => {
                 setShowAddForm(false);
-                setNewTodo({ 
-                  title: '', 
-                  description: '', 
-                  priority: 'medium', 
+                setNewTodo({
+                  title: '',
+                  description: '',
+                  priority: 'medium',
                   due_date: getTodayDate(),
-                  due_time: getCurrentTime()
+                  due_time: getCurrentTime(),
                 });
               }}
               className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -361,30 +401,39 @@ export default function TodoList() {
                       />
                     ) : (
                       <>
-                        <p className={`text-sm font-medium ${
-                          todo.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-900'
-                        }`}>
+                        <p
+                          className={`text-sm font-medium ${
+                            todo.status === 'completed'
+                              ? 'line-through text-gray-500'
+                              : 'text-gray-900'
+                          }`}
+                        >
                           {todo.title}
                         </p>
-                        
+
                         {/* Meta info */}
                         <div className="flex items-center flex-wrap gap-1.5 mt-1">
                           {/* Priority */}
-                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${PRIORITY_COLORS[todo.priority]}`}>
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${PRIORITY_COLORS[todo.priority]}`}
+                          >
                             <FlagIcon className="h-3 w-3 mr-0.5" />
                             {PRIORITY_LABELS[todo.priority]}
                           </span>
-                          
+
                           {/* Due date */}
-                          {todo.due_date && (() => {
-                            const dueInfo = formatDueDate(todo.due_date);
-                            return dueInfo ? (
-                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${dueInfo.class}`}>
-                                <CalendarIcon className="h-3 w-3 mr-0.5" />
-                                {dueInfo.text}
-                              </span>
-                            ) : null;
-                          })()}
+                          {todo.due_date &&
+                            (() => {
+                              const dueInfo = formatDueDate(todo.due_date);
+                              return dueInfo ? (
+                                <span
+                                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${dueInfo.class}`}
+                                >
+                                  <CalendarIcon className="h-3 w-3 mr-0.5" />
+                                  {dueInfo.text}
+                                </span>
+                              ) : null;
+                            })()}
                         </div>
                       </>
                     )}
@@ -426,33 +475,33 @@ function EditTodoForm({ todo, onSave, onCancel }) {
     const date = new Date(dateStr);
     return {
       date: date.toISOString().split('T')[0],
-      time: date.toTimeString().slice(0, 5)
+      time: date.toTimeString().slice(0, 5),
     };
   };
-  
+
   const { date: initialDate, time: initialTime } = parseDateTime(todo.due_date);
-  
+
   const [form, setForm] = useState({
     title: todo.title,
     priority: todo.priority,
     due_date: initialDate,
-    due_time: initialTime
+    due_time: initialTime,
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
-    
+
     // Combine date and time
     let dueDateTime = form.due_date;
     if (form.due_date && form.due_time) {
       dueDateTime = `${form.due_date}T${form.due_time}:00`;
     }
-    
+
     onSave({
       title: form.title,
       priority: form.priority,
-      due_date: dueDateTime
+      due_date: dueDateTime,
     });
   };
 
@@ -461,14 +510,18 @@ function EditTodoForm({ todo, onSave, onCancel }) {
       <input
         type="text"
         value={form.title}
-        onChange={(e) => setForm(prev => ({ ...prev, title: e.target.value }))}
+        onChange={(e) =>
+          setForm((prev) => ({ ...prev, title: e.target.value }))
+        }
         className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
         autoFocus
       />
       <div className="flex items-center space-x-2">
         <select
           value={form.priority}
-          onChange={(e) => setForm(prev => ({ ...prev, priority: e.target.value }))}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, priority: e.target.value }))
+          }
           className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded"
         >
           <option value="low">🟢 Low</option>
@@ -480,13 +533,17 @@ function EditTodoForm({ todo, onSave, onCancel }) {
         <input
           type="date"
           value={form.due_date}
-          onChange={(e) => setForm(prev => ({ ...prev, due_date: e.target.value }))}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, due_date: e.target.value }))
+          }
           className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded"
         />
         <input
           type="time"
           value={form.due_time}
-          onChange={(e) => setForm(prev => ({ ...prev, due_time: e.target.value }))}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, due_time: e.target.value }))
+          }
           className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded"
         />
       </div>

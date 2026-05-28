@@ -1,6 +1,6 @@
 /**
  * API Response Cache Utility
- * 
+ *
  * Provides in-memory caching for API responses with:
  * - Configurable TTL per cache key
  * - Automatic cleanup of expired entries
@@ -13,11 +13,11 @@ const cache = new Map();
 
 // Default TTL values for different cache categories (in milliseconds)
 export const CACHE_TTL = {
-  DASHBOARD_STATS: 30 * 1000,      // 30 seconds
-  USER_DATA: 60 * 1000,            // 1 minute
-  PERMISSIONS: 5 * 60 * 1000,      // 5 minutes
-  STATIC_DATA: 10 * 60 * 1000,     // 10 minutes
-  ANALYTICS: 2 * 60 * 1000,        // 2 minutes
+  DASHBOARD_STATS: 30 * 1000, // 30 seconds
+  USER_DATA: 60 * 1000, // 1 minute
+  PERMISSIONS: 5 * 60 * 1000, // 5 minutes
+  STATIC_DATA: 10 * 60 * 1000, // 10 minutes
+  ANALYTICS: 2 * 60 * 1000, // 2 minutes
 };
 
 const MAX_CACHE_SIZE = 1000;
@@ -31,7 +31,7 @@ function cleanupIfNeeded() {
   const now = Date.now();
   if (now - lastCleanup < CLEANUP_INTERVAL) return;
   lastCleanup = now;
-  
+
   let expired = 0;
   for (const [key, entry] of cache.entries()) {
     if (entry.expiresAt < now) {
@@ -39,7 +39,7 @@ function cleanupIfNeeded() {
       expired++;
     }
   }
-  
+
   // If still too large, remove oldest entries
   if (cache.size > MAX_CACHE_SIZE) {
     const entries = Array.from(cache.entries());
@@ -59,7 +59,10 @@ export function cacheKey(prefix, identifier, params) {
   let key = prefix;
   if (identifier) key += `:${identifier}`;
   if (params) {
-    const sortedParams = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&');
+    const sortedParams = Object.keys(params)
+      .sort()
+      .map((k) => `${k}=${params[k]}`)
+      .join('&');
     if (sortedParams) key += `?${sortedParams}`;
   }
   return key;
@@ -72,15 +75,15 @@ export function cacheKey(prefix, identifier, params) {
  */
 export function getCache(key) {
   cleanupIfNeeded();
-  
+
   const entry = cache.get(key);
   if (!entry) return null;
-  
+
   if (entry.expiresAt < Date.now()) {
     cache.delete(key);
     return null;
   }
-  
+
   return entry.data;
 }
 
@@ -92,12 +95,12 @@ export function getCache(key) {
  */
 export function setCache(key, data, ttlMs = 60000) {
   cleanupIfNeeded();
-  
+
   const now = Date.now();
   cache.set(key, {
     data,
     createdAt: now,
-    expiresAt: now + ttlMs
+    expiresAt: now + ttlMs,
   });
 }
 
@@ -136,7 +139,7 @@ export function getCacheStats() {
   const now = Date.now();
   let expired = 0;
   let valid = 0;
-  
+
   for (const entry of cache.values()) {
     if (entry.expiresAt < now) {
       expired++;
@@ -144,11 +147,11 @@ export function getCacheStats() {
       valid++;
     }
   }
-  
+
   return {
     totalEntries: cache.size,
     validEntries: valid,
-    expiredEntries: expired
+    expiredEntries: expired,
   };
 }
 
@@ -162,20 +165,22 @@ export function getCacheStats() {
 export function withCache(keyPrefix, fn, ttlMs = 60000) {
   return async function cachedFn(...args) {
     // Generate cache key from arguments
-    const argsKey = args.map(a => {
-      if (a === null || a === undefined) return 'null';
-      if (typeof a === 'object') return JSON.stringify(a);
-      return String(a);
-    }).join(':');
-    
+    const argsKey = args
+      .map((a) => {
+        if (a === null || a === undefined) return 'null';
+        if (typeof a === 'object') return JSON.stringify(a);
+        return String(a);
+      })
+      .join(':');
+
     const key = `${keyPrefix}:${argsKey}`;
-    
+
     // Check cache
     const cached = getCache(key);
     if (cached !== null) {
       return cached;
     }
-    
+
     // Execute function and cache result
     const result = await fn(...args);
     setCache(key, result, ttlMs);
@@ -195,19 +200,19 @@ export function cachedResponse(data, options = {}) {
     maxAge = 30,
     staleWhileRevalidate = 60,
     isPrivate = true,
-    headers = {}
+    headers = {},
   } = options;
-  
-  const cacheControl = isPrivate 
+
+  const cacheControl = isPrivate
     ? `private, max-age=${maxAge}, stale-while-revalidate=${staleWhileRevalidate}`
     : `public, max-age=${maxAge}, stale-while-revalidate=${staleWhileRevalidate}`;
-  
+
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': cacheControl,
-      ...headers
-    }
+      ...headers,
+    },
   });
 }

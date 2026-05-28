@@ -5,7 +5,10 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
-import { RESOURCES as RBAC_RESOURCES, PERMISSIONS as RBAC_PERMISSIONS } from '@/utils/rbac';
+import {
+  RESOURCES as RBAC_RESOURCES,
+  PERMISSIONS as RBAC_PERMISSIONS,
+} from '@/utils/rbac';
 import {
   UsersIcon,
   ClockIcon,
@@ -16,19 +19,30 @@ import {
   ChevronRightIcon,
   InformationCircleIcon,
   KeyIcon,
-  PencilIcon
+  PencilIcon,
 } from '@heroicons/react/24/outline';
 
 // Tab configuration
 const TABS = [
-  { id: 'users', label: 'Users', icon: UsersIcon, description: 'Manage user accounts and their permissions' },
-  { id: 'audit', label: 'Audit Log', icon: ClockIcon, description: 'View permission change history' }
+  {
+    id: 'users',
+    label: 'Users',
+    icon: UsersIcon,
+    description: 'Manage user accounts and their permissions',
+  },
+  {
+    id: 'audit',
+    label: 'Audit Log',
+    icon: ClockIcon,
+    description: 'View permission change history',
+  },
 ];
 
 export default function UserMasterPage() {
   const { loading: rbacLoading, can } = useSessionRBAC();
-  const canUsersRead = !rbacLoading && can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.READ);
-  
+  const canUsersRead =
+    !rbacLoading && can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.READ);
+
   const [activeTab, setActiveTab] = useState('users');
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +55,11 @@ export default function UserMasterPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Navbar />
-        <LoadingSpinner message="Loading Users" subMessage="Fetching user data..." fullScreen={false} />
+        <LoadingSpinner
+          message="Loading Users"
+          subMessage="Fetching user data..."
+          fullScreen={false}
+        />
       </div>
     );
   }
@@ -54,8 +72,12 @@ export default function UserMasterPage() {
           <div className="flex items-center justify-center h-[calc(100vh-120px)]">
             <div className="text-center">
               <LockClosedIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-gray-700">Access Denied</h2>
-              <p className="text-gray-500 mt-2">You don&apos;t have permission to view this page.</p>
+              <h2 className="text-xl font-semibold text-gray-700">
+                Access Denied
+              </h2>
+              <p className="text-gray-500 mt-2">
+                You don&apos;t have permission to view this page.
+              </p>
             </div>
           </div>
         </div>
@@ -66,7 +88,7 @@ export default function UserMasterPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
-      
+
       <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-16 max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -80,7 +102,9 @@ export default function UserMasterPage() {
                 <li className="text-gray-700">User Management</li>
               </ol>
             </nav>
-            <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              User Management
+            </h1>
           </div>
         </div>
 
@@ -91,21 +115,24 @@ export default function UserMasterPage() {
               {TABS.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
-                
+
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={`
                       group relative flex-1 py-4 px-6 text-center border-b-2 font-medium text-sm transition-all
-                      ${isActive 
-                        ? 'border-[#64126D] text-[#64126D] bg-purple-50/50' 
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                      ${
+                        isActive
+                          ? 'border-[#64126D] text-[#64126D] bg-purple-50/50'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
                       }
                     `}
                   >
                     <div className="flex items-center justify-center gap-2">
-                      <Icon className={`h-5 w-5 ${isActive ? 'text-[#64126D]' : 'text-gray-400 group-hover:text-gray-500'}`} />
+                      <Icon
+                        className={`h-5 w-5 ${isActive ? 'text-[#64126D]' : 'text-gray-400 group-hover:text-gray-500'}`}
+                      />
                       <span>{tab.label}</span>
                     </div>
                   </button>
@@ -117,7 +144,7 @@ export default function UserMasterPage() {
           {/* Tab Description */}
           <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
             <p className="text-sm text-gray-600">
-              {TABS.find(t => t.id === activeTab)?.description}
+              {TABS.find((t) => t.id === activeTab)?.description}
             </p>
           </div>
 
@@ -159,9 +186,9 @@ function UsersTabContent() {
       const [empRes, usersRes, vendorsRes] = await Promise.all([
         fetch('/api/employees/list?limit=1000'),
         fetch('/api/users/list?limit=1000'),
-        fetch('/api/vendors')
+        fetch('/api/vendors'),
       ]);
-      
+
       const empData = await empRes.json();
       const usersData = await usersRes.json();
       const vendorsData = await vendorsRes.json();
@@ -177,43 +204,52 @@ function UsersTabContent() {
   };
 
   const getEmployeeForUser = (employeeId) => {
-    return employees.find(e => e.id === employeeId);
+    return employees.find((e) => e.id === employeeId);
   };
 
   const getVendorForUser = (vendorId) => {
-    return vendors.find(v => v.id === vendorId);
+    return vendors.find((v) => v.id === vendorId);
   };
 
   // Get employees without user accounts (for create user modal)
   // Convert to strings for comparison to handle type mismatches
   // Also handle null/undefined employee_id values
-  const employeesWithoutAccount = employees.filter(emp => {
+  const employeesWithoutAccount = employees.filter((emp) => {
     if (!emp.id) return false; // Skip employees without valid id
     const empIdStr = String(emp.id);
-    const hasUser = users.some(u => u.employee_id && String(u.employee_id) === empIdStr);
+    const hasUser = users.some(
+      (u) => u.employee_id && String(u.employee_id) === empIdStr
+    );
     return !hasUser;
   });
 
   // Get vendors without user accounts (for create user modal)
-  const vendorsWithoutAccount = vendors.filter(vnd => {
+  const vendorsWithoutAccount = vendors.filter((vnd) => {
     if (!vnd.id) return false; // Skip vendors without valid id
     const vndIdStr = String(vnd.id);
-    const hasUser = users.some(u => u.vendor_id && String(u.vendor_id) === vndIdStr);
+    const hasUser = users.some(
+      (u) => u.vendor_id && String(u.vendor_id) === vndIdStr
+    );
     return !hasUser;
   });
 
   // Filter users based on search
-  const filteredUsers = users.filter(user => {
+  const filteredUsers = users.filter((user) => {
     const employee = getEmployeeForUser(user.employee_id);
     const vendor = getVendorForUser(user.vendor_id);
-    const fullName = employee ? `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase() : 
-                     vendor ? vendor.vendor_name?.toLowerCase() : '';
-    const matchesSearch = !searchQuery || 
+    const fullName = employee
+      ? `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase()
+      : vendor
+        ? vendor.vendor_name?.toLowerCase()
+        : '';
+    const matchesSearch =
+      !searchQuery ||
       user.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       fullName.includes(searchQuery.toLowerCase());
-    
-    const matchesFilter = filterStatus === 'all' ||
+
+    const matchesFilter =
+      filterStatus === 'all' ||
       (filterStatus === 'active' && user.status === 'active') ||
       (filterStatus === 'inactive' && user.status !== 'active');
 
@@ -221,14 +257,17 @@ function UsersTabContent() {
   });
 
   const totalUsers = users.length;
-  const activeUsers = users.filter(u => u.status === 'active').length;
+  const activeUsers = users.filter((u) => u.status === 'active').length;
   const inactiveUsers = totalUsers - activeUsers;
 
   // Count permissions for a user
   const getPermissionCount = (user) => {
     if (!user?.permissions) return 0;
     try {
-      const perms = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
+      const perms =
+        typeof user.permissions === 'string'
+          ? JSON.parse(user.permissions)
+          : user.permissions;
       return Array.isArray(perms) ? perms.length : 0;
     } catch {
       return 0;
@@ -262,7 +301,9 @@ function UsersTabContent() {
         </div>
         <div className="bg-gradient-to-br from-orange-50 to-white rounded-lg border border-orange-100 p-4">
           <div className="text-sm text-gray-600">Inactive Users</div>
-          <div className="text-2xl font-bold text-orange-600">{inactiveUsers}</div>
+          <div className="text-2xl font-bold text-orange-600">
+            {inactiveUsers}
+          </div>
         </div>
       </div>
 
@@ -291,7 +332,10 @@ function UsersTabContent() {
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          disabled={employeesWithoutAccount.length === 0 && vendorsWithoutAccount.length === 0}
+          disabled={
+            employeesWithoutAccount.length === 0 &&
+            vendorsWithoutAccount.length === 0
+          }
           className="inline-flex items-center gap-2 px-4 py-2 bg-[#64126D] text-white rounded-lg hover:bg-[#4a0d52] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <PlusIcon className="h-5 w-5" />
@@ -328,18 +372,23 @@ function UsersTabContent() {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
-                    {users.length === 0 ? 'No users found. Create a user from an employee.' : 'No users match your search.'}
+                  <td
+                    colSpan={6}
+                    className="px-6 py-12 text-center text-gray-500"
+                  >
+                    {users.length === 0
+                      ? 'No users found. Create a user from an employee.'
+                      : 'No users match your search.'}
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((user) => {
                   const employee = getEmployeeForUser(user.employee_id);
-                  const fullName = employee 
-                    ? `${employee.first_name || ''} ${employee.last_name || ''}`.trim() 
+                  const fullName = employee
+                    ? `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
                     : user.full_name || user.username;
                   const permCount = getPermissionCount(user);
-                  
+
                   return (
                     <tr key={user.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -348,21 +397,30 @@ function UsersTabContent() {
                             {fullName.charAt(0).toUpperCase()}
                           </div>
                           <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">{user.username}</div>
-                            <div className="text-sm text-gray-500">{user.email}</div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {user.username}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {user.email}
+                            </div>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {employee ? (
                           <div>
-                            <div className="text-sm font-medium text-gray-900">{fullName}</div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {fullName}
+                            </div>
                             <div className="text-sm text-gray-500">
-                              {employee.department || '-'} • {employee.position || '-'}
+                              {employee.department || '-'} •{' '}
+                              {employee.position || '-'}
                             </div>
                           </div>
                         ) : (
-                          <span className="text-sm text-gray-400 italic">No linked employee</span>
+                          <span className="text-sm text-gray-400 italic">
+                            No linked employee
+                          </span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -376,21 +434,25 @@ function UsersTabContent() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-600">
-                          {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                          {user.last_login
+                            ? new Date(user.last_login).toLocaleDateString()
+                            : 'Never'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          user.status === 'active' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            user.status === 'active'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}
+                        >
                           {user.status || 'Active'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-3">
-                          <button 
+                          <button
                             onClick={() => {
                               setSelectedUserForEdit(user);
                               setShowEditModal(true);
@@ -401,7 +463,7 @@ function UsersTabContent() {
                             <PencilIcon className="h-4 w-4" />
                             Edit
                           </button>
-                          <button 
+                          <button
                             onClick={() => {
                               setSelectedUserForReset(user);
                               setShowResetPasswordModal(true);
@@ -412,7 +474,7 @@ function UsersTabContent() {
                             <KeyIcon className="h-4 w-4" />
                             Reset
                           </button>
-                          <button 
+                          <button
                             onClick={() => goToPermissions(user.id)}
                             className="text-[#64126D] hover:text-[#4a0d52] font-medium inline-flex items-center gap-1"
                           >
@@ -488,7 +550,14 @@ function UsersTabContent() {
 }
 
 // Select Employee/Vendor Modal - First step to create a user
-function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selectedEmployee, onSuccess }) {
+function SelectEmployeeModal({
+  employees,
+  vendors = [],
+  onSelect,
+  onClose,
+  selectedEmployee,
+  onSuccess,
+}) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [accountType, setAccountType] = useState('employee'); // 'employee' or 'vendor'
@@ -496,7 +565,7 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
   const [formData, setFormData] = useState({
     username: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -504,33 +573,39 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
   // Update form when entity is selected
   useEffect(() => {
     if (selectedEntity) {
-      const email = accountType === 'employee' 
-        ? selectedEntity.email 
-        : selectedEntity.email;
-      setFormData(prev => ({
+      const email =
+        accountType === 'employee'
+          ? selectedEntity.email
+          : selectedEntity.email;
+      setFormData((prev) => ({
         ...prev,
-        username: email?.split('@')[0] || ''
+        username: email?.split('@')[0] || '',
       }));
     }
   }, [selectedEntity, accountType]);
 
   // Filter employees based on search
-  const filteredEmployees = employees.filter(emp => {
-    const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
+  const filteredEmployees = employees.filter((emp) => {
+    const fullName =
+      `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
     const empId = String(emp.employee_id || '').toLowerCase();
-    return !searchQuery || 
+    return (
+      !searchQuery ||
       fullName.includes(searchQuery.toLowerCase()) ||
       emp.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      empId.includes(searchQuery.toLowerCase());
+      empId.includes(searchQuery.toLowerCase())
+    );
   });
 
   // Filter vendors based on search
-  const filteredVendors = vendors.filter(vnd => {
-    return !searchQuery || 
+  const filteredVendors = vendors.filter((vnd) => {
+    return (
+      !searchQuery ||
       vnd.vendor_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       vnd.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       vnd.contact_person?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      vnd.vendor_id?.toLowerCase().includes(searchQuery.toLowerCase());
+      vnd.vendor_id?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
   });
 
   const handleSubmit = async (e) => {
@@ -538,7 +613,9 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
     setError('');
 
     if (!selectedEntity) {
-      setError(`Please select ${accountType === 'employee' ? 'an employee' : 'a vendor'} first`);
+      setError(
+        `Please select ${accountType === 'employee' ? 'an employee' : 'a vendor'} first`
+      );
       return;
     }
 
@@ -563,23 +640,25 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
         username: formData.username,
         password: formData.password,
         account_type: accountType,
-        permissions: []
+        permissions: [],
       };
 
       if (accountType === 'employee') {
         payload.employee_id = selectedEntity.id;
         payload.email = selectedEntity.email;
-        payload.full_name = `${selectedEntity.first_name || ''} ${selectedEntity.last_name || ''}`.trim();
+        payload.full_name =
+          `${selectedEntity.first_name || ''} ${selectedEntity.last_name || ''}`.trim();
       } else {
         payload.vendor_id = selectedEntity.id;
         payload.email = selectedEntity.email;
-        payload.full_name = selectedEntity.contact_person || selectedEntity.vendor_name;
+        payload.full_name =
+          selectedEntity.contact_person || selectedEntity.vendor_name;
       }
 
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -616,12 +695,15 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Create User</h3>
             <p className="text-sm text-gray-500 mt-0.5">
-              {selectedEntity 
-                ? 'Set up login credentials' 
+              {selectedEntity
+                ? 'Set up login credentials'
                 : `Select ${accountType === 'employee' ? 'an employee' : 'a vendor'} to create a user account`}
             </p>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-200 rounded-lg transition-colors"
+          >
             <XMarkIcon className="h-5 w-5 text-gray-500" />
           </button>
         </div>
@@ -634,7 +716,10 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => { setAccountType('employee'); setSearchQuery(''); }}
+                  onClick={() => {
+                    setAccountType('employee');
+                    setSearchQuery('');
+                  }}
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                     accountType === 'employee'
                       ? 'bg-[#64126D] text-white'
@@ -645,7 +730,10 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setAccountType('vendor'); setSearchQuery(''); }}
+                  onClick={() => {
+                    setAccountType('vendor');
+                    setSearchQuery('');
+                  }}
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                     accountType === 'vendor'
                       ? 'bg-[#64126D] text-white'
@@ -663,7 +751,11 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
                 <MagnifyingGlassIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder={accountType === 'employee' ? 'Search employees...' : 'Search vendors...'}
+                  placeholder={
+                    accountType === 'employee'
+                      ? 'Search employees...'
+                      : 'Search vendors...'
+                  }
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
@@ -677,14 +769,15 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
                 // Employee List
                 filteredEmployees.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    {employees.length === 0 
+                    {employees.length === 0
                       ? 'All employees already have user accounts'
                       : 'No employees match your search'}
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {filteredEmployees.map((emp) => {
-                      const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
+                      const fullName =
+                        `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
                       return (
                         <button
                           key={emp.id}
@@ -695,8 +788,12 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
                             {fullName.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1">
-                            <div className="font-medium text-gray-900">{fullName}</div>
-                            <div className="text-sm text-gray-500">{emp.email}</div>
+                            <div className="font-medium text-gray-900">
+                              {fullName}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {emp.email}
+                            </div>
                             <div className="text-xs text-gray-400 mt-0.5">
                               {emp.department || '-'} • {emp.position || '-'}
                             </div>
@@ -707,37 +804,39 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
                     })}
                   </div>
                 )
+              ) : // Vendor List
+              filteredVendors.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  {vendors.length === 0
+                    ? 'All vendors already have user accounts'
+                    : 'No vendors match your search'}
+                </div>
               ) : (
-                // Vendor List
-                filteredVendors.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    {vendors.length === 0 
-                      ? 'All vendors already have user accounts'
-                      : 'No vendors match your search'}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {filteredVendors.map((vnd) => (
-                      <button
-                        key={vnd.id}
-                        onClick={() => handleSelectEntity(vnd)}
-                        className="w-full flex items-center gap-4 p-4 rounded-lg border border-gray-200 hover:border-[#64126D] hover:bg-purple-50 transition-all text-left"
-                      >
-                        <div className="h-12 w-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium text-lg">
-                          {(vnd.vendor_name || 'V').charAt(0).toUpperCase()}
+                <div className="space-y-2">
+                  {filteredVendors.map((vnd) => (
+                    <button
+                      key={vnd.id}
+                      onClick={() => handleSelectEntity(vnd)}
+                      className="w-full flex items-center gap-4 p-4 rounded-lg border border-gray-200 hover:border-[#64126D] hover:bg-purple-50 transition-all text-left"
+                    >
+                      <div className="h-12 w-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium text-lg">
+                        {(vnd.vendor_name || 'V').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">
+                          {vnd.vendor_name}
                         </div>
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-900">{vnd.vendor_name}</div>
-                          <div className="text-sm text-gray-500">{vnd.email || vnd.contact_person || '-'}</div>
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            {vnd.vendor_type || '-'} • {vnd.status || 'Active'}
-                          </div>
+                        <div className="text-sm text-gray-500">
+                          {vnd.email || vnd.contact_person || '-'}
                         </div>
-                        <ChevronRightIcon className="h-5 w-5 text-gray-400" />
-                      </button>
-                    ))}
-                  </div>
-                )
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {vnd.vendor_type || '-'} • {vnd.status || 'Active'}
+                        </div>
+                      </div>
+                      <ChevronRightIcon className="h-5 w-5 text-gray-400" />
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -745,27 +844,34 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
           // Step 2: Set Credentials
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {/* Selected Entity Info */}
-            <div className={`rounded-lg p-4 border ${accountType === 'employee' ? 'bg-purple-50 border-purple-100' : 'bg-blue-50 border-blue-100'}`}>
+            <div
+              className={`rounded-lg p-4 border ${accountType === 'employee' ? 'bg-purple-50 border-purple-100' : 'bg-blue-50 border-blue-100'}`}
+            >
               <div className="flex items-center gap-3">
-                <div className={`h-12 w-12 rounded-full flex items-center justify-center text-white font-medium text-lg ${accountType === 'employee' ? 'bg-[#64126D]' : 'bg-blue-600'}`}>
-                  {accountType === 'employee' 
-                    ? `${selectedEntity.first_name || ''} ${selectedEntity.last_name || ''}`.charAt(0).toUpperCase()
-                    : (selectedEntity.vendor_name || 'V').charAt(0).toUpperCase()
-                  }
+                <div
+                  className={`h-12 w-12 rounded-full flex items-center justify-center text-white font-medium text-lg ${accountType === 'employee' ? 'bg-[#64126D]' : 'bg-blue-600'}`}
+                >
+                  {accountType === 'employee'
+                    ? `${selectedEntity.first_name || ''} ${selectedEntity.last_name || ''}`
+                        .charAt(0)
+                        .toUpperCase()
+                    : (selectedEntity.vendor_name || 'V')
+                        .charAt(0)
+                        .toUpperCase()}
                 </div>
                 <div className="flex-1">
                   <div className="font-medium text-gray-900">
-                    {accountType === 'employee' 
+                    {accountType === 'employee'
                       ? `${selectedEntity.first_name || ''} ${selectedEntity.last_name || ''}`.trim()
-                      : selectedEntity.vendor_name
-                    }
+                      : selectedEntity.vendor_name}
                   </div>
-                  <div className="text-sm text-gray-500">{selectedEntity.email || '-'}</div>
+                  <div className="text-sm text-gray-500">
+                    {selectedEntity.email || '-'}
+                  </div>
                   <div className="text-xs text-gray-400">
-                    {accountType === 'employee' 
+                    {accountType === 'employee'
                       ? `${selectedEntity.department || '-'} • ${selectedEntity.position || '-'}`
-                      : `${selectedEntity.vendor_type || '-'} • ${selectedEntity.contact_person || '-'}`
-                    }
+                      : `${selectedEntity.vendor_type || '-'} • ${selectedEntity.contact_person || '-'}`}
                   </div>
                 </div>
                 <button
@@ -780,12 +886,16 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
 
             {/* Account Type Badge */}
             <div className="flex items-center gap-2">
-              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                accountType === 'employee' 
-                  ? 'bg-purple-100 text-purple-700' 
-                  : 'bg-blue-100 text-blue-700'
-              }`}>
-                {accountType === 'employee' ? 'Employee Account' : 'Vendor Account'}
+              <span
+                className={`px-2 py-1 text-xs font-medium rounded-full ${
+                  accountType === 'employee'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-blue-100 text-blue-700'
+                }`}
+              >
+                {accountType === 'employee'
+                  ? 'Employee Account'
+                  : 'Vendor Account'}
               </span>
             </div>
 
@@ -797,7 +907,9 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
               <input
                 type="text"
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, username: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
                 placeholder="Enter username"
               />
@@ -811,7 +923,9 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
               <input
                 type="password"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
                 placeholder="Enter password (min 6 characters)"
               />
@@ -825,7 +939,9 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
               <input
                 type="password"
                 value={formData.confirmPassword}
-                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, confirmPassword: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
                 placeholder="Confirm password"
               />
@@ -835,7 +951,8 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
               <div className="flex gap-2">
                 <InformationCircleIcon className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-blue-700">
-                  After creating the account, you&apos;ll be redirected to assign permissions.
+                  After creating the account, you&apos;ll be redirected to
+                  assign permissions.
                 </p>
               </div>
             </div>
@@ -884,7 +1001,7 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     username: employee.email?.split('@')[0] || '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -918,8 +1035,8 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
           password: formData.password,
           email: employee.email,
           employee_id: employee.id,
-          permissions: []
-        })
+          permissions: [],
+        }),
       });
 
       const data = await res.json();
@@ -940,17 +1057,23 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
     }
   };
 
-  const fullName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
+  const fullName =
+    `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Create User Account</h3>
+            <h3 className="text-lg font-semibold text-gray-900">
+              Create User Account
+            </h3>
             <p className="text-sm text-gray-500 mt-0.5">for {fullName}</p>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-200 rounded-lg transition-colors"
+          >
             <XMarkIcon className="h-5 w-5 text-gray-500" />
           </button>
         </div>
@@ -965,7 +1088,9 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
               <div>
                 <div className="font-medium text-gray-900">{fullName}</div>
                 <div className="text-sm text-gray-500">{employee.email}</div>
-                <div className="text-xs text-gray-400">{employee.department} • {employee.position}</div>
+                <div className="text-xs text-gray-400">
+                  {employee.department} • {employee.position}
+                </div>
               </div>
             </div>
           </div>
@@ -978,7 +1103,9 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
             <input
               type="text"
               value={formData.username}
-              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, username: e.target.value })
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
               placeholder="Enter username"
             />
@@ -992,7 +1119,9 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
             <input
               type="password"
               value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
               placeholder="Enter password"
             />
@@ -1006,7 +1135,9 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
             <input
               type="password"
               value={formData.confirmPassword}
-              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, confirmPassword: e.target.value })
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
               placeholder="Confirm password"
             />
@@ -1016,7 +1147,8 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
             <div className="flex gap-2">
               <InformationCircleIcon className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-blue-700">
-                After creating the account, you&apos;ll be redirected to assign permissions.
+                After creating the account, you&apos;ll be redirected to assign
+                permissions.
               </p>
             </div>
           </div>
@@ -1062,7 +1194,7 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
 function ResetPasswordModal({ user, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     newPassword: '',
-    confirmPassword: ''
+    confirmPassword: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -1095,8 +1227,8 @@ function ResetPasswordModal({ user, onClose, onSuccess }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user.id,
-          new_password: formData.newPassword
-        })
+          new_password: formData.newPassword,
+        }),
       });
 
       const data = await res.json();
@@ -1122,10 +1254,15 @@ function ResetPasswordModal({ user, onClose, onSuccess }) {
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between rounded-t-xl">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Reset Password</h3>
+            <h3 className="text-lg font-semibold text-gray-900">
+              Reset Password
+            </h3>
             <p className="text-sm text-gray-500 mt-0.5">For user: {fullName}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
             <XMarkIcon className="h-6 w-6" />
           </button>
         </div>
@@ -1135,7 +1272,9 @@ function ResetPasswordModal({ user, onClose, onSuccess }) {
             <div className="flex gap-2">
               <KeyIcon className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-amber-700">
-                This will reset the password for <strong>{user.username}</strong>. The user will need to use the new password on their next login.
+                This will reset the password for{' '}
+                <strong>{user.username}</strong>. The user will need to use the
+                new password on their next login.
               </p>
             </div>
           </div>
@@ -1147,7 +1286,9 @@ function ResetPasswordModal({ user, onClose, onSuccess }) {
             <input
               type="password"
               value={formData.newPassword}
-              onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, newPassword: e.target.value })
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
               placeholder="Enter new password"
               minLength={6}
@@ -1161,7 +1302,9 @@ function ResetPasswordModal({ user, onClose, onSuccess }) {
             <input
               type="password"
               value={formData.confirmPassword}
-              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, confirmPassword: e.target.value })
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
               placeholder="Confirm new password"
             />
@@ -1170,8 +1313,18 @@ function ResetPasswordModal({ user, onClose, onSuccess }) {
           {/* Success Message */}
           {success && (
             <div className="bg-green-50 text-green-600 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               {success}
             </div>
@@ -1219,13 +1372,13 @@ function ResetPasswordModal({ user, onClose, onSuccess }) {
 
 // Edit User Modal
 function EditUserModal({ user, employees, onClose, onSuccess }) {
-  const employee = employees?.find(e => e.id === user.employee_id);
+  const employee = employees?.find((e) => e.id === user.employee_id);
   const [formData, setFormData] = useState({
     username: user.username || '',
     email: user.email || '',
     full_name: user.full_name || '',
     status: user.status || 'active',
-    department: user.department || ''
+    department: user.department || '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -1252,8 +1405,8 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
           email: formData.email,
           full_name: formData.full_name,
           status: formData.status,
-          department: formData.department
-        })
+          department: formData.department,
+        }),
       });
 
       const data = await res.json();
@@ -1278,9 +1431,14 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white flex items-center justify-between rounded-t-xl">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Edit User</h3>
-            <p className="text-sm text-gray-500 mt-0.5">Update user account details</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Update user account details
+            </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
             <XMarkIcon className="h-6 w-6" />
           </button>
         </div>
@@ -1294,8 +1452,13 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
                   {(employee.first_name || 'U').charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">{employee.first_name} {employee.last_name}</p>
-                  <p className="text-xs text-gray-500">{employee.department || 'No department'} • {employee.position || 'No position'}</p>
+                  <p className="font-medium text-gray-900">
+                    {employee.first_name} {employee.last_name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {employee.department || 'No department'} •{' '}
+                    {employee.position || 'No position'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -1309,7 +1472,9 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
               <input
                 type="text"
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, username: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Enter username"
               />
@@ -1322,7 +1487,9 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
               <input
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Enter email"
               />
@@ -1336,7 +1503,9 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
             <input
               type="text"
               value={formData.full_name}
-              onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, full_name: e.target.value })
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Enter full name"
             />
@@ -1350,7 +1519,9 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
               <input
                 type="text"
                 value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, department: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Enter department"
               />
@@ -1362,7 +1533,9 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
               </label>
               <select
                 value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, status: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="active">Active</option>
@@ -1374,8 +1547,18 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
           {/* Success Message */}
           {success && (
             <div className="bg-green-50 text-green-600 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               {success}
             </div>
@@ -1427,7 +1610,9 @@ function AuditTabContent() {
       <div className="bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
         <ClockIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
         <h3 className="text-lg font-medium text-gray-900 mb-2">Audit Log</h3>
-        <p className="text-gray-500">Permission change history will be displayed here.</p>
+        <p className="text-gray-500">
+          Permission change history will be displayed here.
+        </p>
       </div>
     </div>
   );

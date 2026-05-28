@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Fetch single quotation by ID
 export async function GET(request, { params }) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -26,7 +34,10 @@ export async function GET(request, { params }) {
       );
 
       if (rows.length === 0) {
-        return NextResponse.json({ success: false, error: 'Proposal not found' }, { status: 404 });
+        return NextResponse.json(
+          { success: false, error: 'Proposal not found' },
+          { status: 404 }
+        );
       }
 
       const p = rows[0];
@@ -51,18 +62,24 @@ export async function GET(request, { params }) {
         tan_number: p.tan_number || '',
         terms_and_conditions: p.terms_and_conditions || '',
         // Annexure fields from proposal
-        annexure_scope_of_work: p.annexure_scope_of_work || p.scope_of_work || p.description || '',
-        annexure_input_document: p.annexure_input_document || p.input_document || '',
-        annexure_deliverables: p.annexure_deliverables || p.list_of_deliverables || '',
+        annexure_scope_of_work:
+          p.annexure_scope_of_work || p.scope_of_work || p.description || '',
+        annexure_input_document:
+          p.annexure_input_document || p.input_document || '',
+        annexure_deliverables:
+          p.annexure_deliverables || p.list_of_deliverables || '',
         annexure_software: p.annexure_software || p.software || '',
         software_included: p.software || '',
         annexure_duration: p.annexure_duration || p.duration || '',
         annexure_site_visit: p.annexure_site_visit || p.site_visit || '',
-        annexure_quotation_validity: p.annexure_quotation_validity || p.quotation_validity || '',
-        annexure_mode_of_delivery: p.annexure_mode_of_delivery || p.mode_of_delivery || '',
+        annexure_quotation_validity:
+          p.annexure_quotation_validity || p.quotation_validity || '',
+        annexure_mode_of_delivery:
+          p.annexure_mode_of_delivery || p.mode_of_delivery || '',
         annexure_revision: p.annexure_revision || p.revision || '',
         annexure_exclusions: p.annexure_exclusions || p.exclusions || '',
-        annexure_billing_payment_terms: p.annexure_billing_payment_terms || p.billing_payment_terms || '',
+        annexure_billing_payment_terms:
+          p.annexure_billing_payment_terms || p.billing_payment_terms || '',
         annexure_confidentiality: p.annexure_confidentiality || '',
         annexure_codes_standards: p.annexure_codes_standards || '',
         annexure_dispute_resolution: p.annexure_dispute_resolution || '',
@@ -80,9 +97,12 @@ export async function GET(request, { params }) {
             quotationData.company_address = companies[0].address;
             quotationData.company_phone = companies[0].phone;
             quotationData.company_email = companies[0].email;
-            quotationData.gst_number = quotationData.gst_number || companies[0].gst_number;
+            quotationData.gst_number =
+              quotationData.gst_number || companies[0].gst_number;
           }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
       }
     } else if (source === 'project') {
       // Fetch from project_quotations
@@ -92,7 +112,10 @@ export async function GET(request, { params }) {
       );
 
       if (rows.length === 0) {
-        return NextResponse.json({ success: false, error: 'Quotation not found' }, { status: 404 });
+        return NextResponse.json(
+          { success: false, error: 'Quotation not found' },
+          { status: 404 }
+        );
       }
 
       quotationData = rows[0];
@@ -111,22 +134,39 @@ export async function GET(request, { params }) {
           if (projects.length > 0) {
             const p = projects[0];
             quotationData.project_name = p.name;
-            quotationData.client_name = quotationData.client_name || p.client_name;
+            quotationData.client_name =
+              quotationData.client_name || p.client_name;
             // Map project fields to annexure fields if not already set
-            quotationData.scope_of_work = quotationData.annexure_scope_of_work || p.scope_of_work;
-            quotationData.input_document = quotationData.annexure_input_document || p.input_document || p.input_documents;
+            quotationData.scope_of_work =
+              quotationData.annexure_scope_of_work || p.scope_of_work;
+            quotationData.input_document =
+              quotationData.annexure_input_document ||
+              p.input_document ||
+              p.input_documents;
             quotationData.input_documents = p.input_documents;
-            quotationData.deliverables = quotationData.annexure_deliverables || p.deliverables || p.list_of_deliverables;
+            quotationData.deliverables =
+              quotationData.annexure_deliverables ||
+              p.deliverables ||
+              p.list_of_deliverables;
             quotationData.list_of_deliverables = p.list_of_deliverables;
-            quotationData.software_included = quotationData.annexure_software || p.software_included;
-            quotationData.duration = quotationData.annexure_duration || p.duration;
-            quotationData.site_visit = quotationData.annexure_site_visit || p.site_visit;
-            quotationData.quotation_validity = quotationData.annexure_quotation_validity || p.quotation_validity;
-            quotationData.mode_of_delivery = quotationData.annexure_mode_of_delivery || p.mode_of_delivery;
-            quotationData.revision = quotationData.annexure_revision || p.revision;
-            quotationData.exclusion = quotationData.annexure_exclusions || p.exclusion;
-            quotationData.billing_and_payment_terms = quotationData.annexure_billing_payment_terms || p.billing_and_payment_terms;
-            
+            quotationData.software_included =
+              quotationData.annexure_software || p.software_included;
+            quotationData.duration =
+              quotationData.annexure_duration || p.duration;
+            quotationData.site_visit =
+              quotationData.annexure_site_visit || p.site_visit;
+            quotationData.quotation_validity =
+              quotationData.annexure_quotation_validity || p.quotation_validity;
+            quotationData.mode_of_delivery =
+              quotationData.annexure_mode_of_delivery || p.mode_of_delivery;
+            quotationData.revision =
+              quotationData.annexure_revision || p.revision;
+            quotationData.exclusion =
+              quotationData.annexure_exclusions || p.exclusion;
+            quotationData.billing_and_payment_terms =
+              quotationData.annexure_billing_payment_terms ||
+              p.billing_and_payment_terms;
+
             // Try to fetch from proposals if project has proposal_id
             if (p.proposal_id) {
               try {
@@ -140,17 +180,30 @@ export async function GET(request, { params }) {
                 if (proposals.length > 0) {
                   const prop = proposals[0];
                   // Map proposal fields only if not already set
-                  if (!quotationData.scope_of_work) quotationData.scope_of_work = prop.scope_of_work;
-                  if (!quotationData.input_document) quotationData.input_document = prop.input_document;
-                  if (!quotationData.deliverables) quotationData.deliverables = prop.list_of_deliverables || prop.deliverables;
-                  if (!quotationData.software_included) quotationData.software_included = prop.software;
-                  if (!quotationData.duration) quotationData.duration = prop.duration;
-                  if (!quotationData.site_visit) quotationData.site_visit = prop.site_visit;
-                  if (!quotationData.quotation_validity) quotationData.quotation_validity = prop.quotation_validity;
-                  if (!quotationData.mode_of_delivery) quotationData.mode_of_delivery = prop.mode_of_delivery;
-                  if (!quotationData.revision) quotationData.revision = prop.revision;
-                  if (!quotationData.exclusion) quotationData.exclusion = prop.exclusions;
-                  if (!quotationData.billing_and_payment_terms) quotationData.billing_and_payment_terms = prop.billing_payment_terms;
+                  if (!quotationData.scope_of_work)
+                    quotationData.scope_of_work = prop.scope_of_work;
+                  if (!quotationData.input_document)
+                    quotationData.input_document = prop.input_document;
+                  if (!quotationData.deliverables)
+                    quotationData.deliverables =
+                      prop.list_of_deliverables || prop.deliverables;
+                  if (!quotationData.software_included)
+                    quotationData.software_included = prop.software;
+                  if (!quotationData.duration)
+                    quotationData.duration = prop.duration;
+                  if (!quotationData.site_visit)
+                    quotationData.site_visit = prop.site_visit;
+                  if (!quotationData.quotation_validity)
+                    quotationData.quotation_validity = prop.quotation_validity;
+                  if (!quotationData.mode_of_delivery)
+                    quotationData.mode_of_delivery = prop.mode_of_delivery;
+                  if (!quotationData.revision)
+                    quotationData.revision = prop.revision;
+                  if (!quotationData.exclusion)
+                    quotationData.exclusion = prop.exclusions;
+                  if (!quotationData.billing_and_payment_terms)
+                    quotationData.billing_and_payment_terms =
+                      prop.billing_payment_terms;
                 }
               } catch (e) {
                 // Ignore - proposals table might have different structure
@@ -169,7 +222,10 @@ export async function GET(request, { params }) {
       );
 
       if (rows.length === 0) {
-        return NextResponse.json({ success: false, error: 'Quotation not found' }, { status: 404 });
+        return NextResponse.json(
+          { success: false, error: 'Quotation not found' },
+          { status: 404 }
+        );
       }
 
       quotationData = rows[0];
@@ -190,7 +246,11 @@ export async function GET(request, { params }) {
 // PUT - Update quotation
 export async function PUT(request, { params }) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.UPDATE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -231,7 +291,7 @@ export async function PUT(request, { params }) {
         'annexure_billing_payment_terms TEXT',
         'annexure_confidentiality TEXT',
         'annexure_codes_standards TEXT',
-        'annexure_dispute_resolution TEXT'
+        'annexure_dispute_resolution TEXT',
       ];
 
       for (const col of columnsToAdd) {
@@ -309,7 +369,7 @@ export async function PUT(request, { params }) {
           body.annexure_confidentiality || null,
           body.annexure_codes_standards || null,
           body.annexure_dispute_resolution || null,
-          id
+          id,
         ]
       );
     } else if (source === 'project') {
@@ -338,12 +398,14 @@ export async function PUT(request, { params }) {
         'annexure_billing_payment_terms TEXT',
         'annexure_confidentiality TEXT',
         'annexure_codes_standards TEXT',
-        'annexure_dispute_resolution TEXT'
+        'annexure_dispute_resolution TEXT',
       ];
 
       for (const col of columnsToAdd) {
         try {
-          await connection.execute(`ALTER TABLE project_quotations ADD COLUMN ${col}`);
+          await connection.execute(
+            `ALTER TABLE project_quotations ADD COLUMN ${col}`
+          );
         } catch (e) {
           // Column already exists
         }
@@ -419,7 +481,7 @@ export async function PUT(request, { params }) {
           body.annexure_confidentiality || null,
           body.annexure_codes_standards || null,
           body.annexure_dispute_resolution || null,
-          id
+          id,
         ]
       );
     } else {
@@ -453,7 +515,7 @@ export async function PUT(request, { params }) {
         'annexure_billing_payment_terms TEXT',
         'annexure_confidentiality TEXT',
         'annexure_codes_standards TEXT',
-        'annexure_dispute_resolution TEXT'
+        'annexure_dispute_resolution TEXT',
       ];
 
       for (const col of columnsToAdd) {
@@ -535,13 +597,23 @@ export async function PUT(request, { params }) {
           body.annexure_confidentiality || null,
           body.annexure_codes_standards || null,
           body.annexure_dispute_resolution || null,
-          body.quotation_date ? new Date(new Date(body.quotation_date).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : null,
-          id
+          body.quotation_date
+            ? new Date(
+                new Date(body.quotation_date).getTime() +
+                  30 * 24 * 60 * 60 * 1000
+              )
+                .toISOString()
+                .split('T')[0]
+            : null,
+          id,
         ]
       );
     }
 
-    return NextResponse.json({ success: true, message: 'Quotation updated successfully' });
+    return NextResponse.json({
+      success: true,
+      message: 'Quotation updated successfully',
+    });
   } catch (error) {
     console.error('Error updating quotation:', error);
     return NextResponse.json(

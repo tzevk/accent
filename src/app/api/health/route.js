@@ -8,20 +8,20 @@ let serverInitialized = false;
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const initSchema = searchParams.get('init') === 'true';
-  
+
   try {
     const stats = getPoolStats();
-    
+
     // Test connection
     let dbOk = false;
     let db;
     let schemaStatus = 'unknown';
-    
+
     try {
       db = await dbConnect();
       const [rows] = await db.execute('SELECT 1');
       dbOk = rows.length > 0;
-      
+
       // Initialize schema on first health check or if explicitly requested
       if (dbOk && (initSchema || !serverInitialized)) {
         try {
@@ -47,15 +47,18 @@ export async function GET(request) {
       database: {
         connected: dbOk,
         pool: stats || { message: 'Pool not initialized' },
-        schema: schemaStatus
+        schema: schemaStatus,
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    return NextResponse.json({
-      success: false,
-      status: 'unhealthy',
-      error: error.message
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        status: 'unhealthy',
+        error: error.message,
+      },
+      { status: 500 }
+    );
   }
 }
