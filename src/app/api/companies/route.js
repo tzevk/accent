@@ -3,6 +3,14 @@ import { ensurePermission, RESOURCES, PERMISSIONS, getCurrentUser } from '@/util
 import { hasPermission } from '@/utils/rbac';
 import { NextResponse } from 'next/server';
 
+async function generateCompanyId(db) {
+  const [rows] = await db.execute(
+    `SELECT company_id FROM companies WHERE company_id REGEXP '^COM-[0-9]+$' ORDER BY CAST(SUBSTRING(company_id, 5) AS UNSIGNED) DESC LIMIT 1`
+  );
+  const next = rows && rows.length > 0 ? parseInt(rows[0].company_id.replace('COM-', ''), 10) + 1 : 1;
+  return `COM-${String(next).padStart(5, '0')}`;
+}
+
 // GET all companies
 export async function GET(request) {
   let db;
@@ -25,6 +33,11 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get('search') || '').trim().toLowerCase();
 
+    const allowedSortFields = { company_id: 'c.company_id', company_name: 'c.company_name', industry: 'c.industry', city: 'c.city', created_at: 'c.created_at' };
+    const sortByParam = searchParams.get('sortBy') || 'company_name';
+    const sortOrderParam = (searchParams.get('sortOrder') || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    const sortField = allowedSortFields[sortByParam] || 'c.company_name';
+
     db = await dbConnect();
     
     // Build base SQL and optionally apply a search WHERE clause (case-insensitive)
@@ -40,7 +53,7 @@ export async function GET(request) {
       params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
 
-    sql += ` GROUP BY c.id ORDER BY c.company_name ASC`;
+    sql += ` GROUP BY c.id ORDER BY ${sortField} ${sortOrderParam}`;
 
     const [rows] = await db.execute(sql, params);
     
@@ -108,7 +121,8 @@ export async function POST(request) {
 
     db = await dbConnect();
 
-    // If company_id provided, check for duplicates
+    // Auto-generate a COM-XXXXX ID if none supplied; otherwise validate uniqueness
+    const finalCompanyId = company_id ? company_id : await generateCompanyId(db);
     if (company_id) {
       const [existing] = await db.execute('SELECT id FROM companies WHERE company_id = ? LIMIT 1', [company_id]);
       if (existing && existing.length > 0) {
@@ -125,7 +139,7 @@ export async function POST(request) {
         mobile_number, sector, gstin, pan_number, company_profile
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        company_id || null, company_name, industry || null, company_size || null, 
+        finalCompanyId, company_name, industry || null, company_size || null, 
         website || null, phone || null, email || null, address || null, 
         city || null, state || null, country || null, postal_code || null, 
         description || null, founded_year || null, revenue || null, notes || null,

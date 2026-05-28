@@ -475,24 +475,6 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
             </select>
           </div>
 
-          <div className="sm:w-48">
-            <select
-              value={`${sortBy}-${sortOrder}`}
-              onChange={(e) => {
-                const [field, order] = e.target.value.split('-');
-                setSortBy(field);
-                setSortOrder(order);
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
-            >
-              <option value="created_at-desc">Recently Added</option>
-              <option value="created_at-asc">Oldest First</option>
-              <option value="company_name-asc">Name A-Z</option>
-              <option value="company_name-desc">Name Z-A</option>
-              <option value="lead_count-desc">Most Leads</option>
-            </select>
-          </div>
-
           <div className="flex gap-2">
             <button
               onClick={clearFilters}
@@ -528,17 +510,101 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                   <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Sr
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
-                    Company ID
+                  <th
+                    className="w-px whitespace-nowrap px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    onClick={() => {
+                      if (sortBy === 'company_id') {
+                        setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setSortBy('company_id');
+                        setSortOrder('asc');
+                      }
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <span className="inline-flex items-center gap-1 ">
+                      Company ID
+                      {sortBy === 'company_id' ? (
+                        sortOrder === 'asc' ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />
+                      ) : (
+                        <span className="flex flex-col h-3.5 w-3.5 opacity-30">
+                          <ChevronUpIcon className="h-2.5 w-2.5" />
+                          <ChevronDownIcon className="h-2.5 w-2.5 -mt-0.5" />
+                        </span>
+                      )}
+                    </span>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
-                    Company & Contact
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    onClick={() => {
+                      if (sortBy === 'company_name') {
+                        setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setSortBy('company_name');
+                        setSortOrder('asc');
+                      }
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Company & Contact
+                      {sortBy === 'company_name' ? (
+                        sortOrder === 'asc' ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />
+                      ) : (
+                        <span className="flex flex-col h-3.5 w-3.5 opacity-30">
+                          <ChevronUpIcon className="h-2.5 w-2.5" />
+                          <ChevronDownIcon className="h-2.5 w-2.5 -mt-0.5" />
+                        </span>
+                      )}
+                    </span>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
-                    Industry & Size
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    onClick={() => {
+                      if (sortBy === 'industry') {
+                        setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setSortBy('industry');
+                        setSortOrder('asc');
+                      }
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Industry & Size
+                      {sortBy === 'industry' ? (
+                        sortOrder === 'asc' ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />
+                      ) : (
+                        <span className="flex flex-col h-3.5 w-3.5 opacity-30">
+                          <ChevronUpIcon className="h-2.5 w-2.5" />
+                          <ChevronDownIcon className="h-2.5 w-2.5 -mt-0.5" />
+                        </span>
+                      )}
+                    </span>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
-                    Location
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    onClick={() => {
+                      if (sortBy === 'city') {
+                        setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setSortBy('city');
+                        setSortOrder('asc');
+                      }
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Location
+                      {sortBy === 'city' ? (
+                        sortOrder === 'asc' ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />
+                      ) : (
+                        <span className="flex flex-col h-3.5 w-3.5 opacity-30">
+                          <ChevronUpIcon className="h-2.5 w-2.5" />
+                          <ChevronDownIcon className="h-2.5 w-2.5 -mt-0.5" />
+                        </span>
+                      )}
+                    </span>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Contact Info
@@ -802,9 +868,10 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
                   type="text"
                   name="company_id"
                   value={formData.company_id}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
-                  placeholder="e.g., COMP001"
+                  readOnly
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-400 text-sm cursor-not-allowed"
+                  placeholder="Auto-generated (COM-XXXXX)"
                 />
               </div>
 
