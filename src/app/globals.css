@@ -2,101 +2,101 @@
 
 /* 3D floating blob animations for hero header */
 @keyframes blobFloat1 {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1) rotateX(0deg) rotateY(0deg);
-  }
-  25% {
-    transform: translate(12px, -18px) scale(1.1) rotateX(10deg) rotateY(-15deg);
-  }
-  50% {
-    transform: translate(-8px, -30px) scale(0.95) rotateX(-5deg) rotateY(20deg);
-  }
-  75% {
-    transform: translate(20px, -10px) scale(1.05) rotateX(8deg) rotateY(-10deg);
-  }
+	0%,
+	100% {
+		transform: translate(0, 0) scale(1) rotateX(0deg) rotateY(0deg);
+	}
+	25% {
+		transform: translate(12px, -18px) scale(1.1) rotateX(10deg) rotateY(-15deg);
+	}
+	50% {
+		transform: translate(-8px, -30px) scale(0.95) rotateX(-5deg) rotateY(20deg);
+	}
+	75% {
+		transform: translate(20px, -10px) scale(1.05) rotateX(8deg) rotateY(-10deg);
+	}
 }
 @keyframes blobFloat2 {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1) rotateX(0deg) rotateY(0deg);
-  }
-  30% {
-    transform: translate(-15px, 12px) scale(1.08) rotateX(-8deg) rotateY(12deg);
-  }
-  60% {
-    transform: translate(10px, 25px) scale(0.92) rotateX(12deg) rotateY(-18deg);
-  }
-  80% {
-    transform: translate(-20px, 8px) scale(1.04) rotateX(-6deg) rotateY(8deg);
-  }
+	0%,
+	100% {
+		transform: translate(0, 0) scale(1) rotateX(0deg) rotateY(0deg);
+	}
+	30% {
+		transform: translate(-15px, 12px) scale(1.08) rotateX(-8deg) rotateY(12deg);
+	}
+	60% {
+		transform: translate(10px, 25px) scale(0.92) rotateX(12deg) rotateY(-18deg);
+	}
+	80% {
+		transform: translate(-20px, 8px) scale(1.04) rotateX(-6deg) rotateY(8deg);
+	}
 }
 @keyframes blobFloat3 {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1) rotateX(0deg);
-  }
-  33% {
-    transform: translate(18px, -14px) scale(1.15) rotateX(15deg) rotateY(-20deg);
-  }
-  66% {
-    transform: translate(-12px, 10px) scale(0.88) rotateX(-10deg) rotateY(15deg);
-  }
+	0%,
+	100% {
+		transform: translate(0, 0) scale(1) rotateX(0deg);
+	}
+	33% {
+		transform: translate(18px, -14px) scale(1.15) rotateX(15deg) rotateY(-20deg);
+	}
+	66% {
+		transform: translate(-12px, 10px) scale(0.88) rotateX(-10deg) rotateY(15deg);
+	}
 }
 @keyframes blobFloat4 {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1) rotateY(0deg);
-  }
-  20% {
-    transform: translate(-10px, -20px) scale(1.12) rotateX(-12deg)
-      rotateY(10deg);
-  }
-  50% {
-    transform: translate(15px, -8px) scale(0.9) rotateX(8deg) rotateY(-25deg);
-  }
-  80% {
-    transform: translate(-5px, 15px) scale(1.06) rotateX(-5deg) rotateY(18deg);
-  }
+	0%,
+	100% {
+		transform: translate(0, 0) scale(1) rotateY(0deg);
+	}
+	20% {
+		transform: translate(-10px, -20px) scale(1.12) rotateX(-12deg)
+			rotateY(10deg);
+	}
+	50% {
+		transform: translate(15px, -8px) scale(0.9) rotateX(8deg) rotateY(-25deg);
+	}
+	80% {
+		transform: translate(-5px, 15px) scale(1.06) rotateX(-5deg) rotateY(18deg);
+	}
 }
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  /* Sidebar/card background (keeps sign-in and sidebar in sync) */
-  --sidebar-bg: #4d025b;
-  /* Map Next font variables to Tailwind v4 tokens without using @theme */
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  /* Optional color aliases if referenced */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+	--background: #ffffff;
+	--foreground: #171717;
+	/* Sidebar/card background (keeps sign-in and sidebar in sync) */
+	--sidebar-bg: #4d025b;
+	/* Map Next font variables to Tailwind v4 tokens without using @theme */
+	--font-sans: var(--font-geist-sans);
+	--font-mono: var(--font-geist-mono);
+	/* Optional color aliases if referenced */
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+	:root {
+		--background: #0a0a0a;
+		--foreground: #ededed;
+	}
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: 'Poppins', sans-serif;
-  color-scheme: light;
-  -webkit-font-smoothing: antialiased;
+	background: var(--background);
+	color: var(--foreground);
+	font-family: 'Poppins', sans-serif;
+	color-scheme: light;
+	-webkit-font-smoothing: antialiased;
 }
 
 /* Hide number input spinners (up/down arrows) */
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+	-webkit-appearance: none;
+	margin: 0;
 }
 input[type='number'] {
-  -moz-appearance: textfield;
-  appearance: textfield;
+	-moz-appearance: textfield;
+	appearance: textfield;
 }
 
 /* Enable spell check on all text inputs and textareas globally */
@@ -106,496 +106,496 @@ input[type='search'],
 input:not([type]),
 textarea,
 [contenteditable='true'] {
-  spellcheck: true;
-  -webkit-spellcheck: true;
+	spellcheck: true;
+	-webkit-spellcheck: true;
 }
 
 /* Style misspelled words (browser default is red wavy underline) */
 ::spelling-error {
-  text-decoration: wavy underline red;
-  text-decoration-skip-ink: none;
+	text-decoration: wavy underline red;
+	text-decoration-skip-ink: none;
 }
 
 /* Style grammar errors */
 ::grammar-error {
-  text-decoration: wavy underline green;
-  text-decoration-skip-ink: none;
+	text-decoration: wavy underline green;
+	text-decoration-skip-ink: none;
 }
 
 html,
 body,
 #__next,
 :root {
-  background-color: #fff;
+	background-color: #fff;
 }
 
 /* Avoid flicker outlines and ensure seamless layout */
 .content-with-sidebar,
 .group\/sidebar {
-  will-change: padding-left, width;
-  background-color: #fff;
+	will-change: padding-left, width;
+	background-color: #fff;
 }
 
 .content-with-sidebar {
-  transition: padding-left 0.2s ease-out;
+	transition: padding-left 0.2s ease-out;
 }
 .group\/sidebar {
-  transition: width 0.2s ease-out;
+	transition: width 0.2s ease-out;
 }
 
 /* Remove default focus rings causing line flashes during quick hover */
 .group\/sidebar:focus {
-  outline: none;
-  box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 .content-with-sidebar:focus {
-  outline: none;
-  box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 /* Seam guard: overlay a 2px strip on the sidebar's right edge to mask transient gaps */
 .group\/sidebar {
-  position: fixed;
+	position: fixed;
 }
 .group\/sidebar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: -1px; /* extend slightly into content */
-  width: 2px;
-  height: 100%;
-  background: #fff; /* match content background */
-  pointer-events: none;
+	content: '';
+	position: absolute;
+	top: 0;
+	right: -1px; /* extend slightly into content */
+	width: 2px;
+	height: 100%;
+	background: #fff; /* match content background */
+	pointer-events: none;
 }
 
 /* ===== Desktop Responsive Utilities ===== */
 /* Ensure tables always get horizontal scroll on smaller desktops */
 .table-responsive {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
 }
 
 /* Standard page content container — scales padding across desktops */
 .page-content {
-  padding-left: 1.5rem; /* base: 24px */
-  padding-right: 1.5rem;
-  max-width: 1800px;
-  margin-left: auto;
-  margin-right: auto;
-  width: 100%;
+	padding-left: 1.5rem; /* base: 24px */
+	padding-right: 1.5rem;
+	max-width: 1800px;
+	margin-left: auto;
+	margin-right: auto;
+	width: 100%;
 }
 @media (min-width: 1024px) {
-  .page-content {
-    padding-left: 2rem;
-    padding-right: 2rem;
-  }
+	.page-content {
+		padding-left: 2rem;
+		padding-right: 2rem;
+	}
 } /* lg */
 @media (min-width: 1280px) {
-  .page-content {
-    padding-left: 3rem;
-    padding-right: 3rem;
-  }
+	.page-content {
+		padding-left: 3rem;
+		padding-right: 3rem;
+	}
 } /* xl */
 @media (min-width: 1536px) {
-  .page-content {
-    padding-left: 4rem;
-    padding-right: 4rem;
-  }
+	.page-content {
+		padding-left: 4rem;
+		padding-right: 4rem;
+	}
 } /* 2xl */
 
 /* Prevent content from stretching too wide on ultrawide monitors */
 .max-content {
-  max-width: 1800px;
-  margin-left: auto;
-  margin-right: auto;
+	max-width: 1800px;
+	margin-left: auto;
+	margin-right: auto;
 }
 
 /* ===== 1920x1080 / Full HD Laptop Optimizations ===== */
 /* Scale up tiny text sizes for standard HD resolution displays (most laptops) */
 @media (min-width: 1280px) {
-  /* Boost base font size slightly for readability on 1080p displays */
-  body {
-    font-size: 15px;
-  }
+	/* Boost base font size slightly for readability on 1080p displays */
+	body {
+		font-size: 15px;
+	}
 
-  /* Scale up micro-text that's too small at 1080p */
-  .dashboard-content .text-\[9px\],
-  .dashboard-content .text-\[10px\] {
-    font-size: 12px !important;
-  }
-  .dashboard-content .text-\[11px\] {
-    font-size: 13px !important;
-  }
-  .dashboard-content .text-\[12px\] {
-    font-size: 13px !important;
-  }
-  .dashboard-content .text-\[13px\] {
-    font-size: 14px !important;
-  }
+	/* Scale up micro-text that's too small at 1080p */
+	.dashboard-content .text-\[9px\],
+	.dashboard-content .text-\[10px\] {
+		font-size: 12px !important;
+	}
+	.dashboard-content .text-\[11px\] {
+		font-size: 13px !important;
+	}
+	.dashboard-content .text-\[12px\] {
+		font-size: 13px !important;
+	}
+	.dashboard-content .text-\[13px\] {
+		font-size: 14px !important;
+	}
 
-  /* Scale up tiny icons inside dashboard cards */
-  .dashboard-content .h-3.w-3 {
-    height: 1rem !important;
-    width: 1rem !important;
-  }
-  .dashboard-content .w-6.h-6 {
-    width: 2rem !important;
-    height: 2rem !important;
-  }
+	/* Scale up tiny icons inside dashboard cards */
+	.dashboard-content .h-3.w-3 {
+		height: 1rem !important;
+		width: 1rem !important;
+	}
+	.dashboard-content .w-6.h-6 {
+		width: 2rem !important;
+		height: 2rem !important;
+	}
 
-  /* Scale up compact card padding */
-  .dashboard-content .p-1\.5 {
-    padding: 0.625rem !important;
-  }
-  .dashboard-content .gap-1\.5 {
-    gap: 0.5rem !important;
-  }
+	/* Scale up compact card padding */
+	.dashboard-content .p-1\.5 {
+		padding: 0.625rem !important;
+	}
+	.dashboard-content .gap-1\.5 {
+		gap: 0.5rem !important;
+	}
 }
 
 @media (min-width: 1920px) {
-  body {
-    font-size: 16px;
-  }
+	body {
+		font-size: 16px;
+	}
 
-  /* Even more breathing room at full 1920x1080 */
-  .dashboard-content .text-\[9px\],
-  .dashboard-content .text-\[10px\] {
-    font-size: 13px !important;
-  }
-  .dashboard-content .text-\[11px\],
-  .dashboard-content .text-\[12px\] {
-    font-size: 14px !important;
-  }
-  .dashboard-content .text-\[13px\] {
-    font-size: 15px !important;
-  }
+	/* Even more breathing room at full 1920x1080 */
+	.dashboard-content .text-\[9px\],
+	.dashboard-content .text-\[10px\] {
+		font-size: 13px !important;
+	}
+	.dashboard-content .text-\[11px\],
+	.dashboard-content .text-\[12px\] {
+		font-size: 14px !important;
+	}
+	.dashboard-content .text-\[13px\] {
+		font-size: 15px !important;
+	}
 
-  .dashboard-content .p-1\.5 {
-    padding: 0.75rem !important;
-  }
-  .dashboard-content .gap-1\.5 {
-    gap: 0.625rem !important;
-  }
+	.dashboard-content .p-1\.5 {
+		padding: 0.75rem !important;
+	}
+	.dashboard-content .gap-1\.5 {
+		gap: 0.625rem !important;
+	}
 }
 
 /* Responsive scaling utility: auto-scale content for the viewport */
 .responsive-container {
-  width: 100%;
-  max-width: 1800px;
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: 1rem;
-  padding-right: 1rem;
+	width: 100%;
+	max-width: 1800px;
+	margin-left: auto;
+	margin-right: auto;
+	padding-left: 1rem;
+	padding-right: 1rem;
 }
 @media (min-width: 1024px) {
-  .responsive-container {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-  }
+	.responsive-container {
+		padding-left: 1.5rem;
+		padding-right: 1.5rem;
+	}
 }
 @media (min-width: 1280px) {
-  .responsive-container {
-    padding-left: 2rem;
-    padding-right: 2rem;
-  }
+	.responsive-container {
+		padding-left: 2rem;
+		padding-right: 2rem;
+	}
 }
 @media (min-width: 1536px) {
-  .responsive-container {
-    padding-left: 2.5rem;
-    padding-right: 2.5rem;
-  }
+	.responsive-container {
+		padding-left: 2.5rem;
+		padding-right: 2.5rem;
+	}
 }
 @media (min-width: 1920px) {
-  .responsive-container {
-    padding-left: 3rem;
-    padding-right: 3rem;
-  }
+	.responsive-container {
+		padding-left: 3rem;
+		padding-right: 3rem;
+	}
 }
 
 /* Ensure all form field text renders in black */
 input,
 textarea,
 select {
-  color: #000 !important;
-  caret-color: #000;
+	color: #000 !important;
+	caret-color: #000;
 }
 
 /* Optional: readable placeholder color */
 input::placeholder,
 textarea::placeholder {
-  color: #6b7280; /* gray-500 */
-  opacity: 1;
+	color: #6b7280; /* gray-500 */
+	opacity: 1;
 }
 
 /* ContentEditable placeholder styling */
 [contenteditable][data-placeholder]:empty::before {
-  content: attr(data-placeholder);
-  color: #9ca3af; /* gray-400 */
-  pointer-events: none;
-  position: absolute;
+	content: attr(data-placeholder);
+	color: #9ca3af; /* gray-400 */
+	pointer-events: none;
+	position: absolute;
 }
 
 [contenteditable][data-placeholder]:empty:focus::before {
-  content: attr(data-placeholder);
+	content: attr(data-placeholder);
 }
 
 /* Ensure contentEditable has proper text color */
 [contenteditable] {
-  color: #374151; /* gray-700 */
-  min-height: 1em;
+	color: #374151; /* gray-700 */
+	min-height: 1em;
 }
 
 /* Simple, tasteful animations */
 @keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
 }
 
 @keyframes slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 @keyframes pulse-slow {
-  0%,
-  100% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 1;
-  }
+	0%,
+	100% {
+		opacity: 0.6;
+	}
+	50% {
+		opacity: 1;
+	}
 }
 
 .animate-fade-in {
-  animation: fade-in 0.4s ease-out both;
+	animation: fade-in 0.4s ease-out both;
 }
 
 .animate-slide-up {
-  animation: slide-up 0.35s ease-out both;
+	animation: slide-up 0.35s ease-out both;
 }
 
 .skeleton {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 37%, #f3f4f6 63%);
-  background-size: 400% 100%;
-  animation: shimmer 1.2s ease-in-out infinite;
+	position: relative;
+	overflow: hidden;
+	background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 37%, #f3f4f6 63%);
+	background-size: 400% 100%;
+	animation: shimmer 1.2s ease-in-out infinite;
 }
 
 @keyframes shimmer {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: 0 0;
-  }
+	0% {
+		background-position: 100% 0;
+	}
+	100% {
+		background-position: 0 0;
+	}
 }
 
 /* Futuristic UI helpers */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(12px) saturate(1.1);
-  -webkit-backdrop-filter: blur(12px) saturate(1.1);
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  box-shadow: 0 10px 30px rgba(16, 0, 24, 0.08);
+	background: rgba(255, 255, 255, 0.75);
+	backdrop-filter: blur(12px) saturate(1.1);
+	-webkit-backdrop-filter: blur(12px) saturate(1.1);
+	border: 1px solid rgba(255, 255, 255, 0.65);
+	box-shadow: 0 10px 30px rgba(16, 0, 24, 0.08);
 }
 
 .glass-soft {
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.55);
+	background: rgba(255, 255, 255, 0.6);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	border: 1px solid rgba(255, 255, 255, 0.55);
 }
 
 .animated-grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    radial-gradient(
-      40rem 30rem at 85% 10%,
-      rgba(209, 128, 221, 0.22),
-      transparent 70%
-    ),
-    radial-gradient(
-      36rem 28rem at 10% 90%,
-      rgba(123, 97, 255, 0.18),
-      transparent 70%
-    ),
-    linear-gradient(
-      to bottom,
-      rgba(255, 255, 255, 0.6),
-      rgba(255, 255, 255, 0.8)
-    ),
-    repeating-linear-gradient(
-      to right,
-      rgba(100, 18, 109, 0.06) 0px,
-      rgba(100, 18, 109, 0.06) 1px,
-      transparent 1px,
-      transparent 20px
-    ),
-    repeating-linear-gradient(
-      to bottom,
-      rgba(100, 18, 109, 0.06) 0px,
-      rgba(100, 18, 109, 0.06) 1px,
-      transparent 1px,
-      transparent 20px
-    );
-  background-size:
-    auto,
-    auto,
-    auto,
-    20px 20px,
-    20px 20px;
-  animation: grid-pan 18s linear infinite;
-  pointer-events: none;
+	position: absolute;
+	inset: 0;
+	background-image:
+		radial-gradient(
+			40rem 30rem at 85% 10%,
+			rgba(209, 128, 221, 0.22),
+			transparent 70%
+		),
+		radial-gradient(
+			36rem 28rem at 10% 90%,
+			rgba(123, 97, 255, 0.18),
+			transparent 70%
+		),
+		linear-gradient(
+			to bottom,
+			rgba(255, 255, 255, 0.6),
+			rgba(255, 255, 255, 0.8)
+		),
+		repeating-linear-gradient(
+			to right,
+			rgba(100, 18, 109, 0.06) 0px,
+			rgba(100, 18, 109, 0.06) 1px,
+			transparent 1px,
+			transparent 20px
+		),
+		repeating-linear-gradient(
+			to bottom,
+			rgba(100, 18, 109, 0.06) 0px,
+			rgba(100, 18, 109, 0.06) 1px,
+			transparent 1px,
+			transparent 20px
+		);
+	background-size:
+		auto,
+		auto,
+		auto,
+		20px 20px,
+		20px 20px;
+	animation: grid-pan 18s linear infinite;
+	pointer-events: none;
 }
 
 @keyframes grid-pan {
-  0% {
-    background-position:
-      0 0,
-      0 0,
-      0 0,
-      0 0,
-      0 0;
-  }
-  100% {
-    background-position:
-      0 0,
-      0 0,
-      0 0,
-      200px 0,
-      0 200px;
-  }
+	0% {
+		background-position:
+			0 0,
+			0 0,
+			0 0,
+			0 0,
+			0 0;
+	}
+	100% {
+		background-position:
+			0 0,
+			0 0,
+			0 0,
+			200px 0,
+			0 200px;
+	}
 }
 
 .gradient-text {
-  background: linear-gradient(90deg, #7a1b86, #64126d);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+	background: linear-gradient(90deg, #7a1b86, #64126d);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
 }
 
 .neon-progress {
-  height: 6px;
-  border-radius: 9999px;
-  background: rgba(0, 0, 0, 0.08);
-  position: relative;
-  overflow: hidden;
+	height: 6px;
+	border-radius: 9999px;
+	background: rgba(0, 0, 0, 0.08);
+	position: relative;
+	overflow: hidden;
 }
 .neon-progress > .bar {
-  height: 100%;
-  border-radius: inherit;
-  background-image: linear-gradient(90deg, #9b4bb1, #7a1b86, #64126d);
-  box-shadow: 0 0 12px rgba(100, 18, 109, 0.35);
+	height: 100%;
+	border-radius: inherit;
+	background-image: linear-gradient(90deg, #9b4bb1, #7a1b86, #64126d);
+	box-shadow: 0 0 12px rgba(100, 18, 109, 0.35);
 }
 
 /* Sidebar hover expansion and layout padding without styled-jsx */
 @media (min-width: 640px) {
-  .content-with-sidebar {
-    padding-left: 80px;
-    padding-top: 64px;
-  }
-  /* Expand content padding only when the actual sidebar is hovered */
-  .group\/sidebar:hover + .content-with-sidebar {
-    padding-left: 276px;
-  }
-  /* When pinned via data attribute, keep content padded */
-  .group\/sidebar[data-pinned='true'] + .content-with-sidebar {
-    padding-left: 276px;
-  }
+	.content-with-sidebar {
+		padding-left: 80px;
+		padding-top: 64px;
+	}
+	/* Expand content padding only when the actual sidebar is hovered */
+	.group\/sidebar:hover + .content-with-sidebar {
+		padding-left: 276px;
+	}
+	/* When pinned via data attribute, keep content padded */
+	.group\/sidebar[data-pinned='true'] + .content-with-sidebar {
+		padding-left: 276px;
+	}
 }
 @media (min-width: 1280px) {
-  .content-with-sidebar {
-    padding-left: 80px;
-  }
-  .group\/sidebar:hover + .content-with-sidebar {
-    padding-left: 296px;
-  }
-  .group\/sidebar[data-pinned='true'] + .content-with-sidebar {
-    padding-left: 296px;
-  }
+	.content-with-sidebar {
+		padding-left: 80px;
+	}
+	.group\/sidebar:hover + .content-with-sidebar {
+		padding-left: 296px;
+	}
+	.group\/sidebar[data-pinned='true'] + .content-with-sidebar {
+		padding-left: 296px;
+	}
 }
 
 /* On smaller screens without sidebar, still offset for fixed navbar */
 @media (max-width: 639px) {
-  .content-with-sidebar {
-    padding-top: 64px;
-  }
+	.content-with-sidebar {
+		padding-top: 64px;
+	}
 }
 
 /* At 1920x1080+, give content area more breathing room */
 @media (min-width: 1280px) {
-  .content-with-sidebar {
-    min-height: 100vh;
-  }
+	.content-with-sidebar {
+		min-height: 100vh;
+	}
 }
 
 /* Utilities for showing label content only when sidebar is hovered */
 .group\/sidebar:hover .sidebar-open\:inline {
-  display: inline;
+	display: inline;
 }
 .group\/sidebar:hover .sidebar-open\:block {
-  display: block;
+	display: block;
 }
 .group\/sidebar:hover .sidebar-open\:inline-flex {
-  display: inline-flex;
+	display: inline-flex;
 }
 .group\/sidebar:hover .sidebar-open\:flex {
-  display: flex;
+	display: flex;
 }
 /* Also show labels when pinned */
 .group\/sidebar[data-pinned='true'] .sidebar-open\:inline {
-  display: inline;
+	display: inline;
 }
 .group\/sidebar[data-pinned='true'] .sidebar-open\:block {
-  display: block;
+	display: block;
 }
 .group\/sidebar[data-pinned='true'] .sidebar-open\:inline-flex {
-  display: inline-flex;
+	display: inline-flex;
 }
 .group\/sidebar[data-pinned='true'] .sidebar-open\:flex {
-  display: flex;
+	display: flex;
 }
 
 /* Todo panel positioning - sticks to sidebar */
 .todo-panel {
-  position: fixed;
-  top: 64px; /* navbar height */
-  bottom: 0;
-  left: 64px; /* collapsed sidebar width */
-  z-index: 30;
-  transition: left 0.2s ease-out;
+	position: fixed;
+	top: 64px; /* navbar height */
+	bottom: 0;
+	left: 64px; /* collapsed sidebar width */
+	z-index: 30;
+	transition: left 0.2s ease-out;
 }
 
 /* When sidebar is hovered, move todo panel */
 .group\/sidebar:hover ~ .content-with-sidebar .todo-panel {
-  left: 260px;
+	left: 260px;
 }
 @media (min-width: 1280px) {
-  .group\/sidebar:hover ~ .content-with-sidebar .todo-panel {
-    left: 280px;
-  }
+	.group\/sidebar:hover ~ .content-with-sidebar .todo-panel {
+		left: 280px;
+	}
 }
 
 /* When sidebar is pinned, keep todo panel at expanded position */
 .group\/sidebar[data-pinned='true'] ~ .content-with-sidebar .todo-panel {
-  left: 260px;
+	left: 260px;
 }
 @media (min-width: 1280px) {
-  .group\/sidebar[data-pinned='true'] ~ .content-with-sidebar .todo-panel {
-    left: 280px;
-  }
+	.group\/sidebar[data-pinned='true'] ~ .content-with-sidebar .todo-panel {
+		left: 280px;
+	}
 }
 
 /* High-contrast text for Employees screen: override washed-out grays */
@@ -604,7 +604,7 @@ textarea::placeholder {
 .employees-screen .text-gray-700,
 .employees-screen .text-gray-800,
 .employees-screen .text-gray-900 {
-  color: #000 !important;
+	color: #000 !important;
 }
 
 /* Keep chips, links and brand accents as-is (do not force black within these) */
@@ -615,119 +615,179 @@ textarea::placeholder {
 .employees-screen .text-purple-700,
 .employees-screen a,
 .employees-screen .hover\:text-purple-900:hover {
-  color: inherit;
+	color: inherit;
 }
 
 /* Additional elegant motion helpers */
 @keyframes pop {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+	from {
+		opacity: 0;
+		transform: scale(0.95);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
 }
 
 @keyframes drop {
-  from {
-    opacity: 0;
-    transform: translateY(-6px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+	from {
+		opacity: 0;
+		transform: translateY(-6px) scale(0.98);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
 }
 
 /* Smooth orbital motion for background elements */
 @keyframes orbit-smooth {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  25% {
-    transform: translate(10px, -10px) scale(1.05);
-  }
-  50% {
-    transform: translate(0, -20px) scale(1);
-  }
-  75% {
-    transform: translate(-10px, -10px) scale(0.95);
-  }
+	0%,
+	100% {
+		transform: translate(0, 0) scale(1);
+	}
+	25% {
+		transform: translate(10px, -10px) scale(1.05);
+	}
+	50% {
+		transform: translate(0, -20px) scale(1);
+	}
+	75% {
+		transform: translate(-10px, -10px) scale(0.95);
+	}
 }
 
 /* Breathe animation for subtle pulsing */
 @keyframes breathe {
-  0%,
-  100% {
-    opacity: 0.04;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.06;
-    transform: scale(1.1);
-  }
+	0%,
+	100% {
+		opacity: 0.04;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.06;
+		transform: scale(1.1);
+	}
 }
 
 .anim-fade-in {
-  animation: fade-in 0.5s ease-out both;
+	animation: fade-in 0.5s ease-out both;
 }
 .anim-slide-up {
-  animation: slide-up 0.5s ease-out both;
+	animation: slide-up 0.5s ease-out both;
 }
 .anim-scale-in {
-  animation: pop 0.25s ease-out both;
+	animation: pop 0.25s ease-out both;
 }
 .anim-pop {
-  animation: pop 0.2s ease-out both;
+	animation: pop 0.2s ease-out both;
 }
 .anim-drop {
-  animation: drop 0.14s ease-out both;
-  transform-origin: top right;
+	animation: drop 0.14s ease-out both;
+	transform-origin: top right;
 }
 
 /* Gentle bounce for drag-drop feedback */
 @keyframes bounce-gentle {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  25% {
-    transform: scale(1.05);
-  }
-  50% {
-    transform: scale(0.98);
-  }
-  75% {
-    transform: scale(1.02);
-  }
+	0%,
+	100% {
+		transform: scale(1);
+	}
+	25% {
+		transform: scale(1.05);
+	}
+	50% {
+		transform: scale(0.98);
+	}
+	75% {
+		transform: scale(1.02);
+	}
 }
 
 .animate-bounce-gentle {
-  animation: bounce-gentle 0.4s ease-out both;
+	animation: bounce-gentle 0.4s ease-out both;
 }
 
 /* Idle warning modal entrance */
 @keyframes scaleIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.9) translateY(10px);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+	0% {
+		opacity: 0;
+		transform: scale(0.9) translateY(10px);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .anim-fade-in,
-  .anim-slide-up,
-  .anim-scale-in,
-  .anim-pop,
-  .anim-drop,
-  .animate-bounce-gentle {
-    animation: none !important;
-  }
+	.anim-fade-in,
+	.anim-slide-up,
+	.anim-scale-in,
+	.anim-pop,
+	.anim-drop,
+	.animate-bounce-gentle {
+		animation: none !important;
+	}
+}
+
+/* Rich text content styles for TipTap editor output */
+.rich-text-content h1 {
+	font-size: 1.5rem;
+	font-weight: 700;
+	margin: 1rem 0 0.5rem;
+	color: #111827;
+}
+
+.rich-text-content h2 {
+	font-size: 1.25rem;
+	font-weight: 600;
+	margin: 0.875rem 0 0.5rem;
+	color: #1f2937;
+}
+
+.rich-text-content p {
+	margin: 0.5rem 0;
+}
+
+.rich-text-content ul {
+	list-style-type: disc;
+	padding-left: 1.5rem;
+	margin: 0.5rem 0;
+}
+
+.rich-text-content ol {
+	list-style-type: decimal;
+	padding-left: 1.5rem;
+	margin: 0.5rem 0;
+}
+
+.rich-text-content li {
+	margin: 0.25rem 0;
+}
+
+.rich-text-content blockquote {
+	border-left: 4px solid #e5e7eb;
+	padding-left: 1rem;
+	margin: 0.5rem 0;
+	color: #6b7280;
+	font-style: italic;
+}
+
+.rich-text-content strong {
+	font-weight: 700;
+	color: #111827;
+}
+
+.rich-text-content em {
+	font-style: italic;
+}
+
+.rich-text-content > *:first-child {
+	margin-top: 0;
+}
+
+.rich-text-content > *:last-child {
+	margin-bottom: 0;
 }
