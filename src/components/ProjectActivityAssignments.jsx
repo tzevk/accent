@@ -7,7 +7,6 @@ import {
   PlusIcon,
   CheckIcon,
   XMarkIcon,
-  PencilSquareIcon,
 } from '@heroicons/react/24/outline';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -35,8 +34,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   const [saving, setSaving] = useState(false);
   const [disciplineOptions, setDisciplineOptions] = useState([]);
 
-  const [editKey, setEditKey] = useState(null);
-  const [editForm, setEditForm] = useState({});
+  const [rowEdits, setRowEdits] = useState({});
 
   const [addingProjectId, setAddingProjectId] = useState(null);
   const [addForm, setAddForm] = useState({
@@ -110,26 +108,46 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
     });
   };
 
-  // ── Inline edit of an existing activity row ──
-  const startEdit = (activity) => {
-    const rowKey = `${activity.project_id}-${activity.activity_id}`;
-    setEditKey(rowKey);
-    setEditForm({
-      actual_hours: activity.actual_hours || '',
+  // ── Inline, always-editable fields (Date Completed / Progress % / Status) ──
+  const rowKeyOf = (activity) =>
+    `${activity.project_id}-${activity.activity_id}`;
+
+  const getRowEdit = (activity) => {
+    const key = rowKeyOf(activity);
+    if (rowEdits[key]) return rowEdits[key];
+
+    const discipline = disciplineOptions.find(
+      (d) => d.function_name === activity.discipline
+    );
+    const act = discipline?.activities?.find(
+      (a) => a.activity_name === activity.activity_name
+    );
+    const subAct = act?.subActivities?.find(
+      (s) => s.name === activity.sub_activity_name
+    );
+
+    return {
+      discipline_id: discipline?.id || '',
+      opt_activity_id: act?.id || '',
+      sub_activity_id: subAct?.id || '',
+      manhours: activity.planned_hours || 0,
       due_date: activity.due_date
         ? new Date(activity.due_date).toISOString().split('T')[0]
         : '',
-      progress_percentage: activity.progress_percentage || '',
+      progress_percentage: activity.progress_percentage || 0,
       status: activity.status || 'Not Started',
-    });
+    };
   };
 
-  const cancelEdit = () => {
-    setEditKey(null);
-    setEditForm({});
+  const setRowEdit = (activity, fields) => {
+    const key = rowKeyOf(activity);
+    setRowEdits((p) => ({
+      ...p,
+      [key]: { ...getRowEdit(activity), ...fields },
+    }));
   };
 
-  const saveEdit = async (activity) => {
+  const saveFields = async (activity, fields) => {
     setSaving(true);
     try {
       const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
@@ -138,16 +156,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
         body: JSON.stringify({
           project_id: activity.project_id,
           activity_id: activity.activity_id,
-          actual_hours: editForm.actual_hours,
-          due_date: editForm.due_date || null,
-          progress_percentage: editForm.progress_percentage,
-          status: editForm.status,
+          ...fields,
         }),
       });
       if (res?.success) {
         await loadAssignments();
-        setEditKey(null);
-        setEditForm({});
       } else {
         alert(res?.error || 'Failed to save changes');
       }
@@ -266,15 +279,14 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
     }
   });
 
-  const COLS = 9; // discipline, activity, sub-activity, manhours, actual, assigned date, completion date, progress, remarks
-  const ACTION_COLS = 1;
+  const COLS = 9; // discipline, activity, sub-activity, manhours, assigned date, completion date, progress, status, actions
 
   return (
     <div className="bg-white rounded-xl shadow-lg border-2 border-purple-200 mb-6 ring-1 ring-purple-100">
       {/* Header */}
-      <div className="px-4 py-3 border-b-2 border-purple-100 bg-gradient-to-r from-purple-50 to-white flex items-center gap-2">
-        <div className="w-9 h-9 bg-purple-100 rounded-lg flex items-center justify-center shadow-sm">
-          <ClipboardDocumentListIcon className="w-5 h-5 text-purple-600" />
+      <div className="px-3 py-2 border-b-2 border-purple-100 bg-gradient-to-r from-purple-50 to-white flex items-center gap-2">
+        <div className="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center shadow-sm">
+          <ClipboardDocumentListIcon className="w-4 h-4 text-purple-600" />
         </div>
         <h3 className="text-sm font-bold text-[#4A1254]">
           My Project Activities
@@ -294,7 +306,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
           return (
             <div key={pid} className="mb-4 last:mb-0">
               {/* Project Header */}
-              <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-[#64126D] to-[#7F2487] text-white">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-[#64126D] to-[#7F2487] text-white">
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-xs font-bold bg-white/20 px-2 py-0.5 rounded">
                     {group.project_code || '–'}
@@ -316,46 +328,43 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
               {/* Table */}
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm border-collapse">
                   <thead className="bg-[#64126D]/10">
-                    <tr className="divide-x divide-[#64126D]/10">
-                      <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                    <tr className="divide-x divide-[#64126D]/40">
+                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
                         Discipline
                       </th>
-                      <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
                         Activity
                       </th>
-                      <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
                         Sub Activity
                       </th>
-                      <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
-                        Manhours Assigned
+                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+                        Manhours
                       </th>
-                      <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
-                        Actual Manhours Used
+                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+                        Date Assigned
                       </th>
-                      <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
-                        Date Activity Assigned
+                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+                        Date Completed
                       </th>
-                      <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
-                        Date Activity Completed
+                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+                        Progress %
                       </th>
-                      <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
-                        Work Progress %
-                      </th>
-                      <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
                         Status
                       </th>
-                      <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">
+                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
                         Actions
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-300">
                     {group.activities.length === 0 && !isAdding && (
                       <tr>
                         <td
-                          colSpan={COLS + ACTION_COLS}
+                          colSpan={COLS}
                           className="py-6 px-4 text-center text-sm text-[#4A1254]"
                         >
                           No activities added yet. Click{' '}
@@ -366,156 +375,174 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                     )}
 
                     {group.activities.map((activity) => {
-                      const rowKey = `${activity.project_id}-${activity.activity_id}`;
-                      const isEditing = editKey === rowKey;
+                      const rowKey = rowKeyOf(activity);
+                      const edit = getRowEdit(activity);
+                      const editDiscipline = disciplineOptions.find(
+                        (d) => d.id === edit.discipline_id
+                      );
+                      const editActivity = editDiscipline?.activities?.find(
+                        (a) => a.id === edit.opt_activity_id
+                      );
 
                       return (
                         <tr
                           key={rowKey}
-                          className="hover:bg-purple-50/40 transition-colors divide-x divide-gray-200"
+                          className="hover:bg-purple-50/40 transition-colors divide-x divide-gray-300"
                         >
-                          <td className="py-2.5 px-3 text-center align-middle text-[#4A1254]">
-                            {activity.discipline}
+                          <td className="py-1 px-2 text-center align-middle">
+                            <select
+                              value={edit.discipline_id}
+                              disabled={saving}
+                              onChange={(e) => {
+                                const newDiscipline = disciplineOptions.find(
+                                  (d) => d.id === e.target.value
+                                );
+                                setRowEdit(activity, {
+                                  discipline_id: e.target.value,
+                                  opt_activity_id: '',
+                                  sub_activity_id: '',
+                                });
+                                saveFields(activity, {
+                                  discipline_name: newDiscipline?.function_name || '',
+                                  activity_name: '',
+                                  sub_activity_name: '',
+                                });
+                              }}
+                              className="w-full max-w-[120px] px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50"
+                            >
+                              <option value="">Select</option>
+                              {disciplineOptions.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.function_name}
+                                </option>
+                              ))}
+                            </select>
                           </td>
-                          <td className="py-2.5 px-3 text-center align-middle font-semibold text-[#4A1254]">
-                            {activity.activity_name}
+                          <td className="py-1 px-2 text-center align-middle">
+                            <select
+                              value={edit.opt_activity_id}
+                              disabled={saving || !editDiscipline}
+                              onChange={(e) => {
+                                const newActivity = editDiscipline?.activities?.find(
+                                  (a) => a.id === e.target.value
+                                );
+                                setRowEdit(activity, {
+                                  opt_activity_id: e.target.value,
+                                  sub_activity_id: '',
+                                });
+                                saveFields(activity, {
+                                  activity_name: newActivity?.activity_name || '',
+                                  sub_activity_name: '',
+                                });
+                              }}
+                              className="w-full max-w-[120px] px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50 disabled:bg-gray-100"
+                            >
+                              <option value="">Select</option>
+                              {(editDiscipline?.activities || []).map((a) => (
+                                <option key={a.id} value={a.id}>
+                                  {a.activity_name}
+                                </option>
+                              ))}
+                            </select>
                           </td>
-                          <td className="py-2.5 px-3 text-center align-middle text-[#4A1254]">
-                            {activity.sub_activity_name || '–'}
+                          <td className="py-1 px-2 text-center align-middle">
+                            <select
+                              value={edit.sub_activity_id}
+                              disabled={saving || !editActivity?.subActivities?.length}
+                              onChange={(e) => {
+                                const newSub = editActivity?.subActivities?.find(
+                                  (s) => s.id === e.target.value
+                                );
+                                setRowEdit(activity, { sub_activity_id: e.target.value });
+                                saveFields(activity, {
+                                  sub_activity_name: newSub?.name || '',
+                                });
+                              }}
+                              className="w-full max-w-[120px] px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50 disabled:bg-gray-100"
+                            >
+                              <option value="">Select</option>
+                              {(editActivity?.subActivities || []).map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                </option>
+                              ))}
+                            </select>
                           </td>
-                          <td className="py-2.5 px-3 text-center align-middle text-[#4A1254]">
-                            {activity.planned_hours || 0}
+                          <td className="py-1 px-2 text-center align-middle">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={edit.manhours}
+                              disabled={saving}
+                              onChange={(e) =>
+                                setRowEdit(activity, { manhours: e.target.value })
+                              }
+                              onBlur={(e) =>
+                                saveFields(activity, { planned_hours: e.target.value })
+                              }
+                              className="w-14 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50"
+                            />
                           </td>
-                          <td className="py-2.5 px-3 text-center align-middle">
-                            {isEditing ? (
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.5"
-                                value={editForm.actual_hours}
-                                onChange={(e) =>
-                                  setEditForm((p) => ({
-                                    ...p,
-                                    actual_hours: e.target.value,
-                                  }))
-                                }
-                                className="w-20 px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-                              />
-                            ) : (
-                              <span className="font-bold text-black">
-                                {activity.actual_hours || 0}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-center align-middle text-[#4A1254]">
+                          <td className="py-1 px-2 text-center align-middle text-[#4A1254]">
                             {formatShortDate(activity.start_date)}
                           </td>
-                          <td className="py-2.5 px-3 text-center align-middle">
-                            {isEditing ? (
-                              <input
-                                type="date"
-                                value={editForm.due_date}
-                                onChange={(e) =>
-                                  setEditForm((p) => ({
-                                    ...p,
-                                    due_date: e.target.value,
-                                  }))
-                                }
-                                className="px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-                              />
-                            ) : (
-                              <span className="text-[#4A1254]">
-                                {formatShortDate(activity.due_date)}
-                              </span>
-                            )}
+                          <td className="py-1 px-2 text-center align-middle">
+                            <input
+                              type="date"
+                              value={edit.due_date}
+                              disabled={saving}
+                              onChange={(e) => {
+                                setRowEdit(activity, { due_date: e.target.value });
+                                saveFields(activity, { due_date: e.target.value || null });
+                              }}
+                              className="px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50"
+                            />
                           </td>
-                          <td className="py-2.5 px-3 text-center align-middle">
-                            {isEditing ? (
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={editForm.progress_percentage}
-                                onChange={(e) =>
-                                  setEditForm((p) => ({
-                                    ...p,
-                                    progress_percentage: e.target.value,
-                                  }))
-                                }
-                                className="w-16 px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-                              />
-                            ) : (
-                              <span className="font-semibold text-purple-700">
-                                {activity.progress_percentage || 0}%
-                              </span>
-                            )}
+                          <td className="py-1 px-2 text-center align-middle">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={edit.progress_percentage}
+                              disabled={saving}
+                              onChange={(e) =>
+                                setRowEdit(activity, { progress_percentage: e.target.value })
+                              }
+                              onBlur={(e) =>
+                                saveFields(activity, { progress_percentage: e.target.value })
+                              }
+                              className="w-12 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50"
+                            />
                           </td>
-                          <td className="py-2.5 px-3 text-center align-middle">
-                            {isEditing ? (
-                              <select
-                                value={editForm.status}
-                                onChange={(e) =>
-                                  setEditForm((p) => ({
-                                    ...p,
-                                    status: e.target.value,
-                                  }))
-                                }
-                                className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-                              >
-                                {STATUS_OPTIONS.map((opt) => (
-                                  <option key={opt} value={opt}>
-                                    {opt}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span
-                                className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
-                                  activity.status
-                                )}`}
-                              >
-                                {activity.status || 'Not Started'}
-                              </span>
-                            )}
+                          <td className="py-1 px-2 text-center align-middle">
+                            <select
+                              value={edit.status}
+                              disabled={saving}
+                              onChange={(e) => {
+                                setRowEdit(activity, { status: e.target.value });
+                                saveFields(activity, { status: e.target.value });
+                              }}
+                              className={`px-1.5 py-0.5 text-xs border rounded font-semibold focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50 ${getStatusBadge(
+                                edit.status
+                              )}`}
+                            >
+                              {STATUS_OPTIONS.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
                           </td>
-                          <td className="py-2.5 px-3 text-center align-middle">
-                            {isEditing ? (
-                              <div className="flex items-center justify-center gap-1">
-                                <button
-                                  onClick={() => saveEdit(activity)}
-                                  disabled={saving}
-                                  className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors disabled:opacity-50"
-                                  title="Save"
-                                >
-                                  <CheckIcon className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={cancelEdit}
-                                  disabled={saving}
-                                  className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors"
-                                  title="Cancel"
-                                >
-                                  <XMarkIcon className="w-4 h-4" />
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => startEdit(activity)}
-                                className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
-                                title="Edit"
-                              >
-                                <PencilSquareIcon className="w-4 h-4" />
-                              </button>
-                            )}
-                          </td>
+                          <td className="py-1 px-2 text-center align-middle"></td>
                         </tr>
                       );
                     })}
 
                     {/* Inline Add Row */}
                     {isAdding && (
-                      <tr className="bg-purple-50/50 divide-x divide-gray-200">
-                        <td className="py-2 px-2 text-center align-middle">
+                      <tr className="bg-purple-50/50 divide-x divide-gray-300">
+                        <td className="py-1 px-2 text-center align-middle">
                           <select
                             value={addForm.discipline_id}
                             onChange={(e) =>
@@ -526,7 +553,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                                 sub_activity_id: '',
                               }))
                             }
-                            className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+                            className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
                           >
                             <option value="">Select</option>
                             {disciplineOptions.map((d) => (
@@ -536,7 +563,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                             ))}
                           </select>
                         </td>
-                        <td className="py-2 px-2 text-center align-middle">
+                        <td className="py-1 px-2 text-center align-middle">
                           <select
                             value={addForm.activity_id}
                             disabled={!selectedDiscipline}
@@ -547,7 +574,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                                 sub_activity_id: '',
                               }))
                             }
-                            className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100"
+                            className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100"
                           >
                             <option value="">Select</option>
                             {(selectedDiscipline?.activities || []).map((a) => (
@@ -557,7 +584,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                             ))}
                           </select>
                         </td>
-                        <td className="py-2 px-2 text-center align-middle">
+                        <td className="py-1 px-2 text-center align-middle">
                           <select
                             value={addForm.sub_activity_id}
                             disabled={!selectedActivity?.subActivities?.length}
@@ -567,7 +594,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                                 sub_activity_id: e.target.value,
                               }))
                             }
-                            className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100"
+                            className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100"
                           >
                             <option value="">Select</option>
                             {(selectedActivity?.subActivities || []).map((s) => (
@@ -577,7 +604,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                             ))}
                           </select>
                         </td>
-                        <td className="py-2 px-2 text-center align-middle">
+                        <td className="py-1 px-2 text-center align-middle">
                           <input
                             type="number"
                             min="0"
@@ -590,13 +617,10 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                               }))
                             }
                             placeholder="Hrs"
-                            className="w-20 px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+                            className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
                           />
                         </td>
-                        <td className="py-2 px-2 text-center align-middle text-xs text-gray-400">
-                          –
-                        </td>
-                        <td className="py-2 px-2 text-center align-middle">
+                        <td className="py-1 px-2 text-center align-middle">
                           <input
                             type="date"
                             value={addForm.start_date}
@@ -609,16 +633,16 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                             className="px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
                           />
                         </td>
-                        <td className="py-2 px-2 text-center align-middle text-xs text-gray-400">
+                        <td className="py-1 px-2 text-center align-middle text-xs text-gray-400">
                           –
                         </td>
-                        <td className="py-2 px-2 text-center align-middle text-xs text-gray-400">
+                        <td className="py-1 px-2 text-center align-middle text-xs text-gray-400">
                           –
                         </td>
-                        <td className="py-2 px-2 text-center align-middle text-xs text-gray-400">
+                        <td className="py-1 px-2 text-center align-middle text-xs text-gray-400">
                           –
                         </td>
-                        <td className="py-2 px-2 text-center align-middle">
+                        <td className="py-1 px-2 text-center align-middle">
                           <div className="flex items-center justify-center gap-1">
                             <button
                               onClick={() => submitAdd(pid)}

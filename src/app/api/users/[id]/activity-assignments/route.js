@@ -400,6 +400,10 @@ export async function PUT(request, { params }) {
       notes,
       progress_percentage,
       daily_entries,
+      discipline_name,
+      activity_name,
+      sub_activity_name,
+      planned_hours,
     } = body;
 
     console.log(
@@ -516,6 +520,16 @@ export async function PUT(request, { params }) {
           '[Activity Assignment Update] Found matching activity:',
           activity.activity_name || activity.name
         );
+
+        // Update activity-level fields (Discipline / Activity / Sub Activity)
+        if (discipline_name !== undefined) {
+          activity.discipline = discipline_name;
+          activity.function_name = discipline_name;
+        }
+        if (activity_name !== undefined) activity.activity_name = activity_name;
+        if (sub_activity_name !== undefined)
+          activity.sub_activity_name = sub_activity_name;
+
         const assignedUsers = activity.assigned_users || [];
         console.log(
           '[Activity Assignment Update] Activity has',
@@ -544,6 +558,8 @@ export async function PUT(request, { params }) {
                 assignedUsers[i].qty_assigned = parseFloat(qty_assigned) || 0;
               if (qty_completed !== undefined)
                 assignedUsers[i].qty_completed = parseFloat(qty_completed) || 0;
+              if (planned_hours !== undefined)
+                assignedUsers[i].planned_hours = parseFloat(planned_hours) || 0;
               if (actual_hours !== undefined)
                 assignedUsers[i].actual_hours = parseFloat(actual_hours) || 0;
               if (status !== undefined) assignedUsers[i].status = status;
@@ -578,7 +594,7 @@ export async function PUT(request, { params }) {
                 user_id: assignedUserId,
                 qty_assigned: parseFloat(qty_assigned) || 0,
                 qty_completed: parseFloat(qty_completed) || 0,
-                planned_hours: 0,
+                planned_hours: parseFloat(planned_hours) || 0,
                 actual_hours: parseFloat(actual_hours) || 0,
                 status: status || 'Not Started',
                 remarks: remarks || '',
