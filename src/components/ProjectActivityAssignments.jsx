@@ -11,8 +11,6 @@ import {
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
-const STATUS_OPTIONS = ['Completed', 'Ongoing', 'Hold', 'Cancelled', 'Not Started'];
-
 const STATUS_BADGE_CLASSES = {
   Completed: 'bg-green-100 text-green-700 border-green-200',
   Ongoing: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -33,8 +31,6 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   const [hasAccess, setHasAccess] = useState(true);
   const [saving, setSaving] = useState(false);
   const [disciplineOptions, setDisciplineOptions] = useState([]);
-
-  const [rowEdits, setRowEdits] = useState({});
 
   const [addingProjectId, setAddingProjectId] = useState(null);
   const [addForm, setAddForm] = useState({
@@ -106,70 +102,6 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
       month: 'short',
       year: 'numeric',
     });
-  };
-
-  // ── Inline, always-editable fields (Date Completed / Progress % / Status) ──
-  const rowKeyOf = (activity) =>
-    `${activity.project_id}-${activity.activity_id}`;
-
-  const getRowEdit = (activity) => {
-    const key = rowKeyOf(activity);
-    if (rowEdits[key]) return rowEdits[key];
-
-    const discipline = disciplineOptions.find(
-      (d) => d.function_name === activity.discipline
-    );
-    const act = discipline?.activities?.find(
-      (a) => a.activity_name === activity.activity_name
-    );
-    const subAct = act?.subActivities?.find(
-      (s) => s.name === activity.sub_activity_name
-    );
-
-    return {
-      discipline_id: discipline?.id || '',
-      opt_activity_id: act?.id || '',
-      sub_activity_id: subAct?.id || '',
-      manhours: activity.planned_hours || 0,
-      due_date: activity.due_date
-        ? new Date(activity.due_date).toISOString().split('T')[0]
-        : '',
-      progress_percentage: activity.progress_percentage || 0,
-      status: activity.status || 'Not Started',
-    };
-  };
-
-  const setRowEdit = (activity, fields) => {
-    const key = rowKeyOf(activity);
-    setRowEdits((p) => ({
-      ...p,
-      [key]: { ...getRowEdit(activity), ...fields },
-    }));
-  };
-
-  const saveFields = async (activity, fields) => {
-    setSaving(true);
-    try {
-      const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_id: activity.project_id,
-          activity_id: activity.activity_id,
-          ...fields,
-        }),
-      });
-      if (res?.success) {
-        await loadAssignments();
-      } else {
-        alert(res?.error || 'Failed to save changes');
-      }
-    } catch (err) {
-      console.error('Failed to save activity:', err);
-      alert('Failed to save changes');
-    } finally {
-      setSaving(false);
-    }
   };
 
   // ── Add a new activity row to a project ──
@@ -279,7 +211,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
     }
   });
 
-  const COLS = 9; // discipline, activity, sub-activity, manhours, assigned date, completion date, progress, status, actions
+  const COLS = 7; // discipline, activity, sub-activity, manhours, assigned date, completion date, status
 
   return (
     <div className="bg-white rounded-xl shadow-lg border-2 border-purple-200 mb-6 ring-1 ring-purple-100">
@@ -302,6 +234,10 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
         projectOrder.map((pid) => {
           const group = projectGroups[pid];
           const isAdding = addingProjectId === pid;
+          const totalManhours = group.activities.reduce(
+            (sum, a) => sum + (parseFloat(a.planned_hours) || 0),
+            0
+          );
 
           return (
             <div key={pid} className="mb-4 last:mb-0">
@@ -327,8 +263,17 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
               </div>
 
               {/* Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
+              <div>
+                <table className="w-full text-sm border-collapse table-fixed">
+                  <colgroup>
+                    <col className="w-[13%]" />
+                    <col className="w-[19%]" />
+                    <col className="w-[28%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[8%]" />
+                  </colgroup>
                   <thead className="bg-[#64126D]/10">
                     <tr className="divide-x divide-[#64126D]/40">
                       <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
@@ -350,13 +295,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                         Date Completed
                       </th>
                       <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-                        Progress %
-                      </th>
-                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
                         Status
-                      </th>
-                      <th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-                        Actions
                       </th>
                     </tr>
                   </thead>
@@ -375,14 +314,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                     )}
 
                     {group.activities.map((activity) => {
-                      const rowKey = rowKeyOf(activity);
-                      const edit = getRowEdit(activity);
-                      const editDiscipline = disciplineOptions.find(
-                        (d) => d.id === edit.discipline_id
-                      );
-                      const editActivity = editDiscipline?.activities?.find(
-                        (a) => a.id === edit.opt_activity_id
-                      );
+                      const rowKey = `${activity.project_id}-${activity.activity_id}`;
 
                       return (
                         <tr
@@ -390,151 +322,49 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                           className="hover:bg-purple-50/40 transition-colors divide-x divide-gray-300"
                         >
                           <td className="py-1 px-2 text-center align-middle">
-                            <select
-                              value={edit.discipline_id}
-                              disabled={saving}
-                              onChange={(e) => {
-                                const newDiscipline = disciplineOptions.find(
-                                  (d) => d.id === e.target.value
-                                );
-                                setRowEdit(activity, {
-                                  discipline_id: e.target.value,
-                                  opt_activity_id: '',
-                                  sub_activity_id: '',
-                                });
-                                saveFields(activity, {
-                                  discipline_name: newDiscipline?.function_name || '',
-                                  activity_name: '',
-                                  sub_activity_name: '',
-                                });
-                              }}
-                              className="w-full max-w-[120px] px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50"
+                            <span
+                              className="text-[#4A1254] block break-words leading-tight"
+                              title={activity.discipline}
                             >
-                              <option value="">Select</option>
-                              {disciplineOptions.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.function_name}
-                                </option>
-                              ))}
-                            </select>
+                              {activity.discipline}
+                            </span>
                           </td>
                           <td className="py-1 px-2 text-center align-middle">
-                            <select
-                              value={edit.opt_activity_id}
-                              disabled={saving || !editDiscipline}
-                              onChange={(e) => {
-                                const newActivity = editDiscipline?.activities?.find(
-                                  (a) => a.id === e.target.value
-                                );
-                                setRowEdit(activity, {
-                                  opt_activity_id: e.target.value,
-                                  sub_activity_id: '',
-                                });
-                                saveFields(activity, {
-                                  activity_name: newActivity?.activity_name || '',
-                                  sub_activity_name: '',
-                                });
-                              }}
-                              className="w-full max-w-[120px] px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50 disabled:bg-gray-100"
+                            <span
+                              className="font-semibold text-[#4A1254] block break-words leading-tight"
+                              title={activity.activity_name}
                             >
-                              <option value="">Select</option>
-                              {(editDiscipline?.activities || []).map((a) => (
-                                <option key={a.id} value={a.id}>
-                                  {a.activity_name}
-                                </option>
-                              ))}
-                            </select>
+                              {activity.activity_name}
+                            </span>
                           </td>
                           <td className="py-1 px-2 text-center align-middle">
-                            <select
-                              value={edit.sub_activity_id}
-                              disabled={saving || !editActivity?.subActivities?.length}
-                              onChange={(e) => {
-                                const newSub = editActivity?.subActivities?.find(
-                                  (s) => s.id === e.target.value
-                                );
-                                setRowEdit(activity, { sub_activity_id: e.target.value });
-                                saveFields(activity, {
-                                  sub_activity_name: newSub?.name || '',
-                                });
-                              }}
-                              className="w-full max-w-[120px] px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50 disabled:bg-gray-100"
+                            <span
+                              className="text-[#4A1254] block break-words leading-tight"
+                              title={activity.sub_activity_name || '–'}
                             >
-                              <option value="">Select</option>
-                              {(editActivity?.subActivities || []).map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.name}
-                                </option>
-                              ))}
-                            </select>
+                              {activity.sub_activity_name || '–'}
+                            </span>
                           </td>
                           <td className="py-1 px-2 text-center align-middle">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.5"
-                              value={edit.manhours}
-                              disabled={saving}
-                              onChange={(e) =>
-                                setRowEdit(activity, { manhours: e.target.value })
-                              }
-                              onBlur={(e) =>
-                                saveFields(activity, { planned_hours: e.target.value })
-                              }
-                              className="w-14 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50"
-                            />
+                            <span className="text-[#4A1254]">{activity.planned_hours || 0}</span>
                           </td>
                           <td className="py-1 px-2 text-center align-middle text-[#4A1254]">
                             {formatShortDate(activity.start_date)}
                           </td>
                           <td className="py-1 px-2 text-center align-middle">
-                            <input
-                              type="date"
-                              value={edit.due_date}
-                              disabled={saving}
-                              onChange={(e) => {
-                                setRowEdit(activity, { due_date: e.target.value });
-                                saveFields(activity, { due_date: e.target.value || null });
-                              }}
-                              className="px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50"
-                            />
+                            <span className="text-[#4A1254]">
+                              {formatShortDate(activity.due_date)}
+                            </span>
                           </td>
                           <td className="py-1 px-2 text-center align-middle">
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={edit.progress_percentage}
-                              disabled={saving}
-                              onChange={(e) =>
-                                setRowEdit(activity, { progress_percentage: e.target.value })
-                              }
-                              onBlur={(e) =>
-                                saveFields(activity, { progress_percentage: e.target.value })
-                              }
-                              className="w-12 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50"
-                            />
-                          </td>
-                          <td className="py-1 px-2 text-center align-middle">
-                            <select
-                              value={edit.status}
-                              disabled={saving}
-                              onChange={(e) => {
-                                setRowEdit(activity, { status: e.target.value });
-                                saveFields(activity, { status: e.target.value });
-                              }}
-                              className={`px-1.5 py-0.5 text-xs border rounded font-semibold focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:opacity-50 ${getStatusBadge(
-                                edit.status
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
+                                activity.status
                               )}`}
                             >
-                              {STATUS_OPTIONS.map((opt) => (
-                                <option key={opt} value={opt}>
-                                  {opt}
-                                </option>
-                              ))}
-                            </select>
+                              {activity.status || 'Not Started'}
+                            </span>
                           </td>
-                          <td className="py-1 px-2 text-center align-middle"></td>
                         </tr>
                       );
                     })}
@@ -636,12 +466,6 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                         <td className="py-1 px-2 text-center align-middle text-xs text-gray-400">
                           –
                         </td>
-                        <td className="py-1 px-2 text-center align-middle text-xs text-gray-400">
-                          –
-                        </td>
-                        <td className="py-1 px-2 text-center align-middle text-xs text-gray-400">
-                          –
-                        </td>
                         <td className="py-1 px-2 text-center align-middle">
                           <div className="flex items-center justify-center gap-1">
                             <button
@@ -662,6 +486,21 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                             </button>
                           </div>
                         </td>
+                      </tr>
+                    )}
+
+                    {group.activities.length > 0 && (
+                      <tr className="bg-[#64126D]/10 divide-x divide-gray-300 font-bold">
+                        <td
+                          colSpan={3}
+                          className="py-1 px-2 text-right text-[#4A1254] uppercase text-xs tracking-wide"
+                        >
+                          Total Manhours
+                        </td>
+                        <td className="py-1 px-2 text-center text-[#4A1254]">
+                          {totalManhours}
+                        </td>
+                        <td colSpan={3}></td>
                       </tr>
                     )}
                   </tbody>

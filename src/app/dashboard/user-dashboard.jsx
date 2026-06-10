@@ -16,7 +16,6 @@ import {
   ClockIcon,
   BellIcon,
   ClipboardDocumentListIcon,
-  DocumentTextIcon,
   ArrowLeftStartOnRectangleIcon,
   ArrowRightStartOnRectangleIcon,
   CalendarDaysIcon,
@@ -582,15 +581,6 @@ export default function UserDashboard({ verifiedUser }) {
     }
     return time;
   }, []);
-
-  const activityStats = useMemo(() => {
-    const stats = moduleAssignments.activityAssignments.stats;
-    const completionPct =
-      stats.totalAssignments > 0
-        ? Math.round((stats.completedCount / stats.totalAssignments) * 100)
-        : 0;
-    return { ...stats, completionPct };
-  }, [moduleAssignments.activityAssignments.stats]);
 
   // ── Loading state ──
   if (loading) {
@@ -1163,98 +1153,6 @@ export default function UserDashboard({ verifiedUser }) {
                       </div>
                     );
                   })()}
-                </div>
-              </div>
-
-              {/* ── Activity Overview KPIs ── */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/60 shadow-sm p-3 xl:p-4">
-                <div className="flex items-center gap-2 mb-2 xl:mb-3">
-                  <div className="w-0.5 h-4 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
-                  <h2 className="text-xs xl:text-sm font-semibold text-gray-800 tracking-wide uppercase">
-                    Activity Overview
-                  </h2>
-                </div>
-                <div className="grid grid-cols-2 gap-2 xl:gap-3 sm:grid-cols-4">
-                  <div className="group rounded-lg border border-gray-100 bg-gradient-to-br from-purple-50/60 to-white p-1.5 hover:shadow-sm hover:border-purple-300 transition-all duration-200">
-                    <div className="flex items-center justify-between">
-                      <div className="w-6 h-6 rounded bg-purple-100 text-[#64126D] flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                        <ClipboardDocumentListIcon className="h-3 w-3" />
-                      </div>
-                      <p className="text-base font-bold text-gray-900">
-                        {activityStats.totalAssignments}
-                      </p>
-                    </div>
-                    <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mt-1">
-                      Total Tasks
-                    </p>
-                  </div>
-                  <div className="group rounded-lg border border-gray-100 bg-gradient-to-br from-blue-50/60 to-white p-1.5 hover:shadow-sm hover:border-blue-300 transition-all duration-200">
-                    <div className="flex items-center justify-between">
-                      <div className="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                        <ClockIcon className="h-3 w-3" />
-                      </div>
-                      <p className="text-base font-bold text-gray-900">
-                        {activityStats.inProgressCount}
-                      </p>
-                    </div>
-                    <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mt-1">
-                      In Progress
-                    </p>
-                  </div>
-                  <div className="group rounded-lg border border-gray-100 bg-gradient-to-br from-emerald-50/60 to-white p-1.5 hover:shadow-sm hover:border-emerald-300 transition-all duration-200">
-                    <div className="flex items-center justify-between">
-                      <div className="relative w-6 h-6">
-                        <svg viewBox="0 0 36 36" className="w-6 h-6 -rotate-90">
-                          <circle
-                            cx="18"
-                            cy="18"
-                            r="15"
-                            fill="none"
-                            stroke="#e5e7eb"
-                            strokeWidth="3"
-                          />
-                          <circle
-                            cx="18"
-                            cy="18"
-                            r="15"
-                            fill="none"
-                            stroke="#059669"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeDasharray={`${activityStats.completionPct * 0.942} 100`}
-                            className="transition-all duration-700"
-                          />
-                        </svg>
-                        <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold text-emerald-700">
-                          {activityStats.completionPct}%
-                        </span>
-                      </div>
-                      <p className="text-base font-bold text-gray-900">
-                        {activityStats.completedCount}
-                      </p>
-                    </div>
-                    <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mt-1">
-                      Completed
-                    </p>
-                  </div>
-                  {moduleAccess.workLogs && (
-                    <div className="group rounded-lg border border-gray-100 bg-gradient-to-br from-violet-50/60 to-white p-1.5 hover:shadow-sm hover:border-violet-300 transition-all duration-200">
-                      <div className="flex items-center justify-between">
-                        <div className="w-6 h-6 rounded bg-violet-100 text-violet-600 flex items-center justify-center group-hover:bg-violet-200 transition-colors">
-                          <DocumentTextIcon className="h-3 w-3" />
-                        </div>
-                        <p className="text-base font-bold text-gray-900">
-                          {moduleAssignments.todayWorkHours}
-                          <span className="text-xs font-semibold text-gray-400">
-                            h
-                          </span>
-                        </p>
-                      </div>
-                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mt-1">
-                        Today&apos;s Logged
-                      </p>
-                    </div>
-                  )}
                 </div>
               </div>
 
