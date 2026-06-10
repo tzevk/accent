@@ -1,6 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
+import { randomUUID } from 'crypto';
 
 async function ensureTicketsTable(connection) {
   await connection.execute(`
@@ -215,6 +216,7 @@ export async function GET(request, { params }) {
                 activity_description: activity.activity_description || '',
                 discipline:
                   activity.discipline || activity.function_name || 'General',
+                sub_activity_name: activity.sub_activity_name || '',
                 // User-specific data
                 description: userAssignment.description || '',
                 qty_assigned: userAssignment.qty_assigned || 0,
@@ -226,6 +228,7 @@ export async function GET(request, { params }) {
                 status: userAssignment.status || 'Not Started',
                 notes: userAssignment.notes || '',
                 remarks: userAssignment.remarks || '',
+                progress_percentage: userAssignment.progress_percentage || 0,
                 daily_entries: userAssignment.daily_entries || [],
               });
             }
@@ -268,12 +271,58 @@ export async function GET(request, { params }) {
       onHoldCount: assignments.filter((a) => a.status === 'On Hold').length,
     };
 
+    // Find projects where the user is on the team but has no activities yet,
+    // so they can still be shown on the dashboard with an "Add Activity" option.
+    const projectIdsWithActivities = new Set(
+      assignments.map((a) => String(a.project_id))
+    );
+    const emptyProjects = [];
+    try {
+      const [teamProjects] = await db.execute(
+        `SELECT project_id, name as project_name, project_code, status as project_status,
+                start_date, end_date, project_team
+         FROM projects
+         WHERE project_team IS NOT NULL AND project_team != '' AND project_team != '[]'
+         ORDER BY start_date DESC`
+      );
+
+      for (const project of teamProjects) {
+        if (projectIdsWithActivities.has(String(project.project_id))) continue;
+        try {
+          const team =
+            typeof project.project_team === 'string'
+              ? JSON.parse(project.project_team)
+              : project.project_team;
+          if (!Array.isArray(team)) continue;
+          const isMember = team.some((m) => {
+            const memberId = typeof m === 'object' ? (m.id ?? m.user_id) : m;
+            return String(memberId) === userIdStr;
+          });
+          if (isMember) {
+            emptyProjects.push({
+              project_id: project.project_id,
+              project_name: project.project_name,
+              project_code: project.project_code,
+              project_status: project.project_status,
+              project_start_date: project.start_date,
+              project_end_date: project.end_date,
+            });
+          }
+        } catch {
+          // ignore unparsable project_team
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load team projects:', err.message);
+    }
+
     db.release();
 
     const response = NextResponse.json({
       success: true,
       data: {
         assignments,
+        emptyProjects,
         stats,
       },
     });
@@ -349,6 +398,7 @@ export async function PUT(request, { params }) {
       start_date,
       due_date,
       notes,
+      progress_percentage,
       daily_entries,
     } = body;
 
@@ -504,6 +554,9 @@ export async function PUT(request, { params }) {
                 assignedUsers[i].start_date = start_date;
               if (due_date !== undefined) assignedUsers[i].due_date = due_date;
               if (notes !== undefined) assignedUsers[i].notes = notes;
+              if (progress_percentage !== undefined)
+                assignedUsers[i].progress_percentage =
+                  parseFloat(progress_percentage) || 0;
               if (daily_entries !== undefined) {
                 // Ensure daily_entries is an array of proper objects
                 assignedUsers[i].daily_entries = Array.isArray(daily_entries)
@@ -533,6 +586,7 @@ export async function PUT(request, { params }) {
                 start_date: start_date || null,
                 due_date: due_date || null,
                 notes: notes || '',
+                progress_percentage: parseFloat(progress_percentage) || 0,
                 daily_entries: daily_entries || [],
               };
             }
@@ -800,6 +854,136 @@ export async function POST(request, { params }) {
       {
         success: false,
         error: 'Failed to create OT approval request',
+        details: error.message,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH /api/users/[id]/activity-assignments
+ * Self-service: add a new activity entry (Discipline / Activity / Sub-Activity)
+ * to a project's activity list, assigned to the requesting user.
+ */
+export async function PATCH(request, { params }) {
+  let db;
+  try {
+    const { id } = await params;
+    const requestedUserId = parseInt(id);
+
+    const currentUser = await getCurrentUser(request);
+    if (!currentUser) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const isOwnData = requestedUserId === currentUser.id;
+    if (!isOwnData && !currentUser.is_super_admin) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const {
+      project_id,
+      discipline_name,
+      activity_name,
+      sub_activity_name,
+      manhours_assigned,
+      start_date,
+    } = body || {};
+
+    if (!project_id || !discipline_name || !activity_name) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'project_id, discipline_name and activity_name are required',
+        },
+        { status: 400 }
+      );
+    }
+
+    db = await dbConnect();
+
+    const [projects] = await db.execute(
+      'SELECT project_id, project_activities_list FROM projects WHERE project_id = ?',
+      [project_id]
+    );
+
+    if (projects.length === 0) {
+      db.release();
+      return NextResponse.json(
+        { success: false, error: 'Project not found' },
+        { status: 404 }
+      );
+    }
+
+    const project = projects[0];
+    let activitiesList = project.project_activities_list;
+    if (typeof activitiesList === 'string') {
+      try {
+        activitiesList = activitiesList ? JSON.parse(activitiesList) : [];
+      } catch {
+        activitiesList = [];
+      }
+    }
+    if (!Array.isArray(activitiesList)) activitiesList = [];
+
+    const newActivity = {
+      id: randomUUID(),
+      activity_name,
+      function_name: discipline_name,
+      discipline: discipline_name,
+      sub_activity_name: sub_activity_name || '',
+      activity_description: '',
+      assigned_users: [
+        {
+          user_id: requestedUserId,
+          qty_assigned: 0,
+          qty_completed: 0,
+          planned_hours: parseFloat(manhours_assigned) || 0,
+          actual_hours: 0,
+          status: 'Not Started',
+          start_date: start_date || null,
+          due_date: null,
+          remarks: '',
+          notes: '',
+          progress_percentage: 0,
+          daily_entries: [],
+        },
+      ],
+    };
+
+    activitiesList.push(newActivity);
+
+    await db.execute(
+      'UPDATE projects SET project_activities_list = ? WHERE project_id = ?',
+      [JSON.stringify(activitiesList), project.project_id]
+    );
+
+    db.release();
+
+    return NextResponse.json({
+      success: true,
+      message: 'Activity added successfully',
+      data: { activity_id: newActivity.id },
+    });
+  } catch (error) {
+    console.error('Error adding self-service activity:', error);
+    if (db) {
+      try {
+        db.release();
+      } catch {}
+    }
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to add activity',
         details: error.message,
       },
       { status: 500 }
