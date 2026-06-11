@@ -432,6 +432,14 @@ export default function Sidebar() {
 								active={pathname.startsWith('/masters/banks')}
 							/>
 						)}
+						{canViewCompanies && (
+							<NavRow
+								icon={DocumentTextIcon}
+								label="Description Master"
+								href="/masters/descriptions"
+								active={pathname.startsWith('/masters/descriptions')}
+							/>
+						)}
 						{isAdmin && (
 							<NavRow
 								icon={CalendarDaysIcon}
@@ -476,18 +484,6 @@ export default function Sidebar() {
 										>
 											<span className="hidden sidebar-open:inline">
 												Account Head Master
-											</span>
-										</Link>
-										<Link
-											href="/masters/accounts/descriptions"
-											className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-												pathname === '/masters/accounts/descriptions'
-													? 'bg-purple-100 text-[#64126D]'
-													: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-											}`}
-										>
-											<span className="hidden sidebar-open:inline">
-												Description Master
 											</span>
 										</Link>
 									</div>
