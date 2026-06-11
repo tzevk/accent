@@ -4836,6 +4836,7 @@ export default function EditProjectForm() {
 										setProjectManhours={setProjectManhours}
 										employeesLoading={employeesLoading}
 										employeesWithRates={employeesWithRates}
+										projectTeamMembers={projectTeamMembers}
 										fetchAttendanceHours={fetchAttendanceHours}
 									/>
 								)}

@@ -5,8 +5,15 @@ export default function ProjectManhoursTab({
   setProjectManhours,
   employeesLoading,
   employeesWithRates,
+  projectTeamMembers,
   fetchAttendanceHours,
 }) {
+  const teamEmployeeIds = new Set(
+    (projectTeamMembers || []).map((member) => member.employee_id)
+  );
+  const teamEmployees = employeesWithRates.filter((emp) =>
+    teamEmployeeIds.has(emp.id)
+  );
   return (
     <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
       <div className="px-4 py-4 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
@@ -60,7 +67,7 @@ export default function ProjectManhoursTab({
         <div className="mt-2 text-[10px] text-gray-400">
           {employeesLoading
             ? 'Loading employees...'
-            : `${employeesWithRates.length} employees available • ${projectManhours.length} added`}
+            : `${teamEmployees.length} employees available • ${projectManhours.length} added`}
         </div>
       </div>
 
@@ -164,7 +171,7 @@ export default function ProjectManhoursTab({
                         <select
                           value={empData.employee_id || ''}
                           onChange={async (e) => {
-                            const selectedEmp = employeesWithRates.find(
+                            const selectedEmp = teamEmployees.find(
                               (emp) => emp.id === parseInt(e.target.value)
                             );
                             if (selectedEmp) {
@@ -202,7 +209,7 @@ export default function ProjectManhoursTab({
                           className="text-xs px-1 py-0.5 border border-gray-200 rounded focus:ring-1 focus:ring-purple-400 bg-transparent max-w-[120px] truncate"
                         >
                           <option value="">Select Employee</option>
-                          {employeesWithRates.map((emp) => (
+                          {teamEmployees.map((emp) => (
                             <option key={emp.id} value={emp.id}>
                               {emp.name}
                             </option>
