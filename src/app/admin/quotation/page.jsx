@@ -16,6 +16,7 @@ import {
 	FolderIcon,
 	PencilSquareIcon,
 	PlusIcon,
+	EyeIcon,
 } from '@heroicons/react/24/outline';
 
 export default function QuotationPage() {
@@ -30,6 +31,15 @@ export default function QuotationPage() {
 		total: 0,
 		totalPages: 0,
 	});
+	const [projects, setProjects] = useState([]);
+	const [projectsLoading, setProjectsLoading] = useState(false);
+	const [selectedQuotation, setSelectedQuotation] = useState(null);
+	const [attachmentModalOpen, setAttachmentModalOpen] = useState(false);
+	const [attachmentProjectId, setAttachmentProjectId] = useState('');
+	const [attachmentSearch, setAttachmentSearch] = useState('');
+	const [attachmentError, setAttachmentError] = useState('');
+	const [attachmentSuccess, setAttachmentSuccess] = useState('');
+	const [savingAttachment, setSavingAttachment] = useState(false);
 
 	// Filters
 	const [searchTerm, setSearchTerm] = useState('');
@@ -88,11 +98,34 @@ export default function QuotationPage() {
 		[statusFilter, sourceFilter, pagination.limit]
 	);
 
+	const fetchProjects = useCallback(async () => {
+		setProjectsLoading(true);
+		try {
+			const res = await fetch('/api/projects/list');
+			const data = await res.json();
+
+			if (data.success) {
+				setProjects(data.data || []);
+			}
+		} catch (error) {
+			console.error('Error fetching projects:', error);
+			setProjects([]);
+		} finally {
+			setProjectsLoading(false);
+		}
+	}, []);
+
 	useEffect(() => {
 		if (!authLoading && user) {
 			fetchQuotations(1);
 		}
 	}, [authLoading, user, statusFilter, sourceFilter, fetchQuotations]);
+
+	useEffect(() => {
+		if (attachmentModalOpen) {
+			fetchProjects();
+		}
+	}, [attachmentModalOpen, fetchProjects]);
 
 	// Filter quotations by search term
 	const filteredQuotations = quotations.filter((q) => {
@@ -101,7 +134,8 @@ export default function QuotationPage() {
 		return (
 			q.quotation_number?.toLowerCase().includes(search) ||
 			q.client_name?.toLowerCase().includes(search) ||
-			q.subject?.toLowerCase().includes(search)
+			q.subject?.toLowerCase().includes(search) ||
+			q.project_name?.toLowerCase().includes(search)
 		);
 	});
 
@@ -139,6 +173,165 @@ export default function QuotationPage() {
 			year: 'numeric',
 		});
 	};
+
+	const getProjectKey = (project) => {
+		if (!project) return '';
+		return String(project.id ?? project.project_id ?? '');
+	};
+
+	const getProjectLabel = (project) => {
+		if (!project) return '';
+		const code = project.project_id || project.id;
+		const name = project.name || 'Untitled Project';
+		return code ? `${code} - ${name}` : name;
+	};
+
+	const openProjectAttachmentModal = (quotation) => {
+		setSelectedQuotation(quotation);
+		setAttachmentProjectId(
+			quotation.project_id ? String(quotation.project_id) : ''
+		);
+		setAttachmentSearch('');
+		setAttachmentError('');
+		setAttachmentSuccess('');
+		setAttachmentModalOpen(true);
+	};
+
+	const closeProjectAttachmentModal = () => {
+		setSelectedQuotation(null);
+		setAttachmentProjectId('');
+		setAttachmentSearch('');
+		setAttachmentError('');
+		setAttachmentSuccess('');
+		setAttachmentModalOpen(false);
+	};
+
+	const selectedProject = projects.find(
+		(project) => getProjectKey(project) === attachmentProjectId
+	);
+	const selectedProjectLabel = selectedProject
+		? getProjectLabel(selectedProject)
+		: attachmentProjectId
+			? `Project ID: ${attachmentProjectId}`
+			: '';
+
+	const handleSaveProjectAttachment = async () => {
+		if (!selectedQuotation) return;
+
+		setSavingAttachment(true);
+		setAttachmentError('');
+
+		try {
+			const projectId =
+				attachmentProjectId === '' || attachmentProjectId === null
+					? null
+					: Number(attachmentProjectId);
+			const res = await fetch(
+				`/api/admin/quotations/${selectedQuotation.id}/project`,
+				{
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ projectId }),
+				}
+			);
+			const data = await res.json().catch(() => ({
+				success: false,
+				error: 'Request failed',
+			}));
+
+			if (!data.success) {
+				setAttachmentError(data.error || 'Failed to update project');
+				return;
+			}
+
+			setQuotations((current) =>
+				current.map((q) =>
+					q.id === selectedQuotation.id && q.source === 'quotations'
+						? {
+								...q,
+								project_id: data.data.project_id,
+								project_name: data.data.project_name,
+							}
+						: q
+				)
+			);
+			setAttachmentSuccess(
+				projectId === null
+					? 'Project detached successfully.'
+					: `Project updated successfully${
+							selectedProject ? `: ${getProjectLabel(selectedProject)}` : ''
+						}.`
+			);
+			setTimeout(() => {
+				closeProjectAttachmentModal();
+				fetchQuotations(pagination.page);
+			}, 700);
+		} catch (error) {
+			console.error('Error updating quotation project:', error);
+			setAttachmentError('Failed to update project');
+		} finally {
+			setSavingAttachment(false);
+		}
+	};
+
+	const handleDetachProjectAttachment = async () => {
+		if (!selectedQuotation?.project_id) return;
+
+		setSavingAttachment(true);
+		setAttachmentError('');
+		setAttachmentSuccess('');
+
+		try {
+			const res = await fetch(
+				`/api/admin/quotations/${selectedQuotation.id}/project`,
+				{
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ projectId: null }),
+				}
+			);
+			const data = await res.json().catch(() => ({
+				success: false,
+				error: 'Request failed',
+			}));
+
+			if (!data.success) {
+				setAttachmentError(data.error || 'Failed to detach project');
+				return;
+			}
+
+			setQuotations((current) =>
+				current.map((q) =>
+					q.id === selectedQuotation.id && q.source === 'quotations'
+						? {
+								...q,
+								project_id: null,
+								project_name: null,
+							}
+						: q
+				)
+			);
+			setAttachmentSuccess('Project detached successfully.');
+			setTimeout(() => {
+				closeProjectAttachmentModal();
+				fetchQuotations(pagination.page);
+			}, 700);
+		} catch (error) {
+			console.error('Error detaching quotation project:', error);
+			setAttachmentError('Failed to detach project');
+		} finally {
+			setSavingAttachment(false);
+		}
+	};
+
+	const filteredProjects = projects.filter((project) => {
+		if (!attachmentSearch) return true;
+		const search = attachmentSearch.toLowerCase();
+		return (
+			getProjectLabel(project).toLowerCase().includes(search) ||
+			(project.client_name || '').toLowerCase().includes(search)
+		);
+	});
 
 	// Handle download - opens quotation in new tab for printing/saving as PDF
 	const handleDownload = (quotation) => {
@@ -349,12 +542,11 @@ export default function QuotationPage() {
 													<div className="font-medium text-gray-900">
 														{quotation.client_name}
 													</div>
-													{quotation.source === 'project' &&
-														quotation.project_name && (
-															<div className="text-sm text-gray-500">
-																Project: {quotation.project_name}
-															</div>
-														)}
+													{quotation.project_name && (
+														<div className="text-sm text-gray-500">
+															Project: {quotation.project_name}
+														</div>
+													)}
 													{quotation.client_email && (
 														<div className="text-sm text-gray-500">
 															{quotation.client_email}
@@ -376,6 +568,11 @@ export default function QuotationPage() {
 															<FolderIcon className="h-3 w-3" />
 															Project
 														</span>
+													) : quotation.project_id ? (
+														<span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-700">
+															<FolderIcon className="h-3 w-3" />
+															Attached Project
+														</span>
 													) : (
 														<span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
 															Standalone
@@ -392,6 +589,39 @@ export default function QuotationPage() {
 												</td>
 												<td className="px-6 py-4">
 													<div className="flex items-center justify-center gap-1">
+														{(quotation.source === 'quotations' ||
+															quotation.source === 'project') && (
+															<button
+																onClick={() =>
+																	openProjectAttachmentModal(quotation)
+																}
+																className={`p-2 rounded-lg transition-colors ${
+																	quotation.source === 'project'
+																		? 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+																		: 'text-gray-500 hover:text-purple-600 hover:bg-purple-50'
+																}`}
+																title={
+																	quotation.source === 'project'
+																		? 'View Attached Project'
+																		: quotation.project_id
+																			? 'Change Project'
+																			: 'Attach Project'
+																}
+															>
+																<FolderIcon className="h-5 w-5" />
+															</button>
+														)}
+														<button
+															onClick={() =>
+																router.push(
+																	`/admin/quotation/${quotation.id}/view?source=${quotation.source || 'project'}`
+																)
+															}
+															className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+															title="View Quotation"
+														>
+															<EyeIcon className="h-5 w-5" />
+														</button>
 														<button
 															onClick={() =>
 																router.push(
@@ -453,6 +683,228 @@ export default function QuotationPage() {
 						)}
 					</div>
 				</main>
+
+				{attachmentModalOpen && selectedQuotation && (
+					<div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 p-4">
+						<div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
+							<div className="flex items-start justify-between gap-4 border-b border-gray-200 p-6">
+								<div>
+									<h2 className="text-lg font-semibold text-gray-900">
+										{selectedQuotation.source === 'project'
+											? 'Project Details'
+											: 'Attach Project'}
+									</h2>
+									<p className="text-sm text-gray-500">
+										{selectedQuotation.source === 'project'
+											? 'This quotation was created within a project and cannot be re-assigned.'
+											: selectedQuotation.project_id
+												? 'Change the project attached to this quotation.'
+												: 'Attach this standalone quotation to a project.'}
+									</p>
+								</div>
+								<button
+									onClick={closeProjectAttachmentModal}
+									disabled={savingAttachment}
+									className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+								>
+									<span className="text-2xl leading-none">&times;</span>
+								</button>
+							</div>
+
+							<div className="p-6">
+								<label className="mb-2 block text-sm font-medium text-gray-700">
+									{selectedQuotation.source === 'project'
+										? 'Linked project'
+										: 'Selected project'}
+								</label>
+								{selectedProjectLabel ? (
+									<div
+										className={`mb-4 rounded-lg border p-3 ${
+											selectedQuotation.source === 'project'
+												? 'border-blue-200 bg-blue-50'
+												: 'border-purple-200 bg-purple-50'
+										}`}
+									>
+										<div className="flex items-start justify-between gap-3">
+											<div>
+												<div
+													className={`text-sm font-semibold ${
+														selectedQuotation.source === 'project'
+															? 'text-blue-900'
+															: 'text-purple-900'
+													}`}
+												>
+													{selectedProjectLabel}
+												</div>
+												{selectedProject?.client_name && (
+													<div
+														className={
+															selectedQuotation.source === 'project'
+																? 'text-blue-700 text-sm'
+																: 'text-purple-700 text-sm'
+														}
+													>
+														{selectedProject.client_name}
+													</div>
+												)}
+											</div>
+											<span
+												className={`rounded-full px-2 py-1 text-xs font-medium text-white shrink-0 ${
+													selectedQuotation.source === 'project'
+														? 'bg-blue-600'
+														: 'bg-purple-600'
+												}`}
+											>
+												{selectedQuotation.source === 'project'
+													? 'Linked'
+													: 'Selected'}
+											</span>
+										</div>
+									</div>
+								) : (
+									<div className="mb-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3 text-sm text-gray-500">
+										No project selected. Choose a project below, then click Save
+										Project.
+									</div>
+								)}
+
+								{selectedQuotation.source !== 'project' && (
+									<>
+										<label className="mb-2 block text-sm font-medium text-gray-700">
+											Search projects
+										</label>
+										<input
+											type="text"
+											value={attachmentSearch}
+											onChange={(e) => setAttachmentSearch(e.target.value)}
+											placeholder="Search by project, code, or client"
+											className="mb-4 w-full border border-gray-300 rounded-lg px-3 py-2 focus:border-transparent focus:ring-2 focus:ring-purple-500"
+										/>
+
+										<div className="mb-4 max-h-72 space-y-2 overflow-auto">
+											{projectsLoading ? (
+												<div className="rounded-lg border border-gray-200 p-4 text-center text-sm text-gray-500">
+													Loading projects...
+												</div>
+											) : filteredProjects.length > 0 ? (
+												filteredProjects.slice(0, 20).map((project, index) => (
+													<button
+														key={getProjectKey(project) || `project-${index}`}
+														type="button"
+														onClick={() => {
+															setAttachmentProjectId(getProjectKey(project));
+															setAttachmentError('');
+															setAttachmentSuccess('');
+														}}
+														className={`w-full rounded-lg border p-3 text-left transition-colors ${
+															getProjectKey(project) === attachmentProjectId
+																? 'border-purple-600 bg-purple-50'
+																: 'border-gray-200 hover:bg-gray-50'
+														}`}
+													>
+														<div className="font-medium text-gray-900">
+															{getProjectLabel(project)}
+														</div>
+														<div className="text-sm text-gray-500">
+															{project.client_name || 'No client assigned'}
+														</div>
+														{getProjectKey(project) === attachmentProjectId && (
+															<div className="mt-2 text-xs font-medium text-purple-700">
+																Selected project
+															</div>
+														)}
+													</button>
+												))
+											) : (
+												<div className="rounded-lg border border-gray-200 p-4 text-center text-sm text-gray-500">
+													No projects found
+												</div>
+											)}
+										</div>
+									</>
+								)}
+
+								{attachmentSuccess && (
+									<div className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+										{attachmentSuccess}
+									</div>
+								)}
+								{attachmentError && (
+									<div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+										{attachmentError}
+									</div>
+								)}
+
+								<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+									<button
+										type="button"
+										onClick={closeProjectAttachmentModal}
+										disabled={savingAttachment}
+										className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+									>
+										{selectedQuotation.source === 'project'
+											? 'Close'
+											: 'Cancel'}
+									</button>
+
+									{selectedQuotation.source === 'project' ? (
+										selectedProject && (
+											<button
+												type="button"
+												onClick={() => {
+													closeProjectAttachmentModal();
+													router.push(
+														`/projects/${selectedProject.project_id || selectedProject.id}`
+													);
+												}}
+												className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+											>
+												Goto Project &rarr;
+											</button>
+										)
+									) : (
+										<>
+											{selectedProject && (
+												<button
+													type="button"
+													onClick={() => {
+														closeProjectAttachmentModal();
+														router.push(
+															`/projects/${selectedProject.project_id || selectedProject.id}`
+														);
+													}}
+													className="rounded-lg border border-purple-300 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50"
+												>
+													Goto Project
+												</button>
+											)}
+											<button
+												type="button"
+												onClick={handleDetachProjectAttachment}
+												disabled={
+													savingAttachment || !selectedQuotation.project_id
+												}
+												className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+											>
+												{savingAttachment ? 'Saving...' : 'Detach Project'}
+											</button>
+											<button
+												type="button"
+												onClick={handleSaveProjectAttachment}
+												disabled={
+													savingAttachment || attachmentProjectId === ''
+												}
+												className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+											>
+												{savingAttachment ? 'Saving...' : 'Save Project'}
+											</button>
+										</>
+									)}
+								</div>
+							</div>
+						</div>
+					</div>
+				)}
 			</div>
 		</div>
 	);
