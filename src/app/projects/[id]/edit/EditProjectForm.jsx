@@ -1537,42 +1537,86 @@ export default function EditProjectForm() {
 									: project.project_manhours_list;
 
 							if (Array.isArray(parsed) && parsed.length > 0) {
-								// Check if it's the new format (has 'month' and 'entries' keys)
-								const isNewFormat = parsed[0] && 'entries' in parsed[0];
+								const toMonthKey = (month) => {
+									const raw = String(month || '')
+										.trim()
+										.toLowerCase();
+									const monthMap = {
+										january: 'jan',
+										february: 'feb',
+										march: 'mar',
+										april: 'apr',
+										june: 'jun',
+										july: 'jul',
+										august: 'aug',
+										september: 'sep',
+										october: 'oct',
+										november: 'nov',
+										december: 'dec',
+									};
+									if (raw === 'may') return 'may';
+									return monthMap[raw] || raw.slice(0, 3);
+								};
 
-								if (isNewFormat) {
-									// Already in new format
-									setProjectManhours(parsed);
-								} else {
-									// Old format - migrate to new format by grouping by month
-									const groupedByMonth = {};
-									parsed.forEach((row) => {
-										const month = row.month || 'unknown';
-										if (!groupedByMonth[month]) {
-											groupedByMonth[month] = {
-												id: Date.now() + Math.random(),
-												month: month,
-												entries: [],
-											};
-										}
-										// Convert old row to new entry format
-										groupedByMonth[month].entries.push({
+								const hasAnnualRows = parsed.some(
+									(row) =>
+										row &&
+										typeof row === 'object' &&
+										('monthly_hours' in row ||
+											'employee_id' in row ||
+											'employee_name' in row) &&
+										!('entries' in row)
+								);
+
+								if (hasAnnualRows) {
+									setProjectManhours(
+										parsed.map((row) => ({
 											id: row.id || Date.now() + Math.random(),
-											employee_id: null, // Old format didn't have this
+											employee_id: row.employee_id || '',
+											employee_name: row.employee_name || '',
+											source_employee_id: row.source_employee_id || '',
+											salary_type: row.salary_type || '',
+											rate_company: row.rate_company ?? '',
+											rate_accent: row.rate_accent ?? '',
+											monthly_hours: row.monthly_hours || {},
+										}))
+									);
+								} else if (parsed[0] && 'entries' in parsed[0]) {
+									const annualByEmployee = new Map();
+									parsed.forEach((monthRow) => {
+										const monthKey = toMonthKey(monthRow.month);
+										(monthRow.entries || []).forEach((entry) => {
+											const employeeKey =
+												entry.employee_id ||
+												entry.employee_name ||
+												`${Date.now()}-${Math.random()}`;
+											if (!annualByEmployee.has(employeeKey)) {
+												annualByEmployee.set(employeeKey, {
+													id: entry.id || Date.now() + Math.random(),
+													employee_id: entry.employee_id || '',
+													employee_name: entry.employee_name || '',
+													salary_type: entry.salary_type || 'monthly',
+													rate_company: entry.rate || '',
+													rate_accent: '',
+													monthly_hours: {},
+												});
+											}
+											const annualRow = annualByEmployee.get(employeeKey);
+											if (monthKey)
+												annualRow.monthly_hours[monthKey] = entry.hours || '';
+										});
+									});
+									setProjectManhours(Array.from(annualByEmployee.values()));
+								} else {
+									setProjectManhours(
+										parsed.map((row) => ({
+											id: row.id || Date.now() + Math.random(),
+											employee_id: '',
 											employee_name: row.name_of_engineer_designer || '',
-											rate: 0, // Old format didn't track rate
 											salary_type: 'monthly',
-											// Sum all hour categories from old format
-											hours:
-												(parseFloat(row.engineering) || 0) +
-												(parseFloat(row.designer) || 0) +
-												(parseFloat(row.drafting) || 0) +
-												(parseFloat(row.checking) || 0) +
-												(parseFloat(row.coordination) || 0) +
-												(parseFloat(row.site_visit) || 0) +
-												(parseFloat(row.others) || 0),
-											total_cost: 0,
-											// Preserve old data in legacy field
+											rate_company: '',
+											rate_accent: '',
+											monthly_hours: {},
 											legacy_data: {
 												engineering: row.engineering,
 												designer: row.designer,
@@ -1583,9 +1627,8 @@ export default function EditProjectForm() {
 												others: row.others,
 												remarks: row.remarks,
 											},
-										});
-									});
-									setProjectManhours(Object.values(groupedByMonth));
+										}))
+									);
 								}
 							} else {
 								setProjectManhours([]);
@@ -1853,6 +1896,7 @@ export default function EditProjectForm() {
 							emp.email ||
 							`Employee ${emp.id}`,
 						employee_id: emp.employee_id,
+						email: emp.email,
 						department: emp.department,
 						workplace: emp.workplace,
 						rate: 0,
@@ -2760,10 +2804,14 @@ export default function EditProjectForm() {
 		const teamMember = {
 			id: user.id,
 			employee_id: user.employee_id || user.id,
-			name: user.full_name || user.username,
+			employee_pk: user.employee_id || null,
+			employee_code: user.employee_code || null,
+			account_type: user.account_type || 'employee',
+			vendor_id: user.vendor_id || null,
+			name: user.employee_name || user.full_name || user.username,
 			email: user.email,
-			department: user.department || '',
-			position: user.role_name || '',
+			department: user.employee_department || user.department || '',
+			position: user.employee_position || user.role_name || '',
 			role: 'Team Member', // Default role, can be changed
 		};
 
