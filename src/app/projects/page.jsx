@@ -879,7 +879,7 @@ function ProjectsInner() {
                               .filter((p) => {
                                 if (
                                   query &&
-                                  !`${p.name || ''} ${p.company_name || ''}`
+                                  !`${p.name || ''} ${p.company_name || ''} ${p.client_name || ''}`
                                     .toLowerCase()
                                     .includes(query.toLowerCase())
                                 )
