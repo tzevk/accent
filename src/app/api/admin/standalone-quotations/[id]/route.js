@@ -44,6 +44,7 @@ async function ensureTableAndColumns(connection) {
       terms TEXT,
       valid_until DATE,
       status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft',
+      project_id INT NULL,
       created_by INT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -80,6 +81,7 @@ async function ensureTableAndColumns(connection) {
 		'gst_percentage DECIMAL(5, 2) DEFAULT 18',
 		'gst_amount DECIMAL(15, 2) DEFAULT 0',
 		'net_amount DECIMAL(15, 2) DEFAULT 0',
+		'project_id INT NULL',
 		'created_by INT',
 		// Annexure columns
 		'annexure_scope_of_work TEXT',
@@ -121,6 +123,14 @@ async function ensureTableAndColumns(connection) {
 		);
 	} catch (e) {
 		// Column might not exist or modify failed, ignore
+	}
+
+	try {
+		await connection.execute(
+			`ALTER TABLE quotations ADD INDEX idx_project_id (project_id)`
+		);
+	} catch (e) {
+		// Index might already exist, ignore
 	}
 }
 
@@ -224,6 +234,7 @@ export async function PUT(request, { params }) {
         annexure_codes_standards = ?,
         annexure_dispute_resolution = ?,
         valid_until = ?,
+        project_id = ?,
         updated_at = NOW()
       WHERE id = ?`,
 			[
@@ -262,6 +273,7 @@ export async function PUT(request, { params }) {
 				body.annexure_codes_standards || null,
 				body.annexure_dispute_resolution || null,
 				validUntil,
+				body.project_id || null,
 				id,
 			]
 		);

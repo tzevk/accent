@@ -47,6 +47,7 @@ export async function GET(request) {
         terms TEXT,
         valid_until DATE,
         status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft',
+        project_id INT NULL,
         created_by INT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -131,6 +132,38 @@ export async function GET(request) {
 			// Column might already exist, ignore
 		}
 
+		// Add project_id column and index to quotations if they don't exist
+		try {
+			await connection.execute(
+				`ALTER TABLE quotations ADD COLUMN project_id INT NULL`
+			);
+		} catch (alterError) {
+			// Column might already exist, ignore
+		}
+		try {
+			await connection.execute(
+				`ALTER TABLE quotations ADD INDEX idx_project_id (project_id)`
+			);
+		} catch (alterError) {
+			// Index might already exist, ignore
+		}
+
+		// Add gst_type column to quotations and project_quotations
+		try {
+			await connection.execute(
+				`ALTER TABLE quotations ADD COLUMN gst_type VARCHAR(20) DEFAULT "cgst_sgst"`
+			);
+		} catch (alterError) {
+			// Column might already exist, ignore
+		}
+		try {
+			await connection.execute(
+				`ALTER TABLE project_quotations ADD COLUMN gst_type VARCHAR(20) DEFAULT "cgst_sgst"`
+			);
+		} catch (alterError) {
+			// Column might already exist, ignore
+		}
+
 		// Build combined query using UNION to get from both tables
 		let allQuotations = [];
 
@@ -147,7 +180,9 @@ export async function GET(request) {
           COALESCE(quotation_date, created_at) as created_at,
           valid_until,
           status,
-          'quotations' as source
+          'quotations' as source,
+          project_id,
+          NULL as project_name
         FROM quotations WHERE 1=1
       `;
 			const params1 = [];
@@ -158,6 +193,23 @@ export async function GET(request) {
 			}
 
 			const [quotations] = await connection.execute(query1, params1);
+
+			try {
+				for (let q of quotations) {
+					if (q.project_id) {
+						const [projects] = await connection.execute(
+							'SELECT name, client_name FROM projects WHERE project_id = ? LIMIT 1',
+							[q.project_id]
+						);
+						if (projects.length > 0) {
+							q.project_name = projects[0].name;
+						}
+					}
+				}
+			} catch (e) {
+				// Projects table might not exist or have different structure, ignore
+			}
+
 			allQuotations = [...allQuotations, ...quotations];
 		}
 
@@ -195,7 +247,7 @@ export async function GET(request) {
 				for (let q of projectQuotations) {
 					if (q.project_id) {
 						const [projects] = await connection.execute(
-							'SELECT name, client_name FROM projects WHERE id = ? LIMIT 1',
+							'SELECT name, client_name FROM projects WHERE project_id = ? LIMIT 1',
 							[q.project_id]
 						);
 						if (projects.length > 0) {
@@ -289,6 +341,8 @@ export async function POST(request) {
 			terms,
 			valid_until,
 			status,
+			project_id,
+			gst_type,
 		} = body;
 
 		if (!quotation_number || !client_name) {
@@ -305,8 +359,8 @@ export async function POST(request) {
 
 		const [result] = await connection.execute(
 			`INSERT INTO quotations 
-       (quotation_number, client_name, client_email, client_phone, client_address, subject, items, subtotal, tax_rate, tax_amount, discount, total, notes, terms, valid_until, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (quotation_number, client_name, client_email, client_phone, client_address, subject, items, subtotal, tax_rate, tax_amount, discount, total, notes, terms, valid_until, status, project_id, gst_type, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				quotation_number,
 				client_name,
@@ -324,6 +378,8 @@ export async function POST(request) {
 				terms || null,
 				valid_until || null,
 				status || 'draft',
+				project_id || null,
+				gst_type || 'cgst_sgst',
 				authResult.user?.id || null,
 			]
 		);
@@ -384,6 +440,8 @@ export async function PUT(request) {
 			terms,
 			valid_until,
 			status,
+			project_id,
+			gst_type,
 		} = body;
 
 		if (!id) {
@@ -412,7 +470,9 @@ export async function PUT(request) {
        notes = ?,
        terms = ?,
        valid_until = ?,
-       status = ?
+       status = ?,
+       project_id = ?,
+       gst_type = ?
        WHERE id = ?`,
 			[
 				quotation_number,
@@ -431,6 +491,8 @@ export async function PUT(request) {
 				terms || null,
 				valid_until || null,
 				status || 'draft',
+				project_id || null,
+				gst_type || 'cgst_sgst',
 				id,
 			]
 		);
