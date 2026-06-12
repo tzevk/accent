@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mysql -h 94.103.163.250 -u accent_dev_user -pOruysb3rjgxb9HzK accentcrm_dev -e \"SELECT id, employee_id, first_name, last_name, status FROM employees WHERE first_name LIKE '%Uttam%' OR last_name LIKE '%Lad%';\")",
+      "Bash(node /tmp/q.mjs)",
+      "Bash(cp /tmp/q.mjs ./q-tmp.mjs)",
+      "Bash(node q-tmp.mjs)",
+      "Bash(npx eslint *)"
+    ]
+  }
+}

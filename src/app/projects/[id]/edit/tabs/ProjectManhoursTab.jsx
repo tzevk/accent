@@ -1,4 +1,10 @@
-import { PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useState } from 'react';
+import {
+  PlusIcon,
+  XMarkIcon,
+  PencilIcon,
+  CheckIcon,
+} from '@heroicons/react/24/outline';
 
 export default function ProjectManhoursTab({
 	projectManhours,
@@ -8,6 +14,8 @@ export default function ProjectManhoursTab({
 	projectTeamMembers,
 	fetchAttendanceHours,
 }) {
+	const [editingRowId, setEditingRowId] = useState(null);
+
 	const normalizeKey = (value) =>
 		value === null || value === undefined
 			? ''
@@ -143,10 +151,11 @@ export default function ProjectManhoursTab({
 						<button
 							type="button"
 							onClick={() => {
+								const newId = Date.now();
 								setProjectManhours((prev) => [
 									...prev,
 									{
-										id: Date.now(),
+										id: newId,
 										employee_id: '',
 										employee_name: '',
 										salary_type: '',
@@ -155,6 +164,7 @@ export default function ProjectManhoursTab({
 										monthly_hours: {},
 									},
 								]);
+								setEditingRowId(newId);
 							}}
 							className="text-xs px-3 py-1.5 bg-[#7F2487] text-white rounded hover:bg-purple-700 font-medium flex items-center gap-1"
 						>
@@ -240,9 +250,11 @@ export default function ProjectManhoursTab({
 									Accent Cost
 								</th>
 								<th
-									className="text-center py-2 px-2 border-b border-gray-200"
-									style={{ width: '40px' }}
-								></th>
+									className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200"
+									style={{ width: '60px' }}
+								>
+									Actions
+								</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -267,6 +279,15 @@ export default function ProjectManhoursTab({
 												<span className="text-gray-400 text-[10px]">
 													{idx + 1}.
 												</span>
+												{editingRowId !== empData.id ? (
+													<span className="text-xs truncate max-w-[120px]">
+														{empData.employee_name || (
+															<span className="text-gray-400">
+																Select Team Member
+															</span>
+														)}
+													</span>
+												) : (
 												<select
 													value={empData.employee_id || ''}
 													onChange={async (e) => {
@@ -325,6 +346,7 @@ export default function ProjectManhoursTab({
 														</option>
 													))}
 												</select>
+												)}
 											</div>
 										</td>
 										<td className="py-2 px-2 text-center bg-green-50/30">
@@ -358,10 +380,11 @@ export default function ProjectManhoursTab({
 														)
 													)
 												}
-												className="w-full text-[10px] px-1 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-blue-400"
+												className="w-full text-[10px] px-1 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-blue-400 disabled:bg-transparent disabled:border-transparent"
 												placeholder="0"
 												min="0"
 												step="0.01"
+												disabled={editingRowId !== empData.id}
 											/>
 										</td>
 										<td className="py-2 px-1 text-center bg-blue-50/30">
@@ -380,10 +403,11 @@ export default function ProjectManhoursTab({
 														)
 													)
 												}
-												className="w-full text-[10px] px-1 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-blue-400"
+												className="w-full text-[10px] px-1 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-blue-400 disabled:bg-transparent disabled:border-transparent"
 												placeholder="0"
 												min="0"
 												step="0.01"
+												disabled={editingRowId !== empData.id}
 											/>
 										</td>
 										{[
@@ -423,10 +447,11 @@ export default function ProjectManhoursTab({
 															})
 														)
 													}
-													className={`w-full text-[10px] px-0.5 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-amber-400 ${empData.salary_type === 'monthly' ? 'bg-blue-50/50' : ''}`}
+													className={`w-full text-[10px] px-0.5 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-amber-400 disabled:bg-transparent disabled:border-transparent ${empData.salary_type === 'monthly' ? 'bg-blue-50/50' : ''}`}
 													placeholder="–"
 													min="0"
 													step="0.5"
+													disabled={editingRowId !== empData.id}
 													title={
 														empData.salary_type === 'monthly'
 															? 'Auto-fetched from Attendance (editable)'
@@ -453,18 +478,39 @@ export default function ProjectManhoursTab({
 											})}
 										</td>
 										<td className="py-2 px-1 text-center">
-											<button
-												type="button"
-												onClick={() =>
-													setProjectManhours((prev) =>
-														prev.filter((m) => m.id !== empData.id)
-													)
-												}
-												className="text-red-400 hover:text-red-600"
-												title="Remove employee"
-											>
-												<XMarkIcon className="h-4 w-4" />
-											</button>
+											<div className="flex items-center justify-center gap-1">
+												{editingRowId === empData.id ? (
+													<button
+														type="button"
+														onClick={() => setEditingRowId(null)}
+														className="p-1 rounded bg-green-50 text-green-600 hover:bg-green-100"
+														title="Done editing"
+													>
+														<CheckIcon className="h-3.5 w-3.5" />
+													</button>
+												) : (
+													<button
+														type="button"
+														onClick={() => setEditingRowId(empData.id)}
+														className="p-1 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-600"
+														title="Edit row"
+													>
+														<PencilIcon className="h-3.5 w-3.5" />
+													</button>
+												)}
+												<button
+													type="button"
+													onClick={() =>
+														setProjectManhours((prev) =>
+															prev.filter((m) => m.id !== empData.id)
+														)
+													}
+													className="text-red-400 hover:text-red-600"
+													title="Remove employee"
+												>
+													<XMarkIcon className="h-4 w-4" />
+												</button>
+											</div>
 										</td>
 									</tr>
 								);
