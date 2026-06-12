@@ -1,10 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ReactNode } from 'react';
 import DescriptionMaster from '@/app/masters/descriptions/page';
 
 vi.mock('@/components/AccessGuard', () => ({
-	default: ({ children }) => children,
+	default: ({ children }: { children: ReactNode }) => children,
 }));
 
 vi.mock('@/components/Navbar', () => ({
@@ -19,11 +20,9 @@ describe('DescriptionMaster page', () => {
 
 	beforeEach(() => {
 		// mock global fetch used by the page
-		global.fetch = vi.fn(() =>
-			Promise.resolve({
-				json: () => Promise.resolve({ success: true, data: mockData }),
-			})
-		) as any;
+		global.fetch = vi.fn(async () => ({
+			json: async () => ({ success: true, data: mockData }),
+		})) as unknown as typeof fetch;
 	});
 
 	afterEach(() => {
