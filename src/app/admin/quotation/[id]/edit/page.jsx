@@ -30,6 +30,8 @@ export default function EditQuotationPage() {
 
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
+	const [companies, setCompanies] = useState([]);
+	const [showSuggestions, setShowSuggestions] = useState(false);
 	const [quotation, setQuotation] = useState({
 		quotation_number: '',
 		quotation_date: '',
@@ -52,6 +54,7 @@ export default function EditQuotationPage() {
 		gst_percentage: 18,
 		gst_amount: 0,
 		net_amount: 0,
+		gst_type: 'cgst_sgst',
 		// Annexure fields
 		annexure_scope_of_work: '',
 		annexure_input_document: '',
@@ -151,6 +154,7 @@ export default function EditQuotationPage() {
 					gst_percentage: q.gst_percentage || 18,
 					gst_amount: q.gst_amount || 0,
 					net_amount: q.net_amount || 0,
+					gst_type: q.gst_type || 'cgst_sgst',
 					// Annexure fields - fetch from project if available
 					annexure_scope_of_work:
 						q.annexure_scope_of_work || q.scope_of_work || '',
@@ -202,6 +206,44 @@ export default function EditQuotationPage() {
 			}
 		}
 	}, [authLoading, user, id, fetchQuotation]);
+
+	// Fetch companies on mount
+	useEffect(() => {
+		const fetchCompanies = async () => {
+			try {
+				const res = await fetch('/api/companies');
+				const data = await res.json();
+				if (data.success) {
+					setCompanies(data.data || []);
+				}
+			} catch (error) {
+				console.error('Error fetching companies:', error);
+			}
+		};
+		fetchCompanies();
+	}, []);
+
+	// Handle company selection
+	const handleSelectCompany = (company) => {
+		const addrParts = [
+			company.address,
+			company.city,
+			company.state,
+			company.country,
+			company.postal_code,
+		].filter(Boolean);
+		const formattedAddress = addrParts.join('\n');
+
+		setQuotation((prev) => ({
+			...prev,
+			client_name: company.company_name || '',
+			client_address: formattedAddress,
+			gst_number: company.gstin || company.gst_number || '',
+			pan_number: company.pan_number || '',
+			kind_attn: company.contact_person || '',
+		}));
+		setShowSuggestions(false);
+	};
 
 	// Handle input change
 	const handleChange = (e) => {
@@ -439,7 +481,7 @@ export default function EditQuotationPage() {
 			<div className="flex-1 flex flex-col">
 				<Navbar />
 
-				<main className="flex-1 px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 overflow-auto max-w-[1800px] mx-auto">
+				<main className="flex-1 px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 overflow-auto w-full">
 					{/* Header */}
 					<div className="flex items-center justify-between mb-6">
 						<div className="flex items-center gap-4">
@@ -512,14 +554,65 @@ export default function EditQuotationPage() {
 										<label className="block text-sm font-semibold text-gray-700 mb-2">
 											To,
 										</label>
-										<input
-											type="text"
-											name="client_name"
-											value={quotation.client_name}
-											onChange={handleChange}
-											placeholder="Client Name"
-											className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent mb-2"
-										/>
+										<div className="relative mb-2">
+											<input
+												type="text"
+												name="client_name"
+												value={quotation.client_name}
+												onChange={(e) => {
+													handleChange(e);
+													setShowSuggestions(true);
+												}}
+												onFocus={() => setShowSuggestions(true)}
+												onBlur={() =>
+													setTimeout(() => setShowSuggestions(false), 200)
+												}
+												placeholder="Client Name"
+												className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+												autoComplete="off"
+											/>
+											{showSuggestions && (
+												<div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+													{companies.filter((c) =>
+														(c.company_name || '')
+															.toLowerCase()
+															.includes(
+																(quotation.client_name || '').toLowerCase()
+															)
+													).length > 0 ? (
+														companies
+															.filter((c) =>
+																(c.company_name || '')
+																	.toLowerCase()
+																	.includes(
+																		(quotation.client_name || '').toLowerCase()
+																	)
+															)
+															.map((company) => (
+																<button
+																	key={company.id}
+																	type="button"
+																	onClick={() => handleSelectCompany(company)}
+																	className="w-full text-left px-4 py-2 hover:bg-purple-50 text-sm text-gray-700 font-medium transition-colors"
+																>
+																	<div className="font-semibold text-gray-900">
+																		{company.company_name}
+																	</div>
+																	<div className="text-xs text-gray-500">
+																		{company.city ? `${company.city}, ` : ''}
+																		{company.state || ''}
+																	</div>
+																</button>
+															))
+													) : (
+														<div className="px-4 py-2 text-sm text-gray-500 italic">
+															No matching company found. Keep typing to enter
+															manually.
+														</div>
+													)}
+												</div>
+											)}
+										</div>
 										<textarea
 											name="client_address"
 											value={quotation.client_address}
@@ -739,31 +832,97 @@ export default function EditQuotationPage() {
 										</div>
 										<div className="flex border-b border-gray-300">
 											<div className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right">
-												GST @
-												<input
-													type="number"
-													name="gst_percentage"
-													value={quotation.gst_percentage}
-													onChange={(e) => {
-														const gstPct = parseFloat(e.target.value) || 0;
-														const gross =
-															parseFloat(quotation.gross_amount) || 0;
-														const gstAmt = (gross * gstPct) / 100;
-														setQuotation((prev) => ({
-															...prev,
-															gst_percentage: gstPct,
-															gst_amount: gstAmt.toFixed(2),
-															net_amount: (gross + gstAmt).toFixed(2),
-														}));
-													}}
-													className="w-12 px-1 py-0.5 mx-1 text-sm text-center border border-gray-300 rounded"
-												/>
-												%:
+												GST Type:
 											</div>
-											<div className="w-32 p-2 text-right font-medium">
-												{formatCurrency(quotation.gst_amount)}
+											<div className="w-32 p-2">
+												<select
+													name="gst_type"
+													value={quotation.gst_type || 'cgst_sgst'}
+													onChange={(e) => {
+														const type = e.target.value;
+														setQuotation((prev) => {
+															const gross = parseFloat(prev.gross_amount) || 0;
+															const gstPct =
+																parseFloat(prev.gst_percentage) || 0;
+															const gstAmt = (gross * gstPct) / 100;
+															return {
+																...prev,
+																gst_type: type,
+																gst_amount: gstAmt.toFixed(2),
+																net_amount: (gross + gstAmt).toFixed(2),
+															};
+														});
+													}}
+													className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+												>
+													<option value="cgst_sgst">CGST + SGST</option>
+													<option value="igst">IGST</option>
+												</select>
 											</div>
 										</div>
+										<div className="flex border-b border-gray-300">
+											<div className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right">
+												GST Rate:
+											</div>
+											<div className="w-32 p-2">
+												<div className="flex items-center justify-end">
+													<input
+														type="number"
+														name="gst_percentage"
+														value={quotation.gst_percentage}
+														onChange={(e) => {
+															const gstPct = parseFloat(e.target.value) || 0;
+															const gross =
+																parseFloat(quotation.gross_amount) || 0;
+															const gstAmt = (gross * gstPct) / 100;
+															setQuotation((prev) => ({
+																...prev,
+																gst_percentage: gstPct,
+																gst_amount: gstAmt.toFixed(2),
+																net_amount: (gross + gstAmt).toFixed(2),
+															}));
+														}}
+														className="w-12 px-1 py-0.5 text-sm text-center border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+													/>
+													<span className="ml-1 text-sm">%</span>
+												</div>
+											</div>
+										</div>
+										{(quotation.gst_type || 'cgst_sgst') === 'cgst_sgst' ? (
+											<>
+												<div className="flex border-b border-gray-300 bg-gray-50/30">
+													<div className="flex-1 p-2 border-r border-gray-300 text-xs text-gray-500 text-right">
+														CGST @{' '}
+														{(parseFloat(quotation.gst_percentage) || 0) / 2}%:
+													</div>
+													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
+														{formatCurrency(
+															(parseFloat(quotation.gst_amount) || 0) / 2
+														)}
+													</div>
+												</div>
+												<div className="flex border-b border-gray-300 bg-gray-50/30">
+													<div className="flex-1 p-2 border-r border-gray-300 text-xs text-gray-500 text-right">
+														SGST @{' '}
+														{(parseFloat(quotation.gst_percentage) || 0) / 2}%:
+													</div>
+													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
+														{formatCurrency(
+															(parseFloat(quotation.gst_amount) || 0) / 2
+														)}
+													</div>
+												</div>
+											</>
+										) : (
+											<div className="flex border-b border-gray-300 bg-gray-50/30">
+												<div className="flex-1 p-2 border-r border-gray-300 text-xs text-gray-500 text-right">
+													IGST @ {quotation.gst_percentage}%:
+												</div>
+												<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
+													{formatCurrency(quotation.gst_amount)}
+												</div>
+											</div>
+										)}
 										<div className="flex bg-purple-50">
 											<div className="flex-1 p-2 border-r border-gray-300 font-bold text-sm text-right">
 												Net Amount:

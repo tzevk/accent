@@ -44,6 +44,7 @@ async function ensureTableAndColumns(connection) {
       terms TEXT,
       valid_until DATE,
       status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft',
+      project_id INT NULL,
       created_by INT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -80,6 +81,8 @@ async function ensureTableAndColumns(connection) {
 		'gst_percentage DECIMAL(5, 2) DEFAULT 18',
 		'gst_amount DECIMAL(15, 2) DEFAULT 0',
 		'net_amount DECIMAL(15, 2) DEFAULT 0',
+		'gst_type VARCHAR(20) DEFAULT "cgst_sgst"',
+		'project_id INT NULL',
 		'created_by INT',
 		// Annexure columns
 		'annexure_scope_of_work TEXT',
@@ -122,6 +125,14 @@ async function ensureTableAndColumns(connection) {
 	} catch (e) {
 		// Column might not exist or modify failed, ignore
 	}
+
+	try {
+		await connection.execute(
+			`ALTER TABLE quotations ADD INDEX idx_project_id (project_id)`
+		);
+	} catch (e) {
+		// Index might already exist, ignore
+	}
 }
 
 // POST - Create standalone quotation
@@ -160,8 +171,8 @@ export async function POST(request) {
 
 		const [result] = await connection.execute(
 			`INSERT INTO quotations 
-       (quotation_number, quotation_date, client_name, client_email, client_phone, client_address, kind_attn, enquiry_number, enquiry_date, subject, items, scope_items, gross_amount, gst_percentage, gst_amount, net_amount, subtotal, tax_rate, tax_amount, total, amount_in_words, gst_number, pan_number, tan_number, terms_and_conditions, annexure_scope_of_work, annexure_input_document, annexure_deliverables, annexure_software, annexure_duration, annexure_site_visit, annexure_quotation_validity, annexure_mode_of_delivery, annexure_revision, annexure_exclusions, annexure_billing_payment_terms, annexure_confidentiality, annexure_codes_standards, annexure_dispute_resolution, valid_until, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (quotation_number, quotation_date, client_name, client_email, client_phone, client_address, kind_attn, enquiry_number, enquiry_date, subject, items, scope_items, gross_amount, gst_percentage, gst_amount, net_amount, subtotal, tax_rate, tax_amount, total, amount_in_words, gst_number, pan_number, tan_number, terms_and_conditions, annexure_scope_of_work, annexure_input_document, annexure_deliverables, annexure_software, annexure_duration, annexure_site_visit, annexure_quotation_validity, annexure_mode_of_delivery, annexure_revision, annexure_exclusions, annexure_billing_payment_terms, annexure_confidentiality, annexure_codes_standards, annexure_dispute_resolution, valid_until, status, project_id, gst_type, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				quotation_number,
 				qDate,
@@ -204,6 +215,8 @@ export async function POST(request) {
 				body.annexure_dispute_resolution || null,
 				validUntil,
 				body.status || 'draft',
+				body.project_id || null,
+				body.gst_type || 'cgst_sgst',
 				authResult.user?.id || null,
 			]
 		);
