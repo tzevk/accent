@@ -18,11 +18,48 @@ import {
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
 
-export default function PurchaseOrderPage() {
+interface Company {
+	id: number;
+	company_name: string;
+	city?: string;
+}
+
+interface Project {
+	id: number;
+	project_id?: string;
+	project_code?: string;
+}
+
+interface OutgoingPO {
+	id: number;
+	sr_no: number;
+	company_name: string;
+	city: string;
+	po_number: string;
+	po_date: string;
+	po_amount: number;
+	project_number: string;
+	remarks: string;
+	created_at: string;
+}
+
+interface PurchaseOrder {
+	id: number;
+	po_number: string;
+	vendor_name: string;
+	vendor_email?: string;
+	description?: string;
+	total: number;
+	created_at: string;
+	delivery_date?: string;
+	status: string;
+}
+
+export default function OutgoingPurchaseOrderPage() {
 	const router = useRouter();
 	const { user, loading: authLoading } = useSessionRBAC();
 
-	const [purchaseOrders, setPurchaseOrders] = useState([]);
+	const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [pagination, setPagination] = useState({
 		page: 1,
@@ -31,11 +68,10 @@ export default function PurchaseOrderPage() {
 		totalPages: 0,
 	});
 
-	// Incoming PO form state
+	// Outgoing PO form state
 	const [showAddPOForm, setShowAddPOForm] = useState(false);
 	const [addingPO, setAddingPO] = useState(false);
-	const [incomingPOData, setIncomingPOData] = useState({
-		sr_no: '',
+	const [outgoingPOData, setOutgoingPOData] = useState({
 		company_name: '',
 		city: '',
 		po_number: '',
@@ -44,10 +80,11 @@ export default function PurchaseOrderPage() {
 		project_number: '',
 		remarks: '',
 	});
-	const [incomingPOs, setIncomingPOs] = useState([]);
-	const [companies, setCompanies] = useState([]);
+	const [outgoingPOs, setOutgoingPOs] = useState<OutgoingPO[]>([]);
+	const [loadingOutgoingPOs, setLoadingOutgoingPOs] = useState(true);
+	const [companies, setCompanies] = useState<Company[]>([]);
 	const [loadingCompanies, setLoadingCompanies] = useState(true);
-	const [projects, setProjects] = useState([]);
+	const [projects, setProjects] = useState<Project[]>([]);
 	const [loadingProjects, setLoadingProjects] = useState(true);
 
 	// Filters
@@ -66,10 +103,10 @@ export default function PurchaseOrderPage() {
 
 	// Delete confirmation
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-	const [deletingPO, setDeletingPO] = useState(null);
+	const [deletingPO, setDeletingPO] = useState<PurchaseOrder | null>(null);
 	const [deleteLoading, setDeleteLoading] = useState(false);
 
-	// Fetch purchase orders
+	// Fetch purchase orders (vendor POs)
 	const fetchPurchaseOrders = useCallback(
 		async (page = 1) => {
 			setLoading(true);
@@ -112,24 +149,28 @@ export default function PurchaseOrderPage() {
 		[statusFilter, pagination.limit]
 	);
 
-	// Fetch incoming POs from localStorage
-	const fetchIncomingPOs = useCallback(() => {
+	// Fetch outgoing POs from Database
+	const fetchOutgoingPOs = useCallback(async () => {
+		setLoadingOutgoingPOs(true);
 		try {
-			const stored = localStorage.getItem('incomingPOs');
-			if (stored) {
-				setIncomingPOs(JSON.parse(stored));
+			const res = await fetch('/api/admin/outgoing-purchase-orders');
+			const data = await res.json();
+			if (data.success) {
+				setOutgoingPOs(data.data || []);
 			}
 		} catch (error) {
-			console.error('Error fetching incoming POs:', error);
+			console.error('Error fetching outgoing POs:', error);
+		} finally {
+			setLoadingOutgoingPOs(false);
 		}
 	}, []);
 
 	useEffect(() => {
 		if (!authLoading && user) {
 			fetchPurchaseOrders(1);
-			fetchIncomingPOs();
+			fetchOutgoingPOs();
 		}
-	}, [authLoading, user, statusFilter, fetchPurchaseOrders, fetchIncomingPOs]);
+	}, [authLoading, user, statusFilter, fetchPurchaseOrders, fetchOutgoingPOs]);
 
 	// Fetch companies on mount
 	useEffect(() => {
@@ -172,18 +213,18 @@ export default function PurchaseOrderPage() {
 	}, [authLoading, user]);
 
 	// Handle company selection
-	const handleCompanySelect = (companyName) => {
+	const handleCompanySelect = (companyName: string) => {
 		const selectedCompany = companies.find(
 			(c) => c.company_name === companyName
 		);
 		if (selectedCompany) {
-			setIncomingPOData((prev) => ({
+			setOutgoingPOData((prev) => ({
 				...prev,
 				company_name: selectedCompany.company_name || '',
 				city: selectedCompany.city || '',
 			}));
 		} else {
-			setIncomingPOData((prev) => ({
+			setOutgoingPOData((prev) => ({
 				...prev,
 				company_name: '',
 				city: '',
@@ -191,22 +232,24 @@ export default function PurchaseOrderPage() {
 		}
 	};
 
-	// Handle incoming PO input change
-	const handleIncomingPOChange = (e) => {
+	// Handle outgoing PO input change
+	const handleOutgoingPOChange = (
+		e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+	) => {
 		const { name, value } = e.target;
-		setIncomingPOData((prev) => ({
+		setOutgoingPOData((prev) => ({
 			...prev,
 			[name]: value,
 		}));
 	};
 
-	// Add incoming PO
-	const handleAddIncomingPO = async () => {
+	// Add outgoing PO
+	const handleAddOutgoingPO = async () => {
 		if (
-			!incomingPOData.company_name ||
-			!incomingPOData.po_number ||
-			!incomingPOData.po_date ||
-			!incomingPOData.po_amount
+			!outgoingPOData.company_name ||
+			!outgoingPOData.po_number ||
+			!outgoingPOData.po_date ||
+			!outgoingPOData.po_amount
 		) {
 			alert(
 				'Please fill in all required fields (Company Name, PO Number, PO Date, PO Amount)'
@@ -216,61 +259,68 @@ export default function PurchaseOrderPage() {
 
 		setAddingPO(true);
 		try {
-			const newPO = {
-				id: Date.now(),
-				sr_no: incomingPOs.length + 1,
-				...incomingPOData,
-				po_amount: parseFloat(incomingPOData.po_amount),
-				created_at: new Date().toISOString(),
-			};
-
-			const updated = [...incomingPOs, newPO];
-			localStorage.setItem('incomingPOs', JSON.stringify(updated));
-			setIncomingPOs(updated);
-
-			// Reset form
-			setIncomingPOData({
-				sr_no: '',
-				company_name: '',
-				city: '',
-				po_number: '',
-				po_date: '',
-				po_amount: '',
-				project_number: '',
-				remarks: '',
+			const res = await fetch('/api/admin/outgoing-purchase-orders', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(outgoingPOData),
 			});
+			const data = await res.json();
 
-			alert('Incoming Purchase Order added successfully!');
+			if (data.success) {
+				alert('Outgoing Purchase Order added successfully!');
+				// Reset form
+				setOutgoingPOData({
+					company_name: '',
+					city: '',
+					po_number: '',
+					po_date: '',
+					po_amount: '',
+					project_number: '',
+					remarks: '',
+				});
+				fetchOutgoingPOs();
+			} else {
+				alert(data.message || 'Failed to add outgoing purchase order');
+			}
 		} catch (error) {
-			console.error('Error adding incoming PO:', error);
-			alert('Failed to add incoming purchase order');
+			console.error('Error adding outgoing PO:', error);
+			alert('Failed to add outgoing purchase order');
 		} finally {
 			setAddingPO(false);
 		}
 	};
 
-	// Delete incoming PO
-	const handleDeleteIncomingPO = (poId) => {
+	// Delete outgoing PO
+	const handleDeleteOutgoingPO = async (poId: number) => {
 		if (
-			!confirm('Are you sure you want to delete this incoming purchase order?')
+			!confirm('Are you sure you want to delete this outgoing purchase order?')
 		)
 			return;
 
 		try {
-			const updated = incomingPOs.filter((po) => po.id !== poId);
-			localStorage.setItem('incomingPOs', JSON.stringify(updated));
-			setIncomingPOs(updated);
+			const res = await fetch(
+				`/api/admin/outgoing-purchase-orders?id=${poId}`,
+				{
+					method: 'DELETE',
+				}
+			);
+			const data = await res.json();
+			if (data.success) {
+				fetchOutgoingPOs();
+			} else {
+				alert(data.message || 'Failed to delete outgoing purchase order');
+			}
 		} catch (error) {
-			console.error('Error deleting incoming PO:', error);
-			alert('Failed to delete incoming purchase order');
+			console.error('Error deleting outgoing PO:', error);
+			alert('Failed to delete outgoing purchase order');
 		}
 	};
 
-	// Download incoming PO as PDF
-	const handleDownloadIncomingPO = (po) => {
+	// Download outgoing PO as PDF
+	const handleDownloadOutgoingPO = (po: OutgoingPO) => {
 		try {
 			window.open(
-				`/api/admin/purchase-orders/download?id=${po.id}&incoming=true`,
+				`/api/admin/outgoing-purchase-orders/download?id=${po.id}`,
 				'_blank'
 			);
 		} catch (error) {
@@ -291,7 +341,7 @@ export default function PurchaseOrderPage() {
 	});
 
 	// Get status styling
-	const getStatusStyle = (status) => {
+	const getStatusStyle = (status: string) => {
 		switch (status) {
 			case 'draft':
 				return 'bg-gray-100 text-gray-700';
@@ -309,7 +359,7 @@ export default function PurchaseOrderPage() {
 	};
 
 	// Format currency
-	const formatCurrency = (amount) => {
+	const formatCurrency = (amount: number) => {
 		return new Intl.NumberFormat('en-IN', {
 			style: 'currency',
 			currency: 'INR',
@@ -318,7 +368,7 @@ export default function PurchaseOrderPage() {
 	};
 
 	// Format date
-	const formatDate = (dateString) => {
+	const formatDate = (dateString: string) => {
 		if (!dateString) return '-';
 		return new Date(dateString).toLocaleDateString('en-IN', {
 			day: '2-digit',
@@ -327,10 +377,9 @@ export default function PurchaseOrderPage() {
 		});
 	};
 
-	// Handle download
-	const handleDownload = async (purchaseOrder) => {
+	// Handle download (vendor POs)
+	const handleDownload = async (purchaseOrder: PurchaseOrder) => {
 		try {
-			// Open in new window for print/save as PDF
 			window.open(
 				`/api/admin/purchase-orders/download?id=${purchaseOrder.id}`,
 				'_blank'
@@ -342,12 +391,12 @@ export default function PurchaseOrderPage() {
 	};
 
 	// Handle Edit - Navigate to edit page
-	const handleEdit = (po) => {
+	const handleEdit = (po: PurchaseOrder) => {
 		router.push(`/admin/purchase-order/edit/${po.id}`);
 	};
 
 	// Handle Delete
-	const handleDelete = (po) => {
+	const handleDelete = (po: PurchaseOrder) => {
 		setDeletingPO(po);
 		setShowDeleteConfirm(true);
 	};
@@ -401,10 +450,10 @@ export default function PurchaseOrderPage() {
 					<div>
 						<h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
 							<ClipboardDocumentListIcon className="h-7 w-7 text-purple-600" />
-							Purchase Orders
+							Outgoing Purchase Orders
 						</h1>
 						<p className="text-sm text-gray-500 mt-1">
-							View and download purchase orders
+							View and download outgoing purchase orders
 						</p>
 					</div>
 					<button
@@ -412,16 +461,16 @@ export default function PurchaseOrderPage() {
 						className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
 					>
 						<PlusIcon className="h-5 w-5" />
-						Add Purchase Order
+						Add Outgoing Purchase Order
 					</button>
 				</div>
 
-				{/* Incoming PO Form */}
+				{/* Add Outgoing PO Form */}
 				{showAddPOForm && (
 					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
 						<div className="flex items-center justify-between mb-4">
 							<h2 className="text-lg font-bold text-gray-900">
-								Add Incoming Purchase Order
+								Add Outgoing Purchase Order
 							</h2>
 							<button
 								onClick={() => setShowAddPOForm(false)}
@@ -438,7 +487,7 @@ export default function PurchaseOrderPage() {
 								</label>
 								<select
 									name="company_name"
-									value={incomingPOData.company_name}
+									value={outgoingPOData.company_name}
 									onChange={(e) => handleCompanySelect(e.target.value)}
 									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 									disabled={loadingCompanies}
@@ -463,7 +512,7 @@ export default function PurchaseOrderPage() {
 								<input
 									type="text"
 									name="city"
-									value={incomingPOData.city}
+									value={outgoingPOData.city}
 									placeholder="Auto-filled from company"
 									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
 									readOnly
@@ -476,8 +525,8 @@ export default function PurchaseOrderPage() {
 								<input
 									type="text"
 									name="po_number"
-									value={incomingPOData.po_number}
-									onChange={handleIncomingPOChange}
+									value={outgoingPOData.po_number}
+									onChange={handleOutgoingPOChange}
 									placeholder="PO-00001"
 									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 								/>
@@ -489,8 +538,8 @@ export default function PurchaseOrderPage() {
 								<input
 									type="date"
 									name="po_date"
-									value={incomingPOData.po_date}
-									onChange={handleIncomingPOChange}
+									value={outgoingPOData.po_date}
+									onChange={handleOutgoingPOChange}
 									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 								/>
 							</div>
@@ -504,8 +553,8 @@ export default function PurchaseOrderPage() {
 								<input
 									type="number"
 									name="po_amount"
-									value={incomingPOData.po_amount}
-									onChange={handleIncomingPOChange}
+									value={outgoingPOData.po_amount}
+									onChange={handleOutgoingPOChange}
 									placeholder="0.00"
 									step="0.01"
 									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -517,8 +566,8 @@ export default function PurchaseOrderPage() {
 								</label>
 								<select
 									name="project_number"
-									value={incomingPOData.project_number}
-									onChange={handleIncomingPOChange}
+									value={outgoingPOData.project_number}
+									onChange={handleOutgoingPOChange}
 									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
 									disabled={loadingProjects}
 								>
@@ -545,8 +594,8 @@ export default function PurchaseOrderPage() {
 								<input
 									type="text"
 									name="remarks"
-									value={incomingPOData.remarks}
-									onChange={handleIncomingPOChange}
+									value={outgoingPOData.remarks}
+									onChange={handleOutgoingPOChange}
 									placeholder="Additional remarks..."
 									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 								/>
@@ -555,7 +604,7 @@ export default function PurchaseOrderPage() {
 
 						<div className="flex gap-2">
 							<button
-								onClick={handleAddIncomingPO}
+								onClick={handleAddOutgoingPO}
 								disabled={addingPO}
 								className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 font-medium"
 							>
@@ -571,11 +620,18 @@ export default function PurchaseOrderPage() {
 					</div>
 				)}
 
-				{/* Incoming POs Table */}
-				{incomingPOs.length > 0 && (
+				{/* Outgoing POs Table */}
+				{loadingOutgoingPOs ? (
+					<div className="flex items-center justify-center py-6 bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+						<div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+						<span className="ml-3 text-gray-600 text-sm">
+							Loading outgoing purchase orders...
+						</span>
+					</div>
+				) : outgoingPOs.length > 0 ? (
 					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 overflow-x-auto">
 						<h3 className="text-lg font-bold text-gray-900 mb-4">
-							Incoming Purchase Orders
+							Outgoing Purchase Orders
 						</h3>
 						<table className="w-full text-sm">
 							<thead className="bg-gray-50 border-b border-gray-200">
@@ -610,7 +666,7 @@ export default function PurchaseOrderPage() {
 								</tr>
 							</thead>
 							<tbody className="divide-y divide-gray-200">
-								{incomingPOs.map((po, idx) => (
+								{outgoingPOs.map((po, idx) => (
 									<tr
 										key={po.id}
 										className="hover:bg-gray-50 transition-colors"
@@ -628,11 +684,11 @@ export default function PurchaseOrderPage() {
 											{po.po_number}
 										</td>
 										<td className="px-4 py-3 text-gray-700">
-											{new Date(po.po_date).toLocaleDateString('en-IN')}
+											{formatDate(po.po_date)}
 										</td>
 										<td className="px-4 py-3 text-right font-semibold text-gray-900">
 											₹
-											{parseFloat(po.po_amount || 0).toLocaleString('en-IN', {
+											{Number(po.po_amount || 0).toLocaleString('en-IN', {
 												minimumFractionDigits: 2,
 											})}
 										</td>
@@ -645,14 +701,14 @@ export default function PurchaseOrderPage() {
 										<td className="px-4 py-3">
 											<div className="flex items-center justify-center gap-2">
 												<button
-													onClick={() => handleDownloadIncomingPO(po)}
+													onClick={() => handleDownloadOutgoingPO(po)}
 													className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
 													title="Download PDF"
 												>
 													<ArrowDownTrayIcon className="h-4 w-4" />
 												</button>
 												<button
-													onClick={() => handleDeleteIncomingPO(po.id)}
+													onClick={() => handleDeleteOutgoingPO(po.id)}
 													className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
 													title="Delete"
 												>
@@ -664,6 +720,10 @@ export default function PurchaseOrderPage() {
 								))}
 							</tbody>
 						</table>
+					</div>
+				) : (
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 text-center text-gray-500">
+						No outgoing purchase orders found.
 					</div>
 				)}
 
@@ -814,9 +874,11 @@ export default function PurchaseOrderPage() {
 												<div className="font-medium text-gray-900">
 													{po.vendor_name}
 												</div>
-												<div className="text-sm text-gray-500">
-													{po.vendor_email}
-												</div>
+												{po.vendor_email && (
+													<div className="text-sm text-gray-500">
+														{po.vendor_email}
+													</div>
+												)}
 											</td>
 											<td className="px-6 py-4 text-gray-600 max-w-[200px] truncate">
 												{po.description}
@@ -828,7 +890,7 @@ export default function PurchaseOrderPage() {
 												{formatDate(po.created_at)}
 											</td>
 											<td className="px-6 py-4 text-gray-600">
-												{formatDate(po.delivery_date)}
+												{formatDate(po.delivery_date || '')}
 											</td>
 											<td className="px-6 py-4">
 												<span

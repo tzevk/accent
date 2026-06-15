@@ -89,7 +89,6 @@ const adminMenuConfig = [
 	{ name: 'Admin Logs', href: '/admin/activity-logs', resource: 'admin' },
 	{ name: 'All Todos', href: '/admin/todos', resource: 'admin' },
 	{ name: 'Cash Voucher', href: '/admin/cash-voucher', resource: 'admin' },
-	{ name: 'Sale Invoice', href: '/admin/invoice', resource: 'admin' },
 	{
 		name: 'Live Monitoring',
 		href: '/admin/live-monitoring',
@@ -101,7 +100,16 @@ const adminMenuConfig = [
 		resource: 'admin',
 	},
 	{ name: 'Payment Entry', href: '/admin/payment-entry', resource: 'admin' },
-	{ name: 'Purchase Order', href: '/admin/purchase-order', resource: 'admin' },
+	{
+		name: 'Purchase Order (Incoming)',
+		href: '/admin/purchase-order',
+		resource: 'admin',
+	},
+	{
+		name: 'Purchase Order (Outgoing)',
+		href: '/admin/outgoing-purchase-order',
+		resource: 'admin',
+	},
 	{ name: 'Quotation', href: '/admin/quotation', resource: 'admin' },
 	{
 		name: 'Salary Sheet (Excel)',
@@ -109,6 +117,7 @@ const adminMenuConfig = [
 		resource: 'admin',
 	},
 	{ name: 'Salary Slip (PDF)', href: '/admin/salary-slip', resource: 'admin' },
+	{ name: 'Sale Invoice', href: '/admin/invoice', resource: 'admin' },
 ];
 
 // Masters moved to sidebar; removed from header
@@ -556,6 +565,33 @@ export default function Navbar() {
 											</Link>
 										);
 									})}
+								</div>
+							)}
+
+							{/* Admin Section on Mobile */}
+							{showAdminMenu && (
+								<div className="pt-2 mt-2 border-t border-white/10">
+									<p className="px-4 py-2 text-xs font-semibold text-white/60 uppercase tracking-wider">
+										Admin
+									</p>
+									<div className="grid grid-cols-1 gap-1">
+										{adminMenuItems.map((item) => {
+											const isActive = pathname === item.href;
+											return (
+												<Link
+													key={item.name}
+													href={item.href}
+													className={`flex items-center space-x-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[.98] ${
+														isActive
+															? 'bg-white/20 text-white'
+															: 'text-white/90 hover:bg-white/10 hover:text-white'
+													}`}
+												>
+													<span>{item.name}</span>
+												</Link>
+											);
+										})}
+									</div>
 								</div>
 							)}
 
