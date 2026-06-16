@@ -41,6 +41,68 @@ export async function GET(request, { params }) {
 			}
 
 			const p = rows[0];
+
+			// Parse or map scope items
+			let mappedScopeItems = null;
+			if (p.scope_items) {
+				try {
+					mappedScopeItems =
+						typeof p.scope_items === 'string'
+							? JSON.parse(p.scope_items)
+							: p.scope_items;
+				} catch (e) {
+					// ignore
+				}
+			}
+
+			if (
+				(!mappedScopeItems || mappedScopeItems.length === 0) &&
+				p.commercial_items
+			) {
+				try {
+					const commItems =
+						typeof p.commercial_items === 'string'
+							? JSON.parse(p.commercial_items)
+							: p.commercial_items;
+					if (Array.isArray(commItems) && commItems.length > 0) {
+						mappedScopeItems = commItems.map((item) => ({
+							sr_no: item.sr_no || 1,
+							description: item.scope_of_work || item.activities || '',
+							qty: item.man_hours || '1',
+							rate: item.man_hour_rate || '',
+							amount: item.total_amount || '',
+						}));
+					}
+				} catch (e) {
+					// ignore
+				}
+			}
+
+			// Calculate gross amount
+			let grossAmt = p.gross_amount;
+			if (!grossAmt && mappedScopeItems && mappedScopeItems.length > 0) {
+				grossAmt = mappedScopeItems.reduce(
+					(sum, item) => sum + (parseFloat(item.amount) || 0),
+					0
+				);
+			}
+			if (!grossAmt) {
+				grossAmt = p.budget || 0;
+			}
+
+			const parsedGross = parseFloat(grossAmt || 0);
+			const gstPercentage = parseFloat(p.gst_percentage || 18);
+			const parsedGstAmt = parseFloat(
+				p.gst_amount || (parsedGross * gstPercentage) / 100
+			);
+			const parsedNetAmt = parseFloat(
+				p.net_amount || parsedGross + parsedGstAmt
+			);
+
+			const formattedGross = parsedGross.toFixed(2);
+			const formattedGst = parsedGstAmt.toFixed(2);
+			const formattedNet = parsedNetAmt.toFixed(2);
+
 			quotationData = {
 				id: p.id,
 				quotation_number: p.quotation_number || p.proposal_id || '',
@@ -49,13 +111,13 @@ export async function GET(request, { params }) {
 				enquiry_date: p.enquiry_date || null,
 				client_name: p.client_name || '',
 				client_address: p.client_address || '',
-				kind_attn: p.kind_attn || p.contact_person || '',
-				scope_items: p.scope_items || null,
+				kind_attn: p.kind_attn || p.contact_name || p.contact_person || '',
+				scope_items: mappedScopeItems,
 				scope_of_work: '',
-				gross_amount: p.gross_amount || p.budget || 0,
-				gst_percentage: p.gst_percentage || 18,
-				gst_amount: p.gst_amount || 0,
-				net_amount: p.net_amount || 0,
+				gross_amount: formattedGross,
+				gst_percentage: gstPercentage,
+				gst_amount: formattedGst,
+				net_amount: formattedNet,
 				amount_in_words: p.amount_in_words || '',
 				gst_number: p.gst_number || '',
 				pan_number: p.pan_number || '',
@@ -99,6 +161,12 @@ export async function GET(request, { params }) {
 						quotationData.company_email = companies[0].email;
 						quotationData.gst_number =
 							quotationData.gst_number || companies[0].gst_number;
+
+						// Fallback if not explicitly set on proposal
+						quotationData.client_name =
+							quotationData.client_name || companies[0].company_name;
+						quotationData.client_address =
+							quotationData.client_address || companies[0].address;
 					}
 				} catch (e) {
 					/* ignore */

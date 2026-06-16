@@ -17,6 +17,7 @@ import {
 	PencilSquareIcon,
 	PlusIcon,
 	EyeIcon,
+	TrashIcon,
 } from '@heroicons/react/24/outline';
 
 export default function QuotationPage() {
@@ -340,6 +341,36 @@ export default function QuotationPage() {
 		window.open(url, '_blank');
 	};
 
+	// Handle delete quotation
+	const handleDelete = async (quotation) => {
+		if (
+			!confirm(
+				`Are you sure you want to delete quotation ${quotation.quotation_number}? This action cannot be undone.`
+			)
+		) {
+			return;
+		}
+
+		try {
+			const source = quotation.source || 'quotations';
+			const res = await fetch(
+				`/api/admin/quotations?id=${quotation.id}&source=${source}`,
+				{
+					method: 'DELETE',
+				}
+			);
+			const data = await res.json();
+			if (data.success) {
+				fetchQuotations(pagination.page);
+			} else {
+				alert(data.error || 'Failed to delete quotation');
+			}
+		} catch (error) {
+			console.error('Error deleting quotation:', error);
+			alert('Failed to delete quotation');
+		}
+	};
+
 	if (authLoading) {
 		return (
 			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
@@ -639,6 +670,13 @@ export default function QuotationPage() {
 															title="View & Print Quotation"
 														>
 															<ArrowDownTrayIcon className="h-5 w-5" />
+														</button>
+														<button
+															onClick={() => handleDelete(quotation)}
+															className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+															title="Delete Quotation"
+														>
+															<TrashIcon className="h-5 w-5" />
 														</button>
 													</div>
 												</td>
