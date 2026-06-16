@@ -175,7 +175,7 @@ export async function GET(request, { params }) {
 		} else if (source === 'project') {
 			// Fetch from project_quotations
 			const [rows] = await connection.execute(
-				'SELECT * FROM project_quotations WHERE id = ?',
+				'SELECT * FROM project_quotations WHERE id = ? AND (deleted_at IS NULL)',
 				[id]
 			);
 
@@ -285,7 +285,7 @@ export async function GET(request, { params }) {
 		} else {
 			// Fetch from quotations table
 			const [rows] = await connection.execute(
-				'SELECT * FROM quotations WHERE id = ?',
+				'SELECT * FROM quotations WHERE id = ? AND (deleted_at IS NULL)',
 				[id]
 			);
 

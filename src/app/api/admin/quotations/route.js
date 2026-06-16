@@ -164,6 +164,24 @@ export async function GET(request) {
 			// Column might already exist, ignore
 		}
 
+		// Add deleted_at column to quotations if it doesn't exist
+		try {
+			await connection.execute(
+				`ALTER TABLE quotations ADD COLUMN deleted_at TIMESTAMP NULL`
+			);
+		} catch (alterError) {
+			// Column might already exist, ignore
+		}
+
+		// Add deleted_at column to project_quotations if it doesn't exist
+		try {
+			await connection.execute(
+				`ALTER TABLE project_quotations ADD COLUMN deleted_at TIMESTAMP NULL`
+			);
+		} catch (alterError) {
+			// Column might already exist, ignore
+		}
+
 		// Build combined query using UNION to get from both tables
 		let allQuotations = [];
 
@@ -183,7 +201,7 @@ export async function GET(request) {
           'quotations' as source,
           project_id,
           NULL as project_name
-        FROM quotations WHERE 1=1
+        FROM quotations WHERE 1=1 AND (deleted_at IS NULL)
       `;
 			const params1 = [];
 
@@ -231,7 +249,7 @@ export async function GET(request) {
           pq.project_id,
           NULL as project_name
         FROM project_quotations pq
-        WHERE pq.quotation_number IS NOT NULL AND pq.quotation_number != ''
+        WHERE pq.quotation_number IS NOT NULL AND pq.quotation_number != '' AND (pq.deleted_at IS NULL)
       `;
 			const params2 = [];
 
@@ -547,7 +565,7 @@ export async function DELETE(request) {
 		let result;
 		if (source === 'project') {
 			[result] = await connection.execute(
-				'DELETE FROM project_quotations WHERE id = ?',
+				'UPDATE project_quotations SET deleted_at = NOW() WHERE id = ?',
 				[id]
 			);
 		} else if (source === 'proposal') {
@@ -570,7 +588,7 @@ export async function DELETE(request) {
 			);
 		} else {
 			[result] = await connection.execute(
-				'DELETE FROM quotations WHERE id = ?',
+				'UPDATE quotations SET deleted_at = NOW() WHERE id = ?',
 				[id]
 			);
 		}
