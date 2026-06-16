@@ -59,6 +59,7 @@
 		"next": "^15.5.18",
 		"papaparse": "^5.5.3",
 		"pizzip": "^3.1.6",
+		"puppeteer": "^25.1.0",
 		"puppeteer-core": "^24.43.0",
 		"react": "^19.2.6",
 		"react-dom": "^19.2.6",
@@ -87,5 +88,14 @@
 		"tailwindcss": "^4",
 		"typescript": "^5",
 		"vitest": "^4.1.7"
+	},
+	"allowScripts": {
+		"@tailwindcss/oxide@4.1.13": true,
+		"bcrypt@6.0.0": true,
+		"core-js@3.46.0": true,
+		"sharp@0.34.5": true,
+		"sharp@0.33.5": true,
+		"puppeteer@25.1.0": true,
+		"unrs-resolver@1.11.1": true
 	}
 }
