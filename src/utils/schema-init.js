@@ -19,57 +19,57 @@ let initPromise = null;
  * Safe to call multiple times - will only run once per process.
  */
 export async function ensureSchema() {
-  // Return cached promise if already initializing/initialized
-  if (initPromise) return initPromise;
-  if (schemaInitialized) return true;
+	// Return cached promise if already initializing/initialized
+	if (initPromise) return initPromise;
+	if (schemaInitialized) return true;
 
-  initPromise = doSchemaInit();
-  return initPromise;
+	initPromise = doSchemaInit();
+	return initPromise;
 }
 
 async function doSchemaInit() {
-  const startTime = Date.now();
-  console.log('🔧 Initializing database schema...');
+	const startTime = Date.now();
+	console.log('🔧 Initializing database schema...');
 
-  const db = await dbConnect();
+	const db = await dbConnect();
 
-  try {
-    // Run all schema creation in parallel where safe
-    await Promise.all([
-      initCompaniesTable(db),
-      initUsersTable(db),
-      initBankMasterTable(db),
-    ]);
+	try {
+		// Run all schema creation in parallel where safe
+		await Promise.all([
+			initCompaniesTable(db),
+			initUsersTable(db),
+			initBankMasterTable(db),
+		]);
 
-    // Tables with foreign keys - run after base tables
-    await Promise.all([
-      initLeadsTable(db),
-      initProjectsTable(db),
-      initProposalsTable(db),
-    ]);
+		// Tables with foreign keys - run after base tables
+		await Promise.all([
+			initLeadsTable(db),
+			initProjectsTable(db),
+			initProposalsTable(db),
+		]);
 
-    // Tables depending on the above
-    await Promise.all([
-      initFollowUpsTable(db),
-      initWorkLogsTable(db),
-      initUserActivityAssignmentsTable(db),
-    ]);
+		// Tables depending on the above
+		await Promise.all([
+			initFollowUpsTable(db),
+			initWorkLogsTable(db),
+			initUserActivityAssignmentsTable(db),
+		]);
 
-    schemaInitialized = true;
-    const elapsed = Date.now() - startTime;
-    console.log(`✅ Database schema initialized in ${elapsed}ms`);
+		schemaInitialized = true;
+		const elapsed = Date.now() - startTime;
+		console.log(`✅ Database schema initialized in ${elapsed}ms`);
 
-    return true;
-  } catch (error) {
-    console.error('❌ Schema initialization failed:', error);
-    throw error;
-  } finally {
-    db.release();
-  }
+		return true;
+	} catch (error) {
+		console.error('❌ Schema initialization failed:', error);
+		throw error;
+	} finally {
+		db.release();
+	}
 }
 
 async function initCompaniesTable(db) {
-  await db.execute(`
+	await db.execute(`
     CREATE TABLE IF NOT EXISTS companies (
       id INT PRIMARY KEY AUTO_INCREMENT,
       company_id VARCHAR(50) UNIQUE,
@@ -93,14 +93,37 @@ async function initCompaniesTable(db) {
       designation VARCHAR(100),
       mobile_number VARCHAR(20),
       sector VARCHAR(100),
+      gstin VARCHAR(15),
+      pan_number VARCHAR(10),
+      company_profile TEXT,
+      state_code VARCHAR(10),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+
+	// Alter statements to safely migrate existing databases
+	const alterStatements = [
+		'ALTER TABLE companies ADD COLUMN gstin VARCHAR(15)',
+		'ALTER TABLE companies ADD COLUMN pan_number VARCHAR(10)',
+		'ALTER TABLE companies ADD COLUMN company_profile TEXT',
+		'ALTER TABLE companies ADD COLUMN state_code VARCHAR(10)',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			// Ignore duplicate column errors (errno 1060 / ER_DUP_FIELDNAME)
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Companies table schema update warning:', e.message || e);
+			}
+		}
+	}
 }
 
 async function initUsersTable(db) {
-  await db.execute(`
+	await db.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id INT PRIMARY KEY AUTO_INCREMENT,
       email VARCHAR(255) UNIQUE NOT NULL,
@@ -116,7 +139,7 @@ async function initUsersTable(db) {
 }
 
 async function initLeadsTable(db) {
-  await db.execute(`
+	await db.execute(`
     CREATE TABLE IF NOT EXISTS leads (
       id INT PRIMARY KEY AUTO_INCREMENT,
       lead_id VARCHAR(50),
@@ -143,7 +166,7 @@ async function initLeadsTable(db) {
 }
 
 async function initProjectsTable(db) {
-  await db.execute(`
+	await db.execute(`
     CREATE TABLE IF NOT EXISTS projects (
       id INT PRIMARY KEY AUTO_INCREMENT,
       project_id VARCHAR(50) UNIQUE,
@@ -199,7 +222,7 @@ async function initProjectsTable(db) {
 }
 
 async function initProposalsTable(db) {
-  await db.execute(`
+	await db.execute(`
     CREATE TABLE IF NOT EXISTS proposals (
       id INT PRIMARY KEY AUTO_INCREMENT,
       proposal_id VARCHAR(50) UNIQUE,
@@ -229,7 +252,7 @@ async function initProposalsTable(db) {
 }
 
 async function initFollowUpsTable(db) {
-  await db.execute(`
+	await db.execute(`
     CREATE TABLE IF NOT EXISTS follow_ups (
       id INT PRIMARY KEY AUTO_INCREMENT,
       lead_id INT,
@@ -246,7 +269,7 @@ async function initFollowUpsTable(db) {
 }
 
 async function initWorkLogsTable(db) {
-  await db.execute(`
+	await db.execute(`
     CREATE TABLE IF NOT EXISTS work_logs (
       id INT PRIMARY KEY AUTO_INCREMENT,
       user_id INT,
@@ -264,7 +287,7 @@ async function initWorkLogsTable(db) {
 }
 
 async function initUserActivityAssignmentsTable(db) {
-  await db.execute(`
+	await db.execute(`
     CREATE TABLE IF NOT EXISTS user_activity_assignments (
       id INT PRIMARY KEY AUTO_INCREMENT,
       user_id INT NOT NULL,
@@ -287,7 +310,7 @@ async function initUserActivityAssignmentsTable(db) {
 }
 
 async function initBankMasterTable(db) {
-  await db.execute(`
+	await db.execute(`
     CREATE TABLE IF NOT EXISTS bank_master (
       BankID VARCHAR(36) PRIMARY KEY,
       BankCode VARCHAR(10) UNIQUE,
@@ -306,7 +329,7 @@ async function initBankMasterTable(db) {
  * Check if schema is already initialized
  */
 export function isSchemaInitialized() {
-  return schemaInitialized;
+	return schemaInitialized;
 }
 
 // Export for direct CLI usage

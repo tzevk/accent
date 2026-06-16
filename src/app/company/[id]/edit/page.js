@@ -45,6 +45,7 @@ export default function EditCompany({ params }) {
 		gstin: '',
 		pan_number: '',
 		company_profile: '',
+		state_code: '',
 	});
 
 	useEffect(() => {
@@ -82,6 +83,7 @@ export default function EditCompany({ params }) {
 						gstin: companyData.gstin || '',
 						pan_number: companyData.pan_number || '',
 						company_profile: companyData.company_profile || '',
+						state_code: companyData.state_code || '',
 					});
 				} else {
 					console.error('Error fetching company:', result.error);
@@ -614,7 +616,22 @@ export default function EditCompany({ params }) {
 										</div>
 
 										{/* Registration Info */}
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+										<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+											<div>
+												<label className="block text-sm font-medium text-gray-700 mb-1">
+													State Code
+												</label>
+												<input
+													type="text"
+													name="state_code"
+													value={formData.state_code || ''}
+													onChange={handleFormChange}
+													className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+													placeholder="e.g., 27"
+													maxLength={10}
+												/>
+											</div>
+
 											<div>
 												<label className="block text-sm font-medium text-gray-700 mb-1">
 													GSTIN
