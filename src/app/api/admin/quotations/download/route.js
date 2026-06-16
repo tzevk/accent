@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { NextResponse } from 'next/server';
-import puppeteer from 'puppeteer-core';
+import puppeteer from 'puppeteer';
 import chromium from '@sparticuz/chromium';
 import { dbConnect } from '@/utils/database';
 import {
@@ -105,6 +105,10 @@ export async function GET(request) {
 						if (!quotationData.annexure_billing_payment_terms)
 							quotationData.annexure_billing_payment_terms =
 								p.billing_and_payment_terms;
+						if (!quotationData.annexure_taxation)
+							quotationData.annexure_taxation = p.taxation;
+						if (!quotationData.annexure_payment_milestone)
+							quotationData.annexure_payment_milestone = p.payment_milestone;
 
 						// Try to fetch company details
 						if (p.company_id) {
@@ -184,6 +188,11 @@ export async function GET(request) {
 							if (!quotationData.annexure_billing_payment_terms)
 								quotationData.annexure_billing_payment_terms =
 									prop.billing_payment_terms;
+							if (!quotationData.annexure_taxation)
+								quotationData.annexure_taxation = prop.taxation;
+							if (!quotationData.annexure_payment_milestone)
+								quotationData.annexure_payment_milestone =
+									prop.payment_milestone;
 						}
 					} catch (propErr) {
 						// Ignore - proposals table might have different structure
@@ -242,6 +251,9 @@ export async function GET(request) {
 				annexure_exclusions: p.annexure_exclusions || p.exclusions || '',
 				annexure_billing_payment_terms:
 					p.annexure_billing_payment_terms || p.billing_payment_terms || '',
+				annexure_taxation: p.annexure_taxation || p.taxation || '',
+				annexure_payment_milestone:
+					p.annexure_payment_milestone || p.payment_milestone || '',
 				annexure_confidentiality: p.annexure_confidentiality || '',
 				annexure_codes_standards: p.annexure_codes_standards || '',
 				annexure_dispute_resolution: p.annexure_dispute_resolution || '',
@@ -302,21 +314,20 @@ export async function GET(request) {
 		};
 
 		const isVercel = process.env.VERCEL === '1';
-		browser = await puppeteer.launch(
-			isVercel
-				? {
-						args: chromium.args,
-						defaultViewport: viewport,
-						executablePath: await chromium.executablePath(),
-						headless: true,
-					}
-				: {
-						headless: true,
-						defaultViewport: viewport,
-						executablePath:
-							'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-					}
-		);
+		if (isVercel) {
+			browser = await puppeteer.launch({
+				args: chromium.args,
+				defaultViewport: viewport,
+				executablePath: await chromium.executablePath(),
+				headless: true,
+			});
+		} else {
+			// Use puppeteer's bundled Chromium – no executablePath needed
+			browser = await puppeteer.launch({
+				headless: true,
+				defaultViewport: viewport,
+			});
+		}
 
 		const page = await browser.newPage();
 		await page.emulateMediaType('print');
@@ -848,6 +859,29 @@ function generateQuotationHTML(data, source) {
 • The late payment charges will be 2% per month on the total bill amount if bills are not settled within the credit period of 30 days.
 • In case of project delays beyond two-month, software cost of ₹10,000/- per month will be charged.
 • Upon completion of the above scope of work, if a project is cancelled or held by the client for any reason then Accent Techno Solutions Private Limited is entitled to 100% invoice against the completed work.`
+					}</div>
+        </div>
+        <div style="margin-left: 18px; margin-top: 8px;">
+          <strong style="text-decoration: underline;">Taxation:</strong>
+          <div style="white-space: pre-wrap; font-size: 10px;">${
+						data.annexure_taxation ||
+						`• GST 18% extra as applicable on total project cost.
+• TDS (Tax Deducted at Source) will be deducted as per applicable rates by the client.
+• In case of interstate supply, IGST will be applicable at the prevailing rate.
+• In case of intrastate supply, CGST & SGST will be applicable at the prevailing rates.
+• Any change in tax structure or rates during the execution of the project will be borne by the client.
+• All applicable taxes shall be charged extra as per government regulations at the time of invoicing.`
+					}</div>
+        </div>
+        <div style="margin-left: 18px; margin-top: 8px;">
+          <strong style="text-decoration: underline;">Payment Milestone:</strong>
+          <div style="white-space: pre-wrap; font-size: 10px;">${
+						data.annexure_payment_milestone ||
+						`• 30% advance along with confirmed LOI/PO.
+• 30% on completion of 1st submission of deliverables as per the scope of work.
+• 20% upon completion of 2nd revision of deliverables.
+• 20% upon submission of final deliverables and project closure report.
+• Payment shall be released by the client within 7 days from the date of the invoice.`
 					}</div>
         </div>
       </div>

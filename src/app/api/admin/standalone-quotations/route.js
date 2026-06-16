@@ -96,6 +96,8 @@ async function ensureTableAndColumns(connection) {
 		'annexure_revision VARCHAR(255)',
 		'annexure_exclusions TEXT',
 		'annexure_billing_payment_terms TEXT',
+		'annexure_taxation TEXT',
+		'annexure_payment_milestone TEXT',
 		'annexure_confidentiality TEXT',
 		'annexure_codes_standards TEXT',
 		'annexure_dispute_resolution TEXT',
@@ -171,8 +173,8 @@ export async function POST(request) {
 
 		const [result] = await connection.execute(
 			`INSERT INTO quotations 
-       (quotation_number, quotation_date, client_name, client_email, client_phone, client_address, kind_attn, enquiry_number, enquiry_date, subject, items, scope_items, gross_amount, gst_percentage, gst_amount, net_amount, subtotal, tax_rate, tax_amount, total, amount_in_words, gst_number, pan_number, tan_number, terms_and_conditions, annexure_scope_of_work, annexure_input_document, annexure_deliverables, annexure_software, annexure_duration, annexure_site_visit, annexure_quotation_validity, annexure_mode_of_delivery, annexure_revision, annexure_exclusions, annexure_billing_payment_terms, annexure_confidentiality, annexure_codes_standards, annexure_dispute_resolution, valid_until, status, project_id, gst_type, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (quotation_number, quotation_date, client_name, client_email, client_phone, client_address, kind_attn, enquiry_number, enquiry_date, subject, items, scope_items, gross_amount, gst_percentage, gst_amount, net_amount, subtotal, tax_rate, tax_amount, total, amount_in_words, gst_number, pan_number, tan_number, terms_and_conditions, annexure_scope_of_work, annexure_input_document, annexure_deliverables, annexure_software, annexure_duration, annexure_site_visit, annexure_quotation_validity, annexure_mode_of_delivery, annexure_revision, annexure_exclusions, annexure_billing_payment_terms, annexure_taxation, annexure_payment_milestone, annexure_confidentiality, annexure_codes_standards, annexure_dispute_resolution, valid_until, status, project_id, gst_type, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				quotation_number,
 				qDate,
@@ -210,6 +212,8 @@ export async function POST(request) {
 				body.annexure_revision || null,
 				body.annexure_exclusions || null,
 				body.annexure_billing_payment_terms || null,
+				body.annexure_taxation || null,
+				body.annexure_payment_milestone || null,
 				body.annexure_confidentiality || null,
 				body.annexure_codes_standards || null,
 				body.annexure_dispute_resolution || null,

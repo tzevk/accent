@@ -71,6 +71,17 @@ export default function EditQuotationPage() {
 • The late payment charges will be 2% per month on the total bill amount if bills are not settled within the credit period of 30 days.
 • In case of project delays beyond two-month, software cost of ₹10,000/- per month will be charged.
 • Upon completion of the above scope of work, if a project is cancelled or held by the client for any reason then Accent Techno Solutions Private Limited is entitled to 100% invoice against the completed work.`,
+		annexure_taxation: `• GST 18% extra as applicable on total project cost.
+• TDS (Tax Deducted at Source) will be deducted as per applicable rates by the client.
+• In case of interstate supply, IGST will be applicable at the prevailing rate.
+• In case of intrastate supply, CGST & SGST will be applicable at the prevailing rates.
+• Any change in tax structure or rates during the execution of the project will be borne by the client.
+• All applicable taxes shall be charged extra as per government regulations at the time of invoicing.`,
+		annexure_payment_milestone: `• 30% advance along with confirmed LOI/PO.
+• 30% on completion of 1st submission of deliverables as per the scope of work.
+• 20% upon completion of 2nd revision of deliverables.
+• 20% upon submission of final deliverables and project closure report.
+• Payment shall be released by the client within 7 days from the date of the invoice.`,
 		annexure_confidentiality: `• Input, output & any excerpts in between are intellectual properties of client. ATS shall not voluntarily disclose any of such documents to third parties& will undertake all the commonly accepted practices and tools to avoid the loss or spillover of such information. ATS shall take utmost care to maintain confidentiality of any information or intellectual property of client that it may come across. ATS is allowed to use the contract as a customer reference. However, no data or intellectual property of the client can be disclosed to third parties without the written consent of client.`,
 		annexure_codes_standards: `• Basic Engineering/ Detail Engineering should be carried out in ATS's office as per good engineering practices, project specifications and applicable client's inputs, Indian and International Standards`,
 		annexure_dispute_resolution: `• Should any disputes arise as claimed breach of the contract originated by this offer, it shall be finally settled amicably. Teamwork shall be the essence of this contract.`,
@@ -181,6 +192,10 @@ export default function EditQuotationPage() {
 						q.annexure_billing_payment_terms ||
 						q.billing_and_payment_terms ||
 						quotation.annexure_billing_payment_terms,
+					annexure_taxation: q.annexure_taxation || quotation.annexure_taxation,
+					annexure_payment_milestone:
+						q.annexure_payment_milestone ||
+						quotation.annexure_payment_milestone,
 					annexure_confidentiality:
 						q.annexure_confidentiality || quotation.annexure_confidentiality,
 					annexure_codes_standards:
@@ -1221,13 +1236,57 @@ export default function EditQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Billing & Payment terms:
 											</label>
-											<textarea
-												name="annexure_billing_payment_terms"
-												value={quotation.annexure_billing_payment_terms}
-												onChange={handleChange}
-												rows={6}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
-											/>
+
+											{/* Payment terms sub-section */}
+											<div className="ml-4 mb-3">
+												<label
+													className="block text-sm font-medium mb-1"
+													style={{ textDecoration: 'underline' }}
+												>
+													<strong>Payment terms:</strong>
+												</label>
+												<textarea
+													name="annexure_billing_payment_terms"
+													value={quotation.annexure_billing_payment_terms}
+													onChange={handleChange}
+													rows={6}
+													className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+												/>
+											</div>
+
+											{/* Taxation sub-section */}
+											<div className="ml-4 mb-3">
+												<label
+													className="block text-sm font-medium mb-1"
+													style={{ textDecoration: 'underline' }}
+												>
+													<strong>Taxation:</strong>
+												</label>
+												<textarea
+													name="annexure_taxation"
+													value={quotation.annexure_taxation}
+													onChange={handleChange}
+													rows={5}
+													className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+												/>
+											</div>
+
+											{/* Payment Milestone sub-section */}
+											<div className="ml-4">
+												<label
+													className="block text-sm font-medium mb-1"
+													style={{ textDecoration: 'underline' }}
+												>
+													<strong>Payment Milestone:</strong>
+												</label>
+												<textarea
+													name="annexure_payment_milestone"
+													value={quotation.annexure_payment_milestone}
+													onChange={handleChange}
+													rows={5}
+													className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+												/>
+											</div>
 										</div>
 									</div>
 
