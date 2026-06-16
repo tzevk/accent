@@ -533,6 +533,7 @@ export async function DELETE(request) {
 	try {
 		const { searchParams } = new URL(request.url);
 		const id = searchParams.get('id');
+		const source = searchParams.get('source') || 'quotations';
 
 		if (!id) {
 			return NextResponse.json(
@@ -543,10 +544,36 @@ export async function DELETE(request) {
 
 		connection = await dbConnect();
 
-		const [result] = await connection.execute(
-			'DELETE FROM quotations WHERE id = ?',
-			[id]
-		);
+		let result;
+		if (source === 'project') {
+			[result] = await connection.execute(
+				'DELETE FROM project_quotations WHERE id = ?',
+				[id]
+			);
+		} else if (source === 'proposal') {
+			[result] = await connection.execute(
+				`UPDATE proposals SET 
+					quotation_number = NULL, 
+					quotation_date = NULL, 
+					client_name = NULL, 
+					client_address = NULL, 
+					kind_attn = NULL, 
+					enquiry_number = NULL, 
+					enquiry_date = NULL, 
+					scope_items = NULL, 
+					gross_amount = 0, 
+					gst_amount = 0, 
+					net_amount = 0,
+					terms_and_conditions = NULL
+				WHERE id = ?`,
+				[id]
+			);
+		} else {
+			[result] = await connection.execute(
+				'DELETE FROM quotations WHERE id = ?',
+				[id]
+			);
+		}
 
 		if (result.affectedRows === 0) {
 			return NextResponse.json(
