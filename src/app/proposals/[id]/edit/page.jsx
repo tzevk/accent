@@ -2610,16 +2610,19 @@ function QuotationForm({ proposalData, setProposalData, proposalId }) {
 							</button>
 						</div>
 						<div className="w-full px-3 py-3 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-800 min-h-[120px]">
-							{scopeTab === 'scope_summary' && (
-								<div className="whitespace-pre-line">
-									{proposalData.description || (
-										<span className="text-gray-400">
-											No scope summary defined. Edit it in the Scope of Work
-											tab.
-										</span>
-									)}
-								</div>
-							)}
+							{scopeTab === 'scope_summary' &&
+								(proposalData.description ? (
+									<div
+										className="prose prose-sm max-w-none text-sm"
+										dangerouslySetInnerHTML={{
+											__html: proposalData.description,
+										}}
+									/>
+								) : (
+									<span className="text-gray-400">
+										No scope summary defined. Edit it in the Scope of Work tab.
+									</span>
+								))}
 							{scopeTab === 'documents' &&
 								renderTextList(proposalData.input_document)}
 							{scopeTab === 'deliverables' &&

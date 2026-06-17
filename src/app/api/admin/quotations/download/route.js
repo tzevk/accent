@@ -353,12 +353,6 @@ export async function GET(request) {
 			printBackground: true,
 			preferCSSPageSize: true,
 			displayHeaderFooter: false,
-			margin: {
-				top: '10mm',
-				right: '10mm',
-				bottom: '10mm',
-				left: '10mm',
-			},
 		});
 
 		return new Response(Buffer.from(pdf), {
@@ -403,7 +397,7 @@ async function getAccentLogoDataUri(origin) {
 function generateQuotationHTML(data, source) {
 	const isProjectQuotation = source === 'project';
 
-	// Format date
+	// Format date safely
 	const formatDate = (dateStr) => {
 		if (!dateStr) return '';
 		return new Date(dateStr).toLocaleDateString('en-IN', {
@@ -413,7 +407,7 @@ function generateQuotationHTML(data, source) {
 		});
 	};
 
-	// Format currency
+	// Format currency safely
 	const formatCurrency = (amount) => {
 		return new Intl.NumberFormat('en-IN', {
 			minimumFractionDigits: 2,
@@ -495,7 +489,6 @@ function generateQuotationHTML(data, source) {
 	const netAmount = parseFloat(data.net_amount) || parseFloat(data.total) || 0;
 	const gstType = data.gst_type || 'cgst_sgst';
 
-	// Generate amount in words
 	const rupees = Math.floor(netAmount);
 	const paise = Math.round((netAmount - rupees) * 100);
 	let amountInWords =
@@ -505,7 +498,6 @@ function generateQuotationHTML(data, source) {
 			(paise > 0 ? ' and ' + numberToWords(paise) + ' Paise' : '') +
 			' Only';
 
-	// Parse scope items
 	let scopeItems = [];
 	if (data.scope_items) {
 		try {
@@ -538,14 +530,60 @@ function generateQuotationHTML(data, source) {
 		];
 	}
 
-	// Calculate total from items if not already set
 	const itemsTotal = scopeItems.reduce(
 		(sum, item) => sum + (parseFloat(item.amount) || 0),
 		0
 	);
 	const displayGrossAmount = grossAmount || itemsTotal;
 
-	// Default terms if not set
+	const formatRichTextContent = (content) => {
+		if (!content) return '';
+		if (/<[a-z][\s\S]*>/i.test(content)) return content;
+
+		let text = content.replace(/\r\n/g, '\n');
+		text = text.replace(/•\s*\n\s*/g, '• ');
+
+		if (/^\d+\.\s+/m.test(text)) {
+			let lines = text.split('\n');
+			let inList = false;
+			let compiledHtml = '';
+
+			lines.forEach((line) => {
+				const match = line.match(/^(\d+)\.\s+(.*)/);
+				if (match) {
+					if (!inList) {
+						compiledHtml += '<ol class="rt-list">';
+						inList = true;
+					}
+					compiledHtml += `<li>${match[2].trim()}</li>`;
+				} else {
+					if (inList) {
+						compiledHtml += '</ol>';
+						inList = false;
+					}
+					compiledHtml += line.trim() ? `${line}<br>` : '<br>';
+				}
+			});
+
+			if (inList) compiledHtml += '</ol>';
+			return compiledHtml;
+		}
+
+		if (text.includes('•') || /^[*-]\s+/m.test(text)) {
+			let normalizedBullets = text.replace(/^[*-]\s+/gm, '• ');
+			const items = normalizedBullets
+				.split(/•/)
+				.map((item) => item.trim())
+				.filter((item) => item.length > 0);
+			const listItems = items
+				.map((item) => `<li>${item.replace(/\n/g, '<br>')}</li>`)
+				.join('');
+			return `<ul class="rt-list">${listItems}</ul>`;
+		}
+
+		return text.replace(/\n/g, '<br>');
+	};
+
 	const termsAndConditions =
 		data.terms_and_conditions ||
 		`• Any additional work will be charged extra.
@@ -554,31 +592,28 @@ function generateQuotationHTML(data, source) {
 • Work will start within 15 days after receipt of confirmed LOI/PO.
 • Mode of Payments: - Through Wire transfer to 'Accent Techno Solutions Pvt Ltd.' payable at Mumbai A/c No. 917020044935714, IFS Code: UTIB0001244`;
 
-	// Generate scope items HTML
 	const scopeItemsHTML =
 		scopeItems.length > 0
 			? scopeItems
 					.map(
 						(item) => `
-    <tr>
-      <td style="border: 1px solid #000; padding: 8px; text-align: center; vertical-align: top;">${item.sr_no || ''}</td>
-      <td style="border: 1px solid #000; padding: 8px; vertical-align: top; white-space: pre-wrap;">${item.description || ''}</td>
-      <td style="border: 1px solid #000; padding: 8px; text-align: center; vertical-align: top;">${item.qty || ''}</td>
-      <td style="border: 1px solid #000; padding: 8px; text-align: right; vertical-align: top;">${item.rate ? formatCurrency(item.rate) : ''}</td>
-      <td style="border: 1px solid #000; padding: 8px; text-align: right; vertical-align: top;">${item.amount ? formatCurrency(item.amount) : ''}</td>
-    </tr>
-  `
+        <tr>
+          <td style="border: 1px solid #000; padding: 6px; text-align: center; vertical-align: top;">${item.sr_no || ''}</td>
+          <td style="border: 1px solid #000; padding: 6px; vertical-align: top;"><div class="rt-content">${formatRichTextContent(item.description)}</div></td>
+          <td style="border: 1px solid #000; padding: 6px; text-align: center; vertical-align: top;">${item.qty || ''}</td>
+          <td style="border: 1px solid #000; padding: 6px; text-align: right; vertical-align: top;">${item.rate ? formatCurrency(item.rate) : ''}</td>
+          <td style="border: 1px solid #000; padding: 6px; text-align: right; vertical-align: top;">${item.amount ? formatCurrency(item.amount) : ''}</td>
+        </tr>
+      `
 					)
 					.join('')
-			: `
-    <tr>
-      <td style="border: 1px solid #000; padding: 6px; text-align: center;">1</td>
-      <td style="border: 1px solid #000; padding: 6px;">${data.scope_of_work || data.subject || '-'}</td>
-      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${data.enquiry_quantity || '1'}</td>
-      <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCurrency(displayGrossAmount)}</td>
-      <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCurrency(displayGrossAmount)}</td>
-    </tr>
-  `;
+			: `<tr>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">1</td>
+        <td style="border: 1px solid #000; padding: 6px;"><div class="rt-content">${formatRichTextContent(data.scope_of_work || data.subject || '-')}</div></td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${data.enquiry_quantity || '1'}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCurrency(displayGrossAmount)}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCurrency(displayGrossAmount)}</td>
+      </tr>`;
 
 	return `
 <!DOCTYPE html>
@@ -594,18 +629,26 @@ function generateQuotationHTML(data, source) {
       .quotation-page { page-break-after: always; }
       .annexure-page { page-break-before: always; }
     }
-    @page { size: A4; margin: 15mm; }
+    @page {
+      size: A4;
+      margin-left: 15mm;
+      margin-right: 15mm;
+      margin-bottom: 20mm;
+    }
+    @page :first {
+      margin-top: 50mm;
+    }
+    @page :left, @page :right {
+      margin-top: 15mm;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
       font-family: Arial, sans-serif; 
       font-size: 11px; 
-      line-height: 1.4; 
+      line-height: 1.35; 
       color: #000; 
       background: white; 
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      width: 100%;
     }
     .container { 
       width: 100%; 
@@ -614,18 +657,52 @@ function generateQuotationHTML(data, source) {
       background: white;
     }
     table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11px; }
+
+    /* LAYOUT COMPACTION DEAFULTS */
+    .rt-content {
+      width: 100%;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+    .rt-content p { margin: 0 0 3px 0; }
+    .rt-content p:last-child { margin-bottom: 0; }
+    
+    .rt-content ul, .rt-content ol, ul.rt-list, ol.rt-list {
+      margin: 2px 0 3px 0 !important;
+      padding-left: 18px !important;
+      list-style-position: outside !important;
+    }
+    .rt-content li {
+      margin-bottom: 2px;
+      padding-left: 2px;
+      line-height: 1.4;
+    }
+
+    /* ORPHAN PREVENTATIVE SYSTEM CLASSES */
+    .no-split {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+    
+    .signature-row-wrapper {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+		.signature-row-wrapper td {
+  		padding-top: 25px !important; /* Adjust this value (e.g., 20px - 40mm) to get the required clearance gap */
+  		vertical-align: top;
+		}
   </style>
 </head>
 <body>
-  <!-- QUOTATION PAGE -->
   <div class="container quotation-page">
     <table style="width: 100%; border: 2px solid #000; border-collapse: collapse;">
-      <!-- Header Row -->
       <tr>
         <td colspan="3" style="border: 1px solid #000; padding: 0; vertical-align: top;">
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
-              <td style="width: 60%; border-right: 1px solid #000; padding: 8px; vertical-align: top;">
+              <td style="width: 60%; border-right: 1px solid #000; padding: 6px; vertical-align: top;">
                 <strong>To,</strong><br><br>
                 <strong>${data.client_name || ''}</strong><br>
                 ${data.client_address ? data.client_address.replace(/\n/g, '<br>') : ''}
@@ -633,20 +710,20 @@ function generateQuotationHTML(data, source) {
               <td style="width: 40%; padding: 0; vertical-align: top;">
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
-                    <td style="border-bottom: 1px solid #000; padding: 4px 8px; font-weight: bold;">Quotation No.</td>
-                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 8px;">${data.quotation_number || ''}</td>
+                    <td style="border-bottom: 1px solid #000; padding: 4px 6px; font-weight: bold;">Quotation No.</td>
+                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 6px;">${data.quotation_number || ''}</td>
                   </tr>
                   <tr>
-                    <td style="border-bottom: 1px solid #000; padding: 4px 8px; font-weight: bold;">Date of Quotation</td>
-                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 8px;">${formatDate(data.quotation_date || data.created_at)}</td>
+                    <td style="border-bottom: 1px solid #000; padding: 4px 6px; font-weight: bold;">Date of Quotation</td>
+                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 6px;">${formatDate(data.quotation_date || data.created_at)}</td>
                   </tr>
                   <tr>
-                    <td style="border-bottom: 1px solid #000; padding: 4px 8px; font-weight: bold;">Enquiry No.</td>
-                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 8px;">${data.enquiry_number || ''}</td>
+                    <td style="border-bottom: 1px solid #000; padding: 4px 6px; font-weight: bold;">Enquiry No.</td>
+                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 6px;">${data.enquiry_number || ''}</td>
                   </tr>
                   <tr>
-                    <td style="padding: 4px 8px; font-weight: bold;">Date of Enquiry</td>
-                    <td style="border-left: 1px solid #000; padding: 4px 8px;">${formatDate(data.enquiry_date)}</td>
+                    <td style="padding: 4px 6px; font-weight: bold;">Date of Enquiry</td>
+                    <td style="border-left: 1px solid #000; padding: 4px 6px;">${formatDate(data.enquiry_date)}</td>
                   </tr>
                 </table>
               </td>
@@ -655,29 +732,27 @@ function generateQuotationHTML(data, source) {
         </td>
       </tr>
 
-      <!-- Kind Attn -->
       <tr>
         <td colspan="3" style="border: 1px solid #000; padding: 0;">
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
-              <td style="width: 80px; padding: 6px 8px; font-weight: bold; border-right: 1px solid #000;">Kind Attn:</td>
-              <td style="padding: 6px 8px;">${data.kind_attn || ''}</td>
+              <td style="width: 80px; padding: 5px 6px; font-weight: bold; border-right: 1px solid #000;">Kind Attn:</td>
+              <td style="padding: 5px 6px;">${data.kind_attn || ''}</td>
             </tr>
           </table>
         </td>
       </tr>
 
-      <!-- Scope of Work Table -->
       <tr>
         <td colspan="3" style="border: 1px solid #000; padding: 0;">
           <table style="width: 100%; border-collapse: collapse;">
             <thead>
-              <tr>
-                <th style="border: 1px solid #000; padding: 6px; text-align: center; width: 50px; font-weight: bold;">Sr. No.</th>
-                <th style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">Scope of the Work</th>
-                <th style="border: 1px solid #000; padding: 6px; text-align: center; width: 60px; font-weight: bold;">Qty.</th>
-                <th style="border: 1px solid #000; padding: 6px; text-align: center; width: 80px; font-weight: bold;">Rate</th>
-                <th style="border: 1px solid #000; padding: 6px; text-align: center; width: 80px; font-weight: bold;">Amount</th>
+              <tr class="no-split">
+                <th style="border: 1px solid #000; padding: 5px; text-align: center; width: 50px; font-weight: bold;">Sr. No.</th>
+                <th style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold;">Scope of the Work</th>
+                <th style="border: 1px solid #000; padding: 5px; text-align: center; width: 60px; font-weight: bold;">Qty.</th>
+                <th style="border: 1px solid #000; padding: 5px; text-align: center; width: 80px; font-weight: bold;">Rate</th>
+                <th style="border: 1px solid #000; padding: 5px; text-align: center; width: 80px; font-weight: bold;">Amount</th>
               </tr>
             </thead>
             <tbody>
@@ -687,108 +762,95 @@ function generateQuotationHTML(data, source) {
         </td>
       </tr>
 
-      <!-- Totals -->
-      <tr>
+      <tr class="no-split">
         <td colspan="3" style="border: 1px solid #000; padding: 0;">
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
-              <td style="width: 70%; padding: 6px 8px; border-right: 1px solid #000;"><strong>Gross Amount:</strong></td>
-              <td style="width: 30%; padding: 6px 8px; text-align: right;">${formatCurrency(displayGrossAmount)}</td>
+              <td style="width: 70%; padding: 5px 6px; border-right: 1px solid #000;"><strong>Gross Amount:</strong></td>
+              <td style="width: 30%; padding: 5px 6px; text-align: right;">${formatCurrency(displayGrossAmount)}</td>
             </tr>
             ${
 							gstType === 'igst'
 								? `
-            <tr>
-              <td style="padding: 6px 8px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>IGST @ ${gstPercentage}%:</strong></td>
-              <td style="padding: 6px 8px; text-align: right; border-top: 1px solid #000;">${formatCurrency(gstAmount || (displayGrossAmount * gstPercentage) / 100)}</td>
-            </tr>
+              <tr>
+                <td style="padding: 5px 6px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>IGST @ ${gstPercentage}%:</strong></td>
+                <td style="padding: 5px 6px; text-align: right; border-top: 1px solid #000;">${formatCurrency(gstAmount || (displayGrossAmount * gstPercentage) / 100)}</td>
+              </tr>
             `
 								: `
-            <tr>
-              <td style="padding: 6px 8px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>CGST @ ${gstPercentage / 2}%:</strong></td>
-              <td style="padding: 6px 8px; text-align: right; border-top: 1px solid #000;">${formatCurrency((gstAmount || (displayGrossAmount * gstPercentage) / 100) / 2)}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 8px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>SGST @ ${gstPercentage / 2}%:</strong></td>
-              <td style="padding: 6px 8px; text-align: right; border-top: 1px solid #000;">${formatCurrency((gstAmount || (displayGrossAmount * gstPercentage) / 100) / 2)}</td>
-            </tr>
+              <tr>
+                <td style="padding: 5px 6px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>CGST @ ${gstPercentage / 2}%:</strong></td>
+                <td style="padding: 5px 6px; text-align: right; border-top: 1px solid #000;">${formatCurrency((gstAmount || (displayGrossAmount * gstPercentage) / 100) / 2)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 5px 6px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>SGST @ ${gstPercentage / 2}%:</strong></td>
+                <td style="padding: 5px 6px; text-align: right; border-top: 1px solid #000;">${formatCurrency((gstAmount || (displayGrossAmount * gstPercentage) / 100) / 2)}</td>
+              </tr>
             `
 						}
             <tr>
-              <td style="padding: 8px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>Net Amount:</strong></td>
-              <td style="padding: 8px; text-align: right; border-top: 1px solid #000; font-weight: bold; font-size: 11px;">${formatCurrency(netAmount || displayGrossAmount + (displayGrossAmount * gstPercentage) / 100)}</td>
+              <td style="padding: 6px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>Net Amount:</strong></td>
+              <td style="padding: 6px; text-align: right; border-top: 1px solid #000; font-weight: bold; font-size: 11px;">${formatCurrency(netAmount || displayGrossAmount + (displayGrossAmount * gstPercentage) / 100)}</td>
             </tr>
           </table>
         </td>
       </tr>
 
-      <!-- Amount in Words -->
-      <tr>
+      <tr class="no-split">
         <td colspan="3" style="border: 1px solid #000; padding: 0;">
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
-              <td style="width: 100px; padding: 6px 8px; font-weight: bold; border-right: 1px solid #000;">Amount in words:</td>
-              <td style="padding: 6px 8px; font-style: italic;">${amountInWords}</td>
+              <td style="width: 100px; padding: 5px 6px; font-weight: bold; border-right: 1px solid #000;">Amount in words:</td>
+              <td style="padding: 5px 6px; font-style: italic;">${amountInWords}</td>
             </tr>
           </table>
         </td>
       </tr>
 
-      <!-- GST/PAN/TAN -->
-      <tr>
+      <tr class="no-split">
         <td colspan="3" style="border: 1px solid #000; padding: 0;">
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="width: 33.33%; border-right: 1px solid #000; padding: 0;">
-                <div style="padding: 5px; font-weight: bold; border-bottom: 1px solid #000; text-align: center;">GST Number</div>
-                <div style="padding: 5px; text-align: center; min-height: 20px;">${data.gst_number || ''}</div>
+                <div style="padding: 4px; font-weight: bold; border-bottom: 1px solid #000; text-align: center;">GST Number</div>
+                <div style="padding: 4px; text-align: center; min-height: 18px;">${data.gst_number || ''}</div>
               </td>
               <td style="width: 33.33%; border-right: 1px solid #000; padding: 0;">
-                <div style="padding: 5px; font-weight: bold; border-bottom: 1px solid #000; text-align: center;">Pan Number</div>
-                <div style="padding: 5px; text-align: center; min-height: 20px;">${data.pan_number || ''}</div>
+                <div style="padding: 4px; font-weight: bold; border-bottom: 1px solid #000; text-align: center;">Pan Number</div>
+                <div style="padding: 4px; text-align: center; min-height: 18px;">${data.pan_number || ''}</div>
               </td>
               <td style="width: 33.33%; padding: 0;">
-                <div style="padding: 5px; font-weight: bold; border-bottom: 1px solid #000; text-align: center;">Tan Number</div>
-                <div style="padding: 5px; text-align: center; min-height: 20px;">${data.tan_number || ''}</div>
+                <div style="padding: 4px; font-weight: bold; border-bottom: 1px solid #000; text-align: center;">Tan Number</div>
+                <div style="padding: 4px; text-align: center; min-height: 18px;">${data.tan_number || ''}</div>
               </td>
             </tr>
           </table>
         </td>
       </tr>
 
-      <!-- Terms and Conditions -->
-      <tr>
+      <tr class="no-split">
         <td colspan="3" style="border: 1px solid #000; padding: 0;">
-          <div style="padding: 6px 8px; font-weight: bold; border-bottom: 1px solid #000;">General Terms and conditions</div>
-          <div style="padding: 8px; white-space: pre-wrap; line-height: 1.4; font-size: 10px;">${termsAndConditions}</div>
+          <div style="padding: 5px 6px; font-weight: bold; border-bottom: 1px solid #000;">General Terms and conditions</div>
+          <div style="padding: 6px; font-size: 10px;"><div class="rt-content">${formatRichTextContent(termsAndConditions)}</div></div>
         </td>
       </tr>
 
-      <!-- Signature -->
-      <tr>
-        <td colspan="3" style="border: 1px solid #000; padding: 0;">
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="width: 50%; border-right: 1px solid #000; padding: 10px; vertical-align: top;">
-                <div style="font-size: 11px;">Receivers Signature with Company Seal.</div>
-                <div style="height: 50px;"></div>
-              </td>
-              <td style="width: 50%; padding: 10px; vertical-align: top;">
-                <div style="font-weight: bold;">For Accent Techno Solutions Private Limited</div>
-                <div style="height: 30px;"></div>
-                <div style="font-weight: bold;">Santosh Dinkar Mestry</div>
-                <div style="font-size: 11px;">Director</div>
-              </td>
-            </tr>
-          </table>
+      <tr class="signature-row-wrapper">
+        <td colspan="2" style="border: 1px solid #000; padding: 10px; width: 50%;">
+          <div style="font-size: 11px; font-weight: bold; margin-bottom: 8px;">Receivers Signature with Company Seal.</div>
+          <div style="height: 55px;"></div>
+        </td>
+        <td style="border: 1px solid #000; padding: 10px; width: 50%;">
+          <div style="font-weight: bold; margin-bottom: 4px;">For Accent Techno Solutions Private Limited</div>
+          <div style="height: 30px;"></div>
+          <div style="font-weight: bold;">Santosh Dinkar Mestry</div>
+          <div style="font-size: 11px; color: #333;">Director</div>
         </td>
       </tr>
     </table>
   </div>
   
-  <!-- ANNEXURE PAGE -->
   <div class="container annexure-page" style="padding-top: 20px;">
-    <!-- Annexure Header with Logo -->
     <div style="display: flex; align-items: flex-start; margin-bottom: 20px;">
       <img src="/accent-logo.png" alt="Accent Logo" style="height: 50px; margin-right: 20px;" onerror="this.style.display='none'"/>
       <div style="flex: 1; text-align: center;">
@@ -796,122 +858,94 @@ function generateQuotationHTML(data, source) {
       </div>
     </div>
     
-    <!-- Annexure Content -->
     <div style="font-size: 11px; line-height: 1.5;">
       <div style="margin-bottom: 12px;">
         <strong>1) Scope of Work:</strong>
-        <div style="margin-left: 18px; white-space: pre-wrap;">${data.annexure_scope_of_work || ''}</div>
+        <div style="margin-left: 18px;"><div class="rt-content">${formatRichTextContent(data.annexure_scope_of_work)}</div></div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>2) Input Document:</strong>
-        <div style="margin-left: 18px; white-space: pre-wrap;">${data.annexure_input_document || ''}</div>
+        <div style="margin-left: 18px;"><div class="rt-content">${formatRichTextContent(data.annexure_input_document)}</div></div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>3) Deliverables:</strong>
-        <div style="margin-left: 18px; white-space: pre-wrap;">${data.annexure_deliverables || ''}</div>
+        <div style="margin-left: 18px;"><div class="rt-content">${formatRichTextContent(data.annexure_deliverables)}</div></div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>4) Software:</strong>
-        <div style="margin-left: 18px;">${data.annexure_software || ''}</div>
+        <div style="margin-left: 18px;"><div class="rt-content">${formatRichTextContent(data.annexure_software)}</div></div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>5) Duration:</strong>
-        <div style="margin-left: 18px;">${data.annexure_duration || ''}</div>
+        <div style="margin-left: 18px;"><div class="rt-content">${formatRichTextContent(data.annexure_duration)}</div></div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>6) Site Visit:</strong>
-        <div style="margin-left: 18px;">${data.annexure_site_visit || ''}</div>
+        <div style="margin-left: 18px;"><div class="rt-content">${formatRichTextContent(data.annexure_site_visit)}</div></div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>7) Quotation Validity:</strong>
-        <div style="margin-left: 18px;">${data.annexure_quotation_validity || ''}</div>
+        <div style="margin-left: 18px;"><div class="rt-content">${formatRichTextContent(data.annexure_quotation_validity)}</div></div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>8) Mode of Delivery:</strong>
-        <div style="margin-left: 18px;">${data.annexure_mode_of_delivery || ''}</div>
+        <div style="margin-left: 18px;"><div class="rt-content">${formatRichTextContent(data.annexure_mode_of_delivery)}</div></div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>9) Revision:</strong>
-        <div style="margin-left: 18px;">${data.annexure_revision || ''}</div>
+        <div style="margin-left: 18px;"><div class="rt-content">${formatRichTextContent(data.annexure_revision)}</div></div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>10) Exclusions:</strong>
-        <div style="margin-left: 18px; white-space: pre-wrap;">${data.annexure_exclusions || ''}</div>
+        <div style="margin-left: 18px;"><div class="rt-content">${formatRichTextContent(data.annexure_exclusions)}</div></div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>11) Billing & Payment terms:</strong>
         <div style="margin-left: 18px;">
           <strong style="text-decoration: underline;">Payment terms:</strong>
-          <div style="white-space: pre-wrap; font-size: 10px;">${
-						data.annexure_billing_payment_terms ||
-						`• Payment shall be released by the client within 7 days from the date of the invoice.
-• Payment shall be by way of RTGS transfer to ATSPL bank account.
-• The late payment charges will be 2% per month on the total bill amount if bills are not settled within the credit period of 30 days.
-• In case of project delays beyond two-month, software cost of ₹10,000/- per month will be charged.
-• Upon completion of the above scope of work, if a project is cancelled or held by the client for any reason then Accent Techno Solutions Private Limited is entitled to 100% invoice against the completed work.`
-					}</div>
+          <div style="font-size: 10px; margin-top: 4px;"><div class="rt-content">${formatRichTextContent(data.annexure_billing_payment_terms)}</div></div>
         </div>
         <div style="margin-left: 18px; margin-top: 8px;">
           <strong style="text-decoration: underline;">Taxation:</strong>
-          <div style="white-space: pre-wrap; font-size: 10px;">${
-						data.annexure_taxation ||
-						`• GST 18% extra as applicable on total project cost.
-• TDS (Tax Deducted at Source) will be deducted as per applicable rates by the client.
-• In case of interstate supply, IGST will be applicable at the prevailing rate.
-• In case of intrastate supply, CGST & SGST will be applicable at the prevailing rates.
-• Any change in tax structure or rates during the execution of the project will be borne by the client.
-• All applicable taxes shall be charged extra as per government regulations at the time of invoicing.`
-					}</div>
+          <div style="font-size: 10px; margin-top: 4px;"><div class="rt-content">${formatRichTextContent(data.annexure_taxation)}</div></div>
         </div>
         <div style="margin-left: 18px; margin-top: 8px;">
           <strong style="text-decoration: underline;">Payment Milestone:</strong>
-          <div style="white-space: pre-wrap; font-size: 10px;">${
-						data.annexure_payment_milestone ||
-						`• 30% advance along with confirmed LOI/PO.
-• 30% on completion of 1st submission of deliverables as per the scope of work.
-• 20% upon completion of 2nd revision of deliverables.
-• 20% upon submission of final deliverables and project closure report.
-• Payment shall be released by the client within 7 days from the date of the invoice.`
-					}</div>
+          <div style="font-size: 10px; margin-top: 4px;"><div class="rt-content">${formatRichTextContent(data.annexure_payment_milestone)}</div></div>
         </div>
       </div>
       
       <div style="margin-bottom: 12px;">
         <strong>12) Other Terms & conditions:</strong>
-        
         <div style="margin-left: 18px; margin-top: 8px;">
           <strong>12.1 Confidentiality:</strong>
-          <div style="white-space: pre-wrap; font-size: 10px;">${data.annexure_confidentiality || `• Input, output & any excerpts in between are intellectual properties of client. ATS shall not voluntarily disclose any of such documents to third parties& will undertake all the commonly accepted practices and tools to avoid the loss or spillover of such information. ATS shall take utmost care to maintain confidentiality of any information or intellectual property of client that it may come across. ATS is allowed to use the contract as a customer reference. However, no data or intellectual property of the client can be disclosed to third parties without the written consent of client.`}</div>
+          <div style="font-size: 10px; margin-top: 4px;"><div class="rt-content">${formatRichTextContent(data.annexure_confidentiality)}</div></div>
         </div>
-        
         <div style="margin-left: 18px; margin-top: 8px;">
           <strong>12.2 Codes and Standards:</strong>
-          <div style="white-space: pre-wrap; font-size: 10px;">${data.annexure_codes_standards || `• Basic Engineering/ Detail Engineering should be carried out in ATS's office as per good engineering practices, project specifications and applicable client's inputs, Indian and International Standards`}</div>
+          <div style="font-size: 10px; margin-top: 4px;"><div class="rt-content">${formatRichTextContent(data.annexure_codes_standards)}</div></div>
         </div>
-        
         <div style="margin-left: 18px; margin-top: 8px;">
           <strong>12.3 Dispute Resolution:</strong>
-          <div style="white-space: pre-wrap; font-size: 10px;">${data.annexure_dispute_resolution || `• Should any disputes arise as claimed breach of the contract originated by this offer, it shall be finally settled amicably. Teamwork shall be the essence of this contract.`}</div>
+          <div style="font-size: 10px; margin-top: 4px;"><div class="rt-content">${formatRichTextContent(data.annexure_dispute_resolution)}</div></div>
         </div>
       </div>
       
-      <!-- Closing Text -->
       <div style="margin-top: 20px; line-height: 1.6;">
         <p>We trust you will find our offer in line with your requirement, and we shall look forward to receiving your valued work order.</p>
         <p style="margin-top: 8px;">Thanking you and always assuring you of our best services.</p>
       </div>
       
-      <!-- Annexure Signature -->
       <div style="margin-top: 30px;">
         <p style="font-weight: bold;">For Accent Techno Solutions Private Limited.</p>
         <div style="height: 50px;"></div>
@@ -920,8 +954,6 @@ function generateQuotationHTML(data, source) {
       </div>
     </div>
   </div>
-
 </body>
-</html>
-  `;
+</html>`;
 }
