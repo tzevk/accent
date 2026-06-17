@@ -524,6 +524,7 @@ export async function PUT(request, { params }) {
           gst_percentage = ?,
           gst_amount = ?,
           net_amount = ?,
+          gst_type = ?,
           amount_in_words = ?,
           gst_number = ?,
           pan_number = ?,

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
+import RichTextEditor from '@/components/RichTextEditor';
 import {
 	ArrowLeftIcon,
 	DocumentTextIcon,
@@ -263,6 +264,11 @@ export default function EditQuotationPage() {
 	// Handle input change
 	const handleChange = (e) => {
 		const { name, value } = e.target;
+		setQuotation((prev) => ({ ...prev, [name]: value }));
+	};
+
+	// Handle rich text editor change
+	const handleRichTextChange = (name, value) => {
 		setQuotation((prev) => ({ ...prev, [name]: value }));
 	};
 
@@ -724,22 +730,22 @@ export default function EditQuotationPage() {
 								<table className="w-full">
 									<thead>
 										<tr className="bg-gray-50">
-											<th className="w-16 p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-12 p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
 												Sr. No.
 											</th>
 											<th className="p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
 												Scope of the Work
 											</th>
-											<th className="w-24 p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-16 p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
 												Qty.
 											</th>
-											<th className="w-28 p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-20 p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
 												Rate
 											</th>
-											<th className="w-32 p-3 text-center text-sm font-semibold border-b border-gray-300">
+											<th className="w-24 p-3 text-center text-sm font-semibold border-b border-gray-300">
 												Amount
 											</th>
-											<th className="w-12 p-3 border-b border-gray-300"></th>
+											<th className="w-10 p-3 border-b border-gray-300"></th>
 										</tr>
 									</thead>
 									<tbody>
@@ -749,18 +755,12 @@ export default function EditQuotationPage() {
 													{item.sr_no}
 												</td>
 												<td className="p-2 border-r border-b border-gray-300">
-													<textarea
+													<RichTextEditor
 														value={item.description}
-														onChange={(e) =>
-															handleScopeItemChange(
-																index,
-																'description',
-																e.target.value
-															)
+														onChange={(v) =>
+															handleScopeItemChange(index, 'description', v)
 														}
 														placeholder="Description of work"
-														rows={2}
-														className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
 													/>
 												</td>
 												<td className="p-2 border-r border-b border-gray-300">
@@ -1019,12 +1019,12 @@ export default function EditQuotationPage() {
 									General Terms and conditions
 								</div>
 								<div className="p-3">
-									<textarea
-										name="terms_and_conditions"
+									<RichTextEditor
 										value={quotation.terms_and_conditions}
-										onChange={handleChange}
-										rows={6}
-										className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+										onChange={(v) =>
+											handleRichTextChange('terms_and_conditions', v)
+										}
+										placeholder="Enter terms and conditions..."
 									/>
 								</div>
 							</div>
@@ -1043,15 +1043,13 @@ export default function EditQuotationPage() {
 											1)
 										</span>
 										<div className="flex-1">
-											<label className="block text-sm font-semibold mb-1">
-												Scope of Work:
-											</label>
-											<textarea
-												name="annexure_scope_of_work"
+											<RichTextEditor
+												label="Scope of Work:"
 												value={quotation.annexure_scope_of_work}
-												onChange={handleChange}
-												rows={3}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+												onChange={(v) =>
+													handleRichTextChange('annexure_scope_of_work', v)
+												}
+												placeholder="Enter scope of work..."
 											/>
 										</div>
 									</div>
@@ -1062,15 +1060,13 @@ export default function EditQuotationPage() {
 											2)
 										</span>
 										<div className="flex-1">
-											<label className="block text-sm font-semibold mb-1">
-												Input Document:
-											</label>
-											<textarea
-												name="annexure_input_document"
+											<RichTextEditor
+												label="Input Document:"
 												value={quotation.annexure_input_document}
-												onChange={handleChange}
-												rows={2}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+												onChange={(v) =>
+													handleRichTextChange('annexure_input_document', v)
+												}
+												placeholder="Enter input documents..."
 											/>
 										</div>
 									</div>
@@ -1081,15 +1077,13 @@ export default function EditQuotationPage() {
 											3)
 										</span>
 										<div className="flex-1">
-											<label className="block text-sm font-semibold mb-1">
-												Deliverables:
-											</label>
-											<textarea
-												name="annexure_deliverables"
+											<RichTextEditor
+												label="Deliverables:"
 												value={quotation.annexure_deliverables}
-												onChange={handleChange}
-												rows={2}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+												onChange={(v) =>
+													handleRichTextChange('annexure_deliverables', v)
+												}
+												placeholder="Enter deliverables..."
 											/>
 										</div>
 									</div>
@@ -1214,15 +1208,13 @@ export default function EditQuotationPage() {
 											10)
 										</span>
 										<div className="flex-1">
-											<label className="block text-sm font-semibold mb-1">
-												Exclusions:
-											</label>
-											<textarea
-												name="annexure_exclusions"
+											<RichTextEditor
+												label="Exclusions:"
 												value={quotation.annexure_exclusions}
-												onChange={handleChange}
-												rows={2}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+												onChange={(v) =>
+													handleRichTextChange('annexure_exclusions', v)
+												}
+												placeholder="Enter exclusions..."
 											/>
 										</div>
 									</div>
@@ -1245,12 +1237,15 @@ export default function EditQuotationPage() {
 												>
 													<strong>Payment terms:</strong>
 												</label>
-												<textarea
-													name="annexure_billing_payment_terms"
+												<RichTextEditor
 													value={quotation.annexure_billing_payment_terms}
-													onChange={handleChange}
-													rows={6}
-													className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+													onChange={(v) =>
+														handleRichTextChange(
+															'annexure_billing_payment_terms',
+															v
+														)
+													}
+													placeholder="Enter payment terms..."
 												/>
 											</div>
 
@@ -1262,12 +1257,12 @@ export default function EditQuotationPage() {
 												>
 													<strong>Taxation:</strong>
 												</label>
-												<textarea
-													name="annexure_taxation"
+												<RichTextEditor
 													value={quotation.annexure_taxation}
-													onChange={handleChange}
-													rows={5}
-													className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+													onChange={(v) =>
+														handleRichTextChange('annexure_taxation', v)
+													}
+													placeholder="Enter taxation details..."
 												/>
 											</div>
 
@@ -1279,12 +1274,15 @@ export default function EditQuotationPage() {
 												>
 													<strong>Payment Milestone:</strong>
 												</label>
-												<textarea
-													name="annexure_payment_milestone"
+												<RichTextEditor
 													value={quotation.annexure_payment_milestone}
-													onChange={handleChange}
-													rows={5}
-													className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+													onChange={(v) =>
+														handleRichTextChange(
+															'annexure_payment_milestone',
+															v
+														)
+													}
+													placeholder="Enter payment milestone..."
 												/>
 											</div>
 										</div>
@@ -1305,12 +1303,12 @@ export default function EditQuotationPage() {
 												<label className="block text-sm font-medium mb-1">
 													12.1 Confidentiality:
 												</label>
-												<textarea
-													name="annexure_confidentiality"
+												<RichTextEditor
 													value={quotation.annexure_confidentiality}
-													onChange={handleChange}
-													rows={4}
-													className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+													onChange={(v) =>
+														handleRichTextChange('annexure_confidentiality', v)
+													}
+													placeholder="Enter confidentiality terms..."
 												/>
 											</div>
 
@@ -1319,12 +1317,12 @@ export default function EditQuotationPage() {
 												<label className="block text-sm font-medium mb-1">
 													12.2 Codes and Standards:
 												</label>
-												<textarea
-													name="annexure_codes_standards"
+												<RichTextEditor
 													value={quotation.annexure_codes_standards}
-													onChange={handleChange}
-													rows={3}
-													className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+													onChange={(v) =>
+														handleRichTextChange('annexure_codes_standards', v)
+													}
+													placeholder="Enter codes and standards..."
 												/>
 											</div>
 
@@ -1333,12 +1331,15 @@ export default function EditQuotationPage() {
 												<label className="block text-sm font-medium mb-1">
 													12.3 Dispute Resolution:
 												</label>
-												<textarea
-													name="annexure_dispute_resolution"
+												<RichTextEditor
 													value={quotation.annexure_dispute_resolution}
-													onChange={handleChange}
-													rows={3}
-													className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-y"
+													onChange={(v) =>
+														handleRichTextChange(
+															'annexure_dispute_resolution',
+															v
+														)
+													}
+													placeholder="Enter dispute resolution terms..."
 												/>
 											</div>
 										</div>
