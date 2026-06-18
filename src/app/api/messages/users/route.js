@@ -14,23 +14,23 @@ import { getCurrentUser } from '@/utils/api-permissions';
  *   - limit: number (default: 200)
  */
 export async function GET(request) {
-  let db;
-  try {
-    const currentUser = await getCurrentUser(request);
-    if (!currentUser) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+	let db;
+	try {
+		const currentUser = await getCurrentUser(request);
+		if (!currentUser) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
+		}
 
-    const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search') || '';
-    const limit = Math.min(parseInt(searchParams.get('limit')) || 200, 500);
+		const { searchParams } = new URL(request.url);
+		const search = searchParams.get('search') || '';
+		const limit = Math.min(parseInt(searchParams.get('limit')) || 200, 500);
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    let query = `
+		let query = `
       SELECT 
         u.id, 
         u.username, 
@@ -42,50 +42,50 @@ export async function GET(request) {
       LEFT JOIN employees e ON u.employee_id = e.id
       WHERE u.is_active = TRUE AND u.id != ?
     `;
-    const params = [currentUser.id];
+		const params = [currentUser.id];
 
-    if (search.trim()) {
-      query += ` AND (u.full_name LIKE ? OR u.email LIKE ? OR u.username LIKE ?)`;
-      const searchTerm = `%${search.trim()}%`;
-      params.push(searchTerm, searchTerm, searchTerm);
-    }
+		if (search.trim()) {
+			query += ` AND (u.full_name LIKE ? OR u.email LIKE ? OR u.username LIKE ?)`;
+			const searchTerm = `%${search.trim()}%`;
+			params.push(searchTerm, searchTerm, searchTerm);
+		}
 
-    query += ` ORDER BY u.full_name ASC LIMIT ?`;
-    params.push(limit);
+		query += ` ORDER BY u.full_name ASC LIMIT ?`;
+		params.push(limit);
 
-    const [users] = await db.execute(query, params);
+		const [users] = await db.execute(query, params);
 
-    db.release();
+		db.release();
 
-    const response = NextResponse.json({
-      success: true,
-      data: users.map((u) => ({
-        id: u.id,
-        name: u.full_name || u.username,
-        full_name: u.full_name,
-        username: u.username,
-        email: u.email,
-        department: u.department,
-        profile_photo_url: u.profile_photo_url,
-      })),
-    });
+		const response = NextResponse.json({
+			success: true,
+			data: users.map((u) => ({
+				id: u.id,
+				name: u.full_name || u.username,
+				full_name: u.full_name,
+				username: u.username,
+				email: u.email,
+				department: u.department,
+				profile_photo_url: u.profile_photo_url,
+			})),
+		});
 
-    // Cache for 2 minutes — user list doesn't change frequently
-    response.headers.set('Cache-Control', 'private, max-age=120');
-    return response;
-  } catch (error) {
-    console.error('Error fetching messaging users:', error);
-    if (db)
-      try {
-        db.release();
-      } catch {}
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch users',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  }
+		// Cache for 2 minutes — user list doesn't change frequently
+		response.headers.set('Cache-Control', 'private, max-age=120');
+		return response;
+	} catch (error) {
+		console.error('Error fetching messaging users:', error);
+		if (db)
+			try {
+				db.release();
+			} catch {}
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to fetch users',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	}
 }

@@ -5,12 +5,12 @@ import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 
 // Re-export useSession as useSessionRBAC for backward compatibility
 export function useSessionRBAC() {
-  const session = useSession();
-  return {
-    loading: session.loading,
-    user: session.user,
-    can: session.can,
-    RESOURCES,
-    PERMISSIONS,
-  };
+	const session = useSession();
+	return {
+		loading: session.loading,
+		user: session.user,
+		can: session.can,
+		RESOURCES,
+		PERMISSIONS,
+	};
 }

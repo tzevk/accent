@@ -22,7 +22,7 @@ export { RESOURCES, PERMISSIONS };
  * @returns {string} Permission key like "leads:read"
  */
 export function permissionKey(resource, permission) {
-  return `${resource}:${permission}`;
+	return `${resource}:${permission}`;
 }
 
 /**
@@ -48,54 +48,54 @@ export function permissionKey(resource, permission) {
  * }
  */
 export function checkPermission(user, resource, permission) {
-  // No user = no permission
-  if (!user) return false;
+	// No user = no permission
+	if (!user) return false;
 
-  // Super admin bypass - has all permissions
-  if (user.is_super_admin) return true;
+	// Super admin bypass - has all permissions
+	if (user.is_super_admin) return true;
 
-  const key = permissionKey(resource, permission);
+	const key = permissionKey(resource, permission);
 
-  // Check merged permissions (role + user overrides) - most accurate
-  if (
-    Array.isArray(user.merged_permissions) &&
-    user.merged_permissions.includes(key)
-  ) {
-    return true;
-  }
+	// Check merged permissions (role + user overrides) - most accurate
+	if (
+		Array.isArray(user.merged_permissions) &&
+		user.merged_permissions.includes(key)
+	) {
+		return true;
+	}
 
-  // Check direct user permissions
-  if (Array.isArray(user.permissions) && user.permissions.includes(key)) {
-    return true;
-  }
+	// Check direct user permissions
+	if (Array.isArray(user.permissions) && user.permissions.includes(key)) {
+		return true;
+	}
 
-  // Check role-based permissions
-  if (
-    Array.isArray(user.role_permissions) &&
-    user.role_permissions.includes(key)
-  ) {
-    return true;
-  }
+	// Check role-based permissions
+	if (
+		Array.isArray(user.role_permissions) &&
+		user.role_permissions.includes(key)
+	) {
+		return true;
+	}
 
-  // Check nested field_permissions structure (new format)
-  let fieldPerms = user.field_permissions;
-  if (typeof fieldPerms === 'string') {
-    try {
-      fieldPerms = JSON.parse(fieldPerms);
-    } catch {
-      fieldPerms = null;
-    }
-  }
+	// Check nested field_permissions structure (new format)
+	let fieldPerms = user.field_permissions;
+	if (typeof fieldPerms === 'string') {
+		try {
+			fieldPerms = JSON.parse(fieldPerms);
+		} catch {
+			fieldPerms = null;
+		}
+	}
 
-  if (fieldPerms?.modules?.[resource]) {
-    const moduleData = fieldPerms.modules[resource];
-    // Module must be enabled AND have the specific permission
-    if (moduleData.enabled && moduleData.crud?.[permission]) {
-      return true;
-    }
-  }
+	if (fieldPerms?.modules?.[resource]) {
+		const moduleData = fieldPerms.modules[resource];
+		// Module must be enabled AND have the specific permission
+		if (moduleData.enabled && moduleData.crud?.[permission]) {
+			return true;
+		}
+	}
 
-  return false;
+	return false;
 }
 
 /**
@@ -108,13 +108,13 @@ export function checkPermission(user, resource, permission) {
  * @returns {boolean} True if permitted
  */
 export function checkPermissionFromSession(sessionData, resource, permission) {
-  if (!sessionData) return false;
-  if (sessionData.is_super_admin || sessionData.sa) return true;
+	if (!sessionData) return false;
+	if (sessionData.is_super_admin || sessionData.sa) return true;
 
-  const key = permissionKey(resource, permission);
-  const permissions = sessionData.permissions || sessionData.p || [];
+	const key = permissionKey(resource, permission);
+	const permissions = sessionData.permissions || sessionData.p || [];
 
-  return Array.isArray(permissions) && permissions.includes(key);
+	return Array.isArray(permissions) && permissions.includes(key);
 }
 
 /**
@@ -126,12 +126,12 @@ export function checkPermissionFromSession(sessionData, resource, permission) {
  * @returns {boolean} True if user has any permission for the resource
  */
 export function hasAnyAccess(user, resource) {
-  if (!user) return false;
-  if (user.is_super_admin) return true;
+	if (!user) return false;
+	if (user.is_super_admin) return true;
 
-  return Object.values(PERMISSIONS).some((perm) =>
-    checkPermission(user, resource, perm)
-  );
+	return Object.values(PERMISSIONS).some((perm) =>
+		checkPermission(user, resource, perm)
+	);
 }
 
 /**
@@ -142,12 +142,12 @@ export function hasAnyAccess(user, resource) {
  * @returns {string[]} Array of permissions (e.g., ['read', 'create'])
  */
 export function getPermissionsFor(user, resource) {
-  if (!user) return [];
-  if (user.is_super_admin) return Object.values(PERMISSIONS);
+	if (!user) return [];
+	if (user.is_super_admin) return Object.values(PERMISSIONS);
 
-  return Object.values(PERMISSIONS).filter((perm) =>
-    checkPermission(user, resource, perm)
-  );
+	return Object.values(PERMISSIONS).filter((perm) =>
+		checkPermission(user, resource, perm)
+	);
 }
 
 /**
@@ -166,12 +166,12 @@ export function getPermissionsFor(user, resource) {
  * ]);
  */
 export function checkAllPermissions(user, checks) {
-  if (!user) return false;
-  if (user.is_super_admin) return true;
+	if (!user) return false;
+	if (user.is_super_admin) return true;
 
-  return checks.every(([resource, permission]) =>
-    checkPermission(user, resource, permission)
-  );
+	return checks.every(([resource, permission]) =>
+		checkPermission(user, resource, permission)
+	);
 }
 
 /**
@@ -190,12 +190,12 @@ export function checkAllPermissions(user, checks) {
  * ]);
  */
 export function checkAnyPermission(user, checks) {
-  if (!user) return false;
-  if (user.is_super_admin) return true;
+	if (!user) return false;
+	if (user.is_super_admin) return true;
 
-  return checks.some(([resource, permission]) =>
-    checkPermission(user, resource, permission)
-  );
+	return checks.some(([resource, permission]) =>
+		checkPermission(user, resource, permission)
+	);
 }
 
 /**
@@ -210,7 +210,7 @@ export function checkAnyPermission(user, checks) {
  * if (can('leads', 'create')) { ... }
  */
 export function createPermissionChecker(user) {
-  return (resource, permission) => checkPermission(user, resource, permission);
+	return (resource, permission) => checkPermission(user, resource, permission);
 }
 // ========================================
 // NESTED PERMISSION STRUCTURE UTILITIES
@@ -224,8 +224,8 @@ export function createPermissionChecker(user) {
  * @returns {boolean} True if module is enabled
  */
 export function isModuleEnabled(fieldPermissions, moduleKey) {
-  if (!fieldPermissions?.modules) return false;
-  return fieldPermissions.modules[moduleKey]?.enabled === true;
+	if (!fieldPermissions?.modules) return false;
+	return fieldPermissions.modules[moduleKey]?.enabled === true;
 }
 
 /**
@@ -237,10 +237,10 @@ export function isModuleEnabled(fieldPermissions, moduleKey) {
  * @returns {boolean} True if section is enabled
  */
 export function isSectionEnabled(fieldPermissions, moduleKey, sectionKey) {
-  if (!fieldPermissions?.modules?.[moduleKey]) return false;
-  return (
-    fieldPermissions.modules[moduleKey].sections?.[sectionKey]?.enabled === true
-  );
+	if (!fieldPermissions?.modules?.[moduleKey]) return false;
+	return (
+		fieldPermissions.modules[moduleKey].sections?.[sectionKey]?.enabled === true
+	);
 }
 
 /**
@@ -253,15 +253,15 @@ export function isSectionEnabled(fieldPermissions, moduleKey, sectionKey) {
  * @returns {string} Permission level: 'hidden', 'view', or 'edit'
  */
 export function getFieldPermission(
-  fieldPermissions,
-  moduleKey,
-  sectionKey,
-  fieldKey
+	fieldPermissions,
+	moduleKey,
+	sectionKey,
+	fieldKey
 ) {
-  const section =
-    fieldPermissions?.modules?.[moduleKey]?.sections?.[sectionKey];
-  if (!section?.enabled) return 'hidden';
-  return section.fields?.[fieldKey]?.permission || 'hidden';
+	const section =
+		fieldPermissions?.modules?.[moduleKey]?.sections?.[sectionKey];
+	if (!section?.enabled) return 'hidden';
+	return section.fields?.[fieldKey]?.permission || 'hidden';
 }
 
 /**
@@ -274,18 +274,18 @@ export function getFieldPermission(
  * @returns {boolean} True if field is viewable (view or edit)
  */
 export function canViewField(
-  fieldPermissions,
-  moduleKey,
-  sectionKey,
-  fieldKey
+	fieldPermissions,
+	moduleKey,
+	sectionKey,
+	fieldKey
 ) {
-  const perm = getFieldPermission(
-    fieldPermissions,
-    moduleKey,
-    sectionKey,
-    fieldKey
-  );
-  return perm === 'view' || perm === 'edit';
+	const perm = getFieldPermission(
+		fieldPermissions,
+		moduleKey,
+		sectionKey,
+		fieldKey
+	);
+	return perm === 'view' || perm === 'edit';
 }
 
 /**
@@ -298,15 +298,15 @@ export function canViewField(
  * @returns {boolean} True if field is editable
  */
 export function canEditField(
-  fieldPermissions,
-  moduleKey,
-  sectionKey,
-  fieldKey
+	fieldPermissions,
+	moduleKey,
+	sectionKey,
+	fieldKey
 ) {
-  return (
-    getFieldPermission(fieldPermissions, moduleKey, sectionKey, fieldKey) ===
-    'edit'
-  );
+	return (
+		getFieldPermission(fieldPermissions, moduleKey, sectionKey, fieldKey) ===
+		'edit'
+	);
 }
 
 /**
@@ -316,10 +316,10 @@ export function canEditField(
  * @returns {string[]} Array of enabled module keys
  */
 export function getEnabledModules(fieldPermissions) {
-  if (!fieldPermissions?.modules) return [];
-  return Object.keys(fieldPermissions.modules).filter(
-    (moduleKey) => fieldPermissions.modules[moduleKey]?.enabled === true
-  );
+	if (!fieldPermissions?.modules) return [];
+	return Object.keys(fieldPermissions.modules).filter(
+		(moduleKey) => fieldPermissions.modules[moduleKey]?.enabled === true
+	);
 }
 
 /**
@@ -330,25 +330,25 @@ export function getEnabledModules(fieldPermissions) {
  * @returns {Object} CRUD object {read, create, update, delete, export, import}
  */
 export function getModuleCRUD(fieldPermissions, moduleKey) {
-  const moduleData = fieldPermissions?.modules?.[moduleKey];
-  if (!moduleData?.enabled) {
-    return {
-      read: false,
-      create: false,
-      update: false,
-      delete: false,
-      export: false,
-      import: false,
-    };
-  }
-  return {
-    read: !!moduleData.crud?.read,
-    create: !!moduleData.crud?.create,
-    update: !!moduleData.crud?.update,
-    delete: !!moduleData.crud?.delete,
-    export: !!moduleData.crud?.export,
-    import: !!moduleData.crud?.import,
-  };
+	const moduleData = fieldPermissions?.modules?.[moduleKey];
+	if (!moduleData?.enabled) {
+		return {
+			read: false,
+			create: false,
+			update: false,
+			delete: false,
+			export: false,
+			import: false,
+		};
+	}
+	return {
+		read: !!moduleData.crud?.read,
+		create: !!moduleData.crud?.create,
+		update: !!moduleData.crud?.update,
+		delete: !!moduleData.crud?.delete,
+		export: !!moduleData.crud?.export,
+		import: !!moduleData.crud?.import,
+	};
 }
 
 /**
@@ -361,36 +361,36 @@ export function getModuleCRUD(fieldPermissions, moduleKey) {
  * @returns {boolean} True if permitted
  */
 export function checkModulePermission(user, moduleKey, permission) {
-  if (!user) return false;
-  if (user.is_super_admin) return true;
+	if (!user) return false;
+	if (user.is_super_admin) return true;
 
-  // First check flat permissions array (backward compatibility)
-  const key = permissionKey(moduleKey, permission);
-  if (Array.isArray(user.permissions) && user.permissions.includes(key)) {
-    return true;
-  }
-  if (
-    Array.isArray(user.merged_permissions) &&
-    user.merged_permissions.includes(key)
-  ) {
-    return true;
-  }
+	// First check flat permissions array (backward compatibility)
+	const key = permissionKey(moduleKey, permission);
+	if (Array.isArray(user.permissions) && user.permissions.includes(key)) {
+		return true;
+	}
+	if (
+		Array.isArray(user.merged_permissions) &&
+		user.merged_permissions.includes(key)
+	) {
+		return true;
+	}
 
-  // Then check nested structure
-  let fieldPerms = user.field_permissions;
-  if (typeof fieldPerms === 'string') {
-    try {
-      fieldPerms = JSON.parse(fieldPerms);
-    } catch {
-      return false;
-    }
-  }
+	// Then check nested structure
+	let fieldPerms = user.field_permissions;
+	if (typeof fieldPerms === 'string') {
+		try {
+			fieldPerms = JSON.parse(fieldPerms);
+		} catch {
+			return false;
+		}
+	}
 
-  if (fieldPerms?.modules?.[moduleKey]) {
-    const moduleData = fieldPerms.modules[moduleKey];
-    if (!moduleData.enabled) return false;
-    return !!moduleData.crud?.[permission];
-  }
+	if (fieldPerms?.modules?.[moduleKey]) {
+		const moduleData = fieldPerms.modules[moduleKey];
+		if (!moduleData.enabled) return false;
+		return !!moduleData.crud?.[permission];
+	}
 
-  return false;
+	return false;
 }

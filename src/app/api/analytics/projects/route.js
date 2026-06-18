@@ -1,303 +1,303 @@
 import { dbConnect } from '@/utils/database';
 import {
-  ensurePermission,
-  RESOURCES,
-  PERMISSIONS,
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
 } from '@/utils/api-permissions';
 
 function getWindow(period) {
-  const now = new Date();
-  const start = new Date(now);
-  const p = String(period || '').toLowerCase();
-  if (p === 'monthly') start.setDate(now.getDate() - 30);
-  else if (p === 'quarterly') start.setDate(now.getDate() - 90);
-  else start.setDate(now.getDate() - 7); // weekly default
-  start.setHours(0, 0, 0, 0);
-  return { start, end: now };
+	const now = new Date();
+	const start = new Date(now);
+	const p = String(period || '').toLowerCase();
+	if (p === 'monthly') start.setDate(now.getDate() - 30);
+	else if (p === 'quarterly') start.setDate(now.getDate() - 90);
+	else start.setDate(now.getDate() - 7); // weekly default
+	start.setHours(0, 0, 0, 0);
+	return { start, end: now };
 }
 
 function fmtDateSQL(d) {
-  // yyyy-mm-dd hh:mm:ss
-  return d.toISOString().slice(0, 19).replace('T', ' ');
+	// yyyy-mm-dd hh:mm:ss
+	return d.toISOString().slice(0, 19).replace('T', ' ');
 }
 
 const STATUS_COLORS = {
-  NEW: '#9CA3AF', // gray-400
-  'IN-PROGRESS': '#64126D',
-  IN_PROGRESS: '#64126D',
-  COMPLETED: '#10B981',
-  'ON HOLD': '#F59E0B',
-  ON_HOLD: '#F59E0B',
-  CANCELLED: '#EF4444',
+	NEW: '#9CA3AF', // gray-400
+	'IN-PROGRESS': '#64126D',
+	IN_PROGRESS: '#64126D',
+	COMPLETED: '#10B981',
+	'ON HOLD': '#F59E0B',
+	ON_HOLD: '#F59E0B',
+	CANCELLED: '#EF4444',
 };
 
 function labelsForPeriod(period) {
-  const p = String(period || '').toLowerCase();
-  if (p === 'monthly') {
-    // Last 12 months including current, oldest first
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    const now = new Date();
-    const out = [];
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      out.push(months[d.getMonth()]);
-    }
-    return out;
-  }
-  if (p === 'quarterly') {
-    // Last 4 quarters, oldest first
-    const now = new Date();
-    const out = [];
-    for (let i = 3; i >= 0; i--) {
-      const dt = new Date(now.getFullYear(), now.getMonth() - i * 3, 1);
-      const q = Math.floor(dt.getMonth() / 3) + 1;
-      out.push(`Q${q}`);
-    }
-    return out;
-  }
-  // Weekly: last 7 days labels (Mon..Sun based on locale weekday names)
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const now = new Date();
-  const out = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(now.getDate() - i);
-    out.push(days[d.getDay()]);
-  }
-  return out;
+	const p = String(period || '').toLowerCase();
+	if (p === 'monthly') {
+		// Last 12 months including current, oldest first
+		const months = [
+			'Jan',
+			'Feb',
+			'Mar',
+			'Apr',
+			'May',
+			'Jun',
+			'Jul',
+			'Aug',
+			'Sep',
+			'Oct',
+			'Nov',
+			'Dec',
+		];
+		const now = new Date();
+		const out = [];
+		for (let i = 11; i >= 0; i--) {
+			const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+			out.push(months[d.getMonth()]);
+		}
+		return out;
+	}
+	if (p === 'quarterly') {
+		// Last 4 quarters, oldest first
+		const now = new Date();
+		const out = [];
+		for (let i = 3; i >= 0; i--) {
+			const dt = new Date(now.getFullYear(), now.getMonth() - i * 3, 1);
+			const q = Math.floor(dt.getMonth() / 3) + 1;
+			out.push(`Q${q}`);
+		}
+		return out;
+	}
+	// Weekly: last 7 days labels (Mon..Sun based on locale weekday names)
+	const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+	const now = new Date();
+	const out = [];
+	for (let i = 6; i >= 0; i--) {
+		const d = new Date(now);
+		d.setDate(now.getDate() - i);
+		out.push(days[d.getDay()]);
+	}
+	return out;
 }
 
 export async function GET(request) {
-  // RBAC check
-  const authResult = await ensurePermission(
-    request,
-    RESOURCES.PROJECTS,
-    PERMISSIONS.READ
-  );
-  if (authResult.authorized === false) return authResult.response;
+	// RBAC check
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.PROJECTS,
+		PERMISSIONS.READ
+	);
+	if (authResult.authorized === false) return authResult.response;
 
-  let db;
-  try {
-    const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || 'Weekly';
-    const metric = (searchParams.get('metric') || 'count').toLowerCase(); // 'count' | 'value'
-    const { start, end } = getWindow(period);
+	let db;
+	try {
+		const { searchParams } = new URL(request.url);
+		const period = searchParams.get('period') || 'Weekly';
+		const metric = (searchParams.get('metric') || 'count').toLowerCase(); // 'count' | 'value'
+		const { start, end } = getWindow(period);
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    // Use cached schema check instead of DDL + INFORMATION_SCHEMA
-    let hasBudget = false;
-    try {
-      const { hasColumn } = await import('@/utils/schema-cache');
-      hasBudget = await hasColumn(db, 'projects', 'budget');
-    } catch (e) {
-      console.warn(
-        'Failed to inspect projects table columns for analytics:',
-        e?.message || e
-      );
-    }
+		// Use cached schema check instead of DDL + INFORMATION_SCHEMA
+		let hasBudget = false;
+		try {
+			const { hasColumn } = await import('@/utils/schema-cache');
+			hasBudget = await hasColumn(db, 'projects', 'budget');
+		} catch (e) {
+			console.warn(
+				'Failed to inspect projects table columns for analytics:',
+				e?.message || e
+			);
+		}
 
-    // Effective date used for bucketing and filtering (fallback when created_at missing)
-    const EFFECTIVE_DT =
-      "COALESCE(NULLIF(created_at, '0000-00-00 00:00:00'), CAST(start_date AS DATETIME), CAST(end_date AS DATETIME), CAST(target_date AS DATETIME), updated_at)";
+		// Effective date used for bucketing and filtering (fallback when created_at missing)
+		const EFFECTIVE_DT =
+			"COALESCE(NULLIF(created_at, '0000-00-00 00:00:00'), CAST(start_date AS DATETIME), CAST(end_date AS DATETIME), CAST(target_date AS DATETIME), updated_at)";
 
-    // Overall totals in the window based on effective date
-    let totalProjects = 0;
-    let totalValue = 0;
-    if (hasBudget) {
-      const [totalsRows] = await db.execute(
-        `SELECT COUNT(*) as cnt, COALESCE(SUM(COALESCE(budget,0)),0) as val
+		// Overall totals in the window based on effective date
+		let totalProjects = 0;
+		let totalValue = 0;
+		if (hasBudget) {
+			const [totalsRows] = await db.execute(
+				`SELECT COUNT(*) as cnt, COALESCE(SUM(COALESCE(budget,0)),0) as val
         FROM projects WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?`,
-        [fmtDateSQL(start), fmtDateSQL(end)]
-      );
-      totalProjects = Number(totalsRows?.[0]?.cnt || 0);
-      totalValue = Number(totalsRows?.[0]?.val || 0);
-    } else {
-      const [totalsRows] = await db.execute(
-        `SELECT COUNT(*) as cnt FROM projects WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?`,
-        [fmtDateSQL(start), fmtDateSQL(end)]
-      );
-      totalProjects = Number(totalsRows?.[0]?.cnt || 0);
-      totalValue = 0;
-    }
+				[fmtDateSQL(start), fmtDateSQL(end)]
+			);
+			totalProjects = Number(totalsRows?.[0]?.cnt || 0);
+			totalValue = Number(totalsRows?.[0]?.val || 0);
+		} else {
+			const [totalsRows] = await db.execute(
+				`SELECT COUNT(*) as cnt FROM projects WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?`,
+				[fmtDateSQL(start), fmtDateSQL(end)]
+			);
+			totalProjects = Number(totalsRows?.[0]?.cnt || 0);
+			totalValue = 0;
+		}
 
-    // Breakdown by status in the window (for donut)
-    let statusRows;
-    if (hasBudget) {
-      const [sr] = await db.execute(
-        `SELECT UPPER(COALESCE(status,'NEW')) as status,
+		// Breakdown by status in the window (for donut)
+		let statusRows;
+		if (hasBudget) {
+			const [sr] = await db.execute(
+				`SELECT UPPER(COALESCE(status,'NEW')) as status,
                 COUNT(*) as cnt,
                 COALESCE(SUM(COALESCE(budget,0)),0) as val
          FROM projects
          WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?
          GROUP BY UPPER(COALESCE(status,'NEW'))`,
-        [fmtDateSQL(start), fmtDateSQL(end)]
-      );
-      statusRows = sr;
-    } else {
-      const [sr] = await db.execute(
-        `SELECT UPPER(COALESCE(status,'NEW')) as status,
+				[fmtDateSQL(start), fmtDateSQL(end)]
+			);
+			statusRows = sr;
+		} else {
+			const [sr] = await db.execute(
+				`SELECT UPPER(COALESCE(status,'NEW')) as status,
                 COUNT(*) as cnt
          FROM projects
          WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?
          GROUP BY UPPER(COALESCE(status,'NEW'))`,
-        [fmtDateSQL(start), fmtDateSQL(end)]
-      );
-      // normalize to same shape with val = cnt when metric is 'value' (but we'll set val=0)
-      statusRows = sr.map((r) => ({ ...r, val: 0 }));
-    }
-    const breakdownByStatus = statusRows.map((r) => {
-      const name = String(r.status).replace(/_/g, ' ');
-      const value =
-        metric === 'value' ? Number(r.val || 0) : Number(r.cnt || 0);
-      const color = STATUS_COLORS[r.status] || '#64126D';
-      return { name, value, color };
-    });
+				[fmtDateSQL(start), fmtDateSQL(end)]
+			);
+			// normalize to same shape with val = cnt when metric is 'value' (but we'll set val=0)
+			statusRows = sr.map((r) => ({ ...r, val: 0 }));
+		}
+		const breakdownByStatus = statusRows.map((r) => {
+			const name = String(r.status).replace(/_/g, ' ');
+			const value =
+				metric === 'value' ? Number(r.val || 0) : Number(r.cnt || 0);
+			const color = STATUS_COLORS[r.status] || '#64126D';
+			return { name, value, color };
+		});
 
-    // Build time-bucketed series for the bar chart
-    const labels = labelsForPeriod(period);
-    const series = labels.map((l) => ({ label: l, value: 0 }));
+		// Build time-bucketed series for the bar chart
+		const labels = labelsForPeriod(period);
+		const series = labels.map((l) => ({ label: l, value: 0 }));
 
-    const p = String(period || '').toLowerCase();
-    // When metric is 'value' but no budget column exists, keep series at zeros (fixed metric, no auto-switch)
-    if (metric === 'value' && !hasBudget) {
-      // leave series as initialized zeros
-    } else if (p === 'monthly') {
-      // Last 12 months (oldest first)
-      const now = new Date();
-      const startMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-      const selectAgg =
-        metric === 'value' && hasBudget
-          ? 'COALESCE(SUM(COALESCE(budget,0)),0) as val'
-          : 'COUNT(*) as cnt';
-      const [rows] = await db.execute(
-        `SELECT YEAR(${EFFECTIVE_DT}) as y, MONTH(${EFFECTIVE_DT}) as m, ${selectAgg}
+		const p = String(period || '').toLowerCase();
+		// When metric is 'value' but no budget column exists, keep series at zeros (fixed metric, no auto-switch)
+		if (metric === 'value' && !hasBudget) {
+			// leave series as initialized zeros
+		} else if (p === 'monthly') {
+			// Last 12 months (oldest first)
+			const now = new Date();
+			const startMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+			const selectAgg =
+				metric === 'value' && hasBudget
+					? 'COALESCE(SUM(COALESCE(budget,0)),0) as val'
+					: 'COUNT(*) as cnt';
+			const [rows] = await db.execute(
+				`SELECT YEAR(${EFFECTIVE_DT}) as y, MONTH(${EFFECTIVE_DT}) as m, ${selectAgg}
          FROM projects
          WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?
          GROUP BY YEAR(${EFFECTIVE_DT}), MONTH(${EFFECTIVE_DT})
          ORDER BY y, m`,
-        [fmtDateSQL(startMonth), fmtDateSQL(end)]
-      );
-      const monthIdx = [];
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        monthIdx.push({ y: d.getFullYear(), m: d.getMonth() + 1 });
-      }
-      rows.forEach((r) => {
-        const pos = monthIdx.findIndex(
-          (x) => x.y === Number(r.y) && x.m === Number(r.m)
-        );
-        if (pos >= 0)
-          series[pos].value =
-            metric === 'value' && hasBudget
-              ? Number(r.val || 0)
-              : Number(r.cnt || 0);
-      });
-    } else if (p === 'quarterly') {
-      // Last 4 quarters (oldest first)
-      const now = new Date();
-      const startQuarter = new Date(
-        now.getFullYear(),
-        now.getMonth() - 3 * 3,
-        1
-      );
-      const selectAgg =
-        metric === 'value' && hasBudget
-          ? 'COALESCE(SUM(COALESCE(budget,0)),0) as val'
-          : 'COUNT(*) as cnt';
-      const [rows] = await db.execute(
-        `SELECT YEAR(${EFFECTIVE_DT}) as y, QUARTER(${EFFECTIVE_DT}) as q, ${selectAgg}
+				[fmtDateSQL(startMonth), fmtDateSQL(end)]
+			);
+			const monthIdx = [];
+			for (let i = 11; i >= 0; i--) {
+				const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+				monthIdx.push({ y: d.getFullYear(), m: d.getMonth() + 1 });
+			}
+			rows.forEach((r) => {
+				const pos = monthIdx.findIndex(
+					(x) => x.y === Number(r.y) && x.m === Number(r.m)
+				);
+				if (pos >= 0)
+					series[pos].value =
+						metric === 'value' && hasBudget
+							? Number(r.val || 0)
+							: Number(r.cnt || 0);
+			});
+		} else if (p === 'quarterly') {
+			// Last 4 quarters (oldest first)
+			const now = new Date();
+			const startQuarter = new Date(
+				now.getFullYear(),
+				now.getMonth() - 3 * 3,
+				1
+			);
+			const selectAgg =
+				metric === 'value' && hasBudget
+					? 'COALESCE(SUM(COALESCE(budget,0)),0) as val'
+					: 'COUNT(*) as cnt';
+			const [rows] = await db.execute(
+				`SELECT YEAR(${EFFECTIVE_DT}) as y, QUARTER(${EFFECTIVE_DT}) as q, ${selectAgg}
          FROM projects
          WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?
          GROUP BY YEAR(${EFFECTIVE_DT}), QUARTER(${EFFECTIVE_DT})
          ORDER BY y, q`,
-        [fmtDateSQL(startQuarter), fmtDateSQL(end)]
-      );
-      const qIdx = [];
-      for (let i = 3; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i * 3, 1);
-        qIdx.push({ y: d.getFullYear(), q: Math.floor(d.getMonth() / 3) + 1 });
-      }
-      rows.forEach((r) => {
-        const pos = qIdx.findIndex(
-          (x) => x.y === Number(r.y) && x.q === Number(r.q)
-        );
-        if (pos >= 0)
-          series[pos].value =
-            metric === 'value' && hasBudget
-              ? Number(r.val || 0)
-              : Number(r.cnt || 0);
-      });
-    } else {
-      // Weekly: last 7 days (oldest first)
-      const now = new Date();
-      const startDay = new Date(now);
-      startDay.setDate(now.getDate() - 6);
-      startDay.setHours(0, 0, 0, 0);
-      const selectAgg =
-        metric === 'value' && hasBudget
-          ? 'COALESCE(SUM(COALESCE(budget,0)),0) as val'
-          : 'COUNT(*) as cnt';
-      const [rows] = await db.execute(
-        `SELECT DATE(${EFFECTIVE_DT}) as d, ${selectAgg}
+				[fmtDateSQL(startQuarter), fmtDateSQL(end)]
+			);
+			const qIdx = [];
+			for (let i = 3; i >= 0; i--) {
+				const d = new Date(now.getFullYear(), now.getMonth() - i * 3, 1);
+				qIdx.push({ y: d.getFullYear(), q: Math.floor(d.getMonth() / 3) + 1 });
+			}
+			rows.forEach((r) => {
+				const pos = qIdx.findIndex(
+					(x) => x.y === Number(r.y) && x.q === Number(r.q)
+				);
+				if (pos >= 0)
+					series[pos].value =
+						metric === 'value' && hasBudget
+							? Number(r.val || 0)
+							: Number(r.cnt || 0);
+			});
+		} else {
+			// Weekly: last 7 days (oldest first)
+			const now = new Date();
+			const startDay = new Date(now);
+			startDay.setDate(now.getDate() - 6);
+			startDay.setHours(0, 0, 0, 0);
+			const selectAgg =
+				metric === 'value' && hasBudget
+					? 'COALESCE(SUM(COALESCE(budget,0)),0) as val'
+					: 'COUNT(*) as cnt';
+			const [rows] = await db.execute(
+				`SELECT DATE(${EFFECTIVE_DT}) as d, ${selectAgg}
          FROM projects
          WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?
          GROUP BY DATE(${EFFECTIVE_DT})
          ORDER BY d`,
-        [fmtDateSQL(startDay), fmtDateSQL(end)]
-      );
-      const toKey = (d) => d.toISOString().slice(0, 10);
-      const map = new Map(
-        rows.map((r) => [
-          String(r.d),
-          metric === 'value' && hasBudget
-            ? Number(r.val || 0)
-            : Number(r.cnt || 0),
-        ])
-      );
-      for (let i = 6, idx = 0; i >= 0; i--, idx++) {
-        const d = new Date(now);
-        d.setDate(now.getDate() - i);
-        d.setHours(0, 0, 0, 0);
-        const key = toKey(d);
-        series[idx].value = map.get(key) || 0;
-      }
-    }
+				[fmtDateSQL(startDay), fmtDateSQL(end)]
+			);
+			const toKey = (d) => d.toISOString().slice(0, 10);
+			const map = new Map(
+				rows.map((r) => [
+					String(r.d),
+					metric === 'value' && hasBudget
+						? Number(r.val || 0)
+						: Number(r.cnt || 0),
+				])
+			);
+			for (let i = 6, idx = 0; i >= 0; i--, idx++) {
+				const d = new Date(now);
+				d.setDate(now.getDate() - i);
+				d.setHours(0, 0, 0, 0);
+				const key = toKey(d);
+				series[idx].value = map.get(key) || 0;
+			}
+		}
 
-    return Response.json({
-      success: true,
-      period,
-      metric,
-      series,
-      totals: {
-        projects: totalProjects,
-        value: totalValue,
-      },
-      breakdownByStatus,
-    });
-  } catch (error) {
-    console.error('Project analytics error:', error);
-    return Response.json(
-      { success: false, error: 'Failed to load project analytics' },
-      { status: 500 }
-    );
-  } finally {
-    if (db)
-      try {
-        db.release();
-      } catch (_) {}
-  }
+		return Response.json({
+			success: true,
+			period,
+			metric,
+			series,
+			totals: {
+				projects: totalProjects,
+				value: totalValue,
+			},
+			breakdownByStatus,
+		});
+	} catch (error) {
+		console.error('Project analytics error:', error);
+		return Response.json(
+			{ success: false, error: 'Failed to load project analytics' },
+			{ status: 500 }
+		);
+	} finally {
+		if (db)
+			try {
+				db.release();
+			} catch (_) {}
+	}
 }

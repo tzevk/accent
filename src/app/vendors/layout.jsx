@@ -5,5 +5,5 @@
  * This layout just passes through children.
  */
 export default function VendorsLayout({ children }) {
-  return children;
+	return children;
 }

@@ -5,5 +5,5 @@
  * This layout just passes through children.
  */
 export default function ProjectsLayout({ children }) {
-  return children;
+	return children;
 }

@@ -7,8 +7,8 @@ import { useActivityTracker } from '@/hooks/useActivityTracker';
  * Automatically tracks all user activity when mounted
  */
 export default function ActivityTracker() {
-  useActivityTracker();
+	useActivityTracker();
 
-  // This component doesn't render anything visible
-  return null;
+	// This component doesn't render anything visible
+	return null;
 }

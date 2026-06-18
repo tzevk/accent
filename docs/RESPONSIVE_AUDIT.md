@@ -31,10 +31,10 @@ The `.content-with-sidebar` class only applies `padding-left: 80px; padding-top:
 ```css
 /* Current: no mobile offset */
 @media (min-width: 640px) {
-  .content-with-sidebar {
-    padding-left: 80px;
-    padding-top: 64px;
-  }
+	.content-with-sidebar {
+		padding-left: 80px;
+		padding-top: 64px;
+	}
 }
 ```
 
@@ -42,13 +42,13 @@ The `.content-with-sidebar` class only applies `padding-left: 80px; padding-top:
 
 ```css
 .content-with-sidebar {
-  padding-top: 64px;
-  transition: padding-left 0.2s ease-out;
+	padding-top: 64px;
+	transition: padding-left 0.2s ease-out;
 }
 @media (min-width: 640px) {
-  .content-with-sidebar {
-    padding-left: 80px;
-  }
+	.content-with-sidebar {
+		padding-left: 80px;
+	}
 }
 ```
 

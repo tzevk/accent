@@ -3,5 +3,5 @@
 import EmployeesPageInner from '@/components/EmployeesPageInner';
 
 export default function PayrollEmployeesPage() {
-  return <EmployeesPageInner employeeType="Payroll" />;
+	return <EmployeesPageInner employeeType="Payroll" />;
 }

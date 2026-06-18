@@ -15,98 +15,98 @@ import { hasPermission } from '@/utils/rbac';
  * 4. Cache-Control headers for client-side caching
  */
 export async function GET(request) {
-  const startTime = Date.now();
+	const startTime = Date.now();
 
-  try {
-    // Auth check
-    const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+	try {
+		// Auth check
+		const user = await getCurrentUser(request);
+		if (!user) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
+		}
 
-    // Permission check — also allow users who can create/update users (they need employee list for linking)
-    const canReadEmployees =
-      user.is_super_admin ||
-      hasPermission(user, 'employees', 'read') ||
-      hasPermission(user, 'users', 'create') ||
-      hasPermission(user, 'users', 'update');
-    if (!canReadEmployees) {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
+		// Permission check — also allow users who can create/update users (they need employee list for linking)
+		const canReadEmployees =
+			user.is_super_admin ||
+			hasPermission(user, 'employees', 'read') ||
+			hasPermission(user, 'users', 'create') ||
+			hasPermission(user, 'users', 'update');
+		if (!canReadEmployees) {
+			return NextResponse.json(
+				{ success: false, error: 'Forbidden' },
+				{ status: 403 }
+			);
+		}
 
-    const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search') || '';
-    const department = searchParams.get('department') || '';
-    const status = searchParams.get('status') || '';
-    const workplace = searchParams.get('workplace') || '';
-    const employment_status = searchParams.get('employment_status') || '';
-    const employee_type = searchParams.get('employee_type') || '';
-    const page = parseInt(searchParams.get('page')) || 1;
-    const limit = Math.max(
-      1,
-      Math.min(1000, parseInt(searchParams.get('limit')) || 100)
-    );
-    const offset = (page - 1) * limit;
+		const { searchParams } = new URL(request.url);
+		const search = searchParams.get('search') || '';
+		const department = searchParams.get('department') || '';
+		const status = searchParams.get('status') || '';
+		const workplace = searchParams.get('workplace') || '';
+		const employment_status = searchParams.get('employment_status') || '';
+		const employee_type = searchParams.get('employee_type') || '';
+		const page = parseInt(searchParams.get('page')) || 1;
+		const limit = Math.max(
+			1,
+			Math.min(1000, parseInt(searchParams.get('limit')) || 100)
+		);
+		const offset = (page - 1) * limit;
 
-    const db = await dbConnect();
+		const db = await dbConnect();
 
-    try {
-      // Build WHERE clause
-      let whereClause = 'WHERE 1=1';
-      const params = [];
+		try {
+			// Build WHERE clause
+			let whereClause = 'WHERE 1=1';
+			const params = [];
 
-      if (search) {
-        whereClause +=
-          ' AND (e.first_name LIKE ? OR e.last_name LIKE ? OR e.email LIKE ? OR e.employee_id LIKE ?)';
-        const searchPattern = `%${search}%`;
-        params.push(searchPattern, searchPattern, searchPattern, searchPattern);
-      }
+			if (search) {
+				whereClause +=
+					' AND (e.first_name LIKE ? OR e.last_name LIKE ? OR e.email LIKE ? OR e.employee_id LIKE ?)';
+				const searchPattern = `%${search}%`;
+				params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+			}
 
-      if (department) {
-        whereClause += ' AND e.department = ?';
-        params.push(department);
-      }
+			if (department) {
+				whereClause += ' AND e.department = ?';
+				params.push(department);
+			}
 
-      if (status) {
-        whereClause += ' AND e.status = ?';
-        params.push(status);
-      }
+			if (status) {
+				whereClause += ' AND e.status = ?';
+				params.push(status);
+			}
 
-      if (workplace) {
-        whereClause += ' AND e.workplace = ?';
-        params.push(workplace);
-      }
+			if (workplace) {
+				whereClause += ' AND e.workplace = ?';
+				params.push(workplace);
+			}
 
-      if (employment_status) {
-        if (employment_status === 'employed') {
-          whereClause += " AND (e.exit_date IS NULL OR e.exit_date = '')";
-        } else if (employment_status === 'resigned') {
-          whereClause += " AND e.exit_date IS NOT NULL AND e.exit_date != ''";
-        }
-      }
+			if (employment_status) {
+				if (employment_status === 'employed') {
+					whereClause += " AND (e.exit_date IS NULL OR e.exit_date = '')";
+				} else if (employment_status === 'resigned') {
+					whereClause += " AND e.exit_date IS NOT NULL AND e.exit_date != ''";
+				}
+			}
 
-      if (employee_type) {
-        whereClause += ' AND e.employee_type = ?';
-        params.push(employee_type);
-      }
+			if (employee_type) {
+				whereClause += ' AND e.employee_type = ?';
+				params.push(employee_type);
+			}
 
-      // Execute all queries in parallel
-      const [
-        employeesResult,
-        countResult,
-        departmentsResult,
-        workplacesResult,
-        statsResult,
-      ] = await Promise.all([
-        // 1. Employees with pagination
-        db.execute(
-          `SELECT 
+			// Execute all queries in parallel
+			const [
+				employeesResult,
+				countResult,
+				departmentsResult,
+				workplacesResult,
+				statsResult,
+			] = await Promise.all([
+				// 1. Employees with pagination
+				db.execute(
+					`SELECT 
             e.*,
             CONCAT(m.first_name, ' ', m.last_name) as manager_name
            FROM employees e
@@ -114,27 +114,27 @@ export async function GET(request) {
            ${whereClause}
            ORDER BY e.created_at DESC
            LIMIT ${limit} OFFSET ${offset}`,
-          params
-        ),
+					params
+				),
 
-        // 2. Total count for pagination
-        db.execute(
-          `SELECT COUNT(*) as total FROM employees e ${whereClause}`,
-          params
-        ),
+				// 2. Total count for pagination
+				db.execute(
+					`SELECT COUNT(*) as total FROM employees e ${whereClause}`,
+					params
+				),
 
-        // 3. Departments for filters
-        db.execute(
-          "SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND department != '' ORDER BY department"
-        ),
+				// 3. Departments for filters
+				db.execute(
+					"SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND department != '' ORDER BY department"
+				),
 
-        // 4. Workplaces for filters
-        db.execute(
-          "SELECT DISTINCT workplace FROM employees WHERE workplace IS NOT NULL AND workplace != '' ORDER BY workplace"
-        ),
+				// 4. Workplaces for filters
+				db.execute(
+					"SELECT DISTINCT workplace FROM employees WHERE workplace IS NOT NULL AND workplace != '' ORDER BY workplace"
+				),
 
-        // 5. Stats
-        db.execute(`
+				// 5. Stats
+				db.execute(`
           SELECT 
             COUNT(*) as total,
             SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
@@ -142,64 +142,64 @@ export async function GET(request) {
             SUM(CASE WHEN exit_date IS NOT NULL AND exit_date != '' THEN 1 ELSE 0 END) as resigned
           FROM employees
         `),
-      ]);
+			]);
 
-      const [employees] = employeesResult;
-      const countRow = countResult?.[0]?.[0] || {};
-      const total = Number(countRow.total) || 0;
-      const [departments] = departmentsResult;
-      const [workplaces] = workplacesResult;
-      const statsRow = statsResult?.[0]?.[0] || {};
+			const [employees] = employeesResult;
+			const countRow = countResult?.[0]?.[0] || {};
+			const total = Number(countRow.total) || 0;
+			const [departments] = departmentsResult;
+			const [workplaces] = workplacesResult;
+			const statsRow = statsResult?.[0]?.[0] || {};
 
-      const queryTime = Date.now() - startTime;
+			const queryTime = Date.now() - startTime;
 
-      const response = NextResponse.json({
-        success: true,
-        employees,
-        departments: departments.map((d) => d.department).filter(Boolean),
-        workplaces: workplaces.map((w) => w.workplace).filter(Boolean),
-        pagination: {
-          current: page,
-          total: Math.ceil(total / limit),
-          limit,
-          totalRecords: total,
-        },
-        stats: {
-          total: Number(statsRow.total) || 0,
-          active: Number(statsRow.active) || 0,
-          inactive: Number(statsRow.inactive) || 0,
-          resigned: Number(statsRow.resigned) || 0,
-        },
-        _meta: {
-          queryTimeMs: queryTime,
-        },
-      });
+			const response = NextResponse.json({
+				success: true,
+				employees,
+				departments: departments.map((d) => d.department).filter(Boolean),
+				workplaces: workplaces.map((w) => w.workplace).filter(Boolean),
+				pagination: {
+					current: page,
+					total: Math.ceil(total / limit),
+					limit,
+					totalRecords: total,
+				},
+				stats: {
+					total: Number(statsRow.total) || 0,
+					active: Number(statsRow.active) || 0,
+					inactive: Number(statsRow.inactive) || 0,
+					resigned: Number(statsRow.resigned) || 0,
+				},
+				_meta: {
+					queryTimeMs: queryTime,
+				},
+			});
 
-      // No caching - always return fresh data
-      response.headers.set(
-        'Cache-Control',
-        'no-store, no-cache, must-revalidate'
-      );
+			// No caching - always return fresh data
+			response.headers.set(
+				'Cache-Control',
+				'no-store, no-cache, must-revalidate'
+			);
 
-      return response;
-    } finally {
-      if (db && typeof db.release === 'function') {
-        try {
-          db.release();
-        } catch (e) {
-          console.error('Error releasing connection:', e);
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Employees list error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch employees',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  }
+			return response;
+		} finally {
+			if (db && typeof db.release === 'function') {
+				try {
+					db.release();
+				} catch (e) {
+					console.error('Error releasing connection:', e);
+				}
+			}
+		}
+	} catch (error) {
+		console.error('Employees list error:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to fetch employees',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	}
 }

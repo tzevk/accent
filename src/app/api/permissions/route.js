@@ -1,497 +1,497 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import {
-  RESOURCES,
-  PERMISSIONS,
-  validatePermissions,
-  groupPermissionsByResource,
+	RESOURCES,
+	PERMISSIONS,
+	validatePermissions,
+	groupPermissionsByResource,
 } from '@/utils/rbac';
 import { getCurrentUser, invalidateUserCache } from '@/utils/api-permissions';
 
 // Safe JSON parse helper to avoid runtime crashes on bad DB contents
 function safeParse(json, fallback = []) {
-  try {
-    if (!json) return fallback;
-    if (typeof json === 'object') return json; // already parsed
-    return JSON.parse(json);
-  } catch {
-    return fallback;
-  }
+	try {
+		if (!json) return fallback;
+		if (typeof json === 'object') return json; // already parsed
+		return JSON.parse(json);
+	} catch {
+		return fallback;
+	}
 }
 
 // GET - Get permissions for a specific user or role
 export async function GET(request) {
-  let db;
-  try {
-    // Only admins can view user/role permission details; meta is open to all
-    const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type');
-    const needsRBAC = type && type !== 'meta';
-    if (needsRBAC) {
-      const user = await getCurrentUser(request);
-      if (!user) {
-        return NextResponse.json(
-          { success: false, error: 'Unauthorized' },
-          { status: 401 }
-        );
-      }
+	let db;
+	try {
+		// Only admins can view user/role permission details; meta is open to all
+		const { searchParams } = new URL(request.url);
+		const type = searchParams.get('type');
+		const needsRBAC = type && type !== 'meta';
+		if (needsRBAC) {
+			const user = await getCurrentUser(request);
+			if (!user) {
+				return NextResponse.json(
+					{ success: false, error: 'Unauthorized' },
+					{ status: 401 }
+				);
+			}
 
-      if (!user.is_super_admin) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Forbidden: Only administrators can view permissions',
-          },
-          { status: 403 }
-        );
-      }
-    }
-    const userId = searchParams.get('user_id');
-    const roleId = searchParams.get('role_id');
-    // 'user' or 'role' or 'all' or 'meta'
+			if (!user.is_super_admin) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'Forbidden: Only administrators can view permissions',
+					},
+					{ status: 403 }
+				);
+			}
+		}
+		const userId = searchParams.get('user_id');
+		const roleId = searchParams.get('role_id');
+		// 'user' or 'role' or 'all' or 'meta'
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    let response = {
-      success: true,
-      data: {
-        resources: RESOURCES,
-        permissions: PERMISSIONS,
-        user_permissions: null,
-        role_permissions: null,
-        effective_permissions: null,
-      },
-    };
+		let response = {
+			success: true,
+			data: {
+				resources: RESOURCES,
+				permissions: PERMISSIONS,
+				user_permissions: null,
+				role_permissions: null,
+				effective_permissions: null,
+			},
+		};
 
-    // Get user-specific permissions
-    if (userId && (type === 'user' || type === 'all')) {
-      const [userRows] = await db.execute(
-        `SELECT u.permissions as user_permissions, u.role_id,
+		// Get user-specific permissions
+		if (userId && (type === 'user' || type === 'all')) {
+			const [userRows] = await db.execute(
+				`SELECT u.permissions as user_permissions, u.role_id,
                 r.permissions as role_permissions, r.role_name,
                 u.is_super_admin
          FROM users u
          LEFT JOIN roles_master r ON u.role_id = r.id
          WHERE u.id = ? AND (u.status = 'active' OR u.status IS NULL)`,
-        [userId]
-      );
+				[userId]
+			);
 
-      if (userRows.length > 0) {
-        const user = userRows[0];
-        const userPermissions = safeParse(user.user_permissions, []);
-        const rolePermissions = safeParse(user.role_permissions, []);
+			if (userRows.length > 0) {
+				const user = userRows[0];
+				const userPermissions = safeParse(user.user_permissions, []);
+				const rolePermissions = safeParse(user.role_permissions, []);
 
-        response.data.user_permissions = {
-          direct: userPermissions,
-          grouped: groupPermissionsByResource(userPermissions),
-        };
+				response.data.user_permissions = {
+					direct: userPermissions,
+					grouped: groupPermissionsByResource(userPermissions),
+				};
 
-        response.data.role_permissions = {
-          direct: rolePermissions,
-          grouped: groupPermissionsByResource(rolePermissions),
-          role_name: user.role_name,
-        };
+				response.data.role_permissions = {
+					direct: rolePermissions,
+					grouped: groupPermissionsByResource(rolePermissions),
+					role_name: user.role_name,
+				};
 
-        // Calculate effective permissions (role + user overrides)
-        const effectivePermissions = [
-          ...new Set([...rolePermissions, ...userPermissions]),
-        ];
-        response.data.effective_permissions = {
-          direct: effectivePermissions,
-          grouped: groupPermissionsByResource(effectivePermissions),
-        };
+				// Calculate effective permissions (role + user overrides)
+				const effectivePermissions = [
+					...new Set([...rolePermissions, ...userPermissions]),
+				];
+				response.data.effective_permissions = {
+					direct: effectivePermissions,
+					grouped: groupPermissionsByResource(effectivePermissions),
+				};
 
-        response.data.is_super_admin = user.is_super_admin;
-      }
-    }
+				response.data.is_super_admin = user.is_super_admin;
+			}
+		}
 
-    // Get role-specific permissions
-    if (roleId && (type === 'role' || type === 'all')) {
-      const [roleRows] = await db.execute(
-        'SELECT permissions, role_name FROM roles_master WHERE id = ? AND status = "active"',
-        [roleId]
-      );
+		// Get role-specific permissions
+		if (roleId && (type === 'role' || type === 'all')) {
+			const [roleRows] = await db.execute(
+				'SELECT permissions, role_name FROM roles_master WHERE id = ? AND status = "active"',
+				[roleId]
+			);
 
-      if (roleRows.length > 0) {
-        const role = roleRows[0];
-        const rolePermissions = safeParse(role.permissions, []);
+			if (roleRows.length > 0) {
+				const role = roleRows[0];
+				const rolePermissions = safeParse(role.permissions, []);
 
-        response.data.role_permissions = {
-          direct: rolePermissions,
-          grouped: groupPermissionsByResource(rolePermissions),
-          role_name: role.role_name,
-        };
-      }
-    }
+				response.data.role_permissions = {
+					direct: rolePermissions,
+					grouped: groupPermissionsByResource(rolePermissions),
+					role_name: role.role_name,
+				};
+			}
+		}
 
-    return NextResponse.json(response);
-  } catch (error) {
-    console.error('Error fetching permissions:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch permissions',
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json(response);
+	} catch (error) {
+		console.error('Error fetching permissions:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to fetch permissions',
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }
 
 // POST - Update permissions for user or role
 export async function POST(request) {
-  let db;
-  try {
-    // Only super admins can modify permissions
-    const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+	let db;
+	try {
+		// Only super admins can modify permissions
+		const user = await getCurrentUser(request);
+		if (!user) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
+		}
 
-    if (!user.is_super_admin) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Forbidden: Only administrators can manage permissions',
-        },
-        { status: 403 }
-      );
-    }
+		if (!user.is_super_admin) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Forbidden: Only administrators can manage permissions',
+				},
+				{ status: 403 }
+			);
+		}
 
-    const data = await request.json();
-    const { user_id, role_id, permissions, type, action } = data; // action: 'grant', 'revoke', 'replace'
+		const data = await request.json();
+		const { user_id, role_id, permissions, type, action } = data; // action: 'grant', 'revoke', 'replace'
 
-    if (!permissions || !Array.isArray(permissions)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Permissions array is required',
-        },
-        { status: 400 }
-      );
-    }
+		if (!permissions || !Array.isArray(permissions)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Permissions array is required',
+				},
+				{ status: 400 }
+			);
+		}
 
-    // Validate permissions
-    const validation = validatePermissions(permissions);
-    if (validation.invalid.length > 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid permissions found',
-          invalid_permissions: validation.invalid,
-        },
-        { status: 400 }
-      );
-    }
+		// Validate permissions
+		const validation = validatePermissions(permissions);
+		if (validation.invalid.length > 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Invalid permissions found',
+					invalid_permissions: validation.invalid,
+				},
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    if (type === 'user' && user_id) {
-      // Update user permissions
-      const [existingUser] = await db.execute(
-        'SELECT permissions FROM users WHERE id = ? LIMIT 1',
-        [user_id]
-      );
+		if (type === 'user' && user_id) {
+			// Update user permissions
+			const [existingUser] = await db.execute(
+				'SELECT permissions FROM users WHERE id = ? LIMIT 1',
+				[user_id]
+			);
 
-      if (existingUser.length === 0) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'User not found',
-          },
-          { status: 404 }
-        );
-      }
+			if (existingUser.length === 0) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'User not found',
+					},
+					{ status: 404 }
+				);
+			}
 
-      let currentPermissions = safeParse(existingUser[0].permissions, []);
-      let newPermissions;
+			let currentPermissions = safeParse(existingUser[0].permissions, []);
+			let newPermissions;
 
-      switch (action) {
-        case 'grant':
-          newPermissions = [
-            ...new Set([...currentPermissions, ...permissions]),
-          ];
-          break;
-        case 'revoke':
-          newPermissions = currentPermissions.filter(
-            (p) => !permissions.includes(p)
-          );
-          break;
-        case 'replace':
-        default:
-          newPermissions = permissions;
-          break;
-      }
+			switch (action) {
+				case 'grant':
+					newPermissions = [
+						...new Set([...currentPermissions, ...permissions]),
+					];
+					break;
+				case 'revoke':
+					newPermissions = currentPermissions.filter(
+						(p) => !permissions.includes(p)
+					);
+					break;
+				case 'replace':
+				default:
+					newPermissions = permissions;
+					break;
+			}
 
-      await db.execute('UPDATE users SET permissions = ? WHERE id = ?', [
-        JSON.stringify(newPermissions),
-        user_id,
-      ]);
+			await db.execute('UPDATE users SET permissions = ? WHERE id = ?', [
+				JSON.stringify(newPermissions),
+				user_id,
+			]);
 
-      // Force fresh permissions on next request for this user.
-      invalidateUserCache(String(user_id));
+			// Force fresh permissions on next request for this user.
+			invalidateUserCache(String(user_id));
 
-      console.log('✅ User permissions saved to database:', {
-        user_id,
-        permissionCount: newPermissions.length,
-        permissions: newPermissions,
-      });
+			console.log('✅ User permissions saved to database:', {
+				user_id,
+				permissionCount: newPermissions.length,
+				permissions: newPermissions,
+			});
 
-      return NextResponse.json({
-        success: true,
-        message: 'User permissions updated successfully',
-        data: { permissions: newPermissions },
-      });
-    } else if (type === 'role' && role_id) {
-      // Update role permissions
-      const [existingRole] = await db.execute(
-        'SELECT permissions FROM roles_master WHERE id = ? AND status = "active"',
-        [role_id]
-      );
+			return NextResponse.json({
+				success: true,
+				message: 'User permissions updated successfully',
+				data: { permissions: newPermissions },
+			});
+		} else if (type === 'role' && role_id) {
+			// Update role permissions
+			const [existingRole] = await db.execute(
+				'SELECT permissions FROM roles_master WHERE id = ? AND status = "active"',
+				[role_id]
+			);
 
-      if (existingRole.length === 0) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Role not found',
-          },
-          { status: 404 }
-        );
-      }
+			if (existingRole.length === 0) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'Role not found',
+					},
+					{ status: 404 }
+				);
+			}
 
-      let currentPermissions = safeParse(existingRole[0].permissions, []);
-      let newPermissions;
+			let currentPermissions = safeParse(existingRole[0].permissions, []);
+			let newPermissions;
 
-      switch (action) {
-        case 'grant':
-          newPermissions = [
-            ...new Set([...currentPermissions, ...permissions]),
-          ];
-          break;
-        case 'revoke':
-          newPermissions = currentPermissions.filter(
-            (p) => !permissions.includes(p)
-          );
-          break;
-        case 'replace':
-        default:
-          newPermissions = permissions;
-          break;
-      }
+			switch (action) {
+				case 'grant':
+					newPermissions = [
+						...new Set([...currentPermissions, ...permissions]),
+					];
+					break;
+				case 'revoke':
+					newPermissions = currentPermissions.filter(
+						(p) => !permissions.includes(p)
+					);
+					break;
+				case 'replace':
+				default:
+					newPermissions = permissions;
+					break;
+			}
 
-      await db.execute('UPDATE roles_master SET permissions = ? WHERE id = ?', [
-        JSON.stringify(newPermissions),
-        role_id,
-      ]);
+			await db.execute('UPDATE roles_master SET permissions = ? WHERE id = ?', [
+				JSON.stringify(newPermissions),
+				role_id,
+			]);
 
-      // Invalidate all users using this role so merged permissions refresh immediately.
-      const [affectedUsers] = await db.execute(
-        'SELECT id FROM users WHERE role_id = ?',
-        [role_id]
-      );
-      for (const affectedUser of affectedUsers || []) {
-        if (affectedUser?.id !== undefined && affectedUser?.id !== null) {
-          invalidateUserCache(String(affectedUser.id));
-        }
-      }
+			// Invalidate all users using this role so merged permissions refresh immediately.
+			const [affectedUsers] = await db.execute(
+				'SELECT id FROM users WHERE role_id = ?',
+				[role_id]
+			);
+			for (const affectedUser of affectedUsers || []) {
+				if (affectedUser?.id !== undefined && affectedUser?.id !== null) {
+					invalidateUserCache(String(affectedUser.id));
+				}
+			}
 
-      return NextResponse.json({
-        success: true,
-        message: 'Role permissions updated successfully',
-        data: { permissions: newPermissions },
-      });
-    } else {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Either user_id or role_id must be provided with appropriate type',
-        },
-        { status: 400 }
-      );
-    }
-  } catch (error) {
-    console.error('Error updating permissions:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error?.message || 'Failed to update permissions',
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+			return NextResponse.json({
+				success: true,
+				message: 'Role permissions updated successfully',
+				data: { permissions: newPermissions },
+			});
+		} else {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'Either user_id or role_id must be provided with appropriate type',
+				},
+				{ status: 400 }
+			);
+		}
+	} catch (error) {
+		console.error('Error updating permissions:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: error?.message || 'Failed to update permissions',
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }
 
 // PUT - Bulk permission operations
 export async function PUT(request) {
-  let db;
-  try {
-    // Only super admins can perform bulk permission operations
-    const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+	let db;
+	try {
+		// Only super admins can perform bulk permission operations
+		const user = await getCurrentUser(request);
+		if (!user) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
+		}
 
-    if (!user.is_super_admin) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Forbidden: Only administrators can manage permissions',
-        },
-        { status: 403 }
-      );
-    }
+		if (!user.is_super_admin) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Forbidden: Only administrators can manage permissions',
+				},
+				{ status: 403 }
+			);
+		}
 
-    const data = await request.json();
-    const { operations } = data; // Array of permission operations
+		const data = await request.json();
+		const { operations } = data; // Array of permission operations
 
-    if (!operations || !Array.isArray(operations)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Operations array is required',
-        },
-        { status: 400 }
-      );
-    }
+		if (!operations || !Array.isArray(operations)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Operations array is required',
+				},
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
-    const results = [];
+		db = await dbConnect();
+		const results = [];
 
-    // Begin transaction
-    await db.execute('START TRANSACTION');
+		// Begin transaction
+		await db.execute('START TRANSACTION');
 
-    try {
-      for (const operation of operations) {
-        const { type, target_id, permissions, action } = operation;
+		try {
+			for (const operation of operations) {
+				const { type, target_id, permissions, action } = operation;
 
-        if (type === 'user') {
-          const [user] = await db.execute(
-            'SELECT permissions FROM users WHERE id = ? LIMIT 1',
-            [target_id]
-          );
+				if (type === 'user') {
+					const [user] = await db.execute(
+						'SELECT permissions FROM users WHERE id = ? LIMIT 1',
+						[target_id]
+					);
 
-          if (user.length > 0) {
-            let currentPermissions = user[0].permissions
-              ? JSON.parse(user[0].permissions)
-              : [];
-            let newPermissions;
+					if (user.length > 0) {
+						let currentPermissions = user[0].permissions
+							? JSON.parse(user[0].permissions)
+							: [];
+						let newPermissions;
 
-            switch (action) {
-              case 'grant':
-                newPermissions = [
-                  ...new Set([...currentPermissions, ...permissions]),
-                ];
-                break;
-              case 'revoke':
-                newPermissions = currentPermissions.filter(
-                  (p) => !permissions.includes(p)
-                );
-                break;
-              case 'replace':
-                newPermissions = permissions;
-                break;
-            }
+						switch (action) {
+							case 'grant':
+								newPermissions = [
+									...new Set([...currentPermissions, ...permissions]),
+								];
+								break;
+							case 'revoke':
+								newPermissions = currentPermissions.filter(
+									(p) => !permissions.includes(p)
+								);
+								break;
+							case 'replace':
+								newPermissions = permissions;
+								break;
+						}
 
-            await db.execute('UPDATE users SET permissions = ? WHERE id = ?', [
-              JSON.stringify(newPermissions),
-              target_id,
-            ]);
+						await db.execute('UPDATE users SET permissions = ? WHERE id = ?', [
+							JSON.stringify(newPermissions),
+							target_id,
+						]);
 
-            invalidateUserCache(String(target_id));
+						invalidateUserCache(String(target_id));
 
-            results.push({
-              type,
-              target_id,
-              action,
-              success: true,
-              permissions: newPermissions,
-            });
-          }
-        } else if (type === 'role') {
-          const [role] = await db.execute(
-            'SELECT permissions FROM roles_master WHERE id = ? AND status = "active"',
-            [target_id]
-          );
+						results.push({
+							type,
+							target_id,
+							action,
+							success: true,
+							permissions: newPermissions,
+						});
+					}
+				} else if (type === 'role') {
+					const [role] = await db.execute(
+						'SELECT permissions FROM roles_master WHERE id = ? AND status = "active"',
+						[target_id]
+					);
 
-          if (role.length > 0) {
-            let currentPermissions = role[0].permissions
-              ? JSON.parse(role[0].permissions)
-              : [];
-            let newPermissions;
+					if (role.length > 0) {
+						let currentPermissions = role[0].permissions
+							? JSON.parse(role[0].permissions)
+							: [];
+						let newPermissions;
 
-            switch (action) {
-              case 'grant':
-                newPermissions = [
-                  ...new Set([...currentPermissions, ...permissions]),
-                ];
-                break;
-              case 'revoke':
-                newPermissions = currentPermissions.filter(
-                  (p) => !permissions.includes(p)
-                );
-                break;
-              case 'replace':
-                newPermissions = permissions;
-                break;
-            }
+						switch (action) {
+							case 'grant':
+								newPermissions = [
+									...new Set([...currentPermissions, ...permissions]),
+								];
+								break;
+							case 'revoke':
+								newPermissions = currentPermissions.filter(
+									(p) => !permissions.includes(p)
+								);
+								break;
+							case 'replace':
+								newPermissions = permissions;
+								break;
+						}
 
-            await db.execute(
-              'UPDATE roles_master SET permissions = ? WHERE id = ?',
-              [JSON.stringify(newPermissions), target_id]
-            );
+						await db.execute(
+							'UPDATE roles_master SET permissions = ? WHERE id = ?',
+							[JSON.stringify(newPermissions), target_id]
+						);
 
-            const [affectedUsers] = await db.execute(
-              'SELECT id FROM users WHERE role_id = ?',
-              [target_id]
-            );
-            for (const affectedUser of affectedUsers || []) {
-              if (affectedUser?.id !== undefined && affectedUser?.id !== null) {
-                invalidateUserCache(String(affectedUser.id));
-              }
-            }
+						const [affectedUsers] = await db.execute(
+							'SELECT id FROM users WHERE role_id = ?',
+							[target_id]
+						);
+						for (const affectedUser of affectedUsers || []) {
+							if (affectedUser?.id !== undefined && affectedUser?.id !== null) {
+								invalidateUserCache(String(affectedUser.id));
+							}
+						}
 
-            results.push({
-              type,
-              target_id,
-              action,
-              success: true,
-              permissions: newPermissions,
-            });
-          }
-        }
-      }
+						results.push({
+							type,
+							target_id,
+							action,
+							success: true,
+							permissions: newPermissions,
+						});
+					}
+				}
+			}
 
-      await db.execute('COMMIT');
+			await db.execute('COMMIT');
 
-      return NextResponse.json({
-        success: true,
-        message: 'Bulk permission operations completed',
-        data: { results },
-      });
-    } catch (error) {
-      await db.execute('ROLLBACK');
-      throw error;
-    } finally {
-      if (db) db.release();
-    }
-  } catch (error) {
-    console.error('Error in bulk permission operations:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          error?.message || 'Failed to complete bulk permission operations',
-      },
-      { status: 500 }
-    );
-  }
+			return NextResponse.json({
+				success: true,
+				message: 'Bulk permission operations completed',
+				data: { results },
+			});
+		} catch (error) {
+			await db.execute('ROLLBACK');
+			throw error;
+		} finally {
+			if (db) db.release();
+		}
+	} catch (error) {
+		console.error('Error in bulk permission operations:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error:
+					error?.message || 'Failed to complete bulk permission operations',
+			},
+			{ status: 500 }
+		);
+	}
 }

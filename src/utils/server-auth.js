@@ -6,31 +6,31 @@ import { getCurrentUser } from '@/utils/api-permissions';
  * Uses the same logic as the session API but for server-side usage
  */
 export async function getServerAuth() {
-  try {
-    const cookieStore = await cookies();
-    const authCookie = cookieStore.get('auth');
-    const userIdCookie = cookieStore.get('user_id');
+	try {
+		const cookieStore = await cookies();
+		const authCookie = cookieStore.get('auth');
+		const userIdCookie = cookieStore.get('user_id');
 
-    if (!authCookie || !userIdCookie) {
-      return { authenticated: false, user: null, error: 'No active session' };
-    }
+		if (!authCookie || !userIdCookie) {
+			return { authenticated: false, user: null, error: 'No active session' };
+		}
 
-    const mockRequest = {
-      cookies: {
-        get: (name) => cookieStore.get(name),
-      },
-    };
+		const mockRequest = {
+			cookies: {
+				get: (name) => cookieStore.get(name),
+			},
+		};
 
-    const user = await getCurrentUser(mockRequest);
-    if (!user) {
-      return { authenticated: false, user: null, error: 'User not found' };
-    }
+		const user = await getCurrentUser(mockRequest);
+		if (!user) {
+			return { authenticated: false, user: null, error: 'User not found' };
+		}
 
-    return { authenticated: true, user, error: null };
-  } catch (error) {
-    console.error('Server auth error:', error);
-    return { authenticated: false, user: null, error: error.message };
-  }
+		return { authenticated: true, user, error: null };
+	} catch (error) {
+		console.error('Server auth error:', error);
+		return { authenticated: false, user: null, error: error.message };
+	}
 }
 
 /**
@@ -38,14 +38,14 @@ export async function getServerAuth() {
  * Returns the authenticated user or redirects to signin
  */
 export async function requireServerAuth(redirectPath = '/') {
-  const auth = await getServerAuth();
+	const auth = await getServerAuth();
 
-  if (!auth.authenticated) {
-    return {
-      authenticated: false,
-      redirectTo: `/signin?from=${encodeURIComponent(redirectPath)}`,
-    };
-  }
+	if (!auth.authenticated) {
+		return {
+			authenticated: false,
+			redirectTo: `/signin?from=${encodeURIComponent(redirectPath)}`,
+		};
+	}
 
-  return { authenticated: true, user: auth.user };
+	return { authenticated: true, user: auth.user };
 }

@@ -5,158 +5,158 @@
 
 // Define all available resources and their permissions
 export const RESOURCES = {
-  // Main Modules
-  LEADS: 'leads',
-  PROJECTS: 'projects',
-  EMPLOYEES: 'employees',
-  USERS: 'users',
-  COMPANIES: 'companies',
-  VENDORS: 'vendors',
-  PROPOSALS: 'proposals',
-  DASHBOARD: 'dashboard',
-  REPORTS: 'reports',
-  WORK_LOGS: 'work_logs',
-  MESSAGES: 'messages',
-  PROFILE: 'profile',
-  TICKETS: 'tickets',
-  FOLLOWUPS: 'followups',
-  TODOS: 'todos',
+	// Main Modules
+	LEADS: 'leads',
+	PROJECTS: 'projects',
+	EMPLOYEES: 'employees',
+	USERS: 'users',
+	COMPANIES: 'companies',
+	VENDORS: 'vendors',
+	PROPOSALS: 'proposals',
+	DASHBOARD: 'dashboard',
+	REPORTS: 'reports',
+	WORK_LOGS: 'work_logs',
+	MESSAGES: 'messages',
+	PROFILE: 'profile',
+	TICKETS: 'tickets',
+	FOLLOWUPS: 'followups',
+	TODOS: 'todos',
 
-  // Project Financial Documents
-  QUOTATIONS: 'quotations',
-  PURCHASE_ORDERS: 'purchase_orders',
-  INVOICES: 'invoices',
+	// Project Financial Documents
+	QUOTATIONS: 'quotations',
+	PURCHASE_ORDERS: 'purchase_orders',
+	INVOICES: 'invoices',
 
-  // Masters
-  ACTIVITIES: 'activities',
-  SOFTWARE: 'software',
-  DOCUMENTS: 'documents',
-  ROLES: 'roles',
-  HOLIDAYS: 'holidays',
-  ACCOUNTS: 'accounts',
+	// Masters
+	ACTIVITIES: 'activities',
+	SOFTWARE: 'software',
+	DOCUMENTS: 'documents',
+	ROLES: 'roles',
+	HOLIDAYS: 'holidays',
+	ACCOUNTS: 'accounts',
 
-  // Admin
-  ADMIN: 'admin',
-  SETTINGS: 'settings',
-  ADMIN_MONITORING: 'admin_monitoring',
-  ADMIN_ACTIVITY_LOGS: 'admin_activity_logs',
-  ADMIN_AUDIT_LOGS: 'admin_audit_logs',
-  ADMIN_PRODUCTIVITY: 'admin_productivity',
-  PAYROLL: 'payroll',
-  MATERIAL_REQUISITION: 'material_requisition',
-  DA_SCHEDULE: 'da_schedule',
-  CASH_VOUCHER: 'cash_voucher',
-  ATTENDANCE: 'attendance',
+	// Admin
+	ADMIN: 'admin',
+	SETTINGS: 'settings',
+	ADMIN_MONITORING: 'admin_monitoring',
+	ADMIN_ACTIVITY_LOGS: 'admin_activity_logs',
+	ADMIN_AUDIT_LOGS: 'admin_audit_logs',
+	ADMIN_PRODUCTIVITY: 'admin_productivity',
+	PAYROLL: 'payroll',
+	MATERIAL_REQUISITION: 'material_requisition',
+	DA_SCHEDULE: 'da_schedule',
+	CASH_VOUCHER: 'cash_voucher',
+	ATTENDANCE: 'attendance',
 };
 
 export const PERMISSIONS = {
-  READ: 'read',
-  CREATE: 'create',
-  UPDATE: 'update',
-  DELETE: 'delete',
-  CLOSE: 'close',
-  EXPORT: 'export',
-  IMPORT: 'import',
-  APPROVE: 'approve',
-  ASSIGN: 'assign',
-  CONVERT: 'convert',
+	READ: 'read',
+	CREATE: 'create',
+	UPDATE: 'update',
+	DELETE: 'delete',
+	CLOSE: 'close',
+	EXPORT: 'export',
+	IMPORT: 'import',
+	APPROVE: 'approve',
+	ASSIGN: 'assign',
+	CONVERT: 'convert',
 };
 
 // Predefined permission combinations for common roles
 export const PERMISSION_TEMPLATES = {
-  VIEWER: [PERMISSIONS.READ],
-  EDITOR: [PERMISSIONS.READ, PERMISSIONS.CREATE, PERMISSIONS.UPDATE],
-  MANAGER: [
-    PERMISSIONS.READ,
-    PERMISSIONS.CREATE,
-    PERMISSIONS.UPDATE,
-    PERMISSIONS.DELETE,
-    PERMISSIONS.APPROVE,
-  ],
-  ADMIN: [
-    PERMISSIONS.READ,
-    PERMISSIONS.CREATE,
-    PERMISSIONS.UPDATE,
-    PERMISSIONS.DELETE,
-    PERMISSIONS.EXPORT,
-    PERMISSIONS.IMPORT,
-    PERMISSIONS.APPROVE,
-    PERMISSIONS.ASSIGN,
-  ],
+	VIEWER: [PERMISSIONS.READ],
+	EDITOR: [PERMISSIONS.READ, PERMISSIONS.CREATE, PERMISSIONS.UPDATE],
+	MANAGER: [
+		PERMISSIONS.READ,
+		PERMISSIONS.CREATE,
+		PERMISSIONS.UPDATE,
+		PERMISSIONS.DELETE,
+		PERMISSIONS.APPROVE,
+	],
+	ADMIN: [
+		PERMISSIONS.READ,
+		PERMISSIONS.CREATE,
+		PERMISSIONS.UPDATE,
+		PERMISSIONS.DELETE,
+		PERMISSIONS.EXPORT,
+		PERMISSIONS.IMPORT,
+		PERMISSIONS.APPROVE,
+		PERMISSIONS.ASSIGN,
+	],
 };
 
 // Resource-specific permission descriptions
 export const PERMISSION_DESCRIPTIONS = {
-  [RESOURCES.LEADS]: {
-    [PERMISSIONS.READ]: 'View lead information and details',
-    [PERMISSIONS.CREATE]: 'Create new leads',
-    [PERMISSIONS.UPDATE]: 'Edit existing lead information',
-    [PERMISSIONS.DELETE]: 'Delete leads',
-    [PERMISSIONS.EXPORT]: 'Export lead data',
-    [PERMISSIONS.IMPORT]: 'Import leads from files',
-    [PERMISSIONS.ASSIGN]: 'Assign leads to other users',
-    [PERMISSIONS.CONVERT]: 'Convert leads to proposals',
-  },
-  [RESOURCES.PROJECTS]: {
-    [PERMISSIONS.READ]: 'View project information',
-    [PERMISSIONS.CREATE]: 'Create new projects',
-    [PERMISSIONS.UPDATE]: 'Edit project details and status',
-    [PERMISSIONS.DELETE]: 'Delete projects',
-    [PERMISSIONS.CLOSE]: 'Close/complete projects',
-    [PERMISSIONS.APPROVE]: 'Approve project proposals and changes',
-    [PERMISSIONS.ASSIGN]: 'Assign project team members',
-  },
-  [RESOURCES.PROPOSALS]: {
-    [PERMISSIONS.READ]: 'View proposals',
-    [PERMISSIONS.CREATE]: 'Create new proposals',
-    [PERMISSIONS.UPDATE]: 'Edit proposal details',
-    [PERMISSIONS.DELETE]: 'Delete proposals',
-    [PERMISSIONS.APPROVE]: 'Approve proposals',
-    [PERMISSIONS.CONVERT]: 'Convert proposals to projects',
-  },
-  [RESOURCES.QUOTATIONS]: {
-    [PERMISSIONS.READ]: 'View project quotations (read-only)',
-    [PERMISSIONS.CREATE]: 'Create new quotations',
-    [PERMISSIONS.UPDATE]: 'Edit and save quotations',
-    [PERMISSIONS.DELETE]: 'Delete quotations',
-  },
-  [RESOURCES.PURCHASE_ORDERS]: {
-    [PERMISSIONS.READ]: 'View purchase orders (read-only)',
-    [PERMISSIONS.CREATE]: 'Create new purchase orders',
-    [PERMISSIONS.UPDATE]: 'Edit and save purchase orders',
-    [PERMISSIONS.DELETE]: 'Delete purchase orders',
-  },
-  [RESOURCES.INVOICES]: {
-    [PERMISSIONS.READ]: 'View invoices (read-only)',
-    [PERMISSIONS.CREATE]: 'Create new invoices',
-    [PERMISSIONS.UPDATE]: 'Edit and save invoices',
-    [PERMISSIONS.DELETE]: 'Delete invoices',
-  },
-  [RESOURCES.EMPLOYEES]: {
-    [PERMISSIONS.READ]: 'View employee profiles',
-    [PERMISSIONS.CREATE]: 'Add new employees',
-    [PERMISSIONS.UPDATE]: 'Edit employee information',
-    [PERMISSIONS.DELETE]: 'Remove employees',
-    [PERMISSIONS.IMPORT]: 'Import employee data',
-  },
-  [RESOURCES.USERS]: {
-    [PERMISSIONS.READ]: 'View user accounts',
-    [PERMISSIONS.CREATE]: 'Create new user accounts',
-    [PERMISSIONS.UPDATE]: 'Edit user permissions and details',
-    [PERMISSIONS.DELETE]: 'Delete user accounts',
-  },
-  [RESOURCES.ROLES]: {
-    [PERMISSIONS.READ]: 'View roles and permissions',
-    [PERMISSIONS.CREATE]: 'Create new roles',
-    [PERMISSIONS.UPDATE]: 'Modify role permissions',
-    [PERMISSIONS.DELETE]: 'Delete roles',
-  },
-  [RESOURCES.REPORTS]: {
-    [PERMISSIONS.READ]: 'View reports and analytics',
-    [PERMISSIONS.CREATE]: 'Create custom reports',
-    [PERMISSIONS.EXPORT]: 'Export report data',
-    [PERMISSIONS.DELETE]: 'Delete saved reports',
-  },
+	[RESOURCES.LEADS]: {
+		[PERMISSIONS.READ]: 'View lead information and details',
+		[PERMISSIONS.CREATE]: 'Create new leads',
+		[PERMISSIONS.UPDATE]: 'Edit existing lead information',
+		[PERMISSIONS.DELETE]: 'Delete leads',
+		[PERMISSIONS.EXPORT]: 'Export lead data',
+		[PERMISSIONS.IMPORT]: 'Import leads from files',
+		[PERMISSIONS.ASSIGN]: 'Assign leads to other users',
+		[PERMISSIONS.CONVERT]: 'Convert leads to proposals',
+	},
+	[RESOURCES.PROJECTS]: {
+		[PERMISSIONS.READ]: 'View project information',
+		[PERMISSIONS.CREATE]: 'Create new projects',
+		[PERMISSIONS.UPDATE]: 'Edit project details and status',
+		[PERMISSIONS.DELETE]: 'Delete projects',
+		[PERMISSIONS.CLOSE]: 'Close/complete projects',
+		[PERMISSIONS.APPROVE]: 'Approve project proposals and changes',
+		[PERMISSIONS.ASSIGN]: 'Assign project team members',
+	},
+	[RESOURCES.PROPOSALS]: {
+		[PERMISSIONS.READ]: 'View proposals',
+		[PERMISSIONS.CREATE]: 'Create new proposals',
+		[PERMISSIONS.UPDATE]: 'Edit proposal details',
+		[PERMISSIONS.DELETE]: 'Delete proposals',
+		[PERMISSIONS.APPROVE]: 'Approve proposals',
+		[PERMISSIONS.CONVERT]: 'Convert proposals to projects',
+	},
+	[RESOURCES.QUOTATIONS]: {
+		[PERMISSIONS.READ]: 'View project quotations (read-only)',
+		[PERMISSIONS.CREATE]: 'Create new quotations',
+		[PERMISSIONS.UPDATE]: 'Edit and save quotations',
+		[PERMISSIONS.DELETE]: 'Delete quotations',
+	},
+	[RESOURCES.PURCHASE_ORDERS]: {
+		[PERMISSIONS.READ]: 'View purchase orders (read-only)',
+		[PERMISSIONS.CREATE]: 'Create new purchase orders',
+		[PERMISSIONS.UPDATE]: 'Edit and save purchase orders',
+		[PERMISSIONS.DELETE]: 'Delete purchase orders',
+	},
+	[RESOURCES.INVOICES]: {
+		[PERMISSIONS.READ]: 'View invoices (read-only)',
+		[PERMISSIONS.CREATE]: 'Create new invoices',
+		[PERMISSIONS.UPDATE]: 'Edit and save invoices',
+		[PERMISSIONS.DELETE]: 'Delete invoices',
+	},
+	[RESOURCES.EMPLOYEES]: {
+		[PERMISSIONS.READ]: 'View employee profiles',
+		[PERMISSIONS.CREATE]: 'Add new employees',
+		[PERMISSIONS.UPDATE]: 'Edit employee information',
+		[PERMISSIONS.DELETE]: 'Remove employees',
+		[PERMISSIONS.IMPORT]: 'Import employee data',
+	},
+	[RESOURCES.USERS]: {
+		[PERMISSIONS.READ]: 'View user accounts',
+		[PERMISSIONS.CREATE]: 'Create new user accounts',
+		[PERMISSIONS.UPDATE]: 'Edit user permissions and details',
+		[PERMISSIONS.DELETE]: 'Delete user accounts',
+	},
+	[RESOURCES.ROLES]: {
+		[PERMISSIONS.READ]: 'View roles and permissions',
+		[PERMISSIONS.CREATE]: 'Create new roles',
+		[PERMISSIONS.UPDATE]: 'Modify role permissions',
+		[PERMISSIONS.DELETE]: 'Delete roles',
+	},
+	[RESOURCES.REPORTS]: {
+		[PERMISSIONS.READ]: 'View reports and analytics',
+		[PERMISSIONS.CREATE]: 'Create custom reports',
+		[PERMISSIONS.EXPORT]: 'Export report data',
+		[PERMISSIONS.DELETE]: 'Delete saved reports',
+	},
 };
 
 /**
@@ -166,7 +166,7 @@ export const PERMISSION_DESCRIPTIONS = {
  * @returns {string} Permission key in format "resource:permission"
  */
 export function generatePermissionKey(resource, permission) {
-  return `${resource}:${permission}`;
+	return `${resource}:${permission}`;
 }
 
 /**
@@ -175,8 +175,8 @@ export function generatePermissionKey(resource, permission) {
  * @returns {Object} Object with resource and permission properties
  */
 export function parsePermissionKey(permissionKey) {
-  const [resource, permission] = permissionKey.split(':');
-  return { resource, permission };
+	const [resource, permission] = permissionKey.split(':');
+	return { resource, permission };
 }
 
 /**
@@ -187,41 +187,41 @@ export function parsePermissionKey(permissionKey) {
  * @returns {boolean} True if user has permission
  */
 export function hasPermission(user, resource, permission) {
-  if (!user) return false;
+	if (!user) return false;
 
-  // Super admin bypass
-  if (user.is_super_admin) return true;
+	// Super admin bypass
+	if (user.is_super_admin) return true;
 
-  const permissionKey = generatePermissionKey(resource, permission);
+	const permissionKey = generatePermissionKey(resource, permission);
 
-  // Check merged permissions first (most comprehensive)
-  if (
-    user.merged_permissions &&
-    Array.isArray(user.merged_permissions) &&
-    user.merged_permissions.includes(permissionKey)
-  ) {
-    return true;
-  }
+	// Check merged permissions first (most comprehensive)
+	if (
+		user.merged_permissions &&
+		Array.isArray(user.merged_permissions) &&
+		user.merged_permissions.includes(permissionKey)
+	) {
+		return true;
+	}
 
-  // Check direct user permissions
-  if (
-    user.permissions &&
-    Array.isArray(user.permissions) &&
-    user.permissions.includes(permissionKey)
-  ) {
-    return true;
-  }
+	// Check direct user permissions
+	if (
+		user.permissions &&
+		Array.isArray(user.permissions) &&
+		user.permissions.includes(permissionKey)
+	) {
+		return true;
+	}
 
-  // Check role-based permissions
-  if (
-    user.role_permissions &&
-    Array.isArray(user.role_permissions) &&
-    user.role_permissions.includes(permissionKey)
-  ) {
-    return true;
-  }
+	// Check role-based permissions
+	if (
+		user.role_permissions &&
+		Array.isArray(user.role_permissions) &&
+		user.role_permissions.includes(permissionKey)
+	) {
+		return true;
+	}
 
-  return false;
+	return false;
 }
 
 /**
@@ -231,9 +231,9 @@ export function hasPermission(user, resource, permission) {
  * @returns {boolean} True if user has any permission for the resource
  */
 export function hasAnyPermission(user, resource) {
-  return Object.values(PERMISSIONS).some((permission) =>
-    hasPermission(user, resource, permission)
-  );
+	return Object.values(PERMISSIONS).some((permission) =>
+		hasPermission(user, resource, permission)
+	);
 }
 
 /**
@@ -243,9 +243,9 @@ export function hasAnyPermission(user, resource) {
  * @returns {Array} Array of permissions the user has for the resource
  */
 export function getUserPermissions(user, resource) {
-  return Object.values(PERMISSIONS).filter((permission) =>
-    hasPermission(user, resource, permission)
-  );
+	return Object.values(PERMISSIONS).filter((permission) =>
+		hasPermission(user, resource, permission)
+	);
 }
 
 /**
@@ -254,9 +254,9 @@ export function getUserPermissions(user, resource) {
  * @returns {Array} Array of resources the user can access
  */
 export function getUserResources(user) {
-  return Object.values(RESOURCES).filter((resource) =>
-    hasAnyPermission(user, resource)
-  );
+	return Object.values(RESOURCES).filter((resource) =>
+		hasAnyPermission(user, resource)
+	);
 }
 
 /**
@@ -265,62 +265,62 @@ export function getUserResources(user) {
  * @returns {Array} Array of default permission keys
  */
 export function getDefaultPermissionsForLevel(hierarchyLevel) {
-  const permissions = [];
+	const permissions = [];
 
-  // Employee & Vendor Management require management level (40+) — not available to base-level employee accounts
-  const managementOnlyResources = [RESOURCES.EMPLOYEES, RESOURCES.VENDORS];
+	// Employee & Vendor Management require management level (40+) — not available to base-level employee accounts
+	const managementOnlyResources = [RESOURCES.EMPLOYEES, RESOURCES.VENDORS];
 
-  // Basic read access for all levels (excluding management-only resources)
-  Object.values(RESOURCES).forEach((resource) => {
-    if (!managementOnlyResources.includes(resource)) {
-      permissions.push(generatePermissionKey(resource, PERMISSIONS.READ));
-    }
-  });
+	// Basic read access for all levels (excluding management-only resources)
+	Object.values(RESOURCES).forEach((resource) => {
+		if (!managementOnlyResources.includes(resource)) {
+			permissions.push(generatePermissionKey(resource, PERMISSIONS.READ));
+		}
+	});
 
-  // Create/Update permissions for mid-level and above
-  if (hierarchyLevel >= 40) {
-    [RESOURCES.LEADS, RESOURCES.ACTIVITIES, RESOURCES.DOCUMENTS].forEach(
-      (resource) => {
-        permissions.push(generatePermissionKey(resource, PERMISSIONS.CREATE));
-        permissions.push(generatePermissionKey(resource, PERMISSIONS.UPDATE));
-      }
-    );
-    // Allow mid-level roles to help with user onboarding (create/update)
-    permissions.push(
-      generatePermissionKey(RESOURCES.USERS, PERMISSIONS.CREATE)
-    );
-    permissions.push(
-      generatePermissionKey(RESOURCES.USERS, PERMISSIONS.UPDATE)
-    );
-    // Mid-level and above can read Employee Management
-    managementOnlyResources.forEach((resource) => {
-      permissions.push(generatePermissionKey(resource, PERMISSIONS.READ));
-    });
-  }
+	// Create/Update permissions for mid-level and above
+	if (hierarchyLevel >= 40) {
+		[RESOURCES.LEADS, RESOURCES.ACTIVITIES, RESOURCES.DOCUMENTS].forEach(
+			(resource) => {
+				permissions.push(generatePermissionKey(resource, PERMISSIONS.CREATE));
+				permissions.push(generatePermissionKey(resource, PERMISSIONS.UPDATE));
+			}
+		);
+		// Allow mid-level roles to help with user onboarding (create/update)
+		permissions.push(
+			generatePermissionKey(RESOURCES.USERS, PERMISSIONS.CREATE)
+		);
+		permissions.push(
+			generatePermissionKey(RESOURCES.USERS, PERMISSIONS.UPDATE)
+		);
+		// Mid-level and above can read Employee Management
+		managementOnlyResources.forEach((resource) => {
+			permissions.push(generatePermissionKey(resource, PERMISSIONS.READ));
+		});
+	}
 
-  // Management permissions for senior level
-  if (hierarchyLevel >= 60) {
-    [RESOURCES.PROJECTS, RESOURCES.PROPOSALS].forEach((resource) => {
-      permissions.push(generatePermissionKey(resource, PERMISSIONS.CREATE));
-      permissions.push(generatePermissionKey(resource, PERMISSIONS.UPDATE));
-      permissions.push(generatePermissionKey(resource, PERMISSIONS.APPROVE));
-    });
-    // Senior roles can also remove users when needed
-    permissions.push(
-      generatePermissionKey(RESOURCES.USERS, PERMISSIONS.DELETE)
-    );
-  }
+	// Management permissions for senior level
+	if (hierarchyLevel >= 60) {
+		[RESOURCES.PROJECTS, RESOURCES.PROPOSALS].forEach((resource) => {
+			permissions.push(generatePermissionKey(resource, PERMISSIONS.CREATE));
+			permissions.push(generatePermissionKey(resource, PERMISSIONS.UPDATE));
+			permissions.push(generatePermissionKey(resource, PERMISSIONS.APPROVE));
+		});
+		// Senior roles can also remove users when needed
+		permissions.push(
+			generatePermissionKey(RESOURCES.USERS, PERMISSIONS.DELETE)
+		);
+	}
 
-  // Administrative permissions for executive level
-  if (hierarchyLevel >= 80) {
-    Object.values(RESOURCES).forEach((resource) => {
-      Object.values(PERMISSIONS).forEach((permission) => {
-        permissions.push(generatePermissionKey(resource, permission));
-      });
-    });
-  }
+	// Administrative permissions for executive level
+	if (hierarchyLevel >= 80) {
+		Object.values(RESOURCES).forEach((resource) => {
+			Object.values(PERMISSIONS).forEach((permission) => {
+				permissions.push(generatePermissionKey(resource, permission));
+			});
+		});
+	}
 
-  return permissions;
+	return permissions;
 }
 
 /**
@@ -329,23 +329,23 @@ export function getDefaultPermissionsForLevel(hierarchyLevel) {
  * @returns {Object} Validation result with valid/invalid permissions
  */
 export function validatePermissions(permissions) {
-  const valid = [];
-  const invalid = [];
+	const valid = [];
+	const invalid = [];
 
-  permissions.forEach((permissionKey) => {
-    const { resource, permission } = parsePermissionKey(permissionKey);
+	permissions.forEach((permissionKey) => {
+		const { resource, permission } = parsePermissionKey(permissionKey);
 
-    if (
-      Object.values(RESOURCES).includes(resource) &&
-      Object.values(PERMISSIONS).includes(permission)
-    ) {
-      valid.push(permissionKey);
-    } else {
-      invalid.push(permissionKey);
-    }
-  });
+		if (
+			Object.values(RESOURCES).includes(resource) &&
+			Object.values(PERMISSIONS).includes(permission)
+		) {
+			valid.push(permissionKey);
+		} else {
+			invalid.push(permissionKey);
+		}
+	});
 
-  return { valid, invalid };
+	return { valid, invalid };
 }
 
 /**
@@ -355,8 +355,8 @@ export function validatePermissions(permissions) {
  * @returns {Array} Merged permission set
  */
 export function mergePermissions(rolePermissions = [], userPermissions = []) {
-  const merged = new Set([...rolePermissions, ...userPermissions]);
-  return Array.from(merged);
+	const merged = new Set([...rolePermissions, ...userPermissions]);
+	return Array.from(merged);
 }
 
 /**
@@ -365,17 +365,17 @@ export function mergePermissions(rolePermissions = [], userPermissions = []) {
  * @returns {Object} Permissions grouped by resource
  */
 export function groupPermissionsByResource(permissions) {
-  const grouped = {};
+	const grouped = {};
 
-  permissions.forEach((permissionKey) => {
-    const { resource, permission } = parsePermissionKey(permissionKey);
+	permissions.forEach((permissionKey) => {
+		const { resource, permission } = parsePermissionKey(permissionKey);
 
-    if (!grouped[resource]) {
-      grouped[resource] = [];
-    }
+		if (!grouped[resource]) {
+			grouped[resource] = [];
+		}
 
-    grouped[resource].push(permission);
-  });
+		grouped[resource].push(permission);
+	});
 
-  return grouped;
+	return grouped;
 }

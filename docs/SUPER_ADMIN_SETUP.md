@@ -133,7 +133,7 @@ if (user.is_super_admin) return reportsMenuConfig; // Super admin sees all
 
 // Example from project-activities page
 const isSuperAdmin =
-  user?.is_super_admin === true || user?.is_super_admin === 1;
+	user?.is_super_admin === true || user?.is_super_admin === 1;
 const hasAccess = isSuperAdmin || hasReportsPermission;
 ```
 
@@ -145,7 +145,7 @@ const canSeeAllProjects = user.is_super_admin;
 
 // Example from RBAC middleware
 if (allowSuperAdmin && user.is_super_admin) {
-  return true; // Bypass permission checks
+	return true; // Bypass permission checks
 }
 ```
 
@@ -154,9 +154,9 @@ if (allowSuperAdmin && user.is_super_admin) {
 ```javascript
 // Projects are filtered by team unless super admin
 if (!canSeeAllProjects) {
-  filteredRows = rows.filter((project) =>
-    isUserInProjectTeam(project.project_team, user.id, user.email)
-  );
+	filteredRows = rows.filter((project) =>
+		isUserInProjectTeam(project.project_team, user.id, user.email)
+	);
 }
 ```
 
