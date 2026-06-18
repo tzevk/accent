@@ -2,21 +2,21 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { mergePermissions } from '@/utils/rbac';
 import {
-  checkPermission,
-  checkPermissionFromSession,
-  RESOURCES,
-  PERMISSIONS,
+	checkPermission,
+	checkPermissionFromSession,
+	RESOURCES,
+	PERMISSIONS,
 } from '@/utils/permissions';
 
 // Safely parse JSON fields stored in MySQL JSON columns
 function safeParse(json, fallback = []) {
-  try {
-    if (!json) return fallback;
-    if (typeof json === 'object') return json;
-    return JSON.parse(json);
-  } catch {
-    return fallback;
-  }
+	try {
+		if (!json) return fallback;
+		if (typeof json === 'object') return json;
+		return JSON.parse(json);
+	} catch {
+		return fallback;
+	}
 }
 
 // Cache expiry time (24 hours in milliseconds)
@@ -33,33 +33,33 @@ const MAX_CACHE_SIZE = 500;
 const pendingUserFetches = new Map();
 
 function getCachedUser(userId, allowExpired = false) {
-  const entry = userCache.get(userId);
-  if (!entry) return null;
-  if (Date.now() - entry.timestamp > USER_CACHE_TTL) {
-    if (allowExpired) return entry.user; // stale data is better than "Unauthorized"
-    userCache.delete(userId);
-    return null;
-  }
-  return entry.user;
+	const entry = userCache.get(userId);
+	if (!entry) return null;
+	if (Date.now() - entry.timestamp > USER_CACHE_TTL) {
+		if (allowExpired) return entry.user; // stale data is better than "Unauthorized"
+		userCache.delete(userId);
+		return null;
+	}
+	return entry.user;
 }
 
 function setCachedUser(userId, user) {
-  // Prevent unbounded growth
-  if (userCache.size >= MAX_CACHE_SIZE) {
-    // Remove oldest entries
-    const entries = Array.from(userCache.entries());
-    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-    entries.slice(0, 100).forEach(([key]) => userCache.delete(key));
-  }
-  userCache.set(userId, { user, timestamp: Date.now() });
+	// Prevent unbounded growth
+	if (userCache.size >= MAX_CACHE_SIZE) {
+		// Remove oldest entries
+		const entries = Array.from(userCache.entries());
+		entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+		entries.slice(0, 100).forEach(([key]) => userCache.delete(key));
+	}
+	userCache.set(userId, { user, timestamp: Date.now() });
 }
 
 function invalidateUserCache(userId) {
-  if (userId) {
-    userCache.delete(userId);
-  } else {
-    userCache.clear();
-  }
+	if (userId) {
+		userCache.delete(userId);
+	} else {
+		userCache.clear();
+	}
 }
 
 // Export for use elsewhere (e.g., after permission updates)
@@ -70,31 +70,31 @@ export { invalidateUserCache };
  * Returns null if cookie is missing, expired, or invalid
  */
 export function getSessionPermissions(request) {
-  try {
-    const sessionCookie = request?.cookies?.get?.('session_permissions')?.value;
-    if (!sessionCookie) return null;
+	try {
+		const sessionCookie = request?.cookies?.get?.('session_permissions')?.value;
+		if (!sessionCookie) return null;
 
-    const decoded = Buffer.from(sessionCookie, 'base64').toString('utf8');
-    const data = JSON.parse(decoded);
+		const decoded = Buffer.from(sessionCookie, 'base64').toString('utf8');
+		const data = JSON.parse(decoded);
 
-    // Check if cache is expired
-    if (data.ts && Date.now() - data.ts > PERMISSIONS_CACHE_TTL) {
-      console.log('[Session] Permissions cache expired');
-      return null;
-    }
+		// Check if cache is expired
+		if (data.ts && Date.now() - data.ts > PERMISSIONS_CACHE_TTL) {
+			console.log('[Session] Permissions cache expired');
+			return null;
+		}
 
-    return {
-      permissions: data.p || [],
-      is_super_admin: !!data.sa,
-      timestamp: data.ts,
-    };
-  } catch (error) {
-    console.error(
-      '[Session] Failed to parse session permissions:',
-      error.message
-    );
-    return null;
-  }
+		return {
+			permissions: data.p || [],
+			is_super_admin: !!data.sa,
+			timestamp: data.ts,
+		};
+	} catch (error) {
+		console.error(
+			'[Session] Failed to parse session permissions:',
+			error.message
+		);
+		return null;
+	}
 }
 
 /**
@@ -102,62 +102,62 @@ export function getSessionPermissions(request) {
  * Falls back to DB lookup if session is missing
  */
 export async function checkPermissionFast(request, resource, permission) {
-  // Try session first (no DB query) — only trust for GRANTING access
-  const session = getSessionPermissions(request);
-  if (session) {
-    if (session.is_super_admin) return { authorized: true, source: 'session' };
+	// Try session first (no DB query) — only trust for GRANTING access
+	const session = getSessionPermissions(request);
+	if (session) {
+		if (session.is_super_admin) return { authorized: true, source: 'session' };
 
-    const permissionKey = `${resource}:${permission}`;
-    if (session.permissions.includes(permissionKey)) {
-      return { authorized: true, source: 'session' };
-    }
-    // Session doesn't have permission — could be stale, fall through to DB
-  }
+		const permissionKey = `${resource}:${permission}`;
+		if (session.permissions.includes(permissionKey)) {
+			return { authorized: true, source: 'session' };
+		}
+		// Session doesn't have permission — could be stale, fall through to DB
+	}
 
-  // Fall back to DB lookup
-  const user = await getCurrentUser(request);
-  if (!user) return { authorized: false, source: 'none' };
+	// Fall back to DB lookup
+	const user = await getCurrentUser(request);
+	if (!user) return { authorized: false, source: 'none' };
 
-  if (user.is_super_admin || checkPermission(user, resource, permission)) {
-    return { authorized: true, user, source: 'database' };
-  }
+	if (user.is_super_admin || checkPermission(user, resource, permission)) {
+		return { authorized: true, user, source: 'database' };
+	}
 
-  return { authorized: false, user, source: 'database' };
+	return { authorized: false, user, source: 'database' };
 }
 
 // Load current user from cookie and DB (includes role permissions)
 // Uses in-memory cache + in-flight deduplication to minimise DB connections.
 export async function getCurrentUser(request, options = {}) {
-  const userId = request?.cookies?.get?.('user_id')?.value;
-  if (!userId) return null;
+	const userId = request?.cookies?.get?.('user_id')?.value;
+	if (!userId) return null;
 
-  if (!options.skipCache) {
-    const cached = getCachedUser(userId);
-    if (cached) return cached;
+	if (!options.skipCache) {
+		const cached = getCachedUser(userId);
+		if (cached) return cached;
 
-    // If another concurrent request is already fetching this user, share its promise
-    // instead of opening a second DB connection for the same data.
-    if (pendingUserFetches.has(userId)) {
-      return pendingUserFetches.get(userId);
-    }
-  }
+		// If another concurrent request is already fetching this user, share its promise
+		// instead of opening a second DB connection for the same data.
+		if (pendingUserFetches.has(userId)) {
+			return pendingUserFetches.get(userId);
+		}
+	}
 
-  const authenticated = !!request?.cookies?.get?.('auth')?.value;
-  const promise = _fetchUserFromDb(userId, authenticated);
+	const authenticated = !!request?.cookies?.get?.('auth')?.value;
+	const promise = _fetchUserFromDb(userId, authenticated);
 
-  if (!options.skipCache) {
-    pendingUserFetches.set(userId, promise);
-    promise.finally(() => pendingUserFetches.delete(userId));
-  }
-  return promise;
+	if (!options.skipCache) {
+		pendingUserFetches.set(userId, promise);
+		promise.finally(() => pendingUserFetches.delete(userId));
+	}
+	return promise;
 }
 
 async function _fetchUserFromDb(userId, authenticated) {
-  let db;
-  try {
-    db = await dbConnect();
-    const [rows] = await db.execute(
-      `SELECT 
+	let db;
+	try {
+		db = await dbConnect();
+		const [rows] = await db.execute(
+			`SELECT 
           u.id,
           u.username,
           u.full_name,
@@ -196,144 +196,144 @@ async function _fetchUserFromDb(userId, authenticated) {
        LEFT JOIN employees e ON u.employee_id = e.id
        WHERE u.id = ?
        LIMIT 1`,
-      [userId]
-    );
+			[userId]
+		);
 
-    if (!rows || rows.length === 0) return null;
+		if (!rows || rows.length === 0) return null;
 
-    const row = rows[0];
-    const userPermissions = safeParse(row.user_permissions, []);
-    const fieldPermissions = safeParse(row.user_field_permissions, {});
-    let rolePermissions = safeParse(row.role_permissions, []);
-    // Do not auto-derive default permissions from hierarchy.
-    // Visibility/access should reflect explicitly assigned permissions only.
+		const row = rows[0];
+		const userPermissions = safeParse(row.user_permissions, []);
+		const fieldPermissions = safeParse(row.user_field_permissions, {});
+		let rolePermissions = safeParse(row.role_permissions, []);
+		// Do not auto-derive default permissions from hierarchy.
+		// Visibility/access should reflect explicitly assigned permissions only.
 
-    const mergedPermissions = mergePermissions(
-      rolePermissions,
-      userPermissions
-    );
-    const employee = row.employee_record_id
-      ? {
-          id: row.employee_record_id,
-          first_name: row.first_name,
-          last_name: row.last_name,
-          phone: row.phone,
-          mobile: row.mobile,
-          personal_email: row.personal_email,
-          department: row.employee_department,
-          position: row.position,
-          present_address: row.present_address,
-          city: row.city,
-          state: row.state,
-          country: row.country,
-          profile_photo_url: row.profile_photo_url,
-          emergency_contact_name: row.emergency_contact_name,
-          emergency_contact_phone: row.emergency_contact_phone,
-        }
-      : null;
+		const mergedPermissions = mergePermissions(
+			rolePermissions,
+			userPermissions
+		);
+		const employee = row.employee_record_id
+			? {
+					id: row.employee_record_id,
+					first_name: row.first_name,
+					last_name: row.last_name,
+					phone: row.phone,
+					mobile: row.mobile,
+					personal_email: row.personal_email,
+					department: row.employee_department,
+					position: row.position,
+					present_address: row.present_address,
+					city: row.city,
+					state: row.state,
+					country: row.country,
+					profile_photo_url: row.profile_photo_url,
+					emergency_contact_name: row.emergency_contact_name,
+					emergency_contact_phone: row.emergency_contact_phone,
+				}
+			: null;
 
-    const user = {
-      id: row.id,
-      username: row.username,
-      full_name: row.full_name,
-      email: row.email,
-      department: row.department || employee?.department || null,
-      employee_id: row.linked_employee_id,
-      role_id: row.role_id,
-      role: row.role_id
-        ? {
-            id: row.role_id,
-            name: row.role_name,
-            code: row.role_code,
-            hierarchy: row.role_hierarchy,
-          }
-        : null,
-      is_super_admin: !!row.is_super_admin,
-      // Consider the session: if authenticated, treat as active even if flag wasn't updated yet
-      is_active:
-        row.is_active === null ? true : !!row.is_active || authenticated,
-      status: row.status,
-      last_login: row.last_login,
-      last_password_change: row.last_password_change,
-      permissions: userPermissions,
-      field_permissions: fieldPermissions, // Nested permission structure
-      role_permissions: rolePermissions,
-      merged_permissions: mergedPermissions,
-      employee,
-    };
+		const user = {
+			id: row.id,
+			username: row.username,
+			full_name: row.full_name,
+			email: row.email,
+			department: row.department || employee?.department || null,
+			employee_id: row.linked_employee_id,
+			role_id: row.role_id,
+			role: row.role_id
+				? {
+						id: row.role_id,
+						name: row.role_name,
+						code: row.role_code,
+						hierarchy: row.role_hierarchy,
+					}
+				: null,
+			is_super_admin: !!row.is_super_admin,
+			// Consider the session: if authenticated, treat as active even if flag wasn't updated yet
+			is_active:
+				row.is_active === null ? true : !!row.is_active || authenticated,
+			status: row.status,
+			last_login: row.last_login,
+			last_password_change: row.last_password_change,
+			permissions: userPermissions,
+			field_permissions: fieldPermissions, // Nested permission structure
+			role_permissions: rolePermissions,
+			merged_permissions: mergedPermissions,
+			employee,
+		};
 
-    // Cache the user for subsequent requests
-    setCachedUser(userId, user);
+		// Cache the user for subsequent requests
+		setCachedUser(userId, user);
 
-    return user;
-  } catch (error) {
-    console.error('[getCurrentUser]', error.message);
-    // On DB pool exhaustion, try returning a stale cached user rather than null
-    // which would cascade into "Unauthorized" everywhere.
-    const stale = getCachedUser(userId, true);
-    if (stale) {
-      console.warn(
-        '[getCurrentUser] Returning stale cached user due to DB error'
-      );
-      return stale;
-    }
-    return null;
-  } finally {
-    if (db && typeof db.release === 'function') {
-      try {
-        db.release();
-      } catch {
-        /* ignore */
-      }
-    }
-  }
+		return user;
+	} catch (error) {
+		console.error('[getCurrentUser]', error.message);
+		// On DB pool exhaustion, try returning a stale cached user rather than null
+		// which would cascade into "Unauthorized" everywhere.
+		const stale = getCachedUser(userId, true);
+		if (stale) {
+			console.warn(
+				'[getCurrentUser] Returning stale cached user due to DB error'
+			);
+			return stale;
+		}
+		return null;
+	} finally {
+		if (db && typeof db.release === 'function') {
+			try {
+				db.release();
+			} catch {
+				/* ignore */
+			}
+		}
+	}
 }
 
 // Assert a specific permission for a resource; returns {authorized, user} or a NextResponse
 export async function ensurePermission(request, resource, permission) {
-  // Try fast path first (session cookie)
-  const sessionCheck = getSessionPermissions(request);
-  if (sessionCheck) {
-    if (sessionCheck.is_super_admin) {
-      // Still need user object for some operations, fetch it (cached)
-      const user = await getCurrentUser(request);
-      return { authorized: true, user };
-    }
+	// Try fast path first (session cookie)
+	const sessionCheck = getSessionPermissions(request);
+	if (sessionCheck) {
+		if (sessionCheck.is_super_admin) {
+			// Still need user object for some operations, fetch it (cached)
+			const user = await getCurrentUser(request);
+			return { authorized: true, user };
+		}
 
-    const permissionKey = `${resource}:${permission}`;
-    if (sessionCheck.permissions.includes(permissionKey)) {
-      const user = await getCurrentUser(request);
-      return { authorized: true, user };
-    }
+		const permissionKey = `${resource}:${permission}`;
+		if (sessionCheck.permissions.includes(permissionKey)) {
+			const user = await getCurrentUser(request);
+			return { authorized: true, user };
+		}
 
-    // Session cookie doesn't have this permission, but it might be stale.
-    // Fall through to DB lookup instead of immediately denying.
-  }
+		// Session cookie doesn't have this permission, but it might be stale.
+		// Fall through to DB lookup instead of immediately denying.
+	}
 
-  // Fall back to DB lookup (uses cache)
-  const user = await getCurrentUser(request);
-  if (!user) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 401 }
-    );
-  }
+	// Fall back to DB lookup (uses cache)
+	const user = await getCurrentUser(request);
+	if (!user) {
+		return NextResponse.json(
+			{ success: false, error: 'Unauthorized' },
+			{ status: 401 }
+		);
+	}
 
-  // Super admin bypass or exact permission match
-  if (user.is_super_admin || checkPermission(user, resource, permission)) {
-    return { authorized: true, user };
-  }
+	// Super admin bypass or exact permission match
+	if (user.is_super_admin || checkPermission(user, resource, permission)) {
+		return { authorized: true, user };
+	}
 
-  // Only log denials in development
-  if (process.env.NODE_ENV === 'development') {
-    console.log(
-      `[RBAC] DENIED: ${user.email || user.username} does not have ${resource}:${permission}`
-    );
-  }
-  return NextResponse.json(
-    { success: false, error: 'Forbidden: missing permission' },
-    { status: 403 }
-  );
+	// Only log denials in development
+	if (process.env.NODE_ENV === 'development') {
+		console.log(
+			`[RBAC] DENIED: ${user.email || user.username} does not have ${resource}:${permission}`
+		);
+	}
+	return NextResponse.json(
+		{ success: false, error: 'Forbidden: missing permission' },
+		{ status: 403 }
+	);
 }
 
 /**
@@ -341,19 +341,19 @@ export async function ensurePermission(request, resource, permission) {
  * Returns true/false without fetching user data when possible
  */
 export async function hasPermission(request, resource, permission) {
-  // Check session cookie first
-  const sessionCheck = getSessionPermissions(request);
-  if (sessionCheck) {
-    if (sessionCheck.is_super_admin) return true;
-    if (sessionCheck.permissions.includes(`${resource}:${permission}`))
-      return true;
-  }
+	// Check session cookie first
+	const sessionCheck = getSessionPermissions(request);
+	if (sessionCheck) {
+		if (sessionCheck.is_super_admin) return true;
+		if (sessionCheck.permissions.includes(`${resource}:${permission}`))
+			return true;
+	}
 
-  // Fall back to cached user lookup
-  const user = await getCurrentUser(request);
-  if (!user) return false;
+	// Fall back to cached user lookup
+	const user = await getCurrentUser(request);
+	if (!user) return false;
 
-  return user.is_super_admin || checkPermission(user, resource, permission);
+	return user.is_super_admin || checkPermission(user, resource, permission);
 }
 
 /**
@@ -361,12 +361,12 @@ export async function hasPermission(request, resource, permission) {
  * Use this when permissions are updated to refresh the session
  */
 export function createSessionPermissionsCookie(permissions, isSuperAdmin) {
-  const permissionsData = JSON.stringify({
-    p: permissions,
-    sa: isSuperAdmin,
-    ts: Date.now(),
-  });
-  return Buffer.from(permissionsData).toString('base64');
+	const permissionsData = JSON.stringify({
+		p: permissions,
+		sa: isSuperAdmin,
+		ts: Date.now(),
+	});
+	return Buffer.from(permissionsData).toString('base64');
 }
 
 /**
@@ -374,26 +374,26 @@ export function createSessionPermissionsCookie(permissions, isSuperAdmin) {
  * Call this after updating user permissions to refresh their session
  */
 export function setPermissionsCookieOnResponse(
-  response,
-  permissions,
-  isSuperAdmin
+	response,
+	permissions,
+	isSuperAdmin
 ) {
-  const isProd = process.env.NODE_ENV === 'production';
-  const encodedPermissions = createSessionPermissionsCookie(
-    permissions,
-    isSuperAdmin
-  );
+	const isProd = process.env.NODE_ENV === 'production';
+	const encodedPermissions = createSessionPermissionsCookie(
+		permissions,
+		isSuperAdmin
+	);
 
-  response.cookies.set('session_permissions', encodedPermissions, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: isProd,
-    path: '/',
-    priority: 'high',
-    maxAge: 60 * 60 * 24, // 24 hours
-  });
+	response.cookies.set('session_permissions', encodedPermissions, {
+		httpOnly: true,
+		sameSite: 'lax',
+		secure: isProd,
+		path: '/',
+		priority: 'high',
+		maxAge: 60 * 60 * 24, // 24 hours
+	});
 
-  return response;
+	return response;
 }
 
 export { RESOURCES, PERMISSIONS };

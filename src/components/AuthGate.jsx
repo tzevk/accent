@@ -12,6 +12,6 @@
  * - Protecting admin routes from non-admin users
  */
 export default function AuthGate() {
-  // No-op - middleware handles all auth redirects
-  return null;
+	// No-op - middleware handles all auth redirects
+	return null;
 }

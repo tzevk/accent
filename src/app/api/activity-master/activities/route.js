@@ -3,134 +3,134 @@ import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
 
 export async function GET() {
-  let db;
-  try {
-    db = await dbConnect();
-    const [activities] = await db.execute(
-      'SELECT id, function_id, activity_name, created_at, updated_at FROM activities_master ORDER BY activity_name'
-    );
+	let db;
+	try {
+		db = await dbConnect();
+		const [activities] = await db.execute(
+			'SELECT id, function_id, activity_name, created_at, updated_at FROM activities_master ORDER BY activity_name'
+		);
 
-    return NextResponse.json({ success: true, data: activities });
-  } catch (error) {
-    console.error('Activities GET error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch activities',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json({ success: true, data: activities });
+	} catch (error) {
+		console.error('Activities GET error:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to fetch activities',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }
 
 export async function POST(request) {
-  let db;
-  try {
-    const body = await request.json();
-    const { function_id, activity_name } = body;
+	let db;
+	try {
+		const body = await request.json();
+		const { function_id, activity_name } = body;
 
-    if (!function_id || !activity_name) {
-      return NextResponse.json(
-        { success: false, error: 'Function id and activity name are required' },
-        { status: 400 }
-      );
-    }
+		if (!function_id || !activity_name) {
+			return NextResponse.json(
+				{ success: false, error: 'Function id and activity name are required' },
+				{ status: 400 }
+			);
+		}
 
-    const id = randomUUID();
-    db = await dbConnect();
-    await db.execute(
-      'INSERT INTO activities_master (id, function_id, activity_name) VALUES (?, ?, ?)',
-      [id, function_id, activity_name]
-    );
+		const id = randomUUID();
+		db = await dbConnect();
+		await db.execute(
+			'INSERT INTO activities_master (id, function_id, activity_name) VALUES (?, ?, ?)',
+			[id, function_id, activity_name]
+		);
 
-    return NextResponse.json({ success: true, data: { id } }, { status: 201 });
-  } catch (error) {
-    console.error('Activity POST error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to create activity',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json({ success: true, data: { id } }, { status: 201 });
+	} catch (error) {
+		console.error('Activity POST error:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to create activity',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }
 
 export async function PUT(request) {
-  let db;
-  try {
-    const body = await request.json();
-    const { id, activity_name, function_id } = body;
+	let db;
+	try {
+		const body = await request.json();
+		const { id, activity_name, function_id } = body;
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: 'Activity id is required' },
-        { status: 400 }
-      );
-    }
+		if (!id) {
+			return NextResponse.json(
+				{ success: false, error: 'Activity id is required' },
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
-    await db.execute(
-      `UPDATE activities_master
+		db = await dbConnect();
+		await db.execute(
+			`UPDATE activities_master
        SET activity_name = COALESCE(?, activity_name),
            function_id = COALESCE(?, function_id)
        WHERE id = ?`,
-      [activity_name ?? null, function_id ?? null, id]
-    );
+			[activity_name ?? null, function_id ?? null, id]
+		);
 
-    return NextResponse.json({ success: true, message: 'Activity updated' });
-  } catch (error) {
-    console.error('Activity PUT error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to update activity',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json({ success: true, message: 'Activity updated' });
+	} catch (error) {
+		console.error('Activity PUT error:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to update activity',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }
 
 export async function DELETE(request) {
-  let db;
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+	let db;
+	try {
+		const { searchParams } = new URL(request.url);
+		const id = searchParams.get('id');
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: 'Activity id is required' },
-        { status: 400 }
-      );
-    }
+		if (!id) {
+			return NextResponse.json(
+				{ success: false, error: 'Activity id is required' },
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    // First delete sub-activities, then delete the activity
-    await db.execute('DELETE FROM sub_activities WHERE activity_id = ?', [id]);
-    await db.execute('DELETE FROM activities_master WHERE id = ?', [id]);
+		// First delete sub-activities, then delete the activity
+		await db.execute('DELETE FROM sub_activities WHERE activity_id = ?', [id]);
+		await db.execute('DELETE FROM activities_master WHERE id = ?', [id]);
 
-    return NextResponse.json({ success: true, message: 'Activity deleted' });
-  } catch (error) {
-    console.error('Activity DELETE error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to delete activity',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json({ success: true, message: 'Activity deleted' });
+	} catch (error) {
+		console.error('Activity DELETE error:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to delete activity',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }

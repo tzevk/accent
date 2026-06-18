@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
-  PlusIcon,
-  XMarkIcon,
-  PencilIcon,
-  CheckIcon,
+	PlusIcon,
+	XMarkIcon,
+	PencilIcon,
+	CheckIcon,
 } from '@heroicons/react/24/outline';
 
 export default function ProjectManhoursTab({
@@ -288,64 +288,65 @@ export default function ProjectManhoursTab({
 														)}
 													</span>
 												) : (
-												<select
-													value={empData.employee_id || ''}
-													onChange={async (e) => {
-														const selectedEmp = teamManhourPeople.find(
-															(emp) =>
-																String(emp.option_id) === String(e.target.value)
-														);
-														if (selectedEmp) {
-															const salaryType =
-																selectedEmp.salary_type || 'monthly';
-															let monthlyHoursData =
-																empData.monthly_hours || {};
-
-															// If monthly salary type, fetch attendance hours
-															if (
-																salaryType === 'monthly' &&
-																!selectedEmp.is_external_team_member
-															) {
-																const attendanceHours =
-																	await fetchAttendanceHours(selectedEmp.id);
-																if (attendanceHours) {
-																	monthlyHoursData = attendanceHours;
-																}
-															}
-
-															setProjectManhours((prev) =>
-																prev.map((m) =>
-																	m.id === empData.id
-																		? {
-																				...m,
-																				employee_id: selectedEmp.option_id,
-																				employee_name:
-																					selectedEmp.display_name ||
-																					selectedEmp.name,
-																				source_employee_id:
-																					selectedEmp.is_external_team_member
-																						? ''
-																						: selectedEmp.id,
-																				salary_type: salaryType,
-																				rate_company: selectedEmp.rate || 0,
-																				rate_accent: m.rate_accent || '',
-																				monthly_hours: monthlyHoursData,
-																			}
-																		: m
-																)
+													<select
+														value={empData.employee_id || ''}
+														onChange={async (e) => {
+															const selectedEmp = teamManhourPeople.find(
+																(emp) =>
+																	String(emp.option_id) ===
+																	String(e.target.value)
 															);
-														}
-													}}
-													className="text-xs px-1 py-0.5 border border-gray-200 rounded focus:ring-1 focus:ring-purple-400 bg-transparent max-w-[120px] truncate"
-												>
-													<option value="">Select Team Member</option>
-													{teamManhourPeople.map((emp) => (
-														<option key={emp.option_id} value={emp.option_id}>
-															{emp.display_name}
-															{emp.is_external_team_member ? ' (manual)' : ''}
-														</option>
-													))}
-												</select>
+															if (selectedEmp) {
+																const salaryType =
+																	selectedEmp.salary_type || 'monthly';
+																let monthlyHoursData =
+																	empData.monthly_hours || {};
+
+																// If monthly salary type, fetch attendance hours
+																if (
+																	salaryType === 'monthly' &&
+																	!selectedEmp.is_external_team_member
+																) {
+																	const attendanceHours =
+																		await fetchAttendanceHours(selectedEmp.id);
+																	if (attendanceHours) {
+																		monthlyHoursData = attendanceHours;
+																	}
+																}
+
+																setProjectManhours((prev) =>
+																	prev.map((m) =>
+																		m.id === empData.id
+																			? {
+																					...m,
+																					employee_id: selectedEmp.option_id,
+																					employee_name:
+																						selectedEmp.display_name ||
+																						selectedEmp.name,
+																					source_employee_id:
+																						selectedEmp.is_external_team_member
+																							? ''
+																							: selectedEmp.id,
+																					salary_type: salaryType,
+																					rate_company: selectedEmp.rate || 0,
+																					rate_accent: m.rate_accent || '',
+																					monthly_hours: monthlyHoursData,
+																				}
+																			: m
+																	)
+																);
+															}
+														}}
+														className="text-xs px-1 py-0.5 border border-gray-200 rounded focus:ring-1 focus:ring-purple-400 bg-transparent max-w-[120px] truncate"
+													>
+														<option value="">Select Team Member</option>
+														{teamManhourPeople.map((emp) => (
+															<option key={emp.option_id} value={emp.option_id}>
+																{emp.display_name}
+																{emp.is_external_team_member ? ' (manual)' : ''}
+															</option>
+														))}
+													</select>
 												)}
 											</div>
 										</td>

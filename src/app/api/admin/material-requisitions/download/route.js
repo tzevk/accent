@@ -3,50 +3,50 @@ import { dbConnect } from '@/utils/database';
 
 // GET - Download/Print material requisition
 export async function GET(request) {
-  let db;
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+	let db;
+	try {
+		const { searchParams } = new URL(request.url);
+		const id = searchParams.get('id');
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: 'ID is required' },
-        { status: 400 }
-      );
-    }
+		if (!id) {
+			return NextResponse.json(
+				{ success: false, error: 'ID is required' },
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    const [rows] = await db.query(
-      `SELECT * FROM material_requisitions WHERE id = ?`,
-      [id]
-    );
+		const [rows] = await db.query(
+			`SELECT * FROM material_requisitions WHERE id = ?`,
+			[id]
+		);
 
-    if (rows.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Requisition not found' },
-        { status: 404 }
-      );
-    }
+		if (rows.length === 0) {
+			return NextResponse.json(
+				{ success: false, error: 'Requisition not found' },
+				{ status: 404 }
+			);
+		}
 
-    const requisition = rows[0];
-    const lineItems =
-      typeof requisition.line_items === 'string'
-        ? JSON.parse(requisition.line_items)
-        : requisition.line_items || [];
+		const requisition = rows[0];
+		const lineItems =
+			typeof requisition.line_items === 'string'
+				? JSON.parse(requisition.line_items)
+				: requisition.line_items || [];
 
-    // Format date
-    const formatDate = (date) => {
-      if (!date) return '';
-      return new Date(date).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      });
-    };
+		// Format date
+		const formatDate = (date) => {
+			if (!date) return '';
+			return new Date(date).toLocaleDateString('en-IN', {
+				day: '2-digit',
+				month: '2-digit',
+				year: 'numeric',
+			});
+		};
 
-    // Generate HTML for printing
-    const html = `
+		// Generate HTML for printing
+		const html = `
     <!DOCTYPE html>
     <html>
     <head>
@@ -255,8 +255,8 @@ export async function GET(request) {
           </thead>
           <tbody>
             ${lineItems
-              .map(
-                (item, index) => `
+							.map(
+								(item, index) => `
               <tr>
                 <td class="center">${item.sr_no || index + 1}</td>
                 <td>${item.description || ''}</td>
@@ -264,14 +264,14 @@ export async function GET(request) {
                 <td>${item.purpose || ''}</td>
               </tr>
             `
-              )
-              .join('')}
+							)
+							.join('')}
             ${
-              lineItems.length < 5
-                ? Array(5 - lineItems.length)
-                    .fill(0)
-                    .map(
-                      (_, i) => `
+							lineItems.length < 5
+								? Array(5 - lineItems.length)
+										.fill(0)
+										.map(
+											(_, i) => `
               <tr>
                 <td class="center">${lineItems.length + i + 1}</td>
                 <td>&nbsp;</td>
@@ -279,10 +279,10 @@ export async function GET(request) {
                 <td>&nbsp;</td>
               </tr>
             `
-                    )
-                    .join('')
-                : ''
-            }
+										)
+										.join('')
+								: ''
+						}
           </tbody>
         </table>
         
@@ -320,18 +320,18 @@ export async function GET(request) {
     </html>
     `;
 
-    return new NextResponse(html, {
-      headers: {
-        'Content-Type': 'text/html',
-      },
-    });
-  } catch (error) {
-    console.error('Error downloading material requisition:', error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return new NextResponse(html, {
+			headers: {
+				'Content-Type': 'text/html',
+			},
+		});
+	} catch (error) {
+		console.error('Error downloading material requisition:', error);
+		return NextResponse.json(
+			{ success: false, error: error.message },
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }

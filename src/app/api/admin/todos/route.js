@@ -7,35 +7,35 @@ import { getCurrentUser } from '@/utils/api-permissions';
  * Fetch all todos from all users (admin only)
  */
 export async function GET(request) {
-  let db;
-  try {
-    const currentUser = await getCurrentUser(request);
+	let db;
+	try {
+		const currentUser = await getCurrentUser(request);
 
-    if (!currentUser) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+		if (!currentUser) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
+		}
 
-    // Check if user is admin or super admin
-    const isAdmin =
-      currentUser.is_super_admin ||
-      currentUser.role_key === 'admin' ||
-      currentUser.role_key === 'super_admin' ||
-      currentUser.username === 'admin';
+		// Check if user is admin or super admin
+		const isAdmin =
+			currentUser.is_super_admin ||
+			currentUser.role_key === 'admin' ||
+			currentUser.role_key === 'super_admin' ||
+			currentUser.username === 'admin';
 
-    if (!isAdmin) {
-      return NextResponse.json(
-        { success: false, error: 'Admin access required' },
-        { status: 403 }
-      );
-    }
+		if (!isAdmin) {
+			return NextResponse.json(
+				{ success: false, error: 'Admin access required' },
+				{ status: 403 }
+			);
+		}
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    // Ensure todos table exists
-    await db.execute(`
+		// Ensure todos table exists
+		await db.execute(`
       CREATE TABLE IF NOT EXISTS todos (
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT NOT NULL,
@@ -53,47 +53,47 @@ export async function GET(request) {
       )
     `);
 
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const userId = searchParams.get('user_id');
-    const priority = searchParams.get('priority');
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
-    const offset = (page - 1) * limit;
+		const { searchParams } = new URL(request.url);
+		const status = searchParams.get('status');
+		const userId = searchParams.get('user_id');
+		const priority = searchParams.get('priority');
+		const page = parseInt(searchParams.get('page') || '1', 10);
+		const limit = parseInt(searchParams.get('limit') || '50', 10);
+		const offset = (page - 1) * limit;
 
-    let whereConditions = [];
-    let params = [];
+		let whereConditions = [];
+		let params = [];
 
-    if (status && status !== 'all') {
-      whereConditions.push('t.status = ?');
-      params.push(status);
-    }
+		if (status && status !== 'all') {
+			whereConditions.push('t.status = ?');
+			params.push(status);
+		}
 
-    if (userId && userId !== 'all') {
-      whereConditions.push('t.user_id = ?');
-      params.push(userId);
-    }
+		if (userId && userId !== 'all') {
+			whereConditions.push('t.user_id = ?');
+			params.push(userId);
+		}
 
-    if (priority && priority !== 'all') {
-      whereConditions.push('t.priority = ?');
-      params.push(priority);
-    }
+		if (priority && priority !== 'all') {
+			whereConditions.push('t.priority = ?');
+			params.push(priority);
+		}
 
-    const whereClause =
-      whereConditions.length > 0
-        ? 'WHERE ' + whereConditions.join(' AND ')
-        : '';
+		const whereClause =
+			whereConditions.length > 0
+				? 'WHERE ' + whereConditions.join(' AND ')
+				: '';
 
-    // Get total count
-    const [countResult] = await db.execute(
-      `SELECT COUNT(*) as total FROM todos t ${whereClause}`,
-      params
-    );
-    const total = countResult[0]?.total || 0;
+		// Get total count
+		const [countResult] = await db.execute(
+			`SELECT COUNT(*) as total FROM todos t ${whereClause}`,
+			params
+		);
+		const total = countResult[0]?.total || 0;
 
-    // Get todos with user information
-    const [todos] = await db.execute(
-      `SELECT t.*, 
+		// Get todos with user information
+		const [todos] = await db.execute(
+			`SELECT t.*, 
               u.username, 
               u.full_name,
               u.email,
@@ -107,19 +107,19 @@ export async function GET(request) {
          t.due_date ASC,
          t.created_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
-    );
+			[...params, limit, offset]
+		);
 
-    // Get all users for filter dropdown
-    const [users] = await db.execute(
-      `SELECT DISTINCT u.id, u.username, u.full_name 
+		// Get all users for filter dropdown
+		const [users] = await db.execute(
+			`SELECT DISTINCT u.id, u.username, u.full_name 
        FROM users u 
        INNER JOIN todos t ON u.id = t.user_id
        ORDER BY u.full_name, u.username`
-    );
+		);
 
-    // Get summary stats
-    const [stats] = await db.execute(`
+		// Get summary stats
+		const [stats] = await db.execute(`
       SELECT 
         COUNT(*) as total_todos,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count,
@@ -130,26 +130,26 @@ export async function GET(request) {
       FROM todos
     `);
 
-    await db.end();
+		await db.end();
 
-    return NextResponse.json({
-      success: true,
-      data: todos,
-      users: users,
-      stats: stats[0] || {},
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching admin todos:', error);
-    if (db) await db.end();
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch todos' },
-      { status: 500 }
-    );
-  }
+		return NextResponse.json({
+			success: true,
+			data: todos,
+			users: users,
+			stats: stats[0] || {},
+			pagination: {
+				page,
+				limit,
+				total,
+				totalPages: Math.ceil(total / limit),
+			},
+		});
+	} catch (error) {
+		console.error('Error fetching admin todos:', error);
+		if (db) await db.end();
+		return NextResponse.json(
+			{ success: false, error: 'Failed to fetch todos' },
+			{ status: 500 }
+		);
+	}
 }

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import {
-  ensurePermission,
-  getCurrentUser,
-  RESOURCES,
-  PERMISSIONS,
+	ensurePermission,
+	getCurrentUser,
+	RESOURCES,
+	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { dbConnect } from '@/utils/database';
 import { checkPermission } from '@/utils/permissions';
@@ -13,49 +13,49 @@ import { checkPermission } from '@/utils/permissions';
  * Users can always view their own logs; viewing others requires WORK_LOGS:READ permission
  */
 export async function GET(request) {
-  let db;
-  try {
-    // Get current user (all authenticated users can access this endpoint for their own data)
-    const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+	let db;
+	try {
+		// Get current user (all authenticated users can access this endpoint for their own data)
+		const user = await getCurrentUser(request);
+		if (!user) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
+		}
 
-    const { searchParams } = new URL(request.url);
-    const requestedUserId = searchParams.get('user_id');
-    const logType = searchParams.get('log_type');
-    const startDate = searchParams.get('start_date');
-    const endDate = searchParams.get('end_date');
-    const limit = parseInt(searchParams.get('limit') || '100');
-    const page = parseInt(searchParams.get('page') || '1');
-    const offset = (page - 1) * limit;
+		const { searchParams } = new URL(request.url);
+		const requestedUserId = searchParams.get('user_id');
+		const logType = searchParams.get('log_type');
+		const startDate = searchParams.get('start_date');
+		const endDate = searchParams.get('end_date');
+		const limit = parseInt(searchParams.get('limit') || '100');
+		const page = parseInt(searchParams.get('page') || '1');
+		const offset = (page - 1) * limit;
 
-    // Check if user is trying to access someone else's data
-    const accessingOwnData =
-      !requestedUserId || String(requestedUserId) === String(user.id);
+		// Check if user is trying to access someone else's data
+		const accessingOwnData =
+			!requestedUserId || String(requestedUserId) === String(user.id);
 
-    // If not accessing own data, require WORK_LOGS:READ permission
-    if (
-      !accessingOwnData &&
-      !user.is_super_admin &&
-      !checkPermission(user, RESOURCES.WORK_LOGS, PERMISSIONS.READ)
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "You do not have permission to view other users' work logs",
-        },
-        { status: 403 }
-      );
-    }
+		// If not accessing own data, require WORK_LOGS:READ permission
+		if (
+			!accessingOwnData &&
+			!user.is_super_admin &&
+			!checkPermission(user, RESOURCES.WORK_LOGS, PERMISSIONS.READ)
+		) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: "You do not have permission to view other users' work logs",
+				},
+				{ status: 403 }
+			);
+		}
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    // Build query
-    let query = `
+		// Build query
+		let query = `
       SELECT 
         wl.*,
         u.username,
@@ -65,77 +65,77 @@ export async function GET(request) {
       LEFT JOIN users u ON wl.user_id = u.id
       WHERE 1=1
     `;
-    const params = [];
+		const params = [];
 
-    // Permission logic:
-    // - Admins can view ALL logs EXCEPT their own
-    // - Regular users can only view their own logs
-    if (user.is_super_admin || user.role?.name === 'Admin') {
-      if (requestedUserId) {
-        query += ` AND wl.user_id = ?`;
-        params.push(requestedUserId);
-      } else {
-        // Admin viewing all logs - exclude admin's own logs
-        query += ` AND wl.user_id != ?`;
-        params.push(user.id);
-      }
-    } else {
-      // Regular users can only see their own logs
-      query += ` AND wl.user_id = ?`;
-      params.push(user.id);
-    }
+		// Permission logic:
+		// - Admins can view ALL logs EXCEPT their own
+		// - Regular users can only view their own logs
+		if (user.is_super_admin || user.role?.name === 'Admin') {
+			if (requestedUserId) {
+				query += ` AND wl.user_id = ?`;
+				params.push(requestedUserId);
+			} else {
+				// Admin viewing all logs - exclude admin's own logs
+				query += ` AND wl.user_id != ?`;
+				params.push(user.id);
+			}
+		} else {
+			// Regular users can only see their own logs
+			query += ` AND wl.user_id = ?`;
+			params.push(user.id);
+		}
 
-    if (logType) {
-      query += ` AND wl.log_type = ?`;
-      params.push(logType);
-    }
+		if (logType) {
+			query += ` AND wl.log_type = ?`;
+			params.push(logType);
+		}
 
-    if (startDate) {
-      query += ` AND wl.log_date >= ?`;
-      params.push(startDate);
-    }
+		if (startDate) {
+			query += ` AND wl.log_date >= ?`;
+			params.push(startDate);
+		}
 
-    if (endDate) {
-      query += ` AND wl.log_date <= ?`;
-      params.push(endDate);
-    }
+		if (endDate) {
+			query += ` AND wl.log_date <= ?`;
+			params.push(endDate);
+		}
 
-    // Get total count
-    const countQuery = query.replace(
-      'wl.*, u.username, u.full_name, u.email',
-      'COUNT(*) as total'
-    );
-    const [countResult] = await db.execute(countQuery, params);
-    const total = countResult?.[0]?.total || 0;
+		// Get total count
+		const countQuery = query.replace(
+			'wl.*, u.username, u.full_name, u.email',
+			'COUNT(*) as total'
+		);
+		const [countResult] = await db.execute(countQuery, params);
+		const total = countResult?.[0]?.total || 0;
 
-    // Get paginated results
-    query += ` ORDER BY wl.log_date DESC, wl.created_at DESC LIMIT ? OFFSET ?`;
-    params.push(limit, offset);
+		// Get paginated results
+		query += ` ORDER BY wl.log_date DESC, wl.created_at DESC LIMIT ? OFFSET ?`;
+		params.push(limit, offset);
 
-    const [logs] = await db.execute(query, params);
+		const [logs] = await db.execute(query, params);
 
-    return NextResponse.json({
-      success: true,
-      data: logs,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching work logs:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch work logs',
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json({
+			success: true,
+			data: logs,
+			pagination: {
+				page,
+				limit,
+				total,
+				totalPages: Math.ceil(total / limit),
+			},
+		});
+	} catch (error) {
+		console.error('Error fetching work logs:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to fetch work logs',
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }
 
 /**
@@ -143,264 +143,264 @@ export async function GET(request) {
  * Users can always create their own work logs
  */
 export async function POST(request) {
-  let db;
-  try {
-    // Get current user (all authenticated users can create their own work logs)
-    const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+	let db;
+	try {
+		// Get current user (all authenticated users can create their own work logs)
+		const user = await getCurrentUser(request);
+		if (!user) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
+		}
 
-    const data = await request.json();
-    const {
-      log_date,
-      log_type,
-      title,
-      description,
-      category,
-      priority,
-      status,
-      time_spent,
-      project_id,
-    } = data;
+		const data = await request.json();
+		const {
+			log_date,
+			log_type,
+			title,
+			description,
+			category,
+			priority,
+			status,
+			time_spent,
+			project_id,
+		} = data;
 
-    // Validation
-    if (!title || !log_date) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Title and log date are required',
-        },
-        { status: 400 }
-      );
-    }
+		// Validation
+		if (!title || !log_date) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Title and log date are required',
+				},
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    const [result] = await db.execute(
-      `INSERT INTO user_work_logs 
+		const [result] = await db.execute(
+			`INSERT INTO user_work_logs 
       (user_id, log_date, log_type, title, description, category, priority, status, time_spent, project_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        user.id,
-        log_date,
-        log_type || 'done',
-        title,
-        description || null,
-        category || null,
-        priority || 'medium',
-        status || 'completed',
-        time_spent || null,
-        project_id || null,
-      ]
-    );
+			[
+				user.id,
+				log_date,
+				log_type || 'done',
+				title,
+				description || null,
+				category || null,
+				priority || 'medium',
+				status || 'completed',
+				time_spent || null,
+				project_id || null,
+			]
+		);
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        id: result.insertId,
-        message: 'Work log created successfully',
-      },
-    });
-  } catch (error) {
-    console.error('Error creating work log:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to create work log',
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json({
+			success: true,
+			data: {
+				id: result.insertId,
+				message: 'Work log created successfully',
+			},
+		});
+	} catch (error) {
+		console.error('Error creating work log:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to create work log',
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }
 
 /**
  * PUT - Update a work log entry
  */
 export async function PUT(request) {
-  let db;
-  try {
-    const auth = await ensurePermission(
-      request,
-      RESOURCES.WORK_LOGS,
-      PERMISSIONS.UPDATE
-    );
-    if (!auth.authorized) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+	let db;
+	try {
+		const auth = await ensurePermission(
+			request,
+			RESOURCES.WORK_LOGS,
+			PERMISSIONS.UPDATE
+		);
+		if (!auth.authorized) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
+		}
 
-    const data = await request.json();
-    const {
-      id,
-      log_date,
-      log_type,
-      title,
-      description,
-      category,
-      priority,
-      status,
-      time_spent,
-      project_id,
-    } = data;
+		const data = await request.json();
+		const {
+			id,
+			log_date,
+			log_type,
+			title,
+			description,
+			category,
+			priority,
+			status,
+			time_spent,
+			project_id,
+		} = data;
 
-    if (!id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Work log ID is required',
-        },
-        { status: 400 }
-      );
-    }
+		if (!id) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Work log ID is required',
+				},
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    // Check ownership - users can only update their own logs
-    const [existing] = await db.execute(
-      'SELECT user_id FROM user_work_logs WHERE id = ?',
-      [id]
-    );
+		// Check ownership - users can only update their own logs
+		const [existing] = await db.execute(
+			'SELECT user_id FROM user_work_logs WHERE id = ?',
+			[id]
+		);
 
-    if (existing.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Work log not found',
-        },
-        { status: 404 }
-      );
-    }
+		if (existing.length === 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Work log not found',
+				},
+				{ status: 404 }
+			);
+		}
 
-    if (existing[0].user_id !== auth.user.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'You can only update your own work logs',
-        },
-        { status: 403 }
-      );
-    }
+		if (existing[0].user_id !== auth.user.id) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'You can only update your own work logs',
+				},
+				{ status: 403 }
+			);
+		}
 
-    await db.execute(
-      `UPDATE user_work_logs 
+		await db.execute(
+			`UPDATE user_work_logs 
       SET log_date = ?, log_type = ?, title = ?, description = ?, category = ?, 
           priority = ?, status = ?, time_spent = ?, project_id = ?
       WHERE id = ?`,
-      [
-        log_date,
-        log_type,
-        title,
-        description,
-        category,
-        priority,
-        status,
-        time_spent,
-        project_id,
-        id,
-      ]
-    );
+			[
+				log_date,
+				log_type,
+				title,
+				description,
+				category,
+				priority,
+				status,
+				time_spent,
+				project_id,
+				id,
+			]
+		);
 
-    return NextResponse.json({
-      success: true,
-      message: 'Work log updated successfully',
-    });
-  } catch (error) {
-    console.error('Error updating work log:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to update work log',
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json({
+			success: true,
+			message: 'Work log updated successfully',
+		});
+	} catch (error) {
+		console.error('Error updating work log:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to update work log',
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }
 
 /**
  * DELETE - Delete a work log entry
  */
 export async function DELETE(request) {
-  let db;
-  try {
-    const auth = await ensurePermission(
-      request,
-      RESOURCES.WORK_LOGS,
-      PERMISSIONS.DELETE
-    );
-    if (!auth.authorized) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+	let db;
+	try {
+		const auth = await ensurePermission(
+			request,
+			RESOURCES.WORK_LOGS,
+			PERMISSIONS.DELETE
+		);
+		if (!auth.authorized) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
+		}
 
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+		const { searchParams } = new URL(request.url);
+		const id = searchParams.get('id');
 
-    if (!id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Work log ID is required',
-        },
-        { status: 400 }
-      );
-    }
+		if (!id) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Work log ID is required',
+				},
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    // Check ownership - users can only delete their own logs
-    const [existing] = await db.execute(
-      'SELECT user_id FROM user_work_logs WHERE id = ?',
-      [id]
-    );
+		// Check ownership - users can only delete their own logs
+		const [existing] = await db.execute(
+			'SELECT user_id FROM user_work_logs WHERE id = ?',
+			[id]
+		);
 
-    if (existing.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Work log not found',
-        },
-        { status: 404 }
-      );
-    }
+		if (existing.length === 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Work log not found',
+				},
+				{ status: 404 }
+			);
+		}
 
-    if (existing[0].user_id !== auth.user.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'You can only delete your own work logs',
-        },
-        { status: 403 }
-      );
-    }
+		if (existing[0].user_id !== auth.user.id) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'You can only delete your own work logs',
+				},
+				{ status: 403 }
+			);
+		}
 
-    await db.execute('DELETE FROM user_work_logs WHERE id = ?', [id]);
+		await db.execute('DELETE FROM user_work_logs WHERE id = ?', [id]);
 
-    return NextResponse.json({
-      success: true,
-      message: 'Work log deleted successfully',
-    });
-  } catch (error) {
-    console.error('Error deleting work log:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to delete work log',
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json({
+			success: true,
+			message: 'Work log deleted successfully',
+		});
+	} catch (error) {
+		console.error('Error deleting work log:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to delete work log',
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }

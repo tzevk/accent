@@ -6,64 +6,64 @@ import { getCurrentUser } from '@/utils/api-permissions';
  * Generate a printable HTML page for a cash voucher (can be saved as PDF)
  */
 export async function GET(request) {
-  let db;
+	let db;
 
-  try {
-    let user;
-    try {
-      user = await getCurrentUser(request);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (authErr) {
-      return new Response('Authentication failed', { status: 500 });
-    }
+	try {
+		let user;
+		try {
+			user = await getCurrentUser(request);
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		} catch (authErr) {
+			return new Response('Authentication failed', { status: 500 });
+		}
 
-    if (!user) {
-      return new Response('Unauthorized', { status: 401 });
-    }
+		if (!user) {
+			return new Response('Unauthorized', { status: 401 });
+		}
 
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+		const { searchParams } = new URL(request.url);
+		const id = searchParams.get('id');
 
-    if (!id) {
-      return new Response('Voucher ID is required', { status: 400 });
-    }
+		if (!id) {
+			return new Response('Voucher ID is required', { status: 400 });
+		}
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    const [vouchers] = await db.execute(
-      'SELECT * FROM cash_vouchers WHERE id = ?',
-      [id]
-    );
+		const [vouchers] = await db.execute(
+			'SELECT * FROM cash_vouchers WHERE id = ?',
+			[id]
+		);
 
-    if (vouchers.length === 0) {
-      return new Response('Voucher not found', { status: 404 });
-    }
+		if (vouchers.length === 0) {
+			return new Response('Voucher not found', { status: 404 });
+		}
 
-    const voucher = vouchers[0];
-    const lineItems =
-      typeof voucher.line_items === 'string'
-        ? JSON.parse(voucher.line_items || '[]')
-        : voucher.line_items || [];
+		const voucher = vouchers[0];
+		const lineItems =
+			typeof voucher.line_items === 'string'
+				? JSON.parse(voucher.line_items || '[]')
+				: voucher.line_items || [];
 
-    // Format date
-    const formatDate = (dateString) => {
-      if (!dateString) return '';
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      });
-    };
+		// Format date
+		const formatDate = (dateString) => {
+			if (!dateString) return '';
+			const date = new Date(dateString);
+			return date.toLocaleDateString('en-IN', {
+				day: '2-digit',
+				month: 'short',
+				year: 'numeric',
+			});
+		};
 
-    // Generate line items rows - always show at least 5 rows
-    const actualItems = lineItems.length > 0 ? lineItems : [];
-    const totalRowsNeeded = 5;
-    const emptyRowsNeeded = Math.max(0, totalRowsNeeded - actualItems.length);
+		// Generate line items rows - always show at least 5 rows
+		const actualItems = lineItems.length > 0 ? lineItems : [];
+		const totalRowsNeeded = 5;
+		const emptyRowsNeeded = Math.max(0, totalRowsNeeded - actualItems.length);
 
-    const lineItemsHtml = actualItems
-      .map(
-        (item, index) => `
+		const lineItemsHtml = actualItems
+			.map(
+				(item, index) => `
         <tr>
           <td style="width: 50px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; text-align: center; font-size: 11px;">${item.sr_no || index + 1}</td>
           <td style="width: 70px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; font-size: 11px;">${formatDate(item.bill_date)}</td>
@@ -73,13 +73,13 @@ export async function GET(request) {
           <td style="border: none; padding: 6px 8px; font-size: 11px;">${item.description || ''}</td>
         </tr>
       `
-      )
-      .join('');
+			)
+			.join('');
 
-    // Add empty rows to fill to 5 rows total - always show
-    const emptyRowsHtml = Array(emptyRowsNeeded)
-      .fill(
-        `
+		// Add empty rows to fill to 5 rows total - always show
+		const emptyRowsHtml = Array(emptyRowsNeeded)
+			.fill(
+				`
       <tr>
         <td style="width: 50px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; height: 24px;">&nbsp;</td>
         <td style="width: 70px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px;">&nbsp;</td>
@@ -89,10 +89,10 @@ export async function GET(request) {
         <td style="border: none; padding: 6px 8px;">&nbsp;</td>
       </tr>
     `
-      )
-      .join('');
+			)
+			.join('');
 
-    const html = `
+		const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -455,21 +455,21 @@ export async function GET(request) {
 </html>
     `;
 
-    return new Response(html, {
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-      },
-    });
-  } catch (error) {
-    console.error('Download cash voucher error:', error?.message);
-    return new Response('Failed to generate voucher', { status: 500 });
-  } finally {
-    if (db && typeof db.release === 'function') {
-      try {
-        db.release();
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+		return new Response(html, {
+			headers: {
+				'Content-Type': 'text/html; charset=utf-8',
+			},
+		});
+	} catch (error) {
+		console.error('Download cash voucher error:', error?.message);
+		return new Response('Failed to generate voucher', { status: 500 });
+	} finally {
+		if (db && typeof db.release === 'function') {
+			try {
+				db.release();
+			} catch (e) {
+				/* ignore */
+			}
+		}
+	}
 }

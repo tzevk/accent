@@ -15,23 +15,23 @@ const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
  * @returns {Promise<Set<string>>}
  */
 export async function getTableColumns(db, tableName) {
-  const entry = _cache.get(tableName);
-  if (entry && Date.now() - entry.ts < CACHE_TTL) {
-    return entry.columns;
-  }
-  // Fetch fresh from DB
-  const [cols] = await db.execute(
-    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
-    [tableName]
-  );
-  const columns = new Set((cols || []).map((c) => c.COLUMN_NAME));
-  const existing = _cache.get(tableName);
-  _cache.set(tableName, {
-    columns,
-    pkCol: existing?.pkCol || null,
-    ts: Date.now(),
-  });
-  return columns;
+	const entry = _cache.get(tableName);
+	if (entry && Date.now() - entry.ts < CACHE_TTL) {
+		return entry.columns;
+	}
+	// Fetch fresh from DB
+	const [cols] = await db.execute(
+		`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+		[tableName]
+	);
+	const columns = new Set((cols || []).map((c) => c.COLUMN_NAME));
+	const existing = _cache.get(tableName);
+	_cache.set(tableName, {
+		columns,
+		pkCol: existing?.pkCol || null,
+		ts: Date.now(),
+	});
+	return columns;
 }
 
 /**
@@ -41,39 +41,39 @@ export async function getTableColumns(db, tableName) {
  * @returns {Promise<string|null>}
  */
 export async function getPrimaryKeyColumn(db, tableName) {
-  const entry = _cache.get(tableName);
-  if (entry && entry.pkCol !== undefined && Date.now() - entry.ts < CACHE_TTL) {
-    return entry.pkCol;
-  }
-  const [pkRows] = await db.execute(
-    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'`,
-    [tableName]
-  );
-  const pkCol = pkRows && pkRows.length > 0 ? pkRows[0].COLUMN_NAME : null;
-  const existing = _cache.get(tableName);
-  _cache.set(tableName, {
-    columns: existing?.columns || new Set(),
-    pkCol,
-    ts: existing?.ts || Date.now(),
-  });
-  return pkCol;
+	const entry = _cache.get(tableName);
+	if (entry && entry.pkCol !== undefined && Date.now() - entry.ts < CACHE_TTL) {
+		return entry.pkCol;
+	}
+	const [pkRows] = await db.execute(
+		`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'`,
+		[tableName]
+	);
+	const pkCol = pkRows && pkRows.length > 0 ? pkRows[0].COLUMN_NAME : null;
+	const existing = _cache.get(tableName);
+	_cache.set(tableName, {
+		columns: existing?.columns || new Set(),
+		pkCol,
+		ts: existing?.ts || Date.now(),
+	});
+	return pkCol;
 }
 
 /**
  * Check if a table has a specific column. Uses cache.
  */
 export async function hasColumn(db, tableName, columnName) {
-  const columns = await getTableColumns(db, tableName);
-  return columns.has(columnName);
+	const columns = await getTableColumns(db, tableName);
+	return columns.has(columnName);
 }
 
 /**
  * Invalidate the cache for a table (call after ALTER TABLE, if ever needed).
  */
 export function invalidateCache(tableName) {
-  if (tableName) {
-    _cache.delete(tableName);
-  } else {
-    _cache.clear();
-  }
+	if (tableName) {
+		_cache.delete(tableName);
+	} else {
+		_cache.clear();
+	}
 }

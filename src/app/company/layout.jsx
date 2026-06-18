@@ -5,5 +5,5 @@
  * This layout just passes through children.
  */
 export default function CompanyLayout({ children }) {
-  return children;
+	return children;
 }

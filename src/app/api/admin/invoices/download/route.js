@@ -1,144 +1,144 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import {
-  ensurePermission,
-  RESOURCES,
-  PERMISSIONS,
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
 } from '@/utils/api-permissions';
 
 // Helper functions
 function formatCurrency(amount) {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 2,
-  }).format(amount || 0);
+	return new Intl.NumberFormat('en-IN', {
+		style: 'currency',
+		currency: 'INR',
+		minimumFractionDigits: 2,
+	}).format(amount || 0);
 }
 
 function formatDate(dateString) {
-  if (!dateString) return '-';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+	if (!dateString) return '-';
+	const date = new Date(dateString);
+	return date.toLocaleDateString('en-IN', {
+		day: '2-digit',
+		month: 'short',
+		year: 'numeric',
+	});
 }
 
 function numberToWords(num) {
-  const ones = [
-    '',
-    'One',
-    'Two',
-    'Three',
-    'Four',
-    'Five',
-    'Six',
-    'Seven',
-    'Eight',
-    'Nine',
-    'Ten',
-    'Eleven',
-    'Twelve',
-    'Thirteen',
-    'Fourteen',
-    'Fifteen',
-    'Sixteen',
-    'Seventeen',
-    'Eighteen',
-    'Nineteen',
-  ];
-  const tens = [
-    '',
-    '',
-    'Twenty',
-    'Thirty',
-    'Forty',
-    'Fifty',
-    'Sixty',
-    'Seventy',
-    'Eighty',
-    'Ninety',
-  ];
+	const ones = [
+		'',
+		'One',
+		'Two',
+		'Three',
+		'Four',
+		'Five',
+		'Six',
+		'Seven',
+		'Eight',
+		'Nine',
+		'Ten',
+		'Eleven',
+		'Twelve',
+		'Thirteen',
+		'Fourteen',
+		'Fifteen',
+		'Sixteen',
+		'Seventeen',
+		'Eighteen',
+		'Nineteen',
+	];
+	const tens = [
+		'',
+		'',
+		'Twenty',
+		'Thirty',
+		'Forty',
+		'Fifty',
+		'Sixty',
+		'Seventy',
+		'Eighty',
+		'Ninety',
+	];
 
-  if (num === 0) return 'Zero';
-  if (num < 0) return 'Minus ' + numberToWords(-num);
+	if (num === 0) return 'Zero';
+	if (num < 0) return 'Minus ' + numberToWords(-num);
 
-  let words = '';
+	let words = '';
 
-  if (Math.floor(num / 10000000) > 0) {
-    words += numberToWords(Math.floor(num / 10000000)) + ' Crore ';
-    num %= 10000000;
-  }
-  if (Math.floor(num / 100000) > 0) {
-    words += numberToWords(Math.floor(num / 100000)) + ' Lakh ';
-    num %= 100000;
-  }
-  if (Math.floor(num / 1000) > 0) {
-    words += numberToWords(Math.floor(num / 1000)) + ' Thousand ';
-    num %= 1000;
-  }
-  if (Math.floor(num / 100) > 0) {
-    words += numberToWords(Math.floor(num / 100)) + ' Hundred ';
-    num %= 100;
-  }
-  if (num > 0) {
-    if (num < 20) {
-      words += ones[num];
-    } else {
-      words += tens[Math.floor(num / 10)];
-      if (num % 10 > 0) {
-        words += ' ' + ones[num % 10];
-      }
-    }
-  }
-  return words.trim();
+	if (Math.floor(num / 10000000) > 0) {
+		words += numberToWords(Math.floor(num / 10000000)) + ' Crore ';
+		num %= 10000000;
+	}
+	if (Math.floor(num / 100000) > 0) {
+		words += numberToWords(Math.floor(num / 100000)) + ' Lakh ';
+		num %= 100000;
+	}
+	if (Math.floor(num / 1000) > 0) {
+		words += numberToWords(Math.floor(num / 1000)) + ' Thousand ';
+		num %= 1000;
+	}
+	if (Math.floor(num / 100) > 0) {
+		words += numberToWords(Math.floor(num / 100)) + ' Hundred ';
+		num %= 100;
+	}
+	if (num > 0) {
+		if (num < 20) {
+			words += ones[num];
+		} else {
+			words += tens[Math.floor(num / 10)];
+			if (num % 10 > 0) {
+				words += ' ' + ones[num % 10];
+			}
+		}
+	}
+	return words.trim();
 }
 
 function amountToWords(amount) {
-  const rupees = Math.floor(amount);
-  const paise = Math.round((amount - rupees) * 100);
+	const rupees = Math.floor(amount);
+	const paise = Math.round((amount - rupees) * 100);
 
-  let result = 'Rupees ' + numberToWords(rupees);
-  if (paise > 0) {
-    result += ' and ' + numberToWords(paise) + ' Paise';
-  }
-  result += ' Only';
-  return result;
+	let result = 'Rupees ' + numberToWords(rupees);
+	if (paise > 0) {
+		result += ' and ' + numberToWords(paise) + ' Paise';
+	}
+	result += ' Only';
+	return result;
 }
 
 // Generate Invoice HTML
 function generateInvoiceHTML(data) {
-  // Parse items if needed
-  let items = data.items;
-  if (typeof items === 'string') {
-    try {
-      items = JSON.parse(items);
-    } catch {
-      items = [];
-    }
-  }
-  items = items || [];
+	// Parse items if needed
+	let items = data.items;
+	if (typeof items === 'string') {
+		try {
+			items = JSON.parse(items);
+		} catch {
+			items = [];
+		}
+	}
+	items = items || [];
 
-  // Calculate amounts
-  const subtotal = parseFloat(data.subtotal) || 0;
-  const cgstRate = 9;
-  const sgstRate = 9;
-  const cgstAmount = (subtotal * cgstRate) / 100;
-  const sgstAmount = (subtotal * sgstRate) / 100;
-  const totalGst = cgstAmount + sgstAmount;
-  const totalAfterTax = subtotal + totalGst;
+	// Calculate amounts
+	const subtotal = parseFloat(data.subtotal) || 0;
+	const cgstRate = 9;
+	const sgstRate = 9;
+	const cgstAmount = (subtotal * cgstRate) / 100;
+	const sgstAmount = (subtotal * sgstRate) / 100;
+	const totalGst = cgstAmount + sgstAmount;
+	const totalAfterTax = subtotal + totalGst;
 
-  // Generate items rows
-  let itemsHTML = '';
-  if (items.length > 0) {
-    items.forEach((item, index) => {
-      const qty = parseFloat(item.quantity) || 1;
-      const rate = parseFloat(item.rate) || parseFloat(item.unit_price) || 0;
-      const amount = item.amount > 0 ? parseFloat(item.amount) : qty * rate;
-      const rowBg =
-        index % 2 === 0 ? 'background: #fff;' : 'background: #fafafa;';
-      itemsHTML += `
+	// Generate items rows
+	let itemsHTML = '';
+	if (items.length > 0) {
+		items.forEach((item, index) => {
+			const qty = parseFloat(item.quantity) || 1;
+			const rate = parseFloat(item.rate) || parseFloat(item.unit_price) || 0;
+			const amount = item.amount > 0 ? parseFloat(item.amount) : qty * rate;
+			const rowBg =
+				index % 2 === 0 ? 'background: #fff;' : 'background: #fafafa;';
+			itemsHTML += `
         <tr style="${rowBg}">
           <td style="border: 1px solid #eee; padding: 10px 8px; text-align: center; color: #666;">${index + 1}</td>
           <td style="border: 1px solid #eee; padding: 10px 8px; color: #1a1a1a;">${item.description || item.name || '-'}</td>
@@ -147,9 +147,9 @@ function generateInvoiceHTML(data) {
           <td style="border: 1px solid #eee; padding: 10px 8px; text-align: right; font-weight: 500;">${formatCurrency(amount).replace('₹', '')}</td>
         </tr>
       `;
-    });
-  } else {
-    itemsHTML = `
+		});
+	} else {
+		itemsHTML = `
       <tr>
         <td style="border: 1px solid #eee; padding: 10px 8px; text-align: center; color: #666;">1</td>
         <td style="border: 1px solid #eee; padding: 10px 8px; color: #1a1a1a;">${data.description || '-'}</td>
@@ -158,9 +158,9 @@ function generateInvoiceHTML(data) {
         <td style="border: 1px solid #eee; padding: 10px 8px; text-align: right; font-weight: 500;">${formatCurrency(subtotal).replace('₹', '')}</td>
       </tr>
     `;
-  }
+	}
 
-  return `
+	return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -438,63 +438,63 @@ function generateInvoiceHTML(data) {
 
 // GET - Download invoice as printable HTML
 export async function GET(request) {
-  // RBAC check
-  const authResult = await ensurePermission(
-    request,
-    RESOURCES.PROPOSALS,
-    PERMISSIONS.READ
-  );
-  if (authResult.authorized === false) return authResult.response;
+	// RBAC check
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.PROPOSALS,
+		PERMISSIONS.READ
+	);
+	if (authResult.authorized === false) return authResult.response;
 
-  let connection;
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+	let connection;
+	try {
+		const { searchParams } = new URL(request.url);
+		const id = searchParams.get('id');
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, message: 'Invoice ID is required' },
-        { status: 400 }
-      );
-    }
+		if (!id) {
+			return NextResponse.json(
+				{ success: false, message: 'Invoice ID is required' },
+				{ status: 400 }
+			);
+		}
 
-    connection = await dbConnect();
+		connection = await dbConnect();
 
-    const [invoices] = await connection.execute(
-      'SELECT * FROM invoices WHERE id = ?',
-      [id]
-    );
+		const [invoices] = await connection.execute(
+			'SELECT * FROM invoices WHERE id = ?',
+			[id]
+		);
 
-    if (!invoices || invoices.length === 0) {
-      return NextResponse.json(
-        { success: false, message: 'Invoice not found' },
-        { status: 404 }
-      );
-    }
+		if (!invoices || invoices.length === 0) {
+			return NextResponse.json(
+				{ success: false, message: 'Invoice not found' },
+				{ status: 404 }
+			);
+		}
 
-    const invoice = invoices[0];
+		const invoice = invoices[0];
 
-    // Generate HTML
-    const html = generateInvoiceHTML(invoice);
+		// Generate HTML
+		const html = generateInvoiceHTML(invoice);
 
-    // Return as HTML response
-    return new NextResponse(html, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-      },
-    });
-  } catch (error) {
-    console.error('Error downloading invoice:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: 'Failed to download invoice',
-        error: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (connection) await connection.end();
-  }
+		// Return as HTML response
+		return new NextResponse(html, {
+			status: 200,
+			headers: {
+				'Content-Type': 'text/html; charset=utf-8',
+			},
+		});
+	} catch (error) {
+		console.error('Error downloading invoice:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				message: 'Failed to download invoice',
+				error: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (connection) await connection.end();
+	}
 }

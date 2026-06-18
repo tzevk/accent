@@ -5,5 +5,5 @@
  * This layout just passes through children.
  */
 export default function MastersLayout({ children }) {
-  return children;
+	return children;
 }

@@ -8,39 +8,39 @@ import { SessionProvider } from '@/context/SessionContext';
 import { SpellCheckProvider } from '@/hooks/useSpellCheck';
 
 const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
+	variable: '--font-geist-sans',
+	subsets: ['latin'],
 });
 
 const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
+	variable: '--font-geist-mono',
+	subsets: ['latin'],
 });
 
 export const metadata = {
-  title: 'Accent - Project Management',
-  description: 'Manage projects, leads, and teams efficiently',
+	title: 'Accent - Project Management',
+	description: 'Manage projects, leads, and teams efficiently',
 };
 
 export default function RootLayout({ children }) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        suppressHydrationWarning
-      >
-        <SessionProvider>
-          <SpellCheckProvider>
-            <Sidebar />
-            <AuthGate />
-            <ActivityTracker />
-            <AutoRefresh timeout={30000} />
-            <div className="content-with-sidebar dashboard-content">
-              {children}
-            </div>
-          </SpellCheckProvider>
-        </SessionProvider>
-      </body>
-    </html>
-  );
+	return (
+		<html lang="en" suppressHydrationWarning>
+			<body
+				className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+				suppressHydrationWarning
+			>
+				<SessionProvider>
+					<SpellCheckProvider>
+						<Sidebar />
+						<AuthGate />
+						<ActivityTracker />
+						<AutoRefresh timeout={30000} />
+						<div className="content-with-sidebar dashboard-content">
+							{children}
+						</div>
+					</SpellCheckProvider>
+				</SessionProvider>
+			</body>
+		</html>
+	);
 }

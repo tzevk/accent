@@ -224,7 +224,7 @@ const hasAccess = isRajeshPanchal || isSuperAdmin || hasPermission;
 
 ```javascript
 const isSuperAdmin =
-  user?.is_super_admin === true || user?.is_super_admin === 1;
+	user?.is_super_admin === true || user?.is_super_admin === 1;
 const hasAccess = isSuperAdmin || hasPermission;
 ```
 

@@ -77,13 +77,13 @@ Registries are set in `components.json`. The `@shadcn` registry is always built-
 
 ```json
 {
-  "registries": {
-    "@acme": "https://acme.com/r/{name}.json",
-    "@private": {
-      "url": "https://private.com/r/{name}.json",
-      "headers": { "Authorization": "Bearer ${MY_TOKEN}" }
-    }
-  }
+	"registries": {
+		"@acme": "https://acme.com/r/{name}.json",
+		"@private": {
+			"url": "https://private.com/r/{name}.json",
+			"headers": { "Authorization": "Bearer ${MY_TOKEN}" }
+		}
+	}
 }
 ```
 

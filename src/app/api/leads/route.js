@@ -1,108 +1,108 @@
 import { dbConnect } from '@/utils/database';
 import { logActivity } from '@/utils/activity-logger';
 import {
-  ensurePermission,
-  RESOURCES,
-  PERMISSIONS,
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { getTableColumns } from '@/utils/schema-cache';
 
 // GET all leads with pagination and filtering
 export async function GET(request) {
-  let db;
-  try {
-    // RBAC: read leads
-    const auth = await ensurePermission(
-      request,
-      RESOURCES.LEADS,
-      PERMISSIONS.READ
-    );
-    if (auth instanceof Response) return auth;
+	let db;
+	try {
+		// RBAC: read leads
+		const auth = await ensurePermission(
+			request,
+			RESOURCES.LEADS,
+			PERMISSIONS.READ
+		);
+		if (auth instanceof Response) return auth;
 
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const search = searchParams.get('search') || '';
-    const status = searchParams.get('status') || '';
-    const city = searchParams.get('city') || '';
-    const sortBy = searchParams.get('sortBy') || 'created_at';
-    const sortOrder = searchParams.get('sortOrder') || 'desc';
+		const { searchParams } = new URL(request.url);
+		const page = parseInt(searchParams.get('page') || '1');
+		const limit = parseInt(searchParams.get('limit') || '20');
+		const search = searchParams.get('search') || '';
+		const status = searchParams.get('status') || '';
+		const city = searchParams.get('city') || '';
+		const sortBy = searchParams.get('sortBy') || 'created_at';
+		const sortOrder = searchParams.get('sortOrder') || 'desc';
 
-    const offset = (page - 1) * limit;
+		const offset = (page - 1) * limit;
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    // Build WHERE clause for filtering
-    let whereClause = 'WHERE 1=1';
-    const params = [];
+		// Build WHERE clause for filtering
+		let whereClause = 'WHERE 1=1';
+		const params = [];
 
-    if (search) {
-      // Include lead_id and project_description in search; use case-insensitive matching
-      const s = String(search).toLowerCase();
-      whereClause +=
-        ' AND (LOWER(lead_id) LIKE ? OR LOWER(company_name) LIKE ? OR LOWER(contact_name) LIKE ? OR LOWER(contact_email) LIKE ? OR LOWER(project_description) LIKE ?)';
-      params.push(`%${s}%`, `%${s}%`, `%${s}%`, `%${s}%`, `%${s}%`);
-    }
+		if (search) {
+			// Include lead_id and project_description in search; use case-insensitive matching
+			const s = String(search).toLowerCase();
+			whereClause +=
+				' AND (LOWER(lead_id) LIKE ? OR LOWER(company_name) LIKE ? OR LOWER(contact_name) LIKE ? OR LOWER(contact_email) LIKE ? OR LOWER(project_description) LIKE ?)';
+			params.push(`%${s}%`, `%${s}%`, `%${s}%`, `%${s}%`, `%${s}%`);
+		}
 
-    if (status) {
-      whereClause += ' AND enquiry_status = ?';
-      params.push(status);
-    }
+		if (status) {
+			whereClause += ' AND enquiry_status = ?';
+			params.push(status);
+		}
 
-    if (city) {
-      whereClause += ' AND city LIKE ?';
-      params.push(`%${city}%`);
-    }
+		if (city) {
+			whereClause += ' AND city LIKE ?';
+			params.push(`%${city}%`);
+		}
 
-    // Get total count for pagination
-    const [countRows] = await db.execute(
-      `
+		// Get total count for pagination
+		const [countRows] = await db.execute(
+			`
       SELECT COUNT(*) as total FROM leads ${whereClause}
     `,
-      params
-    );
+			params
+		);
 
-    const total = countRows[0].total;
+		const total = countRows[0].total;
 
-    // Validate sort parameters using cached schema
-    let allowedSortFields = [
-      'created_at',
-      'enquiry_date',
-      'company_name',
-      'contact_name',
-      'enquiry_status',
-      'lead_id',
-    ];
-    try {
-      const existingCols = await getTableColumns(db, 'leads');
-      allowedSortFields = allowedSortFields.filter((c) => existingCols.has(c));
-      if (allowedSortFields.length === 0) allowedSortFields = ['created_at'];
-    } catch {}
-    const validSortBy = allowedSortFields.includes(sortBy)
-      ? sortBy
-      : allowedSortFields[0];
-    const validSortOrder = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+		// Validate sort parameters using cached schema
+		let allowedSortFields = [
+			'created_at',
+			'enquiry_date',
+			'company_name',
+			'contact_name',
+			'enquiry_status',
+			'lead_id',
+		];
+		try {
+			const existingCols = await getTableColumns(db, 'leads');
+			allowedSortFields = allowedSortFields.filter((c) => existingCols.has(c));
+			if (allowedSortFields.length === 0) allowedSortFields = ['created_at'];
+		} catch {}
+		const validSortBy = allowedSortFields.includes(sortBy)
+			? sortBy
+			: allowedSortFields[0];
+		const validSortOrder = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
-    // Get paginated results
-    // Special handling for lead_id sorting to extract numeric value
-    let orderByClause = `ORDER BY ${validSortBy} ${validSortOrder}`;
-    if (validSortBy === 'lead_id') {
-      // Extract numeric portion from lead_id for proper sorting (e.g., L001 -> 1, L010 -> 10)
-      orderByClause = `ORDER BY CAST(REGEXP_REPLACE(lead_id, '[^0-9]', '') AS UNSIGNED) ${validSortOrder}, lead_id ${validSortOrder}`;
-    }
+		// Get paginated results
+		// Special handling for lead_id sorting to extract numeric value
+		let orderByClause = `ORDER BY ${validSortBy} ${validSortOrder}`;
+		if (validSortBy === 'lead_id') {
+			// Extract numeric portion from lead_id for proper sorting (e.g., L001 -> 1, L010 -> 10)
+			orderByClause = `ORDER BY CAST(REGEXP_REPLACE(lead_id, '[^0-9]', '') AS UNSIGNED) ${validSortOrder}, lead_id ${validSortOrder}`;
+		}
 
-    const [rows] = await db.execute(
-      `
+		const [rows] = await db.execute(
+			`
       SELECT * FROM leads 
       ${whereClause}
       ${orderByClause}
       LIMIT ? OFFSET ?
     `,
-      [...params, limit, offset]
-    );
+			[...params, limit, offset]
+		);
 
-    // Get stats
-    const [statsRows] = await db.execute(`
+		// Get stats
+		const [statsRows] = await db.execute(`
       SELECT 
         COUNT(*) as total_leads,
         SUM(CASE WHEN enquiry_status IN ('Under Discussion', 'Proposal Sent', 'Follow Up') THEN 1 ELSE 0 END) as active_leads,
@@ -115,280 +115,280 @@ export async function GET(request) {
       FROM leads
     `);
 
-    return Response.json({
-      success: true,
-      data: {
-        leads: rows,
-        stats: statsRows[0],
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      },
-    });
-  } catch (error) {
-    console.error('Database error:', error);
-    return Response.json(
-      {
-        success: false,
-        error: 'Failed to fetch leads',
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db)
-      try {
-        db.release();
-      } catch (_) {}
-  }
+		return Response.json({
+			success: true,
+			data: {
+				leads: rows,
+				stats: statsRows[0],
+				pagination: {
+					page,
+					limit,
+					total,
+					totalPages: Math.ceil(total / limit),
+				},
+			},
+		});
+	} catch (error) {
+		console.error('Database error:', error);
+		return Response.json(
+			{
+				success: false,
+				error: 'Failed to fetch leads',
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db)
+			try {
+				db.release();
+			} catch (_) {}
+	}
 }
 
 // POST new lead
 export async function POST(request) {
-  // RBAC: create leads
-  const auth = await ensurePermission(
-    request,
-    RESOURCES.LEADS,
-    PERMISSIONS.CREATE
-  );
-  if (auth instanceof Response) return auth;
+	// RBAC: create leads
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.LEADS,
+		PERMISSIONS.CREATE
+	);
+	if (auth instanceof Response) return auth;
 
-  // Helper: basic email validation
-  const isValidEmail = (email) => {
-    if (!email) return false;
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
-  };
+	// Helper: basic email validation
+	const isValidEmail = (email) => {
+		if (!email) return false;
+		return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
+	};
 
-  // Helper: format date (accepts YYYY-MM-DD, DD/MM/YYYY, DD.MM.YYYY, MM/DD/YYYY)
-  const formatDateForMySQL = (dateString) => {
-    if (!dateString) return null;
-    const s = String(dateString).trim();
-    if (!s) return null;
-    // YYYY-MM-DD
-    const ymd = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
-    const dmy = /^(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})$/; // DD/MM/YYYY or DD.MM.YYYY
-    const mdy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/; // MM/DD/YYYY
-    if (ymd.test(s)) return s;
-    let m;
-    if ((m = s.match(dmy))) {
-      const day = m[1].padStart(2, '0');
-      const month = m[2].padStart(2, '0');
-      const year = m[3];
-      return `${year}-${month}-${day}`;
-    }
-    if ((m = s.match(mdy))) {
-      const month = m[1].padStart(2, '0');
-      const day = m[2].padStart(2, '0');
-      const year = m[3];
-      return `${year}-${month}-${day}`;
-    }
-    return null;
-  };
+	// Helper: format date (accepts YYYY-MM-DD, DD/MM/YYYY, DD.MM.YYYY, MM/DD/YYYY)
+	const formatDateForMySQL = (dateString) => {
+		if (!dateString) return null;
+		const s = String(dateString).trim();
+		if (!s) return null;
+		// YYYY-MM-DD
+		const ymd = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+		const dmy = /^(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})$/; // DD/MM/YYYY or DD.MM.YYYY
+		const mdy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/; // MM/DD/YYYY
+		if (ymd.test(s)) return s;
+		let m;
+		if ((m = s.match(dmy))) {
+			const day = m[1].padStart(2, '0');
+			const month = m[2].padStart(2, '0');
+			const year = m[3];
+			return `${year}-${month}-${day}`;
+		}
+		if ((m = s.match(mdy))) {
+			const month = m[1].padStart(2, '0');
+			const day = m[2].padStart(2, '0');
+			const year = m[3];
+			return `${year}-${month}-${day}`;
+		}
+		return null;
+	};
 
-  // Normalize helper: return null for undefined/empty, and coerce types when requested
-  const normalize = (v, type) => {
-    if (typeof v === 'undefined' || v === null) return null;
-    if (typeof v === 'string' && v.trim() === '') return null;
-    if (type === 'int') {
-      const n = parseInt(v, 10);
-      return Number.isFinite(n) ? n : null;
-    }
-    if (type === 'email') {
-      const s = String(v).trim();
-      return isValidEmail(s) ? s : null;
-    }
-    if (type === 'date') {
-      return formatDateForMySQL(v);
-    }
-    if (type === 'cc') {
-      // Accept array or comma-separated string; return comma-separated valid emails or null
-      if (Array.isArray(v)) {
-        const filtered = v
-          .map((e) => String(e || '').trim())
-          .filter((e) => isValidEmail(e));
-        return filtered.length ? filtered.join(',') : null;
-      }
-      const str = String(v || '').trim();
-      if (!str) return null;
-      const parts = str
-        .split(',')
-        .map((p) => p.trim())
-        .filter((p) => isValidEmail(p));
-      return parts.length ? parts.join(',') : null;
-    }
-    if (type === 'priority') {
-      const p = String(v).trim().toLowerCase();
-      if (
-        p === 'h' ||
-        p.includes('high') ||
-        p.includes('urgent') ||
-        p === '1' ||
-        p === 'critical'
-      )
-        return 'High';
-      if (p === 'l' || p.includes('low') || p === '3' || p === 'minimal')
-        return 'Low';
-      return 'Medium';
-    }
-    // default: text
-    return typeof v === 'string' ? v.trim() : v;
-  };
+	// Normalize helper: return null for undefined/empty, and coerce types when requested
+	const normalize = (v, type) => {
+		if (typeof v === 'undefined' || v === null) return null;
+		if (typeof v === 'string' && v.trim() === '') return null;
+		if (type === 'int') {
+			const n = parseInt(v, 10);
+			return Number.isFinite(n) ? n : null;
+		}
+		if (type === 'email') {
+			const s = String(v).trim();
+			return isValidEmail(s) ? s : null;
+		}
+		if (type === 'date') {
+			return formatDateForMySQL(v);
+		}
+		if (type === 'cc') {
+			// Accept array or comma-separated string; return comma-separated valid emails or null
+			if (Array.isArray(v)) {
+				const filtered = v
+					.map((e) => String(e || '').trim())
+					.filter((e) => isValidEmail(e));
+				return filtered.length ? filtered.join(',') : null;
+			}
+			const str = String(v || '').trim();
+			if (!str) return null;
+			const parts = str
+				.split(',')
+				.map((p) => p.trim())
+				.filter((p) => isValidEmail(p));
+			return parts.length ? parts.join(',') : null;
+		}
+		if (type === 'priority') {
+			const p = String(v).trim().toLowerCase();
+			if (
+				p === 'h' ||
+				p.includes('high') ||
+				p.includes('urgent') ||
+				p === '1' ||
+				p === 'critical'
+			)
+				return 'High';
+			if (p === 'l' || p.includes('low') || p === '3' || p === 'minimal')
+				return 'Low';
+			return 'Medium';
+		}
+		// default: text
+		return typeof v === 'string' ? v.trim() : v;
+	};
 
-  let db;
-  try {
-    const data = await request.json();
+	let db;
+	try {
+		const data = await request.json();
 
-    const {
-      lead_id,
-      company_id,
-      company_name,
-      contact_name,
-      contact_email,
-      inquiry_email,
-      cc_emails,
-      phone,
-      designation,
-      city,
-      project_description,
-      enquiry_type,
-      enquiry_status,
-      enquiry_date,
-      lead_source,
-      priority,
-      notes,
-    } = data;
+		const {
+			lead_id,
+			company_id,
+			company_name,
+			contact_name,
+			contact_email,
+			inquiry_email,
+			cc_emails,
+			phone,
+			designation,
+			city,
+			project_description,
+			enquiry_type,
+			enquiry_status,
+			enquiry_date,
+			lead_source,
+			priority,
+			notes,
+		} = data;
 
-    if (!company_name) {
-      return Response.json(
-        {
-          success: false,
-          error: 'Company name is required',
-        },
-        { status: 400 }
-      );
-    }
+		if (!company_name) {
+			return Response.json(
+				{
+					success: false,
+					error: 'Company name is required',
+				},
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
+		db = await dbConnect();
 
-    // Convert empty company_id to null
-    const companyIdValue = company_id && company_id !== '' ? company_id : null;
+		// Convert empty company_id to null
+		const companyIdValue = company_id && company_id !== '' ? company_id : null;
 
-    // Auto-generate lead_id in format: serial-month-year (e.g., 001-10-2024)
-    let generatedLeadId = lead_id;
-    if (!generatedLeadId || !generatedLeadId.trim()) {
-      const now = new Date();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const year = now.getFullYear();
-      const currentPattern = `-${month}-${year}`;
+		// Auto-generate lead_id in format: serial-month-year (e.g., 001-10-2024)
+		let generatedLeadId = lead_id;
+		if (!generatedLeadId || !generatedLeadId.trim()) {
+			const now = new Date();
+			const month = String(now.getMonth() + 1).padStart(2, '0');
+			const year = now.getFullYear();
+			const currentPattern = `-${month}-${year}`;
 
-      // Find highest lead_id serial number for current month/year
-      const [leads] = await db.execute(
-        'SELECT lead_id FROM leads WHERE lead_id LIKE ? ORDER BY lead_id DESC',
-        [`%${currentPattern}`]
-      );
+			// Find highest lead_id serial number for current month/year
+			const [leads] = await db.execute(
+				'SELECT lead_id FROM leads WHERE lead_id LIKE ? ORDER BY lead_id DESC',
+				[`%${currentPattern}`]
+			);
 
-      let maxSerial = 0;
-      leads.forEach((l) => {
-        if (l.lead_id && l.lead_id.endsWith(currentPattern)) {
-          const serialPart = l.lead_id.split('-')[0];
-          const serial = parseInt(serialPart, 10);
-          if (!isNaN(serial) && serial > maxSerial) {
-            maxSerial = serial;
-          }
-        }
-      });
+			let maxSerial = 0;
+			leads.forEach((l) => {
+				if (l.lead_id && l.lead_id.endsWith(currentPattern)) {
+					const serialPart = l.lead_id.split('-')[0];
+					const serial = parseInt(serialPart, 10);
+					if (!isNaN(serial) && serial > maxSerial) {
+						maxSerial = serial;
+					}
+				}
+			});
 
-      const nextSerial = String(maxSerial + 1).padStart(3, '0');
-      generatedLeadId = `${nextSerial}-${month}-${year}`;
-    }
+			const nextSerial = String(maxSerial + 1).padStart(3, '0');
+			generatedLeadId = `${nextSerial}-${month}-${year}`;
+		}
 
-    // Prepare normalized values for insert using the typed normalize helper
-    const normalizedLeadId = normalize(generatedLeadId);
-    const normalizedCompanyId = normalize(companyIdValue, 'int');
-    const normalizedCompanyName = normalize(company_name);
-    const normalizedContactName = normalize(contact_name);
-    const normalizedContactEmail = normalize(contact_email, 'email');
-    const normalizedInquiryEmail = normalize(inquiry_email, 'email');
-    const normalizedCc = normalize(cc_emails, 'cc');
-    const normalizedPhone = normalize(phone);
-    const normalizedDesignation = normalize(designation);
-    const normalizedCity = normalize(city);
-    const normalizedProject = normalize(project_description);
-    const normalizedEnquiryType = normalize(enquiry_type);
-    const normalizedEnquiryStatus = normalize(enquiry_status);
-    const normalizedEnquiryDate = normalize(enquiry_date, 'date');
-    const normalizedLeadSource = normalize(lead_source);
-    const normalizedPriority = normalize(priority, 'priority');
-    const normalizedNotes = normalize(notes);
+		// Prepare normalized values for insert using the typed normalize helper
+		const normalizedLeadId = normalize(generatedLeadId);
+		const normalizedCompanyId = normalize(companyIdValue, 'int');
+		const normalizedCompanyName = normalize(company_name);
+		const normalizedContactName = normalize(contact_name);
+		const normalizedContactEmail = normalize(contact_email, 'email');
+		const normalizedInquiryEmail = normalize(inquiry_email, 'email');
+		const normalizedCc = normalize(cc_emails, 'cc');
+		const normalizedPhone = normalize(phone);
+		const normalizedDesignation = normalize(designation);
+		const normalizedCity = normalize(city);
+		const normalizedProject = normalize(project_description);
+		const normalizedEnquiryType = normalize(enquiry_type);
+		const normalizedEnquiryStatus = normalize(enquiry_status);
+		const normalizedEnquiryDate = normalize(enquiry_date, 'date');
+		const normalizedLeadSource = normalize(lead_source);
+		const normalizedPriority = normalize(priority, 'priority');
+		const normalizedNotes = normalize(notes);
 
-    const [result] = await db.execute(
-      `
+		const [result] = await db.execute(
+			`
       INSERT INTO leads (
         lead_id, company_id, company_name, contact_name, contact_email, inquiry_email, cc_emails,
         phone, designation, city, project_description, enquiry_type, enquiry_status, enquiry_date,
         lead_source, priority, notes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-      [
-        normalizedLeadId,
-        normalizedCompanyId,
-        normalizedCompanyName,
-        normalizedContactName,
-        normalizedContactEmail,
-        normalizedInquiryEmail,
-        normalizedCc,
-        normalizedPhone,
-        normalizedDesignation,
-        normalizedCity,
-        normalizedProject,
-        normalizedEnquiryType,
-        normalizedEnquiryStatus,
-        normalizedEnquiryDate,
-        normalizedLeadSource,
-        normalizedPriority,
-        normalizedNotes,
-      ]
-    );
+			[
+				normalizedLeadId,
+				normalizedCompanyId,
+				normalizedCompanyName,
+				normalizedContactName,
+				normalizedContactEmail,
+				normalizedInquiryEmail,
+				normalizedCc,
+				normalizedPhone,
+				normalizedDesignation,
+				normalizedCity,
+				normalizedProject,
+				normalizedEnquiryType,
+				normalizedEnquiryStatus,
+				normalizedEnquiryDate,
+				normalizedLeadSource,
+				normalizedPriority,
+				normalizedNotes,
+			]
+		);
 
-    // Log the activity
-    logActivity(
-      {
-        actionType: 'create',
-        resourceType: 'lead',
-        resourceId: result.insertId.toString(),
-        description: `Created lead: ${normalizedCompanyName}`,
-        details: {
-          lead_id: normalizedLeadId,
-          company_name: normalizedCompanyName,
-          status: normalizedEnquiryStatus,
-        },
-      },
-      request
-    ).catch((err) => console.error('Failed to log activity:', err));
+		// Log the activity
+		logActivity(
+			{
+				actionType: 'create',
+				resourceType: 'lead',
+				resourceId: result.insertId.toString(),
+				description: `Created lead: ${normalizedCompanyName}`,
+				details: {
+					lead_id: normalizedLeadId,
+					company_name: normalizedCompanyName,
+					status: normalizedEnquiryStatus,
+				},
+			},
+			request
+		).catch((err) => console.error('Failed to log activity:', err));
 
-    return Response.json({
-      success: true,
-      data: {
-        id: result.insertId,
-      },
-      message: 'Lead created successfully',
-    });
-  } catch (error) {
-    console.error('Database error:', error);
-    return Response.json(
-      {
-        success: false,
-        error: 'Failed to create lead',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db)
-      try {
-        db.release();
-      } catch (_) {}
-  }
+		return Response.json({
+			success: true,
+			data: {
+				id: result.insertId,
+			},
+			message: 'Lead created successfully',
+		});
+	} catch (error) {
+		console.error('Database error:', error);
+		return Response.json(
+			{
+				success: false,
+				error: 'Failed to create lead',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db)
+			try {
+				db.release();
+			} catch (_) {}
+	}
 }

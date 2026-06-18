@@ -13,66 +13,66 @@ import { dbConnect } from '@/utils/database';
  * @param {string} params.status - success, failed, or pending
  */
 export async function logActivity({
-  userId,
-  actionType,
-  resourceType = null,
-  resourceId = null,
-  description = '',
-  details = null,
-  request = null,
-  status = 'success',
+	userId,
+	actionType,
+	resourceType = null,
+	resourceId = null,
+	description = '',
+	details = null,
+	request = null,
+	status = 'success',
 }) {
-  let db;
-  try {
-    db = await dbConnect();
+	let db;
+	try {
+		db = await dbConnect();
 
-    const normalizedUserId = Number.parseInt(userId, 10);
-    // user_activity_logs.user_id has a FK to users.id, so invalid IDs (0/null/NaN)
-    // must be ignored to avoid breaking request flows.
-    if (!Number.isInteger(normalizedUserId) || normalizedUserId <= 0) {
-      return;
-    }
+		const normalizedUserId = Number.parseInt(userId, 10);
+		// user_activity_logs.user_id has a FK to users.id, so invalid IDs (0/null/NaN)
+		// must be ignored to avoid breaking request flows.
+		if (!Number.isInteger(normalizedUserId) || normalizedUserId <= 0) {
+			return;
+		}
 
-    // Extract IP and user agent from request
-    let ipAddress = null;
-    let userAgent = null;
+		// Extract IP and user agent from request
+		let ipAddress = null;
+		let userAgent = null;
 
-    if (request) {
-      // Get IP address from various headers
-      ipAddress =
-        request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-        request.headers.get('x-real-ip') ||
-        request.headers.get('cf-connecting-ip') ||
-        null;
+		if (request) {
+			// Get IP address from various headers
+			ipAddress =
+				request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+				request.headers.get('x-real-ip') ||
+				request.headers.get('cf-connecting-ip') ||
+				null;
 
-      userAgent = request.headers.get('user-agent') || null;
-    }
+			userAgent = request.headers.get('user-agent') || null;
+		}
 
-    await db.execute(
-      `INSERT INTO user_activity_logs 
+		await db.execute(
+			`INSERT INTO user_activity_logs 
        (user_id, action_type, resource_type, resource_id, description, details, ip_address, user_agent, status) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        normalizedUserId,
-        actionType,
-        resourceType,
-        resourceId,
-        description,
-        details ? JSON.stringify(details) : null,
-        ipAddress,
-        userAgent,
-        status,
-      ]
-    );
+			[
+				normalizedUserId,
+				actionType,
+				resourceType,
+				resourceId,
+				description,
+				details ? JSON.stringify(details) : null,
+				ipAddress,
+				userAgent,
+				status,
+			]
+		);
 
-    // Update work session and daily summary asynchronously (don't block)
-    updateWorkSession(normalizedUserId, actionType).catch(console.error);
-  } catch (error) {
-    console.error('Error logging activity:', error);
-    // Don't throw - logging failures shouldn't break the main flow
-  } finally {
-    if (db) await db.end();
-  }
+		// Update work session and daily summary asynchronously (don't block)
+		updateWorkSession(normalizedUserId, actionType).catch(console.error);
+	} catch (error) {
+		console.error('Error logging activity:', error);
+		// Don't throw - logging failures shouldn't break the main flow
+	} finally {
+		if (db) await db.end();
+	}
 }
 
 /**
@@ -81,19 +81,19 @@ export async function logActivity({
  * @param {Object} screenData - Screen time data from heartbeat
  */
 export async function updateScreenTime(userId, screenData) {
-  let db;
-  try {
-    db = await dbConnect();
+	let db;
+	try {
+		db = await dbConnect();
 
-    const { activeTimeMs = 0, idleTimeMs = 0 } = screenData;
+		const { activeTimeMs = 0, idleTimeMs = 0 } = screenData;
 
-    // Convert milliseconds to minutes
-    const activeMinutes = Math.floor(activeTimeMs / 60000);
-    const idleMinutes = Math.floor(idleTimeMs / 60000);
-    const totalMinutes = activeMinutes + idleMinutes;
+		// Convert milliseconds to minutes
+		const activeMinutes = Math.floor(activeTimeMs / 60000);
+		const idleMinutes = Math.floor(idleTimeMs / 60000);
+		const totalMinutes = activeMinutes + idleMinutes;
 
-    // Ensure screen time table exists
-    await db.execute(`
+		// Ensure screen time table exists
+		await db.execute(`
       CREATE TABLE IF NOT EXISTS user_screen_time (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
@@ -116,10 +116,10 @@ export async function updateScreenTime(userId, screenData) {
       )
     `);
 
-    // Update or insert screen time record for today
-    // Heartbeats send cumulative session values, so we REPLACE (not ADD) to avoid double-counting
-    await db.execute(
-      `INSERT INTO user_screen_time 
+		// Update or insert screen time record for today
+		// Heartbeats send cumulative session values, so we REPLACE (not ADD) to avoid double-counting
+		await db.execute(
+			`INSERT INTO user_screen_time 
        (user_id, date, total_screen_time_minutes, active_time_minutes, idle_time_minutes, updated_at)
        VALUES (?, CURDATE(), ?, ?, ?, CURRENT_TIMESTAMP)
        ON DUPLICATE KEY UPDATE
@@ -127,54 +127,54 @@ export async function updateScreenTime(userId, screenData) {
          active_time_minutes = VALUES(active_time_minutes),
          idle_time_minutes = VALUES(idle_time_minutes),
          updated_at = CURRENT_TIMESTAMP`,
-      [userId, totalMinutes, activeMinutes, idleMinutes]
-    );
-  } catch (error) {
-    console.error('Error updating screen time:', error);
-  } finally {
-    if (db) await db.end();
-  }
+			[userId, totalMinutes, activeMinutes, idleMinutes]
+		);
+	} catch (error) {
+		console.error('Error updating screen time:', error);
+	} finally {
+		if (db) await db.end();
+	}
 }
 
 /**
  * Update active work session
  */
 async function updateWorkSession(userId, actionType) {
-  let db;
-  try {
-    db = await dbConnect();
+	let db;
+	try {
+		db = await dbConnect();
 
-    // Get or create today's active session
-    const [sessions] = await db.execute(
-      `SELECT id FROM user_work_sessions 
+		// Get or create today's active session
+		const [sessions] = await db.execute(
+			`SELECT id FROM user_work_sessions 
        WHERE user_id = ? AND status = 'active' AND DATE(session_start) = CURDATE()
        ORDER BY session_start DESC LIMIT 1`,
-      [userId]
-    );
+			[userId]
+		);
 
-    if (sessions.length > 0) {
-      // Update existing session
-      await db.execute(
-        `UPDATE user_work_sessions 
+		if (sessions.length > 0) {
+			// Update existing session
+			await db.execute(
+				`UPDATE user_work_sessions 
          SET activities_count = activities_count + 1,
              pages_viewed = pages_viewed + IF(? = 'view_page', 1, 0),
              resources_modified = resources_modified + IF(? IN ('create', 'update', 'delete'), 1, 0),
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [actionType, actionType, sessions[0].id]
-      );
-    } else if (actionType === 'login') {
-      // Create new session on login
-      await db.execute(
-        `INSERT INTO user_work_sessions (user_id, session_start, activities_count) 
+				[actionType, actionType, sessions[0].id]
+			);
+		} else if (actionType === 'login') {
+			// Create new session on login
+			await db.execute(
+				`INSERT INTO user_work_sessions (user_id, session_start, activities_count) 
          VALUES (?, CURRENT_TIMESTAMP, 1)`,
-        [userId]
-      );
-    }
+				[userId]
+			);
+		}
 
-    // Update daily summary
-    await db.execute(
-      `INSERT INTO user_daily_summary 
+		// Update daily summary
+		await db.execute(
+			`INSERT INTO user_daily_summary 
        (user_id, date, login_count, activities_completed, resources_created, resources_updated, resources_deleted, pages_viewed, first_login, last_activity)
        VALUES (?, CURDATE(), IF(? = 'login', 1, 0), 1, IF(? = 'create', 1, 0), IF(? = 'update', 1, 0), IF(? = 'delete', 1, 0), IF(? = 'view_page', 1, 0), IF(? = 'login', CURRENT_TIMESTAMP, NULL), CURRENT_TIMESTAMP)
        ON DUPLICATE KEY UPDATE
@@ -186,50 +186,50 @@ async function updateWorkSession(userId, actionType) {
          pages_viewed = pages_viewed + IF(? = 'view_page', 1, 0),
          first_login = COALESCE(first_login, IF(? = 'login', CURRENT_TIMESTAMP, NULL)),
          last_activity = CURRENT_TIMESTAMP`,
-      [
-        userId,
-        actionType,
-        actionType,
-        actionType,
-        actionType,
-        actionType,
-        actionType,
-        actionType,
-        actionType,
-        actionType,
-        actionType,
-        actionType,
-        actionType,
-      ]
-    );
-  } catch (error) {
-    console.error('Error updating work session:', error);
-  } finally {
-    if (db) await db.end();
-  }
+			[
+				userId,
+				actionType,
+				actionType,
+				actionType,
+				actionType,
+				actionType,
+				actionType,
+				actionType,
+				actionType,
+				actionType,
+				actionType,
+				actionType,
+				actionType,
+			]
+		);
+	} catch (error) {
+		console.error('Error updating work session:', error);
+	} finally {
+		if (db) await db.end();
+	}
 }
 
 /**
  * End user session (call on logout)
  */
 export async function endUserSession(userId) {
-  let db;
-  try {
-    db = await dbConnect();
+	let db;
+	try {
+		db = await dbConnect();
 
-    // End active sessions
-    await db.execute(
-      `UPDATE user_work_sessions 
+		// End active sessions
+		await db.execute(
+			`UPDATE user_work_sessions 
        SET session_end = CURRENT_TIMESTAMP,
            duration_minutes = TIMESTAMPDIFF(MINUTE, session_start, CURRENT_TIMESTAMP),
            status = 'ended'
        WHERE user_id = ? AND status = 'active'`,
-      [userId]
-    );
+			[userId]
+		);
 
-    // Update daily summary with total work minutes
-    await db.execute(
-      `UPDATE user_daily_summary uds
+		// Update daily summary with total work minutes
+		await db.execute(
+			`UPDATE user_daily_summary uds
        JOIN (
          SELECT user_id, DATE(session_start) as work_date, SUM(duration_minutes) as total_minutes
          FROM user_work_sessions
@@ -237,32 +237,32 @@ export async function endUserSession(userId) {
          GROUP BY user_id, DATE(session_start)
        ) ws ON uds.user_id = ws.user_id AND uds.date = ws.work_date
        SET uds.total_work_minutes = ws.total_minutes`,
-      [userId]
-    );
-  } catch (error) {
-    console.error('Error ending user session:', error);
-  } finally {
-    if (db) await db.end();
-  }
+			[userId]
+		);
+	} catch (error) {
+		console.error('Error ending user session:', error);
+	} finally {
+		if (db) await db.end();
+	}
 }
 
 /**
  * Get user activity logs with filters
  */
 export async function getUserActivityLogs({
-  userId = null,
-  actionType = null,
-  resourceType = null,
-  startDate = null,
-  endDate = null,
-  limit = 100,
-  offset = 0,
+	userId = null,
+	actionType = null,
+	resourceType = null,
+	startDate = null,
+	endDate = null,
+	limit = 100,
+	offset = 0,
 }) {
-  let db;
-  try {
-    db = await dbConnect();
+	let db;
+	try {
+		db = await dbConnect();
 
-    let query = `
+		let query = `
       SELECT 
         ual.*,
         u.username,
@@ -271,45 +271,45 @@ export async function getUserActivityLogs({
       LEFT JOIN users u ON ual.user_id = u.id
       WHERE 1=1
     `;
-    const params = [];
+		const params = [];
 
-    if (userId) {
-      query += ` AND ual.user_id = ?`;
-      params.push(userId);
-    }
+		if (userId) {
+			query += ` AND ual.user_id = ?`;
+			params.push(userId);
+		}
 
-    if (actionType) {
-      query += ` AND ual.action_type = ?`;
-      params.push(actionType);
-    }
+		if (actionType) {
+			query += ` AND ual.action_type = ?`;
+			params.push(actionType);
+		}
 
-    if (resourceType) {
-      query += ` AND ual.resource_type = ?`;
-      params.push(resourceType);
-    }
+		if (resourceType) {
+			query += ` AND ual.resource_type = ?`;
+			params.push(resourceType);
+		}
 
-    if (startDate) {
-      query += ` AND ual.created_at >= ?`;
-      params.push(startDate);
-    }
+		if (startDate) {
+			query += ` AND ual.created_at >= ?`;
+			params.push(startDate);
+		}
 
-    if (endDate) {
-      query += ` AND ual.created_at <= ?`;
-      params.push(endDate);
-    }
+		if (endDate) {
+			query += ` AND ual.created_at <= ?`;
+			params.push(endDate);
+		}
 
-    query += ` ORDER BY ual.created_at DESC LIMIT ? OFFSET ?`;
-    params.push(limit, offset);
+		query += ` ORDER BY ual.created_at DESC LIMIT ? OFFSET ?`;
+		params.push(limit, offset);
 
-    const [logs] = await db.execute(query, params);
+		const [logs] = await db.execute(query, params);
 
-    return logs;
-  } catch (error) {
-    console.error('Error fetching activity logs:', error);
-    return [];
-  } finally {
-    if (db) await db.end();
-  }
+		return logs;
+	} catch (error) {
+		console.error('Error fetching activity logs:', error);
+		return [];
+	} finally {
+		if (db) await db.end();
+	}
 }
 
 /**
@@ -318,13 +318,13 @@ export async function getUserActivityLogs({
  * @returns {Object} - { status, lastActivity, currentPage, sessionDuration }
  */
 export async function getUserCurrentStatus(userId) {
-  let db;
-  try {
-    db = await dbConnect();
+	let db;
+	try {
+		db = await dbConnect();
 
-    // Get user's last activity and current page
-    const [result] = await db.execute(
-      `SELECT 
+		// Get user's last activity and current page
+		const [result] = await db.execute(
+			`SELECT 
         u.id,
         u.username,
         u.full_name,
@@ -337,47 +337,47 @@ export async function getUserCurrentStatus(userId) {
          ORDER BY session_start DESC LIMIT 1) as session_start
       FROM users u
       WHERE u.id = ?`,
-      [userId]
-    );
+			[userId]
+		);
 
-    if (!result || result.length === 0) {
-      return {
-        status: 'offline',
-        lastActivity: null,
-        currentPage: null,
-        sessionDuration: null,
-      };
-    }
+		if (!result || result.length === 0) {
+			return {
+				status: 'offline',
+				lastActivity: null,
+				currentPage: null,
+				sessionDuration: null,
+			};
+		}
 
-    const user = result[0];
-    const status = getStatusFromActivity(user.last_activity);
+		const user = result[0];
+		const status = getStatusFromActivity(user.last_activity);
 
-    let sessionDuration = null;
-    if (user.session_start && status === 'online') {
-      sessionDuration = Math.floor(
-        (Date.now() - new Date(user.session_start).getTime()) / 1000
-      );
-    }
+		let sessionDuration = null;
+		if (user.session_start && status === 'online') {
+			sessionDuration = Math.floor(
+				(Date.now() - new Date(user.session_start).getTime()) / 1000
+			);
+		}
 
-    return {
-      status,
-      lastActivity: user.last_activity,
-      currentPage: user.current_page,
-      sessionDuration,
-      username: user.username,
-      fullName: user.full_name,
-    };
-  } catch (error) {
-    console.error('Error getting user status:', error);
-    return {
-      status: 'offline',
-      lastActivity: null,
-      currentPage: null,
-      sessionDuration: null,
-    };
-  } finally {
-    if (db) await db.end();
-  }
+		return {
+			status,
+			lastActivity: user.last_activity,
+			currentPage: user.current_page,
+			sessionDuration,
+			username: user.username,
+			fullName: user.full_name,
+		};
+	} catch (error) {
+		console.error('Error getting user status:', error);
+		return {
+			status: 'offline',
+			lastActivity: null,
+			currentPage: null,
+			sessionDuration: null,
+		};
+	} finally {
+		if (db) await db.end();
+	}
 }
 
 /**
@@ -386,11 +386,11 @@ export async function getUserCurrentStatus(userId) {
  * @returns {Array} - Array of user status objects
  */
 export async function getAllUsersStatus(userIds = null) {
-  let db;
-  try {
-    db = await dbConnect();
+	let db;
+	try {
+		db = await dbConnect();
 
-    let query = `
+		let query = `
       SELECT 
         u.id as user_id,
         u.username,
@@ -408,55 +408,55 @@ export async function getAllUsersStatus(userIds = null) {
       LEFT JOIN roles r ON u.role_id = r.id
     `;
 
-    let params = [];
-    if (userIds && userIds.length > 0) {
-      const placeholders = userIds.map(() => '?').join(',');
-      query += ` WHERE u.id IN (${placeholders})`;
-      params = userIds;
-    }
+		let params = [];
+		if (userIds && userIds.length > 0) {
+			const placeholders = userIds.map(() => '?').join(',');
+			query += ` WHERE u.id IN (${placeholders})`;
+			params = userIds;
+		}
 
-    query += ` ORDER BY u.full_name`;
+		query += ` ORDER BY u.full_name`;
 
-    const [users] = await db.execute(query, params);
+		const [users] = await db.execute(query, params);
 
-    // Add status to each user
-    const usersWithStatus = users.map((user) => {
-      const status = getStatusFromActivity(user.last_activity);
+		// Add status to each user
+		const usersWithStatus = users.map((user) => {
+			const status = getStatusFromActivity(user.last_activity);
 
-      let sessionDuration = null;
-      if (user.session_start && status === 'online') {
-        sessionDuration = Math.floor(
-          (Date.now() - new Date(user.session_start).getTime()) / 1000
-        );
-      }
+			let sessionDuration = null;
+			if (user.session_start && status === 'online') {
+				sessionDuration = Math.floor(
+					(Date.now() - new Date(user.session_start).getTime()) / 1000
+				);
+			}
 
-      return {
-        ...user,
-        status,
-        session_duration: sessionDuration,
-      };
-    });
+			return {
+				...user,
+				status,
+				session_duration: sessionDuration,
+			};
+		});
 
-    return usersWithStatus;
-  } catch (error) {
-    console.error('Error getting all users status:', error);
-    return [];
-  } finally {
-    if (db) await db.end();
-  }
+		return usersWithStatus;
+	} catch (error) {
+		console.error('Error getting all users status:', error);
+		return [];
+	} finally {
+		if (db) await db.end();
+	}
 }
 
 /**
  * Helper: Determine status from last activity timestamp
  */
 function getStatusFromActivity(lastActivity) {
-  if (!lastActivity) return 'offline';
+	if (!lastActivity) return 'offline';
 
-  const seconds = Math.floor(
-    (Date.now() - new Date(lastActivity).getTime()) / 1000
-  );
+	const seconds = Math.floor(
+		(Date.now() - new Date(lastActivity).getTime()) / 1000
+	);
 
-  if (seconds < 120) return 'online'; // Active (< 2 min)
-  if (seconds < 600) return 'idle'; // Idle (< 10 min)
-  return 'offline'; // Away (> 10 min)
+	if (seconds < 120) return 'online'; // Active (< 2 min)
+	if (seconds < 600) return 'idle'; // Idle (< 10 min)
+	return 'offline'; // Away (> 10 min)
 }

@@ -8,16 +8,16 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 
 // Dynamic import to prevent any flash
 const UserDashboardContent = dynamic(
-  () => import('@/app/dashboard/user-dashboard'),
-  {
-    ssr: false,
-    loading: () => (
-      <LoadingSpinner
-        message="Loading Dashboard"
-        subMessage="Preparing your workspace..."
-      />
-    ),
-  }
+	() => import('@/app/dashboard/user-dashboard'),
+	{
+		ssr: false,
+		loading: () => (
+			<LoadingSpinner
+				message="Loading Dashboard"
+				subMessage="Preparing your workspace..."
+			/>
+		),
+	}
 );
 
 /**
@@ -27,52 +27,52 @@ const UserDashboardContent = dynamic(
  * AuthGate handles redirect to signin if not authenticated.
  */
 export default function UserDashboardPage() {
-  const router = useRouter();
-  const { user, loading, authenticated } = useSession();
-  const [authorized, setAuthorized] = useState(false);
+	const router = useRouter();
+	const { user, loading, authenticated } = useSession();
+	const [authorized, setAuthorized] = useState(false);
 
-  useEffect(() => {
-    // If session context already has user data (from cache), use it immediately
-    if (user && authenticated) {
-      const isSuperAdmin =
-        user.is_super_admin === true || user.is_super_admin === 1;
-      if (isSuperAdmin) {
-        // Super admin - redirect to admin dashboard
-        router.replace('/admin/dashboard');
-        return;
-      }
-      // Regular user - authorize immediately
-      setAuthorized(true);
-      return;
-    }
+	useEffect(() => {
+		// If session context already has user data (from cache), use it immediately
+		if (user && authenticated) {
+			const isSuperAdmin =
+				user.is_super_admin === true || user.is_super_admin === 1;
+			if (isSuperAdmin) {
+				// Super admin - redirect to admin dashboard
+				router.replace('/admin/dashboard');
+				return;
+			}
+			// Regular user - authorize immediately
+			setAuthorized(true);
+			return;
+		}
 
-    // Wait for session to load
-    if (loading) return;
+		// Wait for session to load
+		if (loading) return;
 
-    // Session loaded but not authenticated - let middleware handle redirect
-    if (!authenticated || !user) {
-      return;
-    }
+		// Session loaded but not authenticated - let middleware handle redirect
+		if (!authenticated || !user) {
+			return;
+		}
 
-    // Super admin should go to admin dashboard
-    const isSuperAdmin =
-      user.is_super_admin === true || user.is_super_admin === 1;
-    if (isSuperAdmin) {
-      router.replace('/admin/dashboard');
-      return;
-    }
+		// Super admin should go to admin dashboard
+		const isSuperAdmin =
+			user.is_super_admin === true || user.is_super_admin === 1;
+		if (isSuperAdmin) {
+			router.replace('/admin/dashboard');
+			return;
+		}
 
-    // Regular user - authorized
-    setAuthorized(true);
-  }, [loading, authenticated, user, router]);
+		// Regular user - authorized
+		setAuthorized(true);
+	}, [loading, authenticated, user, router]);
 
-  // Show loader only while session is loading
-  if (loading || !user || !authorized) {
-    return (
-      <LoadingSpinner message="Loading Dashboard" subMessage="Please wait..." />
-    );
-  }
+	// Show loader only while session is loading
+	if (loading || !user || !authorized) {
+		return (
+			<LoadingSpinner message="Loading Dashboard" subMessage="Please wait..." />
+		);
+	}
 
-  // Render user dashboard
-  return <UserDashboardContent verifiedUser={user} />;
+	// Render user dashboard
+	return <UserDashboardContent verifiedUser={user} />;
 }

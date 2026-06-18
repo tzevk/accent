@@ -1,116 +1,116 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Receipt Layout</title>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Receipt Layout</title>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
 
-      body {
-        font-family: Arial, Helvetica, sans-serif;
-      }
+			body {
+				font-family: Arial, Helvetica, sans-serif;
+			}
 
-      .receipt {
-        width: 100%;
-        padding: 40px;
-      }
+			.receipt {
+				width: 100%;
+				padding: 40px;
+			}
 
-      .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
+			.header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+			}
 
-      .title {
-        text-align: center;
-        text-decoration: underline;
-        font-size: 20px;
-        font-weight: bold;
-        margin: 30px 0;
-      }
+			.title {
+				text-align: center;
+				text-decoration: underline;
+				font-size: 20px;
+				font-weight: bold;
+				margin: 30px 0;
+			}
 
-      .text {
-        text-align: justify;
-      }
+			.text {
+				text-align: justify;
+			}
 
-      .text span {
-        font-weight: bold;
-      }
+			.text span {
+				font-weight: bold;
+			}
 
-      .amount {
-        display: flex;
-        align-items: center;
-        justify-content: start;
-        font-size: 30px;
-        margin: 75px 0;
-      }
+			.amount {
+				display: flex;
+				align-items: center;
+				justify-content: start;
+				font-size: 30px;
+				margin: 75px 0;
+			}
 
-      .amount > span {
-        border: 3px solid black;
-        padding: 5px;
-      }
+			.amount > span {
+				border: 3px solid black;
+				padding: 5px;
+			}
 
-      .for {
-        margin-bottom: 75px;
-        font-weight: bold;
-      }
+			.for {
+				margin-bottom: 75px;
+				font-weight: bold;
+			}
 
-      @media print {
-        body {
-          margin: 0;
-        }
+			@media print {
+				body {
+					margin: 0;
+				}
 
-        .receipt {
-          padding: 60mm 20mm 20mm 20mm; /* use mm for print accuracy */
-          width: 100%;
-        }
+				.receipt {
+					padding: 60mm 20mm 20mm 20mm; /* use mm for print accuracy */
+					width: 100%;
+				}
 
-        /* Prevent content from breaking across pages */
-        .header,
-        .title,
-        .text,
-        .amount,
-        .for,
-        .footer {
-          page-break-inside: avoid;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="receipt">
-      <div class="header">
-        <div class="ref-no">Ref. No.: ATSPL/R/04/2025-26/001</div>
-        <div class="date">03rd April,2025</div>
-      </div>
+				/* Prevent content from breaking across pages */
+				.header,
+				.title,
+				.text,
+				.amount,
+				.for,
+				.footer {
+					page-break-inside: avoid;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="receipt">
+			<div class="header">
+				<div class="ref-no">Ref. No.: ATSPL/R/04/2025-26/001</div>
+				<div class="date">03rd April,2025</div>
+			</div>
 
-      <!-- Underline & Bolden the title -->
-      <div class="title">RECEIPT</div>
-      <div class="text">
-        Received with thanks from <span>[Company Name]</span> the sum of rupees
-        <span>[Amount]</span> Only. Against Invoice no
-        <span>[Invoice Number]</span> and
-        <span>[Other Inovice Number]</span> Dated:
-        <span>[Invoice 1 Date]</span> and
-        <span>[Account Number or Method]</span> Dated:
-        <span>[Invoice 2 Date]</span>.
-      </div>
+			<!-- Underline & Bolden the title -->
+			<div class="title">RECEIPT</div>
+			<div class="text">
+				Received with thanks from <span>[Company Name]</span> the sum of rupees
+				<span>[Amount]</span> Only. Against Invoice no
+				<span>[Invoice Number]</span> and
+				<span>[Other Inovice Number]</span> Dated:
+				<span>[Invoice 1 Date]</span> and
+				<span>[Account Number or Method]</span> Dated:
+				<span>[Invoice 2 Date]</span>.
+			</div>
 
-      <!-- Put the amount in a box with borders in bold -->
-      <div class="amount">
-        <span>₹ 27,36,556.000</span>
-      </div>
-      <div class="for">For Accent Techno Solutions Pvt. Ltd.</div>
+			<!-- Put the amount in a box with borders in bold -->
+			<div class="amount">
+				<span>₹ 27,36,556.000</span>
+			</div>
+			<div class="for">For Accent Techno Solutions Pvt. Ltd.</div>
 
-      <div class="footer">
-        <p class="name">Santosh Dinkar Mestry</p>
-        <p class="designation">Director</p>
-      </div>
-    </div>
-  </body>
+			<div class="footer">
+				<p class="name">Santosh Dinkar Mestry</p>
+				<p class="designation">Director</p>
+			</div>
+		</div>
+	</body>
 </html>

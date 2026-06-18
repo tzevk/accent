@@ -2,28 +2,28 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
 import {
-  ensurePermission,
-  RESOURCES,
-  PERMISSIONS,
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
 } from '@/utils/api-permissions';
 
 let _activityMasterSchemaReady = false;
 
 export async function GET(request) {
-  // RBAC check
-  const authResult = await ensurePermission(
-    request,
-    RESOURCES.SETTINGS,
-    PERMISSIONS.READ
-  );
-  if (authResult.authorized === false) return authResult.response;
+	// RBAC check
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.READ
+	);
+	if (authResult.authorized === false) return authResult.response;
 
-  let db;
-  try {
-    db = await dbConnect();
-    if (!_activityMasterSchemaReady) {
-      // Ensure base tables exist
-      await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
+	let db;
+	try {
+		db = await dbConnect();
+		if (!_activityMasterSchemaReady) {
+			// Ensure base tables exist
+			await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
       id VARCHAR(36) PRIMARY KEY,
       function_name VARCHAR(255) NOT NULL,
       status VARCHAR(20) DEFAULT 'active',
@@ -31,7 +31,7 @@ export async function GET(request) {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
-      await db.execute(`CREATE TABLE IF NOT EXISTS activities_master (
+			await db.execute(`CREATE TABLE IF NOT EXISTS activities_master (
       id VARCHAR(36) PRIMARY KEY,
       function_id VARCHAR(36) NOT NULL,
       activity_name VARCHAR(255) NOT NULL,
@@ -40,116 +40,116 @@ export async function GET(request) {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
 
-      // Add default_manhours column if it doesn't exist
-      try {
-        await db.execute(
-          `ALTER TABLE activities_master ADD COLUMN default_manhours DECIMAL(10,2) DEFAULT 0`
-        );
-      } catch (e) {
-        // Column already exists, ignore
-      }
-      _activityMasterSchemaReady = true;
-    } // end schema check
+			// Add default_manhours column if it doesn't exist
+			try {
+				await db.execute(
+					`ALTER TABLE activities_master ADD COLUMN default_manhours DECIMAL(10,2) DEFAULT 0`
+				);
+			} catch (e) {
+				// Column already exists, ignore
+			}
+			_activityMasterSchemaReady = true;
+		} // end schema check
 
-    const [functions] = await db.execute(
-      'SELECT id, function_name, status, description, created_at, updated_at FROM functions_master ORDER BY function_name'
-    );
-    let activities = [];
-    try {
-      const [acts] = await db.execute(
-        'SELECT id, function_id, activity_name, COALESCE(default_manhours, 0) as default_manhours, created_at, updated_at FROM activities_master ORDER BY activity_name'
-      );
-      activities = acts;
-    } catch {
-      activities = [];
-    }
+		const [functions] = await db.execute(
+			'SELECT id, function_name, status, description, created_at, updated_at FROM functions_master ORDER BY function_name'
+		);
+		let activities = [];
+		try {
+			const [acts] = await db.execute(
+				'SELECT id, function_id, activity_name, COALESCE(default_manhours, 0) as default_manhours, created_at, updated_at FROM activities_master ORDER BY activity_name'
+			);
+			activities = acts;
+		} catch {
+			activities = [];
+		}
 
-    let subActivitiesList = [];
-    try {
-      const [subs] = await db.execute(
-        'SELECT id, activity_id, name, default_duration, default_manhours, default_rate, created_at, updated_at FROM sub_activities ORDER BY name'
-      );
-      subActivitiesList = subs;
-    } catch {
-      subActivitiesList = [];
-    }
+		let subActivitiesList = [];
+		try {
+			const [subs] = await db.execute(
+				'SELECT id, activity_id, name, default_duration, default_manhours, default_rate, created_at, updated_at FROM sub_activities ORDER BY name'
+			);
+			subActivitiesList = subs;
+		} catch {
+			subActivitiesList = [];
+		}
 
-    // Map functions to activities and subActivities
-    const mapped = functions.map((func) => ({
-      id: func.id,
-      function_name: func.function_name,
-      status: func.status,
-      description: func.description,
-      created_at: func.created_at,
-      updated_at: func.updated_at,
-      activities: activities
-        .filter((activity) => activity.function_id === func.id)
-        .map((activity) => ({
-          id: activity.id,
-          activity_name: activity.activity_name,
-          default_manhours: parseFloat(activity.default_manhours) || 0,
-          created_at: activity.created_at,
-          updated_at: activity.updated_at,
-          subActivities: subActivitiesList
-            .filter((sub) => sub.activity_id === activity.id)
-            .map((sub) => ({
-              id: sub.id,
-              name: sub.name,
-              defaultDuration: parseFloat(sub.default_duration) || 0,
-              defaultManhours: parseFloat(sub.default_manhours) || 0,
-              defaultRate: parseFloat(sub.default_rate) || 0,
-              created_at: sub.created_at,
-              updated_at: sub.updated_at,
-            })),
-        })),
-    }));
+		// Map functions to activities and subActivities
+		const mapped = functions.map((func) => ({
+			id: func.id,
+			function_name: func.function_name,
+			status: func.status,
+			description: func.description,
+			created_at: func.created_at,
+			updated_at: func.updated_at,
+			activities: activities
+				.filter((activity) => activity.function_id === func.id)
+				.map((activity) => ({
+					id: activity.id,
+					activity_name: activity.activity_name,
+					default_manhours: parseFloat(activity.default_manhours) || 0,
+					created_at: activity.created_at,
+					updated_at: activity.updated_at,
+					subActivities: subActivitiesList
+						.filter((sub) => sub.activity_id === activity.id)
+						.map((sub) => ({
+							id: sub.id,
+							name: sub.name,
+							defaultDuration: parseFloat(sub.default_duration) || 0,
+							defaultManhours: parseFloat(sub.default_manhours) || 0,
+							defaultRate: parseFloat(sub.default_rate) || 0,
+							created_at: sub.created_at,
+							updated_at: sub.updated_at,
+						})),
+				})),
+		}));
 
-    return NextResponse.json({ success: true, data: mapped });
-  } catch (error) {
-    console.error('Activity master GET error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to load activity master',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) {
-      try {
-        db.release();
-      } catch (e) {
-        console.error('Error releasing connection:', e);
-      }
-    }
-  }
+		return NextResponse.json({ success: true, data: mapped });
+	} catch (error) {
+		console.error('Activity master GET error:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to load activity master',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) {
+			try {
+				db.release();
+			} catch (e) {
+				console.error('Error releasing connection:', e);
+			}
+		}
+	}
 }
 
 export async function POST(request) {
-  // RBAC check
-  const authResultPost = await ensurePermission(
-    request,
-    RESOURCES.SETTINGS,
-    PERMISSIONS.UPDATE
-  );
-  if (authResultPost.authorized === false) return authResultPost.response;
+	// RBAC check
+	const authResultPost = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.UPDATE
+	);
+	if (authResultPost.authorized === false) return authResultPost.response;
 
-  let db;
-  try {
-    const body = await request.json();
-    const { function_name, status = 'active', description = '' } = body;
+	let db;
+	try {
+		const body = await request.json();
+		const { function_name, status = 'active', description = '' } = body;
 
-    if (!function_name) {
-      return NextResponse.json(
-        { success: false, error: 'Discipline name is required' },
-        { status: 400 }
-      );
-    }
+		if (!function_name) {
+			return NextResponse.json(
+				{ success: false, error: 'Discipline name is required' },
+				{ status: 400 }
+			);
+		}
 
-    const id = randomUUID();
-    db = await dbConnect();
-    await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
+		const id = randomUUID();
+		db = await dbConnect();
+		await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
       id VARCHAR(36) PRIMARY KEY,
       function_name VARCHAR(255) NOT NULL,
       status VARCHAR(20) DEFAULT 'active',
@@ -157,101 +157,101 @@ export async function POST(request) {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
-    await db.execute(
-      'INSERT INTO functions_master (id, function_name, status, description) VALUES (?, ?, ?, ?)',
-      [id, function_name, status, description]
-    );
+		await db.execute(
+			'INSERT INTO functions_master (id, function_name, status, description) VALUES (?, ?, ?, ?)',
+			[id, function_name, status, description]
+		);
 
-    return NextResponse.json({ success: true, data: { id } }, { status: 201 });
-  } catch (error) {
-    console.error('Activity master POST error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to create discipline',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json({ success: true, data: { id } }, { status: 201 });
+	} catch (error) {
+		console.error('Activity master POST error:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to create discipline',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }
 
 export async function PUT(request) {
-  let db;
-  try {
-    const body = await request.json();
-    const { id, function_name, status, description } = body;
+	let db;
+	try {
+		const body = await request.json();
+		const { id, function_name, status, description } = body;
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: 'Discipline id is required' },
-        { status: 400 }
-      );
-    }
+		if (!id) {
+			return NextResponse.json(
+				{ success: false, error: 'Discipline id is required' },
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
-    await db.execute(
-      `UPDATE functions_master
+		db = await dbConnect();
+		await db.execute(
+			`UPDATE functions_master
        SET function_name = COALESCE(?, function_name),
            status = COALESCE(?, status),
            description = COALESCE(?, description)
        WHERE id = ?`,
-      [function_name ?? null, status ?? null, description ?? null, id]
-    );
+			[function_name ?? null, status ?? null, description ?? null, id]
+		);
 
-    return NextResponse.json({ success: true, message: 'Discipline updated' });
-  } catch (error) {
-    console.error('Activity master PUT error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to update discipline',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (db) db.release();
-  }
+		return NextResponse.json({ success: true, message: 'Discipline updated' });
+	} catch (error) {
+		console.error('Activity master PUT error:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to update discipline',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (db) db.release();
+	}
 }
 
 export async function DELETE(request) {
-  let db;
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+	let db;
+	try {
+		const { searchParams } = new URL(request.url);
+		const id = searchParams.get('id');
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: 'Discipline id is required' },
-        { status: 400 }
-      );
-    }
+		if (!id) {
+			return NextResponse.json(
+				{ success: false, error: 'Discipline id is required' },
+				{ status: 400 }
+			);
+		}
 
-    db = await dbConnect();
-    try {
-      await db.execute('DELETE FROM activities_master WHERE function_id = ?', [
-        id,
-      ]);
-    } catch {
-      // ignore if table missing
-    } finally {
-      if (db) db.release();
-    }
-    await db.execute('DELETE FROM functions_master WHERE id = ?', [id]);
+		db = await dbConnect();
+		try {
+			await db.execute('DELETE FROM activities_master WHERE function_id = ?', [
+				id,
+			]);
+		} catch {
+			// ignore if table missing
+		} finally {
+			if (db) db.release();
+		}
+		await db.execute('DELETE FROM functions_master WHERE id = ?', [id]);
 
-    return NextResponse.json({ success: true, message: 'Discipline deleted' });
-  } catch (error) {
-    console.error('Activity master DELETE error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to delete discipline',
-        details: error.message,
-      },
-      { status: 500 }
-    );
-  }
+		return NextResponse.json({ success: true, message: 'Discipline deleted' });
+	} catch (error) {
+		console.error('Activity master DELETE error:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to delete discipline',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	}
 }
