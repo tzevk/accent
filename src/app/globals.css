@@ -791,3 +791,23 @@ textarea::placeholder {
 .rich-text-content > *:last-child {
 	margin-bottom: 0;
 }
+
+/* TipTap ProseMirror fills its container so the whole area is clickable */
+.rich-text-content .ProseMirror {
+	min-height: inherit;
+	height: 100%;
+}
+
+.ProseMirror {
+	outline: none;
+	min-height: inherit;
+	height: 100%;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+	content: attr(data-placeholder);
+	float: left;
+	color: #9ca3af;
+	pointer-events: none;
+	height: 0;
+}
