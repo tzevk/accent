@@ -490,10 +490,7 @@ function generateQuotationHTML(data, source) {
 	};
 
 	const grossAmount = parseFloat(data.gross_amount) || 0;
-	const gstPercentage = parseFloat(data.gst_percentage) || 18;
-	const gstAmount = parseFloat(data.gst_amount) || 0;
 	const netAmount = parseFloat(data.net_amount) || parseFloat(data.total) || 0;
-	const gstType = data.gst_type || 'cgst_sgst';
 
 	const rupees = Math.floor(netAmount);
 	const paise = Math.round((netAmount - rupees) * 100);
@@ -775,29 +772,7 @@ function generateQuotationHTML(data, source) {
               <td style="width: 70%; padding: 5px 6px; border-right: 1px solid #000;"><strong>Gross Amount:</strong></td>
               <td style="width: 30%; padding: 5px 6px; text-align: right;">${formatCurrency(displayGrossAmount)}</td>
             </tr>
-            ${
-							gstType === 'igst'
-								? `
-              <tr>
-                <td style="padding: 5px 6px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>IGST @ ${gstPercentage}%:</strong></td>
-                <td style="padding: 5px 6px; text-align: right; border-top: 1px solid #000;">${formatCurrency(gstAmount || (displayGrossAmount * gstPercentage) / 100)}</td>
-              </tr>
-            `
-								: `
-              <tr>
-                <td style="padding: 5px 6px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>CGST @ ${gstPercentage / 2}%:</strong></td>
-                <td style="padding: 5px 6px; text-align: right; border-top: 1px solid #000;">${formatCurrency((gstAmount || (displayGrossAmount * gstPercentage) / 100) / 2)}</td>
-              </tr>
-              <tr>
-                <td style="padding: 5px 6px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>SGST @ ${gstPercentage / 2}%:</strong></td>
-                <td style="padding: 5px 6px; text-align: right; border-top: 1px solid #000;">${formatCurrency((gstAmount || (displayGrossAmount * gstPercentage) / 100) / 2)}</td>
-              </tr>
-            `
-						}
-            <tr>
-              <td style="padding: 6px; border-right: 1px solid #000; border-top: 1px solid #000;"><strong>Net Amount:</strong></td>
-              <td style="padding: 6px; text-align: right; border-top: 1px solid #000; font-weight: bold; font-size: 11px;">${formatCurrency(netAmount || displayGrossAmount + (displayGrossAmount * gstPercentage) / 100)}</td>
-            </tr>
+
           </table>
         </td>
       </tr>

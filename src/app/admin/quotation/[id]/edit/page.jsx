@@ -957,14 +957,7 @@ export default function EditQuotationPage() {
 												</div>
 											</div>
 										)}
-										<div className="flex bg-purple-50">
-											<div className="flex-1 p-2 border-r border-gray-300 font-bold text-sm text-right">
-												Net Amount:
-											</div>
-											<div className="w-32 p-2 text-right font-bold text-purple-700">
-												{formatCurrency(quotation.net_amount)}
-											</div>
-										</div>
+
 									</div>
 								</div>
 							</div> */}
