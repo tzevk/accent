@@ -1,33 +1,33 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import {
-  ensurePermission,
-  RESOURCES,
-  PERMISSIONS,
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
 } from '@/utils/api-permissions';
 
 // GET - Fetch invoices
 export async function GET(request) {
-  // RBAC check
-  const authResult = await ensurePermission(
-    request,
-    RESOURCES.PROPOSALS,
-    PERMISSIONS.READ
-  );
-  if (authResult.authorized === false) return authResult.response;
+	// RBAC check
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.PROPOSALS,
+		PERMISSIONS.READ
+	);
+	if (authResult.authorized === false) return authResult.response;
 
-  let connection;
-  try {
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const status = searchParams.get('status');
-    const offset = (page - 1) * limit;
+	let connection;
+	try {
+		const { searchParams } = new URL(request.url);
+		const page = parseInt(searchParams.get('page') || '1');
+		const limit = parseInt(searchParams.get('limit') || '20');
+		const status = searchParams.get('status');
+		const offset = (page - 1) * limit;
 
-    connection = await dbConnect();
+		connection = await dbConnect();
 
-    // Check if table exists, create if not
-    await connection.execute(`
+		// Check if table exists, create if not
+		await connection.execute(`
       CREATE TABLE IF NOT EXISTS invoices (
         id INT AUTO_INCREMENT PRIMARY KEY,
         invoice_number VARCHAR(50) UNIQUE NOT NULL,
@@ -49,6 +49,7 @@ export async function GET(request) {
         subtotal DECIMAL(15, 2) DEFAULT 0,
         tax_rate DECIMAL(5, 2) DEFAULT 18,
         tax_amount DECIMAL(15, 2) DEFAULT 0,
+        gst_type VARCHAR(20) DEFAULT 'cgst_sgst',
         discount DECIMAL(15, 2) DEFAULT 0,
         total DECIMAL(15, 2) DEFAULT 0,
         amount_paid DECIMAL(15, 2) DEFAULT 0,
@@ -66,69 +67,73 @@ export async function GET(request) {
       )
     `);
 
-    // Add new columns if they don't exist (for existing tables)
-    const newColumns = [
-      { name: 'client_pan', definition: 'VARCHAR(20) AFTER client_address' },
-      { name: 'client_gstin', definition: 'VARCHAR(20) AFTER client_pan' },
-      { name: 'client_state', definition: 'VARCHAR(100) AFTER client_gstin' },
-      {
-        name: 'client_state_code',
-        definition: 'VARCHAR(10) AFTER client_state',
-      },
-      { name: 'kind_attn', definition: 'VARCHAR(255) AFTER client_state_code' },
-      { name: 'po_number', definition: 'VARCHAR(100) AFTER kind_attn' },
-      { name: 'po_date', definition: 'DATE AFTER po_number' },
-      { name: 'po_value', definition: 'DECIMAL(15, 2) AFTER po_date' },
-      { name: 'balance_po_value', definition: 'DECIMAL(15, 2) AFTER po_value' },
-    ];
+		// Add new columns if they don't exist (for existing tables)
+		const newColumns = [
+			{ name: 'client_pan', definition: 'VARCHAR(20) AFTER client_address' },
+			{ name: 'client_gstin', definition: 'VARCHAR(20) AFTER client_pan' },
+			{ name: 'client_state', definition: 'VARCHAR(100) AFTER client_gstin' },
+			{
+				name: 'client_state_code',
+				definition: 'VARCHAR(10) AFTER client_state',
+			},
+			{ name: 'kind_attn', definition: 'VARCHAR(255) AFTER client_state_code' },
+			{ name: 'po_number', definition: 'VARCHAR(100) AFTER kind_attn' },
+			{ name: 'po_date', definition: 'DATE AFTER po_number' },
+			{ name: 'po_value', definition: 'DECIMAL(15, 2) AFTER po_date' },
+			{ name: 'balance_po_value', definition: 'DECIMAL(15, 2) AFTER po_value' },
+			{
+				name: 'gst_type',
+				definition: "VARCHAR(20) DEFAULT 'cgst_sgst' AFTER tax_amount",
+			},
+		];
 
-    for (const col of newColumns) {
-      try {
-        await connection.execute(
-          `ALTER TABLE invoices ADD COLUMN ${col.name} ${col.definition}`
-        );
-      } catch (alterError) {
-        // Column likely already exists, ignore
-      }
-    }
+		for (const col of newColumns) {
+			try {
+				await connection.execute(
+					`ALTER TABLE invoices ADD COLUMN ${col.name} ${col.definition}`
+				);
+			} catch (alterError) {
+				// Column likely already exists, ignore
+			}
+		}
 
-    // Build query
-    let query = 'SELECT * FROM invoices WHERE 1=1';
-    const params = [];
+		// Build query
+		let query = 'SELECT * FROM invoices WHERE 1=1';
+		const params = [];
 
-    if (status && status !== 'all') {
-      query += ' AND status = ?';
-      params.push(status);
-    }
+		if (status && status !== 'all') {
+			query += ' AND status = ?';
+			params.push(status);
+		}
 
-    // Get total count
-    const countQuery = query.replace('*', 'COUNT(*) as total');
-    const [countResult] = await connection.execute(countQuery, params);
-    const total = countResult?.[0]?.total || 0;
+		// Get total count
+		const countQuery = query.replace('*', 'COUNT(*) as total');
+		const [countResult] = await connection.execute(countQuery, params);
+		const total = countResult?.[0]?.total || 0;
 
-    // Get paginated results
-    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+		// Get paginated results
+		query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+		params.push(limit, offset);
 
-    const [invoices] = await connection.execute(query, params);
+		const [invoices] = await connection.execute(query, params);
 
-    // Parse JSON items for each invoice
-    const parsedInvoices = invoices.map((inv) => ({
-      ...inv,
-      items: typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items,
-    }));
+		// Parse JSON items for each invoice
+		const parsedInvoices = invoices.map((inv) => ({
+			...inv,
+			items: typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items,
+		}));
 
-    // Get stats
-    let stats = {
-      total: 0,
-      draft: 0,
-      sent: 0,
-      paid: 0,
-      overdue: 0,
-      cancelled: 0,
-    };
-    try {
-      const [statsResult] = await connection.execute(`
+		// Get stats
+		let stats = {
+			total: 0,
+			draft: 0,
+			sent: 0,
+			paid: 0,
+			overdue: 0,
+			cancelled: 0,
+		};
+		try {
+			const [statsResult] = await connection.execute(`
         SELECT 
           COUNT(*) as total,
           SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) as draft,
@@ -138,164 +143,166 @@ export async function GET(request) {
           SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
         FROM invoices
       `);
-      stats = statsResult[0] || stats;
-    } catch (statsError) {
-      console.error('Error fetching stats:', statsError);
-    }
+			stats = statsResult[0] || stats;
+		} catch (statsError) {
+			console.error('Error fetching stats:', statsError);
+		}
 
-    return NextResponse.json({
-      success: true,
-      data: parsedInvoices,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-      stats,
-    });
-  } catch (error) {
-    console.error('Error fetching invoices:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: 'Failed to fetch invoices',
-        error: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (connection) await connection.end();
-  }
+		return NextResponse.json({
+			success: true,
+			data: parsedInvoices,
+			pagination: {
+				page,
+				limit,
+				total,
+				totalPages: Math.ceil(total / limit),
+			},
+			stats,
+		});
+	} catch (error) {
+		console.error('Error fetching invoices:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				message: 'Failed to fetch invoices',
+				error: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (connection) await connection.end();
+	}
 }
 
 // Helper function to generate invoice number
 function generateInvoiceNumber(count) {
-  const date = new Date();
-  const year = date.getFullYear().toString().slice(-2);
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const num = (count + 1).toString().padStart(4, '0');
-  return `INV-${year}${month}-${num}`;
+	const date = new Date();
+	const year = date.getFullYear().toString().slice(-2);
+	const month = (date.getMonth() + 1).toString().padStart(2, '0');
+	const num = (count + 1).toString().padStart(4, '0');
+	return `INV-${year}${month}-${num}`;
 }
 
 // POST - Create new invoice
 export async function POST(request) {
-  // RBAC check
-  const authResult = await ensurePermission(
-    request,
-    RESOURCES.PROPOSALS,
-    PERMISSIONS.WRITE
-  );
-  if (authResult.authorized === false) return authResult.response;
+	// RBAC check
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.PROPOSALS,
+		PERMISSIONS.WRITE
+	);
+	if (authResult.authorized === false) return authResult.response;
 
-  let connection;
-  try {
-    const body = await request.json();
+	let connection;
+	try {
+		const body = await request.json();
 
-    const {
-      client_name,
-      client_email,
-      client_phone,
-      client_address,
-      client_pan,
-      client_gstin,
-      client_state,
-      client_state_code,
-      kind_attn,
-      po_number,
-      po_date,
-      po_value,
-      balance_po_value,
-      description,
-      items,
-      subtotal,
-      tax_rate,
-      tax_amount,
-      discount,
-      total,
-      amount_paid,
-      balance_due,
-      notes,
-      terms,
-      due_date,
-      status,
-    } = body;
+		const {
+			client_name,
+			client_email,
+			client_phone,
+			client_address,
+			client_pan,
+			client_gstin,
+			client_state,
+			client_state_code,
+			kind_attn,
+			po_number,
+			po_date,
+			po_value,
+			balance_po_value,
+			description,
+			items,
+			subtotal,
+			tax_rate,
+			tax_amount,
+			gst_type,
+			discount,
+			total,
+			amount_paid,
+			balance_due,
+			notes,
+			terms,
+			due_date,
+			status,
+		} = body;
 
-    if (!client_name) {
-      return NextResponse.json(
-        { success: false, message: 'Client name is required' },
-        { status: 400 }
-      );
-    }
+		if (!client_name) {
+			return NextResponse.json(
+				{ success: false, message: 'Client name is required' },
+				{ status: 400 }
+			);
+		}
 
-    connection = await dbConnect();
+		connection = await dbConnect();
 
-    // Get count for invoice number generation
-    const [countResult] = await connection.execute(
-      'SELECT COUNT(*) as count FROM invoices'
-    );
-    const count = countResult[0]?.count || 0;
-    const invoiceNumber = generateInvoiceNumber(count);
+		// Get count for invoice number generation
+		const [countResult] = await connection.execute(
+			'SELECT COUNT(*) as count FROM invoices'
+		);
+		const count = countResult[0]?.count || 0;
+		const invoiceNumber = generateInvoiceNumber(count);
 
-    // Insert invoice
-    const [result] = await connection.execute(
-      `INSERT INTO invoices (
+		// Insert invoice
+		const [result] = await connection.execute(
+			`INSERT INTO invoices (
         invoice_number, client_name, client_email, client_phone, client_address,
         client_pan, client_gstin, client_state, client_state_code, kind_attn,
         po_number, po_date, po_value, balance_po_value,
-        description, items, subtotal, tax_rate, tax_amount, discount, total,
+        description, items, subtotal, tax_rate, tax_amount, gst_type, discount, total,
         amount_paid, balance_due, notes, terms, due_date, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        invoiceNumber,
-        client_name,
-        client_email || null,
-        client_phone || null,
-        client_address || null,
-        client_pan || null,
-        client_gstin || null,
-        client_state || null,
-        client_state_code || null,
-        kind_attn || null,
-        po_number || null,
-        po_date || null,
-        po_value || null,
-        balance_po_value || null,
-        description || null,
-        JSON.stringify(items || []),
-        subtotal || 0,
-        tax_rate || 18,
-        tax_amount || 0,
-        discount || 0,
-        total || 0,
-        amount_paid || 0,
-        balance_due || total || 0,
-        notes || null,
-        terms || null,
-        due_date || null,
-        status || 'draft',
-      ]
-    );
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			[
+				invoiceNumber,
+				client_name,
+				client_email || null,
+				client_phone || null,
+				client_address || null,
+				client_pan || null,
+				client_gstin || null,
+				client_state || null,
+				client_state_code || null,
+				kind_attn || null,
+				po_number || null,
+				po_date || null,
+				po_value || null,
+				balance_po_value || null,
+				description || null,
+				JSON.stringify(items || []),
+				subtotal || 0,
+				tax_rate || 18,
+				tax_amount || 0,
+				gst_type || 'cgst_sgst',
+				discount || 0,
+				total || 0,
+				amount_paid || 0,
+				balance_due || total || 0,
+				notes || null,
+				terms || null,
+				due_date || null,
+				status || 'draft',
+			]
+		);
 
-    return NextResponse.json({
-      success: true,
-      message: 'Invoice created successfully',
-      data: {
-        id: result.insertId,
-        invoice_number: invoiceNumber,
-      },
-    });
-  } catch (error) {
-    console.error('Error creating invoice:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: 'Failed to create invoice',
-        error: error.message,
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (connection) await connection.end();
-  }
+		return NextResponse.json({
+			success: true,
+			message: 'Invoice created successfully',
+			data: {
+				id: result.insertId,
+				invoice_number: invoiceNumber,
+			},
+		});
+	} catch (error) {
+		console.error('Error creating invoice:', error);
+		return NextResponse.json(
+			{
+				success: false,
+				message: 'Failed to create invoice',
+				error: error.message,
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (connection) await connection.end();
+	}
 }

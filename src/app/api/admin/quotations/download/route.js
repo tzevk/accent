@@ -917,6 +917,10 @@ function generateQuotationHTML(data, source) {
       
       <div style="margin-bottom: 12px;">
         <strong>11) Billing & Payment terms:</strong>
+				<div style="margin-left: 18px; margin-top: 8px;">
+          <strong style="text-decoration: underline;">Payment Milestone:</strong>
+          <div style="font-size: 10px; margin-top: 4px;"><div class="rt-content">${formatRichTextContent(data.annexure_payment_milestone)}</div></div>
+        </div>
         <div style="margin-left: 18px;">
           <strong style="text-decoration: underline;">Payment terms:</strong>
           <div style="font-size: 10px; margin-top: 4px;"><div class="rt-content">${formatRichTextContent(data.annexure_billing_payment_terms)}</div></div>
@@ -924,10 +928,6 @@ function generateQuotationHTML(data, source) {
         <div style="margin-left: 18px; margin-top: 8px;">
           <strong style="text-decoration: underline;">Taxation:</strong>
           <div style="font-size: 10px; margin-top: 4px;"><div class="rt-content">${formatRichTextContent(data.annexure_taxation)}</div></div>
-        </div>
-        <div style="margin-left: 18px; margin-top: 8px;">
-          <strong style="text-decoration: underline;">Payment Milestone:</strong>
-          <div style="font-size: 10px; margin-top: 4px;"><div class="rt-content">${formatRichTextContent(data.annexure_payment_milestone)}</div></div>
         </div>
       </div>
       

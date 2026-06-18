@@ -29,7 +29,8 @@ export default function RichTextEditor({
 		},
 		editorProps: {
 			attributes: {
-				class: 'prose prose-sm max-w-none focus:outline-none min-h-[150px]',
+				class:
+					'rich-text-content max-w-none focus:outline-none min-h-full cursor-text',
 			},
 		},
 	});
@@ -146,12 +147,8 @@ export default function RichTextEditor({
 				</div>
 
 				{/* Editor Content */}
-				<div className="p-3">
-					<EditorContent
-						editor={editor}
-						placeholder={placeholder}
-						className="min-h-[150px]"
-					/>
+				<div className="p-3 min-h-[150px]">
+					<EditorContent editor={editor} placeholder={placeholder} />
 				</div>
 			</div>
 		</div>

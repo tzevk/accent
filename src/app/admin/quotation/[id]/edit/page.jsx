@@ -799,7 +799,7 @@ export default function EditQuotationPage() {
 												</td>
 												<td className="p-2 border-r border-b border-gray-300">
 													<input
-														type="number"
+														type="text"
 														value={item.rate}
 														onChange={(e) =>
 															handleScopeItemChange(
@@ -853,7 +853,7 @@ export default function EditQuotationPage() {
 							</div>
 
 							{/* Totals Section */}
-							<div className="border border-gray-300 mb-4">
+							{/* <div className="border border-gray-300 mb-4">
 								<div className="flex justify-end">
 									<div className="w-80">
 										<div className="flex border-b border-gray-300">
@@ -967,7 +967,7 @@ export default function EditQuotationPage() {
 										</div>
 									</div>
 								</div>
-							</div>
+							</div> */}
 
 							{/* Amount in Words */}
 							<div className="border border-gray-300 mb-4">
@@ -1113,15 +1113,13 @@ export default function EditQuotationPage() {
 											4)
 										</span>
 										<div className="flex-1">
-											<label className="block text-sm font-semibold mb-1">
-												Software:
-											</label>
-											<input
-												type="text"
-												name="annexure_software"
+											<RichTextEditor
+												label="Software:"
 												value={quotation.annexure_software}
-												onChange={handleChange}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+												onChange={(v) =>
+													handleRichTextChange('annexure_software', v)
+												}
+												placeholder="Enter software..."
 											/>
 										</div>
 									</div>
@@ -1132,15 +1130,13 @@ export default function EditQuotationPage() {
 											5)
 										</span>
 										<div className="flex-1">
-											<label className="block text-sm font-semibold mb-1">
-												Duration:
-											</label>
-											<input
-												type="text"
-												name="annexure_duration"
+											<RichTextEditor
+												label="Duration:"
 												value={quotation.annexure_duration}
-												onChange={handleChange}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+												onChange={(v) =>
+													handleRichTextChange('annexure_duration', v)
+												}
+												placeholder="Enter duration..."
 											/>
 										</div>
 									</div>
@@ -1151,15 +1147,13 @@ export default function EditQuotationPage() {
 											6)
 										</span>
 										<div className="flex-1">
-											<label className="block text-sm font-semibold mb-1">
-												Site Visit:
-											</label>
-											<input
-												type="text"
-												name="annexure_site_visit"
+											<RichTextEditor
+												label="Site Visit:"
 												value={quotation.annexure_site_visit}
-												onChange={handleChange}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+												onChange={(v) =>
+													handleRichTextChange('annexure_site_visit', v)
+												}
+												placeholder="Enter site visit details..."
 											/>
 										</div>
 									</div>
@@ -1170,15 +1164,13 @@ export default function EditQuotationPage() {
 											7)
 										</span>
 										<div className="flex-1">
-											<label className="block text-sm font-semibold mb-1">
-												Quotation Validity:
-											</label>
-											<input
-												type="text"
-												name="annexure_quotation_validity"
+											<RichTextEditor
+												label="Quotation Validity:"
 												value={quotation.annexure_quotation_validity}
-												onChange={handleChange}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+												onChange={(v) =>
+													handleRichTextChange('annexure_quotation_validity', v)
+												}
+												placeholder="Enter quotation validity..."
 											/>
 										</div>
 									</div>
@@ -1189,15 +1181,13 @@ export default function EditQuotationPage() {
 											8)
 										</span>
 										<div className="flex-1">
-											<label className="block text-sm font-semibold mb-1">
-												Mode of Delivery:
-											</label>
-											<input
-												type="text"
-												name="annexure_mode_of_delivery"
+											<RichTextEditor
+												label="Mode of Delivery:"
 												value={quotation.annexure_mode_of_delivery}
-												onChange={handleChange}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+												onChange={(v) =>
+													handleRichTextChange('annexure_mode_of_delivery', v)
+												}
+												placeholder="Enter mode of delivery..."
 											/>
 										</div>
 									</div>
@@ -1208,15 +1198,13 @@ export default function EditQuotationPage() {
 											9)
 										</span>
 										<div className="flex-1">
-											<label className="block text-sm font-semibold mb-1">
-												Revision:
-											</label>
-											<input
-												type="text"
-												name="annexure_revision"
+											<RichTextEditor
+												label="Revision:"
 												value={quotation.annexure_revision}
-												onChange={handleChange}
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+												onChange={(v) =>
+													handleRichTextChange('annexure_revision', v)
+												}
+												placeholder="Enter revision details..."
 											/>
 										</div>
 									</div>
@@ -1247,6 +1235,26 @@ export default function EditQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Billing & Payment terms:
 											</label>
+
+											{/* Payment Milestone sub-section */}
+											<div className="ml-4 mb-3">
+												<label
+													className="block text-sm font-medium mb-1"
+													style={{ textDecoration: 'underline' }}
+												>
+													<strong>Payment Milestone:</strong>
+												</label>
+												<RichTextEditor
+													value={quotation.annexure_payment_milestone}
+													onChange={(v) =>
+														handleRichTextChange(
+															'annexure_payment_milestone',
+															v
+														)
+													}
+													placeholder="Enter payment milestone..."
+												/>
+											</div>
 
 											{/* Payment terms sub-section */}
 											<div className="ml-4 mb-3">
@@ -1282,26 +1290,6 @@ export default function EditQuotationPage() {
 														handleRichTextChange('annexure_taxation', v)
 													}
 													placeholder="Enter taxation details..."
-												/>
-											</div>
-
-											{/* Payment Milestone sub-section */}
-											<div className="ml-4">
-												<label
-													className="block text-sm font-medium mb-1"
-													style={{ textDecoration: 'underline' }}
-												>
-													<strong>Payment Milestone:</strong>
-												</label>
-												<RichTextEditor
-													value={quotation.annexure_payment_milestone}
-													onChange={(v) =>
-														handleRichTextChange(
-															'annexure_payment_milestone',
-															v
-														)
-													}
-													placeholder="Enter payment milestone..."
 												/>
 											</div>
 										</div>
