@@ -590,7 +590,7 @@ export default function EditQuotationPage() {
 							<div className="border border-gray-300 mb-4">
 								<div className="flex">
 									{/* Left - To Section */}
-									<div className="flex-1 border-r border-gray-300 p-4">
+									<div className="flex-[3] border-r border-gray-300 p-4">
 										<label className="block text-sm font-semibold text-gray-700 mb-2">
 											To,
 										</label>
@@ -664,7 +664,7 @@ export default function EditQuotationPage() {
 									</div>
 
 									{/* Right - Quotation Details */}
-									<div className="w-80">
+									<div className="flex-[2]">
 										<div className="flex border-b border-gray-300">
 											<div className="w-1/2 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm">
 												Quotation No.
