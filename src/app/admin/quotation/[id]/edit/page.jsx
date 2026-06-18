@@ -223,6 +223,25 @@ export default function EditQuotationPage() {
 		}
 	}, [authLoading, user, id, fetchQuotation]);
 
+	// Auto-generate quotation number for new quotations
+	useEffect(() => {
+		if (isNew) {
+			fetch('/api/admin/quotations/next-number')
+				.then((res) => res.json())
+				.then((data) => {
+					if (data.success && data.quotation_number) {
+						setQuotation((prev) => ({
+							...prev,
+							quotation_number: data.quotation_number,
+						}));
+					}
+				})
+				.catch((err) =>
+					console.error('Error fetching next quotation number:', err)
+				);
+		}
+	}, [isNew]);
+
 	// Fetch companies on mount
 	useEffect(() => {
 		const fetchCompanies = async () => {
