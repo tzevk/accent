@@ -353,6 +353,12 @@ export async function GET(request) {
 			printBackground: true,
 			preferCSSPageSize: true,
 			displayHeaderFooter: false,
+			margin: {
+				top: '15mm',
+				right: '15mm',
+				bottom: '20mm',
+				left: '15mm',
+			},
 		});
 
 		return new Response(Buffer.from(pdf), {
