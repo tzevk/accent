@@ -5,7 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
-import RichTextEditor from '@/components/RichTextEditor';
+import RichTextEditorBase from '@/components/RichTextEditor';
+
+// Microsoft Word-style editor: selecting text pops up a floating format menu.
+function RichTextEditor(props) {
+	return <RichTextEditorBase variant="bubble" {...props} />;
+}
 import {
 	ArrowLeftIcon,
 	DocumentTextIcon,
@@ -46,11 +51,7 @@ export default function EditQuotationPage() {
 		gst_number: '',
 		pan_number: '',
 		tan_number: '',
-		terms_and_conditions: `• Any additional work will be charged extra.
-• GST 18% extra as applicable on total project cost.
-• The proposal is based on client's enquiry and provided input data.
-• Work will start within 15 days after receipt of confirmed LOI/PO.
-• Mode of Payments: - Through Wire transfer to 'Accent Techno Solutions Pvt Ltd.' payable at Mumbai A/c No. 917020044935714, IFS Code: UTIB0001244`,
+		terms_and_conditions: `<ul><li>Any additional work will be charged extra.</li><li>GST 18% extra as applicable on total project cost.</li><li>The proposal is based on client's enquiry and provided input data.</li><li>Work will start within 15 days after receipt of confirmed LOI/PO.</li><li>Mode of Payments: - Through Wire transfer to 'Accent Techno Solutions Pvt Ltd.' payable at Mumbai A/c No. 917020044935714, IFS Code: UTIB0001244</li></ul>`,
 		gross_amount: 0,
 		gst_percentage: 18,
 		gst_amount: 0,
@@ -67,25 +68,12 @@ export default function EditQuotationPage() {
 		annexure_mode_of_delivery: '',
 		annexure_revision: '',
 		annexure_exclusions: '',
-		annexure_billing_payment_terms: `• Payment shall be released by the client within 7 days from the date of the invoice.
-• Payment shall be by way of RTGS transfer to ATSPL bank account.
-• The late payment charges will be 2% per month on the total bill amount if bills are not settled within the credit period of 30 days.
-• In case of project delays beyond two-month, software cost of ₹10,000/- per month will be charged.
-• Upon completion of the above scope of work, if a project is cancelled or held by the client for any reason then Accent Techno Solutions Private Limited is entitled to 100% invoice against the completed work.`,
-		annexure_taxation: `• GST 18% extra as applicable on total project cost.
-• TDS (Tax Deducted at Source) will be deducted as per applicable rates by the client.
-• In case of interstate supply, IGST will be applicable at the prevailing rate.
-• In case of intrastate supply, CGST & SGST will be applicable at the prevailing rates.
-• Any change in tax structure or rates during the execution of the project will be borne by the client.
-• All applicable taxes shall be charged extra as per government regulations at the time of invoicing.`,
-		annexure_payment_milestone: `• 30% advance along with confirmed LOI/PO.
-• 30% on completion of 1st submission of deliverables as per the scope of work.
-• 20% upon completion of 2nd revision of deliverables.
-• 20% upon submission of final deliverables and project closure report.
-• Payment shall be released by the client within 7 days from the date of the invoice.`,
-		annexure_confidentiality: `• Input, output & any excerpts in between are intellectual properties of client. ATS shall not voluntarily disclose any of such documents to third parties& will undertake all the commonly accepted practices and tools to avoid the loss or spillover of such information. ATS shall take utmost care to maintain confidentiality of any information or intellectual property of client that it may come across. ATS is allowed to use the contract as a customer reference. However, no data or intellectual property of the client can be disclosed to third parties without the written consent of client.`,
-		annexure_codes_standards: `• Basic Engineering/ Detail Engineering should be carried out in ATS's office as per good engineering practices, project specifications and applicable client's inputs, Indian and International Standards`,
-		annexure_dispute_resolution: `• Should any disputes arise as claimed breach of the contract originated by this offer, it shall be finally settled amicably. Teamwork shall be the essence of this contract.`,
+		annexure_billing_payment_terms: `<ul><li>Payment shall be released by the client within 7 days from the date of the invoice.</li><li>Payment shall be by way of RTGS transfer to ATSPL bank account.</li><li>The late payment charges will be 2% per month on the total bill amount if bills are not settled within the credit period of 30 days.</li><li>In case of project delays beyond two-month, software cost of ₹10,000/- per month will be charged.</li><li>Upon completion of the above scope of work, if a project is cancelled or held by the client for any reason then Accent Techno Solutions Private Limited is entitled to 100% invoice against the completed work.</li></ul>`,
+		annexure_taxation: `<ul><li>GST 18% extra as applicable on total project cost.</li><li>TDS (Tax Deducted at Source) will be deducted as per applicable rates by the client.</li><li>In case of interstate supply, IGST will be applicable at the prevailing rate.</li><li>In case of intrastate supply, CGST &amp; SGST will be applicable at the prevailing rates.</li><li>Any change in tax structure or rates during the execution of the project will be borne by the client.</li><li>All applicable taxes shall be charged extra as per government regulations at the time of invoicing.</li></ul>`,
+		annexure_payment_milestone: `<ul><li>30% advance along with confirmed LOI/PO.</li><li>30% on completion of 1st submission of deliverables as per the scope of work.</li><li>20% upon completion of 2nd revision of deliverables.</li><li>20% upon submission of final deliverables and project closure report.</li><li>Payment shall be released by the client within 7 days from the date of the invoice.</li></ul>`,
+		annexure_confidentiality: `<ul><li>Input, output &amp; any excerpts in between are intellectual properties of client. ATS shall not voluntarily disclose any of such documents to third parties&amp; will undertake all the commonly accepted practices and tools to avoid the loss or spillover of such information. ATS shall take utmost care to maintain confidentiality of any information or intellectual property of client that it may come across. ATS is allowed to use the contract as a customer reference. However, no data or intellectual property of the client can be disclosed to third parties without the written consent of client.</li></ul>`,
+		annexure_codes_standards: `<ul><li>Basic Engineering/ Detail Engineering should be carried out in ATS's office as per good engineering practices, project specifications and applicable client's inputs, Indian and International Standards</li></ul>`,
+		annexure_dispute_resolution: `<ul><li>Should any disputes arise as claimed breach of the contract originated by this offer, it shall be finally settled amicably. Teamwork shall be the essence of this contract.</li></ul>`,
 	});
 
 	// Check if super admin
