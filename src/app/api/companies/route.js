@@ -193,7 +193,7 @@ export async function POST(request) {
         address, city, state, country, postal_code, description,
         founded_year, revenue, notes, location, contact_person, designation,
         mobile_number, sector, gstin, pan_number, company_profile, state_code
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				finalCompanyId,
 				company_name,
