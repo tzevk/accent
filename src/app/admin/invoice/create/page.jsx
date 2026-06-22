@@ -23,7 +23,6 @@ export default function CreateInvoicePage() {
 	const [showSuggestions, setShowSuggestions] = useState(false);
 	const [incomingPOs, setIncomingPOs] = useState([]);
 	const [showPOSelector, setShowPOSelector] = useState(false);
-	const [authLoading, setAuthLoading] = useState(true);
 	const [session, setSession] = useState(null);
 	const [poBalance, setPoBalance] = useState(null);
 
