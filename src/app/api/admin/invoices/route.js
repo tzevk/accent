@@ -31,6 +31,7 @@ export async function GET(request) {
       CREATE TABLE IF NOT EXISTS invoices (
         id INT AUTO_INCREMENT PRIMARY KEY,
         invoice_number VARCHAR(50) UNIQUE NOT NULL,
+        invoice_date DATE,
         client_name VARCHAR(255) NOT NULL,
         client_email VARCHAR(255),
         client_phone VARCHAR(50),
@@ -43,15 +44,28 @@ export async function GET(request) {
         po_number VARCHAR(100),
         po_date DATE,
         po_value DECIMAL(15, 2),
+        original_po_value DECIMAL(15, 2),
         balance_po_value DECIMAL(15, 2),
         description VARCHAR(500),
         items JSON,
+        line_items JSON,
         subtotal DECIMAL(15, 2) DEFAULT 0,
+        gross_amount DECIMAL(15, 2) DEFAULT 0,
         tax_rate DECIMAL(5, 2) DEFAULT 18,
         tax_amount DECIMAL(15, 2) DEFAULT 0,
         gst_type VARCHAR(20) DEFAULT 'cgst_sgst',
+        cgst_rate DECIMAL(5, 2) DEFAULT 9,
+        sgst_rate DECIMAL(5, 2) DEFAULT 9,
+        igst_rate DECIMAL(5, 2) DEFAULT 18,
         discount DECIMAL(15, 2) DEFAULT 0,
         total DECIMAL(15, 2) DEFAULT 0,
+        net_amount DECIMAL(15, 2) DEFAULT 0,
+        amount_in_words VARCHAR(500),
+        gst_number VARCHAR(20),
+        pan_number VARCHAR(20),
+        tan_number VARCHAR(20),
+        service_category VARCHAR(500),
+        bank_address VARCHAR(500),
         amount_paid DECIMAL(15, 2) DEFAULT 0,
         balance_due DECIMAL(15, 2) DEFAULT 0,
         notes TEXT,
@@ -85,6 +99,41 @@ export async function GET(request) {
 				name: 'gst_type',
 				definition: "VARCHAR(20) DEFAULT 'cgst_sgst' AFTER tax_amount",
 			},
+			{ name: 'invoice_date', definition: 'DATE AFTER created_at' },
+			{
+				name: 'original_po_value',
+				definition: 'DECIMAL(15, 2) AFTER po_value',
+			},
+			{ name: 'gross_amount', definition: 'DECIMAL(15, 2) AFTER subtotal' },
+			{ name: 'net_amount', definition: 'DECIMAL(15, 2) AFTER total' },
+			{
+				name: 'cgst_rate',
+				definition: 'DECIMAL(5, 2) DEFAULT 9 AFTER gst_type',
+			},
+			{
+				name: 'sgst_rate',
+				definition: 'DECIMAL(5, 2) DEFAULT 9 AFTER cgst_rate',
+			},
+			{
+				name: 'igst_rate',
+				definition: 'DECIMAL(5, 2) DEFAULT 18 AFTER sgst_rate',
+			},
+			{ name: 'line_items', definition: 'JSON AFTER items' },
+			{ name: 'gst_number', definition: 'VARCHAR(20) AFTER line_items' },
+			{ name: 'pan_number', definition: 'VARCHAR(20) AFTER gst_number' },
+			{ name: 'tan_number', definition: 'VARCHAR(20) AFTER pan_number' },
+			{
+				name: 'service_category',
+				definition: 'VARCHAR(500) AFTER tan_number',
+			},
+			{
+				name: 'bank_address',
+				definition: 'VARCHAR(500) AFTER service_category',
+			},
+			{
+				name: 'amount_in_words',
+				definition: 'VARCHAR(500) AFTER bank_address',
+			},
 		];
 
 		for (const col of newColumns) {
@@ -117,11 +166,25 @@ export async function GET(request) {
 
 		const [invoices] = await connection.execute(query, params);
 
-		// Parse JSON items for each invoice
-		const parsedInvoices = invoices.map((inv) => ({
-			...inv,
-			items: typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items,
-		}));
+		// Parse JSON items/line_items for each invoice
+		const parsedInvoices = invoices.map((inv) => {
+			const parsed = { ...inv };
+			if (parsed.items && typeof parsed.items === 'string') {
+				try {
+					parsed.items = JSON.parse(parsed.items);
+				} catch {
+					parsed.items = [];
+				}
+			}
+			if (parsed.line_items && typeof parsed.line_items === 'string') {
+				try {
+					parsed.line_items = JSON.parse(parsed.line_items);
+				} catch {
+					parsed.line_items = [];
+				}
+			}
+			return parsed;
+		});
 
 		// Get stats
 		let stats = {
@@ -198,6 +261,8 @@ export async function POST(request) {
 		const body = await request.json();
 
 		const {
+			invoice_number: bodyInvoiceNumber,
+			invoice_date,
 			client_name,
 			client_email,
 			client_phone,
@@ -210,15 +275,28 @@ export async function POST(request) {
 			po_number,
 			po_date,
 			po_value,
+			original_po_value,
 			balance_po_value,
 			description,
 			items,
+			line_items,
 			subtotal,
+			gross_amount,
 			tax_rate,
 			tax_amount,
 			gst_type,
+			cgst_rate,
+			sgst_rate,
+			igst_rate,
 			discount,
 			total,
+			net_amount,
+			amount_in_words,
+			gst_number,
+			pan_number,
+			tan_number,
+			service_category,
+			bank_address,
 			amount_paid,
 			balance_due,
 			notes,
@@ -236,24 +314,55 @@ export async function POST(request) {
 
 		connection = await dbConnect();
 
-		// Get count for invoice number generation
-		const [countResult] = await connection.execute(
-			'SELECT COUNT(*) as count FROM invoices'
-		);
-		const count = countResult[0]?.count || 0;
-		const invoiceNumber = generateInvoiceNumber(count);
+		// Ensure schema has all columns
+		const postColumns = [
+			{ name: 'invoice_date', definition: 'DATE' },
+			{ name: 'original_po_value', definition: 'DECIMAL(15, 2)' },
+			{ name: 'gross_amount', definition: 'DECIMAL(15, 2) DEFAULT 0' },
+			{ name: 'net_amount', definition: 'DECIMAL(15, 2) DEFAULT 0' },
+			{ name: 'cgst_rate', definition: 'DECIMAL(5, 2) DEFAULT 9' },
+			{ name: 'sgst_rate', definition: 'DECIMAL(5, 2) DEFAULT 9' },
+			{ name: 'igst_rate', definition: 'DECIMAL(5, 2) DEFAULT 18' },
+			{ name: 'line_items', definition: 'JSON' },
+			{ name: 'gst_number', definition: 'VARCHAR(20)' },
+			{ name: 'pan_number', definition: 'VARCHAR(20)' },
+			{ name: 'tan_number', definition: 'VARCHAR(20)' },
+			{ name: 'service_category', definition: 'VARCHAR(500)' },
+			{ name: 'bank_address', definition: 'VARCHAR(500)' },
+			{ name: 'amount_in_words', definition: 'VARCHAR(500)' },
+		];
+		for (const col of postColumns) {
+			try {
+				await connection.execute(
+					`ALTER TABLE invoices ADD COLUMN ${col.name} ${col.definition}`
+				);
+			} catch (_) {}
+		}
+
+		// Use pre-generated invoice number from client, or generate one
+		let invoiceNumber = bodyInvoiceNumber;
+		if (!invoiceNumber) {
+			const [countResult] = await connection.execute(
+				'SELECT COUNT(*) as count FROM invoices'
+			);
+			const count = countResult[0]?.count || 0;
+			invoiceNumber = generateInvoiceNumber(count);
+		}
 
 		// Insert invoice
 		const [result] = await connection.execute(
 			`INSERT INTO invoices (
-        invoice_number, client_name, client_email, client_phone, client_address,
+        invoice_number, invoice_date, client_name, client_email, client_phone, client_address,
         client_pan, client_gstin, client_state, client_state_code, kind_attn,
-        po_number, po_date, po_value, balance_po_value,
-        description, items, subtotal, tax_rate, tax_amount, gst_type, discount, total,
+        po_number, po_date, po_value, original_po_value, balance_po_value,
+        description, items, line_items, subtotal, gross_amount, tax_rate, tax_amount, gst_type,
+        cgst_rate, sgst_rate, igst_rate, discount, total, net_amount, amount_in_words,
+        gst_number, pan_number, tan_number, service_category, bank_address,
         amount_paid, balance_due, notes, terms, due_date, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				invoiceNumber,
+				invoice_date || null,
 				client_name,
 				client_email || null,
 				client_phone || null,
@@ -266,15 +375,28 @@ export async function POST(request) {
 				po_number || null,
 				po_date || null,
 				po_value || null,
+				original_po_value || null,
 				balance_po_value || null,
 				description || null,
 				JSON.stringify(items || []),
+				line_items ? JSON.stringify(line_items) : null,
 				subtotal || 0,
+				gross_amount || 0,
 				tax_rate || 18,
 				tax_amount || 0,
 				gst_type || 'cgst_sgst',
+				cgst_rate || 9,
+				sgst_rate || 9,
+				igst_rate || 18,
 				discount || 0,
 				total || 0,
+				net_amount || 0,
+				amount_in_words || null,
+				gst_number || null,
+				pan_number || null,
+				tan_number || null,
+				service_category || null,
+				bank_address || null,
 				amount_paid || 0,
 				balance_due || total || 0,
 				notes || null,
