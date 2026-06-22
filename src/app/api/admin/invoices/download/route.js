@@ -205,9 +205,9 @@ function generateInvoiceHTML(data) {
       <td style="width:55%;border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 8px;vertical-align:top;">
         <div>To,</div>
         <br>
-        <div>Name &nbsp;&nbsp;&nbsp; : ${data.client_name || ''}</div>
+        <div>${data.client_name || ''}</div>
         <br>
-        <div>Address &nbsp; : ${data.client_address ? data.client_address.replace(/\n/g, '<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;') : ''}</div>
+        <div>${data.client_address ? data.client_address.replace(/\n/g, '<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;') : ''}</div>
       </td>
       <td style="width:45%;border-bottom:1px solid #000;padding:0;vertical-align:top;">
         <table style="width:100%;border-collapse:collapse;">
@@ -438,6 +438,56 @@ export async function GET(request) {
 
 		connection = await dbConnect();
 
+		try {
+			await connection.execute(
+				`ALTER TABLE invoices ADD COLUMN po_id INT NULL`
+			);
+		} catch (_) {}
+		try {
+			await connection.execute(`
+        CREATE TABLE IF NOT EXISTS purchase_orders (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          po_number VARCHAR(100) NOT NULL,
+          client_name VARCHAR(255) NOT NULL,
+          original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
+          remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+          po_date DATE NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY unique_po (po_number(100), client_name(255))
+        )
+      `);
+		} catch (_) {}
+		for (const col of [
+			{ name: 'po_number', definition: 'VARCHAR(100) NOT NULL' },
+			{ name: 'client_name', definition: 'VARCHAR(255) NOT NULL' },
+			{
+				name: 'original_value',
+				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
+			},
+			{
+				name: 'remaining_balance',
+				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
+			},
+			{ name: 'po_date', definition: 'DATE NULL' },
+		]) {
+			try {
+				await connection.execute(
+					`ALTER TABLE purchase_orders ADD COLUMN ${col.name} ${col.definition}`
+				);
+			} catch (_) {}
+		}
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders MODIFY COLUMN vendor_name VARCHAR(255) NULL`
+			);
+		} catch (_) {}
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders ALTER COLUMN vendor_name SET DEFAULT ''`
+			);
+		} catch (_) {}
+
 		const [invoices] = await connection.execute(
 			'SELECT * FROM invoices WHERE id = ?',
 			[id]
@@ -450,7 +500,22 @@ export async function GET(request) {
 			);
 		}
 
-		const invoice = mapInvoiceForTemplate(invoices[0]);
+		const invoiceRow = invoices[0];
+
+		// Fetch remaining_balance from purchase_orders if linked
+		if (invoiceRow.po_id) {
+			try {
+				const [poRows] = await connection.execute(
+					'SELECT remaining_balance FROM purchase_orders WHERE id = ?',
+					[invoiceRow.po_id]
+				);
+				if (poRows.length > 0) {
+					invoiceRow.balance_po_value = poRows[0].remaining_balance;
+				}
+			} catch (_) {}
+		}
+
+		const invoice = mapInvoiceForTemplate(invoiceRow);
 		const html = generateInvoiceHTML(invoice);
 		const filename = `${sanitizeFileName(invoice.invoice_number || 'invoice')}.pdf`;
 

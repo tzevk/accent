@@ -118,19 +118,164 @@ export async function PUT(request, { params }) {
 
 		connection = await dbConnect();
 
-		// Check if invoice exists
-		const [existingInvoice] = await connection.execute(
-			'SELECT id FROM invoices WHERE id = ?',
+		// Ensure schema has po_id column and purchase_orders table
+		try {
+			await connection.execute(
+				`ALTER TABLE invoices ADD COLUMN po_id INT NULL`
+			);
+		} catch (_) {}
+		try {
+			await connection.execute(`
+        CREATE TABLE IF NOT EXISTS purchase_orders (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          po_number VARCHAR(100) NOT NULL,
+          client_name VARCHAR(255) NOT NULL,
+          original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
+          remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+          po_date DATE NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY unique_po (po_number(100), client_name(255))
+        )
+      `);
+		} catch (_) {}
+		for (const col of [
+			{ name: 'po_number', definition: 'VARCHAR(100) NOT NULL' },
+			{ name: 'client_name', definition: 'VARCHAR(255) NOT NULL' },
+			{
+				name: 'original_value',
+				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
+			},
+			{
+				name: 'remaining_balance',
+				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
+			},
+			{ name: 'po_date', definition: 'DATE NULL' },
+		]) {
+			try {
+				await connection.execute(
+					`ALTER TABLE purchase_orders ADD COLUMN ${col.name} ${col.definition}`
+				);
+			} catch (_) {}
+		}
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders MODIFY COLUMN vendor_name VARCHAR(255) NULL`
+			);
+		} catch (_) {}
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders ALTER COLUMN vendor_name SET DEFAULT ''`
+			);
+		} catch (_) {}
+
+		// Fetch old invoice data before updating
+		const [oldInvoice] = await connection.execute(
+			'SELECT total, po_number, client_name, balance_po_value, po_id FROM invoices WHERE id = ?',
 			[id]
 		);
-		if (!existingInvoice || existingInvoice.length === 0) {
+		if (!oldInvoice || oldInvoice.length === 0) {
 			return NextResponse.json(
 				{ success: false, message: 'Invoice not found' },
 				{ status: 404 }
 			);
 		}
 
-		// Update invoice
+		const oldTotal = parseFloat(oldInvoice[0].total) || 0;
+		const oldPoNumber = oldInvoice[0].po_number;
+		const oldClientName = oldInvoice[0].client_name;
+		const oldPoId = oldInvoice[0].po_id;
+		const newTotal = parseFloat(total) || 0;
+
+		// Calculate balance_po_value based on purchase_orders
+		let calculatedBalance = balance_po_value;
+		let newPoId = oldPoId;
+		const poChanged =
+			po_number !== oldPoNumber || client_name !== oldClientName;
+
+		if (poChanged) {
+			// Restore old PO balance
+			if (oldPoId) {
+				await connection.execute(
+					'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ?',
+					[oldTotal, oldPoId]
+				);
+			}
+
+			// Handle new PO
+			if (po_number && client_name) {
+				const [newPO] = await connection.execute(
+					'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND client_name = ?',
+					[po_number, client_name]
+				);
+
+				if (newPO.length > 0) {
+					newPoId = newPO[0].id;
+					const remaining = parseFloat(newPO[0].remaining_balance) || 0;
+					calculatedBalance = remaining - newTotal;
+					await connection.execute(
+						'UPDATE purchase_orders SET remaining_balance = ? WHERE id = ?',
+						[calculatedBalance, newPoId]
+					);
+				} else {
+					const poValue = parseFloat(original_po_value) || 0;
+					calculatedBalance = poValue - newTotal;
+					const [poResult] = await connection.execute(
+						`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
+             VALUES (?, ?, ?, ?, ?)`,
+						[
+							po_number,
+							client_name,
+							poValue,
+							calculatedBalance,
+							po_date || null,
+						]
+					);
+					newPoId = poResult.insertId;
+				}
+			} else {
+				newPoId = null;
+			}
+		} else if (oldPoId) {
+			// Same PO — adjust remaining_balance by difference
+			const diff = oldTotal - newTotal;
+			await connection.execute(
+				'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ?',
+				[diff, oldPoId]
+			);
+			const [poRecord] = await connection.execute(
+				'SELECT remaining_balance FROM purchase_orders WHERE id = ?',
+				[oldPoId]
+			);
+			calculatedBalance = parseFloat(poRecord[0]?.remaining_balance) || 0;
+		} else if (po_number && client_name) {
+			// No old PO, but new PO info — create/upsert
+			const [existingPO] = await connection.execute(
+				'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND client_name = ?',
+				[po_number, client_name]
+			);
+
+			if (existingPO.length > 0) {
+				newPoId = existingPO[0].id;
+				const remaining = parseFloat(existingPO[0].remaining_balance) || 0;
+				calculatedBalance = remaining - newTotal;
+				await connection.execute(
+					'UPDATE purchase_orders SET remaining_balance = ? WHERE id = ?',
+					[calculatedBalance, newPoId]
+				);
+			} else {
+				const poValue = parseFloat(original_po_value) || 0;
+				calculatedBalance = poValue - newTotal;
+				const [poResult] = await connection.execute(
+					`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
+           VALUES (?, ?, ?, ?, ?)`,
+					[po_number, client_name, poValue, calculatedBalance, po_date || null]
+				);
+				newPoId = poResult.insertId;
+			}
+		}
+
+		// Update invoice with calculated balance
 		await connection.execute(
 			`UPDATE invoices SET
         client_name = ?,
@@ -147,6 +292,7 @@ export async function PUT(request, { params }) {
         po_value = ?,
         original_po_value = ?,
         balance_po_value = ?,
+        po_id = ?,
         description = ?,
         items = ?,
         line_items = ?,
@@ -188,7 +334,8 @@ export async function PUT(request, { params }) {
 				po_date || null,
 				po_value || null,
 				original_po_value || null,
-				balance_po_value || null,
+				calculatedBalance,
+				newPoId,
 				description ||
 					(items && items.length > 0
 						? items.map((i) => i.description).join(', ')
@@ -252,15 +399,75 @@ export async function DELETE(request, { params }) {
 
 		connection = await dbConnect();
 
-		// Check if invoice exists
-		const [existingInvoice] = await connection.execute(
-			'SELECT id FROM invoices WHERE id = ?',
+		try {
+			await connection.execute(
+				`ALTER TABLE invoices ADD COLUMN po_id INT NULL`
+			);
+		} catch (_) {}
+		try {
+			await connection.execute(`
+        CREATE TABLE IF NOT EXISTS purchase_orders (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          po_number VARCHAR(100) NOT NULL,
+          client_name VARCHAR(255) NOT NULL,
+          original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
+          remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+          po_date DATE NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY unique_po (po_number(100), client_name(255))
+        )
+      `);
+		} catch (_) {}
+		for (const col of [
+			{ name: 'po_number', definition: 'VARCHAR(100) NOT NULL' },
+			{ name: 'client_name', definition: 'VARCHAR(255) NOT NULL' },
+			{
+				name: 'original_value',
+				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
+			},
+			{
+				name: 'remaining_balance',
+				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
+			},
+			{ name: 'po_date', definition: 'DATE NULL' },
+		]) {
+			try {
+				await connection.execute(
+					`ALTER TABLE purchase_orders ADD COLUMN ${col.name} ${col.definition}`
+				);
+			} catch (_) {}
+		}
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders MODIFY COLUMN vendor_name VARCHAR(255) NULL`
+			);
+		} catch (_) {}
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders ALTER COLUMN vendor_name SET DEFAULT ''`
+			);
+		} catch (_) {}
+
+		// Fetch invoice data before deleting
+		const [invoiceToDelete] = await connection.execute(
+			'SELECT total, po_id FROM invoices WHERE id = ?',
 			[id]
 		);
-		if (!existingInvoice || existingInvoice.length === 0) {
+		if (!invoiceToDelete || invoiceToDelete.length === 0) {
 			return NextResponse.json(
 				{ success: false, message: 'Invoice not found' },
 				{ status: 404 }
+			);
+		}
+
+		// Restore PO remaining balance
+		const deleteTotal = parseFloat(invoiceToDelete[0].total) || 0;
+		const deletePoId = invoiceToDelete[0].po_id;
+		if (deletePoId) {
+			await connection.execute(
+				'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ?',
+				[deleteTotal, deletePoId]
 			);
 		}
 
