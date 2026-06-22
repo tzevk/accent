@@ -28,7 +28,7 @@ export default function CreateInvoicePage() {
 
 	const [formData, setFormData] = useState({
 		invoice_number: '',
-		invoice_date: today,
+		invoice_date: '',
 		client_name: '',
 		client_email: '',
 		client_phone: '',
@@ -56,7 +56,7 @@ export default function CreateInvoicePage() {
 		bank_address: '',
 		notes: '',
 		terms: '',
-		due_date: defaultDue,
+		due_date: '',
 		status: 'draft',
 	});
 
