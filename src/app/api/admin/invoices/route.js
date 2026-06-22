@@ -26,6 +26,50 @@ export async function GET(request) {
 
 		connection = await dbConnect();
 
+		// Create purchase_orders table
+		await connection.execute(`
+      CREATE TABLE IF NOT EXISTS purchase_orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        po_number VARCHAR(100) NOT NULL,
+        client_name VARCHAR(255) NOT NULL,
+        original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        po_date DATE NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_po (po_number(100), client_name(255))
+      )
+    `);
+		for (const col of [
+			{ name: 'po_number', definition: 'VARCHAR(100) NOT NULL' },
+			{ name: 'client_name', definition: 'VARCHAR(255) NOT NULL' },
+			{
+				name: 'original_value',
+				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
+			},
+			{
+				name: 'remaining_balance',
+				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
+			},
+			{ name: 'po_date', definition: 'DATE NULL' },
+		]) {
+			try {
+				await connection.execute(
+					`ALTER TABLE purchase_orders ADD COLUMN ${col.name} ${col.definition}`
+				);
+			} catch (_) {}
+		}
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders MODIFY COLUMN vendor_name VARCHAR(255) NULL`
+			);
+		} catch (_) {}
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders ALTER COLUMN vendor_name SET DEFAULT ''`
+			);
+		} catch (_) {}
+
 		// Check if table exists, create if not
 		await connection.execute(`
       CREATE TABLE IF NOT EXISTS invoices (
@@ -72,6 +116,7 @@ export async function GET(request) {
         terms TEXT,
         due_date DATE,
         status ENUM('draft', 'sent', 'paid', 'overdue', 'cancelled') DEFAULT 'draft',
+        po_id INT NULL,
         created_by INT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -83,6 +128,7 @@ export async function GET(request) {
 
 		// Add new columns if they don't exist (for existing tables)
 		const newColumns = [
+			{ name: 'po_id', definition: 'INT NULL AFTER status' },
 			{ name: 'client_pan', definition: 'VARCHAR(20) AFTER client_address' },
 			{ name: 'client_gstin', definition: 'VARCHAR(20) AFTER client_pan' },
 			{ name: 'client_state', definition: 'VARCHAR(100) AFTER client_gstin' },
@@ -238,12 +284,27 @@ export async function GET(request) {
 }
 
 // Helper function to generate invoice number
+const MONTHS = [
+	'JAN',
+	'FEB',
+	'MAR',
+	'APR',
+	'MAY',
+	'JUN',
+	'JUL',
+	'AUG',
+	'SEP',
+	'OCT',
+	'NOV',
+	'DEC',
+];
+
 function generateInvoiceNumber(count) {
 	const date = new Date();
 	const year = date.getFullYear().toString().slice(-2);
-	const month = (date.getMonth() + 1).toString().padStart(2, '0');
-	const num = (count + 1).toString().padStart(4, '0');
-	return `INV-${year}${month}-${num}`;
+	const month = MONTHS[date.getMonth()];
+	const num = (count + 1).toString().padStart(3, '0');
+	return `ATS-I/${month}-${year}/${num}`;
 }
 
 // POST - Create new invoice
@@ -330,6 +391,7 @@ export async function POST(request) {
 			{ name: 'service_category', definition: 'VARCHAR(500)' },
 			{ name: 'bank_address', definition: 'VARCHAR(500)' },
 			{ name: 'amount_in_words', definition: 'VARCHAR(500)' },
+			{ name: 'po_id', definition: 'INT NULL' },
 		];
 		for (const col of postColumns) {
 			try {
@@ -338,6 +400,50 @@ export async function POST(request) {
 				);
 			} catch (_) {}
 		}
+
+		// Create purchase_orders table if not exists
+		await connection.execute(`
+      CREATE TABLE IF NOT EXISTS purchase_orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        po_number VARCHAR(100) NOT NULL,
+        client_name VARCHAR(255) NOT NULL,
+        original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        po_date DATE NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_po (po_number(100), client_name(255))
+      )
+    `);
+		for (const col of [
+			{ name: 'po_number', definition: 'VARCHAR(100) NOT NULL' },
+			{ name: 'client_name', definition: 'VARCHAR(255) NOT NULL' },
+			{
+				name: 'original_value',
+				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
+			},
+			{
+				name: 'remaining_balance',
+				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
+			},
+			{ name: 'po_date', definition: 'DATE NULL' },
+		]) {
+			try {
+				await connection.execute(
+					`ALTER TABLE purchase_orders ADD COLUMN ${col.name} ${col.definition}`
+				);
+			} catch (_) {}
+		}
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders MODIFY COLUMN vendor_name VARCHAR(255) NULL`
+			);
+		} catch (_) {}
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders ALTER COLUMN vendor_name SET DEFAULT ''`
+			);
+		} catch (_) {}
 
 		// Use pre-generated invoice number from client, or generate one
 		let invoiceNumber = bodyInvoiceNumber;
@@ -349,17 +455,50 @@ export async function POST(request) {
 			invoiceNumber = generateInvoiceNumber(count);
 		}
 
+		// Upsert purchase order and calculate balance_po_value
+		let poId = null;
+		let calculatedBalance = balance_po_value;
+		if (po_number && client_name) {
+			const [existingPO] = await connection.execute(
+				'SELECT id, original_value, remaining_balance FROM purchase_orders WHERE po_number = ? AND client_name = ?',
+				[po_number, client_name]
+			);
+
+			if (existingPO.length > 0) {
+				poId = existingPO[0].id;
+				const oldRemaining = parseFloat(existingPO[0].remaining_balance) || 0;
+				const invoiceTotal = parseFloat(total) || 0;
+				calculatedBalance = oldRemaining - invoiceTotal;
+
+				await connection.execute(
+					'UPDATE purchase_orders SET remaining_balance = ? WHERE id = ?',
+					[calculatedBalance, poId]
+				);
+			} else {
+				const poValue = parseFloat(original_po_value) || 0;
+				const invoiceTotal = parseFloat(total) || 0;
+				calculatedBalance = poValue - invoiceTotal;
+
+				const [poResult] = await connection.execute(
+					`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
+           VALUES (?, ?, ?, ?, ?)`,
+					[po_number, client_name, poValue, calculatedBalance, po_date || null]
+				);
+				poId = poResult.insertId;
+			}
+		}
+
 		// Insert invoice
 		const [result] = await connection.execute(
 			`INSERT INTO invoices (
         invoice_number, invoice_date, client_name, client_email, client_phone, client_address,
         client_pan, client_gstin, client_state, client_state_code, kind_attn,
-        po_number, po_date, po_value, original_po_value, balance_po_value,
+        po_number, po_date, po_value, original_po_value, balance_po_value, po_id,
         description, items, line_items, subtotal, gross_amount, tax_rate, tax_amount, gst_type,
         cgst_rate, sgst_rate, igst_rate, discount, total, net_amount, amount_in_words,
         gst_number, pan_number, tan_number, service_category, bank_address,
         amount_paid, balance_due, notes, terms, due_date, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				invoiceNumber,
 				invoice_date || null,
@@ -376,7 +515,8 @@ export async function POST(request) {
 				po_date || null,
 				po_value || null,
 				original_po_value || null,
-				balance_po_value || null,
+				calculatedBalance,
+				poId,
 				description || null,
 				JSON.stringify(items || []),
 				line_items ? JSON.stringify(line_items) : null,

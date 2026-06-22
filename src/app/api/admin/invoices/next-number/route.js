@@ -2,6 +2,21 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { getCurrentUser } from '@/utils/api-permissions';
 
+const MONTHS = [
+	'JAN',
+	'FEB',
+	'MAR',
+	'APR',
+	'MAY',
+	'JUN',
+	'JUL',
+	'AUG',
+	'SEP',
+	'OCT',
+	'NOV',
+	'DEC',
+];
+
 export async function GET(request) {
 	let db;
 	try {
@@ -26,10 +41,9 @@ export async function GET(request) {
 
 		const now = new Date();
 		const year = now.getFullYear().toString().slice(-2);
-		const month = (now.getMonth() + 1).toString().padStart(2, '0');
-		const pattern = `INV-${year}${month}-%`;
+		const month = MONTHS[now.getMonth()];
+		const pattern = `ATS-I/${month}-${year}/%`;
 
-		// Get the last invoice_number for this month
 		const [rows] = await db.execute(
 			`SELECT invoice_number FROM invoices
 			 WHERE invoice_number LIKE ?
@@ -40,14 +54,14 @@ export async function GET(request) {
 		let sequence = 1;
 		if (rows.length > 0 && rows[0].invoice_number) {
 			const match = rows[0].invoice_number.match(
-				new RegExp(`INV-${year}${month}-(\\d+)`)
+				new RegExp(`ATS-I/${month}-${year}/(\\d+)`)
 			);
 			if (match) {
 				sequence = parseInt(match[1], 10) + 1;
 			}
 		}
 
-		const invoiceNumber = `INV-${year}${month}-${String(sequence).padStart(4, '0')}`;
+		const invoiceNumber = `ATS-I/${month}-${year}/${String(sequence).padStart(3, '0')}`;
 
 		return NextResponse.json({
 			success: true,

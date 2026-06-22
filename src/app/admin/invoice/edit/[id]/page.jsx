@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
@@ -12,14 +12,8 @@ import {
 	PlusIcon,
 	TrashIcon,
 	CheckIcon,
+	ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
-
-const DEFAULT_GST_NUMBER = '27AAHCA5765M1ZD';
-const DEFAULT_PAN_NUMBER = 'AAHCA5765M';
-const DEFAULT_SERVICE_CATEGORY =
-	'Consulting & Advisory Engineering Services (Service Code : 998331)';
-const DEFAULT_BANK_ADDRESS =
-	'City Survey No. 841 to 846, "Florence" Florence CHS LTD. Vakola, Mumbai - 400 055 / A/c No. 917020044935714';
 
 export default function EditInvoicePage() {
 	const router = useRouter();
@@ -29,6 +23,12 @@ export default function EditInvoicePage() {
 
 	const [saving, setSaving] = useState(false);
 	const [loadingInvoice, setLoadingInvoice] = useState(true);
+	const [companies, setCompanies] = useState([]);
+	const [showSuggestions, setShowSuggestions] = useState(false);
+	const [incomingPOs, setIncomingPOs] = useState([]);
+	const [showPOSelector, setShowPOSelector] = useState(false);
+	const [poBalance, setPoBalance] = useState(null);
+	const oldTotalRef = useRef(0);
 	const [formData, setFormData] = useState({
 		invoice_number: '',
 		invoice_date: '',
@@ -52,11 +52,11 @@ export default function EditInvoicePage() {
 		cgst_rate: 9,
 		sgst_rate: 9,
 		igst_rate: 18,
-		gst_number: DEFAULT_GST_NUMBER,
-		pan_number: DEFAULT_PAN_NUMBER,
+		gst_number: '',
+		pan_number: '',
 		tan_number: '',
-		service_category: DEFAULT_SERVICE_CATEGORY,
-		bank_address: DEFAULT_BANK_ADDRESS,
+		service_category: '',
+		bank_address: '',
 		notes: '',
 		terms: '',
 		due_date: '',
@@ -79,6 +79,76 @@ export default function EditInvoicePage() {
 		}));
 	};
 
+	// Fetch companies
+	useEffect(() => {
+		fetch('/api/companies')
+			.then((res) => res.json())
+			.then((data) => {
+				if (data.success) setCompanies(data.data || []);
+			})
+			.catch((err) => console.error('Error fetching companies:', err));
+	}, []);
+
+	// Handle company selection
+	const handleSelectCompany = (company) => {
+		const parts = [];
+		if (company.address) parts.push(company.address.trim());
+		const cityPostal = [company.city, company.postal_code]
+			.filter(Boolean)
+			.join(' - ')
+			.trim();
+		if (cityPostal) parts.push(cityPostal);
+		if (company.state) parts.push(company.state.trim());
+		if (company.country) parts.push(company.country.trim());
+
+		const gstType = company.state_code === '27' ? 'cgst_sgst' : 'igst';
+
+		setFormData((prev) => ({
+			...prev,
+			client_name: company.company_name || '',
+			client_email: company.email || '',
+			client_phone: company.phone || company.mobile_number || '',
+			client_address: parts.join(', '),
+			client_pan: company.pan_number || '',
+			client_gstin: company.gstin || '',
+			client_state: company.state || '',
+			client_state_code: company.state_code || '',
+			kind_attn: company.contact_person || '',
+			gst_type: gstType,
+		}));
+	};
+
+	// Fetch incoming POs from localStorage
+	useEffect(() => {
+		try {
+			const stored = localStorage.getItem('incomingPOs');
+			if (stored) setIncomingPOs(JSON.parse(stored));
+		} catch (e) {
+			console.error('Error loading incoming POs:', e);
+		}
+	}, []);
+
+	// Fetch PO balance when po_number or client_name changes
+	useEffect(() => {
+		const po = formData.po_number?.trim();
+		const client = formData.client_name?.trim();
+		if (!po || !client) {
+			setPoBalance(null);
+			return;
+		}
+		const timer = setTimeout(() => {
+			fetch(
+				`/api/admin/invoices/po-balance?po_number=${encodeURIComponent(po)}&client_name=${encodeURIComponent(client)}`
+			)
+				.then((r) => r.json())
+				.then((data) => {
+					if (data.success) setPoBalance(data.data);
+				})
+				.catch(() => setPoBalance(null));
+		}, 400);
+		return () => clearTimeout(timer);
+	}, [formData.po_number, formData.client_name]);
+
 	// Fetch invoice data
 	useEffect(() => {
 		const fetchInvoice = async () => {
@@ -97,6 +167,8 @@ export default function EditInvoicePage() {
 									sr_no: item.sr_no || i + 1,
 								}))
 							: mapItemsToLineItems(inv.items);
+
+					oldTotalRef.current = parseFloat(inv.total) || 0;
 
 					setFormData({
 						invoice_number: inv.invoice_number || '',
@@ -157,7 +229,18 @@ export default function EditInvoicePage() {
 	// Handle input change
 	const handleChange = (e) => {
 		const { name, value } = e.target;
-		setFormData((prev) => ({ ...prev, [name]: value }));
+		setFormData((prev) => {
+			const updates = { [name]: value };
+			if (name === 'client_state_code') {
+				updates.gst_type = value === '27' ? 'cgst_sgst' : 'igst';
+			}
+			if (name === 'invoice_date' && value) {
+				const d = new Date(value);
+				d.setDate(d.getDate() + 30);
+				updates.due_date = d.toISOString().split('T')[0];
+			}
+			return { ...prev, ...updates };
+		});
 	};
 
 	// Calculate totals from line_items (matching generateInvoiceHTML logic)
@@ -194,8 +277,18 @@ export default function EditInvoicePage() {
 	const handleItemChange = (index, field, value) => {
 		setFormData((prev) => {
 			const newItems = [...prev.line_items];
-			const parsed = field === 'amount' ? parseFloat(value) || 0 : value;
-			newItems[index] = { ...newItems[index], [field]: parsed };
+			newItems[index] = { ...newItems[index], [field]: value };
+
+			// Auto-calculate amount if unit and charges are provided
+			if (field === 'unit' || field === 'charges') {
+				const unit =
+					parseFloat(field === 'unit' ? value : newItems[index].unit) || 0;
+				const charges =
+					parseFloat(field === 'charges' ? value : newItems[index].charges) ||
+					0;
+				newItems[index].amount = (unit * charges).toFixed(2);
+			}
+
 			return { ...prev, line_items: newItems };
 		});
 	};
@@ -340,11 +433,22 @@ export default function EditInvoicePage() {
 						(parseFloat(formData.sgst_rate) || 0)
 					: parseFloat(formData.igst_rate) || 0;
 
+			const calculatedBalance = poBalance?.exists
+				? (parseFloat(poBalance.remaining_balance) - totals.netAmount).toFixed(
+						2
+					)
+				: formData.original_po_value
+					? (parseFloat(formData.original_po_value) - totals.netAmount).toFixed(
+							2
+						)
+					: '';
+
 			const res = await fetch(`/api/admin/invoices/${invoiceId}`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					...formData,
+					balance_po_value: calculatedBalance || formData.balance_po_value,
 					gross_amount: totals.grossAmount,
 					subtotal: totals.grossAmount,
 					tax_rate: taxRate,
@@ -498,10 +602,57 @@ export default function EditInvoicePage() {
 												value={formData.client_name}
 												onChange={(e) => {
 													handleChange(e);
+													setShowSuggestions(true);
 												}}
+												onFocus={() => setShowSuggestions(true)}
+												onBlur={() =>
+													setTimeout(() => setShowSuggestions(false), 200)
+												}
 												placeholder="Client Name"
 												className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+												autoComplete="off"
 											/>
+											{showSuggestions && (
+												<div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+													{companies.filter((c) =>
+														(c.company_name || '')
+															.toLowerCase()
+															.includes(
+																(formData.client_name || '').toLowerCase()
+															)
+													).length > 0 ? (
+														companies
+															.filter((c) =>
+																(c.company_name || '')
+																	.toLowerCase()
+																	.includes(
+																		(formData.client_name || '').toLowerCase()
+																	)
+															)
+															.map((company) => (
+																<button
+																	key={company.id}
+																	type="button"
+																	onClick={() => handleSelectCompany(company)}
+																	className="w-full text-left px-4 py-2 hover:bg-purple-50 text-sm text-gray-700 font-medium transition-colors"
+																>
+																	<div className="font-semibold text-gray-900">
+																		{company.company_name}
+																	</div>
+																	<div className="text-xs text-gray-500">
+																		{company.city ? `${company.city}, ` : ''}
+																		{company.state || ''}
+																	</div>
+																</button>
+															))
+													) : (
+														<div className="px-4 py-2 text-sm text-gray-500 italic">
+															No matching company found. Keep typing to enter
+															manually.
+														</div>
+													)}
+												</div>
+											)}
 										</div>
 										<textarea
 											name="client_address"
@@ -541,15 +692,71 @@ export default function EditInvoicePage() {
 											<div className="w-1/2 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm">
 												PO Number
 											</div>
-											<div className="w-1/2 p-2">
+											<div className="w-1/2 p-2 flex gap-1">
 												<input
 													type="text"
 													name="po_number"
 													value={formData.po_number}
 													onChange={handleChange}
-													className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+													className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 													placeholder="PO No."
 												/>
+												{incomingPOs.length > 0 && (
+													<div className="relative">
+														<button
+															type="button"
+															onClick={() => setShowPOSelector(!showPOSelector)}
+															className="p-1.5 text-purple-600 hover:bg-purple-50 rounded border border-gray-300"
+															title="Select from Incoming POs"
+														>
+															<ClipboardDocumentListIcon className="h-4 w-4" />
+														</button>
+														{showPOSelector && (
+															<div className="absolute right-0 z-10 mt-1 w-80 bg-white border border-gray-200 rounded-md shadow-lg max-h-72 overflow-auto">
+																<div className="p-2 text-xs font-semibold text-gray-500 border-b border-gray-200">
+																	Incoming Purchase Orders
+																</div>
+																{incomingPOs
+																	.filter(
+																		(po) =>
+																			!formData.po_number ||
+																			po.po_number
+																				.toLowerCase()
+																				.includes(
+																					formData.po_number.toLowerCase()
+																				)
+																	)
+																	.map((po, idx) => (
+																		<button
+																			key={po.id || idx}
+																			type="button"
+																			onClick={() => {
+																				setFormData((prev) => ({
+																					...prev,
+																					po_number: po.po_number || '',
+																					po_date: po.po_date || '',
+																					original_po_value: po.po_amount || '',
+																				}));
+																				setShowPOSelector(false);
+																			}}
+																			className="w-full text-left px-3 py-2 hover:bg-purple-50 border-b border-gray-100 last:border-0"
+																		>
+																			<div className="text-sm font-medium text-gray-900">
+																				{po.po_number}
+																			</div>
+																			<div className="text-xs text-gray-500">
+																				{po.company_name}
+																				{po.company_name && po.po_date
+																					? ' | '
+																					: ''}
+																				{po.po_date || ''}
+																			</div>
+																		</button>
+																	))}
+															</div>
+														)}
+													</div>
+												)}
 											</div>
 										</div>
 										<div className="flex">
@@ -647,6 +854,7 @@ export default function EditInvoicePage() {
 											</label>
 											<input
 												type="number"
+												step="0.01"
 												name="original_po_value"
 												value={formData.original_po_value}
 												onChange={handleChange}
@@ -660,11 +868,24 @@ export default function EditInvoicePage() {
 											</label>
 											<input
 												type="number"
+												step="0.01"
 												name="balance_po_value"
-												value={formData.balance_po_value}
-												onChange={handleChange}
-												placeholder="0.00"
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+												value={
+													poBalance?.exists
+														? (
+																parseFloat(poBalance.remaining_balance) +
+																oldTotalRef.current -
+																netAmount
+															).toFixed(2)
+														: formData.original_po_value
+															? (
+																	parseFloat(formData.original_po_value) -
+																	netAmount
+																).toFixed(2)
+															: formData.balance_po_value
+												}
+												readOnly
+												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-50 text-gray-500 cursor-not-allowed"
 											/>
 										</div>
 									</div>
@@ -740,6 +961,7 @@ export default function EditInvoicePage() {
 												<td className="p-2 border-r border-b border-gray-300">
 													<input
 														type="number"
+														step="0.01"
 														value={item.amount}
 														onChange={(e) =>
 															handleItemChange(index, 'amount', e.target.value)

@@ -11,14 +11,8 @@ import {
 	PlusIcon,
 	TrashIcon,
 	CheckIcon,
+	ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
-
-const DEFAULT_GST_NUMBER = '27AAHCA5765M1ZD';
-const DEFAULT_PAN_NUMBER = 'AAHCA5765M';
-const DEFAULT_SERVICE_CATEGORY =
-	'Consulting & Advisory Engineering Services (Service Code : 998331)';
-const DEFAULT_BANK_ADDRESS =
-	'City Survey No. 841 to 846, "Florence" Florence CHS LTD. Vakola, Mumbai - 400 055 / A/c No. 917020044935714';
 
 export default function CreateInvoicePage() {
 	const router = useRouter();
@@ -27,9 +21,15 @@ export default function CreateInvoicePage() {
 	const [saving, setSaving] = useState(false);
 	const [companies, setCompanies] = useState([]);
 	const [showSuggestions, setShowSuggestions] = useState(false);
+	const [incomingPOs, setIncomingPOs] = useState([]);
+	const [showPOSelector, setShowPOSelector] = useState(false);
+	const [authLoading, setAuthLoading] = useState(true);
+	const [session, setSession] = useState(null);
+	const [poBalance, setPoBalance] = useState(null);
+
 	const [formData, setFormData] = useState({
 		invoice_number: '',
-		invoice_date: new Date().toISOString().split('T')[0],
+		invoice_date: today,
 		client_name: '',
 		client_email: '',
 		client_phone: '',
@@ -57,7 +57,7 @@ export default function CreateInvoicePage() {
 		bank_address: '',
 		notes: '',
 		terms: '',
-		due_date: '',
+		due_date: defaultDue,
 		status: 'draft',
 	});
 
@@ -90,33 +90,80 @@ export default function CreateInvoicePage() {
 
 	// Handle company selection
 	const handleSelectCompany = (company) => {
-		const addrParts = [
-			company.address,
-			company.city,
-			company.state,
-			company.country,
-			company.postal_code,
-		].filter(Boolean);
+		const parts = [];
+		if (company.address) parts.push(company.address.trim());
+		const cityPostal = [company.city, company.postal_code]
+			.filter(Boolean)
+			.join(' - ')
+			.trim();
+		if (cityPostal) parts.push(cityPostal);
+		if (company.state) parts.push(company.state.trim());
+		if (company.country) parts.push(company.country.trim());
+
+		const gstType = company.state_code === '27' ? 'cgst_sgst' : 'igst';
 
 		setFormData((prev) => ({
 			...prev,
 			client_name: company.company_name || '',
 			client_email: company.email || '',
 			client_phone: company.phone || company.mobile_number || '',
-			client_address: addrParts.join('\n'),
+			client_address: parts.join(', '),
 			client_pan: company.pan_number || '',
 			client_gstin: company.gstin || '',
 			client_state: company.state || '',
 			client_state_code: company.state_code || '',
 			kind_attn: company.contact_person || '',
+			gst_type: gstType,
 		}));
 		setShowSuggestions(false);
 	};
 
+	// Fetch incoming POs from localStorage
+	useEffect(() => {
+		try {
+			const stored = localStorage.getItem('incomingPOs');
+			if (stored) setIncomingPOs(JSON.parse(stored));
+		} catch (e) {
+			console.error('Error loading incoming POs:', e);
+		}
+	}, []);
+
+	// Fetch PO balance when po_number or client_name changes
+	useEffect(() => {
+		const po = formData.po_number?.trim();
+		const client = formData.client_name?.trim();
+		if (!po || !client) {
+			setPoBalance(null);
+			return;
+		}
+		const timer = setTimeout(() => {
+			fetch(
+				`/api/admin/invoices/po-balance?po_number=${encodeURIComponent(po)}&client_name=${encodeURIComponent(client)}`
+			)
+				.then((r) => r.json())
+				.then((data) => {
+					if (data.success) setPoBalance(data.data);
+				})
+				.catch(() => setPoBalance(null));
+		}, 400);
+		return () => clearTimeout(timer);
+	}, [formData.po_number, formData.client_name]);
+
 	// Handle input change
 	const handleChange = (e) => {
 		const { name, value } = e.target;
-		setFormData((prev) => ({ ...prev, [name]: value }));
+		setFormData((prev) => {
+			const updates = { [name]: value };
+			if (name === 'client_state_code') {
+				updates.gst_type = value === '27' ? 'cgst_sgst' : 'igst';
+			}
+			if (name === 'invoice_date' && value) {
+				const d = new Date(value);
+				d.setDate(d.getDate() + 30);
+				updates.due_date = d.toISOString().split('T')[0];
+			}
+			return { ...prev, ...updates };
+		});
 	};
 
 	// Calculate totals from line_items (matching generateInvoiceHTML logic)
@@ -153,8 +200,18 @@ export default function CreateInvoicePage() {
 	const handleItemChange = (index, field, value) => {
 		setFormData((prev) => {
 			const newItems = [...prev.line_items];
-			const parsed = field === 'amount' ? parseFloat(value) || 0 : value;
-			newItems[index] = { ...newItems[index], [field]: parsed };
+			newItems[index] = { ...newItems[index], [field]: value };
+
+			// Auto-calculate amount if unit and charges are provided
+			if (field === 'unit' || field === 'charges') {
+				const unit =
+					parseFloat(field === 'unit' ? value : newItems[index].unit) || 0;
+				const charges =
+					parseFloat(field === 'charges' ? value : newItems[index].charges) ||
+					0;
+				newItems[index].amount = (unit * charges).toFixed(2);
+			}
+
 			return { ...prev, line_items: newItems };
 		});
 	};
@@ -300,11 +357,22 @@ export default function CreateInvoicePage() {
 						(parseFloat(formData.sgst_rate) || 0)
 					: parseFloat(formData.igst_rate) || 0;
 
+			const calculatedBalance = poBalance?.exists
+				? (parseFloat(poBalance.remaining_balance) - totals.netAmount).toFixed(
+						2
+					)
+				: formData.original_po_value
+					? (parseFloat(formData.original_po_value) - totals.netAmount).toFixed(
+							2
+						)
+					: '';
+
 			const res = await fetch('/api/admin/invoices', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					...formData,
+					balance_po_value: calculatedBalance || formData.balance_po_value,
 					gross_amount: totals.grossAmount,
 					subtotal: totals.grossAmount,
 					tax_rate: taxRate,
@@ -496,10 +564,11 @@ export default function CreateInvoicePage() {
 											<div className="w-1/2 p-2">
 												<input
 													type="text"
-													name="invoice_number_display"
+													name="invoice_number"
 													value={formData.invoice_number}
-													readOnly
-													className="w-full px-2 py-1 text-sm border border-gray-200 rounded bg-gray-50 text-gray-600"
+													onChange={handleChange}
+													placeholder="ATS-I/MAY-26/001"
+													className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 												/>
 											</div>
 										</div>
@@ -521,15 +590,71 @@ export default function CreateInvoicePage() {
 											<div className="w-1/2 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm">
 												PO Number
 											</div>
-											<div className="w-1/2 p-2">
+											<div className="w-1/2 p-2 flex gap-1">
 												<input
 													type="text"
 													name="po_number"
 													value={formData.po_number}
 													onChange={handleChange}
-													className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+													className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 													placeholder="PO No."
 												/>
+												{incomingPOs.length > 0 && (
+													<div className="relative">
+														<button
+															type="button"
+															onClick={() => setShowPOSelector(!showPOSelector)}
+															className="p-1.5 text-purple-600 hover:bg-purple-50 rounded border border-gray-300"
+															title="Select from Incoming POs"
+														>
+															<ClipboardDocumentListIcon className="h-4 w-4" />
+														</button>
+														{showPOSelector && (
+															<div className="absolute right-0 z-10 mt-1 w-80 bg-white border border-gray-200 rounded-md shadow-lg max-h-72 overflow-auto">
+																<div className="p-2 text-xs font-semibold text-gray-500 border-b border-gray-200">
+																	Incoming Purchase Orders
+																</div>
+																{incomingPOs
+																	.filter(
+																		(po) =>
+																			!formData.po_number ||
+																			po.po_number
+																				.toLowerCase()
+																				.includes(
+																					formData.po_number.toLowerCase()
+																				)
+																	)
+																	.map((po, idx) => (
+																		<button
+																			key={po.id || idx}
+																			type="button"
+																			onClick={() => {
+																				setFormData((prev) => ({
+																					...prev,
+																					po_number: po.po_number || '',
+																					po_date: po.po_date || '',
+																					original_po_value: po.po_amount || '',
+																				}));
+																				setShowPOSelector(false);
+																			}}
+																			className="w-full text-left px-3 py-2 hover:bg-purple-50 border-b border-gray-100 last:border-0"
+																		>
+																			<div className="text-sm font-medium text-gray-900">
+																				{po.po_number}
+																			</div>
+																			<div className="text-xs text-gray-500">
+																				{po.company_name}
+																				{po.company_name && po.po_date
+																					? ' | '
+																					: ''}
+																				{po.po_date || ''}
+																			</div>
+																		</button>
+																	))}
+															</div>
+														)}
+													</div>
+												)}
 											</div>
 										</div>
 										<div className="flex">
@@ -614,6 +739,7 @@ export default function CreateInvoicePage() {
 											</label>
 											<input
 												type="number"
+												step="0.01"
 												name="original_po_value"
 												value={formData.original_po_value}
 												onChange={handleChange}
@@ -627,11 +753,23 @@ export default function CreateInvoicePage() {
 											</label>
 											<input
 												type="number"
+												step="0.01"
 												name="balance_po_value"
-												value={formData.balance_po_value}
-												onChange={handleChange}
-												placeholder="0.00"
-												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+												value={
+													poBalance?.exists
+														? (
+																parseFloat(poBalance.remaining_balance) -
+																totals.netAmount
+															).toFixed(2)
+														: formData.original_po_value
+															? (
+																	parseFloat(formData.original_po_value) -
+																	totals.netAmount
+																).toFixed(2)
+															: ''
+												}
+												readOnly
+												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-50 text-gray-500 cursor-not-allowed"
 											/>
 										</div>
 										<div>
@@ -720,6 +858,7 @@ export default function CreateInvoicePage() {
 												<td className="p-2 border-r border-b border-gray-300">
 													<input
 														type="number"
+														step="0.01"
 														value={item.amount}
 														onChange={(e) =>
 															handleItemChange(index, 'amount', e.target.value)
@@ -1049,7 +1188,7 @@ export default function CreateInvoicePage() {
 										</p>
 										<div className="h-12"></div>
 										<p className="text-sm font-semibold">
-											Varsha Vasant Mestry
+											Santosh Dinkar Mestry
 										</p>
 										<p className="text-sm text-gray-600">Managing Director</p>
 									</div>
