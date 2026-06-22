@@ -31,12 +31,19 @@ export async function GET(request, { params }) {
 
 		const invoice = invoices[0];
 
-		// Parse items JSON
+		// Parse JSON items/line_items
 		if (invoice.items && typeof invoice.items === 'string') {
 			try {
 				invoice.items = JSON.parse(invoice.items);
 			} catch {
 				invoice.items = [];
+			}
+		}
+		if (invoice.line_items && typeof invoice.line_items === 'string') {
+			try {
+				invoice.line_items = JSON.parse(invoice.line_items);
+			} catch {
+				invoice.line_items = [];
 			}
 		}
 
@@ -80,14 +87,28 @@ export async function PUT(request, { params }) {
 			po_number,
 			po_date,
 			po_value,
+			original_po_value,
 			balance_po_value,
 			description,
 			items,
+			line_items,
 			subtotal,
+			gross_amount,
 			tax_rate,
 			tax_amount,
+			gst_type,
+			cgst_rate,
+			sgst_rate,
+			igst_rate,
 			discount,
 			total,
+			net_amount,
+			amount_in_words,
+			gst_number,
+			pan_number,
+			tan_number,
+			service_category,
+			bank_address,
 			balance_due,
 			notes,
 			terms,
@@ -124,14 +145,28 @@ export async function PUT(request, { params }) {
         po_number = ?,
         po_date = ?,
         po_value = ?,
+        original_po_value = ?,
         balance_po_value = ?,
         description = ?,
         items = ?,
+        line_items = ?,
         subtotal = ?,
+        gross_amount = ?,
         tax_rate = ?,
         tax_amount = ?,
+        gst_type = ?,
+        cgst_rate = ?,
+        sgst_rate = ?,
+        igst_rate = ?,
         discount = ?,
         total = ?,
+        net_amount = ?,
+        amount_in_words = ?,
+        gst_number = ?,
+        pan_number = ?,
+        tan_number = ?,
+        service_category = ?,
+        bank_address = ?,
         balance_due = ?,
         notes = ?,
         terms = ?,
@@ -152,17 +187,31 @@ export async function PUT(request, { params }) {
 				po_number || null,
 				po_date || null,
 				po_value || null,
+				original_po_value || null,
 				balance_po_value || null,
 				description ||
 					(items && items.length > 0
 						? items.map((i) => i.description).join(', ')
 						: null),
 				JSON.stringify(items || []),
+				line_items ? JSON.stringify(line_items) : null,
 				subtotal || 0,
+				gross_amount || 0,
 				tax_rate || 0,
 				tax_amount || 0,
+				gst_type || 'cgst_sgst',
+				cgst_rate || 9,
+				sgst_rate || 9,
+				igst_rate || 18,
 				discount || 0,
 				total || 0,
+				net_amount || 0,
+				amount_in_words || null,
+				gst_number || null,
+				pan_number || null,
+				tan_number || null,
+				service_category || null,
+				bank_address || null,
 				balance_due || total || 0,
 				notes || null,
 				terms || null,
