@@ -17,6 +17,7 @@ export async function GET(request) {
 	);
 	if (authResult.authorized === false) return authResult.response;
 
+	// hello
 	let connection;
 	try {
 		const { searchParams } = new URL(request.url);
