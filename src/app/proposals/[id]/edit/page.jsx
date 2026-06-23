@@ -865,6 +865,33 @@ function fieldSetter(setter) {
 
 function BasicInfoForm({ proposalData, setProposalData }) {
 	const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
+	const [companies, setCompanies] = useState([]);
+	const [showCompanySuggestions, setShowCompanySuggestions] = useState(false);
+
+	useEffect(() => {
+		const fetchCompanies = async () => {
+			try {
+				const res = await fetch('/api/companies');
+				const data = await res.json();
+				if (data?.success) setCompanies(data.data || []);
+			} catch (e) {
+				console.error('Error fetching companies:', e);
+			}
+		};
+		fetchCompanies();
+	}, []);
+
+	// Auto-populate proposal fields from the selected company master record.
+	// Fields stay editable so the user can override per-proposal.
+	const handleSelectCompany = (company) => {
+		setProposalData((prev) => ({
+			...prev,
+			client_name: company.company_name || prev.client_name || '',
+			company_id: company.id ?? prev.company_id ?? null,
+			industry: company.industry || prev.industry || '',
+		}));
+		setShowCompanySuggestions(false);
+	};
 
 	const CardHeader = ({ icon: Icon, title, subtitle, color }) => (
 		<div
@@ -931,11 +958,71 @@ function BasicInfoForm({ proposalData, setProposalData }) {
 						</div>
 					</div>
 					<div className="space-y-4 flex-1">
-						<Text
-							label="Client Name"
-							value={proposalData.client_name}
-							onChange={(v) => set('client_name', v)}
-						/>
+						<div>
+							<label className="block text-sm font-medium text-gray-700 mb-1">
+								Client Name
+							</label>
+							<div className="relative">
+								<input
+									type="text"
+									value={proposalData.client_name}
+									onChange={(e) => {
+										set('client_name', e.target.value);
+										setShowCompanySuggestions(true);
+									}}
+									onFocus={() => setShowCompanySuggestions(true)}
+									onBlur={() =>
+										setTimeout(() => setShowCompanySuggestions(false), 200)
+									}
+									autoComplete="off"
+									placeholder="Select a company from master…"
+									className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+								/>
+								{showCompanySuggestions && (
+									<div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+										{companies.filter((c) =>
+											(c.company_name || '')
+												.toLowerCase()
+												.includes(
+													(proposalData.client_name || '').toLowerCase()
+												)
+										).length > 0 ? (
+											companies
+												.filter((c) =>
+													(c.company_name || '')
+														.toLowerCase()
+														.includes(
+															(proposalData.client_name || '').toLowerCase()
+														)
+												)
+												.map((company) => (
+													<button
+														key={company.id}
+														type="button"
+														onClick={() => handleSelectCompany(company)}
+														className="w-full text-left px-4 py-2 hover:bg-purple-50 text-sm text-gray-700 font-medium transition-colors"
+													>
+														<div className="font-semibold text-gray-900">
+															{company.company_name}
+														</div>
+														<div className="text-xs text-gray-500">
+															{company.city
+																? `${company.city}${
+																		company.state ? `, ${company.state}` : ''
+																	}`
+																: company.state || ''}
+														</div>
+													</button>
+												))
+										) : (
+											<div className="px-4 py-2 text-sm text-gray-500 italic">
+												No matching company. Keep typing to enter manually.
+											</div>
+										)}
+									</div>
+								)}
+							</div>
+						</div>
 						<Text
 							label="Industry"
 							placeholder="e.g., Oil & Gas, Petrochemical…"

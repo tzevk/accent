@@ -22,6 +22,8 @@ export default function EditLead({ params }) {
 	const [activeTab, setActiveTab] = useState('details');
 	const [editingFollowUp, setEditingFollowUp] = useState(null);
 	const [showAddFollowUp, setShowAddFollowUp] = useState(false);
+	const [companies, setCompanies] = useState([]);
+	const [showCompanySuggestions, setShowCompanySuggestions] = useState(false);
 	const [formData, setFormData] = useState({
 		lead_id: '',
 		company_name: '',
@@ -100,6 +102,21 @@ export default function EditLead({ params }) {
 		fetchLead();
 	}, [params, router]);
 
+	// Fetch companies for the company-name typeahead
+	useEffect(() => {
+		const fetchCompanies = async () => {
+			try {
+				const result = await fetchJSON('/api/companies');
+				if (result.success) {
+					setCompanies(result.data || []);
+				}
+			} catch (error) {
+				console.error('Error fetching companies:', error);
+			}
+		};
+		fetchCompanies();
+	}, []);
+
 	// Initialize tab and follow-up editing from URL parameters
 	useEffect(() => {
 		const tab = searchParams.get('tab');
@@ -166,6 +183,21 @@ export default function EditLead({ params }) {
 			...prev,
 			[name]: value,
 		}));
+	};
+
+	// Auto-populate lead fields from the selected company master record.
+	// Fields stay editable afterwards so the user can override per-lead.
+	const handleSelectCompany = (company) => {
+		setFormData((prev) => ({
+			...prev,
+			company_name: company.company_name || prev.company_name || '',
+			city: company.city || prev.city || '',
+			phone: company.phone || company.mobile_number || prev.phone || '',
+			contact_email: company.email || prev.contact_email || '',
+			contact_name: company.contact_person || prev.contact_name || '',
+			designation: company.designation || prev.designation || '',
+		}));
+		setShowCompanySuggestions(false);
 	};
 
 	// Handle follow-up form change
@@ -436,14 +468,79 @@ export default function EditLead({ params }) {
 														<label className="block text-sm font-medium text-gray-700 mb-1">
 															Company Name *
 														</label>
-														<input
-															type="text"
-															name="company_name"
-															value={formData.company_name}
-															onChange={handleInputChange}
-															className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-															required
-														/>
+														<div className="relative">
+															<input
+																type="text"
+																name="company_name"
+																value={formData.company_name}
+																onChange={(e) => {
+																	handleInputChange(e);
+																	setShowCompanySuggestions(true);
+																}}
+																onFocus={() => setShowCompanySuggestions(true)}
+																onBlur={() =>
+																	setTimeout(
+																		() => setShowCompanySuggestions(false),
+																		200
+																	)
+																}
+																autoComplete="off"
+																className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+																required
+															/>
+															{showCompanySuggestions && (
+																<div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+																	{companies.filter((c) =>
+																		(c.company_name || '')
+																			.toLowerCase()
+																			.includes(
+																				(
+																					formData.company_name || ''
+																				).toLowerCase()
+																			)
+																	).length > 0 ? (
+																		companies
+																			.filter((c) =>
+																				(c.company_name || '')
+																					.toLowerCase()
+																					.includes(
+																						(
+																							formData.company_name || ''
+																						).toLowerCase()
+																					)
+																			)
+																			.map((company) => (
+																				<button
+																					key={company.id}
+																					type="button"
+																					onClick={() =>
+																						handleSelectCompany(company)
+																					}
+																					className="w-full text-left px-4 py-2 hover:bg-purple-50 text-sm text-gray-700 font-medium transition-colors"
+																				>
+																					<div className="font-semibold text-gray-900">
+																						{company.company_name}
+																					</div>
+																					<div className="text-xs text-gray-500">
+																						{company.city
+																							? `${company.city}${
+																									company.state
+																										? `, ${company.state}`
+																										: ''
+																								}`
+																							: company.state || ''}
+																					</div>
+																				</button>
+																			))
+																	) : (
+																		<div className="px-4 py-2 text-sm text-gray-500 italic">
+																			No matching company. Keep typing to enter
+																			manually.
+																		</div>
+																	)}
+																</div>
+															)}
+														</div>
 													</div>
 
 													{/* Contact Name */}
