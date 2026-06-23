@@ -176,22 +176,21 @@ function generateInvoiceHTML(data) {
   <meta charset="UTF-8">
   <title>Tax Invoice - ${data.invoice_number || 'Draft'}</title>
   <style>
-    @media print { body { margin: 0; padding: 0; } }
-    @page { size: A4; margin: 12mm; }
+    @page { size: A4; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: Arial, sans-serif;
       font-size: 10px;
       color: #000;
       background: white;
-      padding: 15px;
+      padding: 0;
     }
-    .outer { width: 100%; max-width: 730px; margin: 0 auto; border: 1px solid #000; border-collapse: collapse; }
+    .outer { width: 100%; border-collapse: collapse; }
     td, th { font-family: Arial, sans-serif; font-size: 10px; }
   </style>
 </head>
 <body>
-  <table class="outer" style="border-collapse:collapse;">
+  <table class="outer" style="border-collapse:collapse;border:1px solid #000;">
 
     <!-- TAX INVOICE title row -->
     <tr>
@@ -202,59 +201,66 @@ function generateInvoiceHTML(data) {
 
     <!-- To / Invoice meta split -->
     <tr>
-      <td style="width:55%;border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 8px;vertical-align:top;">
+      <td style="width:50%;border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 8px;vertical-align:top;">
         <div>To,</div>
         <br>
         <div>${data.client_name || ''}</div>
         <br>
         <div>${data.client_address ? data.client_address.replace(/\n/g, '<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;') : ''}</div>
       </td>
-      <td style="width:45%;border-bottom:1px solid #000;padding:0;vertical-align:top;">
-        <table style="width:100%;border-collapse:collapse;">
-          <tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">Invoice No.</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;font-weight:bold;">${data.invoice_number || ''}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">Date of Invoice</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">${formatDate(data.invoice_date)}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">PO Number</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">${data.po_number || 'Agreement'}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 8px;">PO Date</td>
-            <td style="padding:4px 8px;">${formatDate(data.po_date)}</td>
-          </tr>
-        </table>
-      </td>
+     <td style="width:50%; border-bottom:1px solid #000; padding:0; vertical-align:top; height:120px;">   <!-- match the left cell's height -->
+  <div style="display:flex; flex-direction:column; height:100%;">
+    <!-- Row 1 -->
+    <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
+      <span style="width:45%;">Invoice No.</span>
+      <span style="width:55%; font-weight:bold; text-align:right;">${data.invoice_number || ''}</span>
+    </div>
+    <!-- Row 2 -->
+    <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
+      <span style="width:45%;">Date of Invoice</span>
+      <span style="width:55%; text-align:right;">${formatDate(data.invoice_date)}</span>
+    </div>
+    <!-- Row 3 -->
+    <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
+      <span style="width:45%;">PO Number</span>
+      <span style="width:55%; text-align:right;">${data.po_number || 'Agreement'}</span>
+    </div>
+    <!-- Row 4 -->
+    <div style="flex:1; display:flex; align-items:center; padding:0 12px;">
+      <span style="width:45%;">PO Date</span>
+      <span style="width:55%; text-align:right;">${formatDate(data.po_date)}</span>
+    </div>
+  </div>
+</td>
     </tr>
 
     <!-- PAN / GSTIN / State | Original & Balance PO Value -->
-    <tr>
-      <td style="border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 8px;vertical-align:top;">
-        <div>PAN No. &nbsp; : ${data.client_pan || ''}</div>
-        <div>GSTIN &nbsp;&nbsp;&nbsp;&nbsp; : ${data.client_gstin || ''}</div>
-        <div style="margin-top:4px;">State &nbsp;&nbsp;&nbsp; :&nbsp; ${data.client_state || 'Maharashtra'} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; State Code : &nbsp; ${data.client_state_code || '27'}</div>
-      </td>
-      <td style="border-bottom:1px solid #000;padding:0;vertical-align:top;">
-        <table style="width:100%;border-collapse:collapse;">
-          <tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">Original PO Value</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;text-align:right;">
-              : &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${data.original_po_value ? formatCurrency(data.original_po_value) : '-'}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:4px 8px;font-weight:bold;">Balance PO Value</td>
-            <td style="padding:4px 8px;text-align:right;font-weight:bold;">
-              : &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${data.balance_po_value ? formatCurrency(data.balance_po_value) : '-'}
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
+<tr style="height:70px;">   <!-- match your pixel budget for this section -->
+  <td style="width:50%; border-right:1px solid #000; border-bottom:1px solid #000; padding:0; vertical-align:top; height:70px;">
+  <div style="display:flex; flex-direction:column; height:100%; padding:6px 8px;">
+    <div style="flex:1; display:flex; align-items:center;">PAN No. : ${data.client_pan || ''}</div>
+    <div style="flex:1; display:flex; align-items:center;">GSTIN : ${data.client_gstin || ''}</div>
+    <div style="flex:1; display:flex; align-items:center;">
+      State : ${data.client_state || 'Maharashtra'} &nbsp;&nbsp; State Code : ${data.client_state_code || '27'}
+    </div>
+  </div>
+</td>
+  
+  <td style="width:50%; border-bottom:1px solid #000; padding:0; vertical-align:top; height:70px;">
+    <div style="display:flex; flex-direction:column; height:100%;">
+      <!-- Row 1: Original PO Value -->
+      <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
+        <span style="width:45%;">Original PO Value :</span>
+        <span style="width:55%; text-align:right;">${data.original_po_value ? formatCurrency(data.original_po_value) : '-'}</span>
+      </div>
+      <!-- Row 2: Balance PO Value -->
+      <div style="flex:1; display:flex; align-items:center; padding:0 12px; font-weight:bold;">
+        <span style="width:45%;">Balance PO Value :</span>
+        <span style="width:55%; text-align:right;">${data.balance_po_value ? formatCurrency(data.balance_po_value) : '-'}</span>
+      </div>
+    </div>
+  </td>
+</tr>
 
     <!-- Kind Attn -->
     <tr>
@@ -284,38 +290,52 @@ function generateInvoiceHTML(data) {
     </tr>
 
     <!-- GSTIN/PAN/Service/TAN left | Totals right -->
-    <tr>
-      <td style="border-right:1px solid #000;border-top:1px solid #000;border-bottom:1px solid #000;padding:6px 8px;vertical-align:top;">
-        <div>GSTIN &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : ${data.gst_number || ''}</div>
-        <div>PAN NO &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : ${data.pan_number || ''}</div>
-        <div style="margin-top:2px;">Service Category : ${data.service_category || 'Consulting & Advisory Engineering Services (Service Code : 998331)'}</div>
-        <div>Tan No &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : ${data.tan_number || ''}</div>
-      </td>
-      <td style="border-top:1px solid #000;border-bottom:1px solid #000;padding:0;vertical-align:top;">
-        <table style="width:100%;border-collapse:collapse;">
-          <tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">Total Amount Before Tax &gt;&gt;</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;text-align:right;">${formatCurrency(grossAmount)}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">Add : CGST _ ${cgstRate}% &gt;&gt;</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;text-align:right;">${gstType === 'cgst_sgst' ? formatCurrency(cgstAmount) : '-'}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">Add : SGST _ ${sgstRate}% &gt;&gt;</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;text-align:right;">${gstType === 'cgst_sgst' ? formatCurrency(sgstAmount) : '-'}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">Add : IGST _${igstRate}% &gt;&gt;</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;text-align:right;">${gstType === 'igst' ? formatCurrency(igstAmount) : '-'}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;">Total Amount : GST &gt;&gt;</td>
-            <td style="padding:4px 8px;border-bottom:1px solid #000;text-align:right;">${formatCurrency(totalGst)}</td>
-          </tr>
-        </table>
-      </td>
-    </tr>
+<tr style="height:110px;">   <!-- adjust this to your pixel budget (we used 110px for Section F) -->
+  
+  <!-- LEFT cell: 4 items → each gets flex:1 -->
+  <td style="width:50%; border-right:1px solid #000; border-bottom:1px solid #000; padding:0; vertical-align:top; height:110px;">
+    <div style="display:flex; flex-direction:column; height:100%; padding:6px 8px;">
+      <div style="flex:1; display:flex; align-items:center;">GSTIN : ${data.gst_number || ''}</div>
+      <div style="flex:1; display:flex; align-items:center;">PAN NO : ${data.pan_number || ''}</div>
+      <div style="flex:1; display:flex; align-items:center;">
+        Service Category : ${data.service_category || 'Consulting & Advisory Engineering Services (Service Code : 998331)'}
+      </div>
+      <div style="flex:1; display:flex; align-items:center;">Tan No : ${data.tan_number || ''}</div>
+    </div>
+  </td>
+
+  <!-- RIGHT cell: 5 tax rows → each gets flex:1 -->
+  <td style="width:50%; border-bottom:1px solid #000; padding:0; vertical-align:top; height:110px;">
+    <div style="display:flex; flex-direction:column; height:100%;">
+      
+      <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
+        <span style="width:55%;">Total Amount Before Tax &gt;&gt;</span>
+        <span style="width:45%; text-align:right;">${formatCurrency(grossAmount)}</span>
+      </div>
+      
+      <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
+        <span style="width:55%;">Add : CGST _ ${cgstRate}% &gt;&gt;</span>
+        <span style="width:45%; text-align:right;">${gstType === 'cgst_sgst' ? formatCurrency(cgstAmount) : '-'}</span>
+      </div>
+      
+      <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
+        <span style="width:55%;">Add : SGST _ ${sgstRate}% &gt;&gt;</span>
+        <span style="width:45%; text-align:right;">${gstType === 'cgst_sgst' ? formatCurrency(sgstAmount) : '-'}</span>
+      </div>
+      
+      <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
+        <span style="width:55%;">Add : IGST _${igstRate}% &gt;&gt;</span>
+        <span style="width:45%; text-align:right;">${gstType === 'igst' ? formatCurrency(igstAmount) : '-'}</span>
+      </div>
+      
+      <div style="flex:1; display:flex; align-items:center; padding:0 12px; font-weight:bold;">
+        <span style="width:55%;">Total Amount : GST &gt;&gt;</span>
+        <span style="width:45%; text-align:right;">${formatCurrency(totalGst)}</span>
+      </div>
+      
+    </div>
+  </td>
+</tr>
 
     <!-- Amount in words | Total Amount After Tax -->
     <tr>
@@ -333,16 +353,22 @@ function generateInvoiceHTML(data) {
     </tr>
 
     <!-- Payment Terms & Conditions -->
-    <tr>
-      <td colspan="2" style="border-bottom:1px solid #000;padding:6px 8px;">
-        <div style="font-weight:bold;">Payment Terms &amp; Conditions:</div>
-        <div style="margin-top:4px;margin-left:12px;">
-          1 &nbsp; a) Payment shall be made within 15 days from the receipt of invoice.<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; b) Interest @ 18% will be charged on delayed payment.
-        </div>
-        <div style="margin-top:4px;margin-left:12px;">2 &nbsp; Subject to Mumbai Jurisdiction.</div>
-      </td>
-    </tr>
+<tr>
+  <td colspan="2" style="border-bottom:1px solid #000; padding:8px 12px;">
+    <div style="font-weight:bold; margin-bottom:4px;">Payment Terms &amp; Conditions:</div>
+    <div style="padding-left:16px;">
+      <div style="display:flex; gap:4px; margin-bottom:2px;">
+        <span style="width:20px;">1</span>
+        <span>a) Payment shall be made within 15 days from the receipt of invoice.</span>
+      </div>
+      <div style="padding-left:24px; margin-bottom:2px;">b) Interest @ 18% will be charged on delayed payment.</div>
+      <div style="display:flex; gap:4px;">
+        <span style="width:20px;">2</span>
+        <span>Subject to Mumbai Jurisdiction.</span>
+      </div>
+    </div>
+  </td>
+</tr>
 
     <!-- Cheque instructions | For ATSPL signature block -->
     <tr>
@@ -350,26 +376,43 @@ function generateInvoiceHTML(data) {
         Cheque/ Demand Draft /wire Transfer for requisite amount to be drawn in favor of
         <strong>"Accent Techno Solutions Private Ltd"</strong> payable at Mumbai.
       </td>
-      <td style="border-bottom:1px solid #000;padding:6px 8px;vertical-align:top;">
+      <td style="padding:6px 8px;vertical-align:top;">
         For Accent Techno Solutions Private Limited
       </td>
     </tr>
 
     <!-- Payment remittance detail | Signature -->
-    <tr>
-      <td style="border-right:1px solid #000;padding:6px 8px;vertical-align:top;">
-        <div style="text-align:center;font-weight:bold;">Payment remittance detail</div>
-        <div style="text-align:center;">Bank - Axis Bank Ltd.</div>
-        <div style="margin-top:4px;">Add. - ${data.bank_address || ''}</div>
-        <div>.</div>
-      </td>
-      <td style="padding:6px 8px;vertical-align:bottom;">
-        <div style="margin-top:40px;">
-          <div style="font-weight:bold;">Varsha Vasant Mestry</div>
-          <div>Managing Director</div>
-        </div>
-      </td>
-    </tr>
+    <!-- Payment remittance detail | Signature -->
+<tr style="height:90px;">   <!-- adjust to your pixel budget -->
+  
+  <!-- LEFT cell: Payment remittance detail (3 items) -->
+  <td style="width:50%; border-right:1px solid #000; border-bottom:1px solid #000; padding:0; vertical-align:top; height:90px;">
+    <div style="display:flex; flex-direction:column; height:100%; padding:6px 8px; align-items:center; justify-content:center;">
+      <!-- Row 1: Title -->
+      <div style="flex:1; display:flex; align-items:center; justify-content:center; font-weight:bold;">
+        Payment remittance detail
+      </div>
+      <!-- Row 2: Bank name -->
+      <div style="flex:1; display:flex; align-items:center; justify-content:center;">
+        Bank - Axis Bank Ltd.
+      </div>
+      <!-- Row 3: Address -->
+      <div style="flex:1; display:flex; align-items:center; justify-content:center; text-align:center">
+        Add. - ${data.bank_address || ''}
+      </div>
+    </div>
+  </td>
+
+  <!-- RIGHT cell: Signature block -->
+  <td style="width:50%; border-bottom:1px solid #000; padding:0; vertical-align:bottom; height:90px;">
+    <div style="display:flex; flex-direction:column; height:100%; padding:6px 8px; justify-content:flex-end; align-items:flex-start;">
+      <div style="text-align:left;">
+        <div style="font-weight:bold;">Santosh Dinkar Mestry</div>
+        <div>Managing Director</div>
+      </div>
+    </div>
+  </td>
+</tr>
 
   </table>
 
@@ -548,15 +591,14 @@ export async function GET(request) {
 		await page.setContent(html, { waitUntil: 'networkidle0' });
 
 		const pdf = await page.pdf({
-			format: 'A4',
+			width: '794px', // A4 width in CSS pixels
+			height: '1123px', // A4 height in CSS pixels
 			printBackground: true,
-			preferCSSPageSize: true,
-			displayHeaderFooter: false,
 			margin: {
-				top: '12mm',
-				right: '12mm',
-				bottom: '12mm',
-				left: '12mm',
+				top: '4.52cm', // 👈 Letterhead offset
+				bottom: '2cm', // 👈 Your new bottom margin
+				left: '1.2cm', // standard safe margin
+				right: '1.2cm', // standard safe margin
 			},
 		});
 
