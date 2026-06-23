@@ -5,6 +5,7 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import { logActivity } from '@/utils/activity-logger';
 
 // GET - Fetch purchase orders
 export async function GET(request) {
@@ -139,7 +140,8 @@ export async function POST(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.WRITE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (!authResult.authorized) return authResult.response;
+	const { user } = authResult;
 
 	let connection;
 	try {
@@ -163,6 +165,10 @@ export async function POST(request) {
 			status = 'draft',
 			company_id,
 			project_id,
+			po_date,
+			po_amount,
+			net_amount,
+			remarks,
 		} = body;
 
 		if (!vendor_name) {
@@ -171,6 +177,11 @@ export async function POST(request) {
 				{ status: 400 }
 			);
 		}
+
+		// Incoming PO form sends po_amount as the only money value; mirror it into total/subtotal
+		// so the existing totals logic and download rendering keep working.
+		const finalTotal = total ?? po_amount ?? 0;
+		const finalSubtotal = subtotal ?? po_amount ?? 0;
 
 		connection = await dbConnect();
 
@@ -196,6 +207,10 @@ export async function POST(request) {
         status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'draft',
         company_id INT,
         project_id INT,
+        po_date DATE,
+        po_amount DECIMAL(15, 2) DEFAULT 0,
+        net_amount DECIMAL(15, 2) DEFAULT 0,
+        remarks TEXT,
         created_by INT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -205,22 +220,41 @@ export async function POST(request) {
       )
     `);
 
-		// Add project_id column if it doesn't exist (for existing tables)
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders ADD COLUMN project_id INT, ADD INDEX idx_project_id (project_id)`
-			);
-		} catch (e) {
-			// Column likely already exists, ignore
+		// Add columns if they don't exist (for existing tables)
+		const alterColumns = [
+			'project_id INT',
+			'company_id INT',
+			'po_date DATE',
+			'po_amount DECIMAL(15, 2) DEFAULT 0',
+			'net_amount DECIMAL(15, 2) DEFAULT 0',
+			'remarks TEXT',
+		];
+		for (const col of alterColumns) {
+			try {
+				await connection.execute(
+					`ALTER TABLE purchase_orders ADD COLUMN ${col}`
+				);
+			} catch (e) {
+				// Column likely already exists, ignore
+			}
 		}
 
-		// Add company_id column if it doesn't exist (for existing tables)
 		try {
 			await connection.execute(
-				`ALTER TABLE purchase_orders ADD COLUMN company_id INT`
+				`ALTER TABLE purchase_orders ADD INDEX idx_project_id (project_id)`
 			);
 		} catch (e) {
-			// Column likely already exists, ignore
+			// Index likely already exists, ignore
+		}
+
+		// Drop the unused legacy client_name column (required NOT NULL with no default
+		// is blocking inserts). Ignored if it doesn't exist.
+		try {
+			await connection.execute(
+				`ALTER TABLE purchase_orders DROP COLUMN client_name`
+			);
+		} catch (e) {
+			// Column likely doesn't exist, ignore
 		}
 
 		// Use provided PO number or generate a new one
@@ -254,7 +288,8 @@ export async function POST(request) {
          vendor_name = ?, vendor_email = ?, vendor_phone = ?, vendor_address = ?,
          description = ?, items = ?, subtotal = ?, tax_rate = ?, tax_amount = ?,
          discount = ?, total = ?, notes = ?, terms = ?, delivery_date = ?,
-         status = ?, company_id = ?, project_id = ?
+         status = ?, company_id = ?, project_id = ?,
+         po_date = ?, po_amount = ?, net_amount = ?, remarks = ?
          WHERE po_number = ?`,
 				[
 					vendor_name,
@@ -263,17 +298,21 @@ export async function POST(request) {
 					vendor_address || null,
 					description || null,
 					JSON.stringify(items || []),
-					subtotal || 0,
+					finalSubtotal,
 					tax_rate || 18,
 					tax_amount || 0,
 					discount || 0,
-					total || 0,
+					finalTotal,
 					notes || null,
 					terms || null,
 					delivery_date || null,
 					status,
 					company_id || null,
 					project_id || null,
+					po_date || null,
+					po_amount || null,
+					net_amount || null,
+					remarks || null,
 					poNumber,
 				]
 			);
@@ -282,8 +321,8 @@ export async function POST(request) {
 			// Insert new purchase order
 			[result] = await connection.execute(
 				`INSERT INTO purchase_orders 
-         (po_number, vendor_name, vendor_email, vendor_phone, vendor_address, description, items, subtotal, tax_rate, tax_amount, discount, total, notes, terms, delivery_date, status, company_id, project_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (po_number, vendor_name, vendor_email, vendor_phone, vendor_address, description, items, subtotal, tax_rate, tax_amount, discount, total, notes, terms, delivery_date, status, company_id, project_id, po_date, po_amount, net_amount, remarks, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					poNumber,
 					vendor_name,
@@ -292,17 +331,22 @@ export async function POST(request) {
 					vendor_address || null,
 					description || null,
 					JSON.stringify(items || []),
-					subtotal || 0,
+					finalSubtotal,
 					tax_rate || 18,
 					tax_amount || 0,
 					discount || 0,
-					total || 0,
+					finalTotal,
 					notes || null,
 					terms || null,
 					delivery_date || null,
 					status,
 					company_id || null,
 					project_id || null,
+					po_date || null,
+					po_amount || null,
+					net_amount || null,
+					remarks || null,
+					user?.id || null,
 				]
 			);
 		}
@@ -312,6 +356,23 @@ export async function POST(request) {
 			'SELECT * FROM purchase_orders WHERE po_number = ?',
 			[poNumber]
 		);
+
+		logActivity({
+			userId: user?.id,
+			actionType: existingPO.length > 0 ? 'update' : 'create',
+			resourceType: 'purchase_order',
+			resourceId: String(newPO[0]?.id ?? result.insertId ?? ''),
+			description: `${existingPO.length > 0 ? 'Updated' : 'Created'} purchase order: ${poNumber}`,
+			details: {
+				po_number: poNumber,
+				vendor_name,
+				company_id: company_id || null,
+				project_id: project_id || null,
+				total: finalTotal,
+				status,
+			},
+			request,
+		}).catch((err) => console.error('Failed to log activity:', err));
 
 		return NextResponse.json({
 			success: true,
