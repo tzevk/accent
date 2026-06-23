@@ -35,16 +35,18 @@ export default function PurchaseOrderPage() {
 	const [showAddPOForm, setShowAddPOForm] = useState(false);
 	const [addingPO, setAddingPO] = useState(false);
 	const [incomingPOData, setIncomingPOData] = useState({
-		sr_no: '',
+		company_id: '',
 		company_name: '',
 		city: '',
 		po_number: '',
 		po_date: '',
 		po_amount: '',
+		tax_amount: '',
+		net_amount: '',
+		project_id: '',
 		project_number: '',
 		remarks: '',
 	});
-	const [incomingPOs, setIncomingPOs] = useState([]);
 	const [companies, setCompanies] = useState([]);
 	const [loadingCompanies, setLoadingCompanies] = useState(true);
 	const [projects, setProjects] = useState([]);
@@ -112,24 +114,11 @@ export default function PurchaseOrderPage() {
 		[statusFilter, pagination.limit]
 	);
 
-	// Fetch incoming POs from localStorage
-	const fetchIncomingPOs = useCallback(() => {
-		try {
-			const stored = localStorage.getItem('incomingPOs');
-			if (stored) {
-				setIncomingPOs(JSON.parse(stored));
-			}
-		} catch (error) {
-			console.error('Error fetching incoming POs:', error);
-		}
-	}, []);
-
 	useEffect(() => {
 		if (!authLoading && user) {
 			fetchPurchaseOrders(1);
-			fetchIncomingPOs();
 		}
-	}, [authLoading, user, statusFilter, fetchPurchaseOrders, fetchIncomingPOs]);
+	}, [authLoading, user, statusFilter, fetchPurchaseOrders]);
 
 	// Fetch companies on mount
 	useEffect(() => {
@@ -172,19 +161,21 @@ export default function PurchaseOrderPage() {
 	}, [authLoading, user]);
 
 	// Handle company selection
-	const handleCompanySelect = (companyName) => {
+	const handleCompanySelect = (companyId) => {
 		const selectedCompany = companies.find(
-			(c) => c.company_name === companyName
+			(c) => String(c.id) === String(companyId)
 		);
 		if (selectedCompany) {
 			setIncomingPOData((prev) => ({
 				...prev,
+				company_id: selectedCompany.id,
 				company_name: selectedCompany.company_name || '',
 				city: selectedCompany.city || '',
 			}));
 		} else {
 			setIncomingPOData((prev) => ({
 				...prev,
+				company_id: '',
 				company_name: '',
 				city: '',
 			}));
@@ -194,10 +185,15 @@ export default function PurchaseOrderPage() {
 	// Handle incoming PO input change
 	const handleIncomingPOChange = (e) => {
 		const { name, value } = e.target;
-		setIncomingPOData((prev) => ({
-			...prev,
-			[name]: value,
-		}));
+		setIncomingPOData((prev) => {
+			const next = { ...prev, [name]: value };
+			if (name === 'po_amount' || name === 'tax_amount') {
+				const base = parseFloat(next.po_amount) || 0;
+				const tax = parseFloat(next.tax_amount) || 0;
+				next.net_amount = (base + tax).toFixed(2);
+			}
+			return next;
+		});
 	};
 
 	// Add incoming PO
@@ -216,66 +212,53 @@ export default function PurchaseOrderPage() {
 
 		setAddingPO(true);
 		try {
-			const newPO = {
-				id: Date.now(),
-				sr_no: incomingPOs.length + 1,
-				...incomingPOData,
-				po_amount: parseFloat(incomingPOData.po_amount),
-				created_at: new Date().toISOString(),
-			};
+			const res = await fetch('/api/admin/purchase-orders', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					po_number: incomingPOData.po_number,
+					vendor_name: incomingPOData.company_name,
+					company_id: incomingPOData.company_id || null,
+					project_id: incomingPOData.project_id || null,
+					po_date: incomingPOData.po_date,
+					po_amount: parseFloat(incomingPOData.po_amount) || 0,
+					tax_amount: parseFloat(incomingPOData.tax_amount) || 0,
+					net_amount:
+						(parseFloat(incomingPOData.po_amount) || 0) +
+						(parseFloat(incomingPOData.tax_amount) || 0),
+					remarks: incomingPOData.remarks || null,
+					status: 'pending',
+				}),
+			});
 
-			const updated = [...incomingPOs, newPO];
-			localStorage.setItem('incomingPOs', JSON.stringify(updated));
-			setIncomingPOs(updated);
+			const data = await res.json();
 
-			// Reset form
+			if (!data.success) {
+				alert(data.message || 'Failed to add incoming purchase order');
+				return;
+			}
+
 			setIncomingPOData({
-				sr_no: '',
+				company_id: '',
 				company_name: '',
 				city: '',
 				po_number: '',
 				po_date: '',
 				po_amount: '',
+				tax_amount: '',
+				net_amount: '',
+				project_id: '',
 				project_number: '',
 				remarks: '',
 			});
+			setShowAddPOForm(false);
 
-			alert('Incoming Purchase Order added successfully!');
+			fetchPurchaseOrders(1);
 		} catch (error) {
 			console.error('Error adding incoming PO:', error);
 			alert('Failed to add incoming purchase order');
 		} finally {
 			setAddingPO(false);
-		}
-	};
-
-	// Delete incoming PO
-	const handleDeleteIncomingPO = (poId) => {
-		if (
-			!confirm('Are you sure you want to delete this incoming purchase order?')
-		)
-			return;
-
-		try {
-			const updated = incomingPOs.filter((po) => po.id !== poId);
-			localStorage.setItem('incomingPOs', JSON.stringify(updated));
-			setIncomingPOs(updated);
-		} catch (error) {
-			console.error('Error deleting incoming PO:', error);
-			alert('Failed to delete incoming purchase order');
-		}
-	};
-
-	// Download incoming PO as PDF
-	const handleDownloadIncomingPO = (po) => {
-		try {
-			window.open(
-				`/api/admin/purchase-orders/download?id=${po.id}&incoming=true`,
-				'_blank'
-			);
-		} catch (error) {
-			console.error('Error downloading PO:', error);
-			alert('Failed to download purchase order');
 		}
 	};
 
@@ -437,15 +420,15 @@ export default function PurchaseOrderPage() {
 									Company Name *
 								</label>
 								<select
-									name="company_name"
-									value={incomingPOData.company_name}
+									name="company_id"
+									value={incomingPOData.company_id}
 									onChange={(e) => handleCompanySelect(e.target.value)}
 									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 									disabled={loadingCompanies}
 								>
 									<option value="">Select a company...</option>
 									{companies.map((company) => (
-										<option key={company.id} value={company.company_name}>
+										<option key={company.id} value={company.id}>
 											{company.company_name}
 										</option>
 									))}
@@ -513,11 +496,39 @@ export default function PurchaseOrderPage() {
 							</div>
 							<div>
 								<label className="block text-xs font-medium text-gray-700 mb-1">
+									Tax Amount (₹)
+								</label>
+								<input
+									type="number"
+									name="tax_amount"
+									value={incomingPOData.tax_amount}
+									onChange={handleIncomingPOChange}
+									placeholder="0.00"
+									step="0.01"
+									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+								/>
+							</div>
+							<div>
+								<label className="block text-xs font-medium text-gray-700 mb-1">
+									Net Amount (₹)
+								</label>
+								<input
+									type="number"
+									name="net_amount"
+									value={incomingPOData.net_amount}
+									placeholder="Auto-calculated"
+									step="0.01"
+									readOnly
+									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+								/>
+							</div>
+							<div>
+								<label className="block text-xs font-medium text-gray-700 mb-1">
 									Project No
 								</label>
 								<select
-									name="project_number"
-									value={incomingPOData.project_number}
+									name="project_id"
+									value={incomingPOData.project_id}
 									onChange={handleIncomingPOChange}
 									className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
 									disabled={loadingProjects}
@@ -526,7 +537,7 @@ export default function PurchaseOrderPage() {
 									{projects.map((proj) => (
 										<option
 											key={proj.id || proj.project_id}
-											value={proj.project_code || proj.project_id || ''}
+											value={proj.id || proj.project_id || ''}
 										>
 											{proj.project_code || proj.project_id || ''}
 										</option>
@@ -568,102 +579,6 @@ export default function PurchaseOrderPage() {
 								Cancel
 							</button>
 						</div>
-					</div>
-				)}
-
-				{/* Incoming POs Table */}
-				{incomingPOs.length > 0 && (
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 overflow-x-auto">
-						<h3 className="text-lg font-bold text-gray-900 mb-4">
-							Incoming Purchase Orders
-						</h3>
-						<table className="w-full text-sm">
-							<thead className="bg-gray-50 border-b border-gray-200">
-								<tr>
-									<th className="px-4 py-3 text-left font-semibold text-gray-600">
-										Sr. No.
-									</th>
-									<th className="px-4 py-3 text-left font-semibold text-gray-600">
-										Company Name
-									</th>
-									<th className="px-4 py-3 text-left font-semibold text-gray-600">
-										City
-									</th>
-									<th className="px-4 py-3 text-left font-semibold text-gray-600">
-										PO No.
-									</th>
-									<th className="px-4 py-3 text-left font-semibold text-gray-600">
-										PO Date
-									</th>
-									<th className="px-4 py-3 text-right font-semibold text-gray-600">
-										PO Amount
-									</th>
-									<th className="px-4 py-3 text-left font-semibold text-gray-600">
-										Project No
-									</th>
-									<th className="px-4 py-3 text-left font-semibold text-gray-600">
-										Remarks
-									</th>
-									<th className="px-4 py-3 text-center font-semibold text-gray-600">
-										Actions
-									</th>
-								</tr>
-							</thead>
-							<tbody className="divide-y divide-gray-200">
-								{incomingPOs.map((po, idx) => (
-									<tr
-										key={po.id}
-										className="hover:bg-gray-50 transition-colors"
-									>
-										<td className="px-4 py-3 text-gray-700">
-											{po.sr_no || idx + 1}
-										</td>
-										<td className="px-4 py-3 font-medium text-gray-900">
-											{po.company_name}
-										</td>
-										<td className="px-4 py-3 text-gray-700">
-											{po.city || '-'}
-										</td>
-										<td className="px-4 py-3 font-medium text-purple-600">
-											{po.po_number}
-										</td>
-										<td className="px-4 py-3 text-gray-700">
-											{new Date(po.po_date).toLocaleDateString('en-IN')}
-										</td>
-										<td className="px-4 py-3 text-right font-semibold text-gray-900">
-											₹
-											{parseFloat(po.po_amount || 0).toLocaleString('en-IN', {
-												minimumFractionDigits: 2,
-											})}
-										</td>
-										<td className="px-4 py-3 text-gray-700">
-											{po.project_number || '-'}
-										</td>
-										<td className="px-4 py-3 text-gray-700 text-xs">
-											{po.remarks || '-'}
-										</td>
-										<td className="px-4 py-3">
-											<div className="flex items-center justify-center gap-2">
-												<button
-													onClick={() => handleDownloadIncomingPO(po)}
-													className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-													title="Download PDF"
-												>
-													<ArrowDownTrayIcon className="h-4 w-4" />
-												</button>
-												<button
-													onClick={() => handleDeleteIncomingPO(po.id)}
-													className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-													title="Delete"
-												>
-													<TrashIcon className="h-4 w-4" />
-												</button>
-											</div>
-										</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
 					</div>
 				)}
 
@@ -786,6 +701,12 @@ export default function PurchaseOrderPage() {
 											Amount
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+											Tax Amount
+										</th>
+										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+											Net Amount
+										</th>
+										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 											Date
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
@@ -823,6 +744,16 @@ export default function PurchaseOrderPage() {
 											</td>
 											<td className="px-6 py-4 font-semibold text-gray-900">
 												{formatCurrency(po.total)}
+											</td>
+											<td className="px-6 py-4 text-gray-900">
+												{formatCurrency(po.tax_amount)}
+											</td>
+											<td className="px-6 py-4 font-semibold text-gray-900">
+												{formatCurrency(
+													po.net_amount ??
+														parseFloat(po.total || 0) +
+															parseFloat(po.tax_amount || 0)
+												)}
 											</td>
 											<td className="px-6 py-4 text-gray-600">
 												{formatDate(po.created_at)}
