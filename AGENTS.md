@@ -20,29 +20,30 @@ Internal ERP/CRM (Next.js 15 App Router + MySQL) managing leads → proposals �
 
 **Single test / focused run:** `npx vitest run <path>` — paths use the `src/__tests__/**` pattern (see below). Example: `npx vitest run src/__tests__/projects/[id]/edit/tabs/ScopeTab.test.tsx`.
 
-Pre-commit runs prettier via lint-staged (`.husky/pre-commit` → `npx lint-staged`). There is **no `typecheck` command** — TypeScript is used but not checked at build time. Run `npx tsc --noEmit` manually if you need type checking.
+Pre-commit runs prettier via lint-staged (`.husky/pre-commit` → `npx lint-staged`). There is **no `typecheck` script** — TypeScript is used but not checked at build time. Run `npx tsc --noEmit` manually if you need type checking.
 
 ### Stale `package.json` scripts (do not run)
 
-Several `migrate:*`, `clear-leads`, `update-dates`, and `db:check`/`db:kill` scripts are referenced in `package.json` but the files **no longer exist on disk** (e.g. `scripts/add-enquiry-no.js`, `scripts/db-kill-connections.js`). They were removed in past cleanup commits but the npm entries were not pruned. Running them will fail with `Cannot find module`. Scripts that DO exist: `scripts/setup-super-admin.js`, `scripts/insert-holidays-2026.js`, `scripts/import-salary-sheet.cjs`, `scripts/check-salary*.cjs`, `scripts/delete-slips.cjs`, `scripts/create_super_admin.sql`, `scripts/analyze_leaks.py`. The `npm run setup` script (referencing root `setup-backend.js`) is also broken — the file is missing.
+`migrate:add-enquiry-no`, `migrate:add-project-lists`, `clear-leads`, `update-dates`, `db:check`, `db:kill`, and `setup` reference files that no longer exist on disk. Running them fails with `Cannot find module`. Scripts that DO exist: `scripts/setup-super-admin.js`, `scripts/insert-holidays-2026.js`, `scripts/import-salary-sheet.cjs`, `scripts/check-salary*.cjs`, `scripts/delete-slips.cjs`, `scripts/create_super_admin.sql`, `scripts/analyze_leaks.py`.
 
 ## Tech stack notes
 
-- **Tailwind v4** via `@tailwindcss/postcss` (postcss.config.mjs). Not v3 — no `tailwind.config.js`.
-- **ESM project** (`"type": "module"` in package.json), but most files are plain `.js` / `.jsx` (not `.mjs`). TypeScript files (`.ts`/`.tsx`) exist alongside JS files.
-- **`serverExternalPackages`** in next.config.ts lists large server-only deps (mysql2, sharp, exceljs, jspdf, etc.) — do not remove entries without testing server bundle size.
-- `@/` path alias resolves to `./src/*` (tsconfig.json).
-- The `.env` file is committed (despite `.gitignore` exclusion) and contains real DB credentials. Scripts that read env (e.g. `scripts/setup-super-admin.js`) load `.env.local` first — create one for local secrets; the committed `.env` is shared dev defaults.
+- **Tailwind v4** via `@tailwindcss/postcss` (postcss.config.mjs). No `tailwind.config.js`.
+- **ESM project** (`"type": "module"`) but most files are plain `.js` / `.jsx` — TypeScript files coexist.
+- **`serverExternalPackages`** in next.config.ts lists large server-only deps (mysql2, sharp, exceljs, jspdf, etc.). Do not remove entries without checking server bundle size.
+- `@/` → `./src/*` (tsconfig.json + vitest.config.ts).
+- **`.env` is committed** despite `.gitignore` excluding it, and contains real DB credentials. For local secrets create `.env.local`; `scripts/setup-super-admin.js` and similar load it first.
 
-## Auth & middleware
+## Auth, rate limiting & middleware
 
-**`middleware.ts` is the single source of truth for auth enforcement.** Do not duplicate auth logic elsewhere:
+**`middleware.ts` is the single source of truth for auth AND API rate limiting.** Do not duplicate this logic in routes.
 
-- Public paths: `/signin`, `/api/login`, `/api/logout`, `/api/auth`, `/api/session`, and static paths (`/_next`, `/uploads`, etc.).
-- Three cookies control auth: `auth` (JWT), `user_id`, `is_super_admin`.
-- `/admin/*` is blocked for non-admin users (middleware checks `is_super_admin` cookie).
+- Public paths: `/signin`, `/api/login`, `/api/logout`, `/api/auth`, `/api/session`, `/_next`, `/uploads`, static assets.
+- Auth cookies: `auth` (JWT), `user_id`, `is_super_admin` (`'1'` = admin).
+- `/admin/*` is blocked for non-admins (redirects to `/user/dashboard`).
+- Unauthenticated API requests get `401` JSON; page requests redirect to `/signin?from=...`.
 - Authenticated users hitting `/signin` are redirected to their dashboard.
-- API routes without auth cookies get 401 JSON, pages get redirected to `/signin`.
+- Per-IP+user rate limits on `/api/*` with categories: `auth` (10/15min, 30min block), `session` (120/min), `dashboard`/`analytics` (60/min), `heavy` export/report/bulk (10/min, 2min block), default `api` (120/min). Returns `429` with `Retry-After` / `X-RateLimit-*` headers. In-memory store is Edge-runtime only.
 - The `AuthGate` component in the layout is a **no-op** — auth is handled by middleware.
 
 ## Database patterns (MySQL via mysql2/promise)
@@ -66,7 +67,7 @@ Use one of three patterns, in order of preference:
    });
    ```
 
-3. **`const db = await dbConnect()` + `db.release()`** — only when you need the raw connection object. Always release in a `finally` block. Connection auto-force-releases after 8s as a safety net.
+3. **`const db = await dbConnect()` + `db.release()`** — only when you need the raw connection object. Always release in a `finally` block.
 
 **Critical**: The pool is persisted on `globalThis` to survive HMR reloads during dev. Connection limit is 5, queue limit 200. Schema info is cached via `schema-cache.js` (10-min TTL) — API routes use `hasColumn(db, table, column)` to check for columns instead of running DDL on every request.
 
@@ -141,13 +142,24 @@ Always call `logActivity()` for mutations (create/update/delete). Always release
 
 ## File conventions
 
-- API routes: `src/app/api/**/route.js` (mostly `.js`, rarely `.ts`)
-- Pages: `src/app/**/page.jsx`
-- Shared components: `src/components/`
-- Utilities: `src/utils/` (`.js` files)
-- Tests: `src/__tests__/**/*.test.{js,jsx,ts,tsx}`
+- API routes: `src/app/api/**/route.ts`
+- Pages: `src/app/**/page.tsx`
+- Shared components: `src/components/**/*.tsx`
+- Utilities: `src/utils/**/*.ts` (use `.ts` for new utils, even alongside existing `.js`)
+- Tests: `src/__tests__/**/*.test.{ts,tsx}`
 
 Prettier config: tabs (width 2), single quotes, semicolons, es5 trailing commas, 80 char print width.
+
+## New code conventions (effective now)
+
+The legacy codebase is mostly `.js`/`.jsx` (do not rewrite it unless asked). For **all new files** agents create, follow these rules:
+
+- **TypeScript only** — use `.ts` for utilities, `.tsx` for components/pages, `route.ts` for API routes, `.test.ts`/`.test.tsx` for tests. `allowJs: true` is on so old `.js` keeps type-checking, but new code must be TS.
+- **Data fetching → TanStack Query** (`@tanstack/react-query`). Use `useQuery` / `useMutation` with the existing `QueryClient` in `src/components/providers/QueryProvider.jsx`. Avoid raw `fetch`/SWR in new code. See `src/components/admin/ResourcePage.jsx:66` for the pattern.
+- **Forms → TanStack Form** (`@tanstack/react-form`). Use `useForm` from `@tanstack/react-form` (already used at `src/components/admin/ResourcePage.jsx:282`). Do not introduce new form libraries.
+- **Tables → TanStack Table** (`@tanstack/react-table`) for any new data tables. The `Table` primitive from shadcn (when present) is built on it.
+- **Components** — Radix UI primitives + `lucide-react` icons + `class-variance-authority` + `tailwind-merge` (cn helper). Reuse the shadcn-style components under `src/components/ui/` rather than building parallel ones. Use `clsx`/`tailwind-merge` (not string concatenation) for conditional classes.
+- **API routes** — still follow the pattern in "Adding new API routes" below, but write them as `.ts` with typed request/response shapes (Zod schemas in `src/utils/` are encouraged for validation).
 
 ## Architecture notes
 
