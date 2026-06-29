@@ -178,6 +178,23 @@ const adminMenuGroups = [
 				href: '/admin/purchase-invoice',
 				icon: ReceiptPercentIcon,
 			},
+			// {
+			// 	name: 'Payment Receivable',
+			// 	href: '/admin/payment-receivable',
+			// 	icon: ArrowDownCircleIcon,
+			// },
+			// {
+			// 	name: 'Payment Payable',
+			// 	href: '/admin/payment-payable',
+			// 	icon: ArrowUpCircleIcon,
+			// },
+		],
+	},
+	{
+		key: 'purchase-orders',
+		name: 'Purchase Orders',
+		icon: ClipboardDocumentCheckIcon,
+		items: [
 			{
 				name: 'Purchase Order (Incoming)',
 				href: '/admin/purchase-order',
@@ -187,16 +204,6 @@ const adminMenuGroups = [
 				name: 'Purchase Order (Outgoing)',
 				href: '/admin/outgoing-purchase-order',
 				icon: ClipboardDocumentCheckIcon,
-			},
-			{
-				name: 'Payment Receivable',
-				href: '/admin/payment-receivable',
-				icon: ArrowDownCircleIcon,
-			},
-			{
-				name: 'Payment Payable',
-				href: '/admin/payment-payable',
-				icon: ArrowUpCircleIcon,
 			},
 		],
 	},

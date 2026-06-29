@@ -260,7 +260,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		}
 	});
 
-	const COLS = 10; // project_code, project_name, discipline, activity, sub-activity, default_manhours, manhours, assigned date, completion date, status
+	const COLS = 9; // project_number, discipline, activity, sub-activity, default_manhours, manhours, assigned date, completion date, status
 
 	// Build the list of projects the user can add activities to: any project they
 	// already have assignments on, plus any team project with no activities yet.
@@ -329,8 +329,6 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			switch (sort.key) {
 				case 'project_code':
 					return (r.project_code || '').toLowerCase();
-				case 'project_name':
-					return (r.project_name || '').toLowerCase();
 				case 'discipline':
 					return (r.activity.discipline || '').toLowerCase();
 				case 'activity_name':
@@ -449,28 +447,21 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 				<div>
 					<table className="w-full text-sm border-collapse table-fixed">
 						<colgroup>
+							<col className="w-[11%]" />
+							<col className="w-[12%]" />
+							<col className="w-[18%]" />
+							<col className="w-[18%]" />
+							<col className="w-[8%]" />
+							<col className="w-[7%]" />
 							<col className="w-[9%]" />
-							<col className="w-[15%]" />
-							<col className="w-[10%]" />
-							<col className="w-[15%]" />
-							<col className="w-[15%]" />
-							<col className="w-[7%]" />
-							<col className="w-[6%]" />
+							<col className="w-[9%]" />
 							<col className="w-[8%]" />
-							<col className="w-[8%]" />
-							<col className="w-[7%]" />
 						</colgroup>
 						<thead className="bg-[#64126D]/10">
 							<tr className="divide-x divide-[#64126D]/40">
 								<SortHeader
-									label="Code"
+									label="Project Number"
 									sortKey="project_code"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<SortHeader
-									label="Project"
-									sortKey="project_name"
 									sort={sort}
 									onSort={toggleSort}
 								/>
@@ -544,7 +535,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 								</tr>
 							)}
 
-							{flatRows.map(({ project_code, project_name, activity }) => {
+							{flatRows.map(({ project_code, activity }) => {
 								const rowKey = `${activity.project_id}-${activity.activity_id}`;
 
 								return (
@@ -558,14 +549,6 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 												title={project_code || '–'}
 											>
 												{project_code || '–'}
-											</span>
-										</td>
-										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className="text-[#4A1254] block break-words leading-tight"
-												title={project_name || 'Unknown Project'}
-											>
-												{project_name || 'Unknown Project'}
 											</span>
 										</td>
 										<td className="py-1 px-2 text-center align-middle">
@@ -624,10 +607,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 							{/* Inline Add Row */}
 							{isAdding && (
 								<tr className="bg-purple-50/50 divide-x divide-gray-300">
-									<td
-										className="py-1 px-2 text-center align-middle"
-										colSpan={2}
-									>
+									<td className="py-1 px-2 text-center align-middle">
 										<select
 											value={addForm.project_id}
 											onChange={(e) =>
@@ -781,7 +761,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 							{flatRows.length > 0 && (
 								<tr className="bg-[#64126D]/10 divide-x divide-gray-300 font-bold">
 									<td
-										colSpan={6}
+										colSpan={5}
 										className="py-1 px-2 text-right text-[#4A1254] uppercase text-xs tracking-wide"
 									>
 										{baseRows.length !== flatRows.length
