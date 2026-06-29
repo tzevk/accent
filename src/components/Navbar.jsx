@@ -15,8 +15,15 @@ import {
 	XMarkIcon,
 	UserCircleIcon,
 	ChevronDownIcon,
+	ChevronRightIcon,
 	ShieldCheckIcon,
 	ChartBarIcon,
+	BanknotesIcon,
+	ReceiptPercentIcon,
+	WalletIcon,
+	ArrowDownCircleIcon,
+	ArrowUpCircleIcon,
+	ClipboardDocumentCheckIcon,
 } from '@heroicons/react/24/outline';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { clearSessionCache } from '@/context/SessionContext';
@@ -89,6 +96,7 @@ const adminMenuConfig = [
 	{ name: 'Admin Logs', href: '/admin/activity-logs', resource: 'admin' },
 	{ name: 'All Todos', href: '/admin/todos', resource: 'admin' },
 	{ name: 'Cash Voucher', href: '/admin/cash-voucher', resource: 'admin' },
+	{ name: 'Expenses', href: '/admin/expenses', resource: 'admin' },
 	{
 		name: 'Live Monitoring',
 		href: '/admin/live-monitoring',
@@ -101,6 +109,21 @@ const adminMenuConfig = [
 	},
 	{ name: 'Payment Entry', href: '/admin/payment-entry', resource: 'admin' },
 	{
+		name: 'Payment Payable',
+		href: '/admin/payment-payable',
+		resource: 'admin',
+	},
+	{
+		name: 'Payment Receivable',
+		href: '/admin/payment-receivable',
+		resource: 'admin',
+	},
+	{
+		name: 'Purchase Invoice',
+		href: '/admin/purchase-invoice',
+		resource: 'admin',
+	},
+	{
 		name: 'Purchase Order (Incoming)',
 		href: '/admin/purchase-order',
 		resource: 'admin',
@@ -110,7 +133,12 @@ const adminMenuConfig = [
 		href: '/admin/outgoing-purchase-order',
 		resource: 'admin',
 	},
-	{ name: 'Quotation', href: '/admin/quotation', resource: 'admin' },
+	{ name: 'Quotation (Incoming)', href: '/admin/quotation', resource: 'admin' },
+	{
+		name: 'Quotation (Outgoing)',
+		href: '/admin/quotation-outgoing',
+		resource: 'admin',
+	},
 	{
 		name: 'Salary Sheet (Excel)',
 		href: '/admin/salary-sheet',
@@ -118,6 +146,118 @@ const adminMenuConfig = [
 	},
 	{ name: 'Salary Slip (PDF)', href: '/admin/salary-slip', resource: 'admin' },
 	{ name: 'Sale Invoice', href: '/admin/invoice', resource: 'admin' },
+];
+
+// Admin menu grouped into categories for the hover-flyout navbar dropdown
+const adminMenuGroups = [
+	{
+		key: 'quotations',
+		name: 'Quotations',
+		icon: DocumentTextIcon,
+		items: [
+			{
+				name: 'Quotation (Incoming)',
+				href: '/admin/quotation',
+				icon: DocumentTextIcon,
+			},
+			{
+				name: 'Quotation (Outgoing)',
+				href: '/admin/quotation-outgoing',
+				icon: DocumentTextIcon,
+			},
+		],
+	},
+	{
+		key: 'invoicing',
+		name: 'Invoicing',
+		icon: ReceiptPercentIcon,
+		items: [
+			{ name: 'Sale Invoice', href: '/admin/invoice', icon: DocumentTextIcon },
+			{
+				name: 'Purchase Invoice',
+				href: '/admin/purchase-invoice',
+				icon: ReceiptPercentIcon,
+			},
+			{
+				name: 'Purchase Order (Incoming)',
+				href: '/admin/purchase-order',
+				icon: ClipboardDocumentCheckIcon,
+			},
+			{
+				name: 'Purchase Order (Outgoing)',
+				href: '/admin/outgoing-purchase-order',
+				icon: ClipboardDocumentCheckIcon,
+			},
+			{
+				name: 'Payment Receivable',
+				href: '/admin/payment-receivable',
+				icon: ArrowDownCircleIcon,
+			},
+			{
+				name: 'Payment Payable',
+				href: '/admin/payment-payable',
+				icon: ArrowUpCircleIcon,
+			},
+		],
+	},
+	{
+		key: 'cash-expenses',
+		name: 'Cash & Expenses',
+		icon: WalletIcon,
+		items: [
+			{
+				name: 'Cash Voucher',
+				href: '/admin/cash-voucher',
+				icon: BanknotesIcon,
+			},
+			{ name: 'Expenses', href: '/admin/expenses', icon: WalletIcon },
+			{
+				name: 'Payment Entry',
+				href: '/admin/payment-entry',
+				icon: BanknotesIcon,
+			},
+		],
+	},
+	{
+		key: 'payroll',
+		name: 'Payroll',
+		icon: ClipboardDocumentCheckIcon,
+		items: [
+			{
+				name: 'Material Requisition',
+				href: '/admin/material-requisition',
+				icon: ClipboardDocumentCheckIcon,
+			},
+			{
+				name: 'Salary Sheet (Excel)',
+				href: '/admin/salary-sheet',
+				icon: DocumentTextIcon,
+			},
+			{
+				name: 'Salary Slip (PDF)',
+				href: '/admin/salary-slip',
+				icon: DocumentTextIcon,
+			},
+		],
+	},
+	{
+		key: 'monitoring',
+		name: 'Monitoring',
+		icon: ChartBarIcon,
+		items: [
+			{
+				name: 'Admin Logs',
+				href: '/admin/activity-logs',
+				icon: ShieldCheckIcon,
+			},
+			{ name: 'All Todos', href: '/admin/todos', icon: ShieldCheckIcon },
+			{
+				name: 'Live Monitoring',
+				href: '/admin/live-monitoring',
+				icon: ChartBarIcon,
+			},
+		],
+	},
 ];
 
 // Masters moved to sidebar; removed from header
@@ -129,6 +269,7 @@ export default function Navbar() {
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 	const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
 	const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
+	const [activeAdminGroup, setActiveAdminGroup] = useState(null);
 	const [scrolled, setScrolled] = useState(false);
 	const [isWindows, setIsWindows] = useState(false);
 	const {
@@ -206,6 +347,7 @@ export default function Navbar() {
 		setIsMobileMenuOpen(false);
 		setIsAdminMenuOpen(false);
 		setIsReportsMenuOpen(false);
+		setActiveAdminGroup(null);
 	}, [pathname]);
 
 	// Close dropdowns when clicking outside
@@ -213,6 +355,7 @@ export default function Navbar() {
 		const handleClickOutside = (e) => {
 			if (isAdminMenuOpen && !e.target.closest('.admin-dropdown')) {
 				setIsAdminMenuOpen(false);
+				setActiveAdminGroup(null);
 			}
 			if (isReportsMenuOpen && !e.target.closest('.reports-dropdown')) {
 				setIsReportsMenuOpen(false);
@@ -395,11 +538,21 @@ export default function Navbar() {
 								</div>
 							)}
 
-							{/* Admin Dropdown - Only show if user has admin permissions */}
+							{/* Admin Hover-Flyout - Only show if user has admin permissions */}
 							{showAdminMenu && (
-								<div className="relative admin-dropdown">
+								<div
+									className="relative admin-dropdown"
+									onMouseLeave={() => {
+										setIsAdminMenuOpen(false);
+										setActiveAdminGroup(null);
+									}}
+								>
 									<button
-										onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)}
+										onClick={() => {
+											setIsAdminMenuOpen((v) => !v);
+											setActiveAdminGroup(null);
+										}}
+										onMouseEnter={() => setIsAdminMenuOpen(true)}
 										className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden active:scale-[.98] ${
 											pathname.startsWith('/admin')
 												? 'text-white shadow-lg'
@@ -411,16 +564,6 @@ export default function Navbar() {
 												: isAdminMenuOpen
 													? 'rgba(255, 255, 255, 0.1)'
 													: 'transparent',
-										}}
-										onMouseEnter={(e) => {
-											if (!pathname.startsWith('/admin')) {
-												e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-											}
-										}}
-										onMouseLeave={(e) => {
-											if (!pathname.startsWith('/admin') && !isAdminMenuOpen) {
-												e.target.style.background = 'transparent';
-											}
 										}}
 									>
 										<ShieldCheckIcon
@@ -444,23 +587,85 @@ export default function Navbar() {
 										)}
 									</button>
 
-									{/* Admin Dropdown Menu */}
+									{/* Admin Flyout Panel - opens below the button, then the right-side submenu flies out on hover */}
 									{isAdminMenuOpen && (
-										<div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 anim-drop">
-											{adminMenuItems.map((item) => (
-												<Link
-													key={item.name}
-													href={item.href}
-													onClick={() => setIsAdminMenuOpen(false)}
-													className={`flex items-center px-4 py-2 text-sm transition-colors ${
-														pathname === item.href
-															? 'text-purple-700 bg-purple-50 font-medium'
-															: 'text-gray-700 hover:bg-gray-50'
+										<div
+											className="absolute left-0 top-full pt-2 z-50 anim-drop"
+											style={{ paddingTop: '0.5rem' }}
+										>
+											<div className="flex items-start">
+												{/* Left column - group list */}
+												<div
+													className={`bg-white shadow-xl border border-gray-100 py-2 ${
+														activeAdminGroup
+															? 'rounded-l-xl border-r-0 w-56'
+															: 'rounded-xl w-56'
 													}`}
 												>
-													{item.name}
-												</Link>
-											))}
+													{adminMenuGroups.map((group) => {
+														const GroupIcon = group.icon;
+														const isActive = activeAdminGroup === group.key;
+														const hasActiveChild = group.items.some(
+															(item) => pathname === item.href
+														);
+														return (
+															<button
+																key={group.key}
+																type="button"
+																onMouseEnter={() =>
+																	setActiveAdminGroup(group.key)
+																}
+																onFocus={() => setActiveAdminGroup(group.key)}
+																onClick={() =>
+																	setActiveAdminGroup((cur) =>
+																		cur === group.key ? null : group.key
+																	)
+																}
+																className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors text-left ${
+																	isActive || hasActiveChild
+																		? 'bg-purple-50 text-[#64126D] font-medium'
+																		: 'text-gray-700 hover:bg-gray-50'
+																}`}
+															>
+																<GroupIcon
+																	className={`h-4 w-4 ${isActive || hasActiveChild ? 'text-[#64126D]' : 'text-gray-500'}`}
+																/>
+																<span className="flex-1">{group.name}</span>
+																<ChevronRightIcon className="h-3.5 w-3.5 text-gray-400" />
+															</button>
+														);
+													})}
+												</div>
+
+												{/* Right column - submenu for the hovered group (only shown when a group is active) */}
+												{activeAdminGroup && (
+													<div className="min-w-[240px] bg-white rounded-r-xl shadow-xl border border-gray-100 py-2">
+														{adminMenuGroups
+															.find((g) => g.key === activeAdminGroup)
+															?.items.map((item) => {
+																const ItemIcon = item.icon;
+																return (
+																	<Link
+																		key={item.href}
+																		href={item.href}
+																		onClick={() => {
+																			setIsAdminMenuOpen(false);
+																			setActiveAdminGroup(null);
+																		}}
+																		className={`flex items-center gap-2.5 px-4 py-2 text-sm transition-colors ${
+																			pathname === item.href
+																				? 'text-purple-700 bg-purple-50 font-medium'
+																				: 'text-gray-700 hover:bg-gray-50'
+																		}`}
+																	>
+																		<ItemIcon className="h-4 w-4 text-gray-500" />
+																		{item.name}
+																	</Link>
+																);
+															})}
+													</div>
+												)}
+											</div>
 										</div>
 									)}
 								</div>
@@ -570,28 +775,35 @@ export default function Navbar() {
 
 							{/* Admin Section on Mobile */}
 							{showAdminMenu && (
-								<div className="pt-2 mt-2 border-t border-white/10">
-									<p className="px-4 py-2 text-xs font-semibold text-white/60 uppercase tracking-wider">
+								<div className="pt-2 mt-2 border-t border-white/10 space-y-3">
+									<p className="px-4 py-1 text-xs font-semibold text-white/60 uppercase tracking-wider">
 										Admin
 									</p>
-									<div className="grid grid-cols-1 gap-1">
-										{adminMenuItems.map((item) => {
-											const isActive = pathname === item.href;
-											return (
-												<Link
-													key={item.name}
-													href={item.href}
-													className={`flex items-center space-x-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[.98] ${
-														isActive
-															? 'bg-white/20 text-white'
-															: 'text-white/90 hover:bg-white/10 hover:text-white'
-													}`}
-												>
-													<span>{item.name}</span>
-												</Link>
-											);
-										})}
-									</div>
+									{adminMenuGroups.map((group) => (
+										<div key={group.key}>
+											<p className="px-4 py-1 text-[11px] font-semibold text-white/50 uppercase tracking-wider">
+												{group.name}
+											</p>
+											<div className="grid grid-cols-1 gap-1">
+												{group.items.map((item) => {
+													const isActive = pathname === item.href;
+													return (
+														<Link
+															key={item.href}
+															href={item.href}
+															className={`flex items-center space-x-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[.98] ${
+																isActive
+																	? 'bg-white/20 text-white'
+																	: 'text-white/90 hover:bg-white/10 hover:text-white'
+															}`}
+														>
+															<span>{item.name}</span>
+														</Link>
+													);
+												})}
+											</div>
+										</div>
+									))}
 								</div>
 							)}
 

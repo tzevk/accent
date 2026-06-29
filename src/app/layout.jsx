@@ -4,6 +4,7 @@ import Sidebar from '@/components/Sidebar';
 import AuthGate from '@/components/AuthGate';
 import ActivityTracker from '@/components/ActivityTracker';
 import AutoRefresh from '@/components/AutoRefresh';
+import QueryProvider from '@/components/providers/QueryProvider';
 import { SessionProvider } from '@/context/SessionContext';
 import { SpellCheckProvider } from '@/hooks/useSpellCheck';
 
@@ -29,17 +30,19 @@ export default function RootLayout({ children }) {
 				className={`${geistSans.variable} ${geistMono.variable} antialiased`}
 				suppressHydrationWarning
 			>
-				<SessionProvider>
-					<SpellCheckProvider>
-						<Sidebar />
-						<AuthGate />
-						<ActivityTracker />
-						<AutoRefresh timeout={30000} />
-						<div className="content-with-sidebar dashboard-content">
-							{children}
-						</div>
-					</SpellCheckProvider>
-				</SessionProvider>
+				<QueryProvider>
+					<SessionProvider>
+						<SpellCheckProvider>
+							<Sidebar />
+							<AuthGate />
+							<ActivityTracker />
+							<AutoRefresh timeout={30000} />
+							<div className="content-with-sidebar dashboard-content">
+								{children}
+							</div>
+						</SpellCheckProvider>
+					</SessionProvider>
+				</QueryProvider>
 			</body>
 		</html>
 	);

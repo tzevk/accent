@@ -397,10 +397,10 @@ export default function QuotationPage() {
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
 								<DocumentTextIcon className="h-7 w-7 text-purple-600" />
-								Quotations
+								Quotation (Incoming)
 							</h1>
 							<p className="text-sm text-gray-500 mt-1">
-								View and download quotations
+								View and download incoming quotations
 							</p>
 						</div>
 						<div>
