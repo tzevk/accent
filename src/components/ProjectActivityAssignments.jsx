@@ -34,6 +34,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
 	const [addingProjectId, setAddingProjectId] = useState(null);
 	const [addForm, setAddForm] = useState({
+		project_id: '',
 		discipline_id: '',
 		activity_id: '',
 		sub_activity_id: '',
@@ -102,10 +103,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		});
 	};
 
-	// ── Add a new activity row to a project ──
-	const openAddRow = (projectId) => {
-		setAddingProjectId(projectId);
+	// ── Open the inline add row ──
+	const openAddRow = () => {
+		setAddingProjectId('new');
 		setAddForm({
+			project_id: '',
 			discipline_id: '',
 			activity_id: '',
 			sub_activity_id: '',
@@ -126,7 +128,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		(a) => a.id === addForm.activity_id
 	);
 
-	const submitAdd = async (projectId) => {
+	const submitAdd = async () => {
 		const discipline = disciplineOptions.find(
 			(d) => d.id === addForm.discipline_id
 		);
@@ -137,6 +139,10 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			(s) => s.id === addForm.sub_activity_id
 		);
 
+		if (!addForm.project_id) {
+			alert('Please select a project.');
+			return;
+		}
 		if (!discipline || !activity) {
 			alert('Please select a Discipline and Activity.');
 			return;
@@ -148,7 +154,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					project_id: projectId,
+					project_id: addForm.project_id,
 					discipline_name: discipline.function_name,
 					activity_name: activity.activity_name,
 					sub_activity_name: subActivity?.name || '',
@@ -210,327 +216,391 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		}
 	});
 
-	const COLS = 8; // discipline, activity, sub-activity, default_manhours, manhours, assigned date, completion date, status
+	const COLS = 10; // project_code, project_name, discipline, activity, sub-activity, default_manhours, manhours, assigned date, completion date, status
+
+	// Build the list of projects the user can add activities to: any project they
+	// already have assignments on, plus any team project with no activities yet.
+	// The server-side PATCH endpoint enforces userId, so this is a UI filter only.
+	const assignableProjects = (() => {
+		const seen = new Set();
+		const list = [];
+		const push = (p) => {
+			if (!p) return;
+			const pid = String(p.project_id);
+			if (seen.has(pid)) return;
+			seen.add(pid);
+			list.push({
+				project_id: pid,
+				project_code: p.project_code,
+				project_name: p.project_name,
+			});
+		};
+		assignments.forEach(push);
+		emptyProjects.forEach(push);
+		return list;
+	})();
+
+	// Flatten assignments into a single list, preserving per-project grouping order.
+	const flatRows = projectOrder.flatMap((pid) => {
+		const group = projectGroups[pid];
+		return group.activities.map((activity) => ({
+			project_code: group.project_code,
+			project_name: group.project_name,
+			activity,
+		}));
+	});
+
+	const totalManhours = flatRows.reduce(
+		(sum, r) => sum + (parseFloat(r.activity.planned_hours) || 0),
+		0
+	);
+	const isAdding = addingProjectId !== null;
+	const hasAnyData = projectOrder.length > 0;
 
 	return (
 		<div className="bg-white rounded-xl shadow-lg border-2 border-purple-200 mb-6 ring-1 ring-purple-100">
 			{/* Header */}
-			<div className="px-3 py-2 border-b-2 border-purple-100 bg-gradient-to-r from-purple-50 to-white flex items-center gap-2">
-				<div className="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center shadow-sm">
-					<ClipboardDocumentListIcon className="w-4 h-4 text-purple-600" />
+			<div className="px-3 py-2 border-b-2 border-purple-100 bg-gradient-to-r from-purple-50 to-white flex items-center justify-between gap-2">
+				<div className="flex items-center gap-2">
+					<div className="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center shadow-sm">
+						<ClipboardDocumentListIcon className="w-4 h-4 text-purple-600" />
+					</div>
+					<h3 className="text-sm font-bold text-[#4A1254]">
+						My Project Activities
+					</h3>
 				</div>
-				<h3 className="text-sm font-bold text-[#4A1254]">
-					My Project Activities
-				</h3>
+				{hasAnyData && (
+					<button
+						onClick={openAddRow}
+						disabled={isAdding}
+						className="flex items-center gap-1 px-2 py-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors text-xs font-semibold disabled:opacity-50"
+						title="Add a new activity"
+					>
+						<PlusIcon className="w-3.5 h-3.5" />
+						Add
+					</button>
+				)}
 			</div>
 
-			{projectOrder.length === 0 ? (
+			{!hasAnyData ? (
 				<div className="text-center py-10 text-[#4A1254]">
 					<ClipboardDocumentListIcon className="w-14 h-14 mx-auto mb-3 opacity-50" />
 					<p className="text-sm">No projects assigned to you</p>
 				</div>
 			) : (
-				projectOrder.map((pid) => {
-					const group = projectGroups[pid];
-					const isAdding = addingProjectId === pid;
-					const totalManhours = group.activities.reduce(
-						(sum, a) => sum + (parseFloat(a.planned_hours) || 0),
-						0
-					);
+				<div>
+					<table className="w-full text-sm border-collapse table-fixed">
+						<colgroup>
+							<col className="w-[9%]" />
+							<col className="w-[15%]" />
+							<col className="w-[10%]" />
+							<col className="w-[15%]" />
+							<col className="w-[15%]" />
+							<col className="w-[7%]" />
+							<col className="w-[6%]" />
+							<col className="w-[8%]" />
+							<col className="w-[8%]" />
+							<col className="w-[7%]" />
+						</colgroup>
+						<thead className="bg-[#64126D]/10">
+							<tr className="divide-x divide-[#64126D]/40">
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+									Code
+								</th>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+									Project
+								</th>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+									Discipline
+								</th>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+									Activity
+								</th>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+									Sub Activity
+								</th>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+									Default MH
+								</th>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+									Manhours
+								</th>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+									Date Assigned
+								</th>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+									Date Completed
+								</th>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
+									Status
+								</th>
+							</tr>
+						</thead>
+						<tbody className="divide-y divide-gray-300">
+							{flatRows.length === 0 && !isAdding && (
+								<tr>
+									<td
+										colSpan={COLS}
+										className="py-6 px-4 text-center text-sm text-[#4A1254]"
+									>
+										No activities yet. Click{' '}
+										<span className="font-semibold">Add</span> above to log your
+										first activity.
+									</td>
+								</tr>
+							)}
 
-					return (
-						<div key={pid} className="mb-4 last:mb-0">
-							{/* Project Header */}
-							<div className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-[#64126D] to-[#7F2487] text-white">
-								<div className="flex items-center gap-3">
-									<span className="font-mono text-xs font-bold bg-white/20 px-2 py-0.5 rounded">
-										{group.project_code || '–'}
-									</span>
-									<span className="text-sm font-bold">
-										{group.project_name || 'Unknown Project'}
-									</span>
-								</div>
-								<button
-									onClick={() => openAddRow(pid)}
-									disabled={isAdding}
-									className="flex items-center gap-1 px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition-colors text-xs font-semibold disabled:opacity-50"
-									title="Add activity to this project"
-								>
-									<PlusIcon className="w-3.5 h-3.5" />
-									Add
-								</button>
-							</div>
+							{flatRows.map(({ project_code, project_name, activity }) => {
+								const rowKey = `${activity.project_id}-${activity.activity_id}`;
 
-							{/* Table */}
-							<div>
-								<table className="w-full text-sm border-collapse table-fixed">
-									<colgroup>
-										<col className="w-[12%]" />
-										<col className="w-[18%]" />
-										<col className="w-[23%]" />
-										<col className="w-[9%]" />
-										<col className="w-[8%]" />
-										<col className="w-[11%]" />
-										<col className="w-[11%]" />
-										<col className="w-[8%]" />
-									</colgroup>
-									<thead className="bg-[#64126D]/10">
-										<tr className="divide-x divide-[#64126D]/40">
-											<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-												Discipline
-											</th>
-											<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-												Activity
-											</th>
-											<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-												Sub Activity
-											</th>
-											<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-												Default Manhours
-											</th>
-											<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-												Manhours
-											</th>
-											<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-												Date Assigned
-											</th>
-											<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-												Date Completed
-											</th>
-											<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-												Status
-											</th>
-										</tr>
-									</thead>
-									<tbody className="divide-y divide-gray-300">
-										{group.activities.length === 0 && !isAdding && (
-											<tr>
-												<td
-													colSpan={COLS}
-													className="py-6 px-4 text-center text-sm text-[#4A1254]"
-												>
-													No activities added yet. Click{' '}
-													<span className="font-semibold">Add</span> above to
-													log your first activity for this project.
-												</td>
-											</tr>
-										)}
+								return (
+									<tr
+										key={rowKey}
+										className="hover:bg-purple-50/40 transition-colors divide-x divide-gray-300"
+									>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className="font-mono text-[10px] text-[#4A1254] block break-words leading-tight"
+												title={project_code || '–'}
+											>
+												{project_code || '–'}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className="text-[#4A1254] block break-words leading-tight"
+												title={project_name || 'Unknown Project'}
+											>
+												{project_name || 'Unknown Project'}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className="text-[#4A1254] block break-words leading-tight"
+												title={activity.discipline}
+											>
+												{activity.discipline}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className="font-semibold text-[#4A1254] block break-words leading-tight"
+												title={activity.activity_name}
+											>
+												{activity.activity_name}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className="text-[#4A1254] block break-words leading-tight"
+												title={activity.sub_activity_name || '–'}
+											>
+												{activity.sub_activity_name || '–'}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
+											{activity.default_manhours || 0}
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span className="text-[#4A1254]">
+												{activity.planned_hours || 0}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
+											{formatShortDate(activity.start_date)}
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span className="text-[#4A1254]">
+												{formatShortDate(activity.due_date)}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
+													activity.status
+												)}`}
+											>
+												{activity.status || 'Not Started'}
+											</span>
+										</td>
+									</tr>
+								);
+							})}
 
-										{group.activities.map((activity) => {
-											const rowKey = `${activity.project_id}-${activity.activity_id}`;
+							{/* Inline Add Row */}
+							{isAdding && (
+								<tr className="bg-purple-50/50 divide-x divide-gray-300">
+									<td
+										className="py-1 px-2 text-center align-middle"
+										colSpan={2}
+									>
+										<select
+											value={addForm.project_id}
+											onChange={(e) =>
+												setAddForm((p) => ({
+													...p,
+													project_id: e.target.value,
+												}))
+											}
+											className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+											title="Select a project you are assigned to"
+										>
+											<option value="">Select project…</option>
+											{assignableProjects.map((p) => (
+												<option key={p.project_id} value={p.project_id}>
+													{p.project_code
+														? `${p.project_code} – ${p.project_name}`
+														: p.project_name}
+												</option>
+											))}
+										</select>
+									</td>
+									<td className="py-1 px-2 text-center align-middle">
+										<select
+											value={addForm.discipline_id}
+											onChange={(e) =>
+												setAddForm((p) => ({
+													...p,
+													discipline_id: e.target.value,
+													activity_id: '',
+													sub_activity_id: '',
+												}))
+											}
+											className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+										>
+											<option value="">Select</option>
+											{disciplineOptions.map((d) => (
+												<option key={d.id} value={d.id}>
+													{d.function_name}
+												</option>
+											))}
+										</select>
+									</td>
+									<td className="py-1 px-2 text-center align-middle">
+										<select
+											value={addForm.activity_id}
+											disabled={!selectedDiscipline}
+											onChange={(e) =>
+												setAddForm((p) => ({
+													...p,
+													activity_id: e.target.value,
+													sub_activity_id: '',
+												}))
+											}
+											className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100"
+										>
+											<option value="">Select</option>
+											{(selectedDiscipline?.activities || []).map((a) => (
+												<option key={a.id} value={a.id}>
+													{a.activity_name}
+												</option>
+											))}
+										</select>
+									</td>
+									<td className="py-1 px-2 text-center align-middle">
+										<select
+											value={addForm.sub_activity_id}
+											disabled={!selectedActivity?.subActivities?.length}
+											onChange={(e) =>
+												setAddForm((p) => ({
+													...p,
+													sub_activity_id: e.target.value,
+												}))
+											}
+											className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100"
+										>
+											<option value="">Select</option>
+											{(selectedActivity?.subActivities || []).map((s) => (
+												<option key={s.id} value={s.id}>
+													{s.name}
+												</option>
+											))}
+										</select>
+									</td>
+									<td className="py-1 px-2 text-center align-middle">
+										<input
+											type="text"
+											readOnly
+											value={
+												selectedActivity?.subActivities?.find(
+													(s) => s.id === addForm.sub_activity_id
+												)?.default_manhours || '–'
+											}
+											className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center bg-gray-100 text-gray-500 focus:outline-none"
+										/>
+									</td>
+									<td className="py-1 px-2 text-center align-middle">
+										<input
+											type="number"
+											min="0"
+											step="0.5"
+											value={addForm.manhours_assigned}
+											onChange={(e) =>
+												setAddForm((p) => ({
+													...p,
+													manhours_assigned: e.target.value,
+												}))
+											}
+											placeholder="Hrs"
+											className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+										/>
+									</td>
+									<td className="py-1 px-2 text-center align-middle">
+										<input
+											type="date"
+											value={addForm.start_date}
+											onChange={(e) =>
+												setAddForm((p) => ({
+													...p,
+													start_date: e.target.value,
+												}))
+											}
+											className="px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+										/>
+									</td>
+									<td className="py-1 px-2 text-center align-middle text-xs text-gray-400">
+										–
+									</td>
+									<td className="py-1 px-2 text-center align-middle">
+										<div className="flex items-center justify-center gap-1">
+											<button
+												onClick={() => submitAdd()}
+												disabled={saving}
+												className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors disabled:opacity-50"
+												title="Save"
+											>
+												<CheckIcon className="w-4 h-4" />
+											</button>
+											<button
+												onClick={closeAddRow}
+												disabled={saving}
+												className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors"
+												title="Cancel"
+											>
+												<XMarkIcon className="w-4 h-4" />
+											</button>
+										</div>
+									</td>
+								</tr>
+							)}
 
-											return (
-												<tr
-													key={rowKey}
-													className="hover:bg-purple-50/40 transition-colors divide-x divide-gray-300"
-												>
-													<td className="py-1 px-2 text-center align-middle">
-														<span
-															className="text-[#4A1254] block break-words leading-tight"
-															title={activity.discipline}
-														>
-															{activity.discipline}
-														</span>
-													</td>
-													<td className="py-1 px-2 text-center align-middle">
-														<span
-															className="font-semibold text-[#4A1254] block break-words leading-tight"
-															title={activity.activity_name}
-														>
-															{activity.activity_name}
-														</span>
-													</td>
-													<td className="py-1 px-2 text-center align-middle">
-														<span
-															className="text-[#4A1254] block break-words leading-tight"
-															title={activity.sub_activity_name || '–'}
-														>
-															{activity.sub_activity_name || '–'}
-														</span>
-													</td>
-													<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
-														{activity.default_manhours || 0}
-													</td>
-													<td className="py-1 px-2 text-center align-middle">
-														<span className="text-[#4A1254]">
-															{activity.planned_hours || 0}
-														</span>
-													</td>
-													<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
-														{formatShortDate(activity.start_date)}
-													</td>
-													<td className="py-1 px-2 text-center align-middle">
-														<span className="text-[#4A1254]">
-															{formatShortDate(activity.due_date)}
-														</span>
-													</td>
-													<td className="py-1 px-2 text-center align-middle">
-														<span
-															className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
-																activity.status
-															)}`}
-														>
-															{activity.status || 'Not Started'}
-														</span>
-													</td>
-												</tr>
-											);
-										})}
-
-										{/* Inline Add Row */}
-										{isAdding && (
-											<tr className="bg-purple-50/50 divide-x divide-gray-300">
-												<td className="py-1 px-2 text-center align-middle">
-													<select
-														value={addForm.discipline_id}
-														onChange={(e) =>
-															setAddForm((p) => ({
-																...p,
-																discipline_id: e.target.value,
-																activity_id: '',
-																sub_activity_id: '',
-															}))
-														}
-														className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-													>
-														<option value="">Select</option>
-														{disciplineOptions.map((d) => (
-															<option key={d.id} value={d.id}>
-																{d.function_name}
-															</option>
-														))}
-													</select>
-												</td>
-												<td className="py-1 px-2 text-center align-middle">
-													<select
-														value={addForm.activity_id}
-														disabled={!selectedDiscipline}
-														onChange={(e) =>
-															setAddForm((p) => ({
-																...p,
-																activity_id: e.target.value,
-																sub_activity_id: '',
-															}))
-														}
-														className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100"
-													>
-														<option value="">Select</option>
-														{(selectedDiscipline?.activities || []).map((a) => (
-															<option key={a.id} value={a.id}>
-																{a.activity_name}
-															</option>
-														))}
-													</select>
-												</td>
-												<td className="py-1 px-2 text-center align-middle">
-													<select
-														value={addForm.sub_activity_id}
-														disabled={!selectedActivity?.subActivities?.length}
-														onChange={(e) =>
-															setAddForm((p) => ({
-																...p,
-																sub_activity_id: e.target.value,
-															}))
-														}
-														className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100"
-													>
-														<option value="">Select</option>
-														{(selectedActivity?.subActivities || []).map(
-															(s) => (
-																<option key={s.id} value={s.id}>
-																	{s.name}
-																</option>
-															)
-														)}
-													</select>
-												</td>
-												<td className="py-1 px-2 text-center align-middle">
-													<input
-														type="text"
-														readOnly
-														value={
-															selectedActivity?.subActivities?.find(
-																(s) => s.id === addForm.sub_activity_id
-															)?.default_manhours || '–'
-														}
-														className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center bg-gray-100 text-gray-500 focus:outline-none"
-													/>
-												</td>
-												<td className="py-1 px-2 text-center align-middle">
-													<input
-														type="number"
-														min="0"
-														step="0.5"
-														value={addForm.manhours_assigned}
-														onChange={(e) =>
-															setAddForm((p) => ({
-																...p,
-																manhours_assigned: e.target.value,
-															}))
-														}
-														placeholder="Hrs"
-														className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-													/>
-												</td>
-												<td className="py-1 px-2 text-center align-middle">
-													<input
-														type="date"
-														value={addForm.start_date}
-														onChange={(e) =>
-															setAddForm((p) => ({
-																...p,
-																start_date: e.target.value,
-															}))
-														}
-														className="px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-													/>
-												</td>
-												<td className="py-1 px-2 text-center align-middle text-xs text-gray-400">
-													–
-												</td>
-												<td className="py-1 px-2 text-center align-middle">
-													<div className="flex items-center justify-center gap-1">
-														<button
-															onClick={() => submitAdd(pid)}
-															disabled={saving}
-															className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors disabled:opacity-50"
-															title="Save"
-														>
-															<CheckIcon className="w-4 h-4" />
-														</button>
-														<button
-															onClick={closeAddRow}
-															disabled={saving}
-															className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors"
-															title="Cancel"
-														>
-															<XMarkIcon className="w-4 h-4" />
-														</button>
-													</div>
-												</td>
-											</tr>
-										)}
-
-										{group.activities.length > 0 && (
-											<tr className="bg-[#64126D]/10 divide-x divide-gray-300 font-bold">
-												<td
-													colSpan={4}
-													className="py-1 px-2 text-right text-[#4A1254] uppercase text-xs tracking-wide"
-												>
-													Total Manhours
-												</td>
-												<td className="py-1 px-2 text-center text-[#4A1254]">
-													{totalManhours}
-												</td>
-												<td colSpan={3}></td>
-											</tr>
-										)}
-									</tbody>
-								</table>
-							</div>
-						</div>
-					);
-				})
+							{flatRows.length > 0 && (
+								<tr className="bg-[#64126D]/10 divide-x divide-gray-300 font-bold">
+									<td
+										colSpan={6}
+										className="py-1 px-2 text-right text-[#4A1254] uppercase text-xs tracking-wide"
+									>
+										Total Manhours
+									</td>
+									<td className="py-1 px-2 text-center text-[#4A1254]">
+										{totalManhours}
+									</td>
+									<td colSpan={3}></td>
+								</tr>
+							)}
+						</tbody>
+					</table>
+				</div>
 			)}
 		</div>
 	);
