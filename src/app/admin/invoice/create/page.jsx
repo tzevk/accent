@@ -18,6 +18,14 @@ export default function CreateInvoicePage() {
 	const router = useRouter();
 	const { loading: authLoading } = useSessionRBAC();
 
+	const COMPANY_GST_NUMBER = '27AAPCA3963L1Z2';
+	const COMPANY_PAN_NUMBER = 'AAPCA3963L';
+	const COMPANY_TAN_NUMBER = 'MUMA52321D';
+	const COMPANY_SERVICE_CATEGORY =
+		'Consulting & Advisory Engineering Services (Service Code : 998331)';
+	const COMPANY_BANK_ADDRESS =
+		'City Survey No. 841 to 846, "Florence" Florence CHS. LTD.\nVakola, Mumbai - 400 055 / A/c No. 917020044935714\nSWIFT CODE : AXISINBB028, IFS CODE : UTIB0001244.';
+
 	const [saving, setSaving] = useState(false);
 	const [companies, setCompanies] = useState([]);
 	const [showSuggestions, setShowSuggestions] = useState(false);
@@ -49,11 +57,11 @@ export default function CreateInvoicePage() {
 		cgst_rate: 9,
 		sgst_rate: 9,
 		igst_rate: 18,
-		gst_number: '',
-		pan_number: '',
-		tan_number: '',
-		service_category: '',
-		bank_address: '',
+		gst_number: COMPANY_GST_NUMBER,
+		pan_number: COMPANY_PAN_NUMBER,
+		tan_number: COMPANY_TAN_NUMBER,
+		service_category: COMPANY_SERVICE_CATEGORY,
+		bank_address: COMPANY_BANK_ADDRESS,
 		notes: '',
 		terms: '',
 		due_date: '',
@@ -758,12 +766,12 @@ export default function CreateInvoicePage() {
 													poBalance?.exists
 														? (
 																parseFloat(poBalance.remaining_balance) -
-																totals.netAmount
+																netAmount
 															).toFixed(2)
 														: formData.original_po_value
 															? (
 																	parseFloat(formData.original_po_value) -
-																	totals.netAmount
+																	netAmount
 																).toFixed(2)
 															: ''
 												}
@@ -1045,8 +1053,8 @@ export default function CreateInvoicePage() {
 											type="text"
 											name="gst_number"
 											value={formData.gst_number}
-											onChange={handleChange}
-											className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+											readOnly
+											className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500 cursor-not-allowed"
 										/>
 									</div>
 									<div className="flex items-center gap-2">
@@ -1057,8 +1065,8 @@ export default function CreateInvoicePage() {
 											type="text"
 											name="pan_number"
 											value={formData.pan_number}
-											onChange={handleChange}
-											className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+											readOnly
+											className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500 cursor-not-allowed"
 										/>
 									</div>
 									<div className="flex items-center gap-2">
@@ -1069,21 +1077,15 @@ export default function CreateInvoicePage() {
 											type="text"
 											name="tan_number"
 											value={formData.tan_number}
-											onChange={handleChange}
-											className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+											readOnly
+											className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500 cursor-not-allowed"
 										/>
 									</div>
 									<div className="flex items-center gap-2">
 										<label className="text-sm font-semibold text-gray-700 w-32">
-											Service Category
+											Service Category : Consulting & Advisory Engineering
+											Services (Service Code : 998331)
 										</label>
-										<input
-											type="text"
-											name="service_category"
-											value={formData.service_category}
-											onChange={handleChange}
-											className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-										/>
 									</div>
 									<div className="md:col-span-2">
 										<label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -1092,9 +1094,9 @@ export default function CreateInvoicePage() {
 										<textarea
 											name="bank_address"
 											value={formData.bank_address}
-											onChange={handleChange}
+											readOnly
 											rows={2}
-											className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+											className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-50 text-gray-500 cursor-not-allowed resize-none"
 										/>
 									</div>
 								</div>
