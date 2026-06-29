@@ -175,8 +175,10 @@ describe('ProjectActivityAssignments', () => {
 		);
 
 		// Header columns present
-		expect(screen.getByText('Code')).toBeInTheDocument();
-		expect(screen.getByText('Project')).toBeInTheDocument();
+		expect(screen.getByText('Project Number')).toBeInTheDocument();
+		expect(screen.queryByText('Code')).not.toBeInTheDocument();
+		// Project Name column is hidden
+		expect(screen.queryByText('Project')).not.toBeInTheDocument();
 		expect(screen.getByText('Discipline')).toBeInTheDocument();
 		expect(screen.getByText('Activity')).toBeInTheDocument();
 		expect(screen.getByText('Sub Activity')).toBeInTheDocument();
@@ -195,9 +197,9 @@ describe('ProjectActivityAssignments', () => {
 		expect(screen.getAllByText('P-001').length).toBe(2);
 		expect(screen.getAllByText('P-002').length).toBe(1);
 
-		// Project name shown in a column (appears per activity row, plus the names exist)
-		expect(screen.getAllByText('Alpha Plant').length).toBe(2);
-		expect(screen.getAllByText('Beta Tower').length).toBe(1);
+		// Project Name column is hidden — names should not appear as table cells
+		expect(screen.queryByText('Alpha Plant')).not.toBeInTheDocument();
+		expect(screen.queryByText('Beta Tower')).not.toBeInTheDocument();
 	});
 
 	it('shows Total Manhours as the sum of planned_hours across all rows', () => {
