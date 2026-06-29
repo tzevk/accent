@@ -7,6 +7,8 @@ import {
 	PlusIcon,
 	CheckIcon,
 	XMarkIcon,
+	MagnifyingGlassIcon,
+	ArrowsUpDownIcon,
 } from '@heroicons/react/24/outline';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -23,6 +25,35 @@ const STATUS_BADGE_CLASSES = {
 
 const getStatusBadge = (status) =>
 	STATUS_BADGE_CLASSES[status] || 'bg-gray-100 text-gray-600 border-gray-200';
+
+function SortHeader({ label, sortKey, sort, onSort }) {
+	const isActive = sort.key === sortKey;
+	const arrow = !isActive ? '' : sort.dir === 'asc' ? '▲' : '▼';
+	return (
+		<th
+			className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight select-none"
+			aria-sort={
+				isActive ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
+			}
+		>
+			<button
+				type="button"
+				onClick={() => onSort(sortKey)}
+				className={`inline-flex items-center justify-center gap-1 w-full ${
+					isActive ? 'text-[#64126D]' : 'text-[#64126D]/80'
+				} hover:text-[#7F2487] focus:outline-none focus:ring-1 focus:ring-purple-300 rounded`}
+				title={`Sort by ${label}`}
+			>
+				<span>{label}</span>
+				{isActive ? (
+					<span className="text-[8px]">{arrow}</span>
+				) : (
+					<ArrowsUpDownIcon className="w-3 h-3 opacity-50" />
+				)}
+			</button>
+		</th>
+	);
+}
 
 export default function ProjectActivityAssignments({ userId, preloadedData }) {
 	const [assignments, setAssignments] = useState([]);
@@ -41,6 +72,19 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		manhours_assigned: '',
 		start_date: todayStr(),
 	});
+
+	// Search / filter / sort state
+	const [search, setSearch] = useState('');
+	const [statusFilter, setStatusFilter] = useState('all');
+	const [sort, setSort] = useState({ key: null, dir: 'asc' });
+
+	const toggleSort = (key) => {
+		setSort((prev) => {
+			if (prev.key !== key) return { key, dir: 'asc' };
+			if (prev.dir === 'asc') return { key, dir: 'desc' };
+			return { key: null, dir: 'asc' };
+		});
+	};
 
 	// Use preloaded data if available (from parent dashboard)
 	useEffect(() => {
@@ -240,8 +284,17 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		return list;
 	})();
 
+	// Distinct status values present in the data, for the filter dropdown.
+	const statusOptions = (() => {
+		const set = new Set();
+		assignments.forEach((a) => {
+			if (a.status) set.add(a.status);
+		});
+		return Array.from(set).sort();
+	})();
+
 	// Flatten assignments into a single list, preserving per-project grouping order.
-	const flatRows = projectOrder.flatMap((pid) => {
+	const baseRows = projectOrder.flatMap((pid) => {
 		const group = projectGroups[pid];
 		return group.activities.map((activity) => ({
 			project_code: group.project_code,
@@ -249,6 +302,63 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			activity,
 		}));
 	});
+
+	// Apply search, status filter, and sort.
+	const q = search.trim().toLowerCase();
+	let flatRows = baseRows;
+	if (q) {
+		flatRows = flatRows.filter((r) => {
+			const a = r.activity;
+			return (
+				(r.project_code || '').toLowerCase().includes(q) ||
+				(r.project_name || '').toLowerCase().includes(q) ||
+				(a.discipline || '').toLowerCase().includes(q) ||
+				(a.activity_name || '').toLowerCase().includes(q) ||
+				(a.sub_activity_name || '').toLowerCase().includes(q)
+			);
+		});
+	}
+	if (statusFilter !== 'all') {
+		flatRows = flatRows.filter(
+			(r) => (r.activity.status || 'Not Started') === statusFilter
+		);
+	}
+	if (sort.key) {
+		const dir = sort.dir === 'asc' ? 1 : -1;
+		const get = (r) => {
+			switch (sort.key) {
+				case 'project_code':
+					return (r.project_code || '').toLowerCase();
+				case 'project_name':
+					return (r.project_name || '').toLowerCase();
+				case 'discipline':
+					return (r.activity.discipline || '').toLowerCase();
+				case 'activity_name':
+					return (r.activity.activity_name || '').toLowerCase();
+				case 'sub_activity_name':
+					return (r.activity.sub_activity_name || '').toLowerCase();
+				case 'default_manhours':
+					return parseFloat(r.activity.default_manhours) || 0;
+				case 'planned_hours':
+					return parseFloat(r.activity.planned_hours) || 0;
+				case 'start_date':
+					return r.activity.start_date || '';
+				case 'due_date':
+					return r.activity.due_date || '';
+				case 'status':
+					return (r.activity.status || 'Not Started').toLowerCase();
+				default:
+					return '';
+			}
+		};
+		flatRows = [...flatRows].sort((a, b) => {
+			const va = get(a);
+			const vb = get(b);
+			if (va < vb) return -1 * dir;
+			if (va > vb) return 1 * dir;
+			return 0;
+		});
+	}
 
 	const totalManhours = flatRows.reduce(
 		(sum, r) => sum + (parseFloat(r.activity.planned_hours) || 0),
@@ -282,6 +392,54 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 				)}
 			</div>
 
+			{/* Search / filter toolbar */}
+			{hasAnyData && (
+				<div className="px-3 py-2 border-b border-purple-100 bg-white/60 flex flex-wrap items-center gap-2">
+					<div className="relative flex-1 min-w-[180px] max-w-xs">
+						<MagnifyingGlassIcon className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+						<input
+							type="text"
+							value={search}
+							onChange={(e) => setSearch(e.target.value)}
+							placeholder="Search code, project, activity…"
+							className="w-full pl-7 pr-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+						/>
+					</div>
+					<select
+						value={statusFilter}
+						onChange={(e) => setStatusFilter(e.target.value)}
+						className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+						title="Filter by status"
+					>
+						<option value="all">All statuses</option>
+						{statusOptions.map((s) => (
+							<option key={s} value={s}>
+								{s}
+							</option>
+						))}
+					</select>
+					{(search || statusFilter !== 'all' || sort.key) && (
+						<button
+							onClick={() => {
+								setSearch('');
+								setStatusFilter('all');
+								setSort({ key: null, dir: 'asc' });
+							}}
+							className="px-2 py-1 text-xs font-semibold text-[#64126D] hover:bg-purple-50 rounded"
+						>
+							Clear
+						</button>
+					)}
+					<span className="ml-auto text-[11px] text-gray-500">
+						{flatRows.length}
+						{flatRows.length !== baseRows.length
+							? ` of ${baseRows.length}`
+							: ''}{' '}
+						{flatRows.length === 1 ? 'activity' : 'activities'}
+					</span>
+				</div>
+			)}
+
 			{!hasAnyData ? (
 				<div className="text-center py-10 text-[#4A1254]">
 					<ClipboardDocumentListIcon className="w-14 h-14 mx-auto mb-3 opacity-50" />
@@ -304,36 +462,66 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 						</colgroup>
 						<thead className="bg-[#64126D]/10">
 							<tr className="divide-x divide-[#64126D]/40">
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-									Code
-								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-									Project
-								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-									Discipline
-								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-									Activity
-								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-									Sub Activity
-								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-									Default MH
-								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-									Manhours
-								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-									Date Assigned
-								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-									Date Completed
-								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight">
-									Status
-								</th>
+								<SortHeader
+									label="Code"
+									sortKey="project_code"
+									sort={sort}
+									onSort={toggleSort}
+								/>
+								<SortHeader
+									label="Project"
+									sortKey="project_name"
+									sort={sort}
+									onSort={toggleSort}
+								/>
+								<SortHeader
+									label="Discipline"
+									sortKey="discipline"
+									sort={sort}
+									onSort={toggleSort}
+								/>
+								<SortHeader
+									label="Activity"
+									sortKey="activity_name"
+									sort={sort}
+									onSort={toggleSort}
+								/>
+								<SortHeader
+									label="Sub Activity"
+									sortKey="sub_activity_name"
+									sort={sort}
+									onSort={toggleSort}
+								/>
+								<SortHeader
+									label="Default MH"
+									sortKey="default_manhours"
+									sort={sort}
+									onSort={toggleSort}
+								/>
+								<SortHeader
+									label="Manhours"
+									sortKey="planned_hours"
+									sort={sort}
+									onSort={toggleSort}
+								/>
+								<SortHeader
+									label="Date Assigned"
+									sortKey="start_date"
+									sort={sort}
+									onSort={toggleSort}
+								/>
+								<SortHeader
+									label="Date Completed"
+									sortKey="due_date"
+									sort={sort}
+									onSort={toggleSort}
+								/>
+								<SortHeader
+									label="Status"
+									sortKey="status"
+									sort={sort}
+									onSort={toggleSort}
+								/>
 							</tr>
 						</thead>
 						<tbody className="divide-y divide-gray-300">
@@ -343,9 +531,15 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 										colSpan={COLS}
 										className="py-6 px-4 text-center text-sm text-[#4A1254]"
 									>
-										No activities yet. Click{' '}
-										<span className="font-semibold">Add</span> above to log your
-										first activity.
+										{baseRows.length === 0 ? (
+											<>
+												No activities yet. Click{' '}
+												<span className="font-semibold">Add</span> above to log
+												your first activity.
+											</>
+										) : (
+											<>No activities match the current search or filter.</>
+										)}
 									</td>
 								</tr>
 							)}
@@ -590,7 +784,9 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 										colSpan={6}
 										className="py-1 px-2 text-right text-[#4A1254] uppercase text-xs tracking-wide"
 									>
-										Total Manhours
+										{baseRows.length !== flatRows.length
+											? 'Total (filtered)'
+											: 'Total Manhours'}
 									</td>
 									<td className="py-1 px-2 text-center text-[#4A1254]">
 										{totalManhours}
