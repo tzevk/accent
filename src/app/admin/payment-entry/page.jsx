@@ -315,12 +315,12 @@ export default function PaymentEntryPage() {
 	}
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex overflow-hidden">
+		<div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex overflow-hidden">
 			<Sidebar />
 			<div className="flex-1 flex flex-col min-w-0">
 				<Navbar />
 
-				<main className="flex-1 p-6 lg:px-8 xl:px-12 2xl:px-16 overflow-y-auto overflow-x-hidden max-w-[1800px] mx-auto w-full min-w-0">
+				<main className="flex-1 min-h-0 flex flex-col p-6 lg:px-8 xl:px-12 2xl:px-16 max-w-[1800px] mx-auto w-full min-w-0">
 					{/* Header */}
 					<div className="flex items-center justify-between mb-6">
 						<div>
@@ -370,7 +370,7 @@ export default function PaymentEntryPage() {
 					</div>
 
 					{/* Table */}
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-h-0 flex flex-col overflow-hidden">
 						{loading ? (
 							<div className="flex items-center justify-center py-12">
 								<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
@@ -382,9 +382,9 @@ export default function PaymentEntryPage() {
 								<p className="text-gray-600">No payment entries found</p>
 							</div>
 						) : (
-							<div className="overflow-x-auto">
+							<div className="flex-1 min-h-0 overflow-auto">
 								<table className="w-full">
-									<thead className="bg-gray-50 border-b border-gray-200">
+									<thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
 										<tr>
 											<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap">
 												Sr. No
