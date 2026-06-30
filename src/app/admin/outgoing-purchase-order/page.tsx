@@ -441,10 +441,10 @@ export default function OutgoingPurchaseOrderPage() {
 	}
 
 	return (
-		<div className="min-h-screen bg-gray-50">
+		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
 
-			<main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
+			<main className="flex-1 min-h-0 flex flex-col px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] w-full mx-auto">
 				{/* Header */}
 				<div className="flex items-center justify-between mb-6">
 					<div>
@@ -815,7 +815,7 @@ export default function OutgoingPurchaseOrderPage() {
 				</div>
 
 				{/* Purchase Orders Table */}
-				<div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+				<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-h-0 flex flex-col overflow-hidden">
 					{loading ? (
 						<div className="flex items-center justify-center py-12">
 							<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
@@ -829,9 +829,9 @@ export default function OutgoingPurchaseOrderPage() {
 							<p className="text-gray-600">No purchase orders found</p>
 						</div>
 					) : (
-						<div className="overflow-x-auto">
+						<div className="flex-1 min-h-0 overflow-auto">
 							<table className="w-full">
-								<thead className="bg-gray-50 border-b border-gray-200">
+								<thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
 									<tr>
 										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 											PO #

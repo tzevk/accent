@@ -100,11 +100,11 @@ export default function ResourcePage({
 	};
 
 	return (
-		<div className="min-h-screen bg-[var(--page-bg, #fafafa)]">
+		<div className="h-screen bg-[var(--page-bg, #fafafa)] flex flex-col overflow-hidden">
 			<Navbar />
 			<Sidebar />
-			<div className="content-with-sidebar pt-20 pb-12 px-4 sm:px-6 lg:px-8">
-				<div className="max-w-7xl mx-auto space-y-5">
+			<div className="content-with-sidebar flex-1 min-h-0 flex flex-col pt-20 pb-6 px-4 sm:px-6 lg:px-8 overflow-hidden">
+				<div className="max-w-7xl mx-auto w-full flex-1 min-h-0 flex flex-col space-y-5">
 					<header className="flex flex-wrap items-end justify-between gap-3">
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900">{title}</h1>
@@ -150,7 +150,7 @@ export default function ResourcePage({
 						</div>
 					) : null}
 
-					<div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+					<div className="rounded-xl border border-gray-200 bg-white shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
 						<div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
 							<div className="relative flex-1 min-w-[200px] max-w-md">
 								<Input
@@ -165,10 +165,10 @@ export default function ResourcePage({
 							{extraFilters ? extraFilters.node : null}
 						</div>
 
-						<div className="overflow-x-auto">
+						<div className="flex-1 min-h-0 overflow-auto">
 							<Table>
 								<TableHeader>
-									<TableRow>
+									<TableRow className="sticky top-0 z-10 bg-white">
 										{columns.map((c) => (
 											<TableHead key={c.key} className={c.headClassName}>
 												{c.label}
