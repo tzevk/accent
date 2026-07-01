@@ -100,7 +100,12 @@ const formFields = [
 	},
 	{ name: 'invoice_date', label: 'Invoice Date', type: 'date' },
 	{ name: 'due_date', label: 'Due Date', type: 'date' },
-	{ name: 'vendor_name', label: 'Vendor Name', required: true },
+	{
+		name: 'vendor_name',
+		label: 'Vendor Name',
+		required: true,
+		vendorAutofill: true,
+	},
 	{ name: 'vendor_email', label: 'Vendor Email', type: 'email' },
 	{ name: 'vendor_phone', label: 'Vendor Phone' },
 	{ name: 'vendor_gstin', label: 'Vendor GSTIN' },
@@ -214,6 +219,7 @@ export default function PurchaseInvoicePage() {
 			defaultValues={defaultValues}
 			zodSchema={schema}
 			formFields={formFields}
+			vendorListEndpoint="/api/vendors"
 			searchPlaceholder="Search by invoice #, vendor, PO…"
 			extraFilters={{
 				values: { status: statusFilter },

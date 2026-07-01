@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { PlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import { useForm } from '@tanstack/react-form';
@@ -55,6 +55,7 @@ export default function ResourcePage({
 	extraFilters,
 	pageSize = PAGE_SIZE,
 	canView = true,
+	vendorListEndpoint,
 }) {
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState('');
@@ -132,20 +133,21 @@ export default function ResourcePage({
 					</header>
 
 					{statsConfig.length > 0 ? (
-						<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+						<div className="flex gap-3 overflow-x-auto pb-1">
 							{statsConfig.map((s) => (
-								<StatsCard
-									key={s.key}
-									label={s.label}
-									value={
-										s.money
-											? formatCurrency(stats[s.key] ?? 0)
-											: (stats[s.key] ?? 0).toLocaleString('en-IN')
-									}
-									tone={s.tone}
-									icon={s.icon}
-									hint={s.hint}
-								/>
+								<div key={s.key} className="min-w-[160px] flex-1">
+									<StatsCard
+										label={s.label}
+										value={
+											s.money
+												? formatCurrency(stats[s.key] ?? 0)
+												: (stats[s.key] ?? 0).toLocaleString('en-IN')
+										}
+										tone={s.tone}
+										icon={s.icon}
+										hint={s.hint}
+									/>
+								</div>
 							))}
 						</div>
 					) : null}
@@ -253,6 +255,7 @@ export default function ResourcePage({
 					zodSchema={zodSchema}
 					formFields={formFields}
 					transformSubmit={transformSubmit}
+					vendorListEndpoint={vendorListEndpoint}
 					onClose={closeModal}
 					onSaved={() => {
 						closeModal();
@@ -273,6 +276,7 @@ function ResourceFormModal({
 	zodSchema,
 	formFields,
 	transformSubmit,
+	vendorListEndpoint,
 	onClose,
 	onSaved,
 }) {
@@ -303,6 +307,64 @@ function ResourceFormModal({
 			}
 		},
 	});
+
+	const vendorAutofillField = formFields.find((f) => f.vendorAutofill);
+	const datalistId = useMemo(
+		() => `vendor-autofill-${Math.random().toString(36).slice(2, 9)}`,
+		[]
+	);
+
+	const vendorsQuery = useQuery({
+		queryKey: ['vendor-autofill-list', vendorListEndpoint],
+		queryFn: () => apiGet(vendorListEndpoint),
+		enabled: Boolean(vendorListEndpoint) && Boolean(vendorAutofillField),
+		staleTime: 5 * 60 * 1000,
+	});
+	const vendorList = useMemo(
+		() => vendorsQuery.data?.data ?? [],
+		[vendorsQuery.data]
+	);
+
+	const lastFilledNameRef = useRef('');
+
+	useEffect(() => {
+		if (!vendorAutofillField || isView) return;
+		const { unsubscribe } = form.store.subscribe(() => {
+			if (!vendorList.length) return;
+			const currentName = form.getFieldValue(vendorAutofillField.name);
+			if (
+				typeof currentName !== 'string' ||
+				currentName === lastFilledNameRef.current
+			) {
+				return;
+			}
+			const match = vendorList.find(
+				(v) => (v.vendor_name || '').toLowerCase() === currentName.toLowerCase()
+			);
+			if (!match) return;
+			lastFilledNameRef.current = currentName;
+			const addrParts = [
+				match.address_street,
+				match.address_city,
+				match.address_state,
+				match.address_country,
+				match.address_pin,
+			]
+				.filter(Boolean)
+				.join(', ');
+			const updates = {
+				vendor_email: match.email || '',
+				vendor_phone: match.phone || '',
+				vendor_gstin: match.gst_vat_tax_id || '',
+				vendor_pan: match.pan_legal_reg_no || '',
+				vendor_address: addrParts,
+			};
+			Object.entries(updates).forEach(([k, v]) => {
+				form.setFieldValue(k, v);
+			});
+		});
+		return unsubscribe;
+	}, [form, vendorList, vendorAutofillField, isView]);
 
 	return (
 		<Modal
@@ -357,6 +419,8 @@ function ResourceFormModal({
 								onChange: (e) => fp.handleChange(e.target.value),
 								disabled: isView,
 							};
+							const isAutofill =
+								field.vendorAutofill && field.type !== 'textarea';
 							return (
 								<FieldGroup
 									label={field.label}
@@ -377,13 +441,26 @@ function ResourceFormModal({
 											))}
 										</Select>
 									) : (
-										<Input
-											{...commonProps}
-											type={field.type ?? 'text'}
-											placeholder={field.placeholder}
-											min={field.min}
-											step={field.step}
-										/>
+										<>
+											<Input
+												{...commonProps}
+												type={field.type ?? 'text'}
+												placeholder={field.placeholder}
+												min={field.min}
+												step={field.step}
+												list={isAutofill ? datalistId : undefined}
+											/>
+											{isAutofill ? (
+												<datalist id={datalistId}>
+													{vendorList.map((v) => (
+														<option
+															key={v.id ?? v.vendor_id ?? v.vendor_name}
+															value={v.vendor_name || ''}
+														/>
+													))}
+												</datalist>
+											) : null}
+										</>
 									)}
 								</FieldGroup>
 							);
