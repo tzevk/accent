@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
@@ -38,6 +39,7 @@ export default function PaymentEntryPage() {
 	const [searchTerm, setSearchTerm] = useState('');
 	const [companies, setCompanies] = useState([]);
 	const [banks, setBanks] = useState([]);
+	const [invoices, setInvoices] = useState([]);
 
 	// Modal state
 	const [isModalOpen, setIsModalOpen] = useState(false);
@@ -114,13 +116,33 @@ export default function PaymentEntryPage() {
 		}
 	}, []);
 
+	const fetchInvoices = useCallback(async () => {
+		try {
+			const res = await fetch('/api/admin/invoices?limit=500');
+			const data = await res.json();
+			if (data.success) {
+				setInvoices(data.data || []);
+			}
+		} catch (error) {
+			console.error('Error fetching invoices:', error);
+		}
+	}, []);
+
 	useEffect(() => {
 		if (!authLoading && user) {
 			fetchEntries(1);
 			fetchCompanies();
 			fetchBanks();
+			fetchInvoices();
 		}
-	}, [authLoading, user, fetchEntries, fetchCompanies, fetchBanks]);
+	}, [
+		authLoading,
+		user,
+		fetchEntries,
+		fetchCompanies,
+		fetchBanks,
+		fetchInvoices,
+	]);
 
 	// Filter entries
 	const filteredEntries = entries.filter((e) => {
@@ -132,16 +154,6 @@ export default function PaymentEntryPage() {
 			e.transaction_id?.toLowerCase().includes(search)
 		);
 	});
-
-	const formatDate = (dateString) => {
-		if (!dateString) return '-';
-		const d = new Date(dateString);
-		if (isNaN(d.getTime())) return '-';
-		const day = String(d.getDate()).padStart(2, '0');
-		const month = String(d.getMonth() + 1).padStart(2, '0');
-		const year = d.getFullYear();
-		return `${day}/${month}/${year}`;
-	};
 
 	const formatDateForInput = (dateString) => {
 		if (!dateString) return '';
@@ -204,6 +216,21 @@ export default function PaymentEntryPage() {
 					newData.city = selectedCompany.city;
 				}
 			}
+			if (name === 'invoice_no') {
+				const matched = invoices.find(
+					(inv) => (inv.invoice_number || '') === value
+				);
+				if (matched) {
+					const d = matched.invoice_date
+						? new Date(matched.invoice_date)
+						: null;
+					const formatted =
+						d && !isNaN(d.getTime())
+							? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+							: '';
+					newData.invoice_date = formatted;
+				}
+			}
 			return newData;
 		});
 	};
@@ -226,14 +253,15 @@ export default function PaymentEntryPage() {
 			const data = await res.json();
 
 			if (data.success) {
+				toast.success('Payment entry saved');
 				handleCloseModal();
 				fetchEntries(pagination.page);
 			} else {
-				alert(data.error || 'Failed to save payment entry');
+				toast.error(data.error || 'Failed to save payment entry');
 			}
 		} catch (error) {
 			console.error('Error saving payment entry:', error);
-			alert('An error occurred while saving.');
+			toast.error('An error occurred while saving.');
 		} finally {
 			setSaving(false);
 		}
@@ -247,13 +275,14 @@ export default function PaymentEntryPage() {
 			});
 			const data = await res.json();
 			if (data.success) {
+				toast.success('Payment entry deleted');
 				fetchEntries(pagination.page);
 			} else {
-				alert(data.error || 'Failed to delete payment entry');
+				toast.error(data.error || 'Failed to delete payment entry');
 			}
 		} catch (error) {
 			console.error('Error deleting payment entry:', error);
-			alert('An error occurred while deleting.');
+			toast.error('An error occurred while deleting.');
 		}
 	};
 
@@ -294,7 +323,7 @@ export default function PaymentEntryPage() {
 			window.URL.revokeObjectURL(url);
 		} catch (error) {
 			console.error('PDF Error:', error);
-			alert('Failed to download receipt.');
+			toast.error('Failed to download receipt.');
 		} finally {
 			setPrintingId(null);
 		}
@@ -697,12 +726,23 @@ export default function PaymentEntryPage() {
 										<input
 											type="text"
 											name="invoice_no"
+											list="invoice-list"
 											disabled={isViewing}
 											value={formData.invoice_no}
 											onChange={handleChange}
 											className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:text-gray-500"
-											placeholder="Enter invoice number"
+											placeholder="Select or enter invoice number"
 										/>
+										<datalist id="invoice-list">
+											{invoices.map((inv) => (
+												<option key={inv.id} value={inv.invoice_number || ''}>
+													{inv.client_name ? `${inv.client_name} — ` : ''}
+													{inv.invoice_date
+														? formatDateForInput(inv.invoice_date)
+														: ''}
+												</option>
+											))}
+										</datalist>
 									</div>
 									<div>
 										<label className="block text-sm font-medium text-gray-700 mb-1">

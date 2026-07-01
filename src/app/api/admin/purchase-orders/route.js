@@ -24,6 +24,8 @@ export async function GET(request) {
 		const page = parseInt(searchParams.get('page') || '1');
 		const limit = parseInt(searchParams.get('limit') || '20');
 		const status = searchParams.get('status');
+		const sortBy = searchParams.get('sortBy') || 'po_date';
+		const sortOrder = (searchParams.get('sortOrder') || 'desc').toLowerCase();
 		const offset = (page - 1) * limit;
 
 		connection = await dbConnect();
@@ -70,8 +72,33 @@ export async function GET(request) {
 		const [countResult] = await connection.execute(countQuery, params);
 		const total = countResult?.[0]?.total || 0;
 
+		// Validate sort parameters against allowlist
+		const ALLOWED_SORT = [
+			'po_date',
+			'created_at',
+			'po_number',
+			'vendor_name',
+			'total',
+			'po_amount',
+			'net_amount',
+			'delivery_date',
+			'status',
+			'updated_at',
+		];
+		const validSortBy = ALLOWED_SORT.includes(sortBy) ? sortBy : 'po_date';
+		const validSortOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+		// Build ORDER BY with NULL-safe handling for date columns
+		let orderClause;
+		const isDateColumn = ['po_date', 'delivery_date'].includes(validSortBy);
+		if (isDateColumn) {
+			orderClause = `ORDER BY (${validSortBy} IS NULL), ${validSortBy} ${validSortOrder}, id DESC`;
+		} else {
+			orderClause = `ORDER BY ${validSortBy} ${validSortOrder}, id DESC`;
+		}
+
 		// Get paginated results
-		query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+		query += ` ${orderClause} LIMIT ? OFFSET ?`;
 		params.push(limit, offset);
 
 		const [purchaseOrders] = await connection.execute(query, params);

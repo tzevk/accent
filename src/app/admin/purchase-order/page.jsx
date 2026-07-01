@@ -56,6 +56,8 @@ export default function PurchaseOrderPage() {
 	// Filters
 	const [searchTerm, setSearchTerm] = useState('');
 	const [statusFilter, setStatusFilter] = useState('all');
+	const [sortBy, setSortBy] = useState('po_date');
+	const [sortOrder, setSortOrder] = useState('desc');
 
 	// Stats
 	const [stats, setStats] = useState({
@@ -83,6 +85,8 @@ export default function PurchaseOrderPage() {
 				});
 
 				if (statusFilter !== 'all') params.append('status', statusFilter);
+				params.append('sortBy', sortBy);
+				params.append('sortOrder', sortOrder);
 
 				const res = await fetch(`/api/admin/purchase-orders?${params}`);
 				const data = await res.json();
@@ -112,14 +116,14 @@ export default function PurchaseOrderPage() {
 				setLoading(false);
 			}
 		},
-		[statusFilter, pagination.limit]
+		[statusFilter, pagination.limit, sortBy, sortOrder]
 	);
 
 	useEffect(() => {
 		if (!authLoading && user) {
 			fetchPurchaseOrders(1);
 		}
-	}, [authLoading, user, statusFilter, fetchPurchaseOrders]);
+	}, [authLoading, user, statusFilter, sortBy, sortOrder, fetchPurchaseOrders]);
 
 	// Fetch companies on mount
 	useEffect(() => {
@@ -659,6 +663,32 @@ export default function PurchaseOrderPage() {
 								<option value="approved">Approved</option>
 								<option value="completed">Completed</option>
 								<option value="cancelled">Cancelled</option>
+							</select>
+						</div>
+
+						{/* Sort */}
+						<div className="flex items-center gap-2">
+							<select
+								value={`${sortBy}-${sortOrder}`}
+								onChange={(e) => {
+									const [f, o] = e.target.value.split('-');
+									setSortBy(f);
+									setSortOrder(o);
+									setPagination((p) => ({ ...p, page: 1 }));
+								}}
+								className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+							>
+								<option value="po_date-desc">Date: Newest First</option>
+								<option value="po_date-asc">Date: Oldest First</option>
+								<option value="created_at-desc">Recently Added</option>
+								<option value="po_number-asc">PO # A–Z</option>
+								<option value="po_number-desc">PO # Z–A</option>
+								<option value="vendor_name-asc">Vendor A–Z</option>
+								<option value="total-desc">Amount: High to Low</option>
+								<option value="total-asc">Amount: Low to High</option>
+								<option value="delivery_date-asc">
+									Delivery: Earliest First
+								</option>
 							</select>
 						</div>
 
