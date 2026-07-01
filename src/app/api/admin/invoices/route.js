@@ -5,6 +5,10 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	validateInvoice,
+	classifyDuplicateError,
+} from '@/utils/invoice-validation';
 
 // GET - Fetch invoices
 export async function GET(request) {
@@ -366,9 +370,53 @@ export async function POST(request) {
 			status,
 		} = body;
 
-		if (!client_name) {
+		if (!client_name || !String(client_name).trim()) {
 			return NextResponse.json(
-				{ success: false, message: 'Client name is required' },
+				{
+					success: false,
+					message: 'Client name is required',
+					errors: [
+						{ field: 'client_name', message: 'Client name is required' },
+					],
+				},
+				{ status: 400 }
+			);
+		}
+
+		const validation = validateInvoice({
+			invoice_number: bodyInvoiceNumber,
+			invoice_date,
+			client_name,
+			client_email,
+			client_phone,
+			client_address,
+			client_pan,
+			client_gstin,
+			client_state,
+			client_state_code,
+			kind_attn,
+			po_number,
+			po_date,
+			original_po_value,
+			balance_po_value,
+			line_items,
+			gst_type,
+			cgst_rate,
+			sgst_rate,
+			igst_rate,
+			total,
+			gross_amount,
+			tax_amount,
+			tax_rate,
+			status,
+		});
+		if (!validation.valid) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: 'Validation failed',
+					errors: validation.errors,
+				},
 				{ status: 400 }
 			);
 		}
@@ -451,17 +499,40 @@ export async function POST(request) {
 			const [countResult] = await connection.execute(
 				'SELECT COUNT(*) as count FROM invoices'
 			);
-			const count = countResult[0]?.count || 0;
+			const count = countResult?.[0]?.count || 0;
 			invoiceNumber = generateInvoiceNumber(count);
 		}
 
-		// Upsert purchase order and calculate balance_po_value
+		// Check for duplicate invoice_number before INSERT to give a friendly 409
+		const [existingInvoice] = await connection.execute(
+			'SELECT id FROM invoices WHERE invoice_number = ? LIMIT 1',
+			[invoiceNumber]
+		);
+		if (existingInvoice.length > 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: `Invoice number "${invoiceNumber}" already exists`,
+					errors: [
+						{
+							field: 'invoice_number',
+							message: `Invoice number "${invoiceNumber}" already exists`,
+						},
+					],
+				},
+				{ status: 409 }
+			);
+		}
+
+		// Upsert purchase order and calculate balance_po_value.
+		// purchase_orders.po_number is globally unique (single-column index from
+		// purchase-orders/route.js:37), so we look it up by po_number alone.
 		let poId = null;
 		let calculatedBalance = balance_po_value;
 		if (po_number && client_name) {
 			const [existingPO] = await connection.execute(
-				'SELECT id, original_value, remaining_balance FROM purchase_orders WHERE po_number = ? AND client_name = ?',
-				[po_number, client_name]
+				'SELECT id, original_value, remaining_balance FROM purchase_orders WHERE po_number = ?',
+				[po_number]
 			);
 
 			if (existingPO.length > 0) {
@@ -479,12 +550,23 @@ export async function POST(request) {
 				const invoiceTotal = parseFloat(total) || 0;
 				calculatedBalance = poValue - invoiceTotal;
 
-				const [poResult] = await connection.execute(
+				await connection.execute(
 					`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             remaining_balance = VALUES(remaining_balance),
+             original_value = VALUES(original_value),
+             client_name = VALUES(client_name),
+             po_date = VALUES(po_date)`,
 					[po_number, client_name, poValue, calculatedBalance, po_date || null]
 				);
-				poId = poResult.insertId;
+
+				// Re-fetch id: on UPDATE path, insertId is 0 and we need the real id.
+				const [poRow] = await connection.execute(
+					'SELECT id FROM purchase_orders WHERE po_number = ?',
+					[po_number]
+				);
+				poId = poRow?.[0]?.id ?? null;
 			}
 		}
 
@@ -556,6 +638,17 @@ export async function POST(request) {
 		});
 	} catch (error) {
 		console.error('Error creating invoice:', error);
+		const dup = classifyDuplicateError(error);
+		if (dup) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: dup.message,
+					errors: [{ field: dup.field, message: dup.message }],
+				},
+				{ status: dup.status }
+			);
+		}
 		return NextResponse.json(
 			{
 				success: false,

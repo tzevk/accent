@@ -218,6 +218,55 @@ describe('Invoice API — PUT /api/admin/invoices/[id]', () => {
 		});
 		expect(response.status).toBe(401);
 	});
+
+	it('returns 409 with po_number field when purchase_order po_number collides', async () => {
+		const body = {
+			client_name: 'Aaspire World',
+			po_number: 'PO029929',
+			original_po_value: '100000',
+			total: 25000,
+			line_items: [],
+			gst_type: 'cgst_sgst',
+			status: 'sent',
+		};
+
+		mockExecute.mockImplementation((sql) => {
+			if (
+				sql.includes('FROM invoices WHERE id = ?') ||
+				sql === 'SELECT * FROM invoices WHERE id = ? LIMIT 1'
+			) {
+				return Promise.resolve([
+					[
+						{
+							total: 10000,
+							po_number: 'PO029929',
+							client_name: 'Aaspire World',
+							balance_po_value: 90000,
+							po_id: 7,
+						},
+					],
+				]);
+			}
+			if (sql.includes('UPDATE invoices')) {
+				const err = new Error("Duplicate entry 'PO029929' for key 'po_number'");
+				err.code = 'ER_DUP_ENTRY';
+				err.errno = 1062;
+				err.sqlMessage = "Duplicate entry 'PO029929' for key 'po_number'";
+				return Promise.reject(err);
+			}
+			return Promise.resolve([]);
+		});
+
+		const response = await PUT(createRequest({ method: 'PUT', body }), {
+			params: Promise.resolve({ id: '1' }),
+		});
+		const json = await response.json();
+
+		expect(response.status).toBe(409);
+		expect(json.success).toBe(false);
+		expect(json.errors?.[0]?.field).toBe('po_number');
+		expect(json.errors?.[0]?.message).toMatch(/purchase order/i);
+	});
 });
 
 describe('Invoice API — DELETE /api/admin/invoices/[id]', () => {

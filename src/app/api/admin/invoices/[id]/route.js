@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { getServerAuth } from '@/utils/server-auth';
+import {
+	validateInvoice,
+	classifyDuplicateError,
+} from '@/utils/invoice-validation';
 
 // GET - Fetch single invoice
 export async function GET(request, { params }) {
@@ -118,6 +122,57 @@ export async function PUT(request, { params }) {
 			status,
 		} = body;
 
+		if (!client_name || !String(client_name).trim()) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: 'Client name is required',
+					errors: [
+						{ field: 'client_name', message: 'Client name is required' },
+					],
+				},
+				{ status: 400 }
+			);
+		}
+
+		const validation = validateInvoice({
+			invoice_number,
+			invoice_date,
+			client_name,
+			client_email,
+			client_phone,
+			client_address,
+			client_pan,
+			client_gstin,
+			client_state,
+			client_state_code,
+			kind_attn,
+			po_number,
+			po_date,
+			original_po_value,
+			balance_po_value,
+			line_items,
+			gst_type,
+			cgst_rate,
+			sgst_rate,
+			igst_rate,
+			total,
+			gross_amount,
+			tax_amount,
+			tax_rate,
+			status,
+		});
+		if (!validation.valid) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: 'Validation failed',
+					errors: validation.errors,
+				},
+				{ status: 400 }
+			);
+		}
+
 		connection = await dbConnect();
 
 		// Ensure schema has po_id column and purchase_orders table
@@ -183,17 +238,40 @@ export async function PUT(request, { params }) {
 			);
 		}
 
+		// Check for duplicate invoice_number (excluding this row) before UPDATE
+		if (invoice_number && String(invoice_number).trim()) {
+			const [existingInvoice] = await connection.execute(
+				'SELECT id FROM invoices WHERE invoice_number = ? AND id <> ? LIMIT 1',
+				[invoice_number, id]
+			);
+			if (existingInvoice.length > 0) {
+				return NextResponse.json(
+					{
+						success: false,
+						message: `Invoice number "${invoice_number}" already exists`,
+						errors: [
+							{
+								field: 'invoice_number',
+								message: `Invoice number "${invoice_number}" already exists`,
+							},
+						],
+					},
+					{ status: 409 }
+				);
+			}
+		}
+
 		const oldTotal = parseFloat(oldInvoice[0].total) || 0;
 		const oldPoNumber = oldInvoice[0].po_number;
-		const oldClientName = oldInvoice[0].client_name;
 		const oldPoId = oldInvoice[0].po_id;
 		const newTotal = parseFloat(total) || 0;
 
-		// Calculate balance_po_value based on purchase_orders
+		// Calculate balance_po_value based on purchase_orders.
+		// purchase_orders.po_number is globally unique (single-column index from
+		// purchase-orders/route.js:37), so we look it up by po_number alone.
 		let calculatedBalance = balance_po_value;
 		let newPoId = oldPoId;
-		const poChanged =
-			po_number !== oldPoNumber || client_name !== oldClientName;
+		const poChanged = po_number !== oldPoNumber;
 
 		if (poChanged) {
 			// Restore old PO balance
@@ -207,8 +285,8 @@ export async function PUT(request, { params }) {
 			// Handle new PO
 			if (po_number && client_name) {
 				const [newPO] = await connection.execute(
-					'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND client_name = ?',
-					[po_number, client_name]
+					'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ?',
+					[po_number]
 				);
 
 				if (newPO.length > 0) {
@@ -222,9 +300,14 @@ export async function PUT(request, { params }) {
 				} else {
 					const poValue = parseFloat(original_po_value) || 0;
 					calculatedBalance = poValue - newTotal;
-					const [poResult] = await connection.execute(
+					await connection.execute(
 						`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
-             VALUES (?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               remaining_balance = VALUES(remaining_balance),
+               original_value = VALUES(original_value),
+               client_name = VALUES(client_name),
+               po_date = VALUES(po_date)`,
 						[
 							po_number,
 							client_name,
@@ -233,7 +316,12 @@ export async function PUT(request, { params }) {
 							po_date || null,
 						]
 					);
-					newPoId = poResult.insertId;
+
+					const [poRow] = await connection.execute(
+						'SELECT id FROM purchase_orders WHERE po_number = ?',
+						[po_number]
+					);
+					newPoId = poRow?.[0]?.id ?? null;
 				}
 			} else {
 				newPoId = null;
@@ -249,12 +337,12 @@ export async function PUT(request, { params }) {
 				'SELECT remaining_balance FROM purchase_orders WHERE id = ?',
 				[oldPoId]
 			);
-			calculatedBalance = parseFloat(poRecord[0]?.remaining_balance) || 0;
+			calculatedBalance = parseFloat(poRecord?.[0]?.remaining_balance) || 0;
 		} else if (po_number && client_name) {
 			// No old PO, but new PO info — create/upsert
 			const [existingPO] = await connection.execute(
-				'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND client_name = ?',
-				[po_number, client_name]
+				'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ?',
+				[po_number]
 			);
 
 			if (existingPO.length > 0) {
@@ -268,12 +356,22 @@ export async function PUT(request, { params }) {
 			} else {
 				const poValue = parseFloat(original_po_value) || 0;
 				calculatedBalance = poValue - newTotal;
-				const [poResult] = await connection.execute(
+				await connection.execute(
 					`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             remaining_balance = VALUES(remaining_balance),
+             original_value = VALUES(original_value),
+             client_name = VALUES(client_name),
+             po_date = VALUES(po_date)`,
 					[po_number, client_name, poValue, calculatedBalance, po_date || null]
 				);
-				newPoId = poResult.insertId;
+
+				const [poRow] = await connection.execute(
+					'SELECT id FROM purchase_orders WHERE po_number = ?',
+					[po_number]
+				);
+				newPoId = poRow?.[0]?.id ?? null;
 			}
 		}
 
@@ -380,8 +478,23 @@ export async function PUT(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error updating invoice:', error);
+		const dup = classifyDuplicateError(error);
+		if (dup) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: dup.message,
+					errors: [{ field: dup.field, message: dup.message }],
+				},
+				{ status: dup.status }
+			);
+		}
 		return NextResponse.json(
-			{ success: false, message: error.message },
+			{
+				success: false,
+				message: 'Failed to update invoice',
+				error: error.message,
+			},
 			{ status: 500 }
 		);
 	} finally {

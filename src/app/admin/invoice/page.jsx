@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import {
@@ -56,6 +57,7 @@ export default function InvoicePage() {
 			} catch (error) {
 				console.error('Error fetching invoices:', error);
 				setInvoices([]);
+				toast.error('Failed to load invoices');
 			} finally {
 				setLoading(false);
 			}
@@ -150,15 +152,28 @@ export default function InvoicePage() {
 			const res = await fetch(`/api/admin/invoices/${invoice.id}`, {
 				method: 'DELETE',
 			});
-			const data = await res.json();
-			if (data.success) {
-				fetchInvoices(pagination.page);
-			} else {
-				alert(data.message || 'Failed to delete invoice');
+			let data = null;
+			try {
+				data = await res.json();
+			} catch (parseErr) {
+				console.error('Non-JSON response from server:', parseErr);
 			}
+
+			if (res.ok && data?.success) {
+				toast.success('Invoice deleted');
+				fetchInvoices(pagination.page);
+				return;
+			}
+
+			const detail =
+				data?.message ||
+				(data?.errors && data.errors.map((e) => e.message).join('; ')) ||
+				(data?.error ? data.error : null) ||
+				`Failed to delete invoice (HTTP ${res.status})`;
+			toast.error(detail);
 		} catch (error) {
 			console.error('Error deleting invoice:', error);
-			alert('Failed to delete invoice');
+			toast.error(`Failed to delete invoice: ${error.message}`);
 		}
 	};
 

@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
+import {
+	validateInvoice,
+	extractServerError,
+} from '@/utils/invoice-validation';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import DocumentUpload from '@/components/DocumentUpload';
@@ -427,8 +432,10 @@ export default function EditInvoicePage() {
 
 	// Save invoice
 	const handleSaveInvoice = async () => {
-		if (!formData.client_name) {
-			alert('Client name is required');
+		const validation = validateInvoice(formData);
+		if (!validation.valid) {
+			const messages = validation.errors.map((e) => e.message).join('; ');
+			toast.error(messages);
 			return;
 		}
 
@@ -468,15 +475,28 @@ export default function EditInvoicePage() {
 				}),
 			});
 
-			const data = await res.json();
-			if (data.success) {
-				router.push('/admin/invoice');
-			} else {
-				alert(data.message || 'Failed to update invoice');
+			let data = null;
+			try {
+				data = await res.json();
+			} catch (parseErr) {
+				console.error('Non-JSON response from server:', parseErr);
 			}
+
+			if (res.ok && data?.success) {
+				toast.success('Invoice updated');
+				router.push('/admin/invoice');
+				return;
+			}
+
+			toast.error(
+				extractServerError(
+					data,
+					`Failed to update invoice (HTTP ${res.status})`
+				)
+			);
 		} catch (error) {
 			console.error('Error updating invoice:', error);
-			alert('Failed to update invoice');
+			toast.error(`Failed to update invoice: ${error.message}`);
 		} finally {
 			setSaving(false);
 		}
@@ -496,15 +516,28 @@ export default function EditInvoicePage() {
 			const res = await fetch(`/api/admin/invoices/${invoiceId}`, {
 				method: 'DELETE',
 			});
-			const data = await res.json();
-			if (data.success) {
-				router.push('/admin/invoice');
-			} else {
-				alert(data.message || 'Failed to delete invoice');
+			let data = null;
+			try {
+				data = await res.json();
+			} catch (parseErr) {
+				console.error('Non-JSON response from server:', parseErr);
 			}
+
+			if (res.ok && data?.success) {
+				toast.success('Invoice deleted');
+				router.push('/admin/invoice');
+				return;
+			}
+
+			toast.error(
+				extractServerError(
+					data,
+					`Failed to delete invoice (HTTP ${res.status})`
+				)
+			);
 		} catch (error) {
 			console.error('Error deleting invoice:', error);
-			alert('Failed to delete invoice');
+			toast.error(`Failed to delete invoice: ${error.message}`);
 		}
 	};
 

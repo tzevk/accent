@@ -121,6 +121,9 @@ describe('Invoice API — POST /api/admin/invoices', () => {
 			if (sql.includes('FROM purchase_orders WHERE')) {
 				return Promise.resolve([[]]);
 			}
+			if (sql.includes('FROM invoices WHERE invoice_number')) {
+				return Promise.resolve([[]]);
+			}
 			if (sql.includes('INSERT INTO purchase_orders')) {
 				return Promise.resolve([{ insertId: 10 }]);
 			}
@@ -165,6 +168,9 @@ describe('Invoice API — POST /api/admin/invoices', () => {
 			if (sql.includes('FROM purchase_orders WHERE')) {
 				return Promise.resolve([[{ id: 5, remaining_balance: 70000 }]]);
 			}
+			if (sql.includes('FROM invoices WHERE invoice_number')) {
+				return Promise.resolve([[]]);
+			}
 			if (sql.includes('UPDATE purchase_orders')) {
 				return Promise.resolve([]);
 			}
@@ -186,5 +192,86 @@ describe('Invoice API — POST /api/admin/invoices', () => {
 		);
 		expect(updateCall).toBeDefined();
 		expect(updateCall[1][0]).toBeCloseTo(40000);
+	});
+
+	it('returns 409 when invoice_number already exists', async () => {
+		const body = {
+			client_name: 'Test Client',
+			invoice_number: 'ATS-I/JAN-26/001',
+			line_items: [
+				{
+					sr_no: 1,
+					description: 'Service',
+					unit: '1',
+					charges: '25000',
+					amount: '25000',
+				},
+			],
+			total: 25000,
+			gst_type: 'cgst_sgst',
+			status: 'draft',
+		};
+
+		mockExecute.mockImplementation((sql) => {
+			if (sql.includes('FROM invoices WHERE invoice_number')) {
+				return Promise.resolve([[{ id: 1 }]]);
+			}
+			return Promise.resolve([]);
+		});
+
+		const response = await POST(createRequest({ method: 'POST', body }));
+		const json = await response.json();
+
+		expect(response.status).toBe(409);
+		expect(json.success).toBe(false);
+		expect(json.message).toMatch(/already exists/);
+	});
+
+	it('returns 409 with po_number field when purchase_order po_number collides', async () => {
+		const body = {
+			client_name: 'Aaspire World',
+			po_number: 'PO029929',
+			original_po_value: '100000',
+			total: 25000,
+			line_items: [
+				{
+					sr_no: 1,
+					description: 'Service',
+					unit: '1',
+					charges: '25000',
+					amount: '25000',
+				},
+			],
+			gst_type: 'cgst_sgst',
+			status: 'draft',
+		};
+
+		mockExecute.mockImplementation((sql) => {
+			if (sql.includes('SELECT COUNT')) {
+				return Promise.resolve([[{ count: 0 }]]);
+			}
+			if (sql.includes('FROM invoices WHERE invoice_number')) {
+				return Promise.resolve([[]]);
+			}
+			if (sql.includes('FROM purchase_orders WHERE')) {
+				return Promise.resolve([[]]);
+			}
+			if (sql.includes('INSERT INTO invoices')) {
+				const err = new Error("Duplicate entry 'PO029929' for key 'po_number'");
+				err.code = 'ER_DUP_ENTRY';
+				err.errno = 1062;
+				err.sqlMessage = "Duplicate entry 'PO029929' for key 'po_number'";
+				return Promise.reject(err);
+			}
+			return Promise.resolve([[]]);
+		});
+
+		const response = await POST(createRequest({ method: 'POST', body }));
+		const json = await response.json();
+
+		expect(response.status).toBe(409);
+		expect(json.success).toBe(false);
+		expect(json.errors?.[0]?.field).toBe('po_number');
+		expect(json.errors?.[0]?.message).toMatch(/purchase order/i);
 	});
 });
