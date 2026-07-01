@@ -134,10 +134,15 @@ export default function InvoicePage() {
 	// Format date
 	const formatDate = (dateString) => {
 		if (!dateString) return '-';
-		return new Date(dateString).toLocaleDateString('en-IN', {
+		const d = new Date(dateString);
+		return d.toLocaleDateString('en-IN', {
 			day: '2-digit',
 			month: 'short',
 			year: 'numeric',
+			timeZone:
+				typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)
+					? 'UTC'
+					: undefined,
 		});
 	};
 
@@ -366,7 +371,7 @@ export default function InvoicePage() {
 												{formatCurrency(invoice.total)}
 											</td>
 											<td className="px-6 py-4 text-gray-600">
-												{formatDate(invoice.created_at)}
+												{formatDate(invoice.invoice_date || invoice.created_at)}
 											</td>
 											<td className="px-6 py-4 text-gray-600">
 												{formatDate(invoice.due_date)}
