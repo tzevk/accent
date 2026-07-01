@@ -2,14 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
-import DocumentUpload from '@/components/DocumentUpload';
 import {
 	ClipboardDocumentListIcon,
 	ArrowLeftIcon,
-	PlusIcon,
-	TrashIcon,
 	ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 
@@ -20,31 +18,26 @@ export default function EditPurchaseOrderPage() {
 
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
-	const [vendors, setVendors] = useState([]);
-	const [purchaseOrder, setPurchaseOrder] = useState({
+	const [companies, setCompanies] = useState([]);
+	const [projects, setProjects] = useState([]);
+	const [loadingCompanies, setLoadingCompanies] = useState(true);
+	const [loadingProjects, setLoadingProjects] = useState(true);
+
+	const [poData, setPoData] = useState({
 		id: null,
 		po_number: '',
-		vendor_name: '',
-		vendor_email: '',
-		vendor_phone: '',
-		vendor_address: '',
-		vendor_gstin: '',
-		kind_attn: '',
-		quotation_no: '',
-		quotation_date: '',
-		delivery_date: '',
-		description: '',
-		status: 'draft',
-		items: [{ description: '', quantity: 1, rate: 0, amount: 0 }],
-		subtotal: 0,
-		tax_rate: 18,
-		tax_amount: 0,
-		discount: 0,
-		total: 0,
-		notes: '',
+		po_date: '',
+		po_amount: '',
+		tax_amount: '',
+		net_amount: '',
+		company_id: '',
+		company_name: '',
+		city: '',
+		project_id: '',
+		remarks: '',
+		status: 'pending',
 	});
 
-	// Fetch purchase order data
 	useEffect(() => {
 		const fetchPurchaseOrder = async () => {
 			if (!params.id) return;
@@ -55,46 +48,30 @@ export default function EditPurchaseOrderPage() {
 				const data = await res.json();
 
 				if (data.success && data.data) {
-					// Find the specific PO from the list or fetch individually
 					const poList = Array.isArray(data.data) ? data.data : [data.data];
 					const po =
 						poList.find((p) => p.id === parseInt(params.id)) || poList[0];
 
 					if (po) {
-						const items =
-							typeof po.items === 'string'
-								? JSON.parse(po.items)
-								: po.items || [];
-
-						// Auto-generate quotation number if empty
-						let quotationNo = po.quotation_no || '';
-						if (!quotationNo) {
-							const now = new Date();
-							const year = now.getFullYear().toString().slice(-2);
-							const month = String(now.getMonth() + 1).padStart(2, '0');
-							const randomNum = Math.floor(1000 + Math.random() * 9000);
-							quotationNo = `QT/${year}${month}/${randomNum}`;
-						}
-
-						setPurchaseOrder({
-							...po,
-							items:
-								items.length > 0
-									? items
-									: [{ description: '', quantity: 1, rate: 0, amount: 0 }],
-							quotation_no: quotationNo,
-							quotation_date: po.quotation_date
-								? po.quotation_date.split('T')[0]
-								: '',
-							delivery_date: po.delivery_date
-								? po.delivery_date.split('T')[0]
-								: '',
+						setPoData({
+							id: po.id ?? null,
+							po_number: po.po_number || '',
+							po_date: po.po_date ? po.po_date.split('T')[0] : '',
+							po_amount: po.po_amount ?? '',
+							tax_amount: po.tax_amount ?? '',
+							net_amount: po.net_amount ?? '',
+							company_id: po.company_id ?? '',
+							company_name: po.vendor_name || po.company_name || '',
+							city: po.city || '',
+							project_id: po.project_id ?? '',
+							remarks: po.remarks || '',
+							status: po.status || 'pending',
 						});
 					}
 				}
 			} catch (error) {
 				console.error('Error fetching purchase order:', error);
-				alert('Failed to load purchase order');
+				toast.error('Failed to load purchase order');
 			} finally {
 				setLoading(false);
 			}
@@ -105,134 +82,90 @@ export default function EditPurchaseOrderPage() {
 		}
 	}, [params.id, authLoading, user]);
 
-	// Fetch vendors from vendor master
 	useEffect(() => {
-		const fetchVendors = async () => {
+		const fetchCompanies = async () => {
 			try {
-				const res = await fetch('/api/vendors');
+				const res = await fetch('/api/companies');
 				const data = await res.json();
 				if (data.success) {
-					setVendors(data.data || []);
+					setCompanies(data.data || []);
 				}
 			} catch (error) {
-				console.error('Error fetching vendors:', error);
+				console.error('Error fetching companies:', error);
+			} finally {
+				setLoadingCompanies(false);
 			}
 		};
 
 		if (!authLoading && user) {
-			fetchVendors();
+			fetchCompanies();
 		}
 	}, [authLoading, user]);
 
-	// Handle vendor selection - auto-populate GSTIN and address
-	const handleVendorSelect = (vendorId) => {
-		const selectedVendor = vendors.find((v) => v.id === parseInt(vendorId));
-		if (selectedVendor) {
-			// Build full address from vendor master fields
-			const addressParts = [
-				selectedVendor.address_street,
-				selectedVendor.address_city,
-				selectedVendor.address_state,
-				selectedVendor.address_country,
-				selectedVendor.address_pin,
-			].filter(Boolean);
-			const fullAddress = addressParts.join(', ');
+	useEffect(() => {
+		const fetchProjects = async () => {
+			try {
+				const res = await fetch('/api/projects/list');
+				const data = await res.json();
+				if (data.success) {
+					setProjects(data.data || []);
+				}
+			} catch (error) {
+				console.error('Error fetching projects:', error);
+			} finally {
+				setLoadingProjects(false);
+			}
+		};
 
-			setPurchaseOrder({
-				...purchaseOrder,
-				vendor_name: selectedVendor.vendor_name || '',
-				vendor_email: selectedVendor.email || '',
-				vendor_phone: selectedVendor.phone || '',
-				vendor_gstin: selectedVendor.gst_vat_tax_id || '',
-				vendor_address: fullAddress,
-			});
+		if (!authLoading && user) {
+			fetchProjects();
 		}
-	};
+	}, [authLoading, user]);
 
-	// Format currency
-	const formatCurrency = (amount) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 2,
-		}).format(amount || 0);
-	};
-
-	// Update item
-	const updateItem = (index, field, value) => {
-		const newItems = [...purchaseOrder.items];
-		newItems[index][field] = value;
-
-		// Recalculate amount only if qty or rate changed (not when amount is directly edited)
-		if (field === 'quantity' || field === 'rate') {
-			const qty = parseFloat(newItems[index].quantity) || 0;
-			const rate = parseFloat(newItems[index].rate) || 0;
-			newItems[index].amount = qty * rate;
-		}
-
-		// If amount is directly edited, update it as a number
-		if (field === 'amount') {
-			newItems[index].amount = parseFloat(value) || 0;
-		}
-
-		// Recalculate totals
-		const subtotal = newItems.reduce(
-			(sum, item) => sum + (parseFloat(item.amount) || 0),
-			0
+	const handleCompanySelect = (companyId) => {
+		const selectedCompany = companies.find(
+			(c) => String(c.id) === String(companyId)
 		);
-		const taxRate = parseFloat(purchaseOrder.tax_rate) || 18;
-		const taxAmount = (subtotal * taxRate) / 100;
-		const total =
-			subtotal + taxAmount - (parseFloat(purchaseOrder.discount) || 0);
+		if (selectedCompany) {
+			setPoData((prev) => ({
+				...prev,
+				company_id: selectedCompany.id,
+				company_name: selectedCompany.company_name || '',
+				city: selectedCompany.city || '',
+			}));
+		} else {
+			setPoData((prev) => ({
+				...prev,
+				company_id: '',
+				company_name: '',
+				city: '',
+			}));
+		}
+	};
 
-		setPurchaseOrder({
-			...purchaseOrder,
-			items: newItems,
-			subtotal,
-			tax_amount: taxAmount,
-			total,
+	const handleChange = (e) => {
+		const { name, value } = e.target;
+		setPoData((prev) => {
+			const next = { ...prev, [name]: value };
+			if (name === 'po_amount' || name === 'tax_amount') {
+				const base = parseFloat(next.po_amount) || 0;
+				const tax = parseFloat(next.tax_amount) || 0;
+				next.net_amount = (base + tax).toFixed(2);
+			}
+			return next;
 		});
 	};
 
-	// Add item
-	const addItem = () => {
-		setPurchaseOrder({
-			...purchaseOrder,
-			items: [
-				...purchaseOrder.items,
-				{ description: '', quantity: 1, rate: 0, amount: 0 },
-			],
-		});
-	};
-
-	// Remove item
-	const removeItem = (index) => {
-		if (purchaseOrder.items.length <= 1) return;
-		const newItems = purchaseOrder.items.filter((_, i) => i !== index);
-
-		// Recalculate totals
-		const subtotal = newItems.reduce(
-			(sum, item) => sum + (parseFloat(item.amount) || 0),
-			0
-		);
-		const taxRate = parseFloat(purchaseOrder.tax_rate) || 18;
-		const taxAmount = (subtotal * taxRate) / 100;
-		const total =
-			subtotal + taxAmount - (parseFloat(purchaseOrder.discount) || 0);
-
-		setPurchaseOrder({
-			...purchaseOrder,
-			items: newItems,
-			subtotal,
-			tax_amount: taxAmount,
-			total,
-		});
-	};
-
-	// Handle save
 	const handleSave = async () => {
-		if (!purchaseOrder.vendor_name) {
-			alert('Vendor name is required');
+		if (
+			!poData.company_name ||
+			!poData.po_number ||
+			!poData.po_date ||
+			!poData.po_amount
+		) {
+			toast.error(
+				'Please fill in all required fields (Company Name, PO Number, PO Date, PO Amount)'
+			);
 			return;
 		}
 
@@ -241,29 +174,43 @@ export default function EditPurchaseOrderPage() {
 			const res = await fetch('/api/admin/purchase-orders', {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(purchaseOrder),
+				body: JSON.stringify({
+					id: poData.id,
+					po_number: poData.po_number,
+					po_date: poData.po_date,
+					po_amount: parseFloat(poData.po_amount) || 0,
+					tax_amount: parseFloat(poData.tax_amount) || 0,
+					net_amount: parseFloat(poData.net_amount) || 0,
+					company_id: poData.company_id || null,
+					project_id: poData.project_id || null,
+					vendor_name: poData.company_name,
+					remarks: poData.remarks || null,
+					status: poData.status,
+					total: parseFloat(poData.po_amount) || 0,
+					subtotal: parseFloat(poData.po_amount) || 0,
+				}),
 			});
 
 			const data = await res.json();
 
 			if (data.success) {
-				alert('Purchase order updated successfully');
+				toast.success('Purchase order updated');
 				router.push('/admin/purchase-order');
 			} else {
-				alert(data.message || 'Failed to update purchase order');
+				toast.error(data.message || 'Failed to update purchase order');
 			}
 		} catch (error) {
 			console.error('Error updating purchase order:', error);
-			alert('Failed to update purchase order');
+			toast.error('Failed to update purchase order');
 		} finally {
 			setSaving(false);
 		}
 	};
 
-	// Handle download
 	const handleDownload = () => {
+		if (!poData.id) return;
 		window.open(
-			`/api/admin/purchase-orders/download?id=${purchaseOrder.id}`,
+			`/api/admin/purchase-orders/download?id=${poData.id}`,
 			'_blank'
 		);
 	};
@@ -296,7 +243,7 @@ export default function EditPurchaseOrderPage() {
 								Edit Purchase Order
 							</h1>
 							<p className="text-sm text-gray-500 mt-1">
-								{purchaseOrder.po_number || 'Loading...'}
+								{poData.po_number || 'Loading...'}
 							</p>
 						</div>
 					</div>
@@ -324,447 +271,174 @@ export default function EditPurchaseOrderPage() {
 					</div>
 				</div>
 
-				{/* Main Content */}
+				{/* Form */}
 				<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-					<div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-						{/* Vendor Details */}
-						<div className="space-y-5">
-							<h3 className="font-semibold text-gray-900 text-lg border-b pb-2">
-								Vendor Details
-							</h3>
-							<div>
-								<label className="block text-sm font-medium text-gray-700 mb-1">
-									Select Vendor *
-								</label>
-								<select
-									value={
-										vendors.find(
-											(v) => v.vendor_name === purchaseOrder.vendor_name
-										)?.id || ''
-									}
-									onChange={(e) => handleVendorSelect(e.target.value)}
-									className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-								>
-									<option value="">-- Select a vendor --</option>
-									{vendors.map((vendor) => (
-										<option key={vendor.id} value={vendor.id}>
-											{vendor.vendor_name}
-										</option>
-									))}
-								</select>
-							</div>
-							<div className="grid grid-cols-2 gap-4">
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-1">
-										Vendor Email
-									</label>
-									<input
-										type="email"
-										value={purchaseOrder.vendor_email || ''}
-										onChange={(e) =>
-											setPurchaseOrder({
-												...purchaseOrder,
-												vendor_email: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
-										placeholder="Auto-filled from vendor master"
-										readOnly
-									/>
-								</div>
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-1">
-										Vendor Phone
-									</label>
-									<input
-										type="text"
-										value={purchaseOrder.vendor_phone || ''}
-										onChange={(e) =>
-											setPurchaseOrder({
-												...purchaseOrder,
-												vendor_phone: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
-										placeholder="Auto-filled from vendor master"
-										readOnly
-									/>
-								</div>
-							</div>
-							<div>
-								<label className="block text-sm font-medium text-gray-700 mb-1">
-									Vendor GSTIN
-								</label>
-								<input
-									type="text"
-									value={purchaseOrder.vendor_gstin || ''}
-									onChange={(e) =>
-										setPurchaseOrder({
-											...purchaseOrder,
-											vendor_gstin: e.target.value,
-										})
-									}
-									className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
-									placeholder="Auto-filled from vendor master"
-									readOnly
-								/>
-							</div>
-							<div>
-								<label className="block text-sm font-medium text-gray-700 mb-1">
-									Vendor Address
-								</label>
-								<textarea
-									value={purchaseOrder.vendor_address || ''}
-									onChange={(e) =>
-										setPurchaseOrder({
-											...purchaseOrder,
-											vendor_address: e.target.value,
-										})
-									}
-									rows={3}
-									className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
-									placeholder="Auto-filled from vendor master"
-									readOnly
-								/>
-							</div>
-						</div>
-
-						{/* PO Details */}
-						<div className="space-y-5">
-							<h3 className="font-semibold text-gray-900 text-lg border-b pb-2">
-								PO Details
-							</h3>
-							<div className="grid grid-cols-2 gap-4">
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-1">
-										PO Number *
-									</label>
-									<input
-										type="text"
-										value={purchaseOrder.po_number || ''}
-										onChange={(e) =>
-											setPurchaseOrder({
-												...purchaseOrder,
-												po_number: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-										placeholder="Auto-generated or enter manually"
-									/>
-								</div>
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-1">
-										Status
-									</label>
-									<select
-										value={purchaseOrder.status || 'draft'}
-										onChange={(e) =>
-											setPurchaseOrder({
-												...purchaseOrder,
-												status: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-									>
-										<option value="draft">Draft</option>
-										<option value="pending">Pending</option>
-										<option value="approved">Approved</option>
-										<option value="completed">Completed</option>
-										<option value="cancelled">Cancelled</option>
-									</select>
-								</div>
-							</div>
-							<div>
-								<label className="block text-sm font-medium text-gray-700 mb-1">
-									Kind Attention
-								</label>
-								<input
-									type="text"
-									value={purchaseOrder.kind_attn || ''}
-									onChange={(e) =>
-										setPurchaseOrder({
-											...purchaseOrder,
-											kind_attn: e.target.value,
-										})
-									}
-									className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-									placeholder="Contact person name"
-								/>
-							</div>
-							<div className="grid grid-cols-2 gap-4">
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-1">
-										Quotation No.
-									</label>
-									<input
-										type="text"
-										value={purchaseOrder.quotation_no || ''}
-										onChange={(e) =>
-											setPurchaseOrder({
-												...purchaseOrder,
-												quotation_no: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-										placeholder="MS0/21/2211"
-									/>
-								</div>
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-1">
-										Quotation Date
-									</label>
-									<input
-										type="date"
-										value={purchaseOrder.quotation_date || ''}
-										onChange={(e) =>
-											setPurchaseOrder({
-												...purchaseOrder,
-												quotation_date: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-									/>
-								</div>
-							</div>
-							<div>
-								<label className="block text-sm font-medium text-gray-700 mb-1">
-									Delivery Date
-								</label>
-								<input
-									type="date"
-									value={purchaseOrder.delivery_date || ''}
-									onChange={(e) =>
-										setPurchaseOrder({
-											...purchaseOrder,
-											delivery_date: e.target.value,
-										})
-									}
-									className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-								/>
-							</div>
-							<div>
-								<label className="block text-sm font-medium text-gray-700 mb-1">
-									Description
-								</label>
-								<input
-									type="text"
-									value={purchaseOrder.description || ''}
-									onChange={(e) =>
-										setPurchaseOrder({
-											...purchaseOrder,
-											description: e.target.value,
-										})
-									}
-									className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-									placeholder="Brief description of purchase order"
-								/>
-							</div>
-						</div>
-					</div>
-
-					{/* Line Items */}
-					<div className="mt-8">
-						<div className="flex items-center justify-between mb-4">
-							<h3 className="font-semibold text-gray-900 text-lg">
-								Line Items
-							</h3>
-							<button
-								onClick={addItem}
-								className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-							>
-								<PlusIcon className="h-5 w-5" />
-								Add Item
-							</button>
-						</div>
-						<div className="border border-gray-200 rounded-xl overflow-hidden">
-							<table className="w-full">
-								<thead className="bg-gray-50">
-									<tr>
-										<th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-											Sr.
-										</th>
-										<th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-											Description
-										</th>
-										<th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase w-24">
-											Qty
-										</th>
-										<th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase w-32">
-											Rate (₹)
-										</th>
-										<th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase w-32">
-											Amount (₹)
-										</th>
-										<th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase w-20">
-											Action
-										</th>
-									</tr>
-								</thead>
-								<tbody className="divide-y divide-gray-200">
-									{purchaseOrder.items.map((item, index) => (
-										<tr key={index} className="hover:bg-gray-50">
-											<td className="px-4 py-3 text-center text-gray-600">
-												{index + 1}
-											</td>
-											<td className="px-4 py-3">
-												<input
-													type="text"
-													value={item.description || ''}
-													onChange={(e) =>
-														updateItem(index, 'description', e.target.value)
-													}
-													className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-													placeholder="Item description"
-												/>
-											</td>
-											<td className="px-4 py-3">
-												<input
-													type="number"
-													value={item.quantity || 1}
-													onChange={(e) =>
-														updateItem(index, 'quantity', e.target.value)
-													}
-													className="w-full px-3 py-2 border border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-													min="1"
-												/>
-											</td>
-											<td className="px-4 py-3">
-												<input
-													type="number"
-													value={item.rate || 0}
-													onChange={(e) =>
-														updateItem(index, 'rate', e.target.value)
-													}
-													className="w-full px-3 py-2 border border-gray-300 rounded-lg text-right focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-													min="0"
-													step="0.01"
-												/>
-											</td>
-											<td className="px-4 py-3">
-												<input
-													type="number"
-													value={item.amount || 0}
-													onChange={(e) =>
-														updateItem(index, 'amount', e.target.value)
-													}
-													className="w-full px-3 py-2 border border-gray-300 rounded-lg text-right focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-													min="0"
-													step="0.01"
-												/>
-											</td>
-											<td className="px-4 py-3 text-center">
-												<button
-													onClick={() => removeItem(index)}
-													className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30"
-													disabled={purchaseOrder.items.length <= 1}
-												>
-													<TrashIcon className="h-5 w-5" />
-												</button>
-											</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
-						</div>
-
-						{/* Totals */}
-						<div className="mt-6 flex justify-end">
-							<div className="w-80 bg-gray-50 rounded-xl p-5 space-y-3">
-								<div className="flex justify-between text-sm">
-									<span className="text-gray-600">Subtotal:</span>
-									<span className="font-medium text-gray-900">
-										{formatCurrency(purchaseOrder.subtotal || 0)}
-									</span>
-								</div>
-								<div className="flex justify-between text-sm items-center">
-									<span className="text-gray-600">Tax Rate:</span>
-									<div className="flex items-center gap-2">
-										<input
-											type="number"
-											value={purchaseOrder.tax_rate || 18}
-											onChange={(e) => {
-												const taxRate = parseFloat(e.target.value) || 0;
-												const taxAmount =
-													((purchaseOrder.subtotal || 0) * taxRate) / 100;
-												const total =
-													(purchaseOrder.subtotal || 0) +
-													taxAmount -
-													(purchaseOrder.discount || 0);
-												setPurchaseOrder({
-													...purchaseOrder,
-													tax_rate: taxRate,
-													tax_amount: taxAmount,
-													total,
-												});
-											}}
-											className="w-16 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-											min="0"
-											max="100"
-										/>
-										<span>%</span>
-									</div>
-								</div>
-								<div className="flex justify-between text-sm">
-									<span className="text-gray-600">Tax Amount:</span>
-									<span className="font-medium text-gray-900">
-										{formatCurrency(purchaseOrder.tax_amount || 0)}
-									</span>
-								</div>
-								<div className="flex justify-between text-sm items-center">
-									<span className="text-gray-600">Discount:</span>
-									<input
-										type="number"
-										value={purchaseOrder.discount || 0}
-										onChange={(e) => {
-											const discount = parseFloat(e.target.value) || 0;
-											const total =
-												(purchaseOrder.subtotal || 0) +
-												(purchaseOrder.tax_amount || 0) -
-												discount;
-											setPurchaseOrder({ ...purchaseOrder, discount, total });
-										}}
-										className="w-28 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-										min="0"
-									/>
-								</div>
-								<div className="border-t pt-3 flex justify-between text-lg font-bold">
-									<span>Total:</span>
-									<span className="text-purple-600">
-										{formatCurrency(purchaseOrder.total || 0)}
-									</span>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					{/* Notes */}
-					<div className="mt-8">
-						<label className="block text-sm font-medium text-gray-700 mb-2">
-							Notes
-						</label>
-						<textarea
-							value={purchaseOrder.notes || ''}
-							onChange={(e) =>
-								setPurchaseOrder({ ...purchaseOrder, notes: e.target.value })
-							}
-							rows={4}
-							className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-							placeholder="Additional notes or terms..."
-						/>
-					</div>
-
-					{/* Document Upload */}
-					{purchaseOrder.id && (
-						<div className="mt-8">
-							<label className="block text-sm font-medium text-gray-700 mb-3">
-								Attached Documents
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+						<div>
+							<label className="block text-xs font-medium text-gray-700 mb-1">
+								Company Name *
 							</label>
-							<DocumentUpload
-								entityType="purchase_order"
-								entityId={purchaseOrder.id}
+							<select
+								name="company_id"
+								value={poData.company_id}
+								onChange={(e) => handleCompanySelect(e.target.value)}
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+								disabled={loadingCompanies}
+							>
+								<option value="">Select a company...</option>
+								{companies.map((company) => (
+									<option key={company.id} value={company.id}>
+										{company.company_name}
+									</option>
+								))}
+							</select>
+							{loadingCompanies && (
+								<p className="text-[10px] text-gray-500 mt-1">
+									Loading companies...
+								</p>
+							)}
+						</div>
+						<div>
+							<label className="block text-xs font-medium text-gray-700 mb-1">
+								City
+							</label>
+							<input
+								type="text"
+								name="city"
+								value={poData.city}
+								placeholder="Auto-filled from company"
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50"
+								readOnly
 							/>
 						</div>
-					)}
+						<div>
+							<label className="block text-xs font-medium text-gray-700 mb-1">
+								PO Number *
+							</label>
+							<input
+								type="text"
+								name="po_number"
+								value={poData.po_number}
+								onChange={handleChange}
+								placeholder="PO-00001"
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+							/>
+						</div>
+						<div>
+							<label className="block text-xs font-medium text-gray-700 mb-1">
+								PO Date *
+							</label>
+							<input
+								type="date"
+								name="po_date"
+								value={poData.po_date}
+								onChange={handleChange}
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+							/>
+						</div>
+					</div>
+
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+						<div>
+							<label className="block text-xs font-medium text-gray-700 mb-1">
+								PO Amount (₹) *
+							</label>
+							<input
+								type="number"
+								name="po_amount"
+								value={poData.po_amount}
+								onChange={handleChange}
+								placeholder="0.00"
+								step="0.01"
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+							/>
+						</div>
+						<div>
+							<label className="block text-xs font-medium text-gray-700 mb-1">
+								Tax Amount (₹)
+							</label>
+							<input
+								type="number"
+								name="tax_amount"
+								value={poData.tax_amount}
+								onChange={handleChange}
+								placeholder="0.00"
+								step="0.01"
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+							/>
+						</div>
+						<div>
+							<label className="block text-xs font-medium text-gray-700 mb-1">
+								Net Amount (₹)
+							</label>
+							<input
+								type="number"
+								name="net_amount"
+								value={poData.net_amount}
+								placeholder="Auto-calculated"
+								step="0.01"
+								readOnly
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+							/>
+						</div>
+						<div>
+							<label className="block text-xs font-medium text-gray-700 mb-1">
+								Project No
+							</label>
+							<select
+								name="project_id"
+								value={poData.project_id}
+								onChange={handleChange}
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+								disabled={loadingProjects}
+							>
+								<option value="">Select a project...</option>
+								{projects.map((proj) => (
+									<option
+										key={proj.id || proj.project_id}
+										value={proj.id || proj.project_id || ''}
+									>
+										{proj.project_code || proj.project_id || ''}
+									</option>
+								))}
+							</select>
+							{loadingProjects && (
+								<p className="text-[10px] text-gray-500 mt-1">
+									Loading projects...
+								</p>
+							)}
+						</div>
+						<div className="md:col-span-2">
+							<label className="block text-xs font-medium text-gray-700 mb-1">
+								Status
+							</label>
+							<select
+								name="status"
+								value={poData.status}
+								onChange={handleChange}
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+							>
+								<option value="draft">Draft</option>
+								<option value="pending">Pending</option>
+								<option value="approved">Approved</option>
+								<option value="completed">Completed</option>
+								<option value="cancelled">Cancelled</option>
+							</select>
+						</div>
+						<div className="md:col-span-2">
+							<label className="block text-xs font-medium text-gray-700 mb-1">
+								Remarks
+							</label>
+							<input
+								type="text"
+								name="remarks"
+								value={poData.remarks}
+								onChange={handleChange}
+								placeholder="Additional remarks..."
+								className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+							/>
+						</div>
+					</div>
 				</div>
 			</main>
 		</div>

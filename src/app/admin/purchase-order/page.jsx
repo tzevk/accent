@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import {
@@ -204,7 +205,7 @@ export default function PurchaseOrderPage() {
 			!incomingPOData.po_date ||
 			!incomingPOData.po_amount
 		) {
-			alert(
+			toast.error(
 				'Please fill in all required fields (Company Name, PO Number, PO Date, PO Amount)'
 			);
 			return;
@@ -234,7 +235,7 @@ export default function PurchaseOrderPage() {
 			const data = await res.json();
 
 			if (!data.success) {
-				alert(data.message || 'Failed to add incoming purchase order');
+				toast.error(data.message || 'Failed to add incoming purchase order');
 				return;
 			}
 
@@ -253,10 +254,11 @@ export default function PurchaseOrderPage() {
 			});
 			setShowAddPOForm(false);
 
+			toast.success('Purchase order added');
 			fetchPurchaseOrders(1);
 		} catch (error) {
 			console.error('Error adding incoming PO:', error);
-			alert('Failed to add incoming purchase order');
+			toast.error('Failed to add incoming purchase order');
 		} finally {
 			setAddingPO(false);
 		}
@@ -303,24 +305,28 @@ export default function PurchaseOrderPage() {
 	// Format date
 	const formatDate = (dateString) => {
 		if (!dateString) return '-';
-		return new Date(dateString).toLocaleDateString('en-IN', {
+		const d = new Date(dateString);
+		return d.toLocaleDateString('en-IN', {
 			day: '2-digit',
 			month: 'short',
 			year: 'numeric',
+			timeZone:
+				typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)
+					? 'UTC'
+					: undefined,
 		});
 	};
 
 	// Handle download
 	const handleDownload = async (purchaseOrder) => {
 		try {
-			// Open in new window for print/save as PDF
 			window.open(
 				`/api/admin/purchase-orders/download?id=${purchaseOrder.id}`,
 				'_blank'
 			);
 		} catch (error) {
 			console.error('Error downloading purchase order:', error);
-			alert('Failed to download purchase order');
+			toast.error('Failed to download purchase order');
 		}
 	};
 
@@ -351,16 +357,16 @@ export default function PurchaseOrderPage() {
 			const data = await res.json();
 
 			if (data.success) {
-				alert(data.message || 'Purchase order deleted successfully');
+				toast.success(data.message || 'Purchase order deleted');
 				setShowDeleteConfirm(false);
 				setDeletingPO(null);
 				fetchPurchaseOrders(pagination.page);
 			} else {
-				alert(data.message || 'Failed to delete purchase order');
+				toast.error(data.message || 'Failed to delete purchase order');
 			}
 		} catch (error) {
 			console.error('Error deleting purchase order:', error);
-			alert('Failed to delete purchase order');
+			toast.error('Failed to delete purchase order');
 		} finally {
 			setDeleteLoading(false);
 		}
@@ -756,7 +762,7 @@ export default function PurchaseOrderPage() {
 												)}
 											</td>
 											<td className="px-6 py-4 text-gray-600">
-												{formatDate(po.created_at)}
+												{formatDate(po.po_date || po.created_at)}
 											</td>
 											<td className="px-6 py-4 text-gray-600">
 												{formatDate(po.delivery_date)}
