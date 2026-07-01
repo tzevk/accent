@@ -438,6 +438,12 @@ export async function PUT(request) {
 			quotation_no,
 			quotation_date,
 			kind_attn,
+			po_date,
+			po_amount,
+			net_amount,
+			company_id,
+			project_id,
+			remarks,
 		} = body;
 
 		if (!id) {
@@ -485,7 +491,8 @@ export async function PUT(request) {
        vendor_name = ?, vendor_email = ?, vendor_phone = ?, vendor_address = ?,
        vendor_gstin = ?, description = ?, items = ?, subtotal = ?, tax_rate = ?,
        tax_amount = ?, discount = ?, total = ?, notes = ?, terms = ?,
-       delivery_date = ?, status = ?, quotation_no = ?, quotation_date = ?, kind_attn = ?
+       delivery_date = ?, status = ?, quotation_no = ?, quotation_date = ?, kind_attn = ?,
+       po_date = ?, po_amount = ?, net_amount = ?, company_id = ?, project_id = ?, remarks = ?
        WHERE id = ?`,
 			[
 				vendor_name || null,
@@ -507,6 +514,12 @@ export async function PUT(request) {
 				quotation_no || null,
 				quotation_date || null,
 				kind_attn || null,
+				po_date || null,
+				po_amount ?? null,
+				net_amount ?? null,
+				company_id || null,
+				project_id || null,
+				remarks || null,
 				id,
 			]
 		);
