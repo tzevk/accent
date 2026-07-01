@@ -694,6 +694,9 @@ export default function PurchaseOrderPage() {
 							<table className="w-full">
 								<thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
 									<tr>
+										<th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-12">
+											#
+										</th>
 										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 											PO #
 										</th>
@@ -727,11 +730,14 @@ export default function PurchaseOrderPage() {
 									</tr>
 								</thead>
 								<tbody className="divide-y divide-gray-200">
-									{filteredPurchaseOrders.map((po) => (
+									{filteredPurchaseOrders.map((po, index) => (
 										<tr
 											key={po.id}
 											className="hover:bg-gray-50 transition-colors"
 										>
+											<td className="px-4 py-4 text-gray-500 text-sm">
+												{(pagination.page - 1) * pagination.limit + index + 1}
+											</td>
 											<td className="px-6 py-4">
 												<span className="font-medium text-purple-600">
 													{po.po_number}

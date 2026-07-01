@@ -75,6 +75,8 @@ export async function PUT(request, { params }) {
 		const body = await request.json();
 
 		const {
+			invoice_number,
+			invoice_date,
 			client_name,
 			client_email,
 			client_phone,
@@ -278,6 +280,8 @@ export async function PUT(request, { params }) {
 		// Update invoice with calculated balance
 		await connection.execute(
 			`UPDATE invoices SET
+        invoice_number = ?,
+        invoice_date = ?,
         client_name = ?,
         client_email = ?,
         client_phone = ?,
@@ -321,6 +325,8 @@ export async function PUT(request, { params }) {
         updated_at = NOW()
       WHERE id = ?`,
 			[
+				invoice_number || null,
+				invoice_date || null,
 				client_name,
 				client_email || null,
 				client_phone || null,
