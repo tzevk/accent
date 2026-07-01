@@ -51,7 +51,6 @@ const ASSIGNMENTS = [
 		default_manhours: 12,
 		planned_hours: 8,
 		actual_hours: 4,
-		start_date: '2026-01-15',
 		due_date: '2026-02-15',
 		status: 'In Progress',
 	},
@@ -69,7 +68,6 @@ const ASSIGNMENTS = [
 		default_manhours: 0,
 		planned_hours: 5,
 		actual_hours: 0,
-		start_date: '2026-02-01',
 		due_date: '2026-03-01',
 		status: 'Not Started',
 	},
@@ -87,7 +85,6 @@ const ASSIGNMENTS = [
 		default_manhours: 10,
 		planned_hours: 16,
 		actual_hours: 8,
-		start_date: '2026-03-01',
 		due_date: '2026-04-01',
 		status: 'On Hold',
 	},
@@ -184,7 +181,6 @@ describe('ProjectActivityAssignments', () => {
 		expect(screen.getByText('Sub Activity')).toBeInTheDocument();
 		expect(screen.getByText('Default MH')).toBeInTheDocument();
 		expect(screen.getByText('Manhours')).toBeInTheDocument();
-		expect(screen.getByText('Date Assigned')).toBeInTheDocument();
 		expect(screen.getByText('Date Completed')).toBeInTheDocument();
 		expect(screen.getByText('Status')).toBeInTheDocument();
 
@@ -482,7 +478,7 @@ describe('ProjectActivityAssignments', () => {
 			sub_activity_name: 'Welding',
 			default_manhours: 8,
 			manhours_assigned: '6',
-			start_date: '2026-03-15',
+			due_date: '2026-03-15',
 		});
 
 		// After success, the inline add row is closed

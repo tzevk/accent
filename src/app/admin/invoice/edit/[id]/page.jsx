@@ -126,14 +126,14 @@ export default function EditInvoicePage() {
 		}));
 	};
 
-	// Fetch incoming POs from localStorage
+	// Fetch incoming POs from database
 	useEffect(() => {
-		try {
-			const stored = localStorage.getItem('incomingPOs');
-			if (stored) setIncomingPOs(JSON.parse(stored));
-		} catch (e) {
-			console.error('Error loading incoming POs:', e);
-		}
+		fetch('/api/admin/purchase-orders?limit=200&sortBy=po_date&sortOrder=desc')
+			.then((res) => res.json())
+			.then((data) => {
+				if (data.success) setIncomingPOs(data.data || []);
+			})
+			.catch((err) => console.error('Error fetching purchase orders:', err));
 	}, []);
 
 	// Fetch PO balance when po_number or client_name changes
@@ -753,8 +753,8 @@ export default function EditInvoicePage() {
 																				{po.po_number}
 																			</div>
 																			<div className="text-xs text-gray-500">
-																				{po.company_name}
-																				{po.company_name && po.po_date
+																				{po.vendor_name}
+																				{po.vendor_name && po.po_date
 																					? ' | '
 																					: ''}
 																				{po.po_date || ''}

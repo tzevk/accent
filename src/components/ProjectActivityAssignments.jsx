@@ -70,7 +70,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		activity_id: '',
 		sub_activity_id: '',
 		manhours_assigned: '',
-		start_date: todayStr(),
+		due_date: todayStr(),
 	});
 
 	// Search / filter / sort state
@@ -156,7 +156,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			activity_id: '',
 			sub_activity_id: '',
 			manhours_assigned: '',
-			start_date: todayStr(),
+			due_date: todayStr(),
 		});
 	};
 
@@ -204,7 +204,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 					sub_activity_name: subActivity?.name || '',
 					default_manhours: subActivity?.default_manhours || 0,
 					manhours_assigned: addForm.manhours_assigned,
-					start_date: addForm.start_date || null,
+					due_date: addForm.due_date || null,
 				}),
 			});
 			if (res?.success) {
@@ -260,7 +260,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		}
 	});
 
-	const COLS = 9; // project_number, discipline, activity, sub-activity, default_manhours, manhours, assigned date, completion date, status
+	const COLS = 8; // project_number, discipline, activity, sub-activity, default_manhours, manhours, completion date, status
 
 	// Build the list of projects the user can add activities to: any project they
 	// already have assignments on, plus any team project with no activities yet.
@@ -339,8 +339,6 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 					return parseFloat(r.activity.default_manhours) || 0;
 				case 'planned_hours':
 					return parseFloat(r.activity.planned_hours) || 0;
-				case 'start_date':
-					return r.activity.start_date || '';
 				case 'due_date':
 					return r.activity.due_date || '';
 				case 'status':
@@ -447,14 +445,13 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 				<div>
 					<table className="w-full text-sm border-collapse table-fixed">
 						<colgroup>
-							<col className="w-[11%]" />
-							<col className="w-[12%]" />
-							<col className="w-[18%]" />
-							<col className="w-[18%]" />
+							<col className="w-[14%]" />
+							<col className="w-[13%]" />
+							<col className="w-[19%]" />
+							<col className="w-[19%]" />
 							<col className="w-[8%]" />
-							<col className="w-[7%]" />
-							<col className="w-[9%]" />
-							<col className="w-[9%]" />
+							<col className="w-[8%]" />
+							<col className="w-[11%]" />
 							<col className="w-[8%]" />
 						</colgroup>
 						<thead className="bg-[#64126D]/10">
@@ -492,12 +489,6 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 								<SortHeader
 									label="Manhours"
 									sortKey="planned_hours"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<SortHeader
-									label="Date Assigned"
-									sortKey="start_date"
 									sort={sort}
 									onSort={toggleSort}
 								/>
@@ -582,9 +573,6 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 											<span className="text-[#4A1254]">
 												{activity.planned_hours || 0}
 											</span>
-										</td>
-										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
-											{formatShortDate(activity.start_date)}
 										</td>
 										<td className="py-1 px-2 text-center align-middle">
 											<span className="text-[#4A1254]">
@@ -722,25 +710,22 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									<td className="py-1 px-2 text-center align-middle">
 										<input
 											type="date"
-											value={addForm.start_date}
+											value={addForm.due_date}
 											onChange={(e) =>
 												setAddForm((p) => ({
 													...p,
-													start_date: e.target.value,
+													due_date: e.target.value,
 												}))
 											}
 											className="px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 										/>
-									</td>
-									<td className="py-1 px-2 text-center align-middle text-xs text-gray-400">
-										–
 									</td>
 									<td className="py-1 px-2 text-center align-middle">
 										<div className="flex items-center justify-center gap-1">
 											<button
 												onClick={() => submitAdd()}
 												disabled={saving}
-												className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors disabled:opacity-50"
+												className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50"
 												title="Save"
 											>
 												<CheckIcon className="w-4 h-4" />
@@ -748,7 +733,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 											<button
 												onClick={closeAddRow}
 												disabled={saving}
-												className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors"
+												className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
 												title="Cancel"
 											>
 												<XMarkIcon className="w-4 h-4" />
@@ -771,7 +756,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									<td className="py-1 px-2 text-center text-[#4A1254]">
 										{totalManhours}
 									</td>
-									<td colSpan={3}></td>
+									<td colSpan={2}></td>
 								</tr>
 							)}
 						</tbody>
