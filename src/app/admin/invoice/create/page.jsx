@@ -2,7 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
+import {
+	validateInvoice,
+	extractServerError,
+} from '@/utils/invoice-validation';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import {
@@ -78,11 +83,18 @@ export default function CreateInvoicePage() {
 						...prev,
 						invoice_number: data.invoice_number,
 					}));
+				} else {
+					toast.error(
+						'Could not auto-generate invoice number. Please enter one manually.'
+					);
 				}
 			})
-			.catch((err) =>
-				console.error('Error fetching next invoice number:', err)
-			);
+			.catch((err) => {
+				console.error('Error fetching next invoice number:', err);
+				toast.error(
+					'Could not auto-generate invoice number. Please enter one manually.'
+				);
+			});
 	}, []);
 
 	// Fetch companies on mount
@@ -350,8 +362,10 @@ export default function CreateInvoicePage() {
 
 	// Save invoice
 	const saveInvoice = async () => {
-		if (!formData.client_name) {
-			alert('Client name is required');
+		const validation = validateInvoice(formData);
+		if (!validation.valid) {
+			const messages = validation.errors.map((e) => e.message).join('; ');
+			toast.error(messages);
 			return;
 		}
 
@@ -391,15 +405,28 @@ export default function CreateInvoicePage() {
 				}),
 			});
 
-			const data = await res.json();
-			if (data.success) {
-				router.push('/admin/invoice');
-			} else {
-				alert(data.message || 'Failed to create invoice');
+			let data = null;
+			try {
+				data = await res.json();
+			} catch (parseErr) {
+				console.error('Non-JSON response from server:', parseErr);
 			}
+
+			if (res.ok && data?.success) {
+				toast.success('Invoice created');
+				router.push('/admin/invoice');
+				return;
+			}
+
+			toast.error(
+				extractServerError(
+					data,
+					`Failed to create invoice (HTTP ${res.status})`
+				)
+			);
 		} catch (error) {
 			console.error('Error saving invoice:', error);
-			alert('Failed to create invoice');
+			toast.error(`Failed to create invoice: ${error.message}`);
 		} finally {
 			setSaving(false);
 		}
