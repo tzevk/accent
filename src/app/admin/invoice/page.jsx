@@ -7,7 +7,6 @@ import Navbar from '@/components/Navbar';
 import {
 	DocumentCurrencyDollarIcon,
 	MagnifyingGlassIcon,
-	FunnelIcon,
 	ArrowPathIcon,
 	ArrowDownTrayIcon,
 	ChevronLeftIcon,
@@ -32,17 +31,6 @@ export default function InvoicePage() {
 
 	// Filters
 	const [searchTerm, setSearchTerm] = useState('');
-	const [statusFilter, setStatusFilter] = useState('all');
-
-	// Stats
-	const [stats, setStats] = useState({
-		total: 0,
-		draft: 0,
-		sent: 0,
-		paid: 0,
-		overdue: 0,
-		cancelled: 0,
-	});
 
 	// Fetch invoices
 	const fetchInvoices = useCallback(
@@ -54,8 +42,6 @@ export default function InvoicePage() {
 					limit: pagination.limit.toString(),
 				});
 
-				if (statusFilter !== 'all') params.append('status', statusFilter);
-
 				const res = await fetch(`/api/admin/invoices?${params}`);
 				const data = await res.json();
 
@@ -63,16 +49,6 @@ export default function InvoicePage() {
 					setInvoices(data.data || []);
 					setPagination(
 						data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 }
-					);
-					setStats(
-						data.stats || {
-							total: 0,
-							draft: 0,
-							sent: 0,
-							paid: 0,
-							overdue: 0,
-							cancelled: 0,
-						}
 					);
 				} else {
 					setInvoices([]);
@@ -84,14 +60,14 @@ export default function InvoicePage() {
 				setLoading(false);
 			}
 		},
-		[statusFilter, pagination.limit]
+		[pagination.limit]
 	);
 
 	useEffect(() => {
 		if (!authLoading && user) {
 			fetchInvoices(1);
 		}
-	}, [authLoading, user, statusFilter, fetchInvoices]);
+	}, [authLoading, user, fetchInvoices]);
 
 	// Filter invoices by search term
 	const filteredInvoices = invoices.filter((inv) => {
@@ -104,22 +80,26 @@ export default function InvoicePage() {
 		);
 	});
 
-	// Get status styling
-	const getStatusStyle = (status) => {
-		switch (status) {
-			case 'draft':
-				return 'bg-gray-100 text-gray-700';
-			case 'sent':
-				return 'bg-blue-100 text-blue-700';
-			case 'paid':
-				return 'bg-green-100 text-green-700';
-			case 'overdue':
-				return 'bg-red-100 text-red-700';
-			case 'cancelled':
-				return 'bg-gray-100 text-gray-500';
-			default:
-				return 'bg-gray-100 text-gray-700';
+	// Compute days overdue from due_date. Returns null if no due_date.
+	const getDaysOverdue = (dueDate) => {
+		if (!dueDate) return null;
+		const due = new Date(dueDate);
+		if (typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+			const today = new Date();
+			const todayUtc = Date.UTC(
+				today.getFullYear(),
+				today.getMonth(),
+				today.getDate()
+			);
+			const dueUtc = Date.UTC(
+				due.getUTCFullYear(),
+				due.getUTCMonth(),
+				due.getUTCDate()
+			);
+			return Math.floor((todayUtc - dueUtc) / 86400000);
 		}
+		const today = new Date();
+		return Math.floor((today - due) / 86400000);
 	};
 
 	// Format currency
@@ -215,46 +195,6 @@ export default function InvoicePage() {
 					</button>
 				</div>
 
-				{/* Stats Cards */}
-				<div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-2xl font-bold text-gray-900">
-							{stats.total || 0}
-						</div>
-						<div className="text-sm text-gray-600">Total</div>
-					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-2xl font-bold text-gray-600">
-							{stats.draft || 0}
-						</div>
-						<div className="text-sm text-gray-600">Draft</div>
-					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-2xl font-bold text-blue-600">
-							{stats.sent || 0}
-						</div>
-						<div className="text-sm text-gray-600">Sent</div>
-					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-2xl font-bold text-green-600">
-							{stats.paid || 0}
-						</div>
-						<div className="text-sm text-gray-600">Paid</div>
-					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-2xl font-bold text-red-600">
-							{stats.overdue || 0}
-						</div>
-						<div className="text-sm text-gray-600">Overdue</div>
-					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-2xl font-bold text-gray-500">
-							{stats.cancelled || 0}
-						</div>
-						<div className="text-sm text-gray-600">Cancelled</div>
-					</div>
-				</div>
-
 				{/* Filters */}
 				<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
 					<div className="flex flex-wrap items-center gap-4">
@@ -270,23 +210,6 @@ export default function InvoicePage() {
 									className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 								/>
 							</div>
-						</div>
-
-						{/* Status Filter */}
-						<div className="flex items-center gap-2">
-							<FunnelIcon className="h-5 w-5 text-gray-400" />
-							<select
-								value={statusFilter}
-								onChange={(e) => setStatusFilter(e.target.value)}
-								className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-							>
-								<option value="all">All Status</option>
-								<option value="draft">Draft</option>
-								<option value="sent">Sent</option>
-								<option value="paid">Paid</option>
-								<option value="overdue">Overdue</option>
-								<option value="cancelled">Cancelled</option>
-							</select>
 						</div>
 
 						{/* Refresh */}
@@ -338,7 +261,7 @@ export default function InvoicePage() {
 											Due Date
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-											Status
+											Days Overdue
 										</th>
 										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
 											Download
@@ -377,12 +300,16 @@ export default function InvoicePage() {
 												{formatDate(invoice.due_date)}
 											</td>
 											<td className="px-6 py-4">
-												<span
-													className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusStyle(invoice.status)}`}
-												>
-													{invoice.status?.charAt(0).toUpperCase() +
-														invoice.status?.slice(1)}
-												</span>
+												{(() => {
+													const days = getDaysOverdue(invoice.due_date);
+													if (days == null || days <= 0)
+														return <span className="text-gray-400">—</span>;
+													return (
+														<span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">
+															{days} {days === 1 ? 'day' : 'days'} overdue
+														</span>
+													);
+												})()}
 											</td>
 											<td className="px-6 py-4">
 												<div className="flex items-center justify-center gap-1">
