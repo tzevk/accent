@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Quotation (Outgoing) — quotations created from proposals/projects
+ * and sent to clients. Uses /api/admin/quotations.
+ * Full custom page with search, filters, stats, and project attachment.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -397,10 +403,10 @@ export default function QuotationPage() {
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
 								<DocumentTextIcon className="h-7 w-7 text-purple-600" />
-								Quotation (Incoming)
+								Quotation (Outgoing)
 							</h1>
 							<p className="text-sm text-gray-500 mt-1">
-								View and download incoming quotations
+								Quotations sent to clients
 							</p>
 						</div>
 						<div>

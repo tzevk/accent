@@ -610,7 +610,7 @@ export default function Sidebar() {
 									>
 										<DocumentTextIcon className="h-3.5 w-3.5 mr-2" />
 										<span className="hidden sidebar-open:inline">
-											Quotation (Incoming)
+											Quotation (Outgoing)
 										</span>
 									</Link>
 									<Link
@@ -623,7 +623,7 @@ export default function Sidebar() {
 									>
 										<DocumentTextIcon className="h-3.5 w-3.5 mr-2" />
 										<span className="hidden sidebar-open:inline">
-											Quotation (Outgoing)
+											Quotation (Incoming)
 										</span>
 									</Link>
 									<Link

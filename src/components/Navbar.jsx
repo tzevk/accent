@@ -91,6 +91,9 @@ function hasReportFieldAccess(user, fieldKey) {
 	return false;
 }
 
+// Quotation naming convention:
+// - /admin/quotation         → Outgoing (Accent → client), from proposals/projects
+// - /admin/quotation-outgoing → Incoming (vendor → Accent), vendor quotations
 // Admin menu items with their resource keys
 const adminMenuConfig = [
 	{ name: 'Admin Logs', href: '/admin/activity-logs', resource: 'admin' },
@@ -133,9 +136,9 @@ const adminMenuConfig = [
 		href: '/admin/outgoing-purchase-order',
 		resource: 'admin',
 	},
-	{ name: 'Quotation (Incoming)', href: '/admin/quotation', resource: 'admin' },
+	{ name: 'Quotation (Outgoing)', href: '/admin/quotation', resource: 'admin' },
 	{
-		name: 'Quotation (Outgoing)',
+		name: 'Quotation (Incoming)',
 		href: '/admin/quotation-outgoing',
 		resource: 'admin',
 	},
@@ -156,12 +159,12 @@ const adminMenuGroups = [
 		icon: DocumentTextIcon,
 		items: [
 			{
-				name: 'Quotation (Incoming)',
+				name: 'Quotation (Outgoing)',
 				href: '/admin/quotation',
 				icon: DocumentTextIcon,
 			},
 			{
-				name: 'Quotation (Outgoing)',
+				name: 'Quotation (Incoming)',
 				href: '/admin/quotation-outgoing',
 				icon: DocumentTextIcon,
 			},

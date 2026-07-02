@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Quotation (Incoming) — quotations received from vendors.
+ * Uses /api/admin/outgoing-quotations via ResourcePage.
+ * Simple CRUD for vendor quotations (vendor name, amount, status).
+ */
+
 import { z } from 'zod';
 import { useState } from 'react';
 import {
@@ -145,7 +151,7 @@ export default function OutgoingQuotationPage() {
 
 	return (
 		<ResourcePage
-			title="Quotation (Outgoing)"
+			title="Quotation (Incoming)"
 			subtitle="Quotations received from vendors"
 			endpoint="/api/admin/outgoing-quotations"
 			queryKey={['outgoing-quotations']}

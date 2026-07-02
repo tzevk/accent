@@ -686,9 +686,6 @@ export default function PurchaseOrderPage() {
 								<option value="vendor_name-asc">Vendor A–Z</option>
 								<option value="total-desc">Amount: High to Low</option>
 								<option value="total-asc">Amount: Low to High</option>
-								<option value="delivery_date-asc">
-									Delivery: Earliest First
-								</option>
 							</select>
 						</div>
 
@@ -749,9 +746,6 @@ export default function PurchaseOrderPage() {
 											Date
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-											Delivery Date
-										</th>
-										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 											Status
 										</th>
 										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
@@ -799,9 +793,6 @@ export default function PurchaseOrderPage() {
 											</td>
 											<td className="px-6 py-4 text-gray-600">
 												{formatDate(po.po_date || po.created_at)}
-											</td>
-											<td className="px-6 py-4 text-gray-600">
-												{formatDate(po.delivery_date)}
 											</td>
 											<td className="px-6 py-4">
 												<span

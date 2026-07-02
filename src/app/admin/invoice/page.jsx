@@ -35,13 +35,14 @@ export default function InvoicePage() {
 
 	// Fetch invoices
 	const fetchInvoices = useCallback(
-		async (page = 1) => {
+		async (page = 1, search = '') => {
 			setLoading(true);
 			try {
 				const params = new URLSearchParams({
 					page: page.toString(),
 					limit: pagination.limit.toString(),
 				});
+				if (search) params.set('search', search);
 
 				const res = await fetch(`/api/admin/invoices?${params}`);
 				const data = await res.json();
@@ -67,20 +68,10 @@ export default function InvoicePage() {
 
 	useEffect(() => {
 		if (!authLoading && user) {
-			fetchInvoices(1);
+			setPagination((prev) => ({ ...prev, page: 1 }));
+			fetchInvoices(1, searchTerm);
 		}
-	}, [authLoading, user, fetchInvoices]);
-
-	// Filter invoices by search term
-	const filteredInvoices = invoices.filter((inv) => {
-		if (!searchTerm) return true;
-		const search = searchTerm.toLowerCase();
-		return (
-			inv.invoice_number?.toLowerCase().includes(search) ||
-			inv.client_name?.toLowerCase().includes(search) ||
-			inv.description?.toLowerCase().includes(search)
-		);
-	});
+	}, [searchTerm, authLoading, user, fetchInvoices]);
 
 	// Compute days overdue from due_date. Returns null if no due_date.
 	const getDaysOverdue = (dueDate) => {
@@ -161,7 +152,7 @@ export default function InvoicePage() {
 
 			if (res.ok && data?.success) {
 				toast.success('Invoice deleted');
-				fetchInvoices(pagination.page);
+				fetchInvoices(pagination.page, searchTerm);
 				return;
 			}
 
@@ -229,7 +220,7 @@ export default function InvoicePage() {
 
 						{/* Refresh */}
 						<button
-							onClick={() => fetchInvoices(pagination.page)}
+							onClick={() => fetchInvoices(pagination.page, searchTerm)}
 							className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
 							title="Refresh"
 						>
@@ -247,7 +238,7 @@ export default function InvoicePage() {
 							<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
 							<span className="ml-3 text-gray-600">Loading invoices...</span>
 						</div>
-					) : filteredInvoices.length === 0 ? (
+					) : invoices.length === 0 ? (
 						<div className="text-center py-12">
 							<DocumentCurrencyDollarIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
 							<p className="text-gray-600">No invoices found</p>
@@ -284,7 +275,7 @@ export default function InvoicePage() {
 									</tr>
 								</thead>
 								<tbody className="divide-y divide-gray-200">
-									{filteredInvoices.map((invoice) => (
+									{invoices.map((invoice) => (
 										<tr
 											key={invoice.id}
 											className="hover:bg-gray-50 transition-colors"
@@ -368,7 +359,7 @@ export default function InvoicePage() {
 							</span>
 							<div className="flex items-center gap-2">
 								<button
-									onClick={() => fetchInvoices(pagination.page - 1)}
+									onClick={() => fetchInvoices(pagination.page - 1, searchTerm)}
 									disabled={pagination.page === 1}
 									className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
 								>
@@ -378,7 +369,7 @@ export default function InvoicePage() {
 									{pagination.page} / {pagination.totalPages}
 								</span>
 								<button
-									onClick={() => fetchInvoices(pagination.page + 1)}
+									onClick={() => fetchInvoices(pagination.page + 1, searchTerm)}
 									disabled={pagination.page === pagination.totalPages}
 									className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
 								>
