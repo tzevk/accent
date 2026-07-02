@@ -26,6 +26,7 @@ export async function GET(request) {
 		const page = parseInt(searchParams.get('page') || '1');
 		const limit = parseInt(searchParams.get('limit') || '20');
 		const status = searchParams.get('status');
+		const search = searchParams.get('search') || '';
 		const offset = (page - 1) * limit;
 
 		connection = await dbConnect();
@@ -203,6 +204,13 @@ export async function GET(request) {
 		if (status && status !== 'all') {
 			query += ' AND status = ?';
 			params.push(status);
+		}
+
+		if (search) {
+			const like = `%${search}%`;
+			query +=
+				' AND (invoice_number LIKE ? OR client_name LIKE ? OR description LIKE ?)';
+			params.push(like, like, like);
 		}
 
 		// Get total count

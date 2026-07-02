@@ -70,13 +70,14 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		activity_id: '',
 		sub_activity_id: '',
 		manhours_assigned: '',
+		quantity: '',
 		due_date: todayStr(),
 	});
 
 	// Search / filter / sort state
 	const [search, setSearch] = useState('');
 	const [statusFilter, setStatusFilter] = useState('all');
-	const [sort, setSort] = useState({ key: null, dir: 'asc' });
+	const [sort, setSort] = useState({ key: 'due_date', dir: 'desc' });
 
 	const toggleSort = (key) => {
 		setSort((prev) => {
@@ -156,6 +157,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			activity_id: '',
 			sub_activity_id: '',
 			manhours_assigned: '',
+			quantity: '',
 			due_date: todayStr(),
 		});
 	};
@@ -204,6 +206,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 					sub_activity_name: subActivity?.name || '',
 					default_manhours: subActivity?.default_manhours || 0,
 					manhours_assigned: addForm.manhours_assigned,
+					qty_completed: addForm.quantity,
 					due_date: addForm.due_date || null,
 				}),
 			});
@@ -260,7 +263,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		}
 	});
 
-	const COLS = 8; // project_number, discipline, activity, sub-activity, default_manhours, manhours, completion date, status
+	const COLS = 9; // project_number, discipline, activity, sub-activity, default_manhours, manhours, qty_completed, completion date, status
 
 	// Build the list of projects the user can add activities to: any project they
 	// already have assignments on, plus any team project with no activities yet.
@@ -339,6 +342,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 					return parseFloat(r.activity.default_manhours) || 0;
 				case 'planned_hours':
 					return parseFloat(r.activity.planned_hours) || 0;
+				case 'qty_completed':
+					return parseFloat(r.activity.qty_completed) || 0;
 				case 'due_date':
 					return r.activity.due_date || '';
 				case 'status':
@@ -419,7 +424,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 							onClick={() => {
 								setSearch('');
 								setStatusFilter('all');
-								setSort({ key: null, dir: 'asc' });
+								setSort({ key: 'due_date', dir: 'desc' });
 							}}
 							className="px-2 py-1 text-xs font-semibold text-[#64126D] hover:bg-purple-50 rounded"
 						>
@@ -445,14 +450,15 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 				<div>
 					<table className="w-full text-sm border-collapse table-fixed">
 						<colgroup>
-							<col className="w-[14%]" />
 							<col className="w-[13%]" />
-							<col className="w-[19%]" />
-							<col className="w-[19%]" />
-							<col className="w-[8%]" />
-							<col className="w-[8%]" />
-							<col className="w-[11%]" />
-							<col className="w-[8%]" />
+							<col className="w-[12%]" />
+							<col className="w-[16%]" />
+							<col className="w-[16%]" />
+							<col className="w-[7%]" />
+							<col className="w-[7%]" />
+							<col className="w-[7%]" />
+							<col className="w-[9%]" />
+							<col className="w-[7%]" />
 						</colgroup>
 						<thead className="bg-[#64126D]/10">
 							<tr className="divide-x divide-[#64126D]/40">
@@ -489,6 +495,12 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 								<SortHeader
 									label="Manhours"
 									sortKey="planned_hours"
+									sort={sort}
+									onSort={toggleSort}
+								/>
+								<SortHeader
+									label="Quantity"
+									sortKey="qty_completed"
 									sort={sort}
 									onSort={toggleSort}
 								/>
@@ -573,6 +585,9 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 											<span className="text-[#4A1254]">
 												{activity.planned_hours || 0}
 											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
+											{activity.qty_completed || 0}
 										</td>
 										<td className="py-1 px-2 text-center align-middle">
 											<span className="text-[#4A1254]">
@@ -709,6 +724,22 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									</td>
 									<td className="py-1 px-2 text-center align-middle">
 										<input
+											type="number"
+											min="0"
+											step="1"
+											value={addForm.quantity}
+											onChange={(e) =>
+												setAddForm((p) => ({
+													...p,
+													quantity: e.target.value,
+												}))
+											}
+											placeholder="Qty"
+											className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+										/>
+									</td>
+									<td className="py-1 px-2 text-center align-middle">
+										<input
 											type="date"
 											value={addForm.due_date}
 											onChange={(e) =>
@@ -756,7 +787,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									<td className="py-1 px-2 text-center text-[#4A1254]">
 										{totalManhours}
 									</td>
-									<td colSpan={2}></td>
+									<td colSpan={3}></td>
 								</tr>
 							)}
 						</tbody>

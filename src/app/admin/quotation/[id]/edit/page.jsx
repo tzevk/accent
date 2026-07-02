@@ -734,25 +734,25 @@ export default function EditQuotationPage() {
 
 							{/* Scope of Work Table */}
 							<div className="border border-gray-300 mb-4">
-								<table className="w-full">
+								<table className="w-full table-fixed">
 									<thead>
 										<tr className="bg-gray-50">
-											<th className="w-12 p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-[5%] p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
 												Sr. No.
 											</th>
-											<th className="p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-[48%] p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
 												Scope of the Work
 											</th>
-											<th className="w-16 p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-[12%] p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
 												Qty.
 											</th>
-											<th className="w-20 p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-[14%] p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
 												Rate
 											</th>
-											<th className="w-24 p-3 text-center text-sm font-semibold border-b border-gray-300">
+											<th className="w-[18%] p-3 text-center text-sm font-semibold border-b border-gray-300">
 												Amount
 											</th>
-											<th className="w-10 p-3 border-b border-gray-300"></th>
+											<th className="w-[3%] p-3 border-b border-gray-300"></th>
 										</tr>
 									</thead>
 									<tbody>

@@ -314,22 +314,22 @@ export default function ViewQuotationPage() {
 
 							{/* Scope of Work Table */}
 							<div className="border border-gray-300 mb-4">
-								<table className="w-full">
+								<table className="w-full table-fixed">
 									<thead>
 										<tr className="bg-gray-50">
-											<th className="w-16 p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-[5%] p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
 												Sr. No.
 											</th>
-											<th className="p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-[49%] p-3 text-left text-sm font-semibold border-r border-b border-gray-300">
 												Scope of the Work
 											</th>
-											<th className="w-24 p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-[14%] p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
 												Qty.
 											</th>
-											<th className="w-28 p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
+											<th className="w-[16%] p-3 text-center text-sm font-semibold border-r border-b border-gray-300">
 												Rate
 											</th>
-											<th className="w-32 p-3 text-center text-sm font-semibold border-b border-gray-300">
+											<th className="w-[16%] p-3 text-center text-sm font-semibold border-b border-gray-300">
 												Amount
 											</th>
 										</tr>
