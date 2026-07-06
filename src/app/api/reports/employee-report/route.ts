@@ -21,6 +21,7 @@ interface DailyRow {
 	date: string | null;
 	project_id: number | string;
 	project_code: string;
+	project_name: string;
 	activity_name: string;
 	sub_activity_name: string;
 	assignment_id: string;
@@ -283,6 +284,7 @@ export async function GET(request: Request) {
 							date: data.due_date || null,
 							project_id: projectId,
 							project_code: projectCode,
+							project_name: (project.project_name as string) || '',
 							activity_name: activityName,
 							sub_activity_name: subActivityName,
 							assignment_id: assignmentId,
@@ -300,6 +302,7 @@ export async function GET(request: Request) {
 							date: entry.date || null,
 							project_id: projectId,
 							project_code: projectCode,
+							project_name: (project.project_name as string) || '',
 							activity_name: activityName,
 							sub_activity_name: subActivityName,
 							assignment_id: assignmentId,
