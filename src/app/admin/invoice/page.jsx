@@ -254,11 +254,14 @@ export default function InvoicePage() {
 										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 											Client
 										</th>
-										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-											Description
+										<th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
+											Net Amount
 										</th>
-										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-											Amount
+										<th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
+											Tax
+										</th>
+										<th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
+											Gross Amount
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 											Issue Date
@@ -293,11 +296,18 @@ export default function InvoicePage() {
 													{invoice.client_email}
 												</div>
 											</td>
-											<td className="px-6 py-4 text-gray-600 max-w-[200px] truncate">
-												{invoice.description}
+											<td className="px-6 py-4 text-right font-semibold text-gray-900 tabular-nums">
+												{formatCurrency(
+													invoice.gross_amount ?? invoice.subtotal ?? 0
+												)}
 											</td>
-											<td className="px-6 py-4 font-semibold text-gray-900">
-												{formatCurrency(invoice.total)}
+											<td className="px-6 py-4 text-right font-semibold text-orange-600 tabular-nums">
+												{formatCurrency(invoice.tax_amount ?? 0)}
+											</td>
+											<td className="px-6 py-4 text-right font-semibold text-gray-900 tabular-nums">
+												{formatCurrency(
+													invoice.total ?? invoice.net_amount ?? 0
+												)}
 											</td>
 											<td className="px-6 py-4 text-gray-600">
 												{formatDate(invoice.invoice_date || invoice.created_at)}
@@ -352,7 +362,7 @@ export default function InvoicePage() {
 					{/* Pagination */}
 					{pagination.totalPages > 1 && (
 						<div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-							<span className="text-sm text-gray-600">
+							<span className="text-sm text-black">
 								Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
 								{Math.min(pagination.page * pagination.limit, pagination.total)}{' '}
 								of {pagination.total}
@@ -363,9 +373,9 @@ export default function InvoicePage() {
 									disabled={pagination.page === 1}
 									className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
 								>
-									<ChevronLeftIcon className="h-4 w-4" />
+									<ChevronLeftIcon className="h-4 w-4 text-black" />
 								</button>
-								<span className="px-3 py-1 text-sm">
+								<span className="px-3 py-1 text-sm text-black">
 									{pagination.page} / {pagination.totalPages}
 								</span>
 								<button
@@ -373,7 +383,7 @@ export default function InvoicePage() {
 									disabled={pagination.page === pagination.totalPages}
 									className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
 								>
-									<ChevronRightIcon className="h-4 w-4" />
+									<ChevronRightIcon className="h-4 w-4 text-black" />
 								</button>
 							</div>
 						</div>
