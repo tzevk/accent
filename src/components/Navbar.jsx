@@ -60,6 +60,13 @@ const reportsMenuConfig = [
 		resource: 'reports',
 		reportField: 'project_activities',
 	},
+	{
+		name: 'Employee Report',
+		href: '/reports/employee-report',
+		icon: UserGroupIcon,
+		resource: 'reports',
+		reportField: 'project_activities',
+	},
 ];
 
 function hasReportFieldAccess(user, fieldKey) {
