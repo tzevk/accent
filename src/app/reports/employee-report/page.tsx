@@ -116,13 +116,20 @@ export default function EmployeeReportPage() {
 
 	// Unique project codes for the dropdown
 	const projectOptions = useMemo(() => {
-		const codes = new Set<string>();
+		const map = new Map<string, string>();
 		employees.forEach((e) =>
 			e.rows.forEach((r) => {
-				if (r.project_code) codes.add(r.project_code);
+				if (r.project_code && !map.has(r.project_code)) {
+					map.set(r.project_code, r.project_name || '');
+				}
 			})
 		);
-		return Array.from(codes).sort();
+		return Array.from(map.entries())
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([code, name]) => ({
+				code,
+				label: name ? `${code} — ${name}` : code,
+			}));
 	}, [employees]);
 
 	const isSuperAdmin =
@@ -332,9 +339,9 @@ export default function EmployeeReportPage() {
 						title="Filter by project"
 					>
 						<option value="">All projects</option>
-						{projectOptions.map((code) => (
-							<option key={code} value={code}>
-								{code}
+						{projectOptions.map((opt) => (
+							<option key={opt.code} value={opt.code}>
+								{opt.label}
 							</option>
 						))}
 					</select>

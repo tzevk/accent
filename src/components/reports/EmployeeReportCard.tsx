@@ -21,6 +21,7 @@ export interface EmployeeRow {
 	date: string | null;
 	project_id: number | string;
 	project_code: string;
+	project_name: string;
 	activity_name: string;
 	sub_activity_name: string;
 	assignment_id: string;
@@ -157,6 +158,20 @@ export default function EmployeeReportCard({
 				cell: (info) =>
 					info.getValue() ? (
 						<span className="font-mono text-[11px] text-purple-700">
+							{info.getValue()}
+						</span>
+					) : (
+						'–'
+					),
+			}),
+			columnHelper.accessor('project_name', {
+				id: 'project_name',
+				header: (info) => (
+					<DefaultSortHeader column={info.column} title="Project Name" />
+				),
+				cell: (info) =>
+					info.getValue() ? (
+						<span className="text-sm text-gray-700 truncate max-w-[220px] block">
 							{info.getValue()}
 						</span>
 					) : (
@@ -376,7 +391,7 @@ export default function EmployeeReportCard({
 							<tr>
 								<td
 									className="px-4 py-3 text-right text-xs uppercase tracking-wider text-gray-600"
-									colSpan={4}
+									colSpan={5}
 								>
 									Total
 								</td>
