@@ -84,8 +84,11 @@ export default function EmployeeReportPage() {
 	};
 
 	const [search, setSearch] = useState('');
+	const [selectedEmployee, setSelectedEmployee] = useState('');
+	const [selectedProject, setSelectedProject] = useState('');
 	const [dateFrom, setDateFrom] = useState('');
 	const [dateTo, setDateTo] = useState('');
+	const [showEmpty, setShowEmpty] = useState(false);
 
 	const reportQuery = useQuery<ReportResponse>({
 		queryKey: ['reports', 'employee-report'],
@@ -102,6 +105,26 @@ export default function EmployeeReportPage() {
 	const isLoading = reportQuery.isLoading;
 	const error = reportQuery.error?.message || reportQuery.data?.error;
 
+	// Unique employee names for the dropdown
+	const employeeOptions = useMemo(() => {
+		const names = new Set<string>();
+		employees.forEach((e) => {
+			if (e.user_name) names.add(e.user_name);
+		});
+		return Array.from(names).sort();
+	}, [employees]);
+
+	// Unique project codes for the dropdown
+	const projectOptions = useMemo(() => {
+		const codes = new Set<string>();
+		employees.forEach((e) =>
+			e.rows.forEach((r) => {
+				if (r.project_code) codes.add(r.project_code);
+			})
+		);
+		return Array.from(codes).sort();
+	}, [employees]);
+
 	const isSuperAdmin =
 		user?.is_super_admin === true || user?.is_super_admin === 1;
 	const hasReportsPermission =
@@ -112,25 +135,32 @@ export default function EmployeeReportPage() {
 	const hasFieldPermission = hasProjectActivitiesFieldPermission(user);
 	const hasAccess = isSuperAdmin || hasReportsPermission || hasFieldPermission;
 
-	// Filter employees and their rows by search query and date range.
+	// Filter employees and their rows by search query, employee, project, and date range.
 	const filtered = useMemo(() => {
 		const q = search.trim().toLowerCase();
 		const hasDateFilter = !!dateFrom || !!dateTo;
-		const hasAnyFilter = q || hasDateFilter;
+		const hasEmpFilter = !!selectedEmployee;
+		const hasProjFilter = !!selectedProject;
+		const hasAnyFilter = q || hasDateFilter || hasEmpFilter || hasProjFilter;
 
-		// No filters active — return all employees as-is.
-		if (!hasAnyFilter) return employees;
+		// No filters active and showing all — return as-is.
+		if (!hasAnyFilter && showEmpty) return employees;
 
 		return employees
 			.map((emp) => {
+				// ── employee-level filter ──
+				if (hasEmpFilter && emp.user_name !== selectedEmployee) return null;
+
 				// ── search filter ──
 				const nameMatch = q
 					? emp.user_name?.toLowerCase().includes(q) ||
 						emp.email?.toLowerCase().includes(q)
 					: true;
 
-				// ── per-row filter (search + date range) ──
+				// ── per-row filter (project + search + date range) ──
 				const rowMatch = (r: (typeof emp.rows)[number]) => {
+					// Project filter
+					if (hasProjFilter && r.project_code !== selectedProject) return false;
 					// Row-level search filter (only when name didn't match)
 					if (q && !nameMatch) {
 						if (
@@ -151,13 +181,21 @@ export default function EmployeeReportPage() {
 
 				const matchedRows = emp.rows.filter(rowMatch);
 
-				// Hide employee entirely if no rows survived.
+				// Hide employee if no rows survived (empty employees are hidden by default).
 				if (matchedRows.length === 0) return null;
 
 				return { ...emp, rows: matchedRows } as EmployeeReportItem;
 			})
 			.filter(Boolean) as EmployeeReportItem[];
-	}, [employees, search, dateFrom, dateTo]);
+	}, [
+		employees,
+		search,
+		selectedEmployee,
+		selectedProject,
+		dateFrom,
+		dateTo,
+		showEmpty,
+	]);
 
 	/* ── auth guards ─────────────────────────────────────────────────── */
 	if (authLoading) {
@@ -258,7 +296,7 @@ export default function EmployeeReportPage() {
 					</div>
 				)}
 
-				{/* Search + Date Filters */}
+				{/* Search + Filters */}
 				<div className="flex flex-wrap items-center gap-2 mb-5">
 					<div className="relative flex-1 min-w-[200px] max-w-sm">
 						<MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -271,13 +309,43 @@ export default function EmployeeReportPage() {
 						/>
 					</div>
 
+					{/* Employee filter */}
+					<select
+						value={selectedEmployee}
+						onChange={(e) => setSelectedEmployee(e.target.value)}
+						className="px-2 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-200 focus:border-purple-400"
+						title="Filter by employee"
+					>
+						<option value="">All employees</option>
+						{employeeOptions.map((name) => (
+							<option key={name} value={name}>
+								{name}
+							</option>
+						))}
+					</select>
+
+					{/* Project filter */}
+					<select
+						value={selectedProject}
+						onChange={(e) => setSelectedProject(e.target.value)}
+						className="px-2 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-200 focus:border-purple-400"
+						title="Filter by project"
+					>
+						<option value="">All projects</option>
+						{projectOptions.map((code) => (
+							<option key={code} value={code}>
+								{code}
+							</option>
+						))}
+					</select>
+
+					{/* Date range */}
 					<div className="flex items-center gap-1.5">
 						<CalendarDaysIcon className="w-4 h-4 text-gray-400" />
 						<input
 							type="date"
 							value={dateFrom}
 							onChange={(e) => setDateFrom(e.target.value)}
-							placeholder="From"
 							className="px-2 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-200 focus:border-purple-400"
 						/>
 						<span className="text-gray-400 text-xs">to</span>
@@ -285,27 +353,55 @@ export default function EmployeeReportPage() {
 							type="date"
 							value={dateTo}
 							onChange={(e) => setDateTo(e.target.value)}
-							placeholder="To"
 							className="px-2 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-200 focus:border-purple-400"
 						/>
-						{(dateFrom || dateTo) && (
-							<button
-								onClick={() => {
-									setDateFrom('');
-									setDateTo('');
-								}}
-								className="px-2 py-1.5 text-[11px] font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition"
-								title="Clear date range"
-							>
-								Clear
-							</button>
-						)}
 					</div>
+
+					{/* Show empty toggle */}
+					<label className="inline-flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded cursor-pointer transition select-none">
+						<input
+							type="checkbox"
+							checked={showEmpty}
+							onChange={(e) => setShowEmpty(e.target.checked)}
+							className="rounded text-purple-600 focus:ring-purple-500 h-3 w-3 border-gray-300"
+						/>
+						Show empty
+					</label>
+
+					{/* Clear all */}
+					{(search ||
+						selectedEmployee ||
+						selectedProject ||
+						dateFrom ||
+						dateTo ||
+						showEmpty) && (
+						<button
+							onClick={() => {
+								setSearch('');
+								setSelectedEmployee('');
+								setSelectedProject('');
+								setDateFrom('');
+								setDateTo('');
+								setShowEmpty(false);
+							}}
+							className="px-2 py-1.5 text-[11px] font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition"
+							title="Clear all filters"
+						>
+							Clear
+						</button>
+					)}
 
 					{!isLoading && (
 						<span className="text-[11px] text-gray-400">
 							{filtered.length} of {employees.length}
-							{search || dateFrom || dateTo ? ' (filtered)' : ''}
+							{search ||
+							selectedEmployee ||
+							selectedProject ||
+							dateFrom ||
+							dateTo ||
+							showEmpty
+								? ' (filtered)'
+								: ''}
 						</span>
 					)}
 				</div>
@@ -333,7 +429,11 @@ export default function EmployeeReportPage() {
 					<div className="bg-white rounded-xl border border-gray-100 p-14 text-center">
 						<FolderIcon className="w-10 h-10 mx-auto mb-2 text-gray-300" />
 						<p className="text-gray-500 font-medium text-sm">
-							{search || dateFrom || dateTo
+							{search ||
+							selectedEmployee ||
+							selectedProject ||
+							dateFrom ||
+							dateTo
 								? 'No matching employees.'
 								: 'No employees found.'}
 						</p>

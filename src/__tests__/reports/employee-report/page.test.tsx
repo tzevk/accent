@@ -134,10 +134,15 @@ describe('EmployeeReportPage', () => {
 	it('renders employee cards when data is loaded', async () => {
 		render(<EmployeeReportPage />, { wrapper: createWrapper() });
 
-		expect(await screen.findByText('Alice Sharma')).toBeInTheDocument();
-		expect(screen.getByText('Bob Verma')).toBeInTheDocument();
+		// Names appear in both dropdown options and card headers
+		expect(await screen.findAllByText('Alice Sharma')).toHaveLength(2);
+		// Bob Verma has no rows (empty), hidden by default (showEmpty=false)
+		// His name still appears in the employee dropdown
+		expect(screen.getAllByText('Bob Verma')).toHaveLength(1);
+		// Alice's email is only in the card (not the dropdown)
 		expect(screen.getByText('alice@ac.com')).toBeInTheDocument();
-		expect(screen.getByText('bob@ac.com')).toBeInTheDocument();
+		// Bob's email is not shown (card hidden)
+		expect(screen.queryByText('bob@ac.com')).not.toBeInTheDocument();
 	});
 
 	it('shows empty state with no data', async () => {
@@ -160,16 +165,20 @@ describe('EmployeeReportPage', () => {
 		const user = userEvent.setup();
 		render(<EmployeeReportPage />, { wrapper: createWrapper() });
 
-		await screen.findByText('Alice Sharma');
-		expect(screen.getByText('Bob Verma')).toBeInTheDocument();
+		// Wait for data to load
+		await screen.findAllByText('Alice Sharma');
 
 		const searchInput = screen.getByPlaceholderText(
 			'Search employee, project, activity…'
 		);
 		await user.type(searchInput, 'Alice');
 
-		expect(screen.getByText('Alice Sharma')).toBeInTheDocument();
-		expect(screen.queryByText('Bob Verma')).not.toBeInTheDocument();
+		// After filtering, Alice's card still appears
+		expect(screen.getAllByText('Alice Sharma').length).toBeGreaterThanOrEqual(
+			1
+		);
+		// Bob's email is only in the card (not the dropdown), so it should be gone
+		expect(screen.queryByText('bob@ac.com')).not.toBeInTheDocument();
 	});
 
 	it('shows error state and retry button on failure', async () => {
@@ -192,7 +201,8 @@ describe('EmployeeReportPage', () => {
 	it('shows meta stats when data is loaded', async () => {
 		render(<EmployeeReportPage />, { wrapper: createWrapper() });
 
-		await screen.findByText('Alice Sharma');
+		// "Alice Sharma" appears twice (dropdown + card)
+		await screen.findAllByText('Alice Sharma');
 		expect(screen.getByText('Employees')).toBeInTheDocument();
 		expect(screen.getAllByText('2').length).toBeGreaterThanOrEqual(1);
 		expect(screen.getByText('With Work')).toBeInTheDocument();
@@ -202,7 +212,8 @@ describe('EmployeeReportPage', () => {
 	it('renders refresh button', async () => {
 		render(<EmployeeReportPage />, { wrapper: createWrapper() });
 
-		await screen.findByText('Alice Sharma');
+		// "Alice Sharma" appears twice (dropdown + card)
+		await screen.findAllByText('Alice Sharma');
 		expect(screen.getByText('Refresh')).toBeInTheDocument();
 	});
 });
