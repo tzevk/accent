@@ -55,6 +55,8 @@ export default function Sidebar() {
 			pathname.startsWith('/admin/quotation') ||
 			pathname.startsWith('/admin/purchase-invoice') ||
 			pathname.startsWith('/admin/expenses') ||
+			pathname.startsWith('/admin/other-expenses') ||
+			pathname.startsWith('/admin/petty-cash-expenses') ||
 			pathname.startsWith('/admin/payment-receivable') ||
 			pathname.startsWith('/admin/payment-payable') ||
 			pathname.startsWith('/admin/invoice') ||
@@ -534,6 +536,8 @@ export default function Sidebar() {
 									pathname.startsWith('/admin/purchase-order') ||
 									pathname.startsWith('/admin/outgoing-purchase-order') ||
 									pathname.startsWith('/admin/expenses') ||
+									pathname.startsWith('/admin/other-expenses') ||
+									pathname.startsWith('/admin/petty-cash-expenses') ||
 									pathname.startsWith('/admin/payment-receivable') ||
 									pathname.startsWith('/admin/payment-payable') ||
 									pathname.startsWith('/admin/cash-voucher') ||
@@ -552,6 +556,8 @@ export default function Sidebar() {
 										pathname.startsWith('/admin/purchase-order') ||
 										pathname.startsWith('/admin/outgoing-purchase-order') ||
 										pathname.startsWith('/admin/expenses') ||
+										pathname.startsWith('/admin/other-expenses') ||
+										pathname.startsWith('/admin/petty-cash-expenses') ||
 										pathname.startsWith('/admin/payment-receivable') ||
 										pathname.startsWith('/admin/payment-payable') ||
 										pathname.startsWith('/admin/cash-voucher') ||
@@ -569,6 +575,8 @@ export default function Sidebar() {
 										pathname.startsWith('/admin/purchase-order') ||
 										pathname.startsWith('/admin/outgoing-purchase-order') ||
 										pathname.startsWith('/admin/expenses') ||
+										pathname.startsWith('/admin/other-expenses') ||
+										pathname.startsWith('/admin/petty-cash-expenses') ||
 										pathname.startsWith('/admin/payment-receivable') ||
 										pathname.startsWith('/admin/payment-payable') ||
 										pathname.startsWith('/admin/cash-voucher') ||
@@ -588,6 +596,8 @@ export default function Sidebar() {
 										pathname.startsWith('/admin/purchase-order') ||
 										pathname.startsWith('/admin/outgoing-purchase-order') ||
 										pathname.startsWith('/admin/expenses') ||
+										pathname.startsWith('/admin/other-expenses') ||
+										pathname.startsWith('/admin/petty-cash-expenses') ||
 										pathname.startsWith('/admin/payment-receivable') ||
 										pathname.startsWith('/admin/payment-payable') ||
 										pathname.startsWith('/admin/cash-voucher') ||
@@ -687,6 +697,32 @@ export default function Sidebar() {
 									>
 										<WalletIcon className="h-3.5 w-3.5 mr-2" />
 										<span className="hidden sidebar-open:inline">Expenses</span>
+									</Link>
+									<Link
+										href="/admin/other-expenses"
+										className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+											pathname.startsWith('/admin/other-expenses')
+												? 'bg-purple-100 text-[#64126D]'
+												: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+										}`}
+									>
+										<WalletIcon className="h-3.5 w-3.5 mr-2" />
+										<span className="hidden sidebar-open:inline">
+											Other Expenses
+										</span>
+									</Link>
+									<Link
+										href="/admin/petty-cash-expenses"
+										className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+											pathname.startsWith('/admin/petty-cash-expenses')
+												? 'bg-purple-100 text-[#64126D]'
+												: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+										}`}
+									>
+										<WalletIcon className="h-3.5 w-3.5 mr-2" />
+										<span className="hidden sidebar-open:inline">
+											Petty Cash Expenses
+										</span>
 									</Link>
 									<Link
 										href="/admin/payment-receivable"

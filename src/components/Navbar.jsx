@@ -108,6 +108,16 @@ const adminMenuConfig = [
 	{ name: 'Cash Voucher', href: '/admin/cash-voucher', resource: 'admin' },
 	{ name: 'Expenses', href: '/admin/expenses', resource: 'admin' },
 	{
+		name: 'Other Expenses',
+		href: '/admin/other-expenses',
+		resource: 'admin',
+	},
+	{
+		name: 'Petty Cash Expenses',
+		href: '/admin/petty-cash-expenses',
+		resource: 'admin',
+	},
+	{
 		name: 'Live Monitoring',
 		href: '/admin/live-monitoring',
 		resource: 'admin',
@@ -228,6 +238,16 @@ const adminMenuGroups = [
 				icon: BanknotesIcon,
 			},
 			{ name: 'Expenses', href: '/admin/expenses', icon: WalletIcon },
+			{
+				name: 'Other Expenses',
+				href: '/admin/other-expenses',
+				icon: WalletIcon,
+			},
+			{
+				name: 'Petty Cash Expenses',
+				href: '/admin/petty-cash-expenses',
+				icon: WalletIcon,
+			},
 			{
 				name: 'Payment Entry',
 				href: '/admin/payment-entry',
