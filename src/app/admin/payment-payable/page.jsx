@@ -40,31 +40,36 @@ const PAYMENT_MODES = [
 ];
 
 const schema = z.object({
-	reference_number: z.string().optional(),
-	vendor_invoice_number: z.string().optional(),
+	reference_number: z.string().nullable().optional(),
+	vendor_invoice_number: z.string().nullable().optional(),
 	vendor_name: z.string().min(1, 'Vendor name is required'),
-	vendor_email: z.string().email('Invalid email').optional().or(z.literal('')),
-	vendor_phone: z.string().optional(),
-	invoice_date: z.string().optional(),
-	due_date: z.string().optional(),
+	vendor_email: z
+		.string()
+		.email('Invalid email')
+		.nullable()
+		.optional()
+		.or(z.literal('')),
+	vendor_phone: z.string().nullable().optional(),
+	invoice_date: z.string().nullable().optional(),
+	due_date: z.string().nullable().optional(),
 	invoice_amount: z.coerce.number().min(0).optional(),
 	paid_amount: z.coerce.number().min(0).optional(),
 	balance_due: z.coerce.number().optional(),
-	currency: z.string().optional(),
-	po_number: z.string().optional(),
-	payment_terms: z.string().optional(),
-	last_follow_up_date: z.string().optional(),
-	next_follow_up_date: z.string().optional(),
-	notes: z.string().optional(),
+	currency: z.string().nullable().optional(),
+	po_number: z.string().nullable().optional(),
+	payment_terms: z.string().nullable().optional(),
+	last_follow_up_date: z.string().nullable().optional(),
+	next_follow_up_date: z.string().nullable().optional(),
+	notes: z.string().nullable().optional(),
 	status: z
 		.enum(['pending', 'partial', 'paid', 'overdue', 'cancelled'])
 		.optional(),
-	paid_date: z.string().optional(),
+	paid_date: z.string().nullable().optional(),
 	payment_mode: z
 		.enum(['cash', 'bank', 'cheque', 'card', 'upi', 'other', ''])
 		.optional(),
-	transaction_reference: z.string().optional(),
-	bank_name: z.string().optional(),
+	transaction_reference: z.string().nullable().optional(),
+	bank_name: z.string().nullable().optional(),
 	tds_amount: z.coerce.number().min(0).optional(),
 });
 
@@ -76,9 +81,9 @@ const defaultValues = {
 	vendor_phone: '',
 	invoice_date: '',
 	due_date: '',
-	invoice_amount: 0,
-	paid_amount: 0,
-	balance_due: 0,
+	invoice_amount: '',
+	paid_amount: '',
+	balance_due: '',
 	currency: 'INR',
 	po_number: '',
 	payment_terms: '',

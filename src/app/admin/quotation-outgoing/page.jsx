@@ -35,21 +35,26 @@ const STATUS_BADGE = {
 };
 
 const schema = z.object({
-	quotation_number: z.string().optional(),
-	quotation_date: z.string().optional(),
+	quotation_number: z.string().nullable().optional(),
+	quotation_date: z.string().nullable().optional(),
 	vendor_name: z.string().min(1, 'Vendor name is required'),
-	vendor_email: z.string().email('Invalid email').optional().or(z.literal('')),
-	vendor_phone: z.string().optional(),
-	vendor_address: z.string().optional(),
-	subject: z.string().optional(),
+	vendor_email: z
+		.string()
+		.email('Invalid email')
+		.nullable()
+		.optional()
+		.or(z.literal('')),
+	vendor_phone: z.string().nullable().optional(),
+	vendor_address: z.string().nullable().optional(),
+	subject: z.string().nullable().optional(),
 	subtotal: z.coerce.number().min(0).optional(),
 	tax_rate: z.coerce.number().min(0).optional(),
 	tax_amount: z.coerce.number().min(0).optional(),
 	discount: z.coerce.number().min(0).optional(),
 	total: z.coerce.number().min(0).optional(),
-	valid_until: z.string().optional(),
-	notes: z.string().optional(),
-	terms: z.string().optional(),
+	valid_until: z.string().nullable().optional(),
+	notes: z.string().nullable().optional(),
+	terms: z.string().nullable().optional(),
 	status: z
 		.enum(['draft', 'sent', 'approved', 'rejected', 'expired'])
 		.optional(),
@@ -63,11 +68,11 @@ const defaultValues = {
 	vendor_phone: '',
 	vendor_address: '',
 	subject: '',
-	subtotal: 0,
+	subtotal: '',
 	tax_rate: 18,
-	tax_amount: 0,
-	discount: 0,
-	total: 0,
+	tax_amount: '',
+	discount: '',
+	total: '',
 	valid_until: '',
 	notes: '',
 	terms: '',
@@ -93,9 +98,32 @@ const formFields = [
 	{ name: 'subject', label: 'Subject', fullWidth: true },
 	{ name: 'subtotal', label: 'Subtotal', type: 'number', step: '0.01' },
 	{ name: 'tax_rate', label: 'Tax Rate (%)', type: 'number', step: '0.01' },
-	{ name: 'tax_amount', label: 'Tax Amount', type: 'number', step: '0.01' },
+	{
+		name: 'tax_amount',
+		label: 'Tax Amount',
+		type: 'number',
+		step: '0.01',
+		computed: {
+			dependsOn: ['subtotal', 'tax_rate'],
+			calculate: (v) =>
+				((Number(v.subtotal) || 0) * (Number(v.tax_rate) || 0)) / 100,
+		},
+	},
 	{ name: 'discount', label: 'Discount', type: 'number', step: '0.01' },
-	{ name: 'total', label: 'Total', type: 'number', step: '0.01' },
+	{
+		name: 'total',
+		label: 'Total',
+		type: 'number',
+		step: '0.01',
+		computed: {
+			dependsOn: ['subtotal', 'tax_rate', 'discount'],
+			calculate: (v) => {
+				const sub = Number(v.subtotal) || 0;
+				const tax = (sub * (Number(v.tax_rate) || 0)) / 100;
+				return sub + tax - (Number(v.discount) || 0);
+			},
+		},
+	},
 	{ name: 'valid_until', label: 'Valid Until', type: 'date' },
 	{
 		name: 'status',
