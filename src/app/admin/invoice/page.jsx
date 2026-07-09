@@ -10,11 +10,12 @@ import {
 	MagnifyingGlassIcon,
 	ArrowPathIcon,
 	ArrowDownTrayIcon,
-	ChevronLeftIcon,
-	ChevronRightIcon,
 	PlusIcon,
 	PencilIcon,
 	TrashIcon,
+	ExclamationTriangleIcon,
+	ClockIcon,
+	CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 
 export default function InvoicePage() {
@@ -23,12 +24,6 @@ export default function InvoicePage() {
 
 	const [invoices, setInvoices] = useState([]);
 	const [loading, setLoading] = useState(true);
-	const [pagination, setPagination] = useState({
-		page: 1,
-		limit: 20,
-		total: 0,
-		totalPages: 0,
-	});
 	const [stats, setStats] = useState({
 		total: 0,
 		draft: 0,
@@ -36,74 +31,83 @@ export default function InvoicePage() {
 		paid: 0,
 		overdue: 0,
 		cancelled: 0,
+		totalGross: 0,
+		totalTax: 0,
+		totalNet: 0,
 	});
 
 	// Filters
 	const [searchTerm, setSearchTerm] = useState('');
 
 	// Fetch invoices
-	const fetchInvoices = useCallback(
-		async (page = 1, search = '') => {
-			setLoading(true);
-			try {
-				const params = new URLSearchParams({
-					page: page.toString(),
-					limit: pagination.limit.toString(),
-				});
-				if (search) params.set('search', search);
+	const fetchInvoices = useCallback(async (search = '') => {
+		setLoading(true);
+		try {
+			const params = new URLSearchParams();
+			if (search) params.set('search', search);
 
-				const res = await fetch(`/api/admin/invoices?${params}`);
-				const data = await res.json();
+			const res = await fetch(`/api/admin/invoices?${params}`);
+			const data = await res.json();
 
-				if (data.success) {
-					setInvoices(data.data || []);
-					setPagination(
-						data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 }
-					);
-					if (data.stats) {
-						setStats(data.stats);
-					}
-				} else {
-					setInvoices([]);
+			if (data.success) {
+				setInvoices(data.data || []);
+				if (data.stats) {
+					setStats(data.stats);
 				}
-			} catch (error) {
-				console.error('Error fetching invoices:', error);
+			} else {
 				setInvoices([]);
-				toast.error('Failed to load invoices');
-			} finally {
-				setLoading(false);
 			}
-		},
-		[pagination.limit]
-	);
+		} catch (error) {
+			console.error('Error fetching invoices:', error);
+			setInvoices([]);
+			toast.error('Failed to load invoices');
+		} finally {
+			setLoading(false);
+		}
+	}, []);
 
 	useEffect(() => {
 		if (!authLoading && user) {
-			setPagination((prev) => ({ ...prev, page: 1 }));
-			fetchInvoices(1, searchTerm);
+			fetchInvoices(searchTerm);
 		}
 	}, [searchTerm, authLoading, user, fetchInvoices]);
 
-	// Compute days overdue from due_date. Returns null if no due_date.
-	const getDaysOverdue = (dueDate) => {
-		if (!dueDate) return null;
-		const due = new Date(dueDate);
-		if (typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-			const today = new Date();
-			const todayUtc = Date.UTC(
-				today.getFullYear(),
-				today.getMonth(),
-				today.getDate()
+	// Compute overdue info from due_date. Returns structured object.
+	const getOverdueInfo = (dueDate) => {
+		if (!dueDate) return { state: 'none' };
+
+		// Parse due_date consistently — handle string "YYYY-MM-DD", ISO string, or Date object
+		let due;
+		if (typeof dueDate === 'string') {
+			// For "YYYY-MM-DD" or ISO strings, parse as UTC midnight
+			due = new Date(
+				dueDate.includes('T') ? dueDate : dueDate + 'T00:00:00.000Z'
 			);
-			const dueUtc = Date.UTC(
-				due.getUTCFullYear(),
-				due.getUTCMonth(),
-				due.getUTCDate()
-			);
-			return Math.floor((todayUtc - dueUtc) / 86400000);
+		} else if (dueDate instanceof Date) {
+			due = dueDate;
+		} else {
+			return { state: 'none' };
 		}
+
+		if (isNaN(due.getTime())) return { state: 'none' };
+
+		// Compare using UTC midnight for both dates to avoid timezone bugs
 		const today = new Date();
-		return Math.floor((today - due) / 86400000);
+		const todayUtc = Date.UTC(
+			today.getUTCFullYear(),
+			today.getUTCMonth(),
+			today.getUTCDate()
+		);
+		const dueUtc = Date.UTC(
+			due.getUTCFullYear(),
+			due.getUTCMonth(),
+			due.getUTCDate()
+		);
+		const dayDiff = Math.floor((todayUtc - dueUtc) / 86400000);
+
+		if (dayDiff > 0) return { state: 'overdue', days: dayDiff };
+		if (dayDiff === 0) return { state: 'today', days: 0 };
+		return { state: 'upcoming', days: -dayDiff };
 	};
 
 	// Format currency
@@ -163,7 +167,7 @@ export default function InvoicePage() {
 
 			if (res.ok && data?.success) {
 				toast.success('Invoice deleted');
-				fetchInvoices(pagination.page, searchTerm);
+				fetchInvoices(searchTerm);
 				return;
 			}
 
@@ -191,9 +195,9 @@ export default function InvoicePage() {
 		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
 
-			<main className="flex-1 min-h-0 flex flex-col px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-full w-full mx-auto">
+			<main className="flex-1 min-h-0 flex flex-col overflow-hidden px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-full w-full mx-auto">
 				{/* Header */}
-				<div className="flex items-center justify-between mb-6">
+				<div className="flex items-center justify-between mb-6 shrink-0">
 					<div>
 						<h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
 							<DocumentCurrencyDollarIcon className="h-7 w-7 text-purple-600" />
@@ -213,7 +217,7 @@ export default function InvoicePage() {
 				</div>
 
 				{/* Stats Cards */}
-				<div className="flex gap-4 mb-6">
+				<div className="flex gap-4 mb-6 shrink-0">
 					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
 						<div className="text-lg font-bold text-gray-900">
 							{stats.total || 0}
@@ -250,10 +254,28 @@ export default function InvoicePage() {
 						</div>
 						<div className="text-xs text-gray-600">Cancelled</div>
 					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-purple-700 truncate">
+							{formatCurrency(stats.totalGross || 0)}
+						</div>
+						<div className="text-xs text-gray-600">Gross Amount</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-orange-600 truncate">
+							{formatCurrency(stats.totalTax || 0)}
+						</div>
+						<div className="text-xs text-gray-600">Tax</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-emerald-700 truncate">
+							{formatCurrency(stats.totalNet || 0)}
+						</div>
+						<div className="text-xs text-gray-600">Net Amount</div>
+					</div>
 				</div>
 
 				{/* Filters */}
-				<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+				<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 shrink-0">
 					<div className="flex flex-wrap items-center gap-4">
 						{/* Search */}
 						<div className="flex-1 min-w-[200px]">
@@ -271,7 +293,7 @@ export default function InvoicePage() {
 
 						{/* Refresh */}
 						<button
-							onClick={() => fetchInvoices(pagination.page, searchTerm)}
+							onClick={() => fetchInvoices(searchTerm)}
 							className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
 							title="Refresh"
 						>
@@ -299,29 +321,32 @@ export default function InvoicePage() {
 							<table className="w-full">
 								<thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
 									<tr>
-										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
 											Invoice #
 										</th>
-										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
 											Client
 										</th>
-										<th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
-											Net Amount
-										</th>
-										<th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
-											Tax
-										</th>
-										<th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
+										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
 											Gross Amount
 										</th>
-										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
+											Tax
+										</th>
+										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
+											Net Amount
+										</th>
+										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
 											Issue Date
 										</th>
-										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
 											Due Date
 										</th>
-										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
 											Days Overdue
+										</th>
+										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
+											Status
 										</th>
 										<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
 											Download
@@ -368,12 +393,67 @@ export default function InvoicePage() {
 											</td>
 											<td className="px-6 py-4">
 												{(() => {
-													const days = getDaysOverdue(invoice.due_date);
-													if (days == null || days <= 0)
-														return <span className="text-gray-400">—</span>;
+													const info = getOverdueInfo(invoice.due_date);
+													if (info.state === 'overdue') {
+														return (
+															<span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">
+																<ExclamationTriangleIcon className="h-3.5 w-3.5" />
+																{info.days}d overdue
+															</span>
+														);
+													}
+													if (info.state === 'today') {
+														return (
+															<span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-700">
+																<ClockIcon className="h-3.5 w-3.5" />
+																Due today
+															</span>
+														);
+													}
+													if (info.state === 'upcoming') {
+														return (
+															<span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
+																<CheckCircleIcon className="h-3.5 w-3.5" />
+																{info.days}d left
+															</span>
+														);
+													}
+													return <span className="text-gray-400">—</span>;
+												})()}
+											</td>
+											<td className="px-6 py-4">
+												{(() => {
+													const statusConfig = {
+														draft: {
+															label: 'Draft',
+															classes: 'bg-gray-100 text-gray-700',
+														},
+														sent: {
+															label: 'Sent',
+															classes: 'bg-blue-100 text-blue-700',
+														},
+														paid: {
+															label: 'Paid',
+															classes: 'bg-green-100 text-green-700',
+														},
+														overdue: {
+															label: 'Overdue',
+															classes: 'bg-red-100 text-red-700',
+														},
+														cancelled: {
+															label: 'Cancelled',
+															classes: 'bg-gray-200 text-gray-600',
+														},
+													};
+													const config = statusConfig[invoice.status] || {
+														label: invoice.status || '—',
+														classes: 'bg-gray-100 text-gray-600',
+													};
 													return (
-														<span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">
-															{days} {days === 1 ? 'day' : 'days'} overdue
+														<span
+															className={`px-2 py-1 text-xs font-medium rounded-full ${config.classes}`}
+														>
+															{config.label}
 														</span>
 													);
 												})()}
@@ -407,36 +487,6 @@ export default function InvoicePage() {
 									))}
 								</tbody>
 							</table>
-						</div>
-					)}
-
-					{/* Pagination */}
-					{pagination.totalPages > 1 && (
-						<div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-							<span className="text-sm text-black">
-								Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-								{Math.min(pagination.page * pagination.limit, pagination.total)}{' '}
-								of {pagination.total}
-							</span>
-							<div className="flex items-center gap-2">
-								<button
-									onClick={() => fetchInvoices(pagination.page - 1, searchTerm)}
-									disabled={pagination.page === 1}
-									className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-								>
-									<ChevronLeftIcon className="h-4 w-4 text-black" />
-								</button>
-								<span className="px-3 py-1 text-sm text-black">
-									{pagination.page} / {pagination.totalPages}
-								</span>
-								<button
-									onClick={() => fetchInvoices(pagination.page + 1, searchTerm)}
-									disabled={pagination.page === pagination.totalPages}
-									className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-								>
-									<ChevronRightIcon className="h-4 w-4 text-black" />
-								</button>
-							</div>
 						</div>
 					)}
 				</div>
