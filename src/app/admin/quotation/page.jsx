@@ -397,7 +397,7 @@ export default function QuotationPage() {
 			<div className="flex-1 flex flex-col min-w-0">
 				<Navbar />
 
-				<main className="flex-1 min-h-0 flex flex-col p-6 lg:px-8 xl:px-12 2xl:px-16 max-w-[1800px] mx-auto w-full">
+				<main className="flex-1 min-h-0 flex flex-col p-6 lg:px-8 xl:px-12 2xl:px-16 max-w-full mx-auto w-full">
 					{/* Header */}
 					<div className="flex items-center justify-between mb-6">
 						<div>
@@ -423,36 +423,36 @@ export default function QuotationPage() {
 					</div>
 
 					{/* Stats Cards */}
-					<div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-							<div className="text-2xl font-bold text-gray-900">
+					<div className="flex gap-4 mb-6">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+							<div className="text-lg font-bold text-gray-900">
 								{stats.total || 0}
 							</div>
-							<div className="text-sm text-gray-600">Total</div>
+							<div className="text-xs text-gray-600">Total</div>
 						</div>
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-							<div className="text-2xl font-bold text-gray-600">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+							<div className="text-lg font-bold text-gray-600">
 								{stats.draft || 0}
 							</div>
-							<div className="text-sm text-gray-600">Draft</div>
+							<div className="text-xs text-gray-600">Draft</div>
 						</div>
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-							<div className="text-2xl font-bold text-blue-600">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+							<div className="text-lg font-bold text-blue-600">
 								{stats.sent || 0}
 							</div>
-							<div className="text-sm text-gray-600">Sent</div>
+							<div className="text-xs text-gray-600">Sent</div>
 						</div>
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-							<div className="text-2xl font-bold text-green-600">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+							<div className="text-lg font-bold text-green-600">
 								{stats.approved || 0}
 							</div>
-							<div className="text-sm text-gray-600">Approved</div>
+							<div className="text-xs text-gray-600">Approved</div>
 						</div>
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-							<div className="text-2xl font-bold text-red-600">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+							<div className="text-lg font-bold text-red-600">
 								{stats.rejected || 0}
 							</div>
-							<div className="text-sm text-gray-600">Rejected</div>
+							<div className="text-xs text-gray-600">Rejected</div>
 						</div>
 					</div>
 

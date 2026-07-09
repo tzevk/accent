@@ -171,7 +171,7 @@ export default function MaterialRequisitionPage() {
 			<div className="flex-1 flex flex-col">
 				<Navbar />
 
-				<main className="flex-1 p-6 lg:px-8 xl:px-12 2xl:px-16 overflow-auto max-w-[1800px] mx-auto w-full">
+				<main className="flex-1 p-6 lg:px-8 xl:px-12 2xl:px-16 overflow-auto max-w-full mx-auto w-full">
 					{/* Header */}
 					<div className="flex items-center justify-between mb-6">
 						<div>
@@ -193,36 +193,36 @@ export default function MaterialRequisitionPage() {
 					</div>
 
 					{/* Stats Cards */}
-					<div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-							<div className="text-2xl font-bold text-gray-900">
+					<div className="flex gap-4 mb-6">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+							<div className="text-lg font-bold text-gray-900">
 								{stats.total || 0}
 							</div>
-							<div className="text-sm text-gray-600">Total</div>
+							<div className="text-xs text-gray-600">Total</div>
 						</div>
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-							<div className="text-2xl font-bold text-yellow-600">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+							<div className="text-lg font-bold text-yellow-600">
 								{stats.pending || 0}
 							</div>
-							<div className="text-sm text-gray-600">Pending</div>
+							<div className="text-xs text-gray-600">Pending</div>
 						</div>
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-							<div className="text-2xl font-bold text-green-600">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+							<div className="text-lg font-bold text-green-600">
 								{stats.approved || 0}
 							</div>
-							<div className="text-sm text-gray-600">Approved</div>
+							<div className="text-xs text-gray-600">Approved</div>
 						</div>
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-							<div className="text-2xl font-bold text-blue-600">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+							<div className="text-lg font-bold text-blue-600">
 								{stats.fulfilled || 0}
 							</div>
-							<div className="text-sm text-gray-600">Fulfilled</div>
+							<div className="text-xs text-gray-600">Fulfilled</div>
 						</div>
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-							<div className="text-2xl font-bold text-red-600">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+							<div className="text-lg font-bold text-red-600">
 								{stats.rejected || 0}
 							</div>
-							<div className="text-sm text-gray-600">Rejected</div>
+							<div className="text-xs text-gray-600">Rejected</div>
 						</div>
 					</div>
 

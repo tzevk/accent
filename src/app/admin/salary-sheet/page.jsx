@@ -323,78 +323,41 @@ export default function SalarySheetPage() {
 				</div>
 
 				{/* Stats Cards */}
-				<div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="flex items-center gap-3">
-							<div className="p-2 bg-blue-100 rounded-lg">
-								<UserGroupIcon className="w-5 h-5 text-blue-600" />
-							</div>
-							<div>
-								<p className="text-xs text-gray-500">Employees</p>
-								<p className="text-lg font-bold text-gray-900">
-									{slips.length}
-								</p>
-							</div>
+				<div className="flex gap-4 mb-6">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-blue-600">
+							{slips.length}
 						</div>
+						<div className="text-xs text-gray-600">Employees</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="flex items-center gap-3">
-							<div className="p-2 bg-green-100 rounded-lg">
-								<CurrencyRupeeIcon className="w-5 h-5 text-green-600" />
-							</div>
-							<div>
-								<p className="text-xs text-gray-500">Total Gross</p>
-								<p className="text-lg font-bold text-gray-900">
-									{formatCurrency(totalGross)}
-								</p>
-							</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-green-600">
+							{formatCurrency(totalGross)}
 						</div>
+						<div className="text-xs text-gray-600">Total Gross</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="flex items-center gap-3">
-							<div className="p-2 bg-red-100 rounded-lg">
-								<CurrencyRupeeIcon className="w-5 h-5 text-red-600" />
-							</div>
-							<div>
-								<p className="text-xs text-gray-500">Deductions</p>
-								<p className="text-lg font-bold text-gray-900">
-									{formatCurrency(totalDeductions)}
-								</p>
-							</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-red-600">
+							{formatCurrency(totalDeductions)}
 						</div>
+						<div className="text-xs text-gray-600">Deductions</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="flex items-center gap-3">
-							<div className="p-2 bg-indigo-100 rounded-lg">
-								<CurrencyRupeeIcon className="w-5 h-5 text-indigo-600" />
-							</div>
-							<div>
-								<p className="text-xs text-gray-500">Net Pay</p>
-								<p className="text-lg font-bold text-gray-900">
-									{formatCurrency(totalNet)}
-								</p>
-							</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-indigo-600">
+							{formatCurrency(totalNet)}
 						</div>
+						<div className="text-xs text-gray-600">Net Pay</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="flex items-center gap-3">
-							<div className="p-2 bg-yellow-100 rounded-lg">
-								<CheckCircleIcon className="w-5 h-5 text-yellow-600" />
-							</div>
-							<div>
-								<p className="text-xs text-gray-500">Status</p>
-								<p className="text-sm font-medium text-gray-900">
-									<span className="text-green-600">{paidCount} paid</span> /{' '}
-									<span className="text-yellow-600">
-										{pendingCount} pending
-									</span>
-								</p>
-							</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-yellow-600">
+							<span className="text-green-600">{paidCount} paid</span> /{' '}
+							<span className="text-yellow-600">{pendingCount} pending</span>
 						</div>
+						<div className="text-xs text-gray-600">Status</div>
 					</div>
 				</div>
 

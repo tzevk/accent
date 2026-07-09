@@ -414,7 +414,7 @@ export default function ActivityLogsPage() {
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
 			<Navbar />
 
-			<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-16 max-w-[1800px] mx-auto">
+			<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-16 max-w-full mx-auto">
 				{/* Header */}
 				<div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
 					<div>
@@ -720,53 +720,33 @@ export default function ActivityLogsPage() {
 						)}
 
 						{/* Stats */}
-						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-							<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-								<div className="flex items-center gap-2">
-									<DocumentTextIcon className="h-5 w-5 text-[#64126D]" />
-									<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-										Total Logs
-									</span>
-								</div>
-								<span className="text-2xl font-bold text-gray-900">
+						<div className="flex gap-4 mb-6">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-gray-900">
 									{pagination.total.toLocaleString()}
-								</span>
+								</div>
+								<div className="text-xs text-gray-600">Total Logs</div>
 							</div>
 
-							<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-								<div className="flex items-center gap-2">
-									<UserIcon className="h-5 w-5 text-green-500" />
-									<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-										Active Users
-									</span>
-								</div>
-								<span className="text-2xl font-bold text-green-600">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-green-600">
 									{users.length}
-								</span>
+								</div>
+								<div className="text-xs text-gray-600">Active Users</div>
 							</div>
 
-							<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-								<div className="flex items-center gap-2">
-									<FunnelIcon className="h-5 w-5 text-purple-500" />
-									<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-										Showing
-									</span>
-								</div>
-								<span className="text-2xl font-bold text-purple-600">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-purple-600">
 									{filteredLogs.length}
-								</span>
+								</div>
+								<div className="text-xs text-gray-600">Showing</div>
 							</div>
 
-							<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-								<div className="flex items-center gap-2">
-									<DocumentTextIcon className="h-5 w-5 text-amber-500" />
-									<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-										Current Page
-									</span>
-								</div>
-								<span className="text-2xl font-bold text-amber-600">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-amber-600">
 									{pagination.page} / {pagination.totalPages}
-								</span>
+								</div>
+								<div className="text-xs text-gray-600">Current Page</div>
 							</div>
 						</div>
 
@@ -1065,53 +1045,33 @@ export default function ActivityLogsPage() {
 						</div>
 
 						{/* Work Logs Stats */}
-						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-							<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-								<div className="flex items-center gap-2">
-									<BriefcaseIcon className="h-5 w-5 text-[#64126D]" />
-									<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-										Total Logs
-									</span>
-								</div>
-								<span className="text-2xl font-bold text-gray-900">
+						<div className="flex gap-4 mb-6">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-gray-900">
 									{workLogsPagination.total.toLocaleString()}
-								</span>
+								</div>
+								<div className="text-xs text-gray-600">Total Logs</div>
 							</div>
 
-							<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-								<div className="flex items-center gap-2">
-									<DocumentTextIcon className="h-5 w-5 text-blue-500" />
-									<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-										Plan Logs
-									</span>
-								</div>
-								<span className="text-2xl font-bold text-blue-600">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-blue-600">
 									{workLogs.filter((log) => log.log_type === 'plan').length}
-								</span>
+								</div>
+								<div className="text-xs text-gray-600">Plan Logs</div>
 							</div>
 
-							<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-								<div className="flex items-center gap-2">
-									<DocumentTextIcon className="h-5 w-5 text-green-500" />
-									<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-										Done Logs
-									</span>
-								</div>
-								<span className="text-2xl font-bold text-green-600">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-green-600">
 									{workLogs.filter((log) => log.log_type === 'done').length}
-								</span>
+								</div>
+								<div className="text-xs text-gray-600">Done Logs</div>
 							</div>
 
-							<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-								<div className="flex items-center gap-2">
-									<DocumentTextIcon className="h-5 w-5 text-amber-500" />
-									<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-										Current Page
-									</span>
-								</div>
-								<span className="text-2xl font-bold text-amber-600">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-amber-600">
 									{workLogsPagination.page} / {workLogsPagination.totalPages}
-								</span>
+								</div>
+								<div className="text-xs text-gray-600">Current Page</div>
 							</div>
 						</div>
 

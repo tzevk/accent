@@ -29,6 +29,14 @@ export default function InvoicePage() {
 		total: 0,
 		totalPages: 0,
 	});
+	const [stats, setStats] = useState({
+		total: 0,
+		draft: 0,
+		sent: 0,
+		paid: 0,
+		overdue: 0,
+		cancelled: 0,
+	});
 
 	// Filters
 	const [searchTerm, setSearchTerm] = useState('');
@@ -52,6 +60,9 @@ export default function InvoicePage() {
 					setPagination(
 						data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 }
 					);
+					if (data.stats) {
+						setStats(data.stats);
+					}
 				} else {
 					setInvoices([]);
 				}
@@ -180,7 +191,7 @@ export default function InvoicePage() {
 		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
 
-			<main className="flex-1 min-h-0 flex flex-col px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] w-full mx-auto">
+			<main className="flex-1 min-h-0 flex flex-col px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-full w-full mx-auto">
 				{/* Header */}
 				<div className="flex items-center justify-between mb-6">
 					<div>
@@ -199,6 +210,46 @@ export default function InvoicePage() {
 						<PlusIcon className="h-5 w-5" />
 						Create Invoice
 					</button>
+				</div>
+
+				{/* Stats Cards */}
+				<div className="flex gap-4 mb-6">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-gray-900">
+							{stats.total || 0}
+						</div>
+						<div className="text-xs text-gray-600">Total</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-gray-600">
+							{stats.draft || 0}
+						</div>
+						<div className="text-xs text-gray-600">Draft</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-blue-600">
+							{stats.sent || 0}
+						</div>
+						<div className="text-xs text-gray-600">Sent</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-green-600">
+							{stats.paid || 0}
+						</div>
+						<div className="text-xs text-gray-600">Paid</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-red-600">
+							{stats.overdue || 0}
+						</div>
+						<div className="text-xs text-gray-600">Overdue</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-gray-500">
+							{stats.cancelled || 0}
+						</div>
+						<div className="text-xs text-gray-600">Cancelled</div>
+					</div>
 				</div>
 
 				{/* Filters */}
