@@ -12,6 +12,12 @@ export interface ComputedField {
 	calculate: (values: Record<string, unknown>) => number;
 }
 
+export interface DerivedField {
+	dependsOn: string[];
+	calculate: (values: Record<string, unknown>) => unknown;
+	modes?: ModalMode[];
+}
+
 export interface FormField {
 	name: string;
 	label: string;
@@ -28,6 +34,7 @@ export interface FormField {
 	employeeAutofill?: boolean;
 	dependentOn?: DependentOn;
 	computed?: ComputedField;
+	derived?: DerivedField;
 }
 
 export interface Column {

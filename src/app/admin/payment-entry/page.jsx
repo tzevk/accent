@@ -25,7 +25,7 @@ const getTodayDateString = () => {
 	return `${year}-${month}-${day}`;
 };
 
-export default function PaymentEntryPage() {
+export default function PaymentReleasedPage() {
 	const { user, loading: authLoading } = useSessionRBAC();
 
 	const [entries, setEntries] = useState([]);
@@ -37,7 +37,7 @@ export default function PaymentEntryPage() {
 		totalPages: 0,
 	});
 	const [searchTerm, setSearchTerm] = useState('');
-	const [companies, setCompanies] = useState([]);
+	const [vendors, setVendors] = useState([]);
 	const [banks, setBanks] = useState([]);
 	const [invoices, setInvoices] = useState([]);
 
@@ -46,7 +46,7 @@ export default function PaymentEntryPage() {
 	const [isViewing, setIsViewing] = useState(false);
 	const [editingEntry, setEditingEntry] = useState(null);
 	const [formData, setFormData] = useState({
-		company_name: '',
+		vendor_name: '',
 		city: '',
 		receipt_no: '',
 		receipt_date: getTodayDateString(),
@@ -83,7 +83,7 @@ export default function PaymentEntryPage() {
 					setEntries([]);
 				}
 			} catch (error) {
-				console.error('Error fetching payment entries:', error);
+				console.error('Error fetching payment releases:', error);
 				setEntries([]);
 			} finally {
 				setLoading(false);
@@ -92,15 +92,15 @@ export default function PaymentEntryPage() {
 		[pagination.limit]
 	);
 
-	const fetchCompanies = useCallback(async () => {
+	const fetchVendors = useCallback(async () => {
 		try {
-			const res = await fetch('/api/companies');
+			const res = await fetch('/api/vendors');
 			const data = await res.json();
 			if (data.success) {
-				setCompanies(data.data || []);
+				setVendors(data.data || []);
 			}
 		} catch (error) {
-			console.error('Error fetching companies:', error);
+			console.error('Error fetching vendors:', error);
 		}
 	}, []);
 
@@ -131,7 +131,7 @@ export default function PaymentEntryPage() {
 	useEffect(() => {
 		if (!authLoading && user) {
 			fetchEntries(1);
-			fetchCompanies();
+			fetchVendors();
 			fetchBanks();
 			fetchInvoices();
 		}
@@ -139,7 +139,7 @@ export default function PaymentEntryPage() {
 		authLoading,
 		user,
 		fetchEntries,
-		fetchCompanies,
+		fetchVendors,
 		fetchBanks,
 		fetchInvoices,
 	]);
@@ -149,7 +149,7 @@ export default function PaymentEntryPage() {
 		if (!searchTerm) return true;
 		const search = searchTerm.toLowerCase();
 		return (
-			e.company_name?.toLowerCase().includes(search) ||
+			e.vendor_name?.toLowerCase().includes(search) ||
 			e.receipt_no?.toLowerCase().includes(search) ||
 			e.transaction_id?.toLowerCase().includes(search)
 		);
@@ -170,7 +170,7 @@ export default function PaymentEntryPage() {
 		if (entry) {
 			setEditingEntry(entry);
 			setFormData({
-				company_name: entry.company_name || '',
+				vendor_name: entry.vendor_name || '',
 				city: entry.city || '',
 				receipt_no: entry.receipt_no || '',
 				receipt_date: formatDateForInput(entry.receipt_date),
@@ -185,7 +185,7 @@ export default function PaymentEntryPage() {
 		} else {
 			setEditingEntry(null);
 			setFormData({
-				company_name: '',
+				vendor_name: '',
 				city: '',
 				receipt_no: '',
 				receipt_date: getTodayDateString(),
@@ -210,10 +210,10 @@ export default function PaymentEntryPage() {
 		const { name, value } = e.target;
 		setFormData((prev) => {
 			const newData = { ...prev, [name]: value };
-			if (name === 'company_name') {
-				const selectedCompany = companies.find((c) => c.company_name === value);
-				if (selectedCompany && selectedCompany.city && !prev.city) {
-					newData.city = selectedCompany.city;
+			if (name === 'vendor_name') {
+				const selectedVendor = vendors.find((v) => v.vendor_name === value);
+				if (selectedVendor && selectedVendor.address_city && !prev.city) {
+					newData.city = selectedVendor.address_city;
 				}
 			}
 			if (name === 'invoice_no') {
@@ -253,14 +253,14 @@ export default function PaymentEntryPage() {
 			const data = await res.json();
 
 			if (data.success) {
-				toast.success('Payment entry saved');
+				toast.success('Payment release saved');
 				handleCloseModal();
 				fetchEntries(pagination.page);
 			} else {
-				toast.error(data.error || 'Failed to save payment entry');
+				toast.error(data.error || 'Failed to save payment release');
 			}
 		} catch (error) {
-			console.error('Error saving payment entry:', error);
+			console.error('Error saving payment release:', error);
 			toast.error('An error occurred while saving.');
 		} finally {
 			setSaving(false);
@@ -268,20 +268,21 @@ export default function PaymentEntryPage() {
 	};
 
 	const handleDelete = async (id) => {
-		if (!confirm('Are you sure you want to delete this payment entry?')) return;
+		if (!confirm('Are you sure you want to delete this payment release?'))
+			return;
 		try {
 			const res = await fetch(`/api/admin/payment-entries?id=${id}`, {
 				method: 'DELETE',
 			});
 			const data = await res.json();
 			if (data.success) {
-				toast.success('Payment entry deleted');
+				toast.success('Payment release deleted');
 				fetchEntries(pagination.page);
 			} else {
-				toast.error(data.error || 'Failed to delete payment entry');
+				toast.error(data.error || 'Failed to delete payment release');
 			}
 		} catch (error) {
-			console.error('Error deleting payment entry:', error);
+			console.error('Error deleting payment release:', error);
 			toast.error('An error occurred while deleting.');
 		}
 	};
@@ -293,7 +294,7 @@ export default function PaymentEntryPage() {
 		const payload = {
 			receipt_no: entry.receipt_no || '-',
 			receipt_date: entry.receipt_date || '-',
-			company_name: entry.company_name || '-',
+			vendor_name: entry.vendor_name || '-',
 			amount: Number(entry.amount) || 0,
 			transaction_id: entry.transaction_id || '-',
 			payment_date: entry.payment_date || '-',
@@ -355,10 +356,10 @@ export default function PaymentEntryPage() {
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
 								<BanknotesIcon className="h-7 w-7 text-purple-600" />
-								Payment Entry
+								Payment Released
 							</h1>
 							<p className="text-sm text-gray-500 mt-1">
-								Manage payment entries
+								Manage payment releases
 							</p>
 						</div>
 						<button
@@ -366,7 +367,7 @@ export default function PaymentEntryPage() {
 							className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
 						>
 							<PlusIcon className="h-5 w-5" />
-							Add Payment Entry
+							Add Payment Released
 						</button>
 					</div>
 
@@ -408,7 +409,7 @@ export default function PaymentEntryPage() {
 						) : filteredEntries.length === 0 ? (
 							<div className="text-center py-12">
 								<BanknotesIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-								<p className="text-gray-600">No payment entries found</p>
+								<p className="text-gray-600">No payment releases found</p>
 							</div>
 						) : (
 							<div className="flex-1 min-h-0 overflow-auto">
@@ -449,7 +450,7 @@ export default function PaymentEntryPage() {
 												</td>
 												<td className="px-6 py-4 whitespace-nowrap">
 													<div className="font-medium text-gray-900">
-														{entry.company_name}
+														{entry.vendor_name}
 													</div>
 												</td>
 												<td className="px-6 py-4 text-gray-600 whitespace-nowrap">
@@ -550,21 +551,16 @@ export default function PaymentEntryPage() {
 
 			{/* Modal */}
 			{isModalOpen && (
-				<div
-					className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto"
-					onClick={(e) => {
-						if (e.target === e.currentTarget) handleCloseModal();
-					}}
-				>
+				<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
 					<div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full my-8">
 						<div className="px-6 pt-5 pb-4 border-b border-gray-200">
 							<div className="flex items-center justify-between">
 								<h3 className="text-xl font-semibold text-gray-900">
 									{isViewing
-										? 'View Payment Entry'
+										? 'View Payment Released'
 										: editingEntry
-											? 'Edit Payment Entry'
-											: 'Add Payment Entry'}
+											? 'Edit Payment Released'
+											: 'Add Payment Released'}
 								</h3>
 								<button
 									onClick={handleCloseModal}
@@ -580,22 +576,22 @@ export default function PaymentEntryPage() {
 								<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 									<div>
 										<label className="block text-sm font-medium text-gray-700 mb-1">
-											Company Name *
+											Vendor Name *
 										</label>
 										<input
 											type="text"
-											name="company_name"
-											list="company-list"
+											name="vendor_name"
+											list="vendor-list"
 											required
 											disabled={isViewing}
-											value={formData.company_name}
+											value={formData.vendor_name}
 											onChange={handleChange}
 											className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:text-gray-500"
-											placeholder="Enter or select company name"
+											placeholder="Enter or select vendor name"
 										/>
-										<datalist id="company-list">
-											{companies.map((c) => (
-												<option key={c.id} value={c.company_name} />
+										<datalist id="vendor-list">
+											{vendors.map((v) => (
+												<option key={v.id} value={v.vendor_name} />
 											))}
 										</datalist>
 									</div>

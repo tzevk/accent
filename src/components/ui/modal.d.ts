@@ -5,6 +5,7 @@ interface ModalProps {
 	onClose: () => void;
 	title?: string;
 	size?: 'sm' | 'md' | 'lg' | 'xl';
+	dismissible?: boolean;
 	footer?: ReactNode;
 	children?: ReactNode;
 }

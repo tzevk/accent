@@ -11,6 +11,7 @@ export default function Modal({
 	children,
 	footer,
 	size = 'md',
+	dismissible = true,
 }) {
 	useEffect(() => {
 		if (!open) return undefined;
@@ -39,7 +40,7 @@ export default function Modal({
 		<div
 			className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8"
 			onClick={(e) => {
-				if (e.target === e.currentTarget) onClose?.();
+				if (dismissible && e.target === e.currentTarget) onClose?.();
 			}}
 		>
 			<div
