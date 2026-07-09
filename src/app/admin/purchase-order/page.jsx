@@ -919,13 +919,13 @@ export default function PurchaseOrderPage() {
 									Delete Purchase Order
 								</h3>
 								<p className="text-sm text-gray-500">
-									This action cannot be undone.
+									This will mark the purchase order as deleted.
 								</p>
 							</div>
 						</div>
 						<p className="text-gray-600 mb-6">
-							Are you sure you want to delete purchase order{' '}
-							<strong>{deletingPO.po_number}</strong>?
+							Are you sure you want to mark purchase order{' '}
+							<strong>{deletingPO.po_number}</strong> as deleted?
 						</p>
 						<div className="flex items-center justify-end gap-3">
 							<button
@@ -942,7 +942,7 @@ export default function PurchaseOrderPage() {
 								disabled={deleteLoading}
 								className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
 							>
-								{deleteLoading ? 'Deleting...' : 'Delete'}
+								{deleteLoading ? 'Deleting...' : 'Mark as Deleted'}
 							</button>
 						</div>
 					</div>
