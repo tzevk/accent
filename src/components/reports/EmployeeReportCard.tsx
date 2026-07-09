@@ -295,7 +295,7 @@ export default function EmployeeReportCard({
 	];
 
 	return (
-		<div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+		<div className="bg-white rounded-xl border border-gray-200 shadow-sm">
 			{/* Header */}
 			<div className="px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-purple-50/70 to-white flex items-center justify-between gap-3">
 				<div className="flex items-center gap-3 min-w-0">
@@ -339,15 +339,15 @@ export default function EmployeeReportCard({
 					No activities recorded
 				</div>
 			) : (
-				<div className="overflow-x-auto">
+				<div className="overflow-x-clip">
 					<table className="w-full caption-bottom text-sm border-t border-gray-100">
-						<thead className="bg-gray-50 border-b border-gray-200">
+						<thead className="sticky top-[64px] z-20 bg-gray-50 border-b border-gray-200 shadow-sm">
 							<tr>
 								{table.getFlatHeaders().map((header) => (
 									<th
 										key={header.id}
 										style={{ width: header.getSize() }}
-										className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap"
+										className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap"
 									>
 										{flexRender(
 											header.column.columnDef.header,
@@ -373,7 +373,7 @@ export default function EmployeeReportCard({
 										{cells.map((cell) => (
 											<td
 												key={cell.id}
-												className="px-4 py-3 text-sm text-gray-900 align-middle"
+												className="px-4 py-3 text-center text-sm text-gray-900 align-middle"
 											>
 												{cell.column.id === 'sr_no'
 													? srNo
@@ -390,18 +390,18 @@ export default function EmployeeReportCard({
 						<tfoot className="border-t border-gray-200 bg-gray-50 font-medium">
 							<tr>
 								<td
-									className="px-4 py-3 text-right text-xs uppercase tracking-wider text-gray-600"
+									className="px-4 py-3 text-center text-xs uppercase tracking-wider text-gray-600"
 									colSpan={5}
 								>
 									Total
 								</td>
-								<td className="px-4 py-3 tabular-nums text-gray-800">
+								<td className="px-4 py-3 text-center tabular-nums text-gray-800">
 									{totals.assign}
 								</td>
-								<td className="px-4 py-3 tabular-nums text-blue-600">
+								<td className="px-4 py-3 text-center tabular-nums text-blue-600">
 									{totals.actual}
 								</td>
-								<td className="px-4 py-3 tabular-nums text-purple-600">
+								<td className="px-4 py-3 text-center tabular-nums text-purple-600">
 									{totals.qty}
 								</td>
 							</tr>
