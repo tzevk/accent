@@ -101,5 +101,8 @@
 		"sharp@0.33.5": true,
 		"puppeteer@25.1.0": true,
 		"unrs-resolver@1.11.1": true
+	},
+	"engines": {
+		"node": "24.x"
 	}
 }
