@@ -396,7 +396,7 @@ export async function GET(request) {
 		connection = await dbConnect();
 
 		const [purchaseOrders] = await connection.execute(
-			'SELECT * FROM purchase_orders WHERE id = ?',
+			'SELECT * FROM purchase_orders WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[id]
 		);
 

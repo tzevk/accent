@@ -50,16 +50,19 @@ export async function GET(request) {
         terms TEXT,
         delivery_date DATE,
         status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'draft',
+        isDelete TINYINT(1) DEFAULT 0,
         created_by INT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_status (status),
+        INDEX idx_isDelete (isDelete),
         INDEX idx_created_at (created_at)
       )
     `);
 
 		// Build query
-		let query = 'SELECT * FROM purchase_orders WHERE 1=1';
+		let query =
+			'SELECT * FROM purchase_orders WHERE (isDelete = 0 OR isDelete IS NULL)';
 		const params = [];
 
 		if (status && status !== 'all') {
@@ -128,6 +131,7 @@ export async function GET(request) {
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
           SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
         FROM purchase_orders
+        WHERE isDelete = 0 OR isDelete IS NULL
       `);
 			stats = statsResult[0] || stats;
 		} catch (statsError) {
@@ -239,10 +243,12 @@ export async function POST(request) {
         po_amount DECIMAL(15, 2) DEFAULT 0,
         net_amount DECIMAL(15, 2) DEFAULT 0,
         remarks TEXT,
+        isDelete TINYINT(1) DEFAULT 0,
         created_by INT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_status (status),
+        INDEX idx_isDelete (isDelete),
         INDEX idx_created_at (created_at),
         INDEX idx_project_id (project_id)
       )
@@ -256,6 +262,7 @@ export async function POST(request) {
 			'po_amount DECIMAL(15, 2) DEFAULT 0',
 			'net_amount DECIMAL(15, 2) DEFAULT 0',
 			'remarks TEXT',
+			'isDelete TINYINT(1) DEFAULT 0',
 		];
 		for (const col of alterColumns) {
 			try {
@@ -304,7 +311,7 @@ export async function POST(request) {
 
 		// Check if PO with same number already exists (for updates)
 		const [existingPO] = await connection.execute(
-			'SELECT id FROM purchase_orders WHERE po_number = ?',
+			'SELECT id FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[poNumber]
 		);
 
@@ -501,7 +508,7 @@ export async function PUT(request) {
 
 		// Check if PO exists
 		const [existingPO] = await connection.execute(
-			'SELECT id FROM purchase_orders WHERE id = ?',
+			'SELECT id FROM purchase_orders WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[id]
 		);
 
@@ -583,7 +590,7 @@ export async function PUT(request) {
 	}
 }
 
-// DELETE - Delete purchase order
+// DELETE - Soft delete purchase order
 export async function DELETE(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
@@ -592,6 +599,7 @@ export async function DELETE(request) {
 		PERMISSIONS.DELETE
 	);
 	if (authResult.authorized === false) return authResult.response;
+	const { user } = authResult;
 
 	let connection;
 	try {
@@ -607,9 +615,9 @@ export async function DELETE(request) {
 
 		connection = await dbConnect();
 
-		// Check if PO exists
+		// Check if PO exists and is not already deleted
 		const [existingPO] = await connection.execute(
-			'SELECT id, po_number FROM purchase_orders WHERE id = ?',
+			'SELECT id, po_number FROM purchase_orders WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[id]
 		);
 
@@ -620,12 +628,28 @@ export async function DELETE(request) {
 			);
 		}
 
-		// Delete the purchase order
-		await connection.execute('DELETE FROM purchase_orders WHERE id = ?', [id]);
+		// Soft delete the purchase order
+		await connection.execute(
+			'UPDATE purchase_orders SET isDelete = 1 WHERE id = ?',
+			[id]
+		);
+
+		logActivity({
+			userId: user?.id,
+			actionType: 'delete',
+			resourceType: 'purchase_order',
+			resourceId: String(id),
+			description: `Soft deleted purchase order: ${existingPO[0].po_number}`,
+			details: {
+				po_number: existingPO[0].po_number,
+				isDelete: 1,
+			},
+			request,
+		}).catch((err) => console.error('Failed to log activity:', err));
 
 		return NextResponse.json({
 			success: true,
-			message: `Purchase order ${existingPO[0].po_number} deleted successfully`,
+			message: `Purchase order ${existingPO[0].po_number} marked as deleted`,
 		});
 	} catch (error) {
 		console.error('Error deleting purchase order:', error);
