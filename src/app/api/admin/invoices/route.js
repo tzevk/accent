@@ -23,11 +23,8 @@ export async function GET(request) {
 	let connection;
 	try {
 		const { searchParams } = new URL(request.url);
-		const page = parseInt(searchParams.get('page') || '1');
-		const limit = parseInt(searchParams.get('limit') || '20');
 		const status = searchParams.get('status');
 		const search = searchParams.get('search') || '';
-		const offset = (page - 1) * limit;
 
 		connection = await dbConnect();
 
@@ -213,14 +210,7 @@ export async function GET(request) {
 			params.push(like, like, like);
 		}
 
-		// Get total count
-		const countQuery = query.replace('*', 'COUNT(*) as total');
-		const [countResult] = await connection.execute(countQuery, params);
-		const total = countResult?.[0]?.total || 0;
-
-		// Get paginated results
-		query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-		params.push(limit, offset);
+		query += ' ORDER BY created_at DESC';
 
 		const [invoices] = await connection.execute(query, params);
 
@@ -252,6 +242,9 @@ export async function GET(request) {
 			paid: 0,
 			overdue: 0,
 			cancelled: 0,
+			totalGross: 0,
+			totalTax: 0,
+			totalNet: 0,
 		};
 		try {
 			const [statsResult] = await connection.execute(`
@@ -261,7 +254,10 @@ export async function GET(request) {
           SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
           SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paid,
           SUM(CASE WHEN status = 'overdue' THEN 1 ELSE 0 END) as overdue,
-          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
+          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
+          COALESCE(SUM(gross_amount), 0) as totalGross,
+          COALESCE(SUM(tax_amount), 0) as totalTax,
+          COALESCE(SUM(net_amount), 0) as totalNet
         FROM invoices
       `);
 			stats = statsResult[0] || stats;
@@ -272,12 +268,6 @@ export async function GET(request) {
 		return NextResponse.json({
 			success: true,
 			data: parsedInvoices,
-			pagination: {
-				page,
-				limit,
-				total,
-				totalPages: Math.ceil(total / limit),
-			},
 			stats,
 		});
 	} catch (error) {

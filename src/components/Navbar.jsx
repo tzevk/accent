@@ -499,9 +499,13 @@ export default function Navbar() {
 
 							{/* Reports Dropdown - Only show if user has reports permissions */}
 							{showReportsMenu && (
-								<div className="relative reports-dropdown">
+								<div
+									className="relative reports-dropdown"
+									onMouseLeave={() => setIsReportsMenuOpen(false)}
+								>
 									<button
 										onClick={() => setIsReportsMenuOpen(!isReportsMenuOpen)}
+										onMouseEnter={() => setIsReportsMenuOpen(true)}
 										className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden active:scale-[.98] ${
 											pathname.startsWith('/reports')
 												? 'text-white shadow-lg'
@@ -513,19 +517,6 @@ export default function Navbar() {
 												: isReportsMenuOpen
 													? 'rgba(255, 255, 255, 0.1)'
 													: 'transparent',
-										}}
-										onMouseEnter={(e) => {
-											if (!pathname.startsWith('/reports')) {
-												e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-											}
-										}}
-										onMouseLeave={(e) => {
-											if (
-												!pathname.startsWith('/reports') &&
-												!isReportsMenuOpen
-											) {
-												e.target.style.background = 'transparent';
-											}
 										}}
 									>
 										<ChartBarIcon
@@ -551,7 +542,7 @@ export default function Navbar() {
 
 									{/* Reports Dropdown Menu */}
 									{isReportsMenuOpen && (
-										<div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 anim-drop">
+										<div className="absolute left-0 top-full pt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 anim-drop">
 											{reportsMenuItems.map((item) => {
 												const Icon = item.icon;
 												return (
