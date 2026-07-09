@@ -2,7 +2,13 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { PlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import {
+	PlusIcon,
+	ArrowPathIcon,
+	EyeIcon,
+	PencilIcon,
+	TrashIcon,
+} from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import { useForm } from '@tanstack/react-form';
 
@@ -132,8 +138,8 @@ export default function ResourcePage({
 		<div className="h-screen bg-[var(--page-bg, #fafafa)] flex flex-col overflow-hidden">
 			<Navbar />
 			<Sidebar />
-			<div className="content-with-sidebar flex-1 min-h-0 flex flex-col pt-20 pb-6 px-4 sm:px-6 lg:px-8 overflow-hidden">
-				<div className="max-w-7xl mx-auto w-full flex-1 min-h-0 flex flex-col space-y-5">
+			<div className="content-with-sidebar flex-1 min-h-0 flex flex-col pt-2 pb-4 px-2 sm:px-4 overflow-hidden">
+				<div className="max-w-full mx-auto w-full flex-1 min-h-0 flex flex-col space-y-5">
 					<header className="flex flex-wrap items-end justify-between gap-3">
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900">{title}</h1>
@@ -161,22 +167,33 @@ export default function ResourcePage({
 					</header>
 
 					{statsConfig.length > 0 ? (
-						<div className="flex gap-3 overflow-x-auto pb-1">
-							{statsConfig.map((s) => (
-								<div key={s.key} className="min-w-[160px] flex-1">
-									<StatsCard
-										label={s.label}
-										value={
-											s.money
-												? formatCurrency(stats[s.key] ?? 0)
-												: (stats[s.key] ?? 0).toLocaleString('en-IN')
-										}
-										tone={s.tone}
-										icon={s.icon}
-										hint={s.hint}
-									/>
-								</div>
-							))}
+						<div className="flex gap-4 mb-6">
+							{statsConfig.map((s) => {
+								const toneColorMap: Record<string, string> = {
+									purple: 'text-purple-600',
+									green: 'text-green-600',
+									amber: 'text-amber-600',
+									rose: 'text-rose-600',
+									sky: 'text-sky-600',
+									slate: 'text-slate-600',
+								};
+								const displayValue = s.money
+									? formatCurrency(stats[s.key] ?? 0)
+									: (stats[s.key] ?? 0).toLocaleString('en-IN');
+								return (
+									<div
+										key={s.key}
+										className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2"
+									>
+										<div
+											className={`text-lg font-bold ${toneColorMap[s.tone] || 'text-gray-900'}`}
+										>
+											{displayValue}
+										</div>
+										<div className="text-xs text-gray-600">{s.label}</div>
+									</div>
+								);
+							})}
 						</div>
 					) : null}
 
@@ -204,7 +221,7 @@ export default function ResourcePage({
 												{c.label}
 											</TableHead>
 										))}
-										<TableHead className="text-right">Actions</TableHead>
+										<TableHead className="text-center">Actions</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -231,31 +248,30 @@ export default function ResourcePage({
 													);
 												})}
 												<TableCell className="text-right">
-													<div className="inline-flex items-center gap-1.5">
+													<div className="inline-flex items-center gap-1">
 														{canView ? (
-															<Button
-																variant="ghost"
-																size="sm"
+															<button
 																onClick={() => openView(row)}
+																className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+																title="View"
 															>
-																View
-															</Button>
+																<EyeIcon className="h-4 w-4" />
+															</button>
 														) : null}
-														<Button
-															variant="ghost"
-															size="sm"
+														<button
 															onClick={() => openEdit(row)}
+															className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+															title="Edit"
 														>
-															Edit
-														</Button>
-														<Button
-															variant="ghost"
-															size="sm"
+															<PencilIcon className="h-4 w-4" />
+														</button>
+														<button
 															onClick={() => onDelete(row)}
-															className="text-rose-600 hover:bg-rose-50"
+															className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+															title="Delete"
 														>
-															Delete
-														</Button>
+															<TrashIcon className="h-4 w-4" />
+														</button>
 													</div>
 												</TableCell>
 											</TableRow>

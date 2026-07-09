@@ -150,7 +150,7 @@ export default function AdminTodosPage() {
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
 			<Navbar />
 
-			<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-16 max-w-[1800px] mx-auto">
+			<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-16 max-w-full mx-auto">
 				{/* Header */}
 				<div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
 					<div>
@@ -177,72 +177,42 @@ export default function AdminTodosPage() {
 				</div>
 
 				{/* Stats Cards */}
-				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6 mb-6">
-					<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-						<div className="flex items-center gap-2">
-							<ClipboardDocumentListIcon className="h-5 w-5 text-[#64126D]" />
-							<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-								Total
-							</span>
-						</div>
-						<span className="text-2xl font-bold text-gray-900">
+				<div className="flex gap-4 mb-6">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-gray-900">
 							{stats.total_todos || 0}
-						</span>
-					</div>
-					<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-						<div className="flex items-center gap-2">
-							<ClockIcon className="h-5 w-5 text-amber-500" />
-							<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-								Pending
-							</span>
 						</div>
-						<span className="text-2xl font-bold text-amber-600">
+						<div className="text-xs text-gray-600">Total</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-amber-600">
 							{stats.pending_count || 0}
-						</span>
-					</div>
-					<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-						<div className="flex items-center gap-2">
-							<ArrowPathIcon className="h-5 w-5 text-blue-500" />
-							<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-								In Progress
-							</span>
 						</div>
-						<span className="text-2xl font-bold text-blue-600">
+						<div className="text-xs text-gray-600">Pending</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-blue-600">
 							{stats.in_progress_count || 0}
-						</span>
-					</div>
-					<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-						<div className="flex items-center gap-2">
-							<CheckCircleIcon className="h-5 w-5 text-emerald-500" />
-							<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-								Completed
-							</span>
 						</div>
-						<span className="text-2xl font-bold text-emerald-600">
+						<div className="text-xs text-gray-600">In Progress</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-emerald-600">
 							{stats.completed_count || 0}
-						</span>
-					</div>
-					<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-						<div className="flex items-center gap-2">
-							<ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
-							<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-								High Priority
-							</span>
 						</div>
-						<span className="text-2xl font-bold text-red-600">
+						<div className="text-xs text-gray-600">Completed</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-red-600">
 							{stats.high_priority_count || 0}
-						</span>
-					</div>
-					<div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
-						<div className="flex items-center gap-2">
-							<CalendarIcon className="h-5 w-5 text-orange-500" />
-							<span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
-								Overdue
-							</span>
 						</div>
-						<span className="text-2xl font-bold text-orange-600">
+						<div className="text-xs text-gray-600">High Priority</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-orange-600">
 							{stats.overdue_count || 0}
-						</span>
+						</div>
+						<div className="text-xs text-gray-600">Overdue</div>
 					</div>
 				</div>
 

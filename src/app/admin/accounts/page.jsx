@@ -181,7 +181,7 @@ export default function AccountsPage() {
 		<div className="min-h-screen bg-gray-50">
 			<Navbar />
 
-			<main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
+			<main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-full mx-auto">
 				{/* Header */}
 				<div className="flex items-center justify-between mb-6">
 					<div>
@@ -196,30 +196,30 @@ export default function AccountsPage() {
 				</div>
 
 				{/* Stats Cards */}
-				<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-2xl font-bold text-gray-900">
+				<div className="flex gap-4 mb-6">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-gray-900">
 							{stats.total || 0}
 						</div>
-						<div className="text-sm text-gray-600">Total Transactions</div>
+						<div className="text-xs text-gray-600">Total Transactions</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-2xl font-bold text-green-600">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-green-600">
 							{formatCurrency(stats.totalIncome)}
 						</div>
-						<div className="text-sm text-gray-600">Total Income</div>
+						<div className="text-xs text-gray-600">Total Income</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-2xl font-bold text-red-600">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-red-600">
 							{formatCurrency(stats.totalExpense)}
 						</div>
-						<div className="text-sm text-gray-600">Total Expense</div>
+						<div className="text-xs text-gray-600">Total Expense</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-2xl font-bold text-yellow-600">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-yellow-600">
 							{stats.pending || 0}
 						</div>
-						<div className="text-sm text-gray-600">Pending</div>
+						<div className="text-xs text-gray-600">Pending</div>
 					</div>
 				</div>
 

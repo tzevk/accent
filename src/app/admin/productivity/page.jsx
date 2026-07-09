@@ -140,7 +140,7 @@ export default function ProductivityPage() {
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
 			{/* Header */}
 			<div className="bg-white shadow-sm border-b">
-				<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
+				<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-full mx-auto">
 					<div className="flex items-center justify-between">
 						<div>
 							<h1 className="text-3xl font-bold text-gray-900">
@@ -161,7 +161,7 @@ export default function ProductivityPage() {
 				</div>
 			</div>
 
-			<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 max-w-[1800px] mx-auto">
+			<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 max-w-full mx-auto">
 				{/* Filters */}
 				<div className="bg-white rounded-lg shadow-sm p-6 mb-6">
 					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -213,63 +213,38 @@ export default function ProductivityPage() {
 					</div>
 				</div>
 
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-					{/* Stats Cards */}
-					<div className="bg-white rounded-lg shadow-sm p-6">
-						<div className="flex items-center justify-between">
-							<div>
-								<p className="text-sm text-gray-500">Avg Screen Time</p>
-								<p className="text-2xl font-bold text-gray-900 mt-1">
-									{loading
-										? '...'
-										: screenTimeData?.stats?.avgScreenTimePerDay
-											? `${Math.round(screenTimeData.stats.avgScreenTimePerDay)}m`
-											: '0m'}
-								</p>
-								<p className="text-xs text-gray-500 mt-1">per day</p>
-							</div>
-							<div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-								<ClockIcon className="w-6 h-6 text-blue-600" />
-							</div>
+				<div className="flex gap-4 mb-6">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-blue-600">
+							{loading
+								? '...'
+								: screenTimeData?.stats?.avgScreenTimePerDay
+									? `${Math.round(screenTimeData.stats.avgScreenTimePerDay)}m`
+									: '0m'}
 						</div>
+						<div className="text-xs text-gray-600">Avg Screen Time</div>
 					</div>
 
-					<div className="bg-white rounded-lg shadow-sm p-6">
-						<div className="flex items-center justify-between">
-							<div>
-								<p className="text-sm text-gray-500">Avg Active Time</p>
-								<p className="text-2xl font-bold text-gray-900 mt-1">
-									{loading
-										? '...'
-										: screenTimeData?.stats?.avgActiveTimePerDay
-											? `${Math.round(screenTimeData.stats.avgActiveTimePerDay)}m`
-											: '0m'}
-								</p>
-								<p className="text-xs text-gray-500 mt-1">per day</p>
-							</div>
-							<div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-								<ChartBarIcon className="w-6 h-6 text-green-600" />
-							</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-green-600">
+							{loading
+								? '...'
+								: screenTimeData?.stats?.avgActiveTimePerDay
+									? `${Math.round(screenTimeData.stats.avgActiveTimePerDay)}m`
+									: '0m'}
 						</div>
+						<div className="text-xs text-gray-600">Avg Active Time</div>
 					</div>
 
-					<div className="bg-white rounded-lg shadow-sm p-6">
-						<div className="flex items-center justify-between">
-							<div>
-								<p className="text-sm text-gray-500">Avg Productivity</p>
-								<p className="text-2xl font-bold text-gray-900 mt-1">
-									{loading
-										? '...'
-										: screenTimeData?.stats?.avgProductivityScore
-											? `${Math.round(screenTimeData.stats.avgProductivityScore)}%`
-											: '0%'}
-								</p>
-								<p className="text-xs text-gray-500 mt-1">score</p>
-							</div>
-							<div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-								<TrophyIcon className="w-6 h-6 text-yellow-600" />
-							</div>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-yellow-600">
+							{loading
+								? '...'
+								: screenTimeData?.stats?.avgProductivityScore
+									? `${Math.round(screenTimeData.stats.avgProductivityScore)}%`
+									: '0%'}
 						</div>
+						<div className="text-xs text-gray-600">Avg Productivity</div>
 					</div>
 				</div>
 
@@ -386,46 +361,40 @@ export default function ProductivityPage() {
 
 				{/* Summary Stats */}
 				{screenTimeData?.stats && (
-					<div className="bg-white rounded-lg shadow-sm p-6">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
 						<h3 className="text-lg font-semibold text-gray-900 mb-4">
 							Summary Statistics
 						</h3>
-						<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-							<div className="p-4 bg-blue-50 rounded-lg">
-								<p className="text-sm text-blue-600 font-medium">Total Days</p>
-								<p className="text-2xl font-bold text-blue-900 mt-1">
+						<div className="flex gap-4">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-blue-600">
 									{screenTimeData.stats.totalDays || 0}
-								</p>
+								</div>
+								<div className="text-xs text-gray-600">Total Days</div>
 							</div>
-							<div className="p-4 bg-green-50 rounded-lg">
-								<p className="text-sm text-green-600 font-medium">
-									Total Screen Time
-								</p>
-								<p className="text-2xl font-bold text-green-900 mt-1">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-green-600">
 									{Math.round(
 										(screenTimeData.stats.totalScreenTimeMinutes || 0) / 60
 									)}
 									h
-								</p>
+								</div>
+								<div className="text-xs text-gray-600">Total Screen Time</div>
 							</div>
-							<div className="p-4 bg-yellow-50 rounded-lg">
-								<p className="text-sm text-yellow-600 font-medium">
-									Active Time
-								</p>
-								<p className="text-2xl font-bold text-yellow-900 mt-1">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-yellow-600">
 									{Math.round(
 										(screenTimeData.stats.totalActiveTimeMinutes || 0) / 60
 									)}
 									h
-								</p>
+								</div>
+								<div className="text-xs text-gray-600">Active Time</div>
 							</div>
-							<div className="p-4 bg-purple-50 rounded-lg">
-								<p className="text-sm text-purple-600 font-medium">
-									Avg Focus Score
-								</p>
-								<p className="text-2xl font-bold text-purple-900 mt-1">
+							<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+								<div className="text-lg font-bold text-purple-600">
 									{Math.round(screenTimeData.stats.avgFocusScore || 0)}%
-								</p>
+								</div>
+								<div className="text-xs text-gray-600">Avg Focus Score</div>
 							</div>
 						</div>
 					</div>

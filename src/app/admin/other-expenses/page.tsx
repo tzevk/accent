@@ -169,17 +169,22 @@ const formFields = [
 ];
 
 const columns = [
-	{ key: 'sr_no', label: 'Sr. No', headClassName: 'w-16' },
+	{ key: 'sr_no', label: 'Sr. No', headClassName: 'w-16 text-center' },
 	{
 		key: 'voucher_date',
 		label: 'Voucher Date',
 		date: true,
-		headClassName: 'w-28',
+		headClassName: 'w-28 text-center',
 	},
-	{ key: 'expense_category', label: 'Expense Category', headClassName: 'w-44' },
+	{
+		key: 'expense_category',
+		label: 'Expense Category',
+		headClassName: 'w-44 text-center',
+	},
 	{
 		key: 'payee_type',
 		label: 'Vendor / Employee',
+		headClassName: 'text-center',
 		render: (row: Record<string, unknown>) => {
 			const name: string = String(row.vendor_name || row.employee_name || '');
 			const displayName = name || '—';
@@ -196,33 +201,38 @@ const columns = [
 			);
 		},
 	},
-	{ key: 'bill_no', label: 'Bill No.' },
-	{ key: 'bill_date', label: 'Bill Date', date: true, headClassName: 'w-28' },
+	{ key: 'bill_no', label: 'Bill No.', headClassName: 'text-center' },
+	{
+		key: 'bill_date',
+		label: 'Bill Date',
+		date: true,
+		headClassName: 'w-28 text-center',
+	},
 	{
 		key: 'bill_amount',
 		label: 'Bill Amount',
 		money: true,
-		headClassName: 'w-32 text-right',
+		headClassName: 'w-32 text-center',
 		cellClassName: 'text-right tabular-nums',
 	},
 	{
 		key: 'gst_amount',
 		label: 'GST / IGST',
 		money: true,
-		headClassName: 'w-28 text-right',
+		headClassName: 'w-28 text-center',
 		cellClassName: 'text-right tabular-nums',
 	},
 	{
 		key: 'net_amount',
 		label: 'Net Bill Amount',
 		money: true,
-		headClassName: 'w-36 text-right',
+		headClassName: 'w-36 text-center',
 		cellClassName: 'text-right font-semibold tabular-nums',
 	},
 	{
 		key: 'status',
 		label: 'Status',
-		headClassName: 'w-28',
+		headClassName: 'w-28 text-center',
 		render: (row: Record<string, unknown>) => {
 			const status = (row.status as string) || 'submitted';
 			return (

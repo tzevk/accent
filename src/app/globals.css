@@ -205,7 +205,7 @@ body,
 
 /* Prevent content from stretching too wide on ultrawide monitors */
 .max-content {
-	max-width: 1800px;
+	/* max-width: 1800px; */
 	margin-left: auto;
 	margin-right: auto;
 }
@@ -503,27 +503,25 @@ textarea::placeholder {
 /* Sidebar hover expansion and layout padding without styled-jsx */
 @media (min-width: 640px) {
 	.content-with-sidebar {
-		padding-left: 80px;
+		padding-left: 64px;
 		padding-top: 64px;
 	}
-	/* Expand content padding only when the actual sidebar is hovered */
 	.group\/sidebar:hover + .content-with-sidebar {
-		padding-left: 276px;
+		padding-left: 260px;
 	}
-	/* When pinned via data attribute, keep content padded */
 	.group\/sidebar[data-pinned='true'] + .content-with-sidebar {
-		padding-left: 276px;
+		padding-left: 260px;
 	}
 }
 @media (min-width: 1280px) {
 	.content-with-sidebar {
-		padding-left: 80px;
+		padding-left: 64px;
 	}
 	.group\/sidebar:hover + .content-with-sidebar {
-		padding-left: 296px;
+		padding-left: 280px;
 	}
 	.group\/sidebar[data-pinned='true'] + .content-with-sidebar {
-		padding-left: 296px;
+		padding-left: 280px;
 	}
 }
 

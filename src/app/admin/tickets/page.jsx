@@ -288,7 +288,7 @@ export default function TicketManagementPage() {
 	return (
 		<div className="min-h-screen bg-gray-50">
 			<Navbar />
-			<div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
+			<div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
 				{/* Header */}
 				<div className="mb-8">
 					<h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
@@ -301,50 +301,40 @@ export default function TicketManagementPage() {
 				</div>
 
 				{/* Stats Cards */}
-				<div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-8">
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-center">
-							<p className="text-2xl font-bold text-blue-600">{stats.new}</p>
-							<p className="text-xs text-gray-600 mt-1">New</p>
-						</div>
+				<div className="flex gap-4 mb-6">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-blue-600">{stats.new}</div>
+						<div className="text-xs text-gray-600">New</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-center">
-							<p className="text-2xl font-bold text-purple-600">
-								{stats.under_review}
-							</p>
-							<p className="text-xs text-gray-600 mt-1">Under Review</p>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-purple-600">
+							{stats.under_review}
 						</div>
+						<div className="text-xs text-gray-600">Under Review</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-center">
-							<p className="text-2xl font-bold text-yellow-600">
-								{stats.in_progress}
-							</p>
-							<p className="text-xs text-gray-600 mt-1">In Progress</p>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-yellow-600">
+							{stats.in_progress}
 						</div>
+						<div className="text-xs text-gray-600">In Progress</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-center">
-							<p className="text-2xl font-bold text-orange-600">
-								{stats.waiting}
-							</p>
-							<p className="text-xs text-gray-600 mt-1">Waiting</p>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-orange-600">
+							{stats.waiting}
 						</div>
+						<div className="text-xs text-gray-600">Waiting</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-center">
-							<p className="text-2xl font-bold text-green-600">
-								{stats.resolved}
-							</p>
-							<p className="text-xs text-gray-600 mt-1">Resolved</p>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-green-600">
+							{stats.resolved}
 						</div>
+						<div className="text-xs text-gray-600">Resolved</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-						<div className="text-center">
-							<p className="text-2xl font-bold text-gray-600">{stats.closed}</p>
-							<p className="text-xs text-gray-600 mt-1">Closed</p>
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-gray-600">
+							{stats.closed}
 						</div>
+						<div className="text-xs text-gray-600">Closed</div>
 					</div>
 				</div>
 

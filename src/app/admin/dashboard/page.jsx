@@ -314,7 +314,7 @@ export default function AdminDashboard() {
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
 			<Navbar />
 
-			<main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 xl:py-8 max-w-[1920px] mx-auto">
+			<main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 xl:py-8 max-w-full mx-auto">
 				{/* Header */}
 				<div className="mb-6 xl:mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
 					<div>

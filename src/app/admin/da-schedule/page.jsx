@@ -99,7 +99,7 @@ export default function DASchedulePage() {
 		<>
 			<Navbar />
 			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-				<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-16 max-w-[1800px] mx-auto">
+				<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-16 max-w-full mx-auto">
 					{/* Header with Back Button */}
 					<div className="mb-6">
 						<div className="flex items-center gap-4 mb-3">

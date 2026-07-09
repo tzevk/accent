@@ -79,7 +79,7 @@ export default function LiveMonitoringUserPage() {
 		return (
 			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
 				<Navbar />
-				<main className="px-6 pt-24 pb-8 max-w-7xl mx-auto w-full">
+				<main className="px-6 pt-24 pb-8 max-w-full mx-auto w-full">
 					<div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
 						{error || 'User not found.'}
 					</div>
