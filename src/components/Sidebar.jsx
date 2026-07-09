@@ -326,199 +326,206 @@ export default function Sidebar() {
 					</div>
 				</div>
 
-				<div className="px-2.5 pt-3.5 pb-2">
-					{/* MASTERS header */}
-					<div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
-						<span>MASTERS</span>
-					</div>
-					<div className="space-y-1 mt-1">
-						{canViewEmployees && (
-							<>
-								<button
-									onClick={() =>
-										setEmployeeMasterExpanded(!employeeMasterExpanded)
-									}
-									className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
-										pathname.startsWith('/employees')
-											? 'bg-[#64126D] text-white shadow-sm'
-											: 'text-[#64126D] hover:bg-purple-50'
-									}`}
-									title="Employee Master"
-								>
-									<UserGroupIcon
-										className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${pathname.startsWith('/employees') ? 'text-white' : 'text-[#64126D]'}`}
-									/>
-									<span
-										className={`ml-2.5 hidden sidebar-open:inline ${pathname.startsWith('/employees') ? 'text-white' : 'text-gray-900'}`}
+				{(canViewEmployees ||
+					canViewUsers ||
+					canViewActivities ||
+					canViewCompanies ||
+					canViewVendors ||
+					isAdmin) && (
+					<div className="px-2.5 pt-3.5 pb-2">
+						{/* MASTERS header */}
+						<div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
+							<span>MASTERS</span>
+						</div>
+						<div className="space-y-1 mt-1">
+							{canViewEmployees && (
+								<>
+									<button
+										onClick={() =>
+											setEmployeeMasterExpanded(!employeeMasterExpanded)
+										}
+										className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
+											pathname.startsWith('/employees')
+												? 'bg-[#64126D] text-white shadow-sm'
+												: 'text-[#64126D] hover:bg-purple-50'
+										}`}
+										title="Employee Master"
 									>
-										Employee Master
-									</span>
-									<ChevronDownIcon
-										className={`ml-auto hidden sidebar-open:inline h-4 w-4 transition-transform ${employeeMasterExpanded ? 'rotate-180' : ''} ${pathname.startsWith('/employees') ? 'text-white' : 'text-[#64126D]'}`}
-									/>
-								</button>
-								{employeeMasterExpanded && (
-									<div className="ml-6 space-y-1 mt-1">
-										<Link
-											href="/employees"
-											className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-												pathname === '/employees'
-													? 'bg-purple-100 text-[#64126D]'
-													: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-											}`}
+										<UserGroupIcon
+											className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${pathname.startsWith('/employees') ? 'text-white' : 'text-[#64126D]'}`}
+										/>
+										<span
+											className={`ml-2.5 hidden sidebar-open:inline ${pathname.startsWith('/employees') ? 'text-white' : 'text-gray-900'}`}
 										>
-											<span className="hidden sidebar-open:inline">
-												Add Employee
-											</span>
-										</Link>
-										<Link
-											href="/employees/payroll"
-											className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-												pathname === '/employees/payroll'
-													? 'bg-purple-100 text-[#64126D]'
-													: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-											}`}
-										>
-											<span className="hidden sidebar-open:inline">
-												Payroll
-											</span>
-										</Link>
-										<Link
-											href="/employees/contract"
-											className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-												pathname === '/employees/contract'
-													? 'bg-purple-100 text-[#64126D]'
-													: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-											}`}
-										>
-											<span className="hidden sidebar-open:inline">
-												Contract
-											</span>
-										</Link>
-										<Link
-											href="/employees/attendance"
-											className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-												pathname === '/employees/attendance'
-													? 'bg-purple-100 text-[#64126D]'
-													: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-											}`}
-										>
-											<span className="hidden sidebar-open:inline">
-												Attendance
-											</span>
-										</Link>
-									</div>
-								)}
-							</>
-						)}
-						{canViewUsers && (
-							<NavRow
-								icon={ShieldCheckIcon}
-								label="User Master"
-								href="/masters/users"
-								active={pathname.startsWith('/masters/users')}
-							/>
-						)}
-						{canViewActivities && (
-							<NavRow
-								icon={DocumentTextIcon}
-								label="Activity Master"
-								href="/masters/activities"
-								active={pathname.startsWith('/masters/activities')}
-							/>
-						)}
-						{canViewActivities && (
-							<NavRow
-								icon={DocumentTextIcon}
-								label="Software Master"
-								href="/masters/software"
-								active={pathname.startsWith('/masters/software')}
-							/>
-						)}
-						{canViewCompanies && (
-							<NavRow
-								icon={BuildingOfficeIcon}
-								label="Company Master"
-								href="/company"
-								active={pathname.startsWith('/company')}
-							/>
-						)}
-						{canViewVendors && (
-							<NavRow
-								icon={BuildingOfficeIcon}
-								label="Vendor Master"
-								href="/vendors"
-								active={pathname.startsWith('/vendors')}
-							/>
-						)}
-						{canViewCompanies && (
-							<NavRow
-								icon={BuildingLibraryIcon}
-								label="Bank Master"
-								href="/masters/banks"
-								active={pathname.startsWith('/masters/banks')}
-							/>
-						)}
-						{canViewCompanies && (
-							<NavRow
-								icon={DocumentTextIcon}
-								label="Description Master"
-								href="/masters/descriptions"
-								active={pathname.startsWith('/masters/descriptions')}
-							/>
-						)}
-						{isAdmin && (
-							<NavRow
-								icon={CalendarDaysIcon}
-								label="Holiday Master"
-								href="/masters/holidays"
-								active={pathname.startsWith('/masters/holidays')}
-							/>
-						)}
-						{isAdmin && (
-							<>
-								<button
-									onClick={() =>
-										setAccountMasterExpanded(!accountMasterExpanded)
-									}
-									className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
-										pathname.startsWith('/masters/accounts')
-											? 'bg-[#64126D] text-white shadow-sm'
-											: 'text-[#64126D] hover:bg-purple-50'
-									}`}
-								>
-									<BanknotesIcon
-										className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-[#64126D]'}`}
-									/>
-									<span
-										className={`ml-2.5 hidden sidebar-open:inline ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-gray-900'}`}
+											Employee Master
+										</span>
+										<ChevronDownIcon
+											className={`ml-auto hidden sidebar-open:inline h-4 w-4 transition-transform ${employeeMasterExpanded ? 'rotate-180' : ''} ${pathname.startsWith('/employees') ? 'text-white' : 'text-[#64126D]'}`}
+										/>
+									</button>
+									{employeeMasterExpanded && (
+										<div className="ml-6 space-y-1 mt-1">
+											<Link
+												href="/employees"
+												className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+													pathname === '/employees'
+														? 'bg-purple-100 text-[#64126D]'
+														: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+												}`}
+											>
+												<span className="hidden sidebar-open:inline">
+													Add Employee
+												</span>
+											</Link>
+											<Link
+												href="/employees/payroll"
+												className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+													pathname === '/employees/payroll'
+														? 'bg-purple-100 text-[#64126D]'
+														: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+												}`}
+											>
+												<span className="hidden sidebar-open:inline">
+													Payroll
+												</span>
+											</Link>
+											<Link
+												href="/employees/contract"
+												className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+													pathname === '/employees/contract'
+														? 'bg-purple-100 text-[#64126D]'
+														: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+												}`}
+											>
+												<span className="hidden sidebar-open:inline">
+													Contract
+												</span>
+											</Link>
+											<Link
+												href="/employees/attendance"
+												className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+													pathname === '/employees/attendance'
+														? 'bg-purple-100 text-[#64126D]'
+														: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+												}`}
+											>
+												<span className="hidden sidebar-open:inline">
+													Attendance
+												</span>
+											</Link>
+										</div>
+									)}
+								</>
+							)}
+							{canViewUsers && (
+								<NavRow
+									icon={ShieldCheckIcon}
+									label="User Master"
+									href="/masters/users"
+									active={pathname.startsWith('/masters/users')}
+								/>
+							)}
+							{canViewActivities && (
+								<NavRow
+									icon={DocumentTextIcon}
+									label="Activity Master"
+									href="/masters/activities"
+									active={pathname.startsWith('/masters/activities')}
+								/>
+							)}
+							{canViewActivities && (
+								<NavRow
+									icon={DocumentTextIcon}
+									label="Software Master"
+									href="/masters/software"
+									active={pathname.startsWith('/masters/software')}
+								/>
+							)}
+							{canViewCompanies && (
+								<NavRow
+									icon={BuildingOfficeIcon}
+									label="Company Master"
+									href="/company"
+									active={pathname.startsWith('/company')}
+								/>
+							)}
+							{canViewVendors && (
+								<NavRow
+									icon={BuildingOfficeIcon}
+									label="Vendor Master"
+									href="/vendors"
+									active={pathname.startsWith('/vendors')}
+								/>
+							)}
+							{canViewCompanies && (
+								<NavRow
+									icon={BuildingLibraryIcon}
+									label="Bank Master"
+									href="/masters/banks"
+									active={pathname.startsWith('/masters/banks')}
+								/>
+							)}
+							{canViewCompanies && (
+								<NavRow
+									icon={DocumentTextIcon}
+									label="Description Master"
+									href="/masters/descriptions"
+									active={pathname.startsWith('/masters/descriptions')}
+								/>
+							)}
+							{isAdmin && (
+								<NavRow
+									icon={CalendarDaysIcon}
+									label="Holiday Master"
+									href="/masters/holidays"
+									active={pathname.startsWith('/masters/holidays')}
+								/>
+							)}
+							{isAdmin && (
+								<>
+									<button
+										onClick={() =>
+											setAccountMasterExpanded(!accountMasterExpanded)
+										}
+										className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
+											pathname.startsWith('/masters/accounts')
+												? 'bg-[#64126D] text-white shadow-sm'
+												: 'text-[#64126D] hover:bg-purple-50'
+										}`}
 									>
-										Account Master
-									</span>
-									<ChevronDownIcon
-										className={`ml-auto hidden sidebar-open:inline h-4 w-4 transition-transform ${accountMasterExpanded ? 'rotate-180' : ''} ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-[#64126D]'}`}
-									/>
-								</button>
-								{accountMasterExpanded && (
-									<div className="ml-6 space-y-1 mt-1">
-										<Link
-											href="/masters/accounts/account-heads"
-											className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-												pathname === '/masters/accounts/account-heads'
-													? 'bg-purple-100 text-[#64126D]'
-													: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-											}`}
+										<BanknotesIcon
+											className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-[#64126D]'}`}
+										/>
+										<span
+											className={`ml-2.5 hidden sidebar-open:inline ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-gray-900'}`}
 										>
-											<span className="hidden sidebar-open:inline">
-												Account Head Master
-											</span>
-										</Link>
-									</div>
-								)}
-							</>
-						)}
+											Account Master
+										</span>
+										<ChevronDownIcon
+											className={`ml-auto hidden sidebar-open:inline h-4 w-4 transition-transform ${accountMasterExpanded ? 'rotate-180' : ''} ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-[#64126D]'}`}
+										/>
+									</button>
+									{accountMasterExpanded && (
+										<div className="ml-6 space-y-1 mt-1">
+											<Link
+												href="/masters/accounts/account-heads"
+												className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+													pathname === '/masters/accounts/account-heads'
+														? 'bg-purple-100 text-[#64126D]'
+														: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+												}`}
+											>
+												<span className="hidden sidebar-open:inline">
+													Account Head Master
+												</span>
+											</Link>
+										</div>
+									)}
+								</>
+							)}
+						</div>
 					</div>
-				</div>
+				)}
 
 				{/* Finance section - admin only, gated on PROPOSALS read access */}
 				{canViewProposals && (
