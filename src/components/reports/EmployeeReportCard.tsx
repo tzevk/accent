@@ -140,7 +140,7 @@ export default function EmployeeReportCard({
 			columnHelper.accessor('sr_no', {
 				header: () => <DefaultSortHeader column={null} title="Sr. No" />,
 				cell: (info) => info.getValue(),
-				size: 60,
+				size: 6,
 			}),
 			columnHelper.accessor((row) => row.date, {
 				id: 'date',
@@ -148,7 +148,7 @@ export default function EmployeeReportCard({
 					<DefaultSortHeader column={info.column} title="Date" />
 				),
 				cell: (info) => fmtDate(info.getValue()),
-				size: 110,
+				size: 11,
 			}),
 			columnHelper.accessor('project_code', {
 				id: 'project_code',
@@ -163,6 +163,7 @@ export default function EmployeeReportCard({
 					) : (
 						'–'
 					),
+				size: 9,
 			}),
 			columnHelper.accessor('project_name', {
 				id: 'project_name',
@@ -171,12 +172,13 @@ export default function EmployeeReportCard({
 				),
 				cell: (info) =>
 					info.getValue() ? (
-						<span className="text-sm text-gray-700 truncate max-w-[220px] block">
+						<span className="text-sm text-gray-700 truncate max-w-full block">
 							{info.getValue()}
 						</span>
 					) : (
 						'–'
 					),
+				size: 18,
 			}),
 			columnHelper.accessor(
 				(row) => row.sub_activity_name || row.activity_name || 'Unnamed',
@@ -200,6 +202,7 @@ export default function EmployeeReportCard({
 								)}
 						</div>
 					),
+					size: 21,
 				}
 			),
 			columnHelper.accessor('planned_hours', {
@@ -218,7 +221,7 @@ export default function EmployeeReportCard({
 						<span className="text-gray-300">–</span>
 					);
 				},
-				size: 90,
+				size: 9,
 			}),
 			columnHelper.accessor('hours', {
 				id: 'hours',
@@ -230,7 +233,7 @@ export default function EmployeeReportCard({
 						{info.getValue() || 0}
 					</span>
 				),
-				size: 90,
+				size: 9,
 			}),
 			columnHelper.accessor('qty_done', {
 				id: 'qty_done',
@@ -242,7 +245,7 @@ export default function EmployeeReportCard({
 						{info.getValue() || 0}
 					</span>
 				),
-				size: 80,
+				size: 8,
 			}),
 		],
 		[]
@@ -340,13 +343,16 @@ export default function EmployeeReportCard({
 				</div>
 			) : (
 				<div className="overflow-x-clip">
-					<table className="w-full caption-bottom text-sm border-t border-gray-100">
+					<table
+						className="w-full caption-bottom text-sm border-t border-gray-100"
+						style={{ tableLayout: 'fixed' }}
+					>
 						<thead className="sticky top-[64px] z-20 bg-gray-50 border-b border-gray-200 shadow-sm">
 							<tr>
 								{table.getFlatHeaders().map((header) => (
 									<th
 										key={header.id}
-										style={{ width: header.getSize() }}
+										style={{ width: `${header.getSize()}%` }}
 										className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap"
 									>
 										{flexRender(
