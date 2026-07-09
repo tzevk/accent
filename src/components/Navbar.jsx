@@ -23,6 +23,7 @@ import {
 	WalletIcon,
 	ArrowDownCircleIcon,
 	ArrowUpCircleIcon,
+	ArrowRightCircleIcon,
 	ClipboardDocumentCheckIcon,
 } from '@heroicons/react/24/outline';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -127,7 +128,13 @@ const adminMenuConfig = [
 		href: '/admin/material-requisition',
 		resource: 'admin',
 	},
-	{ name: 'Payment Entry', href: '/admin/payment-entry', resource: 'admin' },
+	{ name: 'Payment Released', href: '/admin/payment-entry', resource: 'admin' },
+	{ name: 'Payment Issue', href: '/admin/payment-issue', resource: 'admin' },
+	{
+		name: 'Payment Outgoing',
+		href: '/admin/payment-outgoing',
+		resource: 'admin',
+	},
 	{
 		name: 'Payment Payable',
 		href: '/admin/payment-payable',
@@ -228,6 +235,28 @@ const adminMenuGroups = [
 		],
 	},
 	{
+		key: 'payments',
+		name: 'Payments',
+		icon: BanknotesIcon,
+		items: [
+			{
+				name: 'Payment Released',
+				href: '/admin/payment-entry',
+				icon: BanknotesIcon,
+			},
+			{
+				name: 'Payment Issue',
+				href: '/admin/payment-issue',
+				icon: ArrowUpCircleIcon,
+			},
+			{
+				name: 'Payment Outgoing',
+				href: '/admin/payment-outgoing',
+				icon: ArrowRightCircleIcon,
+			},
+		],
+	},
+	{
 		key: 'cash-expenses',
 		name: 'Cash & Expenses',
 		icon: WalletIcon,
@@ -247,11 +276,6 @@ const adminMenuGroups = [
 				name: 'Petty Cash Expenses',
 				href: '/admin/petty-cash-expenses',
 				icon: WalletIcon,
-			},
-			{
-				name: 'Payment Entry',
-				href: '/admin/payment-entry',
-				icon: BanknotesIcon,
 			},
 		],
 	},

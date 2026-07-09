@@ -104,7 +104,23 @@ const formFields = [
 		hint: 'Auto-generated if blank',
 	},
 	{ name: 'invoice_date', label: 'Invoice Date', type: 'date' },
-	{ name: 'due_date', label: 'Due Date', type: 'date' },
+	{
+		name: 'due_date',
+		label: 'Due Date',
+		type: 'date',
+		derived: {
+			dependsOn: ['invoice_date'],
+			modes: ['create'],
+			calculate: (values) => {
+				const v = values.invoice_date;
+				if (!v) return '';
+				const d = new Date(v);
+				if (Number.isNaN(d.getTime())) return '';
+				d.setDate(d.getDate() + 30);
+				return d.toISOString().split('T')[0];
+			},
+		},
+	},
 	{
 		name: 'vendor_name',
 		label: 'Vendor Name',
@@ -162,28 +178,50 @@ const formFields = [
 ];
 
 const columns = [
-	{ key: 'invoice_number', label: 'Invoice #', headClassName: 'w-32' },
-	{ key: 'invoice_date', label: 'Date', date: true, headClassName: 'w-28' },
-	{ key: 'vendor_name', label: 'Vendor' },
-	{ key: 'po_number', label: 'PO #', headClassName: 'w-28' },
+	{
+		key: 'invoice_number',
+		label: 'Invoice #',
+		headClassName: 'w-32 text-center',
+		cellClassName: 'text-center',
+	},
+	{
+		key: 'invoice_date',
+		label: 'Date',
+		date: true,
+		headClassName: 'w-28 text-center',
+		cellClassName: 'text-center',
+	},
+	{
+		key: 'vendor_name',
+		label: 'Vendor',
+		headClassName: 'text-center',
+		cellClassName: 'text-center',
+	},
+	{
+		key: 'po_number',
+		label: 'PO #',
+		headClassName: 'w-28 text-center',
+		cellClassName: 'text-center',
+	},
 	{
 		key: 'total',
 		label: 'Total',
 		money: true,
-		headClassName: 'w-32 text-right',
-		cellClassName: 'text-right font-medium',
+		headClassName: 'w-32 text-center',
+		cellClassName: 'text-center font-medium',
 	},
 	{
 		key: 'balance_due',
 		label: 'Balance',
 		money: true,
-		headClassName: 'w-32 text-right',
-		cellClassName: 'text-right',
+		headClassName: 'w-32 text-center',
+		cellClassName: 'text-center',
 	},
 	{
 		key: 'status',
 		label: 'Status',
-		headClassName: 'w-28',
+		headClassName: 'w-28 text-center',
+		cellClassName: 'text-center',
 		render: (row) => (
 			<span
 				className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_BADGE[row.status] || STATUS_BADGE.draft}`}

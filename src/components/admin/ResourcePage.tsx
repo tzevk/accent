@@ -247,7 +247,7 @@ export default function ResourcePage({
 														</TableCell>
 													);
 												})}
-												<TableCell className="text-right">
+												<TableCell className="text-center">
 													<div className="inline-flex items-center gap-1">
 														{canView ? (
 															<button
@@ -538,10 +538,40 @@ function ResourceFormModal({
 		return unsubscribe;
 	}, [form, formFields, isView, computedFields]);
 
+	const derivedFields = formFields.filter((f) => f.derived);
+
+	useEffect(() => {
+		if (isView || derivedFields.length === 0) return;
+		const prevRef = new Map<string, unknown>();
+		const { unsubscribe } = form.store.subscribe(() => {
+			derivedFields.forEach((field) => {
+				if (!field.derived) return;
+				if (field.derived.modes && !field.derived.modes.includes(mode)) return;
+				const currentDepVals = field.derived.dependsOn.map((d) =>
+					form.getFieldValue(d)
+				);
+				const prevKey = currentDepVals.map(String).join('|');
+				if (prevRef.get(field.name) === prevKey) return;
+				prevRef.set(field.name, prevKey);
+				const allValues: Record<string, unknown> = {};
+				formFields.forEach((f) => {
+					allValues[f.name] = form.getFieldValue(f.name);
+				});
+				const newVal = field.derived.calculate(allValues);
+				const currentVal = form.getFieldValue(field.name);
+				if (String(newVal) !== String(currentVal)) {
+					form.setFieldValue(field.name, newVal);
+				}
+			});
+		});
+		return unsubscribe;
+	}, [form, formFields, isView, derivedFields, mode]);
+
 	return (
 		<Modal
 			open
 			onClose={onClose}
+			dismissible={mode !== 'create'}
 			title={`${isView ? 'View' : isEdit ? 'Edit' : 'New'} ${title}`}
 			size="lg"
 			footer={
