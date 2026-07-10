@@ -53,6 +53,7 @@ async function doSchemaInit() {
 			initFollowUpsTable(db),
 			initWorkLogsTable(db),
 			initUserActivityAssignmentsTable(db),
+			initOutgoingPurchaseOrdersTable(db),
 		]);
 
 		schemaInitialized = true;
@@ -323,6 +324,74 @@ async function initBankMasterTable(db) {
       CreatedDate DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+}
+
+async function initOutgoingPurchaseOrdersTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS outgoing_purchase_orders (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      sr_no INT,
+      company_name VARCHAR(255) NOT NULL,
+      city VARCHAR(255),
+      po_number VARCHAR(100) NOT NULL,
+      po_date DATE,
+      po_amount DECIMAL(15, 2) NOT NULL,
+      tax_amount DECIMAL(15, 2) DEFAULT 0,
+      net_amount DECIMAL(15, 2) DEFAULT 0,
+      project_number VARCHAR(100),
+      description VARCHAR(500),
+      remarks TEXT,
+      status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'pending',
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_status (status),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE outgoing_purchase_orders ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		'ALTER TABLE outgoing_purchase_orders ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+		'ALTER TABLE outgoing_purchase_orders ADD COLUMN tax_amount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE outgoing_purchase_orders ADD COLUMN net_amount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE outgoing_purchase_orders ADD COLUMN description VARCHAR(500)',
+		"ALTER TABLE outgoing_purchase_orders MODIFY COLUMN status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'pending'",
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn(
+					'Outgoing purchase orders schema update warning:',
+					e.message || e
+				);
+			}
+		}
+	}
+
+	const indexMigrations = [
+		'ALTER TABLE outgoing_purchase_orders DROP INDEX po_number',
+		'ALTER TABLE outgoing_purchase_orders ADD UNIQUE KEY unique_active_po (po_number, isDelete)',
+	];
+
+	for (const stmt of indexMigrations) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (
+				!e.message?.includes('check that it exists') &&
+				!e.message?.includes('Duplicate key name')
+			) {
+				console.warn(
+					'Outgoing purchase orders index migration warning:',
+					e.message || e
+				);
+			}
+		}
+	}
 }
 
 /**

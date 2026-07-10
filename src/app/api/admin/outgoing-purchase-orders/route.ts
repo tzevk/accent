@@ -27,17 +27,25 @@ export async function GET(request: Request) {
 				sr_no INT,
 				company_name VARCHAR(255) NOT NULL,
 				city VARCHAR(255),
-				po_number VARCHAR(100) UNIQUE NOT NULL,
+				po_number VARCHAR(100) NOT NULL,
 				po_date DATE,
 				po_amount DECIMAL(15, 2) NOT NULL,
+				tax_amount DECIMAL(15, 2) DEFAULT 0,
+				net_amount DECIMAL(15, 2) DEFAULT 0,
 				project_number VARCHAR(100),
+				description VARCHAR(500),
 				remarks TEXT,
-				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+				status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'pending',
+				isDelete TINYINT(1) NOT NULL DEFAULT 0,
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				INDEX idx_status (status),
+				INDEX idx_isDelete (isDelete)
 			)
 		`);
 
 		const [rows] = await connection.execute(
-			'SELECT * FROM outgoing_purchase_orders ORDER BY created_at DESC'
+			'SELECT * FROM outgoing_purchase_orders WHERE isDelete = 0 ORDER BY created_at DESC'
 		);
 		return NextResponse.json({ success: true, data: rows });
 	} catch (error: any) {
@@ -80,8 +88,12 @@ export async function POST(request: Request) {
 			po_number,
 			po_date,
 			po_amount,
+			tax_amount,
+			net_amount,
 			project_number,
+			description,
 			remarks,
+			status,
 		} = body;
 
 		if (!company_name || !po_number || !po_date || !po_amount) {
@@ -100,26 +112,37 @@ export async function POST(request: Request) {
 				sr_no INT,
 				company_name VARCHAR(255) NOT NULL,
 				city VARCHAR(255),
-				po_number VARCHAR(100) UNIQUE NOT NULL,
+				po_number VARCHAR(100) NOT NULL,
 				po_date DATE,
 				po_amount DECIMAL(15, 2) NOT NULL,
+				tax_amount DECIMAL(15, 2) DEFAULT 0,
+				net_amount DECIMAL(15, 2) DEFAULT 0,
 				project_number VARCHAR(100),
+				description VARCHAR(500),
 				remarks TEXT,
-				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+				status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'pending',
+				isDelete TINYINT(1) NOT NULL DEFAULT 0,
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				INDEX idx_status (status),
+				INDEX idx_isDelete (isDelete)
 			)
 		`);
 
-		// Get next serial number
 		const [countResult]: any = await connection.execute(
-			'SELECT COUNT(*) as total FROM outgoing_purchase_orders'
+			'SELECT COUNT(*) as total FROM outgoing_purchase_orders WHERE isDelete = 0'
 		);
 		const total = countResult[0]?.total || 0;
 		const nextSrNo = total + 1;
 
+		const finalNetAmount =
+			net_amount ??
+			(parseFloat(po_amount) || 0) + (parseFloat(tax_amount) || 0);
+
 		const [result]: any = await connection.execute(
 			`INSERT INTO outgoing_purchase_orders 
-			 (sr_no, company_name, city, po_number, po_date, po_amount, project_number, remarks)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			 (sr_no, company_name, city, po_number, po_date, po_amount, tax_amount, net_amount, project_number, description, remarks, status)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				nextSrNo,
 				company_name,
@@ -127,8 +150,12 @@ export async function POST(request: Request) {
 				po_number,
 				po_date,
 				parseFloat(po_amount),
+				parseFloat(tax_amount) || 0,
+				finalNetAmount,
 				project_number || null,
+				description || null,
 				remarks || null,
+				status || 'pending',
 			]
 		);
 
@@ -182,7 +209,7 @@ export async function DELETE(request: Request) {
 
 		connection = await dbConnect();
 		await connection.execute(
-			'DELETE FROM outgoing_purchase_orders WHERE id = ?',
+			'UPDATE outgoing_purchase_orders SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]
 		);
 

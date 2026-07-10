@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import {
 	ensurePermission,
@@ -49,7 +48,7 @@ export async function GET(request: Request) {
 
 		connection = await dbConnect();
 		const [rows]: any = await connection.execute(
-			'SELECT * FROM outgoing_purchase_orders WHERE id = ?',
+			'SELECT * FROM outgoing_purchase_orders WHERE id = ? AND isDelete = 0',
 			[id]
 		);
 
