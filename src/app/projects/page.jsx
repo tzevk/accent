@@ -114,6 +114,8 @@ function ProjectsInner() {
 	const [dragInsertPos, setDragInsertPos] = useState(null); // 'before' | 'after' | null
 	const [justDroppedKey, setJustDroppedKey] = useState(null);
 	const [activatingKey, setActivatingKey] = useState(null);
+	const [editingCodeKey, setEditingCodeKey] = useState(null);
+	const [editingCodeValue, setEditingCodeValue] = useState('');
 
 	const toggleSort = (field) => {
 		setSortBy((prev) => {
@@ -329,6 +331,48 @@ function ProjectsInner() {
 		} finally {
 			setActivatingKey(null);
 		}
+	};
+
+	const handleStartEditCode = (project) => {
+		setEditingCodeKey(projKey(project));
+		setEditingCodeValue(project.project_code || '');
+	};
+
+	const handleSaveProjectCode = async (project) => {
+		const trimmed = (editingCodeValue || '').trim();
+		const projectKey = projKey(project);
+
+		setProjects((prev) =>
+			prev.map((p) =>
+				projKey(p) === projectKey ? { ...p, project_code: trimmed || null } : p
+			)
+		);
+		setEditingCodeKey(null);
+
+		try {
+			await fetchJSON(
+				`/api/projects/${project.project_id ?? project.id ?? project.project_code}`,
+				{
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ project_code: trimmed || null }),
+				}
+			);
+		} catch (err) {
+			console.error('Failed to save project code', err);
+			setProjects((prev) =>
+				prev.map((p) =>
+					projKey(p) === projectKey
+						? { ...p, project_code: project.project_code }
+						: p
+				)
+			);
+		}
+	};
+
+	const handleCancelEditCode = () => {
+		setEditingCodeKey(null);
+		setEditingCodeValue('');
 	};
 
 	const getStatusColor = (status) => {
@@ -950,11 +994,39 @@ function ProjectsInner() {
 																	className="hover:bg-gray-50 transition-colors"
 																>
 																	<td className="px-4 py-3 whitespace-nowrap">
-																		<div className="text-sm font-mono text-gray-900">
-																			{project.project_code ||
-																				project.project_id ||
-																				'-'}
-																		</div>
+																		{editingCodeKey === projKey(project) ? (
+																			<input
+																				type="text"
+																				className="w-28 px-2 py-1 text-sm font-mono border border-purple-400 rounded focus:outline-none focus:ring-2 focus:ring-purple-300"
+																				value={editingCodeValue}
+																				onChange={(e) =>
+																					setEditingCodeValue(e.target.value)
+																				}
+																				onKeyDown={(e) => {
+																					if (e.key === 'Enter')
+																						handleSaveProjectCode(project);
+																					if (e.key === 'Escape')
+																						handleCancelEditCode();
+																				}}
+																				onBlur={() =>
+																					handleSaveProjectCode(project)
+																				}
+																				autoFocus
+																			/>
+																		) : (
+																			<button
+																				type="button"
+																				className="text-sm font-mono text-gray-900 hover:text-purple-600 hover:underline cursor-pointer"
+																				onClick={() =>
+																					handleStartEditCode(project)
+																				}
+																				title="Click to edit project code"
+																			>
+																				{project.project_code ||
+																					project.project_id ||
+																					'-'}
+																			</button>
+																		)}
 																	</td>
 																	<td className="px-4 py-3">
 																		<div>

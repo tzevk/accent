@@ -80,4 +80,28 @@ describe('ProjectDetailsTab', () => {
 
 		expect(handleChange).toHaveBeenCalled();
 	});
+
+	it('allows project_code to be edited', async () => {
+		const user = userEvent.setup();
+		const handleChange = vi.fn();
+		const openSections = { basic: true };
+		const { container } = render(
+			<ProjectDetailsTab
+				form={baseForm}
+				handleChange={handleChange}
+				toggleSection={vi.fn()}
+				openSections={openSections}
+				TYPE_OPTIONS={[]}
+				docMaster={[]}
+				newInputDocument=""
+				setNewInputDocument={vi.fn()}
+				addInputDocument={vi.fn()}
+			/>
+		);
+
+		const codeInput = container.querySelector('input[name="project_code"]')!;
+		expect(codeInput).not.toBeDisabled();
+		await user.type(codeInput, 'CUSTOM-42');
+		expect(handleChange).toHaveBeenCalled();
+	});
 });
