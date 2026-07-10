@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
 
+// vercel preview test
+
 export async function GET() {
 	let db;
 	try {
