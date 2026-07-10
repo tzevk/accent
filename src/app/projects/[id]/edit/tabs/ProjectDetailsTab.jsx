@@ -136,19 +136,18 @@ export default function ProjectDetailsTab({
 											type="text"
 											name="project_code"
 											value={form.project_code}
-											readOnly
-											placeholder="Auto-generated"
-											className="w-full px-4 py-2.5 text-sm font-medium rounded-xl cursor-not-allowed"
+											onChange={handleChange}
+											placeholder="Enter project code"
+											className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300"
 											style={{
-												background: 'rgba(241, 245, 249, 0.95)',
-												border: '1.5px solid rgba(139, 92, 246, 0.1)',
-												color: '#64748b',
+												background: 'rgba(255, 255, 255, 0.95)',
+												border: '1.5px solid rgba(139, 92, 246, 0.15)',
+												color: '#1e293b',
 												boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)',
 											}}
 										/>
 										<p className="text-[10px] text-gray-500">
-											Format: Serial_MM_YYYY. Auto-generated when project is
-											created.
+											Human-readable project code. Can be edited.
 										</p>
 									</div>
 									<div className="space-y-2">

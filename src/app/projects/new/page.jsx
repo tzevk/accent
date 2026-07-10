@@ -20,7 +20,7 @@ const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'];
 const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
 
 const INITIAL_FORM = {
-	project_id: '',
+	project_code: '',
 	name: '',
 	company_id: '',
 	project_manager: '',
@@ -131,6 +131,7 @@ function NewProjectForm() {
 		try {
 			const payload = {
 				name: form.name,
+				project_code: form.project_code.trim() || null,
 				description: form.description || '',
 				company_id: form.company_id,
 				project_manager: form.project_manager || null,
@@ -211,15 +212,14 @@ function NewProjectForm() {
 									</label>
 									<input
 										type="text"
-										name="project_id"
-										value={form.project_id}
-										readOnly
-										placeholder="Auto-generated on save (e.g., 001_06_2024)"
-										className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-50 text-gray-600 cursor-not-allowed"
+										name="project_code"
+										value={form.project_code}
+										onChange={handleChange}
+										placeholder="Leave blank to auto-generate (e.g., 001_06_2024)"
+										className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
 									/>
 									<p className="text-xs text-gray-500 mt-1">
-										Format: Serial_MM_YYYY. Auto-generated when project is
-										created.
+										Leave blank for auto-generated code. Format: Serial_MM_YYYY.
 									</p>
 								</div>
 								<div>

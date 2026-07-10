@@ -152,7 +152,7 @@ export async function POST(request) {
 
 		const data = await request.json();
 		const {
-			project_id,
+			project_code,
 			name,
 			description,
 			company_id,
@@ -240,19 +240,19 @@ export async function POST(request) {
 			}
 		}
 
-		// Auto-generate project_code in format: serial_MM_YYYY (e.g., 001_06_2024)
-		let projectCode;
+		// Auto-generate system project_id (always auto-generated for uniqueness)
+		let projectId;
 		{
 			const now = new Date();
 			const month = String(now.getMonth() + 1).padStart(2, '0');
 			const year = now.getFullYear();
 			const currentPattern = `_${month}_${year}`;
 
-			// Find highest serial number globally from project_code (continues across months)
+			// Find highest serial number globally from project_id (continues across months)
 			const [projects] = await db.execute(
-				`SELECT project_code,
-					CAST(SUBSTRING_INDEX(project_code, '_', 1) AS UNSIGNED) as serial_num
-				FROM projects WHERE project_code LIKE '%\\_%\\_%'
+				`SELECT project_id,
+					CAST(SUBSTRING_INDEX(project_id, '_', 1) AS UNSIGNED) as serial_num
+				FROM projects WHERE project_id LIKE '%\\_%\\_%'
 				ORDER BY serial_num DESC
 				LIMIT 1`
 			);
@@ -263,8 +263,11 @@ export async function POST(request) {
 			}
 
 			const nextSerial = String(maxSerial + 1).padStart(3, '0');
-			projectCode = `${nextSerial}_${month}_${year}`;
+			projectId = `${nextSerial}_${month}_${year}`;
 		}
+
+		// Use user-provided project_code, or fall back to auto-generated value
+		const projectCode = (project_code && project_code.trim()) || projectId;
 
 		// Insert the new project (include activities/disciplines JSON and new fields)
 		const [result] = await db.execute(
@@ -276,7 +279,7 @@ export async function POST(request) {
         project_assumption_list, project_lessons_learnt_list, project_team
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
-				projectCode,
+				projectId,
 				projectCode,
 				name,
 				description,

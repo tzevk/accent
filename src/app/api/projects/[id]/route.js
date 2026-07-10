@@ -626,6 +626,7 @@ export async function PUT(request, context) {
 			const {
 				name,
 				project_id,
+				project_code,
 				client_name,
 				client_contact_details,
 				project_location_country,
@@ -884,7 +885,10 @@ export async function PUT(request, context) {
 			const fieldValues = [
 				['name', name],
 				// project_code stores the human-readable "Project Number" that can be edited
-				['project_code', project_id],
+				[
+					'project_code',
+					project_code !== undefined ? project_code : project_id,
+				],
 				['client_name', clientNameParam],
 				['client_contact_details', client_contact_details],
 				['project_location_country', project_location_country],
