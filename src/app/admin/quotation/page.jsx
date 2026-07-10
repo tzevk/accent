@@ -544,9 +544,7 @@ export default function QuotationPage() {
 											<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 												Client / Project
 											</th>
-											<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-												Subject
-											</th>
+
 											<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 												Amount
 											</th>
@@ -590,9 +588,7 @@ export default function QuotationPage() {
 														</div>
 													)}
 												</td>
-												<td className="px-6 py-4 text-gray-600 max-w-[200px] truncate">
-													{quotation.subject}
-												</td>
+
 												<td className="px-6 py-4 font-semibold text-gray-900">
 													{formatCurrency(quotation.total)}
 												</td>
