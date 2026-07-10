@@ -594,41 +594,78 @@ export default function PurchaseOrderPage() {
 
 				{/* Stats Cards */}
 				<div className="flex gap-4 mb-6">
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-[0.6] min-w-[60px] px-3 py-2">
 						<div className="text-lg font-bold text-gray-900">
 							{stats.total || 0}
 						</div>
 						<div className="text-xs text-gray-600">Total</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-[0.6] min-w-[60px] px-3 py-2">
 						<div className="text-lg font-bold text-gray-600">
 							{stats.draft || 0}
 						</div>
 						<div className="text-xs text-gray-600">Draft</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-[0.6] min-w-[60px] px-3 py-2">
 						<div className="text-lg font-bold text-yellow-600">
 							{stats.pending || 0}
 						</div>
 						<div className="text-xs text-gray-600">Pending</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-[0.6] min-w-[60px] px-3 py-2">
 						<div className="text-lg font-bold text-blue-600">
 							{stats.approved || 0}
 						</div>
 						<div className="text-xs text-gray-600">Approved</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-[0.6] min-w-[60px] px-3 py-2">
 						<div className="text-lg font-bold text-green-600">
 							{stats.completed || 0}
 						</div>
 						<div className="text-xs text-gray-600">Completed</div>
 					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-[0.6] min-w-[60px] px-3 py-2">
 						<div className="text-lg font-bold text-red-600">
 							{stats.cancelled || 0}
 						</div>
 						<div className="text-xs text-gray-600">Cancelled</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-purple-200 flex-[1.5] min-w-[140px] px-3 py-2">
+						<div className="text-lg font-bold text-purple-600">
+							{formatCurrency(
+								purchaseOrders.reduce(
+									(sum, po) => sum + (parseFloat(po.total) || 0),
+									0
+								)
+							)}
+						</div>
+						<div className="text-xs text-gray-600">Total Amount</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-purple-200 flex-[1.5] min-w-[140px] px-3 py-2">
+						<div className="text-lg font-bold text-purple-600">
+							{formatCurrency(
+								purchaseOrders.reduce(
+									(sum, po) => sum + (parseFloat(po.tax_amount) || 0),
+									0
+								)
+							)}
+						</div>
+						<div className="text-xs text-gray-600">Total Tax</div>
+					</div>
+					<div className="bg-white rounded-xl shadow-sm border border-purple-200 flex-[1.5] min-w-[140px] px-3 py-2">
+						<div className="text-lg font-bold text-purple-600">
+							{formatCurrency(
+								purchaseOrders.reduce((sum, po) => {
+									const net =
+										po.net_amount != null
+											? parseFloat(po.net_amount)
+											: (parseFloat(po.total) || 0) +
+												(parseFloat(po.tax_amount) || 0);
+									return sum + (isNaN(net) ? 0 : net);
+								}, 0)
+							)}
+						</div>
+						<div className="text-xs text-gray-600">Total Net</div>
 					</div>
 				</div>
 
@@ -731,9 +768,6 @@ export default function PurchaseOrderPage() {
 											Vendor
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-											Description
-										</th>
-										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 											Amount
 										</th>
 										<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
@@ -774,9 +808,6 @@ export default function PurchaseOrderPage() {
 												<div className="text-sm text-gray-500">
 													{po.vendor_email}
 												</div>
-											</td>
-											<td className="px-6 py-4 text-gray-600 max-w-[200px] truncate">
-												{po.description}
 											</td>
 											<td className="px-6 py-4 font-semibold text-gray-900">
 												{formatCurrency(po.total)}
@@ -830,46 +861,6 @@ export default function PurchaseOrderPage() {
 										</tr>
 									))}
 								</tbody>
-								<tfoot className="sticky bottom-0 z-20 bg-purple-50 border-t-2 border-purple-200 shadow-[0_-2px_4px_rgba(0,0,0,0.04)]">
-									<tr>
-										<td
-											colSpan={4}
-											className="px-6 py-3 text-right text-[10px] font-semibold text-purple-700 uppercase tracking-wide"
-										>
-											Total ({filteredPurchaseOrders.length} entr
-											{filteredPurchaseOrders.length === 1 ? 'y' : 'ies'})
-										</td>
-										<td className="px-6 py-3 text-sm font-bold text-purple-900">
-											{formatCurrency(
-												filteredPurchaseOrders.reduce(
-													(sum, po) => sum + (parseFloat(po.total) || 0),
-													0
-												)
-											)}
-										</td>
-										<td className="px-6 py-3 text-sm font-bold text-purple-900">
-											{formatCurrency(
-												filteredPurchaseOrders.reduce(
-													(sum, po) => sum + (parseFloat(po.tax_amount) || 0),
-													0
-												)
-											)}
-										</td>
-										<td className="px-6 py-3 text-sm font-bold text-purple-900">
-											{formatCurrency(
-												filteredPurchaseOrders.reduce((sum, po) => {
-													const net =
-														po.net_amount != null
-															? parseFloat(po.net_amount)
-															: (parseFloat(po.total) || 0) +
-																(parseFloat(po.tax_amount) || 0);
-													return sum + (isNaN(net) ? 0 : net);
-												}, 0)
-											)}
-										</td>
-										<td colSpan={4}></td>
-									</tr>
-								</tfoot>
 							</table>
 						</div>
 					)}
