@@ -142,7 +142,7 @@ export async function GET(request: Request) {
 		const [rows] = await db.execute(
 			`SELECT *,
 			  ROW_NUMBER() OVER (ORDER BY transaction_date, created_at) as sr_no,
-			  SUM(credit_amount - debit_amount)
+			  SUM(debit_amount - credit_amount)
 			    OVER (ORDER BY transaction_date, created_at ROWS UNBOUNDED PRECEDING) as running_balance
 			FROM ${TABLE}
 			WHERE ${whereSql}
@@ -160,8 +160,8 @@ export async function GET(request: Request) {
 				SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
 				COALESCE(SUM(credit_amount), 0) as totalReceived,
 				COALESCE(SUM(debit_amount), 0) as totalPaid,
-				COALESCE(SUM(credit_amount - debit_amount), 0) as currentBalance,
-				COALESCE(SUM(CASE WHEN status = 'approved' THEN credit_amount - debit_amount ELSE 0 END), 0) as approvedAmount
+				COALESCE(SUM(debit_amount - credit_amount), 0) as currentBalance,
+				COALESCE(SUM(CASE WHEN status = 'approved' THEN debit_amount - credit_amount ELSE 0 END), 0) as approvedAmount
 			FROM ${TABLE}
 			WHERE ${whereSql}`,
 			params
