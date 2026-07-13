@@ -12,7 +12,7 @@ const TABLE = 'outgoing_quotations';
 const DDL = `
   CREATE TABLE IF NOT EXISTS ${TABLE} (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    quotation_number VARCHAR(50) UNIQUE NOT NULL,
+    quotation_number VARCHAR(50) NOT NULL,
     quotation_date DATE,
     vendor_name VARCHAR(255) NOT NULL,
     vendor_email VARCHAR(255),
@@ -31,21 +31,61 @@ const DDL = `
     status ENUM('draft', 'sent', 'approved', 'rejected', 'expired') DEFAULT 'draft',
     project_id INT NULL,
     created_by INT,
+    isDelete TINYINT(1) NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_status (status),
     INDEX idx_vendor (vendor_name),
-    INDEX idx_created_at (created_at)
+    INDEX idx_isDelete (isDelete)
   )
 `;
 
 async function ensureTable(db) {
 	await db.execute(DDL);
+
+	const alterStatements = [
+		'ALTER TABLE outgoing_quotations ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		'ALTER TABLE outgoing_quotations ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn(
+					'Outgoing quotations schema update warning:',
+					e.message || e
+				);
+			}
+		}
+	}
+
+	const indexMigrations = [
+		'ALTER TABLE outgoing_quotations DROP INDEX quotation_number',
+		'ALTER TABLE outgoing_quotations ADD UNIQUE KEY unique_active_quotation (quotation_number, isDelete)',
+	];
+
+	for (const stmt of indexMigrations) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (
+				!e.message?.includes('check that it exists') &&
+				!e.message?.includes('Duplicate key name')
+			) {
+				console.warn(
+					'Outgoing quotations index migration warning:',
+					e.message || e
+				);
+			}
+		}
+	}
 }
 
 async function nextNumber(db) {
 	const [rows] = await db.execute(
-		`SELECT quotation_number FROM ${TABLE} WHERE quotation_number LIKE 'OQ-%' ORDER BY id DESC LIMIT 1`
+		`SELECT quotation_number FROM ${TABLE} WHERE quotation_number LIKE 'OQ-%' AND isDelete = 0 ORDER BY id DESC LIMIT 1`
 	);
 	let next = 1;
 	if (rows.length > 0) {
@@ -76,7 +116,7 @@ export async function GET(request) {
 		db = await dbConnect();
 		await ensureTable(db);
 
-		const where = ['1=1'];
+		const where = ['isDelete = 0'];
 		const params = [];
 		if (status && status !== 'all') {
 			where.push('status = ?');
@@ -111,6 +151,7 @@ export async function GET(request) {
 				SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
 				COALESCE(SUM(total), 0) as totalValue
 			FROM ${TABLE}
+			WHERE isDelete = 0
 		`);
 
 		return NextResponse.json({

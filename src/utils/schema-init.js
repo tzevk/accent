@@ -57,6 +57,7 @@ async function doSchemaInit() {
 			initUserActivityAssignmentsTable(db),
 			initOutgoingPurchaseOrdersTable(db),
 			initPaymentEntriesTable(db),
+			initOutgoingQuotationsTable(db),
 		]);
 
 		schemaInitialized = true;
@@ -461,6 +462,78 @@ async function initDescriptionMasterTable(db) {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+}
+
+async function initOutgoingQuotationsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS outgoing_quotations (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      quotation_number VARCHAR(50) NOT NULL,
+      quotation_date DATE,
+      vendor_name VARCHAR(255) NOT NULL,
+      vendor_email VARCHAR(255),
+      vendor_phone VARCHAR(50),
+      vendor_address TEXT,
+      subject VARCHAR(500),
+      items JSON,
+      subtotal DECIMAL(15, 2) DEFAULT 0,
+      tax_rate DECIMAL(5, 2) DEFAULT 18,
+      tax_amount DECIMAL(15, 2) DEFAULT 0,
+      discount DECIMAL(15, 2) DEFAULT 0,
+      total DECIMAL(15, 2) DEFAULT 0,
+      valid_until DATE,
+      notes TEXT,
+      terms TEXT,
+      status ENUM('draft', 'sent', 'approved', 'rejected', 'expired') DEFAULT 'draft',
+      project_id INT NULL,
+      created_by INT,
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_status (status),
+      INDEX idx_vendor (vendor_name),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE outgoing_quotations ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		'ALTER TABLE outgoing_quotations ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn(
+					'Outgoing quotations schema update warning:',
+					e.message || e
+				);
+			}
+		}
+	}
+
+	const indexMigrations = [
+		'ALTER TABLE outgoing_quotations DROP INDEX quotation_number',
+		'ALTER TABLE outgoing_quotations ADD UNIQUE KEY unique_active_quotation (quotation_number, isDelete)',
+	];
+
+	for (const stmt of indexMigrations) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (
+				!e.message?.includes('check that it exists') &&
+				!e.message?.includes('Duplicate key name')
+			) {
+				console.warn(
+					'Outgoing quotations index migration warning:',
+					e.message || e
+				);
+			}
+		}
+	}
 }
 
 /**
