@@ -373,19 +373,9 @@ export default function PettyCashExpensesPage() {
 						<select
 							value={String(form.transaction_number || '')}
 							onChange={(e) => {
-								const val = e.target.value;
-								const voucher = val
-									? (vouchersQuery.data?.data || []).find(
-											(v: Record<string, unknown>) => v.voucher_number === val
-										)
-									: null;
-								const amt = voucher
-									? String(voucher.total_amount ?? voucher.amount ?? '')
-									: '';
 								setForm((prev) => ({
 									...prev,
-									transaction_number: val,
-									credit_amount: amt,
+									transaction_number: e.target.value,
 								}));
 							}}
 							className={CELL_SELECT}
