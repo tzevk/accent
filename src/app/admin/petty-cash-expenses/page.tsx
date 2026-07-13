@@ -134,13 +134,13 @@ const columns = [
 	{ key: 'description', label: 'Particulars', className: 'text-center' },
 	{ key: 'expense_category', label: 'Category', className: 'w-36 text-center' },
 	{
-		key: 'received',
-		label: 'Received',
+		key: 'credit',
+		label: 'Credit',
 		className: 'w-28 text-center',
 	},
 	{
-		key: 'paid',
-		label: 'Paid',
+		key: 'debit',
+		label: 'Debit',
 		className: 'w-28 text-center',
 	},
 	{
@@ -373,19 +373,9 @@ export default function PettyCashExpensesPage() {
 						<select
 							value={String(form.transaction_number || '')}
 							onChange={(e) => {
-								const val = e.target.value;
-								const voucher = val
-									? (vouchersQuery.data?.data || []).find(
-											(v: Record<string, unknown>) => v.voucher_number === val
-										)
-									: null;
-								const amt = voucher
-									? String(voucher.total_amount ?? voucher.amount ?? '')
-									: '';
 								setForm((prev) => ({
 									...prev,
-									transaction_number: val,
-									credit_amount: amt,
+									transaction_number: e.target.value,
 								}));
 							}}
 							className={CELL_SELECT}
@@ -709,14 +699,14 @@ export default function PettyCashExpensesPage() {
 		},
 		{
 			key: 'totalReceived',
-			label: 'Received',
+			label: 'Credit',
 			tone: 'green' as const,
 			money: true,
 			icon: ArrowDownCircleIcon,
 		},
 		{
 			key: 'totalPaid',
-			label: 'Paid',
+			label: 'Debit',
 			tone: 'rose' as const,
 			money: true,
 			icon: ArrowUpCircleIcon,

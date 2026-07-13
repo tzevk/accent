@@ -151,8 +151,8 @@ export async function GET(request: Request) {
 			[...params, limit, offset]
 		);
 
-		const [statsRows] = await db.execute(`
-			SELECT
+		const [statsRows] = await db.execute(
+			`SELECT
 				COUNT(*) as total,
 				SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) as draft,
 				SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) as submitted,
@@ -163,7 +163,9 @@ export async function GET(request: Request) {
 				COALESCE(SUM(credit_amount - debit_amount), 0) as currentBalance,
 				COALESCE(SUM(CASE WHEN status = 'approved' THEN credit_amount - debit_amount ELSE 0 END), 0) as approvedAmount
 			FROM ${TABLE}
-		`);
+			WHERE ${whereSql}`,
+			params
+		);
 
 		return NextResponse.json({
 			success: true,
