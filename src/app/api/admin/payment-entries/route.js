@@ -42,8 +42,10 @@ export async function GET(request) {
         invoice_no VARCHAR(100),
         invoice_date DATE,
         created_by INT,
+        isDelete TINYINT(1) NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_isDelete (isDelete)
       )
     `);
 
@@ -92,16 +94,26 @@ export async function GET(request) {
 				'ALTER TABLE payment_entries ADD COLUMN invoice_date DATE'
 			);
 		} catch (e) {}
+		try {
+			await db.execute(
+				'ALTER TABLE payment_entries ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0'
+			);
+		} catch (e) {}
+		try {
+			await db.execute(
+				'ALTER TABLE payment_entries ADD INDEX idx_isDelete (isDelete)'
+			);
+		} catch (e) {}
 
 		// Get entries with pagination
 		const [entries] = await db.execute(
-			`SELECT * FROM payment_entries ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+			`SELECT * FROM payment_entries WHERE isDelete = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 			[limit, offset]
 		);
 
 		// Get total count for pagination
 		const [countResult] = await db.execute(
-			`SELECT COUNT(*) as total FROM payment_entries`
+			`SELECT COUNT(*) as total FROM payment_entries WHERE isDelete = 0`
 		);
 		const total = countResult[0]?.total || 0;
 
@@ -162,7 +174,7 @@ export async function POST(request) {
 
 		const [rows] = await db.execute(
 			`SELECT receipt_no FROM payment_entries 
-             WHERE receipt_no LIKE ? AND YEAR(created_at) = ? 
+             WHERE receipt_no LIKE ? AND YEAR(created_at) = ? AND isDelete = 0
              ORDER BY CAST(SUBSTRING_INDEX(receipt_no, '-', -1) AS UNSIGNED) DESC LIMIT 1`,
 			[`${prefix}%`, currentYear]
 		);
@@ -326,7 +338,7 @@ export async function DELETE(request) {
 		db = await dbConnect();
 
 		const [result] = await db.execute(
-			'DELETE FROM payment_entries WHERE id = ?',
+			'UPDATE payment_entries SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]
 		);
 

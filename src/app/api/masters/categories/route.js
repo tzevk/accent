@@ -1,22 +1,21 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 
-// GET - List all descriptions
 export async function GET() {
 	let db;
 	try {
 		db = await dbConnect();
 
 		const [rows] = await db.execute(`
-      SELECT * FROM description_master 
-      ORDER BY description_name ASC
+      SELECT * FROM category_master
+      ORDER BY category_name ASC
     `);
 
 		return NextResponse.json({ success: true, data: rows });
 	} catch (error) {
-		console.error('Error fetching descriptions:', error);
+		console.error('Error fetching categories:', error);
 		return NextResponse.json(
-			{ success: false, error: 'Failed to fetch descriptions' },
+			{ success: false, error: 'Failed to fetch categories' },
 			{ status: 500 }
 		);
 	} finally {
@@ -24,16 +23,15 @@ export async function GET() {
 	}
 }
 
-// POST - Create new description
 export async function POST(request) {
 	let db;
 	try {
 		const body = await request.json();
-		const { description_name, is_active = true, created_by } = body;
+		const { category_name, is_active = true, created_by } = body;
 
-		if (!description_name?.trim()) {
+		if (!category_name?.trim()) {
 			return NextResponse.json(
-				{ success: false, error: 'Description name is required' },
+				{ success: false, error: 'Category name is required' },
 				{ status: 400 }
 			);
 		}
@@ -41,18 +39,18 @@ export async function POST(request) {
 		db = await dbConnect();
 
 		const [result] = await db.execute(
-			`INSERT INTO description_master (description_name, is_active, created_by) VALUES (?, ?, ?)`,
-			[description_name.trim(), is_active ? 1 : 0, created_by || null]
+			`INSERT INTO category_master (category_name, is_active, created_by) VALUES (?, ?, ?)`,
+			[category_name.trim(), is_active ? 1 : 0, created_by || null]
 		);
 
 		return NextResponse.json({
 			success: true,
-			data: { id: result.insertId, description_name, is_active },
+			data: { id: result.insertId, category_name, is_active },
 		});
 	} catch (error) {
-		console.error('Error creating description:', error);
+		console.error('Error creating category:', error);
 		return NextResponse.json(
-			{ success: false, error: 'Failed to create description' },
+			{ success: false, error: 'Failed to create category' },
 			{ status: 500 }
 		);
 	} finally {
@@ -60,7 +58,6 @@ export async function POST(request) {
 	}
 }
 
-// PUT - Update description
 export async function PUT(request) {
 	let db;
 	try {
@@ -75,11 +72,11 @@ export async function PUT(request) {
 		}
 
 		const body = await request.json();
-		const { description_name, is_active } = body;
+		const { category_name, is_active } = body;
 
-		if (!description_name?.trim()) {
+		if (!category_name?.trim()) {
 			return NextResponse.json(
-				{ success: false, error: 'Description name is required' },
+				{ success: false, error: 'Category name is required' },
 				{ status: 400 }
 			);
 		}
@@ -87,15 +84,15 @@ export async function PUT(request) {
 		db = await dbConnect();
 
 		await db.execute(
-			`UPDATE description_master SET description_name = ?, is_active = ? WHERE id = ?`,
-			[description_name.trim(), is_active ? 1 : 0, id]
+			`UPDATE category_master SET category_name = ?, is_active = ? WHERE id = ?`,
+			[category_name.trim(), is_active ? 1 : 0, id]
 		);
 
 		return NextResponse.json({ success: true });
 	} catch (error) {
-		console.error('Error updating description:', error);
+		console.error('Error updating category:', error);
 		return NextResponse.json(
-			{ success: false, error: 'Failed to update description' },
+			{ success: false, error: 'Failed to update category' },
 			{ status: 500 }
 		);
 	} finally {
@@ -103,7 +100,6 @@ export async function PUT(request) {
 	}
 }
 
-// DELETE - Delete description
 export async function DELETE(request) {
 	let db;
 	try {
@@ -118,13 +114,13 @@ export async function DELETE(request) {
 		}
 
 		db = await dbConnect();
-		await db.execute('DELETE FROM description_master WHERE id = ?', [id]);
+		await db.execute('DELETE FROM category_master WHERE id = ?', [id]);
 
 		return NextResponse.json({ success: true });
 	} catch (error) {
-		console.error('Error deleting description:', error);
+		console.error('Error deleting category:', error);
 		return NextResponse.json(
-			{ success: false, error: 'Failed to delete description' },
+			{ success: false, error: 'Failed to delete category' },
 			{ status: 500 }
 		);
 	} finally {
