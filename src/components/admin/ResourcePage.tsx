@@ -120,7 +120,7 @@ export default function ResourcePage({
 	const onDelete = async (row: Record<string, unknown>) => {
 		if (
 			!window.confirm(
-				`Delete this ${title.toLowerCase()}? This cannot be undone.`
+				`Are you sure you want to delete this ${title.toLowerCase()}?`
 			)
 		) {
 			return;
