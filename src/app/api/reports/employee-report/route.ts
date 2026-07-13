@@ -25,7 +25,9 @@ interface DailyRow {
 	activity_name: string;
 	sub_activity_name: string;
 	assignment_id: string;
-	planned_hours: number; // Assign Manhours (assignment-level)
+	default_manhours: number; // Default Manhours (activity-level)
+	planned_hours: number; // Planned Hours (assignment-level)
+	qty_completed: number; // Completed quantity (assignment-level)
 	hours: number; // Actual Manhours (that day's hours)
 	qty_done: number; // Unit/Qty (that day's quantity)
 }
@@ -97,6 +99,7 @@ interface ActivityItem {
 interface AssignmentData {
 	user_id?: number | string;
 	planned_hours?: number | string;
+	qty_completed?: number | string;
 	due_date?: string | null;
 	daily_entries?: string | DailyEntry[];
 	[key: string]: unknown;
@@ -255,7 +258,12 @@ export async function GET(request: Request) {
 					const userId = String(data.user_id);
 					if (!userId || userId === 'undefined') continue;
 
-					const plannedHours = parseFloat(String(data.planned_hours)) || 0;
+					const defaultManhours =
+						parseFloat(String(activity.default_manhours)) || 0;
+					const plannedHours =
+						parseFloat(String(data.planned_hours || '0')) || 0;
+					const qtyCompleted =
+						parseFloat(String(data.qty_completed || '0')) || 0;
 
 					// Parse daily_entries
 					let dailyEntries: DailyEntry[] = [];
@@ -288,7 +296,9 @@ export async function GET(request: Request) {
 							activity_name: activityName,
 							sub_activity_name: subActivityName,
 							assignment_id: assignmentId,
+							default_manhours: defaultManhours,
 							planned_hours: plannedHours,
+							qty_completed: qtyCompleted,
 							hours: 0,
 							qty_done: 0,
 						});
@@ -306,7 +316,9 @@ export async function GET(request: Request) {
 							activity_name: activityName,
 							sub_activity_name: subActivityName,
 							assignment_id: assignmentId,
+							default_manhours: defaultManhours,
 							planned_hours: plannedHours,
+							qty_completed: qtyCompleted,
 							hours: parseFloat(String(entry.hours || '0')) || 0,
 							qty_done: parseFloat(String(entry.qty_done || '0')) || 0,
 						});
