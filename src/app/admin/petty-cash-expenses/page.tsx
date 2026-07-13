@@ -202,12 +202,12 @@ export default function PettyCashExpensesPage() {
 		queryFn: () => apiGet(ENDPOINT, queryParams),
 	});
 
-	const vouchersQuery = useQuery({
+	const vouchersQuery = useQuery<{ data: Record<string, unknown>[] }>({
 		queryKey: ['cash-vouchers-all'],
 		queryFn: () => apiGet('/api/admin/cash-vouchers', { limit: 9999 }),
 	});
 
-	const categoriesQuery = useQuery({
+	const categoriesQuery = useQuery<{ data: Record<string, unknown>[] }>({
 		queryKey: ['categories-all'],
 		queryFn: () => apiGet('/api/masters/categories'),
 	});
