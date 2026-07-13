@@ -97,6 +97,15 @@ export default function EmployeeReportPage() {
 		staleTime: 30_000,
 	});
 
+	const dataRaw = reportQuery.data;
+	if (dataRaw) {
+		console.log('[EmployeeReport] meta:', dataRaw.meta);
+		const bhavesh = dataRaw.data?.find((e) => e.user_name === 'BHAVESH NAKTI');
+		console.log(
+			'[EmployeeReport] BHAVESH NAKTI full data:',
+			JSON.stringify(bhavesh, null, 2)
+		);
+	}
 	const employees = useMemo(
 		() => reportQuery.data?.data ?? [],
 		[reportQuery.data]

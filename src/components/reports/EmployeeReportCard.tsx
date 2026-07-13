@@ -25,7 +25,9 @@ export interface EmployeeRow {
 	activity_name: string;
 	sub_activity_name: string;
 	assignment_id: string;
+	default_manhours: number;
 	planned_hours: number;
+	qty_completed: number;
 	hours: number;
 	qty_done: number;
 }
@@ -108,10 +110,10 @@ export default function EmployeeReportCard({
 		for (const r of employee.rows) {
 			if (!distinctAssign.has(r.assignment_id)) {
 				distinctAssign.add(r.assignment_id);
-				assign += r.planned_hours || 0;
+				assign += r.default_manhours || 0;
+				actual += r.planned_hours || 0;
+				qty += r.qty_completed || 0;
 			}
-			actual += r.hours || 0;
-			qty += r.qty_done || 0;
 		}
 		return { assign, actual, qty };
 	}, [employee.rows]);
@@ -205,8 +207,8 @@ export default function EmployeeReportCard({
 					size: 21,
 				}
 			),
-			columnHelper.accessor('planned_hours', {
-				id: 'planned_hours',
+			columnHelper.accessor('default_manhours', {
+				id: 'default_manhours',
 				header: (info) => (
 					<DefaultSortHeader column={info.column} title="Assign Manhours" />
 				),
@@ -216,35 +218,51 @@ export default function EmployeeReportCard({
 						.rows.map((r) => r.original);
 					const row = info.row.original;
 					return isFirstRowOfAssignment(row, displayed) ? (
-						<span className="tabular-nums">{row.planned_hours || 0}</span>
+						<span className="tabular-nums">{row.default_manhours || 0}</span>
 					) : (
 						<span className="text-gray-300">–</span>
 					);
 				},
 				size: 9,
 			}),
-			columnHelper.accessor('hours', {
-				id: 'hours',
+			columnHelper.accessor('planned_hours', {
+				id: 'planned_hours',
 				header: (info) => (
 					<DefaultSortHeader column={info.column} title="Actual Manhours" />
 				),
-				cell: (info) => (
-					<span className="tabular-nums font-medium text-blue-600">
-						{info.getValue() || 0}
-					</span>
-				),
+				cell: (info) => {
+					const displayed = info.table
+						.getSortedRowModel()
+						.rows.map((r) => r.original);
+					const row = info.row.original;
+					return isFirstRowOfAssignment(row, displayed) ? (
+						<span className="tabular-nums font-medium text-blue-600">
+							{row.planned_hours || 0}
+						</span>
+					) : (
+						<span className="text-gray-300">–</span>
+					);
+				},
 				size: 9,
 			}),
-			columnHelper.accessor('qty_done', {
-				id: 'qty_done',
+			columnHelper.accessor('qty_completed', {
+				id: 'qty_completed',
 				header: (info) => (
 					<DefaultSortHeader column={info.column} title="Unit/Qty" />
 				),
-				cell: (info) => (
-					<span className="tabular-nums font-medium text-purple-600">
-						{info.getValue() || 0}
-					</span>
-				),
+				cell: (info) => {
+					const displayed = info.table
+						.getSortedRowModel()
+						.rows.map((r) => r.original);
+					const row = info.row.original;
+					return isFirstRowOfAssignment(row, displayed) ? (
+						<span className="tabular-nums font-medium text-purple-600">
+							{row.qty_completed || 0}
+						</span>
+					) : (
+						<span className="text-gray-300">–</span>
+					);
+				},
 				size: 8,
 			}),
 		],

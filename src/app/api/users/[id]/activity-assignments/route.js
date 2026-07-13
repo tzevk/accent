@@ -203,6 +203,16 @@ export async function GET(request, { params }) {
 									? assignment
 									: { user_id: assignment };
 
+							const dailyEntries = userAssignment.daily_entries || [];
+							const derivedQty = dailyEntries.reduce(
+								(s, e) => s + (parseFloat(e.qty_done) || 0),
+								0
+							);
+							const derivedHours = dailyEntries.reduce(
+								(s, e) => s + (parseFloat(e.hours) || 0),
+								0
+							);
+
 							assignments.push({
 								project_id: project.project_id,
 								project_name: project.project_name,
@@ -221,16 +231,16 @@ export async function GET(request, { params }) {
 								// User-specific data
 								description: userAssignment.description || '',
 								qty_assigned: userAssignment.qty_assigned || 0,
-								qty_completed: userAssignment.qty_completed || 0,
+								qty_completed: derivedQty,
 								planned_hours: userAssignment.planned_hours || 0,
-								actual_hours: userAssignment.actual_hours || 0,
+								actual_hours: derivedHours,
 								start_date: userAssignment.start_date || null,
 								due_date: userAssignment.due_date || null,
 								status: userAssignment.status || 'Not Started',
 								notes: userAssignment.notes || '',
 								remarks: userAssignment.remarks || '',
 								progress_percentage: userAssignment.progress_percentage || 0,
-								daily_entries: userAssignment.daily_entries || [],
+								daily_entries: dailyEntries,
 							});
 						}
 					}
@@ -391,8 +401,6 @@ export async function PUT(request, { params }) {
 			project_id,
 			activity_id,
 			qty_assigned,
-			qty_completed,
-			actual_hours,
 			status,
 			remarks,
 			description,
@@ -557,12 +565,8 @@ export async function PUT(request, { params }) {
 						if (typeof assignment === 'object') {
 							if (qty_assigned !== undefined)
 								assignedUsers[i].qty_assigned = parseFloat(qty_assigned) || 0;
-							if (qty_completed !== undefined)
-								assignedUsers[i].qty_completed = parseFloat(qty_completed) || 0;
 							if (planned_hours !== undefined)
 								assignedUsers[i].planned_hours = parseFloat(planned_hours) || 0;
-							if (actual_hours !== undefined)
-								assignedUsers[i].actual_hours = parseFloat(actual_hours) || 0;
 							if (status !== undefined) assignedUsers[i].status = status;
 							if (remarks !== undefined) assignedUsers[i].remarks = remarks;
 							if (description !== undefined)
@@ -594,9 +598,7 @@ export async function PUT(request, { params }) {
 							assignedUsers[i] = {
 								user_id: assignedUserId,
 								qty_assigned: parseFloat(qty_assigned) || 0,
-								qty_completed: parseFloat(qty_completed) || 0,
 								planned_hours: parseFloat(planned_hours) || 0,
-								actual_hours: parseFloat(actual_hours) || 0,
 								status: status || 'Not Started',
 								remarks: remarks || '',
 								description: description || '',
@@ -973,7 +975,14 @@ export async function PATCH(request, { params }) {
 					remarks: '',
 					notes: '',
 					progress_percentage: 100,
-					daily_entries: [],
+					daily_entries: [
+						{
+							date: due_date || new Date().toISOString().split('T')[0],
+							qty_done: parseFloat(qty_completed) || 0,
+							hours: parseFloat(manhours_assigned) || 0,
+							remarks: '',
+						},
+					],
 				},
 			],
 		};

@@ -107,8 +107,8 @@ const addDefaults = {
 	transaction_number: '',
 	expense_category: 'Office Supplies',
 	description: '',
-	credit_amount: '',
 	debit_amount: '',
+	credit_amount: '',
 	payment_mode: 'cash' as const,
 	notes: '',
 	status: 'submitted' as const,
@@ -135,12 +135,12 @@ const columns = [
 	{ key: 'expense_category', label: 'Category', className: 'w-36 text-center' },
 	{
 		key: 'credit',
-		label: 'Credit',
+		label: 'Debit',
 		className: 'w-28 text-center',
 	},
 	{
 		key: 'debit',
-		label: 'Debit',
+		label: 'Credit',
 		className: 'w-28 text-center',
 	},
 	{
@@ -277,8 +277,8 @@ export default function PettyCashExpensesPage() {
 			transaction_number: (row.transaction_number as string) || '',
 			expense_category: row.expense_category || '',
 			description: row.description || '',
-			credit_amount: Number(row.credit_amount ?? 0) || '',
 			debit_amount: Number(row.debit_amount ?? 0) || '',
+			credit_amount: Number(row.credit_amount ?? 0) || '',
 			payment_mode: row.payment_mode || 'cash',
 			notes: row.notes || '',
 			status: row.status || 'submitted',
@@ -306,8 +306,8 @@ export default function PettyCashExpensesPage() {
 			transaction_number: form.transaction_number || undefined,
 			expense_category: form.expense_category || null,
 			description: form.description || null,
-			credit_amount: Math.abs(Number(form.credit_amount || 0)),
 			debit_amount: Math.abs(Number(form.debit_amount || 0)),
+			credit_amount: Math.abs(Number(form.credit_amount || 0)),
 			payment_mode: form.payment_mode || 'cash',
 			notes: form.notes || null,
 			status: form.status || 'submitted',
@@ -445,21 +445,6 @@ export default function PettyCashExpensesPage() {
 					</select>
 				</TableCell>
 
-				{/* Credit */}
-				<TableCell>
-					<input
-						type="number"
-						min="0"
-						step="0.01"
-						value={String(form.credit_amount ?? '')}
-						onChange={(e) =>
-							updateField(setForm, 'credit_amount', e.target.value)
-						}
-						placeholder="0.00"
-						className={`${CELL_INPUT} text-right`}
-					/>
-				</TableCell>
-
 				{/* Debit */}
 				<TableCell>
 					<input
@@ -469,6 +454,21 @@ export default function PettyCashExpensesPage() {
 						value={String(form.debit_amount ?? '')}
 						onChange={(e) =>
 							updateField(setForm, 'debit_amount', e.target.value)
+						}
+						placeholder="0.00"
+						className={`${CELL_INPUT} text-right`}
+					/>
+				</TableCell>
+
+				{/* Credit */}
+				<TableCell>
+					<input
+						type="number"
+						min="0"
+						step="0.01"
+						value={String(form.credit_amount ?? '')}
+						onChange={(e) =>
+							updateField(setForm, 'credit_amount', e.target.value)
 						}
 						placeholder="0.00"
 						className={`${CELL_INPUT} text-right`}
@@ -588,14 +588,14 @@ export default function PettyCashExpensesPage() {
 					{(row.expense_category as string) || '—'}
 				</TableCell>
 
-				{/* Credit */}
-				<TableCell className="text-xs text-right tabular-nums text-emerald-700">
-					{formatMoney(row.credit_amount)}
-				</TableCell>
-
 				{/* Debit */}
 				<TableCell className="text-xs text-right tabular-nums text-orange-700">
 					{formatMoney(row.debit_amount)}
+				</TableCell>
+
+				{/* Credit */}
+				<TableCell className="text-xs text-right tabular-nums text-emerald-700">
+					{formatMoney(row.credit_amount)}
 				</TableCell>
 
 				{/* Balance */}
@@ -699,17 +699,17 @@ export default function PettyCashExpensesPage() {
 		},
 		{
 			key: 'totalReceived',
-			label: 'Credit',
+			label: 'Debit',
 			tone: 'green' as const,
 			money: true,
-			icon: ArrowDownCircleIcon,
+			icon: ArrowUpCircleIcon,
 		},
 		{
 			key: 'totalPaid',
-			label: 'Debit',
+			label: 'Credit',
 			tone: 'rose' as const,
 			money: true,
-			icon: ArrowUpCircleIcon,
+			icon: ArrowDownCircleIcon,
 		},
 		{
 			key: 'currentBalance',
