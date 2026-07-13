@@ -1,5 +1,7 @@
 'use client';
 
+// Renamed to Payment Released in Frontend
+
 import { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';

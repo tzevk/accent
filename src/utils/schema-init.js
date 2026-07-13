@@ -39,6 +39,8 @@ async function doSchemaInit() {
 			initCompaniesTable(db),
 			initUsersTable(db),
 			initBankMasterTable(db),
+			initCategoryMasterTable(db),
+			initDescriptionMasterTable(db),
 		]);
 
 		// Tables with foreign keys - run after base tables
@@ -54,6 +56,7 @@ async function doSchemaInit() {
 			initWorkLogsTable(db),
 			initUserActivityAssignmentsTable(db),
 			initOutgoingPurchaseOrdersTable(db),
+			initPaymentEntriesTable(db),
 		]);
 
 		schemaInitialized = true;
@@ -392,6 +395,72 @@ async function initOutgoingPurchaseOrdersTable(db) {
 			}
 		}
 	}
+}
+
+async function initPaymentEntriesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS payment_entries (
+      id VARCHAR(255) PRIMARY KEY,
+      company_name VARCHAR(255) NOT NULL,
+      city VARCHAR(255),
+      receipt_no VARCHAR(100),
+      receipt_date DATE,
+      amount DECIMAL(15, 2) DEFAULT 0,
+      payment_date DATE,
+      transaction_id VARCHAR(100),
+      bank_name VARCHAR(255),
+      remark TEXT,
+      invoice_no VARCHAR(100),
+      invoice_date DATE,
+      created_by INT,
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE payment_entries ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		'ALTER TABLE payment_entries ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+		'ALTER TABLE payment_entries ADD COLUMN created_by INT',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Payment entries schema update warning:', e.message || e);
+			}
+		}
+	}
+}
+
+async function initCategoryMasterTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS category_master (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      category_name VARCHAR(255) NOT NULL,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_by INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+}
+
+async function initDescriptionMasterTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS description_master (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      description_name VARCHAR(255) NOT NULL,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_by INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
 }
 
 /**

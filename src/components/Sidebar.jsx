@@ -19,6 +19,7 @@ import {
 	ChartBarSquareIcon,
 	ClipboardDocumentListIcon,
 	BuildingLibraryIcon,
+	TagIcon,
 	ArrowDownCircleIcon,
 	ArrowUpCircleIcon,
 	ReceiptPercentIcon,
@@ -471,6 +472,14 @@ export default function Sidebar() {
 									label="Description Master"
 									href="/masters/descriptions"
 									active={pathname.startsWith('/masters/descriptions')}
+								/>
+							)}
+							{canViewCompanies && (
+								<NavRow
+									icon={TagIcon}
+									label="Category Master"
+									href="/masters/categories"
+									active={pathname.startsWith('/masters/categories')}
 								/>
 							)}
 							{isAdmin && (
