@@ -89,8 +89,8 @@ const schema = z.object({
 	transaction_date: z.string().min(1, 'Date is required'),
 	expense_category: z.string().nullable().optional(),
 	description: z.string().nullable().optional(),
-	credit_amount: z.coerce.number().min(0),
 	debit_amount: z.coerce.number().min(0),
+	credit_amount: z.coerce.number().min(0),
 	payment_mode: z
 		.enum(['cash', 'bank', 'cheque', 'card', 'upi', 'other'])
 		.optional(),
@@ -134,12 +134,12 @@ const columns = [
 	{ key: 'description', label: 'Particulars', className: 'text-center' },
 	{ key: 'expense_category', label: 'Category', className: 'w-36 text-center' },
 	{
-		key: 'credit',
+		key: 'debit',
 		label: 'Debit',
 		className: 'w-28 text-center',
 	},
 	{
-		key: 'debit',
+		key: 'credit',
 		label: 'Credit',
 		className: 'w-28 text-center',
 	},
@@ -589,18 +589,20 @@ export default function PettyCashExpensesPage() {
 				</TableCell>
 
 				{/* Debit */}
-				<TableCell className="text-xs text-right tabular-nums text-orange-700">
+				<TableCell className="text-xs text-right tabular-nums text-emerald-700">
 					{formatMoney(row.debit_amount)}
 				</TableCell>
 
 				{/* Credit */}
-				<TableCell className="text-xs text-right tabular-nums text-emerald-700">
+				<TableCell className="text-xs text-right tabular-nums text-red-600">
 					{formatMoney(row.credit_amount)}
 				</TableCell>
 
 				{/* Balance */}
 				<TableCell className="text-xs text-right font-semibold tabular-nums">
-					{formatMoney(row.running_balance)}
+					{formatMoney(
+						Number(row.debit_amount ?? 0) - Number(row.credit_amount ?? 0)
+					)}
 				</TableCell>
 
 				{/* Payment Mode */}
@@ -698,14 +700,14 @@ export default function PettyCashExpensesPage() {
 			icon: XCircleIcon,
 		},
 		{
-			key: 'totalReceived',
+			key: 'totalPaid',
 			label: 'Debit',
 			tone: 'green' as const,
 			money: true,
 			icon: ArrowUpCircleIcon,
 		},
 		{
-			key: 'totalPaid',
+			key: 'totalReceived',
 			label: 'Credit',
 			tone: 'rose' as const,
 			money: true,
