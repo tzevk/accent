@@ -3,7 +3,11 @@
 
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
-dotenv.config();
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, '..', '.env') });
+console.log('DB_HOST:', process.env.DB_HOST);
 
 const categories = [
 	'Cash in Hand',
