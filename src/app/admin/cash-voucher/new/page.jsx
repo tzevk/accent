@@ -335,7 +335,7 @@ export default function NewCashVoucherPage() {
 			<div className="flex-1 flex flex-col">
 				<Navbar />
 
-				<main className="flex-1 px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 overflow-auto max-w-full mx-auto">
+				<main className="flex-1 px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 overflow-auto w-screen mx-auto">
 					{/* Header */}
 					<div className="flex items-center justify-between mb-6">
 						<div className="flex items-center gap-4">
@@ -359,12 +359,12 @@ export default function NewCashVoucherPage() {
 
 					{/* Voucher Form - styled like the physical form */}
 					<form onSubmit={handleSubmit}>
-						<div className="bg-white border-2 border-gray-800 rounded-lg overflow-hidden max-w-10xl mx-auto">
+						<div className="bg-white border-2 border-gray-800 rounded-lg overflow-hidden max-w-7xl mx-auto">
 							{/* Header Section */}
 							<div className="border-b-2 border-gray-800 flex">
 								{/* Company Info */}
 								<div className="flex-1 p-4 border-r-2 border-gray-800">
-									<h2 className="text-lg font-bold text-gray-900">
+									<h2 className="text-lg font-bold text-gray-900 whitespace-nowrap">
 										Accent Techno Solutions Pvt. Ltd.
 									</h2>
 									<p className="text-sm text-gray-600">
