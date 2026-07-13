@@ -66,10 +66,10 @@ export async function PUT(
 
 		const fields = [
 			'transaction_date',
-			'transaction_type',
+			'credit_amount',
+			'debit_amount',
 			'expense_category',
 			'description',
-			'amount',
 			'payment_mode',
 			'payment_reference',
 			'recipient_name',
@@ -86,7 +86,11 @@ export async function PUT(
 		for (const f of fields) {
 			if (body[f] !== undefined) {
 				setClauses.push(`${f} = ?`);
-				values.push(f === 'amount' ? Math.abs(Number(body[f])) : body[f]);
+				values.push(
+					f === 'credit_amount' || f === 'debit_amount'
+						? Math.abs(Number(body[f]))
+						: body[f]
+				);
 			}
 		}
 
@@ -156,7 +160,7 @@ export async function DELETE(
 		const { id } = await params;
 		const user = authResult.user;
 		db = await dbConnect();
-		await db.execute(`DELETE FROM ${TABLE} WHERE id = ?`, [id]);
+		await db.execute(`UPDATE ${TABLE} SET isDelete = 1 WHERE id = ?`, [id]);
 
 		await (logActivity as any)({
 			userId: user?.id,

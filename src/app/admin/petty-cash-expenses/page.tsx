@@ -54,19 +54,6 @@ interface ApiResponse {
 const ENDPOINT = '/api/admin/petty-cash-expenses';
 const PAGE_SIZE = 20;
 
-const CATEGORY_OPTIONS = [
-	{ value: 'Office Supplies', label: 'Office Supplies' },
-	{ value: 'Conveyance', label: 'Conveyance' },
-	{ value: 'Courier', label: 'Courier' },
-	{ value: 'Postage', label: 'Postage' },
-	{ value: 'Printing & Stationery', label: 'Printing & Stationery' },
-	{ value: 'Refreshments', label: 'Refreshments' },
-	{ value: 'Repairs', label: 'Repairs' },
-	{ value: 'Bank Charges', label: 'Bank Charges' },
-	{ value: 'Subscription', label: 'Subscription' },
-	{ value: 'Miscellaneous', label: 'Miscellaneous' },
-];
-
 const PAYMENT_MODE_OPTIONS = [
 	{ value: 'cash', label: 'Cash' },
 	{ value: 'bank', label: 'Bank Transfer' },
@@ -100,10 +87,10 @@ const STATUS_BADGE: Record<string, string> = {
 const schema = z.object({
 	transaction_number: z.string().nullable().optional(),
 	transaction_date: z.string().min(1, 'Date is required'),
-	transaction_type: z.enum(['receipt', 'payment']),
 	expense_category: z.string().nullable().optional(),
 	description: z.string().nullable().optional(),
-	amount: z.coerce.number().min(0.01, 'Amount must be greater than 0'),
+	credit_amount: z.coerce.number().min(0),
+	debit_amount: z.coerce.number().min(0),
 	payment_mode: z
 		.enum(['cash', 'bank', 'cheque', 'card', 'upi', 'other'])
 		.optional(),
@@ -118,11 +105,10 @@ const schema = z.object({
 const addDefaults = {
 	transaction_date: new Date().toISOString().split('T')[0],
 	transaction_number: '',
-	transaction_type: 'payment' as const,
 	expense_category: 'Office Supplies',
 	description: '',
-	received_amount: '',
-	paid_amount: '',
+	credit_amount: '',
+	debit_amount: '',
 	payment_mode: 'cash' as const,
 	notes: '',
 	status: 'submitted' as const,
@@ -216,6 +202,16 @@ export default function PettyCashExpensesPage() {
 		queryFn: () => apiGet(ENDPOINT, queryParams),
 	});
 
+	const vouchersQuery = useQuery({
+		queryKey: ['cash-vouchers-all'],
+		queryFn: () => apiGet('/api/admin/cash-vouchers', { limit: 9999 }),
+	});
+
+	const categoriesQuery = useQuery({
+		queryKey: ['categories-all'],
+		queryFn: () => apiGet('/api/masters/categories'),
+	});
+
 	const rows = listQuery.data?.data ?? [];
 	const pagination = listQuery.data?.pagination ?? {
 		page: 1,
@@ -276,16 +272,13 @@ export default function PettyCashExpensesPage() {
 	const openEdit = (row: Record<string, unknown>) => {
 		setIsAdding(false);
 		setEditingId(row.id as string);
-		const isReceipt = row.transaction_type === 'receipt';
-		const amt = Number(row.amount ?? 0);
 		setEditForm({
 			transaction_date: (row.transaction_date as string) || '',
 			transaction_number: (row.transaction_number as string) || '',
-			transaction_type: row.transaction_type || 'payment',
 			expense_category: row.expense_category || '',
 			description: row.description || '',
-			received_amount: isReceipt ? amt : '',
-			paid_amount: !isReceipt ? amt : '',
+			credit_amount: Number(row.credit_amount ?? 0) || '',
+			debit_amount: Number(row.debit_amount ?? 0) || '',
 			payment_mode: row.payment_mode || 'cash',
 			notes: row.notes || '',
 			status: row.status || 'submitted',
@@ -301,28 +294,20 @@ export default function PettyCashExpensesPage() {
 	};
 
 	const handleDelete = (row: Record<string, unknown>) => {
-		if (
-			!window.confirm('Delete this petty cash expense? This cannot be undone.')
-		) {
+		if (!window.confirm('Hide this petty cash expense from the list?')) {
 			return;
 		}
 		deleteMutation.mutate(row.id as string);
 	};
 
 	const buildPayload = (form: Record<string, unknown>) => {
-		const txType = form.transaction_type || 'payment';
-		const amount =
-			txType === 'receipt'
-				? Number(form.received_amount || 0)
-				: Number(form.paid_amount || 0);
-
 		return {
 			transaction_date: form.transaction_date,
 			transaction_number: form.transaction_number || undefined,
-			transaction_type: txType,
 			expense_category: form.expense_category || null,
 			description: form.description || null,
-			amount,
+			credit_amount: Math.abs(Number(form.credit_amount || 0)),
+			debit_amount: Math.abs(Number(form.debit_amount || 0)),
 			payment_mode: form.payment_mode || 'cash',
 			notes: form.notes || null,
 			status: form.status || 'submitted',
@@ -384,15 +369,52 @@ export default function PettyCashExpensesPage() {
 
 				{/* Voucher No. */}
 				<TableCell>
-					<input
-						type="text"
-						value={String(form.transaction_number || '')}
-						onChange={(e) =>
-							updateField(setForm, 'transaction_number', e.target.value)
-						}
-						placeholder="Auto"
-						className={CELL_INPUT}
-					/>
+					{isAdd ? (
+						<select
+							value={String(form.transaction_number || '')}
+							onChange={(e) => {
+								const val = e.target.value;
+								const voucher = val
+									? (vouchersQuery.data?.data || []).find(
+											(v: Record<string, unknown>) => v.voucher_number === val
+										)
+									: null;
+								const amt = voucher
+									? String(voucher.total_amount ?? voucher.amount ?? '')
+									: '';
+								setForm((prev) => ({
+									...prev,
+									transaction_number: val,
+									credit_amount: amt,
+								}));
+							}}
+							className={CELL_SELECT}
+						>
+							<option value="">Select voucher...</option>
+							{(vouchersQuery.data?.data || []).map(
+								(v: Record<string, unknown>) => (
+									<option
+										key={v.voucher_number as string}
+										value={v.voucher_number as string}
+									>
+										{v.voucher_number as string} -{' '}
+										{formatCurrency(v.total_amount ?? v.amount ?? 0)} -{' '}
+										{(v.paid_to || v.payee_name) as string}
+									</option>
+								)
+							)}
+						</select>
+					) : (
+						<input
+							type="text"
+							value={String(form.transaction_number || '')}
+							onChange={(e) =>
+								updateField(setForm, 'transaction_number', e.target.value)
+							}
+							placeholder="Auto"
+							className={CELL_INPUT}
+						/>
+					)}
 				</TableCell>
 
 				{/* Particulars */}
@@ -417,37 +439,46 @@ export default function PettyCashExpensesPage() {
 						}
 						className={CELL_SELECT}
 					>
-						{CATEGORY_OPTIONS.map((o) => (
-							<option key={o.value} value={o.value}>
-								{o.label}
-							</option>
-						))}
+						<option value="">Select category...</option>
+						{(categoriesQuery.data?.data || [])
+							.filter(
+								(c: Record<string, unknown>) =>
+									c.is_active === true ||
+									c.is_active === 1 ||
+									c.is_active === '1'
+							)
+							.map((c: Record<string, unknown>) => (
+								<option key={c.id as number} value={c.category_name as string}>
+									{c.category_name as string}
+								</option>
+							))}
 					</select>
 				</TableCell>
 
-				{/* Received */}
+				{/* Credit */}
 				<TableCell>
 					<input
 						type="number"
 						min="0"
 						step="0.01"
-						value={String(form.received_amount ?? '')}
-						disabled
+						value={String(form.credit_amount ?? '')}
+						onChange={(e) =>
+							updateField(setForm, 'credit_amount', e.target.value)
+						}
 						placeholder="0.00"
-						className={`${CELL_INPUT} text-right bg-gray-50 text-gray-400 cursor-not-allowed`}
+						className={`${CELL_INPUT} text-right`}
 					/>
 				</TableCell>
 
-				{/* Paid */}
+				{/* Debit */}
 				<TableCell>
 					<input
 						type="number"
 						min="0"
 						step="0.01"
-						value={String(form.paid_amount ?? '')}
-						disabled={false}
+						value={String(form.debit_amount ?? '')}
 						onChange={(e) =>
-							updateField(setForm, 'paid_amount', e.target.value)
+							updateField(setForm, 'debit_amount', e.target.value)
 						}
 						placeholder="0.00"
 						className={`${CELL_INPUT} text-right`}
@@ -534,8 +565,6 @@ export default function PettyCashExpensesPage() {
 
 	// ── Render data row ──
 	const renderDataRow = (row: Record<string, unknown>) => {
-		const isReceipt = row.transaction_type === 'receipt';
-		const amt = Number(row.amount ?? 0);
 		const status = (row.status as string) || 'submitted';
 		const mode = (row.payment_mode as string) || 'cash';
 
@@ -569,14 +598,14 @@ export default function PettyCashExpensesPage() {
 					{(row.expense_category as string) || '—'}
 				</TableCell>
 
-				{/* Received */}
+				{/* Credit */}
 				<TableCell className="text-xs text-right tabular-nums text-emerald-700">
-					{isReceipt ? formatMoney(amt) : '—'}
+					{formatMoney(row.credit_amount)}
 				</TableCell>
 
-				{/* Paid */}
+				{/* Debit */}
 				<TableCell className="text-xs text-right tabular-nums text-orange-700">
-					{!isReceipt ? formatMoney(amt) : '—'}
+					{formatMoney(row.debit_amount)}
 				</TableCell>
 
 				{/* Balance */}

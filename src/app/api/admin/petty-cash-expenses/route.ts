@@ -45,6 +45,35 @@ const DDL = `
 
 async function ensureTable(db: any) {
 	await db.execute(DDL);
+
+	const alterStmts = [
+		`ALTER TABLE ${TABLE} ADD COLUMN credit_amount DECIMAL(15,2) NOT NULL DEFAULT 0`,
+		`ALTER TABLE ${TABLE} ADD COLUMN debit_amount DECIMAL(15,2) NOT NULL DEFAULT 0`,
+	];
+	for (const stmt of alterStmts) {
+		try {
+			await db.execute(stmt);
+			await db.execute(`
+				UPDATE ${TABLE} SET
+					credit_amount = IF(transaction_type = 'receipt', amount, 0),
+					debit_amount  = IF(transaction_type = 'payment', amount, 0)
+			`);
+		} catch (e: any) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Petty cash schema migration warning:', e.message);
+			}
+		}
+	}
+
+	try {
+		await db.execute(
+			`ALTER TABLE ${TABLE} ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0`
+		);
+	} catch (e: any) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn('Petty cash isDelete migration warning:', e.message);
+		}
+	}
 }
 
 async function nextNumber(db: any): Promise<string> {
@@ -81,7 +110,7 @@ export async function GET(request: Request) {
 		db = await dbConnect();
 		await ensureTable(db);
 
-		const where = ['1=1'];
+		const where = ['isDelete = 0'];
 		const params: (string | number)[] = [];
 		if (status && status !== 'all') {
 			where.push('status = ?');
@@ -113,7 +142,7 @@ export async function GET(request: Request) {
 		const [rows] = await db.execute(
 			`SELECT *,
 			  ROW_NUMBER() OVER (ORDER BY transaction_date, created_at) as sr_no,
-			  SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE -amount END)
+			  SUM(credit_amount - debit_amount)
 			    OVER (ORDER BY transaction_date, created_at ROWS UNBOUNDED PRECEDING) as running_balance
 			FROM ${TABLE}
 			WHERE ${whereSql}
@@ -129,10 +158,10 @@ export async function GET(request: Request) {
 				SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) as submitted,
 				SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
 				SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
-				COALESCE(SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE 0 END), 0) as totalReceived,
-				COALESCE(SUM(CASE WHEN transaction_type = 'payment' THEN amount ELSE 0 END), 0) as totalPaid,
-				COALESCE(SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE -amount END), 0) as currentBalance,
-				COALESCE(SUM(CASE WHEN status = 'approved' AND transaction_type = 'receipt' THEN amount WHEN status = 'approved' AND transaction_type = 'payment' THEN -amount ELSE 0 END), 0) as approvedAmount
+				COALESCE(SUM(credit_amount), 0) as totalReceived,
+				COALESCE(SUM(debit_amount), 0) as totalPaid,
+				COALESCE(SUM(credit_amount - debit_amount), 0) as currentBalance,
+				COALESCE(SUM(CASE WHEN status = 'approved' THEN credit_amount - debit_amount ELSE 0 END), 0) as approvedAmount
 			FROM ${TABLE}
 		`);
 
@@ -177,9 +206,12 @@ export async function POST(request: Request) {
 				{ status: 400 }
 			);
 		}
-		if (!body.amount && body.amount !== 0) {
+
+		const creditAmt = Math.abs(Number(body.credit_amount ?? 0));
+		const debitAmt = Math.abs(Number(body.debit_amount ?? 0));
+		if (creditAmt === 0 && debitAmt === 0) {
 			return NextResponse.json(
-				{ success: false, error: 'amount is required' },
+				{ success: false, error: 'credit_amount or debit_amount is required' },
 				{ status: 400 }
 			);
 		}
@@ -189,7 +221,6 @@ export async function POST(request: Request) {
 
 		const id = crypto.randomUUID();
 		const transactionNumber = body.transaction_number || (await nextNumber(db));
-		const amount = Math.abs(Number(body.amount ?? 0));
 
 		let custodianName = body.custodian_employee_name || null;
 		const custodianId = body.custodian_employee_id || null;
@@ -204,8 +235,8 @@ export async function POST(request: Request) {
 
 		await db.execute(
 			`INSERT INTO ${TABLE}
-				(id, transaction_number, transaction_date, transaction_type, expense_category,
-				 description, amount, payment_mode, payment_reference, recipient_name,
+				(id, transaction_number, transaction_date, credit_amount, debit_amount, expense_category,
+				 description, payment_mode, payment_reference, recipient_name,
 				 custodian_employee_id, custodian_employee_name,
 				 bill_no, bill_date, status, notes, created_by)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -213,10 +244,10 @@ export async function POST(request: Request) {
 				id,
 				transactionNumber,
 				body.transaction_date,
-				body.transaction_type || 'payment',
+				creditAmt,
+				debitAmt,
 				body.expense_category || null,
 				body.description || null,
-				amount,
 				body.payment_mode || 'cash',
 				body.payment_reference || null,
 				body.recipient_name || null,
@@ -235,7 +266,7 @@ export async function POST(request: Request) {
 			actionType: 'create',
 			resourceType: 'petty_cash_expense',
 			resourceId: id,
-			description: `Created petty cash ${transactionNumber}: ${body.transaction_type} of ${amount}`,
+			description: `Created petty cash ${transactionNumber}: credit ${creditAmt} / debit ${debitAmt}`,
 			request: request as any,
 		});
 
