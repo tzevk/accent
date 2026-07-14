@@ -1,6 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
+import crypto from 'node:crypto';
 
 /**
  * GET /api/admin/cash-vouchers
@@ -244,6 +245,8 @@ export async function POST(request) {
 			}
 		}
 
+		const totalAmount = data.total_amount || 0;
+
 		const [result] = await db.execute(
 			`INSERT INTO cash_vouchers (
         voucher_number, voucher_date, voucher_type, paid_to, project_number,
@@ -258,7 +261,7 @@ export async function POST(request) {
 				data.paid_to || '',
 				data.project_number || '',
 				data.payment_mode || 'cash',
-				data.total_amount || 0,
+				totalAmount,
 				data.amount_in_words || '',
 				JSON.stringify(data.line_items || []),
 				data.prepared_by || '',
@@ -270,6 +273,67 @@ export async function POST(request) {
 				user.id,
 			]
 		);
+
+		const voucherId = result.insertId;
+
+		// Auto-create debit entry in petty_cash_expenses
+		if (totalAmount > 0) {
+			try {
+				await db.execute(`
+					CREATE TABLE IF NOT EXISTS petty_cash_expenses (
+						id CHAR(36) NOT NULL PRIMARY KEY,
+						transaction_number VARCHAR(50) UNIQUE NOT NULL,
+						transaction_date DATE NOT NULL,
+						debit_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+						credit_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+						description VARCHAR(500) NULL,
+						status VARCHAR(50) NOT NULL DEFAULT 'submitted',
+						created_by INT NULL,
+						source_voucher_id INT NULL,
+						isDelete TINYINT(1) NOT NULL DEFAULT 0,
+						created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+						updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+					)
+				`);
+			} catch (_) {
+				/* table likely exists */
+			}
+
+			try {
+				await db.execute(
+					'ALTER TABLE petty_cash_expenses ADD COLUMN source_voucher_id INT NULL'
+				);
+			} catch (_) {
+				/* column likely exists */
+			}
+
+			try {
+				await db.execute(
+					'ALTER TABLE petty_cash_expenses ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0'
+				);
+			} catch (_) {
+				/* column likely exists */
+			}
+
+			const pceId = crypto.randomUUID();
+			await db.execute(
+				`INSERT INTO petty_cash_expenses
+					(id, transaction_number, transaction_date, debit_amount, credit_amount,
+					 description, status, created_by, source_voucher_id)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				[
+					pceId,
+					voucherNumber,
+					data.voucher_date || new Date().toISOString().split('T')[0],
+					totalAmount,
+					0,
+					`Petty cash top-up via ${voucherNumber}`,
+					'submitted',
+					user.id,
+					voucherId,
+				]
+			);
+		}
 
 		return NextResponse.json({
 			success: true,
@@ -354,6 +418,15 @@ export async function DELETE(request) {
 				{ success: false, error: 'Voucher not found' },
 				{ status: 404 }
 			);
+		}
+
+		try {
+			await db.execute(
+				'UPDATE petty_cash_expenses SET isDelete = 1 WHERE source_voucher_id = ?',
+				[id]
+			);
+		} catch (_) {
+			/* PCE table may not exist yet */
 		}
 
 		return NextResponse.json({

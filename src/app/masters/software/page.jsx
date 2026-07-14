@@ -115,7 +115,6 @@ export default function SoftwareMasterPage() {
 		}
 	};
 
-	// eslint-disable-next-line react-hooks/exhaustive-deps
 	useEffect(() => {
 		fetchSoftwareMaster();
 	}, []);

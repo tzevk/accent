@@ -33,13 +33,15 @@ const DDL = `
     approved_at DATETIME NULL,
     notes TEXT NULL,
     created_by INT NULL,
+    source_voucher_id INT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_transaction_date (transaction_date),
     INDEX idx_transaction_type (transaction_type),
     INDEX idx_category (expense_category),
     INDEX idx_status (status),
-    INDEX idx_custodian (custodian_employee_id)
+    INDEX idx_custodian (custodian_employee_id),
+    INDEX idx_source_voucher (source_voucher_id)
   )
 `;
 
@@ -74,6 +76,33 @@ async function ensureTable(db: any) {
 			console.warn('Petty cash isDelete migration warning:', e.message);
 		}
 	}
+
+	try {
+		await db.execute(
+			`ALTER TABLE ${TABLE} ADD COLUMN source_voucher_id INT NULL`
+		);
+	} catch (e: any) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn(
+				'Petty cash source_voucher_id migration warning:',
+				e.message
+			);
+		}
+	}
+
+	try {
+		await db.execute(`
+			UPDATE ${TABLE} pce
+			INNER JOIN cash_vouchers cv ON pce.transaction_number = cv.voucher_number
+			SET pce.source_voucher_id = cv.id
+			WHERE pce.source_voucher_id IS NULL
+				AND pce.transaction_number IS NOT NULL
+				AND pce.isDelete = 0
+				AND pce.transaction_number LIKE 'CV-%'
+		`);
+	} catch {
+		/* ignore - tables may not exist yet */
+	}
 }
 
 async function nextNumber(db: any): Promise<string> {
@@ -100,57 +129,97 @@ export async function GET(request: Request) {
 	try {
 		const { searchParams } = new URL(request.url);
 		const page = parseInt(searchParams.get('page') || '1');
-		const limit = parseInt(searchParams.get('limit') || '20');
-		const status = searchParams.get('status');
-		const category = searchParams.get('expense_category');
-		const type = searchParams.get('transaction_type');
+		const limit = parseInt(searchParams.get('limit') || '10');
 		const search = searchParams.get('search');
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
 		await ensureTable(db);
 
-		const where = ['isDelete = 0'];
-		const params: (string | number)[] = [];
-		if (status && status !== 'all') {
-			where.push('status = ?');
-			params.push(status);
-		}
-		if (category && category !== 'all') {
-			where.push('expense_category = ?');
-			params.push(category);
-		}
-		if (type && type !== 'all') {
-			where.push('transaction_type = ?');
-			params.push(type);
-		}
+		// ── Build voucher WHERE ──
+		const vWhere: string[] = [];
+		const vParams: (string | number)[] = [];
+
 		if (search) {
-			where.push(
-				'(transaction_number LIKE ? OR description LIKE ? OR recipient_name LIKE ? OR bill_no LIKE ? OR notes LIKE ?)'
-			);
 			const s = `%${search}%`;
-			params.push(s, s, s, s, s);
+			vWhere.push(
+				'(cv.voucher_number LIKE ? OR cv.paid_to LIKE ? OR cv.notes LIKE ?)'
+			);
+			vParams.push(s, s, s);
 		}
 
-		const whereSql = where.join(' AND ');
+		const vWhereSql = vWhere.length > 0 ? `WHERE ${vWhere.join(' AND ')}` : '';
+
+		// ── Count vouchers ──
 		const [countRows] = await db.execute(
-			`SELECT COUNT(*) as total FROM ${TABLE} WHERE ${whereSql}`,
-			params
+			`SELECT COUNT(*) as total FROM cash_vouchers cv ${vWhereSql}`,
+			vParams
 		);
-		const total = countRows[0]?.total || 0;
+		const total = (countRows[0] as any)?.total || 0;
 
-		const [rows] = await db.execute(
-			`SELECT *,
-			  ROW_NUMBER() OVER (ORDER BY transaction_date, created_at) as sr_no,
-			  SUM(debit_amount - credit_amount)
-			    OVER (ORDER BY transaction_date, created_at ROWS UNBOUNDED PRECEDING) as running_balance
-			FROM ${TABLE}
-			WHERE ${whereSql}
-			ORDER BY transaction_date, created_at
+		// ── Query vouchers with balance info (paginated) ──
+		const [voucherRows] = await db.execute(
+			`SELECT cv.id, cv.voucher_number, cv.voucher_date, cv.voucher_type,
+				cv.paid_to, cv.payment_mode, cv.total_amount, cv.status, cv.notes,
+				cv.created_at, cv.prepared_by,
+				COALESCE(SUM(pce.credit_amount), 0) as total_credited,
+				cv.total_amount - COALESCE(SUM(pce.credit_amount), 0) as remaining,
+				COUNT(pce.id) as entry_count
+			FROM cash_vouchers cv
+			LEFT JOIN ${TABLE} pce ON pce.source_voucher_id = cv.id AND pce.isDelete = 0
+			${vWhereSql}
+			GROUP BY cv.id
+			ORDER BY cv.created_at DESC
 			LIMIT ? OFFSET ?`,
-			[...params, limit, offset]
+			[...vParams, limit, offset]
 		);
 
+		const entries: any[] = [];
+		const allVoucherIds = (voucherRows as any[]).map((v: any) => v.id);
+
+		if (allVoucherIds.length > 0) {
+			const placeholders = allVoucherIds.map(() => '?').join(',');
+			const [pceRows] = await db.execute(
+				`SELECT pce.*, cv.voucher_number as source_voucher_number
+				FROM ${TABLE} pce
+				LEFT JOIN cash_vouchers cv ON pce.source_voucher_id = cv.id
+				WHERE pce.source_voucher_id IN (${placeholders})
+					AND pce.isDelete = 0
+				ORDER BY pce.transaction_date, pce.created_at`,
+				allVoucherIds
+			);
+
+			const entriesMap = new Map<number, any[]>();
+			for (const e of pceRows as any[]) {
+				const vid = e.source_voucher_id;
+				if (!entriesMap.has(vid)) entriesMap.set(vid, []);
+				entriesMap.get(vid)!.push(e);
+			}
+
+			for (const v of voucherRows as any[]) {
+				entries.push({
+					voucher: {
+						id: v.id,
+						voucher_number: v.voucher_number,
+						voucher_date: v.voucher_date,
+						voucher_type: v.voucher_type,
+						paid_to: v.paid_to,
+						payment_mode: v.payment_mode,
+						total_amount: v.total_amount,
+						status: v.status,
+						notes: v.notes,
+						created_at: v.created_at,
+						prepared_by: v.prepared_by,
+					},
+					total_credited: Number(v.total_credited),
+					remaining: Number(v.remaining),
+					entry_count: v.entry_count,
+					pce_entries: entriesMap.get(v.id) || [],
+				});
+			}
+		}
+
+		// ── Global stats ──
 		const [statsRows] = await db.execute(
 			`SELECT
 				COUNT(*) as total,
@@ -163,13 +232,24 @@ export async function GET(request: Request) {
 				COALESCE(SUM(debit_amount - credit_amount), 0) as currentBalance,
 				COALESCE(SUM(CASE WHEN status = 'approved' THEN debit_amount - credit_amount ELSE 0 END), 0) as approvedAmount
 			FROM ${TABLE}
-			WHERE ${whereSql}`,
-			params
+			WHERE isDelete = 0`
+		);
+
+		// ── Voucher balances for add-dropdown (remaining > 0) ──
+		const [voucherBalances] = await db.execute(
+			`SELECT cv.id, cv.voucher_number, cv.total_amount,
+				COALESCE(SUM(pce.credit_amount), 0) as total_credited,
+				cv.total_amount - COALESCE(SUM(pce.credit_amount), 0) as remaining
+			FROM cash_vouchers cv
+			LEFT JOIN ${TABLE} pce ON pce.source_voucher_id = cv.id AND pce.isDelete = 0
+			GROUP BY cv.id
+			HAVING COALESCE(SUM(pce.credit_amount), 0) < cv.total_amount
+			ORDER BY cv.voucher_number`
 		);
 
 		return NextResponse.json({
 			success: true,
-			data: rows,
+			entries,
 			pagination: {
 				page,
 				limit,
@@ -177,6 +257,7 @@ export async function GET(request: Request) {
 				totalPages: Math.ceil(total / limit),
 			},
 			stats: statsRows[0] || {},
+			voucherBalances: voucherBalances || [],
 		});
 	} catch (error: any) {
 		console.error('Error fetching petty cash expenses:', error);
@@ -235,13 +316,17 @@ export async function POST(request: Request) {
 			custodianName = eRows[0]?.full_name || null;
 		}
 
+		const sourceVoucherId = body.source_voucher_id
+			? parseInt(body.source_voucher_id, 10) || null
+			: null;
+
 		await db.execute(
 			`INSERT INTO ${TABLE}
 				(id, transaction_number, transaction_date, credit_amount, debit_amount, expense_category,
 				 description, payment_mode, payment_reference, recipient_name,
 				 custodian_employee_id, custodian_employee_name,
-				 bill_no, bill_date, status, notes, created_by)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 bill_no, bill_date, status, notes, created_by, source_voucher_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				id,
 				transactionNumber,
@@ -260,6 +345,7 @@ export async function POST(request: Request) {
 				body.status || 'submitted',
 				body.notes || null,
 				user?.id || null,
+				sourceVoucherId,
 			]
 		);
 

@@ -154,7 +154,6 @@ export default function PayrollSchedulesPage() {
 
 	useEffect(() => {
 		fetchSchedules();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	const fetchSchedules = async () => {
