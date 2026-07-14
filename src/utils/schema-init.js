@@ -559,6 +559,7 @@ async function initCashVouchersTable(db) {
       checked_by VARCHAR(255),
       approved_by_name VARCHAR(255),
       receiver_signature VARCHAR(255),
+      description VARCHAR(500),
       status ENUM('pending', 'approved', 'rejected', 'paid') DEFAULT 'pending',
       approved_by INT,
       approved_at DATETIME,
@@ -579,6 +580,7 @@ async function initCashVouchersTable(db) {
 		'ALTER TABLE cash_vouchers ADD COLUMN checked_by VARCHAR(255)',
 		'ALTER TABLE cash_vouchers ADD COLUMN approved_by_name VARCHAR(255)',
 		'ALTER TABLE cash_vouchers ADD COLUMN receiver_signature VARCHAR(255)',
+		'ALTER TABLE cash_vouchers ADD COLUMN description VARCHAR(500)',
 	];
 
 	for (const stmt of alterStatements) {
@@ -589,6 +591,19 @@ async function initCashVouchersTable(db) {
 				console.warn('Cash vouchers schema update warning:', e.message || e);
 			}
 		}
+	}
+
+	try {
+		await db.execute(`
+			UPDATE cash_vouchers
+			SET description = COALESCE(
+				JSON_UNQUOTE(JSON_EXTRACT(line_items, '$[0].description')),
+				notes
+			)
+			WHERE description IS NULL
+		`);
+	} catch {
+		/* ignore - JSON_EXTRACT may fail on empty line_items */
 	}
 }
 

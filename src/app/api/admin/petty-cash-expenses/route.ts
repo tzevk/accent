@@ -41,88 +41,45 @@ export async function GET(request: Request) {
 
 		db = await dbConnect();
 
-		// ── Build voucher WHERE ──
-		const vWhere: string[] = [];
-		const vParams: (string | number)[] = [];
+		// ── Build WHERE ──
+		const where: string[] = ['pce.isDelete = 0'];
+		const countWhere: string[] = ['isDelete = 0'];
+		const params: (string | number)[] = [];
+		const countParams: (string | number)[] = [];
 
 		if (search) {
 			const s = `%${search}%`;
-			vWhere.push(
-				'(cv.voucher_number LIKE ? OR cv.paid_to LIKE ? OR cv.notes LIKE ?)'
+			where.push(
+				'(pce.transaction_number LIKE ? OR pce.description LIKE ? OR pce.recipient_name LIKE ? OR pce.bill_no LIKE ? OR pce.notes LIKE ?)'
 			);
-			vParams.push(s, s, s);
+			countWhere.push(
+				'(transaction_number LIKE ? OR description LIKE ? OR recipient_name LIKE ? OR bill_no LIKE ? OR notes LIKE ?)'
+			);
+			params.push(s, s, s, s, s);
+			countParams.push(s, s, s, s, s);
 		}
 
-		const vWhereSql = vWhere.length > 0 ? `WHERE ${vWhere.join(' AND ')}` : '';
+		const whereSql = `WHERE ${where.join(' AND ')}`;
+		const countSql = `WHERE ${countWhere.join(' AND ')}`;
 
-		// ── Count vouchers ──
 		const [countRows] = await db.execute(
-			`SELECT COUNT(*) as total FROM cash_vouchers cv ${vWhereSql}`,
-			vParams
+			`SELECT COUNT(*) as total FROM ${TABLE} ${countSql}`,
+			countParams
 		);
 		const total = (countRows[0] as any)?.total || 0;
 
-		// ── Query vouchers with balance info (paginated) ──
-		const [voucherRows] = await db.execute(
-			`SELECT cv.id, cv.voucher_number, cv.voucher_date, cv.voucher_type,
-				cv.paid_to, cv.payment_mode, cv.total_amount, cv.status, cv.notes,
-				cv.created_at, cv.prepared_by,
-				COALESCE(SUM(pce.credit_amount), 0) as total_credited,
-				cv.total_amount - COALESCE(SUM(pce.credit_amount), 0) as remaining,
-				COUNT(pce.id) as entry_count
-			FROM cash_vouchers cv
-			LEFT JOIN ${TABLE} pce ON pce.source_voucher_id = cv.id AND pce.isDelete = 0
-			${vWhereSql}
-			GROUP BY cv.id
-			ORDER BY cv.created_at DESC
+		const [rows] = await db.execute(
+			`SELECT pce.*, cv.voucher_number as source_voucher_number,
+			  ROW_NUMBER() OVER (ORDER BY pce.transaction_date, pce.created_at) as sr_no,
+			  SUM(pce.credit_amount - pce.debit_amount)
+			    OVER (ORDER BY pce.transaction_date, pce.created_at ROWS UNBOUNDED PRECEDING) as running_balance
+			FROM ${TABLE} pce
+			LEFT JOIN cash_vouchers cv ON pce.source_voucher_id = cv.id
+			${whereSql}
+			ORDER BY pce.transaction_date, pce.created_at
 			LIMIT ? OFFSET ?`,
-			[...vParams, limit, offset]
+			[...params, limit, offset]
 		);
-
-		const entries: any[] = [];
-		const allVoucherIds = (voucherRows as any[]).map((v: any) => v.id);
-
-		if (allVoucherIds.length > 0) {
-			const placeholders = allVoucherIds.map(() => '?').join(',');
-			const [pceRows] = await db.execute(
-				`SELECT pce.*, cv.voucher_number as source_voucher_number
-				FROM ${TABLE} pce
-				LEFT JOIN cash_vouchers cv ON pce.source_voucher_id = cv.id
-				WHERE pce.source_voucher_id IN (${placeholders})
-					AND pce.isDelete = 0
-				ORDER BY pce.transaction_date, pce.created_at`,
-				allVoucherIds
-			);
-
-			const entriesMap = new Map<number, any[]>();
-			for (const e of pceRows as any[]) {
-				const vid = e.source_voucher_id;
-				if (!entriesMap.has(vid)) entriesMap.set(vid, []);
-				entriesMap.get(vid)!.push(e);
-			}
-
-			for (const v of voucherRows as any[]) {
-				entries.push({
-					voucher: {
-						id: v.id,
-						voucher_number: v.voucher_number,
-						voucher_date: v.voucher_date,
-						voucher_type: v.voucher_type,
-						paid_to: v.paid_to,
-						payment_mode: v.payment_mode,
-						total_amount: v.total_amount,
-						status: v.status,
-						notes: v.notes,
-						created_at: v.created_at,
-						prepared_by: v.prepared_by,
-					},
-					total_credited: Number(v.total_credited),
-					remaining: Number(v.remaining),
-					entry_count: v.entry_count,
-					pce_entries: entriesMap.get(v.id) || [],
-				});
-			}
-		}
 
 		// ── Global stats ──
 		const [statsRows] = await db.execute(
@@ -132,10 +89,10 @@ export async function GET(request: Request) {
 				SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) as submitted,
 				SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
 				SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
-				COALESCE(SUM(credit_amount), 0) as totalReceived,
-				COALESCE(SUM(debit_amount), 0) as pceDebits,
-				COALESCE(SUM(debit_amount - credit_amount), 0) as currentBalance,
-				COALESCE(SUM(CASE WHEN status = 'approved' THEN debit_amount - credit_amount ELSE 0 END), 0) as approvedAmount
+				COALESCE(SUM(credit_amount), 0) as pceCredits,
+				COALESCE(SUM(debit_amount), 0) as totalPaid,
+				COALESCE(SUM(credit_amount - debit_amount), 0) as currentBalance,
+				COALESCE(SUM(CASE WHEN status = 'approved' THEN credit_amount - debit_amount ELSE 0 END), 0) as approvedAmount
 			FROM ${TABLE}
 			WHERE isDelete = 0`
 		);
@@ -147,26 +104,26 @@ export async function GET(request: Request) {
 
 		const mergedStats = {
 			...(statsRows[0] || {}),
-			totalPaid: voucherTotal,
+			totalReceived: voucherTotal,
 			currentBalance:
-				voucherTotal - Number((statsRows[0] as any)?.totalReceived || 0),
+				voucherTotal - Number((statsRows[0] as any)?.totalPaid || 0),
 		};
 
 		// ── Voucher balances for add-dropdown (remaining > 0) ──
 		const [voucherBalances] = await db.execute(
-			`SELECT cv.id, cv.voucher_number, cv.total_amount,
-				COALESCE(SUM(pce.credit_amount), 0) as total_credited,
-				cv.total_amount - COALESCE(SUM(pce.credit_amount), 0) as remaining
+			`SELECT cv.id, cv.voucher_number, cv.total_amount, cv.paid_to, cv.notes, cv.description,
+				COALESCE(SUM(pce.debit_amount), 0) as total_debited,
+				cv.total_amount - COALESCE(SUM(pce.debit_amount), 0) as remaining
 			FROM cash_vouchers cv
 			LEFT JOIN ${TABLE} pce ON pce.source_voucher_id = cv.id AND pce.isDelete = 0
 			GROUP BY cv.id
-			HAVING COALESCE(SUM(pce.credit_amount), 0) < cv.total_amount
+			HAVING COALESCE(SUM(pce.debit_amount), 0) < cv.total_amount
 			ORDER BY cv.voucher_number`
 		);
 
 		return NextResponse.json({
 			success: true,
-			entries,
+			data: rows,
 			pagination: {
 				page,
 				limit,

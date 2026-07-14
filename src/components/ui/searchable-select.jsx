@@ -9,6 +9,7 @@ export default function SearchableSelect({
 	onChange,
 	placeholder = 'Select...',
 	className = '',
+	buttonClassName = '',
 }) {
 	const [isOpen, setIsOpen] = useState(false);
 	const [search, setSearch] = useState('');
@@ -80,7 +81,7 @@ export default function SearchableSelect({
 			<button
 				type="button"
 				onClick={() => setIsOpen(!isOpen)}
-				className="w-full px-1 py-1 bg-transparent text-sm text-left flex items-center justify-between gap-1 cursor-default"
+				className={`w-full bg-transparent text-sm text-left flex items-center justify-between gap-1 cursor-default ${buttonClassName || 'px-1 py-1'}`}
 			>
 				<span
 					className={
