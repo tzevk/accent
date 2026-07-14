@@ -133,12 +133,24 @@ export async function GET(request: Request) {
 				SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
 				SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
 				COALESCE(SUM(credit_amount), 0) as totalReceived,
-				COALESCE(SUM(debit_amount), 0) as totalPaid,
+				COALESCE(SUM(debit_amount), 0) as pceDebits,
 				COALESCE(SUM(debit_amount - credit_amount), 0) as currentBalance,
 				COALESCE(SUM(CASE WHEN status = 'approved' THEN debit_amount - credit_amount ELSE 0 END), 0) as approvedAmount
 			FROM ${TABLE}
 			WHERE isDelete = 0`
 		);
+
+		const [voucherTotalRows] = await db.execute(
+			`SELECT COALESCE(SUM(total_amount), 0) as voucherTotal FROM cash_vouchers`
+		);
+		const voucherTotal = (voucherTotalRows[0] as any)?.voucherTotal || 0;
+
+		const mergedStats = {
+			...(statsRows[0] || {}),
+			totalPaid: voucherTotal,
+			currentBalance:
+				voucherTotal - Number((statsRows[0] as any)?.totalReceived || 0),
+		};
 
 		// ── Voucher balances for add-dropdown (remaining > 0) ──
 		const [voucherBalances] = await db.execute(
@@ -161,7 +173,7 @@ export async function GET(request: Request) {
 				total,
 				totalPages: Math.ceil(total / limit),
 			},
-			stats: statsRows[0] || {},
+			stats: mergedStats,
 			voucherBalances: voucherBalances || [],
 		});
 	} catch (error: any) {

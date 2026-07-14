@@ -740,11 +740,15 @@ export default function PettyCashExpensesPage() {
 		const isAddingHere = addingVoucherId === voucherId;
 
 		// Compute per-entry running balance
-		let cumulativeBalance = Number(voucher.total_amount);
+		const hasDebitEntry = pce_entries.some(
+			(e) => Number(e.debit_amount ?? 0) > 0
+		);
+		let cumulativeBalance = hasDebitEntry ? 0 : Number(voucher.total_amount);
 		const entriesWithBalance = pce_entries.map((e) => {
-			const credit = Number(e.credit_amount ?? 0);
-			const debit = Number(e.debit_amount ?? 0);
-			cumulativeBalance = cumulativeBalance - credit + debit;
+			cumulativeBalance =
+				cumulativeBalance +
+				Number(e.debit_amount ?? 0) -
+				Number(e.credit_amount ?? 0);
 			return { ...e, _balance: cumulativeBalance };
 		});
 
