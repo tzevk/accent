@@ -65,7 +65,7 @@ export async function PUT(
 		db = await dbConnect();
 
 		const [existing] = await db.execute(
-			`SELECT source_voucher_id, debit_amount FROM ${TABLE} WHERE id = ?`,
+			`SELECT source_voucher_id, debit_amount FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
 			[id]
 		);
 
@@ -133,7 +133,7 @@ export async function PUT(
 
 		values.push(id);
 		await db.execute(
-			`UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE id = ?`,
+			`UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE id = ? AND isDelete = 0`,
 			values
 		);
 
