@@ -12,6 +12,7 @@ import {
 	ArrowLeftIcon,
 	CheckIcon,
 } from '@heroicons/react/24/outline';
+import SearchableSelect from '@/components/ui/searchable-select';
 
 export default function NewCashVoucherPage() {
 	const router = useRouter();
@@ -536,27 +537,18 @@ export default function NewCashVoucherPage() {
 													/>
 												</td>
 												<td className="border-r border-gray-800 px-1 py-1">
-													<select
+													<SearchableSelect
+														options={accountHeads.map((h) => ({
+															id: h.id,
+															value: h.account_head_name,
+															label: h.account_head_name,
+														}))}
 														value={item.account_head}
-														onChange={(e) =>
-															updateLineItem(
-																index,
-																'account_head',
-																e.target.value
-															)
+														onChange={(val) =>
+															updateLineItem(index, 'account_head', val)
 														}
-														className="w-full px-1 py-1 bg-transparent text-sm"
-													>
-														<option value="">Select Account Head</option>
-														{accountHeads.map((head) => (
-															<option
-																key={head.id}
-																value={head.account_head_name}
-															>
-																{head.account_head_name}
-															</option>
-														))}
-													</select>
+														placeholder="Select Account Head"
+													/>
 												</td>
 												<td className="border-r border-gray-800 px-1 py-1 w-20">
 													<input
@@ -582,27 +574,18 @@ export default function NewCashVoucherPage() {
 													/>
 												</td>
 												<td className="border-r border-gray-800 px-1 py-1">
-													<select
+													<SearchableSelect
+														options={descriptions.map((d) => ({
+															id: d.id,
+															value: d.description_name,
+															label: d.description_name,
+														}))}
 														value={item.description}
-														onChange={(e) =>
-															updateLineItem(
-																index,
-																'description',
-																e.target.value
-															)
+														onChange={(val) =>
+															updateLineItem(index, 'description', val)
 														}
-														className="w-full px-1 py-1 bg-transparent text-sm"
-													>
-														<option value="">Select Description</option>
-														{descriptions.map((desc) => (
-															<option
-																key={desc.id}
-																value={desc.description_name}
-															>
-																{desc.description_name}
-															</option>
-														))}
-													</select>
+														placeholder="Select Description"
+													/>
 												</td>
 												<td className="px-1 py-1 text-center">
 													{lineItems.length > 1 && (
