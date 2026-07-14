@@ -3,6 +3,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
+/**
+ * @param {Object} props
+ * @param {Array<{value: string|number, label: string, id?: string|number}>} props.options
+ * @param {string|number} props.value
+ * @param {(val: string) => void} props.onChange
+ * @param {string} [props.placeholder]
+ * @param {string} [props.className]
+ * @param {string} [props.buttonClassName]
+ */
 export default function SearchableSelect({
 	options = [],
 	value = '',

@@ -37,6 +37,7 @@ export async function GET(request: Request) {
 		const page = parseInt(searchParams.get('page') || '1');
 		const limit = parseInt(searchParams.get('limit') || '10');
 		const search = searchParams.get('search');
+		const unsettled = searchParams.get('unsettled') === 'true';
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
@@ -59,6 +60,15 @@ export async function GET(request: Request) {
 			countParams.push(s, s, s, s, s);
 		}
 
+		if (unsettled) {
+			where.push(
+				'pce.source_voucher_id IS NULL AND pce.debit_amount > 0 AND pce.credit_amount = 0'
+			);
+			countWhere.push(
+				'source_voucher_id IS NULL AND debit_amount > 0 AND credit_amount = 0'
+			);
+		}
+
 		const whereSql = `WHERE ${where.join(' AND ')}`;
 		const countSql = `WHERE ${countWhere.join(' AND ')}`;
 
@@ -71,7 +81,7 @@ export async function GET(request: Request) {
 		const [rows] = await db.execute(
 			`SELECT pce.*, cv.voucher_number as source_voucher_number,
 			  ROW_NUMBER() OVER (ORDER BY pce.transaction_date, pce.created_at) as sr_no,
-			  SUM(pce.credit_amount - pce.debit_amount)
+			  SUM(pce.debit_amount - pce.credit_amount)
 			    OVER (ORDER BY pce.transaction_date, pce.created_at ROWS UNBOUNDED PRECEDING) as running_balance
 			FROM ${TABLE} pce
 			LEFT JOIN cash_vouchers cv ON pce.source_voucher_id = cv.id
@@ -91,8 +101,8 @@ export async function GET(request: Request) {
 				SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
 				COALESCE(SUM(credit_amount), 0) as pceCredits,
 				COALESCE(SUM(debit_amount), 0) as totalPaid,
-				COALESCE(SUM(credit_amount - debit_amount), 0) as currentBalance,
-				COALESCE(SUM(CASE WHEN status = 'approved' THEN credit_amount - debit_amount ELSE 0 END), 0) as approvedAmount
+				COALESCE(SUM(debit_amount - credit_amount), 0) as currentBalance,
+				COALESCE(SUM(CASE WHEN status = 'approved' THEN debit_amount - credit_amount ELSE 0 END), 0) as approvedAmount
 			FROM ${TABLE}
 			WHERE isDelete = 0`
 		);
@@ -106,7 +116,7 @@ export async function GET(request: Request) {
 			...(statsRows[0] || {}),
 			totalReceived: voucherTotal,
 			currentBalance:
-				voucherTotal - Number((statsRows[0] as any)?.totalPaid || 0),
+				Number((statsRows[0] as any)?.totalPaid || 0) - voucherTotal,
 		};
 
 		// ── Voucher balances for add-dropdown (remaining > 0) ──
