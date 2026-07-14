@@ -47,66 +47,6 @@ export async function GET(request) {
 
 		db = await dbConnect();
 
-		// Ensure table exists with updated schema
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS cash_vouchers (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        voucher_number VARCHAR(50) UNIQUE,
-        voucher_date DATE,
-        voucher_type ENUM('payment', 'receipt') DEFAULT 'payment',
-        paid_to VARCHAR(255),
-        project_number VARCHAR(100),
-        payment_mode ENUM('cash', 'cheque') DEFAULT 'cash',
-        total_amount DECIMAL(15,2) DEFAULT 0,
-        amount_in_words TEXT,
-        line_items JSON,
-        prepared_by VARCHAR(255),
-        checked_by VARCHAR(255),
-        approved_by_name VARCHAR(255),
-        receiver_signature VARCHAR(255),
-        status ENUM('pending', 'approved', 'rejected', 'paid') DEFAULT 'pending',
-        approved_by INT,
-        approved_at DATETIME,
-        notes TEXT,
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-
-		// Add missing columns if table already exists
-		try {
-			await db.execute(
-				'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS paid_to VARCHAR(255)'
-			);
-			await db.execute(
-				'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS project_number VARCHAR(100)'
-			);
-			await db.execute(
-				'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS total_amount DECIMAL(15,2) DEFAULT 0'
-			);
-			await db.execute(
-				'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS amount_in_words TEXT'
-			);
-			await db.execute(
-				'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS line_items JSON'
-			);
-			await db.execute(
-				'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS prepared_by VARCHAR(255)'
-			);
-			await db.execute(
-				'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS checked_by VARCHAR(255)'
-			);
-			await db.execute(
-				'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS approved_by_name VARCHAR(255)'
-			);
-			await db.execute(
-				'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS receiver_signature VARCHAR(255)'
-			);
-		} catch (e) {
-			/* columns may already exist */
-		}
-
 		// Build query conditions
 		let conditions = [];
 		let params = [];
@@ -278,43 +218,6 @@ export async function POST(request) {
 
 		// Auto-create debit entry in petty_cash_expenses
 		if (totalAmount > 0) {
-			try {
-				await db.execute(`
-					CREATE TABLE IF NOT EXISTS petty_cash_expenses (
-						id CHAR(36) NOT NULL PRIMARY KEY,
-						transaction_number VARCHAR(50) UNIQUE NOT NULL,
-						transaction_date DATE NOT NULL,
-						debit_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
-						credit_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
-						description VARCHAR(500) NULL,
-						status VARCHAR(50) NOT NULL DEFAULT 'submitted',
-						created_by INT NULL,
-						source_voucher_id INT NULL,
-						isDelete TINYINT(1) NOT NULL DEFAULT 0,
-						created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-						updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-					)
-				`);
-			} catch (_) {
-				/* table likely exists */
-			}
-
-			try {
-				await db.execute(
-					'ALTER TABLE petty_cash_expenses ADD COLUMN source_voucher_id INT NULL'
-				);
-			} catch (_) {
-				/* column likely exists */
-			}
-
-			try {
-				await db.execute(
-					'ALTER TABLE petty_cash_expenses ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0'
-				);
-			} catch (_) {
-				/* column likely exists */
-			}
-
 			const pceId = crypto.randomUUID();
 			await db.execute(
 				`INSERT INTO petty_cash_expenses
