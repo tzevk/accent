@@ -7,7 +7,7 @@ import {
 } from '@/utils/api-permissions';
 
 // Helper to ensure all required columns exist in proposals table (kept for reference, no longer called per-request)
-// eslint-disable-next-line no-unused-vars
+
 async function ensureProposalColumns(pool) {
 	const alterStatements = [
 		// Quotation related fields

@@ -64,6 +64,11 @@ export async function PUT(
 
 		db = await dbConnect();
 
+		const [existing] = await db.execute(
+			`SELECT source_voucher_id, debit_amount FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
+			[id]
+		);
+
 		const fields = [
 			'transaction_date',
 			'credit_amount',
@@ -80,11 +85,19 @@ export async function PUT(
 			'notes',
 			'status',
 		];
+		const isVoucherSourced =
+			existing.length > 0 &&
+			existing[0].source_voucher_id != null &&
+			Number(existing[0].debit_amount) > 0;
+
 		const setClauses: string[] = [];
 		const values: (string | number | null)[] = [];
 
 		for (const f of fields) {
 			if (body[f] !== undefined) {
+				if (isVoucherSourced && f === 'debit_amount') {
+					continue;
+				}
 				setClauses.push(`${f} = ?`);
 				values.push(
 					f === 'credit_amount' || f === 'debit_amount'
@@ -120,7 +133,7 @@ export async function PUT(
 
 		values.push(id);
 		await db.execute(
-			`UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE id = ?`,
+			`UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE id = ? AND isDelete = 0`,
 			values
 		);
 

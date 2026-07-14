@@ -18,12 +18,16 @@ import {
 	BanknotesIcon,
 	ArrowDownCircleIcon,
 	ArrowUpCircleIcon,
+	LockClosedIcon,
+	ReceiptRefundIcon,
+	ChevronDownIcon,
+	ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import Pagination from '@/components/admin/Pagination';
 import { Button } from '@/components/ui/button';
-import { Input, Select } from '@/components/ui/form-fields';
+import { Input } from '@/components/ui/form-fields';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api-client';
 import { formatCurrency, formatDate } from '@/lib/format';
 import {
@@ -38,8 +42,38 @@ import {
 
 // ── Types ────────────────────────────────────────────────────
 
+interface VoucherInfo {
+	id: number;
+	voucher_number: string;
+	voucher_date: string;
+	voucher_type: string;
+	paid_to: string;
+	payment_mode: string;
+	total_amount: number;
+	status: string;
+	notes: string;
+	created_at: string;
+	prepared_by: string;
+}
+
+interface VoucherBalance {
+	id: number;
+	voucher_number: string;
+	total_amount: number;
+	total_credited: number;
+	remaining: number;
+}
+
+interface CardEntry {
+	voucher: VoucherInfo;
+	total_credited: number;
+	remaining: number;
+	entry_count: number;
+	pce_entries: Record<string, unknown>[];
+}
+
 interface ApiResponse {
-	data: Record<string, unknown>[];
+	entries: CardEntry[];
 	pagination: {
 		page: number;
 		limit: number;
@@ -47,6 +81,7 @@ interface ApiResponse {
 		totalPages: number;
 	};
 	stats: Record<string, number | string | null>;
+	voucherBalances: VoucherBalance[];
 }
 
 // ── Constants ────────────────────────────────────────────────
@@ -70,11 +105,6 @@ const STATUS_OPTIONS = [
 	{ value: 'rejected', label: 'Rejected' },
 ];
 
-const STATUS_FILTER_OPTIONS = [
-	{ value: 'all', label: 'All statuses' },
-	...STATUS_OPTIONS,
-];
-
 const STATUS_BADGE: Record<string, string> = {
 	draft: 'bg-slate-100 text-slate-700',
 	submitted: 'bg-amber-100 text-amber-700',
@@ -91,6 +121,7 @@ const schema = z.object({
 	description: z.string().nullable().optional(),
 	debit_amount: z.coerce.number().min(0),
 	credit_amount: z.coerce.number().min(0),
+	source_voucher_id: z.coerce.number().nullable().optional(),
 	payment_mode: z
 		.enum(['cash', 'bank', 'cheque', 'card', 'upi', 'other'])
 		.optional(),
@@ -107,8 +138,9 @@ const addDefaults = {
 	transaction_number: '',
 	expense_category: 'Office Supplies',
 	description: '',
-	debit_amount: '',
-	credit_amount: '',
+	debit_amount: '' as number | string,
+	credit_amount: '' as number | string,
+	source_voucher_id: '' as number | string,
 	payment_mode: 'cash' as const,
 	notes: '',
 	status: 'submitted' as const,
@@ -124,13 +156,13 @@ const CELL_SELECT =
 // ── Column definitions ───────────────────────────────────────
 
 const columns = [
-	{ key: 'sr_no', label: 'Sr. No', className: 'w-14 text-center' },
-	{ key: 'transaction_date', label: 'Date', className: 'w-24 text-center' },
+	{ key: 'type', label: 'Type', className: 'w-20 text-center' },
 	{
 		key: 'transaction_number',
-		label: 'Voucher No.',
+		label: 'Ref. No.',
 		className: 'w-28 text-center',
 	},
+	{ key: 'transaction_date', label: 'Date', className: 'w-24 text-center' },
 	{ key: 'description', label: 'Particulars', className: 'text-center' },
 	{ key: 'expense_category', label: 'Category', className: 'w-36 text-center' },
 	{
@@ -149,12 +181,6 @@ const columns = [
 		className: 'w-28 text-center',
 	},
 	{ key: 'payment_mode', label: 'Mode', className: 'w-24 text-center' },
-	{
-		key: 'approved_by_name',
-		label: 'Approved By',
-		className: 'w-28 text-center',
-	},
-	{ key: 'notes', label: 'Remarks', className: 'w-32 text-center' },
 	{ key: 'status', label: 'Status', className: 'w-24 text-center' },
 ];
 
@@ -174,13 +200,11 @@ export default function PettyCashExpensesPage() {
 	// ── UI state ──
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState('');
-	const [statusFilter, setStatusFilter] = useState('all');
+	const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
 
-	// ── Inline mode state ──
-	const [isAdding, setIsAdding] = useState(false);
-	const [editingId, setEditingId] = useState<string | null>(null);
-
-	// ── Form state ──
+	// ── Inline form state (per-card add / per-entry edit) ──
+	const [addingVoucherId, setAddingVoucherId] = useState<number | null>(null);
+	const [editingPceId, setEditingPceId] = useState<string | null>(null);
 	const [addForm, setAddForm] = useState<Record<string, unknown>>({
 		...addDefaults,
 	});
@@ -191,10 +215,9 @@ export default function PettyCashExpensesPage() {
 		() => ({
 			page,
 			limit: PAGE_SIZE,
-			search,
-			status: statusFilter !== 'all' ? statusFilter : undefined,
+			search: search || undefined,
 		}),
-		[page, search, statusFilter]
+		[page, search]
 	);
 
 	const listQuery = useQuery<ApiResponse>({
@@ -202,17 +225,12 @@ export default function PettyCashExpensesPage() {
 		queryFn: () => apiGet(ENDPOINT, queryParams),
 	});
 
-	const vouchersQuery = useQuery<{ data: Record<string, unknown>[] }>({
-		queryKey: ['cash-vouchers-all'],
-		queryFn: () => apiGet('/api/admin/cash-vouchers', { limit: 9999 }),
-	});
-
 	const categoriesQuery = useQuery<{ data: Record<string, unknown>[] }>({
 		queryKey: ['categories-all'],
 		queryFn: () => apiGet('/api/masters/categories'),
 	});
 
-	const rows = listQuery.data?.data ?? [];
+	const entries = listQuery.data?.entries ?? [];
 	const pagination = listQuery.data?.pagination ?? {
 		page: 1,
 		limit: PAGE_SIZE,
@@ -222,14 +240,35 @@ export default function PettyCashExpensesPage() {
 	const stats: Record<string, number | string | null> =
 		listQuery.data?.stats ?? {};
 
+	// ── Expand/collapse ──
+	const toggleCard = (voucherId: number) => {
+		setExpandedCards((prev) => {
+			const next = new Set(prev);
+			if (next.has(voucherId)) {
+				next.delete(voucherId);
+			} else {
+				next.add(voucherId);
+			}
+			return next;
+		});
+	};
+
+	const expandAll = () => {
+		const allIds = new Set(entries.map((e) => e.voucher.id));
+		setExpandedCards(allIds);
+	};
+
+	const collapseAll = () => {
+		setExpandedCards(new Set());
+	};
+
 	// ── Mutations ──
 	const createMutation = useMutation({
 		mutationFn: (data: Record<string, unknown>) => apiPost(ENDPOINT, data),
 		onSuccess: () => {
-			toast.success('Petty Cash Expense created');
-			setIsAdding(false);
+			toast.success('Expense created');
+			setAddingVoucherId(null);
 			setAddForm({ ...addDefaults });
-			setPage(1);
 			queryClient.invalidateQueries({ queryKey: ['petty-cash-expenses'] });
 		},
 		onError: (err: Error) => toast.error(err.message),
@@ -239,8 +278,8 @@ export default function PettyCashExpensesPage() {
 		mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
 			apiPut(`${ENDPOINT}/${id}`, data),
 		onSuccess: () => {
-			toast.success('Petty Cash Expense updated');
-			setEditingId(null);
+			toast.success('Entry updated');
+			setEditingPceId(null);
 			setEditForm({});
 			queryClient.invalidateQueries({ queryKey: ['petty-cash-expenses'] });
 		},
@@ -250,7 +289,7 @@ export default function PettyCashExpensesPage() {
 	const deleteMutation = useMutation({
 		mutationFn: (id: string) => apiDelete(`${ENDPOINT}/${id}`),
 		onSuccess: () => {
-			toast.success('Petty Cash Expense deleted');
+			toast.success('Entry deleted');
 			queryClient.invalidateQueries({ queryKey: ['petty-cash-expenses'] });
 		},
 		onError: (err: Error) => toast.error(err.message),
@@ -258,46 +297,55 @@ export default function PettyCashExpensesPage() {
 
 	// ── Handlers ──
 
-	const openAdd = () => {
-		setEditingId(null);
-		setIsAdding(true);
-		setAddForm({ ...addDefaults });
+	const openAdd = (voucherId: number) => {
+		setEditingPceId(null);
+		setAddingVoucherId(voucherId);
+		setAddForm({
+			...addDefaults,
+			source_voucher_id: voucherId,
+		});
+		// auto-expand the card
+		setExpandedCards((prev) => new Set(prev).add(voucherId));
 	};
 
 	const cancelAdd = () => {
-		setIsAdding(false);
+		setAddingVoucherId(null);
 		setAddForm({ ...addDefaults });
 	};
 
-	const openEdit = (row: Record<string, unknown>) => {
-		setIsAdding(false);
-		setEditingId(row.id as string);
+	const openEdit = (entry: Record<string, unknown>, voucherId: number) => {
+		setAddingVoucherId(null);
+		const isVoucherDebit =
+			entry.source_voucher_id != null &&
+			Number(entry.debit_amount ?? 0) > 0 &&
+			Number(entry.credit_amount ?? 0) === 0;
+		setEditingPceId(entry.id as string);
 		setEditForm({
-			transaction_date: (row.transaction_date as string) || '',
-			transaction_number: (row.transaction_number as string) || '',
-			expense_category: row.expense_category || '',
-			description: row.description || '',
-			debit_amount: Number(row.debit_amount ?? 0) || '',
-			credit_amount: Number(row.credit_amount ?? 0) || '',
-			payment_mode: row.payment_mode || 'cash',
-			notes: row.notes || '',
-			status: row.status || 'submitted',
-			running_balance: row.running_balance,
-			approved_by_name: row.approved_by_name,
-			sr_no: row.sr_no,
+			transaction_date: (entry.transaction_date as string) || '',
+			transaction_number: (entry.transaction_number as string) || '',
+			expense_category: entry.expense_category || '',
+			description: entry.description || '',
+			debit_amount: Number(entry.debit_amount ?? 0) || '',
+			credit_amount: Number(entry.credit_amount ?? 0) || '',
+			source_voucher_id: entry.source_voucher_id || voucherId,
+			source_voucher_number: entry.source_voucher_number || '',
+			is_voucher_debit: isVoucherDebit,
+			payment_mode: entry.payment_mode || 'cash',
+			notes: entry.notes || '',
+			status: entry.status || 'submitted',
+			approved_by_name: entry.approved_by_name,
 		});
+		setExpandedCards((prev) => new Set(prev).add(voucherId));
 	};
 
 	const cancelEdit = () => {
-		setEditingId(null);
+		setEditingPceId(null);
 		setEditForm({});
 	};
 
-	const handleDelete = (row: Record<string, unknown>) => {
-		if (!window.confirm('Hide this petty cash expense from the list?')) {
-			return;
-		}
-		deleteMutation.mutate(row.id as string);
+	const handleDelete = (id: string) => {
+		if (!window.confirm('Delete this entry?')) return;
+		deleteMutation.mutate(id);
 	};
 
 	const buildPayload = (form: Record<string, unknown>) => {
@@ -308,6 +356,9 @@ export default function PettyCashExpensesPage() {
 			description: form.description || null,
 			debit_amount: Math.abs(Number(form.debit_amount || 0)),
 			credit_amount: Math.abs(Number(form.credit_amount || 0)),
+			source_voucher_id: form.source_voucher_id
+				? Number(form.source_voucher_id)
+				: null,
 			payment_mode: form.payment_mode || 'cash',
 			notes: form.notes || null,
 			status: form.status || 'submitted',
@@ -321,17 +372,53 @@ export default function PettyCashExpensesPage() {
 			toast.error(parsed.error.issues[0].message);
 			return;
 		}
+
+		const creditAmount = Math.abs(Number(addForm.credit_amount || 0));
+		const selectedVoucherId = addForm.source_voucher_id
+			? Number(addForm.source_voucher_id)
+			: null;
+
+		if (!selectedVoucherId && creditAmount > 0) {
+			const ok = window.confirm('No source voucher selected. Continue?');
+			if (!ok) return;
+		}
+
 		createMutation.mutate(payload);
 	};
 
 	const handleSaveEdit = () => {
 		const payload = buildPayload(editForm);
-		const parsed = schema.safeParse(payload);
+
+		const isVoucherDebit =
+			editForm.is_voucher_debit === true &&
+			Number(editForm.debit_amount ?? 0) > 0 &&
+			Number(editForm.credit_amount ?? 0) === 0;
+
+		const updateData: Record<string, unknown> = {
+			transaction_date: payload.transaction_date,
+			expense_category: payload.expense_category,
+			description: payload.description,
+			credit_amount: payload.credit_amount,
+			source_voucher_id: payload.source_voucher_id,
+			payment_mode: payload.payment_mode,
+			notes: payload.notes,
+			status: payload.status,
+		};
+
+		if (!isVoucherDebit) {
+			updateData.debit_amount = payload.debit_amount;
+		}
+
+		const parsed = schema.safeParse({
+			...payload,
+			debit_amount: isVoucherDebit ? 0 : payload.debit_amount,
+		});
 		if (!parsed.success) {
 			toast.error(parsed.error.issues[0].message);
 			return;
 		}
-		updateMutation.mutate({ id: editingId!, data: payload });
+
+		updateMutation.mutate({ id: editingPceId!, data: updateData });
 	};
 
 	const updateField = (
@@ -342,17 +429,148 @@ export default function PettyCashExpensesPage() {
 		setForm((prev) => ({ ...prev, [key]: value }));
 	};
 
-	// ── Render inline form row ──
-	const renderInlineRow = (
+	// ── Render a single PCE entry row within a card ──
+	const renderEntryRow = (
+		entry: Record<string, unknown>,
+		voucherId: number,
+		runningBalance: number
+	) => {
+		const status = (entry.status as string) || 'submitted';
+		const mode = (entry.payment_mode as string) || 'cash';
+		const debitAmt = Number(entry.debit_amount ?? 0);
+		const creditAmt = Number(entry.credit_amount ?? 0);
+		const isVoucherDebit =
+			entry.source_voucher_id != null && debitAmt > 0 && creditAmt === 0;
+
+		return (
+			<TableRow key={entry.id as string} className="divide-x divide-gray-200">
+				{/* Type */}
+				<TableCell className="text-center">
+					{isVoucherDebit ? (
+						<span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 whitespace-nowrap">
+							<BanknotesIcon className="w-3 h-3 mr-0.5" />
+							Top-up
+						</span>
+					) : (
+						<span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 whitespace-nowrap">
+							<ReceiptRefundIcon className="w-3 h-3 mr-0.5" />
+							Expense
+						</span>
+					)}
+				</TableCell>
+
+				{/* Ref. No. */}
+				<TableCell className="text-xs font-mono text-center">
+					{(entry.transaction_number as string) || '—'}
+				</TableCell>
+
+				{/* Date */}
+				<TableCell className="text-xs">
+					{formatDate(entry.transaction_date as string)}
+				</TableCell>
+
+				{/* Particulars */}
+				<TableCell
+					className="text-xs truncate max-w-[12rem]"
+					title={entry.description as string}
+				>
+					{(entry.description as string) || '—'}
+				</TableCell>
+
+				{/* Category */}
+				<TableCell className="text-xs">
+					{(entry.expense_category as string) || '—'}
+				</TableCell>
+
+				{/* Debit */}
+				<TableCell className="text-xs text-right tabular-nums text-emerald-700">
+					{formatMoney(debitAmt)}
+				</TableCell>
+
+				{/* Credit */}
+				<TableCell className="text-xs text-right tabular-nums text-red-600">
+					{formatMoney(creditAmt)}
+				</TableCell>
+
+				{/* Balance */}
+				<TableCell className="text-xs text-right font-semibold tabular-nums">
+					{formatCurrency(runningBalance)}
+				</TableCell>
+
+				{/* Mode */}
+				<TableCell>
+					<span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-gray-100 text-gray-700">
+						{mode}
+					</span>
+				</TableCell>
+
+				{/* Status */}
+				<TableCell>
+					<span
+						className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_BADGE[status] || STATUS_BADGE.submitted}`}
+					>
+						{status}
+					</span>
+				</TableCell>
+
+				{/* Actions */}
+				<TableCell className="text-center">
+					<div className="inline-flex items-center gap-0.5">
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => openEdit(entry, voucherId)}
+							disabled={addingVoucherId !== null || editingPceId !== null}
+							title="Edit"
+						>
+							<PencilIcon className="w-3.5 h-3.5" />
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => handleDelete(entry.id as string)}
+							className="text-rose-600 hover:bg-rose-50"
+							title="Delete"
+						>
+							<TrashIcon className="w-3.5 h-3.5" />
+						</Button>
+					</div>
+				</TableCell>
+			</TableRow>
+		);
+	};
+
+	// ── Render inline add/edit form row within a card ──
+	const renderInlineFormRow = (
 		form: Record<string, unknown>,
 		setForm: React.Dispatch<React.SetStateAction<Record<string, unknown>>>,
 		isAdd: boolean
 	) => {
+		const isVoucherDebit =
+			form.is_voucher_debit === true &&
+			Number(form.debit_amount ?? 0) > 0 &&
+			Number(form.credit_amount ?? 0) === 0;
+
 		return (
 			<TableRow className="bg-purple-50/50 divide-x divide-gray-200">
-				{/* Sr. No */}
-				<TableCell className="text-center text-xs text-gray-500">
-					{isAdd ? '—' : String(form.sr_no ?? '—')}
+				{/* Type */}
+				<TableCell className="text-center">
+					{isAdd || !isVoucherDebit ? (
+						<span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 whitespace-nowrap">
+							<ReceiptRefundIcon className="w-3 h-3 mr-0.5" />
+							Expense
+						</span>
+					) : (
+						<span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 whitespace-nowrap">
+							<BanknotesIcon className="w-3 h-3 mr-0.5" />
+							Top-up
+						</span>
+					)}
+				</TableCell>
+
+				{/* Ref. No. */}
+				<TableCell className="text-center text-xs text-gray-400 font-mono">
+					{isAdd ? 'Auto' : String(form.transaction_number || '—')}
 				</TableCell>
 
 				{/* Date */}
@@ -365,46 +583,6 @@ export default function PettyCashExpensesPage() {
 						}
 						className={CELL_INPUT}
 					/>
-				</TableCell>
-
-				{/* Voucher No. */}
-				<TableCell>
-					{isAdd ? (
-						<select
-							value={String(form.transaction_number || '')}
-							onChange={(e) => {
-								setForm((prev) => ({
-									...prev,
-									transaction_number: e.target.value,
-								}));
-							}}
-							className={CELL_SELECT}
-						>
-							<option value="">Select voucher...</option>
-							{(vouchersQuery.data?.data || []).map(
-								(v: Record<string, unknown>) => (
-									<option
-										key={v.voucher_number as string}
-										value={v.voucher_number as string}
-									>
-										{v.voucher_number as string} -{' '}
-										{formatCurrency(v.total_amount ?? v.amount ?? 0)} -{' '}
-										{(v.paid_to || v.payee_name) as string}
-									</option>
-								)
-							)}
-						</select>
-					) : (
-						<input
-							type="text"
-							value={String(form.transaction_number || '')}
-							onChange={(e) =>
-								updateField(setForm, 'transaction_number', e.target.value)
-							}
-							placeholder="Auto"
-							className={CELL_INPUT}
-						/>
-					)}
 				</TableCell>
 
 				{/* Particulars */}
@@ -429,7 +607,7 @@ export default function PettyCashExpensesPage() {
 						}
 						className={CELL_SELECT}
 					>
-						<option value="">Select category...</option>
+						<option value="">—</option>
 						{(categoriesQuery.data?.data || [])
 							.filter(
 								(c: Record<string, unknown>) =>
@@ -447,17 +625,35 @@ export default function PettyCashExpensesPage() {
 
 				{/* Debit */}
 				<TableCell>
-					<input
-						type="number"
-						min="0"
-						step="0.01"
-						value={String(form.debit_amount ?? '')}
-						onChange={(e) =>
-							updateField(setForm, 'debit_amount', e.target.value)
-						}
-						placeholder="0.00"
-						className={`${CELL_INPUT} text-right`}
-					/>
+					{isVoucherDebit ? (
+						<div className="flex items-center gap-1">
+							<input
+								type="number"
+								min="0"
+								step="0.01"
+								value={String(form.debit_amount ?? '')}
+								disabled
+								className={`${CELL_INPUT} text-right bg-gray-100 text-gray-500 cursor-not-allowed`}
+							/>
+							<LockClosedIcon className="w-3 h-3 text-gray-400 flex-shrink-0" />
+						</div>
+					) : isAdd ? (
+						<span className="text-xs text-gray-400 text-right block pr-1">
+							—
+						</span>
+					) : (
+						<input
+							type="number"
+							min="0"
+							step="0.01"
+							value={String(form.debit_amount ?? '')}
+							onChange={(e) =>
+								updateField(setForm, 'debit_amount', e.target.value)
+							}
+							placeholder="0.00"
+							className={`${CELL_INPUT} text-right`}
+						/>
+					)}
 				</TableCell>
 
 				{/* Credit */}
@@ -470,17 +666,16 @@ export default function PettyCashExpensesPage() {
 						onChange={(e) =>
 							updateField(setForm, 'credit_amount', e.target.value)
 						}
-						placeholder="0.00"
-						className={`${CELL_INPUT} text-right`}
+						placeholder={isVoucherDebit ? '—' : '0.00'}
+						disabled={isVoucherDebit}
+						className={`${CELL_INPUT} text-right ${isVoucherDebit ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
 					/>
 				</TableCell>
 
 				{/* Balance */}
-				<TableCell className="text-center text-xs text-gray-400">
-					{isAdd ? '—' : formatMoney(form.running_balance)}
-				</TableCell>
+				<TableCell className="text-center text-xs text-gray-400">—</TableCell>
 
-				{/* Payment Mode */}
+				{/* Mode */}
 				<TableCell>
 					<select
 						value={String(form.payment_mode || 'cash')}
@@ -495,22 +690,6 @@ export default function PettyCashExpensesPage() {
 							</option>
 						))}
 					</select>
-				</TableCell>
-
-				{/* Approved By */}
-				<TableCell className="text-center text-xs text-gray-400">
-					{isAdd ? 'Pending' : String(form.approved_by_name || 'Pending')}
-				</TableCell>
-
-				{/* Remarks */}
-				<TableCell>
-					<input
-						type="text"
-						value={String(form.notes || '')}
-						onChange={(e) => updateField(setForm, 'notes', e.target.value)}
-						placeholder="Notes"
-						className={CELL_INPUT}
-					/>
 				</TableCell>
 
 				{/* Status */}
@@ -553,123 +732,143 @@ export default function PettyCashExpensesPage() {
 		);
 	};
 
-	// ── Render data row ──
-	const renderDataRow = (row: Record<string, unknown>) => {
-		const status = (row.status as string) || 'submitted';
-		const mode = (row.payment_mode as string) || 'cash';
+	// ── Render a single voucher card ──
+	const renderVoucherCard = (cardEntry: CardEntry) => {
+		const { voucher, pce_entries, remaining, entry_count } = cardEntry;
+		const voucherId = voucher.id;
+		const isExpanded = expandedCards.has(voucherId);
+		const isAddingHere = addingVoucherId === voucherId;
+
+		// Compute per-entry running balance
+		let cumulativeBalance = Number(voucher.total_amount);
+		const entriesWithBalance = pce_entries.map((e) => {
+			const credit = Number(e.credit_amount ?? 0);
+			const debit = Number(e.debit_amount ?? 0);
+			cumulativeBalance = cumulativeBalance - credit + debit;
+			return { ...e, _balance: cumulativeBalance };
+		});
 
 		return (
-			<TableRow key={row.id as string} className="divide-x divide-gray-200">
-				{/* Sr. No */}
-				<TableCell className="text-center text-xs text-gray-600">
-					{String(row.sr_no ?? '—')}
-				</TableCell>
-
-				{/* Date */}
-				<TableCell className="text-xs">
-					{formatDate(row.transaction_date as string)}
-				</TableCell>
-
-				{/* Voucher No. */}
-				<TableCell className="text-xs font-mono">
-					{(row.transaction_number as string) || '—'}
-				</TableCell>
-
-				{/* Particulars */}
-				<TableCell
-					className="text-xs truncate max-w-[12rem]"
-					title={row.description as string}
+			<div
+				key={voucherId}
+				className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+			>
+				{/* Card Header — clickable to expand/collapse */}
+				<button
+					onClick={() => toggleCard(voucherId)}
+					className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors text-left"
 				>
-					{(row.description as string) || '—'}
-				</TableCell>
-
-				{/* Category */}
-				<TableCell className="text-xs">
-					{(row.expense_category as string) || '—'}
-				</TableCell>
-
-				{/* Debit */}
-				<TableCell className="text-xs text-right tabular-nums text-emerald-700">
-					{formatMoney(row.debit_amount)}
-				</TableCell>
-
-				{/* Credit */}
-				<TableCell className="text-xs text-right tabular-nums text-red-600">
-					{formatMoney(row.credit_amount)}
-				</TableCell>
-
-				{/* Balance */}
-				<TableCell className="text-xs text-right font-semibold tabular-nums">
-					{formatMoney(
-						Number(row.debit_amount ?? 0) - Number(row.credit_amount ?? 0)
-					)}
-				</TableCell>
-
-				{/* Payment Mode */}
-				<TableCell>
-					<span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-gray-100 text-gray-700">
-						{mode}
-					</span>
-				</TableCell>
-
-				{/* Approved By */}
-				<TableCell className="text-xs">
-					{row.approved_by_name ? (
-						<span className="inline-flex items-center gap-1">
-							{row.approved_by_name as string}
-							<span
-								className="text-[10px] text-emerald-600"
-								title={row.approved_at as string}
-							>
-								✓
-							</span>
-						</span>
+					{isExpanded ? (
+						<ChevronDownIcon className="w-5 h-5 text-gray-400 flex-shrink-0" />
 					) : (
-						<span className="text-gray-400">Pending</span>
+						<ChevronRightIcon className="w-5 h-5 text-gray-400 flex-shrink-0" />
 					)}
-				</TableCell>
-
-				{/* Remarks */}
-				<TableCell
-					className="text-xs truncate max-w-[10rem]"
-					title={row.notes as string}
-				>
-					{(row.notes as string) || '—'}
-				</TableCell>
-
-				{/* Status */}
-				<TableCell>
-					<span
-						className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_BADGE[status] || STATUS_BADGE.submitted}`}
-					>
-						{status}
-					</span>
-				</TableCell>
-
-				{/* Actions */}
-				<TableCell className="text-center">
-					<div className="inline-flex items-center gap-0.5">
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={() => openEdit(row)}
-							disabled={isAdding || editingId !== null}
-							title="Edit"
-						>
-							<PencilIcon className="w-3.5 h-3.5" />
-						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={() => handleDelete(row)}
-							className="text-rose-600 hover:bg-rose-50"
-							title="Delete"
-						>
-							<TrashIcon className="w-3.5 h-3.5" />
-						</Button>
+					<div className="flex-1 min-w-0">
+						<div className="flex items-center gap-3">
+							<span className="text-base font-bold text-gray-900 font-mono">
+								{voucher.voucher_number}
+							</span>
+							<span
+								className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_BADGE[voucher.status] || STATUS_BADGE.pending}`}
+							>
+								{voucher.status}
+							</span>
+							<span className="text-xs text-gray-500">
+								{voucher.voucher_type} · {formatDate(voucher.voucher_date)}
+							</span>
+						</div>
+						{voucher.paid_to && (
+							<div className="text-xs text-gray-500 mt-0.5">
+								Paid to: {voucher.paid_to}
+								{voucher.prepared_by &&
+									` · Prepared by: ${voucher.prepared_by}`}
+							</div>
+						)}
 					</div>
-				</TableCell>
-			</TableRow>
+					<div className="text-right flex-shrink-0">
+						<div className="text-base font-bold text-gray-900">
+							{formatCurrency(voucher.total_amount)}
+						</div>
+						<div className="text-xs text-gray-500">
+							Remaining:{' '}
+							<span
+								className={`font-semibold ${Number(remaining) > 0 ? 'text-emerald-600' : 'text-rose-600'}`}
+							>
+								{formatCurrency(remaining)}
+							</span>
+						</div>
+						{!isExpanded && entry_count > 0 && (
+							<div className="text-[11px] text-gray-400 mt-0.5">
+								{entry_count} expense{entry_count !== 1 ? 's' : ''}
+							</div>
+						)}
+					</div>
+				</button>
+
+				{/* Card Body — expanded */}
+				{isExpanded && (
+					<div className="border-t border-gray-100">
+						{/* Action bar */}
+						<div className="flex items-center justify-between px-5 py-2 bg-gray-50/50">
+							<span className="text-xs text-gray-500">
+								{entry_count > 0
+									? `${entry_count} entr${entry_count === 1 ? 'y' : 'ies'}`
+									: 'No expenses yet'}
+							</span>
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => openAdd(voucherId)}
+								disabled={isAddingHere || editingPceId !== null}
+							>
+								<PlusIcon className="w-3.5 h-3.5" />
+								Add Expense
+							</Button>
+						</div>
+
+						{/* Entries table */}
+						<div className="overflow-auto">
+							<Table>
+								<TableHeader>
+									<TableRow className="bg-gray-50">
+										{columns.map((c) => (
+											<TableHead key={c.key} className={c.className}>
+												{c.label}
+											</TableHead>
+										))}
+										<TableHead className="text-center">Actions</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{/* Inline Add Row */}
+									{isAddingHere &&
+										renderInlineFormRow(addForm, setAddForm, true)}
+
+									{/* PCE Entries */}
+									{entriesWithBalance.map((entry: Record<string, unknown>) => (
+										<Fragment key={entry.id as string}>
+											{editingPceId === entry.id
+												? renderInlineFormRow(editForm, setEditForm, false)
+												: renderEntryRow(
+														entry,
+														voucherId,
+														entry._balance as number
+													)}
+										</Fragment>
+									))}
+
+									{/* Empty state */}
+									{entriesWithBalance.length === 0 && !isAddingHere && (
+										<TableEmpty>
+											No expenses recorded for this voucher.
+										</TableEmpty>
+									)}
+								</TableBody>
+							</Table>
+						</div>
+					</div>
+				)}
+			</div>
 		);
 	};
 
@@ -757,14 +956,6 @@ export default function PettyCashExpensesPage() {
 								/>
 								Refresh
 							</Button>
-							<Button
-								size="sm"
-								onClick={openAdd}
-								disabled={isAdding || editingId !== null}
-							>
-								<PlusIcon className="h-4 w-4" />
-								Add Petty Cash Expense
-							</Button>
 						</div>
 					</header>
 
@@ -798,13 +989,13 @@ export default function PettyCashExpensesPage() {
 						})}
 					</div>
 
-					{/* ── Table ── */}
-					<div className="rounded-xl border border-gray-200 bg-white shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
-						{/* Search + Filters */}
+					{/* ── Cards ── */}
+					<div className="rounded-xl border border-gray-200 bg-white shadow-sm flex-1 min-h-0 flex flex-col">
+						{/* Search + Controls */}
 						<div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
 							<div className="relative flex-1 min-w-[200px] max-w-md">
 								<Input
-									placeholder="Search by voucher #, particulars, recipient, bill #…"
+									placeholder="Search by voucher #, paid to…"
 									value={search}
 									onChange={(e) => {
 										setSearch(e.target.value);
@@ -812,68 +1003,44 @@ export default function PettyCashExpensesPage() {
 									}}
 								/>
 							</div>
-							<Select
-								value={statusFilter}
-								onChange={(e) => {
-									setStatusFilter(e.target.value);
-									setPage(1);
-								}}
-								className="w-40"
-							>
-								{STATUS_FILTER_OPTIONS.map((o) => (
-									<option key={o.value} value={o.value}>
-										{o.label}
-									</option>
-								))}
-							</Select>
+							<div className="flex items-center gap-1 ml-auto">
+								<Button variant="ghost" size="sm" onClick={expandAll}>
+									Expand All
+								</Button>
+								<Button variant="ghost" size="sm" onClick={collapseAll}>
+									Collapse All
+								</Button>
+							</div>
 						</div>
 
-						{/* Table */}
-						<div className="flex-1 min-h-0 overflow-auto">
-							<Table>
-								<TableHeader>
-									<TableRow className="sticky top-0 z-10 bg-white">
-										{columns.map((c) => (
-											<TableHead key={c.key} className={c.className}>
-												{c.label}
-											</TableHead>
-										))}
-										<TableHead className="text-center">Actions</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{listQuery.isLoading ? (
-										<TableEmpty>Loading…</TableEmpty>
-									) : rows.length === 0 && !isAdding ? (
-										<TableEmpty>No records found.</TableEmpty>
-									) : (
-										<>
-											{/* ── Inline Add Row ── */}
-											{isAdding && renderInlineRow(addForm, setAddForm, true)}
-
-											{/* ── Data Rows ── */}
-											{rows.map((row: Record<string, unknown>) => (
-												<Fragment key={row.id as string}>
-													{editingId === row.id
-														? renderInlineRow(editForm, setEditForm, false)
-														: renderDataRow(row)}
-												</Fragment>
-											))}
-										</>
-									)}
-								</TableBody>
-							</Table>
+						{/* Card Area */}
+						<div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+							{listQuery.isLoading ? (
+								<div className="flex items-center justify-center py-12">
+									<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+									<span className="ml-3 text-gray-600">Loading…</span>
+								</div>
+							) : entries.length === 0 ? (
+								<div className="text-center py-12">
+									<BanknotesIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+									<p className="text-gray-600">No vouchers found</p>
+								</div>
+							) : (
+								entries.map(renderVoucherCard)
+							)}
 						</div>
 
 						{/* ── Pagination ── */}
-						<div className="border-t border-gray-100 px-4">
-							<Pagination
-								page={pagination.page}
-								totalPages={pagination.totalPages}
-								total={pagination.total}
-								onPageChange={setPage}
-							/>
-						</div>
+						{pagination.totalPages > 1 && (
+							<div className="border-t border-gray-100 px-4">
+								<Pagination
+									page={pagination.page}
+									totalPages={pagination.totalPages}
+									total={pagination.total}
+									onPageChange={setPage}
+								/>
+							</div>
+						)}
 					</div>
 				</div>
 			</div>

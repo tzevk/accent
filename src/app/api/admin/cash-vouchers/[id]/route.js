@@ -193,6 +193,17 @@ export async function PUT(request, { params }) {
 			]
 		);
 
+		if (body.total_amount !== undefined) {
+			try {
+				await db.execute(
+					'UPDATE petty_cash_expenses SET debit_amount = ? WHERE source_voucher_id = ? AND isDelete = 0',
+					[body.total_amount || 0, id]
+				);
+			} catch (_) {
+				/* PCE table may not exist yet */
+			}
+		}
+
 		return NextResponse.json({
 			success: true,
 			message: 'Voucher updated successfully',
@@ -258,6 +269,15 @@ export async function DELETE(request, { params }) {
 		db = await dbConnect();
 
 		await db.execute('DELETE FROM cash_vouchers WHERE id = ?', [id]);
+
+		try {
+			await db.execute(
+				'UPDATE petty_cash_expenses SET isDelete = 1 WHERE source_voucher_id = ?',
+				[id]
+			);
+		} catch (_) {
+			/* PCE table may not exist yet */
+		}
 
 		return NextResponse.json({
 			success: true,
