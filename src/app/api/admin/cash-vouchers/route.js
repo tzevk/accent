@@ -217,7 +217,20 @@ export async function POST(request) {
 
 		const voucherId = result.insertId;
 
-		// Auto-create debit entry in petty_cash_expenses
+		// Link selected PCE expenses to this voucher (settle them)
+		const settledExpenseIds = Array.isArray(data.settled_expense_ids)
+			? data.settled_expense_ids.filter((id) => id)
+			: [];
+
+		if (settledExpenseIds.length > 0) {
+			const placeholders = settledExpenseIds.map(() => '?').join(',');
+			await db.execute(
+				`UPDATE petty_cash_expenses SET source_voucher_id = ? WHERE id IN (${placeholders}) AND isDelete = 0`,
+				[voucherId, ...settledExpenseIds]
+			);
+		}
+
+		// Create funding credit entry in petty_cash_expenses
 		const voucherDescription = data.description || data.notes || '';
 		if (totalAmount > 0) {
 			const pceId = crypto.randomUUID();
