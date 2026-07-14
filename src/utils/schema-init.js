@@ -64,6 +64,8 @@ async function doSchemaInit() {
 		await Promise.all([
 			initCashVouchersTable(db),
 			initPettyCashExpensesTable(db),
+			initPurchaseOrdersTable(db),
+			initInvoicesTable(db),
 		]);
 
 		schemaInitialized = true;
@@ -681,6 +683,114 @@ async function initPettyCashExpensesTable(db) {
     `);
 	} catch {
 		/* ignore - tables may not exist yet */
+	}
+}
+
+async function initPurchaseOrdersTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS purchase_orders (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      po_number VARCHAR(100) NOT NULL,
+      client_name VARCHAR(255) NOT NULL,
+      original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
+      remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+      po_date DATE NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_po (po_number(100), client_name(255))
+    )
+  `);
+}
+
+async function initInvoicesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS invoices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      invoice_number VARCHAR(50) NOT NULL,
+      invoice_date DATE,
+      client_name VARCHAR(255) NOT NULL,
+      client_email VARCHAR(255),
+      client_phone VARCHAR(50),
+      client_address TEXT,
+      client_pan VARCHAR(20),
+      client_gstin VARCHAR(20),
+      client_state VARCHAR(100),
+      client_state_code VARCHAR(10),
+      kind_attn VARCHAR(255),
+      po_number VARCHAR(100),
+      po_date DATE,
+      po_value DECIMAL(15, 2),
+      original_po_value DECIMAL(15, 2),
+      balance_po_value DECIMAL(15, 2),
+      description VARCHAR(500),
+      items JSON,
+      line_items JSON,
+      subtotal DECIMAL(15, 2) DEFAULT 0,
+      gross_amount DECIMAL(15, 2) DEFAULT 0,
+      tax_rate DECIMAL(5, 2) DEFAULT 18,
+      tax_amount DECIMAL(15, 2) DEFAULT 0,
+      gst_type VARCHAR(20) DEFAULT 'cgst_sgst',
+      cgst_rate DECIMAL(5, 2) DEFAULT 9,
+      sgst_rate DECIMAL(5, 2) DEFAULT 9,
+      igst_rate DECIMAL(5, 2) DEFAULT 18,
+      discount DECIMAL(15, 2) DEFAULT 0,
+      total DECIMAL(15, 2) DEFAULT 0,
+      net_amount DECIMAL(15, 2) DEFAULT 0,
+      amount_in_words VARCHAR(500),
+      gst_number VARCHAR(20),
+      pan_number VARCHAR(20),
+      tan_number VARCHAR(20),
+      service_category VARCHAR(500),
+      bank_address VARCHAR(500),
+      amount_paid DECIMAL(15, 2) DEFAULT 0,
+      balance_due DECIMAL(15, 2) DEFAULT 0,
+      notes TEXT,
+      terms TEXT,
+      due_date DATE,
+      status ENUM('draft', 'sent', 'paid', 'overdue', 'cancelled') DEFAULT 'draft',
+      po_id INT NULL,
+      created_by INT,
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_status (status),
+      INDEX idx_created_at (created_at),
+      INDEX idx_due_date (due_date),
+      INDEX idx_isDelete (isDelete),
+      UNIQUE KEY unique_active_invoice (invoice_number, isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE invoices ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Invoices schema update warning:', e.message || e);
+			}
+		}
+	}
+
+	const indexMigrations = [
+		'ALTER TABLE invoices DROP INDEX invoice_number',
+		'ALTER TABLE invoices ADD UNIQUE KEY unique_active_invoice (invoice_number, isDelete)',
+	];
+
+	for (const stmt of indexMigrations) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (
+				!e.message?.includes('check that it exists') &&
+				!e.message?.includes('Duplicate key name')
+			) {
+				console.warn('Invoices index migration warning:', e.message || e);
+			}
+		}
 	}
 }
 

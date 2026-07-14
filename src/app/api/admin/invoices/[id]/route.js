@@ -22,7 +22,7 @@ export async function GET(request, { params }) {
 
 		connection = await dbConnect();
 		const [invoices] = await connection.execute(
-			`SELECT * FROM invoices WHERE id = ? LIMIT 1`,
+			`SELECT * FROM invoices WHERE id = ? AND isDelete = 0 LIMIT 1`,
 			[id]
 		);
 
@@ -175,60 +175,9 @@ export async function PUT(request, { params }) {
 
 		connection = await dbConnect();
 
-		// Ensure schema has po_id column and purchase_orders table
-		try {
-			await connection.execute(
-				`ALTER TABLE invoices ADD COLUMN po_id INT NULL`
-			);
-		} catch (_) {}
-		try {
-			await connection.execute(`
-        CREATE TABLE IF NOT EXISTS purchase_orders (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          po_number VARCHAR(100) NOT NULL,
-          client_name VARCHAR(255) NOT NULL,
-          original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
-          remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
-          po_date DATE NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          UNIQUE KEY unique_po (po_number(100), client_name(255))
-        )
-      `);
-		} catch (_) {}
-		for (const col of [
-			{ name: 'po_number', definition: 'VARCHAR(100) NOT NULL' },
-			{ name: 'client_name', definition: 'VARCHAR(255) NOT NULL' },
-			{
-				name: 'original_value',
-				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
-			},
-			{
-				name: 'remaining_balance',
-				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
-			},
-			{ name: 'po_date', definition: 'DATE NULL' },
-		]) {
-			try {
-				await connection.execute(
-					`ALTER TABLE purchase_orders ADD COLUMN ${col.name} ${col.definition}`
-				);
-			} catch (_) {}
-		}
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders MODIFY COLUMN vendor_name VARCHAR(255) NULL`
-			);
-		} catch (_) {}
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders ALTER COLUMN vendor_name SET DEFAULT ''`
-			);
-		} catch (_) {}
-
 		// Fetch old invoice data before updating
 		const [oldInvoice] = await connection.execute(
-			'SELECT total, po_number, client_name, balance_po_value, po_id FROM invoices WHERE id = ?',
+			'SELECT total, po_number, client_name, balance_po_value, po_id FROM invoices WHERE id = ? AND isDelete = 0',
 			[id]
 		);
 		if (!oldInvoice || oldInvoice.length === 0) {
@@ -241,7 +190,7 @@ export async function PUT(request, { params }) {
 		// Check for duplicate invoice_number (excluding this row) before UPDATE
 		if (invoice_number && String(invoice_number).trim()) {
 			const [existingInvoice] = await connection.execute(
-				'SELECT id FROM invoices WHERE invoice_number = ? AND id <> ? LIMIT 1',
+				'SELECT id FROM invoices WHERE invoice_number = ? AND id <> ? AND isDelete = 0 LIMIT 1',
 				[invoice_number, id]
 			);
 			if (existingInvoice.length > 0) {
@@ -438,7 +387,7 @@ export async function PUT(request, { params }) {
 				po_date || null,
 				po_value || null,
 				original_po_value || null,
-				calculatedBalance,
+				calculatedBalance || null,
 				newPoId,
 				description ||
 					(items && items.length > 0
@@ -518,59 +467,9 @@ export async function DELETE(request, { params }) {
 
 		connection = await dbConnect();
 
-		try {
-			await connection.execute(
-				`ALTER TABLE invoices ADD COLUMN po_id INT NULL`
-			);
-		} catch (_) {}
-		try {
-			await connection.execute(`
-        CREATE TABLE IF NOT EXISTS purchase_orders (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          po_number VARCHAR(100) NOT NULL,
-          client_name VARCHAR(255) NOT NULL,
-          original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
-          remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
-          po_date DATE NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          UNIQUE KEY unique_po (po_number(100), client_name(255))
-        )
-      `);
-		} catch (_) {}
-		for (const col of [
-			{ name: 'po_number', definition: 'VARCHAR(100) NOT NULL' },
-			{ name: 'client_name', definition: 'VARCHAR(255) NOT NULL' },
-			{
-				name: 'original_value',
-				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
-			},
-			{
-				name: 'remaining_balance',
-				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
-			},
-			{ name: 'po_date', definition: 'DATE NULL' },
-		]) {
-			try {
-				await connection.execute(
-					`ALTER TABLE purchase_orders ADD COLUMN ${col.name} ${col.definition}`
-				);
-			} catch (_) {}
-		}
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders MODIFY COLUMN vendor_name VARCHAR(255) NULL`
-			);
-		} catch (_) {}
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders ALTER COLUMN vendor_name SET DEFAULT ''`
-			);
-		} catch (_) {}
-
 		// Fetch invoice data before deleting
 		const [invoiceToDelete] = await connection.execute(
-			'SELECT total, po_id FROM invoices WHERE id = ?',
+			'SELECT total, po_id FROM invoices WHERE id = ? AND isDelete = 0',
 			[id]
 		);
 		if (!invoiceToDelete || invoiceToDelete.length === 0) {
@@ -590,8 +489,10 @@ export async function DELETE(request, { params }) {
 			);
 		}
 
-		// Delete invoice
-		await connection.execute('DELETE FROM invoices WHERE id = ?', [id]);
+		// Soft delete invoice
+		await connection.execute('UPDATE invoices SET isDelete = 1 WHERE id = ?', [
+			id,
+		]);
 
 		return NextResponse.json({
 			success: true,
