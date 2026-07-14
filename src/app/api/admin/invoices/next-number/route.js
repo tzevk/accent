@@ -46,7 +46,7 @@ export async function GET(request) {
 
 		const [rows] = await db.execute(
 			`SELECT invoice_number FROM invoices
-			 WHERE invoice_number LIKE ?
+			 WHERE invoice_number LIKE ? AND isDelete = 0
 			 ORDER BY id DESC LIMIT 1`,
 			[pattern]
 		);

@@ -28,174 +28,8 @@ export async function GET(request) {
 
 		connection = await dbConnect();
 
-		// Create purchase_orders table
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS purchase_orders (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        po_number VARCHAR(100) NOT NULL,
-        client_name VARCHAR(255) NOT NULL,
-        original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
-        remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
-        po_date DATE NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_po (po_number(100), client_name(255))
-      )
-    `);
-		for (const col of [
-			{ name: 'po_number', definition: 'VARCHAR(100) NOT NULL' },
-			{ name: 'client_name', definition: 'VARCHAR(255) NOT NULL' },
-			{
-				name: 'original_value',
-				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
-			},
-			{
-				name: 'remaining_balance',
-				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
-			},
-			{ name: 'po_date', definition: 'DATE NULL' },
-		]) {
-			try {
-				await connection.execute(
-					`ALTER TABLE purchase_orders ADD COLUMN ${col.name} ${col.definition}`
-				);
-			} catch (_) {}
-		}
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders MODIFY COLUMN vendor_name VARCHAR(255) NULL`
-			);
-		} catch (_) {}
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders ALTER COLUMN vendor_name SET DEFAULT ''`
-			);
-		} catch (_) {}
-
-		// Check if table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS invoices (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        invoice_number VARCHAR(50) UNIQUE NOT NULL,
-        invoice_date DATE,
-        client_name VARCHAR(255) NOT NULL,
-        client_email VARCHAR(255),
-        client_phone VARCHAR(50),
-        client_address TEXT,
-        client_pan VARCHAR(20),
-        client_gstin VARCHAR(20),
-        client_state VARCHAR(100),
-        client_state_code VARCHAR(10),
-        kind_attn VARCHAR(255),
-        po_number VARCHAR(100),
-        po_date DATE,
-        po_value DECIMAL(15, 2),
-        original_po_value DECIMAL(15, 2),
-        balance_po_value DECIMAL(15, 2),
-        description VARCHAR(500),
-        items JSON,
-        line_items JSON,
-        subtotal DECIMAL(15, 2) DEFAULT 0,
-        gross_amount DECIMAL(15, 2) DEFAULT 0,
-        tax_rate DECIMAL(5, 2) DEFAULT 18,
-        tax_amount DECIMAL(15, 2) DEFAULT 0,
-        gst_type VARCHAR(20) DEFAULT 'cgst_sgst',
-        cgst_rate DECIMAL(5, 2) DEFAULT 9,
-        sgst_rate DECIMAL(5, 2) DEFAULT 9,
-        igst_rate DECIMAL(5, 2) DEFAULT 18,
-        discount DECIMAL(15, 2) DEFAULT 0,
-        total DECIMAL(15, 2) DEFAULT 0,
-        net_amount DECIMAL(15, 2) DEFAULT 0,
-        amount_in_words VARCHAR(500),
-        gst_number VARCHAR(20),
-        pan_number VARCHAR(20),
-        tan_number VARCHAR(20),
-        service_category VARCHAR(500),
-        bank_address VARCHAR(500),
-        amount_paid DECIMAL(15, 2) DEFAULT 0,
-        balance_due DECIMAL(15, 2) DEFAULT 0,
-        notes TEXT,
-        terms TEXT,
-        due_date DATE,
-        status ENUM('draft', 'sent', 'paid', 'overdue', 'cancelled') DEFAULT 'draft',
-        po_id INT NULL,
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_status (status),
-        INDEX idx_created_at (created_at),
-        INDEX idx_due_date (due_date)
-      )
-    `);
-
-		// Add new columns if they don't exist (for existing tables)
-		const newColumns = [
-			{ name: 'po_id', definition: 'INT NULL AFTER status' },
-			{ name: 'client_pan', definition: 'VARCHAR(20) AFTER client_address' },
-			{ name: 'client_gstin', definition: 'VARCHAR(20) AFTER client_pan' },
-			{ name: 'client_state', definition: 'VARCHAR(100) AFTER client_gstin' },
-			{
-				name: 'client_state_code',
-				definition: 'VARCHAR(10) AFTER client_state',
-			},
-			{ name: 'kind_attn', definition: 'VARCHAR(255) AFTER client_state_code' },
-			{ name: 'po_number', definition: 'VARCHAR(100) AFTER kind_attn' },
-			{ name: 'po_date', definition: 'DATE AFTER po_number' },
-			{ name: 'po_value', definition: 'DECIMAL(15, 2) AFTER po_date' },
-			{ name: 'balance_po_value', definition: 'DECIMAL(15, 2) AFTER po_value' },
-			{
-				name: 'gst_type',
-				definition: "VARCHAR(20) DEFAULT 'cgst_sgst' AFTER tax_amount",
-			},
-			{ name: 'invoice_date', definition: 'DATE AFTER created_at' },
-			{
-				name: 'original_po_value',
-				definition: 'DECIMAL(15, 2) AFTER po_value',
-			},
-			{ name: 'gross_amount', definition: 'DECIMAL(15, 2) AFTER subtotal' },
-			{ name: 'net_amount', definition: 'DECIMAL(15, 2) AFTER total' },
-			{
-				name: 'cgst_rate',
-				definition: 'DECIMAL(5, 2) DEFAULT 9 AFTER gst_type',
-			},
-			{
-				name: 'sgst_rate',
-				definition: 'DECIMAL(5, 2) DEFAULT 9 AFTER cgst_rate',
-			},
-			{
-				name: 'igst_rate',
-				definition: 'DECIMAL(5, 2) DEFAULT 18 AFTER sgst_rate',
-			},
-			{ name: 'line_items', definition: 'JSON AFTER items' },
-			{ name: 'gst_number', definition: 'VARCHAR(20) AFTER line_items' },
-			{ name: 'pan_number', definition: 'VARCHAR(20) AFTER gst_number' },
-			{ name: 'tan_number', definition: 'VARCHAR(20) AFTER pan_number' },
-			{
-				name: 'service_category',
-				definition: 'VARCHAR(500) AFTER tan_number',
-			},
-			{
-				name: 'bank_address',
-				definition: 'VARCHAR(500) AFTER service_category',
-			},
-			{
-				name: 'amount_in_words',
-				definition: 'VARCHAR(500) AFTER bank_address',
-			},
-		];
-
-		for (const col of newColumns) {
-			try {
-				await connection.execute(
-					`ALTER TABLE invoices ADD COLUMN ${col.name} ${col.definition}`
-				);
-			} catch (alterError) {
-				// Column likely already exists, ignore
-			}
-		}
-
 		// Build query
-		let query = 'SELECT * FROM invoices WHERE 1=1';
+		let query = 'SELECT * FROM invoices WHERE isDelete = 0';
 		const params = [];
 
 		if (status && status !== 'all') {
@@ -258,7 +92,7 @@ export async function GET(request) {
           COALESCE(SUM(gross_amount), 0) as totalGross,
           COALESCE(SUM(tax_amount), 0) as totalTax,
           COALESCE(SUM(net_amount), 0) as totalNet
-        FROM invoices
+        FROM invoices WHERE isDelete = 0
       `);
 			stats = statsResult[0] || stats;
 		} catch (statsError) {
@@ -421,81 +255,11 @@ export async function POST(request) {
 
 		connection = await dbConnect();
 
-		// Ensure schema has all columns
-		const postColumns = [
-			{ name: 'invoice_date', definition: 'DATE' },
-			{ name: 'original_po_value', definition: 'DECIMAL(15, 2)' },
-			{ name: 'gross_amount', definition: 'DECIMAL(15, 2) DEFAULT 0' },
-			{ name: 'net_amount', definition: 'DECIMAL(15, 2) DEFAULT 0' },
-			{ name: 'cgst_rate', definition: 'DECIMAL(5, 2) DEFAULT 9' },
-			{ name: 'sgst_rate', definition: 'DECIMAL(5, 2) DEFAULT 9' },
-			{ name: 'igst_rate', definition: 'DECIMAL(5, 2) DEFAULT 18' },
-			{ name: 'line_items', definition: 'JSON' },
-			{ name: 'gst_number', definition: 'VARCHAR(20)' },
-			{ name: 'pan_number', definition: 'VARCHAR(20)' },
-			{ name: 'tan_number', definition: 'VARCHAR(20)' },
-			{ name: 'service_category', definition: 'VARCHAR(500)' },
-			{ name: 'bank_address', definition: 'VARCHAR(500)' },
-			{ name: 'amount_in_words', definition: 'VARCHAR(500)' },
-			{ name: 'po_id', definition: 'INT NULL' },
-		];
-		for (const col of postColumns) {
-			try {
-				await connection.execute(
-					`ALTER TABLE invoices ADD COLUMN ${col.name} ${col.definition}`
-				);
-			} catch (_) {}
-		}
-
-		// Create purchase_orders table if not exists
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS purchase_orders (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        po_number VARCHAR(100) NOT NULL,
-        client_name VARCHAR(255) NOT NULL,
-        original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
-        remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
-        po_date DATE NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_po (po_number(100), client_name(255))
-      )
-    `);
-		for (const col of [
-			{ name: 'po_number', definition: 'VARCHAR(100) NOT NULL' },
-			{ name: 'client_name', definition: 'VARCHAR(255) NOT NULL' },
-			{
-				name: 'original_value',
-				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
-			},
-			{
-				name: 'remaining_balance',
-				definition: 'DECIMAL(15, 2) NOT NULL DEFAULT 0',
-			},
-			{ name: 'po_date', definition: 'DATE NULL' },
-		]) {
-			try {
-				await connection.execute(
-					`ALTER TABLE purchase_orders ADD COLUMN ${col.name} ${col.definition}`
-				);
-			} catch (_) {}
-		}
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders MODIFY COLUMN vendor_name VARCHAR(255) NULL`
-			);
-		} catch (_) {}
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders ALTER COLUMN vendor_name SET DEFAULT ''`
-			);
-		} catch (_) {}
-
 		// Use pre-generated invoice number from client, or generate one
 		let invoiceNumber = bodyInvoiceNumber;
 		if (!invoiceNumber) {
 			const [countResult] = await connection.execute(
-				'SELECT COUNT(*) as count FROM invoices'
+				'SELECT COUNT(*) as count FROM invoices WHERE isDelete = 0'
 			);
 			const count = countResult?.[0]?.count || 0;
 			invoiceNumber = generateInvoiceNumber(count);
@@ -503,7 +267,7 @@ export async function POST(request) {
 
 		// Check for duplicate invoice_number before INSERT to give a friendly 409
 		const [existingInvoice] = await connection.execute(
-			'SELECT id FROM invoices WHERE invoice_number = ? LIMIT 1',
+			'SELECT id FROM invoices WHERE invoice_number = ? AND isDelete = 0 LIMIT 1',
 			[invoiceNumber]
 		);
 		if (existingInvoice.length > 0) {
@@ -595,7 +359,7 @@ export async function POST(request) {
 				po_date || null,
 				po_value || null,
 				original_po_value || null,
-				calculatedBalance,
+				calculatedBalance || null,
 				poId,
 				description || null,
 				JSON.stringify(items || []),

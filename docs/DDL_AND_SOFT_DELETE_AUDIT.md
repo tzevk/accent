@@ -15,15 +15,19 @@
 | `cash-vouchers/route.js`             | `cash_vouchers` (CREATE + ALTER), `petty_cash_expenses` (CREATE + ALTER) |
 | `cash-vouchers/[id]/route.js`        | — (no DDL, just cascade soft-delete)                                     |
 | `cash-vouchers/next-number/route.js` | `cash_vouchers` (CREATE)                                                 |
+| `admin/invoices/route.js`            | `purchase_orders`, `invoices` (DDL + isDelete)                           |
+| `admin/invoices/[id]/route.js`       | `purchase_orders`, `invoices` (DDL + isDelete)                           |
+| `admin/invoices/download/route.js`   | `purchase_orders`, `invoices` (DDL + isDelete)                           |
+| `admin/invoices/po-balance/route.js` | `purchase_orders`, `invoices` (DDL + isDelete)                           |
 
 ### Unguarded — runs on EVERY request (HIGH priority)
 
 | File                                        | Tables Created/Altered                                          |
-| ------------------------------------------- | --------------------------------------------------------------- |
-| `admin/invoices/route.js`                   | `purchase_orders`, `invoices`                                   |
-| `admin/invoices/[id]/route.js`              | `purchase_orders`, `invoices`                                   |
-| `admin/invoices/download/route.js`          | `purchase_orders`, `invoices`                                   |
-| `admin/invoices/po-balance/route.js`        | `purchase_orders`, `invoices`                                   |
+| ------------------------------------------- | --------------------------------------------------------------- | ----------------------------- | --- |
+| <!--                                        | `admin/invoices/route.js`                                       | `purchase_orders`, `invoices` | --> |
+| <!--                                        | `admin/invoices/[id]/route.js`                                  | `purchase_orders`, `invoices` | --> |
+| <!--                                        | `admin/invoices/download/route.js`                              | `purchase_orders`, `invoices` | --> |
+| <!--                                        | `admin/invoices/po-balance/route.js`                            | `purchase_orders`, `invoices` | --> |
 | `admin/purchase-orders/route.js`            | `purchase_orders` (8+ ALTER + INDEX)                            |
 | `admin/quotations/route.js`                 | `quotations`, `project_quotations`                              |
 | `admin/quotations/[id]/route.js`            | `proposals`, `project_quotations`, `quotations` (26 ALTER each) |
@@ -95,6 +99,7 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 
 | Table                      | API Route(s)                        |
 | -------------------------- | ----------------------------------- |
+| `invoices`                 | `admin/invoices/**`                 |
 | `petty_cash_expenses`      | `admin/petty-cash-expenses/**`      |
 | `payment_entries`          | `admin/payment-entries/**`          |
 | `outgoing_quotations`      | `admin/outgoing-quotations/**`      |
@@ -104,7 +109,7 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 ### Hard delete — critical data (HIGH priority)
 
 | Table                       | API Route(s)                                                                 | Delete Pattern                                               |
-| --------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| --------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------- | --- |
 | `cash_vouchers`             | `admin/cash-vouchers/route.js`, `[id]/route.js`                              | `DELETE FROM cash_vouchers WHERE id = ?`                     |
 | `proposals`                 | `proposals/[id]/route.js`                                                    | `DELETE FROM proposals WHERE id = ?`                         |
 | `projects`                  | `projects/[id]/route.js`                                                     | `DELETE FROM projects WHERE id = ?`                          |
@@ -113,7 +118,7 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 | `users`                     | `users/route.js`, `users/[id]/route.js`                                      | `DELETE FROM users WHERE id = ?`                             |
 | `employees`                 | `employees/[id]/route.js`                                                    | `DELETE FROM employees WHERE id = ?`                         |
 | `vendors`                   | `vendors/[id]/route.js`                                                      | `DELETE FROM vendors WHERE id = ?`                           |
-| `invoices`                  | `admin/invoices/[id]/route.js`                                               | `DELETE FROM invoices WHERE id = ?`                          |
+| <!--                        | `invoices`                                                                   | `admin/invoices/[id]/route.js`                               | `DELETE FROM invoices WHERE id = ?` | --> |
 | `support_tickets`           | `tickets/[id]/route.js`                                                      | `DELETE FROM support_tickets WHERE id = ?`                   |
 | `expenses`                  | `admin/expenses/[id]/route.js`                                               | `DELETE FROM expenses WHERE id = ?`                          |
 | `other_expenses`            | `admin/other-expenses/[id]/route.ts`                                         | `DELETE FROM other_expenses WHERE id = ?`                    |
