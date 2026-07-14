@@ -155,6 +155,7 @@ export async function PUT(request, { params }) {
 			approved_by,
 			receiver_signature,
 			notes,
+			description,
 		} = body;
 
 		// Update voucher
@@ -172,6 +173,7 @@ export async function PUT(request, { params }) {
         checked_by = ?,
         approved_by_name = ?,
         receiver_signature = ?,
+        description = ?,
         notes = ?,
         updated_at = NOW()
       WHERE id = ?`,
@@ -188,6 +190,7 @@ export async function PUT(request, { params }) {
 				checked_by || null,
 				approved_by || null,
 				receiver_signature || null,
+				description || null,
 				notes || null,
 				id,
 			]
@@ -196,8 +199,8 @@ export async function PUT(request, { params }) {
 		if (body.total_amount !== undefined) {
 			try {
 				await db.execute(
-					'UPDATE petty_cash_expenses SET debit_amount = ? WHERE source_voucher_id = ? AND isDelete = 0',
-					[body.total_amount || 0, id]
+					'UPDATE petty_cash_expenses SET credit_amount = ?, description = ? WHERE source_voucher_id = ? AND isDelete = 0',
+					[body.total_amount || 0, description || notes || null, id]
 				);
 			} catch (_) {
 				/* PCE table may not exist yet */

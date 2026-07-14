@@ -38,6 +38,7 @@ export default function EditCashVoucherPage({ params }) {
 		checked_by: '',
 		approved_by: '',
 		receiver_signature: '',
+		description: '',
 		notes: '',
 	});
 
@@ -76,6 +77,7 @@ export default function EditCashVoucherPage({ params }) {
 						checked_by: voucher.checked_by || '',
 						approved_by: voucher.approved_by_name || '',
 						receiver_signature: voucher.receiver_signature || '',
+						description: voucher.description || '',
 						notes: voucher.notes || '',
 					});
 
@@ -439,58 +441,52 @@ export default function EditCashVoucherPage({ params }) {
 										/>
 									</div>
 									<div className="flex border-b border-gray-800">
-										<div className="px-3 py-2 text-sm font-semibold bg-white w-24">
+										<div className="px-3 py-2 border-r border-gray-800 text-sm font-semibold bg-white w-24">
 											PROJECT:
 										</div>
-										<select
+										<SearchableSelect
+											options={projects.map((proj) => ({
+												id: proj.id || proj.project_id,
+												value: proj.project_code || proj.project_id,
+												label: proj.project_code
+													? `${proj.project_code} - ${proj.name}`
+													: proj.name || proj.project_id,
+											}))}
 											value={formData.project_number}
-											onChange={(e) =>
+											onChange={(val) =>
 												setFormData((prev) => ({
 													...prev,
-													project_number: e.target.value,
+													project_number: val,
 												}))
 											}
-											className="flex-1 px-3 py-2 bg-transparent"
-										>
-											<option value="">Select Project</option>
-											{projects.map((proj) => (
-												<option
-													key={proj.id || proj.project_id}
-													value={proj.project_id}
-												>
-													{proj.project_id}
-												</option>
-											))}
-										</select>
+											placeholder="Select Project"
+											className="flex-1"
+											buttonClassName="px-3 py-2 border-r border-gray-800"
+										/>
 									</div>
-									<div className="flex">
-										<div className="px-3 py-2 text-sm font-semibold bg-white w-24">
+									<div className="flex border-b border-gray-800">
+										<div className="px-3 py-2 border-r border-gray-800 text-sm font-semibold bg-white w-24">
 											PAID TO:
 										</div>
-										<select
+										<SearchableSelect
+											options={employees.map((emp) => ({
+												id: emp.id,
+												value:
+													emp.full_name || `${emp.first_name} ${emp.last_name}`,
+												label:
+													emp.full_name || `${emp.first_name} ${emp.last_name}`,
+											}))}
 											value={formData.paid_to}
-											onChange={(e) =>
+											onChange={(val) =>
 												setFormData((prev) => ({
 													...prev,
-													paid_to: e.target.value,
+													paid_to: val,
 												}))
 											}
-											className="flex-1 px-3 py-2 bg-transparent"
-										>
-											<option value="">Select Employee</option>
-											{employees.map((emp) => (
-												<option
-													key={emp.id}
-													value={
-														emp.full_name ||
-														`${emp.first_name} ${emp.last_name}`
-													}
-												>
-													{emp.full_name ||
-														`${emp.first_name} ${emp.last_name}`}
-												</option>
-											))}
-										</select>
+											placeholder="Select Employee"
+											className="flex-1"
+											buttonClassName="px-3 py-2 border-r border-gray-800"
+										/>
 									</div>
 								</div>
 							</div>
@@ -602,9 +598,13 @@ export default function EditCashVoucherPage({ params }) {
 															label: d.description_name,
 														}))}
 														value={item.description}
-														onChange={(val) =>
-															updateLineItem(index, 'description', val)
-														}
+														onChange={(val) => {
+															updateLineItem(index, 'description', val);
+															setFormData((prev) => ({
+																...prev,
+																description: val,
+															}));
+														}}
 														placeholder="Select Description"
 													/>
 												</td>

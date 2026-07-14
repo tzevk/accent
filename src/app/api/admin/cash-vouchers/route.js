@@ -192,8 +192,8 @@ export async function POST(request) {
         voucher_number, voucher_date, voucher_type, paid_to, project_number,
         payment_mode, total_amount, amount_in_words, line_items,
         prepared_by, checked_by, approved_by_name, receiver_signature,
-        status, notes, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        description, status, notes, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				voucherNumber,
 				data.voucher_date || new Date().toISOString().split('T')[0],
@@ -208,6 +208,7 @@ export async function POST(request) {
 				data.checked_by || '',
 				data.approved_by || '',
 				data.receiver_signature || '',
+				data.description || data.notes || '',
 				data.status || 'pending',
 				data.notes || '',
 				user.id,
@@ -217,11 +218,12 @@ export async function POST(request) {
 		const voucherId = result.insertId;
 
 		// Auto-create debit entry in petty_cash_expenses
+		const voucherDescription = data.description || data.notes || '';
 		if (totalAmount > 0) {
 			const pceId = crypto.randomUUID();
 			await db.execute(
 				`INSERT INTO petty_cash_expenses
-					(id, transaction_number, transaction_date, debit_amount, credit_amount,
+					(id, transaction_number, transaction_date, credit_amount, debit_amount,
 					 description, status, created_by, source_voucher_id)
 				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
@@ -230,7 +232,7 @@ export async function POST(request) {
 					data.voucher_date || new Date().toISOString().split('T')[0],
 					totalAmount,
 					0,
-					`Petty cash top-up via ${voucherNumber}`,
+					voucherDescription,
 					'submitted',
 					user.id,
 					voucherId,
