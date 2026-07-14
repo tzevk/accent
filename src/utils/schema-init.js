@@ -60,6 +60,12 @@ async function doSchemaInit() {
 			initOutgoingQuotationsTable(db),
 		]);
 
+		// Independent financial tables
+		await Promise.all([
+			initCashVouchersTable(db),
+			initPettyCashExpensesTable(db),
+		]);
+
 		schemaInitialized = true;
 		const elapsed = Date.now() - startTime;
 		console.log(`✅ Database schema initialized in ${elapsed}ms`);
@@ -533,6 +539,133 @@ async function initOutgoingQuotationsTable(db) {
 				);
 			}
 		}
+	}
+}
+
+async function initCashVouchersTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS cash_vouchers (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      voucher_number VARCHAR(50) UNIQUE,
+      voucher_date DATE,
+      voucher_type ENUM('payment', 'receipt') DEFAULT 'payment',
+      paid_to VARCHAR(255),
+      project_number VARCHAR(100),
+      payment_mode ENUM('cash', 'cheque') DEFAULT 'cash',
+      total_amount DECIMAL(15,2) DEFAULT 0,
+      amount_in_words TEXT,
+      line_items JSON,
+      prepared_by VARCHAR(255),
+      checked_by VARCHAR(255),
+      approved_by_name VARCHAR(255),
+      receiver_signature VARCHAR(255),
+      status ENUM('pending', 'approved', 'rejected', 'paid') DEFAULT 'pending',
+      approved_by INT,
+      approved_at DATETIME,
+      notes TEXT,
+      created_by INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE cash_vouchers ADD COLUMN paid_to VARCHAR(255)',
+		'ALTER TABLE cash_vouchers ADD COLUMN project_number VARCHAR(100)',
+		'ALTER TABLE cash_vouchers ADD COLUMN total_amount DECIMAL(15,2) DEFAULT 0',
+		'ALTER TABLE cash_vouchers ADD COLUMN amount_in_words TEXT',
+		'ALTER TABLE cash_vouchers ADD COLUMN line_items JSON',
+		'ALTER TABLE cash_vouchers ADD COLUMN prepared_by VARCHAR(255)',
+		'ALTER TABLE cash_vouchers ADD COLUMN checked_by VARCHAR(255)',
+		'ALTER TABLE cash_vouchers ADD COLUMN approved_by_name VARCHAR(255)',
+		'ALTER TABLE cash_vouchers ADD COLUMN receiver_signature VARCHAR(255)',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Cash vouchers schema update warning:', e.message || e);
+			}
+		}
+	}
+}
+
+async function initPettyCashExpensesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS petty_cash_expenses (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      transaction_number VARCHAR(50) UNIQUE NOT NULL,
+      transaction_date DATE NOT NULL,
+      transaction_type ENUM('receipt', 'payment') NOT NULL DEFAULT 'payment',
+      expense_category VARCHAR(100) NULL,
+      description VARCHAR(500) NULL,
+      amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+      payment_mode ENUM('cash', 'bank', 'cheque', 'card', 'upi', 'other') DEFAULT 'cash',
+      payment_reference VARCHAR(255) NULL,
+      recipient_name VARCHAR(255) NULL,
+      custodian_employee_id INT NULL,
+      custodian_employee_name VARCHAR(255) NULL,
+      bill_no VARCHAR(100) NULL,
+      bill_date DATE NULL,
+      status ENUM('draft', 'submitted', 'approved', 'rejected') NOT NULL DEFAULT 'submitted',
+      approved_by INT NULL,
+      approved_by_name VARCHAR(255) NULL,
+      approved_at DATETIME NULL,
+      notes TEXT NULL,
+      created_by INT NULL,
+      source_voucher_id INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_transaction_date (transaction_date),
+      INDEX idx_transaction_type (transaction_type),
+      INDEX idx_category (expense_category),
+      INDEX idx_status (status),
+      INDEX idx_custodian (custodian_employee_id),
+      INDEX idx_source_voucher (source_voucher_id)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE petty_cash_expenses ADD COLUMN credit_amount DECIMAL(15,2) NOT NULL DEFAULT 0',
+		'ALTER TABLE petty_cash_expenses ADD COLUMN debit_amount DECIMAL(15,2) NOT NULL DEFAULT 0',
+		'ALTER TABLE petty_cash_expenses ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		'ALTER TABLE petty_cash_expenses ADD COLUMN source_voucher_id INT NULL',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+			if (stmt.includes('credit_amount') || stmt.includes('debit_amount')) {
+				await db.execute(`
+          UPDATE petty_cash_expenses SET
+            credit_amount = IF(transaction_type = 'receipt', amount, 0),
+            debit_amount  = IF(transaction_type = 'payment', amount, 0)
+        `);
+			}
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn(
+					'Petty cash expenses schema update warning:',
+					e.message || e
+				);
+			}
+		}
+	}
+
+	try {
+		await db.execute(`
+      UPDATE petty_cash_expenses pce
+      INNER JOIN cash_vouchers cv ON pce.transaction_number = cv.voucher_number
+      SET pce.source_voucher_id = cv.id
+      WHERE pce.source_voucher_id IS NULL
+        AND pce.transaction_number IS NOT NULL
+        AND pce.isDelete = 0
+        AND pce.transaction_number LIKE 'CV-%'
+    `);
+	} catch {
+		/* ignore - tables may not exist yet */
 	}
 }
 

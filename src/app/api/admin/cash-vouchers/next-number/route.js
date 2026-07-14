@@ -29,30 +29,6 @@ export async function GET(request) {
 
 		db = await dbConnect();
 
-		// Ensure table exists
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS cash_vouchers (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        voucher_number VARCHAR(50) UNIQUE,
-        voucher_date DATE,
-        voucher_type ENUM('payment', 'receipt') DEFAULT 'payment',
-        paid_to VARCHAR(255),
-        payment_mode ENUM('cash', 'cheque') DEFAULT 'cash',
-        total_amount DECIMAL(15,2) DEFAULT 0,
-        amount_in_words TEXT,
-        line_items JSON,
-        prepared_by VARCHAR(255),
-        checked_by VARCHAR(255),
-        approved_by VARCHAR(255),
-        receiver_signature VARCHAR(255),
-        status ENUM('pending', 'approved', 'rejected', 'paid') DEFAULT 'pending',
-        notes TEXT,
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-
 		// Get current month number (01-12)
 		const now = new Date();
 		const currentMonth = String(now.getMonth() + 1).padStart(2, '0');

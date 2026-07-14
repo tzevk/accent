@@ -11,100 +11,6 @@ import crypto from 'node:crypto';
 
 const TABLE = 'petty_cash_expenses';
 
-const DDL = `
-  CREATE TABLE IF NOT EXISTS ${TABLE} (
-    id CHAR(36) NOT NULL PRIMARY KEY,
-    transaction_number VARCHAR(50) UNIQUE NOT NULL,
-    transaction_date DATE NOT NULL,
-    transaction_type ENUM('receipt', 'payment') NOT NULL DEFAULT 'payment',
-    expense_category VARCHAR(100) NULL,
-    description VARCHAR(500) NULL,
-    amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    payment_mode ENUM('cash', 'bank', 'cheque', 'card', 'upi', 'other') DEFAULT 'cash',
-    payment_reference VARCHAR(255) NULL,
-    recipient_name VARCHAR(255) NULL,
-    custodian_employee_id INT NULL,
-    custodian_employee_name VARCHAR(255) NULL,
-    bill_no VARCHAR(100) NULL,
-    bill_date DATE NULL,
-    status ENUM('draft', 'submitted', 'approved', 'rejected') NOT NULL DEFAULT 'submitted',
-    approved_by INT NULL,
-    approved_by_name VARCHAR(255) NULL,
-    approved_at DATETIME NULL,
-    notes TEXT NULL,
-    created_by INT NULL,
-    source_voucher_id INT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_transaction_date (transaction_date),
-    INDEX idx_transaction_type (transaction_type),
-    INDEX idx_category (expense_category),
-    INDEX idx_status (status),
-    INDEX idx_custodian (custodian_employee_id),
-    INDEX idx_source_voucher (source_voucher_id)
-  )
-`;
-
-async function ensureTable(db: any) {
-	await db.execute(DDL);
-
-	const alterStmts = [
-		`ALTER TABLE ${TABLE} ADD COLUMN credit_amount DECIMAL(15,2) NOT NULL DEFAULT 0`,
-		`ALTER TABLE ${TABLE} ADD COLUMN debit_amount DECIMAL(15,2) NOT NULL DEFAULT 0`,
-	];
-	for (const stmt of alterStmts) {
-		try {
-			await db.execute(stmt);
-			await db.execute(`
-				UPDATE ${TABLE} SET
-					credit_amount = IF(transaction_type = 'receipt', amount, 0),
-					debit_amount  = IF(transaction_type = 'payment', amount, 0)
-			`);
-		} catch (e: any) {
-			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
-				console.warn('Petty cash schema migration warning:', e.message);
-			}
-		}
-	}
-
-	try {
-		await db.execute(
-			`ALTER TABLE ${TABLE} ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0`
-		);
-	} catch (e: any) {
-		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
-			console.warn('Petty cash isDelete migration warning:', e.message);
-		}
-	}
-
-	try {
-		await db.execute(
-			`ALTER TABLE ${TABLE} ADD COLUMN source_voucher_id INT NULL`
-		);
-	} catch (e: any) {
-		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
-			console.warn(
-				'Petty cash source_voucher_id migration warning:',
-				e.message
-			);
-		}
-	}
-
-	try {
-		await db.execute(`
-			UPDATE ${TABLE} pce
-			INNER JOIN cash_vouchers cv ON pce.transaction_number = cv.voucher_number
-			SET pce.source_voucher_id = cv.id
-			WHERE pce.source_voucher_id IS NULL
-				AND pce.transaction_number IS NOT NULL
-				AND pce.isDelete = 0
-				AND pce.transaction_number LIKE 'CV-%'
-		`);
-	} catch {
-		/* ignore - tables may not exist yet */
-	}
-}
-
 async function nextNumber(db: any): Promise<string> {
 	const [rows] = await db.execute(
 		`SELECT transaction_number FROM ${TABLE} WHERE transaction_number LIKE 'PCX-%' ORDER BY created_at DESC LIMIT 1`
@@ -134,7 +40,6 @@ export async function GET(request: Request) {
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
-		await ensureTable(db);
 
 		// ── Build voucher WHERE ──
 		const vWhere: string[] = [];
@@ -300,7 +205,6 @@ export async function POST(request: Request) {
 		}
 
 		db = await dbConnect();
-		await ensureTable(db);
 
 		const id = crypto.randomUUID();
 		const transactionNumber = body.transaction_number || (await nextNumber(db));
