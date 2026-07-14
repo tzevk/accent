@@ -453,6 +453,7 @@ export async function PUT(request) {
 		const body = await request.json();
 		const {
 			id,
+			po_number,
 			vendor_name,
 			vendor_email,
 			vendor_phone,
@@ -522,13 +523,14 @@ export async function PUT(request) {
 		// Update purchase order
 		await connection.execute(
 			`UPDATE purchase_orders SET
-       vendor_name = ?, vendor_email = ?, vendor_phone = ?, vendor_address = ?,
+       po_number = ?, vendor_name = ?, vendor_email = ?, vendor_phone = ?, vendor_address = ?,
        vendor_gstin = ?, description = ?, items = ?, subtotal = ?, tax_rate = ?,
        tax_amount = ?, discount = ?, total = ?, notes = ?, terms = ?,
        delivery_date = ?, status = ?, quotation_no = ?, quotation_date = ?, kind_attn = ?,
        po_date = ?, po_amount = ?, net_amount = ?, company_id = ?, project_id = ?, remarks = ?
        WHERE id = ?`,
 			[
+				po_number || null,
 				vendor_name || null,
 				vendor_email || null,
 				vendor_phone || null,
