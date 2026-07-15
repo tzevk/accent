@@ -567,8 +567,10 @@ async function initCashVouchersTable(db) {
       approved_at DATETIME,
       notes TEXT,
       created_by INT,
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_isDelete (isDelete)
     )
   `);
 
@@ -583,6 +585,7 @@ async function initCashVouchersTable(db) {
 		'ALTER TABLE cash_vouchers ADD COLUMN approved_by_name VARCHAR(255)',
 		'ALTER TABLE cash_vouchers ADD COLUMN receiver_signature VARCHAR(255)',
 		'ALTER TABLE cash_vouchers ADD COLUMN description VARCHAR(500)',
+		'ALTER TABLE cash_vouchers ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
 	];
 
 	for (const stmt of alterStatements) {
@@ -595,15 +598,33 @@ async function initCashVouchersTable(db) {
 		}
 	}
 
+	const indexMigrations = [
+		'ALTER TABLE cash_vouchers DROP INDEX voucher_number',
+		'ALTER TABLE cash_vouchers ADD UNIQUE KEY unique_active_voucher (voucher_number, isDelete)',
+	];
+
+	for (const stmt of indexMigrations) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (
+				!e.message?.includes('check that it exists') &&
+				!e.message?.includes('Duplicate key name')
+			) {
+				console.warn('Cash vouchers index migration warning:', e.message || e);
+			}
+		}
+	}
+
 	try {
 		await db.execute(`
-			UPDATE cash_vouchers
-			SET description = COALESCE(
-				JSON_UNQUOTE(JSON_EXTRACT(line_items, '$[0].description')),
-				notes
-			)
-			WHERE description IS NULL
-		`);
+      UPDATE cash_vouchers
+      SET description = COALESCE(
+        JSON_UNQUOTE(JSON_EXTRACT(line_items, '$[0].description')),
+        notes
+      )
+      WHERE description IS NULL
+    `);
 	} catch {
 		/* ignore - JSON_EXTRACT may fail on empty line_items */
 	}
