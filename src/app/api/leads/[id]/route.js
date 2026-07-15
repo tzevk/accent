@@ -22,9 +22,10 @@ export async function GET(request, { params }) {
 		const leadId = parseInt(id);
 		db = await dbConnect();
 
-		const [rows] = await db.execute('SELECT * FROM leads WHERE id = ?', [
-			leadId,
-		]);
+		const [rows] = await db.execute(
+			'SELECT * FROM leads WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
+			[leadId]
+		);
 
 		if (rows.length === 0) {
 			return Response.json(
@@ -92,7 +93,7 @@ export async function PUT(request, { params }) {
         priority = ?,
         notes = ?,
         updated_at = NOW()
-      WHERE id = ?
+      WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)
     `,
 			[
 				data.lead_id || null,
@@ -176,17 +177,13 @@ export async function DELETE(request, { params }) {
 		const leadId = parseInt(id);
 		db = await dbConnect();
 
-		// Get lead info before deleting for logging
+		// Get lead info before soft-deleting for logging
 		const [leadRows] = await db.execute(
-			'SELECT company_name, lead_id FROM leads WHERE id = ?',
+			'SELECT company_name, lead_id FROM leads WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[leadId]
 		);
 
-		const [result] = await db.execute('DELETE FROM leads WHERE id = ?', [
-			leadId,
-		]);
-
-		if (result.affectedRows === 0) {
+		if (leadRows.length === 0) {
 			return Response.json(
 				{
 					success: false,
@@ -196,26 +193,27 @@ export async function DELETE(request, { params }) {
 			);
 		}
 
+		await db.execute('UPDATE leads SET isDelete = 1 WHERE id = ?', [leadId]);
+
 		// Log the activity
-		if (leadRows.length > 0) {
-			logActivity(
-				{
-					actionType: 'delete',
-					resourceType: 'lead',
-					resourceId: leadId.toString(),
-					description: `Deleted lead: ${leadRows[0].company_name}`,
-					details: {
-						lead_id: leadRows[0].lead_id,
-						company_name: leadRows[0].company_name,
-					},
+		logActivity(
+			{
+				actionType: 'delete',
+				resourceType: 'lead',
+				resourceId: leadId.toString(),
+				description: `Soft deleted lead: ${leadRows[0].company_name}`,
+				details: {
+					lead_id: leadRows[0].lead_id,
+					company_name: leadRows[0].company_name,
+					isDelete: 1,
 				},
-				request
-			).catch((err) => console.error('Failed to log activity:', err));
-		}
+			},
+			request
+		).catch((err) => console.error('Failed to log activity:', err));
 
 		return Response.json({
 			success: true,
-			message: 'Lead deleted successfully',
+			message: 'Lead marked as deleted',
 		});
 	} catch (error) {
 		console.error('Error deleting lead:', error);

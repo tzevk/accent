@@ -53,7 +53,7 @@ export async function GET(request) {
 
 		try {
 			// Build WHERE clause
-			let whereClause = 'WHERE 1=1';
+			let whereClause = 'WHERE (isDelete = 0 OR isDelete IS NULL)';
 			const params = [];
 
 			if (search) {
@@ -138,7 +138,7 @@ export async function GET(request) {
             SUM(CASE WHEN enquiry_status = 'Follow Up' THEN 1 ELSE 0 END) as follow_up,
             SUM(CASE WHEN enquiry_status = 'Closed Won' THEN 1 ELSE 0 END) as closed_won,
             SUM(CASE WHEN enquiry_status = 'Closed Lost' THEN 1 ELSE 0 END) as closed_lost
-          FROM leads
+          FROM leads WHERE (isDelete = 0 OR isDelete IS NULL)
         `),
 			]);
 
@@ -173,12 +173,6 @@ export async function GET(request) {
 					queryTimeMs: queryTime,
 				},
 			});
-
-			// Cache for 30 seconds
-			response.headers.set(
-				'Cache-Control',
-				'private, max-age=30, stale-while-revalidate=60'
-			);
 
 			return response;
 		} finally {

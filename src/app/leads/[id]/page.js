@@ -108,7 +108,7 @@ export default function LeadDetails({ params }) {
 	const handleDelete = async () => {
 		if (
 			window.confirm(
-				`Are you sure you want to delete this lead from "${lead.company_name}"?`
+				`Are you sure you want to delete this lead from "${lead.company_name}"? This will mark it as deleted.`
 			)
 		) {
 			try {

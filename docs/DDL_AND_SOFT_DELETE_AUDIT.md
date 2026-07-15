@@ -23,11 +23,7 @@
 ### Unguarded — runs on EVERY request (HIGH priority)
 
 | File                                        | Tables Created/Altered                                          |
-| ------------------------------------------- | --------------------------------------------------------------- | ----------------------------- | --- |
-| <!--                                        | `admin/invoices/route.js`                                       | `purchase_orders`, `invoices` | --> |
-| <!--                                        | `admin/invoices/[id]/route.js`                                  | `purchase_orders`, `invoices` | --> |
-| <!--                                        | `admin/invoices/download/route.js`                              | `purchase_orders`, `invoices` | --> |
-| <!--                                        | `admin/invoices/po-balance/route.js`                            | `purchase_orders`, `invoices` | --> |
+| ------------------------------------------- | --------------------------------------------------------------- |
 | `admin/purchase-orders/route.js`            | `purchase_orders` (8+ ALTER + INDEX)                            |
 | `admin/quotations/route.js`                 | `quotations`, `project_quotations`                              |
 | `admin/quotations/[id]/route.js`            | `proposals`, `project_quotations`, `quotations` (26 ALTER each) |
@@ -106,19 +102,18 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 | `outgoing_quotations`      | `admin/outgoing-quotations/**`      |
 | `outgoing_purchase_orders` | `admin/outgoing-purchase-orders/**` |
 | `purchase_orders`          | `admin/purchase-orders/**`          |
+| `leads`                    | `leads/**`                          |
 
 ### Hard delete — critical data (HIGH priority)
 
 | Table                       | API Route(s)                                                                 | Delete Pattern                                               |
-| --------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------- | --- |
+| --------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `proposals`                 | `proposals/[id]/route.js`                                                    | `DELETE FROM proposals WHERE id = ?`                         |
 | `projects`                  | `projects/[id]/route.js`                                                     | `DELETE FROM projects WHERE id = ?`                          |
-| `leads`                     | `leads/[id]/route.js`                                                        | `DELETE FROM leads WHERE id = ?`                             |
 | `companies`                 | `companies/[id]/route.js`                                                    | `DELETE FROM companies WHERE id = ?`                         |
 | `users`                     | `users/route.js`, `users/[id]/route.js`                                      | `DELETE FROM users WHERE id = ?`                             |
 | `employees`                 | `employees/[id]/route.js`                                                    | `DELETE FROM employees WHERE id = ?`                         |
 | `vendors`                   | `vendors/[id]/route.js`                                                      | `DELETE FROM vendors WHERE id = ?`                           |
-| <!--                        | `invoices`                                                                   | `admin/invoices/[id]/route.js`                               | `DELETE FROM invoices WHERE id = ?` | --> |
 | `support_tickets`           | `tickets/[id]/route.js`                                                      | `DELETE FROM support_tickets WHERE id = ?`                   |
 | `expenses`                  | `admin/expenses/[id]/route.js`                                               | `DELETE FROM expenses WHERE id = ?`                          |
 | `other_expenses`            | `admin/other-expenses/[id]/route.ts`                                         | `DELETE FROM other_expenses WHERE id = ?`                    |

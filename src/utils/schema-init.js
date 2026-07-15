@@ -172,10 +172,25 @@ async function initLeadsTable(db) {
       lead_source VARCHAR(100),
       priority VARCHAR(50),
       notes TEXT,
+      isDelete TINYINT(1) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+
+	const alterStatements = [
+		'ALTER TABLE leads ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Leads table schema update warning:', e.message || e);
+			}
+		}
+	}
 }
 
 async function initProjectsTable(db) {
