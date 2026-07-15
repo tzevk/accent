@@ -61,6 +61,8 @@ export async function GET(request) {
 			params.push(status);
 		}
 
+		conditions.push('(isDelete IS NULL OR isDelete = 0)');
+
 		const whereClause =
 			conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -86,6 +88,7 @@ export async function GET(request) {
         SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
         SUM(CASE WHEN status IN ('approved', 'paid') THEN amount ELSE 0 END) as total_amount
       FROM cash_vouchers
+      WHERE (isDelete IS NULL OR isDelete = 0)
     `);
 
 		const stats = statsResult[0] || {
@@ -187,80 +190,89 @@ export async function POST(request) {
 
 		const totalAmount = data.total_amount || 0;
 
-		const [result] = await db.execute(
-			`INSERT INTO cash_vouchers (
-        voucher_number, voucher_date, voucher_type, paid_to, project_number,
-        payment_mode, total_amount, amount_in_words, line_items,
-        prepared_by, checked_by, approved_by_name, receiver_signature,
-        description, status, notes, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				voucherNumber,
-				data.voucher_date || new Date().toISOString().split('T')[0],
-				data.voucher_type || 'payment',
-				data.paid_to || '',
-				data.project_number || '',
-				data.payment_mode || 'cash',
-				totalAmount,
-				data.amount_in_words || '',
-				JSON.stringify(data.line_items || []),
-				data.prepared_by || '',
-				data.checked_by || '',
-				data.approved_by || '',
-				data.receiver_signature || '',
-				data.description || data.notes || '',
-				data.status || 'pending',
-				data.notes || '',
-				user.id,
-			]
-		);
+		await db.execute('START TRANSACTION');
 
-		const voucherId = result.insertId;
-
-		// Link selected PCE expenses to this voucher (settle them)
-		const settledExpenseIds = Array.isArray(data.settled_expense_ids)
-			? data.settled_expense_ids.filter((id) => id)
-			: [];
-
-		if (settledExpenseIds.length > 0) {
-			const placeholders = settledExpenseIds.map(() => '?').join(',');
-			await db.execute(
-				`UPDATE petty_cash_expenses SET source_voucher_id = ? WHERE id IN (${placeholders}) AND isDelete = 0`,
-				[voucherId, ...settledExpenseIds]
-			);
-		}
-
-		// Create funding credit entry in petty_cash_expenses
-		const voucherDescription = data.description || data.notes || '';
-		if (totalAmount > 0) {
-			const pceId = crypto.randomUUID();
-			await db.execute(
-				`INSERT INTO petty_cash_expenses
-					(id, transaction_number, transaction_date, credit_amount, debit_amount,
-					 description, status, created_by, source_voucher_id)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		try {
+			const [result] = await db.execute(
+				`INSERT INTO cash_vouchers (
+					voucher_number, voucher_date, voucher_type, paid_to, project_number,
+					payment_mode, total_amount, amount_in_words, line_items,
+					prepared_by, checked_by, approved_by_name, receiver_signature,
+					description, status, notes, created_by
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
-					pceId,
 					voucherNumber,
 					data.voucher_date || new Date().toISOString().split('T')[0],
+					data.voucher_type || 'payment',
+					data.paid_to || '',
+					data.project_number || '',
+					data.payment_mode || 'cash',
 					totalAmount,
-					0,
-					voucherDescription,
-					'submitted',
+					data.amount_in_words || '',
+					JSON.stringify(data.line_items || []),
+					data.prepared_by || '',
+					data.checked_by || '',
+					data.approved_by || '',
+					data.receiver_signature || '',
+					data.description || data.notes || '',
+					data.status || 'pending',
+					data.notes || '',
 					user.id,
-					voucherId,
 				]
 			);
-		}
 
-		return NextResponse.json({
-			success: true,
-			data: {
-				id: result.insertId,
-				voucher_number: voucherNumber,
-			},
-			message: 'Cash voucher created successfully',
-		});
+			const voucherId = result.insertId;
+
+			// Link selected PCE expenses to this voucher (settle them)
+			const settledExpenseIds = Array.isArray(data.settled_expense_ids)
+				? data.settled_expense_ids.filter((id) => id)
+				: [];
+
+			if (settledExpenseIds.length > 0) {
+				const placeholders = settledExpenseIds.map(() => '?').join(',');
+				await db.execute(
+					`UPDATE petty_cash_expenses SET source_voucher_id = ? WHERE id IN (${placeholders}) AND isDelete = 0`,
+					[voucherId, ...settledExpenseIds]
+				);
+			}
+
+			// Create funding credit entry in petty_cash_expenses
+			const voucherDescription = data.description || data.notes || '';
+			if (totalAmount > 0) {
+				const pceId = crypto.randomUUID();
+				await db.execute(
+					`INSERT INTO petty_cash_expenses
+						(id, transaction_number, transaction_date, credit_amount, debit_amount,
+						 description, status, created_by, source_voucher_id)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					[
+						pceId,
+						voucherNumber,
+						data.voucher_date || new Date().toISOString().split('T')[0],
+						totalAmount,
+						0,
+						voucherDescription,
+						'submitted',
+						user.id,
+						voucherId,
+					]
+				);
+			}
+
+			await db.execute('COMMIT');
+
+			return NextResponse.json({
+				success: true,
+				data: {
+					id: result.insertId,
+					voucher_number: voucherNumber,
+				},
+				message: 'Cash voucher created successfully',
+			});
+		} catch (txError) {
+			await db.execute('ROLLBACK');
+			throw txError;
+		}
 	} catch (error) {
 		console.error('Create cash voucher error:', error?.message);
 		return NextResponse.json(
@@ -327,7 +339,7 @@ export async function DELETE(request) {
 		db = await dbConnect();
 
 		const [result] = await db.execute(
-			'DELETE FROM cash_vouchers WHERE id = ?',
+			'UPDATE cash_vouchers SET isDelete = 1 WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)',
 			[id]
 		);
 

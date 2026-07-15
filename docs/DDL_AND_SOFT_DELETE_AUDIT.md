@@ -99,6 +99,7 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 
 | Table                      | API Route(s)                        |
 | -------------------------- | ----------------------------------- |
+| `cash_vouchers`            | `admin/cash-vouchers/**`            |
 | `invoices`                 | `admin/invoices/**`                 |
 | `petty_cash_expenses`      | `admin/petty-cash-expenses/**`      |
 | `payment_entries`          | `admin/payment-entries/**`          |
@@ -110,7 +111,6 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 
 | Table                       | API Route(s)                                                                 | Delete Pattern                                               |
 | --------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------- | --- |
-| `cash_vouchers`             | `admin/cash-vouchers/route.js`, `[id]/route.js`                              | `DELETE FROM cash_vouchers WHERE id = ?`                     |
 | `proposals`                 | `proposals/[id]/route.js`                                                    | `DELETE FROM proposals WHERE id = ?`                         |
 | `projects`                  | `projects/[id]/route.js`                                                     | `DELETE FROM projects WHERE id = ?`                          |
 | `leads`                     | `leads/[id]/route.js`                                                        | `DELETE FROM leads WHERE id = ?`                             |

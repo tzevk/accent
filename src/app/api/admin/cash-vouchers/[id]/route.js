@@ -271,7 +271,10 @@ export async function DELETE(request, { params }) {
 
 		db = await dbConnect();
 
-		await db.execute('DELETE FROM cash_vouchers WHERE id = ?', [id]);
+		await db.execute(
+			'UPDATE cash_vouchers SET isDelete = 1 WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)',
+			[id]
+		);
 
 		try {
 			await db.execute(
