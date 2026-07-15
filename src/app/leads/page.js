@@ -73,6 +73,7 @@ export default function Leads() {
 	});
 	const fileInputRef = useRef(null);
 	const searchDebounceRef = useRef(null);
+	const fetchLeadsRef = useRef(null);
 
 	// Robust JSON handling helpers to avoid SyntaxError when server returns HTML/text (e.g., Internal Server Error)
 	const parseJSONSafe = async (response) => {
@@ -121,8 +122,8 @@ export default function Leads() {
 				...(statusFilter && { status: statusFilter }),
 				...(cityFilter && { city: cityFilter }),
 			});
+			params.set('_t', Date.now());
 
-			// Use optimized leads list API with parallel queries and caching
 			const result = await fetchJSON(`/api/leads/list?${params}`);
 
 			if (result.success) {
@@ -143,6 +144,7 @@ export default function Leads() {
 			setLoading(false);
 		}
 	};
+	fetchLeadsRef.current = fetchLeads;
 
 	// follow-up operations are handled in the Edit Lead page
 
@@ -268,7 +270,6 @@ export default function Leads() {
 				});
 				// Switch back to list view and refresh
 				setActiveTab('list');
-				fetchLeads();
 				alert('Lead created successfully!');
 			} else {
 				alert(
@@ -350,7 +351,7 @@ export default function Leads() {
 	const handleDeleteLead = async (leadId, companyName) => {
 		if (
 			!confirm(
-				`Are you sure you want to delete the lead for "${companyName}"? This action cannot be undone.`
+				`Are you sure you want to delete the lead for "${companyName}"? This will mark it as deleted.`
 			)
 		) {
 			return;
@@ -363,7 +364,7 @@ export default function Leads() {
 
 			if (result.success) {
 				alert('Lead deleted successfully!');
-				fetchLeads(); // Refresh the leads list
+				fetchLeadsRef.current();
 			} else {
 				alert('Error deleting lead: ' + result.error);
 			}
@@ -479,7 +480,7 @@ export default function Leads() {
 						'Proposal created: ' +
 							(proposalId || 'ID ' + (result.data && result.data.id))
 					);
-					fetchLeads();
+					fetchLeadsRef.current();
 				}
 			}
 		} catch (error) {
@@ -519,7 +520,7 @@ export default function Leads() {
 			});
 			if (result.success) {
 				alert(`Successfully imported ${result.imported} leads!`);
-				fetchLeads(); // Refresh the leads list
+				fetchLeadsRef.current();
 				fileInputRef.current.value = ''; // Clear file input
 			} else {
 				alert('Error importing leads: ' + result.error);
