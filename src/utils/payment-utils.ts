@@ -12,7 +12,7 @@ export async function updateInvoicePaymentStatus(
 		[invoiceNo]
 	);
 	const totalPaid =
-		parseFloat((rows as Array<{ total_paid: number }>)[0].total_paid) || 0;
+		Number((rows as Array<{ total_paid: number }>)[0].total_paid) || 0;
 
 	const [invoices] = await db.execute(
 		`SELECT net_amount FROM invoices WHERE invoice_number = ? AND isDelete = 0`,
@@ -21,7 +21,7 @@ export async function updateInvoicePaymentStatus(
 	const invoiceRows = invoices as Array<{ net_amount: number }>;
 	if (invoiceRows.length === 0) return;
 
-	const netAmount = parseFloat(String(invoiceRows[0].net_amount)) || 0;
+	const netAmount = Number(invoiceRows[0].net_amount) || 0;
 
 	let newStatus: string | null = null;
 	if (netAmount > 0 && totalPaid >= netAmount) {
