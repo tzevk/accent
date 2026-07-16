@@ -243,10 +243,37 @@ async function initProjectsTable(db) {
       duration TEXT,
       mode_of_delivery TEXT,
       notes TEXT,
+      isDelete TINYINT(1) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_isDelete (isDelete)
     )
   `);
+
+	const alterStatements = [
+		'ALTER TABLE projects ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Projects table schema update warning:', e.message || e);
+			}
+		}
+	}
+
+	try {
+		await db.execute('ALTER TABLE projects ADD INDEX idx_isDelete (isDelete)');
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Projects index migration warning:', e.message || e);
+		}
+	}
 }
 
 async function initProposalsTable(db) {
@@ -273,10 +300,37 @@ async function initProposalsTable(db) {
       budget DECIMAL(15,2),
       planned_start_date DATE,
       planned_end_date DATE,
+      isDelete TINYINT(1) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_isDelete (isDelete)
     )
   `);
+
+	const alterStatements = [
+		'ALTER TABLE proposals ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Proposals table schema update warning:', e.message || e);
+			}
+		}
+	}
+
+	try {
+		await db.execute('ALTER TABLE proposals ADD INDEX idx_isDelete (isDelete)');
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Proposals index migration warning:', e.message || e);
+		}
+	}
 }
 
 async function initFollowUpsTable(db) {

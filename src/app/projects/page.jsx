@@ -236,7 +236,7 @@ function ProjectsInner() {
 		try {
 			setFetchError(null);
 			// Use optimized /api/projects/list endpoint for better TTFB
-			const result = await fetchJSON('/api/projects/list');
+			const result = await fetchJSON('/api/projects/list?_t=' + Date.now());
 			if (result.success) setProjects(result.data);
 			else {
 				console.error('Error fetching projects:', result.error);
@@ -257,7 +257,7 @@ function ProjectsInner() {
 			const result = await fetchJSON(`/api/projects?id=${id}`, {
 				method: 'DELETE',
 			});
-			if (result.success) fetchProjects();
+			if (result.success) await fetchProjects();
 			else alert('Error deleting project: ' + result.error);
 		} catch (error) {
 			console.error('Error deleting project:', error);

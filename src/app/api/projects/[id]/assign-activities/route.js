@@ -68,7 +68,7 @@ export async function POST(request, { params }) {
 
 		// Verify project exists
 		const [projectCheck] = await db.execute(
-			'SELECT project_id, project_title FROM projects WHERE project_id = ?',
+			'SELECT project_id, project_title FROM projects WHERE project_id = ? AND isDelete = 0',
 			[projectId]
 		);
 

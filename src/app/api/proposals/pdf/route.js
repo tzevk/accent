@@ -43,7 +43,7 @@ export async function GET(request) {
 		if (exportAll) {
 			// Fetch all proposals
 			const [rows] = await pool.execute(
-				'SELECT * FROM proposals ORDER BY created_at DESC'
+				'SELECT * FROM proposals WHERE isDelete = 0 ORDER BY created_at DESC'
 			);
 			proposals = rows;
 			console.log(`Exporting all proposals: ${proposals.length} total`);
@@ -56,7 +56,7 @@ export async function GET(request) {
 			}
 
 			const [rows] = await pool.execute(
-				'SELECT * FROM proposals WHERE id = ? LIMIT 1',
+				'SELECT * FROM proposals WHERE id = ? AND isDelete = 0 LIMIT 1',
 				[id]
 			);
 

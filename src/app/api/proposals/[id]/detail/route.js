@@ -46,9 +46,10 @@ export async function GET(request, { params }) {
 		const db = await dbConnect();
 
 		try {
-			const [rows] = await db.execute('SELECT * FROM proposals WHERE id = ?', [
-				id,
-			]);
+			const [rows] = await db.execute(
+				'SELECT * FROM proposals WHERE id = ? AND isDelete = 0',
+				[id]
+			);
 
 			if (rows.length === 0) {
 				return NextResponse.json(

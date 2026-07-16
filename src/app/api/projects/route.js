@@ -65,6 +65,7 @@ export async function GET(request) {
           LEFT JOIN companies c ON p.company_id = c.id
           LEFT JOIN proposals prop ON p.proposal_id = prop.id
           LEFT JOIN companies prop_c ON prop.company_id = prop_c.id
+          WHERE p.isDelete = 0
           ORDER BY p.created_at DESC
         `);
 				// Merge client_name: prefer p.client_name, then linked_company_name, then proposal info
@@ -87,7 +88,7 @@ export async function GET(request) {
 						'company_id column missing during join, falling back to projects only select'
 					);
 					const [r] = await db.execute(
-						`SELECT p.* FROM projects p ORDER BY p.created_at DESC`
+						`SELECT p.* FROM projects p WHERE p.isDelete = 0 ORDER BY p.created_at DESC`
 					);
 					rows = r;
 				} else {
@@ -96,7 +97,7 @@ export async function GET(request) {
 			}
 		} else {
 			const [r] = await db.execute(
-				`SELECT p.* FROM projects p ORDER BY p.created_at DESC`
+				`SELECT p.* FROM projects p WHERE p.isDelete = 0 ORDER BY p.created_at DESC`
 			);
 			rows = r;
 		}
@@ -322,7 +323,7 @@ export async function POST(request) {
 
 		// Get the created project
 		const [newProject] = await db.execute(
-			'SELECT * FROM projects WHERE id = ?',
+			'SELECT * FROM projects WHERE id = ? AND isDelete = 0',
 			[result.insertId]
 		);
 
@@ -451,7 +452,7 @@ export async function PUT(request) {
 
 		// Check if project exists
 		const [existing] = await db.execute(
-			'SELECT project_id FROM projects WHERE project_id = ?',
+			'SELECT project_id FROM projects WHERE project_id = ? AND isDelete = 0',
 			[projectId]
 		);
 
@@ -536,7 +537,7 @@ export async function PUT(request) {
 
 		// Get the updated project
 		const [updatedProject] = await db.execute(
-			'SELECT * FROM projects WHERE project_id = ?',
+			'SELECT * FROM projects WHERE project_id = ? AND isDelete = 0',
 			[projectId]
 		);
 
@@ -633,7 +634,7 @@ export async function DELETE(request) {
 		}
 
 		// Check if project exists using resolved key column
-		const query = `SELECT ${keyCol}, name, project_id FROM projects WHERE ${keyCol} = ?`;
+		const query = `SELECT ${keyCol}, name, project_id FROM projects WHERE ${keyCol} = ? AND isDelete = 0`;
 		const [existing] = await db.execute(query, [id]);
 
 		if (!existing || existing.length === 0) {
@@ -643,8 +644,10 @@ export async function DELETE(request) {
 			);
 		}
 
-		// Delete project using the resolved key
-		await db.execute(`DELETE FROM projects WHERE ${keyCol} = ?`, [id]);
+		// Soft delete project using the resolved key
+		await db.execute(`UPDATE projects SET isDelete = 1 WHERE ${keyCol} = ?`, [
+			id,
+		]);
 
 		// Log the activity
 		logActivity(

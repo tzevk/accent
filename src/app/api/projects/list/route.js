@@ -88,7 +88,7 @@ export async function GET(request) {
 			try {
 				// Use SELECT * to adapt to whatever columns exist
 				const [projectsResult] = await db.execute(`
-          SELECT * FROM projects ORDER BY created_at DESC
+          SELECT * FROM projects WHERE isDelete = 0 ORDER BY created_at DESC
         `);
 				projects = projectsResult || [];
 			} catch (queryErr) {
@@ -106,7 +106,7 @@ export async function GET(request) {
             SUM(CASE WHEN LOWER(COALESCE(status,'')) LIKE '%complete%' THEN 1 ELSE 0 END) as completed,
             SUM(CASE WHEN LOWER(COALESCE(status,'')) = 'new' THEN 1 ELSE 0 END) as new_projects,
             SUM(CASE WHEN LOWER(COALESCE(status,'')) LIKE '%hold%' THEN 1 ELSE 0 END) as on_hold
-          FROM projects
+          FROM projects WHERE isDelete = 0
         `);
 				const statsRow = statsResult?.[0] || {};
 				stats = {
@@ -162,12 +162,6 @@ export async function GET(request) {
 					filtered: projects.length,
 				},
 			});
-
-			// Cache for 30 seconds
-			response.headers.set(
-				'Cache-Control',
-				'private, max-age=30, stale-while-revalidate=60'
-			);
 
 			return response;
 		} finally {

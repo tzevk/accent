@@ -79,7 +79,7 @@ export async function GET(request, { params }) {
 			const [rows] = await db.execute(
 				`
         SELECT * FROM projects 
-        WHERE project_id = ? OR project_code = ?
+        WHERE (project_id = ? OR project_code = ?) AND isDelete = 0
         LIMIT 1
       `,
 				[id, id]

@@ -128,8 +128,8 @@ export default function PaymentIssuePage() {
 
 	return (
 		<ResourcePage
-			title="Payment Issue"
-			subtitle="Payments issued to vendors and suppliers"
+			title="Payment Issued to client"
+			subtitle="Payments issued to clients"
 			endpoint="/api/admin/payment-issues"
 			queryKey={['payment-issues']}
 			columns={columns}

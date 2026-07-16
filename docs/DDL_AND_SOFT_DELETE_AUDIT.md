@@ -103,32 +103,33 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 | `outgoing_purchase_orders` | `admin/outgoing-purchase-orders/**` |
 | `purchase_orders`          | `admin/purchase-orders/**`          |
 | `leads`                    | `leads/**`                          |
+| `proposals`                | `proposals/**`                      |
+| `projects`                 | `projects/**`                       |
 
 ### Hard delete — critical data (HIGH priority)
 
-| Table                       | API Route(s)                                                                 | Delete Pattern                                               |
-| --------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `proposals`                 | `proposals/[id]/route.js`                                                    | `DELETE FROM proposals WHERE id = ?`                         |
-| `projects`                  | `projects/[id]/route.js`                                                     | `DELETE FROM projects WHERE id = ?`                          |
-| `companies`                 | `companies/[id]/route.js`                                                    | `DELETE FROM companies WHERE id = ?`                         |
-| `users`                     | `users/route.js`, `users/[id]/route.js`                                      | `DELETE FROM users WHERE id = ?`                             |
-| `employees`                 | `employees/[id]/route.js`                                                    | `DELETE FROM employees WHERE id = ?`                         |
-| `vendors`                   | `vendors/[id]/route.js`                                                      | `DELETE FROM vendors WHERE id = ?`                           |
-| `support_tickets`           | `tickets/[id]/route.js`                                                      | `DELETE FROM support_tickets WHERE id = ?`                   |
-| `expenses`                  | `admin/expenses/[id]/route.js`                                               | `DELETE FROM expenses WHERE id = ?`                          |
-| `other_expenses`            | `admin/other-expenses/[id]/route.ts`                                         | `DELETE FROM other_expenses WHERE id = ?`                    |
-| `payment_payables`          | `admin/payment-payables/[id]/route.js`                                       | `DELETE FROM payment_payables WHERE id = ?`                  |
-| `payment_receivables`       | `admin/payment-receivables/[id]/route.js`                                    | `DELETE FROM payment_receivables WHERE id = ?`               |
-| `purchase_invoices`         | `admin/purchase-invoices/[id]/route.js`                                      | `DELETE FROM purchase_invoices WHERE id = ?`                 |
-| `material_requisitions`     | `admin/material-requisitions/route.js`                                       | `DELETE FROM material_requisitions WHERE id = ?`             |
-| `follow_ups`                | `followups/[id]/route.js`                                                    | `DELETE FROM follow_ups WHERE id = ?`                        |
-| `project_followups`         | `projects/[id]/followups/route.js`                                           | `DELETE FROM project_followups WHERE id = ?`                 |
-| `project_invoices`          | `projects/[id]/invoice/route.js`                                             | `DELETE FROM project_invoices WHERE id = ?`                  |
-| `proposal_followups`        | `proposals/[id]/followups/route.js`                                          | `DELETE FROM proposal_followups WHERE id = ?`                |
+| Table | API Route(s) | Delete Pattern |
+| ----- | ------------ | -------------- |
+
+| `companies` | `companies/[id]/route.js` | `DELETE FROM companies WHERE id = ?` |
+| `users` | `users/route.js`, `users/[id]/route.js` | `DELETE FROM users WHERE id = ?` |
+| `employees` | `employees/[id]/route.js` | `DELETE FROM employees WHERE id = ?` |
+| `vendors` | `vendors/[id]/route.js` | `DELETE FROM vendors WHERE id = ?` |
+| `support_tickets` | `tickets/[id]/route.js` | `DELETE FROM support_tickets WHERE id = ?` |
+| `expenses` | `admin/expenses/[id]/route.js` | `DELETE FROM expenses WHERE id = ?` |
+| `other_expenses` | `admin/other-expenses/[id]/route.ts` | `DELETE FROM other_expenses WHERE id = ?` |
+| `payment_payables` | `admin/payment-payables/[id]/route.js` | `DELETE FROM payment_payables WHERE id = ?` |
+| `payment_receivables` | `admin/payment-receivables/[id]/route.js` | `DELETE FROM payment_receivables WHERE id = ?` |
+| `purchase_invoices` | `admin/purchase-invoices/[id]/route.js` | `DELETE FROM purchase_invoices WHERE id = ?` |
+| `material_requisitions` | `admin/material-requisitions/route.js` | `DELETE FROM material_requisitions WHERE id = ?` |
+| `follow_ups` | `followups/[id]/route.js` | `DELETE FROM follow_ups WHERE id = ?` |
+| `project_followups` | `projects/[id]/followups/route.js` | `DELETE FROM project_followups WHERE id = ?` |
+| `project_invoices` | `projects/[id]/invoice/route.js` | `DELETE FROM project_invoices WHERE id = ?` |
+| `proposal_followups` | `proposals/[id]/followups/route.js` | `DELETE FROM proposal_followups WHERE id = ?` |
 | `user_activity_assignments` | `users/[id]/activities/route.js`, `projects/[id]/assign-activities/route.js` | `DELETE FROM user_activity_assignments WHERE id = ? AND ...` |
-| `softwares`                 | `software/route.js`                                                          | `DELETE FROM softwares WHERE id = ?`                         |
-| `software_versions`         | `software-versions/route.js`                                                 | `DELETE FROM software_versions WHERE id = ?`                 |
-| `software_categories`       | `software-master/route.js`                                                   | `DELETE FROM software_categories WHERE id = ?`               |
+| `softwares` | `software/route.js` | `DELETE FROM softwares WHERE id = ?` |
+| `software_versions` | `software-versions/route.js` | `DELETE FROM software_versions WHERE id = ?` |
+| `software_categories` | `software-master/route.js` | `DELETE FROM software_categories WHERE id = ?` |
 
 ### Hard delete — master/utility data (LOWER priority)
 
