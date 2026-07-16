@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/utils/api-permissions';
 
 /**
  * GET /api/admin/cash-vouchers/download?id=X
- * Generate a printable HTML page for a cash voucher (can be saved as PDF)
+ * Refactored ledger engine forcing total numerical nodes to line up below the amount column.
  */
 export async function GET(request) {
 	let db;
@@ -45,7 +45,6 @@ export async function GET(request) {
 				? JSON.parse(voucher.line_items || '[]')
 				: voucher.line_items || [];
 
-		// Format date
 		const formatDate = (dateString) => {
 			if (!dateString) return '';
 			const date = new Date(dateString);
@@ -56,7 +55,22 @@ export async function GET(request) {
 			});
 		};
 
-		// Generate line items rows - always show at least 5 rows
+		const escapeHtml = (str) => {
+			if (!str) return '';
+			return String(str)
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#039;');
+		};
+
+		const formatDecimalAmount = (val) => {
+			if (val === undefined || val === null || val === '') return '';
+			const parsed = parseFloat(val);
+			return isNaN(parsed) ? String(val) : parsed.toFixed(2);
+		};
+
 		const actualItems = lineItems.length > 0 ? lineItems : [];
 		const totalRowsNeeded = 5;
 		const emptyRowsNeeded = Math.max(0, totalRowsNeeded - actualItems.length);
@@ -65,28 +79,27 @@ export async function GET(request) {
 			.map(
 				(item, index) => `
         <tr>
-          <td style="width: 50px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; text-align: center; font-size: 11px;">${item.sr_no || index + 1}</td>
-          <td style="width: 70px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; font-size: 11px;">${formatDate(item.bill_date)}</td>
-          <td style="width: 60px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; font-size: 11px;">${item.bill_no || ''}</td>
-          <td style="width: 100px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; font-size: 11px;">${item.account_head || ''}</td>
-          <td style="width: 60px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; text-align: center; font-size: 11px;">${item.amount_rs || ''}</td>
-          <td style="border: none; padding: 6px 8px; font-size: 11px;">${item.description || ''}</td>
+          <td style="width: 50px; text-align: center;">${escapeHtml(item.sr_no || index + 1)}</td>
+          <td style="width: 80px; text-align: center;">${escapeHtml(formatDate(item.bill_date))}</td>
+          <td style="width: 80px;">${escapeHtml(item.bill_no || '')}</td>
+          <td style="width: 130px;">${escapeHtml(item.account_head || '')}</td>
+          <td style="width: 90px; text-align: right; font-weight: bold;">${escapeHtml(formatDecimalAmount(item.amount_rs))}</td>
+          <td>${escapeHtml(item.description || '')}</td>
         </tr>
       `
 			)
 			.join('');
 
-		// Add empty rows to fill to 5 rows total - always show
 		const emptyRowsHtml = Array(emptyRowsNeeded)
 			.fill(
 				`
       <tr>
-        <td style="width: 50px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; height: 24px;">&nbsp;</td>
-        <td style="width: 70px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px;">&nbsp;</td>
-        <td style="width: 60px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px;">&nbsp;</td>
-        <td style="width: 100px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px;">&nbsp;</td>
-        <td style="width: 60px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px;">&nbsp;</td>
-        <td style="border: none; padding: 6px 8px;">&nbsp;</td>
+        <td style="width: 50px;">&nbsp;</td>
+        <td style="width: 80px;">&nbsp;</td>
+        <td style="width: 80px;">&nbsp;</td>
+        <td style="width: 130px;">&nbsp;</td>
+        <td style="width: 90px;">&nbsp;</td>
+        <td>&nbsp;</td>
       </tr>
     `
 			)
@@ -94,359 +107,418 @@ export async function GET(request) {
 
 		const html = `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Cash Voucher - ${voucher.voucher_number}</title>
+  <title>Cash Voucher - ${escapeHtml(voucher.voucher_number)}</title>
   <style>
     @page {
       size: A4 portrait;
-      margin: 5mm;
+      margin: 5mm 10mm;
     }
+    
     @media print {
-      body { 
-        -webkit-print-color-adjust: exact; 
+      body {
+        background-color: #ffffff;
+        -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
         margin: 0;
         padding: 0;
-        display: flex;
-        justify-content: center;
       }
-      .no-print { display: none !important; }
+      .no-print { 
+        display: none !important; 
+      }
       .voucher {
-        width: 17.5cm;
-        height: auto;
-        max-width: 17.5cm;
-        max-height: none;
-        overflow: visible;
-        page-break-after: avoid;
-        page-break-inside: avoid;
+        border: 2px solid #000000 !important;
       }
-      /* Keep same styling for print - column separators only */
-      table {
-        border: 2px solid #333 !important;
+      th, .total-title-cell, .title-banner-pane {
+        background-color: #f2f2f2 !important;
       }
-      table thead tr {
-        border-bottom: 2px solid #333 !important;
-      }
-      table thead th {
-        border-bottom: 2px solid #333 !important;
-      }
-    }
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #fff;
-    }
-    .voucher {
-      width: 17.5cm;
-      height: auto;
-      min-height: 11cm;
-      margin: 0 auto;
-      background: #ffffff;
-      border: 2px solid #333;
-      box-sizing: border-box;
-    }
-    .header {
-      display: grid;
-      grid-template-columns: 7.1cm 1cm 7.5cm;
-      border-bottom: 1px solid #333;
-    }
-    .company-info {
-      padding: 10px 12px;
-      border-right: 1px solid #333;
-      width: 7.1cm;
-      box-sizing: border-box;
-    }
-    .company-info .logo-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
-    }
-    .company-info h2 {
-      margin: 0;
-      font-size: 14px;
-    }
-    .company-info p {
-      margin: 0;
-      font-size: 11px;
-      color: #444;
-      line-height: 1.4;
-    }
-    .title-section {
-      width: 1cm;
-      padding: 2mm 1mm;
-      text-align: center;
-      border-right: 1px solid #333;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-sizing: border-box;
-    }
-    .title-section h1 {
-      font-size: 6px;
-      line-height: 1;
-      margin: 0;
-      word-break: break-word;
-    }
-    .voucher-details {
-      width: 7.5cm;
-      min-width: 7.5cm;
-      max-width: 7.5cm;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      flex-shrink: 0;
-      border-left: 1px solid #333;
-      box-sizing: border-box;
-    }
-    .voucher-details .row {
-      display: flex;
-      align-items: center;
-      border-bottom: 1px solid #333;
-      flex: 1;
-    }
-    .voucher-details .row:last-child {
-      border-bottom: none;
-    }
-    .voucher-details .label {
-      width: 70px;
-      min-width: 70px;
-      padding: 5px 8px;
-      font-size: 10px;
-      font-weight: bold;
-      background: #f3f4f6;
-      text-align: left;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      border-right: 1px solid #333;
-    }
-    .voucher-details .value {
-      flex: 1;
-      padding: 5px 8px;
-      font-size: 11px;
-      text-align: left;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      overflow: hidden;
-      word-break: break-word;
-    }
-    .voucher-details .sr-no {
-      font-size: 11px;
-      font-weight: bold;
-      color: #7B1FA2;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .voucher-details .row.empty-row {
-      display: none;
-    }
-    @media print {
-      .voucher-details .row.empty-row {
+      .meta-row.hidden-field {
         display: none !important;
       }
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      border: 2px solid #333;
-      table-layout: fixed;
+
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #fafafa;
+      margin: 0;
+      padding: 15px;
+      color: #000000;
+      line-height: 1.2;
     }
-    th {
-      background: #f3f4f6;
-      border-left: none;
-      border-right: 1px solid #333;
-      border-top: none;
-      border-bottom: 2px solid #333;
-      padding: 6px 8px;
-      font-size: 11px;
-      text-transform: uppercase;
-    }
-    th:last-child {
-      border-right: none;
-    }
-    td {
-      font-size: 11px;
-      padding: 5px 8px !important;
-    }
-    .footer-section {
-      display: flex;
-      border-top: 2px solid #333;
-    }
-    .payment-mode {
-      width: 180px; /* SR.NO (50) + BILL DATE (70) + BILL NO (60) = 180px */
-      padding: 8px 12px;
-      border-right: 1px solid #333;
-      font-size: 12px;
-    }
-    .total-section {
-      width: 160px; /* ACCOUNT HEAD (100) + AMOUNT (60) = 160px */
-      padding: 6px 10px;
-      border-right: 1px solid #333;
-      background: #f3f4f6;
-    }
-    .words-section {
-      flex: 1;
-      padding: 8px 12px;
-    }
-    .signatures {
-      display: flex;
-      border-top: 1px solid #333;
-    }
-    .signature-box {
-      width: 25%;
-      padding: 17px 10px;
-      text-align: center;
-      border-right: 1px solid #333;
-    }
-    .signature-box:last-child {
-      border-right: none;
-    }
-    .signature-box .label {
-      font-size: 10px;
-      font-weight: bold;
-      color: #444;
-      margin-bottom: 30px;
-    }
-    .signature-box .name {
-      font-size: 11px;
-      border-top: 1px solid #999;
-      padding-top: 5px;
-      margin-top: 30px;
-    }
+
     .print-btn {
       display: block;
-      margin: 20px auto;
-      padding: 12px 30px;
-      background: #7B1FA2;
-      color: white;
+      margin: 0 auto 15px auto;
+      padding: 8px 20px;
+      background-color: #7B1FA2;
+      color: #ffffff;
       border: none;
-      border-radius: 8px;
-      font-size: 14px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: bold;
       cursor: pointer;
     }
-    .print-btn:hover {
-      background: #6A1B9A;
+
+    .voucher {
+      width: 100%;
+      max-width: 185mm;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border: 2px solid #000000;
+      box-sizing: border-box;
     }
+
+    .title-banner-pane {
+      width: 100%;
+      background-color: #f2f2f2;
+      padding: 6px 12px;
+      border-bottom: 2px solid #000000;
+      text-align: center;
+      box-sizing: border-box;
+    }
+
+    .horizontal-title {
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      margin: 0;
+      text-transform: uppercase;
+    }
+
+    .header-split-grid {
+      display: grid;
+      grid-template-columns: 105mm 1fr;
+      border-bottom: 2px solid #000000;
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    .company-pane-flex {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 14px;
+      padding: 8px 10px;
+      border-right: 1px solid #000000;
+      box-sizing: border-box;
+    }
+
+    .logo-left-node {
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .logo-left-node img {
+      height: 42px;
+      width: auto;
+      object-fit: contain;
+    }
+
+    .text-right-node {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      flex: 1;
+      gap: 2px;
+    }
+
+    .company-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 0.1px;
+    }
+
+    .company-address {
+      margin: 0;
+      font-size: 9px;
+      color: #222222;
+      line-height: 1.3;
+    }
+
+    .meta-table {
+      width: 100%;
+      height: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .meta-table tr {
+      border-bottom: 1px solid #000000;
+    }
+
+    .meta-table tr:last-child {
+      border-bottom: none;
+    }
+
+    .meta-table tr.hidden-field {
+      display: none;
+    }
+
+    .meta-label-cell {
+      width: 75px;
+      background-color: #f2f2f2;
+      padding: 4px 6px;
+      font-size: 9px;
+      font-weight: bold;
+      border-right: 1px solid #000000;
+      text-transform: uppercase;
+      vertical-align: middle;
+    }
+
+    .meta-value-cell {
+      padding: 4px 6px;
+      font-size: 10px;
+      vertical-align: middle;
+      font-weight: normal;
+    }
+
+    /* Consolidated Ledger and Summary Architecture */
+    .ledger-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      border: none;
+    }
+
+    .ledger-table th {
+      background-color: #f2f2f2;
+      border-bottom: 2px solid #000000;
+      border-right: 1px solid #000000;
+      padding: 6px 8px;
+      font-size: 9px;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    .ledger-table th:last-child {
+      border-right: none;
+    }
+
+    .ledger-table td {
+      padding: 4px 8px;
+      font-size: 10px;
+      border-right: 1px solid #000000;
+      border-bottom: 1px solid #e0e0e0;
+      height: 22px;
+      vertical-align: middle;
+      box-sizing: border-box;
+    }
+
+    .ledger-table td:last-child {
+      border-right: none;
+    }
+
+    /* Integrated Summary Block Formatting */
+    .total-row {
+      border-top: 2px solid #000000;
+      border-bottom: 2px solid #000000 !important;
+    }
+
+    .total-row td {
+      border-bottom: none;
+      padding: 6px 8px;
+    }
+
+    .payment-method-text {
+      font-size: 10px;
+    }
+
+    .total-title-cell {
+      background-color: #f2f2f2;
+      text-align: center;
+      font-weight: bold;
+      font-size: 9px;
+    }
+
+    .total-value-cell {
+      text-align: right;
+      font-weight: bold;
+      font-size: 10px;
+    }
+
+    .words-expression-text {
+      font-style: italic;
+      font-size: 10px;
+    }
+
+    .signature-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      background-color: #ffffff;
+    }
+
+    .signature-cell {
+      border-right: 1px solid #000000;
+      padding: 6px 8px;
+      vertical-align: bottom;
+      height: 75px; 
+      box-sizing: border-box;
+    }
+
+    .signature-cell:last-child {
+      border-right: none;
+    }
+
+    .signature-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .signature-actor {
+      font-size: 10px;
+      font-weight: bold;
+      text-align: center;
+      width: 100%;
+      margin-bottom: 2px;
+      min-height: 14px;
+    }
+
+    .signature-line {
+      border-top: 1px dashed #444444;
+      width: 90%;
+      margin: 0 auto 4px auto;
+    }
+
+    .signature-caption {
+      font-size: 8px;
+      font-weight: bold;
+      color: #333333;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
     .cut-line {
-      width: 17.5cm;
-      margin: 10px auto;
-      border-bottom: 2px dashed #666;
+      max-width: 185mm;
+      margin: 15px auto;
+      border-bottom: 1px dashed #000000;
       position: relative;
     }
+    
     .cut-line::before {
       content: '✂';
       position: absolute;
-      left: -20px;
-      top: -10px;
-      font-size: 16px;
-      color: #666;
+      left: 5px;
+      top: -9px;
+      font-size: 12px;
     }
   </style>
 </head>
 <body>
+
   <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
   
   <div class="voucher">
-    <!-- Header -->
-    <div class="header">
-      <div class="company-info">
-        <div class="logo-row">
-          <img src="/accent-logo.png" alt="Accent Logo" style="height: 45px;" />
-          <h2>Accent Techno Solutions Pvt. Ltd.</h2>
-        </div>
-        <p>17/130, Anand Nagar, Neharu Road, Vakola,</p>
-        <p>Santacruz (E), Mumbai - 400 055.</p>
-      </div>
-      <div class="title-section">
-        <h1>PETTY<br>CASH-CHEQUE<br>VOUCHER</h1>
-      </div>
-      <div class="voucher-details">
-        <div class="row${voucher.voucher_number ? '' : ' empty-row'}">
-          <div class="label">SR. NO.:</div>
-          <div class="value sr-no">${voucher.voucher_number || ''}</div>
-        </div>
-        <div class="row${voucher.voucher_date ? '' : ' empty-row'}">
-          <div class="label">DATE:</div>
-          <div class="value">${formatDate(voucher.voucher_date) || ''}</div>
-        </div>
-        <div class="row${voucher.project_number ? '' : ' empty-row'}">
-          <div class="label">PROJECT:</div>
-          <div class="value">${voucher.project_number || ''}</div>
-        </div>
-        <div class="row${voucher.paid_to ? '' : ' empty-row'}">
-          <div class="label">PAID TO:</div>
-          <div class="value">${voucher.paid_to || ''}</div>
-        </div>
-      </div>
+    
+    <div class="title-banner-pane">
+      <h1 class="horizontal-title">Petty Cash - Cheque Voucher</h1>
     </div>
 
-    <!-- Line Items -->
-    <table>
+    <div class="header-split-grid">
+      
+      <div class="company-pane-flex">
+        <div class="logo-left-node">
+          <img src="/accent-logo.png" alt="Company Logo" />
+        </div>
+        <div class="text-right-node">
+          <h2 class="company-title">Accent Techno Solutions Pvt. Ltd.</h2>
+          <p class="company-address">17/130, Anand Nagar, Neharu Road, Vakola,</p>
+          <p class="company-address">Santacruz (E), Mumbai - 400 055.</p>
+        </div>
+      </div>
+      
+      <table class="meta-table">
+        <tr class="${voucher.voucher_number ? '' : 'hidden-field'}">
+          <td class="meta-label-cell">SR. NO.:</td>
+          <td class="meta-value-cell" style="font-weight: bold;">${escapeHtml(voucher.voucher_number)}</td>
+        </tr>
+        <tr class="${voucher.voucher_date ? '' : 'hidden-field'}">
+          <td class="meta-label-cell">DATE:</td>
+          <td class="meta-value-cell">${escapeHtml(formatDate(voucher.voucher_date))}</td>
+        </tr>
+        <tr class="${voucher.project_number ? '' : 'hidden-field'}">
+          <td class="meta-label-cell">PROJECT:</td>
+          <td class="meta-value-cell">${escapeHtml(voucher.project_number)}</td>
+        </tr>
+        <tr class="${voucher.paid_to ? '' : 'hidden-field'}">
+          <td class="meta-label-cell">PAID TO:</td>
+          <td class="meta-value-cell">${escapeHtml(voucher.paid_to)}</td>
+        </tr>
+      </table>
+      
+    </div>
+
+    <table class="ledger-table">
       <thead>
         <tr>
           <th style="width: 50px;">SR. NO.</th>
-          <th style="width: 70px;">BILL DATE</th>
-          <th style="width: 60px;">BILL NO.</th>
-          <th style="width: 100px;">ACCOUNT HEAD</th>
-          <th style="width: 60px;">AMOUNT</th>
-          <th style="width: auto;">DESCRIPTION</th>
+          <th style="width: 80px;">BILL DATE</th>
+          <th style="width: 80px;">BILL NO.</th>
+          <th style="width: 130px;">ACCOUNT HEAD</th>
+          <th style="width: 90px;">AMOUNT</th>
+          <th>DESCRIPTION</th>
         </tr>
       </thead>
       <tbody>
         ${lineItemsHtml}
         ${emptyRowsHtml}
+        
+        <tr class="total-row">
+          <td colspan="3" class="payment-method-text">
+            <strong>Paid by:</strong> 
+            <span style="margin-left: 6px; text-transform: uppercase;">${escapeHtml(voucher.payment_mode || 'Cash')}</span>
+          </td>
+          <td class="total-title-cell">TOTAL:</td>
+          <td class="total-value-cell">${escapeHtml(formatDecimalAmount(voucher.total_amount))}</td>
+          <td class="words-expression-text">
+            <div>${voucher.amount_in_words ? 'Rs. ' + escapeHtml(voucher.amount_in_words) : ''}</div>
+          </td>
+        </tr>
       </tbody>
     </table>
 
-    <!-- Footer with Total - using table for alignment -->
-    <table style="width: 100%; border-collapse: collapse; border-left: 2px solid #333; border-right: 2px solid #333; border-bottom: 2px solid #333; table-layout: fixed;">
+    <table class="signature-table">
       <tr>
-        <td style="width: 180px; padding: 8px 12px; border-right: 1px solid #333; font-size: 12px; border-top: none; border-bottom: none; border-left: none;">
-          <strong>Paid by:</strong> 
-          <span style="margin-left: 10px; text-transform: uppercase;">${voucher.payment_mode || 'Cash'}</span>
+        <td class="signature-cell">
+          <div class="signature-container">
+            <div class="signature-actor">${escapeHtml(voucher.prepared_by)}</div>
+            <div class="signature-line"></div>
+            <div class="signature-caption">PREPARED BY</div>
+          </div>
         </td>
-        <td style="width: 160px; padding: 6px 10px; border-right: 1px solid #333; background: #f3f4f6; text-align: center; border-top: none; border-bottom: none; border-left: none;">
-          <span style="font-size: 11px; font-weight: bold;">TOTAL:</span>
-          <span style="font-size: 12px; font-weight: bold; margin-left: 8px;">${voucher.total_amount}</span>
+        <td class="signature-cell">
+          <div class="signature-container">
+            <div class="signature-actor">${escapeHtml(voucher.checked_by)}</div>
+            <div class="signature-line"></div>
+            <div class="signature-caption">CHECKED BY</div>
+          </div>
         </td>
-        <td style="padding: 8px 12px; border: none;">
-          <div style="font-size: 14px;">${voucher.amount_in_words || ''}</div>
+        <td class="signature-cell">
+          <div class="signature-container">
+            <div class="signature-actor">${escapeHtml(voucher.approved_by_name)}</div>
+            <div class="signature-line"></div>
+            <div class="signature-caption">APPROVED BY</div>
+          </div>
+        </td>
+        <td class="signature-cell">
+          <div class="signature-container">
+            <div class="signature-actor">${escapeHtml(voucher.receiver_signature)}</div>
+            <div class="signature-line"></div>
+            <div class="signature-caption">RECEIVER'S SIGNATURE</div>
+          </div>
         </td>
       </tr>
     </table>
-
-    <!-- Signatures -->
-    <div class="signatures">
-      <div class="signature-box">
-        <div class="label">PREPARED BY</div>
-        <div class="name">${voucher.prepared_by || ''}</div>
-      </div>
-      <div class="signature-box">
-        <div class="label">CHECKED BY</div>
-        <div class="name">${voucher.checked_by || ''}</div>
-      </div>
-      <div class="signature-box">
-        <div class="label">APPROVED BY</div>
-        <div class="name">${voucher.approved_by_name || ''}</div>
-      </div>
-      <div class="signature-box">
-        <div class="label">RECEIVER'S SIGNATURE</div>
-        <div class="name">${voucher.receiver_signature || ''}</div>
-      </div>
-    </div>
   </div>
 
-  <!-- Cut line -->
   <div class="cut-line"></div>
 
   <script>
-    // Auto-print when loaded with ?print=true
     if (window.location.search.includes('print=true')) {
       window.onload = function() { window.print(); };
     }
