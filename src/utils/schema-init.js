@@ -490,6 +490,7 @@ async function initPaymentEntriesTable(db) {
       remark TEXT,
       invoice_no VARCHAR(100),
       invoice_date DATE,
+      payment_type ENUM('full', 'partial') DEFAULT NULL,
       created_by INT,
       isDelete TINYINT(1) NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -499,9 +500,19 @@ async function initPaymentEntriesTable(db) {
   `);
 
 	const alterStatements = [
+		'ALTER TABLE payment_entries CHANGE client_name company_name VARCHAR(255) NOT NULL',
+		'ALTER TABLE payment_entries ADD COLUMN city VARCHAR(255)',
+		'ALTER TABLE payment_entries ADD COLUMN receipt_no VARCHAR(100)',
+		'ALTER TABLE payment_entries ADD COLUMN receipt_date DATE',
+		'ALTER TABLE payment_entries ADD COLUMN payment_date DATE',
+		'ALTER TABLE payment_entries ADD COLUMN bank_name VARCHAR(255)',
+		'ALTER TABLE payment_entries CHANGE remarks remark TEXT',
+		'ALTER TABLE payment_entries ADD COLUMN invoice_no VARCHAR(100)',
+		'ALTER TABLE payment_entries ADD COLUMN invoice_date DATE',
 		'ALTER TABLE payment_entries ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
 		'ALTER TABLE payment_entries ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
 		'ALTER TABLE payment_entries ADD COLUMN created_by INT',
+		"ALTER TABLE payment_entries ADD COLUMN payment_type ENUM('full', 'partial') DEFAULT NULL",
 	];
 
 	for (const stmt of alterStatements) {
@@ -837,7 +848,7 @@ async function initInvoicesTable(db) {
       notes TEXT,
       terms TEXT,
       due_date DATE,
-      status ENUM('draft', 'sent', 'paid', 'overdue', 'cancelled') DEFAULT 'draft',
+      status ENUM('draft', 'sent', 'paid', 'overdue', 'cancelled', 'fully_paid', 'partially_paid') DEFAULT 'draft',
       po_id INT NULL,
       created_by INT,
       isDelete TINYINT(1) NOT NULL DEFAULT 0,
@@ -853,6 +864,7 @@ async function initInvoicesTable(db) {
 
 	const alterStatements = [
 		'ALTER TABLE invoices ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		"ALTER TABLE invoices MODIFY COLUMN status ENUM('draft', 'sent', 'paid', 'overdue', 'cancelled', 'fully_paid', 'partially_paid') DEFAULT 'draft'",
 	];
 
 	for (const stmt of alterStatements) {

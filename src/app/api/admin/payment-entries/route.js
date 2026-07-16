@@ -5,6 +5,7 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import { updateInvoicePaymentStatus } from '@/utils/payment-utils';
 
 export async function GET(request) {
 	let db;
@@ -26,85 +27,6 @@ export async function GET(request) {
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
-
-		// Ensure table exists
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS payment_entries (
-        id VARCHAR(255) PRIMARY KEY,
-        company_name VARCHAR(255) NOT NULL,
-        city VARCHAR(255),
-        receipt_no VARCHAR(100),
-        receipt_date DATE,
-        amount DECIMAL(15, 2) DEFAULT 0,
-        payment_date DATE,
-        transaction_id VARCHAR(100),
-        bank_name VARCHAR(255),
-        remark TEXT,
-        invoice_no VARCHAR(100),
-        invoice_date DATE,
-        created_by INT,
-        isDelete TINYINT(1) NOT NULL DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_isDelete (isDelete)
-      )
-    `);
-
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries CHANGE client_name company_name VARCHAR(255) NOT NULL'
-			);
-		} catch (e) {}
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries ADD COLUMN city VARCHAR(255)'
-			);
-		} catch (e) {}
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries ADD COLUMN receipt_no VARCHAR(100)'
-			);
-		} catch (e) {}
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries ADD COLUMN receipt_date DATE'
-			);
-		} catch (e) {}
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries ADD COLUMN payment_date DATE'
-			);
-		} catch (e) {}
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries ADD COLUMN bank_name VARCHAR(255)'
-			);
-		} catch (e) {}
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries CHANGE remarks remark TEXT'
-			);
-		} catch (e) {}
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries ADD COLUMN invoice_no VARCHAR(100)'
-			);
-		} catch (e) {}
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries ADD COLUMN invoice_date DATE'
-			);
-		} catch (e) {}
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0'
-			);
-		} catch (e) {}
-		try {
-			await db.execute(
-				'ALTER TABLE payment_entries ADD INDEX idx_isDelete (isDelete)'
-			);
-		} catch (e) {}
 
 		const whereClauses = ['isDelete = 0'];
 		const queryParams = [];
@@ -209,8 +131,8 @@ export async function POST(request) {
 
 		await db.execute(
 			`INSERT INTO payment_entries (
-        id, company_name, city, receipt_no, receipt_date, amount, payment_date, transaction_id, bank_name, remark, invoice_no, invoice_date, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, company_name, city, receipt_no, receipt_date, amount, payment_date, transaction_id, bank_name, remark, invoice_no, invoice_date, payment_type, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				id,
 				data.company_name || '',
@@ -224,9 +146,14 @@ export async function POST(request) {
 				data.remark || '',
 				data.invoice_no || '',
 				data.invoice_date || null,
+				data.payment_type || null,
 				user.id || null,
 			]
 		);
+
+		if (data.invoice_no) {
+			await updateInvoicePaymentStatus(db, data.invoice_no);
+		}
 
 		return NextResponse.json({
 			success: true,
@@ -279,7 +206,7 @@ export async function PUT(request) {
 
 		const [result] = await db.execute(
 			`UPDATE payment_entries SET
-        company_name = ?, city = ?, receipt_no = ?, receipt_date = ?, amount = ?, payment_date = ?, transaction_id = ?, bank_name = ?, remark = ?, invoice_no = ?, invoice_date = ?
+        company_name = ?, city = ?, receipt_no = ?, receipt_date = ?, amount = ?, payment_date = ?, transaction_id = ?, bank_name = ?, remark = ?, invoice_no = ?, invoice_date = ?, payment_type = ?
        WHERE id = ?`,
 			[
 				data.company_name || '',
@@ -293,6 +220,7 @@ export async function PUT(request) {
 				data.remark || '',
 				data.invoice_no || '',
 				data.invoice_date || null,
+				data.payment_type || null,
 				data.id,
 			]
 		);
@@ -302,6 +230,10 @@ export async function PUT(request) {
 				{ success: false, error: 'Payment entry not found' },
 				{ status: 404 }
 			);
+		}
+
+		if (data.invoice_no) {
+			await updateInvoicePaymentStatus(db, data.invoice_no);
 		}
 
 		return NextResponse.json({
@@ -354,6 +286,12 @@ export async function DELETE(request) {
 
 		db = await dbConnect();
 
+		const [entries] = await db.execute(
+			'SELECT invoice_no FROM payment_entries WHERE id = ? AND isDelete = 0',
+			[id]
+		);
+		const invoiceNo = entries.length > 0 ? entries[0].invoice_no : '';
+
 		const [result] = await db.execute(
 			'UPDATE payment_entries SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]
@@ -364,6 +302,10 @@ export async function DELETE(request) {
 				{ success: false, error: 'Payment entry not found' },
 				{ status: 404 }
 			);
+		}
+
+		if (invoiceNo) {
+			await updateInvoicePaymentStatus(db, invoiceNo);
 		}
 
 		return NextResponse.json({

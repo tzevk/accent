@@ -17,6 +17,7 @@ const schema = z.object({
 	transaction_id: z.string().optional(),
 	invoice_no: z.string().optional(),
 	invoice_date: z.string().nullable().optional(),
+	payment_type: z.enum(['full', 'partial']).optional(),
 });
 
 const defaultValues = {
@@ -29,6 +30,7 @@ const defaultValues = {
 	transaction_id: '',
 	invoice_no: '',
 	invoice_date: '',
+	payment_type: '',
 };
 
 const invoiceLabelFn = (item: Record<string, unknown>) => {
@@ -74,6 +76,15 @@ const formFields = [
 		searchableFillFields: { invoice_date: 'invoice_date' },
 	},
 	{ name: 'invoice_date', label: 'Invoice Date', type: 'date' as const },
+	{
+		name: 'payment_type',
+		label: 'Payment Type',
+		type: 'select' as const,
+		options: [
+			{ value: 'full', label: 'Full Payment' },
+			{ value: 'partial', label: 'Part Payment' },
+		],
+	},
 ];
 
 const columns = [
@@ -85,6 +96,17 @@ const columns = [
 		money: true,
 		headClassName: 'w-32 text-right',
 		cellClassName: 'text-right font-medium',
+	},
+	{
+		key: 'payment_type',
+		label: 'Type',
+		headClassName: 'w-24',
+		render: (row: Record<string, unknown>) => {
+			const val = row.payment_type;
+			if (val === 'full') return 'Full';
+			if (val === 'partial') return 'Partial';
+			return '—';
+		},
 	},
 	{ key: 'transaction_id', label: 'Transaction ID', headClassName: 'w-40' },
 	{ key: 'receipt_date', label: 'Date', date: true, headClassName: 'w-28' },
@@ -110,6 +132,7 @@ export default function PaymentEntryPage() {
 					remark: '',
 					invoice_no: row.invoice_no || '-',
 					invoice_date: row.invoice_date || '-',
+					payment_type: row.payment_type || '',
 				}),
 			});
 

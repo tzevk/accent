@@ -19,6 +19,8 @@ export interface ReceiptData {
 
 	invoice_no?: string;
 	invoice_date?: string;
+
+	payment_type?: string;
 }
 
 const formatAmount = (amount: number): string => {
@@ -54,7 +56,8 @@ export const buildReceiptHTML = (data: ReceiptData): string => {
 
 		<div class="text">
 			We gratefully acknowledge the receipt of the sum of 
-			<span>Rupees ${amountWords} Only</span> from 
+			<span>Rupees ${amountWords} Only</span> as a 
+			<span>${data.payment_type === 'full' ? 'Full' : data.payment_type === 'partial' ? 'Part' : ''} Payment</span> from 
 			<span>${data.company_name}</span>. 
 			This payment is applied toward Invoice No. 
 			<span>${data.invoice_no ?? '-'}</span> (Dated <span>${data.invoice_date ?? '-'}</span>). 

@@ -6,6 +6,7 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import { updateInvoicePaymentStatus } from '@/utils/payment-utils';
 
 export async function PUT(
 	request: Request,
@@ -28,7 +29,7 @@ export async function PUT(
 
 		const [result] = await db.execute(
 			`UPDATE payment_entries SET
-        company_name = ?, city = ?, receipt_no = ?, receipt_date = ?, amount = ?, payment_date = ?, transaction_id = ?, bank_name = ?, remark = ?, invoice_no = ?, invoice_date = ?
+        company_name = ?, city = ?, receipt_no = ?, receipt_date = ?, amount = ?, payment_date = ?, transaction_id = ?, bank_name = ?, remark = ?, invoice_no = ?, invoice_date = ?, payment_type = ?
        WHERE id = ? AND isDelete = 0`,
 			[
 				data.company_name || '',
@@ -42,6 +43,7 @@ export async function PUT(
 				data.remark || '',
 				data.invoice_no || '',
 				data.invoice_date || null,
+				data.payment_type || null,
 				id,
 			]
 		);
@@ -51,6 +53,10 @@ export async function PUT(
 				{ success: false, error: 'Payment entry not found' },
 				{ status: 404 }
 			);
+		}
+
+		if (data.invoice_no) {
+			await updateInvoicePaymentStatus(db, data.invoice_no);
 		}
 
 		return NextResponse.json({
@@ -96,6 +102,12 @@ export async function DELETE(
 
 		db = await dbConnect();
 
+		const [entries] = (await db.execute(
+			'SELECT invoice_no FROM payment_entries WHERE id = ? AND isDelete = 0',
+			[id]
+		)) as any;
+		const invoiceNo: string = entries.length > 0 ? entries[0].invoice_no : '';
+
 		const [result] = await db.execute(
 			'UPDATE payment_entries SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]
@@ -106,6 +118,10 @@ export async function DELETE(
 				{ success: false, error: 'Payment entry not found' },
 				{ status: 404 }
 			);
+		}
+
+		if (invoiceNo) {
+			await updateInvoicePaymentStatus(db, invoiceNo);
 		}
 
 		return NextResponse.json({
