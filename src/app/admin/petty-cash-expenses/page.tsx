@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, useRef, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
@@ -11,11 +11,10 @@ import {
 	XMarkIcon,
 	TrashIcon,
 	PencilIcon,
-	DocumentTextIcon,
 	CheckCircleIcon,
 	XCircleIcon,
-	PaperAirplaneIcon,
 	BanknotesIcon,
+	ArrowDownTrayIcon,
 	ArrowDownCircleIcon,
 	ArrowUpCircleIcon,
 	LockClosedIcon,
@@ -24,7 +23,6 @@ import {
 import SearchableSelect from '@/components/ui/searchable-select';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
-import Pagination from '@/components/admin/Pagination';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/form-fields';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api-client';
@@ -54,12 +52,6 @@ interface VoucherBalance {
 
 interface ApiResponse {
 	data: Record<string, unknown>[];
-	pagination: {
-		page: number;
-		limit: number;
-		total: number;
-		totalPages: number;
-	};
 	stats: Record<string, number | string | null>;
 	voucherBalances: VoucherBalance[];
 }
@@ -67,7 +59,6 @@ interface ApiResponse {
 // ── Constants ────────────────────────────────────────────────
 
 const ENDPOINT = '/api/admin/petty-cash-expenses';
-const PAGE_SIZE = 20;
 
 const PAYMENT_MODE_OPTIONS = [
 	{ value: 'cash', label: 'Cash' },
@@ -176,8 +167,8 @@ export default function PettyCashExpensesPage() {
 	const queryClient = useQueryClient();
 
 	// ── UI state ──
-	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState('');
+	const tableBodyRef = useRef<HTMLDivElement>(null);
 
 	// ── Inline form state ──
 	const [isAdding, setIsAdding] = useState(false);
@@ -190,11 +181,9 @@ export default function PettyCashExpensesPage() {
 	// ── Data query ──
 	const queryParams = useMemo(
 		() => ({
-			page,
-			limit: PAGE_SIZE,
 			search: search || undefined,
 		}),
-		[page, search]
+		[search]
 	);
 
 	const listQuery = useQuery<ApiResponse>({
@@ -213,12 +202,6 @@ export default function PettyCashExpensesPage() {
 	});
 
 	const rows = listQuery.data?.data ?? [];
-	const pagination = listQuery.data?.pagination ?? {
-		page: 1,
-		limit: PAGE_SIZE,
-		total: 0,
-		totalPages: 0,
-	};
 	const stats: Record<string, number | string | null> =
 		listQuery.data?.stats ?? {};
 
@@ -231,7 +214,6 @@ export default function PettyCashExpensesPage() {
 			toast.success('Expense created');
 			setIsAdding(false);
 			setAddForm({ ...addDefaults });
-			setPage(1);
 			queryClient.invalidateQueries({ queryKey: ['petty-cash-expenses'] });
 		},
 		onError: (err: Error) => toast.error(err.message),
@@ -632,56 +614,25 @@ export default function PettyCashExpensesPage() {
 	// ── Stats cards ──
 	const statsConfig = [
 		{
-			key: 'total',
-			label: 'Total',
-			tone: 'purple' as const,
-			icon: DocumentTextIcon,
-		},
-		{
-			key: 'submitted',
-			label: 'Submitted',
-			tone: 'amber' as const,
-			icon: PaperAirplaneIcon,
-		},
-		{
-			key: 'approved',
-			label: 'Approved',
-			tone: 'sky' as const,
-			icon: CheckCircleIcon,
-		},
-		{
-			key: 'rejected',
-			label: 'Rejected',
+			key: 'totalDebits',
+			label: 'Total Debits',
 			tone: 'rose' as const,
-			icon: XCircleIcon,
-		},
-		{
-			key: 'totalPaid',
-			label: 'Expenses',
-			tone: 'green' as const,
 			money: true,
 			icon: ArrowUpCircleIcon,
 		},
 		{
-			key: 'totalReceived',
-			label: 'Funding',
-			tone: 'rose' as const,
+			key: 'totalCredits',
+			label: 'Total Credits',
+			tone: 'green' as const,
 			money: true,
 			icon: ArrowDownCircleIcon,
 		},
 		{
-			key: 'currentBalance',
+			key: 'balance',
 			label: 'Balance',
 			tone: 'purple' as const,
 			money: true,
 			icon: BanknotesIcon,
-			hint: 'Current balance',
-		},
-		{
-			key: 'approvedAmount',
-			label: 'Approved Net',
-			tone: 'sky' as const,
-			money: true,
 		},
 	];
 
@@ -764,14 +715,27 @@ export default function PettyCashExpensesPage() {
 									value={search}
 									onChange={(e) => {
 										setSearch(e.target.value);
-										setPage(1);
 									}}
 								/>
 							</div>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => {
+									tableBodyRef.current?.scrollTo({
+										top: tableBodyRef.current.scrollHeight,
+										behavior: 'smooth',
+									});
+								}}
+								title="Scroll to oldest entries (bottom)"
+							>
+								<ArrowDownTrayIcon className="h-4 w-4" />
+								Bottom
+							</Button>
 						</div>
 
 						{/* Table */}
-						<div className="flex-1 min-h-0 overflow-auto">
+						<div className="flex-1 min-h-0 overflow-auto" ref={tableBodyRef}>
 							<Table>
 								<TableHeader>
 									<TableRow className="sticky top-0 z-10 bg-white">
@@ -807,18 +771,6 @@ export default function PettyCashExpensesPage() {
 								</TableBody>
 							</Table>
 						</div>
-
-						{/* ── Pagination ── */}
-						{pagination.totalPages > 1 && (
-							<div className="border-t border-gray-100 px-4">
-								<Pagination
-									page={pagination.page}
-									totalPages={pagination.totalPages}
-									total={pagination.total}
-									onPageChange={setPage}
-								/>
-							</div>
-						)}
 					</div>
 				</div>
 			</div>
