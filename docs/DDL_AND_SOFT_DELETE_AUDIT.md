@@ -19,6 +19,7 @@
 | `admin/invoices/[id]/route.js`       | `purchase_orders`, `invoices` (DDL + isDelete)                           |
 | `admin/invoices/download/route.js`   | `purchase_orders`, `invoices` (DDL + isDelete)                           |
 | `admin/invoices/po-balance/route.js` | `purchase_orders`, `invoices` (DDL + isDelete)                           |
+| `admin/payment-entries/route.js`     | `payment_entries` (CREATE + 11 ALTER + INDEX)                            |
 
 ### Unguarded — runs on EVERY request (HIGH priority)
 
@@ -30,7 +31,6 @@
 | `admin/quotations/[id]/project/route.js`    | `quotations`                                                    |
 | `admin/standalone-quotations/route.js`      | `quotations` (48 ALTER + MODIFY + INDEX)                        |
 | `admin/standalone-quotations/[id]/route.js` | `quotations` (48 ALTER + MODIFY + INDEX)                        |
-| `admin/payment-entries/route.js`            | `payment_entries` (10 ALTER + INDEX)                            |
 | `proposals/route.js`                        | `proposals` (38 ALTER via `ensureProposalColumns()`)            |
 | `proposals/[id]/route.js`                   | `proposals`, `projects` (39+ ALTER)                             |
 | `projects/[id]/route.js`                    | `projects`, `user_activity_assignments` (12+ ALTER)             |

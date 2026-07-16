@@ -4,6 +4,8 @@ export const INVOICE_STATUSES = [
 	'paid',
 	'overdue',
 	'cancelled',
+	'fully_paid',
+	'partially_paid',
 ] as const;
 
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
