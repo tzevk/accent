@@ -112,7 +112,7 @@ export async function GET(request) {
 		pool = await dbConnect();
 
 		const [rows] = await pool.execute(
-			'SELECT * FROM proposals ORDER BY created_at DESC'
+			'SELECT * FROM proposals WHERE isDelete = 0 ORDER BY created_at DESC'
 		);
 
 		return NextResponse.json({

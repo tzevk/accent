@@ -102,7 +102,7 @@ export async function GET(request, { params }) {
 				const params = candidates.map(() => id);
 				try {
 					const [r] = await db.execute(
-						`SELECT p.* FROM projects p WHERE ${whereParts} LIMIT 1`,
+						`SELECT p.* FROM projects p WHERE (${whereParts}) AND p.isDelete = 0 LIMIT 1`,
 						params
 					);
 					rows = r || [];
@@ -123,7 +123,7 @@ export async function GET(request, { params }) {
 			) {
 				try {
 					const [rNum] = await db.execute(
-						`SELECT p.* FROM projects p WHERE p.${pkCol} = ? LIMIT 1`,
+						`SELECT p.* FROM projects p WHERE p.${pkCol} = ? AND p.isDelete = 0 LIMIT 1`,
 						[projectIdInt]
 					);
 					rows = rNum || [];
@@ -558,7 +558,7 @@ export async function PUT(request, context) {
 				// If non-numeric ID provided, it might be a project_code lookup
 				try {
 					const [lookup] = await db.execute(
-						`SELECT ${pkCol} FROM projects WHERE project_code = ?`,
+						`SELECT ${pkCol} FROM projects WHERE project_code = ? AND isDelete = 0`,
 						[id]
 					);
 					if (lookup && lookup.length > 0) {
@@ -587,7 +587,7 @@ export async function PUT(request, context) {
 			if (!hasFullAccess) {
 				try {
 					const [projectRows] = await db.execute(
-						`SELECT project_team FROM projects WHERE ${pkCol} = ?`,
+						`SELECT project_team FROM projects WHERE ${pkCol} = ? AND isDelete = 0`,
 						[projectId]
 					);
 					if (projectRows && projectRows.length > 0) {
@@ -1148,7 +1148,7 @@ export async function PUT(request, context) {
 			// Always update updated_at
 			setParts.push('updated_at = CURRENT_TIMESTAMP');
 
-			const sql = `UPDATE projects SET ${setParts.join(', ')} WHERE ${pkCol} = ?`;
+			const sql = `UPDATE projects SET ${setParts.join(', ')} WHERE ${pkCol} = ? AND isDelete = 0`;
 			queryParams.push(projectId);
 
 			// Validate all parameters are not undefined
@@ -1559,7 +1559,7 @@ export async function DELETE(request, { params }) {
 		// If user doesn't have full access, check if they're in the project team
 		if (!hasFullAccess) {
 			const [projectRows] = await db.execute(
-				'SELECT project_team FROM projects WHERE id = ?',
+				'SELECT project_team FROM projects WHERE id = ? AND isDelete = 0',
 				[projectId]
 			);
 			if (projectRows && projectRows.length > 0) {
@@ -1591,9 +1591,10 @@ export async function DELETE(request, { params }) {
 			}
 		}
 
-		const [result] = await db.execute('DELETE FROM projects WHERE id = ?', [
-			projectId,
-		]);
+		const [result] = await db.execute(
+			'UPDATE projects SET isDelete = 1 WHERE id = ?',
+			[projectId]
+		);
 
 		if (result.affectedRows === 0) {
 			return Response.json(

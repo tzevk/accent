@@ -22,6 +22,7 @@ export async function GET(request) {
 		const { searchParams } = new URL(request.url);
 		const page = parseInt(searchParams.get('page') || '1');
 		const limit = parseInt(searchParams.get('limit') || '20');
+		const search = (searchParams.get('search') || '').trim();
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
@@ -105,15 +106,31 @@ export async function GET(request) {
 			);
 		} catch (e) {}
 
+		const whereClauses = ['isDelete = 0'];
+		const queryParams = [];
+
+		if (search) {
+			const like = `%${search}%`;
+			whereClauses.push(
+				'(company_name LIKE ? OR receipt_no LIKE ? OR transaction_id LIKE ?)'
+			);
+			queryParams.push(like, like, like);
+		}
+
+		const whereSQL = whereClauses.length
+			? `WHERE ${whereClauses.join(' AND ')}`
+			: '';
+
 		// Get entries with pagination
 		const [entries] = await db.execute(
-			`SELECT * FROM payment_entries WHERE isDelete = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-			[limit, offset]
+			`SELECT * FROM payment_entries ${whereSQL} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+			[...queryParams, limit, offset]
 		);
 
 		// Get total count for pagination
 		const [countResult] = await db.execute(
-			`SELECT COUNT(*) as total FROM payment_entries WHERE isDelete = 0`
+			`SELECT COUNT(*) as total FROM payment_entries ${whereSQL}`,
+			queryParams
 		);
 		const total = countResult[0]?.total || 0;
 

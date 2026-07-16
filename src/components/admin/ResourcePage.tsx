@@ -1,7 +1,7 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useQuery, useQueries } from '@tanstack/react-query';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
 	PlusIcon,
 	ArrowPathIcon,
@@ -26,6 +26,7 @@ import {
 	TableEmpty,
 } from '@/components/ui/table';
 import Modal from '@/components/ui/modal';
+import SearchableSelect from '@/components/ui/searchable-select';
 import { Button } from '@/components/ui/button';
 import {
 	Input,
@@ -44,6 +45,8 @@ import type {
 	ApiListResponse,
 	VendorListItem,
 	EmployeeListItem,
+	CompanyListItem,
+	CompanyListResponse,
 	VendorListResponse,
 	EmployeeListResponse,
 	Pagination as PaginationType,
@@ -84,6 +87,8 @@ export default function ResourcePage({
 	canView = true,
 	vendorListEndpoint,
 	employeeListEndpoint,
+	companyListEndpoint,
+	rowActions,
 }: ResourcePageProps) {
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState('');
@@ -272,6 +277,7 @@ export default function ResourcePage({
 														>
 															<TrashIcon className="h-4 w-4" />
 														</button>
+														{rowActions ? rowActions(row) : null}
 													</div>
 												</TableCell>
 											</TableRow>
@@ -304,6 +310,7 @@ export default function ResourcePage({
 					transformSubmit={transformSubmit}
 					vendorListEndpoint={vendorListEndpoint}
 					employeeListEndpoint={employeeListEndpoint}
+					companyListEndpoint={companyListEndpoint}
 					onClose={closeModal}
 					onSaved={() => {
 						closeModal();
@@ -326,6 +333,7 @@ function ResourceFormModal({
 	transformSubmit,
 	vendorListEndpoint,
 	employeeListEndpoint,
+	companyListEndpoint,
 	onClose,
 	onSaved,
 }: ResourceFormModalProps) {
@@ -417,6 +425,85 @@ function ResourceFormModal({
 		[employeesQuery.data]
 	);
 
+	const companyAutofillField = formFields.find((f) => f.companyAutofill);
+	const companyDatalistId = useMemo(
+		() => `company-autofill-${Math.random().toString(36).slice(2, 9)}`,
+		[]
+	);
+
+	const companiesQuery = useQuery<CompanyListResponse>({
+		queryKey: ['company-autofill-list', companyListEndpoint],
+		queryFn: () => apiGet<CompanyListResponse>(companyListEndpoint!),
+		enabled: Boolean(companyListEndpoint) && Boolean(companyAutofillField),
+		staleTime: 5 * 60 * 1000,
+	});
+	const companyList = useMemo(
+		() => companiesQuery.data?.data ?? [],
+		[companiesQuery.data]
+	);
+
+	const searchableFields = useMemo(
+		() =>
+			formFields.filter(
+				(f) => f.type === 'searchableSelect' && f.searchableEndpoint
+			),
+		[formFields]
+	);
+
+	const uniqueSearchableEndpoints = useMemo(
+		() => [...new Set(searchableFields.map((f) => f.searchableEndpoint!))],
+		[searchableFields]
+	);
+
+	const searchableQueries = useQueries({
+		queries: uniqueSearchableEndpoints.map((endpoint) => ({
+			queryKey: ['searchable-list', endpoint],
+			queryFn: () => apiGet(endpoint),
+			staleTime: 5 * 60 * 1000,
+		})),
+	});
+
+	const searchableLists = useMemo(() => {
+		const map: Record<string, Array<Record<string, unknown>>> = {};
+		uniqueSearchableEndpoints.forEach((endpoint, i) => {
+			const result = searchableQueries[i];
+			map[endpoint] =
+				((result.data as Record<string, unknown> | null)
+					?.data as unknown as Array<Record<string, unknown>>) ?? [];
+		});
+		console.log(
+			'[fill] searchableLists built',
+			Object.keys(map).map((k) => `${k}: ${map[k].length} items`)
+		);
+		return map;
+	}, [uniqueSearchableEndpoints, searchableQueries]);
+
+	const getSearchableOptions = useCallback(
+		(
+			field: FormField
+		): Array<{ value: string; label: string; id?: string | number }> => {
+			if (field.companyAutofill) {
+				return companyList.map((c) => ({
+					value: c.company_name || '',
+					label: c.company_name || '',
+					id: c.id,
+				}));
+			}
+			if (field.searchableEndpoint) {
+				const items = searchableLists[field.searchableEndpoint] || [];
+				const valueKey = field.searchableValueKey || field.name;
+				return items.map((item) => ({
+					value: String(item[valueKey] ?? ''),
+					label: field.searchableLabelFn
+						? field.searchableLabelFn(item)
+						: String(item[valueKey] ?? ''),
+				}));
+			}
+			return [];
+		},
+		[companyList, searchableLists]
+	);
+
 	const lastFilledNameRef = useRef('');
 
 	useEffect(() => {
@@ -481,6 +568,81 @@ function ResourceFormModal({
 		});
 		return unsubscribe;
 	}, [form, employeeList, employeeAutofillField, isView]);
+
+	const lastFilledCompanyRef = useRef('');
+
+	useEffect(() => {
+		if (!companyAutofillField || isView) return;
+		const { unsubscribe } = form.store.subscribe(() => {
+			if (!companyList.length) return;
+			const currentName = form.getFieldValue(companyAutofillField.name);
+			if (
+				typeof currentName !== 'string' ||
+				currentName === lastFilledCompanyRef.current
+			) {
+				return;
+			}
+			const match = companyList.find(
+				(c) =>
+					(c.company_name || '').toLowerCase() === currentName.toLowerCase()
+			);
+			if (!match) return;
+			lastFilledCompanyRef.current = currentName;
+			const updates: Record<string, string> = {
+				city: match.city || '',
+				state: match.state || '',
+				address: match.address || '',
+				company_phone: match.phone || '',
+				company_email: match.email || '',
+				company_gstin: match.gstin || '',
+				company_pan: match.pan_number || '',
+			};
+			Object.entries(updates).forEach(([k, v]) => {
+				if (k in form.state.values) {
+					form.setFieldValue(k, v);
+				}
+			});
+		});
+		return unsubscribe;
+	}, [form, companyList, companyAutofillField, isView]);
+
+	const [pendingFill, setPendingFill] = useState<{
+		field: FormField;
+		value: string;
+	} | null>(null);
+
+	useEffect(() => {
+		console.log('[fill] useEffect running', {
+			hasPendingFill: !!pendingFill,
+			isView,
+			searchableKeys: Object.keys(searchableLists),
+		});
+		if (!pendingFill || isView) return;
+		const { field, value } = pendingFill;
+		console.log('[fill] processing', {
+			field: field.name,
+			value,
+			endpoint: field.searchableEndpoint,
+			fillFields: field.searchableFillFields,
+			vk: field.searchableValueKey || field.name,
+		});
+		if (!field.searchableEndpoint || !field.searchableFillFields) return;
+		const items = searchableLists[field.searchableEndpoint] || [];
+		console.log('[fill] items count', items.length);
+		const vk = field.searchableValueKey || field.name;
+		const item = items.find((i) => String(i[vk] ?? '') === value);
+		console.log('[fill] found item?', !!item);
+		if (item) {
+			Object.entries(field.searchableFillFields).forEach(([dk, fk]) => {
+				const fv = item[dk];
+				console.log('[fill] setting', { fk, fv });
+				if (fv != null) {
+					form.setFieldValue(fk, String(fv));
+				}
+			});
+		}
+		setPendingFill(null);
+	}, [pendingFill, isView, searchableLists]);
 
 	const hasDependentFields = formFields.some((f) => f.dependentOn);
 
@@ -643,18 +805,30 @@ function ResourceFormModal({
 											const handleChange = (e: any) =>
 												fp.handleChange(e.currentTarget.value);
 											const isAutofill =
-												(field.vendorAutofill || field.employeeAutofill) &&
+												(field.vendorAutofill ||
+													field.employeeAutofill ||
+													field.companyAutofill) &&
 												field.type !== 'textarea';
-											const autofillListId = field.employeeAutofill
-												? employeeDatalistId
-												: datalistId;
-											const autofillOptions = field.employeeAutofill
-												? (employeeList as Array<
-														VendorListItem & EmployeeListItem
+											const autofillListId = field.companyAutofill
+												? companyDatalistId
+												: field.employeeAutofill
+													? employeeDatalistId
+													: datalistId;
+											const autofillOptions = field.companyAutofill
+												? (companyList as Array<
+														VendorListItem & EmployeeListItem & CompanyListItem
 													>)
-												: (vendorList as Array<
-														VendorListItem & EmployeeListItem
-													>);
+												: field.employeeAutofill
+													? (employeeList as Array<
+															VendorListItem &
+																EmployeeListItem &
+																CompanyListItem
+														>)
+													: (vendorList as Array<
+															VendorListItem &
+																EmployeeListItem &
+																CompanyListItem
+														>);
 											return (
 												<FieldGroup
 													label={field.label}
@@ -682,6 +856,43 @@ function ResourceFormModal({
 																</option>
 															))}
 														</Select>
+													) : field.type === 'searchableSelect' ? (
+														isView ? (
+															<Input
+																{...commonProps}
+																disabled
+																type="text"
+																value={String(fp.state.value ?? '')}
+															/>
+														) : (
+															<SearchableSelect
+																options={getSearchableOptions(field)}
+																value={String(fp.state.value ?? '')}
+																onChange={(val) => {
+																	console.log('[fill] onChange fired', {
+																		field: field.name,
+																		val,
+																		hasFillFields: !!field.searchableFillFields,
+																		hasEndpoint: !!field.searchableEndpoint,
+																	});
+																	fp.handleChange(val);
+																	if (
+																		field.searchableFillFields &&
+																		field.searchableEndpoint
+																	) {
+																		console.log('[fill] setting pendingFill', {
+																			field: field.name,
+																			val,
+																		});
+																		setPendingFill({
+																			field,
+																			value: val,
+																		});
+																	}
+																}}
+																placeholder={field.placeholder ?? 'Select…'}
+															/>
+														)
 													) : (
 														<>
 															<Input
@@ -700,9 +911,12 @@ function ResourceFormModal({
 																<datalist id={autofillListId}>
 																	{autofillOptions.map(
 																		(
-																			item: VendorListItem & EmployeeListItem
+																			item: VendorListItem &
+																				EmployeeListItem &
+																				CompanyListItem
 																		) => {
 																			const displayName =
+																				item.company_name ??
 																				item.vendor_name ??
 																				`${item.first_name || ''} ${item.last_name || ''}`.trim();
 																			return (
@@ -710,6 +924,7 @@ function ResourceFormModal({
 																					key={
 																						item.id ??
 																						item.vendor_id ??
+																						item.company_name ??
 																						item.vendor_name ??
 																						''
 																					}

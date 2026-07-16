@@ -34,13 +34,13 @@ export async function GET(request) {
 		let rows;
 		if (id) {
 			const [r] = await pool.execute(
-				'SELECT * FROM proposals WHERE id = ? LIMIT 1',
+				'SELECT * FROM proposals WHERE id = ? AND isDelete = 0 LIMIT 1',
 				[id]
 			);
 			rows = r;
 		} else {
 			const [r] = await pool.execute(
-				'SELECT * FROM proposals ORDER BY created_at DESC'
+				'SELECT * FROM proposals WHERE isDelete = 0 ORDER BY created_at DESC'
 			);
 			rows = r;
 		}

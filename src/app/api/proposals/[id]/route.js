@@ -22,9 +22,10 @@ export async function GET(request, { params }) {
 		const { dbConnect } = await import('@/utils/database');
 		pool = await dbConnect();
 
-		const [rows] = await pool.execute('SELECT * FROM proposals WHERE id = ?', [
-			id,
-		]);
+		const [rows] = await pool.execute(
+			'SELECT * FROM proposals WHERE id = ? AND isDelete = 0',
+			[id]
+		);
 
 		if (rows.length === 0) {
 			return NextResponse.json(
@@ -75,9 +76,10 @@ export async function POST(request, { params }) {
 		pool = await dbConnect();
 
 		// Fetch proposal
-		const [rows] = await pool.execute('SELECT * FROM proposals WHERE id = ?', [
-			id,
-		]);
+		const [rows] = await pool.execute(
+			'SELECT * FROM proposals WHERE id = ? AND isDelete = 0',
+			[id]
+		);
 		if (!rows || rows.length === 0) {
 			return NextResponse.json(
 				{ success: false, error: 'Proposal not found' },
@@ -1039,7 +1041,7 @@ export async function PUT(request, { params }) {
 			setParts.push('updated_at = NOW()');
 		}
 
-		const sql = `UPDATE proposals SET ${setParts.join(', ')} WHERE id = ?`;
+		const sql = `UPDATE proposals SET ${setParts.join(', ')} WHERE id = ? AND isDelete = 0`;
 		values.push(id);
 
 		const [result] = await pool.execute(sql, values);
@@ -1087,9 +1089,10 @@ export async function DELETE(request, { params }) {
 		const { dbConnect } = await import('@/utils/database');
 		pool = await dbConnect();
 
-		const [result] = await pool.execute('DELETE FROM proposals WHERE id = ?', [
-			id,
-		]);
+		const [result] = await pool.execute(
+			'UPDATE proposals SET isDelete = 1 WHERE id = ?',
+			[id]
+		);
 
 		if (result.affectedRows === 0) {
 			return NextResponse.json(
@@ -1142,7 +1145,7 @@ export async function PATCH(request, { params }) {
 		const setClauses = updates.map(([k]) => `${k} = ?`).join(', ');
 		const values = [...updates.map(([, v]) => v), id];
 		await pool.execute(
-			`UPDATE proposals SET ${setClauses}, updated_at = NOW() WHERE id = ?`,
+			`UPDATE proposals SET ${setClauses}, updated_at = NOW() WHERE id = ? AND isDelete = 0`,
 			values
 		);
 

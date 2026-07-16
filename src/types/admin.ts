@@ -21,7 +21,13 @@ export interface DerivedField {
 export interface FormField {
 	name: string;
 	label: string;
-	type?: 'text' | 'date' | 'number' | 'textarea' | 'select';
+	type?:
+		| 'text'
+		| 'date'
+		| 'number'
+		| 'textarea'
+		| 'select'
+		| 'searchableSelect';
 	required?: boolean;
 	hint?: string;
 	placeholder?: string;
@@ -32,6 +38,11 @@ export interface FormField {
 	options?: Array<{ value: string; label: string }>;
 	vendorAutofill?: boolean;
 	employeeAutofill?: boolean;
+	companyAutofill?: boolean;
+	searchableEndpoint?: string;
+	searchableValueKey?: string;
+	searchableLabelFn?: (item: Record<string, unknown>) => string;
+	searchableFillFields?: Record<string, string>;
 	dependentOn?: DependentOn;
 	computed?: ComputedField;
 	derived?: DerivedField;
@@ -89,6 +100,8 @@ export interface ResourcePageProps {
 	canView?: boolean;
 	vendorListEndpoint?: string;
 	employeeListEndpoint?: string;
+	companyListEndpoint?: string;
+	rowActions?: (row: Record<string, unknown>) => ReactNode;
 }
 
 export type ModalMode = 'view' | 'edit' | 'create' | null;
@@ -122,6 +135,25 @@ export interface ApiListResponse<T = Record<string, unknown>> {
 	data: T[];
 	pagination: Pagination;
 	stats?: Record<string, number | string | null>;
+	error?: string;
+}
+
+export interface CompanyListItem {
+	id?: number | string;
+	company_name?: string;
+	city?: string;
+	state?: string;
+	country?: string;
+	address?: string;
+	phone?: string;
+	email?: string;
+	gstin?: string;
+	pan_number?: string;
+}
+
+export interface CompanyListResponse {
+	success: boolean;
+	data: CompanyListItem[];
 	error?: string;
 }
 

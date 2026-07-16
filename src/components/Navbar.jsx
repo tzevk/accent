@@ -128,8 +128,16 @@ const adminMenuConfig = [
 		href: '/admin/material-requisition',
 		resource: 'admin',
 	},
-	{ name: 'Payment Released', href: '/admin/payment-entry', resource: 'admin' },
-	{ name: 'Payment Issue', href: '/admin/payment-issue', resource: 'admin' },
+	{
+		name: 'Payment Received from client',
+		href: '/admin/payment-entry',
+		resource: 'admin',
+	},
+	{
+		name: 'Payment Issued to client',
+		href: '/admin/payment-issue',
+		resource: 'admin',
+	},
 	{
 		name: 'Payment Outgoing',
 		href: '/admin/payment-outgoing',
@@ -240,12 +248,12 @@ const adminMenuGroups = [
 		icon: BanknotesIcon,
 		items: [
 			{
-				name: 'Payment Released',
+				name: 'Payment Received from client',
 				href: '/admin/payment-entry',
 				icon: BanknotesIcon,
 			},
 			{
-				name: 'Payment Issue',
+				name: 'Payment Issued to client',
 				href: '/admin/payment-issue',
 				icon: ArrowUpCircleIcon,
 			},

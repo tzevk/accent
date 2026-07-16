@@ -76,7 +76,7 @@ export async function PUT(request, { params }) {
 		let affectedRows = 0;
 		{
 			const [r] = await db.execute(
-				`UPDATE projects SET ${setParts.join(', ')} WHERE project_id = ?`,
+				`UPDATE projects SET ${setParts.join(', ')} WHERE project_id = ? AND isDelete = 0`,
 				[...setParams, id]
 			);
 			affectedRows = r?.affectedRows || 0;
@@ -84,7 +84,7 @@ export async function PUT(request, { params }) {
 
 		if (affectedRows === 0 && /^\d+$/.test(String(id))) {
 			const [r2] = await db.execute(
-				`UPDATE projects SET ${setParts.join(', ')} WHERE id = ?`,
+				`UPDATE projects SET ${setParts.join(', ')} WHERE id = ? AND isDelete = 0`,
 				[...setParams, parseInt(String(id), 10)]
 			);
 			affectedRows = r2?.affectedRows || 0;

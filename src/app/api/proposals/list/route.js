@@ -78,7 +78,7 @@ export async function GET(request) {
 			try {
 				// Use SELECT * to get all available columns (schema may vary)
 				const [proposalsResult] = await db.execute(`
-          SELECT * FROM proposals ORDER BY created_at DESC
+          SELECT * FROM proposals WHERE isDelete = 0 ORDER BY created_at DESC
         `);
 				proposals = proposalsResult || [];
 			} catch (queryErr) {
@@ -86,7 +86,7 @@ export async function GET(request) {
 				try {
 					// Minimal fallback - only id, status, created_at are guaranteed
 					const [fallbackResult] = await db.execute(`
-            SELECT id, status, created_at FROM proposals ORDER BY created_at DESC
+            SELECT id, status, created_at FROM proposals WHERE isDelete = 0 ORDER BY created_at DESC
           `);
 					proposals = fallbackResult || [];
 				} catch (fallbackErr) {
@@ -105,7 +105,7 @@ export async function GET(request) {
             SUM(CASE WHEN LOWER(COALESCE(status,'')) IN ('approved', 'accepted') THEN 1 ELSE 0 END) as approved,
             SUM(CASE WHEN LOWER(COALESCE(status,'')) = 'rejected' THEN 1 ELSE 0 END) as rejected,
             SUM(CASE WHEN LOWER(COALESCE(status,'')) = 'pending' THEN 1 ELSE 0 END) as pending
-          FROM proposals
+          FROM proposals WHERE isDelete = 0
         `);
 				const statsRow = statsResult?.[0] || {};
 				stats = {

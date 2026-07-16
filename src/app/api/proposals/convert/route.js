@@ -30,12 +30,13 @@ export async function POST(request) {
 		// Try to find proposal by numeric id or proposal_id string
 		let rows;
 		if (Number(proposalIdentifier)) {
-			[rows] = await db.execute('SELECT * FROM proposals WHERE id = ?', [
-				proposalIdentifier,
-			]);
+			[rows] = await db.execute(
+				'SELECT * FROM proposals WHERE id = ? AND isDelete = 0',
+				[proposalIdentifier]
+			);
 		} else {
 			[rows] = await db.execute(
-				'SELECT * FROM proposals WHERE proposal_id = ? OR id = ?',
+				'SELECT * FROM proposals WHERE (proposal_id = ? OR id = ?) AND isDelete = 0',
 				[proposalIdentifier, proposalIdentifier]
 			);
 		}
