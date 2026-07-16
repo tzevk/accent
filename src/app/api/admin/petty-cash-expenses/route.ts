@@ -34,90 +34,55 @@ export async function GET(request: Request) {
 	let db: any;
 	try {
 		const { searchParams } = new URL(request.url);
-		const page = parseInt(searchParams.get('page') || '1');
-		const limit = parseInt(searchParams.get('limit') || '10');
 		const search = searchParams.get('search');
 		const unsettled = searchParams.get('unsettled') === 'true';
-		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
 
 		// ── Build WHERE ──
 		const where: string[] = ['pce.isDelete = 0'];
-		const countWhere: string[] = ['isDelete = 0'];
 		const params: (string | number)[] = [];
-		const countParams: (string | number)[] = [];
 
 		if (search) {
 			const s = `%${search}%`;
 			where.push(
 				'(pce.transaction_number LIKE ? OR pce.description LIKE ? OR pce.recipient_name LIKE ? OR pce.bill_no LIKE ? OR pce.notes LIKE ?)'
 			);
-			countWhere.push(
-				'(transaction_number LIKE ? OR description LIKE ? OR recipient_name LIKE ? OR bill_no LIKE ? OR notes LIKE ?)'
-			);
 			params.push(s, s, s, s, s);
-			countParams.push(s, s, s, s, s);
 		}
 
 		if (unsettled) {
 			where.push(
 				'pce.source_voucher_id IS NULL AND pce.debit_amount > 0 AND pce.credit_amount = 0'
 			);
-			countWhere.push(
-				'source_voucher_id IS NULL AND debit_amount > 0 AND credit_amount = 0'
-			);
 		}
 
 		const whereSql = `WHERE ${where.join(' AND ')}`;
-		const countSql = `WHERE ${countWhere.join(' AND ')}`;
-
-		const [countRows] = await db.execute(
-			`SELECT COUNT(*) as total FROM ${TABLE} ${countSql}`,
-			countParams
-		);
-		const total = (countRows[0] as any)?.total || 0;
 
 		const [rows] = await db.execute(
-			`SELECT pce.*, cv.voucher_number as source_voucher_number,
-			  ROW_NUMBER() OVER (ORDER BY pce.transaction_date, pce.created_at) as sr_no,
-			  SUM(pce.debit_amount - pce.credit_amount)
-			    OVER (ORDER BY pce.transaction_date, pce.created_at ROWS UNBOUNDED PRECEDING) as running_balance
-			FROM ${TABLE} pce
-			LEFT JOIN cash_vouchers cv ON pce.source_voucher_id = cv.id
-			${whereSql}
-			ORDER BY pce.transaction_date, pce.created_at
-			LIMIT ? OFFSET ?`,
-			[...params, limit, offset]
+			`WITH ordered AS (
+			  SELECT pce.*, cv.voucher_number as source_voucher_number,
+			    SUM(pce.debit_amount - pce.credit_amount)
+			      OVER (ORDER BY pce.transaction_date, pce.created_at ROWS UNBOUNDED PRECEDING) as running_balance
+			  FROM ${TABLE} pce
+			  LEFT JOIN cash_vouchers cv ON pce.source_voucher_id = cv.id
+			  ${whereSql}
+			)
+			SELECT *, ROW_NUMBER() OVER (ORDER BY transaction_date DESC, created_at DESC) as sr_no
+			FROM ordered
+			ORDER BY transaction_date DESC, created_at DESC`,
+			params
 		);
 
 		// ── Global stats ──
 		const [statsRows] = await db.execute(
 			`SELECT
-				COUNT(*) as total,
-				SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) as draft,
-				SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) as submitted,
-				SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
-				SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
-				COALESCE(SUM(credit_amount), 0) as pceCredits,
-				COALESCE(SUM(debit_amount), 0) as totalPaid,
-				COALESCE(SUM(debit_amount - credit_amount), 0) as currentBalance,
-				COALESCE(SUM(CASE WHEN status = 'approved' THEN debit_amount - credit_amount ELSE 0 END), 0) as approvedAmount
+				COALESCE(SUM(debit_amount), 0) as totalDebits,
+				COALESCE(SUM(credit_amount), 0) as totalCredits,
+				COALESCE(SUM(debit_amount - credit_amount), 0) as balance
 			FROM ${TABLE}
 			WHERE isDelete = 0`
 		);
-
-		const [voucherTotalRows] = await db.execute(
-			`SELECT COALESCE(SUM(total_amount), 0) as voucherTotal FROM cash_vouchers`
-		);
-		const voucherTotal = (voucherTotalRows[0] as any)?.voucherTotal || 0;
-
-		const mergedStats = {
-			...(statsRows[0] || {}),
-			totalReceived: voucherTotal,
-			currentBalance:
-				Number((statsRows[0] as any)?.totalPaid || 0) - voucherTotal,
-		};
 
 		// ── Voucher balances for add-dropdown (remaining > 0) ──
 		const [voucherBalances] = await db.execute(
@@ -134,13 +99,7 @@ export async function GET(request: Request) {
 		return NextResponse.json({
 			success: true,
 			data: rows,
-			pagination: {
-				page,
-				limit,
-				total,
-				totalPages: Math.ceil(total / limit),
-			},
-			stats: mergedStats,
+			stats: statsRows[0] || { totalDebits: 0, totalCredits: 0, balance: 0 },
 			voucherBalances: voucherBalances || [],
 		});
 	} catch (error: any) {

@@ -32,20 +32,20 @@ export async function GET(request) {
 		// Get current month number (01-12)
 		const now = new Date();
 		const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
-		const monthPattern = `C-${currentMonth}|`;
+		const monthPattern = `C-${currentMonth}/`;
 
 		// Get last voucher number for current month
 		const [lastVoucher] = await db.execute(
 			`SELECT voucher_number FROM cash_vouchers 
        WHERE voucher_number LIKE ? 
        ORDER BY id DESC LIMIT 1`,
-			[`C-${currentMonth}|%`]
+			[`C-${currentMonth}/%`]
 		);
 
 		let voucherNumber = `${monthPattern}001`;
 		if (lastVoucher.length > 0 && lastVoucher[0].voucher_number) {
-			// Extract the serial number from format C-MM|XXX
-			const match = lastVoucher[0].voucher_number.match(/C-\d{2}\|(\d+)/);
+			// Extract the serial number from format C-MM/XXX
+			const match = lastVoucher[0].voucher_number.match(/C-\d{2}\/(\d+)/);
 			if (match) {
 				const lastNum = parseInt(match[1]) || 0;
 				voucherNumber = `${monthPattern}${String(lastNum + 1).padStart(3, '0')}`;

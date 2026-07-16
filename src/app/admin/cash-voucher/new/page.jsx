@@ -11,7 +11,6 @@ import {
 	TrashIcon,
 	ArrowLeftIcon,
 	CheckIcon,
-	ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 import SearchableSelect from '@/components/ui/searchable-select';
 
@@ -23,8 +22,6 @@ export default function NewCashVoucherPage() {
 	const [projects, setProjects] = useState([]);
 	const [descriptions, setDescriptions] = useState([]);
 	const [accountHeads, setAccountHeads] = useState([]);
-	const [unsettledExpenses, setUnsettledExpenses] = useState([]);
-	const [selectedExpenseIds, setSelectedExpenseIds] = useState(new Set());
 
 	// Form state
 	const [formData, setFormData] = useState({
@@ -127,58 +124,18 @@ export default function NewCashVoucherPage() {
 			}
 		};
 
-		const fetchUnsettledExpenses = async () => {
-			try {
-				const res = await fetch(
-					'/api/admin/petty-cash-expenses?unsettled=true&limit=200'
-				);
-				const data = await res.json();
-				if (data.success) {
-					setUnsettledExpenses(data.data || []);
-				}
-			} catch (error) {
-				console.error('Error fetching unsettled expenses:', error);
-			}
-		};
-
 		if (!authLoading && user) {
 			fetchVoucherNumber();
 			fetchEmployees();
 			fetchProjects();
 			fetchDescriptions();
 			fetchAccountHeads();
-			fetchUnsettledExpenses();
 			setFormData((prev) => ({
 				...prev,
 				prepared_by: user.full_name || user.username || '',
 			}));
 		}
 	}, [authLoading, user]);
-
-	// Toggle expense selection
-	const toggleExpense = (id) => {
-		setSelectedExpenseIds((prev) => {
-			const next = new Set(prev);
-			if (next.has(id)) {
-				next.delete(id);
-			} else {
-				next.add(id);
-			}
-			return next;
-		});
-	};
-
-	const selectAllExpenses = () => {
-		if (selectedExpenseIds.size === unsettledExpenses.length) {
-			setSelectedExpenseIds(new Set());
-		} else {
-			setSelectedExpenseIds(new Set(unsettledExpenses.map((e) => e.id)));
-		}
-	};
-
-	const selectedExpensesTotal = unsettledExpenses
-		.filter((e) => selectedExpenseIds.has(e.id))
-		.reduce((sum, e) => sum + (parseFloat(e.debit_amount) || 0), 0);
 
 	// Calculate total
 	useEffect(() => {
@@ -189,9 +146,9 @@ export default function NewCashVoucherPage() {
 		}, 0);
 		setFormData((prev) => ({
 			...prev,
-			total_amount: lineItemsTotal + selectedExpensesTotal,
+			total_amount: lineItemsTotal,
 		}));
-	}, [lineItems, selectedExpensesTotal]);
+	}, [lineItems]);
 
 	// Convert number to words
 	const numberToWords = (num) => {
@@ -337,7 +294,6 @@ export default function NewCashVoucherPage() {
 					...formData,
 					line_items: lineItems,
 					voucher_type: 'payment',
-					settled_expense_ids: Array.from(selectedExpenseIds),
 				}),
 			});
 
@@ -515,111 +471,6 @@ export default function NewCashVoucherPage() {
 									</div>
 								</div>
 							</div>
-
-							{/* Settle Outstanding Expenses */}
-							{unsettledExpenses.length > 0 && (
-								<div className="border-b-2 border-gray-800">
-									<div className="bg-amber-50 border-b border-gray-800 px-4 py-2 flex items-center justify-between">
-										<div className="flex items-center gap-2">
-											<ClipboardDocumentListIcon className="h-4 w-4 text-amber-600" />
-											<span className="text-xs font-semibold text-gray-700 uppercase">
-												Outstanding Expenses to Settle
-											</span>
-											<span className="text-xs text-gray-500">
-												({selectedExpenseIds.size} of {unsettledExpenses.length}{' '}
-												selected
-												{selectedExpensesTotal > 0 &&
-													` — ${formatCurrency(selectedExpensesTotal)}`}
-												)
-											</span>
-										</div>
-										<button
-											type="button"
-											onClick={selectAllExpenses}
-											className="text-xs text-purple-600 hover:text-purple-800 font-medium"
-										>
-											{selectedExpenseIds.size === unsettledExpenses.length
-												? 'Deselect All'
-												: 'Select All'}
-										</button>
-									</div>
-									<div className="max-h-48 overflow-y-auto">
-										<table className="w-full text-xs">
-											<thead className="bg-white sticky top-0">
-												<tr>
-													<th className="w-8 px-2 py-1.5 text-center border-r border-gray-300"></th>
-													<th className="px-2 py-1.5 text-left border-r border-gray-300">
-														Ref. No.
-													</th>
-													<th className="px-2 py-1.5 text-left border-r border-gray-300">
-														Date
-													</th>
-													<th className="px-2 py-1.5 text-left border-r border-gray-300">
-														Description
-													</th>
-													<th className="px-2 py-1.5 text-left border-r border-gray-300">
-														Category
-													</th>
-													<th className="px-2 py-1.5 text-right border-r border-gray-300">
-														Amount
-													</th>
-													<th className="px-2 py-1.5 text-center">Mode</th>
-												</tr>
-											</thead>
-											<tbody>
-												{unsettledExpenses.map((expense) => (
-													<tr
-														key={expense.id}
-														className={`border-t border-gray-200 cursor-pointer transition-colors ${
-															selectedExpenseIds.has(expense.id)
-																? 'bg-purple-50'
-																: 'hover:bg-gray-50'
-														}`}
-														onClick={() => toggleExpense(expense.id)}
-													>
-														<td className="px-2 py-1.5 text-center border-r border-gray-300">
-															<input
-																type="checkbox"
-																checked={selectedExpenseIds.has(expense.id)}
-																onChange={() => toggleExpense(expense.id)}
-																onClick={(e) => e.stopPropagation()}
-																className="accent-purple-600"
-															/>
-														</td>
-														<td className="px-2 py-1.5 font-mono text-gray-600 border-r border-gray-300">
-															{expense.transaction_number || '—'}
-														</td>
-														<td className="px-2 py-1.5 text-gray-600 border-r border-gray-300">
-															{new Date(
-																expense.transaction_date
-															).toLocaleDateString('en-IN', {
-																day: '2-digit',
-																month: 'short',
-																year: 'numeric',
-															})}
-														</td>
-														<td
-															className="px-2 py-1.5 text-gray-900 max-w-[200px] truncate border-r border-gray-300"
-															title={expense.description}
-														>
-															{expense.description || '—'}
-														</td>
-														<td className="px-2 py-1.5 text-gray-600 border-r border-gray-300">
-															{expense.expense_category || '—'}
-														</td>
-														<td className="px-2 py-1.5 text-right font-semibold text-emerald-700 border-r border-gray-300">
-															{formatCurrency(expense.debit_amount)}
-														</td>
-														<td className="px-2 py-1.5 text-center text-gray-500">
-															{expense.payment_mode || 'cash'}
-														</td>
-													</tr>
-												))}
-											</tbody>
-										</table>
-									</div>
-								</div>
-							)}
 
 							{/* Line Items Table */}
 							<div className="border-b-2 border-gray-800">
