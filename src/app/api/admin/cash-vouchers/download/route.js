@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/utils/api-permissions';
 
 /**
  * GET /api/admin/cash-vouchers/download?id=X
- * Refactored ledger engine forcing total numerical nodes to line up below the amount column.
+ * Reverted to fluid vertical text constraints while preserving left-side punch-hole margins.
  */
 export async function GET(request) {
 	let db;
@@ -71,6 +71,14 @@ export async function GET(request) {
 			return isNaN(parsed) ? String(val) : parsed.toFixed(2);
 		};
 
+		const sanitizeAmountInWords = (wordsStr) => {
+			if (!wordsStr) return '';
+			return wordsStr
+				.replace(/\bRupees\b/gi, '')
+				.replace(/\s+/g, ' ')
+				.trim();
+		};
+
 		const actualItems = lineItems.length > 0 ? lineItems : [];
 		const totalRowsNeeded = 5;
 		const emptyRowsNeeded = Math.max(0, totalRowsNeeded - actualItems.length);
@@ -79,12 +87,12 @@ export async function GET(request) {
 			.map(
 				(item, index) => `
         <tr>
-          <td style="width: 50px; text-align: center;">${escapeHtml(item.sr_no || index + 1)}</td>
-          <td style="width: 80px; text-align: center;">${escapeHtml(formatDate(item.bill_date))}</td>
-          <td style="width: 80px;">${escapeHtml(item.bill_no || '')}</td>
-          <td style="width: 130px;">${escapeHtml(item.account_head || '')}</td>
-          <td style="width: 90px; text-align: right; font-weight: bold;">${escapeHtml(formatDecimalAmount(item.amount_rs))}</td>
-          <td>${escapeHtml(item.description || '')}</td>
+          <td style="width: 45px; text-align: center;">${escapeHtml(item.sr_no || index + 1)}</td>
+          <td style="width: 75px; text-align: center;">${escapeHtml(formatDate(item.bill_date))}</td>
+          <td style="width: 65px; text-align: center;">${escapeHtml(item.bill_no || '')}</td>
+          <td style="width: 140px; text-align: center;">${escapeHtml(item.account_head || '')}</td>
+          <td style="width: 85px; text-align: center; font-weight: bold;">${escapeHtml(formatDecimalAmount(item.amount_rs))}</td>
+          <td style="text-align: left;">${escapeHtml(item.description || '')}</td>
         </tr>
       `
 			)
@@ -94,12 +102,12 @@ export async function GET(request) {
 			.fill(
 				`
       <tr>
-        <td style="width: 50px;">&nbsp;</td>
-        <td style="width: 80px;">&nbsp;</td>
-        <td style="width: 80px;">&nbsp;</td>
-        <td style="width: 130px;">&nbsp;</td>
-        <td style="width: 90px;">&nbsp;</td>
-        <td>&nbsp;</td>
+        <td style="width: 45px; text-align: center;">&nbsp;</td>
+        <td style="width: 75px; text-align: center;">&nbsp;</td>
+        <td style="width: 65px; text-align: center;">&nbsp;</td>
+        <td style="width: 140px; text-align: center;">&nbsp;</td>
+        <td style="width: 85px; text-align: center;">&nbsp;</td>
+        <td style="text-align: left;">&nbsp;</td>
       </tr>
     `
 			)
@@ -114,7 +122,8 @@ export async function GET(request) {
   <style>
     @page {
       size: A4 portrait;
-      margin: 5mm 10mm;
+      /* Maintained the 20mm left margin for binder punch-hole accommodations */
+      margin: 5mm 10mm 5mm 20mm;
     }
     
     @media print {
@@ -161,9 +170,10 @@ export async function GET(request) {
       cursor: pointer;
     }
 
+    /* Reverted to original fluid, contents-driven box metrics */
     .voucher {
       width: 100%;
-      max-width: 185mm;
+      max-width: 180mm;
       margin: 0 auto;
       background-color: #ffffff;
       border: 2px solid #000000;
@@ -199,8 +209,8 @@ export async function GET(request) {
       display: flex;
       flex-direction: row;
       align-items: center;
-      gap: 14px;
-      padding: 8px 10px;
+      gap: 12px;
+      padding: 6px 10px;
       border-right: 1px solid #000000;
       box-sizing: border-box;
     }
@@ -212,7 +222,7 @@ export async function GET(request) {
     }
 
     .logo-left-node img {
-      height: 42px;
+      height: 38px;
       width: auto;
       object-fit: contain;
     }
@@ -222,21 +232,23 @@ export async function GET(request) {
       flex-direction: column;
       justify-content: center;
       flex: 1;
-      gap: 2px;
+      gap: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .company-title {
       margin: 0;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: bold;
       letter-spacing: 0.1px;
     }
 
     .company-address {
       margin: 0;
-      font-size: 9px;
+      font-size: 8.5px;
       color: #222222;
-      line-height: 1.3;
     }
 
     .meta-table {
@@ -259,24 +271,27 @@ export async function GET(request) {
     }
 
     .meta-label-cell {
-      width: 75px;
+      width: 65px;
       background-color: #f2f2f2;
-      padding: 4px 6px;
+      padding: 3px 6px;
       font-size: 9px;
       font-weight: bold;
       border-right: 1px solid #000000;
       text-transform: uppercase;
       vertical-align: middle;
+      white-space: nowrap;
     }
 
     .meta-value-cell {
-      padding: 4px 6px;
-      font-size: 10px;
+      padding: 3px 6px;
+      font-size: 9.5px;
       vertical-align: middle;
       font-weight: normal;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    /* Consolidated Ledger and Summary Architecture */
     .ledger-table {
       width: 100%;
       border-collapse: collapse;
@@ -288,10 +303,12 @@ export async function GET(request) {
       background-color: #f2f2f2;
       border-bottom: 2px solid #000000;
       border-right: 1px solid #000000;
-      padding: 6px 8px;
-      font-size: 9px;
+      padding: 5px 2px;
+      font-size: 8.5px;
       font-weight: bold;
       text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
     }
 
     .ledger-table th:last-child {
@@ -299,20 +316,22 @@ export async function GET(request) {
     }
 
     .ledger-table td {
-      padding: 4px 8px;
-      font-size: 10px;
+      padding: 4px 6px;
+      font-size: 9.5px;
       border-right: 1px solid #000000;
       border-bottom: 1px solid #e0e0e0;
       height: 22px;
       vertical-align: middle;
       box-sizing: border-box;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .ledger-table td:last-child {
       border-right: none;
     }
 
-    /* Integrated Summary Block Formatting */
     .total-row {
       border-top: 2px solid #000000;
       border-bottom: 2px solid #000000 !important;
@@ -320,29 +339,33 @@ export async function GET(request) {
 
     .total-row td {
       border-bottom: none;
-      padding: 6px 8px;
+      padding: 5px 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .payment-method-text {
-      font-size: 10px;
+      font-size: 9.5px;
     }
 
     .total-title-cell {
       background-color: #f2f2f2;
       text-align: center;
       font-weight: bold;
-      font-size: 9px;
+      font-size: 8.5px;
     }
 
     .total-value-cell {
-      text-align: right;
+      text-align: center;
       font-weight: bold;
-      font-size: 10px;
+      font-size: 9.5px;
     }
 
     .words-expression-text {
       font-style: italic;
-      font-size: 10px;
+      font-size: 9.5px;
+      text-align: left;
     }
 
     .signature-table {
@@ -354,9 +377,9 @@ export async function GET(request) {
 
     .signature-cell {
       border-right: 1px solid #000000;
-      padding: 6px 8px;
+      padding: 4px 6px;
       vertical-align: bottom;
-      height: 75px; 
+      height: 75px;
       box-sizing: border-box;
     }
 
@@ -371,12 +394,15 @@ export async function GET(request) {
     }
 
     .signature-actor {
-      font-size: 10px;
+      font-size: 9.5px;
       font-weight: bold;
       text-align: center;
       width: 100%;
       margin-bottom: 2px;
       min-height: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .signature-line {
@@ -391,11 +417,12 @@ export async function GET(request) {
       color: #333333;
       text-align: center;
       text-transform: uppercase;
+      white-space: nowrap;
     }
 
     .cut-line {
-      max-width: 185mm;
-      margin: 15px auto;
+      max-width: 180mm;
+      margin: 12px auto;
       border-bottom: 1px dashed #000000;
       position: relative;
     }
@@ -456,12 +483,12 @@ export async function GET(request) {
     <table class="ledger-table">
       <thead>
         <tr>
-          <th style="width: 50px;">SR. NO.</th>
-          <th style="width: 80px;">BILL DATE</th>
-          <th style="width: 80px;">BILL NO.</th>
-          <th style="width: 130px;">ACCOUNT HEAD</th>
-          <th style="width: 90px;">AMOUNT</th>
-          <th>DESCRIPTION</th>
+          <th style="width: 45px;">SR. NO.</th>
+          <th style="width: 75px;">BILL DATE</th>
+          <th style="width: 65px;">BILL NO.</th>
+          <th style="width: 140px;">ACCOUNT HEAD</th>
+          <th style="width: 85px;">AMOUNT</th>
+          <th style="text-align: left;">DESCRIPTION</th>
         </tr>
       </thead>
       <tbody>
@@ -471,12 +498,12 @@ export async function GET(request) {
         <tr class="total-row">
           <td colspan="3" class="payment-method-text">
             <strong>Paid by:</strong> 
-            <span style="margin-left: 6px; text-transform: uppercase;">${escapeHtml(voucher.payment_mode || 'Cash')}</span>
+            <span style="margin-left: 4px; text-transform: uppercase;">${escapeHtml(voucher.payment_mode || 'Cash')}</span>
           </td>
           <td class="total-title-cell">TOTAL:</td>
           <td class="total-value-cell">${escapeHtml(formatDecimalAmount(voucher.total_amount))}</td>
           <td class="words-expression-text">
-            <div>${voucher.amount_in_words ? 'Rs. ' + escapeHtml(voucher.amount_in_words) : ''}</div>
+            <div>${voucher.amount_in_words ? 'Rs. ' + escapeHtml(sanitizeAmountInWords(voucher.amount_in_words)) : ''}</div>
           </td>
         </tr>
       </tbody>
