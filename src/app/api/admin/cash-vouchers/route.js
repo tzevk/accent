@@ -177,7 +177,9 @@ export async function POST(request) {
 		let voucherNumber = data.voucher_number;
 		if (!voucherNumber) {
 			const [lastVoucher] = await db.execute(
-				`SELECT voucher_number FROM cash_vouchers ORDER BY id DESC LIMIT 1`
+				`SELECT voucher_number FROM cash_vouchers 
+         WHERE (isDelete IS NULL OR isDelete = 0)
+         ORDER BY id DESC LIMIT 1`
 			);
 
 			voucherNumber = 'CV-0001';

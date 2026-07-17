@@ -34,10 +34,11 @@ export async function GET(request) {
 		const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
 		const monthPattern = `C-${currentMonth}/`;
 
-		// Get last voucher number for current month
+		// Get last ACTIVE voucher number for current month (skip soft-deleted)
 		const [lastVoucher] = await db.execute(
 			`SELECT voucher_number FROM cash_vouchers 
        WHERE voucher_number LIKE ? 
+       AND (isDelete IS NULL OR isDelete = 0)
        ORDER BY id DESC LIMIT 1`,
 			[`C-${currentMonth}/%`]
 		);
