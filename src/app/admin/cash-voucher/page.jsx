@@ -399,7 +399,9 @@ export default function CashVoucherPage() {
 													<div className="flex items-center justify-center gap-1">
 														<button
 															onClick={() =>
-																router.push(`/admin/cash-voucher/${voucher.id}`)
+																router.push(
+																	`/admin/cash-voucher/edit/${voucher.id}`
+																)
 															}
 															className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
 															title="View Voucher"
