@@ -478,9 +478,42 @@ function ResourceFormModal({
 		return map;
 	}, [uniqueSearchableEndpoints, searchableQueries]);
 
+	const searchableDependencyFields = useMemo(
+		() => [
+			...new Set(
+				formFields
+					.filter((f) => f.searchableDependency)
+					.map((f) => f.searchableDependency!.field)
+			),
+		],
+		[formFields]
+	);
+
+	const [dependencyValues, setDependencyValues] = useState<
+		Record<string, string>
+	>(() => Object.fromEntries(searchableDependencyFields.map((f) => [f, ''])));
+
+	useEffect(() => {
+		if (isView || searchableDependencyFields.length === 0) return;
+		const updateDeps = () => {
+			const next: Record<string, string> = {};
+			let changed = false;
+			searchableDependencyFields.forEach((depField) => {
+				const val = String(form.getFieldValue(depField) ?? '');
+				next[depField] = val;
+				if (dependencyValues[depField] !== val) changed = true;
+			});
+			if (changed) setDependencyValues(next);
+		};
+		updateDeps();
+		const { unsubscribe } = form.store.subscribe(updateDeps);
+		return unsubscribe;
+	}, [form, dependencyValues, isView, searchableDependencyFields]);
+
 	const getSearchableOptions = useCallback(
 		(
-			field: FormField
+			field: FormField,
+			depVals?: Record<string, string>
 		): Array<{ value: string; label: string; id?: string | number }> => {
 			if (field.companyAutofill) {
 				return companyList.map((c) => ({
@@ -490,7 +523,19 @@ function ResourceFormModal({
 				}));
 			}
 			if (field.searchableEndpoint) {
-				const items = searchableLists[field.searchableEndpoint] || [];
+				let items = searchableLists[field.searchableEndpoint] || [];
+				if (field.searchableDependency && depVals) {
+					const filterValue = depVals[field.searchableDependency.field] ?? '';
+					if (filterValue) {
+						const fv = String(filterValue).toLowerCase();
+						items = items.filter(
+							(item) =>
+								String(
+									item[field.searchableDependency!.itemKey] ?? ''
+								).toLowerCase() === fv
+						);
+					}
+				}
 				const valueKey = field.searchableValueKey || field.name;
 				return items.map((item) => ({
 					value: String(item[valueKey] ?? ''),
@@ -866,7 +911,10 @@ function ResourceFormModal({
 															/>
 														) : (
 															<SearchableSelect
-																options={getSearchableOptions(field)}
+																options={getSearchableOptions(
+																	field,
+																	dependencyValues
+																)}
 																value={String(fp.state.value ?? '')}
 																onChange={(val) => {
 																	console.log('[fill] onChange fired', {

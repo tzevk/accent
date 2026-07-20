@@ -15,7 +15,6 @@ import {
 	ChevronRightIcon,
 	PencilSquareIcon,
 	TrashIcon,
-	EyeIcon,
 	ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 
@@ -63,7 +62,15 @@ export default function CashVoucherPage() {
 				const data = await res.json();
 
 				if (data.success) {
-					setVouchers(data.data || []);
+					setVouchers(
+						(data.data || []).map((v) => ({
+							...v,
+							line_items:
+								typeof v.line_items === 'string'
+									? JSON.parse(v.line_items)
+									: v.line_items,
+						}))
+					);
 					setPagination(
 						data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 }
 					);
@@ -127,34 +134,6 @@ export default function CashVoucherPage() {
 		);
 	});
 
-	// Get status styling
-	const getStatusStyle = (status) => {
-		switch (status?.toLowerCase()) {
-			case 'pending':
-				return 'bg-yellow-100 text-yellow-700';
-			case 'approved':
-				return 'bg-green-100 text-green-700';
-			case 'rejected':
-				return 'bg-red-100 text-red-700';
-			case 'paid':
-				return 'bg-blue-100 text-blue-700';
-			default:
-				return 'bg-gray-100 text-gray-700';
-		}
-	};
-
-	// Get type styling
-	const getTypeStyle = (type) => {
-		switch (type?.toLowerCase()) {
-			case 'payment':
-				return 'bg-red-100 text-red-700';
-			case 'receipt':
-				return 'bg-green-100 text-green-700';
-			default:
-				return 'bg-gray-100 text-gray-700';
-		}
-	};
-
 	// Format currency
 	const formatCurrency = (amount) => {
 		return new Intl.NumberFormat('en-IN', {
@@ -172,6 +151,22 @@ export default function CashVoucherPage() {
 			month: 'short',
 			year: 'numeric',
 		});
+	};
+
+	const formatBillNos = (lineItems) => {
+		if (!Array.isArray(lineItems) || !lineItems.length) return '-';
+		return (
+			<div className="flex flex-wrap gap-1">
+				{lineItems.map((item, i) => (
+					<span
+						key={i}
+						className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 rounded"
+					>
+						{item.bill_no || '-'}
+					</span>
+				))}
+			</div>
+		);
 	};
 
 	if (authLoading) {
@@ -333,7 +328,7 @@ export default function CashVoucherPage() {
 												Date
 											</th>
 											<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-												Type
+												Bill Nos
 											</th>
 											<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 												Paid To
@@ -343,9 +338,6 @@ export default function CashVoucherPage() {
 											</th>
 											<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
 												Amount
-											</th>
-											<th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-												Status
 											</th>
 											<th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
 												Actions
@@ -367,12 +359,7 @@ export default function CashVoucherPage() {
 													{formatDate(voucher.voucher_date)}
 												</td>
 												<td className="px-6 py-4">
-													<span
-														className={`px-2 py-1 text-xs font-medium rounded-full ${getTypeStyle(voucher.voucher_type)}`}
-													>
-														{voucher.voucher_type?.charAt(0).toUpperCase() +
-															voucher.voucher_type?.slice(1) || '-'}
-													</span>
+													{formatBillNos(voucher.line_items)}
 												</td>
 												<td className="px-6 py-4">
 													<div className="font-medium text-gray-900">
@@ -388,26 +375,7 @@ export default function CashVoucherPage() {
 													)}
 												</td>
 												<td className="px-6 py-4">
-													<span
-														className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusStyle(voucher.status)}`}
-													>
-														{voucher.status?.charAt(0).toUpperCase() +
-															voucher.status?.slice(1) || 'Pending'}
-													</span>
-												</td>
-												<td className="px-6 py-4">
 													<div className="flex items-center justify-center gap-1">
-														<button
-															onClick={() =>
-																router.push(
-																	`/admin/cash-voucher/edit/${voucher.id}`
-																)
-															}
-															className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-															title="View Voucher"
-														>
-															<EyeIcon className="h-5 w-5" />
-														</button>
 														<button
 															onClick={() =>
 																window.open(

@@ -1,6 +1,11 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { z } from 'zod';
 
+export interface SearchableDependency {
+	field: string;
+	itemKey: string;
+}
+
 export interface DependentOn {
 	field: string;
 	values: string[];
@@ -43,6 +48,7 @@ export interface FormField {
 	searchableValueKey?: string;
 	searchableLabelFn?: (item: Record<string, unknown>) => string;
 	searchableFillFields?: Record<string, string>;
+	searchableDependency?: SearchableDependency;
 	dependentOn?: DependentOn;
 	computed?: ComputedField;
 	derived?: DerivedField;
