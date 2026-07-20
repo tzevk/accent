@@ -27,161 +27,6 @@ export async function GET(request) {
 
 		connection = await dbConnect();
 
-		// Check if quotations table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS quotations (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        quotation_number VARCHAR(50) UNIQUE NOT NULL,
-        client_name VARCHAR(255) NOT NULL,
-        client_email VARCHAR(255),
-        client_phone VARCHAR(50),
-        client_address TEXT,
-        subject VARCHAR(500),
-        items JSON,
-        subtotal DECIMAL(15, 2) DEFAULT 0,
-        tax_rate DECIMAL(5, 2) DEFAULT 18,
-        tax_amount DECIMAL(15, 2) DEFAULT 0,
-        discount DECIMAL(15, 2) DEFAULT 0,
-        total DECIMAL(15, 2) DEFAULT 0,
-        notes TEXT,
-        terms TEXT,
-        valid_until DATE,
-        status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft',
-        project_id INT NULL,
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_status (status),
-        INDEX idx_created_at (created_at)
-      )
-    `);
-
-		// Check if project_quotations table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS project_quotations (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        project_id INT NOT NULL,
-        quotation_number VARCHAR(100),
-        quotation_date DATE,
-        enquiry_number VARCHAR(100),
-        enquiry_quantity VARCHAR(255),
-        scope_of_work TEXT,
-        gross_amount DECIMAL(15, 2) DEFAULT 0,
-        gst_percentage DECIMAL(5, 2) DEFAULT 18,
-        gst_amount DECIMAL(15, 2) DEFAULT 0,
-        net_amount DECIMAL(15, 2) DEFAULT 0,
-        status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_project_id (project_id)
-      )
-    `);
-
-		// Add status column to project_quotations if it doesn't exist
-		try {
-			await connection.execute(`
-        ALTER TABLE project_quotations 
-        ADD COLUMN status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft'
-      `);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-
-		// Add subject column to quotations if it doesn't exist
-		try {
-			await connection.execute(
-				`ALTER TABLE quotations ADD COLUMN subject VARCHAR(500)`
-			);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-
-		// Add total column to quotations if it doesn't exist
-		try {
-			await connection.execute(
-				`ALTER TABLE quotations ADD COLUMN total DECIMAL(15, 2) DEFAULT 0`
-			);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-
-		// Add valid_until column to quotations if it doesn't exist
-		try {
-			await connection.execute(
-				`ALTER TABLE quotations ADD COLUMN valid_until DATE`
-			);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-
-		// Add status column to quotations if it doesn't exist
-		try {
-			await connection.execute(
-				`ALTER TABLE quotations ADD COLUMN status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft'`
-			);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-
-		// Add quotation_date column to quotations if it doesn't exist
-		try {
-			await connection.execute(
-				`ALTER TABLE quotations ADD COLUMN quotation_date DATE`
-			);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-
-		// Add project_id column and index to quotations if they don't exist
-		try {
-			await connection.execute(
-				`ALTER TABLE quotations ADD COLUMN project_id INT NULL`
-			);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-		try {
-			await connection.execute(
-				`ALTER TABLE quotations ADD INDEX idx_project_id (project_id)`
-			);
-		} catch (alterError) {
-			// Index might already exist, ignore
-		}
-
-		// Add gst_type column to quotations and project_quotations
-		try {
-			await connection.execute(
-				`ALTER TABLE quotations ADD COLUMN gst_type VARCHAR(20) DEFAULT "cgst_sgst"`
-			);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-		try {
-			await connection.execute(
-				`ALTER TABLE project_quotations ADD COLUMN gst_type VARCHAR(20) DEFAULT "cgst_sgst"`
-			);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-
-		// Add deleted_at column to quotations if it doesn't exist
-		try {
-			await connection.execute(
-				`ALTER TABLE quotations ADD COLUMN deleted_at TIMESTAMP NULL`
-			);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-
-		// Add deleted_at column to project_quotations if it doesn't exist
-		try {
-			await connection.execute(
-				`ALTER TABLE project_quotations ADD COLUMN deleted_at TIMESTAMP NULL`
-			);
-		} catch (alterError) {
-			// Column might already exist, ignore
-		}
-
 		// Build combined query using UNION to get from both tables
 		let allQuotations = [];
 
@@ -201,7 +46,7 @@ export async function GET(request) {
           'quotations' as source,
           project_id,
           NULL as project_name
-        FROM quotations WHERE 1=1 AND (deleted_at IS NULL)
+        FROM quotations WHERE 1=1 AND (isDelete = 0 OR isDelete IS NULL)
       `;
 			const params1 = [];
 
@@ -249,7 +94,7 @@ export async function GET(request) {
           pq.project_id,
           NULL as project_name
         FROM project_quotations pq
-        WHERE pq.quotation_number IS NOT NULL AND pq.quotation_number != '' AND (pq.deleted_at IS NULL)
+        WHERE pq.quotation_number IS NOT NULL AND pq.quotation_number != '' AND (pq.isDelete = 0 OR pq.isDelete IS NULL)
       `;
 			const params2 = [];
 
@@ -565,7 +410,7 @@ export async function DELETE(request) {
 		let result;
 		if (source === 'project') {
 			[result] = await connection.execute(
-				'UPDATE project_quotations SET deleted_at = NOW() WHERE id = ?',
+				'UPDATE project_quotations SET isDelete = 1 WHERE id = ?',
 				[id]
 			);
 		} else if (source === 'proposal') {
@@ -588,7 +433,7 @@ export async function DELETE(request) {
 			);
 		} else {
 			[result] = await connection.execute(
-				'UPDATE quotations SET deleted_at = NOW() WHERE id = ?',
+				'UPDATE quotations SET isDelete = 1 WHERE id = ?',
 				[id]
 			);
 		}

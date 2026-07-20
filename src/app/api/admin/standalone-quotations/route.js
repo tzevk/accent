@@ -22,121 +22,6 @@ const formatDateOrNull = (dateVal) => {
 	}
 };
 
-// Helper to ensure database table and all columns exist
-async function ensureTableAndColumns(connection) {
-	// Create table if not exists
-	await connection.execute(`
-    CREATE TABLE IF NOT EXISTS quotations (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      quotation_number VARCHAR(50) UNIQUE NOT NULL,
-      client_name VARCHAR(255) NOT NULL,
-      client_email VARCHAR(255),
-      client_phone VARCHAR(50),
-      client_address TEXT,
-      subject VARCHAR(500),
-      items JSON,
-      subtotal DECIMAL(15, 2) DEFAULT 0,
-      tax_rate DECIMAL(5, 2) DEFAULT 18,
-      tax_amount DECIMAL(15, 2) DEFAULT 0,
-      discount DECIMAL(15, 2) DEFAULT 0,
-      total DECIMAL(15, 2) DEFAULT 0,
-      notes TEXT,
-      terms TEXT,
-      valid_until DATE,
-      status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft',
-      project_id INT NULL,
-      created_by INT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_status (status),
-      INDEX idx_created_at (created_at)
-    )
-  `);
-
-	// Alter fields that might not exist in old migrations
-	const columnsToAdd = [
-		'client_email VARCHAR(255)',
-		'client_phone VARCHAR(50)',
-		'client_address TEXT',
-		'kind_attn VARCHAR(255)',
-		'enquiry_number VARCHAR(100)',
-		'enquiry_date DATE',
-		'quotation_date DATE',
-		'subject VARCHAR(500)',
-		'items JSON',
-		'scope_items JSON',
-		'subtotal DECIMAL(15, 2) DEFAULT 0',
-		'tax_rate DECIMAL(5, 2) DEFAULT 18',
-		'tax_amount DECIMAL(15, 2) DEFAULT 0',
-		'discount DECIMAL(15, 2) DEFAULT 0',
-		'total DECIMAL(15, 2) DEFAULT 0',
-		'notes TEXT',
-		'terms TEXT',
-		'amount_in_words TEXT',
-		'gst_number VARCHAR(50)',
-		'pan_number VARCHAR(50)',
-		'tan_number VARCHAR(50)',
-		'terms_and_conditions TEXT',
-		'gross_amount DECIMAL(15, 2) DEFAULT 0',
-		'gst_percentage DECIMAL(5, 2) DEFAULT 18',
-		'gst_amount DECIMAL(15, 2) DEFAULT 0',
-		'net_amount DECIMAL(15, 2) DEFAULT 0',
-		'gst_type VARCHAR(20) DEFAULT "cgst_sgst"',
-		'project_id INT NULL',
-		'created_by INT',
-		// Annexure columns
-		'annexure_scope_of_work TEXT',
-		'annexure_input_document TEXT',
-		'annexure_deliverables TEXT',
-		'annexure_software VARCHAR(255)',
-		'annexure_duration VARCHAR(255)',
-		'annexure_site_visit VARCHAR(255)',
-		'annexure_quotation_validity VARCHAR(255)',
-		'annexure_mode_of_delivery VARCHAR(255)',
-		'annexure_revision VARCHAR(255)',
-		'annexure_exclusions TEXT',
-		'annexure_billing_payment_terms TEXT',
-		'annexure_taxation TEXT',
-		'annexure_payment_milestone TEXT',
-		'annexure_confidentiality TEXT',
-		'annexure_codes_standards TEXT',
-		'annexure_dispute_resolution TEXT',
-	];
-
-	for (const col of columnsToAdd) {
-		try {
-			await connection.execute(`ALTER TABLE quotations ADD COLUMN ${col}`);
-		} catch (e) {
-			// Column already exists
-		}
-	}
-
-	// Ensure proposal_id and project_id allow NULL values
-	try {
-		await connection.execute(
-			`ALTER TABLE quotations MODIFY COLUMN proposal_id INT NULL`
-		);
-	} catch (e) {
-		// Column might not exist or modify failed, ignore
-	}
-
-	try {
-		await connection.execute(
-			`ALTER TABLE quotations MODIFY COLUMN project_id INT NULL`
-		);
-	} catch (e) {
-		// Column might not exist or modify failed, ignore
-	}
-
-	try {
-		await connection.execute(
-			`ALTER TABLE quotations ADD INDEX idx_project_id (project_id)`
-		);
-	} catch (e) {
-		// Index might already exist, ignore
-	}
-}
-
 // POST - Create standalone quotation
 export async function POST(request) {
 	const authResult = await ensurePermission(
@@ -162,7 +47,6 @@ export async function POST(request) {
 		}
 
 		connection = await dbConnect();
-		await ensureTableAndColumns(connection);
 
 		const qDate = formatDateOrNull(body.quotation_date);
 		const validUntil = qDate

@@ -351,7 +351,7 @@ export default function QuotationPage() {
 	const handleDelete = async (quotation) => {
 		if (
 			!confirm(
-				`Are you sure you want to delete quotation ${quotation.quotation_number}? This action cannot be undone.`
+				`Are you sure you want to delete quotation ${quotation.quotation_number}? It will be hidden from the list until restored.`
 			)
 		) {
 			return;

@@ -178,7 +178,7 @@ export async function GET(request, { params }) {
 		} else if (source === 'project') {
 			// Fetch from project_quotations
 			const [rows] = await connection.execute(
-				'SELECT * FROM project_quotations WHERE id = ? AND (deleted_at IS NULL)',
+				'SELECT * FROM project_quotations WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 				[id]
 			);
 
@@ -288,7 +288,7 @@ export async function GET(request, { params }) {
 		} else {
 			// Fetch from quotations table
 			const [rows] = await connection.execute(
-				'SELECT * FROM quotations WHERE id = ? AND (deleted_at IS NULL)',
+				'SELECT * FROM quotations WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 				[id]
 			);
 
@@ -467,47 +467,6 @@ export async function PUT(request, { params }) {
 				]
 			);
 		} else if (source === 'project') {
-			// Add new columns if they don't exist
-			const columnsToAdd = [
-				'client_address TEXT',
-				'kind_attn VARCHAR(255)',
-				'enquiry_date DATE',
-				'scope_items JSON',
-				'amount_in_words TEXT',
-				'gst_number VARCHAR(50)',
-				'pan_number VARCHAR(50)',
-				'tan_number VARCHAR(50)',
-				'gst_type VARCHAR(20) DEFAULT "cgst_sgst"',
-				'terms_and_conditions TEXT',
-				// Annexure columns
-				'annexure_scope_of_work TEXT',
-				'annexure_input_document TEXT',
-				'annexure_deliverables TEXT',
-				'annexure_software VARCHAR(255)',
-				'annexure_duration VARCHAR(255)',
-				'annexure_site_visit VARCHAR(255)',
-				'annexure_quotation_validity VARCHAR(255)',
-				'annexure_mode_of_delivery VARCHAR(255)',
-				'annexure_revision VARCHAR(255)',
-				'annexure_exclusions TEXT',
-				'annexure_billing_payment_terms TEXT',
-				'annexure_taxation TEXT',
-				'annexure_payment_milestone TEXT',
-				'annexure_confidentiality TEXT',
-				'annexure_codes_standards TEXT',
-				'annexure_dispute_resolution TEXT',
-			];
-
-			for (const col of columnsToAdd) {
-				try {
-					await connection.execute(
-						`ALTER TABLE project_quotations ADD COLUMN ${col}`
-					);
-				} catch (e) {
-					// Column already exists
-				}
-			}
-
 			// Update project_quotations
 			await connection.execute(
 				`UPDATE project_quotations SET
@@ -588,51 +547,6 @@ export async function PUT(request, { params }) {
 				]
 			);
 		} else {
-			// Add new columns to quotations table if they don't exist
-			const columnsToAdd = [
-				'client_address TEXT',
-				'kind_attn VARCHAR(255)',
-				'enquiry_number VARCHAR(100)',
-				'enquiry_date DATE',
-				'scope_items JSON',
-				'amount_in_words TEXT',
-				'gst_number VARCHAR(50)',
-				'pan_number VARCHAR(50)',
-				'tan_number VARCHAR(50)',
-				'terms_and_conditions TEXT',
-				'gross_amount DECIMAL(15, 2) DEFAULT 0',
-				'gst_percentage DECIMAL(5, 2) DEFAULT 18',
-				'gst_amount DECIMAL(15, 2) DEFAULT 0',
-				'net_amount DECIMAL(15, 2) DEFAULT 0',
-				'gst_type VARCHAR(20) DEFAULT "cgst_sgst"',
-				'project_id INT NULL',
-				// Annexure columns
-				'annexure_scope_of_work TEXT',
-				'annexure_input_document TEXT',
-				'annexure_deliverables TEXT',
-				'annexure_software VARCHAR(255)',
-				'annexure_duration VARCHAR(255)',
-				'annexure_site_visit VARCHAR(255)',
-				'annexure_quotation_validity VARCHAR(255)',
-				'annexure_mode_of_delivery VARCHAR(255)',
-				'annexure_revision VARCHAR(255)',
-				'annexure_exclusions TEXT',
-				'annexure_billing_payment_terms TEXT',
-				'annexure_taxation TEXT',
-				'annexure_payment_milestone TEXT',
-				'annexure_confidentiality TEXT',
-				'annexure_codes_standards TEXT',
-				'annexure_dispute_resolution TEXT',
-			];
-
-			for (const col of columnsToAdd) {
-				try {
-					await connection.execute(`ALTER TABLE quotations ADD COLUMN ${col}`);
-				} catch (e) {
-					// Column already exists
-				}
-			}
-
 			// Update quotations table
 			await connection.execute(
 				`UPDATE quotations SET

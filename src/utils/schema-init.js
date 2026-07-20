@@ -65,6 +65,8 @@ async function doSchemaInit() {
 			initCashVouchersTable(db),
 			initPettyCashExpensesTable(db),
 			initPurchaseOrdersTable(db),
+			initQuotationsTable(db),
+			initProjectQuotationsTable(db),
 			initInvoicesTable(db),
 		]);
 
@@ -884,6 +886,248 @@ async function initPurchaseOrdersTable(db) {
 		await db.execute('ALTER TABLE purchase_orders DROP COLUMN client_name');
 	} catch (e) {
 		/* column may not exist */
+	}
+}
+
+async function initQuotationsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS quotations (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      quotation_number VARCHAR(50) NOT NULL,
+      quotation_date DATE,
+      client_name VARCHAR(255) NOT NULL,
+      client_email VARCHAR(255),
+      client_phone VARCHAR(50),
+      client_address TEXT,
+      kind_attn VARCHAR(255),
+      enquiry_number VARCHAR(100),
+      enquiry_date DATE,
+      subject VARCHAR(500),
+      items JSON,
+      scope_items JSON,
+      gross_amount DECIMAL(15, 2) DEFAULT 0,
+      gst_percentage DECIMAL(5, 2) DEFAULT 18,
+      gst_amount DECIMAL(15, 2) DEFAULT 0,
+      net_amount DECIMAL(15, 2) DEFAULT 0,
+      subtotal DECIMAL(15, 2) DEFAULT 0,
+      tax_rate DECIMAL(5, 2) DEFAULT 18,
+      tax_amount DECIMAL(15, 2) DEFAULT 0,
+      discount DECIMAL(15, 2) DEFAULT 0,
+      total DECIMAL(15, 2) DEFAULT 0,
+      amount_in_words TEXT,
+      gst_number VARCHAR(50),
+      pan_number VARCHAR(50),
+      tan_number VARCHAR(50),
+      gst_type VARCHAR(20) DEFAULT 'cgst_sgst',
+      terms_and_conditions TEXT,
+      notes TEXT,
+      terms TEXT,
+      valid_until DATE,
+      status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft',
+      project_id INT NULL,
+      proposal_id INT NULL,
+      created_by INT,
+      deleted_at TIMESTAMP NULL,
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_status (status),
+      INDEX idx_created_at (created_at),
+      INDEX idx_project_id (project_id),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE quotations ADD COLUMN quotation_date DATE',
+		'ALTER TABLE quotations ADD COLUMN client_email VARCHAR(255)',
+		'ALTER TABLE quotations ADD COLUMN client_phone VARCHAR(50)',
+		'ALTER TABLE quotations ADD COLUMN client_address TEXT',
+		'ALTER TABLE quotations ADD COLUMN kind_attn VARCHAR(255)',
+		'ALTER TABLE quotations ADD COLUMN enquiry_number VARCHAR(100)',
+		'ALTER TABLE quotations ADD COLUMN enquiry_date DATE',
+		'ALTER TABLE quotations ADD COLUMN subject VARCHAR(500)',
+		'ALTER TABLE quotations ADD COLUMN items JSON',
+		'ALTER TABLE quotations ADD COLUMN scope_items JSON',
+		'ALTER TABLE quotations ADD COLUMN subtotal DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE quotations ADD COLUMN tax_rate DECIMAL(5, 2) DEFAULT 18',
+		'ALTER TABLE quotations ADD COLUMN tax_amount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE quotations ADD COLUMN discount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE quotations ADD COLUMN total DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE quotations ADD COLUMN gross_amount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE quotations ADD COLUMN gst_percentage DECIMAL(5, 2) DEFAULT 18',
+		'ALTER TABLE quotations ADD COLUMN gst_amount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE quotations ADD COLUMN net_amount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE quotations ADD COLUMN amount_in_words TEXT',
+		'ALTER TABLE quotations ADD COLUMN gst_number VARCHAR(50)',
+		'ALTER TABLE quotations ADD COLUMN pan_number VARCHAR(50)',
+		'ALTER TABLE quotations ADD COLUMN tan_number VARCHAR(50)',
+		'ALTER TABLE quotations ADD COLUMN gst_type VARCHAR(20) DEFAULT "cgst_sgst"',
+		'ALTER TABLE quotations ADD COLUMN terms_and_conditions TEXT',
+		'ALTER TABLE quotations ADD COLUMN notes TEXT',
+		'ALTER TABLE quotations ADD COLUMN terms TEXT',
+		'ALTER TABLE quotations ADD COLUMN valid_until DATE',
+		"ALTER TABLE quotations ADD COLUMN status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft'",
+		'ALTER TABLE quotations ADD COLUMN project_id INT NULL',
+		'ALTER TABLE quotations ADD COLUMN proposal_id INT NULL',
+		'ALTER TABLE quotations ADD COLUMN created_by INT',
+		'ALTER TABLE quotations ADD COLUMN deleted_at TIMESTAMP NULL',
+		'ALTER TABLE quotations ADD COLUMN annexure_scope_of_work TEXT',
+		'ALTER TABLE quotations ADD COLUMN annexure_input_document TEXT',
+		'ALTER TABLE quotations ADD COLUMN annexure_deliverables TEXT',
+		'ALTER TABLE quotations ADD COLUMN annexure_software VARCHAR(255)',
+		'ALTER TABLE quotations ADD COLUMN annexure_duration VARCHAR(255)',
+		'ALTER TABLE quotations ADD COLUMN annexure_site_visit VARCHAR(255)',
+		'ALTER TABLE quotations ADD COLUMN annexure_quotation_validity VARCHAR(255)',
+		'ALTER TABLE quotations ADD COLUMN annexure_mode_of_delivery VARCHAR(255)',
+		'ALTER TABLE quotations ADD COLUMN annexure_revision VARCHAR(255)',
+		'ALTER TABLE quotations ADD COLUMN annexure_exclusions TEXT',
+		'ALTER TABLE quotations ADD COLUMN annexure_billing_payment_terms TEXT',
+		'ALTER TABLE quotations ADD COLUMN annexure_taxation TEXT',
+		'ALTER TABLE quotations ADD COLUMN annexure_payment_milestone TEXT',
+		'ALTER TABLE quotations ADD COLUMN annexure_confidentiality TEXT',
+		'ALTER TABLE quotations ADD COLUMN annexure_codes_standards TEXT',
+		'ALTER TABLE quotations ADD COLUMN annexure_dispute_resolution TEXT',
+		'ALTER TABLE quotations ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Quotations schema update warning:', e.message || e);
+			}
+		}
+	}
+
+	const indexMigrations = [
+		'ALTER TABLE quotations DROP INDEX quotation_number',
+		'ALTER TABLE quotations ADD UNIQUE KEY unique_active_quotation (quotation_number, isDelete)',
+	];
+
+	for (const stmt of indexMigrations) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (
+				!e.message?.includes('check that it exists') &&
+				!e.message?.includes('Duplicate key name')
+			) {
+				console.warn('Quotations index migration warning:', e.message || e);
+			}
+		}
+	}
+
+	try {
+		await db.execute(
+			'ALTER TABLE quotations MODIFY COLUMN project_id INT NULL'
+		);
+	} catch {
+		/* column or modify may not be applicable */
+	}
+
+	try {
+		await db.execute(
+			'ALTER TABLE quotations MODIFY COLUMN proposal_id INT NULL'
+		);
+	} catch {
+		/* column or modify may not be applicable */
+	}
+
+	try {
+		await db.execute(
+			'ALTER TABLE quotations ADD INDEX idx_project_id (project_id)'
+		);
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Quotations index migration warning:', e.message || e);
+		}
+	}
+}
+
+async function initProjectQuotationsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS project_quotations (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      project_id INT NOT NULL,
+      quotation_number VARCHAR(100),
+      quotation_date DATE,
+      enquiry_number VARCHAR(100),
+      enquiry_date DATE,
+      enquiry_quantity VARCHAR(255),
+      scope_of_work TEXT,
+      client_name VARCHAR(255),
+      client_address TEXT,
+      kind_attn VARCHAR(255),
+      scope_items JSON,
+      gross_amount DECIMAL(15, 2) DEFAULT 0,
+      gst_percentage DECIMAL(5, 2) DEFAULT 18,
+      gst_amount DECIMAL(15, 2) DEFAULT 0,
+      net_amount DECIMAL(15, 2) DEFAULT 0,
+      amount_in_words TEXT,
+      gst_number VARCHAR(50),
+      pan_number VARCHAR(50),
+      tan_number VARCHAR(50),
+      gst_type VARCHAR(20) DEFAULT 'cgst_sgst',
+      terms_and_conditions TEXT,
+      status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft',
+      deleted_at TIMESTAMP NULL,
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_project_id (project_id),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE project_quotations ADD COLUMN enquiry_date DATE',
+		'ALTER TABLE project_quotations ADD COLUMN client_name VARCHAR(255)',
+		'ALTER TABLE project_quotations ADD COLUMN client_address TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN kind_attn VARCHAR(255)',
+		'ALTER TABLE project_quotations ADD COLUMN scope_items JSON',
+		'ALTER TABLE project_quotations ADD COLUMN amount_in_words TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN gst_number VARCHAR(50)',
+		'ALTER TABLE project_quotations ADD COLUMN pan_number VARCHAR(50)',
+		'ALTER TABLE project_quotations ADD COLUMN tan_number VARCHAR(50)',
+		'ALTER TABLE project_quotations ADD COLUMN gst_type VARCHAR(20) DEFAULT "cgst_sgst"',
+		'ALTER TABLE project_quotations ADD COLUMN terms_and_conditions TEXT',
+		"ALTER TABLE project_quotations ADD COLUMN status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft'",
+		'ALTER TABLE project_quotations ADD COLUMN deleted_at TIMESTAMP NULL',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_scope_of_work TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_input_document TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_deliverables TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_software VARCHAR(255)',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_duration VARCHAR(255)',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_site_visit VARCHAR(255)',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_quotation_validity VARCHAR(255)',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_mode_of_delivery VARCHAR(255)',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_revision VARCHAR(255)',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_exclusions TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_billing_payment_terms TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_taxation TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_payment_milestone TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_confidentiality TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_codes_standards TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN annexure_dispute_resolution TEXT',
+		'ALTER TABLE project_quotations ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn(
+					'Project quotations schema update warning:',
+					e.message || e
+				);
+			}
+		}
 	}
 }
 

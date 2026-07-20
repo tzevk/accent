@@ -44,8 +44,7 @@ export async function GET(request) {
 			// Fetch from project_quotations first
 			const [rows] = await connection.execute(
 				`
-        SELECT * FROM project_quotations WHERE id = ?
-      `,
+        SELECT * FROM project_quotations WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
 				[id]
 			);
 
@@ -281,7 +280,7 @@ export async function GET(request) {
 		} else {
 			// Fetch from quotations table
 			const [rows] = await connection.execute(
-				'SELECT * FROM quotations WHERE id = ?',
+				'SELECT * FROM quotations WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 				[id]
 			);
 
