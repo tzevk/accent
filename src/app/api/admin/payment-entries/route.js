@@ -131,8 +131,8 @@ export async function POST(request) {
 
 		await db.execute(
 			`INSERT INTO payment_entries (
-        id, company_name, city, receipt_no, receipt_date, amount, payment_date, transaction_id, bank_name, remark, invoice_no, invoice_date, payment_type, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, company_name, city, receipt_no, receipt_date, amount, payment_date, transaction_id, bank_name, remark, invoice_no, invoice_date, payment_type, tds_amount, gst_amount, net_amount, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				id,
 				data.company_name || '',
@@ -147,6 +147,9 @@ export async function POST(request) {
 				data.invoice_no || '',
 				data.invoice_date || null,
 				data.payment_type || null,
+				data.tds_amount || 0,
+				data.gst_amount || 0,
+				data.net_amount || 0,
 				user.id || null,
 			]
 		);
@@ -206,7 +209,7 @@ export async function PUT(request) {
 
 		const [result] = await db.execute(
 			`UPDATE payment_entries SET
-        company_name = ?, city = ?, receipt_no = ?, receipt_date = ?, amount = ?, payment_date = ?, transaction_id = ?, bank_name = ?, remark = ?, invoice_no = ?, invoice_date = ?, payment_type = ?
+        company_name = ?, city = ?, receipt_no = ?, receipt_date = ?, amount = ?, payment_date = ?, transaction_id = ?, bank_name = ?, remark = ?, invoice_no = ?, invoice_date = ?, payment_type = ?, tds_amount = ?, gst_amount = ?, net_amount = ?
        WHERE id = ?`,
 			[
 				data.company_name || '',
@@ -221,6 +224,9 @@ export async function PUT(request) {
 				data.invoice_no || '',
 				data.invoice_date || null,
 				data.payment_type || null,
+				data.tds_amount || 0,
+				data.gst_amount || 0,
+				data.net_amount || 0,
 				data.id,
 			]
 		);

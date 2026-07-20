@@ -17,7 +17,10 @@ const schema = z.object({
 	transaction_id: z.string().optional(),
 	invoice_no: z.string().optional(),
 	invoice_date: z.string().nullable().optional(),
-	payment_type: z.enum(['full', 'partial']).optional(),
+	payment_type: z.enum(['full', 'partial']).or(z.literal('')).optional(),
+	tds_amount: z.coerce.number().min(0).optional(),
+	gst_amount: z.coerce.number().min(0).optional(),
+	net_amount: z.coerce.number().min(0).optional(),
 });
 
 const defaultValues = {
@@ -31,6 +34,9 @@ const defaultValues = {
 	invoice_no: '',
 	invoice_date: '',
 	payment_type: '',
+	tds_amount: '',
+	gst_amount: '',
+	net_amount: '',
 };
 
 const invoiceLabelFn = (item: Record<string, unknown>) => {
@@ -63,6 +69,31 @@ const formFields = [
 		type: 'number' as const,
 		step: '0.01',
 		required: true,
+	},
+	{
+		name: 'tds_amount',
+		label: 'TDS',
+		type: 'number' as const,
+		step: '0.01',
+	},
+	{
+		name: 'gst_amount',
+		label: 'GST',
+		type: 'number' as const,
+		step: '0.01',
+	},
+	{
+		name: 'net_amount',
+		label: 'Net Amount',
+		type: 'number' as const,
+		step: '0.01',
+		computed: {
+			dependsOn: ['amount', 'gst_amount', 'tds_amount'],
+			calculate: (values: Record<string, unknown>) =>
+				(Number(values.amount) || 0) +
+				(Number(values.gst_amount) || 0) -
+				(Number(values.tds_amount) || 0),
+		},
 	},
 	{ name: 'payment_date', label: 'Payment Date', type: 'date' as const },
 	{ name: 'transaction_id', label: 'Transaction ID' },
