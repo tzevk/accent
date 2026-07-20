@@ -27,6 +27,56 @@ export async function ensureSchema() {
 	return initPromise;
 }
 
+async function ensureSoftDeleteColumns(db) {
+	const columns = [
+		{ table: 'quotations', def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0' },
+		{
+			table: 'project_quotations',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+	];
+
+	for (const { table, def } of columns) {
+		try {
+			await db.execute(`ALTER TABLE ${table} ADD COLUMN ${def}`);
+		} catch (e) {
+			if (e.errno === 1060 || e.message?.includes('Duplicate column name')) {
+				/* already exists — ok */
+			} else {
+				console.warn(
+					`ensureSoftDeleteColumns: could not add ${def} to ${table}:`,
+					e.message || e
+				);
+			}
+		}
+		try {
+			await db.execute(
+				`ALTER TABLE ${table} ADD INDEX idx_isDelete (isDelete)`
+			);
+		} catch (e) {
+			/* index may already exist */
+		}
+	}
+
+	try {
+		await db.execute('ALTER TABLE quotations DROP INDEX quotation_number');
+	} catch (e) {
+		/* may not exist as that name */
+	}
+	try {
+		await db.execute(
+			'ALTER TABLE quotations ADD UNIQUE KEY unique_active_quotation (quotation_number, isDelete)'
+		);
+	} catch (e) {
+		if (!e.message?.includes('Duplicate key name')) {
+			console.warn(
+				'ensureSoftDeleteColumns: unique key warning:',
+				e.message || e
+			);
+		}
+	}
+}
+
 async function doSchemaInit() {
 	const startTime = Date.now();
 	console.log('🔧 Initializing database schema...');
@@ -34,6 +84,11 @@ async function doSchemaInit() {
 	const db = await dbConnect();
 
 	try {
+		// Pre-init critical columns that routes now depend on.
+		// Must run BEFORE the parallel Promise.all blocks to avoid
+		// race conditions where routes query isDelete before the ALTER completes.
+		await ensureSoftDeleteColumns(db);
+
 		// Run all schema creation in parallel where safe
 		await Promise.all([
 			initCompaniesTable(db),
