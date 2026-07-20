@@ -74,6 +74,7 @@ const formFields = [
 		searchableValueKey: 'invoice_number',
 		searchableLabelFn: invoiceLabelFn,
 		searchableFillFields: { invoice_date: 'invoice_date' },
+		searchableDependency: { field: 'company_name', itemKey: 'client_name' },
 	},
 	{ name: 'invoice_date', label: 'Invoice Date', type: 'date' as const },
 	{
