@@ -437,6 +437,7 @@ async function initOutgoingPurchaseOrdersTable(db) {
 		'ALTER TABLE outgoing_purchase_orders ADD COLUMN tax_amount DECIMAL(15, 2) DEFAULT 0',
 		'ALTER TABLE outgoing_purchase_orders ADD COLUMN net_amount DECIMAL(15, 2) DEFAULT 0',
 		'ALTER TABLE outgoing_purchase_orders ADD COLUMN description VARCHAR(500)',
+		"ALTER TABLE outgoing_purchase_orders ADD COLUMN status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'pending'",
 		"ALTER TABLE outgoing_purchase_orders MODIFY COLUMN status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'pending'",
 	];
 
@@ -491,6 +492,9 @@ async function initPaymentEntriesTable(db) {
       invoice_no VARCHAR(100),
       invoice_date DATE,
       payment_type ENUM('full', 'partial') DEFAULT NULL,
+      tds_amount DECIMAL(15, 2) DEFAULT 0,
+      gst_amount DECIMAL(15, 2) DEFAULT 0,
+      net_amount DECIMAL(15, 2) DEFAULT 0,
       created_by INT,
       isDelete TINYINT(1) NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -500,19 +504,21 @@ async function initPaymentEntriesTable(db) {
   `);
 
 	const alterStatements = [
-		'ALTER TABLE payment_entries CHANGE client_name company_name VARCHAR(255) NOT NULL',
 		'ALTER TABLE payment_entries ADD COLUMN city VARCHAR(255)',
 		'ALTER TABLE payment_entries ADD COLUMN receipt_no VARCHAR(100)',
 		'ALTER TABLE payment_entries ADD COLUMN receipt_date DATE',
 		'ALTER TABLE payment_entries ADD COLUMN payment_date DATE',
 		'ALTER TABLE payment_entries ADD COLUMN bank_name VARCHAR(255)',
-		'ALTER TABLE payment_entries CHANGE remarks remark TEXT',
+		'ALTER TABLE payment_entries ADD COLUMN remark TEXT',
 		'ALTER TABLE payment_entries ADD COLUMN invoice_no VARCHAR(100)',
 		'ALTER TABLE payment_entries ADD COLUMN invoice_date DATE',
 		'ALTER TABLE payment_entries ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
 		'ALTER TABLE payment_entries ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
 		'ALTER TABLE payment_entries ADD COLUMN created_by INT',
 		"ALTER TABLE payment_entries ADD COLUMN payment_type ENUM('full', 'partial') DEFAULT NULL",
+		'ALTER TABLE payment_entries ADD COLUMN tds_amount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE payment_entries ADD COLUMN gst_amount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE payment_entries ADD COLUMN net_amount DECIMAL(15, 2) DEFAULT 0',
 	];
 
 	for (const stmt of alterStatements) {
