@@ -778,7 +778,7 @@ function ResourceFormModal({
 		<Modal
 			open
 			onClose={onClose}
-			dismissible={mode !== 'create'}
+			dismissible={false}
 			title={`${isView ? 'View' : isEdit ? 'Edit' : 'New'} ${title}`}
 			size="lg"
 			footer={
