@@ -17,8 +17,6 @@ import {
 	FunnelIcon,
 	ArrowPathIcon,
 	ArrowDownTrayIcon,
-	ChevronLeftIcon,
-	ChevronRightIcon,
 	FolderIcon,
 	PencilSquareIcon,
 	PlusIcon,
@@ -32,12 +30,6 @@ export default function QuotationPage() {
 
 	const [quotations, setQuotations] = useState([]);
 	const [loading, setLoading] = useState(true);
-	const [pagination, setPagination] = useState({
-		page: 1,
-		limit: 20,
-		total: 0,
-		totalPages: 0,
-	});
 	const [projects, setProjects] = useState([]);
 	const [projectsLoading, setProjectsLoading] = useState(false);
 	const [selectedQuotation, setSelectedQuotation] = useState(null);
@@ -63,47 +55,38 @@ export default function QuotationPage() {
 	});
 
 	// Fetch quotations
-	const fetchQuotations = useCallback(
-		async (page = 1) => {
-			setLoading(true);
-			try {
-				const params = new URLSearchParams({
-					page: page.toString(),
-					limit: pagination.limit.toString(),
-				});
+	const fetchQuotations = useCallback(async () => {
+		setLoading(true);
+		try {
+			const params = new URLSearchParams({ limit: '0' });
 
-				if (statusFilter !== 'all') params.append('status', statusFilter);
-				if (sourceFilter !== 'all') params.append('source', sourceFilter);
+			if (statusFilter !== 'all') params.append('status', statusFilter);
+			if (sourceFilter !== 'all') params.append('source', sourceFilter);
 
-				const res = await fetch(`/api/admin/quotations?${params}`);
-				const data = await res.json();
+			const res = await fetch(`/api/admin/quotations?${params}`);
+			const data = await res.json();
 
-				if (data.success) {
-					setQuotations(data.data || []);
-					setPagination(
-						data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 }
-					);
-					setStats(
-						data.stats || {
-							total: 0,
-							draft: 0,
-							sent: 0,
-							approved: 0,
-							rejected: 0,
-						}
-					);
-				} else {
-					setQuotations([]);
-				}
-			} catch (error) {
-				console.error('Error fetching quotations:', error);
+			if (data.success) {
+				setQuotations(data.data || []);
+				setStats(
+					data.stats || {
+						total: 0,
+						draft: 0,
+						sent: 0,
+						approved: 0,
+						rejected: 0,
+					}
+				);
+			} else {
 				setQuotations([]);
-			} finally {
-				setLoading(false);
 			}
-		},
-		[statusFilter, sourceFilter, pagination.limit]
-	);
+		} catch (error) {
+			console.error('Error fetching quotations:', error);
+			setQuotations([]);
+		} finally {
+			setLoading(false);
+		}
+	}, [statusFilter, sourceFilter]);
 
 	const fetchProjects = useCallback(async () => {
 		setProjectsLoading(true);
@@ -124,7 +107,7 @@ export default function QuotationPage() {
 
 	useEffect(() => {
 		if (!authLoading && user) {
-			fetchQuotations(1);
+			fetchQuotations();
 		}
 	}, [authLoading, user, statusFilter, sourceFilter, fetchQuotations]);
 
@@ -271,7 +254,7 @@ export default function QuotationPage() {
 			);
 			setTimeout(() => {
 				closeProjectAttachmentModal();
-				fetchQuotations(pagination.page);
+				fetchQuotations();
 			}, 700);
 		} catch (error) {
 			console.error('Error updating quotation project:', error);
@@ -321,7 +304,7 @@ export default function QuotationPage() {
 			setAttachmentSuccess('Project detached successfully.');
 			setTimeout(() => {
 				closeProjectAttachmentModal();
-				fetchQuotations(pagination.page);
+				fetchQuotations();
 			}, 700);
 		} catch (error) {
 			console.error('Error detaching quotation project:', error);
@@ -351,7 +334,7 @@ export default function QuotationPage() {
 	const handleDelete = async (quotation) => {
 		if (
 			!confirm(
-				`Are you sure you want to delete quotation ${quotation.quotation_number}? This action cannot be undone.`
+				`Are you sure you want to delete quotation ${quotation.quotation_number}? It will be hidden from the list until restored.`
 			)
 		) {
 			return;
@@ -367,7 +350,7 @@ export default function QuotationPage() {
 			);
 			const data = await res.json();
 			if (data.success) {
-				fetchQuotations(pagination.page);
+				fetchQuotations();
 			} else {
 				alert(data.error || 'Failed to delete quotation');
 			}
@@ -505,7 +488,7 @@ export default function QuotationPage() {
 
 							{/* Refresh */}
 							<button
-								onClick={() => fetchQuotations(pagination.page)}
+								onClick={() => fetchQuotations()}
 								className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
 								title="Refresh"
 							>
@@ -686,39 +669,6 @@ export default function QuotationPage() {
 										))}
 									</tbody>
 								</table>
-							</div>
-						)}
-
-						{/* Pagination */}
-						{pagination.totalPages > 1 && (
-							<div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-								<span className="text-sm text-gray-600">
-									Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-									{Math.min(
-										pagination.page * pagination.limit,
-										pagination.total
-									)}{' '}
-									of {pagination.total}
-								</span>
-								<div className="flex items-center gap-2">
-									<button
-										onClick={() => fetchQuotations(pagination.page - 1)}
-										disabled={pagination.page === 1}
-										className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-									>
-										<ChevronLeftIcon className="h-4 w-4" />
-									</button>
-									<span className="px-3 py-1 text-sm">
-										{pagination.page} / {pagination.totalPages}
-									</span>
-									<button
-										onClick={() => fetchQuotations(pagination.page + 1)}
-										disabled={pagination.page === pagination.totalPages}
-										className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-									>
-										<ChevronRightIcon className="h-4 w-4" />
-									</button>
-								</div>
 							</div>
 						)}
 					</div>

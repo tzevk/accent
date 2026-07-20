@@ -41,6 +41,7 @@ export async function GET(request) {
 		const [rows] = await db.execute(
 			`SELECT quotation_number FROM quotations
 			 WHERE quotation_number LIKE ?
+			 AND (isDelete = 0 OR isDelete IS NULL)
 			 ORDER BY id DESC LIMIT 1`,
 			[pattern]
 		);

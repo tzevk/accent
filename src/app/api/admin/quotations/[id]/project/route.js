@@ -6,36 +6,6 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 
-async function ensureProjectColumns(connection) {
-	await connection.execute(`
-    CREATE TABLE IF NOT EXISTS quotations (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      quotation_number VARCHAR(50) UNIQUE NOT NULL,
-      client_name VARCHAR(255) NOT NULL,
-      project_id INT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_project_id (project_id)
-    )
-  `);
-
-	try {
-		await connection.execute(
-			`ALTER TABLE quotations ADD COLUMN project_id INT NULL`
-		);
-	} catch {
-		// Column might already exist, ignore
-	}
-
-	try {
-		await connection.execute(
-			`ALTER TABLE quotations ADD INDEX idx_project_id (project_id)`
-		);
-	} catch {
-		// Index might already exist, ignore
-	}
-}
-
 export async function PUT(request, { params }) {
 	const authResult = await ensurePermission(
 		request,
@@ -64,7 +34,6 @@ export async function PUT(request, { params }) {
 		}
 
 		connection = await dbConnect();
-		await ensureProjectColumns(connection);
 
 		let projectId = null;
 
