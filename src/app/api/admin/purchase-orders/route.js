@@ -30,36 +30,6 @@ export async function GET(request) {
 
 		connection = await dbConnect();
 
-		// Check if table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS purchase_orders (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        po_number VARCHAR(50) UNIQUE NOT NULL,
-        vendor_name VARCHAR(255) NOT NULL,
-        vendor_email VARCHAR(255),
-        vendor_phone VARCHAR(50),
-        vendor_address TEXT,
-        description VARCHAR(500),
-        items JSON,
-        subtotal DECIMAL(15, 2) DEFAULT 0,
-        tax_rate DECIMAL(5, 2) DEFAULT 18,
-        tax_amount DECIMAL(15, 2) DEFAULT 0,
-        discount DECIMAL(15, 2) DEFAULT 0,
-        total DECIMAL(15, 2) DEFAULT 0,
-        notes TEXT,
-        terms TEXT,
-        delivery_date DATE,
-        status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'draft',
-        isDelete TINYINT(1) DEFAULT 0,
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_status (status),
-        INDEX idx_isDelete (isDelete),
-        INDEX idx_created_at (created_at)
-      )
-    `);
-
 		// Build query
 		let query =
 			'SELECT * FROM purchase_orders WHERE (isDelete = 0 OR isDelete IS NULL)';
@@ -216,81 +186,6 @@ export async function POST(request) {
 		const finalSubtotal = subtotal ?? po_amount ?? 0;
 
 		connection = await dbConnect();
-
-		// Ensure table exists with project_id column
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS purchase_orders (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        po_number VARCHAR(50) UNIQUE NOT NULL,
-        vendor_name VARCHAR(255) NOT NULL,
-        vendor_email VARCHAR(255),
-        vendor_phone VARCHAR(50),
-        vendor_address TEXT,
-        description VARCHAR(500),
-        items JSON,
-        subtotal DECIMAL(15, 2) DEFAULT 0,
-        tax_rate DECIMAL(5, 2) DEFAULT 18,
-        tax_amount DECIMAL(15, 2) DEFAULT 0,
-        discount DECIMAL(15, 2) DEFAULT 0,
-        total DECIMAL(15, 2) DEFAULT 0,
-        notes TEXT,
-        terms TEXT,
-        delivery_date DATE,
-        status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'draft',
-        company_id INT,
-        project_id INT,
-        po_date DATE,
-        po_amount DECIMAL(15, 2) DEFAULT 0,
-        net_amount DECIMAL(15, 2) DEFAULT 0,
-        remarks TEXT,
-        isDelete TINYINT(1) DEFAULT 0,
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_status (status),
-        INDEX idx_isDelete (isDelete),
-        INDEX idx_created_at (created_at),
-        INDEX idx_project_id (project_id)
-      )
-    `);
-
-		// Add columns if they don't exist (for existing tables)
-		const alterColumns = [
-			'project_id INT',
-			'company_id INT',
-			'po_date DATE',
-			'po_amount DECIMAL(15, 2) DEFAULT 0',
-			'net_amount DECIMAL(15, 2) DEFAULT 0',
-			'remarks TEXT',
-			'isDelete TINYINT(1) DEFAULT 0',
-		];
-		for (const col of alterColumns) {
-			try {
-				await connection.execute(
-					`ALTER TABLE purchase_orders ADD COLUMN ${col}`
-				);
-			} catch (e) {
-				// Column likely already exists, ignore
-			}
-		}
-
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders ADD INDEX idx_project_id (project_id)`
-			);
-		} catch (e) {
-			// Index likely already exists, ignore
-		}
-
-		// Drop the unused legacy client_name column (required NOT NULL with no default
-		// is blocking inserts). Ignored if it doesn't exist.
-		try {
-			await connection.execute(
-				`ALTER TABLE purchase_orders DROP COLUMN client_name`
-			);
-		} catch (e) {
-			// Column likely doesn't exist, ignore
-		}
 
 		// Use provided PO number or generate a new one
 		let poNumber = providedPoNumber;
@@ -489,23 +384,6 @@ export async function PUT(request) {
 		}
 
 		connection = await dbConnect();
-
-		// Add new columns if they don't exist
-		const newColumns = [
-			'vendor_gstin',
-			'quotation_no',
-			'quotation_date',
-			'kind_attn',
-		];
-		for (const col of newColumns) {
-			try {
-				await connection.execute(
-					`ALTER TABLE purchase_orders ADD COLUMN ${col} VARCHAR(255)`
-				);
-			} catch (e) {
-				// Column likely already exists, ignore
-			}
-		}
 
 		// Check if PO exists
 		const [existingPO] = await connection.execute(

@@ -797,16 +797,94 @@ async function initPurchaseOrdersTable(db) {
 	await db.execute(`
     CREATE TABLE IF NOT EXISTS purchase_orders (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      po_number VARCHAR(100) NOT NULL,
-      client_name VARCHAR(255) NOT NULL,
-      original_value DECIMAL(15, 2) NOT NULL DEFAULT 0,
-      remaining_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
-      po_date DATE NULL,
+      po_number VARCHAR(50) NOT NULL,
+      vendor_name VARCHAR(255) NOT NULL,
+      vendor_email VARCHAR(255),
+      vendor_phone VARCHAR(50),
+      vendor_address TEXT,
+      vendor_gstin VARCHAR(255),
+      description VARCHAR(500),
+      items JSON,
+      subtotal DECIMAL(15, 2) DEFAULT 0,
+      tax_rate DECIMAL(5, 2) DEFAULT 18,
+      tax_amount DECIMAL(15, 2) DEFAULT 0,
+      discount DECIMAL(15, 2) DEFAULT 0,
+      total DECIMAL(15, 2) DEFAULT 0,
+      notes TEXT,
+      terms TEXT,
+      delivery_date DATE,
+      status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'draft',
+      company_id INT,
+      project_id INT,
+      po_date DATE,
+      po_amount DECIMAL(15, 2) DEFAULT 0,
+      net_amount DECIMAL(15, 2) DEFAULT 0,
+      remarks TEXT,
+      quotation_no VARCHAR(255),
+      quotation_date VARCHAR(255),
+      kind_attn VARCHAR(255),
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      created_by INT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY unique_po (po_number(100), client_name(255))
+      INDEX idx_status (status),
+      INDEX idx_isDelete (isDelete),
+      INDEX idx_created_at (created_at),
+      INDEX idx_project_id (project_id)
     )
   `);
+
+	const alterStatements = [
+		'ALTER TABLE purchase_orders ADD COLUMN vendor_gstin VARCHAR(255)',
+		'ALTER TABLE purchase_orders ADD COLUMN quotation_no VARCHAR(255)',
+		'ALTER TABLE purchase_orders ADD COLUMN quotation_date VARCHAR(255)',
+		'ALTER TABLE purchase_orders ADD COLUMN kind_attn VARCHAR(255)',
+		'ALTER TABLE purchase_orders ADD COLUMN company_id INT',
+		'ALTER TABLE purchase_orders ADD COLUMN project_id INT',
+		'ALTER TABLE purchase_orders ADD COLUMN po_date DATE',
+		'ALTER TABLE purchase_orders ADD COLUMN po_amount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE purchase_orders ADD COLUMN net_amount DECIMAL(15, 2) DEFAULT 0',
+		'ALTER TABLE purchase_orders ADD COLUMN remarks TEXT',
+		'ALTER TABLE purchase_orders ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Purchase orders schema update warning:', e.message || e);
+			}
+		}
+	}
+
+	const indexMigrations = [
+		'ALTER TABLE purchase_orders ADD INDEX idx_project_id (project_id)',
+		'ALTER TABLE purchase_orders DROP INDEX po_number',
+		'ALTER TABLE purchase_orders ADD UNIQUE KEY unique_active_po (po_number, isDelete)',
+	];
+
+	for (const stmt of indexMigrations) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (
+				!e.message?.includes('check that it exists') &&
+				!e.message?.includes('Duplicate key name')
+			) {
+				console.warn(
+					'Purchase orders index migration warning:',
+					e.message || e
+				);
+			}
+		}
+	}
+
+	try {
+		await db.execute('ALTER TABLE purchase_orders DROP COLUMN client_name');
+	} catch (e) {
+		/* column may not exist */
+	}
 }
 
 async function initInvoicesTable(db) {
