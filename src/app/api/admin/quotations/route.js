@@ -139,8 +139,9 @@ export async function GET(request) {
 		// Get total count
 		const total = allQuotations.length;
 
-		// Paginate
-		const paginatedQuotations = allQuotations.slice(offset, offset + limit);
+		// Paginate — limit=0 returns all
+		const paginatedQuotations =
+			limit === 0 ? allQuotations : allQuotations.slice(offset, offset + limit);
 
 		// Calculate stats from combined data
 		const stats = {
