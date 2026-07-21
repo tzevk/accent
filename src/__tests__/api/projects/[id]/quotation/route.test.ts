@@ -18,15 +18,12 @@ function createRequest({
 	body = null,
 	url = 'http://localhost/api/projects/1/quotation',
 } = {}) {
-	const req = {
+	return {
 		url,
 		method,
 		headers: new Headers(),
+		...(body ? { json: vi.fn().mockResolvedValue(body) } : {}),
 	};
-	if (body) {
-		(req as any).json = vi.fn().mockResolvedValue(body);
-	}
-	return req;
 }
 
 const mockQuotation = {

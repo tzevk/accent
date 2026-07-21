@@ -38,15 +38,12 @@ function createRequest({
 	url = 'http://localhost/api/projects/1/followups',
 	searchParams = '',
 } = {}) {
-	const req = {
+	return {
 		url: url + (searchParams ? `?${searchParams}` : ''),
 		method,
 		headers: new Headers(),
+		...(body ? { json: vi.fn().mockResolvedValue(body) } : {}),
 	};
-	if (body) {
-		(req as any).json = vi.fn().mockResolvedValue(body);
-	}
-	return req;
 }
 
 const mockFollowup = {

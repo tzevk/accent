@@ -11,12 +11,8 @@ vi.mock('@/utils/database', () => ({
 	dbConnect: mockDbConnect,
 }));
 
-const {
-	GET,
-	POST,
-	PUT,
-	DELETE: DELETE_,
-} = await import('@/app/api/projects/[id]/invoice/route');
+const { GET, DELETE: DELETE_ } =
+	await import('@/app/api/projects/[id]/invoice/route');
 
 function createRequest({
 	method = 'GET',
@@ -24,15 +20,12 @@ function createRequest({
 	url = 'http://localhost/api/projects/1/invoice',
 	searchParams = '',
 } = {}) {
-	const req = {
+	return {
 		url: url + (searchParams ? `?${searchParams}` : ''),
 		method,
 		headers: new Headers(),
+		...(body ? { json: vi.fn().mockResolvedValue(body) } : {}),
 	};
-	if (body) {
-		(req as any).json = vi.fn().mockResolvedValue(body);
-	}
-	return req;
 }
 
 const mockInvoice = {
