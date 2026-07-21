@@ -20,7 +20,8 @@ export async function PUT(
 			RESOURCES.ADMIN,
 			PERMISSIONS.UPDATE
 		);
-		if (authResult.authorized === false) return authResult.response;
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { id } = await params;
 		const data = await request.json();
@@ -99,7 +100,8 @@ export async function DELETE(
 			RESOURCES.ADMIN,
 			PERMISSIONS.DELETE
 		);
-		if (authResult.authorized === false) return authResult.response;
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { id } = await params;
 

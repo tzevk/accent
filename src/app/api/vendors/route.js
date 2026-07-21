@@ -14,7 +14,8 @@ export async function GET(request) {
 		RESOURCES.VENDORS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 	let db;
 	try {
 		db = await dbConnect();
@@ -154,7 +155,8 @@ export async function POST(request) {
 		RESOURCES.VENDORS,
 		PERMISSIONS.CREATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {

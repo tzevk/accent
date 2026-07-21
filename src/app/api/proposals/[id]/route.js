@@ -132,7 +132,7 @@ export async function POST(request, { params }) {
 		const [existingProjectsForCode] = await pool.execute(
 			`SELECT project_code,
 				CAST(SUBSTRING_INDEX(project_code, '_', 1) AS UNSIGNED) as serial_num
-			FROM projects WHERE project_code LIKE '%\\_%\\_%'
+			FROM projects WHERE project_code LIKE '%\\_%\\_%' AND isDelete = 0
 			ORDER BY serial_num DESC
 			LIMIT 1`
 		);
@@ -159,18 +159,6 @@ export async function POST(request, { params }) {
 			);
 			const existing = new Set(cols.map((c) => c.COLUMN_NAME));
 
-			// Ensure project_code column exists before INSERT
-			if (!existing.has('project_code')) {
-				try {
-					await pool.execute(
-						`ALTER TABLE projects ADD COLUMN project_code VARCHAR(100)`
-					);
-					existing.add('project_code');
-					console.log('Added project_code column to projects table');
-				} catch (e) {
-					console.warn('Failed to add project_code column:', e?.message || e);
-				}
-			}
 			const colMaxLen = Object.fromEntries(
 				cols.map((c) => [c.COLUMN_NAME, c.CHARACTER_MAXIMUM_LENGTH])
 			);
@@ -420,25 +408,6 @@ export async function POST(request, { params }) {
 					projCols.map((c) => [c.COLUMN_NAME, c])
 				);
 
-				// Ensure `project_code` column exists (idempotent)
-				if (!colMap['project_code']) {
-					try {
-						await pool.execute(
-							`ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_code VARCHAR(100)`
-						);
-						// reload definition
-						const [reloaded] = await pool.execute(
-							`SELECT CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects' AND COLUMN_NAME = 'project_code'`,
-							[dbNameForCols]
-						);
-						colMap['project_code'] = reloaded[0] || {
-							CHARACTER_MAXIMUM_LENGTH: 100,
-						};
-					} catch (e) {
-						console.warn('Failed to add project_code column:', e?.message || e);
-					}
-				}
-
 				// Decide value to write: use the generated project_code variable
 				let codeVal = String(
 					project_code || result.insertId || `P-${result.insertId}`
@@ -457,7 +426,7 @@ export async function POST(request, { params }) {
 				// Update project_code column
 				try {
 					await pool.execute(
-						'UPDATE projects SET project_code = ? WHERE project_id = ?',
+						'UPDATE projects SET project_code = ? WHERE project_id = ? AND isDelete = 0',
 						[codeVal, result.insertId]
 					);
 				} catch (e) {
@@ -477,7 +446,7 @@ export async function POST(request, { params }) {
 							const pidMax = pidCol.CHARACTER_MAXIMUM_LENGTH || 100;
 							let pidToWrite = String(project_code).slice(0, pidMax);
 							await pool.execute(
-								'UPDATE projects SET project_id = ? WHERE project_id = ?',
+								'UPDATE projects SET project_id = ? WHERE project_id = ? AND isDelete = 0',
 								[pidToWrite, result.insertId]
 							);
 						} catch (e) {
@@ -499,25 +468,16 @@ export async function POST(request, { params }) {
 
 		const convertedBy = body.converted_by || 'manual';
 		const convertedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
-		// Ensure proposals.status can accept new values (best-effort migration from ENUM to VARCHAR)
-		try {
-			await pool.execute(
-				"ALTER TABLE proposals MODIFY COLUMN status VARCHAR(50) DEFAULT 'draft'"
-			);
-		} catch (e) {
-			// ignore if ALTER fails (older DBs might not allow modification)
-			console.warn('Failed to alter proposals.status column:', e?.message || e);
-		}
 
 		await pool.execute(
-			'UPDATE proposals SET status = ?, project_id = ?, converted_by = ?, converted_at = ? WHERE id = ?',
+			'UPDATE proposals SET status = ?, project_id = ?, converted_by = ?, converted_at = ? WHERE id = ? AND isDelete = 0',
 			['CONVERTED', result.insertId, convertedBy, convertedAt, id]
 		);
 
 		// Also set audit fields on the created project row (best-effort)
 		try {
 			await pool.execute(
-				'UPDATE projects SET converted_by = ?, converted_at = ? WHERE project_id = ?',
+				'UPDATE projects SET converted_by = ?, converted_at = ? WHERE project_id = ? AND isDelete = 0',
 				[convertedBy, convertedAt, result.insertId]
 			);
 		} catch (e) {
@@ -579,7 +539,7 @@ export async function POST(request, { params }) {
 
 				if (pkVal !== undefined) {
 					const [rows] = await pool.execute(
-						`SELECT * FROM projects WHERE ${pkCol} = ?`,
+						`SELECT * FROM projects WHERE ${pkCol} = ? AND isDelete = 0`,
 						[pkVal]
 					);
 					created = rows;
@@ -591,7 +551,7 @@ export async function POST(request, { params }) {
 				// try project_code
 				try {
 					const [pcRows] = await pool.execute(
-						'SELECT * FROM projects WHERE project_code = ? LIMIT 1',
+						'SELECT * FROM projects WHERE project_code = ? AND isDelete = 0 LIMIT 1',
 						[project_code || null]
 					);
 					if (pcRows && pcRows.length > 0) created = pcRows;
@@ -604,7 +564,7 @@ export async function POST(request, { params }) {
 				// try project_id column (string)
 				try {
 					const [pidRows] = await pool.execute(
-						'SELECT * FROM projects WHERE project_id = ? LIMIT 1',
+						'SELECT * FROM projects WHERE project_id = ? AND isDelete = 0 LIMIT 1',
 						[project_code || null]
 					);
 					if (pidRows && pidRows.length > 0) created = pidRows;
@@ -616,7 +576,7 @@ export async function POST(request, { params }) {
 			if (!created || created.length === 0) {
 				// last-resort: return the most recently created project
 				const [lastRows] = await pool.execute(
-					'SELECT * FROM projects ORDER BY created_at DESC LIMIT 1'
+					'SELECT * FROM projects WHERE isDelete = 0 ORDER BY created_at DESC LIMIT 1'
 				);
 				created = lastRows;
 			}
@@ -695,9 +655,6 @@ export async function POST(request, { params }) {
 	}
 }
 
-// Cache to track if schema migrations have been run this session
-let proposalsSchemaInitialized = false;
-
 export async function PUT(request, { params }) {
 	let pool;
 	try {
@@ -715,104 +672,6 @@ export async function PUT(request, { params }) {
 		// Get database connection
 		const { dbConnect } = await import('@/utils/database');
 		pool = await dbConnect();
-
-		// Only run ALTER statements once per server session, not on every save
-		if (!proposalsSchemaInitialized) {
-			const alterStatements = [
-				// Quotation related fields
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS quotation_number VARCHAR(100)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS quotation_date DATE',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS enquiry_number VARCHAR(100)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS enquiry_date DATE',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS quotation_validity VARCHAR(255)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS billing_payment_terms TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS other_terms TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS general_terms TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS additional_fields TEXT',
-
-				// Input documents & deliverables
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS input_document TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS documents_list JSON',
-
-				// Software & schedule fields
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS software VARCHAR(255)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS software_items JSON',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS duration VARCHAR(100)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS site_visit TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS mode_of_delivery VARCHAR(255)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS revision VARCHAR(255)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS exclusions TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_schedule TEXT',
-
-				// Meetings
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS in_house_meeting TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS kickoff_meeting_date DATE',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_meeting_date DATE',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS next_internal_meeting DATE',
-
-				// Disciplines & activities
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS disciplines JSON',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS activities JSON',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS discipline_descriptions JSON',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planning_activities_list JSON',
-
-				// Commercial items
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS commercial_items JSON',
-
-				// Hours tracking
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_hours_total DECIMAL(10,2)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS actual_hours_total DECIMAL(10,2)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_hours_by_discipline JSON',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS actual_hours_by_discipline JSON',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_hours_per_activity JSON',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS actual_hours_per_activity JSON',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS hours_variance_total DECIMAL(10,2)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS hours_variance_percentage DECIMAL(5,2)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS productivity_index DECIMAL(5,2)',
-
-				// Client & location
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS client_contact_details TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_location_country VARCHAR(100)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_location_city VARCHAR(100)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_location_site VARCHAR(255)',
-
-				// Financial
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS budget DECIMAL(15,2)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS cost_to_company DECIMAL(15,2)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS profitability_estimate DECIMAL(5,2)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS major_risks TEXT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS mitigation_plans TEXT',
-
-				// Schedule
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_start_date DATE',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_end_date DATE',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_duration_planned VARCHAR(100)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS target_date DATE',
-
-				// Status & progress
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS progress INT DEFAULT 0',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_id INT',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS enquiry_no VARCHAR(100)',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_type VARCHAR(50)',
-
-				// Pricing fields based on project type
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS lumpsum_cost DECIMAL(15,2) DEFAULT 0',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS total_lines INT DEFAULT 0',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS per_line_charges DECIMAL(15,2) DEFAULT 0',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS total_line_cost DECIMAL(15,2) DEFAULT 0',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS total_manhours DECIMAL(10,2) DEFAULT 0',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS manhour_charges DECIMAL(15,2) DEFAULT 0',
-				'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS total_manhour_cost DECIMAL(15,2) DEFAULT 0',
-			];
-
-			// Run all ALTER statements in parallel for faster execution
-			await Promise.allSettled(
-				alterStatements.map((stmt) => pool.execute(stmt).catch(() => {}))
-			);
-			proposalsSchemaInitialized = true;
-		}
 
 		// Build the UPDATE dynamically so we only try to set columns that actually exist
 		const dbName = process.env.DB_NAME || 'accent';

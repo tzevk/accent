@@ -39,7 +39,8 @@ export async function GET(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	const { searchParams } = new URL(request.url);
 	const period = searchParams.get('period') || 'Weekly';

@@ -86,7 +86,8 @@ export async function POST(request) {
 		RESOURCES.LEADS,
 		PERMISSIONS.CREATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {

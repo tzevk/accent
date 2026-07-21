@@ -87,9 +87,12 @@ describe('EmployeeReportCard', () => {
 					activity_name: 'Foundation Work',
 					sub_activity_name: 'Excavation',
 					assignment_id: '10-act-1-1',
-					planned_hours: 12,
-					hours: 4,
-					qty_done: 2,
+					default_manhours: 12,
+					planned_hours: 4,
+					qty_completed: 2,
+					hours: 0,
+					qty_done: 0,
+					project_name: '',
 				},
 			],
 		});
@@ -97,7 +100,6 @@ describe('EmployeeReportCard', () => {
 
 		expect(screen.getByText('P-010')).toBeInTheDocument();
 		expect(screen.getByText('Excavation')).toBeInTheDocument();
-		// Values appear in both summary stats and table cells
 		expect(screen.getAllByText('12').length).toBeGreaterThanOrEqual(1);
 		expect(screen.getAllByText('4').length).toBeGreaterThanOrEqual(1);
 		expect(screen.getAllByText('2').length).toBeGreaterThanOrEqual(1);
@@ -135,9 +137,12 @@ describe('EmployeeReportCard', () => {
 					activity_name: 'Work A',
 					sub_activity_name: '',
 					assignment_id: '10-act-1-1',
-					planned_hours: 10,
-					hours: 4,
-					qty_done: 2,
+					default_manhours: 10,
+					planned_hours: 4,
+					qty_completed: 2,
+					hours: 0,
+					qty_done: 0,
+					project_name: '',
 				},
 				{
 					date: '2026-03-02',
@@ -146,9 +151,12 @@ describe('EmployeeReportCard', () => {
 					activity_name: 'Work A',
 					sub_activity_name: '',
 					assignment_id: '10-act-1-1',
-					planned_hours: 10,
-					hours: 6,
-					qty_done: 3,
+					default_manhours: 10,
+					planned_hours: 6,
+					qty_completed: 3,
+					hours: 0,
+					qty_done: 0,
+					project_name: '',
 				},
 			],
 		});
@@ -171,9 +179,12 @@ describe('EmployeeReportCard', () => {
 					activity_name: 'Work A',
 					sub_activity_name: '',
 					assignment_id: '10-act-1-1',
-					planned_hours: 10,
-					hours: 4,
-					qty_done: 2,
+					default_manhours: 10,
+					planned_hours: 4,
+					qty_completed: 2,
+					hours: 0,
+					qty_done: 0,
+					project_name: '',
 				},
 				{
 					date: '2026-03-01',
@@ -182,9 +193,12 @@ describe('EmployeeReportCard', () => {
 					activity_name: 'Work B',
 					sub_activity_name: '',
 					assignment_id: '20-act-2-1',
-					planned_hours: 8,
-					hours: 3,
-					qty_done: 1,
+					default_manhours: 8,
+					planned_hours: 3,
+					qty_completed: 1,
+					hours: 0,
+					qty_done: 0,
+					project_name: '',
 				},
 				{
 					date: '2026-03-02',
@@ -193,9 +207,12 @@ describe('EmployeeReportCard', () => {
 					activity_name: 'Work B',
 					sub_activity_name: '',
 					assignment_id: '20-act-2-1',
-					planned_hours: 8,
-					hours: 5,
-					qty_done: 2,
+					default_manhours: 8,
+					planned_hours: 5,
+					qty_completed: 2,
+					hours: 0,
+					qty_done: 0,
+					project_name: '',
 				},
 			],
 		});

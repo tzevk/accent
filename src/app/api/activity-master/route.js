@@ -16,7 +16,8 @@ export async function GET(request) {
 		RESOURCES.SETTINGS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {
@@ -133,7 +134,8 @@ export async function POST(request) {
 		RESOURCES.SETTINGS,
 		PERMISSIONS.UPDATE
 	);
-	if (authResultPost.authorized === false) return authResultPost.response;
+	if (authResultPost instanceof Response) return authResultPost;
+	if (!authResultPost.authorized) return authResultPost.response;
 
 	let db;
 	try {

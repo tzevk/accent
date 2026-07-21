@@ -14,7 +14,8 @@ export async function GET(request: Request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection: any;
 	try {
@@ -77,7 +78,8 @@ export async function POST(request: Request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.CREATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection: any;
 	try {
@@ -193,7 +195,8 @@ export async function DELETE(request: Request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.DELETE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection: any;
 	try {

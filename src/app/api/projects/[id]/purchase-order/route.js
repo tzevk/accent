@@ -8,46 +8,12 @@ export async function GET(request, { params }) {
 		const { id } = await params;
 		connection = await dbConnect();
 
-		// Check if project_purchase_orders table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS project_purchase_orders (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        project_id INT NOT NULL,
-        po_number VARCHAR(100),
-        po_date DATE,
-        client_name VARCHAR(255),
-        vendor_name VARCHAR(255),
-        delivery_date DATE,
-        scope_of_work TEXT,
-        gross_amount DECIMAL(15, 2) DEFAULT 0,
-        gst_percentage DECIMAL(5, 2) DEFAULT 18,
-        gst_amount DECIMAL(15, 2) DEFAULT 0,
-        net_amount DECIMAL(15, 2) DEFAULT 0,
-        payment_terms TEXT,
-        remarks TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_project_id (project_id),
-        UNIQUE KEY unique_project (project_id)
-      )
-    `);
-
-		// Ensure payment_terms column is TEXT type (no character limit)
-		try {
-			await connection.execute(
-				`ALTER TABLE project_purchase_orders MODIFY COLUMN payment_terms TEXT`
-			);
-		} catch (e) {
-			/* ignore if already TEXT */
-		}
-
 		// Fetch purchase order for this project
 		const [rows] = await connection.execute(
 			'SELECT * FROM project_purchase_orders WHERE project_id = ?',
 			[id]
 		);
 
-		// Generate next PO number if no purchase order exists
 		let nextPONumber = '';
 		if (rows.length === 0) {
 			const [countResult] = await connection.execute(
@@ -97,40 +63,6 @@ export async function POST(request, { params }) {
 
 		connection = await dbConnect();
 
-		// Check if project_purchase_orders table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS project_purchase_orders (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        project_id INT NOT NULL,
-        po_number VARCHAR(100),
-        po_date DATE,
-        client_name VARCHAR(255),
-        vendor_name VARCHAR(255),
-        delivery_date DATE,
-        scope_of_work TEXT,
-        gross_amount DECIMAL(15, 2) DEFAULT 0,
-        gst_percentage DECIMAL(5, 2) DEFAULT 18,
-        gst_amount DECIMAL(15, 2) DEFAULT 0,
-        net_amount DECIMAL(15, 2) DEFAULT 0,
-        payment_terms TEXT,
-        remarks TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_project_id (project_id),
-        UNIQUE KEY unique_project (project_id)
-      )
-    `);
-
-		// Ensure payment_terms column is TEXT type (no character limit)
-		try {
-			await connection.execute(
-				`ALTER TABLE project_purchase_orders MODIFY COLUMN payment_terms TEXT`
-			);
-		} catch (e) {
-			/* ignore if already TEXT */
-		}
-
-		// Check if purchase order already exists for this project
 		const [existing] = await connection.execute(
 			'SELECT id FROM project_purchase_orders WHERE project_id = ?',
 			[id]

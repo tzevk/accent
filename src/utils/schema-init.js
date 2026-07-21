@@ -34,6 +34,18 @@ async function ensureSoftDeleteColumns(db) {
 			table: 'project_quotations',
 			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
 		},
+		{
+			table: 'proposal_followups',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'project_followups',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'project_invoices',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
 	];
 
 	for (const { table, def } of columns) {
@@ -123,6 +135,15 @@ async function doSchemaInit() {
 			initQuotationsTable(db),
 			initProjectQuotationsTable(db),
 			initInvoicesTable(db),
+		]);
+
+		// Proposal/project sub-tables
+		await Promise.all([
+			initProposalFollowupsTable(db),
+			initProjectFollowupsTable(db),
+			initProjectInvoicesTable(db),
+			initProjectPurchaseOrdersTable(db),
+			initProjectMomDocumentsTable(db),
 		]);
 
 		schemaInitialized = true;
@@ -261,27 +282,76 @@ async function initProjectsTable(db) {
       description TEXT,
       company_id INT,
       client_name VARCHAR(255),
+      client_contact_details TEXT,
+      project_location_country VARCHAR(100),
+      project_location_city VARCHAR(100),
+      project_location_site VARCHAR(255),
+      industry VARCHAR(100),
+      contract_type VARCHAR(100),
       project_manager VARCHAR(255),
       start_date DATE,
       end_date DATE,
       target_date DATE,
+      project_duration_planned VARCHAR(100),
+      project_duration_actual VARCHAR(100),
       budget DECIMAL(15,2),
+      project_value DECIMAL(15,2),
+      currency VARCHAR(10),
+      payment_terms TEXT,
+      invoicing_status VARCHAR(50),
+      cost_to_company DECIMAL(15,2),
+      profitability_estimate DECIMAL(5,2),
+      subcontractors_vendors TEXT,
+      procurement_status VARCHAR(100),
+      material_delivery_schedule TEXT,
+      vendor_management TEXT,
+      mobilization_date DATE,
+      site_readiness TEXT,
+      construction_progress TEXT,
+      major_risks TEXT,
+      mitigation_plans TEXT,
+      change_orders TEXT,
+      claims_disputes TEXT,
+      final_documentation_status VARCHAR(100),
+      lessons_learned TEXT,
+      client_feedback TEXT,
+      actual_profit_loss DECIMAL(15,2),
       status VARCHAR(50) DEFAULT 'NEW',
       priority VARCHAR(50) DEFAULT 'MEDIUM',
       progress INT DEFAULT 0,
       type VARCHAR(50) DEFAULT 'ONGOING',
       proposal_id INT,
       assigned_to VARCHAR(255),
+      additional_scope TEXT,
       assignments JSON,
       project_schedule TEXT,
       input_document LONGTEXT,
       list_of_deliverables TEXT,
       kickoff_meeting TEXT,
       in_house_meeting TEXT,
+      project_start_milestone DATE,
+      project_review_milestone DATE,
+      project_end_milestone DATE,
+      kickoff_meeting_date DATE,
+      kickoff_followup_date DATE,
+      internal_meeting_date DATE,
+      next_internal_meeting DATE,
       project_assumption_list LONGTEXT,
       project_lessons_learnt_list LONGTEXT,
       software_items LONGTEXT,
       project_team TEXT,
+      estimated_manhours DECIMAL(10,2),
+      unit_qty DECIMAL(10,2),
+      scope_of_work TEXT,
+      deliverables TEXT,
+      software_included VARCHAR(255),
+      duration TEXT,
+      mode_of_delivery TEXT,
+      site_visit TEXT,
+      quotation_validity TEXT,
+      exclusion TEXT,
+      billing_and_payment_terms TEXT,
+      other_terms_and_conditions TEXT,
       project_activities_list LONGTEXT,
       planning_activities_list LONGTEXT,
       documents_list LONGTEXT,
@@ -295,11 +365,9 @@ async function initProjectsTable(db) {
       project_query_log_list LONGTEXT,
       project_schedule_list LONGTEXT,
       revision TEXT,
-      site_visit TEXT,
-      quotation_validity TEXT,
-      duration TEXT,
-      mode_of_delivery TEXT,
       notes TEXT,
+      converted_by VARCHAR(255),
+      converted_at DATETIME,
       isDelete TINYINT(1) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -309,6 +377,67 @@ async function initProjectsTable(db) {
 
 	const alterStatements = [
 		'ALTER TABLE projects ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+		'ALTER TABLE projects ADD COLUMN project_code VARCHAR(100)',
+		'ALTER TABLE projects ADD COLUMN project_title VARCHAR(255)',
+		'ALTER TABLE projects ADD COLUMN client_name VARCHAR(255)',
+		'ALTER TABLE projects ADD COLUMN client_contact_details TEXT',
+		'ALTER TABLE projects ADD COLUMN project_location_country VARCHAR(100)',
+		'ALTER TABLE projects ADD COLUMN project_location_city VARCHAR(100)',
+		'ALTER TABLE projects ADD COLUMN project_location_site VARCHAR(255)',
+		'ALTER TABLE projects ADD COLUMN industry VARCHAR(100)',
+		'ALTER TABLE projects ADD COLUMN contract_type VARCHAR(100)',
+		'ALTER TABLE projects ADD COLUMN project_manager VARCHAR(255)',
+		'ALTER TABLE projects ADD COLUMN project_duration_planned VARCHAR(100)',
+		'ALTER TABLE projects ADD COLUMN project_duration_actual VARCHAR(100)',
+		'ALTER TABLE projects ADD COLUMN project_value DECIMAL(15,2)',
+		'ALTER TABLE projects ADD COLUMN currency VARCHAR(10)',
+		'ALTER TABLE projects ADD COLUMN payment_terms TEXT',
+		'ALTER TABLE projects ADD COLUMN invoicing_status VARCHAR(50)',
+		'ALTER TABLE projects ADD COLUMN cost_to_company DECIMAL(15,2)',
+		'ALTER TABLE projects ADD COLUMN profitability_estimate DECIMAL(5,2)',
+		'ALTER TABLE projects ADD COLUMN subcontractors_vendors TEXT',
+		'ALTER TABLE projects ADD COLUMN procurement_status VARCHAR(100)',
+		'ALTER TABLE projects ADD COLUMN material_delivery_schedule TEXT',
+		'ALTER TABLE projects ADD COLUMN vendor_management TEXT',
+		'ALTER TABLE projects ADD COLUMN mobilization_date DATE',
+		'ALTER TABLE projects ADD COLUMN site_readiness TEXT',
+		'ALTER TABLE projects ADD COLUMN construction_progress TEXT',
+		'ALTER TABLE projects ADD COLUMN major_risks TEXT',
+		'ALTER TABLE projects ADD COLUMN mitigation_plans TEXT',
+		'ALTER TABLE projects ADD COLUMN change_orders TEXT',
+		'ALTER TABLE projects ADD COLUMN claims_disputes TEXT',
+		'ALTER TABLE projects ADD COLUMN final_documentation_status VARCHAR(100)',
+		'ALTER TABLE projects ADD COLUMN lessons_learned TEXT',
+		'ALTER TABLE projects ADD COLUMN client_feedback TEXT',
+		'ALTER TABLE projects ADD COLUMN actual_profit_loss DECIMAL(15,2)',
+		'ALTER TABLE projects ADD COLUMN additional_scope TEXT',
+		'ALTER TABLE projects ADD COLUMN project_start_milestone DATE',
+		'ALTER TABLE projects ADD COLUMN project_review_milestone DATE',
+		'ALTER TABLE projects ADD COLUMN project_end_milestone DATE',
+		'ALTER TABLE projects ADD COLUMN kickoff_meeting_date DATE',
+		'ALTER TABLE projects ADD COLUMN kickoff_followup_date DATE',
+		'ALTER TABLE projects ADD COLUMN internal_meeting_date DATE',
+		'ALTER TABLE projects ADD COLUMN next_internal_meeting DATE',
+		'ALTER TABLE projects ADD COLUMN estimated_manhours DECIMAL(10,2)',
+		'ALTER TABLE projects ADD COLUMN unit_qty DECIMAL(10,2)',
+		'ALTER TABLE projects ADD COLUMN scope_of_work TEXT',
+		'ALTER TABLE projects ADD COLUMN deliverables TEXT',
+		'ALTER TABLE projects ADD COLUMN software_included VARCHAR(255)',
+		'ALTER TABLE projects ADD COLUMN duration TEXT',
+		'ALTER TABLE projects ADD COLUMN mode_of_delivery TEXT',
+		'ALTER TABLE projects ADD COLUMN site_visit TEXT',
+		'ALTER TABLE projects ADD COLUMN quotation_validity TEXT',
+		'ALTER TABLE projects ADD COLUMN exclusion TEXT',
+		'ALTER TABLE projects ADD COLUMN billing_and_payment_terms TEXT',
+		'ALTER TABLE projects ADD COLUMN other_terms_and_conditions TEXT',
+		'ALTER TABLE projects ADD COLUMN documents_received_list LONGTEXT',
+		'ALTER TABLE projects ADD COLUMN documents_issued_list LONGTEXT',
+		'ALTER TABLE projects ADD COLUMN project_handover_list LONGTEXT',
+		'ALTER TABLE projects ADD COLUMN project_manhours_list LONGTEXT',
+		'ALTER TABLE projects ADD COLUMN project_query_log_list LONGTEXT',
+		'ALTER TABLE projects ADD COLUMN project_schedule_list LONGTEXT',
+		'ALTER TABLE projects ADD COLUMN converted_by VARCHAR(255)',
+		'ALTER TABLE projects ADD COLUMN converted_at DATETIME',
 	];
 
 	for (const stmt of alterStatements) {
@@ -318,6 +447,26 @@ async function initProjectsTable(db) {
 			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
 				console.warn('Projects table schema update warning:', e.message || e);
 			}
+		}
+	}
+
+	const textUpgrades = [
+		'scope_of_work',
+		'deliverables',
+		'exclusion',
+		'billing_and_payment_terms',
+		'other_terms_and_conditions',
+		'site_visit',
+		'quotation_validity',
+		'duration',
+		'mode_of_delivery',
+		'revision',
+	];
+	for (const col of textUpgrades) {
+		try {
+			await db.execute(`ALTER TABLE projects MODIFY COLUMN \`${col}\` TEXT`);
+		} catch {
+			/* ignore */
 		}
 	}
 
@@ -339,24 +488,134 @@ async function initProposalsTable(db) {
       id INT PRIMARY KEY AUTO_INCREMENT,
       proposal_id VARCHAR(50) UNIQUE,
       title VARCHAR(255),
+      proposal_title VARCHAR(255),
       description TEXT,
       company_id INT,
+      client_name VARCHAR(255),
       lead_id INT,
       status VARCHAR(50) DEFAULT 'draft',
+      priority VARCHAR(50) DEFAULT 'MEDIUM',
+      progress INT DEFAULT 0,
       amount DECIMAL(15,2),
+      proposal_value DECIMAL(15,2),
+      currency VARCHAR(10) DEFAULT 'INR',
+      contract_type VARCHAR(100),
+      industry VARCHAR(100),
+      payment_terms TEXT,
+      project_type VARCHAR(50),
+      lumpsum_cost DECIMAL(15,2) DEFAULT 0,
+      total_lines INT DEFAULT 0,
+      per_line_charges DECIMAL(15,2) DEFAULT 0,
+      total_line_cost DECIMAL(15,2) DEFAULT 0,
+      total_manhours DECIMAL(10,2) DEFAULT 0,
+      manhour_charges DECIMAL(15,2) DEFAULT 0,
+      total_manhour_cost DECIMAL(15,2) DEFAULT 0,
       quotation_number VARCHAR(100),
       quotation_date DATE,
       enquiry_number VARCHAR(100),
+      enquiry_no VARCHAR(100),
       enquiry_date DATE,
+      date_of_enquiry DATE,
+      date_of_quotation DATE,
       quotation_validity VARCHAR(255),
       billing_payment_terms TEXT,
       other_terms TEXT,
       general_terms TEXT,
+      additional_fields TEXT,
+      input_document TEXT,
+      list_of_deliverables TEXT,
+      documents_list JSON,
       software VARCHAR(255),
+      software_items JSON,
       duration VARCHAR(100),
+      site_visit TEXT,
+      mode_of_delivery VARCHAR(255),
+      revision VARCHAR(255),
+      exclusions TEXT,
+      project_schedule TEXT,
+      kickoff_meeting TEXT,
+      in_house_meeting TEXT,
+      kickoff_meeting_date DATE,
+      internal_meeting_date DATE,
+      next_internal_meeting DATE,
+      disciplines JSON,
+      activities JSON,
+      discipline_descriptions JSON,
+      planning_activities_list JSON,
+      commercial_items JSON,
+      planned_hours_total DECIMAL(10,2),
+      actual_hours_total DECIMAL(10,2),
+      planned_hours_by_discipline JSON,
+      actual_hours_by_discipline JSON,
+      planned_hours_per_activity JSON,
+      actual_hours_per_activity JSON,
+      hours_variance_total DECIMAL(10,2),
+      hours_variance_percentage DECIMAL(5,2),
+      productivity_index DECIMAL(5,2),
+      client_contact_details TEXT,
+      project_location_country VARCHAR(100),
+      project_location_city VARCHAR(100),
+      project_location_site VARCHAR(255),
       budget DECIMAL(15,2),
+      cost_to_company DECIMAL(15,2),
+      profitability_estimate DECIMAL(5,2),
+      major_risks TEXT,
+      mitigation_plans TEXT,
       planned_start_date DATE,
       planned_end_date DATE,
+      project_duration_planned VARCHAR(100),
+      target_date DATE,
+      project_id INT,
+      client_address TEXT,
+      kind_attn VARCHAR(255),
+      attention_person VARCHAR(255),
+      attention_designation VARCHAR(255),
+      quotation_no VARCHAR(100),
+      scope_items JSON,
+      amount_in_words TEXT,
+      total_amount DECIMAL(15,2),
+      gross_amount DECIMAL(15,2) DEFAULT 0,
+      gst_percentage DECIMAL(5,2) DEFAULT 18,
+      gst_amount DECIMAL(15,2) DEFAULT 0,
+      net_amount DECIMAL(15,2) DEFAULT 0,
+      gst_type VARCHAR(20) DEFAULT 'cgst_sgst',
+      gst_number VARCHAR(50),
+      pan_number VARCHAR(50),
+      tan_number VARCHAR(50),
+      terms_and_conditions TEXT,
+      payment_mode VARCHAR(50),
+      receiver_signature VARCHAR(255),
+      company_signature VARCHAR(255),
+      signatory_name VARCHAR(255),
+      signatory_designation VARCHAR(255),
+      discussion TEXT,
+      annexure_scope_of_work TEXT,
+      annexure_input_document TEXT,
+      annexure_deliverables TEXT,
+      annexure_software VARCHAR(255),
+      annexure_duration VARCHAR(255),
+      annexure_site_visit VARCHAR(255),
+      annexure_quotation_validity VARCHAR(255),
+      annexure_mode_of_delivery VARCHAR(255),
+      annexure_revision VARCHAR(255),
+      annexure_exclusions TEXT,
+      annexure_billing_payment_terms TEXT,
+      annexure_taxation TEXT,
+      annexure_payment_milestone TEXT,
+      annexure_confidentiality TEXT,
+      annexure_codes_standards TEXT,
+      annexure_dispute_resolution TEXT,
+      converted_by VARCHAR(255),
+      converted_at DATETIME,
+      notes TEXT,
+      contact_name VARCHAR(255),
+      contact_email VARCHAR(255),
+      phone VARCHAR(50),
+      client VARCHAR(255),
+      project_description TEXT,
+      city VARCHAR(100),
+      value DECIMAL(15,2),
+      due_date DATE,
       isDelete TINYINT(1) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -366,6 +625,129 @@ async function initProposalsTable(db) {
 
 	const alterStatements = [
 		'ALTER TABLE proposals ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN proposal_title VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN client_name VARCHAR(255)',
+		"ALTER TABLE proposals ADD COLUMN priority VARCHAR(50) DEFAULT 'MEDIUM'",
+		'ALTER TABLE proposals ADD COLUMN progress INT DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN proposal_value DECIMAL(15,2)',
+		"ALTER TABLE proposals ADD COLUMN currency VARCHAR(10) DEFAULT 'INR'",
+		'ALTER TABLE proposals ADD COLUMN contract_type VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN industry VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN payment_terms TEXT',
+		'ALTER TABLE proposals ADD COLUMN project_type VARCHAR(50)',
+		'ALTER TABLE proposals ADD COLUMN lumpsum_cost DECIMAL(15,2) DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN total_lines INT DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN per_line_charges DECIMAL(15,2) DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN total_line_cost DECIMAL(15,2) DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN total_manhours DECIMAL(10,2) DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN manhour_charges DECIMAL(15,2) DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN total_manhour_cost DECIMAL(15,2) DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN quotation_number VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN quotation_date DATE',
+		'ALTER TABLE proposals ADD COLUMN enquiry_number VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN enquiry_no VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN enquiry_date DATE',
+		'ALTER TABLE proposals ADD COLUMN date_of_enquiry DATE',
+		'ALTER TABLE proposals ADD COLUMN date_of_quotation DATE',
+		'ALTER TABLE proposals ADD COLUMN quotation_validity VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN billing_payment_terms TEXT',
+		'ALTER TABLE proposals ADD COLUMN other_terms TEXT',
+		'ALTER TABLE proposals ADD COLUMN general_terms TEXT',
+		'ALTER TABLE proposals ADD COLUMN additional_fields TEXT',
+		'ALTER TABLE proposals ADD COLUMN input_document TEXT',
+		'ALTER TABLE proposals ADD COLUMN list_of_deliverables TEXT',
+		'ALTER TABLE proposals ADD COLUMN documents_list JSON',
+		'ALTER TABLE proposals ADD COLUMN software VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN software_items JSON',
+		'ALTER TABLE proposals ADD COLUMN duration VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN site_visit TEXT',
+		'ALTER TABLE proposals ADD COLUMN mode_of_delivery VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN revision VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN exclusions TEXT',
+		'ALTER TABLE proposals ADD COLUMN project_schedule TEXT',
+		'ALTER TABLE proposals ADD COLUMN kickoff_meeting TEXT',
+		'ALTER TABLE proposals ADD COLUMN in_house_meeting TEXT',
+		'ALTER TABLE proposals ADD COLUMN kickoff_meeting_date DATE',
+		'ALTER TABLE proposals ADD COLUMN internal_meeting_date DATE',
+		'ALTER TABLE proposals ADD COLUMN next_internal_meeting DATE',
+		'ALTER TABLE proposals ADD COLUMN disciplines JSON',
+		'ALTER TABLE proposals ADD COLUMN activities JSON',
+		'ALTER TABLE proposals ADD COLUMN discipline_descriptions JSON',
+		'ALTER TABLE proposals ADD COLUMN planning_activities_list JSON',
+		'ALTER TABLE proposals ADD COLUMN commercial_items JSON',
+		'ALTER TABLE proposals ADD COLUMN planned_hours_total DECIMAL(10,2)',
+		'ALTER TABLE proposals ADD COLUMN actual_hours_total DECIMAL(10,2)',
+		'ALTER TABLE proposals ADD COLUMN planned_hours_by_discipline JSON',
+		'ALTER TABLE proposals ADD COLUMN actual_hours_by_discipline JSON',
+		'ALTER TABLE proposals ADD COLUMN planned_hours_per_activity JSON',
+		'ALTER TABLE proposals ADD COLUMN actual_hours_per_activity JSON',
+		'ALTER TABLE proposals ADD COLUMN hours_variance_total DECIMAL(10,2)',
+		'ALTER TABLE proposals ADD COLUMN hours_variance_percentage DECIMAL(5,2)',
+		'ALTER TABLE proposals ADD COLUMN productivity_index DECIMAL(5,2)',
+		'ALTER TABLE proposals ADD COLUMN client_contact_details TEXT',
+		'ALTER TABLE proposals ADD COLUMN project_location_country VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN project_location_city VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN project_location_site VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN budget DECIMAL(15,2)',
+		'ALTER TABLE proposals ADD COLUMN cost_to_company DECIMAL(15,2)',
+		'ALTER TABLE proposals ADD COLUMN profitability_estimate DECIMAL(5,2)',
+		'ALTER TABLE proposals ADD COLUMN major_risks TEXT',
+		'ALTER TABLE proposals ADD COLUMN mitigation_plans TEXT',
+		'ALTER TABLE proposals ADD COLUMN planned_start_date DATE',
+		'ALTER TABLE proposals ADD COLUMN planned_end_date DATE',
+		'ALTER TABLE proposals ADD COLUMN project_duration_planned VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN target_date DATE',
+		'ALTER TABLE proposals ADD COLUMN project_id INT',
+		'ALTER TABLE proposals ADD COLUMN client_address TEXT',
+		'ALTER TABLE proposals ADD COLUMN kind_attn VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN attention_person VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN attention_designation VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN quotation_no VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN scope_items JSON',
+		'ALTER TABLE proposals ADD COLUMN amount_in_words TEXT',
+		'ALTER TABLE proposals ADD COLUMN total_amount DECIMAL(15,2)',
+		'ALTER TABLE proposals ADD COLUMN gross_amount DECIMAL(15,2) DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN gst_percentage DECIMAL(5,2) DEFAULT 18',
+		'ALTER TABLE proposals ADD COLUMN gst_amount DECIMAL(15,2) DEFAULT 0',
+		'ALTER TABLE proposals ADD COLUMN net_amount DECIMAL(15,2) DEFAULT 0',
+		"ALTER TABLE proposals ADD COLUMN gst_type VARCHAR(20) DEFAULT 'cgst_sgst'",
+		'ALTER TABLE proposals ADD COLUMN gst_number VARCHAR(50)',
+		'ALTER TABLE proposals ADD COLUMN pan_number VARCHAR(50)',
+		'ALTER TABLE proposals ADD COLUMN tan_number VARCHAR(50)',
+		'ALTER TABLE proposals ADD COLUMN terms_and_conditions TEXT',
+		'ALTER TABLE proposals ADD COLUMN payment_mode VARCHAR(50)',
+		'ALTER TABLE proposals ADD COLUMN receiver_signature VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN company_signature VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN signatory_name VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN signatory_designation VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN discussion TEXT',
+		'ALTER TABLE proposals ADD COLUMN annexure_scope_of_work TEXT',
+		'ALTER TABLE proposals ADD COLUMN annexure_input_document TEXT',
+		'ALTER TABLE proposals ADD COLUMN annexure_deliverables TEXT',
+		'ALTER TABLE proposals ADD COLUMN annexure_software VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN annexure_duration VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN annexure_site_visit VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN annexure_quotation_validity VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN annexure_mode_of_delivery VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN annexure_revision VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN annexure_exclusions TEXT',
+		'ALTER TABLE proposals ADD COLUMN annexure_billing_payment_terms TEXT',
+		'ALTER TABLE proposals ADD COLUMN annexure_taxation TEXT',
+		'ALTER TABLE proposals ADD COLUMN annexure_payment_milestone TEXT',
+		'ALTER TABLE proposals ADD COLUMN annexure_confidentiality TEXT',
+		'ALTER TABLE proposals ADD COLUMN annexure_codes_standards TEXT',
+		'ALTER TABLE proposals ADD COLUMN annexure_dispute_resolution TEXT',
+		'ALTER TABLE proposals ADD COLUMN converted_by VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN converted_at DATETIME',
+		'ALTER TABLE proposals ADD COLUMN notes TEXT',
+		'ALTER TABLE proposals ADD COLUMN contact_name VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN contact_email VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN phone VARCHAR(50)',
+		'ALTER TABLE proposals ADD COLUMN client VARCHAR(255)',
+		'ALTER TABLE proposals ADD COLUMN project_description TEXT',
+		'ALTER TABLE proposals ADD COLUMN city VARCHAR(100)',
+		'ALTER TABLE proposals ADD COLUMN value DECIMAL(15,2)',
+		'ALTER TABLE proposals ADD COLUMN due_date DATE',
 	];
 
 	for (const stmt of alterStatements) {
@@ -379,6 +761,14 @@ async function initProposalsTable(db) {
 	}
 
 	try {
+		await db.execute(
+			"ALTER TABLE proposals MODIFY COLUMN status VARCHAR(50) DEFAULT 'draft'"
+		);
+	} catch (e) {
+		console.warn('Proposals status column modify warning:', e.message || e);
+	}
+
+	try {
 		await db.execute('ALTER TABLE proposals ADD INDEX idx_isDelete (isDelete)');
 	} catch (e) {
 		if (
@@ -388,6 +778,185 @@ async function initProposalsTable(db) {
 			console.warn('Proposals index migration warning:', e.message || e);
 		}
 	}
+}
+
+async function initProposalFollowupsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS proposal_followups (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      proposal_id INT NOT NULL,
+      follow_up_date DATE NOT NULL,
+      follow_up_type VARCHAR(50) DEFAULT 'Call',
+      description TEXT NOT NULL,
+      status VARCHAR(50) DEFAULT 'Scheduled',
+      outcome TEXT,
+      next_action VARCHAR(255),
+      next_follow_up_date DATE,
+      contacted_person VARCHAR(255),
+      notes TEXT,
+      created_by VARCHAR(255),
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_proposal_id (proposal_id),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	try {
+		await db.execute(
+			'ALTER TABLE proposal_followups ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0'
+		);
+	} catch (e) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn('Proposal followups schema update warning:', e.message || e);
+		}
+	}
+}
+
+async function initProjectFollowupsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS project_followups (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      project_id INT NOT NULL,
+      follow_up_date DATE NOT NULL,
+      follow_up_type VARCHAR(50) DEFAULT 'Internal Review',
+      description TEXT NOT NULL,
+      status VARCHAR(50) DEFAULT 'Scheduled',
+      priority VARCHAR(20) DEFAULT 'Medium',
+      milestone VARCHAR(255),
+      responsible_person VARCHAR(255),
+      action_items TEXT,
+      outcome TEXT,
+      next_action VARCHAR(255),
+      next_follow_up_date DATE,
+      blockers TEXT,
+      notes TEXT,
+      logged_by VARCHAR(255),
+      created_by VARCHAR(255),
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_project_id (project_id),
+      INDEX idx_follow_up_date (follow_up_date),
+      INDEX idx_status (status),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE project_followups ADD COLUMN logged_by VARCHAR(255)',
+		'ALTER TABLE project_followups ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+	];
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn(
+					'Project followups schema update warning:',
+					e.message || e
+				);
+			}
+		}
+	}
+}
+
+async function initProjectInvoicesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS project_invoices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      project_id INT NOT NULL,
+      invoice_number VARCHAR(100),
+      invoice_date DATE,
+      company_name VARCHAR(255),
+      city VARCHAR(100),
+      invoice_amount DECIMAL(15, 2),
+      project_number VARCHAR(100),
+      expenses_head VARCHAR(255),
+      payment DECIMAL(15, 2),
+      purchase_description TEXT,
+      payment_overdue_days INT DEFAULT 0,
+      remarks TEXT,
+      tab_type VARCHAR(50) DEFAULT 'invoice',
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_project_id (project_id),
+      INDEX idx_invoice_number (invoice_number),
+      INDEX idx_isDelete (isDelete)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE project_invoices ADD COLUMN company_name VARCHAR(255)',
+		'ALTER TABLE project_invoices ADD COLUMN city VARCHAR(100)',
+		'ALTER TABLE project_invoices ADD COLUMN project_number VARCHAR(100)',
+		'ALTER TABLE project_invoices ADD COLUMN expenses_head VARCHAR(255)',
+		'ALTER TABLE project_invoices ADD COLUMN payment DECIMAL(15,2)',
+		'ALTER TABLE project_invoices ADD COLUMN purchase_description TEXT',
+		'ALTER TABLE project_invoices ADD COLUMN payment_overdue_days INT DEFAULT 0',
+		"ALTER TABLE project_invoices ADD COLUMN tab_type VARCHAR(50) DEFAULT 'invoice'",
+		'ALTER TABLE project_invoices ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
+	];
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Project invoices schema update warning:', e.message || e);
+			}
+		}
+	}
+}
+
+async function initProjectPurchaseOrdersTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS project_purchase_orders (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      project_id INT NOT NULL,
+      po_number VARCHAR(100),
+      po_date DATE,
+      client_name VARCHAR(255),
+      vendor_name VARCHAR(255),
+      delivery_date DATE,
+      scope_of_work TEXT,
+      gross_amount DECIMAL(15, 2) DEFAULT 0,
+      gst_percentage DECIMAL(5, 2) DEFAULT 18,
+      gst_amount DECIMAL(15, 2) DEFAULT 0,
+      net_amount DECIMAL(15, 2) DEFAULT 0,
+      payment_terms TEXT,
+      remarks TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_project_id (project_id),
+      UNIQUE KEY unique_project (project_id)
+    )
+  `);
+
+	try {
+		await db.execute(
+			'ALTER TABLE project_purchase_orders MODIFY COLUMN payment_terms TEXT'
+		);
+	} catch {
+		/* ignore */
+	}
+}
+
+async function initProjectMomDocumentsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS project_mom_documents (
+      id VARCHAR(36) PRIMARY KEY,
+      original_name VARCHAR(255) NOT NULL,
+      file_type VARCHAR(120) NOT NULL,
+      file_size BIGINT NOT NULL,
+      file_data LONGBLOB NOT NULL,
+      uploaded_by INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_uploaded_by (uploaded_by),
+      INDEX idx_created_at (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 }
 
 async function initFollowUpsTable(db) {

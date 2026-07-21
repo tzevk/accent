@@ -29,7 +29,8 @@ export async function GET(request: Request) {
 		RESOURCES.PETTY_CASH_EXPENSES,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db: any;
 	try {
@@ -119,7 +120,8 @@ export async function POST(request: Request) {
 		RESOURCES.PETTY_CASH_EXPENSES,
 		PERMISSIONS.CREATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db: any;
 	try {

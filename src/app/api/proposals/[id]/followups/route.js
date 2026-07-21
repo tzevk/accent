@@ -13,7 +13,8 @@ export async function GET(request, { params }) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {
@@ -28,30 +29,10 @@ export async function GET(request, { params }) {
 
 		db = await dbConnect();
 
-		// Ensure table exists
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS proposal_followups (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        proposal_id INT NOT NULL,
-        follow_up_date DATE NOT NULL,
-        follow_up_type VARCHAR(50) DEFAULT 'Call',
-        description TEXT NOT NULL,
-        status VARCHAR(50) DEFAULT 'Scheduled',
-        outcome TEXT,
-        next_action VARCHAR(255),
-        next_follow_up_date DATE,
-        contacted_person VARCHAR(255),
-        notes TEXT,
-        created_by VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-
 		// Get follow-ups for this proposal
 		const [rows] = await db.execute(
 			`SELECT * FROM proposal_followups 
-       WHERE proposal_id = ? 
+       WHERE proposal_id = ? AND (isDelete = 0 OR isDelete IS NULL)
        ORDER BY follow_up_date DESC, created_at DESC`,
 			[id]
 		);
@@ -76,7 +57,8 @@ export async function POST(request, { params }) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.UPDATE
 	);
-	if (authResultPost.authorized === false) return authResultPost.response;
+	if (authResultPost instanceof Response) return authResultPost;
+	if (!authResultPost.authorized) return authResultPost.response;
 
 	let db;
 	try {
@@ -115,26 +97,6 @@ export async function POST(request, { params }) {
 
 		db = await dbConnect();
 
-		// Ensure table exists
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS proposal_followups (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        proposal_id INT NOT NULL,
-        follow_up_date DATE NOT NULL,
-        follow_up_type VARCHAR(50) DEFAULT 'Call',
-        description TEXT NOT NULL,
-        status VARCHAR(50) DEFAULT 'Scheduled',
-        outcome TEXT,
-        next_action VARCHAR(255),
-        next_follow_up_date DATE,
-        contacted_person VARCHAR(255),
-        notes TEXT,
-        created_by VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-
 		// Insert new follow-up
 		const [result] = await db.execute(
 			`INSERT INTO proposal_followups 
@@ -157,7 +119,7 @@ export async function POST(request, { params }) {
 
 		// Fetch and return the created follow-up
 		const [rows] = await db.execute(
-			'SELECT * FROM proposal_followups WHERE id = ?',
+			'SELECT * FROM proposal_followups WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[result.insertId]
 		);
 
@@ -181,7 +143,8 @@ export async function PUT(request, { params }) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.UPDATE
 	);
-	if (authResultPut.authorized === false) return authResultPut.response;
+	if (authResultPut instanceof Response) return authResultPut;
+	if (!authResultPut.authorized) return authResultPut.response;
 
 	let db;
 	try {
@@ -234,7 +197,7 @@ export async function PUT(request, { params }) {
         contacted_person = ?,
         notes = ?,
         updated_at = CURRENT_TIMESTAMP
-       WHERE id = ? AND proposal_id = ?`,
+       WHERE id = ? AND proposal_id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
 			[
 				follow_up_date,
 				follow_up_type || 'Call',
@@ -252,7 +215,7 @@ export async function PUT(request, { params }) {
 
 		// Fetch and return the updated follow-up
 		const [rows] = await db.execute(
-			'SELECT * FROM proposal_followups WHERE id = ?',
+			'SELECT * FROM proposal_followups WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[followup_id]
 		);
 
@@ -276,7 +239,8 @@ export async function DELETE(request, { params }) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.DELETE
 	);
-	if (authResultDel.authorized === false) return authResultDel.response;
+	if (authResultDel instanceof Response) return authResultDel;
+	if (!authResultDel.authorized) return authResultDel.response;
 
 	let db;
 	try {
@@ -293,9 +257,9 @@ export async function DELETE(request, { params }) {
 
 		db = await dbConnect();
 
-		// Delete the follow-up
+		// Soft delete the follow-up
 		const [result] = await db.execute(
-			'DELETE FROM proposal_followups WHERE id = ? AND proposal_id = ?',
+			'UPDATE proposal_followups SET isDelete = 1 WHERE id = ? AND proposal_id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[followupId, id]
 		);
 

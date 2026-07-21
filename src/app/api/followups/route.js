@@ -13,7 +13,8 @@ export async function GET(request) {
 		RESOURCES.LEADS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {
@@ -115,7 +116,8 @@ export async function POST(request) {
 		RESOURCES.LEADS,
 		PERMISSIONS.UPDATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {

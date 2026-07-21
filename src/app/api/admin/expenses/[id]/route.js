@@ -15,7 +15,8 @@ export async function GET(request, { params }) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {
@@ -47,7 +48,8 @@ export async function PUT(request, { params }) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.UPDATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {
@@ -135,7 +137,8 @@ export async function DELETE(request, { params }) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.DELETE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {

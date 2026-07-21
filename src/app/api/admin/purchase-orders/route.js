@@ -15,7 +15,8 @@ export async function GET(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	// hello
 	let connection;
@@ -341,7 +342,8 @@ export async function PUT(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.WRITE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {
@@ -478,7 +480,8 @@ export async function DELETE(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.DELETE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 	const { user } = authResult;
 
 	let connection;

@@ -12,7 +12,8 @@ export async function PUT(request, { params }) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.UPDATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {
@@ -54,7 +55,7 @@ export async function PUT(request, { params }) {
 		}
 
 		const [result] = await connection.execute(
-			`UPDATE quotations SET project_id = ?, updated_at = NOW() WHERE id = ?`,
+			`UPDATE quotations SET project_id = ?, updated_at = NOW() WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
 			[projectId, id]
 		);
 

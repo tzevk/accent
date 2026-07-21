@@ -68,7 +68,7 @@ describe('Invoice API — GET /api/admin/invoices', () => {
 
 		expect(json.success).toBe(true);
 		expect(json.data).toEqual(mockInvoices);
-		expect(json.pagination.total).toBe(1);
+		expect(json.stats.total).toBe(1);
 		expect(json.stats.draft).toBe(1);
 	});
 

@@ -8,36 +8,43 @@
 
 ### Already migrated to `schema-init.js` ✅
 
-| API Route                                   | Tables Previously Created/Altered                                        |
-| ------------------------------------------- | ------------------------------------------------------------------------ |
-| `petty-cash-expenses/route.ts`              | `petty_cash_expenses` (DDL + ensureTable)                                |
-| `petty-cash-expenses/[id]/route.ts`         | — (no DDL, just added isDelete guard)                                    |
-| `cash-vouchers/route.js`                    | `cash_vouchers` (CREATE + ALTER), `petty_cash_expenses` (CREATE + ALTER) |
-| `cash-vouchers/[id]/route.js`               | — (no DDL, just cascade soft-delete)                                     |
-| `cash-vouchers/next-number/route.js`        | `cash_vouchers` (CREATE)                                                 |
-| `admin/invoices/route.js`                   | `purchase_orders`, `invoices` (DDL + isDelete)                           |
-| `admin/invoices/[id]/route.js`              | `purchase_orders`, `invoices` (DDL + isDelete)                           |
-| `admin/invoices/download/route.js`          | `purchase_orders`, `invoices` (DDL + isDelete)                           |
-| `admin/invoices/po-balance/route.js`        | `purchase_orders`, `invoices` (DDL + isDelete)                           |
-| `admin/payment-entries/route.js`            | `payment_entries` (CREATE + 11 ALTER + INDEX)                            |
-| `admin/purchase-orders/route.js`            | `purchase_orders` (CREATE + 12 ALTER + INDEX + DROP legacy column)       |
-| `admin/purchase-orders/download/route.js`   | — (no DDL, only queries with isDelete check)                             |
-| `admin/quotations/route.js`                 | `quotations`, `project_quotations` (CREATE + 12 ALTER)                   |
-| `admin/quotations/[id]/route.js`            | `project_quotations`, `quotations` (60 ALTERs across 2 tables)           |
-| `admin/quotations/[id]/project/route.js`    | `quotations` (CREATE + ALTER + INDEX)                                    |
-| `admin/standalone-quotations/route.js`      | `quotations` (CREATE + 48 ALTER + 2 MODIFY + INDEX)                      |
-| `admin/standalone-quotations/[id]/route.js` | `quotations` (CREATE + 48 ALTER + 2 MODIFY + INDEX)                      |
+| API Route                                   | Tables Previously Created/Altered                                         |
+| ------------------------------------------- | ------------------------------------------------------------------------- |
+| `petty-cash-expenses/route.ts`              | `petty_cash_expenses` (DDL + ensureTable)                                 |
+| `petty-cash-expenses/[id]/route.ts`         | — (no DDL, just added isDelete guard)                                     |
+| `cash-vouchers/route.js`                    | `cash_vouchers` (CREATE + ALTER), `petty_cash_expenses` (CREATE + ALTER)  |
+| `cash-vouchers/[id]/route.js`               | — (no DDL, just cascade soft-delete)                                      |
+| `cash-vouchers/next-number/route.js`        | `cash_vouchers` (CREATE)                                                  |
+| `admin/invoices/route.js`                   | `purchase_orders`, `invoices` (DDL + isDelete)                            |
+| `admin/invoices/[id]/route.js`              | `purchase_orders`, `invoices` (DDL + isDelete)                            |
+| `admin/invoices/download/route.js`          | `purchase_orders`, `invoices` (DDL + isDelete)                            |
+| `admin/invoices/po-balance/route.js`        | `purchase_orders`, `invoices` (DDL + isDelete)                            |
+| `admin/payment-entries/route.js`            | `payment_entries` (CREATE + 11 ALTER + INDEX)                             |
+| `admin/purchase-orders/route.js`            | `purchase_orders` (CREATE + 12 ALTER + INDEX + DROP legacy column)        |
+| `admin/purchase-orders/download/route.js`   | — (no DDL, only queries with isDelete check)                              |
+| `admin/quotations/route.js`                 | `quotations`, `project_quotations` (CREATE + 12 ALTER)                    |
+| `admin/quotations/[id]/route.js`            | `project_quotations`, `quotations` (60 ALTERs across 2 tables)            |
+| `admin/quotations/[id]/project/route.js`    | `quotations` (CREATE + ALTER + INDEX)                                     |
+| `admin/standalone-quotations/route.js`      | `quotations` (CREATE + 48 ALTER + 2 MODIFY + INDEX)                       |
+| `admin/standalone-quotations/[id]/route.js` | `quotations` (CREATE + 48 ALTER + 2 MODIFY + INDEX)                       |
+| `admin/quotations/[id]/route.js` (PUT)      | `proposals` (25 ALTER cols for quotation fields)                          |
+| `proposals/route.js`                        | `proposals` (38 ALTER via dead `ensureProposalColumns()`)                 |
+| `proposals/[id]/route.js`                   | `proposals` (50+ ALTER via module guard + MODIFY status + ALTER projects) |
+| `proposals/[id]/followups/route.js`         | `proposal_followups` (CREATE TABLE per GET/POST)                          |
+| `projects/[id]/route.js`                    | `projects` (LONGTEXT/TEXT auto-migration + user_activity_assignments DDL) |
+| `projects/[id]/followups/route.js`          | `project_followups` (CREATE TABLE + ALTER logged_by per GET)              |
+| `projects/[id]/invoice/route.js`            | `project_invoices` (CREATE TABLE + 8 ALTERs per GET/POST/PUT)             |
+| `projects/[id]/purchase-order/route.js`     | `project_purchase_orders` (CREATE TABLE + MODIFY per GET/POST)            |
+| `projects/[id]/quotation/route.js`          | `project_quotations` (CREATE TABLE + ALTER client_name per GET/POST)      |
+| `projects/mom-upload/route.js`              | `project_mom_documents` (CREATE TABLE per GET/POST)                       |
 
 ### Unguarded — runs on EVERY request (HIGH priority)
 
-| File                              | Tables Created/Altered                               |
-| --------------------------------- | ---------------------------------------------------- |
-| `proposals/route.js`              | `proposals` (38 ALTER via `ensureProposalColumns()`) |
-| `proposals/[id]/route.js`         | `proposals`, `projects` (39+ ALTER)                  |
-| `projects/[id]/route.js`          | `projects`, `user_activity_assignments` (12+ ALTER)  |
-| `employees/route.js`              | `employees` (14+ ALTER + MODIFY)                     |
-| `payroll/salary-profile/route.js` | `employee_salary_profile` (35+ ALTER + MODIFY)       |
-| `vendors/route.js`                | `vendors` (24 ALTER)                                 |
+| File                              | Tables Created/Altered                         |
+| --------------------------------- | ---------------------------------------------- |
+| `employees/route.js`              | `employees` (14+ ALTER + MODIFY)               |
+| `payroll/salary-profile/route.js` | `employee_salary_profile` (35+ ALTER + MODIFY) |
+| `vendors/route.js`                | `vendors` (24 ALTER)                           |
 
 ### Has module-level guard — runs at most once per process (LOWER priority)
 
@@ -73,11 +80,6 @@
 | `roles/route.js`                                   | `roles`                                                                    |
 | `todos/route.js`                                   | `todos`                                                                    |
 | `projects/mom-upload/route.js`                     | `project_mom_documents`                                                    |
-| `projects/[id]/invoice/route.js`                   | `project_invoices`                                                         |
-| `projects/[id]/followups/route.js`                 | `project_followups`                                                        |
-| `projects/[id]/purchase-order/route.js`            | `project_purchase_orders`                                                  |
-| `projects/[id]/quotation/route.js`                 | `project_quotations`                                                       |
-| `proposals/[id]/followups/route.js`                | `proposal_followups`                                                       |
 | `admin/accounts/route.js`                          | `account_transactions`                                                     |
 | `admin/purchase-invoices/route.js`                 | `purchase_invoices`                                                        |
 | `settings/profile/route.js`                        | `employees`                                                                |
@@ -104,6 +106,9 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 | `purchase_orders`          | `admin/purchase-orders/**`                              |
 | `quotations`               | `admin/quotations/**`, `admin/standalone-quotations/**` |
 | `project_quotations`       | `admin/quotations/**`                                   |
+| `proposal_followups`       | `proposals/[id]/followups/**`                           |
+| `project_followups`        | `projects/[id]/followups/**`                            |
+| `project_invoices`         | `projects/[id]/invoice/**`                              |
 | `leads`                    | `leads/**`                                              |
 | `proposals`                | `proposals/**`                                          |
 | `projects`                 | `projects/**`                                           |
@@ -125,9 +130,6 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 | `purchase_invoices` | `admin/purchase-invoices/[id]/route.js` | `DELETE FROM purchase_invoices WHERE id = ?` |
 | `material_requisitions` | `admin/material-requisitions/route.js` | `DELETE FROM material_requisitions WHERE id = ?` |
 | `follow_ups` | `followups/[id]/route.js` | `DELETE FROM follow_ups WHERE id = ?` |
-| `project_followups` | `projects/[id]/followups/route.js` | `DELETE FROM project_followups WHERE id = ?` |
-| `project_invoices` | `projects/[id]/invoice/route.js` | `DELETE FROM project_invoices WHERE id = ?` |
-| `proposal_followups` | `proposals/[id]/followups/route.js` | `DELETE FROM proposal_followups WHERE id = ?` |
 | `user_activity_assignments` | `users/[id]/activities/route.js`, `projects/[id]/assign-activities/route.js` | `DELETE FROM user_activity_assignments WHERE id = ? AND ...` |
 | `softwares` | `software/route.js` | `DELETE FROM softwares WHERE id = ?` |
 | `software_versions` | `software-versions/route.js` | `DELETE FROM software_versions WHERE id = ?` |

@@ -14,7 +14,8 @@ export async function POST(request) {
 		RESOURCES.PROJECTS,
 		PERMISSIONS.UPDATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	try {
 		const data = await request.json();

@@ -29,7 +29,8 @@ export async function POST(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.CREATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {

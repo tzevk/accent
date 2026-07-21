@@ -34,22 +34,6 @@ const ALLOWED_EXTENSIONS = [
 ];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
-async function ensureMomTable(db) {
-	await db.execute(`
-    CREATE TABLE IF NOT EXISTS project_mom_documents (
-      id VARCHAR(36) PRIMARY KEY,
-      original_name VARCHAR(255) NOT NULL,
-      file_type VARCHAR(120) NOT NULL,
-      file_size BIGINT NOT NULL,
-      file_data LONGBLOB NOT NULL,
-      uploaded_by INT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_uploaded_by (uploaded_by),
-      INDEX idx_created_at (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
-}
-
 /**
  * POST /api/projects/mom-upload
  * Upload a MOM (Minutes of Meeting) document attachment
@@ -101,7 +85,6 @@ export async function POST(request) {
 		}
 
 		db = await dbConnect();
-		await ensureMomTable(db);
 
 		const docId = uuidv4();
 		const bytes = await file.arrayBuffer();
@@ -120,7 +103,6 @@ export async function POST(request) {
 		);
 
 		const extension = ALLOWED_TYPES[file.type] || `.${fileExt}`;
-		const filenaame = `mom_${docId}${extension}`;
 
 		return NextResponse.json({
 			success: true,
@@ -169,7 +151,6 @@ export async function GET(request) {
 		}
 
 		db = await dbConnect();
-		await ensureMomTable(db);
 
 		const [rows] = await db.execute(
 			`SELECT id, original_name, file_type, file_data FROM project_mom_documents WHERE id = ? LIMIT 1`,
