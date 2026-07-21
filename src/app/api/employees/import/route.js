@@ -169,7 +169,8 @@ export async function POST(request) {
 		RESOURCES.EMPLOYEES,
 		PERMISSIONS.CREATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	try {
 		const formData = await request.formData();

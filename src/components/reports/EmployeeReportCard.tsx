@@ -111,9 +111,9 @@ export default function EmployeeReportCard({
 			if (!distinctAssign.has(r.assignment_id)) {
 				distinctAssign.add(r.assignment_id);
 				assign += r.default_manhours || 0;
-				actual += r.planned_hours || 0;
-				qty += r.qty_completed || 0;
 			}
+			actual += r.planned_hours || 0;
+			qty += r.qty_completed || 0;
 		}
 		return { assign, actual, qty };
 	}, [employee.rows]);

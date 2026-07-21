@@ -14,7 +14,8 @@ export async function GET(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {
@@ -183,7 +184,8 @@ export async function POST(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.CREATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {
@@ -281,7 +283,8 @@ export async function PUT(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.UPDATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {
@@ -337,7 +340,7 @@ export async function PUT(request) {
        status = ?,
        project_id = ?,
        gst_type = ?
-       WHERE id = ?`,
+        WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
 			[
 				quotation_number,
 				client_name,
@@ -391,7 +394,8 @@ export async function DELETE(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.DELETE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {
@@ -411,7 +415,7 @@ export async function DELETE(request) {
 		let result;
 		if (source === 'project') {
 			[result] = await connection.execute(
-				'UPDATE project_quotations SET isDelete = 1 WHERE id = ?',
+				'UPDATE project_quotations SET isDelete = 1 WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 				[id]
 			);
 		} else if (source === 'proposal') {
@@ -434,7 +438,7 @@ export async function DELETE(request) {
 			);
 		} else {
 			[result] = await connection.execute(
-				'UPDATE quotations SET isDelete = 1 WHERE id = ?',
+				'UPDATE quotations SET isDelete = 1 WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 				[id]
 			);
 		}

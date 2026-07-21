@@ -16,7 +16,8 @@ export async function GET(request) {
 			RESOURCES.ADMIN,
 			PERMISSIONS.READ
 		);
-		if (authResult.authorized === false) return authResult.response;
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const user = authResult.user;
 
@@ -96,7 +97,8 @@ export async function POST(request) {
 			RESOURCES.ADMIN,
 			PERMISSIONS.CREATE
 		);
-		if (authResult.authorized === false) return authResult.response;
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const user = authResult.user;
 
@@ -193,7 +195,8 @@ export async function PUT(request) {
 			RESOURCES.ADMIN,
 			PERMISSIONS.UPDATE
 		);
-		if (authResult.authorized === false) return authResult.response;
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const user = authResult.user;
 
@@ -276,7 +279,8 @@ export async function DELETE(request) {
 			RESOURCES.ADMIN,
 			PERMISSIONS.DELETE
 		);
-		if (authResult.authorized === false) return authResult.response;
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const user = authResult.user;
 

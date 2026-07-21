@@ -349,9 +349,9 @@ describe('ProjectActivityAssignments', () => {
 
 		await user.click(screen.getByTitle('Add a new activity'));
 		// Select discipline + activity so the only missing piece is the project
-		const disciplineSelect = screen.getAllByRole('combobox')[1];
+		const disciplineSelect = screen.getAllByRole('combobox')[2];
 		await user.selectOptions(disciplineSelect, 'd1');
-		const activitySelect = screen.getAllByRole('combobox')[2];
+		const activitySelect = screen.getAllByRole('combobox')[3];
 		await user.selectOptions(activitySelect, 'a1');
 
 		await user.click(screen.getByTitle('Save'));
@@ -399,9 +399,9 @@ describe('ProjectActivityAssignments', () => {
 		await user.click(screen.getByTitle('Add a new activity'));
 
 		// Activity select is disabled until a discipline is picked
-		const disciplineSelect = screen.getAllByRole('combobox')[1];
-		const activitySelect = screen.getAllByRole('combobox')[2];
-		const subActivitySelect = screen.getAllByRole('combobox')[3];
+		const disciplineSelect = screen.getAllByRole('combobox')[2];
+		const activitySelect = screen.getAllByRole('combobox')[3];
+		const subActivitySelect = screen.getAllByRole('combobox')[4];
 
 		expect(activitySelect).toBeDisabled();
 		expect(subActivitySelect).toBeDisabled();
@@ -440,9 +440,9 @@ describe('ProjectActivityAssignments', () => {
 		const projectSelect = screen.getByTitle(
 			'Select a project you are assigned to'
 		);
-		const disciplineSelect = screen.getAllByRole('combobox')[1];
-		const activitySelect = screen.getAllByRole('combobox')[2];
-		const subActivitySelect = screen.getAllByRole('combobox')[3];
+		const disciplineSelect = screen.getAllByRole('combobox')[2];
+		const activitySelect = screen.getAllByRole('combobox')[3];
+		const subActivitySelect = screen.getAllByRole('combobox')[4];
 		const manhoursInput = screen.getByPlaceholderText('Hrs');
 		const dateInput = document.querySelector('input[type="date"]');
 
@@ -478,6 +478,7 @@ describe('ProjectActivityAssignments', () => {
 			sub_activity_name: 'Welding',
 			default_manhours: 8,
 			manhours_assigned: '6',
+			qty_completed: '',
 			due_date: '2026-03-15',
 		});
 
@@ -551,8 +552,8 @@ describe('ProjectActivityAssignments', () => {
 			screen.getByTitle('Select a project you are assigned to'),
 			'1'
 		);
-		await user.selectOptions(screen.getAllByRole('combobox')[1], 'd1');
-		await user.selectOptions(screen.getAllByRole('combobox')[2], 'a1');
+		await user.selectOptions(screen.getAllByRole('combobox')[2], 'd1');
+		await user.selectOptions(screen.getAllByRole('combobox')[3], 'a1');
 		await user.click(screen.getByTitle('Save'));
 
 		await waitFor(() => {
@@ -598,8 +599,8 @@ describe('ProjectActivityAssignments', () => {
 			screen.getByTitle('Select a project you are assigned to'),
 			'1'
 		);
-		await user.selectOptions(screen.getAllByRole('combobox')[1], 'd1');
-		await user.selectOptions(screen.getAllByRole('combobox')[2], 'a1');
+		await user.selectOptions(screen.getAllByRole('combobox')[2], 'd1');
+		await user.selectOptions(screen.getAllByRole('combobox')[3], 'a1');
 		await user.click(screen.getByTitle('Save'));
 
 		await waitFor(() => {

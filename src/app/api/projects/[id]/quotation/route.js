@@ -38,40 +38,9 @@ export async function GET(request, { params }) {
 		const { id } = await params;
 		connection = await dbConnect();
 
-		// Check if project_quotations table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS project_quotations (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        project_id INT NOT NULL,
-        quotation_number VARCHAR(100),
-        quotation_date DATE,
-        client_name VARCHAR(255),
-        enquiry_number VARCHAR(100),
-        enquiry_quantity VARCHAR(255),
-        scope_of_work TEXT,
-        gross_amount DECIMAL(15, 2) DEFAULT 0,
-        gst_percentage DECIMAL(5, 2) DEFAULT 18,
-        gst_amount DECIMAL(15, 2) DEFAULT 0,
-        net_amount DECIMAL(15, 2) DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_project_id (project_id),
-        UNIQUE KEY unique_project (project_id)
-      )
-    `);
-
-		// Add client_name column if it doesn't exist
-		try {
-			await connection.execute(
-				'ALTER TABLE project_quotations ADD COLUMN client_name VARCHAR(255)'
-			);
-		} catch (e) {
-			// Column already exists
-		}
-
 		// Fetch quotation for this project
 		const [rows] = await connection.execute(
-			'SELECT * FROM project_quotations WHERE project_id = ?',
+			'SELECT * FROM project_quotations WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[id]
 		);
 
@@ -79,7 +48,7 @@ export async function GET(request, { params }) {
 		let nextQuotationNumber = '';
 		if (rows.length === 0) {
 			const [countResult] = await connection.execute(
-				'SELECT COUNT(*) as count FROM project_quotations WHERE quotation_number IS NOT NULL AND quotation_number != ""'
+				'SELECT COUNT(*) as count FROM project_quotations WHERE quotation_number IS NOT NULL AND quotation_number != "" AND (isDelete = 0 OR isDelete IS NULL)'
 			);
 			const count = countResult[0]?.count || 0;
 			nextQuotationNumber = generateQuotationNumber(count);
@@ -123,40 +92,9 @@ export async function POST(request, { params }) {
 
 		connection = await dbConnect();
 
-		// Check if project_quotations table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS project_quotations (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        project_id INT NOT NULL,
-        quotation_number VARCHAR(100),
-        quotation_date DATE,
-        client_name VARCHAR(255),
-        enquiry_number VARCHAR(100),
-        enquiry_quantity VARCHAR(255),
-        scope_of_work TEXT,
-        gross_amount DECIMAL(15, 2) DEFAULT 0,
-        gst_percentage DECIMAL(5, 2) DEFAULT 18,
-        gst_amount DECIMAL(15, 2) DEFAULT 0,
-        net_amount DECIMAL(15, 2) DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_project_id (project_id),
-        UNIQUE KEY unique_project (project_id)
-      )
-    `);
-
-		// Add client_name column if it doesn't exist
-		try {
-			await connection.execute(
-				'ALTER TABLE project_quotations ADD COLUMN client_name VARCHAR(255)'
-			);
-		} catch (e) {
-			// Column already exists
-		}
-
 		// Check if quotation already exists for this project
 		const [existing] = await connection.execute(
-			'SELECT id FROM project_quotations WHERE project_id = ?',
+			'SELECT id FROM project_quotations WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[id]
 		);
 
@@ -216,7 +154,7 @@ export async function POST(request, { params }) {
 
 		// Fetch updated quotation
 		const [rows] = await connection.execute(
-			'SELECT * FROM project_quotations WHERE project_id = ?',
+			'SELECT * FROM project_quotations WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[id]
 		);
 

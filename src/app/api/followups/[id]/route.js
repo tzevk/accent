@@ -13,7 +13,8 @@ export async function GET(request, { params }) {
 		RESOURCES.LEADS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {
@@ -63,7 +64,8 @@ export async function PUT(request, { params }) {
 		RESOURCES.LEADS,
 		PERMISSIONS.UPDATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {
@@ -170,7 +172,8 @@ export async function DELETE(request, { params }) {
 		RESOURCES.LEADS,
 		PERMISSIONS.DELETE
 	);
-	if (authResultDel.authorized === false) return authResultDel.response;
+	if (authResultDel instanceof Response) return authResultDel;
+	if (!authResultDel.authorized) return authResultDel.response;
 
 	let db;
 	try {

@@ -36,7 +36,7 @@ describe('ProjectManhoursTab', () => {
 			/>
 		);
 
-		expect(screen.getByDisplayValue('John Doe')).toBeInTheDocument();
+		expect(screen.getByText('John Doe')).toBeInTheDocument();
 		expect(screen.getByDisplayValue('500')).toBeInTheDocument();
 		expect(screen.getByDisplayValue('600')).toBeInTheDocument();
 		expect(screen.getByDisplayValue('10')).toBeInTheDocument();
@@ -78,6 +78,9 @@ describe('ProjectManhoursTab', () => {
 				fetchAttendanceHours={vi.fn()}
 			/>
 		);
+
+		const editButton = screen.getByTitle('Edit row');
+		await user.click(editButton);
 
 		const companyRateInput = screen.getByDisplayValue('500');
 		await user.clear(companyRateInput);

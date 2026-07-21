@@ -6,11 +6,7 @@ import {
 	getCurrentUser,
 } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
-import {
-	getTableColumns,
-	getPrimaryKeyColumn,
-	invalidateCache,
-} from '@/utils/schema-cache';
+import { getTableColumns, getPrimaryKeyColumn } from '@/utils/schema-cache';
 
 // Helper to check if user is in project team
 function isUserInProjectTeam(projectTeam, userId, userEmail) {
@@ -748,7 +744,7 @@ export async function PUT(request, context) {
 			) {
 				try {
 					const [proposalRows] = await db.execute(
-						'SELECT company_id, client_name FROM proposals WHERE id = ? OR proposal_id = ?',
+						'SELECT company_id, client_name FROM proposals WHERE (id = ? OR proposal_id = ?) AND isDelete = 0',
 						[proposal_id, proposal_id]
 					);
 					if (proposalRows && proposalRows.length > 0) {
@@ -767,114 +763,6 @@ export async function PUT(request, context) {
 
 			// Build UPDATE query - use cached column list
 			let existingCols = await getTableColumns(db, 'projects');
-
-			// Auto-create missing LONGTEXT columns for list fields that the edit page sends
-			const requiredListCols = [
-				'project_activities_list',
-				'planning_activities_list',
-				'documents_list',
-				'input_documents_list',
-				'kickoff_meetings_list',
-				'internal_meetings_list',
-				'documents_received_list',
-				'documents_issued_list',
-				'project_handover_list',
-				'project_manhours_list',
-				'project_query_log_list',
-				'project_schedule_list',
-			];
-			const missingCols = requiredListCols.filter((c) => !existingCols.has(c));
-			if (missingCols.length > 0) {
-				try {
-					const alterParts = missingCols
-						.map((c) => `ADD COLUMN IF NOT EXISTS \`${c}\` LONGTEXT`)
-						.join(', ');
-					await db.execute(`ALTER TABLE projects ${alterParts}`);
-					// Invalidate cache so getTableColumns re-fetches
-					invalidateCache('projects');
-					existingCols = await getTableColumns(db, 'projects');
-				} catch (alterErr) {
-					console.warn('Failed to auto-create list columns:', alterErr.message);
-				}
-			}
-
-			// Auto-fix TEXT columns that may have been created as VARCHAR(255)
-			const textCols = [
-				'revision',
-				'scope_of_work',
-				'deliverables',
-				'exclusion',
-				'billing_and_payment_terms',
-				'other_terms_and_conditions',
-				'site_visit',
-				'quotation_validity',
-				'duration',
-				'mode_of_delivery',
-			];
-			for (const col of textCols) {
-				if (!existingCols.has(col)) {
-					try {
-						await db.execute(
-							`ALTER TABLE projects ADD COLUMN IF NOT EXISTS \`${col}\` TEXT`
-						);
-						invalidateCache('projects');
-						existingCols = await getTableColumns(db, 'projects');
-					} catch {
-						/* ignore */
-					}
-				} else {
-					// Column exists - ensure it's TEXT not VARCHAR
-					try {
-						const [colInfo] = await db.execute(
-							`SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'projects' AND COLUMN_NAME = ? AND TABLE_SCHEMA = DATABASE()`,
-							[col]
-						);
-						if (colInfo.length > 0 && colInfo[0].DATA_TYPE === 'varchar') {
-							await db.execute(
-								`ALTER TABLE projects MODIFY COLUMN \`${col}\` TEXT`
-							);
-							invalidateCache('projects');
-							existingCols = await getTableColumns(db, 'projects');
-						}
-					} catch (e) {
-						console.warn(`Failed to upgrade ${col} to TEXT:`, e.message);
-					}
-				}
-			}
-
-			// Keep the input document fields wide enough for the legacy JSON payload and the structured list.
-			const longTextCols = ['input_document', 'input_documents_list'];
-			for (const col of longTextCols) {
-				if (!existingCols.has(col)) {
-					try {
-						await db.execute(
-							`ALTER TABLE projects ADD COLUMN IF NOT EXISTS \`${col}\` LONGTEXT`
-						);
-						invalidateCache('projects');
-						existingCols = await getTableColumns(db, 'projects');
-					} catch {
-						/* ignore */
-					}
-					continue;
-				}
-
-				try {
-					const [colInfo] = await db.execute(
-						`SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'projects' AND COLUMN_NAME = ? AND TABLE_SCHEMA = DATABASE()`,
-						[col]
-					);
-					const dataType = String(colInfo?.[0]?.DATA_TYPE || '').toLowerCase();
-					if (dataType && dataType !== 'longtext') {
-						await db.execute(
-							`ALTER TABLE projects MODIFY COLUMN \`${col}\` LONGTEXT`
-						);
-						invalidateCache('projects');
-						existingCols = await getTableColumns(db, 'projects');
-					}
-				} catch (e) {
-					console.warn(`Failed to upgrade ${col} to LONGTEXT:`, e.message || e);
-				}
-			}
 
 			const normalizeLongText = (value) => {
 				if (value === undefined || value === null || value === '') return null;
@@ -1187,52 +1075,6 @@ export async function PUT(request, context) {
 							: data.project_activities_list;
 
 					if (Array.isArray(activities)) {
-						// Auto-create missing columns in user_activity_assignments
-						try {
-							const uaaCols = await getTableColumns(
-								db,
-								'user_activity_assignments'
-							);
-							const requiredUaaCols = [
-								['description', 'TEXT'],
-								['discipline_name', 'VARCHAR(255)'],
-								['notes', 'TEXT'],
-								['assigned_date', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'],
-								['qty_assigned', 'DECIMAL(10,2) DEFAULT 0'],
-								['qty_completed', 'DECIMAL(10,2) DEFAULT 0'],
-								['start_date', 'DATE'],
-								['daily_entries', 'LONGTEXT'],
-								['activity_id', 'VARCHAR(100)'],
-							];
-							const missingUaaCols = requiredUaaCols.filter(
-								([col]) => !uaaCols.has(col)
-							);
-							if (missingUaaCols.length > 0) {
-								// Add each missing column individually to avoid syntax issues across MySQL versions
-								for (const [col, def] of missingUaaCols) {
-									try {
-										await db.execute(
-											`ALTER TABLE user_activity_assignments ADD COLUMN \`${col}\` ${def}`
-										);
-									} catch (addErr) {
-										// Column may already exist (race condition or cache stale) — ignore duplicate column errors
-										if (!addErr.message?.includes('Duplicate column')) {
-											console.warn(
-												`Failed to add column ${col}:`,
-												addErr.message
-											);
-										}
-									}
-								}
-								invalidateCache('user_activity_assignments');
-							}
-						} catch (colErr) {
-							console.warn(
-								'Failed to ensure user_activity_assignments columns:',
-								colErr.message
-							);
-						}
-
 						// Build a map of incoming assignments: key = `${userId}-${activityId}`
 						const incomingMap = new Map();
 						const allUserIds = new Set();
@@ -1362,59 +1204,6 @@ export async function PUT(request, context) {
 						}
 
 						// Delete old rows for this project, then insert fresh (preserving daily_entries from JSON blob)
-						// Ensure table has all required columns and AUTO_INCREMENT on id
-						try {
-							await db.execute(`
-              CREATE TABLE IF NOT EXISTS user_activity_assignments (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                user_id INT NOT NULL,
-                project_id VARCHAR(50),
-                activity_id VARCHAR(100),
-                activity_name VARCHAR(255),
-                discipline_name VARCHAR(255),
-                description TEXT,
-                due_date DATE,
-                start_date DATE,
-                priority VARCHAR(50) DEFAULT 'Medium',
-                estimated_hours DECIMAL(10,2) DEFAULT 0,
-                actual_hours DECIMAL(10,2) DEFAULT 0,
-                qty_assigned DECIMAL(10,2) DEFAULT 0,
-                qty_completed DECIMAL(10,2) DEFAULT 0,
-                status VARCHAR(50) DEFAULT 'Not Started',
-                notes TEXT,
-                daily_entries LONGTEXT,
-                assigned_date TIMESTAMP,
-                assigned_by INT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_user_status (user_id, status),
-                INDEX idx_project (project_id)
-              ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            `);
-							// Ensure id is AUTO_INCREMENT (in case existing table was created without it)
-							await db.execute(
-								`ALTER TABLE user_activity_assignments MODIFY COLUMN id INT PRIMARY KEY AUTO_INCREMENT`
-							);
-						} catch (_) {
-							/* ignore if already correct */
-						}
-						const missingCols = [
-							'ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS activity_id VARCHAR(100)',
-							'ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS discipline_name VARCHAR(255)',
-							'ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS start_date DATE',
-							'ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS qty_assigned DECIMAL(10,2) DEFAULT 0',
-							'ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS qty_completed DECIMAL(10,2) DEFAULT 0',
-							'ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS daily_entries LONGTEXT',
-							'ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS assigned_date TIMESTAMP NULL',
-						];
-						for (const sql of missingCols) {
-							try {
-								await db.execute(sql);
-							} catch (_) {
-								/* column already exists */
-							}
-						}
-
 						await db.execute(
 							'DELETE FROM user_activity_assignments WHERE project_id = ?',
 							[projectId]

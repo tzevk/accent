@@ -13,50 +13,6 @@ function generateInvoiceNumber(count) {
 	return `ATS/I/${month}-${year}/${sequenceNumber}`;
 }
 
-// Create project_invoices table if it doesn't exist
-async function ensureTableExists(connection) {
-	await connection.execute(`
-    CREATE TABLE IF NOT EXISTS project_invoices (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      project_id INT NOT NULL,
-      invoice_number VARCHAR(100),
-      invoice_date DATE,
-      company_name VARCHAR(255),
-      city VARCHAR(100),
-      invoice_amount DECIMAL(15, 2),
-      project_number VARCHAR(100),
-      expenses_head VARCHAR(255),
-      payment DECIMAL(15, 2),
-      purchase_description TEXT,
-      payment_overdue_days INT DEFAULT 0,
-      remarks TEXT,
-      tab_type VARCHAR(50) DEFAULT 'invoice',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_project_id (project_id),
-      INDEX idx_invoice_number (invoice_number)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-	// Safely add new columns to existing tables
-	const migrations = [
-		'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS company_name VARCHAR(255)',
-		'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS city VARCHAR(100)',
-		'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS project_number VARCHAR(100)',
-		'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS expenses_head VARCHAR(255)',
-		'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS payment DECIMAL(15,2)',
-		'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS purchase_description TEXT',
-		'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS payment_overdue_days INT DEFAULT 0',
-		"ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS tab_type VARCHAR(50) DEFAULT 'invoice'",
-	];
-	for (const sql of migrations) {
-		try {
-			await connection.execute(sql);
-		} catch (_) {
-			/* column may already exist */
-		}
-	}
-}
-
 // GET - Fetch all invoices for a project
 export async function GET(request, { params }) {
 	let connection;
@@ -71,16 +27,15 @@ export async function GET(request, { params }) {
 		}
 
 		connection = await dbConnect();
-		await ensureTableExists(connection);
 
 		const [invoices] = await connection.execute(
-			`SELECT * FROM project_invoices WHERE project_id = ? ORDER BY created_at DESC`,
+			`SELECT * FROM project_invoices WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL) ORDER BY created_at DESC`,
 			[id]
 		);
 
 		// Generate next invoice number
 		const [countResult] = await connection.execute(
-			'SELECT COUNT(*) as count FROM project_invoices WHERE invoice_number IS NOT NULL AND invoice_number != ""'
+			'SELECT COUNT(*) as count FROM project_invoices WHERE invoice_number IS NOT NULL AND invoice_number != "" AND (isDelete = 0 OR isDelete IS NULL)'
 		);
 		const count = countResult[0]?.count || 0;
 		const nextInvoiceNumber = generateInvoiceNumber(count);
@@ -116,7 +71,6 @@ export async function POST(request, { params }) {
 		}
 
 		connection = await dbConnect();
-		await ensureTableExists(connection);
 
 		const {
 			invoice_number,
@@ -187,7 +141,6 @@ export async function PUT(request, { params }) {
 		}
 
 		connection = await dbConnect();
-		await ensureTableExists(connection);
 
 		const {
 			invoiceId,
@@ -262,7 +215,7 @@ export async function DELETE(request, { params }) {
 		connection = await dbConnect();
 
 		await connection.execute(
-			`DELETE FROM project_invoices WHERE id = ? AND project_id = ?`,
+			`UPDATE project_invoices SET isDelete = 1 WHERE id = ? AND project_id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
 			[invoiceId, id]
 		);
 

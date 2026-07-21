@@ -55,13 +55,35 @@ describe('InvoicePage', () => {
 	beforeEach(() => {
 		vi.stubGlobal(
 			'fetch',
-			vi.fn().mockResolvedValue({
-				json: vi.fn().mockResolvedValue({
-					success: true,
-					data: mockInvoices,
-					pagination: { page: 1, limit: 20, total: 2, totalPages: 1 },
-					stats: mockStats,
-				}),
+			vi.fn().mockImplementation((input) => {
+				const urlStr = typeof input === 'string' ? input : String(input);
+				const searchMatch = urlStr.match(/[?&]search=([^&]*)/);
+				const search = searchMatch ? decodeURIComponent(searchMatch[1]) : '';
+				const filtered = search
+					? mockInvoices.filter(
+							(inv) =>
+								inv.invoice_number
+									.toLowerCase()
+									.includes(search.toLowerCase()) ||
+								inv.client_name.toLowerCase().includes(search.toLowerCase()) ||
+								(inv.description || '')
+									.toLowerCase()
+									.includes(search.toLowerCase())
+						)
+					: mockInvoices;
+				return Promise.resolve({
+					json: vi.fn().mockResolvedValue({
+						success: true,
+						data: filtered,
+						pagination: {
+							page: 1,
+							limit: 20,
+							total: filtered.length,
+							totalPages: 1,
+						},
+						stats: { ...mockStats, total: filtered.length },
+					}),
+				});
 			})
 		);
 	});

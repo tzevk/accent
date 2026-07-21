@@ -207,7 +207,7 @@ export async function POST(request) {
 		if (proposal_id) {
 			try {
 				const [proposalRows] = await db.execute(
-					'SELECT company_id, client_name FROM proposals WHERE id = ? OR proposal_id = ?',
+					'SELECT company_id, client_name FROM proposals WHERE (id = ? OR proposal_id = ?) AND isDelete = 0',
 					[proposal_id, proposal_id]
 				);
 				if (proposalRows && proposalRows.length > 0) {
@@ -420,7 +420,7 @@ export async function PUT(request) {
 		if (proposal_id) {
 			try {
 				const [proposalRows] = await db.execute(
-					'SELECT company_id, client_name FROM proposals WHERE id = ? OR proposal_id = ?',
+					'SELECT company_id, client_name FROM proposals WHERE (id = ? OR proposal_id = ?) AND isDelete = 0',
 					[proposal_id, proposal_id]
 				);
 				if (proposalRows && proposalRows.length > 0) {
@@ -622,7 +622,7 @@ export async function DELETE(request) {
 
 		if (!keyCol) {
 			try {
-				await db.end();
+				db.release();
 			} catch {}
 			return NextResponse.json(
 				{

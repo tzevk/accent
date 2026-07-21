@@ -13,7 +13,8 @@ export async function GET(request) {
 		RESOURCES.EMPLOYEES,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {
@@ -70,7 +71,8 @@ export async function POST(request) {
 		RESOURCES.EMPLOYEES,
 		PERMISSIONS.WRITE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {
@@ -168,7 +170,8 @@ export async function PUT(request) {
 		RESOURCES.EMPLOYEES,
 		PERMISSIONS.WRITE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {
@@ -271,7 +274,8 @@ export async function DELETE(request) {
 		RESOURCES.EMPLOYEES,
 		PERMISSIONS.WRITE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {

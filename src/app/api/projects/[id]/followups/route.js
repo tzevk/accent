@@ -13,7 +13,8 @@ export async function GET(request, { params }) {
 		RESOURCES.PROJECTS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db;
 	try {
@@ -28,48 +29,10 @@ export async function GET(request, { params }) {
 
 		db = await dbConnect();
 
-		// Ensure table exists with project-specific fields
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS project_followups (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        project_id INT NOT NULL,
-        follow_up_date DATE NOT NULL,
-        follow_up_type VARCHAR(50) DEFAULT 'Internal Review',
-        description TEXT NOT NULL,
-        status VARCHAR(50) DEFAULT 'Scheduled',
-        priority VARCHAR(20) DEFAULT 'Medium',
-        milestone VARCHAR(255),
-        responsible_person VARCHAR(255),
-        action_items TEXT,
-        outcome TEXT,
-        next_action VARCHAR(255),
-        next_follow_up_date DATE,
-        blockers TEXT,
-        notes TEXT,
-        logged_by VARCHAR(255),
-        created_by VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_project_id (project_id),
-        INDEX idx_follow_up_date (follow_up_date),
-        INDEX idx_status (status)
-      )
-    `);
-
-		// Add logged_by column if it doesn't exist
-		await db
-			.execute(
-				`
-      ALTER TABLE project_followups 
-      ADD COLUMN IF NOT EXISTS logged_by VARCHAR(255) AFTER notes
-    `
-			)
-			.catch(() => {});
-
 		// Get follow-ups for this project
 		const [rows] = await db.execute(
 			`SELECT * FROM project_followups 
-       WHERE project_id = ? 
+       WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL)
        ORDER BY follow_up_date DESC, created_at DESC`,
 			[id]
 		);
@@ -88,6 +51,15 @@ export async function GET(request, { params }) {
 
 // POST - Create new follow-up for a project
 export async function POST(request, { params }) {
+	// RBAC check
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.PROJECTS,
+		PERMISSIONS.UPDATE
+	);
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
+
 	let db;
 	try {
 		const { id } = await params;
@@ -173,6 +145,15 @@ export async function POST(request, { params }) {
 
 // PUT - Update existing follow-up
 export async function PUT(request, { params }) {
+	// RBAC check
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.PROJECTS,
+		PERMISSIONS.UPDATE
+	);
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
+
 	let db;
 	try {
 		const { id: projectId } = await params;
@@ -234,7 +215,7 @@ export async function PUT(request, { params }) {
 		values.push(followupId, projectId);
 
 		await db.execute(
-			`UPDATE project_followups SET ${updates.join(', ')} WHERE id = ? AND project_id = ?`,
+			`UPDATE project_followups SET ${updates.join(', ')} WHERE id = ? AND project_id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
 			values
 		);
 
@@ -255,6 +236,15 @@ export async function PUT(request, { params }) {
 
 // DELETE - Delete a follow-up
 export async function DELETE(request, { params }) {
+	// RBAC check
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.PROJECTS,
+		PERMISSIONS.DELETE
+	);
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
+
 	let db;
 	try {
 		const { id: projectId } = await params;
@@ -277,8 +267,9 @@ export async function DELETE(request, { params }) {
 
 		db = await dbConnect();
 
+		// Soft delete the follow-up
 		await db.execute(
-			'DELETE FROM project_followups WHERE id = ? AND project_id = ?',
+			'UPDATE project_followups SET isDelete = 1 WHERE id = ? AND project_id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 			[followupId, projectId]
 		);
 

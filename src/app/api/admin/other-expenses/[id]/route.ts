@@ -19,7 +19,8 @@ export async function GET(
 		RESOURCES.OTHER_EXPENSES,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db: any;
 	try {
@@ -54,7 +55,8 @@ export async function PUT(
 		RESOURCES.OTHER_EXPENSES,
 		PERMISSIONS.UPDATE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db: any;
 	try {
@@ -158,7 +160,8 @@ export async function DELETE(
 		RESOURCES.OTHER_EXPENSES,
 		PERMISSIONS.DELETE
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let db: any;
 	try {

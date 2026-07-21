@@ -20,7 +20,8 @@ export async function GET(request) {
 		RESOURCES.PROPOSALS,
 		PERMISSIONS.READ
 	);
-	if (authResult.authorized === false) return authResult.response;
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	let browser;
@@ -201,7 +202,7 @@ export async function GET(request) {
 		} else if (source === 'proposal') {
 			// Fetch directly from proposals table
 			const [rows] = await connection.execute(
-				'SELECT * FROM proposals WHERE id = ? LIMIT 1',
+				'SELECT * FROM proposals WHERE id = ? AND isDelete = 0 LIMIT 1',
 				[id]
 			);
 
