@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NextResponse } from 'next/server';
 
 const mockExecute = vi.fn();
 const mockDbConnect = vi.fn().mockResolvedValue({
@@ -41,15 +40,12 @@ function createRequest({
 	body = null,
 	url = 'http://localhost/api/proposals/1',
 } = {}) {
-	const req = {
+	return {
 		url,
 		method,
 		headers: new Headers(),
+		...(body ? { json: vi.fn().mockResolvedValue(body) } : {}),
 	};
-	if (body) {
-		(req as any).json = vi.fn().mockResolvedValue(body);
-	}
-	return req;
 }
 
 const mockProposal = {
