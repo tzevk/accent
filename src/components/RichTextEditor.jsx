@@ -186,7 +186,7 @@ export default function RichTextEditor({
 							placement: 'top',
 							offset: 8,
 							flip: true,
-							shift: { padding: 8 },
+							shift: { padding: { left: 300, top: 8, right: 8, bottom: 8 } },
 						}}
 						className="flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white p-1 shadow-lg"
 					>
