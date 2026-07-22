@@ -38,13 +38,13 @@ export async function GET(request, { params }) {
       FROM users u
       LEFT JOIN employees e ON u.employee_id = e.id
       LEFT JOIN roles_master r ON u.role_id = r.id
-      WHERE u.id = ?
+      WHERE u.id = ? AND u.isDelete = 0
       LIMIT 1
     `,
 			[id]
 		);
 
-		await db.end();
+		await db.release();
 
 		if (!rows || rows.length === 0) {
 			return NextResponse.json(
@@ -59,7 +59,7 @@ export async function GET(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error fetching user:', error);
-		if (db) await db.end();
+		if (db) await db.release();
 		return NextResponse.json(
 			{ success: false, error: 'Failed to fetch user' },
 			{ status: 500 }
@@ -93,11 +93,11 @@ export async function PUT(request, { params }) {
 
 		// Check if user exists
 		const [existing] = await db.execute(
-			'SELECT id FROM users WHERE id = ? LIMIT 1',
+			'SELECT id FROM users WHERE id = ? AND isDelete = 0 LIMIT 1',
 			[id]
 		);
 		if (!existing || existing.length === 0) {
-			await db.end();
+			await db.release();
 			return NextResponse.json(
 				{ success: false, error: 'User not found' },
 				{ status: 404 }
@@ -150,7 +150,7 @@ export async function PUT(request, { params }) {
 		}
 
 		if (updateFields.length === 0) {
-			await db.end();
+			await db.release();
 			return NextResponse.json(
 				{ success: false, error: 'No fields to update' },
 				{ status: 400 }
@@ -161,7 +161,7 @@ export async function PUT(request, { params }) {
 		updateValues.push(id);
 
 		await db.execute(
-			`UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`,
+			`UPDATE users SET ${updateFields.join(', ')} WHERE id = ? AND isDelete = 0`,
 			updateValues
 		);
 
@@ -174,12 +174,12 @@ export async function PUT(request, { params }) {
       FROM users u
       LEFT JOIN employees e ON u.employee_id = e.id
       LEFT JOIN roles_master r ON u.role_id = r.id
-      WHERE u.id = ?
+      WHERE u.id = ? AND u.isDelete = 0
     `,
 			[id]
 		);
 
-		await db.end();
+		await db.release();
 
 		return NextResponse.json({
 			success: true,
@@ -188,7 +188,7 @@ export async function PUT(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error updating user:', error);
-		if (db) await db.end();
+		if (db) await db.release();
 		return NextResponse.json(
 			{ success: false, error: 'Failed to update user' },
 			{ status: 500 }
@@ -221,11 +221,11 @@ export async function DELETE(request, { params }) {
 
 		// Check if user exists
 		const [existing] = await db.execute(
-			'SELECT id, is_super_admin FROM users WHERE id = ? LIMIT 1',
+			'SELECT id, is_super_admin FROM users WHERE id = ? AND isDelete = 0 LIMIT 1',
 			[id]
 		);
 		if (!existing || existing.length === 0) {
-			await db.end();
+			await db.release();
 			return NextResponse.json(
 				{ success: false, error: 'User not found' },
 				{ status: 404 }
@@ -234,15 +234,18 @@ export async function DELETE(request, { params }) {
 
 		// Prevent deleting super admin
 		if (existing[0].is_super_admin) {
-			await db.end();
+			await db.release();
 			return NextResponse.json(
 				{ success: false, error: 'Cannot delete super admin user' },
 				{ status: 403 }
 			);
 		}
 
-		await db.execute('DELETE FROM users WHERE id = ?', [id]);
-		await db.end();
+		await db.execute(
+			'UPDATE users SET isDelete = 1 WHERE id = ? AND isDelete = 0',
+			[id]
+		);
+		await db.release();
 
 		return NextResponse.json({
 			success: true,
@@ -250,7 +253,7 @@ export async function DELETE(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error deleting user:', error);
-		if (db) await db.end();
+		if (db) await db.release();
 		return NextResponse.json(
 			{ success: false, error: 'Failed to delete user' },
 			{ status: 500 }

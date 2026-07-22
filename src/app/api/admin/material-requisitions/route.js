@@ -15,7 +15,7 @@ export async function GET(request) {
 		const offset = (page - 1) * limit;
 
 		// Build query
-		let whereClause = '1=1';
+		let whereClause = '1=1 AND isDelete = 0';
 		const params = [];
 
 		if (search) {
@@ -49,7 +49,7 @@ export async function GET(request) {
         SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
         SUM(CASE WHEN status = 'fulfilled' THEN 1 ELSE 0 END) as fulfilled,
         SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
-      FROM material_requisitions
+      FROM material_requisitions WHERE isDelete = 0
     `);
 
 		await db.release();
@@ -154,7 +154,10 @@ export async function DELETE(request) {
 
 		db = await dbConnect();
 
-		await db.query('DELETE FROM material_requisitions WHERE id = ?', [id]);
+		await db.query(
+			'UPDATE material_requisitions SET isDelete = 1 WHERE id = ?',
+			[id]
+		);
 
 		return NextResponse.json({
 			success: true,

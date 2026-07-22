@@ -19,9 +19,10 @@ export async function GET(request, { params }) {
 	try {
 		const { id } = await params;
 		db = await dbConnect();
-		const [vendors] = await db.query('SELECT * FROM vendors WHERE id = ?', [
-			id,
-		]);
+		const [vendors] = await db.query(
+			'SELECT * FROM vendors WHERE id = ? AND isDelete = 0',
+			[id]
+		);
 
 		if (vendors.length === 0) {
 			return Response.json(
@@ -49,7 +50,7 @@ export async function GET(request, { params }) {
 	} finally {
 		if (db) {
 			try {
-				await db.end();
+				await db.release();
 			} catch (e) {
 				console.error('Error releasing connection:', e);
 			}
@@ -159,7 +160,7 @@ export async function PUT(request, { params }) {
         contract_attachments = ?,
         certificate_attachments = ?,
         profile_attachments = ?
-      WHERE id = ?
+      WHERE id = ? AND isDelete = 0
     `;
 
 		await db.execute(updateQuery, [
@@ -223,7 +224,7 @@ export async function PUT(request, { params }) {
 	} finally {
 		if (db) {
 			try {
-				await db.end();
+				await db.release();
 			} catch (e) {
 				console.error('Error releasing connection:', e);
 			}
@@ -246,7 +247,10 @@ export async function DELETE(request, { params }) {
 		const { id } = await params;
 		db = await dbConnect();
 
-		await db.execute('DELETE FROM vendors WHERE id = ?', [id]);
+		await db.execute(
+			'UPDATE vendors SET isDelete = 1 WHERE id = ? AND isDelete = 0',
+			[id]
+		);
 
 		return Response.json({
 			success: true,
@@ -264,7 +268,7 @@ export async function DELETE(request, { params }) {
 	} finally {
 		if (db) {
 			try {
-				await db.end();
+				await db.release();
 			} catch (e) {
 				console.error('Error releasing connection:', e);
 			}

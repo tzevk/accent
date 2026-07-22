@@ -22,9 +22,10 @@ export async function GET(request, { params }) {
 
 		db = await dbConnect();
 
-		const [rows] = await db.execute('SELECT * FROM companies WHERE id = ?', [
-			companyId,
-		]);
+		const [rows] = await db.execute(
+			'SELECT * FROM companies WHERE id = ? AND isDelete = 0',
+			[companyId]
+		);
 
 		if (rows.length === 0) {
 			return Response.json(
@@ -155,7 +156,7 @@ export async function PUT(request, { params }) {
 			);
 		}
 
-		const sql = `UPDATE companies SET ${updateFields.join(', ')} WHERE id = ?`;
+		const sql = `UPDATE companies SET ${updateFields.join(', ')} WHERE id = ? AND isDelete = 0`;
 		updateValues.push(companyId);
 
 		const [result] = await db.execute(sql, updateValues);
@@ -205,9 +206,10 @@ export async function DELETE(request, { params }) {
 
 		db = await dbConnect();
 
-		const [result] = await db.execute('DELETE FROM companies WHERE id = ?', [
-			companyId,
-		]);
+		const [result] = await db.execute(
+			'UPDATE companies SET isDelete = 1 WHERE id = ? AND isDelete = 0',
+			[companyId]
+		);
 
 		if (result.affectedRows === 0) {
 			return Response.json(

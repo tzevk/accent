@@ -31,12 +31,12 @@ export async function GET(request, { params }) {
 
 		const [rows] = await db.execute(
 			`
-      SELECT * FROM employees WHERE id = ? LIMIT 1
+      SELECT * FROM employees WHERE id = ? AND isDelete = 0 LIMIT 1
     `,
 			[id]
 		);
 
-		await db.end();
+		await db.release();
 
 		if (!rows || rows.length === 0) {
 			return NextResponse.json(
@@ -51,7 +51,7 @@ export async function GET(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error fetching employee:', error);
-		if (db) await db.end();
+		if (db) await db.release();
 		return NextResponse.json(
 			{ success: false, error: 'Failed to fetch employee' },
 			{ status: 500 }
@@ -85,11 +85,11 @@ export async function PUT(request, { params }) {
 
 		// Check if employee exists
 		const [existing] = await db.execute(
-			'SELECT id FROM employees WHERE id = ? LIMIT 1',
+			'SELECT id FROM employees WHERE id = ? AND isDelete = 0 LIMIT 1',
 			[id]
 		);
 		if (!existing || existing.length === 0) {
-			await db.end();
+			await db.release();
 			return NextResponse.json(
 				{ success: false, error: 'Employee not found' },
 				{ status: 404 }
@@ -141,7 +141,7 @@ export async function PUT(request, { params }) {
 		}
 
 		if (updateFields.length === 0) {
-			await db.end();
+			await db.release();
 			return NextResponse.json(
 				{ success: false, error: 'No fields to update' },
 				{ status: 400 }
@@ -152,15 +152,16 @@ export async function PUT(request, { params }) {
 		updateValues.push(id);
 
 		await db.execute(
-			`UPDATE employees SET ${updateFields.join(', ')} WHERE id = ?`,
+			`UPDATE employees SET ${updateFields.join(', ')} WHERE id = ? AND isDelete = 0`,
 			updateValues
 		);
 
 		// Fetch updated employee
-		const [rows] = await db.execute('SELECT * FROM employees WHERE id = ?', [
-			id,
-		]);
-		await db.end();
+		const [rows] = await db.execute(
+			'SELECT * FROM employees WHERE id = ? AND isDelete = 0',
+			[id]
+		);
+		await db.release();
 
 		return NextResponse.json({
 			success: true,
@@ -169,7 +170,7 @@ export async function PUT(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error updating employee:', error);
-		if (db) await db.end();
+		if (db) await db.release();
 		return NextResponse.json(
 			{ success: false, error: 'Failed to update employee' },
 			{ status: 500 }
@@ -202,11 +203,11 @@ export async function DELETE(request, { params }) {
 
 		// Check if employee exists
 		const [existing] = await db.execute(
-			'SELECT id FROM employees WHERE id = ? LIMIT 1',
+			'SELECT id FROM employees WHERE id = ? AND isDelete = 0 LIMIT 1',
 			[id]
 		);
 		if (!existing || existing.length === 0) {
-			await db.end();
+			await db.release();
 			return NextResponse.json(
 				{ success: false, error: 'Employee not found' },
 				{ status: 404 }
@@ -219,7 +220,7 @@ export async function DELETE(request, { params }) {
 			[id]
 		);
 		if (users && users.length > 0) {
-			await db.end();
+			await db.release();
 			return NextResponse.json(
 				{
 					success: false,
@@ -230,8 +231,11 @@ export async function DELETE(request, { params }) {
 			);
 		}
 
-		await db.execute('DELETE FROM employees WHERE id = ?', [id]);
-		await db.end();
+		await db.execute(
+			'UPDATE employees SET isDelete = 1 WHERE id = ? AND isDelete = 0',
+			[id]
+		);
+		await db.release();
 
 		return NextResponse.json({
 			success: true,
@@ -239,7 +243,7 @@ export async function DELETE(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error deleting employee:', error);
-		if (db) await db.end();
+		if (db) await db.release();
 		return NextResponse.json(
 			{ success: false, error: 'Failed to delete employee' },
 			{ status: 500 }

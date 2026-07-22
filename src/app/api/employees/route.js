@@ -5,132 +5,6 @@ import {
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
 } from '@/utils/api-permissions';
-import { getPrimaryKeyColumn } from '@/utils/schema-cache';
-
-// Flag to ensure schema DDL runs at most once per process
-let _employeesSchemaReady = false;
-
-// Helper to detect primary key column for employees table (cached)
-async function detectEmployeePrimaryKey(connection) {
-	try {
-		const pk = await getPrimaryKeyColumn(connection, 'employees');
-		if (pk) return pk;
-	} catch (err) {
-		console.warn('Could not detect employees primary key:', err.message);
-	}
-	return 'id'; // Default fallback
-}
-
-// Helpers to ensure columns exist even on older MySQL/MariaDB where IF NOT EXISTS isn't supported
-async function getExistingColumns(connection) {
-	const [rows] = await connection.execute('SHOW COLUMNS FROM employees');
-	return new Set(rows.map((r) => r.Field));
-}
-
-async function ensureEmployeesTable(connection) {
-	const desired = [
-		['username', 'VARCHAR(50) UNIQUE'],
-		['middle_name', 'VARCHAR(50)'],
-		['gender', "ENUM('Male','Female','Other')"],
-		['employee_type', "ENUM('Payroll','Contract','Deputation')"],
-		['grade', 'VARCHAR(50)'],
-		['workplace', 'VARCHAR(100)'],
-		['level', 'VARCHAR(50)'],
-		['reporting_to', 'VARCHAR(100)'],
-		['pf_no', 'VARCHAR(50)'],
-		['dob', 'DATE'],
-		['marital_status', "ENUM('Single','Married','Other')"],
-		['employment_status', 'VARCHAR(50)'],
-		['role', 'VARCHAR(100)'],
-		['joining_date', 'DATE'],
-		['present_address', 'TEXT'],
-		['city', 'VARCHAR(100)'],
-		['pin', 'VARCHAR(20)'],
-		['state', 'VARCHAR(100)'],
-		['country', 'VARCHAR(100)'],
-		['mobile', 'VARCHAR(30)'],
-		['personal_email', 'VARCHAR(255)'],
-		['profile_photo_url', 'VARCHAR(255)'],
-		['bonus_eligible', 'TINYINT(1) DEFAULT 0'],
-		['stat_pf', 'TINYINT(1) DEFAULT 0'],
-		['stat_mlwf', 'TINYINT(1) DEFAULT 0'],
-		['stat_pt', 'TINYINT(1) DEFAULT 0'],
-		['stat_esic', 'TINYINT(1) DEFAULT 0'],
-		['stat_tds', 'TINYINT(1) DEFAULT 0'],
-		['qualification', 'VARCHAR(100)'],
-		['institute', 'VARCHAR(150)'],
-		['passing_year', 'VARCHAR(4)'],
-		['work_experience', 'TEXT'],
-		['bank_account_no', 'VARCHAR(50)'],
-		['bank_ifsc', 'VARCHAR(20)'],
-		['bank_name', 'VARCHAR(100)'],
-		['bank_branch', 'VARCHAR(100)'],
-		['account_holder_name', 'VARCHAR(150)'],
-		['pan', 'VARCHAR(20)'],
-		['aadhar', 'VARCHAR(20)'],
-		['gratuity_no', 'VARCHAR(50)'],
-		['uan', 'VARCHAR(50)'],
-		['esi_no', 'VARCHAR(50)'],
-		['attendance_id', 'VARCHAR(50)'],
-		['biometric_code', 'VARCHAR(50)'],
-		['device_code', 'VARCHAR(50)'],
-		['exit_date', 'DATE'],
-		['exit_reason', 'TEXT'],
-		['deputation_company_id', 'INT'],
-		['company_name', "VARCHAR(255) DEFAULT 'Accent Techno Solutions Pvt Ltd'"],
-	];
-
-	const existing = await getExistingColumns(connection);
-
-	for (const [name, type] of desired) {
-		if (!existing.has(name)) {
-			try {
-				await connection.execute(
-					`ALTER TABLE employees ADD COLUMN ${name} ${type}`
-				);
-				existing.add(name);
-			} catch {
-				// Ignore individual failures to avoid blocking; inserts/updates will intersect with existing columns
-			}
-		}
-	}
-
-	// Update employee_type ENUM to include new values (Payroll, Contract, Deputation)
-	try {
-		await connection.execute(
-			`ALTER TABLE employees MODIFY COLUMN employee_type ENUM('Payroll','Contract','Deputation','Permanent','Intern')`
-		);
-	} catch {
-		// Ignore if modification fails
-	}
-}
-
-// Ensure base employees table exists in case the environment hasn't run setup
-async function ensureBaseEmployeesTable(connection) {
-	const createSql = `
-    CREATE TABLE IF NOT EXISTS employees (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      employee_id VARCHAR(20) UNIQUE NOT NULL,
-      first_name VARCHAR(50) NOT NULL,
-      last_name VARCHAR(50) NOT NULL,
-      email VARCHAR(100) UNIQUE NOT NULL,
-      phone VARCHAR(20),
-      department VARCHAR(50),
-      position VARCHAR(100),
-      hire_date DATE,
-      status ENUM('active', 'inactive', 'terminated') DEFAULT 'active',
-      manager_id INT,
-      address TEXT,
-      emergency_contact_name VARCHAR(100),
-      emergency_contact_phone VARCHAR(20),
-      notes TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (manager_id) REFERENCES employees(id) ON DELETE SET NULL
-    )
-  `;
-	await connection.execute(createSql);
-}
 
 // GET - Fetch all employees
 export async function GET(request) {
@@ -155,19 +29,9 @@ export async function GET(request) {
 		const offset = (page - 1) * limit;
 
 		connection = await dbConnect();
-		// Run schema DDL at most once per process
-		if (!_employeesSchemaReady) {
-			try {
-				await ensureBaseEmployeesTable(connection);
-			} catch {}
-			try {
-				await ensureEmployeesTable(connection);
-			} catch {}
-			_employeesSchemaReady = true;
-		}
 
 		// Build WHERE clause for filtering (use alias to avoid ambiguity with self-join)
-		let whereClause = 'WHERE 1=1';
+		let whereClause = 'WHERE 1=1 AND e.isDelete = 0';
 		const params = [];
 
 		if (search) {
@@ -229,12 +93,12 @@ export async function GET(request) {
 
 		// Get unique departments for filter options
 		const [departments] = await connection.execute(
-			'SELECT DISTINCT department FROM employees WHERE department IS NOT NULL ORDER BY department'
+			'SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND isDelete = 0 ORDER BY department'
 		);
 
 		// Get unique workplaces for filter options
 		const [workplaces] = await connection.execute(
-			"SELECT DISTINCT workplace FROM employees WHERE workplace IS NOT NULL AND workplace != '' ORDER BY workplace"
+			"SELECT DISTINCT workplace FROM employees WHERE workplace IS NOT NULL AND workplace != '' AND isDelete = 0 ORDER BY workplace"
 		);
 
 		return NextResponse.json({
@@ -313,15 +177,6 @@ export async function POST(request) {
 		}
 
 		connection = await dbConnect();
-		if (!_employeesSchemaReady) {
-			try {
-				await ensureBaseEmployeesTable(connection);
-			} catch {}
-			try {
-				await ensureEmployeesTable(connection);
-			} catch {}
-			_employeesSchemaReady = true;
-		}
 
 		// Check if employee_id or email already exists
 		// Auto-generate ATS-prefixed employee_id when missing or only prefix provided
@@ -332,7 +187,7 @@ export async function POST(request) {
 				/^ATS\d*$/i.test(sanitized.employee_id)
 			) {
 				const [rows] = await connection.execute(
-					"SELECT employee_id FROM employees WHERE employee_id LIKE 'ATS%'"
+					"SELECT employee_id FROM employees WHERE employee_id LIKE 'ATS%' AND isDelete = 0"
 				);
 				let maxNum = 0;
 				for (const r of rows) {
@@ -353,7 +208,7 @@ export async function POST(request) {
 		}
 
 		const [existing] = await connection.execute(
-			'SELECT id FROM employees WHERE employee_id = ? OR email = ?',
+			'SELECT id FROM employees WHERE employee_id = ? OR email = ? AND isDelete = 0',
 			[sanitized.employee_id, sanitized.email]
 		);
 
@@ -429,7 +284,8 @@ export async function POST(request) {
 			'company_name',
 		];
 		// Only include columns that actually exist in DB
-		const existingCols = await getExistingColumns(connection);
+		const [colsInfo] = await connection.execute('SHOW COLUMNS FROM employees');
+		const existingCols = new Set(colsInfo.map((r) => r.Field));
 		const insertable = allowedFields.filter((f) => existingCols.has(f));
 		const cols = [];
 		const placeholders = [];
@@ -558,20 +414,11 @@ export async function PUT(request) {
 		}
 
 		connection = await dbConnect();
-		if (!_employeesSchemaReady) {
-			try {
-				await ensureBaseEmployeesTable(connection);
-			} catch {}
-			try {
-				await ensureEmployeesTable(connection);
-			} catch {}
-			_employeesSchemaReady = true;
-		}
-		const pkCol = await detectEmployeePrimaryKey(connection);
+		const pkCol = 'id';
 
 		// Check if employee exists
 		const [existing] = await connection.execute(
-			`SELECT ${pkCol} FROM employees WHERE ${pkCol} = ?`,
+			`SELECT ${pkCol} FROM employees WHERE ${pkCol} = ? AND isDelete = 0`,
 			[employeeId]
 		);
 		if (existing.length === 0) {
@@ -584,7 +431,7 @@ export async function PUT(request) {
 		// Check for duplicate employee_id or email (excluding current employee)
 		if (data.employee_id || data.email) {
 			const [duplicates] = await connection.execute(
-				`SELECT ${pkCol} FROM employees WHERE (employee_id = ? OR email = ?) AND ${pkCol} != ?`,
+				`SELECT ${pkCol} FROM employees WHERE (employee_id = ? OR email = ?) AND ${pkCol} != ? AND isDelete = 0`,
 				[data.employee_id, data.email, employeeId]
 			);
 
@@ -664,7 +511,8 @@ export async function PUT(request) {
 			'exit_reason',
 			'company_name',
 		];
-		const existingCols = await getExistingColumns(connection);
+		const [colsInfo] = await connection.execute('SHOW COLUMNS FROM employees');
+		const existingCols = new Set(colsInfo.map((r) => r.Field));
 		const updatable = allowedFields.filter((f) => existingCols.has(f));
 
 		updatable.forEach((field) => {
@@ -687,7 +535,7 @@ export async function PUT(request) {
 		values.push(employeeId);
 
 		await connection.execute(
-			`UPDATE employees SET ${updateFields.join(', ')} WHERE ${pkCol} = ?`,
+			`UPDATE employees SET ${updateFields.join(', ')} WHERE ${pkCol} = ? AND isDelete = 0`,
 			values
 		);
 
@@ -775,17 +623,11 @@ export async function DELETE(request) {
 		}
 
 		connection = await dbConnect();
-		if (!_employeesSchemaReady) {
-			try {
-				await ensureBaseEmployeesTable(connection);
-			} catch {}
-			_employeesSchemaReady = true;
-		}
-		const pkCol = await detectEmployeePrimaryKey(connection);
+		const pkCol = 'id';
 
 		// Check if employee exists
 		const [existing] = await connection.execute(
-			`SELECT ${pkCol} FROM employees WHERE ${pkCol} = ?`,
+			`SELECT ${pkCol} FROM employees WHERE ${pkCol} = ? AND isDelete = 0`,
 			[id]
 		);
 		if (existing.length === 0) {
@@ -797,7 +639,7 @@ export async function DELETE(request) {
 
 		// Check if employee is a manager of other employees
 		const [managedEmployees] = await connection.execute(
-			'SELECT COUNT(*) as count FROM employees WHERE manager_id = ?',
+			'SELECT COUNT(*) as count FROM employees WHERE manager_id = ? AND isDelete = 0',
 			[id]
 		);
 
@@ -812,7 +654,10 @@ export async function DELETE(request) {
 		}
 
 		// Delete employee
-		await connection.execute(`DELETE FROM employees WHERE ${pkCol} = ?`, [id]);
+		await connection.execute(
+			`UPDATE employees SET isDelete = 1 WHERE ${pkCol} = ? AND isDelete = 0`,
+			[id]
+		);
 		// Optionally deactivate linked user instead of hard delete
 		try {
 			await connection.execute(

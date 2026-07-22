@@ -85,7 +85,7 @@ async function ensureTable(db) {
 
 async function nextNumber(db) {
 	const [rows] = await db.execute(
-		`SELECT quotation_number FROM ${TABLE} WHERE quotation_number LIKE 'OQ-%' AND isDelete = 0 ORDER BY id DESC LIMIT 1`
+		`SELECT quotation_number FROM ${TABLE} WHERE quotation_number LIKE 'OQ-%' ORDER BY id DESC LIMIT 1`
 	);
 	let next = 1;
 	if (rows.length > 0) {

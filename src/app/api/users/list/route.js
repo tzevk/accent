@@ -62,7 +62,7 @@ export async function GET(request) {
            FROM users u
            LEFT JOIN employees e ON u.employee_id = e.id
            LEFT JOIN roles r ON u.role_id = r.id
-           WHERE u.is_active = TRUE
+           WHERE u.is_active = TRUE AND u.isDelete = 0
            ORDER BY u.created_at DESC
            LIMIT ? OFFSET ?`,
 					[limit, offset]
@@ -70,7 +70,7 @@ export async function GET(request) {
 
 				// 2. Total count
 				db.execute(
-					'SELECT COUNT(*) as total FROM users WHERE is_active = TRUE'
+					'SELECT COUNT(*) as total FROM users WHERE is_active = TRUE AND isDelete = 0'
 				),
 
 				// 3. Stats
@@ -81,7 +81,7 @@ export async function GET(request) {
             SUM(CASE WHEN status = 'inactive' OR status IS NULL THEN 1 ELSE 0 END) as inactive,
             SUM(CASE WHEN is_super_admin = TRUE THEN 1 ELSE 0 END) as admins
           FROM users
-          WHERE is_active = TRUE
+          WHERE is_active = TRUE AND isDelete = 0
         `),
 			]);
 

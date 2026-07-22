@@ -21,17 +21,8 @@ export async function GET(request) {
 	try {
 		db = await dbConnect();
 
-		await db.execute(`CREATE TABLE IF NOT EXISTS softwares (
-      id VARCHAR(36) PRIMARY KEY,
-      category_id VARCHAR(36) NOT NULL,
-      name VARCHAR(255) NOT NULL,
-      provider VARCHAR(255),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
-
 		const [rows] = await db.execute(
-			'SELECT id, category_id, name, provider, created_at, updated_at FROM softwares ORDER BY name'
+			'SELECT id, category_id, name, provider, created_at, updated_at FROM softwares WHERE isDelete = 0 ORDER BY name'
 		);
 
 		return NextResponse.json({ success: true, data: rows });
@@ -72,14 +63,6 @@ export async function POST(request) {
 
 		const id = randomUUID();
 		db = await dbConnect();
-		await db.execute(`CREATE TABLE IF NOT EXISTS softwares (
-      id VARCHAR(36) PRIMARY KEY,
-      category_id VARCHAR(36) NOT NULL,
-      name VARCHAR(255) NOT NULL,
-      provider VARCHAR(255),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
 
 		await db.execute(
 			'INSERT INTO softwares (id, category_id, name, provider) VALUES (?, ?, ?, ?)',
@@ -124,7 +107,7 @@ export async function PUT(request) {
 
 		db = await dbConnect();
 		await db.execute(
-			'UPDATE softwares SET name = COALESCE(?, name), provider = COALESCE(?, provider), category_id = COALESCE(?, category_id) WHERE id = ?',
+			'UPDATE softwares SET name = COALESCE(?, name), provider = COALESCE(?, provider), category_id = COALESCE(?, category_id) WHERE id = ? AND isDelete = 0',
 			[name ?? null, provider ?? null, category_id ?? null, id]
 		);
 
@@ -166,14 +149,12 @@ export async function DELETE(request) {
 
 		db = await dbConnect();
 		try {
-			await db.execute('DELETE FROM software_versions WHERE software_id = ?', [
-				id,
-			]);
-		} catch {
-		} finally {
-			if (db) db.release();
-		}
-		await db.execute('DELETE FROM softwares WHERE id = ?', [id]);
+			await db.execute(
+				'UPDATE software_versions SET isDelete = 1 WHERE software_id = ?',
+				[id]
+			);
+		} catch {}
+		await db.execute('UPDATE softwares SET isDelete = 1 WHERE id = ?', [id]);
 
 		return NextResponse.json({ success: true, message: 'Software deleted' });
 	} catch (error) {

@@ -26,9 +26,10 @@ export async function GET(
 	try {
 		const { id } = await params;
 		db = await dbConnect();
-		const [rows] = await db.execute(`SELECT * FROM ${TABLE} WHERE id = ?`, [
-			id,
-		]);
+		const [rows] = await db.execute(
+			`SELECT * FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
+			[id]
+		);
 		if (rows.length === 0) {
 			return NextResponse.json(
 				{ success: false, error: 'Not found' },
@@ -42,7 +43,7 @@ export async function GET(
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }
 
@@ -101,7 +102,7 @@ export async function PUT(
 				values.push(bAmt + gAmt);
 			} else if (bAmt !== null) {
 				const [rows] = await db.execute(
-					`SELECT gst_amount FROM ${TABLE} WHERE id = ?`,
+					`SELECT gst_amount FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
 					[id]
 				);
 				if (rows.length > 0) {
@@ -109,7 +110,7 @@ export async function PUT(
 				}
 			} else if (gAmt !== null) {
 				const [rows] = await db.execute(
-					`SELECT bill_amount FROM ${TABLE} WHERE id = ?`,
+					`SELECT bill_amount FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
 					[id]
 				);
 				if (rows.length > 0) {
@@ -127,7 +128,7 @@ export async function PUT(
 
 		values.push(id);
 		await db.execute(
-			`UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE id = ?`,
+			`UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE id = ? AND isDelete = 0`,
 			values
 		);
 
@@ -147,7 +148,7 @@ export async function PUT(
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }
 
@@ -168,7 +169,10 @@ export async function DELETE(
 		const { id } = await params;
 		const user = authResult.user;
 		db = await dbConnect();
-		await db.execute(`DELETE FROM ${TABLE} WHERE id = ?`, [id]);
+		await db.execute(
+			`UPDATE ${TABLE} SET isDelete = 1 WHERE id = ? AND isDelete = 0`,
+			[id]
+		);
 
 		await (logActivity as any)({
 			userId: user?.id,
@@ -186,6 +190,6 @@ export async function DELETE(
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }

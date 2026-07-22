@@ -24,49 +24,6 @@ export async function GET(request) {
 
 		db = await dbConnect();
 
-		// Ensure table exists (safe no-op if already present)
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS follow_ups (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        lead_id INT NOT NULL,
-        follow_up_date DATE NOT NULL,
-        follow_up_type VARCHAR(50),
-        description TEXT,
-        status VARCHAR(50) DEFAULT 'Scheduled',
-        next_action VARCHAR(255),
-        next_follow_up_date DATE,
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
-      )
-    `);
-
-		// Legacy compatibility: ensure optional columns exist (some deployments may have an older schema)
-		try {
-			const [[dbRow]] = await db.query('SELECT DATABASE() as dbName');
-			const dbName = dbRow?.dbName;
-			if (dbName) {
-				const [cols] = await db.execute(
-					`SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'follow_ups' AND COLUMN_NAME = 'next_follow_up_date'`,
-					[dbName]
-				);
-
-				if (!cols || cols.length === 0) {
-					// Add the missing column
-					await db.execute(
-						`ALTER TABLE follow_ups ADD COLUMN next_follow_up_date DATE NULL`
-					);
-				}
-			}
-		} catch (err) {
-			// If anything goes wrong here, don't block main flow — log and continue
-			console.warn(
-				'Could not ensure follow_ups schema compatibility:',
-				err.message || err
-			);
-		}
-
 		const params = [];
 		let where = '';
 		if (leadId) {
@@ -91,7 +48,7 @@ export async function GET(request) {
 			`SELECT f.*, l.company_name, l.contact_name
        FROM follow_ups f
        JOIN leads l ON f.lead_id = l.id
-       ${where}
+       ${where ? where : 'WHERE f.isDelete = 0'}
        ORDER BY f.follow_up_date DESC, f.created_at DESC`,
 			params
 		);
@@ -104,7 +61,7 @@ export async function GET(request) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }
 
@@ -197,6 +154,6 @@ export async function POST(request) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }

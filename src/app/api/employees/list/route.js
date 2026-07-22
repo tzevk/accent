@@ -58,7 +58,7 @@ export async function GET(request) {
 
 		try {
 			// Build WHERE clause
-			let whereClause = 'WHERE 1=1';
+			let whereClause = 'WHERE 1=1 AND e.isDelete = 0';
 			const params = [];
 
 			if (search) {
@@ -125,12 +125,12 @@ export async function GET(request) {
 
 				// 3. Departments for filters
 				db.execute(
-					"SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND department != '' ORDER BY department"
+					"SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND department != '' AND isDelete = 0 ORDER BY department"
 				),
 
 				// 4. Workplaces for filters
 				db.execute(
-					"SELECT DISTINCT workplace FROM employees WHERE workplace IS NOT NULL AND workplace != '' ORDER BY workplace"
+					"SELECT DISTINCT workplace FROM employees WHERE workplace IS NOT NULL AND workplace != '' AND isDelete = 0 ORDER BY workplace"
 				),
 
 				// 5. Stats

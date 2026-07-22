@@ -7,31 +7,8 @@ export async function GET() {
 	try {
 		db = await dbConnect();
 
-		// Create table if not exists
-		await db.query(`
-      CREATE TABLE IF NOT EXISTS material_requisitions (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        requisition_number VARCHAR(50) NOT NULL UNIQUE,
-        requisition_date DATE NOT NULL,
-        requested_by VARCHAR(100),
-        department VARCHAR(100),
-        line_items JSON,
-        status ENUM('pending', 'approved', 'fulfilled', 'rejected') DEFAULT 'pending',
-        prepared_by VARCHAR(100),
-        checked_by VARCHAR(100),
-        approved_by VARCHAR(100),
-        received_by VARCHAR(100),
-        receipt_date DATE,
-        notes TEXT,
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-
-		// Get the last requisition number
 		const [rows] = await db.query(
-			`SELECT requisition_number FROM material_requisitions ORDER BY id DESC LIMIT 1`
+			`SELECT requisition_number FROM material_requisitions WHERE isDelete = 0 ORDER BY id DESC LIMIT 1`
 		);
 
 		let nextNumber = 'ATSPL/PUR-001';

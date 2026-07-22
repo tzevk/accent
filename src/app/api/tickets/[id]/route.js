@@ -38,7 +38,7 @@ export async function GET(request, { params }) {
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
       LEFT JOIN users r ON t.resolved_by = r.id
-      WHERE t.id = ?`,
+       WHERE t.id = ? AND t.isDelete = 0`,
 			[id]
 		);
 
@@ -133,7 +133,7 @@ export async function POST(request, { params }) {
 
 		// Check ticket exists and user has access
 		const [tickets] = await connection.execute(
-			`SELECT * FROM support_tickets WHERE id = ?`,
+			`SELECT * FROM support_tickets WHERE id = ? AND isDelete = 0`,
 			[id]
 		);
 
@@ -171,7 +171,7 @@ export async function POST(request, { params }) {
 			ticket.user_id === session.user.id
 		) {
 			await connection.execute(
-				`UPDATE support_tickets SET status = 'in_progress' WHERE id = ?`,
+				`UPDATE support_tickets SET status = 'in_progress' WHERE id = ? AND isDelete = 0`,
 				[id]
 			);
 		}
@@ -222,7 +222,7 @@ export async function DELETE(request, { params }) {
 		connection = await dbConnect();
 
 		const [tickets] = await connection.execute(
-			`SELECT * FROM support_tickets WHERE id = ?`,
+			`SELECT * FROM support_tickets WHERE id = ? AND isDelete = 0`,
 			[id]
 		);
 
@@ -248,7 +248,10 @@ export async function DELETE(request, { params }) {
 			);
 		}
 
-		await connection.execute(`DELETE FROM support_tickets WHERE id = ?`, [id]);
+		await connection.execute(
+			`UPDATE support_tickets SET isDelete = 1 WHERE id = ? AND isDelete = 0`,
+			[id]
+		);
 
 		return NextResponse.json({ success: true, message: 'Ticket deleted' });
 	} catch (error) {

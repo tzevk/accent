@@ -2,58 +2,6 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { getServerAuth } from '@/utils/server-auth';
 
-// Ensure tickets table exists with all necessary columns
-async function ensureTicketsTable() {
-	const connection = await dbConnect();
-	try {
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS support_tickets (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        ticket_number VARCHAR(20) UNIQUE NOT NULL,
-        user_id INT NOT NULL,
-        title VARCHAR(255) NOT NULL,
-        description TEXT NOT NULL,
-        category ENUM('payroll', 'leave', 'policy', 'access_cards', 'seating', 'maintenance', 'general_request', 'confidential') DEFAULT 'general_request',
-        priority ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium',
-        status ENUM('new', 'under_review', 'in_progress', 'waiting_for_employee', 'resolved', 'closed') DEFAULT 'new',
-        screenshots JSON,
-        browser_info TEXT,
-        page_url VARCHAR(500),
-        steps_to_reproduce TEXT,
-        expected_behavior TEXT,
-        actual_behavior TEXT,
-        assigned_to INT,
-        resolution_notes TEXT,
-        resolved_at DATETIME,
-        resolved_by INT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_user_id (user_id),
-        INDEX idx_status (status),
-        INDEX idx_priority (priority),
-        INDEX idx_category (category),
-        INDEX idx_created_at (created_at)
-      )
-    `);
-
-		// Create ticket comments table for conversation
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS ticket_comments (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        ticket_id INT NOT NULL,
-        user_id INT NOT NULL,
-        comment TEXT NOT NULL,
-        is_internal BOOLEAN DEFAULT FALSE,
-        attachments JSON,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_ticket_id (ticket_id)
-      )
-    `);
-	} finally {
-		connection.release();
-	}
-}
-
 // Generate unique ticket number
 async function generateTicketNumber(connection) {
 	const year = new Date().getFullYear();
@@ -80,8 +28,6 @@ async function generateTicketNumber(connection) {
 export async function GET(request) {
 	let connection;
 	try {
-		await ensureTicketsTable();
-
 		const session = await getServerAuth();
 		if (!session?.user) {
 			return NextResponse.json(
@@ -110,7 +56,7 @@ export async function GET(request) {
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
       LEFT JOIN users r ON t.resolved_by = r.id
-      WHERE 1=1
+      WHERE 1=1 AND t.isDelete = 0
     `;
 		const params = [];
 
@@ -164,8 +110,6 @@ export async function GET(request) {
 export async function POST(request) {
 	let connection;
 	try {
-		await ensureTicketsTable();
-
 		const session = await getServerAuth();
 		if (!session?.user) {
 			return NextResponse.json(

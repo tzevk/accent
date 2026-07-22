@@ -5,13 +5,13 @@ import { NextResponse } from 'next/server';
 async function buildMigrationPlan(db) {
 	// All existing company_id values (including already-good COM-XXXXX ones) so we never collide
 	const [allIds] = await db.execute(
-		`SELECT company_id FROM companies WHERE company_id IS NOT NULL AND company_id != ''`
+		`SELECT company_id FROM companies WHERE company_id IS NOT NULL AND company_id != '' AND isDelete = 0`
 	);
 	const takenIds = new Set(allIds.map((r) => r.company_id));
 
 	// Highest COM-XXXXX counter already in use
 	const [maxRow] = await db.execute(
-		`SELECT company_id FROM companies WHERE company_id REGEXP '^COM-[0-9]+$' ORDER BY CAST(SUBSTRING(company_id, 5) AS UNSIGNED) DESC LIMIT 1`
+		`SELECT company_id FROM companies WHERE company_id REGEXP '^COM-[0-9]+$' AND isDelete = 0 ORDER BY CAST(SUBSTRING(company_id, 5) AS UNSIGNED) DESC LIMIT 1`
 	);
 	let counter =
 		maxRow && maxRow.length > 0
@@ -20,7 +20,7 @@ async function buildMigrationPlan(db) {
 
 	// Rows that need a new ID: NULL, empty, or anything that is not already COM-XXXXX format
 	const [rows] = await db.execute(
-		`SELECT id, company_id, company_name FROM companies WHERE company_id IS NULL OR company_id = '' OR company_id NOT REGEXP '^COM-[0-9]+$' ORDER BY id ASC`
+		`SELECT id, company_id, company_name FROM companies WHERE (company_id IS NULL OR company_id = '' OR company_id NOT REGEXP '^COM-[0-9]+$') AND isDelete = 0 ORDER BY id ASC`
 	);
 
 	// Build plan: assign a collision-safe COM-XXXXX to each row
@@ -111,10 +111,10 @@ export async function POST(request) {
 		await db.beginTransaction();
 		try {
 			for (const item of plan) {
-				await db.execute(`UPDATE companies SET company_id = ? WHERE id = ?`, [
-					item.new_company_id,
-					item.id,
-				]);
+				await db.execute(
+					`UPDATE companies SET company_id = ? WHERE id = ? AND isDelete = 0`,
+					[item.new_company_id, item.id]
+				);
 			}
 			await db.commit();
 		} catch (err) {
