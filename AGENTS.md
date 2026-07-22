@@ -24,7 +24,33 @@ Pre-commit runs prettier via lint-staged (`.husky/pre-commit` → `npx lint-stag
 
 ### Stale `package.json` scripts (do not run)
 
-`migrate:add-enquiry-no`, `migrate:add-project-lists`, `clear-leads`, `update-dates`, `db:check`, `db:kill`, and `setup` reference files that no longer exist on disk. Running them fails with `Cannot find module`. Scripts that DO exist: `scripts/setup-super-admin.js`, `scripts/insert-holidays-2026.js`, `scripts/import-salary-sheet.cjs`, `scripts/check-salary*.cjs`, `scripts/delete-slips.cjs`, `scripts/create_super_admin.sql`, `scripts/analyze_leaks.py`.
+`migrate:add-enquiry-no`, `migrate:add-project-lists`, `clear-leads`, `update-dates`, `db:check`, `db:kill`, and `setup` reference files that no longer exist on disk. Running them fails with `Cannot find module`.
+
+## Knex migrations (primary schema management)
+
+**Knex is now the single source of truth for schema.** The old `schema-init.js` and inline `CREATE TABLE IF NOT EXISTS` in API routes are legacy — do NOT add new inline DDL.
+
+| Command                    | Purpose                                           |
+| -------------------------- | ------------------------------------------------- |
+| `npm run migrate`          | Run pending migrations (`knex migrate:latest`)    |
+| `npm run migrate:status`   | Show migration status                             |
+| `npm run migrate:make`     | Create a new migration file (provide `-- <name>`) |
+| `npm run migrate:rollback` | Roll back the last batch                          |
+
+- **Knex envs**: `development`, `staging`, `production` (configured in `knexfile.js`). Set `NODE_ENV` to match (defaults to `development`).
+- **Migrations directory**: `./migrations/`
+- **Baseline migration**: `20260722080106_baseline_schema.js` covers all 110 tables from an actual prod dump. Marked as already-applied on prod — never executes there. It only runs on fresh/staging DBs.
+- **Environment variable mapping**: Both `knexfile.js` and `src/utils/database.js` use `NODE_ENV` to switch between `DEV_DB_*`, `STAGING_DB_*`, and `PROD_DB_*` credentials. See `.env` for values.
+
+**To create a new migration:**
+
+```bash
+npm run migrate:make -- descriptive_name
+```
+
+This generates `migrations/<timestamp>_descriptive_name.js` with `up(knex)` and `down(knex)` exports. Use `knex.schema` builder methods or `knex.raw()` for DDL.
+
+**`src/instrumentation.js` is now a no-op** — schema init via startup hook has been removed. Do not re-add schema init there.
 
 ## Tech stack notes
 
@@ -163,7 +189,6 @@ The legacy codebase is mostly `.js`/`.jsx` (do not rewrite it unless asked). For
 
 ## Architecture notes
 
-- Schema init runs via `src/instrumentation.js` (Next.js server-startup hook) on the Node.js runtime only. If it fails, API routes have inline DDL as fallback (gated to first call).
 - `SessionContext` (client) hydrates from `sessionStorage` on mount and polls `/api/session`. It always starts with `loading: true` to avoid hydration mismatch.
 - `Sidebar.jsx` is permission-aware — renders nav items based on user's `can()` check.
 - User activity tracking is pervasive: `ActivityTracker` component sends heartbeat, `logActivity()` records DB mutations, `updateScreenTime()` handles screen-time data from client heartbeat.

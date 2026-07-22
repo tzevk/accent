@@ -2,11 +2,17 @@
 
 > Generated from `src/app/api/` — run `grep` to refresh.
 
+**Knex migrations are now the single source of truth for schema.** `schema-init.js` is deprecated. All new DDL goes into `migrations/*.js` (see `AGENTS.md` for commands).
+
 ## 1. Inline DDL in API Routes
 
-50 files run `CREATE TABLE IF NOT EXISTS` and/or `ALTER TABLE` in request handlers instead of at server startup via `schema-init.js`.
+50 files run `CREATE TABLE IF NOT EXISTS` and/or `ALTER TABLE` in request handlers. These should be migrated to knex migration files.
 
-### Already migrated to `schema-init.js` ✅
+### Already has a knex baseline migration ✅
+
+All tables are covered by `migrations/20260722080106_baseline_schema.js` (110 tables from prod dump). This ensures tables exist on fresh DBs. Inline DDL in API routes is redundant but harmless — strip it as you touch each route.
+
+### Already migrated to `schema-init.js` (legacy, now superseded by knex) 🗄️
 
 | API Route                                   | Tables Previously Created/Altered                                         |
 | ------------------------------------------- | ------------------------------------------------------------------------- |
@@ -167,11 +173,47 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 
 ## 3. Migration Pattern
 
-Every migration follows the 4-step pattern established with `petty_cash_expenses`:
+Every migration follows the knex pattern:
 
 ```
-Step 1: Add init{TableName}Table(db) to schema-init.js
-Step 2: Add it to doSchemaInit() Promise chain
+Step 1: Create the migration file
+        npm run migrate:make -- <descriptive_name>
+Step 2: Write up(knex) and down(knex) in the migration file
+        Use knex.schema builder or knex.raw() for DDL
 Step 3: Strip DDL from API route (remove CREATE TABLE + ALTER blocks)
-Step 4: Update SELECT/UPDATE queries to filter by isDelete = 0
+Step 4: Update SELECT/UPDATE queries to filter by isDelete = 0 (if applicable)
 ```
+
+---
+
+## 4. Plan: remove remaining inline DDL from API routes
+
+Since the baseline migration already covers all 110 tables, every inline `CREATE TABLE IF NOT EXISTS` is redundant. Strip it inline when touching a route; no dedicated migration run is needed for removal.
+
+### Phased approach
+
+**Phase 1 — Unguarded (runs on every request):**
+Remove DDL from `payroll/salary-profile/route.js` (35+ ALTERs + MODIFYs on every call). This has the highest perf impact.
+
+**Phase 2 — Module-level guard routes (runs once per process):**
+Each file below has a `let tableEnsured = false` guard. The DDL fires on the first request per process, then never again. Low risk, low urgency — strip when touching the route:
+
+`attendance/route.js`, `activities/route.js`, `activity-master/route.js`, `messages/route.js`, `masters/holidays/route.js`, `masters/accounts/route.js`, `masters/account-heads/route.js`, `admin/outgoing-quotations/route.js`, `admin/outgoing-purchase-orders/route.ts`, `admin/todos/route.js`, `document-master/route.js`, `document-upload/route.js`, `project-docs/route.js`, `audit-logs/route.js`, `roles/route.js`, `todos/route.js`, `activity-master/subactivities/route.js`, `admin/accounts/route.js`
+
+**Phase 3 — Routes already migrated to schema-init.js (legacy):**
+These passed through the old `schema-init.js` pattern. Baseline migration covers the tables; strip DDL as you touch each route:
+
+`petty-cash-expenses/route.ts`, `cash-vouchers/**`, `admin/invoices/**`, `admin/payment-entries/**`, `admin/purchase-orders/**`, `admin/quotations/**`, `admin/standalone-quotations/**`, `proposals/**`, `projects/[id]/**` (followups, invoice, purchase-order, quotation, mom-upload), `admin/payment-payables/**`, `admin/payment-receivables/**`, `admin/material-requisitions/**`, `admin/expenses/**`, `admin/other-expenses/**`, `admin/purchase-invoices/**`, `users/route.js`, `employees/route.js`, `vendors/route.js`, `tickets/route.js`, `settings/profile/route.js`
+
+### What to remove
+
+All of it — the baseline migration guarantees every table and column already exists on all environments (fresh DBs get the migration; prod tables were created years ago).
+
+- **`CREATE TABLE IF NOT EXISTS` blocks** — dead no-ops, remove entirely.
+- **`ALTER TABLE` / `MODIFY COLUMN` blocks** — remove them alongside their enclosing `try/catch` or `hasColumn()` guard. Those guards were scaffolding for the pre-knex era; they serve no purpose now.
+- **`hasColumn()` runtime checks used for query branching** — these guard logic like "include `isDelete` in WHERE only if the column exists." Since the column always exists post-migration, inline the truth: remove the check and always include the column in the query.
+
+### What NOT to touch in this cleanup
+
+- `src/utils/schema-init.js` — dead but harmless; delete it wholesale in a separate PR rather than inline-editing it across 50 route files.
+- DDL in `src/utils/activity-logger.js` — it creates `user_screen_time` at startup. Migrate that table to a knex migration first, then remove the DDL.

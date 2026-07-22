@@ -16,7 +16,18 @@ const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
  */
 export async function getTableColumns(db, tableName) {
 	const entry = _cache.get(tableName);
-	if (entry && Date.now() - entry.ts < CACHE_TTL) {
+	const hit = entry && Date.now() - entry.ts < CACHE_TTL;
+	if (tableName === 'projects') {
+		console.log(
+			'[SCHEMA CACHE] getTableColumns for projects — cache hit:',
+			!!hit,
+			'| cached columns count:',
+			entry?.columns?.size ?? 0,
+			'| has project_team:',
+			entry?.columns?.has('project_team') ?? false
+		);
+	}
+	if (hit) {
 		return entry.columns;
 	}
 	// Fetch fresh from DB
@@ -25,6 +36,16 @@ export async function getTableColumns(db, tableName) {
 		[tableName]
 	);
 	const columns = new Set((cols || []).map((c) => c.COLUMN_NAME));
+	if (tableName === 'projects') {
+		console.log(
+			'[SCHEMA CACHE] Refreshed columns for projects — count:',
+			columns.size,
+			'| has project_team:',
+			columns.has('project_team'),
+			'| first 10 cols:',
+			[...columns].slice(0, 10)
+		);
+	}
 	const existing = _cache.get(tableName);
 	_cache.set(tableName, {
 		columns,
