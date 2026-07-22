@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NextResponse } from 'next/server';
 
 const mockExecute = vi.fn();
 const mockDbConnect = vi.fn().mockResolvedValue({
@@ -25,8 +24,17 @@ vi.mock('@/utils/activity-logger', () => ({
 	logActivity: vi.fn().mockResolvedValue(undefined),
 }));
 
-function createRequest(opts: any = {}) {
-	const req: any = {
+type CreateRequestOpts = { url?: string; method?: string; body?: unknown };
+type MockRequest = {
+	url: string;
+	method: string;
+	headers: Headers;
+	json?: () => Promise<unknown>;
+};
+type MockCall = unknown[];
+
+function createRequest(opts: CreateRequestOpts = {}) {
+	const req: MockRequest = {
 		url: opts.url || 'http://localhost/api/test',
 		method: opts.method || 'GET',
 		headers: new Headers(),
@@ -46,9 +54,6 @@ const { DELETE: receivablesIdDELETE } =
 	await import('@/app/api/admin/payment-receivables/[id]/route');
 const { DELETE: invoicesIdDELETE } =
 	await import('@/app/api/admin/purchase-invoices/[id]/route');
-const { DELETE: otherIdDELETE } =
-	await import('@/app/api/admin/other-expenses/[id]/route');
-
 describe('Standard admin CRUD — soft delete', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -79,7 +84,9 @@ describe('Standard admin CRUD — soft delete', () => {
 					return Promise.resolve([[{ total: 0, draft: 0 }]]);
 				});
 				await GET(createRequest({ url: `http://localhost/api/admin/${name}` }));
-				const sqls = mockExecute.mock.calls.map((c: any) => c[0]).join(' ');
+				const sqls = mockExecute.mock.calls
+					.map((c: MockCall) => c[0])
+					.join(' ');
 				expect(sqls).toContain('isDelete = 0');
 			});
 
@@ -150,7 +157,7 @@ describe('Standard admin CRUD — soft delete', () => {
 		await GET(
 			createRequest({ url: 'http://localhost/api/admin/payment-payables' })
 		);
-		const sqls = mockExecute.mock.calls.map((c: any) => c[0]).join(' ');
+		const sqls = mockExecute.mock.calls.map((c: MockCall) => c[0]).join(' ');
 		expect(sqls).toContain('isDelete');
 	});
 });

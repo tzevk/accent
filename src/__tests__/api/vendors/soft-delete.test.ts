@@ -25,8 +25,16 @@ vi.mock('@/utils/api-permissions', () => ({
 
 const { DELETE: idDELETE } = await import('@/app/api/vendors/[id]/route');
 
-function createRequest(opts: any = {}) {
-	const req: any = {
+type CreateRequestOpts = { url?: string; method?: string; body?: unknown };
+type MockRequest = {
+	url: string;
+	method: string;
+	headers: Headers;
+	json?: () => Promise<unknown>;
+};
+
+function createRequest(opts: CreateRequestOpts = {}) {
+	const req: MockRequest = {
 		url: opts.url || 'http://localhost/api/vendors/1',
 		method: opts.method || 'GET',
 		headers: new Headers(),

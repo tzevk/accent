@@ -27,8 +27,17 @@ vi.mock('@/utils/rbac', () => ({
 
 const { DELETE: idDELETE } = await import('@/app/api/employees/[id]/route');
 
-function createRequest(opts: any = {}) {
-	const req: any = {
+type CreateRequestOpts = { url?: string; method?: string; body?: unknown };
+type MockRequest = {
+	url: string;
+	method: string;
+	headers: Headers;
+	json?: () => Promise<unknown>;
+};
+type MockCall = unknown[];
+
+function createRequest(opts: CreateRequestOpts = {}) {
+	const req: MockRequest = {
 		url: opts.url || 'http://localhost/api/employees/1',
 		method: opts.method || 'GET',
 		headers: new Headers(),
@@ -54,7 +63,7 @@ describe('Employees — soft delete', () => {
 		});
 		const json = await r.json();
 		expect(json.success).toBe(true);
-		const deleteSql = mockExecute.mock.calls.find((c: any) =>
+		const deleteSql = mockExecute.mock.calls.find((c: MockCall) =>
 			(c[0] as string).includes('SET isDelete = 1')
 		)?.[0];
 		expect(deleteSql).toBeTruthy();

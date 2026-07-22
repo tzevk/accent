@@ -27,8 +27,17 @@ const { DELETE: versionsDELETE } =
 const { DELETE: masterDELETE } =
 	await import('@/app/api/software-master/route');
 
-function createRequest(opts: any = {}) {
-	const req: any = {
+type CreateRequestOpts = { url?: string; method?: string; body?: unknown };
+type MockRequest = {
+	url: string;
+	method: string;
+	headers: Headers;
+	json?: () => Promise<unknown>;
+};
+type MockCall = unknown[];
+
+function createRequest(opts: CreateRequestOpts = {}) {
+	const req: MockRequest = {
 		url: opts.url || 'http://localhost/api/test',
 		method: opts.method || 'GET',
 		headers: new Headers(),
@@ -54,7 +63,7 @@ describe('Software — cascade soft delete', () => {
 		);
 		const json = await r.json();
 		expect(json.success).toBeTruthy();
-		const sqls = mockExecute.mock.calls.map((c: any) => c[0] as string);
+		const sqls = mockExecute.mock.calls.map((c: MockCall) => c[0] as string);
 		expect(sqls[0]).toContain('software_versions');
 		expect(sqls[0]).toContain('SET isDelete = 1');
 		expect(sqls[1]).toContain('softwares');
@@ -89,7 +98,7 @@ describe('Software — cascade soft delete', () => {
 		);
 		const json = await r.json();
 		expect(json.success).toBeTruthy();
-		const sqls = mockExecute.mock.calls.map((c: any) => c[0] as string);
+		const sqls = mockExecute.mock.calls.map((c: MockCall) => c[0] as string);
 		expect(sqls[0]).toContain('software_versions');
 		expect(sqls[0]).toContain('SET isDelete = 1');
 		expect(sqls[1]).toContain('softwares');

@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NextResponse } from 'next/server';
-
 const mockExecute = vi.fn();
 const mockDbConnect = vi.fn().mockResolvedValue({
 	execute: mockExecute,
@@ -33,8 +31,17 @@ const {
 	DELETE: idDELETE,
 } = await import('@/app/api/companies/[id]/route');
 
-function createRequest(opts: any = {}) {
-	const req: any = {
+type CreateRequestOpts = { url?: string; method?: string; body?: unknown };
+type MockRequest = {
+	url: string;
+	method: string;
+	headers: Headers;
+	json?: () => Promise<unknown>;
+};
+type MockCall = unknown[];
+
+function createRequest(opts: CreateRequestOpts = {}) {
+	const req: MockRequest = {
 		url: opts.url || 'http://localhost/api/companies',
 		method: opts.method || 'GET',
 		headers: new Headers(),
@@ -83,7 +90,7 @@ describe('Companies — soft delete', () => {
 			createRequest({ method: 'PUT', body: { company_name: 'Updated' } }),
 			{ params: Promise.resolve({ id: '1' }) }
 		);
-		const updateSql = mockExecute.mock.calls.find((c: any) =>
+		const updateSql = mockExecute.mock.calls.find((c: MockCall) =>
 			(c[0] as string).includes('UPDATE')
 		)?.[0] as string;
 		expect(updateSql).toContain('isDelete = 0');

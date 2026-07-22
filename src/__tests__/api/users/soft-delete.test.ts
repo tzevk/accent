@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NextResponse } from 'next/server';
-
 const mockExecute = vi.fn();
 const mockDbConnect = vi.fn().mockResolvedValue({
 	execute: mockExecute,
@@ -30,8 +28,17 @@ const { DELETE: routeDELETE } = await import('@/app/api/users/route');
 const { DELETE: idDELETE } = await import('@/app/api/users/[id]/route');
 const { GET: listGET } = await import('@/app/api/users/list/route');
 
-function createRequest(opts: any = {}) {
-	const req: any = {
+type CreateRequestOpts = { url?: string; method?: string; body?: unknown };
+type MockRequest = {
+	url: string;
+	method: string;
+	headers: Headers;
+	json?: () => Promise<unknown>;
+};
+type MockCall = unknown[];
+
+function createRequest(opts: CreateRequestOpts = {}) {
+	const req: MockRequest = {
 		url: opts.url || 'http://localhost/api/users',
 		method: opts.method || 'GET',
 		headers: new Headers(),
@@ -73,7 +80,7 @@ describe('Users — soft delete', () => {
 		});
 		const json = await r.json();
 		expect(json.success).toBe(true);
-		const deleteSql = mockExecute.mock.calls.find((c: any) =>
+		const deleteSql = mockExecute.mock.calls.find((c: MockCall) =>
 			(c[0] as string).includes('isDelete = 1')
 		)?.[0];
 		expect(deleteSql).toBeTruthy();
@@ -89,7 +96,7 @@ describe('Users — soft delete', () => {
 			return Promise.resolve([[]]);
 		});
 		await listGET(createRequest({ url: 'http://localhost/api/users/list' }));
-		const sqls = mockExecute.mock.calls.map((c: any) => c[0]).join(' ');
+		const sqls = mockExecute.mock.calls.map((c: MockCall) => c[0]).join(' ');
 		expect(sqls).toContain('isDelete = 0');
 		const count = (sqls.match(/isDelete = 0/g) || []).length;
 		expect(count).toBeGreaterThanOrEqual(3);

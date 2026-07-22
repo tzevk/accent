@@ -14,8 +14,17 @@ const { DELETE } = await import('@/app/api/admin/material-requisitions/route');
 const { GET: nextGET } =
 	await import('@/app/api/admin/material-requisitions/next-number/route');
 
-function createRequest(opts: any = {}) {
-	const req: any = {
+type CreateRequestOpts = { url?: string; method?: string; body?: unknown };
+type MockRequest = {
+	url: string;
+	method: string;
+	headers: Headers;
+	json?: () => Promise<unknown>;
+};
+type MockCall = unknown[];
+
+function createRequest(opts: CreateRequestOpts = {}) {
+	const req: MockRequest = {
 		url: opts.url || 'http://localhost/api/admin/material-requisitions',
 		method: opts.method || 'GET',
 		headers: new Headers(),
@@ -43,7 +52,7 @@ describe('Material requisitions — soft delete', () => {
 		);
 		const json = await r.json();
 		expect(json.success).toBe(true);
-		const sql = (mockQuery as any).mock.calls[0][0];
+		const sql = mockQuery.mock.calls[0][0];
 		expect(sql).toContain('SET isDelete = 1');
 		expect(sql).not.toContain('DELETE FROM');
 	});
@@ -51,14 +60,14 @@ describe('Material requisitions — soft delete', () => {
 	it('next-number GET excludes soft-deleted records', async () => {
 		mockQuery.mockResolvedValueOnce([[]]);
 		await nextGET();
-		const sql = (mockQuery as any).mock.calls[0][0];
+		const sql = mockQuery.mock.calls[0][0];
 		expect(sql).toContain('isDelete = 0');
 	});
 
 	it('next-number has no CREATE TABLE DDL', async () => {
 		mockQuery.mockResolvedValueOnce([[]]);
 		await nextGET();
-		const sqls = (mockQuery as any).mock.calls.map((c: any) => c[0]).join(' ');
+		const sqls = mockQuery.mock.calls.map((c: MockCall) => c[0]).join(' ');
 		expect(sqls).not.toContain('CREATE TABLE');
 	});
 });
