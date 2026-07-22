@@ -11,38 +11,6 @@ import crypto from 'node:crypto';
 
 const TABLE = 'other_expenses';
 
-const DDL = `
-  CREATE TABLE IF NOT EXISTS ${TABLE} (
-    id CHAR(36) NOT NULL PRIMARY KEY,
-    voucher_number VARCHAR(50) UNIQUE NOT NULL,
-    voucher_date DATE NOT NULL,
-    expense_category VARCHAR(100) NOT NULL,
-    payee_type ENUM('vendor', 'employee') NOT NULL,
-    vendor_id INT NULL,
-    vendor_name VARCHAR(255) NULL,
-    employee_id INT NULL,
-    employee_name VARCHAR(255) NULL,
-    bill_no VARCHAR(100) NULL,
-    bill_date DATE NULL,
-    bill_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    gst_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    net_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    description TEXT NULL,
-    status ENUM('draft', 'submitted', 'approved', 'rejected') NOT NULL DEFAULT 'submitted',
-    created_by INT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_voucher_date (voucher_date),
-    INDEX idx_category (expense_category),
-    INDEX idx_payee_type (payee_type),
-    INDEX idx_status (status)
-  )
-`;
-
-async function ensureTable(db: any) {
-	await db.execute(DDL);
-}
-
 async function nextNumber(db: any): Promise<string> {
 	const [rows] = await db.execute(
 		`SELECT voucher_number FROM ${TABLE} WHERE voucher_number LIKE 'OEX-%' ORDER BY created_at DESC LIMIT 1`
@@ -76,9 +44,8 @@ export async function GET(request: Request) {
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
-		await ensureTable(db);
 
-		const where = ['1=1'];
+		const where = ['1=1 AND isDelete = 0'];
 		const params: (string | number)[] = [];
 		if (status && status !== 'all') {
 			where.push('status = ?');
@@ -142,7 +109,7 @@ export async function GET(request: Request) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }
 
@@ -180,7 +147,6 @@ export async function POST(request: Request) {
 		}
 
 		db = await dbConnect();
-		await ensureTable(db);
 
 		const id = crypto.randomUUID();
 		const voucherNumber = body.voucher_number || (await nextNumber(db));
@@ -261,6 +227,6 @@ export async function POST(request: Request) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }

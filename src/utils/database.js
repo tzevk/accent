@@ -150,43 +150,20 @@ export async function dbConnect() {
 		}
 	}
 
-	// Force-release connections held too long (leak safety net)
-	const FORCE_RELEASE_MS = Number(process.env.DB_FORCE_RELEASE_MS || 8000);
-	const releaseTimer = setTimeout(() => {
-		console.warn(
-			'⚠️  Connection held for more than ' +
-				FORCE_RELEASE_MS / 1000 +
-				's, force releasing:',
-			{
-				threadId: conn.threadId,
-				acquiredAt: conn._acquiredStack?.split('\n')[2]?.trim(),
-			}
-		);
-		if (conn && typeof conn.release === 'function') {
-			try {
-				conn.release();
-			} catch (err) {
-				console.error('Error force-releasing connection:', err);
-			}
-		}
-	}, FORCE_RELEASE_MS);
-
 	// Track connection creation for debugging (only in development — Error().stack is expensive)
 	conn._acquiredAt = Date.now();
 	if (process.env.NODE_ENV === 'development') {
 		conn._acquiredStack = new Error().stack;
 	}
 
-	// Wrap release to clear the timeout and prevent double-release
+	// Wrap release to prevent double-release (common in finally blocks)
 	const originalRelease = conn.release.bind(conn);
 	let released = false;
 	conn.release = function () {
 		if (released) {
-			// Silently ignore double-release (common in finally blocks)
 			return;
 		}
 		released = true;
-		clearTimeout(releaseTimer);
 		return originalRelease();
 	};
 

@@ -9,47 +9,6 @@ import { logActivity } from '@/utils/activity-logger';
 
 const TABLE = 'expenses';
 
-const DDL = `
-  CREATE TABLE IF NOT EXISTS ${TABLE} (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    expense_number VARCHAR(50) UNIQUE NOT NULL,
-    expense_date DATE,
-    category VARCHAR(100) NOT NULL,
-    sub_category VARCHAR(100),
-    description VARCHAR(500),
-    vendor_name VARCHAR(255),
-    amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    tax_amount DECIMAL(15, 2) DEFAULT 0,
-    total_amount DECIMAL(15, 2) DEFAULT 0,
-    currency VARCHAR(10) DEFAULT 'INR',
-    payment_mode ENUM('cash', 'bank', 'cheque', 'card', 'upi', 'other') DEFAULT 'bank',
-    payment_reference VARCHAR(255),
-    paid_to VARCHAR(255),
-    paid_by INT NULL,
-    receipt_url VARCHAR(500),
-    is_billable TINYINT(1) DEFAULT 0,
-    is_reimbursable TINYINT(1) DEFAULT 0,
-    project_id INT NULL,
-    department VARCHAR(100),
-    notes TEXT,
-    status ENUM('draft', 'submitted', 'approved', 'rejected', 'reimbursed') DEFAULT 'submitted',
-    approved_by INT NULL,
-    approved_at DATETIME,
-    created_by INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_category (category),
-    INDEX idx_status (status),
-    INDEX idx_expense_date (expense_date),
-    INDEX idx_vendor (vendor_name),
-    INDEX idx_project_id (project_id)
-  )
-`;
-
-async function ensureTable(db) {
-	await db.execute(DDL);
-}
-
 async function nextNumber(db) {
 	const [rows] = await db.execute(
 		`SELECT expense_number FROM ${TABLE} WHERE expense_number LIKE 'EXP-%' ORDER BY id DESC LIMIT 1`
@@ -82,9 +41,8 @@ export async function GET(request) {
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
-		await ensureTable(db);
 
-		const where = ['1=1'];
+		const where = ['1=1 AND isDelete = 0'];
 		const params = [];
 		if (status && status !== 'all') {
 			where.push('status = ?');
@@ -172,7 +130,6 @@ export async function POST(request) {
 		}
 
 		db = await dbConnect();
-		await ensureTable(db);
 
 		const expenseNumber = body.expense_number || (await nextNumber(db));
 		const amount = Number(body.amount ?? 0);

@@ -46,6 +46,66 @@ async function ensureSoftDeleteColumns(db) {
 			table: 'project_invoices',
 			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
 		},
+		{
+			table: 'companies',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'users',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'employees',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'vendors',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'support_tickets',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'expenses',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'other_expenses',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'payment_payables',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'payment_receivables',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'purchase_invoices',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'material_requisitions',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'follow_ups',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'software_categories',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'softwares',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
+		{
+			table: 'software_versions',
+			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
+		},
 	];
 
 	for (const { table, def } of columns) {
@@ -71,13 +131,22 @@ async function ensureSoftDeleteColumns(db) {
 	}
 
 	try {
-		await db.execute('ALTER TABLE quotations DROP INDEX quotation_number');
+		await db.execute(
+			'ALTER TABLE quotations DROP INDEX unique_active_quotation'
+		);
 	} catch (e) {
 		/* may not exist as that name */
 	}
 	try {
 		await db.execute(
-			'ALTER TABLE quotations ADD UNIQUE KEY unique_active_quotation (quotation_number, isDelete)'
+			'ALTER TABLE quotations DROP INDEX unique_active_quotation'
+		);
+	} catch (e) {
+		/* may not exist as that name */
+	}
+	try {
+		await db.execute(
+			'ALTER TABLE quotations ADD UNIQUE KEY (quotation_number)'
 		);
 	} catch (e) {
 		if (!e.message?.includes('Duplicate key name')) {
@@ -104,7 +173,17 @@ async function doSchemaInit() {
 		// Run all schema creation in parallel where safe
 		await Promise.all([
 			initCompaniesTable(db),
+			initEmployeesTable(db),
 			initUsersTable(db),
+			initVendorsTable(db),
+			initSupportTicketsTable(db),
+			initTicketCommentsTable(db),
+			initExpensesTable(db),
+			initOtherExpensesTable(db),
+			initPaymentPayablesTable(db),
+			initPaymentReceivablesTable(db),
+			initPurchaseInvoicesTable(db),
+			initMaterialRequisitionsTable(db),
 			initBankMasterTable(db),
 			initCategoryMasterTable(db),
 			initDescriptionMasterTable(db),
@@ -120,6 +199,9 @@ async function doSchemaInit() {
 		// Tables depending on the above
 		await Promise.all([
 			initFollowUpsTable(db),
+			initSoftwareCategoriesTable(db),
+			initSoftwaresTable(db),
+			initSoftwareVersionsTable(db),
 			initWorkLogsTable(db),
 			initUserActivityAssignmentsTable(db),
 			initOutgoingPurchaseOrdersTable(db),
@@ -188,8 +270,10 @@ async function initCompaniesTable(db) {
       pan_number VARCHAR(10),
       company_profile TEXT,
       state_code VARCHAR(10),
+      isDelete TINYINT(1) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_isDelete (isDelete)
     )
   `);
 
@@ -199,6 +283,7 @@ async function initCompaniesTable(db) {
 		'ALTER TABLE companies ADD COLUMN pan_number VARCHAR(10)',
 		'ALTER TABLE companies ADD COLUMN company_profile TEXT',
 		'ALTER TABLE companies ADD COLUMN state_code VARCHAR(10)',
+		'ALTER TABLE companies ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
 	];
 
 	for (const stmt of alterStatements) {
@@ -211,22 +296,772 @@ async function initCompaniesTable(db) {
 			}
 		}
 	}
+
+	try {
+		await db.execute('ALTER TABLE companies ADD INDEX idx_isDelete (isDelete)');
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Companies index migration warning:', e.message || e);
+		}
+	}
+}
+
+async function initEmployeesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS employees (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      employee_id VARCHAR(20) UNIQUE NOT NULL,
+      first_name VARCHAR(50) NOT NULL,
+      last_name VARCHAR(50) NOT NULL,
+      email VARCHAR(100) UNIQUE NOT NULL,
+      phone VARCHAR(20),
+      mobile VARCHAR(30),
+      personal_email VARCHAR(255),
+      department VARCHAR(50),
+      position VARCHAR(100),
+      designation VARCHAR(100),
+      hire_date DATE,
+      joining_date DATE,
+      exit_date DATE,
+      exit_reason TEXT,
+      status ENUM('active', 'inactive', 'terminated') DEFAULT 'active',
+      manager_id INT,
+      username VARCHAR(50) UNIQUE,
+      middle_name VARCHAR(50),
+      gender ENUM('Male', 'Female', 'Other'),
+      employee_type ENUM('Payroll', 'Contract', 'Deputation', 'Permanent', 'Intern'),
+      grade VARCHAR(50),
+      workplace VARCHAR(100),
+      level VARCHAR(50),
+      reporting_to VARCHAR(100),
+      pf_no VARCHAR(50),
+      dob DATE,
+      marital_status ENUM('Single', 'Married', 'Other'),
+      employment_status VARCHAR(50),
+      role VARCHAR(100),
+      present_address TEXT,
+      address TEXT,
+      city VARCHAR(100),
+      pin VARCHAR(20),
+      state VARCHAR(100),
+      country VARCHAR(100),
+      profile_photo_url VARCHAR(255),
+      bonus_eligible TINYINT(1) DEFAULT 0,
+      stat_pf TINYINT(1) DEFAULT 0,
+      stat_mlwf TINYINT(1) DEFAULT 0,
+      stat_pt TINYINT(1) DEFAULT 0,
+      stat_esic TINYINT(1) DEFAULT 0,
+      stat_tds TINYINT(1) DEFAULT 0,
+      qualification VARCHAR(100),
+      institute VARCHAR(150),
+      passing_year VARCHAR(4),
+      work_experience TEXT,
+      bank_account_no VARCHAR(50),
+      bank_ifsc VARCHAR(20),
+      bank_name VARCHAR(100),
+      bank_branch VARCHAR(100),
+      account_holder_name VARCHAR(150),
+      pan VARCHAR(20),
+      aadhar VARCHAR(20),
+      gratuity_no VARCHAR(50),
+      uan VARCHAR(50),
+      esi_no VARCHAR(50),
+      attendance_id VARCHAR(50),
+      biometric_code VARCHAR(50),
+      device_code VARCHAR(50),
+      emergency_contact_name VARCHAR(100),
+      emergency_contact_phone VARCHAR(20),
+      deputation_company_id INT,
+      company_name VARCHAR(255) DEFAULT 'Accent Techno Solutions Pvt Ltd',
+      notes TEXT,
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE employees ADD COLUMN username VARCHAR(50) UNIQUE',
+		'ALTER TABLE employees ADD COLUMN middle_name VARCHAR(50)',
+		"ALTER TABLE employees ADD COLUMN gender ENUM('Male','Female','Other')",
+		"ALTER TABLE employees ADD COLUMN employee_type ENUM('Payroll','Contract','Deputation','Permanent','Intern')",
+		'ALTER TABLE employees ADD COLUMN grade VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN workplace VARCHAR(100)',
+		'ALTER TABLE employees ADD COLUMN level VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN reporting_to VARCHAR(100)',
+		'ALTER TABLE employees ADD COLUMN pf_no VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN dob DATE',
+		"ALTER TABLE employees ADD COLUMN marital_status ENUM('Single','Married','Other')",
+		'ALTER TABLE employees ADD COLUMN employment_status VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN role VARCHAR(100)',
+		'ALTER TABLE employees ADD COLUMN joining_date DATE',
+		'ALTER TABLE employees ADD COLUMN present_address TEXT',
+		'ALTER TABLE employees ADD COLUMN city VARCHAR(100)',
+		'ALTER TABLE employees ADD COLUMN pin VARCHAR(20)',
+		'ALTER TABLE employees ADD COLUMN state VARCHAR(100)',
+		'ALTER TABLE employees ADD COLUMN country VARCHAR(100)',
+		'ALTER TABLE employees ADD COLUMN mobile VARCHAR(30)',
+		'ALTER TABLE employees ADD COLUMN personal_email VARCHAR(255)',
+		'ALTER TABLE employees ADD COLUMN profile_photo_url VARCHAR(255)',
+		'ALTER TABLE employees ADD COLUMN bonus_eligible TINYINT(1) DEFAULT 0',
+		'ALTER TABLE employees ADD COLUMN stat_pf TINYINT(1) DEFAULT 0',
+		'ALTER TABLE employees ADD COLUMN stat_mlwf TINYINT(1) DEFAULT 0',
+		'ALTER TABLE employees ADD COLUMN stat_pt TINYINT(1) DEFAULT 0',
+		'ALTER TABLE employees ADD COLUMN stat_esic TINYINT(1) DEFAULT 0',
+		'ALTER TABLE employees ADD COLUMN stat_tds TINYINT(1) DEFAULT 0',
+		'ALTER TABLE employees ADD COLUMN qualification VARCHAR(100)',
+		'ALTER TABLE employees ADD COLUMN institute VARCHAR(150)',
+		'ALTER TABLE employees ADD COLUMN passing_year VARCHAR(4)',
+		'ALTER TABLE employees ADD COLUMN work_experience TEXT',
+		'ALTER TABLE employees ADD COLUMN bank_account_no VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN bank_ifsc VARCHAR(20)',
+		'ALTER TABLE employees ADD COLUMN bank_name VARCHAR(100)',
+		'ALTER TABLE employees ADD COLUMN bank_branch VARCHAR(100)',
+		'ALTER TABLE employees ADD COLUMN account_holder_name VARCHAR(150)',
+		'ALTER TABLE employees ADD COLUMN pan VARCHAR(20)',
+		'ALTER TABLE employees ADD COLUMN aadhar VARCHAR(20)',
+		'ALTER TABLE employees ADD COLUMN gratuity_no VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN uan VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN esi_no VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN attendance_id VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN biometric_code VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN device_code VARCHAR(50)',
+		'ALTER TABLE employees ADD COLUMN exit_date DATE',
+		'ALTER TABLE employees ADD COLUMN exit_reason TEXT',
+		'ALTER TABLE employees ADD COLUMN deputation_company_id INT',
+		"ALTER TABLE employees ADD COLUMN company_name VARCHAR(255) DEFAULT 'Accent Techno Solutions Pvt Ltd'",
+		'ALTER TABLE employees ADD COLUMN designation VARCHAR(100)',
+		'ALTER TABLE employees ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Employees table schema update warning:', e.message || e);
+			}
+		}
+	}
+
+	try {
+		await db.execute(
+			"ALTER TABLE employees MODIFY COLUMN employee_type ENUM('Payroll','Contract','Deputation','Permanent','Intern')"
+		);
+	} catch {
+		/* ignore */
+	}
+
+	try {
+		await db.execute('ALTER TABLE employees ADD INDEX idx_isDelete (isDelete)');
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Employees index migration warning:', e.message || e);
+		}
+	}
+}
+
+async function initVendorsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS vendors (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      vendor_id VARCHAR(50) UNIQUE,
+      vendor_name VARCHAR(255) NOT NULL,
+      vendor_type VARCHAR(100),
+      industry_category VARCHAR(100),
+      status VARCHAR(50) DEFAULT 'Active',
+      contact_person VARCHAR(255),
+      contact_designation VARCHAR(100),
+      phone VARCHAR(50),
+      email VARCHAR(255),
+      address_street VARCHAR(500),
+      address_city VARCHAR(100),
+      address_state VARCHAR(100),
+      address_country VARCHAR(100),
+      address_pin VARCHAR(20),
+      website VARCHAR(255),
+      gst_vat_tax_id VARCHAR(100),
+      pan_legal_reg_no VARCHAR(100),
+      msme_ssi_registration VARCHAR(100),
+      iso_certifications TEXT,
+      other_compliance_docs TEXT,
+      bank_name VARCHAR(255),
+      bank_account_no VARCHAR(100),
+      ifsc_swift_code VARCHAR(50),
+      currency_preference VARCHAR(10) DEFAULT 'INR',
+      payment_terms TEXT,
+      credit_limit DECIMAL(15, 2),
+      previous_projects TEXT,
+      avg_quality_rating DECIMAL(2, 1),
+      avg_delivery_rating DECIMAL(2, 1),
+      avg_reliability_rating DECIMAL(2, 1),
+      blacklist_notes TEXT,
+      remarks TEXT,
+      contract_attachments TEXT,
+      certificate_attachments TEXT,
+      profile_attachments TEXT,
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE vendors ADD COLUMN vendor_id VARCHAR(50) UNIQUE',
+		'ALTER TABLE vendors ADD COLUMN contact_designation VARCHAR(100)',
+		'ALTER TABLE vendors ADD COLUMN address_street VARCHAR(500)',
+		'ALTER TABLE vendors ADD COLUMN address_city VARCHAR(100)',
+		'ALTER TABLE vendors ADD COLUMN address_state VARCHAR(100)',
+		'ALTER TABLE vendors ADD COLUMN address_country VARCHAR(100)',
+		'ALTER TABLE vendors ADD COLUMN address_pin VARCHAR(20)',
+		'ALTER TABLE vendors ADD COLUMN iso_certifications TEXT',
+		'ALTER TABLE vendors ADD COLUMN other_compliance_docs TEXT',
+		'ALTER TABLE vendors ADD COLUMN bank_name VARCHAR(255)',
+		'ALTER TABLE vendors ADD COLUMN bank_account_no VARCHAR(100)',
+		'ALTER TABLE vendors ADD COLUMN ifsc_swift_code VARCHAR(50)',
+		'ALTER TABLE vendors ADD COLUMN currency_preference VARCHAR(10)',
+		'ALTER TABLE vendors ADD COLUMN payment_terms TEXT',
+		'ALTER TABLE vendors MODIFY COLUMN payment_terms TEXT',
+		'ALTER TABLE vendors ADD COLUMN credit_limit DECIMAL(15, 2)',
+		'ALTER TABLE vendors ADD COLUMN previous_projects TEXT',
+		'ALTER TABLE vendors ADD COLUMN avg_quality_rating DECIMAL(2, 1)',
+		'ALTER TABLE vendors ADD COLUMN avg_delivery_rating DECIMAL(2, 1)',
+		'ALTER TABLE vendors ADD COLUMN avg_reliability_rating DECIMAL(2, 1)',
+		'ALTER TABLE vendors ADD COLUMN blacklist_notes TEXT',
+		'ALTER TABLE vendors ADD COLUMN contract_attachments TEXT',
+		'ALTER TABLE vendors ADD COLUMN certificate_attachments TEXT',
+		'ALTER TABLE vendors ADD COLUMN profile_attachments TEXT',
+		'ALTER TABLE vendors ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Vendors table schema update warning:', e.message || e);
+			}
+		}
+	}
+
+	try {
+		await db.execute('ALTER TABLE vendors ADD INDEX idx_isDelete (isDelete)');
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Vendors index migration warning:', e.message || e);
+		}
+	}
+}
+
+async function initSupportTicketsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      ticket_number VARCHAR(20) UNIQUE NOT NULL,
+      user_id INT NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      description TEXT NOT NULL,
+      category ENUM('payroll', 'leave', 'policy', 'access_cards', 'seating', 'maintenance', 'general_request', 'confidential') DEFAULT 'general_request',
+      priority ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium',
+      status ENUM('new', 'under_review', 'in_progress', 'waiting_for_employee', 'resolved', 'closed') DEFAULT 'new',
+      screenshots JSON,
+      browser_info TEXT,
+      page_url VARCHAR(500),
+      steps_to_reproduce TEXT,
+      expected_behavior TEXT,
+      actual_behavior TEXT,
+      assigned_to INT,
+      resolution_notes TEXT,
+      resolved_at DATETIME,
+      resolved_by INT,
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_user_id (user_id),
+      INDEX idx_status (status),
+      INDEX idx_priority (priority),
+      INDEX idx_category (category),
+      INDEX idx_created_at (created_at),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE support_tickets ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+	];
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Support tickets schema update warning:', e.message || e);
+			}
+		}
+	}
+
+	try {
+		await db.execute(
+			'ALTER TABLE support_tickets ADD INDEX idx_isDelete (isDelete)'
+		);
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Support tickets index migration warning:', e.message || e);
+		}
+	}
+}
+
+async function initTicketCommentsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS ticket_comments (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      ticket_id INT NOT NULL,
+      user_id INT NOT NULL,
+      comment TEXT NOT NULL,
+      is_internal BOOLEAN DEFAULT FALSE,
+      attachments JSON,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_ticket_id (ticket_id)
+    )
+  `);
+}
+
+async function initExpensesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS expenses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      expense_number VARCHAR(50) UNIQUE NOT NULL,
+      expense_date DATE,
+      category VARCHAR(100) NOT NULL,
+      sub_category VARCHAR(100),
+      description VARCHAR(500),
+      vendor_name VARCHAR(255),
+      amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+      tax_amount DECIMAL(15, 2) DEFAULT 0,
+      total_amount DECIMAL(15, 2) DEFAULT 0,
+      currency VARCHAR(10) DEFAULT 'INR',
+      payment_mode ENUM('cash', 'bank', 'cheque', 'card', 'upi', 'other') DEFAULT 'bank',
+      payment_reference VARCHAR(255),
+      paid_to VARCHAR(255),
+      paid_by INT NULL,
+      receipt_url VARCHAR(500),
+      is_billable TINYINT(1) DEFAULT 0,
+      is_reimbursable TINYINT(1) DEFAULT 0,
+      project_id INT NULL,
+      department VARCHAR(100),
+      notes TEXT,
+      status ENUM('draft', 'submitted', 'approved', 'rejected', 'reimbursed') DEFAULT 'submitted',
+      approved_by INT NULL,
+      approved_at DATETIME,
+      created_by INT,
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_category (category),
+      INDEX idx_status (status),
+      INDEX idx_expense_date (expense_date),
+      INDEX idx_vendor (vendor_name),
+      INDEX idx_project_id (project_id),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	const alterStatements = [
+		'ALTER TABLE expenses ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+	];
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Expenses table schema update warning:', e.message || e);
+			}
+		}
+	}
+
+	try {
+		await db.execute('ALTER TABLE expenses ADD INDEX idx_isDelete (isDelete)');
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Expenses index migration warning:', e.message || e);
+		}
+	}
+}
+
+async function initOtherExpensesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS other_expenses (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      voucher_number VARCHAR(50) UNIQUE NOT NULL,
+      voucher_date DATE NOT NULL,
+      expense_category VARCHAR(100) NOT NULL,
+      payee_type ENUM('vendor', 'employee') NOT NULL,
+      vendor_id INT NULL,
+      vendor_name VARCHAR(255) NULL,
+      employee_id INT NULL,
+      employee_name VARCHAR(255) NULL,
+      bill_no VARCHAR(100) NULL,
+      bill_date DATE NULL,
+      bill_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+      gst_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+      net_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+      description TEXT NULL,
+      status ENUM('draft', 'submitted', 'approved', 'rejected') NOT NULL DEFAULT 'submitted',
+      created_by INT NULL,
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_voucher_date (voucher_date),
+      INDEX idx_category (expense_category),
+      INDEX idx_payee_type (payee_type),
+      INDEX idx_status (status),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	try {
+		await db.execute(
+			'ALTER TABLE other_expenses ADD COLUMN isDelete TINYINT(1) DEFAULT 0'
+		);
+	} catch (e) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn('Other expenses schema update warning:', e.message || e);
+		}
+	}
+
+	try {
+		await db.execute(
+			'ALTER TABLE other_expenses ADD INDEX idx_isDelete (isDelete)'
+		);
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Other expenses index migration warning:', e.message || e);
+		}
+	}
+}
+
+async function initPaymentPayablesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS payment_payables (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      reference_number VARCHAR(50) UNIQUE NOT NULL,
+      vendor_invoice_number VARCHAR(100),
+      purchase_invoice_id INT NULL,
+      vendor_name VARCHAR(255) NOT NULL,
+      vendor_email VARCHAR(255),
+      vendor_phone VARCHAR(50),
+      invoice_date DATE,
+      due_date DATE,
+      invoice_amount DECIMAL(15, 2) DEFAULT 0,
+      paid_amount DECIMAL(15, 2) DEFAULT 0,
+      balance_due DECIMAL(15, 2) DEFAULT 0,
+      currency VARCHAR(10) DEFAULT 'INR',
+      project_id INT NULL,
+      po_number VARCHAR(100),
+      payment_terms VARCHAR(100),
+      last_follow_up_date DATE,
+      next_follow_up_date DATE,
+      notes TEXT,
+      status ENUM('pending', 'partial', 'paid', 'overdue', 'cancelled') DEFAULT 'pending',
+      paid_date DATE,
+      payment_mode ENUM('cash', 'bank', 'cheque', 'card', 'upi', 'other') NULL,
+      transaction_reference VARCHAR(255),
+      bank_name VARCHAR(255),
+      tds_amount DECIMAL(15, 2) DEFAULT 0,
+      approved_by INT NULL,
+      approved_at DATETIME,
+      assigned_to INT NULL,
+      created_by INT,
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_status (status),
+      INDEX idx_vendor (vendor_name),
+      INDEX idx_due_date (due_date),
+      INDEX idx_purchase_invoice_id (purchase_invoice_id),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	try {
+		await db.execute(
+			'ALTER TABLE payment_payables ADD COLUMN isDelete TINYINT(1) DEFAULT 0'
+		);
+	} catch (e) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn('Payment payables schema update warning:', e.message || e);
+		}
+	}
+
+	try {
+		await db.execute(
+			'ALTER TABLE payment_payables ADD INDEX idx_isDelete (isDelete)'
+		);
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Payment payables index migration warning:', e.message || e);
+		}
+	}
+}
+
+async function initPaymentReceivablesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS payment_receivables (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      reference_number VARCHAR(50) UNIQUE NOT NULL,
+      invoice_number VARCHAR(100),
+      invoice_id INT NULL,
+      client_name VARCHAR(255) NOT NULL,
+      client_email VARCHAR(255),
+      client_phone VARCHAR(50),
+      invoice_date DATE,
+      due_date DATE,
+      invoice_amount DECIMAL(15, 2) DEFAULT 0,
+      paid_amount DECIMAL(15, 2) DEFAULT 0,
+      balance_due DECIMAL(15, 2) DEFAULT 0,
+      currency VARCHAR(10) DEFAULT 'INR',
+      project_id INT NULL,
+      po_number VARCHAR(100),
+      payment_terms VARCHAR(100),
+      last_follow_up_date DATE,
+      next_follow_up_date DATE,
+      notes TEXT,
+      status ENUM('pending', 'partial', 'received', 'overdue', 'written_off') DEFAULT 'pending',
+      received_date DATE,
+      payment_mode ENUM('cash', 'bank', 'cheque', 'card', 'upi', 'other') NULL,
+      transaction_reference VARCHAR(255),
+      assigned_to INT NULL,
+      created_by INT,
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_status (status),
+      INDEX idx_client (client_name),
+      INDEX idx_due_date (due_date),
+      INDEX idx_invoice_id (invoice_id),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	try {
+		await db.execute(
+			'ALTER TABLE payment_receivables ADD COLUMN isDelete TINYINT(1) DEFAULT 0'
+		);
+	} catch (e) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn(
+				'Payment receivables schema update warning:',
+				e.message || e
+			);
+		}
+	}
+
+	try {
+		await db.execute(
+			'ALTER TABLE payment_receivables ADD INDEX idx_isDelete (isDelete)'
+		);
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn(
+				'Payment receivables index migration warning:',
+				e.message || e
+			);
+		}
+	}
+}
+
+async function initPurchaseInvoicesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS purchase_invoices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      invoice_number VARCHAR(50) UNIQUE NOT NULL,
+      invoice_date DATE,
+      due_date DATE,
+      vendor_name VARCHAR(255) NOT NULL,
+      vendor_email VARCHAR(255),
+      vendor_phone VARCHAR(50),
+      vendor_address TEXT,
+      vendor_gstin VARCHAR(20),
+      vendor_pan VARCHAR(20),
+      po_number VARCHAR(100),
+      po_date DATE,
+      po_id INT NULL,
+      description VARCHAR(500),
+      items JSON,
+      subtotal DECIMAL(15, 2) DEFAULT 0,
+      tax_rate DECIMAL(5, 2) DEFAULT 18,
+      tax_amount DECIMAL(15, 2) DEFAULT 0,
+      cgst_amount DECIMAL(15, 2) DEFAULT 0,
+      sgst_amount DECIMAL(15, 2) DEFAULT 0,
+      igst_amount DECIMAL(15, 2) DEFAULT 0,
+      discount DECIMAL(15, 2) DEFAULT 0,
+      total DECIMAL(15, 2) DEFAULT 0,
+      amount_paid DECIMAL(15, 2) DEFAULT 0,
+      balance_due DECIMAL(15, 2) DEFAULT 0,
+      payment_status ENUM('unpaid', 'partial', 'paid', 'overdue') DEFAULT 'unpaid',
+      notes TEXT,
+      terms TEXT,
+      attachment_url VARCHAR(500),
+      status ENUM('draft', 'pending', 'approved', 'paid', 'overdue', 'cancelled') DEFAULT 'draft',
+      project_id INT NULL,
+      created_by INT,
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_status (status),
+      INDEX idx_vendor (vendor_name),
+      INDEX idx_payment_status (payment_status),
+      INDEX idx_isDelete (isDelete)
+    )
+  `);
+
+	try {
+		await db.execute(
+			'ALTER TABLE purchase_invoices ADD COLUMN isDelete TINYINT(1) DEFAULT 0'
+		);
+	} catch (e) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn('Purchase invoices schema update warning:', e.message || e);
+		}
+	}
+}
+
+async function initMaterialRequisitionsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS material_requisitions (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      requisition_number VARCHAR(50) NOT NULL UNIQUE,
+      requisition_date DATE NOT NULL,
+      requested_by VARCHAR(100),
+      department VARCHAR(100),
+      line_items JSON,
+      status ENUM('pending', 'approved', 'fulfilled', 'rejected') DEFAULT 'pending',
+      prepared_by VARCHAR(100),
+      checked_by VARCHAR(100),
+      approved_by VARCHAR(100),
+      received_by VARCHAR(100),
+      receipt_date DATE,
+      notes TEXT,
+      created_by INT,
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+	try {
+		await db.execute(
+			'ALTER TABLE material_requisitions ADD COLUMN isDelete TINYINT(1) DEFAULT 0'
+		);
+	} catch (e) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn(
+				'Material requisitions schema update warning:',
+				e.message || e
+			);
+		}
+	}
 }
 
 async function initUsersTable(db) {
 	await db.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id INT PRIMARY KEY AUTO_INCREMENT,
-      email VARCHAR(255) UNIQUE NOT NULL,
-      password_hash VARCHAR(255),
+      username VARCHAR(50) UNIQUE NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      email VARCHAR(100),
       name VARCHAR(255),
       role VARCHAR(50) DEFAULT 'user',
-      is_super_admin BOOLEAN DEFAULT FALSE,
+      employee_id INT DEFAULT NULL,
+      vendor_id INT DEFAULT NULL,
+      account_type ENUM('employee', 'vendor') DEFAULT 'employee',
+      role_id INT DEFAULT NULL,
+      permissions JSON DEFAULT NULL,
+      field_permissions JSON DEFAULT NULL,
+      department VARCHAR(100) DEFAULT NULL,
+      full_name VARCHAR(100) DEFAULT NULL,
+      status ENUM('active', 'inactive') DEFAULT 'active',
       is_active BOOLEAN DEFAULT TRUE,
+      is_super_admin BOOLEAN DEFAULT FALSE,
+      isDelete TINYINT(1) DEFAULT 0,
+      last_login TIMESTAMP NULL,
+      last_password_change TIMESTAMP NULL,
+      created_by INT DEFAULT NULL,
+      updated_by INT DEFAULT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_username (username),
+      INDEX idx_employee_id (employee_id),
+      INDEX idx_vendor_id (vendor_id),
+      INDEX idx_role_id (role_id),
+      INDEX idx_isDelete (isDelete)
     )
   `);
+
+	const alterStatements = [
+		'ALTER TABLE users ADD COLUMN username VARCHAR(50) UNIQUE NOT NULL',
+		'ALTER TABLE users ADD COLUMN employee_id INT DEFAULT NULL',
+		'ALTER TABLE users ADD COLUMN vendor_id INT DEFAULT NULL',
+		'ALTER TABLE users ADD COLUMN account_type ENUM("employee", "vendor") DEFAULT "employee"',
+		'ALTER TABLE users ADD COLUMN role_id INT DEFAULT NULL',
+		'ALTER TABLE users ADD COLUMN permissions JSON DEFAULT NULL',
+		'ALTER TABLE users ADD COLUMN field_permissions JSON DEFAULT NULL',
+		'ALTER TABLE users ADD COLUMN department VARCHAR(100) DEFAULT NULL',
+		'ALTER TABLE users ADD COLUMN full_name VARCHAR(100) DEFAULT NULL',
+		"ALTER TABLE users ADD COLUMN status ENUM('active', 'inactive') DEFAULT 'active'",
+		'ALTER TABLE users ADD COLUMN is_super_admin BOOLEAN DEFAULT FALSE',
+		'ALTER TABLE users ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+		'ALTER TABLE users ADD COLUMN last_login TIMESTAMP NULL',
+		'ALTER TABLE users ADD COLUMN last_password_change TIMESTAMP NULL',
+		'ALTER TABLE users ADD COLUMN created_by INT DEFAULT NULL',
+		'ALTER TABLE users ADD COLUMN updated_by INT DEFAULT NULL',
+	];
+
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Users table schema update warning:', e.message || e);
+			}
+		}
+	}
+
+	try {
+		await db.execute('ALTER TABLE users ADD INDEX idx_isDelete (isDelete)');
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Users index migration warning:', e.message || e);
+		}
+	}
 }
 
 async function initLeadsTable(db) {
@@ -966,14 +1801,108 @@ async function initFollowUpsTable(db) {
       lead_id INT,
       follow_up_date DATE,
       follow_up_type VARCHAR(100),
+      description TEXT,
       notes TEXT,
       status VARCHAR(50),
+      next_action VARCHAR(255),
+      next_follow_up_date DATE,
       created_by INT,
+      isDelete TINYINT(1) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+      INDEX idx_isDelete (isDelete)
     )
   `);
+
+	const alterStatements = [
+		'ALTER TABLE follow_ups ADD COLUMN description TEXT',
+		'ALTER TABLE follow_ups ADD COLUMN next_action VARCHAR(255)',
+		'ALTER TABLE follow_ups ADD COLUMN next_follow_up_date DATE',
+		'ALTER TABLE follow_ups ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+	];
+	for (const stmt of alterStatements) {
+		try {
+			await db.execute(stmt);
+		} catch (e) {
+			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+				console.warn('Follow-ups schema update warning:', e.message || e);
+			}
+		}
+	}
+}
+
+async function initSoftwareCategoriesTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS software_categories (
+      id VARCHAR(36) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      status VARCHAR(20) DEFAULT 'active',
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+	try {
+		await db.execute(
+			'ALTER TABLE software_categories ADD COLUMN isDelete TINYINT(1) DEFAULT 0'
+		);
+	} catch (e) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn(
+				'Software categories schema update warning:',
+				e.message || e
+			);
+		}
+	}
+}
+
+async function initSoftwaresTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS softwares (
+      id VARCHAR(36) PRIMARY KEY,
+      category_id VARCHAR(36) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      provider VARCHAR(255),
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+	try {
+		await db.execute(
+			'ALTER TABLE softwares ADD COLUMN isDelete TINYINT(1) DEFAULT 0'
+		);
+	} catch (e) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn('Softwares schema update warning:', e.message || e);
+		}
+	}
+}
+
+async function initSoftwareVersionsTable(db) {
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS software_versions (
+      id VARCHAR(36) PRIMARY KEY,
+      software_id VARCHAR(36) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      release_date DATE,
+      notes TEXT,
+      isDelete TINYINT(1) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+	try {
+		await db.execute(
+			'ALTER TABLE software_versions ADD COLUMN isDelete TINYINT(1) DEFAULT 0'
+		);
+	} catch (e) {
+		if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
+			console.warn('Software versions schema update warning:', e.message || e);
+		}
+	}
 }
 
 async function initWorkLogsTable(db) {
@@ -1235,8 +2164,8 @@ async function initOutgoingQuotationsTable(db) {
 	}
 
 	const indexMigrations = [
-		'ALTER TABLE outgoing_quotations DROP INDEX quotation_number',
-		'ALTER TABLE outgoing_quotations ADD UNIQUE KEY unique_active_quotation (quotation_number, isDelete)',
+		'ALTER TABLE outgoing_quotations DROP INDEX unique_active_quotation',
+		'ALTER TABLE outgoing_quotations ADD UNIQUE KEY (quotation_number)',
 	];
 
 	for (const stmt of indexMigrations) {
@@ -1311,8 +2240,8 @@ async function initCashVouchersTable(db) {
 	}
 
 	const indexMigrations = [
-		'ALTER TABLE cash_vouchers DROP INDEX voucher_number',
-		'ALTER TABLE cash_vouchers ADD UNIQUE KEY unique_active_voucher (voucher_number, isDelete)',
+		'ALTER TABLE cash_vouchers DROP INDEX unique_active_voucher',
+		'ALTER TABLE cash_vouchers ADD UNIQUE KEY (voucher_number)',
 	];
 
 	for (const stmt of indexMigrations) {
@@ -1626,8 +2555,8 @@ async function initQuotationsTable(db) {
 	}
 
 	const indexMigrations = [
-		'ALTER TABLE quotations DROP INDEX quotation_number',
-		'ALTER TABLE quotations ADD UNIQUE KEY unique_active_quotation (quotation_number, isDelete)',
+		'ALTER TABLE quotations DROP INDEX unique_active_quotation',
+		'ALTER TABLE quotations ADD UNIQUE KEY (quotation_number)',
 	];
 
 	for (const stmt of indexMigrations) {

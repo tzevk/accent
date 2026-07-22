@@ -6,6 +6,7 @@ import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import RichTextEditorBase from '@/components/RichTextEditor';
+import SearchableSelect from '@/components/ui/searchable-select';
 
 // Microsoft Word-style editor: selecting text pops up a floating format menu.
 function RichTextEditor(props) {
@@ -37,7 +38,7 @@ export default function EditQuotationPage() {
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [companies, setCompanies] = useState([]);
-	const [showSuggestions, setShowSuggestions] = useState(false);
+	const [selectedCompanyId, setSelectedCompanyId] = useState('');
 	const [quotation, setQuotation] = useState({
 		quotation_number: '',
 		quotation_date: '',
@@ -246,6 +247,17 @@ export default function EditQuotationPage() {
 		fetchCompanies();
 	}, []);
 
+	// Auto-select matching company when editing an existing quotation
+	useEffect(() => {
+		if (!companies.length || !quotation.client_name) return;
+		const match = companies.find(
+			(c) => c.company_name === quotation.client_name
+		);
+		if (match) {
+			setSelectedCompanyId(String(match.id));
+		}
+	}, [companies, quotation.client_name]);
+
 	// Handle company selection
 	const handleSelectCompany = (company) => {
 		const addrParts = [
@@ -265,7 +277,7 @@ export default function EditQuotationPage() {
 			pan_number: company.pan_number || '',
 			kind_attn: company.contact_person || '',
 		}));
-		setShowSuggestions(false);
+		setSelectedCompanyId(String(company.id));
 	};
 
 	// Handle input change
@@ -582,64 +594,25 @@ export default function EditQuotationPage() {
 										<label className="block text-sm font-semibold text-gray-700 mb-2">
 											To,
 										</label>
-										<div className="relative mb-2">
-											<input
-												type="text"
-												name="client_name"
-												value={quotation.client_name}
-												onChange={(e) => {
-													handleChange(e);
-													setShowSuggestions(true);
+										<div className="mb-2">
+											<SearchableSelect
+												options={companies.map((c) => ({
+													id: c.id,
+													value: String(c.id),
+													label: c.company_name,
+												}))}
+												value={selectedCompanyId}
+												onChange={(val) => {
+													const company = companies.find(
+														(c) => String(c.id) === val
+													);
+													if (company) {
+														handleSelectCompany(company);
+													}
 												}}
-												onFocus={() => setShowSuggestions(true)}
-												onBlur={() =>
-													setTimeout(() => setShowSuggestions(false), 200)
-												}
-												placeholder="Client Name"
-												className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-												autoComplete="off"
+												placeholder="Search company..."
+												buttonClassName="border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 											/>
-											{showSuggestions && (
-												<div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
-													{companies.filter((c) =>
-														(c.company_name || '')
-															.toLowerCase()
-															.includes(
-																(quotation.client_name || '').toLowerCase()
-															)
-													).length > 0 ? (
-														companies
-															.filter((c) =>
-																(c.company_name || '')
-																	.toLowerCase()
-																	.includes(
-																		(quotation.client_name || '').toLowerCase()
-																	)
-															)
-															.map((company) => (
-																<button
-																	key={company.id}
-																	type="button"
-																	onClick={() => handleSelectCompany(company)}
-																	className="w-full text-left px-4 py-2 hover:bg-purple-50 text-sm text-gray-700 font-medium transition-colors"
-																>
-																	<div className="font-semibold text-gray-900">
-																		{company.company_name}
-																	</div>
-																	<div className="text-xs text-gray-500">
-																		{company.city ? `${company.city}, ` : ''}
-																		{company.state || ''}
-																	</div>
-																</button>
-															))
-													) : (
-														<div className="px-4 py-2 text-sm text-gray-500 italic">
-															No matching company found. Keep typing to enter
-															manually.
-														</div>
-													)}
-												</div>
-											)}
 										</div>
 										<textarea
 											name="client_address"

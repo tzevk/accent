@@ -9,54 +9,6 @@ import { logActivity } from '@/utils/activity-logger';
 
 const TABLE = 'purchase_invoices';
 
-const DDL = `
-  CREATE TABLE IF NOT EXISTS ${TABLE} (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    invoice_number VARCHAR(50) UNIQUE NOT NULL,
-    invoice_date DATE,
-    due_date DATE,
-    vendor_name VARCHAR(255) NOT NULL,
-    vendor_email VARCHAR(255),
-    vendor_phone VARCHAR(50),
-    vendor_address TEXT,
-    vendor_gstin VARCHAR(20),
-    vendor_pan VARCHAR(20),
-    po_number VARCHAR(100),
-    po_date DATE,
-    po_id INT NULL,
-    description VARCHAR(500),
-    items JSON,
-    subtotal DECIMAL(15, 2) DEFAULT 0,
-    tax_rate DECIMAL(5, 2) DEFAULT 18,
-    tax_amount DECIMAL(15, 2) DEFAULT 0,
-    cgst_amount DECIMAL(15, 2) DEFAULT 0,
-    sgst_amount DECIMAL(15, 2) DEFAULT 0,
-    igst_amount DECIMAL(15, 2) DEFAULT 0,
-    discount DECIMAL(15, 2) DEFAULT 0,
-    total DECIMAL(15, 2) DEFAULT 0,
-    amount_paid DECIMAL(15, 2) DEFAULT 0,
-    balance_due DECIMAL(15, 2) DEFAULT 0,
-    payment_status ENUM('unpaid', 'partial', 'paid', 'overdue') DEFAULT 'unpaid',
-    notes TEXT,
-    terms TEXT,
-    attachment_url VARCHAR(500),
-    status ENUM('draft', 'pending', 'approved', 'paid', 'overdue', 'cancelled') DEFAULT 'draft',
-    project_id INT NULL,
-    created_by INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_status (status),
-    INDEX idx_vendor (vendor_name),
-    INDEX idx_payment_status (payment_status),
-    INDEX idx_due_date (due_date),
-    INDEX idx_created_at (created_at)
-  )
-`;
-
-async function ensureTable(db) {
-	await db.execute(DDL);
-}
-
 async function nextNumber(db) {
 	const [rows] = await db.execute(
 		`SELECT invoice_number FROM ${TABLE} WHERE invoice_number LIKE 'PI-%' ORDER BY id DESC LIMIT 1`
@@ -88,9 +40,8 @@ export async function GET(request) {
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
-		await ensureTable(db);
 
-		const where = ['1=1'];
+		const where = ['1=1 AND isDelete = 0'];
 		const params = [];
 		if (status && status !== 'all') {
 			where.push('status = ?');
@@ -148,7 +99,7 @@ export async function GET(request) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }
 
@@ -174,7 +125,6 @@ export async function POST(request) {
 		}
 
 		db = await dbConnect();
-		await ensureTable(db);
 
 		const invoiceNumber = body.invoice_number || (await nextNumber(db));
 		const total = Number(body.total ?? 0);
@@ -251,6 +201,6 @@ export async function POST(request) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }

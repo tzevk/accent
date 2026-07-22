@@ -6,83 +6,6 @@ import {
 	PERMISSIONS as API_PERMISSIONS,
 } from '@/utils/api-permissions';
 
-// Flag to run schema DDL at most once per process
-let _usersSchemaReady = false;
-
-// Ensure users table exists and has proper structure for role-based system
-async function ensureUsersTable(db) {
-	await db.execute(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      username VARCHAR(50) UNIQUE NOT NULL,
-      password_hash VARCHAR(255) NOT NULL,
-      email VARCHAR(100),
-      employee_id INT DEFAULT NULL,
-      vendor_id INT DEFAULT NULL,
-      account_type ENUM('employee', 'vendor') DEFAULT 'employee',
-      role_id INT DEFAULT NULL,
-      permissions JSON DEFAULT NULL,
-      field_permissions JSON DEFAULT NULL,
-      department VARCHAR(100) DEFAULT NULL,
-      full_name VARCHAR(100) DEFAULT NULL,
-      status ENUM('active', 'inactive') DEFAULT 'active',
-      is_active BOOLEAN DEFAULT TRUE,
-      is_super_admin BOOLEAN DEFAULT FALSE,
-      last_login TIMESTAMP NULL,
-      last_password_change TIMESTAMP NULL,
-      created_by INT DEFAULT NULL,
-      updated_by INT DEFAULT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_username (username),
-      INDEX idx_employee_id (employee_id),
-      INDEX idx_vendor_id (vendor_id),
-      INDEX idx_role_id (role_id)
-    )
-  `);
-	// In case table already existed without these columns, attempt to add them
-	try {
-		await db.execute(
-			'ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE'
-		);
-	} catch {
-		// ignore if not supported or already present
-	}
-	try {
-		await db.execute(
-			'ALTER TABLE users ADD COLUMN IF NOT EXISTS field_permissions JSON DEFAULT NULL'
-		);
-	} catch {
-		// ignore if not supported or already present
-	}
-	try {
-		await db.execute(
-			'ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_id INT DEFAULT NULL'
-		);
-	} catch {
-		// ignore if not supported or already present
-	}
-	try {
-		await db.execute(
-			'ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type ENUM("employee", "vendor") DEFAULT "employee"'
-		);
-	} catch {
-		// ignore if not supported or already present
-	}
-
-	// Ensure roles table exists
-	await db.execute(`
-    CREATE TABLE IF NOT EXISTS roles (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      role_key VARCHAR(100) UNIQUE NOT NULL,
-      display_name VARCHAR(255),
-      permissions JSON,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `);
-}
-
 // GET - list users with optional pagination and role information
 export async function GET(request) {
 	let db;
@@ -100,10 +23,6 @@ export async function GET(request) {
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
-		if (!_usersSchemaReady) {
-			await ensureUsersTable(db);
-			_usersSchemaReady = true;
-		}
 
 		const [rows] = await db.execute(
 			`SELECT u.*, 
@@ -117,7 +36,7 @@ export async function GET(request) {
        FROM users u
        LEFT JOIN employees e ON u.employee_id = e.id
        LEFT JOIN roles r ON u.role_id = r.id
-       WHERE u.is_active = TRUE
+       WHERE u.is_active = TRUE AND u.isDelete = 0
        ORDER BY u.created_at DESC
        LIMIT ? OFFSET ?`,
 			[limit, offset]
@@ -125,7 +44,7 @@ export async function GET(request) {
 
 		// Get total count for pagination
 		const [countResult] = await db.execute(
-			'SELECT COUNT(*) as total FROM users WHERE is_active = TRUE'
+			'SELECT COUNT(*) as total FROM users WHERE is_active = TRUE AND isDelete = 0'
 		);
 
 		return NextResponse.json({
@@ -199,10 +118,6 @@ export async function POST(request) {
 		}
 
 		db = await dbConnect();
-		if (!_usersSchemaReady) {
-			await ensureUsersTable(db);
-			_usersSchemaReady = true;
-		}
 
 		// check duplicates
 		const [existing] = await db.execute(
@@ -346,13 +261,9 @@ export async function PUT(request) {
 			);
 
 		db = await dbConnect();
-		if (!_usersSchemaReady) {
-			await ensureUsersTable(db);
-			_usersSchemaReady = true;
-		}
 
 		const [existing] = await db.execute(
-			'SELECT id FROM users WHERE id = ? LIMIT 1',
+			'SELECT id FROM users WHERE id = ? AND isDelete = 0 LIMIT 1',
 			[data.id]
 		);
 		if (!existing || existing.length === 0) {
@@ -365,7 +276,7 @@ export async function PUT(request) {
 		// check duplicate username/email
 		if (data.username || data.email) {
 			const [dups] = await db.execute(
-				'SELECT id FROM users WHERE (username = ? OR email = ?) AND id != ?',
+				'SELECT id FROM users WHERE (username = ? OR email = ?) AND id != ? AND isDelete = 0',
 				[data.username || '', data.email || '', data.id]
 			);
 			if (dups.length > 0) {
@@ -427,12 +338,13 @@ export async function PUT(request) {
 
 		vals.push(data.id);
 		await db.execute(
-			`UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
+			`UPDATE users SET ${fields.join(', ')} WHERE id = ? AND isDelete = 0`,
 			vals
 		);
-		const [rows] = await db.execute('SELECT * FROM users WHERE id = ?', [
-			data.id,
-		]);
+		const [rows] = await db.execute(
+			'SELECT * FROM users WHERE id = ? AND isDelete = 0',
+			[data.id]
+		);
 
 		return NextResponse.json({
 			success: true,
@@ -470,13 +382,9 @@ export async function DELETE(request) {
 			);
 
 		db = await dbConnect();
-		if (!_usersSchemaReady) {
-			await ensureUsersTable(db);
-			_usersSchemaReady = true;
-		}
 
 		const [existing] = await db.execute(
-			'SELECT id FROM users WHERE id = ? LIMIT 1',
+			'SELECT id FROM users WHERE id = ? AND isDelete = 0 LIMIT 1',
 			[id]
 		);
 		if (!existing || existing.length === 0) {
@@ -486,7 +394,10 @@ export async function DELETE(request) {
 			);
 		}
 
-		await db.execute('DELETE FROM users WHERE id = ?', [id]);
+		await db.execute(
+			'UPDATE users SET isDelete = 1 WHERE id = ? AND isDelete = 0',
+			[id]
+		);
 
 		return NextResponse.json({ success: true, message: 'User deleted' });
 	} catch (error) {

@@ -5,8 +5,6 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 
-let _vendorsSchemaReady = false;
-
 export async function GET(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
@@ -20,108 +18,9 @@ export async function GET(request) {
 	try {
 		db = await dbConnect();
 
-		if (!_vendorsSchemaReady) {
-			// Create vendors table if it doesn't exist
-			const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS vendors (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        vendor_id VARCHAR(50) UNIQUE,
-        vendor_name VARCHAR(255) NOT NULL,
-        vendor_type VARCHAR(100),
-        industry_category VARCHAR(100),
-        status VARCHAR(50) DEFAULT 'Active',
-        
-        -- Contact Information
-        contact_person VARCHAR(255),
-        contact_designation VARCHAR(100),
-        phone VARCHAR(50),
-        email VARCHAR(255),
-        address_street VARCHAR(500),
-        address_city VARCHAR(100),
-        address_state VARCHAR(100),
-        address_country VARCHAR(100),
-        address_pin VARCHAR(20),
-        website VARCHAR(255),
-        
-        -- Registration & Compliance
-        gst_vat_tax_id VARCHAR(100),
-        pan_legal_reg_no VARCHAR(100),
-        msme_ssi_registration VARCHAR(100),
-        iso_certifications TEXT,
-        other_compliance_docs TEXT,
-        
-        -- Financial Information
-        bank_name VARCHAR(255),
-        bank_account_no VARCHAR(100),
-        ifsc_swift_code VARCHAR(50),
-        currency_preference VARCHAR(10) DEFAULT 'INR',
-        payment_terms TEXT,
-        credit_limit DECIMAL(15, 2),
-        
-        -- Performance & History
-        previous_projects TEXT,
-        avg_quality_rating DECIMAL(2, 1),
-        avg_delivery_rating DECIMAL(2, 1),
-        avg_reliability_rating DECIMAL(2, 1),
-        blacklist_notes TEXT,
-        remarks TEXT,
-        
-        -- Attachments (storing file paths/URLs)
-        contract_attachments TEXT,
-        certificate_attachments TEXT,
-        profile_attachments TEXT,
-        
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `;
-
-			await db.execute(createTableQuery);
-
-			// Add columns if they don't exist (for existing tables)
-			const alterTableQueries = [
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS vendor_id VARCHAR(50) UNIQUE`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contact_designation VARCHAR(100)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS address_street VARCHAR(500)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS address_city VARCHAR(100)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS address_state VARCHAR(100)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS address_country VARCHAR(100)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS address_pin VARCHAR(20)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS iso_certifications TEXT`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS other_compliance_docs TEXT`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS bank_account_no VARCHAR(100)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS ifsc_swift_code VARCHAR(50)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS currency_preference VARCHAR(10)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS payment_terms TEXT`,
-				`ALTER TABLE vendors MODIFY COLUMN payment_terms TEXT`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(15, 2)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS previous_projects TEXT`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS avg_quality_rating DECIMAL(2, 1)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS avg_delivery_rating DECIMAL(2, 1)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS avg_reliability_rating DECIMAL(2, 1)`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS blacklist_notes TEXT`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contract_attachments TEXT`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS certificate_attachments TEXT`,
-				`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS profile_attachments TEXT`,
-			];
-
-			for (const alterQuery of alterTableQueries) {
-				try {
-					await db.execute(alterQuery);
-				} catch (err) {
-					// Ignore errors for columns that already exist
-					if (!err.message.includes('Duplicate column name')) {
-						console.error('Error altering table:', err);
-					}
-				}
-			}
-			_vendorsSchemaReady = true;
-		} // end schema check
-
 		// Fetch all vendors
 		const [vendors] = await db.query(
-			'SELECT * FROM vendors ORDER BY created_at DESC'
+			'SELECT * FROM vendors WHERE isDelete = 0 ORDER BY created_at DESC'
 		);
 
 		return Response.json({
@@ -221,7 +120,7 @@ export async function POST(request) {
 			// Get the highest vendor_id for this month/year
 			const monthYearPattern = `%-${month}-${year}`;
 			const [existingVendors] = await db.query(
-				'SELECT vendor_id FROM vendors WHERE vendor_id LIKE ? ORDER BY vendor_id DESC LIMIT 1',
+				'SELECT vendor_id FROM vendors WHERE vendor_id LIKE ? AND isDelete = 0 ORDER BY vendor_id DESC LIMIT 1',
 				[monthYearPattern]
 			);
 

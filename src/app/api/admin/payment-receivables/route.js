@@ -9,46 +9,6 @@ import { logActivity } from '@/utils/activity-logger';
 
 const TABLE = 'payment_receivables';
 
-const DDL = `
-  CREATE TABLE IF NOT EXISTS ${TABLE} (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    reference_number VARCHAR(50) UNIQUE NOT NULL,
-    invoice_number VARCHAR(100),
-    invoice_id INT NULL,
-    client_name VARCHAR(255) NOT NULL,
-    client_email VARCHAR(255),
-    client_phone VARCHAR(50),
-    invoice_date DATE,
-    due_date DATE,
-    invoice_amount DECIMAL(15, 2) DEFAULT 0,
-    paid_amount DECIMAL(15, 2) DEFAULT 0,
-    balance_due DECIMAL(15, 2) DEFAULT 0,
-    currency VARCHAR(10) DEFAULT 'INR',
-    project_id INT NULL,
-    po_number VARCHAR(100),
-    payment_terms VARCHAR(100),
-    last_follow_up_date DATE,
-    next_follow_up_date DATE,
-    notes TEXT,
-    status ENUM('pending', 'partial', 'received', 'overdue', 'written_off') DEFAULT 'pending',
-    received_date DATE,
-    payment_mode ENUM('cash', 'bank', 'cheque', 'card', 'upi', 'other') NULL,
-    transaction_reference VARCHAR(255),
-    assigned_to INT NULL,
-    created_by INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_status (status),
-    INDEX idx_client (client_name),
-    INDEX idx_due_date (due_date),
-    INDEX idx_invoice_id (invoice_id)
-  )
-`;
-
-async function ensureTable(db) {
-	await db.execute(DDL);
-}
-
 async function nextNumber(db) {
 	const [rows] = await db.execute(
 		`SELECT reference_number FROM ${TABLE} WHERE reference_number LIKE 'PR-%' ORDER BY id DESC LIMIT 1`
@@ -80,9 +40,8 @@ export async function GET(request) {
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
-		await ensureTable(db);
 
-		const where = ['1=1'];
+		const where = ['1=1 AND isDelete = 0'];
 		const params = [];
 		if (status && status !== 'all') {
 			where.push('status = ?');
@@ -139,7 +98,7 @@ export async function GET(request) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }
 
@@ -165,7 +124,6 @@ export async function POST(request) {
 		}
 
 		db = await dbConnect();
-		await ensureTable(db);
 
 		const referenceNumber = body.reference_number || (await nextNumber(db));
 		const invoiceAmount = Number(body.invoice_amount ?? 0);
@@ -228,6 +186,6 @@ export async function POST(request) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }

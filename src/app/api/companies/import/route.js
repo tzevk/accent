@@ -8,7 +8,7 @@ import {
 
 async function generateCompanyId(db) {
 	const [rows] = await db.execute(
-		`SELECT company_id FROM companies WHERE company_id REGEXP '^COM-[0-9]+$' ORDER BY CAST(SUBSTRING(company_id, 5) AS UNSIGNED) DESC LIMIT 1`
+		`SELECT company_id FROM companies WHERE company_id REGEXP '^COM-[0-9]+$' AND isDelete = 0 ORDER BY CAST(SUBSTRING(company_id, 5) AS UNSIGNED) DESC LIMIT 1`
 	);
 	const next =
 		rows && rows.length > 0

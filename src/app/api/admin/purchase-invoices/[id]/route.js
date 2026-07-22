@@ -22,9 +22,10 @@ export async function GET(request, { params }) {
 	try {
 		const { id } = await params;
 		db = await dbConnect();
-		const [rows] = await db.execute(`SELECT * FROM ${TABLE} WHERE id = ?`, [
-			id,
-		]);
+		const [rows] = await db.execute(
+			`SELECT * FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
+			[id]
+		);
 		if (rows.length === 0) {
 			return NextResponse.json(
 				{ success: false, error: 'Not found' },
@@ -38,7 +39,7 @@ export async function GET(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }
 
@@ -109,7 +110,7 @@ export async function PUT(request, { params }) {
 		}
 		values.push(id);
 		await db.execute(
-			`UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE id = ?`,
+			`UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE id = ? AND isDelete = 0`,
 			values
 		);
 
@@ -129,7 +130,7 @@ export async function PUT(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }
 
@@ -147,7 +148,10 @@ export async function DELETE(request, { params }) {
 		const { id } = await params;
 		const user = authResult.user;
 		db = await dbConnect();
-		await db.execute(`DELETE FROM ${TABLE} WHERE id = ?`, [id]);
+		await db.execute(
+			`UPDATE ${TABLE} SET isDelete = 1 WHERE id = ? AND isDelete = 0`,
+			[id]
+		);
 
 		await logActivity({
 			userId: user?.id,
@@ -165,6 +169,6 @@ export async function DELETE(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }

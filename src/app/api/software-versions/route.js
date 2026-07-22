@@ -20,18 +20,9 @@ export async function GET(request) {
 	let db;
 	try {
 		db = await dbConnect();
-		await db.execute(`CREATE TABLE IF NOT EXISTS software_versions (
-      id VARCHAR(36) PRIMARY KEY,
-      software_id VARCHAR(36) NOT NULL,
-      name VARCHAR(255) NOT NULL,
-      release_date DATE,
-      notes TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
 
 		const [rows] = await db.execute(
-			'SELECT id, software_id, name, release_date, notes, created_at, updated_at FROM software_versions ORDER BY name'
+			'SELECT id, software_id, name, release_date, notes, created_at, updated_at FROM software_versions WHERE isDelete = 0 ORDER BY name'
 		);
 		return NextResponse.json({ success: true, data: rows });
 	} catch (error) {
@@ -77,15 +68,6 @@ export async function POST(request) {
 
 		const id = randomUUID();
 		db = await dbConnect();
-		await db.execute(`CREATE TABLE IF NOT EXISTS software_versions (
-      id VARCHAR(36) PRIMARY KEY,
-      software_id VARCHAR(36) NOT NULL,
-      name VARCHAR(255) NOT NULL,
-      release_date DATE,
-      notes TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
 
 		await db.execute(
 			'INSERT INTO software_versions (id, software_id, name, release_date, notes) VALUES (?, ?, ?, ?, ?)',
@@ -135,7 +117,7 @@ export async function PUT(request) {
 
 		db = await dbConnect();
 		await db.execute(
-			'UPDATE software_versions SET name = COALESCE(?, name), release_date = COALESCE(?, release_date), notes = COALESCE(?, notes), software_id = COALESCE(?, software_id) WHERE id = ?',
+			'UPDATE software_versions SET name = COALESCE(?, name), release_date = COALESCE(?, release_date), notes = COALESCE(?, notes), software_id = COALESCE(?, software_id) WHERE id = ? AND isDelete = 0',
 			[
 				name ?? null,
 				release_date ?? null,
@@ -198,14 +180,14 @@ export async function DELETE(request) {
 
 		// Check if version exists before deleting
 		const [existing] = await db.execute(
-			'SELECT id, software_id, name FROM software_versions WHERE id = ?',
+			'SELECT id, software_id, name FROM software_versions WHERE id = ? AND isDelete = 0',
 			[id]
 		);
 		console.log('DELETE version - existing check:', existing);
 
 		if (existing.length === 0) {
 			console.log('DELETE version failed - version not found');
-			await db.end();
+			await db.release();
 			return NextResponse.json(
 				{ success: false, error: 'Version not found' },
 				{ status: 404 }
@@ -214,12 +196,12 @@ export async function DELETE(request) {
 
 		console.log('DELETE version - attempting to delete:', existing[0]);
 		const [result] = await db.execute(
-			'DELETE FROM software_versions WHERE id = ?',
+			'UPDATE software_versions SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]
 		);
 		console.log('DELETE version - result:', result);
 
-		await db.end();
+		await db.release();
 
 		if (result.affectedRows === 0) {
 			console.log('DELETE version failed - no rows affected');
@@ -255,7 +237,7 @@ export async function DELETE(request) {
 	} finally {
 		if (db) {
 			try {
-				await db.end();
+				await db.release();
 			} catch (e) {
 				console.error('Error closing database connection:', e);
 			}

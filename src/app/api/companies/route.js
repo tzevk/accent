@@ -10,7 +10,7 @@ import { NextResponse } from 'next/server';
 
 async function generateCompanyId(db) {
 	const [rows] = await db.execute(
-		`SELECT company_id FROM companies WHERE company_id REGEXP '^COM-[0-9]+$' ORDER BY CAST(SUBSTRING(company_id, 5) AS UNSIGNED) DESC LIMIT 1`
+		`SELECT company_id FROM companies WHERE company_id REGEXP '^COM-[0-9]+$' AND isDelete = 0 ORDER BY CAST(SUBSTRING(company_id, 5) AS UNSIGNED) DESC LIMIT 1`
 	);
 	const next =
 		rows && rows.length > 0
@@ -69,11 +69,12 @@ export async function GET(request) {
        FROM companies c
        -- leads table stores company_name (string) rather than a numeric company_id
        LEFT JOIN leads l ON l.company_name = c.company_name
-       LEFT JOIN follow_ups f ON f.lead_id = l.id`;
+       LEFT JOIN follow_ups f ON f.lead_id = l.id
+       WHERE c.isDelete = 0`;
 
 		const params = [];
 		if (search) {
-			sql += ` WHERE (LOWER(c.company_name) LIKE ? OR LOWER(c.company_id) LIKE ? OR LOWER(c.city) LIKE ? OR LOWER(c.contact_person) LIKE ? OR LOWER(c.industry) LIKE ?)`;
+			sql += ` AND (LOWER(c.company_name) LIKE ? OR LOWER(c.company_id) LIKE ? OR LOWER(c.city) LIKE ? OR LOWER(c.contact_person) LIKE ? OR LOWER(c.industry) LIKE ?)`;
 			params.push(
 				`%${search}%`,
 				`%${search}%`,

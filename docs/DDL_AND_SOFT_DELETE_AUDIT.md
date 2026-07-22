@@ -42,21 +42,17 @@
 
 | File                              | Tables Created/Altered                         |
 | --------------------------------- | ---------------------------------------------- |
-| `employees/route.js`              | `employees` (14+ ALTER + MODIFY)               |
 | `payroll/salary-profile/route.js` | `employee_salary_profile` (35+ ALTER + MODIFY) |
-| `vendors/route.js`                | `vendors` (24 ALTER)                           |
 
 ### Has module-level guard — runs at most once per process (LOWER priority)
 
 | File                                               | Tables Created/Altered                                                     |
 | -------------------------------------------------- | -------------------------------------------------------------------------- |
-| `tickets/route.js`                                 | `support_tickets`, `ticket_comments`                                       |
 | `users/[id]/activity-assignments/route.js`         | `support_tickets`                                                          |
 | `followups/route.js`                               | `follow_ups`                                                               |
 | `attendance/route.js`                              | `employee_attendance`, `employee_attendance_summary`                       |
 | `activities/route.js`                              | `functions_master`, `activities_master`                                    |
 | `activity-master/route.js`                         | `functions_master`, `activities_master`                                    |
-| `users/route.js`                                   | `users`, `roles`                                                           |
 | `messages/route.js`                                | `messages`, `message_attachments`, `conversations`, `conversation_members` |
 | `software/route.js`                                | `softwares`                                                                |
 | `software-versions/route.js`                       | `software_versions`                                                        |
@@ -80,6 +76,12 @@
 | `roles/route.js`                                   | `roles`                                                                    |
 | `todos/route.js`                                   | `todos`                                                                    |
 | `projects/mom-upload/route.js`                     | `project_mom_documents`                                                    |
+| `users/route.js`                                   | `users` (CREATE TABLE + 5 ALTERs), `roles` (CREATE TABLE)                  |
+| `employees/route.js`                               | `employees` (CREATE + 48 ALTERs + MODIFY employee_type)                    |
+| `vendors/route.js`                                 | `vendors` (CREATE TABLE + 24 ALTERs + MODIFY payment_terms)                |
+| `tickets/route.js`                                 | `support_tickets`, `ticket_comments` (CREATE TABLE + isDelete)             |
+| `admin/expenses/route.js`                          | `expenses` (CREATE TABLE + isDelete)                                       |
+| `admin/other-expenses/route.ts`                    | `other_expenses` (CREATE TABLE + isDelete)                                 |
 | `admin/accounts/route.js`                          | `account_transactions`                                                     |
 | `admin/purchase-invoices/route.js`                 | `purchase_invoices`                                                        |
 | `settings/profile/route.js`                        | `employees`                                                                |
@@ -112,30 +114,30 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 | `leads`                    | `leads/**`                                              |
 | `proposals`                | `proposals/**`                                          |
 | `projects`                 | `projects/**`                                           |
+| `companies`                | `companies/**`                                          |
+| `users`                    | `users/**`                                              |
+| `employees`                | `employees/**`                                          |
+| `vendors`                  | `vendors/**`                                            |
+| `support_tickets`          | `tickets/**`                                            |
+| `expenses`                 | `admin/expenses/**`                                     |
+| `other_expenses`           | `admin/other-expenses/**`                               |
+| `payment_payables`         | `admin/payment-payables/**`                             |
+| `payment_receivables`      | `admin/payment-receivables/**`                          |
+| `purchase_invoices`        | `admin/purchase-invoices/**`                            |
+| `material_requisitions`    | `admin/material-requisitions/**`                        |
+| `follow_ups`               | `followups/**`                                          |
+| `software_categories`      | `software-master/**`                                    |
+| `softwares`                | `software/**`                                           |
+| `software_versions`        | `software-versions/**`                                  |
 
 ### Hard delete — critical data (HIGH priority)
 
 | Table | API Route(s) | Delete Pattern |
 | ----- | ------------ | -------------- |
 
-| `companies` | `companies/[id]/route.js` | `DELETE FROM companies WHERE id = ?` |
-| `users` | `users/route.js`, `users/[id]/route.js` | `DELETE FROM users WHERE id = ?` |
-| `employees` | `employees/[id]/route.js` | `DELETE FROM employees WHERE id = ?` |
-| `vendors` | `vendors/[id]/route.js` | `DELETE FROM vendors WHERE id = ?` |
-| `support_tickets` | `tickets/[id]/route.js` | `DELETE FROM support_tickets WHERE id = ?` |
-| `expenses` | `admin/expenses/[id]/route.js` | `DELETE FROM expenses WHERE id = ?` |
-| `other_expenses` | `admin/other-expenses/[id]/route.ts` | `DELETE FROM other_expenses WHERE id = ?` |
-| `payment_payables` | `admin/payment-payables/[id]/route.js` | `DELETE FROM payment_payables WHERE id = ?` |
-| `payment_receivables` | `admin/payment-receivables/[id]/route.js` | `DELETE FROM payment_receivables WHERE id = ?` |
-| `purchase_invoices` | `admin/purchase-invoices/[id]/route.js` | `DELETE FROM purchase_invoices WHERE id = ?` |
-| `material_requisitions` | `admin/material-requisitions/route.js` | `DELETE FROM material_requisitions WHERE id = ?` |
-| `follow_ups` | `followups/[id]/route.js` | `DELETE FROM follow_ups WHERE id = ?` |
-| `user_activity_assignments` | `users/[id]/activities/route.js`, `projects/[id]/assign-activities/route.js` | `DELETE FROM user_activity_assignments WHERE id = ? AND ...` |
-| `softwares` | `software/route.js` | `DELETE FROM softwares WHERE id = ?` |
-| `software_versions` | `software-versions/route.js` | `DELETE FROM software_versions WHERE id = ?` |
-| `software_categories` | `software-master/route.js` | `DELETE FROM software_categories WHERE id = ?` |
-
 ### Hard delete — master/utility data (LOWER priority)
+
+> **Note:** `user_activity_assignments` is intentionally excluded from soft-delete conversion. The table uses a sync-replacement pattern (`DELETE FROM ... WHERE project_id = ?` followed by batch INSERT) when saving project activities — this is an atomic rebuild, not a user-facing delete. Adding `isDelete` to this table would require refactoring the sync logic to use UPSERT instead of DELETE+INSERT, which is a larger architectural change beyond the scope of straightforward soft-delete migration.
 
 | Table                                 | API Route(s)                                                 |
 | ------------------------------------- | ------------------------------------------------------------ |

@@ -52,7 +52,7 @@ export async function GET(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }
 
@@ -103,7 +103,7 @@ export async function PUT(request, { params }) {
 
 		// Check if follow-up exists
 		const [existingRows] = await db.execute(
-			'SELECT id FROM follow_ups WHERE id = ?',
+			'SELECT id FROM follow_ups WHERE id = ? AND isDelete = 0',
 			[id]
 		);
 		if (!existingRows || existingRows.length === 0) {
@@ -124,7 +124,7 @@ export async function PUT(request, { params }) {
         next_follow_up_date = ?, 
         notes = ?,
         updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
+       WHERE id = ? AND isDelete = 0`,
 			[
 				follow_up_date,
 				follow_up_type || 'Call',
@@ -142,7 +142,7 @@ export async function PUT(request, { params }) {
 			`SELECT f.*, l.company_name, l.contact_name, l.contact_email, l.phone
        FROM follow_ups f
        JOIN leads l ON f.lead_id = l.id
-       WHERE f.id = ?`,
+       WHERE f.id = ? AND f.isDelete = 0`,
 			[id]
 		);
 
@@ -160,7 +160,7 @@ export async function PUT(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }
 
@@ -190,7 +190,7 @@ export async function DELETE(request, { params }) {
 
 		// Check if follow-up exists
 		const [existingRows] = await db.execute(
-			'SELECT id FROM follow_ups WHERE id = ?',
+			'SELECT id FROM follow_ups WHERE id = ? AND isDelete = 0',
 			[id]
 		);
 		if (!existingRows || existingRows.length === 0) {
@@ -200,8 +200,11 @@ export async function DELETE(request, { params }) {
 			);
 		}
 
-		// Delete follow-up
-		await db.execute('DELETE FROM follow_ups WHERE id = ?', [id]);
+		// Soft delete follow-up
+		await db.execute(
+			'UPDATE follow_ups SET isDelete = 1 WHERE id = ? AND isDelete = 0',
+			[id]
+		);
 
 		return Response.json({
 			success: true,
@@ -214,6 +217,6 @@ export async function DELETE(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		if (db) await db.release();
 	}
 }

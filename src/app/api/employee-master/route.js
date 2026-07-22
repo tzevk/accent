@@ -37,7 +37,7 @@ export async function GET(request) {
         status,
         CONCAT(first_name, ' ', last_name) as full_name
        FROM employees 
-       WHERE status = 'active'
+       WHERE status = 'active' AND isDelete = 0
        ORDER BY first_name, last_name
        LIMIT ?`,
 			[limit]
