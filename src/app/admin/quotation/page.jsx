@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
+import toast from 'react-hot-toast';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import {
@@ -394,10 +395,11 @@ export default function QuotationPage() {
 						</div>
 						<div>
 							<button
-								onClick={() =>
-									router.push('/admin/quotation/new/edit?source=quotations')
-								}
-								className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 shadow-sm font-medium"
+								onClick={() => {
+									toast.success('Opening quotation creator...');
+									router.push('/admin/quotation/new/edit?source=quotations');
+								}}
+								className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 shadow-sm font-medium cursor-pointer"
 							>
 								<PlusIcon className="h-5 w-5" />
 								Create Quotation
