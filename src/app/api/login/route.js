@@ -14,58 +14,9 @@ function safeParse(json, fallback = []) {
 	}
 }
 
-// Fetch user permissions from database
-async function getUserPermissions(db, userId) {
-	try {
-		const [rows] = await db.execute(
-			`SELECT 
-        u.permissions AS user_permissions,
-        u.is_super_admin,
-        r.permissions AS role_permissions,
-        r.role_hierarchy
-       FROM users u
-       LEFT JOIN roles_master r ON u.role_id = r.id
-       WHERE u.id = ?
-       LIMIT 1`,
-			[userId]
-		);
-
-		if (!rows || rows.length === 0)
-			return { permissions: [], isSuperAdmin: false };
-
-		const row = rows[0];
-		const userPermissions = safeParse(row.user_permissions, []);
-		let rolePermissions = safeParse(row.role_permissions, []);
-
-		// If role has no explicit permissions but has hierarchy level, derive defaults
-		if (
-			(!rolePermissions || rolePermissions.length === 0) &&
-			typeof row.role_hierarchy === 'number'
-		) {
-			try {
-				rolePermissions =
-					getDefaultPermissionsForLevel(row.role_hierarchy) || [];
-			} catch {}
-		}
-
-		const mergedPermissions = mergePermissions(
-			rolePermissions,
-			userPermissions
-		);
-		return {
-			permissions: mergedPermissions,
-			isSuperAdmin: !!row.is_super_admin,
-		};
-	} catch (error) {
-		console.error('Failed to fetch user permissions:', error);
-		return { permissions: [], isSuperAdmin: false };
-	}
-}
-
 export async function POST(req) {
 	let db = null;
 	try {
-		// Parse JSON body safely
 		let body = null;
 		try {
 			body = await req.json();
@@ -76,7 +27,7 @@ export async function POST(req) {
 			);
 		}
 
-		const identifier = body?.username || body?.email; // allow either name
+		const identifier = body?.username || body?.email;
 		const password = body?.password;
 
 		if (!identifier || !password) {
@@ -86,7 +37,6 @@ export async function POST(req) {
 			);
 		}
 
-		// Try DB connection with graceful error mapping
 		try {
 			db = await dbConnect();
 		} catch (err) {
@@ -109,27 +59,40 @@ export async function POST(req) {
 			);
 		}
 
-		// Check by username OR email (plaintext password comparison)
+		// Single query: fetch user + role permissions in one round trip.
+		// Only selects needed columns (avoids fetching large JSON blobs).
 		let rows = [];
 		try {
 			const [qRows] = await db.execute(
-				'SELECT * FROM users WHERE (username = ? OR email = ?) AND password_hash = ?',
+				`SELECT u.id, u.username, u.email, u.full_name, u.role_id,
+              u.is_super_admin, u.is_active,
+              u.permissions AS user_permissions,
+              r.permissions AS role_permissions,
+              r.role_hierarchy
+       FROM users u
+       LEFT JOIN roles_master r ON u.role_id = r.id
+       WHERE (u.username = ? OR u.email = ?)
+         AND u.password_hash = ?
+         AND u.isDelete = 0
+       LIMIT 1`,
 				[identifier, identifier, password]
 			);
 			rows = qRows || [];
+
 			if (rows.length > 0) {
-				const userId = rows[0].id;
+				const user = rows[0];
+				const userId = user.id;
+
 				try {
 					await db.execute(
 						'UPDATE users SET last_login = NOW(), is_active = TRUE, status = "active" WHERE id = ?',
 						[userId]
 					);
 
-					// Log successful login
 					logActivity({
 						userId,
 						actionType: 'login',
-						description: `User ${rows[0].username} logged in successfully`,
+						description: `User ${user.username} logged in successfully`,
 						request: req,
 						status: 'success',
 					}).catch(console.error);
@@ -141,9 +104,8 @@ export async function POST(req) {
 					);
 				}
 			} else {
-				// Log failed login attempt
 				logActivity({
-					userId: 0, // Unknown user
+					userId: 0,
 					actionType: 'login',
 					description: `Failed login attempt for identifier: ${identifier}`,
 					details: { identifier },
@@ -170,17 +132,28 @@ export async function POST(req) {
 			const isSuperAdmin =
 				user.is_super_admin === 1 || user.is_super_admin === true;
 
-			// Fetch user permissions before closing DB connection
-			const { permissions } = await getUserPermissions(db, userId);
+			// Merge permissions from user + role (fetched in the same query)
+			const userPermissions = safeParse(user.user_permissions, []);
+			let rolePermissions = safeParse(user.role_permissions, []);
 
-			// Now close the DB connection
+			if (
+				(!rolePermissions || rolePermissions.length === 0) &&
+				typeof user.role_hierarchy === 'number'
+			) {
+				try {
+					rolePermissions =
+						getDefaultPermissionsForLevel(user.role_hierarchy) || [];
+				} catch {}
+			}
+
+			const permissions = mergePermissions(rolePermissions, userPermissions);
+
 			if (db) {
 				try {
 					await db.end();
 				} catch {}
 			}
 
-			// Build user data object for session pre-population
 			const userData = {
 				id: userId,
 				username: user.username,
@@ -195,7 +168,7 @@ export async function POST(req) {
 				success: true,
 				message: 'Login successful',
 				is_super_admin: isSuperAdmin,
-				user: userData, // Include user data for session pre-population
+				user: userData,
 			});
 			const forwardedProto = req.headers.get('x-forwarded-proto');
 			const proto =
@@ -205,7 +178,6 @@ export async function POST(req) {
 					: 'http');
 			const isSecure = proto === 'https';
 
-			// Set cookies as session cookies (cleared when browser closes)
 			res.cookies.set('auth', '1', {
 				httpOnly: true,
 				sameSite: 'lax',
@@ -214,7 +186,6 @@ export async function POST(req) {
 				priority: 'high',
 			});
 
-			// Also set user_id for server-side RBAC resolution
 			res.cookies.set('user_id', String(userId), {
 				httpOnly: true,
 				sameSite: 'lax',
@@ -223,7 +194,6 @@ export async function POST(req) {
 				priority: 'high',
 			});
 
-			// Set is_super_admin cookie for middleware routing
 			res.cookies.set('is_super_admin', isSuperAdmin ? '1' : '0', {
 				httpOnly: true,
 				sameSite: 'lax',
@@ -232,12 +202,10 @@ export async function POST(req) {
 				priority: 'high',
 			});
 
-			// Store permissions in session cookie (Base64 encoded JSON)
-			// This allows fast permission checks without DB queries
 			const permissionsData = JSON.stringify({
-				p: permissions, // permissions array
-				sa: isSuperAdmin, // is_super_admin flag
-				ts: Date.now(), // timestamp for cache invalidation
+				p: permissions,
+				sa: isSuperAdmin,
+				ts: Date.now(),
 			});
 			const encodedPermissions =
 				Buffer.from(permissionsData).toString('base64');
@@ -248,14 +216,12 @@ export async function POST(req) {
 				secure: isSecure,
 				path: '/',
 				priority: 'high',
-				// Permissions cookie expires in 24 hours - will be refreshed on next login
 				maxAge: 60 * 60 * 24,
 			});
 
 			return res;
 		}
 
-		// Close DB connection for failed login
 		if (db) {
 			try {
 				await db.end();

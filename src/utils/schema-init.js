@@ -1062,6 +1062,16 @@ async function initUsersTable(db) {
 			console.warn('Users index migration warning:', e.message || e);
 		}
 	}
+
+	try {
+		await db.execute('ALTER TABLE users ADD INDEX idx_email (email)');
+	} catch (e) {} // best-effort; may already exist
+
+	try {
+		await db.execute(
+			'ALTER TABLE users ADD INDEX idx_login (username, email, password_hash)'
+		);
+	} catch (e) {} // best-effort composite index for login query
 }
 
 async function initLeadsTable(db) {
