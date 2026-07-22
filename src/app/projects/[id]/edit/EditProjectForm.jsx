@@ -1061,7 +1061,9 @@ export default function EditProjectForm() {
 			try {
 				console.log('[fetchProject] Fetching project data for ID:', id);
 				// Use optimized /api/projects/{id}/detail endpoint for better TTFB
-				const result = await fetchJSON(`/api/projects/${id}/detail`);
+				const result = await fetchJSON(`/api/projects/${id}/detail`, {
+					cache: 'no-store',
+				});
 				console.log('[fetchProject] API response success:', result.success);
 
 				if (result.success && result.data) {
@@ -2002,6 +2004,16 @@ export default function EditProjectForm() {
 
 	// Load project team members from project data
 	useEffect(() => {
+		console.log('[TEAM DEBUG useEffect] form.project_team changed:', {
+			type: typeof form.project_team,
+			isArray: Array.isArray(form.project_team),
+			preview:
+				typeof form.project_team === 'string'
+					? form.project_team.substring(0, 200)
+					: Array.isArray(form.project_team)
+						? `array(${form.project_team.length})`
+						: form.project_team,
+		});
 		if (form.project_team) {
 			try {
 				const teamData =
@@ -2009,7 +2021,16 @@ export default function EditProjectForm() {
 						? JSON.parse(form.project_team)
 						: form.project_team;
 				if (Array.isArray(teamData)) {
+					console.log(
+						'[TEAM DEBUG useEffect] setting projectTeamMembers, count:',
+						teamData.length
+					);
 					setProjectTeamMembers(teamData);
+				} else {
+					console.log(
+						'[TEAM DEBUG useEffect] teamData is not an array:',
+						typeof teamData
+					);
 				}
 			} catch (error) {
 				console.error('Failed to parse project_team:', error);
@@ -2794,6 +2815,13 @@ export default function EditProjectForm() {
 
 	// Project Team Management Functions
 	const addTeamMember = (user) => {
+		console.log(
+			'[TEAM DEBUG addTeamMember] START — projectTeamMembers count:',
+			projectTeamMembers.length,
+			'| user:',
+			user.id,
+			user.full_name || user.username
+		);
 		// Check if already added
 		const exists = projectTeamMembers.some((member) => member.id === user.id);
 		if (exists) {
@@ -2815,39 +2843,102 @@ export default function EditProjectForm() {
 			role: 'Team Member', // Default role, can be changed
 		};
 
-		setProjectTeamMembers((prev) => [...prev, teamMember]);
+		setProjectTeamMembers((prev) => {
+			console.log(
+				'[TEAM DEBUG addTeamMember] setProjectTeamMembers — prev count:',
+				prev.length,
+				'new count:',
+				prev.length + 1
+			);
+			return [...prev, teamMember];
+		});
 
-		// Update form data
-		setForm((prev) => ({
-			...prev,
-			project_team: JSON.stringify([...projectTeamMembers, teamMember]),
-		}));
+		// Update form data — derive from prev to avoid stale-closure bugs
+		setForm((prev) => {
+			const currentTeam = Array.isArray(prev.project_team)
+				? prev.project_team
+				: typeof prev.project_team === 'string'
+					? (() => {
+							try {
+								return JSON.parse(prev.project_team);
+							} catch {
+								return [];
+							}
+						})()
+					: [];
+			console.log(
+				'[TEAM DEBUG addTeamMember] setForm — prev.project_team type:',
+				typeof prev.project_team,
+				'| isArray:',
+				Array.isArray(prev.project_team),
+				'| parsed currentTeam count:',
+				currentTeam.length
+			);
+			const newTeam = [...currentTeam, teamMember];
+			const serialized = JSON.stringify(newTeam);
+			console.log(
+				'[TEAM DEBUG addTeamMember] setForm — new team count:',
+				newTeam.length,
+				'| serialized length:',
+				serialized.length
+			);
+			return {
+				...prev,
+				project_team: serialized,
+			};
+		});
 	};
 
 	const removeTeamMember = (memberId) => {
-		const updated = projectTeamMembers.filter(
-			(member) => member.id !== memberId
-		);
-		setProjectTeamMembers(updated);
+		setProjectTeamMembers((prev) => prev.filter((m) => m.id !== memberId));
 
-		// Update form data
-		setForm((prev) => ({
-			...prev,
-			project_team: JSON.stringify(updated),
-		}));
+		setForm((prev) => {
+			const currentTeam = Array.isArray(prev.project_team)
+				? prev.project_team
+				: typeof prev.project_team === 'string'
+					? (() => {
+							try {
+								return JSON.parse(prev.project_team);
+							} catch {
+								return [];
+							}
+						})()
+					: [];
+			return {
+				...prev,
+				project_team: JSON.stringify(
+					currentTeam.filter((m) => m.id !== memberId)
+				),
+			};
+		});
 	};
 
 	const updateTeamMemberRole = (memberId, newRole) => {
-		const updated = projectTeamMembers.map((member) =>
-			member.id === memberId ? { ...member, role: newRole } : member
+		setProjectTeamMembers((prev) =>
+			prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m))
 		);
-		setProjectTeamMembers(updated);
 
-		// Update form data
-		setForm((prev) => ({
-			...prev,
-			project_team: JSON.stringify(updated),
-		}));
+		setForm((prev) => {
+			const currentTeam = Array.isArray(prev.project_team)
+				? prev.project_team
+				: typeof prev.project_team === 'string'
+					? (() => {
+							try {
+								return JSON.parse(prev.project_team);
+							} catch {
+								return [];
+							}
+						})()
+					: [];
+			return {
+				...prev,
+				project_team: JSON.stringify(
+					currentTeam.map((m) =>
+						m.id === memberId ? { ...m, role: newRole } : m
+					)
+				),
+			};
+		});
 	};
 
 	// Get filtered users for team selection (only show those not already in team)
@@ -4404,6 +4495,7 @@ export default function EditProjectForm() {
 					? Number(form.actual_profit_loss)
 					: null,
 				progress: Number(form.progress) || 0,
+				project_team: JSON.stringify(projectTeamMembers),
 				team_members: JSON.stringify(teamMembers),
 				software_items: JSON.stringify(softwareItems),
 				project_activities_list: JSON.stringify(projectActivities),
@@ -4426,6 +4518,18 @@ export default function EditProjectForm() {
 			};
 
 			console.log('[SUBMIT] Sending update for project:', id);
+			console.log(
+				'[TEAM DEBUG submit] projectTeamMembers count:',
+				projectTeamMembers.length,
+				'| first 300 chars:',
+				JSON.stringify(projectTeamMembers).substring(0, 300)
+			);
+			console.log(
+				'[TEAM DEBUG submit] payload.project_team type:',
+				typeof payload.project_team,
+				'| first 300 chars:',
+				(payload.project_team || '').substring(0, 300)
+			);
 			console.log(
 				'[SUBMIT] Payload size:',
 				JSON.stringify(payload).length,

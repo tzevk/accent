@@ -200,10 +200,10 @@ export async function GET(request, { params }) {
 				_meta: { queryTimeMs: queryTime },
 			});
 
-			// Cache for 15 seconds (shorter than list since it's for editing)
+			// No caching for edit pages — always return fresh data
 			response.headers.set(
 				'Cache-Control',
-				'private, max-age=15, stale-while-revalidate=30'
+				'no-store, no-cache, must-revalidate'
 			);
 
 			return response;

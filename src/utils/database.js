@@ -11,9 +11,21 @@ let _shutdownRegistered = globalThis.__dbShutdownRegistered || false;
 export async function dbConnect() {
 	const host = process.env.DB_HOST;
 	const port = Number(process.env.DB_PORT);
-	const database = process.env.DB_NAME;
-	const user = process.env.DB_USER;
-	const password = process.env.DB_PASSWORD;
+	const env = process.env.NODE_ENV || 'development';
+	let database, user, password;
+	if (env === 'production') {
+		database = process.env.PROD_DB_NAME;
+		user = process.env.PROD_DB_USER;
+		password = process.env.PROD_DB_PASSWORD;
+	} else if (env === 'staging') {
+		database = process.env.STAGING_DB_NAME;
+		user = process.env.STAGING_DB_USER;
+		password = process.env.STAGING_DB_PASSWORD;
+	} else {
+		database = process.env.DEV_DB_NAME;
+		user = process.env.DEV_DB_USER;
+		password = process.env.DEV_DB_PASSWORD;
+	}
 	const connectTimeout = Number(process.env.DB_CONNECT_TIMEOUT || 10000); // ms
 	// Optimized for production: allow more connections but manage idle efficiently
 	// Increased from 10 to 25 to handle concurrent users and polling

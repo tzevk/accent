@@ -30,21 +30,6 @@ export async function GET(request) {
 
 		db = await dbConnect();
 
-		// Create table if not exists (in case schema-init wasn't run)
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS bank_master (
-        BankID VARCHAR(36) PRIMARY KEY,
-        BankCode VARCHAR(10) UNIQUE,
-        BankName VARCHAR(255) NOT NULL,
-        IFSC_Prefix CHAR(4),
-        SWIFT_Code VARCHAR(11),
-        LEI_Code VARCHAR(20),
-        HeadOfficeAddress TEXT,
-        IsActive BOOLEAN DEFAULT TRUE,
-        CreatedDate DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
 		const { searchParams } = new URL(request.url);
 		const activeOnly = searchParams.get('active') === 'true';
 

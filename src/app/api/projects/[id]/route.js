@@ -6,7 +6,11 @@ import {
 	getCurrentUser,
 } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
-import { getTableColumns, getPrimaryKeyColumn } from '@/utils/schema-cache';
+import {
+	getTableColumns,
+	getPrimaryKeyColumn,
+	invalidateCache,
+} from '@/utils/schema-cache';
 
 // Helper to check if user is in project team
 function isUserInProjectTeam(projectTeam, userId, userEmail) {
@@ -704,6 +708,15 @@ export async function PUT(request, context) {
 				other_terms_and_conditions,
 			} = data;
 
+			console.log('[TEAM DEBUG PUT] Received project_team:', {
+				type: typeof project_team,
+				isUndefined: project_team === undefined,
+				preview:
+					typeof project_team === 'string'
+						? project_team.substring(0, 300)
+						: project_team,
+			});
+
 			// Helper function to normalize decimal/numeric fields (convert empty strings to null)
 			const normalizeDecimal = (value) => {
 				if (value === undefined || value === null || value === '') return null;
@@ -762,6 +775,7 @@ export async function PUT(request, context) {
 			}
 
 			// Build UPDATE query - use cached column list
+			invalidateCache('projects');
 			let existingCols = await getTableColumns(db, 'projects');
 
 			const normalizeLongText = (value) => {
@@ -1057,13 +1071,52 @@ export async function PUT(request, context) {
 
 			let result;
 			try {
+				const ptParam = paramFieldMap.find((p) => p.col === 'project_team');
+				if (ptParam) {
+					console.log(
+						'[TEAM DEBUG PUT] Writing project_team to DB — type:',
+						ptParam.type,
+						'| preview:',
+						typeof queryParams[paramFieldMap.indexOf(ptParam)] === 'string'
+							? queryParams[paramFieldMap.indexOf(ptParam)].substring(0, 300)
+							: queryParams[paramFieldMap.indexOf(ptParam)]
+					);
+				} else {
+					console.log(
+						'[TEAM DEBUG PUT] project_team NOT in field values (skipping update)'
+					);
+				}
 				[result] = await db.execute(sql, queryParams);
+				console.log(
+					'[TEAM DEBUG PUT] Update result — affectedRows:',
+					result?.affectedRows
+				);
 			} catch (execError) {
 				console.error(
 					'PUT /api/projects/[id] - Execute error:',
 					execError.message
 				);
 				throw execError;
+			}
+
+			// Force-update project_team directly (bypasses schema cache which may not include it)
+			if (data.project_team !== undefined) {
+				const ptValue =
+					typeof data.project_team === 'object' && data.project_team !== null
+						? JSON.stringify(data.project_team)
+						: data.project_team;
+				console.log(
+					'[TEAM DEBUG PUT] Direct project_team update — value preview:',
+					typeof ptValue === 'string' ? ptValue.substring(0, 300) : ptValue
+				);
+				const [ptResult] = await db.execute(
+					`UPDATE projects SET project_team = ?, updated_at = CURRENT_TIMESTAMP WHERE ${pkCol} = ? AND isDelete = 0`,
+					[ptValue, projectId]
+				);
+				console.log(
+					'[TEAM DEBUG PUT] Direct project_team update — affectedRows:',
+					ptResult?.affectedRows
+				);
 			}
 
 			// Sync activity assignments to user_activity_assignments table

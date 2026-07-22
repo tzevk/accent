@@ -21,7 +21,11 @@
 		"test:run": "vitest run",
 		"test:coverage": "vitest run --coverage",
 		"prepare": "husky",
-		"format": "prettier --write ."
+		"format": "prettier --write .",
+		"migrate": "knex migrate:latest",
+		"migrate:status": "knex migrate:status",
+		"migrate:make": "knex migrate:make",
+		"migrate:rollback": "knex migrate:rollback"
 	},
 	"lint-staged": {
 		"**/*.{js,jsx,ts,tsx,json,css,md}": [
@@ -57,8 +61,9 @@
 		"html2canvas": "^1.4.1",
 		"jsonwebtoken": "^9.0.2",
 		"jspdf": "^4.0.0",
+		"knex": "^3.3.0",
 		"lucide-react": "^0.544.0",
-		"mysql2": "^3.15.1",
+		"mysql2": "^3.23.1",
 		"next": "^15.5.18",
 		"papaparse": "^5.5.3",
 		"pizzip": "^3.1.6",
