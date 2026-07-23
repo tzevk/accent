@@ -39,10 +39,11 @@ describe('Material Requisition Download — GET', () => {
 			),
 		});
 
-		const req = createRequest(
-			'http://localhost/api/admin/material-requisitions/download?id=1'
+		const response = await GET(
+			createRequest(
+				'http://localhost/api/admin/material-requisitions/download?id=1'
+			)
 		);
-		const response = await GET(req as any);
 		const body = await response.json();
 
 		expect(response.status).toBe(403);
@@ -57,19 +58,19 @@ describe('Material Requisition Download — GET', () => {
 		);
 		ensurePermission.mockResolvedValueOnce(deniedResponse);
 
-		const req = createRequest(
-			'http://localhost/api/admin/material-requisitions/download?id=1'
+		const response = await GET(
+			createRequest(
+				'http://localhost/api/admin/material-requisitions/download?id=1'
+			)
 		);
-		const response = await GET(req as any);
 
 		expect(response.status).toBe(401);
 	});
 
 	it('returns 400 when no ID is provided', async () => {
-		const req = createRequest(
-			'http://localhost/api/admin/material-requisitions/download'
+		const response = await GET(
+			createRequest('http://localhost/api/admin/material-requisitions/download')
 		);
-		const response = await GET(req as any);
 		const body = await response.json();
 
 		expect(response.status).toBe(400);
@@ -79,10 +80,11 @@ describe('Material Requisition Download — GET', () => {
 	it('returns 404 when requisition is not found', async () => {
 		mockQuery.mockResolvedValueOnce([[]]);
 
-		const req = createRequest(
-			'http://localhost/api/admin/material-requisitions/download?id=999'
+		const response = await GET(
+			createRequest(
+				'http://localhost/api/admin/material-requisitions/download?id=999'
+			)
 		);
-		const response = await GET(req as any);
 		const body = await response.json();
 
 		expect(response.status).toBe(404);
@@ -119,10 +121,11 @@ describe('Material Requisition Download — GET', () => {
 
 		mockQuery.mockResolvedValueOnce([[mockRequisition]]);
 
-		const req = createRequest(
-			'http://localhost/api/admin/material-requisitions/download?id=1'
+		const response = await GET(
+			createRequest(
+				'http://localhost/api/admin/material-requisitions/download?id=1'
+			)
 		);
-		const response = await GET(req as any);
 
 		expect(response.status).toBe(200);
 		expect(response.headers.get('Content-Type')).toBe('text/html');
@@ -162,10 +165,11 @@ describe('Material Requisition Download — GET', () => {
 
 		mockQuery.mockResolvedValueOnce([[mockRequisition]]);
 
-		const req = createRequest(
-			'http://localhost/api/admin/material-requisitions/download?id=2'
+		const response = await GET(
+			createRequest(
+				'http://localhost/api/admin/material-requisitions/download?id=2'
+			)
 		);
-		const response = await GET(req as any);
 
 		expect(response.status).toBe(200);
 		const html = await response.text();
@@ -197,10 +201,11 @@ describe('Material Requisition Download — GET', () => {
 
 		mockQuery.mockResolvedValueOnce([[mockRequisition]]);
 
-		const req = createRequest(
-			'http://localhost/api/admin/material-requisitions/download?id=3'
+		const response = await GET(
+			createRequest(
+				'http://localhost/api/admin/material-requisitions/download?id=3'
+			)
 		);
-		const response = await GET(req as any);
 
 		expect(response.status).toBe(200);
 		const html = await response.text();
