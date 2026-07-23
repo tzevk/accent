@@ -142,51 +142,6 @@ export default function Proposals() {
 
 		return matchesSearch && matchesStatus;
 	});
-	const [downloadingId, setDownloadingId] = useState(null);
-
-	const downloadProposal = async (id) => {
-		try {
-			setDownloadingId(id);
-			const res = await fetch(
-				`/api/proposals/pdf?id=${encodeURIComponent(id)}`
-			);
-			if (!res.ok) throw new Error(`PDF export failed (${res.status})`);
-
-			const contentDisposition =
-				res.headers.get('Content-Disposition') ||
-				res.headers.get('content-disposition');
-			let filename = `proposal_${id}.pdf`;
-			if (contentDisposition) {
-				const match = /filename\*?=([^;]+)/i.exec(contentDisposition);
-				if (match) {
-					filename = decodeURIComponent(
-						match[1]
-							.replace(/UTF-8''/i, '')
-							.replace(/["']/g, '')
-							.trim()
-					);
-				}
-			}
-
-			const blob = await res.blob();
-			const url = window.URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = filename;
-			document.body.appendChild(a);
-			a.click();
-			a.remove();
-			window.URL.revokeObjectURL(url);
-
-			// Success toast
-			showToast(`✅ PDF download complete: ${filename}`);
-		} catch (err) {
-			console.error('Download failed:', err);
-			alert('Failed to download PDF. Please try again.');
-		} finally {
-			setDownloadingId(null);
-		}
-	};
 
 	const exportAllProposals = async () => {
 		try {
@@ -259,7 +214,7 @@ export default function Proposals() {
 								Access Denied
 							</h2>
 							<p className="mt-2 text-gray-600">
-								You don't have permission to view proposals.
+								{"You don't have permission to view proposals."}
 							</p>
 						</div>
 					</div>

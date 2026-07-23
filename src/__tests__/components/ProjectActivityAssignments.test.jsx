@@ -480,6 +480,7 @@ describe('ProjectActivityAssignments', () => {
 			manhours_assigned: '6',
 			qty_completed: '',
 			due_date: '2026-03-15',
+			status: 'Not Started',
 		});
 
 		// After success, the inline add row is closed

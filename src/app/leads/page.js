@@ -1357,7 +1357,7 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
 								Access Denied
 							</h2>
 							<p className="mt-2 text-gray-600">
-								You don't have permission to view leads.
+								{"You don't have permission to view leads."}
 							</p>
 						</div>
 					</div>
