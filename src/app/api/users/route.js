@@ -5,6 +5,7 @@ import {
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
 } from '@/utils/api-permissions';
+import { hashPassword } from '@/utils/password';
 
 // GET - list users with optional pagination and role information
 export async function GET(request) {
@@ -189,13 +190,16 @@ export async function POST(request) {
 			roleData = role[0];
 		}
 
+		// Hash the password before storing
+		const hashedPassword = await hashPassword(password);
+
 		// Create the user
 		const [result] = await db.execute(
 			`INSERT INTO users (username, password_hash, email, employee_id, vendor_id, account_type, role_id, permissions, department, full_name, created_by) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				username,
-				password,
+				hashedPassword,
 				userEmail || null,
 				userAccountType === 'employee' ? employee_id : null,
 				userAccountType === 'vendor' ? vendor_id : null,

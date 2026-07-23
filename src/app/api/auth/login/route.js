@@ -1,5 +1,6 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
+import { verifyPassword } from '@/utils/password';
 
 export async function POST(request) {
 	let db;
@@ -15,23 +16,30 @@ export async function POST(request) {
 
 		db = await dbConnect();
 
-		// Query to fetch user with username and password
 		const [rows] = await db.execute(
-			'SELECT username, password_hash FROM users WHERE username = ? AND password_hash = ?',
-			[username, password]
+			'SELECT id, username, password_hash FROM users WHERE username = ? AND isDelete = 0 LIMIT 1',
+			[username]
 		);
 
-		if (rows.length > 0) {
-			return NextResponse.json(
-				{ success: true, message: 'Login successful' },
-				{ status: 200 }
-			);
-		} else {
+		if (rows.length === 0) {
 			return NextResponse.json(
 				{ error: 'Invalid credentials' },
 				{ status: 401 }
 			);
 		}
+
+		const valid = await verifyPassword(password, rows[0].password_hash);
+		if (!valid) {
+			return NextResponse.json(
+				{ error: 'Invalid credentials' },
+				{ status: 401 }
+			);
+		}
+
+		return NextResponse.json(
+			{ success: true, message: 'Login successful' },
+			{ status: 200 }
+		);
 	} catch (error) {
 		console.error('Login error:', error);
 		return NextResponse.json(

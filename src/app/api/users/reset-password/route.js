@@ -5,6 +5,7 @@ import {
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
 } from '@/utils/api-permissions';
+import { hashPassword } from '@/utils/password';
 
 // POST - reset user password
 export async function POST(request) {
@@ -50,20 +51,18 @@ export async function POST(request) {
 			[user_id]
 		);
 		if (!existing || existing.length === 0) {
-			await db.end();
 			return NextResponse.json(
 				{ success: false, error: 'User not found' },
 				{ status: 404 }
 			);
 		}
 
-		// Update password (storing plain text as per existing pattern in this codebase)
+		// Hash the password with bcrypt before storing
+		const hashed = await hashPassword(new_password);
 		await db.execute(
 			'UPDATE users SET password_hash = ?, last_password_change = CURRENT_TIMESTAMP WHERE id = ?',
-			[new_password, user_id]
+			[hashed, user_id]
 		);
-
-		await db.end();
 
 		return NextResponse.json({
 			success: true,
@@ -71,10 +70,11 @@ export async function POST(request) {
 		});
 	} catch (error) {
 		console.error('Error resetting password:', error);
-		if (db) await db.end();
 		return NextResponse.json(
 			{ success: false, error: 'Failed to reset password' },
 			{ status: 500 }
 		);
+	} finally {
+		if (db) db.release();
 	}
 }

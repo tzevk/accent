@@ -1,8 +1,22 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Download/Print material requisition
 export async function GET(request) {
+	// RBAC check
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.MATERIAL_REQUISITION,
+		PERMISSIONS.READ
+	);
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
+
 	let db;
 	try {
 		const { searchParams } = new URL(request.url);

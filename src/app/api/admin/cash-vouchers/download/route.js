@@ -1,5 +1,9 @@
 import { dbConnect } from '@/utils/database';
-import { getCurrentUser } from '@/utils/api-permissions';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 /**
  * GET /api/admin/cash-vouchers/download?id=X
@@ -9,17 +13,14 @@ export async function GET(request) {
 	let db;
 
 	try {
-		let user;
-		try {
-			user = await getCurrentUser(request);
-			// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		} catch (authErr) {
-			return new Response('Authentication failed', { status: 500 });
-		}
-
-		if (!user) {
-			return new Response('Unauthorized', { status: 401 });
-		}
+		// RBAC check
+		const authResult = await ensurePermission(
+			request,
+			RESOURCES.CASH_VOUCHER,
+			PERMISSIONS.READ
+		);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { searchParams } = new URL(request.url);
 		const id = searchParams.get('id');

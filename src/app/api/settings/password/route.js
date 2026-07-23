@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { getCurrentUser } from '@/utils/api-permissions';
+import { hashPassword, verifyPassword } from '@/utils/password';
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -57,17 +58,18 @@ export async function POST(request) {
 			);
 		}
 
-		const existingPassword = rows[0].password_hash;
-		if (existingPassword !== currentPassword) {
+		const valid = await verifyPassword(currentPassword, rows[0].password_hash);
+		if (!valid) {
 			return NextResponse.json(
 				{ success: false, error: 'Current password is incorrect' },
 				{ status: 400 }
 			);
 		}
 
+		const hashed = await hashPassword(newPassword);
 		await db.execute(
 			'UPDATE users SET password_hash = ?, last_password_change = NOW(), updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-			[newPassword, user.id]
+			[hashed, user.id]
 		);
 	} catch (error) {
 		console.error('Password update failed:', error);
@@ -76,11 +78,7 @@ export async function POST(request) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) {
-			try {
-				await db.end();
-			} catch {}
-		}
+		if (db) db.release();
 	}
 
 	return NextResponse.json({
