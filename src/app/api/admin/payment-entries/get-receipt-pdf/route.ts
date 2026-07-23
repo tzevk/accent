@@ -10,7 +10,7 @@ import {
 
 export const runtime = 'nodejs';
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<Response> {
 	const authResult = await ensurePermission(
 		req,
 		RESOURCES.ADMIN,
