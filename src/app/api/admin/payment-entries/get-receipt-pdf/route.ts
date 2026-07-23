@@ -1,11 +1,25 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { buildReceiptHTML, ReceiptData } from '@/utils/buildReceiptHTML';
 import { NextRequest } from 'next/server';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<Response> {
+	const authResult: any = await ensurePermission(
+		req,
+		RESOURCES.ADMIN,
+		PERMISSIONS.READ
+	);
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
+
 	const data: ReceiptData = await req.json();
 
 	const viewport = {

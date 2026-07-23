@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 	// RBAC check
 	const authResult: any = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
+		RESOURCES.PURCHASE_ORDERS,
 		PERMISSIONS.READ
 	);
 	if (authResult instanceof Response) return authResult;
@@ -75,7 +75,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
 	const authResult: any = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
+		RESOURCES.PURCHASE_ORDERS,
 		PERMISSIONS.CREATE
 	);
 	if (authResult instanceof Response) return authResult;
@@ -192,7 +192,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
 	const authResult: any = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
+		RESOURCES.PURCHASE_ORDERS,
 		PERMISSIONS.DELETE
 	);
 	if (authResult instanceof Response) return authResult;

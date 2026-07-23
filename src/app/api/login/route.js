@@ -2,6 +2,7 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { logActivity } from '@/utils/activity-logger';
 import { getDefaultPermissionsForLevel, mergePermissions } from '@/utils/rbac';
+import { verifyPassword, needsRehash, hashPassword } from '@/utils/password';
 
 // Helper to safely parse JSON
 function safeParse(json, fallback = []) {
@@ -60,25 +61,45 @@ export async function POST(req) {
 		}
 
 		// Single query: fetch user + role permissions in one round trip.
-		// Only selects needed columns (avoids fetching large JSON blobs).
 		let rows = [];
 		try {
 			const [qRows] = await db.execute(
 				`SELECT u.id, u.username, u.email, u.full_name, u.role_id,
-              u.is_super_admin, u.is_active,
-              u.permissions AS user_permissions,
-              u.field_permissions AS user_field_permissions,
-              r.permissions AS role_permissions,
-              r.role_hierarchy
-       FROM users u
-       LEFT JOIN roles_master r ON u.role_id = r.id
-       WHERE (u.username = ? OR u.email = ?)
-         AND u.password_hash = ?
-         AND u.isDelete = 0
-       LIMIT 1`,
-				[identifier, identifier, password]
+		              u.is_super_admin, u.is_active,
+		              u.password_hash,
+		              u.permissions AS user_permissions,
+		              u.field_permissions AS user_field_permissions,
+		              r.permissions AS role_permissions,
+		              r.role_hierarchy
+		       FROM users u
+		       LEFT JOIN roles_master r ON u.role_id = r.id
+		       WHERE (u.username = ? OR u.email = ?)
+		         AND u.isDelete = 0
+		       LIMIT 1`,
+				[identifier, identifier]
 			);
 			rows = qRows || [];
+
+			// Verify password (handles both bcrypt and legacy plaintext)
+			if (rows.length > 0) {
+				const storedHash = rows[0].password_hash;
+				const valid = await verifyPassword(password, storedHash);
+				if (!valid) {
+					rows = [];
+				} else if (needsRehash(storedHash)) {
+					// Auto-upgrade legacy plaintext to bcrypt
+					const newHash = await hashPassword(password);
+					db.execute('UPDATE users SET password_hash = ? WHERE id = ?', [
+						newHash,
+						rows[0].id,
+					]).catch((err) =>
+						console.warn(
+							'Failed to upgrade password hash:',
+							err?.code || err?.message
+						)
+					);
+				}
+			}
 
 			if (rows.length > 0) {
 				const user = rows[0];
