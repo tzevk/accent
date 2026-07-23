@@ -152,6 +152,21 @@ export async function getCurrentUser(request, options = {}) {
 	return promise;
 }
 
+/**
+ * Strip disabled modules from field_permissions.
+ * Reduces in-memory cache and API response sizes by dropping modules
+ * with `enabled: false`. All consumers use optional chaining — absence
+ * of a key is already treated identically to `enabled: false`.
+ */
+function stripDisabledModules(fp) {
+	if (!fp?.modules) return fp;
+	const enabled = {};
+	for (const [key, mod] of Object.entries(fp.modules)) {
+		if (mod?.enabled) enabled[key] = mod;
+	}
+	return Object.keys(enabled).length > 0 ? { modules: enabled } : {};
+}
+
 async function _fetchUserFromDb(userId, authenticated) {
 	let db;
 	try {
@@ -203,7 +218,9 @@ async function _fetchUserFromDb(userId, authenticated) {
 
 		const row = rows[0];
 		const userPermissions = safeParse(row.user_permissions, []);
-		const fieldPermissions = safeParse(row.user_field_permissions, {});
+		const fieldPermissions = stripDisabledModules(
+			safeParse(row.user_field_permissions, {})
+		);
 		let rolePermissions = safeParse(row.role_permissions, []);
 		// Do not auto-derive default permissions from hierarchy.
 		// Visibility/access should reflect explicitly assigned permissions only.

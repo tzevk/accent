@@ -64,19 +64,6 @@ export function checkPermission(user, resource, permission) {
 		return true;
 	}
 
-	// Check direct user permissions
-	if (Array.isArray(user.permissions) && user.permissions.includes(key)) {
-		return true;
-	}
-
-	// Check role-based permissions
-	if (
-		Array.isArray(user.role_permissions) &&
-		user.role_permissions.includes(key)
-	) {
-		return true;
-	}
-
 	// Check nested field_permissions structure (new format)
 	let fieldPerms = user.field_permissions;
 	if (typeof fieldPerms === 'string') {
@@ -364,11 +351,7 @@ export function checkModulePermission(user, moduleKey, permission) {
 	if (!user) return false;
 	if (user.is_super_admin) return true;
 
-	// First check flat permissions array (backward compatibility)
 	const key = permissionKey(moduleKey, permission);
-	if (Array.isArray(user.permissions) && user.permissions.includes(key)) {
-		return true;
-	}
 	if (
 		Array.isArray(user.merged_permissions) &&
 		user.merged_permissions.includes(key)

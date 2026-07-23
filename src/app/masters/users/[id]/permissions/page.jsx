@@ -1882,52 +1882,54 @@ export default function UserPermissionsPage() {
 				const isModuleEnabled = enabledModules[moduleKey];
 				const modulePerms = modulePermissions[moduleKey] || {};
 
-				// Build nested structure
-				nestedPermissions.modules[moduleKey] = {
-					enabled: isModuleEnabled,
-					name: moduleDef.name,
-					category: moduleDef.category,
-					crud: {
-						read: !!modulePerms.read,
-						create: !!modulePerms.create,
-						update: !!modulePerms.update,
-						delete: !!modulePerms.delete,
-						export: !!modulePerms.export,
-						import: !!modulePerms.import,
-						convert: !!modulePerms.convert,
-						approve: !!modulePerms.approve,
-						assign: !!modulePerms.assign,
-						close: !!modulePerms.close,
-					},
-					sections: {},
-				};
-
-				// Add sections with their fields
-				const sections = moduleDef.sections || {};
-				Object.keys(sections).forEach((sectionKey) => {
-					const sectionDef = sections[sectionKey];
-					const isSectionEnabled = enabledSections[moduleKey]?.[sectionKey];
-					const fields = sectionDef.fields || {};
-
-					nestedPermissions.modules[moduleKey].sections[sectionKey] = {
-						enabled: isSectionEnabled,
-						name: sectionDef.name,
-						fields: {},
+				// Build nested structure (only for enabled modules)
+				if (isModuleEnabled) {
+					nestedPermissions.modules[moduleKey] = {
+						enabled: true,
+						name: moduleDef.name,
+						category: moduleDef.category,
+						crud: {
+							read: !!modulePerms.read,
+							create: !!modulePerms.create,
+							update: !!modulePerms.update,
+							delete: !!modulePerms.delete,
+							export: !!modulePerms.export,
+							import: !!modulePerms.import,
+							convert: !!modulePerms.convert,
+							approve: !!modulePerms.approve,
+							assign: !!modulePerms.assign,
+							close: !!modulePerms.close,
+						},
+						sections: {},
 					};
 
-					// Add field permissions
-					Object.keys(fields).forEach((fieldKey) => {
-						const fieldPerm =
-							fieldPermissions[moduleKey]?.[fieldKey] || 'hidden';
-						nestedPermissions.modules[moduleKey].sections[sectionKey].fields[
-							fieldKey
-						] = {
-							label: fields[fieldKey].label,
-							permission: fieldPerm,
-							sensitive: fields[fieldKey].sensitive || false,
+					// Add sections with their fields
+					const sections = moduleDef.sections || {};
+					Object.keys(sections).forEach((sectionKey) => {
+						const sectionDef = sections[sectionKey];
+						const isSectionEnabled = enabledSections[moduleKey]?.[sectionKey];
+						const fields = sectionDef.fields || {};
+
+						nestedPermissions.modules[moduleKey].sections[sectionKey] = {
+							enabled: isSectionEnabled,
+							name: sectionDef.name,
+							fields: {},
 						};
+
+						// Add field permissions
+						Object.keys(fields).forEach((fieldKey) => {
+							const fieldPerm =
+								fieldPermissions[moduleKey]?.[fieldKey] || 'hidden';
+							nestedPermissions.modules[moduleKey].sections[sectionKey].fields[
+								fieldKey
+							] = {
+								label: fields[fieldKey].label,
+								permission: fieldPerm,
+								sensitive: fields[fieldKey].sensitive || false,
+							};
+						});
 					});
-				});
+				}
 
 				// Build flat array for backward compatibility
 				if (isModuleEnabled) {
@@ -2048,6 +2050,80 @@ export default function UserPermissionsPage() {
 		return Object.values(perms).filter(Boolean).length;
 	};
 
+	// Toggle all modules in a category at once
+	const toggleCategoryModules = (category) => {
+		const modulesInCategory = Object.keys(MODULE_FIELDS).filter(
+			(m) => MODULE_FIELDS[m].category === category
+		);
+		if (modulesInCategory.length === 0) return;
+
+		const allEnabled = modulesInCategory.every((m) => enabledModules[m]);
+
+		if (allEnabled) {
+			setEnabledModules((prev) => {
+				const next = { ...prev };
+				modulesInCategory.forEach((m) => (next[m] = false));
+				return next;
+			});
+			setModulePermissions((prev) => {
+				const next = { ...prev };
+				modulesInCategory.forEach((m) => {
+					next[m] = {
+						read: false,
+						create: false,
+						update: false,
+						delete: false,
+						export: false,
+						import: false,
+						convert: false,
+						approve: false,
+						assign: false,
+						close: false,
+					};
+				});
+				return next;
+			});
+			setEnabledSections((prev) => {
+				const next = { ...prev };
+				modulesInCategory.forEach((m) => {
+					const sections = MODULE_FIELDS[m]?.sections || {};
+					next[m] = Object.keys(sections).reduce(
+						(acc, s) => ({ ...acc, [s]: false }),
+						{}
+					);
+				});
+				return next;
+			});
+			modulesInCategory.forEach((m) => setAllFieldsInModule(m, 'hidden'));
+			if (modulesInCategory.includes(activeModule)) setActiveModule(null);
+		} else {
+			setEnabledModules((prev) => {
+				const next = { ...prev };
+				modulesInCategory.forEach((m) => (next[m] = true));
+				return next;
+			});
+			setModulePermissions((prev) => {
+				const next = { ...prev };
+				modulesInCategory.forEach((m) => {
+					next[m] = { ...prev[m], read: true };
+				});
+				return next;
+			});
+			setEnabledSections((prev) => {
+				const next = { ...prev };
+				modulesInCategory.forEach((m) => {
+					const sections = MODULE_FIELDS[m]?.sections || {};
+					next[m] = Object.keys(sections).reduce(
+						(acc, s) => ({ ...acc, [s]: true }),
+						{}
+					);
+				});
+				return next;
+			});
+			modulesInCategory.forEach((m) => setAllFieldsInModule(m, 'view'));
+		}
+	};
+
 	// Show loading until everything is ready - prevents UI glitch
 	if (!isReady || rbacLoading || loading) {
 		return (
@@ -2155,7 +2231,7 @@ export default function UserPermissionsPage() {
 
 				<div className="flex gap-6 h-[calc(100vh-200px)]">
 					{/* Module List - Left Side */}
-					<div className="w-80 flex-shrink-0">
+					<div className="w-1/2 flex-shrink-0">
 						<div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-full flex flex-col">
 							<div className="p-4 bg-gray-50 border-b border-gray-200 flex-shrink-0">
 								<div className="flex items-center justify-between">
@@ -2172,8 +2248,21 @@ export default function UserPermissionsPage() {
 							<div className="p-3 overflow-y-auto flex-1">
 								{/* Main Modules */}
 								<div className="mb-4">
-									<div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-										Main Modules
+									<div className="flex items-center justify-between px-2 py-1 mb-2">
+										<span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+											Main Modules
+										</span>
+										<button
+											onClick={() => toggleCategoryModules('module')}
+											className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-0.5 rounded transition-colors"
+											title="Toggle all main modules"
+										>
+											{Object.keys(MODULE_FIELDS)
+												.filter((m) => MODULE_FIELDS[m].category === 'module')
+												.every((m) => enabledModules[m])
+												? 'Deselect All'
+												: 'Select All'}
+										</button>
 									</div>
 									<div className="space-y-1">
 										{Object.keys(MODULE_FIELDS)
@@ -2235,8 +2324,21 @@ export default function UserPermissionsPage() {
 
 								{/* Masters */}
 								<div className="mb-4">
-									<div className="px-2 py-1 text-xs font-semibold text-purple-600 uppercase tracking-wide mb-2 bg-purple-50 rounded">
-										Masters
+									<div className="flex items-center justify-between px-2 py-1 mb-2 bg-purple-50 rounded">
+										<span className="text-xs font-semibold text-purple-600 uppercase tracking-wide">
+											Masters
+										</span>
+										<button
+											onClick={() => toggleCategoryModules('master')}
+											className="text-xs font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-100 px-2 py-0.5 rounded transition-colors"
+											title="Toggle all master modules"
+										>
+											{Object.keys(MODULE_FIELDS)
+												.filter((m) => MODULE_FIELDS[m].category === 'master')
+												.every((m) => enabledModules[m])
+												? 'Deselect All'
+												: 'Select All'}
+										</button>
 									</div>
 									<div className="space-y-1">
 										{Object.keys(MODULE_FIELDS)
@@ -2298,8 +2400,23 @@ export default function UserPermissionsPage() {
 
 								{/* Financial Documents */}
 								<div className="mb-4">
-									<div className="px-2 py-1 text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-2 bg-emerald-50 rounded">
-										Financial Documents
+									<div className="flex items-center justify-between px-2 py-1 mb-2 bg-emerald-50 rounded">
+										<span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">
+											Financial Documents
+										</span>
+										<button
+											onClick={() => toggleCategoryModules('financial')}
+											className="text-xs font-medium text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100 px-2 py-0.5 rounded transition-colors"
+											title="Toggle all financial modules"
+										>
+											{Object.keys(MODULE_FIELDS)
+												.filter(
+													(m) => MODULE_FIELDS[m].category === 'financial'
+												)
+												.every((m) => enabledModules[m])
+												? 'Deselect All'
+												: 'Select All'}
+										</button>
 									</div>
 									<div className="space-y-1">
 										{Object.keys(MODULE_FIELDS)
@@ -2361,8 +2478,21 @@ export default function UserPermissionsPage() {
 
 								{/* Admin */}
 								<div className="mb-4">
-									<div className="px-2 py-1 text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2 bg-amber-50 rounded">
-										Admin
+									<div className="flex items-center justify-between px-2 py-1 mb-2 bg-amber-50 rounded">
+										<span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">
+											Admin
+										</span>
+										<button
+											onClick={() => toggleCategoryModules('admin')}
+											className="text-xs font-medium text-amber-600 hover:text-amber-800 hover:bg-amber-100 px-2 py-0.5 rounded transition-colors"
+											title="Toggle all admin modules"
+										>
+											{Object.keys(MODULE_FIELDS)
+												.filter((m) => MODULE_FIELDS[m].category === 'admin')
+												.every((m) => enabledModules[m])
+												? 'Deselect All'
+												: 'Select All'}
+										</button>
 									</div>
 									<div className="space-y-1">
 										{Object.keys(MODULE_FIELDS)
@@ -2426,7 +2556,7 @@ export default function UserPermissionsPage() {
 					</div>
 
 					{/* Field-Level Permissions - Right Side */}
-					<div className="flex-1 h-full">
+					<div className="w-1/2 h-full">
 						{!activeModule ? (
 							<div className="bg-white rounded-xl shadow-sm border border-gray-200 h-full flex items-center justify-center">
 								<div className="text-center p-8">

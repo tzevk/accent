@@ -26,6 +26,7 @@ import {
 	ChevronDownIcon,
 	ChevronUpIcon,
 	FunnelIcon,
+	LockClosedIcon,
 } from '@heroicons/react/24/outline';
 
 export default function Leads() {
@@ -33,6 +34,8 @@ export default function Leads() {
 	const { loading: rbacLoading, can } = useSessionRBAC();
 	const canConvert =
 		!rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.CONVERT);
+	const canViewLeads =
+		!rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.READ);
 	const [leads, setLeads] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [stats, setStats] = useState({});
@@ -1341,6 +1344,27 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
 	);
 
 	// Follow-ups are displayed and managed on the Edit Lead page; no follow-up UI on this listing page
+
+	if (!rbacLoading && !canViewLeads) {
+		return (
+			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+				<Navbar />
+				<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-20 max-w-[1800px] mx-auto">
+					<div className="flex items-center justify-center h-[calc(100vh-120px)]">
+						<div className="text-center">
+							<LockClosedIcon className="h-16 w-16 text-gray-400 mx-auto" />
+							<h2 className="mt-4 text-xl font-semibold text-gray-900">
+								Access Denied
+							</h2>
+							<p className="mt-2 text-gray-600">
+								You don't have permission to view leads.
+							</p>
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">

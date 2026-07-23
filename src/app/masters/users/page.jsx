@@ -20,6 +20,7 @@ import {
 	InformationCircleIcon,
 	KeyIcon,
 	PencilIcon,
+	ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 
 // Tab configuration
@@ -451,16 +452,16 @@ function UsersTabContent() {
 												</span>
 											</td>
 											<td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-												<div className="flex items-center justify-end gap-3">
+												<div className="flex items-center justify-end gap-1.5">
 													<button
 														onClick={() => {
 															setSelectedUserForEdit(user);
 															setShowEditModal(true);
 														}}
-														className="text-blue-600 hover:text-blue-700 font-medium inline-flex items-center gap-1"
+														className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
 														title="Edit User"
 													>
-														<PencilIcon className="h-4 w-4" />
+														<PencilIcon className="h-3.5 w-3.5" />
 														Edit
 													</button>
 													<button
@@ -468,18 +469,19 @@ function UsersTabContent() {
 															setSelectedUserForReset(user);
 															setShowResetPasswordModal(true);
 														}}
-														className="text-amber-600 hover:text-amber-700 font-medium inline-flex items-center gap-1"
+														className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors"
 														title="Reset Password"
 													>
-														<KeyIcon className="h-4 w-4" />
+														<KeyIcon className="h-3.5 w-3.5" />
 														Reset
 													</button>
 													<button
 														onClick={() => goToPermissions(user.id)}
-														className="text-[#64126D] hover:text-[#4a0d52] font-medium inline-flex items-center gap-1"
+														className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#64126D] hover:bg-[#4a0d52] border border-[#64126D] rounded-lg transition-colors shadow-sm"
+														title="Manage Permissions"
 													>
+														<ShieldCheckIcon className="h-3.5 w-3.5" />
 														Permissions
-														<ChevronRightIcon className="h-4 w-4" />
 													</button>
 												</div>
 											</td>
@@ -1002,7 +1004,18 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
 		username: employee.email?.split('@')[0] || '',
 		password: '',
 		confirmPassword: '',
+		role_id: '',
 	});
+	const [roles, setRoles] = useState([]);
+
+	useEffect(() => {
+		fetch('/api/roles/list')
+			.then((r) => r.json())
+			.then((d) => {
+				if (d.success) setRoles(d.data || []);
+			})
+			.catch(() => {});
+	}, []);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
 
@@ -1036,12 +1049,12 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
 					email: employee.email,
 					employee_id: employee.id,
 					permissions: [],
+					role_id: formData.role_id || null,
 				}),
 			});
 
 			const data = await res.json();
 			if (data.success) {
-				// Navigate to permissions page for the new user
 				if (data.data?.id) {
 					router.push(`/masters/users/${data.data.id}/permissions`);
 				} else {
@@ -1142,6 +1155,28 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
 							placeholder="Confirm password"
 						/>
 					</div>
+
+					{roles.length > 0 && (
+						<div>
+							<label className="block text-sm font-medium text-gray-700 mb-1">
+								Role
+							</label>
+							<select
+								value={formData.role_id}
+								onChange={(e) =>
+									setFormData({ ...formData, role_id: e.target.value })
+								}
+								className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
+							>
+								<option value="">No role (set permissions manually)</option>
+								{roles.map((r) => (
+									<option key={r.id} value={r.id}>
+										{r.role_name} {r.role_code ? `(${r.role_code})` : ''}
+									</option>
+								))}
+							</select>
+						</div>
+					)}
 
 					<div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
 						<div className="flex gap-2">
@@ -1379,10 +1414,21 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
 		full_name: user.full_name || '',
 		status: user.status || 'active',
 		department: user.department || '',
+		role_id: user.role_id || '',
 	});
+	const [roles, setRoles] = useState([]);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
 	const [success, setSuccess] = useState('');
+
+	useEffect(() => {
+		fetch('/api/roles/list')
+			.then((r) => r.json())
+			.then((d) => {
+				if (d.success) setRoles(d.data || []);
+			})
+			.catch(() => {});
+	}, []);
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
@@ -1406,6 +1452,7 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
 					full_name: formData.full_name,
 					status: formData.status,
 					department: formData.department,
+					role_id: formData.role_id || null,
 				}),
 			});
 
@@ -1543,6 +1590,32 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
 							</select>
 						</div>
 					</div>
+
+					{roles.length > 0 && (
+						<div>
+							<label className="block text-sm font-medium text-gray-700 mb-1">
+								Role
+							</label>
+							<select
+								value={formData.role_id}
+								onChange={(e) =>
+									setFormData({ ...formData, role_id: e.target.value })
+								}
+								className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+							>
+								<option value="">No role (permissions set manually)</option>
+								{roles.map((r) => (
+									<option key={r.id} value={r.id}>
+										{r.role_name} {r.role_code ? `(${r.role_code})` : ''}
+									</option>
+								))}
+							</select>
+							<p className="text-xs text-gray-400 mt-1">
+								Role-based permissions are merged with user-specific
+								permissions.
+							</p>
+						</div>
+					)}
 
 					{/* Success Message */}
 					{success && (
