@@ -17,7 +17,8 @@ export async function POST(req: NextRequest) {
 		PERMISSIONS.READ
 	);
 	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
+	if (!authResult.authorized && 'response' in authResult)
+		return authResult.response;
 
 	const data: ReceiptData = await req.json();
 
