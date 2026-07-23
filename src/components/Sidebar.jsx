@@ -104,18 +104,6 @@ export default function Sidebar() {
 		adminRouteOverride ||
 		(!rbacLoading &&
 			(user?.is_super_admin || can(RESOURCES.VENDORS, PERMISSIONS.READ)));
-	const canViewLeads =
-		adminRouteOverride ||
-		(!rbacLoading &&
-			(user?.is_super_admin || can(RESOURCES.LEADS, PERMISSIONS.READ)));
-	const canViewProjects =
-		adminRouteOverride ||
-		(!rbacLoading &&
-			(user?.is_super_admin || can(RESOURCES.PROJECTS, PERMISSIONS.READ)));
-	const canViewProposals =
-		adminRouteOverride ||
-		(!rbacLoading &&
-			(user?.is_super_admin || can(RESOURCES.PROPOSALS, PERMISSIONS.READ)));
 
 	useEffect(() => {
 		setMounted(true);

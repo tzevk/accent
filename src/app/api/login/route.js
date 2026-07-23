@@ -67,6 +67,7 @@ export async function POST(req) {
 				`SELECT u.id, u.username, u.email, u.full_name, u.role_id,
               u.is_super_admin, u.is_active,
               u.permissions AS user_permissions,
+              u.field_permissions AS user_field_permissions,
               r.permissions AS role_permissions,
               r.role_hierarchy
        FROM users u
@@ -147,6 +148,7 @@ export async function POST(req) {
 			}
 
 			const permissions = mergePermissions(rolePermissions, userPermissions);
+			const fieldPermissions = safeParse(user.user_field_permissions, {});
 
 			if (db) {
 				try {
@@ -162,6 +164,8 @@ export async function POST(req) {
 				role_id: user.role_id,
 				is_super_admin: isSuperAdmin,
 				permissions: permissions,
+				merged_permissions: permissions,
+				field_permissions: fieldPermissions,
 			};
 
 			const res = NextResponse.json({
@@ -200,23 +204,6 @@ export async function POST(req) {
 				secure: isSecure,
 				path: '/',
 				priority: 'high',
-			});
-
-			const permissionsData = JSON.stringify({
-				p: permissions,
-				sa: isSuperAdmin,
-				ts: Date.now(),
-			});
-			const encodedPermissions =
-				Buffer.from(permissionsData).toString('base64');
-
-			res.cookies.set('session_permissions', encodedPermissions, {
-				httpOnly: true,
-				sameSite: 'lax',
-				secure: isSecure,
-				path: '/',
-				priority: 'high',
-				maxAge: 60 * 60 * 24,
 			});
 
 			return res;

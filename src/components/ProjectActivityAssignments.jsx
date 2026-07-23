@@ -72,6 +72,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		manhours_assigned: '',
 		quantity: '',
 		due_date: todayStr(),
+		status: 'Not Started',
 	});
 
 	// Search / filter / sort state
@@ -159,6 +160,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			manhours_assigned: '',
 			quantity: '',
 			due_date: todayStr(),
+			status: 'Not Started',
 		});
 	};
 
@@ -208,6 +210,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 					manhours_assigned: addForm.manhours_assigned,
 					qty_completed: addForm.quantity,
 					due_date: addForm.due_date || null,
+					status: addForm.status,
 				}),
 			});
 			if (res?.success) {
@@ -263,7 +266,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		}
 	});
 
-	const COLS = 9; // project_number, discipline, activity, sub-activity, default_manhours, manhours, qty_completed, completion date, status
+	const COLS = 10; // + actions column
 
 	// Build the list of projects the user can add activities to: any project they
 	// already have assignments on, plus any team project with no activities yet.
@@ -456,9 +459,10 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 							<col className="w-[16%]" />
 							<col className="w-[7%]" />
 							<col className="w-[7%]" />
-							<col className="w-[7%]" />
+							<col className="w-[6%]" />
 							<col className="w-[9%]" />
-							<col className="w-[7%]" />
+							<col className="w-[8%]" />
+							<col className="w-[6%]" />
 						</colgroup>
 						<thead className="bg-[#64126D]/10">
 							<tr className="divide-x divide-[#64126D]/40">
@@ -516,6 +520,9 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									sort={sort}
 									onSort={toggleSort}
 								/>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight select-none">
+									Actions
+								</th>
 							</tr>
 						</thead>
 						<tbody className="divide-y divide-gray-300">
@@ -603,6 +610,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 												{activity.status || 'Not Started'}
 											</span>
 										</td>
+										<td className="py-1 px-2 text-center align-middle" />
 									</tr>
 								);
 							})}
@@ -752,6 +760,25 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 										/>
 									</td>
 									<td className="py-1 px-2 text-center align-middle">
+										<select
+											value={addForm.status}
+											onChange={(e) =>
+												setAddForm((p) => ({
+													...p,
+													status: e.target.value,
+												}))
+											}
+											className="w-full px-0.5 py-0.5 text-[10px] border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+											title="Status"
+										>
+											<option value="Not Started">Not Started</option>
+											<option value="In Progress">In Progress</option>
+											<option value="On Hold">On Hold</option>
+											<option value="Completed">Completed</option>
+											<option value="Cancelled">Cancelled</option>
+										</select>
+									</td>
+									<td className="py-1 px-2 text-center align-middle">
 										<div className="flex items-center justify-center gap-1">
 											<button
 												onClick={() => submitAdd()}
@@ -759,7 +786,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 												className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50"
 												title="Save"
 											>
-												<CheckIcon className="w-4 h-4" />
+												<CheckIcon className="w-3.5 h-3.5" />
 											</button>
 											<button
 												onClick={closeAddRow}
@@ -767,7 +794,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 												className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
 												title="Cancel"
 											>
-												<XMarkIcon className="w-4 h-4" />
+												<XMarkIcon className="w-3.5 h-3.5" />
 											</button>
 										</div>
 									</td>
@@ -787,7 +814,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									<td className="py-1 px-2 text-center text-[#4A1254]">
 										{totalManhours}
 									</td>
-									<td colSpan={3}></td>
+									<td colSpan={4}></td>
 								</tr>
 							)}
 						</tbody>

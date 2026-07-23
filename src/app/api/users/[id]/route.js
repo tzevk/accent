@@ -4,6 +4,7 @@ import {
 	ensurePermission,
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
+	invalidateUserCache,
 } from '@/utils/api-permissions';
 
 // GET - fetch single user by ID
@@ -164,6 +165,10 @@ export async function PUT(request, { params }) {
 			`UPDATE users SET ${updateFields.join(', ')} WHERE id = ? AND isDelete = 0`,
 			updateValues
 		);
+
+		// Invalidate the in-memory user cache so getCurrentUser picks up
+		// the updated permissions on the next request.
+		invalidateUserCache(id);
 
 		// Fetch updated user
 		const [rows] = await db.execute(
