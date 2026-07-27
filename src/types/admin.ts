@@ -51,6 +51,7 @@ export interface FormField {
 	searchableDependency?: SearchableDependency;
 	dependentOn?: DependentOn;
 	computed?: ComputedField;
+	disabled?: boolean;
 	derived?: DerivedField;
 }
 

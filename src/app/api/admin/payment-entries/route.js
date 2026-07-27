@@ -57,6 +57,31 @@ export async function GET(request) {
 		);
 		const total = countResult[0]?.total || 0;
 
+		// Get stats
+		let stats = {
+			total: 0,
+			totalAmount: 0,
+			full: 0,
+			partial: 0,
+			tdsAmount: 0,
+			netAmount: 0,
+		};
+		try {
+			const [statsResult] = await db.execute(`
+				SELECT
+					COUNT(*) as total,
+					COALESCE(SUM(amount), 0) as totalAmount,
+					SUM(CASE WHEN payment_type = 'full' THEN 1 ELSE 0 END) as full,
+					SUM(CASE WHEN payment_type = 'partial' THEN 1 ELSE 0 END) as partial,
+					COALESCE(SUM(tds_amount), 0) as tdsAmount,
+					COALESCE(SUM(net_amount), 0) as netAmount
+				FROM payment_entries WHERE isDelete = 0
+			`);
+			stats = statsResult[0] || stats;
+		} catch (statsError) {
+			console.error('Error fetching stats:', statsError);
+		}
+
 		return NextResponse.json({
 			success: true,
 			data: entries,
@@ -66,6 +91,7 @@ export async function GET(request) {
 				total,
 				totalPages: Math.ceil(total / limit),
 			},
+			stats,
 		});
 	} catch (error) {
 		console.error('Payment entries list error:', error?.message);

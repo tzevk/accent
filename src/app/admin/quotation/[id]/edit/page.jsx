@@ -235,7 +235,7 @@ export default function EditQuotationPage() {
 	useEffect(() => {
 		const fetchCompanies = async () => {
 			try {
-				const res = await fetch('/api/companies');
+				const res = await fetch('/api/companies?lean=true');
 				const data = await res.json();
 				if (data.success) {
 					setCompanies(data.data || []);
