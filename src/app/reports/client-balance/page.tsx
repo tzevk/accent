@@ -63,6 +63,7 @@ interface ClientBalanceItem {
 interface ReportMeta {
 	total_clients: number;
 	total_invoiced: number;
+	total_issued: number;
 	total_received: number;
 	total_outstanding: number;
 	total_pipeline: number;
