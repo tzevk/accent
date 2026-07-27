@@ -8,6 +8,7 @@ import {
 	ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 import ResourcePage from '@/components/admin/ResourcePage';
+import type { FormField } from '@/types/admin';
 import { Select } from '@/components/ui/form-fields';
 import { formatCurrency } from '@/lib/format';
 
@@ -76,7 +77,7 @@ const bankLabelFn = (item: Record<string, unknown>) => {
 	return accountNo ? `${bankName} (${accountNo})` : String(bankName);
 };
 
-const formFields: Array<Record<string, unknown>> = [
+const formFields: FormField[] = [
 	{
 		name: 'payee_name',
 		label: 'Client / Vendor Name',
