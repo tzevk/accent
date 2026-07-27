@@ -2,7 +2,14 @@
 
 import { z } from 'zod';
 import { useState, useCallback } from 'react';
-import { PrinterIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import {
+	PrinterIcon,
+	ArrowPathIcon,
+	DocumentTextIcon,
+	CurrencyDollarIcon,
+	CheckCircleIcon,
+	AdjustmentsHorizontalIcon,
+} from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import ResourcePage from '@/components/admin/ResourcePage';
 import { formatCurrency } from '@/lib/format';
@@ -17,6 +24,7 @@ const schema = z.object({
 	transaction_id: z.string().optional(),
 	invoice_no: z.string().optional(),
 	invoice_date: z.string().nullable().optional(),
+	invoice_amount: z.coerce.number().min(0).optional(),
 	payment_type: z.enum(['full', 'partial']).or(z.literal('')).optional(),
 	tds_amount: z.coerce.number().min(0).optional(),
 	gst_amount: z.coerce.number().min(0).optional(),
@@ -33,6 +41,7 @@ const defaultValues = {
 	transaction_id: '',
 	invoice_no: '',
 	invoice_date: '',
+	invoice_amount: '',
 	payment_type: '',
 	tds_amount: '',
 	gst_amount: '',
@@ -64,6 +73,28 @@ const formFields = [
 	},
 	{ name: 'receipt_date', label: 'Receipt Date', type: 'date' as const },
 	{
+		name: 'invoice_no',
+		label: 'Invoice No',
+		type: 'searchableSelect' as const,
+		searchableEndpoint: '/api/admin/invoices?limit=500',
+		searchableValueKey: 'invoice_number',
+		searchableLabelFn: invoiceLabelFn,
+		searchableFillFields: {
+			invoice_date: 'invoice_date',
+			gross_amount: 'invoice_amount',
+		},
+		searchableDependency: { field: 'company_name', itemKey: 'client_name' },
+	},
+	{ name: 'invoice_date', label: 'Invoice Date', type: 'date' as const },
+	{
+		name: 'invoice_amount',
+		label: 'Invoice Amount',
+		type: 'number' as const,
+		step: '0.01',
+		disabled: true,
+		fullWidth: true,
+	},
+	{
 		name: 'amount',
 		label: 'Amount',
 		type: 'number' as const,
@@ -91,23 +122,12 @@ const formFields = [
 			dependsOn: ['amount', 'gst_amount', 'tds_amount'],
 			calculate: (values: Record<string, unknown>) =>
 				(Number(values.amount) || 0) +
-				(Number(values.gst_amount) || 0) -
+				(Number(values.gst_amount) || 0) +
 				(Number(values.tds_amount) || 0),
 		},
 	},
 	{ name: 'payment_date', label: 'Payment Date', type: 'date' as const },
 	{ name: 'transaction_id', label: 'Transaction ID' },
-	{
-		name: 'invoice_no',
-		label: 'Invoice No',
-		type: 'searchableSelect' as const,
-		searchableEndpoint: '/api/admin/invoices?limit=500',
-		searchableValueKey: 'invoice_number',
-		searchableLabelFn: invoiceLabelFn,
-		searchableFillFields: { invoice_date: 'invoice_date' },
-		searchableDependency: { field: 'company_name', itemKey: 'client_name' },
-	},
-	{ name: 'invoice_date', label: 'Invoice Date', type: 'date' as const },
 	{
 		name: 'payment_type',
 		label: 'Payment Type',
@@ -142,6 +162,46 @@ const columns = [
 	},
 	{ key: 'transaction_id', label: 'Transaction ID', headClassName: 'w-40' },
 	{ key: 'receipt_date', label: 'Date', date: true, headClassName: 'w-28' },
+];
+
+const statsConfig = [
+	{
+		key: 'total',
+		label: 'Total Entries',
+		tone: 'slate' as const,
+		icon: DocumentTextIcon,
+	},
+	{
+		key: 'totalAmount',
+		label: 'Total Amount',
+		tone: 'purple' as const,
+		icon: CurrencyDollarIcon,
+		money: true,
+	},
+	{
+		key: 'full',
+		label: 'Full Payments',
+		tone: 'green' as const,
+		icon: CheckCircleIcon,
+	},
+	{
+		key: 'partial',
+		label: 'Partial Payments',
+		tone: 'amber' as const,
+		icon: AdjustmentsHorizontalIcon,
+	},
+	{
+		key: 'tdsAmount',
+		label: 'TDS Amount',
+		tone: 'rose' as const,
+		money: true,
+	},
+	{
+		key: 'netAmount',
+		label: 'Net Amount',
+		tone: 'sky' as const,
+		money: true,
+	},
 ];
 
 export default function PaymentEntryPage() {
@@ -213,6 +273,7 @@ export default function PaymentEntryPage() {
 			subtitle="Payments received from client"
 			endpoint="/api/admin/payment-entries"
 			queryKey={['payment-entries']}
+			statsConfig={statsConfig}
 			columns={columns}
 			defaultValues={defaultValues}
 			zodSchema={schema}

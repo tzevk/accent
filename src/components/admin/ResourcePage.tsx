@@ -542,6 +542,7 @@ function ResourceFormModal({
 					label: field.searchableLabelFn
 						? field.searchableLabelFn(item)
 						: String(item[valueKey] ?? ''),
+					id: item.id,
 				}));
 			}
 			return [];
@@ -844,7 +845,7 @@ function ResourceFormModal({
 												id: field.name,
 												value: String(fp.state.value ?? ''),
 												onBlur: fp.handleBlur,
-												disabled: isView,
+												disabled: isView || field.disabled,
 											};
 											// eslint-disable-next-line @typescript-eslint/no-explicit-any
 											const handleChange = (e: any) =>

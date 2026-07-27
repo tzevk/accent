@@ -57,29 +57,12 @@ export async function GET(request) {
 			}
 
 			const [quotations] = await connection.execute(query1, params1);
-
-			try {
-				for (let q of quotations) {
-					if (q.project_id) {
-						const [projects] = await connection.execute(
-							'SELECT name, client_name FROM projects WHERE project_id = ? LIMIT 1',
-							[q.project_id]
-						);
-						if (projects.length > 0) {
-							q.project_name = projects[0].name;
-						}
-					}
-				}
-			} catch (e) {
-				// Projects table might not exist or have different structure, ignore
-			}
-
 			allQuotations = [...allQuotations, ...quotations];
 		}
 
-		// Query from project_quotations table (joined with projects for client name)
+		// Query from project_quotations table
+		const projectQuotations = [];
 		if (!source || source === 'all' || source === 'projects') {
-			// Query from project_quotations table without projects join to avoid table structure issues
 			let query2 = `
         SELECT 
           pq.id,
@@ -104,32 +87,47 @@ export async function GET(request) {
 				params2.push(status);
 			}
 
-			const [projectQuotations] = await connection.execute(query2, params2);
+			const [pqRows] = await connection.execute(query2, params2);
+			projectQuotations.push(...pqRows);
+			allQuotations = [...allQuotations, ...projectQuotations];
+		}
 
-			// Try to fetch project names separately if projects table exists
+		// Batch-fetch project names for all quotations that have a project_id (1 query instead of N+M)
+		const projectIds = new Set();
+		for (const q of allQuotations) {
+			if (q.project_id) projectIds.add(q.project_id);
+		}
+
+		if (projectIds.size > 0) {
 			try {
-				for (let q of projectQuotations) {
-					if (q.project_id) {
-						const [projects] = await connection.execute(
-							'SELECT name, client_name FROM projects WHERE project_id = ? LIMIT 1',
-							[q.project_id]
-						);
-						if (projects.length > 0) {
-							q.project_name = projects[0].name;
-							if (!q.client_name || q.client_name === q.enquiry_number) {
-								q.client_name = projects[0].client_name || q.client_name;
-							}
-							if (!q.subject) {
-								q.subject = projects[0].name;
-							}
+				const placeholders = Array(projectIds.size).fill('?').join(',');
+				const [projects] = await connection.execute(
+					`SELECT project_id, name, client_name FROM projects WHERE project_id IN (${placeholders})`,
+					[...projectIds]
+				);
+				const projectMap = new Map();
+				for (const p of projects) {
+					projectMap.set(p.project_id, p);
+				}
+
+				// Apply project data
+				for (const q of allQuotations) {
+					const p = projectMap.get(q.project_id);
+					if (!p) continue;
+					q.project_name = p.name;
+					// For project-sourced quotations, also fill client_name/subject from project
+					if (q.source === 'project') {
+						if (!q.client_name || q.client_name === q.subject) {
+							q.client_name = p.client_name || q.client_name;
+						}
+						if (!q.subject) {
+							q.subject = p.name;
 						}
 					}
 				}
 			} catch (e) {
 				// Projects table might not exist or have different structure, ignore
 			}
-
-			allQuotations = [...allQuotations, ...projectQuotations];
 		}
 
 		// Sort by created_at descending

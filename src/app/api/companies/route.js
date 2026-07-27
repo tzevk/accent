@@ -64,27 +64,44 @@ export async function GET(request) {
 
 		db = await dbConnect();
 
-		// Build base SQL and optionally apply a search WHERE clause (case-insensitive)
-		let sql = `SELECT c.*, COALESCE(COUNT(DISTINCT l.id), 0) AS lead_count, COALESCE(COUNT(f.id), 0) AS follow_up_count
+		// ?lean=true skips the heavy lead/follow-up aggregation (used by dropdowns)
+		const lean = searchParams.get('lean') === 'true';
+
+		let sql;
+		const params = [];
+
+		if (lean) {
+			sql = `SELECT c.* FROM companies c WHERE c.isDelete = 0`;
+			if (search) {
+				sql += ` AND (LOWER(c.company_name) LIKE ? OR LOWER(c.company_id) LIKE ? OR LOWER(c.city) LIKE ? OR LOWER(c.contact_person) LIKE ? OR LOWER(c.industry) LIKE ?)`;
+				params.push(
+					`%${search}%`,
+					`%${search}%`,
+					`%${search}%`,
+					`%${search}%`,
+					`%${search}%`
+				);
+			}
+			sql += ` ORDER BY ${sortField} ${sortOrderParam}`;
+		} else {
+			sql = `SELECT c.*, COALESCE(COUNT(DISTINCT l.id), 0) AS lead_count, COALESCE(COUNT(f.id), 0) AS follow_up_count
        FROM companies c
        -- leads table stores company_name (string) rather than a numeric company_id
        LEFT JOIN leads l ON l.company_name = c.company_name
        LEFT JOIN follow_ups f ON f.lead_id = l.id
        WHERE c.isDelete = 0`;
-
-		const params = [];
-		if (search) {
-			sql += ` AND (LOWER(c.company_name) LIKE ? OR LOWER(c.company_id) LIKE ? OR LOWER(c.city) LIKE ? OR LOWER(c.contact_person) LIKE ? OR LOWER(c.industry) LIKE ?)`;
-			params.push(
-				`%${search}%`,
-				`%${search}%`,
-				`%${search}%`,
-				`%${search}%`,
-				`%${search}%`
-			);
+			if (search) {
+				sql += ` AND (LOWER(c.company_name) LIKE ? OR LOWER(c.company_id) LIKE ? OR LOWER(c.city) LIKE ? OR LOWER(c.contact_person) LIKE ? OR LOWER(c.industry) LIKE ?)`;
+				params.push(
+					`%${search}%`,
+					`%${search}%`,
+					`%${search}%`,
+					`%${search}%`,
+					`%${search}%`
+				);
+			}
+			sql += ` GROUP BY c.id ORDER BY ${sortField} ${sortOrderParam}`;
 		}
-
-		sql += ` GROUP BY c.id ORDER BY ${sortField} ${sortOrderParam}`;
 
 		const [rows] = await db.execute(sql, params);
 
