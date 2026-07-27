@@ -20,6 +20,7 @@ import {
 	ClipboardDocumentListIcon,
 	BuildingLibraryIcon,
 	TagIcon,
+	ScaleIcon,
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -510,6 +511,12 @@ export default function Sidebar() {
 								label="Project Activities"
 								href="/reports/project-activities"
 								active={pathname.startsWith('/reports/project-activities')}
+							/>
+							<NavRow
+								icon={ScaleIcon}
+								label="Client Balance"
+								href="/reports/client-balance"
+								active={pathname.startsWith('/reports/client-balance')}
 							/>
 						</div>
 					</div>
