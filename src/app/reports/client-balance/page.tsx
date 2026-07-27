@@ -39,6 +39,10 @@ interface ClientBalanceItem {
 	total_tds: number;
 	total_gst: number;
 	receipt_count: number;
+	total_issued: number;
+	total_issued_gross: number;
+	total_issued_deduction: number;
+	issue_count: number;
 	pipeline_value: number;
 	quotation_count: number;
 	approved_quote_count: number;
@@ -52,12 +56,14 @@ interface ClientBalanceItem {
 	opening_balance?: number;
 	period_invoiced?: number;
 	period_received?: number;
+	period_issued?: number;
 	closing_balance?: number;
 }
 
 interface ReportMeta {
 	total_clients: number;
 	total_invoiced: number;
+	total_issued: number;
 	total_received: number;
 	total_outstanding: number;
 	total_pipeline: number;
@@ -135,6 +141,7 @@ type SortKey =
 	| 'client_name'
 	| 'total_invoiced'
 	| 'total_received'
+	| 'total_issued'
 	| 'net_balance'
 	| 'pipeline_value'
 	| 'invoice_count'
@@ -143,6 +150,7 @@ type SortKey =
 	| 'opening_balance'
 	| 'period_invoiced'
 	| 'period_received'
+	| 'period_issued'
 	| 'closing_balance';
 
 // ── Component ──────────────────────────────────────────────────────
@@ -220,6 +228,7 @@ export default function ClientBalancePage() {
 			(acc, c) => ({
 				total_invoiced: acc.total_invoiced + c.total_invoiced,
 				total_received: acc.total_received + c.total_received,
+				total_issued: acc.total_issued + c.total_issued,
 				net_balance: acc.net_balance + c.net_balance,
 				pipeline_value: acc.pipeline_value + c.pipeline_value,
 				invoice_count: acc.invoice_count + c.invoice_count,
@@ -236,11 +245,13 @@ export default function ClientBalancePage() {
 				opening_balance: acc.opening_balance + (c.opening_balance ?? 0),
 				period_invoiced: acc.period_invoiced + (c.period_invoiced ?? 0),
 				period_received: acc.period_received + (c.period_received ?? 0),
+				period_issued: acc.period_issued + (c.period_issued ?? 0),
 				closing_balance: acc.closing_balance + (c.closing_balance ?? 0),
 			}),
 			{
 				total_invoiced: 0,
 				total_received: 0,
+				total_issued: 0,
 				net_balance: 0,
 				pipeline_value: 0,
 				invoice_count: 0,
@@ -257,6 +268,7 @@ export default function ClientBalancePage() {
 				opening_balance: 0,
 				period_invoiced: 0,
 				period_received: 0,
+				period_issued: 0,
 				closing_balance: 0,
 			}
 		);
@@ -406,6 +418,19 @@ export default function ClientBalancePage() {
 								₹{fmtAmount(meta.total_pipeline)}
 							</span>
 						</div>
+						{meta.total_issued > 0 && (
+							<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
+								<div className="flex items-center gap-1.5 mb-0.5">
+									<ArrowUpCircleIcon className="w-3.5 h-3.5 text-red-500" />
+									<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
+										Issued
+									</span>
+								</div>
+								<span className="text-2xl font-bold text-red-600">
+									₹{fmtAmount(meta.total_issued)}
+								</span>
+							</div>
+						)}
 						{hasDateRange && (
 							<>
 								<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
@@ -445,6 +470,17 @@ export default function ClientBalancePage() {
 									</div>
 									<span className="text-2xl font-bold text-gray-900">
 										₹{fmtAmount(totals.period_received)}
+									</span>
+								</div>
+								<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
+									<div className="flex items-center gap-1.5 mb-0.5">
+										<ArrowUpCircleIcon className="w-3.5 h-3.5 text-red-500" />
+										<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
+											Period Iss
+										</span>
+									</div>
+									<span className="text-2xl font-bold text-red-600">
+										₹{fmtAmount(totals.period_issued)}
 									</span>
 								</div>
 								<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
@@ -576,6 +612,12 @@ export default function ClientBalancePage() {
 									</th>
 									<th
 										className="text-right px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 whitespace-nowrap"
+										onClick={() => toggleSort('total_issued')}
+									>
+										Issued{sortIndicator('total_issued')}
+									</th>
+									<th
+										className="text-right px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 whitespace-nowrap"
 										onClick={() => toggleSort('net_balance')}
 									>
 										Balance{sortIndicator('net_balance')}
@@ -632,7 +674,7 @@ export default function ClientBalancePage() {
 									</th>
 								</tr>
 								<tr className="border-b border-gray-100 bg-gray-50/50">
-									<th colSpan={6 + (hasDateRange ? 4 : 0)} />
+									<th colSpan={7 + (hasDateRange ? 4 : 0)} />
 									<th className="text-center px-2 py-1.5 text-[10px] font-medium text-green-600 whitespace-nowrap">
 										Paid
 									</th>
@@ -672,6 +714,11 @@ export default function ClientBalancePage() {
 										</td>
 										<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
 											₹{fmtAmount(c.total_received)}
+										</td>
+										<td className="px-3 py-2.5 text-right tabular-nums text-red-600 whitespace-nowrap">
+											{c.total_issued > 0
+												? `₹${fmtAmount(c.total_issued)}`
+												: '—'}
 										</td>
 										<td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
 											<span
@@ -781,6 +828,11 @@ export default function ClientBalancePage() {
 										</td>
 										<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 											₹{fmtAmount(totals.total_received)}
+										</td>
+										<td className="px-3 py-2.5 text-right tabular-nums text-red-600 whitespace-nowrap">
+											{totals.total_issued > 0
+												? `₹${fmtAmount(totals.total_issued)}`
+												: '—'}
 										</td>
 										<td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
 											<span
