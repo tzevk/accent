@@ -918,6 +918,7 @@ export async function PATCH(request, { params }) {
 			default_manhours,
 			qty_completed,
 			status,
+			remarks,
 		} = body || {};
 
 		if (!project_id || !discipline_name || !activity_name) {
@@ -972,7 +973,7 @@ export async function PATCH(request, { params }) {
 					actual_hours: 0,
 					status: status || 'Not Started',
 					due_date: due_date || null,
-					remarks: '',
+					remarks: remarks || '',
 					notes: '',
 					progress_percentage: 100,
 					daily_entries: [

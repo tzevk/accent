@@ -481,6 +481,7 @@ describe('ProjectActivityAssignments', () => {
 			qty_completed: '',
 			due_date: '2026-03-15',
 			status: 'Not Started',
+			remarks: '',
 		});
 
 		// After success, the inline add row is closed
