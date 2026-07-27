@@ -60,6 +60,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 	const [emptyProjects, setEmptyProjects] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [hasAccess, setHasAccess] = useState(true);
+	const [remarkValues, setRemarkValues] = useState({});
+	const [savingRemarks, setSavingRemarks] = useState(new Set());
 	const [saving, setSaving] = useState(false);
 	const [disciplineOptions, setDisciplineOptions] = useState([]);
 
@@ -73,6 +75,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		quantity: '',
 		due_date: todayStr(),
 		status: 'Not Started',
+		remark: '',
 	});
 
 	// Search / filter / sort state
@@ -86,6 +89,36 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			if (prev.dir === 'asc') return { key, dir: 'desc' };
 			return { key: null, dir: 'asc' };
 		});
+	};
+
+	const handleRemarkChange = (activityId, value) => {
+		setRemarkValues((prev) => ({ ...prev, [activityId]: value }));
+	};
+
+	const saveRemark = async (projectId, activityId) => {
+		const remark = remarkValues[activityId];
+		if (remark === undefined) return;
+
+		setSavingRemarks((prev) => new Set(prev).add(activityId));
+		try {
+			await fetchJSON(`/api/users/${userId}/activity-assignments`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					project_id: projectId,
+					activity_id: activityId,
+					remarks: remark,
+				}),
+			});
+		} catch (err) {
+			console.error('Failed to save remark:', err);
+		} finally {
+			setSavingRemarks((prev) => {
+				const next = new Set(prev);
+				next.delete(activityId);
+				return next;
+			});
+		}
 	};
 
 	// Use preloaded data if available (from parent dashboard)
@@ -161,6 +194,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			quantity: '',
 			due_date: todayStr(),
 			status: 'Not Started',
+			remark: '',
 		});
 	};
 
@@ -211,6 +245,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 					qty_completed: addForm.quantity,
 					due_date: addForm.due_date || null,
 					status: addForm.status,
+					remarks: addForm.remark,
 				}),
 			});
 			if (res?.success) {
@@ -266,7 +301,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		}
 	});
 
-	const COLS = 10; // + actions column
+	const COLS = 11; // + actions column
 
 	// Build the list of projects the user can add activities to: any project they
 	// already have assignments on, plus any team project with no activities yet.
@@ -453,14 +488,15 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 				<div>
 					<table className="w-full text-sm border-collapse table-fixed">
 						<colgroup>
-							<col className="w-[13%]" />
 							<col className="w-[12%]" />
-							<col className="w-[16%]" />
-							<col className="w-[16%]" />
+							<col className="w-[11%]" />
+							<col className="w-[14%]" />
+							<col className="w-[14%]" />
 							<col className="w-[7%]" />
 							<col className="w-[7%]" />
 							<col className="w-[6%]" />
-							<col className="w-[9%]" />
+							<col className="w-[8%]" />
+							<col className="w-[7%]" />
 							<col className="w-[8%]" />
 							<col className="w-[6%]" />
 						</colgroup>
@@ -520,6 +556,9 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									sort={sort}
 									onSort={toggleSort}
 								/>
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight select-none">
+									Remark
+								</th>
 								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight select-none">
 									Actions
 								</th>
@@ -609,6 +648,43 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 											>
 												{activity.status || 'Not Started'}
 											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<div className="relative">
+												<input
+													type="text"
+													value={
+														remarkValues[activity.activity_id] !== undefined
+															? remarkValues[activity.activity_id]
+															: activity.remarks || ''
+													}
+													onChange={(e) =>
+														handleRemarkChange(
+															activity.activity_id,
+															e.target.value
+														)
+													}
+													onBlur={() =>
+														saveRemark(
+															activity.project_id,
+															activity.activity_id
+														)
+													}
+													onKeyDown={(e) => {
+														if (e.key === 'Enter') {
+															e.target.blur();
+														}
+													}}
+													placeholder="Add remark…"
+													className="w-full px-1.5 py-0.5 text-[10px] border border-gray-200 rounded focus:border-purple-400 focus:ring-1 focus:ring-purple-200 focus:outline-none hover:border-gray-300 transition-colors"
+													title={activity.remarks || ''}
+												/>
+												{savingRemarks.has(activity.activity_id) && (
+													<span className="absolute right-1 top-1/2 -translate-y-1/2">
+														<span className="inline-block w-2 h-2 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+													</span>
+												)}
+											</div>
 										</td>
 										<td className="py-1 px-2 text-center align-middle" />
 									</tr>
@@ -779,6 +855,20 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 										</select>
 									</td>
 									<td className="py-1 px-2 text-center align-middle">
+										<input
+											type="text"
+											value={addForm.remark}
+											onChange={(e) =>
+												setAddForm((p) => ({
+													...p,
+													remark: e.target.value,
+												}))
+											}
+											placeholder="Remark…"
+											className="w-full px-1.5 py-0.5 text-[10px] border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+										/>
+									</td>
+									<td className="py-1 px-2 text-center align-middle">
 										<div className="flex items-center justify-center gap-1">
 											<button
 												onClick={() => submitAdd()}
@@ -814,7 +904,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									<td className="py-1 px-2 text-center text-[#4A1254]">
 										{totalManhours}
 									</td>
-									<td colSpan={4}></td>
+									<td colSpan={5}></td>
 								</tr>
 							)}
 						</tbody>

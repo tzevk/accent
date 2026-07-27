@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
 	MagnifyingGlassIcon,
@@ -658,8 +659,13 @@ export default function ClientBalancePage() {
 										<td className="px-3 py-2.5 text-gray-400 text-xs">
 											{i + 1}
 										</td>
-										<td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
-											{c.client_name}
+										<td className="px-3 py-2.5 font-medium whitespace-nowrap">
+											<Link
+												href={`/reports/client-balance/${encodeURIComponent(c.client_name)}${fromDate && toDate ? `?from_date=${fromDate}&to_date=${toDate}` : ''}`}
+												className="text-purple-700 hover:text-purple-900 hover:underline transition-colors"
+											>
+												{c.client_name}
+											</Link>
 										</td>
 										<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
 											₹{fmtAmount(c.total_invoiced)}
