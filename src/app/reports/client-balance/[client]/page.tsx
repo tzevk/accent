@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
@@ -11,12 +10,53 @@ import {
 	BanknotesIcon,
 	DocumentTextIcon,
 	ScaleIcon,
+	ArrowDownCircleIcon,
+	ArrowUpCircleIcon,
 } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 
-// ── Types ──────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────
+
+interface FieldPermissionsShape {
+	modules?: {
+		reports?: {
+			sections?: {
+				report_access?: {
+					enabled?: boolean;
+					fields?: Record<string, { permission?: string } | undefined>;
+				};
+			};
+		};
+	};
+}
+
+interface SessionUser {
+	is_super_admin?: boolean | number;
+	field_permissions?: FieldPermissionsShape | string | null;
+}
+
+function hasProjectActivitiesFieldPermission(
+	user: SessionUser | null | undefined
+): boolean {
+	if (!user) return false;
+	let fieldPerms = user.field_permissions;
+	if (typeof fieldPerms === 'string') {
+		try {
+			fieldPerms = JSON.parse(fieldPerms) as FieldPermissionsShape;
+		} catch {
+			fieldPerms = null;
+		}
+	}
+	const section = fieldPerms?.modules?.reports?.sections?.report_access;
+	if (!section?.enabled) return false;
+	const perm = section.fields?.project_activities?.permission;
+	const legacy = section.fields?.project_reports?.permission;
+	return (
+		perm === 'view' || perm === 'edit' || legacy === 'view' || legacy === 'edit'
+	);
+}
 
 interface InvoiceDetail {
 	invoice_number: string;
@@ -42,6 +82,20 @@ interface PaymentDetail {
 	bank_name: string | null;
 }
 
+interface IssueDetail {
+	payee_name: string;
+	invoice_number: string | null;
+	invoice_date: string | null;
+	invoice_amount: number;
+	amount: number;
+	deduction: number;
+	net_amount: number;
+	issue_date: string | null;
+	transaction_reference: string | null;
+	bank_name: string | null;
+	status: string;
+}
+
 interface QuotationDetail {
 	quotation_number: string | null;
 	quotation_date: string | null;
@@ -62,146 +116,70 @@ interface ReceivableDetail {
 	payment_mode: string | null;
 }
 
-interface DetailResponse {
-	success: boolean;
+interface ClientDetailResponse {
+	success: true;
 	client_name: string;
 	invoices: InvoiceDetail[];
 	payments: PaymentDetail[];
+	issued: IssueDetail[];
 	quotations: QuotationDetail[];
 	receivables: ReceivableDetail[];
-	error?: string;
 }
 
-interface FieldPermissionsShape {
-	modules?: {
-		reports?: {
-			sections?: {
-				report_access?: {
-					enabled?: boolean;
-					fields?: Record<string, { permission?: string } | undefined>;
-				};
-			};
-		};
-	};
+// ── Helpers ────────────────────────────────────────────────────────
+
+function n(v: unknown): number {
+	return Number(v ?? 0);
 }
 
-interface SessionUser {
-	is_super_admin?: boolean | number | null;
-	field_permissions?: FieldPermissionsShape | string | null;
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────
-
-function hasProjectActivitiesFieldPermission(
-	user: SessionUser | null | undefined
-): boolean {
-	if (!user) return false;
-	if (user.is_super_admin) return true;
-	let fieldPerms = user.field_permissions;
-	if (typeof fieldPerms === 'string') {
-		try {
-			fieldPerms = JSON.parse(fieldPerms) as FieldPermissionsShape;
-		} catch {
-			fieldPerms = null;
-		}
-	}
-	const section = fieldPerms?.modules?.reports?.sections?.report_access;
-	if (!section?.enabled) return false;
-	const perm = section.fields?.project_activities?.permission;
-	const legacy = section.fields?.project_reports?.permission;
-	return (
-		perm === 'view' || perm === 'edit' || legacy === 'view' || legacy === 'edit'
-	);
-}
-
-function fmtAmount(n: number): string {
-	return n.toLocaleString('en-IN', {
+function fmtAmount(value: number): string {
+	return value.toLocaleString('en-IN', {
 		minimumFractionDigits: 2,
 		maximumFractionDigits: 2,
 	});
 }
 
 function fmtDate(d: string | null): string {
-	if (!d) return '\u2014';
-	return new Date(d).toLocaleDateString('en-IN');
+	if (!d) return '—';
+	const date = new Date(d);
+	if (isNaN(date.getTime())) return '—';
+	const dd = String(date.getDate()).padStart(2, '0');
+	const mm = String(date.getMonth() + 1).padStart(2, '0');
+	const yyyy = date.getFullYear();
+	return `${dd}/${mm}/${yyyy}`;
 }
 
-// ── Status badge helpers ───────────────────────────────────────────────
-
-function invoiceStatusBadge(status: string) {
-	const map: Record<string, string> = {
-		paid: 'bg-green-100 text-green-700',
-		fully_paid: 'bg-green-100 text-green-700',
-		partially_paid: 'bg-blue-100 text-blue-700',
-		sent: 'bg-amber-100 text-amber-700',
-		draft: 'bg-gray-100 text-gray-600',
-		overdue: 'bg-red-100 text-red-700',
-		cancelled: 'bg-gray-100 text-gray-500',
-	};
-	const cls = map[status] || 'bg-gray-100 text-gray-600';
-	return (
-		<span
-			className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${cls}`}
-		>
-			{status.replace(/_/g, ' ')}
-		</span>
-	);
+function statusColor(status: string): string {
+	switch (status.toLowerCase()) {
+		case 'paid':
+		case 'fully_paid':
+		case 'received':
+			return 'bg-green-100 text-green-700';
+		case 'partially_paid':
+		case 'partial':
+			return 'bg-blue-100 text-blue-700';
+		case 'sent':
+			return 'bg-amber-100 text-amber-700';
+		case 'draft':
+			return 'bg-gray-100 text-gray-600';
+		case 'overdue':
+			return 'bg-red-100 text-red-700';
+		case 'approved':
+			return 'bg-green-100 text-green-700';
+		case 'rejected':
+			return 'bg-red-100 text-red-700';
+		case 'pending':
+			return 'bg-amber-100 text-amber-700';
+		case 'written_off':
+			return 'bg-gray-100 text-gray-500';
+		default:
+			return 'bg-gray-100 text-gray-600';
+	}
 }
 
-function paymentTypeBadge(paymentType: string | null) {
-	if (!paymentType) return <span className="text-gray-300">\u2014</span>;
-	const map: Record<string, string> = {
-		full: 'bg-green-100 text-green-700',
-		partial: 'bg-blue-100 text-blue-700',
-	};
-	const cls = map[paymentType] || 'bg-gray-100 text-gray-600';
-	return (
-		<span
-			className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${cls}`}
-		>
-			{paymentType}
-		</span>
-	);
-}
+// ── Component ──────────────────────────────────────────────────────
 
-function quoteStatusBadge(status: string) {
-	const map: Record<string, string> = {
-		approved: 'bg-green-100 text-green-700',
-		sent: 'bg-blue-100 text-blue-700',
-		draft: 'bg-gray-100 text-gray-600',
-		rejected: 'bg-red-100 text-red-700',
-	};
-	const cls = map[status] || 'bg-gray-100 text-gray-600';
-	return (
-		<span
-			className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${cls}`}
-		>
-			{status}
-		</span>
-	);
-}
-
-function arStatusBadge(status: string) {
-	const map: Record<string, string> = {
-		received: 'bg-green-100 text-green-700',
-		partial: 'bg-blue-100 text-blue-700',
-		pending: 'bg-amber-100 text-amber-700',
-		overdue: 'bg-red-100 text-red-700',
-		written_off: 'bg-gray-100 text-gray-500',
-	};
-	const cls = map[status] || 'bg-gray-100 text-gray-600';
-	return (
-		<span
-			className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${cls}`}
-		>
-			{status.replace(/_/g, ' ')}
-		</span>
-	);
-}
-
-// ── Component ──────────────────────────────────────────────────────────
-
-export default function ClientBalanceDetailPage() {
+export default function ClientDetailPage() {
 	const params = useParams();
 	const searchParams = useSearchParams();
 	const client = decodeURIComponent(String(params.client));
@@ -232,7 +210,7 @@ export default function ClientBalanceDetailPage() {
 	const hasFieldPermission = hasProjectActivitiesFieldPermission(user);
 	const hasAccess = isSuperAdmin || hasReportsPermission || hasFieldPermission;
 
-	const detailQuery = useQuery<DetailResponse>({
+	const detailQuery = useQuery<ClientDetailResponse>({
 		queryKey: ['client-detail', client, fromDate, toDate],
 		queryFn: () =>
 			apiGet('/api/reports/client-balance/detail', {
@@ -245,32 +223,24 @@ export default function ClientBalanceDetailPage() {
 		enabled: !authLoading && hasAccess,
 	});
 
-	const invoices = detailQuery.data?.invoices ?? [];
-	const payments = detailQuery.data?.payments ?? [];
-	const quotations = detailQuery.data?.quotations ?? [];
-	const receivables = detailQuery.data?.receivables ?? [];
-
+	const data = detailQuery.data;
 	const isLoading = detailQuery.isLoading || authLoading;
-	const error = detailQuery.error?.message || detailQuery.data?.error;
+	const error =
+		detailQuery.error?.message ||
+		(detailQuery.data as { error?: string } | undefined)?.error;
 
-	// ── Summary computations ────────────────────────────────────────
-	const summary = useMemo(() => {
-		const totalInvoiced = invoices.reduce((s, i) => s + (i.net_amount || 0), 0);
-		const totalReceived = payments.reduce((s, p) => s + (p.net_amount || 0), 0);
-		const netBalance = totalInvoiced - totalReceived;
-		const pipeline = quotations.reduce((s, q) => s + (q.amount || 0), 0);
-		return { totalInvoiced, totalReceived, netBalance, pipeline };
-	}, [invoices, payments, quotations]);
+	const totalInvoiced =
+		data?.invoices.reduce((s, i) => s + n(i.net_amount), 0) ?? 0;
+	const totalReceived =
+		data?.payments.reduce((s, p) => s + n(p.net_amount), 0) ?? 0;
+	const totalIssued =
+		data?.issued.reduce((s, p) => s + n(p.net_amount), 0) ?? 0;
+	const netBalance = totalInvoiced - totalReceived + totalIssued;
+	const pipelineValue =
+		data?.quotations.reduce((s, q) => s + n(q.amount), 0) ?? 0;
+	const hasDateRange = !!(fromDate && toDate);
 
-	const isEmpty =
-		invoices.length === 0 &&
-		payments.length === 0 &&
-		quotations.length === 0 &&
-		receivables.length === 0;
-
-	const backHref = `/reports/client-balance${fromDate && toDate ? `?from_date=${fromDate}&to_date=${toDate}` : ''}`;
-
-	// ── Auth guards ─────────────────────────────────────────────────
+	// ── Auth guards ───────────────────────────────────────────────
 	if (authLoading) {
 		return (
 			<div className="min-h-screen bg-gray-50">
@@ -303,19 +273,24 @@ export default function ClientBalanceDetailPage() {
 		);
 	}
 
-	// ── Render ──────────────────────────────────────────────────────
 	return (
 		<div className="min-h-screen bg-gray-50">
 			<Navbar />
 			<div className="pt-4 px-3 sm:px-4 lg:px-6 pb-8 max-w-[1920px] mx-auto">
-				{/* Header */}
+				{/* Header bar */}
 				<div className="mb-5">
 					<p className="text-xs text-gray-400 mb-0.5">
-						Home <span className="mx-1 text-gray-300">/</span> Reports{' '}
+						<Link
+							href={`/reports/client-balance${fromDate && toDate ? `?from_date=${fromDate}&to_date=${toDate}` : ''}`}
+							className="hover:text-purple-600 transition"
+						>
+							Home
+						</Link>{' '}
+						<span className="mx-1 text-gray-300">/</span> Reports{' '}
 						<span className="mx-1 text-gray-300">/</span>{' '}
 						<Link
-							href={backHref}
-							className="text-gray-500 hover:text-purple-700 transition-colors"
+							href={`/reports/client-balance${fromDate && toDate ? `?from_date=${fromDate}&to_date=${toDate}` : ''}`}
+							className="hover:text-purple-600 transition"
 						>
 							Client Balance
 						</Link>{' '}
@@ -325,8 +300,8 @@ export default function ClientBalanceDetailPage() {
 					<div className="flex items-center justify-between flex-wrap gap-3">
 						<div className="flex items-center gap-3">
 							<Link
-								href={backHref}
-								className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-white border border-gray-200 rounded-md hover:border-gray-300 hover:text-purple-700 transition-colors"
+								href={`/reports/client-balance${fromDate && toDate ? `?from_date=${fromDate}&to_date=${toDate}` : ''}`}
+								className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-white border border-gray-200 rounded-md hover:border-gray-300 transition"
 							>
 								<ArrowLeftIcon className="w-3.5 h-3.5" />
 								Back
@@ -336,6 +311,11 @@ export default function ClientBalanceDetailPage() {
 							</h1>
 						</div>
 						<div className="flex items-center gap-2">
+							{hasDateRange && (
+								<span className="text-[11px] text-gray-400 bg-gray-100 px-2 py-1 rounded">
+									{fromDate} &ndash; {toDate}
+								</span>
+							)}
 							<button
 								onClick={() => detailQuery.refetch()}
 								disabled={isLoading}
@@ -350,589 +330,723 @@ export default function ClientBalanceDetailPage() {
 					</div>
 				</div>
 
+				{/* Error */}
+				{error && !data && (
+					<div className="bg-red-50 rounded-xl border border-red-100 p-8 text-center mb-5">
+						<p className="text-red-700 font-semibold mb-1">
+							Error Loading Data
+						</p>
+						<p className="text-red-500 text-sm mb-4">{String(error)}</p>
+						<button
+							onClick={() => detailQuery.refetch()}
+							className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+						>
+							Retry
+						</button>
+					</div>
+				)}
+
 				{/* Loading */}
 				{isLoading && (
-					<div className="flex items-center justify-center py-20">
-						<div className="animate-pulse text-gray-400 text-sm flex items-center gap-2">
-							<ArrowPathIcon className="w-4 h-4 animate-spin" />
-							Loading...
-						</div>
+					<div className="bg-white rounded-xl border border-gray-100 p-14 text-center text-gray-400 text-sm mb-5">
+						<ArrowPathIcon className="w-5 h-5 mx-auto mb-2 animate-spin" />
+						Loading...
 					</div>
 				)}
 
-				{/* Error */}
-				{!isLoading && error && (
-					<div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-5">
-						<div className="flex items-start gap-3">
-							<XMarkIcon className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
-							<div>
-								<h3 className="text-sm font-semibold text-red-800 mb-1">
-									Failed to load detail
-								</h3>
-								<p className="text-sm text-red-600">{error}</p>
-								<button
-									onClick={() => detailQuery.refetch()}
-									className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition"
+				{/* Empty state */}
+				{!isLoading &&
+					!error &&
+					data &&
+					!data.invoices.length &&
+					!data.payments.length &&
+					!data.issued.length &&
+					!data.quotations.length &&
+					!data.receivables.length && (
+						<div className="bg-white rounded-xl border border-gray-100 p-14 text-center mb-5">
+							<BanknotesIcon className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+							<p className="text-gray-500 font-medium text-sm">
+								No transactions found for {client}.
+							</p>
+						</div>
+					)}
+
+				{/* Content */}
+				{!isLoading && !error && data && (
+					<div>
+						{/* Summary cards */}
+						<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
+							<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
+								<div className="flex items-center gap-1.5 mb-0.5">
+									<ArrowDownCircleIcon className="w-3.5 h-3.5 text-blue-500" />
+									<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
+										Invoiced
+									</span>
+								</div>
+								<span className="text-2xl font-bold text-gray-900">
+									₹{fmtAmount(totalInvoiced)}
+								</span>
+							</div>
+							<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
+								<div className="flex items-center gap-1.5 mb-0.5">
+									<ArrowUpCircleIcon className="w-3.5 h-3.5 text-green-500" />
+									<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
+										Received
+									</span>
+								</div>
+								<span className="text-2xl font-bold text-gray-900">
+									₹{fmtAmount(totalReceived)}
+								</span>
+							</div>
+							{totalIssued > 0 && (
+								<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
+									<div className="flex items-center gap-1.5 mb-0.5">
+										<ArrowUpCircleIcon className="w-3.5 h-3.5 text-red-500" />
+										<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
+											Issued
+										</span>
+									</div>
+									<span className="text-2xl font-bold text-red-600">
+										₹{fmtAmount(totalIssued)}
+									</span>
+								</div>
+							)}
+							<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
+								<div className="flex items-center gap-1.5 mb-0.5">
+									<ScaleIcon className="w-3.5 h-3.5 text-purple-500" />
+									<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
+										Net Balance
+									</span>
+								</div>
+								<span
+									className={`text-2xl font-bold ${netBalance < 0 ? 'text-red-600' : netBalance > 0 ? 'text-orange-600' : 'text-gray-400'}`}
 								>
-									<ArrowPathIcon className="w-3 h-3" />
-									Retry
-								</button>
+									₹{fmtAmount(netBalance)}
+								</span>
+							</div>
+							<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
+								<div className="flex items-center gap-1.5 mb-0.5">
+									<DocumentTextIcon className="w-3.5 h-3.5 text-indigo-500" />
+									<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
+										Pipeline
+									</span>
+								</div>
+								<span className="text-2xl font-bold text-gray-900">
+									₹{fmtAmount(pipelineValue)}
+								</span>
 							</div>
 						</div>
-					</div>
-				)}
 
-				{/* Summary cards */}
-				{!isLoading && !error && (
-					<div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-						<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
-							<div className="flex items-center gap-1.5 mb-0.5">
-								<DocumentTextIcon className="w-3.5 h-3.5 text-blue-500" />
-								<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
-									Invoiced
-								</span>
+						{/* Invoices */}
+						<div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-5">
+							<div className="px-4 py-3 border-b border-gray-100">
+								<h2 className="text-sm font-semibold text-gray-800">
+									Invoices ({data.invoices.length})
+								</h2>
 							</div>
-							<span className="text-xl font-bold text-gray-900">
-								₹{fmtAmount(summary.totalInvoiced)}
-							</span>
-						</div>
-						<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
-							<div className="flex items-center gap-1.5 mb-0.5">
-								<BanknotesIcon className="w-3.5 h-3.5 text-green-500" />
-								<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
-									Received
-								</span>
-							</div>
-							<span className="text-xl font-bold text-gray-900">
-								₹{fmtAmount(summary.totalReceived)}
-							</span>
-						</div>
-						<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
-							<div className="flex items-center gap-1.5 mb-0.5">
-								<ScaleIcon className="w-3.5 h-3.5 text-orange-500" />
-								<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
-									Balance
-								</span>
-							</div>
-							<span
-								className={`text-xl font-bold ${
-									summary.netBalance < 0
-										? 'text-red-600'
-										: summary.netBalance > 0
-											? 'text-orange-600'
-											: 'text-gray-400'
-								}`}
-							>
-								₹{fmtAmount(summary.netBalance)}
-							</span>
-						</div>
-						<div className="bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
-							<div className="flex items-center gap-1.5 mb-0.5">
-								<DocumentTextIcon className="w-3.5 h-3.5 text-indigo-500" />
-								<span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">
-									Pipeline
-								</span>
-							</div>
-							<span className="text-xl font-bold text-gray-900">
-								₹{fmtAmount(summary.pipeline)}
-							</span>
-						</div>
-					</div>
-				)}
-
-				{/* Entirely empty client */}
-				{!isLoading && !error && isEmpty && (
-					<div className="text-center py-16">
-						<div className="bg-gray-100 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3">
-							<DocumentTextIcon className="w-7 h-7 text-gray-400" />
-						</div>
-						<h2 className="text-lg font-bold text-gray-800 mb-1">
-							No transactions
-						</h2>
-						<p className="text-gray-500 text-sm">
-							No transactions found for {client}.
-						</p>
-					</div>
-				)}
-
-				{/* ── Section tables ─────────────────────────────────── */}
-				{!isLoading && !error && !isEmpty && (
-					<div className="space-y-5">
-						{/* 1. Invoices */}
-						<SectionCard
-							title="Invoices"
-							count={invoices.length}
-							icon={<DocumentTextIcon className="w-4 h-4 text-blue-500" />}
-						>
-							{invoices.length === 0 ? (
-								<EmptyMessage label="No invoices for this client." />
+							{data.invoices.length === 0 ? (
+								<p className="px-4 py-6 text-sm text-gray-400 italic">
+									No invoices for this client.
+								</p>
 							) : (
 								<div className="overflow-x-auto">
-									<table className="w-full text-xs">
+									<table className="w-full text-sm">
 										<thead>
 											<tr className="border-b border-gray-100 bg-gray-50/50">
-												<Th center>#</Th>
-												<Th>Invoice #</Th>
-												<Th>Date</Th>
-												<Th>Due Date</Th>
-												<Th right>Net Amount</Th>
-												<Th right>Paid</Th>
-												<Th right>Balance</Th>
-												<Th>Status</Th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider w-8">
+													#
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Invoice #
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Date
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Due Date
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Net Amount
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Paid
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Balance
+												</th>
+												<th className="text-center px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Status
+												</th>
 											</tr>
 										</thead>
 										<tbody>
-											{invoices.map((inv, i) => (
-												<Tr key={inv.invoice_number} i={i}>
-													<Td muted center>
-														{i + 1}
-													</Td>
-													<Td strong>{inv.invoice_number}</Td>
-													<Td>{fmtDate(inv.invoice_date)}</Td>
-													<Td>{fmtDate(inv.due_date)}</Td>
-													<Td right amounts>
-														₹{fmtAmount(inv.net_amount)}
-													</Td>
-													<Td right amounts>
-														₹{fmtAmount(inv.amount_paid)}
-													</Td>
-													<Td right amounts bold>
+											{data.invoices.map((inv, idx) => (
+												<tr
+													key={inv.invoice_number || idx}
+													className={`border-b border-gray-50 hover:bg-purple-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+												>
+													<td className="px-3 py-2.5 text-gray-400 text-xs">
+														{idx + 1}
+													</td>
+													<td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
+														{inv.invoice_number || '—'}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{fmtDate(inv.invoice_date)}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{fmtDate(inv.due_date)}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
+														₹{fmtAmount(n(inv.net_amount))}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
+														₹{fmtAmount(n(inv.amount_paid))}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
 														<span
 															className={
-																inv.balance_due > 0
+																n(inv.balance_due) > 0
 																	? 'text-red-600'
 																	: 'text-gray-400'
 															}
 														>
-															₹{fmtAmount(inv.balance_due)}
+															₹{fmtAmount(n(inv.balance_due))}
 														</span>
-													</Td>
-													<Td>{invoiceStatusBadge(inv.status)}</Td>
-												</Tr>
+													</td>
+													<td className="px-3 py-2.5 text-center">
+														<span
+															className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${statusColor(inv.status)}`}
+														>
+															{inv.status.replace(/_/g, ' ')}
+														</span>
+													</td>
+												</tr>
 											))}
 										</tbody>
 										<tfoot>
-											<Tr bold>
-												<Td muted center>
-													&nbsp;
-												</Td>
-												<Td strong>TOTAL</Td>
-												<Td>&nbsp;</Td>
-												<Td>&nbsp;</Td>
-												<Td right amounts strong>
+											<tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+												<td className="px-3 py-2.5" colSpan={4} />
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
+													₹{fmtAmount(totalInvoiced)}
+												</td>
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 													₹
 													{fmtAmount(
-														invoices.reduce(
-															(s, i) => s + (i.net_amount || 0),
+														data.invoices.reduce(
+															(s, i) => s + n(i.amount_paid),
 															0
 														)
 													)}
-												</Td>
-												<Td right amounts strong>
+												</td>
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 													₹
 													{fmtAmount(
-														invoices.reduce(
-															(s, i) => s + (i.amount_paid || 0),
+														data.invoices.reduce(
+															(s, i) => s + n(i.balance_due),
 															0
 														)
 													)}
-												</Td>
-												<Td right amounts strong>
-													₹
-													{fmtAmount(
-														invoices.reduce(
-															(s, i) => s + (i.balance_due || 0),
-															0
-														)
-													)}
-												</Td>
-												<Td>&nbsp;</Td>
-											</Tr>
+												</td>
+												<td />
+											</tr>
 										</tfoot>
 									</table>
 								</div>
 							)}
-						</SectionCard>
+						</div>
 
-						{/* 2. Payments */}
-						<SectionCard
-							title="Payments"
-							count={payments.length}
-							icon={<BanknotesIcon className="w-4 h-4 text-green-500" />}
-						>
-							{payments.length === 0 ? (
-								<EmptyMessage label="No payments for this client." />
+						{/* Payments Received */}
+						<div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-5">
+							<div className="px-4 py-3 border-b border-gray-100">
+								<h2 className="text-sm font-semibold text-gray-800">
+									Payments Received ({data.payments.length})
+								</h2>
+							</div>
+							{data.payments.length === 0 ? (
+								<p className="px-4 py-6 text-sm text-gray-400 italic">
+									No payments received from this client.
+								</p>
 							) : (
 								<div className="overflow-x-auto">
-									<table className="w-full text-xs">
+									<table className="w-full text-sm">
 										<thead>
 											<tr className="border-b border-gray-100 bg-gray-50/50">
-												<Th center>#</Th>
-												<Th>Receipt #</Th>
-												<Th>Date</Th>
-												<Th right>Gross</Th>
-												<Th right>TDS</Th>
-												<Th right>GST</Th>
-												<Th right>Net</Th>
-												<Th>Type</Th>
-												<Th>Invoice #</Th>
-												<Th>Bank</Th>
-												<Th>Txn ID</Th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider w-8">
+													#
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Receipt #
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Date
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Gross
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													TDS
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													GST
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Net
+												</th>
+												<th className="text-center px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Type
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Invoice #
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Bank
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Txn ID
+												</th>
 											</tr>
 										</thead>
 										<tbody>
-											{payments.map((p, i) => (
-												<Tr key={p.receipt_no || `p-${i}`} i={i}>
-													<Td muted center>
-														{i + 1}
-													</Td>
-													<Td strong>{p.receipt_no || '\u2014'}</Td>
-													<Td>{fmtDate(p.payment_date || p.receipt_date)}</Td>
-													<Td right amounts>
-														₹{fmtAmount(p.amount)}
-													</Td>
-													<Td right amounts muted>
-														₹{fmtAmount(p.tds_amount)}
-													</Td>
-													<Td right amounts muted>
-														₹{fmtAmount(p.gst_amount)}
-													</Td>
-													<Td right amounts>
-														₹{fmtAmount(p.net_amount)}
-													</Td>
-													<Td>{paymentTypeBadge(p.payment_type)}</Td>
-													<Td>{p.invoice_no || '\u2014'}</Td>
-													<Td>{p.bank_name || '\u2014'}</Td>
-													<Td>{p.transaction_id || '\u2014'}</Td>
-												</Tr>
+											{data.payments.map((p, idx) => (
+												<tr
+													key={p.receipt_no || idx}
+													className={`border-b border-gray-50 hover:bg-purple-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+												>
+													<td className="px-3 py-2.5 text-gray-400 text-xs">
+														{idx + 1}
+													</td>
+													<td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
+														{p.receipt_no || '—'}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{fmtDate(p.receipt_date)}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
+														₹{fmtAmount(n(p.amount))}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-500 whitespace-nowrap">
+														{n(p.tds_amount) > 0
+															? `₹${fmtAmount(n(p.tds_amount))}`
+															: '—'}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-500 whitespace-nowrap">
+														{n(p.gst_amount) > 0
+															? `₹${fmtAmount(n(p.gst_amount))}`
+															: '—'}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums font-semibold text-gray-900 whitespace-nowrap">
+														₹{fmtAmount(n(p.net_amount))}
+													</td>
+													<td className="px-3 py-2.5 text-center">
+														{p.payment_type ? (
+															<span
+																className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${p.payment_type.toLowerCase() === 'full' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}
+															>
+																{p.payment_type}
+															</span>
+														) : (
+															'—'
+														)}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{p.invoice_no || '—'}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{p.bank_name || '—'}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap max-w-[120px] truncate">
+														{p.transaction_id || '—'}
+													</td>
+												</tr>
 											))}
 										</tbody>
 										<tfoot>
-											<Tr bold>
-												<Td muted center>
-													&nbsp;
-												</Td>
-												<Td strong>TOTAL</Td>
-												<Td>&nbsp;</Td>
-												<Td right amounts strong>
+											<tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+												<td className="px-3 py-2.5" colSpan={3} />
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 													₹
 													{fmtAmount(
-														payments.reduce((s, p) => s + (p.amount || 0), 0)
+														data.payments.reduce((s, p) => s + n(p.amount), 0)
 													)}
-												</Td>
-												<Td right amounts strong>
+												</td>
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 													₹
 													{fmtAmount(
-														payments.reduce(
-															(s, p) => s + (p.tds_amount || 0),
+														data.payments.reduce(
+															(s, p) => s + n(p.tds_amount),
 															0
 														)
 													)}
-												</Td>
-												<Td right amounts strong>
+												</td>
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 													₹
 													{fmtAmount(
-														payments.reduce(
-															(s, p) => s + (p.gst_amount || 0),
+														data.payments.reduce(
+															(s, p) => s + n(p.gst_amount),
 															0
 														)
 													)}
-												</Td>
-												<Td right amounts strong>
-													₹
-													{fmtAmount(
-														payments.reduce(
-															(s, p) => s + (p.net_amount || 0),
-															0
-														)
-													)}
-												</Td>
-												<Td>&nbsp;</Td>
-												<Td>&nbsp;</Td>
-												<Td>&nbsp;</Td>
-												<Td>&nbsp;</Td>
-											</Tr>
+												</td>
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
+													₹{fmtAmount(totalReceived)}
+												</td>
+												<td colSpan={4} />
+											</tr>
 										</tfoot>
 									</table>
 								</div>
 							)}
-						</SectionCard>
+						</div>
 
-						{/* 3. Quotes */}
-						<SectionCard
-							title="Quotes"
-							count={quotations.length}
-							icon={<DocumentTextIcon className="w-4 h-4 text-indigo-500" />}
-						>
-							{quotations.length === 0 ? (
-								<EmptyMessage label="No quotations for this client." />
+						{/* Payments Issued */}
+						<div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-5">
+							<div className="px-4 py-3 border-b border-gray-100">
+								<h2 className="text-sm font-semibold text-gray-800">
+									Payments Issued ({data.issued.length})
+								</h2>
+							</div>
+							{data.issued.length === 0 ? (
+								<p className="px-4 py-6 text-sm text-gray-400 italic">
+									No payments issued to this client.
+								</p>
 							) : (
 								<div className="overflow-x-auto">
-									<table className="w-full text-xs">
+									<table className="w-full text-sm">
 										<thead>
 											<tr className="border-b border-gray-100 bg-gray-50/50">
-												<Th center>#</Th>
-												<Th>Quote #</Th>
-												<Th>Date</Th>
-												<Th right>Amount</Th>
-												<Th>Status</Th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider w-8">
+													#
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Invoice #
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Inv Date
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Inv Amount
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Amount
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Deduction
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Net
+												</th>
+												<th className="text-center px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Status
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Issue Date
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Bank
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Txn Ref
+												</th>
 											</tr>
 										</thead>
 										<tbody>
-											{quotations.map((q, i) => (
-												<Tr key={q.quotation_number || `q-${i}`} i={i}>
-													<Td muted center>
-														{i + 1}
-													</Td>
-													<Td strong>{q.quotation_number || '\u2014'}</Td>
-													<Td>{fmtDate(q.quotation_date)}</Td>
-													<Td right amounts>
-														₹{fmtAmount(q.amount)}
-													</Td>
-													<Td>{quoteStatusBadge(q.status)}</Td>
-												</Tr>
+											{data.issued.map((iss, idx) => (
+												<tr
+													key={`${iss.invoice_number || ''}-${idx}`}
+													className={`border-b border-gray-50 hover:bg-purple-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+												>
+													<td className="px-3 py-2.5 text-gray-400 text-xs">
+														{idx + 1}
+													</td>
+													<td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
+														{iss.invoice_number || '—'}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{fmtDate(iss.invoice_date)}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
+														₹{fmtAmount(n(iss.invoice_amount))}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
+														₹{fmtAmount(n(iss.amount))}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-500 whitespace-nowrap">
+														{n(iss.deduction) > 0
+															? `₹${fmtAmount(n(iss.deduction))}`
+															: '—'}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums font-semibold text-red-600 whitespace-nowrap">
+														₹{fmtAmount(n(iss.net_amount))}
+													</td>
+													<td className="px-3 py-2.5 text-center">
+														<span
+															className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${statusColor(iss.status)}`}
+														>
+															{iss.status.replace(/_/g, ' ')}
+														</span>
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{fmtDate(iss.issue_date)}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{iss.bank_name || '—'}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap max-w-[120px] truncate">
+														{iss.transaction_reference || '—'}
+													</td>
+												</tr>
 											))}
 										</tbody>
 										<tfoot>
-											<Tr bold>
-												<Td muted center>
-													&nbsp;
-												</Td>
-												<Td strong>TOTAL</Td>
-												<Td>&nbsp;</Td>
-												<Td right amounts strong>
+											<tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+												<td className="px-3 py-2.5" colSpan={3} />
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 													₹
 													{fmtAmount(
-														quotations.reduce((s, q) => s + (q.amount || 0), 0)
+														data.issued.reduce(
+															(s, p) => s + n(p.invoice_amount),
+															0
+														)
 													)}
-												</Td>
-												<Td>&nbsp;</Td>
-											</Tr>
+												</td>
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
+													₹
+													{fmtAmount(
+														data.issued.reduce((s, p) => s + n(p.amount), 0)
+													)}
+												</td>
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
+													₹
+													{fmtAmount(
+														data.issued.reduce((s, p) => s + n(p.deduction), 0)
+													)}
+												</td>
+												<td className="px-3 py-2.5 text-right tabular-nums text-red-600 whitespace-nowrap">
+													₹{fmtAmount(totalIssued)}
+												</td>
+												<td colSpan={4} />
+											</tr>
 										</tfoot>
 									</table>
 								</div>
 							)}
-						</SectionCard>
+						</div>
 
-						{/* 4. AR Entries */}
-						<SectionCard
-							title="AR Entries"
-							count={receivables.length}
-							icon={<ScaleIcon className="w-4 h-4 text-orange-500" />}
-						>
-							{receivables.length === 0 ? (
-								<EmptyMessage label="No AR entries for this client." />
+						{/* Quotations */}
+						<div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-5">
+							<div className="px-4 py-3 border-b border-gray-100">
+								<h2 className="text-sm font-semibold text-gray-800">
+									Quotes ({data.quotations.length})
+								</h2>
+							</div>
+							{data.quotations.length === 0 ? (
+								<p className="px-4 py-6 text-sm text-gray-400 italic">
+									No quotations for this client.
+								</p>
 							) : (
 								<div className="overflow-x-auto">
-									<table className="w-full text-xs">
+									<table className="w-full text-sm">
 										<thead>
 											<tr className="border-b border-gray-100 bg-gray-50/50">
-												<Th center>#</Th>
-												<Th>Ref #</Th>
-												<Th>Invoice #</Th>
-												<Th>Inv Date</Th>
-												<Th right>Inv Amount</Th>
-												<Th right>Paid</Th>
-												<Th right>Balance</Th>
-												<Th>Status</Th>
-												<Th>Received</Th>
-												<Th>Mode</Th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider w-8">
+													#
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Quote #
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Date
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Amount
+												</th>
+												<th className="text-center px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Status
+												</th>
 											</tr>
 										</thead>
 										<tbody>
-											{receivables.map((ar, i) => (
-												<Tr key={ar.reference_number} i={i}>
-													<Td muted center>
-														{i + 1}
-													</Td>
-													<Td strong>{ar.reference_number}</Td>
-													<Td>{ar.invoice_number || '\u2014'}</Td>
-													<Td>{fmtDate(ar.invoice_date)}</Td>
-													<Td right amounts>
-														₹{fmtAmount(ar.invoice_amount)}
-													</Td>
-													<Td right amounts>
-														₹{fmtAmount(ar.paid_amount)}
-													</Td>
-													<Td right amounts bold>
+											{data.quotations.map((q, idx) => (
+												<tr
+													key={q.quotation_number || idx}
+													className={`border-b border-gray-50 hover:bg-purple-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+												>
+													<td className="px-3 py-2.5 text-gray-400 text-xs">
+														{idx + 1}
+													</td>
+													<td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
+														{q.quotation_number || '—'}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{fmtDate(q.quotation_date)}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
+														₹{fmtAmount(n(q.amount))}
+													</td>
+													<td className="px-3 py-2.5 text-center">
+														<span
+															className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${statusColor(q.status)}`}
+														>
+															{q.status.replace(/_/g, ' ')}
+														</span>
+													</td>
+												</tr>
+											))}
+										</tbody>
+										<tfoot>
+											<tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+												<td className="px-3 py-2.5" colSpan={3} />
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
+													₹{fmtAmount(pipelineValue)}
+												</td>
+												<td />
+											</tr>
+										</tfoot>
+									</table>
+								</div>
+							)}
+						</div>
+
+						{/* AR Entries */}
+						<div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-5">
+							<div className="px-4 py-3 border-b border-gray-100">
+								<h2 className="text-sm font-semibold text-gray-800">
+									AR Entries ({data.receivables.length})
+								</h2>
+							</div>
+							{data.receivables.length === 0 ? (
+								<p className="px-4 py-6 text-sm text-gray-400 italic">
+									No AR entries for this client.
+								</p>
+							) : (
+								<div className="overflow-x-auto">
+									<table className="w-full text-sm">
+										<thead>
+											<tr className="border-b border-gray-100 bg-gray-50/50">
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider w-8">
+													#
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Ref #
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Invoice #
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Inv Date
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Inv Amount
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Paid
+												</th>
+												<th className="text-right px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Balance
+												</th>
+												<th className="text-center px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Status
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Rcvd Date
+												</th>
+												<th className="text-left px-3 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+													Mode
+												</th>
+											</tr>
+										</thead>
+										<tbody>
+											{data.receivables.map((ar, idx) => (
+												<tr
+													key={ar.reference_number || idx}
+													className={`border-b border-gray-50 hover:bg-purple-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+												>
+													<td className="px-3 py-2.5 text-gray-400 text-xs">
+														{idx + 1}
+													</td>
+													<td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
+														{ar.reference_number}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{ar.invoice_number || '—'}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{fmtDate(ar.invoice_date)}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
+														₹{fmtAmount(n(ar.invoice_amount))}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
+														₹{fmtAmount(n(ar.paid_amount))}
+													</td>
+													<td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
 														<span
 															className={
-																ar.balance_due > 0
+																n(ar.balance_due) > 0
 																	? 'text-red-600'
 																	: 'text-gray-400'
 															}
 														>
-															₹{fmtAmount(ar.balance_due)}
+															₹{fmtAmount(n(ar.balance_due))}
 														</span>
-													</Td>
-													<Td>{arStatusBadge(ar.status)}</Td>
-													<Td>{fmtDate(ar.received_date)}</Td>
-													<Td className="capitalize">
-														{ar.payment_mode || '\u2014'}
-													</Td>
-												</Tr>
+													</td>
+													<td className="px-3 py-2.5 text-center">
+														<span
+															className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${statusColor(ar.status)}`}
+														>
+															{ar.status.replace(/_/g, ' ')}
+														</span>
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{fmtDate(ar.received_date)}
+													</td>
+													<td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+														{ar.payment_mode || '—'}
+													</td>
+												</tr>
 											))}
 										</tbody>
 										<tfoot>
-											<Tr bold>
-												<Td muted center>
-													&nbsp;
-												</Td>
-												<Td strong>TOTAL</Td>
-												<Td>&nbsp;</Td>
-												<Td>&nbsp;</Td>
-												<Td right amounts strong>
+											<tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+												<td className="px-3 py-2.5" colSpan={4} />
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 													₹
 													{fmtAmount(
-														receivables.reduce(
-															(s, a) => s + (a.invoice_amount || 0),
+														data.receivables.reduce(
+															(s, a) => s + n(a.invoice_amount),
 															0
 														)
 													)}
-												</Td>
-												<Td right amounts strong>
+												</td>
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 													₹
 													{fmtAmount(
-														receivables.reduce(
-															(s, a) => s + (a.paid_amount || 0),
+														data.receivables.reduce(
+															(s, a) => s + n(a.paid_amount),
 															0
 														)
 													)}
-												</Td>
-												<Td right amounts strong>
+												</td>
+												<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 													₹
 													{fmtAmount(
-														receivables.reduce(
-															(s, a) => s + (a.balance_due || 0),
+														data.receivables.reduce(
+															(s, a) => s + n(a.balance_due),
 															0
 														)
 													)}
-												</Td>
-												<Td>&nbsp;</Td>
-												<Td>&nbsp;</Td>
-												<Td>&nbsp;</Td>
-											</Tr>
+												</td>
+												<td colSpan={3} />
+											</tr>
 										</tfoot>
 									</table>
 								</div>
 							)}
-						</SectionCard>
+						</div>
 					</div>
 				)}
 			</div>
 		</div>
-	);
-}
-
-// ── Sub-components ─────────────────────────────────────────────────────
-
-function SectionCard({
-	title,
-	count,
-	icon,
-	children,
-}: {
-	title: string;
-	count: number;
-	icon: React.ReactNode;
-	children: React.ReactNode;
-}) {
-	return (
-		<div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-			<div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
-				{icon}
-				<h3 className="text-sm font-semibold text-gray-800">{title}</h3>
-				<span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full font-medium">
-					{count}
-				</span>
-			</div>
-			<div className="p-0">{children}</div>
-		</div>
-	);
-}
-
-function EmptyMessage({ label }: { label: string }) {
-	return (
-		<p className="text-sm text-gray-400 italic px-4 py-8 text-center">
-			{label}
-		</p>
-	);
-}
-
-// ── Table primitives ───────────────────────────────────────────────────
-
-function Th({
-	children,
-	right,
-	center,
-}: {
-	children: React.ReactNode;
-	right?: boolean;
-	center?: boolean;
-}) {
-	return (
-		<th
-			className={`px-3 py-2 text-[10px] font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap ${
-				right ? 'text-right' : center ? 'text-center' : 'text-left'
-			}`}
-		>
-			{children}
-		</th>
-	);
-}
-
-function Tr({
-	children,
-	i,
-	bold,
-}: {
-	children: React.ReactNode;
-	i?: number;
-	bold?: boolean;
-}) {
-	return (
-		<tr
-			className={`border-b border-gray-50 ${
-				bold
-					? 'border-t-2 border-gray-200 bg-gray-50 font-semibold'
-					: `hover:bg-purple-50/30 transition-colors ${i !== undefined && i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`
-			}`}
-		>
-			{children}
-		</tr>
-	);
-}
-
-function Td({
-	children,
-	right,
-	center,
-	muted,
-	amounts,
-	strong,
-	bold,
-	className,
-}: {
-	children: React.ReactNode;
-	right?: boolean;
-	center?: boolean;
-	muted?: boolean;
-	amounts?: boolean;
-	strong?: boolean;
-	bold?: boolean;
-	className?: string;
-}) {
-	return (
-		<td
-			className={`px-3 py-2.5 whitespace-nowrap ${
-				muted ? 'text-gray-400 text-xs' : ''
-			} ${right ? 'text-right tabular-nums' : ''} ${
-				center ? 'text-center' : ''
-			} ${amounts ? 'text-gray-700' : ''} ${
-				strong || bold ? 'font-semibold text-gray-800' : ''
-			} ${className || ''}`}
-		>
-			{children}
-		</td>
 	);
 }

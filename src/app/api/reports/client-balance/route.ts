@@ -104,16 +104,25 @@ interface ReceivableRow {
 	ar_received_count: number;
 }
 
+interface IssueRow {
+	client_name: string;
+	total_issued: number;
+	total_issued_gross: number;
+	total_issued_deduction: number;
+	issue_count: number;
+}
+
 interface PeriodRow {
 	client_name: string;
 	period_invoiced: number;
 	period_received: number;
+	period_issued: number;
 }
-
 interface OpeningBalanceRow {
 	client_name: string;
 	opening_invoiced: number;
 	opening_received: number;
+	opening_issued: number;
 }
 
 // ── Output shape ──────────────────────────────────────────────────
@@ -135,6 +144,11 @@ export interface ClientBalanceItem {
 	total_tds: number;
 	total_gst: number;
 	receipt_count: number;
+	/** From payment_issues (issued to client) */
+	total_issued: number;
+	total_issued_gross: number;
+	total_issued_deduction: number;
+	issue_count: number;
 	/** From quotations (pipeline) */
 	pipeline_value: number;
 	quotation_count: number;
@@ -146,15 +160,15 @@ export interface ClientBalanceItem {
 	ar_pending_count: number;
 	ar_partial_count: number;
 	ar_received_count: number;
-	/** Current net balance = invoiced - received */
+	/** Current net balance = invoiced - received + issued */
 	net_balance: number;
 	/** Period fields (only when date range provided) */
 	opening_balance?: number;
 	period_invoiced?: number;
 	period_received?: number;
+	period_issued?: number;
 	closing_balance?: number;
 }
-
 // ── Helpers ───────────────────────────────────────────────────────
 
 function normKey(name: string): string {
@@ -313,8 +327,21 @@ export async function GET(request: Request) {
 			WHERE isDelete = 0 AND client_name IS NOT NULL AND client_name != ''
 			GROUP BY client_name`
 		);
+		// ── 5. Payment issues (issued to client) ─────────────────
+		const [issueRows] = await query(
+			`SELECT
+				payee_name AS client_name,
+				COALESCE(SUM(net_amount), 0) AS total_issued,
+				COALESCE(SUM(amount), 0) AS total_issued_gross,
+				COALESCE(SUM(deduction), 0) AS total_issued_deduction,
+				COUNT(*) AS issue_count
+			FROM payment_issues
+			WHERE isDelete = 0 AND payee_type = 'company'
+				AND payee_name IS NOT NULL AND payee_name != ''
+			GROUP BY payee_name`
+		);
 
-		// ── 5. Period computations (only when date range) ────────
+		// ── 6. Period computations (only when date range) ────────
 		let periodRows: PeriodRow[] = [];
 		let openingRows: OpeningBalanceRow[] = [];
 
@@ -334,6 +361,7 @@ export async function GET(request: Request) {
 				client_name: r.client_name,
 				period_invoiced: n(r.period_invoiced),
 				period_received: 0,
+				period_issued: 0,
 			}));
 
 			const [payPRows] = await query(
@@ -369,6 +397,46 @@ export async function GET(request: Request) {
 						client_name: r.client_name,
 						period_invoiced: 0,
 						period_received: n(r.period_received),
+						period_issued: 0,
+					});
+				}
+			}
+
+			const [issuePRows] = await query(
+				`SELECT
+					payee_name AS client_name,
+					COALESCE(SUM(CASE WHEN issue_date >= ? AND issue_date <= ? THEN net_amount ELSE 0 END), 0) AS period_issued
+				FROM payment_issues
+				WHERE isDelete = 0 AND payee_type = 'company'
+					AND payee_name IS NOT NULL AND payee_name != ''
+				GROUP BY payee_name`,
+				[fromDate, toDate]
+			);
+
+			const issuePMap = new Map<string, number>();
+			for (const r of issuePRows as Array<{
+				client_name: string;
+				period_issued: number;
+			}>) {
+				issuePMap.set(normKey(resolveName(r.client_name)), n(r.period_issued));
+			}
+			for (const r of periodRows) {
+				const key = normKey(resolveName(r.client_name));
+				r.period_issued = issuePMap.get(key) ?? 0;
+			}
+			for (const r of issuePRows as Array<{
+				client_name: string;
+				period_issued: number;
+			}>) {
+				const key = normKey(resolveName(r.client_name));
+				if (
+					!periodRows.some((pr) => normKey(resolveName(pr.client_name)) === key)
+				) {
+					periodRows.push({
+						client_name: r.client_name,
+						period_invoiced: 0,
+						period_received: 0,
+						period_issued: n(r.period_issued),
 					});
 				}
 			}
@@ -411,6 +479,7 @@ export async function GET(request: Request) {
 				opening_invoiced: n(r.opening_invoiced),
 				opening_received:
 					openPayMap.get(normKey(resolveName(r.client_name))) ?? 0,
+				opening_issued: 0,
 			}));
 			for (const r of openPayRows as Array<{
 				client_name: string;
@@ -426,6 +495,51 @@ export async function GET(request: Request) {
 						client_name: r.client_name,
 						opening_invoiced: 0,
 						opening_received: n(r.opening_received),
+						opening_issued: 0,
+					});
+				}
+			}
+
+			const [openIssueRows] = await query(
+				`SELECT
+					payee_name AS client_name,
+					COALESCE(SUM(net_amount), 0) AS opening_issued
+				FROM payment_issues
+				WHERE isDelete = 0 AND payee_type = 'company'
+					AND issue_date < ? AND payee_name IS NOT NULL AND payee_name != ''
+				GROUP BY payee_name`,
+				[fromDate]
+			);
+
+			const openIssueMap = new Map<string, number>();
+			for (const r of openIssueRows as Array<{
+				client_name: string;
+				opening_issued: number;
+			}>) {
+				openIssueMap.set(
+					normKey(resolveName(r.client_name)),
+					n(r.opening_issued)
+				);
+			}
+			for (const r of openingRows) {
+				const key = normKey(resolveName(r.client_name));
+				r.opening_issued = openIssueMap.get(key) ?? 0;
+			}
+			for (const r of openIssueRows as Array<{
+				client_name: string;
+				opening_issued: number;
+			}>) {
+				const key = normKey(resolveName(r.client_name));
+				if (
+					!openingRows.some(
+						(or) => normKey(resolveName(or.client_name)) === key
+					)
+				) {
+					openingRows.push({
+						client_name: r.client_name,
+						opening_invoiced: 0,
+						opening_received: 0,
+						opening_issued: n(r.opening_issued),
 					});
 				}
 			}
@@ -451,6 +565,10 @@ export async function GET(request: Request) {
 					total_tds: 0,
 					total_gst: 0,
 					receipt_count: 0,
+					total_issued: 0,
+					total_issued_gross: 0,
+					total_issued_deduction: 0,
+					issue_count: 0,
 					pipeline_value: 0,
 					quotation_count: 0,
 					approved_quote_count: 0,
@@ -514,6 +632,15 @@ export async function GET(request: Request) {
 			c.ar_received_count += n(r.ar_received_count);
 		}
 
+		for (const r of issueRows as IssueRow[]) {
+			const canonical = resolveName(r.client_name);
+			const c = ensure(normKey(canonical), canonical);
+			c.total_issued += n(r.total_issued);
+			c.total_issued_gross += n(r.total_issued_gross);
+			c.total_issued_deduction += n(r.total_issued_deduction);
+			c.issue_count += n(r.issue_count);
+		}
+
 		// Period & opening data — resolve names
 		if (hasDateRange) {
 			const periodMap = new Map<string, PeriodRow>();
@@ -523,6 +650,7 @@ export async function GET(request: Request) {
 				if (existing) {
 					existing.period_invoiced += r.period_invoiced;
 					existing.period_received += r.period_received;
+					existing.period_issued += r.period_issued;
 				} else {
 					periodMap.set(key, { ...r });
 				}
@@ -534,6 +662,7 @@ export async function GET(request: Request) {
 				if (existing) {
 					existing.opening_invoiced += r.opening_invoiced;
 					existing.opening_received += r.opening_received;
+					existing.opening_issued += r.opening_issued;
 				} else {
 					openMap.set(key, { ...r });
 				}
@@ -542,45 +671,57 @@ export async function GET(request: Request) {
 			for (const [key, c] of clientMap) {
 				const pr = periodMap.get(key);
 				const or = openMap.get(key);
-				const opening = or ? or.opening_invoiced - or.opening_received : 0;
+				const opening = or
+					? or.opening_invoiced - or.opening_received + or.opening_issued
+					: 0;
 				const periodInv = pr?.period_invoiced ?? 0;
 				const periodRecv = pr?.period_received ?? 0;
+				const periodIss = pr?.period_issued ?? 0;
 
 				c.opening_balance = opening;
 				c.period_invoiced = periodInv;
 				c.period_received = periodRecv;
-				c.closing_balance = opening + periodInv - periodRecv;
+				c.period_issued = periodIss;
+				c.closing_balance = opening + periodInv - periodRecv + periodIss;
 			}
-
 			for (const r of periodRows) {
 				const key = normKey(resolveName(r.client_name));
 				if (!clientMap.has(key)) {
 					const c = ensure(key, resolveName(r.client_name));
 					const or = openMap.get(key);
-					const opening = or ? or.opening_invoiced - or.opening_received : 0;
+					const opening = or
+						? or.opening_invoiced - or.opening_received + or.opening_issued
+						: 0;
 					c.opening_balance = opening;
 					c.period_invoiced = r.period_invoiced;
 					c.period_received = r.period_received;
-					c.closing_balance = opening + r.period_invoiced - r.period_received;
+					c.period_issued = r.period_issued;
+					c.closing_balance =
+						opening + r.period_invoiced - r.period_received + r.period_issued;
 				}
 			}
 			for (const r of openingRows) {
 				const key = normKey(resolveName(r.client_name));
 				const c = ensure(key, resolveName(r.client_name));
 				if (c.opening_balance === undefined) {
-					const opening = r.opening_invoiced - r.opening_received;
+					const opening =
+						r.opening_invoiced - r.opening_received + r.opening_issued;
 					c.opening_balance = opening;
 					c.period_invoiced = c.period_invoiced ?? 0;
 					c.period_received = c.period_received ?? 0;
+					c.period_issued = c.period_issued ?? 0;
 					c.closing_balance =
-						opening + (c.period_invoiced ?? 0) - (c.period_received ?? 0);
+						opening +
+						(c.period_invoiced ?? 0) -
+						(c.period_received ?? 0) +
+						(c.period_issued ?? 0);
 				}
 			}
 		}
 
-		// Compute net_balance
+		// Compute net_balance = invoiced - received + issued
 		for (const c of clientMap.values()) {
-			c.net_balance = c.total_invoiced - c.total_received;
+			c.net_balance = c.total_invoiced - c.total_received + c.total_issued;
 		}
 
 		// Sort by net_balance descending (largest outstanding first)
@@ -592,6 +733,7 @@ export async function GET(request: Request) {
 		const totalOutstanding = data.reduce((s, c) => s + c.net_balance, 0);
 		const totalInvoiced = data.reduce((s, c) => s + c.total_invoiced, 0);
 		const totalReceived = data.reduce((s, c) => s + c.total_received, 0);
+		const totalIssued = data.reduce((s, c) => s + c.total_issued, 0);
 		const totalPipeline = data.reduce((s, c) => s + c.pipeline_value, 0);
 
 		return NextResponse.json({
@@ -601,6 +743,7 @@ export async function GET(request: Request) {
 				total_clients: data.length,
 				total_invoiced: totalInvoiced,
 				total_received: totalReceived,
+				total_issued: totalIssued,
 				total_outstanding: totalOutstanding,
 				total_pipeline: totalPipeline,
 				...(hasDateRange && { from_date: fromDate, to_date: toDate }),

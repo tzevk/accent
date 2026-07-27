@@ -89,6 +89,20 @@ interface PaymentDetail {
 	bank_name: string | null;
 }
 
+interface IssueDetail {
+	payee_name: string;
+	invoice_number: string | null;
+	invoice_date: string | null;
+	invoice_amount: number;
+	amount: number;
+	deduction: number;
+	net_amount: number;
+	issue_date: string | null;
+	transaction_reference: string | null;
+	bank_name: string | null;
+	status: string;
+}
+
 interface QuotationDetail {
 	quotation_number: string | null;
 	quotation_date: string | null;
@@ -114,6 +128,7 @@ interface ClientDetailResponse {
 	client_name: string;
 	invoices: InvoiceDetail[];
 	payments: PaymentDetail[];
+	issued: IssueDetail[];
 	quotations: QuotationDetail[];
 	receivables: ReceivableDetail[];
 }
@@ -216,8 +231,36 @@ export async function GET(request: Request) {
 		paymentQuery += ` ORDER BY payment_date DESC, receipt_no DESC`;
 
 		const [paymentRows] = await query(paymentQuery, paymentParams);
+		// ── 3. Payment issues (issued to client) ────────────────────
+		let issueQuery = `
+			SELECT
+				payee_name,
+				invoice_number,
+				invoice_date,
+				COALESCE(invoice_amount, 0) AS invoice_amount,
+				COALESCE(amount, 0) AS amount,
+				COALESCE(deduction, 0) AS deduction,
+				COALESCE(net_amount, 0) AS net_amount,
+				issue_date,
+				transaction_reference,
+				bank_name,
+				status
+			FROM payment_issues
+			WHERE isDelete = 0 AND payee_type = 'company'
+				AND LOWER(TRIM(payee_name)) = LOWER(TRIM(?))
+		`;
+		const issueParams: (string | number)[] = [clientName];
 
-		// ── 3. Quotations ────────────────────────────────────────────
+		if (hasDateRange) {
+			issueQuery += ` AND issue_date >= ? AND issue_date <= ?`;
+			issueParams.push(fromDate, toDate);
+		}
+
+		issueQuery += ` ORDER BY issue_date DESC, invoice_number DESC`;
+
+		const [issueRows] = await query(issueQuery, issueParams);
+
+		// ── 4. Quotations ────────────────────────────────────────────
 		const [quoteRows] = await query(
 			`SELECT
 				quotation_number,
@@ -231,7 +274,7 @@ export async function GET(request: Request) {
 			[clientName]
 		);
 
-		// ── 4. Payment receivables (AR) ──────────────────────────────
+		// ── 5. Payment receivables (AR) ──────────────────────────────
 		const [arRows] = await query(
 			`SELECT
 				reference_number,
@@ -256,6 +299,7 @@ export async function GET(request: Request) {
 			client_name: clientName,
 			invoices: invoiceRows as InvoiceDetail[],
 			payments: paymentRows as PaymentDetail[],
+			issued: issueRows as IssueDetail[],
 			quotations: quoteRows as QuotationDetail[],
 			receivables: arRows as ReceivableDetail[],
 		} satisfies ClientDetailResponse);
