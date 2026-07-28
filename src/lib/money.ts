@@ -19,13 +19,13 @@ export const add = (...vals: Decimal.Value[]): Decimal => {
 };
 
 export const sub = (a: Decimal.Value, b: Decimal.Value): Decimal =>
-	R(a).minus(b);
+	R(a).minus(R(b));
 
 export const mul = (a: Decimal.Value, b: Decimal.Value): Decimal =>
-	R(a).times(b);
+	R(a).times(R(b));
 
-export const div = (a: Decimal.Value, b: Decimal.Value): Decimal => R(a).div(b);
-
+export const div = (a: Decimal.Value, b: Decimal.Value): Decimal =>
+	R(a).div(R(b));
 /**
  * amount × (percent / 100), rounded.
  * Default 2dp for money, 0dp for salary heads.
