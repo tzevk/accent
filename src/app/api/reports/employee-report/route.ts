@@ -84,24 +84,24 @@ interface ProjectRow {
 	[key: string]: unknown;
 }
 
-/** Shape of an activity item inside `project_activities_list` JSON. */
-interface ActivityItem {
-	id?: string | number;
+/** Raw row from `user_activity_assignments` table. */
+interface UaaRow {
+	user_id: number | string;
+	project_id: number | string;
+	activity_id: string;
 	activity_name?: string;
-	name?: string;
+	discipline_name?: string;
 	sub_activity_name?: string;
-	sub_activity?: string;
-	assigned_users?: Array<string | AssignmentData>;
-	[key: string]: unknown;
-}
-
-/** Shape of a single user assignment inside an activity's `assigned_users`. */
-interface AssignmentData {
-	user_id?: number | string;
-	planned_hours?: number | string;
+	default_manhours?: number | string;
+	estimated_hours?: number | string;
+	actual_hours?: number | string;
+	qty_assigned?: number | string;
 	qty_completed?: number | string;
 	due_date?: string | null;
+	status?: string;
+	remarks?: string;
 	daily_entries?: string | DailyEntry[];
+	created_at?: string;
 	[key: string]: unknown;
 }
 
@@ -241,7 +241,7 @@ export async function GET(request: Request) {
 				ORDER BY project_id, created_at ASC
 			`);
 
-			for (const row of assignments as any[]) {
+			for (const row of assignments as UaaRow[]) {
 				const userId = String(row.user_id);
 				const projectId = String(row.project_id);
 				const projInfo = projectMap.get(projectId) || {
@@ -270,7 +270,9 @@ export async function GET(request: Request) {
 					}
 				}
 				dailyEntries = Array.isArray(dailyEntries)
-					? dailyEntries.filter((e: any) => e != null && typeof e === 'object')
+					? dailyEntries.filter(
+							(e: DailyEntry) => e != null && typeof e === 'object'
+						)
 					: [];
 
 				if (dailyEntries.length === 0) {
