@@ -9,6 +9,7 @@ import React, {
 	lazy,
 	Suspense,
 } from 'react';
+import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { fetchJSON } from '@/utils/http';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -24,6 +25,7 @@ import {
 	ExclamationTriangleIcon,
 	ComputerDesktopIcon,
 	ExclamationCircleIcon,
+	ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
 import { useIdleMonitor } from '@/hooks/useIdleMonitor';
 
@@ -191,7 +193,8 @@ const IdleBadge = memo(function IdleBadge({ idleSeconds }) {
 // ═══════════════════════════════════════════════════
 // ── Main Dashboard Component ──
 // ═══════════════════════════════════════════════════
-export default function UserDashboard({ verifiedUser }) {
+export default function UserDashboard({ verifiedUser, backTo }) {
+	const router = useRouter();
 	const { user: contextUser } = useSessionRBAC();
 	const user = verifiedUser || contextUser;
 	const [loading, setLoading] = useState(true);
@@ -802,24 +805,37 @@ export default function UserDashboard({ verifiedUser }) {
 									style={{ transform: 'translateZ(25px)' }}
 								/>
 								<div className="relative flex items-center justify-between gap-3">
-									<div className="min-w-0">
-										<nav
-											className="text-[11px] xl:text-xs text-white/60 mb-0.5"
-											aria-label="Breadcrumb"
-										>
-											<ol className="inline-flex items-center gap-1">
-												<li>Home</li>
-												<li className="text-white/30">/</li>
-												<li className="text-white/90 font-medium">Dashboard</li>
-											</ol>
-										</nav>
-										<h1 className="text-lg sm:text-xl xl:text-2xl font-bold text-white leading-tight tracking-tight">
-											Good {greeting},{' '}
-											{user?.full_name?.split(' ')[0] || 'User'}
-										</h1>
-										<p className="text-xs xl:text-sm text-white/70">
-											{dateLabel}
-										</p>
+									<div className="flex items-center gap-3 min-w-0">
+										{backTo ? (
+											<button
+												onClick={() => router.push(backTo)}
+												className="shrink-0 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20 transition-colors"
+											>
+												<ArrowLeftIcon className="w-4 h-4" />
+												<span className="hidden sm:inline">Back</span>
+											</button>
+										) : null}
+										<div className="min-w-0">
+											<nav
+												className="text-[11px] xl:text-xs text-white/60 mb-0.5"
+												aria-label="Breadcrumb"
+											>
+												<ol className="inline-flex items-center gap-1">
+													<li>Home</li>
+													<li className="text-white/30">/</li>
+													<li className="text-white/90 font-medium">
+														Dashboard
+													</li>
+												</ol>
+											</nav>
+											<h1 className="text-lg sm:text-xl xl:text-2xl font-bold text-white leading-tight tracking-tight">
+												Good {greeting},{' '}
+												{user?.full_name?.split(' ')[0] || 'User'}
+											</h1>
+											<p className="text-xs xl:text-sm text-white/70">
+												{dateLabel}
+											</p>
+										</div>
 									</div>
 									<div className="flex items-center gap-2 shrink-0">
 										<AnalogClock />
