@@ -137,6 +137,32 @@ function fmtAmount(n: number): string {
 	});
 }
 
+function isZeroClient(c: ClientBalanceItem): boolean {
+	return (
+		c.total_invoiced === 0 &&
+		c.total_received === 0 &&
+		c.total_issued === 0 &&
+		c.net_balance === 0 &&
+		c.pipeline_value === 0 &&
+		c.invoice_count === 0 &&
+		c.receipt_count === 0 &&
+		c.paid_count === 0 &&
+		c.partial_count === 0 &&
+		c.unbilled_count === 0 &&
+		c.overdue_inv_count === 0 &&
+		c.ar_overdue_amount === 0 &&
+		c.ar_overdue_count === 0 &&
+		c.ar_pending_count === 0 &&
+		c.ar_partial_count === 0 &&
+		c.ar_received_count === 0 &&
+		(c.opening_balance ?? 0) === 0 &&
+		(c.period_invoiced ?? 0) === 0 &&
+		(c.period_received ?? 0) === 0 &&
+		(c.period_issued ?? 0) === 0 &&
+		(c.closing_balance ?? 0) === 0
+	);
+}
+
 type SortKey =
 	| 'client_name'
 	| 'total_invoiced'
@@ -175,6 +201,7 @@ export default function ClientBalancePage() {
 	const [toDate, setToDate] = useState(getToday());
 	const [sortKey, setSortKey] = useState<SortKey>('net_balance');
 	const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+	const [showAll, setShowAll] = useState(false);
 
 	const hasDateRange = !!(fromDate && toDate);
 
@@ -211,9 +238,14 @@ export default function ClientBalancePage() {
 		return data.filter((c) => c.client_name.toLowerCase().includes(q));
 	}, [data, search]);
 
+	const displayed = useMemo(() => {
+		if (showAll) return filtered;
+		return filtered.filter((c) => !isZeroClient(c));
+	}, [filtered, showAll]);
+
 	const sorted = useMemo(() => {
 		const dir = sortDir === 'asc' ? 1 : -1;
-		return [...filtered].sort((a, b) => {
+		return [...displayed].sort((a, b) => {
 			if (sortKey === 'client_name') {
 				return dir * a.client_name.localeCompare(b.client_name);
 			}
@@ -221,7 +253,7 @@ export default function ClientBalancePage() {
 			const bVal = b[sortKey] ?? 0;
 			return dir * (Number(aVal) - Number(bVal));
 		});
-	}, [filtered, sortKey, sortDir]);
+	}, [displayed, sortKey, sortDir]);
 
 	const totals = useMemo(() => {
 		return sorted.reduce(
@@ -550,10 +582,20 @@ export default function ClientBalancePage() {
 						</button>
 					)}
 
+					<button
+						onClick={() => setShowAll((v) => !v)}
+						className="px-2 py-1.5 text-[11px] font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded transition border border-purple-200"
+					>
+						{showAll ? 'Hide Zero' : 'Show All'}
+					</button>
+
 					{!isLoading && (
 						<span className="text-[11px] text-gray-400">
-							{filtered.length} of {data.length} clients
+							{displayed.length} of {data.length} clients
 							{search ? ' (filtered)' : ''}
+							{!showAll &&
+								filtered.length - displayed.length > 0 &&
+								` \u00B7 ${filtered.length - displayed.length} zero-value hidden`}
 						</span>
 					)}
 				</div>
@@ -576,6 +618,23 @@ export default function ClientBalancePage() {
 					<div className="bg-white rounded-xl border border-gray-100 p-14 text-center text-gray-400 text-sm">
 						<ArrowPathIcon className="w-5 h-5 mx-auto mb-2 animate-spin" />
 						Loading...
+					</div>
+				) : sorted.length === 0 && filtered.length > 0 ? (
+					<div className="bg-white rounded-xl border border-gray-100 p-14 text-center">
+						<BuildingOfficeIcon className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+						<p className="text-gray-500 font-medium text-sm mb-3">
+							{search
+								? 'No matching clients.'
+								: 'All clients have zero balance for this period.'}
+						</p>
+						{!showAll && !search && (
+							<button
+								onClick={() => setShowAll(true)}
+								className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
+							>
+								Show All Clients
+							</button>
+						)}
 					</div>
 				) : sorted.length === 0 ? (
 					<div className="bg-white rounded-xl border border-gray-100 p-14 text-center">
