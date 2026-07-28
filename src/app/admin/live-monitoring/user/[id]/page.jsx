@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
+import { Button } from '@/components/ui/button';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import UserDashboard from '@/app/dashboard/user-dashboard';
 
@@ -83,17 +85,30 @@ export default function LiveMonitoringUserPage() {
 					<div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
 						{error || 'User not found.'}
 					</div>
-					<button
+					<Button
+						variant="outline"
+						size="sm"
 						onClick={() => router.push('/admin/live-monitoring')}
-						className="mt-4 inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+						className="mt-4 inline-flex items-center"
 					>
-						← Back to Live Monitoring
-					</button>
+						<ArrowLeftIcon className="w-4 h-4" />
+						Back to Live Monitoring
+					</Button>
 				</main>
 			</div>
 		);
 	}
 
-	// Display the user's dashboard as it is
-	return <UserDashboard verifiedUser={selectedUser} />;
+	// Display the user's dashboard with a back button
+	return (
+		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
+			<Navbar />
+			<main className="px-6 pt-24 pb-8 max-w-full mx-auto w-full">
+				<UserDashboard
+					verifiedUser={selectedUser}
+					backTo="/admin/live-monitoring"
+				/>
+			</main>
+		</div>
+	);
 }
