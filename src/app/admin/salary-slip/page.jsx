@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import { InlineSpinner } from '@/components/LoadingSpinner';
 import { useRouter } from 'next/navigation';
+import { formatCurrency } from '@/lib/format';
 import {
 	ArrowLeftIcon,
 	ArrowDownTrayIcon,
@@ -172,15 +173,6 @@ export default function SalarySlipPage() {
 	const formatMonthDisplay = (monthStr) => {
 		const d = new Date(monthStr);
 		return d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-	};
-
-	const formatCurrency = (amount) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 0,
-		}).format(amount || 0);
 	};
 
 	return (

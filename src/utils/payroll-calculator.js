@@ -16,6 +16,7 @@ import PAYROLL_CONFIG, {
 	calculateProfessionalTax,
 } from './payroll-config';
 import { dbConnect } from './database';
+import { R, add, sub, pctOf, roundR, toNumber } from '@/lib/money';
 
 /**
  * Get current active DA amount from da_schedule
@@ -484,263 +485,14 @@ export async function calculateEmployeePayroll(
 	// Get attendance data for the month
 	const attendance = await getEmployeeAttendance(employeeId, month);
 
-	// Full month values from salary profile — use as-is, no pro-rata multiplication
-	const fullGross = parseFloat(profile.gross_salary || profile.gross) || 0;
-	const fullOtherAllowances = parseFloat(profile.other_allowances) || 0;
-	const pfApplicable = profile.pf_applicable === 1;
-	const esicApplicable = profile.esic_applicable === 1;
-	const ptApplicable = profile.pt_applicable === 1;
-	const mlwfApplicable = profile.mlwf_applicable === 1;
-	const retentionApplicable = profile.retention_applicable === 1;
-	const bonusApplicable = profile.bonus_applicable === 1;
-	const monthlyBonus = profile.monthly_bonus === 1;
-	const incentiveApplicable = profile.incentive_applicable === 1;
-	const insuranceApplicable = profile.insurance_applicable === 1;
-
-	// Use profile values directly — no attendance-based pro-rata
-	const gross = fullGross;
-	const otherAllowances = fullOtherAllowances;
-	const lopDeduction = 0;
-
-	// ═══════════════════════════════════════════════════════════════════
-	// EARNINGS (Using saved profile values or calculate from percentages)
-	// ═══════════════════════════════════════════════════════════════════
-
-	// Use saved breakdown values if available, otherwise calculate
-	let basic, da, hra, conveyance, callAllowance, bonus, incentive;
-
-	if (profile.basic && profile.da) {
-		// Use saved values as-is
-		basic = Math.round(parseFloat(profile.basic) || 0);
-		da = Math.round(parseFloat(profile.da) || 0);
-		hra = Math.round(parseFloat(profile.hra) || 0);
-		conveyance = Math.round(parseFloat(profile.conveyance) || 0);
-		callAllowance = Math.round(parseFloat(profile.call_allowance) || 0);
-		bonus =
-			monthlyBonus || (includeBonus && bonusApplicable)
-				? Math.round(parseFloat(profile.bonus) || 0)
-				: 0;
-		incentive = incentiveApplicable
-			? Math.round(parseFloat(profile.incentive) || 0)
-			: 0;
-	} else {
-		// Calculate from gross using PAYROLL_CONFIG percentages
-		// Basic + DA = 60% of Gross
-		const basicDaTotal = Math.round(
-			gross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100)
-		);
-		basic = basicDaTotal - Math.round(daAmount);
-		da = Math.round(daAmount);
-
-		// HRA = 20% of Gross
-		hra = Math.round(gross * (PAYROLL_CONFIG.HRA_PERCENT / 100));
-
-		// Conveyance = 10% of Gross
-		conveyance = Math.round(gross * (PAYROLL_CONFIG.CONVEYANCE_PERCENT / 100));
-
-		// Call Allowance = 10% of Gross
-		callAllowance = Math.round(
-			gross * (PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT / 100)
-		);
-
-		bonus = 0;
-		incentive = 0;
-	}
-
-	const overtimeHours = parseFloat(attendance.totalOvertimeHours || 0);
-	const otRate =
-		overtimeHours > 0
-			? parseFloat((((basic + da) / 8) * overtimeHours).toFixed(2))
-			: 0;
-
-	const totalEarnings =
-		basic +
-		da +
-		hra +
-		conveyance +
-		callAllowance +
-		otherAllowances +
-		bonus +
-		incentive +
-		otRate;
-
-	// ═══════════════════════════════════════════════════════════════════
-	// EMPLOYEE DEDUCTIONS (calculated on actual payable gross)
-	// ═══════════════════════════════════════════════════════════════════
-
-	// PF: 12% of Gross (capped at wage ceiling)
-	const pfBreakdown = calculatePF(gross, pfApplicable, '15000');
-	const pfEmployee = pfBreakdown.employeeContribution;
-
-	// ESIC: 0.75% of Gross (only if eligible)
-	const esicBreakdown = calculateESIC(gross, esicApplicable);
-	const esicEmployee = esicBreakdown.employeeContribution;
-
-	// Professional Tax (Maharashtra slab) - fixed amount, not pro-rata
-	const pt = ptApplicable ? calculateProfessionalTax(fullGross) : 0;
-
-	// MLWF - only applicable in June and December
-	const mlwfMonth = new Date(month).getMonth() + 1; // 1-based month
-	const isMLWFMonth = mlwfMonth === 6 || mlwfMonth === 12;
-	const mlwf =
-		mlwfApplicable && isMLWFMonth ? parseFloat(profile.mlwf) || 0 : 0;
-
-	// Retention
-	const retention = retentionApplicable
-		? parseFloat(profile.retention) || 0
-		: 0;
-
-	// LWF, TDS, Other deductions
-	const lwf = 0; // Usually ₹25 twice a year
-	const tds = 0; // Calculated separately based on tax regime
-	const otherDeductions = 0;
-
-	const totalDeductions =
-		pfEmployee +
-		esicEmployee +
-		pt +
-		mlwf +
-		retention +
-		lwf +
-		tds +
-		otherDeductions;
-
-	// ═══════════════════════════════════════════════════════════════════
-	// NET PAY
-	// ═══════════════════════════════════════════════════════════════════
-
-	const netPay = totalEarnings - totalDeductions;
-
-	// ═══════════════════════════════════════════════════════════════════
-	// EMPLOYER CONTRIBUTIONS
-	// ═══════════════════════════════════════════════════════════════════
-
-	// Employer PF: 13% of Gross
-	const pfEmployer = pfBreakdown.employerTotal;
-
-	// Employer ESIC: 3.25% of Gross
-	const esicEmployer = esicBreakdown.employerContribution;
-
-	// Employer MLWF - only applicable in June and December
-	const mlwfEmployer =
-		mlwfApplicable && isMLWFMonth ? parseFloat(profile.mlwf_employer) || 0 : 0;
-
-	// Insurance (PA/Mediclaim)
-	const insurance = insuranceApplicable
-		? parseFloat(profile.insurance) || 0
-		: 0;
-
-	// Gratuity: 4.81% of Basic (calculated on full basic, not pro-rata)
-	const fullBasic =
-		parseFloat(profile.basic) ||
-		Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100) - daAmount);
-	const gratuity = Math.round(
-		fullBasic * (PAYROLL_CONFIG.GRATUITY_PERCENT / 100)
-	);
-
-	// PF Admin: 0.5% of wage base
-	const pfAdmin = pfBreakdown.pfAdmin;
-
-	// EDLI: 0.5% of wage base
-	const edli = Math.round(
-		pfBreakdown.wageBase * (PAYROLL_CONFIG.EDLI_PERCENT / 100)
-	);
-
-	const totalEmployerContributions =
-		pfEmployer +
-		esicEmployer +
-		mlwfEmployer +
-		bonus +
-		insurance +
-		gratuity +
-		pfAdmin +
-		edli;
-
-	// ═══════════════════════════════════════════════════════════════════
-	// TOTAL EMPLOYER COST (CTC)
-	// ═══════════════════════════════════════════════════════════════════
-
-	const employerCost = totalEarnings + totalEmployerContributions;
-
-	return {
+	return computePayroll(
+		employeeId,
 		month,
-		employee_id: employeeId,
-
-		// Earnings
-		gross,
-		da_used: daAmount,
-		da,
-		basic,
-		hra,
-		conveyance,
-		call_allowance: callAllowance,
-		other_allowances: otherAllowances,
-		bonus,
-		incentive,
-		ot_rate: otRate,
-		total_earnings: totalEarnings,
-
-		// Employee Deductions
-		pf_employee: pfEmployee,
-		esic_employee: esicEmployee,
-		pt,
-		mlwf,
-		retention,
-		lwf,
-		tds,
-		other_deductions: otherDeductions,
-		total_deductions: totalDeductions,
-
-		// Net Pay
-		net_pay: netPay,
-
-		// Employer Contributions
-		pf_employer: pfEmployer,
-		esic_employer: esicEmployer,
-		mlwf_employer: mlwfEmployer,
-		insurance,
-		gratuity,
-		pf_admin: pfAdmin,
-		edli,
-		total_employer_contributions: totalEmployerContributions,
-
-		// Total Cost
-		employer_cost: employerCost,
-
-		// Attendance Data
-		attendance: {
-			standard_working_days: attendance.standardWorkingDays,
-			days_present: attendance.daysPresent,
-			days_absent: attendance.daysAbsent,
-			days_leave: attendance.daysLeave,
-			weekly_off: attendance.weeklyOff,
-			holidays: attendance.holidays,
-			half_days: attendance.halfDays,
-			payable_days: attendance.payableDays,
-			lop_days: attendance.lopDays,
-			overtime_hours: attendance.totalOvertimeHours,
-			has_attendance_data: attendance.hasAttendanceData,
-		},
-
-		// Full month values (before pro-rata)
-		full_month: {
-			gross: fullGross,
-			other_allowances: fullOtherAllowances,
-		},
-
-		// LOP Deduction
-		lop_deduction: lopDeduction,
-
-		// Privilege Leave (PL) data from salary profile
-		pl_total: parseInt(profile.pl_total) || 21,
-		pl_used: parseInt(profile.pl_used) || 0,
-		pl_balance:
-			parseInt(profile.pl_balance) || 21 - (parseInt(profile.pl_used) || 0),
-
-		// Metadata
-		payment_status: 'pending',
-		remarks: null,
-	};
+		profile,
+		daAmount,
+		attendance,
+		includeBonus
+	);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1105,7 +857,7 @@ async function batchGetAttendance(db, employeeIds, month) {
  * Same logic as calculateEmployeePayroll but accepts pre-fetched data.
  * @param {boolean} includeBonus - Whether to include bonus (default: false)
  */
-function computePayroll(
+export function computePayroll(
 	employeeId,
 	month,
 	profile,
@@ -1113,8 +865,8 @@ function computePayroll(
 	attendance,
 	includeBonus = false
 ) {
-	const fullGross = parseFloat(profile.gross_salary || profile.gross) || 0;
-	const fullOtherAllowances = parseFloat(profile.other_allowances) || 0;
+	const fullGross = R(profile.gross_salary || profile.gross);
+	const fullOtherAllowances = R(profile.other_allowances);
 	const pfApplicable = profile.pf_applicable === 1;
 	const esicApplicable = profile.esic_applicable === 1;
 	const ptApplicable = profile.pt_applicable === 1;
@@ -1133,28 +885,26 @@ function computePayroll(
 	let basic, da, hra, conveyance, callAllowance, bonus, incentive;
 
 	if (profile.basic && profile.da) {
-		basic = Math.round(parseFloat(profile.basic) || 0);
-		da = Math.round(parseFloat(profile.da) || 0);
-		hra = Math.round(parseFloat(profile.hra) || 0);
-		conveyance = Math.round(parseFloat(profile.conveyance) || 0);
-		callAllowance = Math.round(parseFloat(profile.call_allowance) || 0);
+		basic = toNumber(roundR(profile.basic));
+		da = toNumber(roundR(profile.da));
+		hra = toNumber(roundR(profile.hra));
+		conveyance = toNumber(roundR(profile.conveyance));
+		callAllowance = toNumber(roundR(profile.call_allowance));
 		bonus =
 			monthlyBonus || (includeBonus && bonusApplicable)
-				? Math.round(parseFloat(profile.bonus) || 0)
+				? toNumber(roundR(profile.bonus))
 				: 0;
-		incentive = incentiveApplicable
-			? Math.round(parseFloat(profile.incentive) || 0)
-			: 0;
+		incentive = incentiveApplicable ? toNumber(roundR(profile.incentive)) : 0;
 	} else {
-		const basicDaTotal = Math.round(
-			gross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100)
+		const basicDaTotal = toNumber(
+			pctOf(gross, PAYROLL_CONFIG.BASIC_DA_PERCENT, 0)
 		);
 		basic = basicDaTotal - Math.round(daAmount);
 		da = Math.round(daAmount);
-		hra = Math.round(gross * (PAYROLL_CONFIG.HRA_PERCENT / 100));
-		conveyance = Math.round(gross * (PAYROLL_CONFIG.CONVEYANCE_PERCENT / 100));
-		callAllowance = Math.round(
-			gross * (PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT / 100)
+		hra = toNumber(pctOf(gross, PAYROLL_CONFIG.HRA_PERCENT, 0));
+		conveyance = toNumber(pctOf(gross, PAYROLL_CONFIG.CONVEYANCE_PERCENT, 0));
+		callAllowance = toNumber(
+			pctOf(gross, PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT, 0)
 		);
 		bonus = 0;
 		incentive = 0;
@@ -1163,18 +913,26 @@ function computePayroll(
 	const overtimeHours = parseFloat(attendance.totalOvertimeHours || 0);
 	const otRate =
 		overtimeHours > 0
-			? parseFloat((((basic + da) / 8) * overtimeHours).toFixed(2))
+			? toNumber(
+					R(basic + da)
+						.div(8)
+						.times(overtimeHours)
+						.toDecimalPlaces(2)
+				)
 			: 0;
-	const totalEarnings =
-		basic +
-		da +
-		hra +
-		conveyance +
-		callAllowance +
-		otherAllowances +
-		bonus +
-		incentive +
-		otRate;
+	const totalEarnings = toNumber(
+		add(
+			basic,
+			da,
+			hra,
+			conveyance,
+			callAllowance,
+			toNumber(otherAllowances),
+			bonus,
+			incentive,
+			otRate
+		)
+	);
 	const pfBreakdown = calculatePF(gross, pfApplicable, '15000');
 	const pfEmployee = pfBreakdown.employeeContribution;
 	const esicBreakdown = calculateESIC(gross, esicApplicable);
@@ -1187,8 +945,10 @@ function computePayroll(
 	const retention = retentionApplicable
 		? parseFloat(profile.retention) || 0
 		: 0;
-	const totalDeductions = pfEmployee + esicEmployee + pt + mlwf + retention;
-	const netPay = totalEarnings - totalDeductions;
+	const totalDeductions = toNumber(
+		add(pfEmployee, esicEmployee, pt, mlwf, retention)
+	);
+	const netPay = toNumber(sub(totalEarnings, totalDeductions));
 	const pfEmployer = pfBreakdown.employerTotal;
 	const esicEmployer = esicBreakdown.employerContribution;
 	const mlwfEmployer =
@@ -1197,37 +957,42 @@ function computePayroll(
 		? parseFloat(profile.insurance) || 0
 		: 0;
 	const fullBasic =
-		parseFloat(profile.basic) ||
-		Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100) - daAmount);
-	const gratuity = Math.round(
-		fullBasic * (PAYROLL_CONFIG.GRATUITY_PERCENT / 100)
+		R(profile.basic).toNumber() ||
+		pctOf(fullGross, PAYROLL_CONFIG.BASIC_DA_PERCENT, 0)
+			.minus(daAmount)
+			.toNumber();
+	const gratuity = toNumber(
+		pctOf(fullBasic, PAYROLL_CONFIG.GRATUITY_PERCENT, 0)
 	);
 	const pfAdmin = pfBreakdown.pfAdmin;
-	const edli = Math.round(
-		pfBreakdown.wageBase * (PAYROLL_CONFIG.EDLI_PERCENT / 100)
+	const edli = toNumber(
+		pctOf(pfBreakdown.wageBase, PAYROLL_CONFIG.EDLI_PERCENT, 0)
 	);
-	const totalEmployerContributions =
-		pfEmployer +
-		esicEmployer +
-		mlwfEmployer +
-		bonus +
-		insurance +
-		gratuity +
-		pfAdmin +
-		edli;
-	const employerCost = totalEarnings + totalEmployerContributions;
+	const totalEmployerContributions = toNumber(
+		add(
+			pfEmployer,
+			esicEmployer,
+			mlwfEmployer,
+			bonus,
+			insurance,
+			gratuity,
+			pfAdmin,
+			edli
+		)
+	);
+	const employerCost = toNumber(add(totalEarnings, totalEmployerContributions));
 
 	return {
 		month,
 		employee_id: employeeId,
-		gross,
+		gross: toNumber(gross),
 		da_used: daAmount,
 		da,
 		basic,
 		hra,
 		conveyance,
 		call_allowance: callAllowance,
-		other_allowances: otherAllowances,
+		other_allowances: toNumber(otherAllowances),
 		bonus,
 		incentive,
 		ot_rate: otRate,
@@ -1264,7 +1029,10 @@ function computePayroll(
 			overtime_hours: attendance.totalOvertimeHours,
 			has_attendance_data: attendance.hasAttendanceData,
 		},
-		full_month: { gross: fullGross, other_allowances: fullOtherAllowances },
+		full_month: {
+			gross: toNumber(fullGross),
+			other_allowances: toNumber(fullOtherAllowances),
+		},
 		lop_deduction: lopDeduction,
 		pl_total: parseInt(profile.pl_total) || 21,
 		pl_used: parseInt(profile.pl_used) || 0,

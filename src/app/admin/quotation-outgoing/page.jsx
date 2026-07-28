@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import { R, pctOf, toNumber } from '@/lib/money';
 import { useState } from 'react';
 import {
 	DocumentTextIcon,
@@ -105,8 +106,7 @@ const formFields = [
 		step: '0.01',
 		computed: {
 			dependsOn: ['subtotal', 'tax_rate'],
-			calculate: (v) =>
-				((Number(v.subtotal) || 0) * (Number(v.tax_rate) || 0)) / 100,
+			calculate: (v) => toNumber(pctOf(v.subtotal || 0, v.tax_rate || 0)),
 		},
 	},
 	{ name: 'discount', label: 'Discount', type: 'number', step: '0.01' },
@@ -118,9 +118,9 @@ const formFields = [
 		computed: {
 			dependsOn: ['subtotal', 'tax_rate', 'discount'],
 			calculate: (v) => {
-				const sub = Number(v.subtotal) || 0;
-				const tax = (sub * (Number(v.tax_rate) || 0)) / 100;
-				return sub + tax - (Number(v.discount) || 0);
+				const sub = R(v.subtotal || 0);
+				const tax = pctOf(sub, v.tax_rate || 0);
+				return toNumber(sub.add(tax).minus(v.discount || 0));
 			},
 		},
 	},

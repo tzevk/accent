@@ -18,6 +18,7 @@ import {
 	PlusIcon,
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
+import { formatCurrency } from '@/lib/format';
 
 export default function PurchaseOrderPage() {
 	const router = useRouter();
@@ -295,15 +296,6 @@ export default function PurchaseOrderPage() {
 			default:
 				return 'bg-gray-100 text-gray-700';
 		}
-	};
-
-	// Format currency
-	const formatCurrency = (amount) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 2,
-		}).format(amount || 0);
 	};
 
 	// Format date

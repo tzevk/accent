@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
+import { formatCurrency } from '@/lib/format';
 import {
 	ClipboardDocumentListIcon,
 	MagnifyingGlassIcon,
@@ -277,14 +278,6 @@ export default function OutgoingPurchaseOrderPage() {
 					? 'UTC'
 					: undefined,
 		});
-	};
-
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 2,
-		}).format(amount || 0);
 	};
 
 	const getStatusStyle = (status: string) => {

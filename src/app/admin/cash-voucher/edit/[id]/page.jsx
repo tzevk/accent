@@ -13,6 +13,7 @@ import {
 	CheckIcon,
 } from '@heroicons/react/24/outline';
 import SearchableSelect from '@/components/ui/searchable-select';
+import { formatCurrency } from '@/lib/format';
 
 export default function EditCashVoucherPage({ params }) {
 	const { id } = use(params);
@@ -337,15 +338,6 @@ export default function EditCashVoucherPage({ params }) {
 		} finally {
 			setSaving(false);
 		}
-	};
-
-	// Format currency
-	const formatCurrency = (amount) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 2,
-		}).format(amount || 0);
 	};
 
 	if (authLoading || loading) {

@@ -17,6 +17,7 @@ import {
 	TrashIcon,
 	ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
+import { formatCurrency } from '@/lib/format';
 
 export default function CashVoucherPage() {
 	const router = useRouter();
@@ -133,15 +134,6 @@ export default function CashVoucherPage() {
 			v.description?.toLowerCase().includes(search)
 		);
 	});
-
-	// Format currency
-	const formatCurrency = (amount) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 2,
-		}).format(amount || 0);
-	};
 
 	// Format date
 	const formatDate = (dateString) => {

@@ -5,6 +5,7 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import { formatCurrency } from '@/lib/format';
 
 // Helper to format date
 const formatDate = (dateString: any) => {
@@ -15,15 +16,6 @@ const formatDate = (dateString: any) => {
 		month: 'short',
 		year: 'numeric',
 	});
-};
-
-// Helper to format currency
-const formatCurrency = (amount: number) => {
-	return new Intl.NumberFormat('en-IN', {
-		style: 'currency',
-		currency: 'INR',
-		minimumFractionDigits: 2,
-	}).format(amount || 0);
 };
 
 export async function GET(request: Request) {

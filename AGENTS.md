@@ -99,6 +99,79 @@ Use one of three patterns, in order of preference:
 
 The **`db.end()` function has been aliased to `db.release()`** in the connection wrapper — calling `db.end()` in API routes does NOT close the connection, it releases it back to the pool.
 
+## Money arithmetic (`src/lib/money.ts`)
+
+All financial calculations MUST use the centralized `src/lib/money.ts` module built on `decimal.js`. Raw `parseFloat` + JS operators (`+`, `-`, `*`, `/`) on money values are banned — IEEE 754 floats cause rounding errors that compound across invoices, payroll, GST, and PO balances. The MySQL layer uses `DECIMAL(15,2)` which catches some errors on write, but errors compound in JS before storage and in comparison logic (`>=` on float money values can fail silently).
+
+### API
+
+```ts
+import {
+	R,
+	add,
+	sub,
+	mul,
+	div,
+	pctOf,
+	roundR,
+	gte,
+	gt,
+	isZero,
+	toNumber,
+} from '@/lib/money';
+```
+
+| Export                               | Purpose                                                                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `R(v)`                               | Parse a DB value to `Decimal`. mysql2 returns DECIMAL columns as strings, so accepts `string \| number \| Decimal`. Falsy → 0. |
+| `add(...vals)`                       | Exact sum of any number of values                                                                                              |
+| `sub(a, b)`                          | Exact subtraction `a - b`                                                                                                      |
+| `mul(a, b)`                          | Exact multiplication `a × b`                                                                                                   |
+| `div(a, b)`                          | Exact division `a ÷ b`                                                                                                         |
+| `pctOf(amount, percent, dp?)`        | `amount × (percent / 100)`, rounded. Default 2dp for money, pass `0` for whole-rupee salary heads.                             |
+| `roundR(v)`                          | Round to whole rupees (salary components). Equivalent to `pctOf(v, 100, 0)`.                                                   |
+| `gte(a, b)`, `gt(a, b)`, `isZero(v)` | Safe comparisons — use instead of `>=`, `>`, `=== 0` on money values                                                           |
+| `toNumber(d)`                        | Convert `Decimal` → `number`. The ONLY escape hatch — call at DB-write and JSON-response boundaries.                           |
+
+### Rules
+
+- **NEVER** use `parseFloat` or `Number()` to parse a money value — use `R()`.
+- **NEVER** use `+`, `-`, `*`, `/` on money values — use `add`, `sub`, `mul`, `div`.
+- **NEVER** use `>=`, `>`, `=== 0` on money — use `gte`, `gt`, `isZero`.
+- **ALWAYS** use `pctOf` for percentage calculations (GST, PF, HRA, TDS, etc.).
+- **ALWAYS** escape to `number` only at the boundary: `toNumber(d)` for DB INSERT params and JSON responses.
+- **AVOID** intermediate `number` conversions mid-calculation — keep values as `Decimal` until the final boundary.
+
+### Example
+
+```ts
+// BAD — float error
+const gst = (grossAmount * (parseFloat(rate) || 0)) / 100;
+const net = grossAmount + cgstAmount + sgstAmount + igstAmount;
+if (totalPaid >= netAmount) status = 'paid';
+
+// GOOD — exact decimal
+const gst = toNumber(pctOf(grossAmount, parseFloat(rate) || 0));
+const net = toNumber(add(grossAmount, cgstAmount, sgstAmount, igstAmount));
+if (gte(totalPaid, netAmount)) status = 'paid';
+```
+
+## Formatting (`src/lib/format.js`)
+
+Do NOT define local `formatCurrency` / `formatNumber` / `formatDate` helpers in page or route files. Import from `@/lib/format`:
+
+```ts
+import {
+	formatCurrency,
+	formatNumber,
+	formatDate,
+	formatDateTime,
+	formatDateInput,
+} from '@/lib/format';
+```
+
+`formatCurrency` handles `null`/`undefined`/`NaN`/`''` gracefully (returns `'—'`). Uses `Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })` with exactly 2 decimal places. Most local definitions lacked these guards — the shared version is strictly better.
+
 ## RBAC & permissions
 
 Two permission systems coexist:
@@ -186,6 +259,8 @@ The legacy codebase is mostly `.js`/`.jsx` (do not rewrite it unless asked). For
 - **Tables → TanStack Table** (`@tanstack/react-table`) for any new data tables. The `Table` primitive from shadcn (when present) is built on it.
 - **Components** — Radix UI primitives + `lucide-react` icons + `class-variance-authority` + `tailwind-merge` (cn helper). Reuse the shadcn-style components under `src/components/ui/` rather than building parallel ones. Use `clsx`/`tailwind-merge` (not string concatenation) for conditional classes.
 - **API routes** — still follow the pattern in "Adding new API routes" below, but write them as `.ts` with typed request/response shapes (Zod schemas in `src/utils/` are encouraged for validation).
+- **Money → `src/lib/money.ts`** — all financial arithmetic MUST use `R()`, `add`, `sub`, `pctOf`, `gte`, `toNumber` etc. Raw `parseFloat` + JS operators on money are banned. See "Money arithmetic" section above for the full API and rules.
+- **Formatting → `@/lib/format`** — NEVER define local `formatCurrency` helpers; import the shared one. It handles null/NaN/empty gracefully.
 
 ## Architecture notes
 

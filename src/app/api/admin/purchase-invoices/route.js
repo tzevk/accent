@@ -6,6 +6,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
+import { R, sub, gte, gt, toNumber } from '@/lib/money';
 
 const TABLE = 'purchase_invoices';
 
@@ -127,14 +128,14 @@ export async function POST(request) {
 		db = await dbConnect();
 
 		const invoiceNumber = body.invoice_number || (await nextNumber(db));
-		const total = Number(body.total ?? 0);
-		const amountPaid = Number(body.amount_paid ?? 0);
-		const balanceDue = total - amountPaid;
+		const total = R(body.total ?? 0);
+		const amountPaid = R(body.amount_paid ?? 0);
+		const balanceDue = toNumber(sub(total, amountPaid));
 		const paymentStatus =
 			body.payment_status ||
-			(amountPaid >= total && total > 0
+			(gte(amountPaid, total) && gt(total, 0)
 				? 'paid'
-				: amountPaid > 0
+				: gt(amountPaid, 0)
 					? 'partial'
 					: 'unpaid');
 
@@ -168,8 +169,8 @@ export async function POST(request) {
 				body.sgst_amount ?? 0,
 				body.igst_amount ?? 0,
 				body.discount ?? 0,
-				total,
-				amountPaid,
+				toNumber(total),
+				toNumber(amountPaid),
 				balanceDue,
 				paymentStatus,
 				body.notes || null,

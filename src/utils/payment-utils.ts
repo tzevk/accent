@@ -1,3 +1,4 @@
+import { gt, gte } from '@/lib/money';
 import type { PoolConnection } from 'mysql2/promise';
 
 export async function updateInvoicePaymentStatus(
@@ -24,7 +25,7 @@ export async function updateInvoicePaymentStatus(
 	const netAmount = Number(invoiceRows[0].net_amount) || 0;
 
 	let newStatus: string | null = null;
-	if (netAmount > 0 && totalPaid >= netAmount) {
+	if (gt(netAmount, 0) && gte(totalPaid, netAmount)) {
 		newStatus = 'fully_paid';
 	} else if (totalPaid > 0) {
 		newStatus = 'partially_paid';

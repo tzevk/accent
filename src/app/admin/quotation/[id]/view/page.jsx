@@ -10,6 +10,7 @@ import {
 	DocumentTextIcon,
 	PrinterIcon,
 } from '@heroicons/react/24/outline';
+import { formatCurrency } from '@/lib/format';
 
 export default function ViewQuotationPage() {
 	const params = useParams();
@@ -171,15 +172,6 @@ export default function ViewQuotationPage() {
 			`/api/admin/quotations/download?id=${id}&source=${source}`,
 			'_blank'
 		);
-	};
-
-	// Format currency
-	const formatCurrency = (amount) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 2,
-		}).format(amount || 0);
 	};
 
 	if (authLoading || loading) {
