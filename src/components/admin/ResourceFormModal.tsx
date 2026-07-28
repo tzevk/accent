@@ -71,7 +71,8 @@ export default function ResourceFormModal({
 			const parsed = zodSchema.safeParse(sanitized);
 			if (!parsed.success) {
 				const first = parsed.error.issues[0];
-				throw new Error(`${first.path.join('.')}: ${first.message}`);
+				toast.error(`${first.path.join('.')}: ${first.message}`);
+				return;
 			}
 			const payload = transformSubmit ? transformSubmit(sanitized) : sanitized;
 			try {

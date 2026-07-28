@@ -58,8 +58,56 @@ export async function POST(request) {
 
 		const [result] = await connection.execute(
 			`INSERT INTO quotations 
-       (quotation_number, quotation_date, client_name, client_email, client_phone, client_address, kind_attn, enquiry_number, enquiry_date, subject, items, scope_items, gross_amount, gst_percentage, gst_amount, net_amount, subtotal, tax_rate, tax_amount, total, amount_in_words, gst_number, pan_number, tan_number, terms_and_conditions, annexure_scope_of_work, annexure_input_document, annexure_deliverables, annexure_software, annexure_duration, annexure_site_visit, annexure_quotation_validity, annexure_mode_of_delivery, annexure_revision, annexure_exclusions, annexure_billing_payment_terms, annexure_taxation, annexure_payment_milestone, annexure_confidentiality, annexure_codes_standards, annexure_dispute_resolution, valid_until, status, project_id, gst_type, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (quotation_number, quotation_date, client_name, client_email, client_phone, client_address, kind_attn, enquiry_number, enquiry_date, subject, items, scope_items, gross_amount, gst_percentage, gst_amount, net_amount, subtotal, tax_rate, tax_amount, total, amount_in_words, gst_number, pan_number, tan_number, terms_and_conditions, annexure_scope_of_work, annexure_input_document, annexure_deliverables, annexure_software, annexure_duration, annexure_site_visit, annexure_quotation_validity, annexure_mode_of_delivery, annexure_revision, annexure_exclusions, annexure_billing_payment_terms, annexure_taxation, annexure_payment_milestone, annexure_confidentiality, annexure_codes_standards, annexure_dispute_resolution, valid_until, status, project_id, gst_type, created_by, isDelete)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+       ON DUPLICATE KEY UPDATE
+         isDelete = 0,
+         quotation_date = VALUES(quotation_date),
+         client_name = VALUES(client_name),
+         client_email = VALUES(client_email),
+         client_phone = VALUES(client_phone),
+         client_address = VALUES(client_address),
+         kind_attn = VALUES(kind_attn),
+         enquiry_number = VALUES(enquiry_number),
+         enquiry_date = VALUES(enquiry_date),
+         subject = VALUES(subject),
+         items = VALUES(items),
+         scope_items = VALUES(scope_items),
+         gross_amount = VALUES(gross_amount),
+         gst_percentage = VALUES(gst_percentage),
+         gst_amount = VALUES(gst_amount),
+         net_amount = VALUES(net_amount),
+         subtotal = VALUES(subtotal),
+         tax_rate = VALUES(tax_rate),
+         tax_amount = VALUES(tax_amount),
+         total = VALUES(total),
+         amount_in_words = VALUES(amount_in_words),
+         gst_number = VALUES(gst_number),
+         pan_number = VALUES(pan_number),
+         tan_number = VALUES(tan_number),
+         terms_and_conditions = VALUES(terms_and_conditions),
+         annexure_scope_of_work = VALUES(annexure_scope_of_work),
+         annexure_input_document = VALUES(annexure_input_document),
+         annexure_deliverables = VALUES(annexure_deliverables),
+         annexure_software = VALUES(annexure_software),
+         annexure_duration = VALUES(annexure_duration),
+         annexure_site_visit = VALUES(annexure_site_visit),
+         annexure_quotation_validity = VALUES(annexure_quotation_validity),
+         annexure_mode_of_delivery = VALUES(annexure_mode_of_delivery),
+         annexure_revision = VALUES(annexure_revision),
+         annexure_exclusions = VALUES(annexure_exclusions),
+         annexure_billing_payment_terms = VALUES(annexure_billing_payment_terms),
+         annexure_taxation = VALUES(annexure_taxation),
+         annexure_payment_milestone = VALUES(annexure_payment_milestone),
+         annexure_confidentiality = VALUES(annexure_confidentiality),
+         annexure_codes_standards = VALUES(annexure_codes_standards),
+         annexure_dispute_resolution = VALUES(annexure_dispute_resolution),
+         valid_until = VALUES(valid_until),
+         status = VALUES(status),
+         project_id = VALUES(project_id),
+         gst_type = VALUES(gst_type),
+         created_by = VALUES(created_by),
+         updated_at = NOW()`,
 			[
 				quotation_number,
 				qDate,
@@ -110,10 +158,20 @@ export async function POST(request) {
 			]
 		);
 
+		// On duplicate key, insertId is 0; fetch the actual id
+		let insertedId = result.insertId;
+		if (!insertedId) {
+			const [rows] = await connection.execute(
+				'SELECT id FROM quotations WHERE quotation_number = ?',
+				[quotation_number]
+			);
+			insertedId = rows[0]?.id;
+		}
+
 		return NextResponse.json({
 			success: true,
 			message: 'Quotation created successfully',
-			id: result.insertId,
+			id: insertedId,
 		});
 	} catch (error) {
 		console.error('Error creating standalone quotation:', error);

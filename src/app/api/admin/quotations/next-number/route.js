@@ -37,7 +37,7 @@ export async function GET(request) {
 
 		const pattern = `ATSPL/Q/${month}/${fyString}/%`;
 
-		// Get the last quotation_number for this month+FY
+		// Get the last quotation_number for this month+FY (active only)
 		const [rows] = await db.execute(
 			`SELECT quotation_number FROM quotations
 			 WHERE quotation_number LIKE ?
