@@ -232,33 +232,39 @@ export async function GET(request: Request) {
 
 		const [paymentRows] = await query(paymentQuery, paymentParams);
 		// ── 3. Payment issues (issued to client) ────────────────────
-		let issueQuery = `
-			SELECT
-				payee_name,
-				invoice_number,
-				invoice_date,
-				COALESCE(invoice_amount, 0) AS invoice_amount,
-				COALESCE(amount, 0) AS amount,
-				COALESCE(deduction, 0) AS deduction,
-				COALESCE(net_amount, 0) AS net_amount,
-				issue_date,
-				transaction_reference,
-				bank_name,
-				status
-			FROM payment_issues
-			WHERE isDelete = 0 AND payee_type = 'company'
-				AND LOWER(TRIM(payee_name)) = LOWER(TRIM(?))
-		`;
-		const issueParams: (string | number)[] = [clientName];
+		let issueRows: IssueDetail[] = [];
+		try {
+			let issueQuery = `
+				SELECT
+					payee_name,
+					invoice_number,
+					invoice_date,
+					COALESCE(invoice_amount, 0) AS invoice_amount,
+					COALESCE(amount, 0) AS amount,
+					COALESCE(deduction, 0) AS deduction,
+					COALESCE(net_amount, 0) AS net_amount,
+					issue_date,
+					transaction_reference,
+					bank_name,
+					status
+				FROM payment_issues
+				WHERE isDelete = 0 AND payee_type = 'company'
+					AND LOWER(TRIM(payee_name)) = LOWER(TRIM(?))
+			`;
+			const issueParams: (string | number)[] = [clientName];
 
-		if (hasDateRange) {
-			issueQuery += ` AND issue_date >= ? AND issue_date <= ?`;
-			issueParams.push(fromDate, toDate);
+			if (hasDateRange) {
+				issueQuery += ` AND issue_date >= ? AND issue_date <= ?`;
+				issueParams.push(fromDate, toDate);
+			}
+
+			issueQuery += ` ORDER BY issue_date DESC, invoice_number DESC`;
+
+			const [rows] = await query(issueQuery, issueParams);
+			issueRows = rows as IssueDetail[];
+		} catch {
+			// payment_issues table may not exist
 		}
-
-		issueQuery += ` ORDER BY issue_date DESC, invoice_number DESC`;
-
-		const [issueRows] = await query(issueQuery, issueParams);
 
 		// ── 4. Quotations ────────────────────────────────────────────
 		const [quoteRows] = await query(

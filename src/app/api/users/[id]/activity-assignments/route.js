@@ -152,105 +152,75 @@ export async function GET(request, { params }) {
 
 		db = await dbConnect();
 
-		// Get projects where this user might be assigned (filter by JSON content for speed)
-		// Use word-boundary-like patterns to avoid false positives (e.g., user 1 matching user 10)
-		const userIdStr = String(requestedUserId);
-		const [projects] = await db.execute(
+		// Query user_activity_assignments directly instead of parsing JSON blob
+		const [rows] = await db.execute(
 			`
-      SELECT 
-        p.project_id,
-        p.name as project_name,
+      SELECT
+        uaa.*,
+        p.name AS project_name,
         p.project_code,
-        p.status as project_status,
-        p.start_date,
-        p.end_date,
-        p.project_activities_list
-      FROM projects p
-      WHERE p.project_activities_list IS NOT NULL 
-        AND p.project_activities_list != '' 
-        AND p.project_activities_list != '[]'
-        AND (p.project_activities_list LIKE ? OR p.project_activities_list LIKE ?)
-      ORDER BY p.start_date DESC
+        p.status AS project_status,
+        p.start_date AS project_start_date,
+        p.end_date AS project_end_date
+      FROM user_activity_assignments uaa
+      LEFT JOIN projects p ON uaa.project_id = p.project_id
+      WHERE uaa.user_id = ?
+      ORDER BY p.start_date DESC, uaa.created_at ASC
     `,
-			[`%"user_id":"${userIdStr}"%`, `%"user_id":${userIdStr},%`]
+			[requestedUserId]
 		);
 
 		const assignments = [];
-
-		for (const project of projects) {
-			try {
-				const activitiesList =
-					typeof project.project_activities_list === 'string'
-						? JSON.parse(project.project_activities_list)
-						: project.project_activities_list;
-
-				if (!Array.isArray(activitiesList)) continue;
-
-				for (const activity of activitiesList) {
-					const assignedUsers = activity.assigned_users || [];
-
-					if (!Array.isArray(assignedUsers)) continue;
-
-					// Find this user's assignment in the activity
-					for (const assignment of assignedUsers) {
-						const assignedUserId =
-							typeof assignment === 'object' ? assignment.user_id : assignment;
-
-						if (String(assignedUserId) === String(requestedUserId)) {
-							// This user is assigned to this activity
-							const userAssignment =
-								typeof assignment === 'object'
-									? assignment
-									: { user_id: assignment };
-
-							const dailyEntries = userAssignment.daily_entries || [];
-							const derivedQty = dailyEntries.reduce(
-								(s, e) => s + (parseFloat(e.qty_done) || 0),
-								0
-							);
-							const derivedHours = dailyEntries.reduce(
-								(s, e) => s + (parseFloat(e.hours) || 0),
-								0
-							);
-
-							assignments.push({
-								project_id: project.project_id,
-								project_name: project.project_name,
-								project_code: project.project_code,
-								project_status: project.project_status,
-								project_start_date: project.start_date,
-								project_end_date: project.end_date,
-								activity_id: activity.id,
-								activity_name:
-									activity.activity_name || activity.name || 'Unnamed Activity',
-								activity_description: activity.activity_description || '',
-								discipline:
-									activity.discipline || activity.function_name || 'General',
-								sub_activity_name: activity.sub_activity_name || '',
-								default_manhours: activity.default_manhours || 0,
-								// User-specific data
-								description: userAssignment.description || '',
-								qty_assigned: userAssignment.qty_assigned || 0,
-								qty_completed: derivedQty,
-								planned_hours: userAssignment.planned_hours || 0,
-								actual_hours: derivedHours,
-								start_date: userAssignment.start_date || null,
-								due_date: userAssignment.due_date || null,
-								status: userAssignment.status || 'Not Started',
-								notes: userAssignment.notes || '',
-								remarks: userAssignment.remarks || '',
-								progress_percentage: userAssignment.progress_percentage || 0,
-								daily_entries: dailyEntries,
-							});
-						}
-					}
+		for (const row of rows) {
+			// Parse daily_entries from JSON string
+			let dailyEntries = [];
+			if (row.daily_entries) {
+				try {
+					dailyEntries =
+						typeof row.daily_entries === 'string'
+							? JSON.parse(row.daily_entries)
+							: row.daily_entries;
+				} catch {
+					dailyEntries = [];
 				}
-			} catch (parseErr) {
-				console.error(
-					`Failed to parse activities for project ${project.project_id}:`,
-					parseErr.message
-				);
 			}
+			if (!Array.isArray(dailyEntries)) dailyEntries = [];
+
+			const derivedQty = dailyEntries.reduce(
+				(s, e) => s + (parseFloat(e.qty_done) || 0),
+				0
+			);
+			const derivedHours = dailyEntries.reduce(
+				(s, e) => s + (parseFloat(e.hours) || 0),
+				0
+			);
+
+			assignments.push({
+				project_id: row.project_id,
+				project_name: row.project_name || '',
+				project_code: row.project_code || '',
+				project_status: row.project_status || '',
+				project_start_date: row.project_start_date || null,
+				project_end_date: row.project_end_date || null,
+				activity_id: row.activity_id,
+				activity_name: row.activity_name || 'Unnamed Activity',
+				activity_description: row.description || '',
+				discipline: row.discipline_name || 'General',
+				sub_activity_name: row.sub_activity_name || '',
+				default_manhours: parseFloat(row.default_manhours) || 0,
+				description: row.description || '',
+				qty_assigned: parseFloat(row.qty_assigned) || 0,
+				qty_completed: parseFloat(row.qty_completed) || derivedQty,
+				planned_hours: parseFloat(row.estimated_hours) || 0,
+				actual_hours: parseFloat(row.actual_hours) || derivedHours,
+				start_date: row.start_date || null,
+				due_date: row.due_date || null,
+				status: row.status || 'Not Started',
+				notes: row.notes || '',
+				remarks: row.remarks || '',
+				progress_percentage: parseFloat(row.progress_percentage) || 0,
+				daily_entries: dailyEntries,
+			});
 		}
 
 		// Calculate stats
@@ -287,6 +257,7 @@ export async function GET(request, { params }) {
 		const projectIdsWithActivities = new Set(
 			assignments.map((a) => String(a.project_id))
 		);
+		const userIdStr = String(requestedUserId);
 		const emptyProjects = [];
 		try {
 			const [teamProjects] = await db.execute(
@@ -446,226 +417,102 @@ export async function PUT(request, { params }) {
 
 		db = await dbConnect();
 
-		// Get the project's activities list
-		let projects;
-		try {
-			[projects] = await db.execute(
-				'SELECT project_id, project_activities_list FROM projects WHERE project_id = ?',
-				[project_id]
-			);
-		} catch (err) {
-			console.error(
-				'[Activity Assignment Update] Error fetching project:',
-				err.message
-			);
-			db.release();
-			throw err;
-		}
+		// Find the existing assignment row
+		const [existing] = await db.execute(
+			'SELECT * FROM user_activity_assignments WHERE user_id = ? AND project_id = ? AND activity_id = ?',
+			[requestedUserId, project_id, activity_id]
+		);
 
-		if (projects.length === 0) {
-			console.error(
-				'[Activity Assignment Update] Project not found with project_id:',
-				project_id
-			);
+		if (existing.length === 0) {
 			db.release();
 			return NextResponse.json(
-				{ success: false, error: 'Project not found' },
+				{ success: false, error: 'User is not assigned to this activity' },
 				{ status: 404 }
 			);
 		}
 
-		const project = projects[0];
-		console.log(
-			'[Activity Assignment Update] Found project with project_id:',
-			project.project_id
-		);
+		// Build dynamic UPDATE with only the fields present in the request
+		const setClauses = [];
+		const updateParams = [];
 
-		let activitiesList = project.project_activities_list;
-		if (typeof activitiesList === 'string') {
-			try {
-				activitiesList = JSON.parse(activitiesList);
-			} catch (parseErr) {
-				console.error(
-					'[Activity Assignment Update] Error parsing activities list:',
-					parseErr.message
-				);
-				db.release();
-				return NextResponse.json(
-					{ success: false, error: 'Invalid activities data' },
-					{ status: 500 }
-				);
-			}
+		if (qty_assigned !== undefined) {
+			setClauses.push('qty_assigned = ?');
+			updateParams.push(parseFloat(qty_assigned) || 0);
+		}
+		if (planned_hours !== undefined) {
+			setClauses.push('estimated_hours = ?');
+			updateParams.push(parseFloat(planned_hours) || 0);
+		}
+		if (status !== undefined) {
+			setClauses.push('status = ?');
+			updateParams.push(status);
+		}
+		if (remarks !== undefined) {
+			setClauses.push('remarks = ?');
+			updateParams.push(remarks);
+		}
+		if (description !== undefined) {
+			setClauses.push('description = ?');
+			updateParams.push(description);
+		}
+		if (start_date !== undefined) {
+			setClauses.push('start_date = ?');
+			updateParams.push(start_date || null);
+		}
+		if (due_date !== undefined) {
+			setClauses.push('due_date = ?');
+			updateParams.push(due_date || null);
+		}
+		if (notes !== undefined) {
+			setClauses.push('notes = ?');
+			updateParams.push(notes);
+		}
+		if (progress_percentage !== undefined) {
+			setClauses.push('progress_percentage = ?');
+			updateParams.push(parseFloat(progress_percentage) || 0);
+		}
+		if (daily_entries !== undefined) {
+			setClauses.push('daily_entries = ?');
+			const entries = Array.isArray(daily_entries)
+				? daily_entries.map((e) => ({
+						date: e.date || '',
+						qty_done: parseFloat(e.qty_done) || 0,
+						hours: parseFloat(e.hours) || 0,
+						remarks: e.remarks || '',
+					}))
+				: [];
+			updateParams.push(JSON.stringify(entries));
+		}
+		// Activity-level fields
+		if (discipline_name !== undefined) {
+			setClauses.push('discipline_name = ?');
+			updateParams.push(discipline_name);
+		}
+		if (activity_name !== undefined) {
+			setClauses.push('activity_name = ?');
+			updateParams.push(activity_name);
+		}
+		if (sub_activity_name !== undefined) {
+			setClauses.push('sub_activity_name = ?');
+			updateParams.push(sub_activity_name);
 		}
 
-		if (!Array.isArray(activitiesList)) {
-			console.error(
-				'[Activity Assignment Update] Activities list is not an array'
-			);
+		if (setClauses.length === 0) {
 			db.release();
-			return NextResponse.json(
-				{ success: false, error: 'No activities found' },
-				{ status: 404 }
-			);
+			return NextResponse.json({
+				success: true,
+				message: 'No fields to update',
+				affected_rows: 0,
+			});
 		}
 
-		console.log(
-			'[Activity Assignment Update] Found',
-			activitiesList.length,
-			'activities'
-		);
+		setClauses.push('updated_at = NOW()');
+		updateParams.push(requestedUserId, project_id, activity_id);
 
-		// Find and update the activity
-		let updated = false;
-		let activityFound = false;
-		for (const activity of activitiesList) {
-			// More flexible activity ID matching
-			const activityIdMatch =
-				String(activity.id) === String(activity_id) ||
-				String(activity.activity_id) === String(activity_id);
-
-			if (activityIdMatch) {
-				activityFound = true;
-				console.log(
-					'[Activity Assignment Update] Found matching activity:',
-					activity.activity_name || activity.name
-				);
-
-				// Update activity-level fields (Discipline / Activity / Sub Activity)
-				if (discipline_name !== undefined) {
-					activity.discipline = discipline_name;
-					activity.function_name = discipline_name;
-				}
-				if (activity_name !== undefined) activity.activity_name = activity_name;
-				if (sub_activity_name !== undefined)
-					activity.sub_activity_name = sub_activity_name;
-
-				const assignedUsers = activity.assigned_users || [];
-				console.log(
-					'[Activity Assignment Update] Activity has',
-					assignedUsers.length,
-					'assigned users'
-				);
-
-				for (let i = 0; i < assignedUsers.length; i++) {
-					const assignment = assignedUsers[i];
-					const assignedUserId =
-						typeof assignment === 'object' ? assignment.user_id : assignment;
-
-					if (String(assignedUserId) === String(requestedUserId)) {
-						console.log(
-							'[Activity Assignment Update] Found user assignment at index',
-							i
-						);
-						console.log(
-							'[Activity Assignment Update] Before update:',
-							JSON.stringify(assignedUsers[i])
-						);
-
-						// Update this user's assignment
-						if (typeof assignment === 'object') {
-							if (qty_assigned !== undefined)
-								assignedUsers[i].qty_assigned = parseFloat(qty_assigned) || 0;
-							if (planned_hours !== undefined)
-								assignedUsers[i].planned_hours = parseFloat(planned_hours) || 0;
-							if (status !== undefined) assignedUsers[i].status = status;
-							if (remarks !== undefined) assignedUsers[i].remarks = remarks;
-							if (description !== undefined)
-								assignedUsers[i].description = description;
-							if (start_date !== undefined)
-								assignedUsers[i].start_date = start_date;
-							if (due_date !== undefined) assignedUsers[i].due_date = due_date;
-							if (notes !== undefined) assignedUsers[i].notes = notes;
-							if (progress_percentage !== undefined)
-								assignedUsers[i].progress_percentage =
-									parseFloat(progress_percentage) || 0;
-							if (daily_entries !== undefined) {
-								// Ensure daily_entries is an array of proper objects
-								assignedUsers[i].daily_entries = Array.isArray(daily_entries)
-									? daily_entries.map((e) => ({
-											date: e.date || '',
-											qty_done: parseFloat(e.qty_done) || 0,
-											hours: parseFloat(e.hours) || 0,
-											remarks: e.remarks || '',
-										}))
-									: [];
-								console.log(
-									'[Activity Assignment Update] Updated daily_entries:',
-									assignedUsers[i].daily_entries
-								);
-							}
-						} else {
-							// Convert to object
-							assignedUsers[i] = {
-								user_id: assignedUserId,
-								qty_assigned: parseFloat(qty_assigned) || 0,
-								planned_hours: parseFloat(planned_hours) || 0,
-								status: status || 'Not Started',
-								remarks: remarks || '',
-								description: description || '',
-								start_date: start_date || null,
-								due_date: due_date || null,
-								notes: notes || '',
-								progress_percentage: parseFloat(progress_percentage) || 0,
-								daily_entries: daily_entries || [],
-							};
-						}
-						console.log(
-							'[Activity Assignment Update] After update:',
-							JSON.stringify(assignedUsers[i])
-						);
-						updated = true;
-						break;
-					}
-				}
-
-				activity.assigned_users = assignedUsers;
-				break;
-			}
-		}
-
-		if (!updated) {
-			if (activityFound) {
-				console.error(
-					'[Activity Assignment Update] Activity found but user not assigned - activity_id:',
-					activity_id,
-					'user_id:',
-					requestedUserId
-				);
-				db.release();
-				return NextResponse.json(
-					{ success: false, error: 'User is not assigned to this activity' },
-					{ status: 404 }
-				);
-			} else {
-				console.error(
-					'[Activity Assignment Update] Activity not found - activity_id:',
-					activity_id
-				);
-				console.error(
-					'[Activity Assignment Update] Available activity IDs:',
-					activitiesList.map((a) => a.id || a.activity_id).join(', ')
-				);
-				db.release();
-				return NextResponse.json(
-					{ success: false, error: 'Activity not found in project' },
-					{ status: 404 }
-				);
-			}
-		}
-
-		console.log(
-			'[Activity Assignment Update] Saving updated activities list to database...'
-		);
-
-		// Save back to database using project_id
-		const updateResult = await db.execute(
-			'UPDATE projects SET project_activities_list = ? WHERE project_id = ?',
-			[JSON.stringify(activitiesList), project.project_id]
-		);
-
-		console.log(
-			'[Activity Assignment Update] Update result - rows affected:',
-			updateResult[0].affectedRows
+		const [updateResult] = await db.execute(
+			`UPDATE user_activity_assignments SET ${setClauses.join(', ')}
+       WHERE user_id = ? AND project_id = ? AND activity_id = ?`,
+			updateParams
 		);
 
 		db.release();
@@ -673,7 +520,7 @@ export async function PUT(request, { params }) {
 		return NextResponse.json({
 			success: true,
 			message: 'Assignment updated successfully',
-			affected_rows: updateResult[0].affectedRows,
+			affected_rows: updateResult.affectedRows,
 		});
 	} catch (error) {
 		console.error('[Activity Assignment Update] Error:', error);
@@ -752,7 +599,7 @@ export async function POST(request, { params }) {
 		await ensureTicketsTable(db);
 
 		const [projectRows] = await db.execute(
-			`SELECT project_id, name, project_code, project_manager, project_activities_list
+			`SELECT project_id, name, project_code, project_manager
        FROM projects
        WHERE project_id = ?
        LIMIT 1`,
@@ -768,33 +615,12 @@ export async function POST(request, { params }) {
 		}
 
 		const project = projectRows[0];
-		let hasAssignment = false;
-
-		try {
-			const activitiesList =
-				typeof project.project_activities_list === 'string'
-					? JSON.parse(project.project_activities_list)
-					: project.project_activities_list;
-
-			if (Array.isArray(activitiesList)) {
-				for (const activity of activitiesList) {
-					const currentActivityId = String(
-						activity.id ?? activity.activity_id ?? ''
-					);
-					if (currentActivityId !== String(activity_id)) continue;
-					const assignedUsers = Array.isArray(activity.assigned_users)
-						? activity.assigned_users
-						: [];
-					hasAssignment = assignedUsers.some((entry) => {
-						const uid = typeof entry === 'object' ? entry.user_id : entry;
-						return String(uid) === String(requestedUserId);
-					});
-					break;
-				}
-			}
-		} catch {
-			hasAssignment = true;
-		}
+		// Check assignment via normalized table instead of JSON blob
+		const [assignments] = await db.execute(
+			'SELECT id FROM user_activity_assignments WHERE user_id = ? AND project_id = ? AND activity_id = ?',
+			[requestedUserId, project_id, activity_id]
+		);
+		const hasAssignment = assignments.length > 0;
 
 		if (!hasAssignment) {
 			db.release();
@@ -995,6 +821,53 @@ export async function PATCH(request, { params }) {
 			'UPDATE projects SET project_activities_list = ? WHERE project_id = ?',
 			[JSON.stringify(activitiesList), project.project_id]
 		);
+
+		// Also insert into normalized user_activity_assignments table
+		try {
+			const dailyEntry = {
+				date: due_date || new Date().toISOString().split('T')[0],
+				qty_done: parseFloat(qty_completed) || 0,
+				hours: parseFloat(manhours_assigned) || 0,
+				remarks: '',
+			};
+			await db.execute(
+				`INSERT INTO user_activity_assignments
+         (id, user_id, project_id, activity_id, activity_name, discipline_name,
+          sub_activity_name, description, due_date, start_date,
+          status, estimated_hours, actual_hours, qty_assigned, qty_completed,
+          notes, remarks, default_manhours, progress_percentage,
+          daily_entries, assigned_date, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
+				[
+					randomUUID(),
+					requestedUserId,
+					project_id,
+					newActivity.id,
+					activity_name,
+					discipline_name,
+					sub_activity_name || null,
+					'',
+					due_date || null,
+					null,
+					status || 'Not Started',
+					parseFloat(manhours_assigned) || 0,
+					0,
+					0,
+					parseFloat(qty_completed) || 0,
+					'',
+					remarks || '',
+					parseFloat(default_manhours) || 0,
+					100,
+					JSON.stringify([dailyEntry]),
+				]
+			);
+		} catch (insertErr) {
+			console.error(
+				'Failed to insert into user_activity_assignments:',
+				insertErr
+			);
+			// Non-fatal — the JSON blob update already succeeded
+		}
 
 		db.release();
 

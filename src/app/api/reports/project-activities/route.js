@@ -130,104 +130,94 @@ export async function GET(request) {
 			/* table may not exist */
 		}
 
+		// Collect all project IDs for bulk query
+		const allProjectIds = projects.map((p) => p.project_id);
+
+		// Bulk-fetch user_activity_assignments for all projects
+		let uaaByProject = {};
+		if (allProjectIds.length > 0) {
+			try {
+				const placeholders = allProjectIds.map(() => '?').join(',');
+				const [allAssignments] = await query(
+					`SELECT * FROM user_activity_assignments WHERE project_id IN (${placeholders})`,
+					allProjectIds
+				);
+				for (const row of allAssignments) {
+					const pid = row.project_id;
+					if (!uaaByProject[pid]) uaaByProject[pid] = [];
+					uaaByProject[pid].push(row);
+				}
+			} catch {
+				/* table may not exist */
+			}
+		}
+
 		const result = [];
 
 		for (const project of projects) {
-			let activities = [];
+			const projectAssignments = uaaByProject[project.project_id] || [];
 
-			// 1. Parse JSON field (project_activities_list)
-			try {
-				let activitiesList = [];
-				if (project.project_activities_list) {
-					activitiesList =
-						typeof project.project_activities_list === 'string'
-							? JSON.parse(project.project_activities_list)
-							: project.project_activities_list;
-				}
-				if (!Array.isArray(activitiesList)) activitiesList = [];
-
-				for (const activity of activitiesList) {
-					const assignedUsers = activity.assigned_users || [];
-					const members = [];
-
-					if (Array.isArray(assignedUsers)) {
-						for (const assignment of assignedUsers) {
-							const userData =
-								typeof assignment === 'object'
-									? assignment
-									: { user_id: assignment };
-							const userId = String(userData.user_id);
-
-							// Ensure daily_entries is properly parsed as an array
-							let dailyEntries = [];
-							if (userData.daily_entries) {
-								if (typeof userData.daily_entries === 'string') {
-									try {
-										dailyEntries = JSON.parse(userData.daily_entries);
-									} catch {
-										dailyEntries = [];
-									}
-								} else if (Array.isArray(userData.daily_entries)) {
-									dailyEntries = userData.daily_entries;
-								}
-							}
-
-							// Filter to only valid entry objects
-							dailyEntries = Array.isArray(dailyEntries)
-								? dailyEntries.filter(
-										(e) =>
-											e &&
-											typeof e === 'object' &&
-											(e.date || e.qty_done || e.hours)
-									)
-								: [];
-
-							if (dailyEntries.length > 0) {
-								// Log for debugging
-								console.log(
-									`[reportAPI] Activity ${activity.id} User ${userId} has ${dailyEntries.length} daily entries`
-								);
-							}
-
-							const totalQtyDone = dailyEntries.reduce(
-								(sum, e) => sum + (parseFloat(e.qty_done) || 0),
-								0
-							);
-							const totalHours = dailyEntries.reduce(
-								(sum, e) => sum + (parseFloat(e.hours) || 0),
-								0
-							);
-
-							members.push({
-								user_id: userId,
-								user_name: userMap[userId] || `User ${userId}`,
-								description: userData.description || '',
-								qty_assigned: userData.qty_assigned || 0,
-								qty_completed: userData.qty_completed || totalQtyDone,
-								planned_hours: userData.planned_hours || 0,
-								actual_hours: userData.actual_hours || totalHours,
-								start_date: userData.start_date || null,
-								due_date: userData.due_date || null,
-								status: userData.status || 'Not Started',
-								remarks: userData.remarks || '',
-								daily_entries: dailyEntries,
-							});
-						}
-					}
-
-					activities.push({
-						id: activity.id,
-						activity_name: activity.activity_name || activity.name || 'Unnamed',
-						activity_description: activity.activity_description || '',
-						discipline:
-							activity.discipline || activity.function_name || 'General',
-						members,
+			// Build activities from normalized table, grouped by activity_id
+			const activityMap = new Map();
+			for (const row of projectAssignments) {
+				const actId = String(row.activity_id);
+				if (!activityMap.has(actId)) {
+					activityMap.set(actId, {
+						id: row.activity_id,
+						activity_name: row.activity_name || 'Unnamed',
+						activity_description: row.description || '',
+						discipline: row.discipline_name || 'General',
+						members: [],
 						source: 'json',
 					});
 				}
-			} catch {
-				activities = [];
+				const activityEntry = activityMap.get(actId);
+
+				// Parse daily_entries
+				let dailyEntries = [];
+				if (row.daily_entries) {
+					try {
+						dailyEntries =
+							typeof row.daily_entries === 'string'
+								? JSON.parse(row.daily_entries)
+								: row.daily_entries;
+					} catch {
+						dailyEntries = [];
+					}
+				}
+				dailyEntries = Array.isArray(dailyEntries)
+					? dailyEntries.filter(
+							(e) =>
+								e && typeof e === 'object' && (e.date || e.qty_done || e.hours)
+						)
+					: [];
+
+				const totalQtyDone = dailyEntries.reduce(
+					(sum, e) => sum + (parseFloat(e.qty_done) || 0),
+					0
+				);
+				const totalHours = dailyEntries.reduce(
+					(sum, e) => sum + (parseFloat(e.hours) || 0),
+					0
+				);
+
+				activityEntry.members.push({
+					user_id: String(row.user_id),
+					user_name: userMap[String(row.user_id)] || `User ${row.user_id}`,
+					description: row.description || '',
+					qty_assigned: parseFloat(row.qty_assigned) || 0,
+					qty_completed: parseFloat(row.qty_completed) || totalQtyDone,
+					planned_hours: parseFloat(row.estimated_hours) || 0,
+					actual_hours: parseFloat(row.actual_hours) || totalHours,
+					start_date: row.start_date || null,
+					due_date: row.due_date || null,
+					status: row.status || 'Not Started',
+					remarks: row.remarks || '',
+					daily_entries: dailyEntries,
+				});
 			}
+
+			let activities = Array.from(activityMap.values());
 
 			// 2. Merge activities from project_activities table (pre-fetched)
 			const tableActivities =
@@ -261,7 +251,6 @@ export async function GET(request) {
 				project_id: project.project_id,
 				project_name: project.project_name,
 				project_code: project.project_code,
-				// Projects table typically uses `status`; keep compatibility with any `project_status` column.
 				project_status: project.status || project.project_status,
 				client_name: project.client_name || project.client || '',
 				project_manager: project.project_manager || '',
