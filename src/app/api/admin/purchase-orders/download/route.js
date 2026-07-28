@@ -5,15 +5,7 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-
-// Helper functions
-function formatCurrency(amount) {
-	return new Intl.NumberFormat('en-IN', {
-		style: 'currency',
-		currency: 'INR',
-		minimumFractionDigits: 2,
-	}).format(amount || 0);
-}
+import { formatCurrency } from '@/lib/format';
 
 function formatDate(dateString) {
 	if (!dateString) return '';

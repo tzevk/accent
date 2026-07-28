@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
+import { formatCurrency } from '@/lib/format';
 import {
 	DocumentCurrencyDollarIcon,
 	MagnifyingGlassIcon,
@@ -108,15 +109,6 @@ export default function InvoicePage() {
 		if (dayDiff > 0) return { state: 'overdue', days: dayDiff };
 		if (dayDiff === 0) return { state: 'today', days: 0 };
 		return { state: 'upcoming', days: -dayDiff };
-	};
-
-	// Format currency
-	const formatCurrency = (amount) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 2,
-		}).format(amount || 0);
 	};
 
 	// Format date

@@ -1,3 +1,4 @@
+import { R, pctOf, roundR, toNumber } from '@/lib/money';
 /**
  * Centralized Payroll Configuration
  * All salary structure rules and calculation constants in one place
@@ -169,24 +170,24 @@ export const PAYROLL_CONFIG = {
  */
 export function calculateSalaryFromGross(grossSalary, overrides = {}) {
 	const config = { ...PAYROLL_CONFIG, ...overrides };
-	const gross = parseFloat(grossSalary) || 0;
+	const gross = R(grossSalary);
 
-	if (gross === 0) return null;
+	if (gross.isZero()) return null;
 
 	// Calculate components
-	const basicDA = Math.round(gross * (config.BASIC_DA_PERCENT / 100));
-	const hra = Math.round(gross * (config.HRA_PERCENT / 100));
-	const conveyance =
-		config.CONVEYANCE_FIXED_AMOUNT ||
-		Math.round(gross * (config.CONVEYANCE_PERCENT / 100));
-	const callAllowance = Math.round(
-		gross * (config.CALL_ALLOWANCE_PERCENT / 100)
+	const basicDA = pctOf(gross, config.BASIC_DA_PERCENT, 0);
+	const hra = pctOf(gross, config.HRA_PERCENT, 0);
+	const conveyance = config.CONVEYANCE_FIXED_AMOUNT
+		? config.CONVEYANCE_FIXED_AMOUNT
+		: toNumber(pctOf(gross, config.CONVEYANCE_PERCENT, 0));
+	const callAllowance = toNumber(
+		pctOf(gross, config.CALL_ALLOWANCE_PERCENT, 0)
 	);
 
 	return {
-		gross,
-		basicDA,
-		hra,
+		gross: toNumber(gross),
+		basicDA: toNumber(basicDA),
+		hra: toNumber(hra),
 		conveyance,
 		callAllowance,
 		// Other allowances are optional
@@ -217,28 +218,28 @@ export function calculatePF(
 		};
 	}
 
-	const basic = parseFloat(basicSalary) || 0;
-	const wageBase =
+	const basic = R(basicSalary);
+	const wageBaseNum =
 		ceiling === 'actual'
-			? basic
-			: Math.min(basic, PAYROLL_CONFIG.PF_WAGE_CEILING);
+			? basic.toNumber()
+			: Math.min(basic.toNumber(), PAYROLL_CONFIG.PF_WAGE_CEILING);
+	const wageBase = R(wageBaseNum);
 
-	const employeeContribution = Math.round(
-		wageBase * (PAYROLL_CONFIG.EMPLOYEE_PF_PERCENT / 100)
+	const employeeContribution = toNumber(
+		pctOf(wageBase, PAYROLL_CONFIG.EMPLOYEE_PF_PERCENT, 0)
 	);
-	const employerEPF = Math.round(
-		wageBase * (PAYROLL_CONFIG.EMPLOYER_EPF_PERCENT / 100)
+	const employerEPF = toNumber(
+		pctOf(wageBase, PAYROLL_CONFIG.EMPLOYER_EPF_PERCENT, 0)
 	);
-	const epsBase = Math.min(basic, PAYROLL_CONFIG.PF_WAGE_CEILING);
-	const employerEPS = Math.round(
-		epsBase * (PAYROLL_CONFIG.EMPLOYER_EPS_PERCENT / 100)
+	const epsBaseNum = Math.min(basic.toNumber(), PAYROLL_CONFIG.PF_WAGE_CEILING);
+	const epsBase = R(epsBaseNum);
+	const employerEPS = toNumber(
+		pctOf(epsBase, PAYROLL_CONFIG.EMPLOYER_EPS_PERCENT, 0)
 	);
-	const pfAdmin = Math.round(
-		wageBase * (PAYROLL_CONFIG.PF_ADMIN_PERCENT / 100)
-	);
+	const pfAdmin = toNumber(pctOf(wageBase, PAYROLL_CONFIG.PF_ADMIN_PERCENT, 0));
 
 	return {
-		wageBase,
+		wageBase: toNumber(wageBase),
 		employeeContribution,
 		employerEPF,
 		employerEPS,
@@ -254,9 +255,9 @@ export function calculatePF(
  * @returns {object} ESIC breakdown
  */
 export function calculateESIC(grossSalary, esicApplicable = false) {
-	const gross = parseFloat(grossSalary) || 0;
+	const gross = R(grossSalary);
 	const eligible =
-		esicApplicable && gross <= PAYROLL_CONFIG.ESIC_SALARY_CEILING;
+		esicApplicable && gross.lte(PAYROLL_CONFIG.ESIC_SALARY_CEILING);
 
 	if (!eligible) {
 		return {
@@ -268,11 +269,11 @@ export function calculateESIC(grossSalary, esicApplicable = false) {
 
 	return {
 		eligible: true,
-		employeeContribution: Math.round(
-			gross * (PAYROLL_CONFIG.EMPLOYEE_ESIC_PERCENT / 100)
+		employeeContribution: toNumber(
+			pctOf(gross, PAYROLL_CONFIG.EMPLOYEE_ESIC_PERCENT, 0)
 		),
-		employerContribution: Math.round(
-			gross * (PAYROLL_CONFIG.EMPLOYER_ESIC_PERCENT / 100)
+		employerContribution: toNumber(
+			pctOf(gross, PAYROLL_CONFIG.EMPLOYER_ESIC_PERCENT, 0)
 		),
 	};
 }
@@ -283,7 +284,7 @@ export function calculateESIC(grossSalary, esicApplicable = false) {
  * @returns {number} Professional tax amount
  */
 export function calculateProfessionalTax(grossSalary) {
-	const gross = parseFloat(grossSalary) || 0;
+	const gross = Number(grossSalary) || 0;
 	const pt = PAYROLL_CONFIG.PROFESSIONAL_TAX;
 
 	if (gross > 10000) return pt.ABOVE_10000;

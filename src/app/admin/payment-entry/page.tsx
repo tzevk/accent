@@ -13,6 +13,7 @@ import {
 import toast from 'react-hot-toast';
 import ResourcePage from '@/components/admin/ResourcePage';
 import { formatCurrency } from '@/lib/format';
+import { add } from '@/lib/money';
 
 const schema = z.object({
 	company_name: z.string().min(1, 'Company name is required'),
@@ -121,9 +122,11 @@ const formFields = [
 		computed: {
 			dependsOn: ['amount', 'gst_amount', 'tds_amount'],
 			calculate: (values: Record<string, unknown>) =>
-				(Number(values.amount) || 0) +
-				(Number(values.gst_amount) || 0) +
-				(Number(values.tds_amount) || 0),
+				add(
+					Number(values.amount) || 0,
+					Number(values.gst_amount) || 0,
+					Number(values.tds_amount) || 0
+				).toNumber(),
 		},
 	},
 	{ name: 'payment_date', label: 'Payment Date', type: 'date' as const },

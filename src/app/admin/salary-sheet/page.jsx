@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
+import { R, add, sub, toNumber } from '@/lib/money';
+import { formatCurrency } from '@/lib/format';
 import { InlineSpinner } from '@/components/LoadingSpinner';
 import { useRouter } from 'next/navigation';
 import {
@@ -162,15 +164,6 @@ export default function SalarySheetPage() {
 		return d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 	};
 
-	const formatCurrency = (amount) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 0,
-		}).format(amount || 0);
-	};
-
 	// Calculate summary stats
 	const isFeb = month.split('-')[1] === '02';
 	const calcBasicPlusDa = (s) =>
@@ -185,33 +178,43 @@ export default function SalarySheetPage() {
 				Number(s.basic) ||
 				0
 		);
-	const calcGross = (s) => {
-		const basicPlusDa = calcBasicPlusDa(s);
-		return (
-			basicPlusDa +
-			(Number(s.hra) || 0) +
-			(Number(s.conveyance) || 0) +
-			(Number(s.call_allowance) || 0) +
-			(Number(s.other_allowances) || 0) +
-			(Number(s.bonus) || 0) +
-			(Number(s.incentive) || 0) +
-			(Number(s.paid_holiday) || 0) +
-			(Number(s.ot_rate) || 0)
+	const calcGross = (s) =>
+		toNumber(
+			add(
+				calcBasicPlusDa(s),
+				s.hra,
+				s.conveyance,
+				s.call_allowance,
+				s.other_allowances,
+				s.bonus,
+				s.incentive,
+				s.paid_holiday,
+				s.ot_rate
+			)
 		);
-	};
-	const totalGross = slips.reduce((sum, s) => sum + calcGross(s), 0);
-	const totalNet = slips.reduce(
-		(sum, s) =>
-			sum +
-			(calcGross(s) -
-				(Number(s.total_deductions) || 0) -
-				(isFeb ? 300 - (Number(s.pt) || 0) : 0)),
-		0
+	const totalGross = toNumber(
+		slips.reduce((sum, s) => add(sum, calcGross(s)), R(0))
 	);
-	const totalDeductions = slips.reduce((sum, s) => {
-		const ptDiff = isFeb ? 300 - (Number(s.pt) || 0) : 0;
-		return sum + (Number(s.total_deductions) || 0) + ptDiff;
-	}, 0);
+	const totalNet = toNumber(
+		slips.reduce(
+			(sum, s) =>
+				add(
+					sum,
+					sub(
+						calcGross(s),
+						(Number(s.total_deductions) || 0) +
+							(isFeb ? 300 - (Number(s.pt) || 0) : 0)
+					)
+				),
+			R(0)
+		)
+	);
+	const totalDeductions = toNumber(
+		slips.reduce((sum, s) => {
+			const ptDiff = isFeb ? 300 - (Number(s.pt) || 0) : 0;
+			return add(sum, (Number(s.total_deductions) || 0) + ptDiff);
+		}, R(0))
+	);
 	const paidCount = slips.filter((s) => s.payment_status === 'paid').length;
 	const pendingCount = slips.filter(
 		(s) => s.payment_status === 'pending'

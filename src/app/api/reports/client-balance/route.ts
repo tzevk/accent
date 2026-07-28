@@ -3,6 +3,7 @@ import { query } from '@/utils/database';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
+import { R, add, sub, toNumber } from '@/lib/money';
 
 /**
  * GET /api/reports/client-balance
@@ -688,7 +689,12 @@ export async function GET(request: Request) {
 				const pr = periodMap.get(key);
 				const or = openMap.get(key);
 				const opening = or
-					? or.opening_invoiced - or.opening_received + or.opening_issued
+					? toNumber(
+							add(
+								sub(or.opening_invoiced, or.opening_received),
+								or.opening_issued
+							)
+						)
 					: 0;
 				const periodInv = pr?.period_invoiced ?? 0;
 				const periodRecv = pr?.period_received ?? 0;
@@ -698,7 +704,9 @@ export async function GET(request: Request) {
 				c.period_invoiced = periodInv;
 				c.period_received = periodRecv;
 				c.period_issued = periodIss;
-				c.closing_balance = opening + periodInv - periodRecv + periodIss;
+				c.closing_balance = toNumber(
+					add(sub(add(opening, periodInv), periodRecv), periodIss)
+				);
 			}
 			for (const r of periodRows) {
 				const key = normKey(resolveName(r.client_name));
@@ -706,52 +714,72 @@ export async function GET(request: Request) {
 					const c = ensure(key, resolveName(r.client_name));
 					const or = openMap.get(key);
 					const opening = or
-						? or.opening_invoiced - or.opening_received + or.opening_issued
+						? toNumber(
+								add(
+									sub(or.opening_invoiced, or.opening_received),
+									or.opening_issued
+								)
+							)
 						: 0;
 					c.opening_balance = opening;
 					c.period_invoiced = r.period_invoiced;
 					c.period_received = r.period_received;
 					c.period_issued = r.period_issued;
-					c.closing_balance =
-						opening + r.period_invoiced - r.period_received + r.period_issued;
+					c.closing_balance = toNumber(
+						add(
+							sub(add(opening, r.period_invoiced), r.period_received),
+							r.period_issued
+						)
+					);
 				}
 			}
 			for (const r of openingRows) {
 				const key = normKey(resolveName(r.client_name));
 				const c = ensure(key, resolveName(r.client_name));
 				if (c.opening_balance === undefined) {
-					const opening =
-						r.opening_invoiced - r.opening_received + r.opening_issued;
+					const opening = toNumber(
+						add(sub(r.opening_invoiced, r.opening_received), r.opening_issued)
+					);
 					c.opening_balance = opening;
 					c.period_invoiced = c.period_invoiced ?? 0;
 					c.period_received = c.period_received ?? 0;
 					c.period_issued = c.period_issued ?? 0;
-					c.closing_balance =
-						opening +
-						(c.period_invoiced ?? 0) -
-						(c.period_received ?? 0) +
-						(c.period_issued ?? 0);
+					c.closing_balance = toNumber(
+						add(
+							sub(add(opening, c.period_invoiced ?? 0), c.period_received ?? 0),
+							c.period_issued ?? 0
+						)
+					);
 				}
 			}
 		}
 
 		// Compute net_balance = invoiced - received + issued
 		for (const c of clientMap.values()) {
-			c.net_balance = c.total_invoiced - c.total_received + c.total_issued;
+			c.net_balance = toNumber(
+				add(sub(c.total_invoiced, c.total_received), c.total_issued)
+			);
 		}
-
-		// Sort by net_balance descending (largest outstanding first)
 		const data = Array.from(clientMap.values()).sort(
 			(a, b) => b.net_balance - a.net_balance
 		);
 
 		// Meta
-		const totalOutstanding = data.reduce((s, c) => s + c.net_balance, 0);
-		const totalInvoiced = data.reduce((s, c) => s + c.total_invoiced, 0);
-		const totalReceived = data.reduce((s, c) => s + c.total_received, 0);
-		const totalIssued = data.reduce((s, c) => s + c.total_issued, 0);
-		const totalPipeline = data.reduce((s, c) => s + c.pipeline_value, 0);
-
+		const totalOutstanding = toNumber(
+			data.reduce((s, c) => add(s, c.net_balance), R(0))
+		);
+		const totalInvoiced = toNumber(
+			data.reduce((s, c) => add(s, c.total_invoiced), R(0))
+		);
+		const totalReceived = toNumber(
+			data.reduce((s, c) => add(s, c.total_received), R(0))
+		);
+		const totalIssued = toNumber(
+			data.reduce((s, c) => add(s, c.total_issued), R(0))
+		);
+		const totalPipeline = toNumber(
+			data.reduce((s, c) => add(s, c.pipeline_value), R(0))
+		);
 		return NextResponse.json({
 			success: true,
 			data,

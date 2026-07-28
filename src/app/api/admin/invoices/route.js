@@ -10,6 +10,7 @@ import {
 	classifyDuplicateError,
 } from '@/utils/invoice-validation';
 
+import { R, sub, toNumber } from '@/lib/money';
 // GET - Fetch invoices
 export async function GET(request) {
 	// RBAC check
@@ -301,18 +302,18 @@ export async function POST(request) {
 
 			if (existingPO.length > 0) {
 				poId = existingPO[0].id;
-				const oldRemaining = parseFloat(existingPO[0].remaining_balance) || 0;
-				const invoiceTotal = parseFloat(total) || 0;
-				calculatedBalance = oldRemaining - invoiceTotal;
+				const oldRemaining = R(existingPO[0].remaining_balance);
+				const invoiceTotal = R(total);
+				calculatedBalance = toNumber(sub(oldRemaining, invoiceTotal));
 
 				await connection.execute(
 					'UPDATE purchase_orders SET remaining_balance = ? WHERE id = ?',
 					[calculatedBalance, poId]
 				);
 			} else {
-				const poValue = parseFloat(original_po_value) || 0;
-				const invoiceTotal = parseFloat(total) || 0;
-				calculatedBalance = poValue - invoiceTotal;
+				const poValue = R(original_po_value);
+				const invoiceTotal = R(total);
+				calculatedBalance = toNumber(sub(poValue, invoiceTotal));
 
 				await connection.execute(
 					`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)

@@ -5,6 +5,7 @@ import {
 	validateInvoice,
 	classifyDuplicateError,
 } from '@/utils/invoice-validation';
+import { R, sub, toNumber } from '@/lib/money';
 
 // GET - Fetch single invoice
 export async function GET(request, { params }) {
@@ -210,10 +211,10 @@ export async function PUT(request, { params }) {
 			}
 		}
 
-		const oldTotal = parseFloat(oldInvoice[0].total) || 0;
+		const oldTotal = R(oldInvoice[0].total);
 		const oldPoNumber = oldInvoice[0].po_number;
 		const oldPoId = oldInvoice[0].po_id;
-		const newTotal = parseFloat(total) || 0;
+		const newTotal = R(total);
 
 		// Calculate balance_po_value based on purchase_orders.
 		// purchase_orders.po_number is globally unique (single-column index from
@@ -227,7 +228,7 @@ export async function PUT(request, { params }) {
 			if (oldPoId) {
 				await connection.execute(
 					'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ?',
-					[oldTotal, oldPoId]
+					[oldTotal.toNumber(), oldPoId]
 				);
 			}
 
@@ -240,15 +241,15 @@ export async function PUT(request, { params }) {
 
 				if (newPO.length > 0) {
 					newPoId = newPO[0].id;
-					const remaining = parseFloat(newPO[0].remaining_balance) || 0;
-					calculatedBalance = remaining - newTotal;
+					const remaining = R(newPO[0].remaining_balance);
+					calculatedBalance = toNumber(sub(remaining, newTotal));
 					await connection.execute(
 						'UPDATE purchase_orders SET remaining_balance = ? WHERE id = ?',
 						[calculatedBalance, newPoId]
 					);
 				} else {
-					const poValue = parseFloat(original_po_value) || 0;
-					calculatedBalance = poValue - newTotal;
+					const poValue = R(original_po_value);
+					calculatedBalance = toNumber(sub(poValue, newTotal));
 					await connection.execute(
 						`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
              VALUES (?, ?, ?, ?, ?)
@@ -277,7 +278,7 @@ export async function PUT(request, { params }) {
 			}
 		} else if (oldPoId) {
 			// Same PO — adjust remaining_balance by difference
-			const diff = oldTotal - newTotal;
+			const diff = toNumber(sub(oldTotal, newTotal));
 			await connection.execute(
 				'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ?',
 				[diff, oldPoId]
@@ -286,7 +287,7 @@ export async function PUT(request, { params }) {
 				'SELECT remaining_balance FROM purchase_orders WHERE id = ?',
 				[oldPoId]
 			);
-			calculatedBalance = parseFloat(poRecord?.[0]?.remaining_balance) || 0;
+			calculatedBalance = R(poRecord?.[0]?.remaining_balance).toNumber();
 		} else if (po_number && client_name) {
 			// No old PO, but new PO info — create/upsert
 			const [existingPO] = await connection.execute(
@@ -296,15 +297,15 @@ export async function PUT(request, { params }) {
 
 			if (existingPO.length > 0) {
 				newPoId = existingPO[0].id;
-				const remaining = parseFloat(existingPO[0].remaining_balance) || 0;
-				calculatedBalance = remaining - newTotal;
+				const remaining = R(existingPO[0].remaining_balance);
+				calculatedBalance = toNumber(sub(remaining, newTotal));
 				await connection.execute(
 					'UPDATE purchase_orders SET remaining_balance = ? WHERE id = ?',
 					[calculatedBalance, newPoId]
 				);
 			} else {
-				const poValue = parseFloat(original_po_value) || 0;
-				calculatedBalance = poValue - newTotal;
+				const poValue = R(original_po_value);
+				calculatedBalance = toNumber(sub(poValue, newTotal));
 				await connection.execute(
 					`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
            VALUES (?, ?, ?, ?, ?)
@@ -480,7 +481,7 @@ export async function DELETE(request, { params }) {
 		}
 
 		// Restore PO remaining balance
-		const deleteTotal = parseFloat(invoiceToDelete[0].total) || 0;
+		const deleteTotal = R(invoiceToDelete[0].total).toNumber();
 		const deletePoId = invoiceToDelete[0].po_id;
 		if (deletePoId) {
 			await connection.execute(

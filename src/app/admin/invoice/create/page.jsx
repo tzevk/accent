@@ -8,6 +8,8 @@ import {
 	validateInvoice,
 	extractServerError,
 } from '@/utils/invoice-validation';
+import { R, add, pctOf, sub, toNumber } from '@/lib/money';
+import { formatCurrency } from '@/lib/format';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import {
@@ -187,24 +189,26 @@ export default function CreateInvoicePage() {
 
 	// Calculate totals from line_items (matching generateInvoiceHTML logic)
 	const calculateTotals = () => {
-		const grossAmount = formData.line_items.reduce(
-			(sum, item) => sum + (parseFloat(item.amount) || 0),
-			0
+		const grossAmount = toNumber(
+			formData.line_items.reduce(
+				(sum, item) => add(sum, item.amount || 0),
+				R(0)
+			)
 		);
 		const cgstAmount =
 			formData.gst_type === 'cgst_sgst'
-				? (grossAmount * (parseFloat(formData.cgst_rate) || 0)) / 100
+				? toNumber(pctOf(grossAmount, parseFloat(formData.cgst_rate) || 0))
 				: 0;
 		const sgstAmount =
 			formData.gst_type === 'cgst_sgst'
-				? (grossAmount * (parseFloat(formData.sgst_rate) || 0)) / 100
+				? toNumber(pctOf(grossAmount, parseFloat(formData.sgst_rate) || 0))
 				: 0;
 		const igstAmount =
 			formData.gst_type === 'igst'
-				? (grossAmount * (parseFloat(formData.igst_rate) || 0)) / 100
+				? toNumber(pctOf(grossAmount, parseFloat(formData.igst_rate) || 0))
 				: 0;
-		const totalGst = cgstAmount + sgstAmount + igstAmount;
-		const netAmount = grossAmount + totalGst;
+		const totalGst = toNumber(add(cgstAmount, sgstAmount, igstAmount));
+		const netAmount = toNumber(add(grossAmount, totalGst));
 		return {
 			grossAmount,
 			cgstAmount,
@@ -351,15 +355,6 @@ export default function CreateInvoicePage() {
 		return words;
 	})();
 
-	// Format currency
-	const formatCurrency = (amount) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 2,
-		}).format(amount || 0);
-	};
-
 	// Save invoice
 	const saveInvoice = async () => {
 		const validation = validateInvoice(formData);
@@ -379,13 +374,9 @@ export default function CreateInvoicePage() {
 					: parseFloat(formData.igst_rate) || 0;
 
 			const calculatedBalance = poBalance?.exists
-				? (parseFloat(poBalance.remaining_balance) - totals.netAmount).toFixed(
-						2
-					)
+				? sub(poBalance.remaining_balance, totals.netAmount).toFixed(2)
 				: formData.original_po_value
-					? (parseFloat(formData.original_po_value) - totals.netAmount).toFixed(
-							2
-						)
+					? sub(formData.original_po_value, totals.netAmount).toFixed(2)
 					: '';
 
 			const res = await fetch('/api/admin/invoices', {
@@ -791,13 +782,13 @@ export default function CreateInvoicePage() {
 												name="balance_po_value"
 												value={
 													poBalance?.exists
-														? (
-																parseFloat(poBalance.remaining_balance) -
+														? sub(
+																poBalance.remaining_balance,
 																netAmount
 															).toFixed(2)
 														: formData.original_po_value
-															? (
-																	parseFloat(formData.original_po_value) -
+															? sub(
+																	formData.original_po_value,
 																	netAmount
 																).toFixed(2)
 															: ''

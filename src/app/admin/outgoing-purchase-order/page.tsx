@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
+import { formatCurrency } from '@/lib/format';
+import { add } from '@/lib/money';
 import {
 	ClipboardDocumentListIcon,
 	MagnifyingGlassIcon,
@@ -166,7 +168,7 @@ export default function OutgoingPurchaseOrderPage() {
 			if (name === 'po_amount' || name === 'tax_amount') {
 				const base = parseFloat(next.po_amount) || 0;
 				const tax = parseFloat(next.tax_amount) || 0;
-				next.net_amount = (base + tax).toFixed(2);
+				next.net_amount = add(base, tax).toFixed(2);
 			}
 			return next;
 		});
@@ -277,14 +279,6 @@ export default function OutgoingPurchaseOrderPage() {
 					? 'UTC'
 					: undefined,
 		});
-	};
-
-	const formatCurrency = (amount: number) => {
-		return new Intl.NumberFormat('en-IN', {
-			style: 'currency',
-			currency: 'INR',
-			minimumFractionDigits: 2,
-		}).format(amount || 0);
 	};
 
 	const getStatusStyle = (status: string) => {
@@ -666,9 +660,8 @@ export default function OutgoingPurchaseOrderPage() {
 									const net =
 										po.net_amount != null
 											? Number(po.net_amount)
-											: (Number(po.po_amount) || 0) +
-												(Number(po.tax_amount) || 0);
-									return sum + (isNaN(net) ? 0 : net);
+											: add(po.po_amount || 0, po.tax_amount || 0).toNumber();
+									return add(sum, isNaN(net) ? 0 : net).toNumber();
 								}, 0)
 							)}
 						</div>
@@ -824,8 +817,10 @@ export default function OutgoingPurchaseOrderPage() {
 											<td className="px-6 py-4 font-semibold text-gray-900">
 												{formatCurrency(
 													Number(po.net_amount) ||
-														Number(po.po_amount || 0) +
-															Number(po.tax_amount || 0)
+														add(
+															po.po_amount || 0,
+															po.tax_amount || 0
+														).toNumber()
 												)}
 											</td>
 											<td className="px-6 py-4 text-gray-600">

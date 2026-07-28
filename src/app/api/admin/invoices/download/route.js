@@ -7,6 +7,7 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import { formatCurrency } from '@/lib/format';
 
 export const runtime = 'nodejs';
 
@@ -22,13 +23,6 @@ function generateInvoiceHTML(data) {
 			})
 			.replace(/\//g, '.');
 	};
-
-	const formatCurrency = (amount) =>
-		new Intl.NumberFormat('en-IN', {
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2,
-		}).format(amount || 0);
-
 	const numberToWords = (num) => {
 		const ones = [
 			'',

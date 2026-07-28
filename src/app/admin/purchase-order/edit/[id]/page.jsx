@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
+import { add } from '@/lib/money';
 import Navbar from '@/components/Navbar';
 import {
 	ClipboardDocumentListIcon,
@@ -150,7 +151,7 @@ export default function EditPurchaseOrderPage() {
 			if (name === 'po_amount' || name === 'tax_amount') {
 				const base = parseFloat(next.po_amount) || 0;
 				const tax = parseFloat(next.tax_amount) || 0;
-				next.net_amount = (base + tax).toFixed(2);
+				next.net_amount = add(base, tax).toFixed(2);
 			}
 			return next;
 		});

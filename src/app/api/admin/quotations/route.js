@@ -223,8 +223,29 @@ export async function POST(request) {
 
 		const [result] = await connection.execute(
 			`INSERT INTO quotations 
-       (quotation_number, client_name, client_email, client_phone, client_address, subject, items, subtotal, tax_rate, tax_amount, discount, total, notes, terms, valid_until, status, project_id, gst_type, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (quotation_number, client_name, client_email, client_phone, client_address, subject, items, subtotal, tax_rate, tax_amount, discount, total, notes, terms, valid_until, status, project_id, gst_type, created_by, isDelete)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+       ON DUPLICATE KEY UPDATE
+         isDelete = 0,
+         client_name = VALUES(client_name),
+         client_email = VALUES(client_email),
+         client_phone = VALUES(client_phone),
+         client_address = VALUES(client_address),
+         subject = VALUES(subject),
+         items = VALUES(items),
+         subtotal = VALUES(subtotal),
+         tax_rate = VALUES(tax_rate),
+         tax_amount = VALUES(tax_amount),
+         discount = VALUES(discount),
+         total = VALUES(total),
+         notes = VALUES(notes),
+         terms = VALUES(terms),
+         valid_until = VALUES(valid_until),
+         status = VALUES(status),
+         project_id = VALUES(project_id),
+         gst_type = VALUES(gst_type),
+         created_by = VALUES(created_by),
+         updated_at = NOW()`,
 			[
 				quotation_number,
 				client_name,
@@ -248,10 +269,20 @@ export async function POST(request) {
 			]
 		);
 
+		// On duplicate key, insertId is 0; fetch the actual id
+		let insertedId = result.insertId;
+		if (!insertedId) {
+			const [rows] = await connection.execute(
+				'SELECT id FROM quotations WHERE quotation_number = ?',
+				[quotation_number]
+			);
+			insertedId = rows[0]?.id;
+		}
+
 		return NextResponse.json({
 			success: true,
 			message: 'Quotation created successfully',
-			id: result.insertId,
+			id: insertedId,
 		});
 	} catch (error) {
 		console.error('Error creating quotation:', error);
