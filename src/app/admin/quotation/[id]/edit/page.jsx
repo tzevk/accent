@@ -21,6 +21,7 @@ import {
 	ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '@/lib/format';
+import { R, add, mul, pctOf, toNumber } from '@/lib/money';
 
 export default function EditQuotationPage() {
 	const params = useParams();
@@ -304,16 +305,16 @@ export default function EditQuotationPage() {
 					parseFloat(field === 'qty' ? value : newItems[index].qty) || 0;
 				const rate =
 					parseFloat(field === 'rate' ? value : newItems[index].rate) || 0;
-				newItems[index].amount = (qty * rate).toFixed(2);
+				newItems[index].amount = mul(qty, rate).toFixed(2);
 			}
 
 			// Recalculate totals
-			const grossAmount = newItems.reduce(
-				(sum, item) => sum + (parseFloat(item.amount) || 0),
-				0
+			const grossAmount = toNumber(
+				newItems.reduce((sum, item) => add(sum, item.amount || 0), R(0))
 			);
-			const gstAmount = (grossAmount * (prev.gst_percentage || 18)) / 100;
-			const netAmount = grossAmount + gstAmount;
+			const gstPct = prev.gst_percentage || 18;
+			const gstAmount = toNumber(pctOf(grossAmount, gstPct));
+			const netAmount = toNumber(add(grossAmount, gstAmount));
 
 			return {
 				...prev,
@@ -349,12 +350,12 @@ export default function EditQuotationPage() {
 			const newItems = prev.scope_items
 				.filter((_, i) => i !== index)
 				.map((item, i) => ({ ...item, sr_no: i + 1 }));
-			const grossAmount = newItems.reduce(
-				(sum, item) => sum + (parseFloat(item.amount) || 0),
-				0
+			const grossAmount = toNumber(
+				newItems.reduce((sum, item) => add(sum, item.amount || 0), R(0))
 			);
-			const gstAmount = (grossAmount * (prev.gst_percentage || 18)) / 100;
-			const netAmount = grossAmount + gstAmount;
+			const gstPct = prev.gst_percentage || 18;
+			const gstAmount = toNumber(pctOf(grossAmount, gstPct));
+			const netAmount = toNumber(add(grossAmount, gstAmount));
 			return {
 				...prev,
 				scope_items: newItems,
@@ -828,15 +829,15 @@ export default function EditQuotationPage() {
 													onChange={(e) => {
 														const type = e.target.value;
 														setQuotation((prev) => {
-															const gross = parseFloat(prev.gross_amount) || 0;
+															const gross = R(prev.gross_amount || 0);
 															const gstPct =
 																parseFloat(prev.gst_percentage) || 0;
-															const gstAmt = (gross * gstPct) / 100;
+															const gstAmt = pctOf(gross, gstPct);
 															return {
 																...prev,
 																gst_type: type,
 																gst_amount: gstAmt.toFixed(2),
-																net_amount: (gross + gstAmt).toFixed(2),
+																net_amount: gross.add(gstAmt).toFixed(2),
 															};
 														});
 													}}
@@ -859,14 +860,13 @@ export default function EditQuotationPage() {
 														value={quotation.gst_percentage}
 														onChange={(e) => {
 															const gstPct = parseFloat(e.target.value) || 0;
-															const gross =
-																parseFloat(quotation.gross_amount) || 0;
-															const gstAmt = (gross * gstPct) / 100;
+															const gross = R(quotation.gross_amount || 0);
+															const gstAmt = pctOf(gross, gstPct);
 															setQuotation((prev) => ({
 																...prev,
 																gst_percentage: gstPct,
 																gst_amount: gstAmt.toFixed(2),
-																net_amount: (gross + gstAmt).toFixed(2),
+																net_amount: gross.add(gstAmt).toFixed(2),
 															}));
 														}}
 														className="w-12 px-1 py-0.5 text-sm text-center border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
@@ -884,7 +884,7 @@ export default function EditQuotationPage() {
 													</div>
 													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
 														{formatCurrency(
-															(parseFloat(quotation.gst_amount) || 0) / 2
+															mul(quotation.gst_amount || 0, 0.5).toNumber()
 														)}
 													</div>
 												</div>
@@ -895,7 +895,7 @@ export default function EditQuotationPage() {
 													</div>
 													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
 														{formatCurrency(
-															(parseFloat(quotation.gst_amount) || 0) / 2
+															mul(quotation.gst_amount || 0, 0.5).toNumber()
 														)}
 													</div>
 												</div>

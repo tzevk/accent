@@ -8,7 +8,7 @@ import {
 	validateInvoice,
 	extractServerError,
 } from '@/utils/invoice-validation';
-import { R, add, pctOf, sub, toNumber } from '@/lib/money';
+import { R, add, mul, pctOf, sub, toNumber } from '@/lib/money';
 import { formatCurrency } from '@/lib/format';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
@@ -90,7 +90,7 @@ export default function EditInvoicePage() {
 			amount:
 				item.amount != null
 					? item.amount
-					: (parseFloat(item.quantity) || 1) * (parseFloat(item.rate) || 0),
+					: mul(item.quantity || 1, item.rate || 0).toNumber(),
 		}));
 	};
 
@@ -904,14 +904,13 @@ export default function EditInvoicePage() {
 												name="balance_po_value"
 												value={
 													poBalance?.exists
-														? (
-																parseFloat(poBalance.remaining_balance) +
-																oldTotalRef.current -
-																netAmount
-															).toFixed(2)
+														? R(poBalance.remaining_balance)
+																.add(oldTotalRef.current)
+																.minus(netAmount)
+																.toFixed(2)
 														: formData.original_po_value
-															? (
-																	parseFloat(formData.original_po_value) -
+															? sub(
+																	formData.original_po_value,
 																	netAmount
 																).toFixed(2)
 															: formData.balance_po_value

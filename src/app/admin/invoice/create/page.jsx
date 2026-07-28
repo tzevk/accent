@@ -782,13 +782,13 @@ export default function CreateInvoicePage() {
 												name="balance_po_value"
 												value={
 													poBalance?.exists
-														? (
-																parseFloat(poBalance.remaining_balance) -
+														? sub(
+																poBalance.remaining_balance,
 																netAmount
 															).toFixed(2)
 														: formData.original_po_value
-															? (
-																	parseFloat(formData.original_po_value) -
+															? sub(
+																	formData.original_po_value,
 																	netAmount
 																).toFixed(2)
 															: ''

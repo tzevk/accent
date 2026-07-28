@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import SearchableSelect from '@/components/ui/searchable-select';
 import { formatCurrency } from '@/lib/format';
+import { add, div } from '@/lib/money';
 
 export default function EditCashVoucherPage({ params }) {
 	const { id } = use(params);
@@ -174,7 +175,7 @@ export default function EditCashVoucherPage({ params }) {
 		const total = lineItems.reduce((sum, item) => {
 			const rs = parseFloat(item.amount_rs) || 0;
 			const ps = parseFloat(item.amount_ps) || 0;
-			return sum + rs + ps / 100;
+			return add(sum, rs, div(ps, 100)).toNumber();
 		}, 0);
 		setFormData((prev) => ({ ...prev, total_amount: total }));
 	}, [lineItems]);

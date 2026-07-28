@@ -11,6 +11,7 @@ import ResourcePage from '@/components/admin/ResourcePage';
 import type { FormField } from '@/types/admin';
 import { Select } from '@/components/ui/form-fields';
 import { formatCurrency } from '@/lib/format';
+import { sub } from '@/lib/money';
 
 const STATUS_OPTIONS = [
 	{ value: 'all', label: 'All statuses' },
@@ -134,7 +135,7 @@ const formFields: FormField[] = [
 		computed: {
 			dependsOn: ['amount', 'deduction'],
 			calculate: (values: Record<string, unknown>) =>
-				(Number(values.amount) || 0) - (Number(values.deduction) || 0),
+				sub(values.amount || 0, values.deduction || 0).toNumber(),
 		},
 	},
 	{ name: 'issue_date', label: 'Issue Date', type: 'date' as const },

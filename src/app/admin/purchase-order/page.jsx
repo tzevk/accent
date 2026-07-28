@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useSessionRBAC } from '@/utils/client-rbac';
+import { add } from '@/lib/money';
 import Navbar from '@/components/Navbar';
 import {
 	ClipboardDocumentListIcon,
@@ -196,7 +197,7 @@ export default function PurchaseOrderPage() {
 			if (name === 'po_amount' || name === 'tax_amount') {
 				const base = parseFloat(next.po_amount) || 0;
 				const tax = parseFloat(next.tax_amount) || 0;
-				next.net_amount = (base + tax).toFixed(2);
+				next.net_amount = add(base, tax).toFixed(2);
 			}
 			return next;
 		});
@@ -229,9 +230,10 @@ export default function PurchaseOrderPage() {
 					po_date: incomingPOData.po_date,
 					po_amount: parseFloat(incomingPOData.po_amount) || 0,
 					tax_amount: parseFloat(incomingPOData.tax_amount) || 0,
-					net_amount:
-						(parseFloat(incomingPOData.po_amount) || 0) +
-						(parseFloat(incomingPOData.tax_amount) || 0),
+					net_amount: add(
+						incomingPOData.po_amount || 0,
+						incomingPOData.tax_amount || 0
+					).toNumber(),
 					remarks: incomingPOData.remarks || null,
 					status: 'pending',
 				}),
@@ -625,23 +627,18 @@ export default function PurchaseOrderPage() {
 					<div className="bg-white rounded-xl shadow-sm border border-purple-200 flex-[1.5] min-w-[140px] px-3 py-2">
 						<div className="text-lg font-bold text-purple-600">
 							{formatCurrency(
-								purchaseOrders.reduce(
-									(sum, po) => sum + (parseFloat(po.total) || 0),
-									0
-								)
+								purchaseOrders.reduce((sum, po) => add(sum, po.total || 0), 0)
 							)}
 						</div>
 						<div className="text-xs text-gray-600">Total Amount</div>
 					</div>
 					<div className="bg-white rounded-xl shadow-sm border border-purple-200 flex-[1.5] min-w-[140px] px-3 py-2">
-						<div className="text-lg font-bold text-purple-600">
-							{formatCurrency(
-								purchaseOrders.reduce(
-									(sum, po) => sum + (parseFloat(po.tax_amount) || 0),
-									0
-								)
-							)}
-						</div>
+						{formatCurrency(
+							purchaseOrders.reduce(
+								(sum, po) => add(sum, po.tax_amount || 0),
+								0
+							)
+						)}
 						<div className="text-xs text-gray-600">Total Tax</div>
 					</div>
 					<div className="bg-white rounded-xl shadow-sm border border-purple-200 flex-[1.5] min-w-[140px] px-3 py-2">
@@ -651,9 +648,8 @@ export default function PurchaseOrderPage() {
 									const net =
 										po.net_amount != null
 											? parseFloat(po.net_amount)
-											: (parseFloat(po.total) || 0) +
-												(parseFloat(po.tax_amount) || 0);
-									return sum + (isNaN(net) ? 0 : net);
+											: add(po.total || 0, po.tax_amount || 0).toNumber();
+									return add(sum, isNaN(net) ? 0 : net);
 								}, 0)
 							)}
 						</div>
@@ -810,8 +806,7 @@ export default function PurchaseOrderPage() {
 											<td className="px-6 py-4 font-semibold text-gray-900">
 												{formatCurrency(
 													po.net_amount ??
-														parseFloat(po.total || 0) +
-															parseFloat(po.tax_amount || 0)
+														add(po.total || 0, po.tax_amount || 0).toNumber()
 												)}
 											</td>
 											<td className="px-6 py-4 text-gray-600">
