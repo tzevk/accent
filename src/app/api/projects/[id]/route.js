@@ -1256,53 +1256,61 @@ export async function PUT(request, context) {
 							for (const row of existingUsers) validUserIds.add(row.id);
 						}
 
-						// Delete old rows for this project, then insert fresh (preserving daily_entries from JSON blob)
-						await db.execute(
-							'DELETE FROM user_activity_assignments WHERE project_id = ?',
-							[projectId]
-						);
+						// UPSERT each assignment — preserves user data (daily_entries, remarks, etc.)
+						// that may have been entered through the user dashboard
+						const UPSERT_SQL = `
+              INSERT INTO user_activity_assignments
+                (id, user_id, project_id, activity_id, activity_name, discipline_name,
+                 description, due_date, start_date, priority,
+                 estimated_hours, actual_hours, qty_assigned, qty_completed,
+                 status, notes, daily_entries,
+                 assigned_date, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
+              ON DUPLICATE KEY UPDATE
+                activity_name = VALUES(activity_name),
+                discipline_name = VALUES(discipline_name),
+                description = VALUES(description),
+                due_date = VALUES(due_date),
+                start_date = VALUES(start_date),
+                priority = VALUES(priority),
+                estimated_hours = VALUES(estimated_hours),
+                actual_hours = VALUES(actual_hours),
+                qty_assigned = VALUES(qty_assigned),
+                qty_completed = VALUES(qty_completed),
+                status = VALUES(status),
+                notes = VALUES(notes),
+                daily_entries = VALUES(daily_entries),
+                updated_at = NOW()
+            `;
 
-						// Insert all valid assignments
-						const batchRows = [];
 						for (const [, row] of incomingMap) {
 							if (!validUserIds.has(row.user_id)) continue;
-							batchRows.push([
-								randomUUID(),
-								row.user_id,
-								row.project_id,
-								row.activity_id,
-								row.activity_name,
-								row.discipline_name,
-								row.description,
-								row.due_date,
-								row.start_date,
-								row.priority,
-								row.estimated_hours,
-								row.actual_hours,
-								row.qty_assigned,
-								row.qty_completed,
-								row.status,
-								row.notes,
-								row.daily_entries,
-							]);
-						}
-
-						const BATCH_SIZE = 500;
-						for (let i = 0; i < batchRows.length; i += BATCH_SIZE) {
-							const batch = batchRows.slice(i, i + BATCH_SIZE);
-							const valuePlaceholders = batch
-								.map(
-									() =>
-										'(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())'
-								)
-								.join(',');
-							const flatValues = batch.flat();
-							await db.execute(
-								`INSERT INTO user_activity_assignments 
-               (id, user_id, project_id, activity_id, activity_name, discipline_name, description, due_date, start_date, priority, estimated_hours, actual_hours, qty_assigned, qty_completed, status, notes, daily_entries, assigned_date, created_at, updated_at)
-               VALUES ${valuePlaceholders}`,
-								flatValues
-							);
+							try {
+								await db.execute(UPSERT_SQL, [
+									randomUUID(),
+									row.user_id,
+									row.project_id,
+									row.activity_id,
+									row.activity_name,
+									row.discipline_name,
+									row.description,
+									row.due_date,
+									row.start_date,
+									row.priority,
+									row.estimated_hours,
+									row.actual_hours,
+									row.qty_assigned,
+									row.qty_completed,
+									row.status,
+									row.notes,
+									row.daily_entries,
+								]);
+							} catch (upsertErr) {
+								console.error(
+									'UPSERT failed for assignment:',
+									upsertErr.message
+								);
+							}
 						}
 					}
 				} catch (syncErr) {

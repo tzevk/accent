@@ -208,9 +208,10 @@ export async function GET(request: Request) {
 			/* employees table may not exist */
 		}
 
-		// ── 2. Load projects ────────────────────────────────────────────────
+		// ── 2. Load projects for name/code lookup ────────────────────────────
 		const [projectsRaw] = await query(`
-			SELECT * FROM projects
+			SELECT project_id, name, project_code, project_title
+			FROM projects
 			ORDER BY project_id DESC
 		`);
 		const projects = (projectsRaw as ProjectRow[]).map((p) => {
@@ -219,113 +220,100 @@ export async function GET(request: Request) {
 			return p;
 		});
 
-		// ── 3. Build work rows per user ─────────────────────────────────────
-		// rowsByUser: user_id -> DailyRow[]
+		// Build project lookup map
+		const projectMap = new Map<
+			string,
+			{ project_name: string; project_code: string }
+		>();
+		for (const p of projects) {
+			projectMap.set(String(p.project_id), {
+				project_name: (p.project_name as string) || '',
+				project_code: (p.project_code as string) || '',
+			});
+		}
+
+		// ── 3. Load assignments from normalized table ────────────────────────
 		const rowsByUser = new Map<string, DailyRow[]>();
 
-		for (const project of projects) {
-			const projectId = project.project_id;
-			const projectCode = project.project_code || '';
+		try {
+			const [assignments] = await query(`
+				SELECT * FROM user_activity_assignments
+				ORDER BY project_id, created_at ASC
+			`);
 
-			let activitiesList: ActivityItem[] = [];
-			try {
-				if (project.project_activities_list) {
-					const raw =
-						typeof project.project_activities_list === 'string'
-							? JSON.parse(project.project_activities_list)
-							: project.project_activities_list;
-					activitiesList = Array.isArray(raw) ? raw : [];
+			for (const row of assignments as any[]) {
+				const userId = String(row.user_id);
+				const projectId = String(row.project_id);
+				const projInfo = projectMap.get(projectId) || {
+					project_name: '',
+					project_code: '',
+				};
+
+				const activityName = row.activity_name || 'Unnamed';
+				const subActivityName = row.sub_activity_name || '';
+				const assignmentId = `${projectId}-${row.activity_id}-${userId}`;
+				const defaultManhours = parseFloat(String(row.default_manhours)) || 0;
+				const plannedHours =
+					parseFloat(String(row.estimated_hours || '0')) || 0;
+				const qtyCompleted = parseFloat(String(row.qty_completed || '0')) || 0;
+
+				// Parse daily_entries
+				let dailyEntries: DailyEntry[] = [];
+				if (row.daily_entries) {
+					try {
+						dailyEntries =
+							typeof row.daily_entries === 'string'
+								? JSON.parse(row.daily_entries)
+								: row.daily_entries;
+					} catch {
+						dailyEntries = [];
+					}
 				}
-			} catch {
-				activitiesList = [];
-			}
-			if (!Array.isArray(activitiesList)) activitiesList = [];
-
-			for (const activity of activitiesList) {
-				const activityName =
-					activity.activity_name || activity.name || 'Unnamed';
-				const subActivityName =
-					activity.sub_activity_name || activity.sub_activity || '';
-				const assignedUsers = Array.isArray(activity.assigned_users)
-					? activity.assigned_users
+				dailyEntries = Array.isArray(dailyEntries)
+					? dailyEntries.filter((e: any) => e != null && typeof e === 'object')
 					: [];
 
-				for (const assignment of assignedUsers) {
-					const data =
-						typeof assignment === 'object'
-							? assignment
-							: ({ user_id: assignment } as AssignmentData);
-					const userId = String(data.user_id);
-					if (!userId || userId === 'undefined') continue;
-
-					const defaultManhours =
-						parseFloat(String(activity.default_manhours)) || 0;
-					const plannedHours =
-						parseFloat(String(data.planned_hours || '0')) || 0;
-					const qtyCompleted =
-						parseFloat(String(data.qty_completed || '0')) || 0;
-
-					// Parse daily_entries
-					let dailyEntries: DailyEntry[] = [];
-					if (data.daily_entries) {
-						if (typeof data.daily_entries === 'string') {
-							try {
-								dailyEntries = JSON.parse(data.daily_entries);
-							} catch {
-								dailyEntries = [];
-							}
-						} else if (Array.isArray(data.daily_entries)) {
-							dailyEntries = data.daily_entries;
-						}
-					}
-					dailyEntries = dailyEntries.filter(
-						(e) => e != null && typeof e === 'object'
-					);
-
-					const assignmentId = `${projectId}-${activity.id || activityName}-${userId}`;
-
-					if (dailyEntries.length === 0) {
-						// Even when no daily entries, emit a single placeholder row so the
-						// assignment shows up with its planned manhours (no actual work yet).
-						const rows = rowsByUser.get(userId) || [];
-						rows.push({
-							date: data.due_date || null,
-							project_id: projectId,
-							project_code: projectCode,
-							project_name: (project.project_name as string) || '',
-							activity_name: activityName,
-							sub_activity_name: subActivityName,
-							assignment_id: assignmentId,
-							default_manhours: defaultManhours,
-							planned_hours: plannedHours,
-							qty_completed: qtyCompleted,
-							hours: 0,
-							qty_done: 0,
-						});
-						rowsByUser.set(userId, rows);
-						continue;
-					}
-
+				if (dailyEntries.length === 0) {
 					const rows = rowsByUser.get(userId) || [];
-					for (const entry of dailyEntries) {
-						rows.push({
-							date: entry.date || null,
-							project_id: projectId,
-							project_code: projectCode,
-							project_name: (project.project_name as string) || '',
-							activity_name: activityName,
-							sub_activity_name: subActivityName,
-							assignment_id: assignmentId,
-							default_manhours: defaultManhours,
-							planned_hours: plannedHours,
-							qty_completed: qtyCompleted,
-							hours: parseFloat(String(entry.hours || '0')) || 0,
-							qty_done: parseFloat(String(entry.qty_done || '0')) || 0,
-						});
-					}
+					rows.push({
+						date: row.due_date || null,
+						project_id: row.project_id,
+						project_code: projInfo.project_code,
+						project_name: projInfo.project_name,
+						activity_name: activityName,
+						sub_activity_name: subActivityName,
+						assignment_id: assignmentId,
+						default_manhours: defaultManhours,
+						planned_hours: plannedHours,
+						qty_completed: qtyCompleted,
+						hours: 0,
+						qty_done: 0,
+					});
 					rowsByUser.set(userId, rows);
+					continue;
 				}
+
+				const rows = rowsByUser.get(userId) || [];
+				for (const entry of dailyEntries) {
+					rows.push({
+						date: entry.date || null,
+						project_id: row.project_id,
+						project_code: projInfo.project_code,
+						project_name: projInfo.project_name,
+						activity_name: activityName,
+						sub_activity_name: subActivityName,
+						assignment_id: assignmentId,
+						default_manhours: defaultManhours,
+						planned_hours: plannedHours,
+						qty_completed: qtyCompleted,
+						hours: parseFloat(String(entry.hours || '0')) || 0,
+						qty_done: parseFloat(String(entry.qty_done || '0')) || 0,
+					});
+				}
+				rowsByUser.set(userId, rows);
 			}
+		} catch {
+			/* table may not exist */
 		}
 
 		// ── 4. Assemble the result (every roster employee, even with rows: []) ─

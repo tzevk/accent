@@ -584,113 +584,6 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 								</tr>
 							)}
 
-							{flatRows.map(({ project_code, activity }) => {
-								const rowKey = `${activity.project_id}-${activity.activity_id}`;
-
-								return (
-									<tr
-										key={rowKey}
-										className="hover:bg-purple-50/40 transition-colors divide-x divide-gray-300"
-									>
-										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className="font-mono text-[10px] text-[#4A1254] block break-words leading-tight"
-												title={project_code || '–'}
-											>
-												{project_code || '–'}
-											</span>
-										</td>
-										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className="text-[#4A1254] block break-words leading-tight"
-												title={activity.discipline}
-											>
-												{activity.discipline}
-											</span>
-										</td>
-										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className="font-semibold text-[#4A1254] block break-words leading-tight"
-												title={activity.activity_name}
-											>
-												{activity.activity_name}
-											</span>
-										</td>
-										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className="text-[#4A1254] block break-words leading-tight"
-												title={activity.sub_activity_name || '–'}
-											>
-												{activity.sub_activity_name || '–'}
-											</span>
-										</td>
-										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
-											{activity.default_manhours || 0}
-										</td>
-										<td className="py-1 px-2 text-center align-middle">
-											<span className="text-[#4A1254]">
-												{activity.planned_hours || 0}
-											</span>
-										</td>
-										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
-											{activity.qty_completed || 0}
-										</td>
-										<td className="py-1 px-2 text-center align-middle">
-											<span className="text-[#4A1254]">
-												{formatShortDate(activity.due_date)}
-											</span>
-										</td>
-										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
-													activity.status
-												)}`}
-											>
-												{activity.status || 'Not Started'}
-											</span>
-										</td>
-										<td className="py-1 px-2 text-center align-middle">
-											<div className="relative">
-												<input
-													type="text"
-													value={
-														remarkValues[activity.activity_id] !== undefined
-															? remarkValues[activity.activity_id]
-															: activity.remarks || ''
-													}
-													onChange={(e) =>
-														handleRemarkChange(
-															activity.activity_id,
-															e.target.value
-														)
-													}
-													onBlur={() =>
-														saveRemark(
-															activity.project_id,
-															activity.activity_id
-														)
-													}
-													onKeyDown={(e) => {
-														if (e.key === 'Enter') {
-															e.target.blur();
-														}
-													}}
-													placeholder="Add remark…"
-													className="w-full px-1.5 py-0.5 text-[10px] border border-gray-200 rounded focus:border-purple-400 focus:ring-1 focus:ring-purple-200 focus:outline-none hover:border-gray-300 transition-colors"
-													title={activity.remarks || ''}
-												/>
-												{savingRemarks.has(activity.activity_id) && (
-													<span className="absolute right-1 top-1/2 -translate-y-1/2">
-														<span className="inline-block w-2 h-2 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-													</span>
-												)}
-											</div>
-										</td>
-										<td className="py-1 px-2 text-center align-middle" />
-									</tr>
-								);
-							})}
-
 							{/* Inline Add Row */}
 							{isAdding && (
 								<tr className="bg-purple-50/50 divide-x divide-gray-300">
@@ -890,6 +783,113 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									</td>
 								</tr>
 							)}
+
+							{flatRows.map(({ project_code, activity }) => {
+								const rowKey = `${activity.project_id}-${activity.activity_id}`;
+
+								return (
+									<tr
+										key={rowKey}
+										className="hover:bg-purple-50/40 transition-colors divide-x divide-gray-300"
+									>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className="font-mono text-[10px] text-[#4A1254] block break-words leading-tight"
+												title={project_code || '–'}
+											>
+												{project_code || '–'}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className="text-[#4A1254] block break-words leading-tight"
+												title={activity.discipline}
+											>
+												{activity.discipline}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className="font-semibold text-[#4A1254] block break-words leading-tight"
+												title={activity.activity_name}
+											>
+												{activity.activity_name}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className="text-[#4A1254] block break-words leading-tight"
+												title={activity.sub_activity_name || '–'}
+											>
+												{activity.sub_activity_name || '–'}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
+											{activity.default_manhours || 0}
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span className="text-[#4A1254]">
+												{activity.planned_hours || 0}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
+											{activity.qty_completed || 0}
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span className="text-[#4A1254]">
+												{formatShortDate(activity.due_date)}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<span
+												className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
+													activity.status
+												)}`}
+											>
+												{activity.status || 'Not Started'}
+											</span>
+										</td>
+										<td className="py-1 px-2 text-center align-middle">
+											<div className="relative">
+												<input
+													type="text"
+													value={
+														remarkValues[activity.activity_id] !== undefined
+															? remarkValues[activity.activity_id]
+															: activity.remarks || ''
+													}
+													onChange={(e) =>
+														handleRemarkChange(
+															activity.activity_id,
+															e.target.value
+														)
+													}
+													onBlur={() =>
+														saveRemark(
+															activity.project_id,
+															activity.activity_id
+														)
+													}
+													onKeyDown={(e) => {
+														if (e.key === 'Enter') {
+															e.target.blur();
+														}
+													}}
+													placeholder="Add remark…"
+													className="w-full px-1.5 py-0.5 text-[10px] border border-gray-200 rounded focus:border-purple-400 focus:ring-1 focus:ring-purple-200 focus:outline-none hover:border-gray-300 transition-colors"
+													title={activity.remarks || ''}
+												/>
+												{savingRemarks.has(activity.activity_id) && (
+													<span className="absolute right-1 top-1/2 -translate-y-1/2">
+														<span className="inline-block w-2 h-2 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+													</span>
+												)}
+											</div>
+										</td>
+										<td className="py-1 px-2 text-center align-middle" />
+									</tr>
+								);
+							})}
 
 							{flatRows.length > 0 && (
 								<tr className="bg-[#64126D]/10 divide-x divide-gray-300 font-bold">

@@ -238,6 +238,52 @@ Already documented in `DDL_AND_SOFT_DELETE_AUDIT.md` §2. Many master/utility ta
 
 `src/app/api/admin/cash-vouchers/route.js:64,91,181,331` uses `(isDelete IS NULL OR isDelete = 0)` while most other routes use simply `isDelete = 0`. Two conventions in the same codebase.
 
+### 3.7 JSON Daily Entries Stored as Blob Inside Normalized Table
+
+**Severity:** 🟠 High — defeats the purpose of normalization
+
+The `user_activity_assignments.daily_entries` column (`LONGTEXT`) stores a JSON array of `{date, qty_done, hours, remarks}` objects. Every consumer parses, iterates, computes derived sums, and re-stringifies — the same read-parse-mutate-write anti-pattern that was eliminated from `project_activities_list` in the 2026-07-28 normalization migration.
+
+**The `reduce` pattern is copy-pasted into 6+ locations:**
+
+| File                                                         | Lines                   | What It Does                                                    |
+| ------------------------------------------------------------ | ----------------------- | --------------------------------------------------------------- |
+| `src/app/api/users/[id]/activity-assignments/route.js`       | 175–196                 | `JSON.parse` → `reduce` for derived qty/hours → return as array |
+| `src/app/api/reports/project-activities/route.js`            | 176–202                 | Same parse → filter → reduce pattern                            |
+| `src/app/api/reports/employee-report/route.ts`               | 259–296                 | Parse → filter → iterate entries to build per-day rows          |
+| `src/components/projects/[id]/edit/tabs/MyActivitiesTab.jsx` | 31–34, 123–127, 276–286 | Three independent parse+reduce blocks in one component          |
+| `src/components/projects/[id]/edit/EditProjectForm.jsx`      | 3820–3892               | Read entire array, mutate one entry, write back entire array    |
+| `src/app/reports/project-activities/page.jsx`                | 236–337                 | Read-parse-mutate-write cycle for add/edit/delete of entries    |
+
+**What this costs:**
+
+1. **No date-range queries.** Can't ask "hours per user in March" without loading every assignment row and parsing every JSON array in application code.
+2. **Full-array read-modify-write.** To add or lock one daily entry, the entire array is read, mutated, and written back — a race condition on concurrent edits from different tabs or users.
+3. **No aggregation via SQL.** `SUM(hours) GROUP BY user_id, MONTH(date)` is a one-liner with a proper table; currently it's a nested loop over every row.
+4. **The `daily_entries` JSON is re-parsed on every render.** `MyActivitiesTab.jsx` runs `reduce` on the same data in three separate places; nothing is memoized.
+
+**Fix:** Normalize into a `user_activity_daily_entries` table:
+
+```sql
+CREATE TABLE user_activity_daily_entries (
+  id VARCHAR(36) PRIMARY KEY,
+  assignment_id VARCHAR(36) NOT NULL,
+  user_id INT NOT NULL,
+  date DATE NOT NULL,
+  qty_done DECIMAL(10,2) DEFAULT 0,
+  hours DECIMAL(10,2) DEFAULT 0,
+  remarks TEXT,
+  is_locked TINYINT(1) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_assignment (assignment_id),
+  INDEX idx_user_date (user_id, date),
+  FOREIGN KEY (assignment_id) REFERENCES user_activity_assignments(id) ON DELETE CASCADE
+);
+```
+
+The GET handler becomes a JOIN, the PUT handler becomes an UPSERT on a single row, and reports become trivial `SUM(...) GROUP BY` queries. However, **5+ frontend components** assume `daily_entries` arrives as an inline array — the migration is a full sprint of work for a problem that hasn't manifested at current scale. Track as tech debt; tackle when reports get slow or the race condition actually bites.
+
 ---
 
 ## 4. Missing or Broken Pagination
@@ -451,6 +497,7 @@ Already documented in `RESPONSIVE_AUDIT.md` §1.1: `.content-with-sidebar` has n
 | **P3 — Backlog** | TypeScript migration (§7) | Type safety | Ongoing |
 | **P3 — Backlog** | Sequential → parallel queries (§6.1) | Marginal perf gain | ~2 hours |
 | **P3 — Backlog** | Rate limiter external store (§1.6) | Multi-instance safety | ~1 day |
+| **P3 — Backlog** | JSON daily_entries blob (§3.7) | Race condition risk, no SQL aggregation, duplicated reduce patterns | ~1 sprint (normalize to table, rewrite 5+ frontend components) |
 
 ## What's Already Well-Done
 

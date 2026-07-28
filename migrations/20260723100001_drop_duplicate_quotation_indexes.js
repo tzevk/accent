@@ -9,7 +9,7 @@ export async function up(knex) {
      AND COLUMN_NAME = 'quotation_number'
      AND INDEX_NAME LIKE 'quotation_number\\\\_%'`
 	);
-	const duplicateNames = (rows[0] || [])
+	const duplicateNames = (rows || [])
 		.map((r) => r.INDEX_NAME)
 		.filter((name) => name !== 'quotation_number');
 

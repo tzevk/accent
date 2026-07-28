@@ -328,18 +328,24 @@ export async function GET(request: Request) {
 			GROUP BY client_name`
 		);
 		// ── 5. Payment issues (issued to client) ─────────────────
-		const [issueRows] = await query(
-			`SELECT
-				payee_name AS client_name,
-				COALESCE(SUM(net_amount), 0) AS total_issued,
-				COALESCE(SUM(amount), 0) AS total_issued_gross,
-				COALESCE(SUM(deduction), 0) AS total_issued_deduction,
-				COUNT(*) AS issue_count
-			FROM payment_issues
-			WHERE isDelete = 0 AND payee_type = 'company'
-				AND payee_name IS NOT NULL AND payee_name != ''
-			GROUP BY payee_name`
-		);
+		let issueRows: IssueRow[] = [];
+		try {
+			const [rows] = await query(
+				`SELECT
+					payee_name AS client_name,
+					COALESCE(SUM(net_amount), 0) AS total_issued,
+					COALESCE(SUM(amount), 0) AS total_issued_gross,
+					COALESCE(SUM(deduction), 0) AS total_issued_deduction,
+					COUNT(*) AS issue_count
+				FROM payment_issues
+				WHERE isDelete = 0 AND payee_type = 'company'
+					AND payee_name IS NOT NULL AND payee_name != ''
+				GROUP BY payee_name`
+			);
+			issueRows = rows as IssueRow[];
+		} catch {
+			// payment_issues table may not exist
+		}
 
 		// ── 6. Period computations (only when date range) ────────
 		let periodRows: PeriodRow[] = [];
@@ -402,32 +408,36 @@ export async function GET(request: Request) {
 				}
 			}
 
-			const [issuePRows] = await query(
-				`SELECT
-					payee_name AS client_name,
-					COALESCE(SUM(CASE WHEN issue_date >= ? AND issue_date <= ? THEN net_amount ELSE 0 END), 0) AS period_issued
-				FROM payment_issues
-				WHERE isDelete = 0 AND payee_type = 'company'
-					AND payee_name IS NOT NULL AND payee_name != ''
-				GROUP BY payee_name`,
-				[fromDate, toDate]
-			);
+			let issuePRows: Array<{ client_name: string; period_issued: number }> =
+				[];
+			try {
+				const [rows] = await query(
+					`SELECT
+						payee_name AS client_name,
+						COALESCE(SUM(CASE WHEN issue_date >= ? AND issue_date <= ? THEN net_amount ELSE 0 END), 0) AS period_issued
+					FROM payment_issues
+					WHERE isDelete = 0 AND payee_type = 'company'
+						AND payee_name IS NOT NULL AND payee_name != ''
+					GROUP BY payee_name`,
+					[fromDate, toDate]
+				);
+				issuePRows = rows as Array<{
+					client_name: string;
+					period_issued: number;
+				}>;
+			} catch {
+				// payment_issues table may not exist
+			}
 
 			const issuePMap = new Map<string, number>();
-			for (const r of issuePRows as Array<{
-				client_name: string;
-				period_issued: number;
-			}>) {
+			for (const r of issuePRows) {
 				issuePMap.set(normKey(resolveName(r.client_name)), n(r.period_issued));
 			}
 			for (const r of periodRows) {
 				const key = normKey(resolveName(r.client_name));
 				r.period_issued = issuePMap.get(key) ?? 0;
 			}
-			for (const r of issuePRows as Array<{
-				client_name: string;
-				period_issued: number;
-			}>) {
+			for (const r of issuePRows) {
 				const key = normKey(resolveName(r.client_name));
 				if (
 					!periodRows.some((pr) => normKey(resolveName(pr.client_name)) === key)
@@ -500,22 +510,31 @@ export async function GET(request: Request) {
 				}
 			}
 
-			const [openIssueRows] = await query(
-				`SELECT
-					payee_name AS client_name,
-					COALESCE(SUM(net_amount), 0) AS opening_issued
-				FROM payment_issues
-				WHERE isDelete = 0 AND payee_type = 'company'
-					AND issue_date < ? AND payee_name IS NOT NULL AND payee_name != ''
-				GROUP BY payee_name`,
-				[fromDate]
-			);
-
-			const openIssueMap = new Map<string, number>();
-			for (const r of openIssueRows as Array<{
+			let openIssueRows: Array<{
 				client_name: string;
 				opening_issued: number;
-			}>) {
+			}> = [];
+			try {
+				const [rows] = await query(
+					`SELECT
+						payee_name AS client_name,
+						COALESCE(SUM(net_amount), 0) AS opening_issued
+					FROM payment_issues
+					WHERE isDelete = 0 AND payee_type = 'company'
+						AND issue_date < ? AND payee_name IS NOT NULL AND payee_name != ''
+					GROUP BY payee_name`,
+					[fromDate]
+				);
+				openIssueRows = rows as Array<{
+					client_name: string;
+					opening_issued: number;
+				}>;
+			} catch {
+				// payment_issues table may not exist
+			}
+
+			const openIssueMap = new Map<string, number>();
+			for (const r of openIssueRows) {
 				openIssueMap.set(
 					normKey(resolveName(r.client_name)),
 					n(r.opening_issued)
@@ -525,10 +544,7 @@ export async function GET(request: Request) {
 				const key = normKey(resolveName(r.client_name));
 				r.opening_issued = openIssueMap.get(key) ?? 0;
 			}
-			for (const r of openIssueRows as Array<{
-				client_name: string;
-				opening_issued: number;
-			}>) {
+			for (const r of openIssueRows) {
 				const key = normKey(resolveName(r.client_name));
 				if (
 					!openingRows.some(
