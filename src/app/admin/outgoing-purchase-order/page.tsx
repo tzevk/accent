@@ -661,7 +661,7 @@ export default function OutgoingPurchaseOrderPage() {
 										po.net_amount != null
 											? Number(po.net_amount)
 											: add(po.po_amount || 0, po.tax_amount || 0).toNumber();
-									return add(sum, isNaN(net) ? 0 : net);
+									return add(sum, isNaN(net) ? 0 : net).toNumber();
 								}, 0)
 							)}
 						</div>

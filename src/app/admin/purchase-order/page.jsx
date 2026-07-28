@@ -627,7 +627,10 @@ export default function PurchaseOrderPage() {
 					<div className="bg-white rounded-xl shadow-sm border border-purple-200 flex-[1.5] min-w-[140px] px-3 py-2">
 						<div className="text-lg font-bold text-purple-600">
 							{formatCurrency(
-								purchaseOrders.reduce((sum, po) => add(sum, po.total || 0), 0)
+								purchaseOrders.reduce(
+									(sum, po) => add(sum, po.total || 0).toNumber(),
+									0
+								)
 							)}
 						</div>
 						<div className="text-xs text-gray-600">Total Amount</div>
@@ -635,7 +638,7 @@ export default function PurchaseOrderPage() {
 					<div className="bg-white rounded-xl shadow-sm border border-purple-200 flex-[1.5] min-w-[140px] px-3 py-2">
 						{formatCurrency(
 							purchaseOrders.reduce(
-								(sum, po) => add(sum, po.tax_amount || 0),
+								(sum, po) => add(sum, po.tax_amount || 0).toNumber(),
 								0
 							)
 						)}
@@ -649,7 +652,7 @@ export default function PurchaseOrderPage() {
 										po.net_amount != null
 											? parseFloat(po.net_amount)
 											: add(po.total || 0, po.tax_amount || 0).toNumber();
-									return add(sum, isNaN(net) ? 0 : net);
+									return add(sum, isNaN(net) ? 0 : net).toNumber();
 								}, 0)
 							)}
 						</div>

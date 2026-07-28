@@ -123,9 +123,9 @@ const formFields = [
 			dependsOn: ['amount', 'gst_amount', 'tds_amount'],
 			calculate: (values: Record<string, unknown>) =>
 				add(
-					values.amount || 0,
-					values.gst_amount || 0,
-					values.tds_amount || 0
+					Number(values.amount) || 0,
+					Number(values.gst_amount) || 0,
+					Number(values.tds_amount) || 0
 				).toNumber(),
 		},
 	},

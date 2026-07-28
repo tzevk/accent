@@ -135,7 +135,10 @@ const formFields: FormField[] = [
 		computed: {
 			dependsOn: ['amount', 'deduction'],
 			calculate: (values: Record<string, unknown>) =>
-				sub(values.amount || 0, values.deduction || 0).toNumber(),
+				sub(
+					Number(values.amount) || 0,
+					Number(values.deduction) || 0
+				).toNumber(),
 		},
 	},
 	{ name: 'issue_date', label: 'Issue Date', type: 'date' as const },
