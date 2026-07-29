@@ -248,7 +248,7 @@ export async function GET(request: Request) {
 		const data: SalesRegisterItem[] = [];
 
 		for (const r of rawRows) {
-			const gross = R(r.gross_invoice_amount);
+			const gross = R(r.gross_invoice_amount ?? 0);
 			const grossNum = toNumber(gross);
 
 			if (grossNum === 0 && r.gross_invoice_amount === null) continue;
