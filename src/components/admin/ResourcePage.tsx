@@ -73,6 +73,7 @@ export default function ResourcePage({
 	employeeListEndpoint,
 	companyListEndpoint,
 	rowActions,
+	disablePagination,
 }: ResourcePageProps) {
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState('');
@@ -82,7 +83,11 @@ export default function ResourcePage({
 	}>({ mode: null, row: null });
 
 	const filters = extraFilters ? extraFilters.values : {};
-	const queryParams = { page, limit: pageSize, search, ...filters };
+	const queryParams: Record<string, unknown> = { search, ...filters };
+	if (!disablePagination) {
+		queryParams.page = page;
+		queryParams.limit = pageSize;
+	}
 
 	const listQuery = useQuery<ApiListResponse>({
 		queryKey: [queryKey, queryParams],
@@ -270,14 +275,16 @@ export default function ResourcePage({
 								</TableBody>
 							</Table>
 						</div>
-						<div className="border-t border-gray-100 px-4">
-							<Pagination
-								page={pagination.page}
-								totalPages={pagination.totalPages}
-								total={pagination.total}
-								onPageChange={setPage}
-							/>
-						</div>
+						{!disablePagination ? (
+							<div className="border-t border-gray-100 px-4">
+								<Pagination
+									page={pagination.page}
+									totalPages={pagination.totalPages}
+									total={pagination.total}
+									onPageChange={setPage}
+								/>
+							</div>
+						) : null}
 					</div>
 				</div>
 			</div>

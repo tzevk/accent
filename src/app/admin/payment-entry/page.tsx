@@ -284,6 +284,7 @@ export default function PaymentEntryPage() {
 			searchPlaceholder="Search company, receipt, transaction…"
 			companyListEndpoint="/api/companies"
 			rowActions={rowActions}
+			disablePagination
 		/>
 	);
 }

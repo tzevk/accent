@@ -73,6 +73,7 @@ interface SalesRegisterRow {
 	igst_amount_sql: string | null;
 	cgst_rate: string | null;
 	sgst_rate: string | null;
+	gst_type: string | null;
 	igst_rate: string | null;
 	total_invoice_amount_with_tax: string | null;
 	payment_received: string;
@@ -198,6 +199,7 @@ export async function GET(request: Request) {
 				COALESCE(i.cgst_rate, 0) AS cgst_rate,
 				COALESCE(i.sgst_rate, 0) AS sgst_rate,
 				COALESCE(i.igst_rate, 0) AS igst_rate,
+				i.gst_type,
 				i.total AS total_invoice_amount_with_tax,
 				COALESCE(pe.total_received, 0) AS payment_received,
 				COALESCE(pe.total_tds, 0) AS tds_deduction,
@@ -220,8 +222,13 @@ export async function GET(request: Request) {
 				i.notes AS remark
 			FROM invoices i
 			LEFT JOIN companies c
-				ON LOWER(TRIM(c.company_name)) = LOWER(TRIM(i.client_name))
-				AND c.isDelete = 0
+				ON c.id = (
+					SELECT c2.id FROM companies c2
+					WHERE c2.isDelete = 0
+						AND LOWER(TRIM(c2.company_name)) = LOWER(TRIM(i.client_name))
+					ORDER BY c2.id
+					LIMIT 1
+				)
 			LEFT JOIN (
 				SELECT invoice_no,
 					SUM(COALESCE(amount, 0)) AS total_received,
@@ -256,10 +263,11 @@ export async function GET(request: Request) {
 			const cgstRate = parseFloat(r.cgst_rate || '0');
 			const sgstRate = parseFloat(r.sgst_rate || '0');
 			const igstRate = parseFloat(r.igst_rate || '0');
+			const isCgstSgst = r.gst_type === 'cgst_sgst';
 
-			const cgstAmount = toNumber(pctOf(gross, cgstRate));
-			const sgstAmount = toNumber(pctOf(gross, sgstRate));
-			const igstAmount = toNumber(pctOf(gross, igstRate));
+			const cgstAmount = isCgstSgst ? toNumber(pctOf(gross, cgstRate)) : 0;
+			const sgstAmount = isCgstSgst ? toNumber(pctOf(gross, sgstRate)) : 0;
+			const igstAmount = isCgstSgst ? 0 : toNumber(pctOf(gross, igstRate));
 
 			const totalWithTax = toNumber(R(r.total_invoice_amount_with_tax ?? 0));
 			const paymentReceived = toNumber(R(r.payment_received));
