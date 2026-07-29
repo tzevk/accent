@@ -893,3 +893,87 @@ export async function PATCH(request, { params }) {
 		);
 	}
 }
+
+/**
+ * DELETE /api/users/[id]/activity-assignments
+ * Remove a user's activity assignment
+ */
+export async function DELETE(request, { params }) {
+	let db;
+	try {
+		const { id } = await params;
+		const requestedUserId = parseInt(id);
+
+		const currentUser = await getCurrentUser(request);
+
+		if (!currentUser) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
+		}
+
+		// Users can delete their own assignments
+		// Super admins can delete any user's assignments
+		const isOwnData = requestedUserId === currentUser.id;
+		if (!isOwnData && !currentUser.is_super_admin) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						"Forbidden - Only super admins can delete other users' assignments",
+				},
+				{ status: 403 }
+			);
+		}
+
+		const body = await request.json();
+		const { project_id, activity_id } = body || {};
+
+		if (!project_id || !activity_id) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'project_id and activity_id are required',
+				},
+				{ status: 400 }
+			);
+		}
+
+		db = await dbConnect();
+
+		const [deleteResult] = await db.execute(
+			'DELETE FROM user_activity_assignments WHERE user_id = ? AND project_id = ? AND activity_id = ?',
+			[requestedUserId, project_id, activity_id]
+		);
+
+		db.release();
+
+		if (deleteResult.affectedRows === 0) {
+			return NextResponse.json(
+				{ success: false, error: 'Assignment not found' },
+				{ status: 404 }
+			);
+		}
+
+		return NextResponse.json({
+			success: true,
+			message: 'Assignment deleted successfully',
+		});
+	} catch (error) {
+		console.error('[Activity Assignment Delete] Error:', error);
+		if (db) {
+			try {
+				db.release();
+			} catch {}
+		}
+		return NextResponse.json(
+			{
+				success: false,
+				error: 'Failed to delete assignment',
+				details: error.message,
+			},
+			{ status: 500 }
+		);
+	}
+}
