@@ -9,6 +9,8 @@ import {
 	XMarkIcon,
 	MagnifyingGlassIcon,
 	ArrowsUpDownIcon,
+	PencilSquareIcon,
+	TrashIcon,
 } from '@heroicons/react/24/outline';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -77,6 +79,12 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		status: 'Not Started',
 		remark: '',
 	});
+
+	// Edit / delete state
+	const [editingKey, setEditingKey] = useState(null); // "project_id-activity_id"
+	const [editForm, setEditForm] = useState({});
+	const [savingEdit, setSavingEdit] = useState(false);
+	const [deleting, setDeleting] = useState(new Set());
 
 	// Search / filter / sort state
 	const [search, setSearch] = useState('');
@@ -259,6 +267,90 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			alert('Failed to add activity');
 		} finally {
 			setSaving(false);
+		}
+	};
+
+	// ── Edit an existing row ──
+	const openEditRow = (row) => {
+		const a = row.activity;
+		const key = `${a.project_id}-${a.activity_id}`;
+		setEditingKey(key);
+		setEditForm({
+			manhours: a.planned_hours || '',
+			quantity: a.qty_completed || '',
+			due_date: a.due_date || todayStr(),
+			status: a.status || 'Not Started',
+			remark: a.remarks || '',
+		});
+	};
+
+	const closeEditRow = () => {
+		if (savingEdit) return;
+		setEditingKey(null);
+		setEditForm({});
+	};
+
+	const submitEdit = async (projectId, activityId) => {
+		setSavingEdit(true);
+		try {
+			const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					project_id: projectId,
+					activity_id: activityId,
+					planned_hours: editForm.manhours || null,
+					qty_completed: editForm.quantity || null,
+					due_date: editForm.due_date || null,
+					status: editForm.status,
+					remarks: editForm.remark,
+				}),
+			});
+			if (res?.success) {
+				setEditingKey(null);
+				setEditForm({});
+				await loadAssignments();
+			} else {
+				alert(res?.error || 'Failed to update activity');
+			}
+		} catch (err) {
+			console.error('Failed to update activity:', err);
+			alert('Failed to update activity');
+		} finally {
+			setSavingEdit(false);
+		}
+	};
+
+	// ── Delete a row ──
+	const deleteActivity = async (projectId, activityId) => {
+		if (!window.confirm('Delete this activity log? This cannot be undone.'))
+			return;
+
+		const key = `${projectId}-${activityId}`;
+		setDeleting((prev) => new Set(prev).add(key));
+		try {
+			const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					project_id: projectId,
+					activity_id: activityId,
+				}),
+			});
+			if (res?.success) {
+				await loadAssignments();
+			} else {
+				alert(res?.error || 'Failed to delete activity');
+			}
+		} catch (err) {
+			console.error('Failed to delete activity:', err);
+			alert('Failed to delete activity');
+		} finally {
+			setDeleting((prev) => {
+				const next = new Set(prev);
+				next.delete(key);
+				return next;
+			});
 		}
 	};
 
@@ -786,12 +878,17 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
 							{flatRows.map(({ project_code, activity }) => {
 								const rowKey = `${activity.project_id}-${activity.activity_id}`;
+								const isEditing = editingKey === rowKey;
+								const isDeleting = deleting.has(rowKey);
 
 								return (
 									<tr
 										key={rowKey}
-										className="hover:bg-purple-50/40 transition-colors divide-x divide-gray-300"
+										className={`transition-colors divide-x divide-gray-300 ${
+											isEditing ? 'bg-purple-50/50' : 'hover:bg-purple-50/40'
+										}`}
 									>
+										{/* Project Number */}
 										<td className="py-1 px-2 text-center align-middle">
 											<span
 												className="font-mono text-[10px] text-[#4A1254] block break-words leading-tight"
@@ -800,6 +897,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 												{project_code || '–'}
 											</span>
 										</td>
+										{/* Discipline */}
 										<td className="py-1 px-2 text-center align-middle">
 											<span
 												className="text-[#4A1254] block break-words leading-tight"
@@ -808,6 +906,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 												{activity.discipline}
 											</span>
 										</td>
+										{/* Activity */}
 										<td className="py-1 px-2 text-center align-middle">
 											<span
 												className="font-semibold text-[#4A1254] block break-words leading-tight"
@@ -816,6 +915,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 												{activity.activity_name}
 											</span>
 										</td>
+										{/* Sub Activity */}
 										<td className="py-1 px-2 text-center align-middle">
 											<span
 												className="text-[#4A1254] block break-words leading-tight"
@@ -824,54 +924,135 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 												{activity.sub_activity_name || '–'}
 											</span>
 										</td>
+										{/* Default MH */}
 										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
 											{activity.default_manhours || 0}
 										</td>
+										{/* Manhours */}
 										<td className="py-1 px-2 text-center align-middle">
-											<span className="text-[#4A1254]">
-												{activity.planned_hours || 0}
-											</span>
+											{isEditing ? (
+												<input
+													type="number"
+													min="0"
+													step="0.5"
+													value={editForm.manhours}
+													onChange={(e) =>
+														setEditForm((p) => ({
+															...p,
+															manhours: e.target.value,
+														}))
+													}
+													className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+												/>
+											) : (
+												<span className="text-[#4A1254]">
+													{activity.planned_hours || 0}
+												</span>
+											)}
 										</td>
-										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
-											{activity.qty_completed || 0}
-										</td>
+										{/* Quantity */}
 										<td className="py-1 px-2 text-center align-middle">
-											<span className="text-[#4A1254]">
-												{formatShortDate(activity.due_date)}
-											</span>
+											{isEditing ? (
+												<input
+													type="number"
+													min="0"
+													step="1"
+													value={editForm.quantity}
+													onChange={(e) =>
+														setEditForm((p) => ({
+															...p,
+															quantity: e.target.value,
+														}))
+													}
+													className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+												/>
+											) : (
+												<span className="text-[#4A1254]">
+													{activity.qty_completed || 0}
+												</span>
+											)}
 										</td>
+										{/* Date Completed */}
 										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
-													activity.status
-												)}`}
-											>
-												{activity.status || 'Not Started'}
-											</span>
+											{isEditing ? (
+												<input
+													type="date"
+													value={editForm.due_date}
+													onChange={(e) =>
+														setEditForm((p) => ({
+															...p,
+															due_date: e.target.value,
+														}))
+													}
+													className="px-1 py-0.5 text-[10px] border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+												/>
+											) : (
+												<span className="text-[#4A1254]">
+													{formatShortDate(activity.due_date)}
+												</span>
+											)}
 										</td>
+										{/* Status */}
+										<td className="py-1 px-2 text-center align-middle">
+											{isEditing ? (
+												<select
+													value={editForm.status}
+													onChange={(e) =>
+														setEditForm((p) => ({
+															...p,
+															status: e.target.value,
+														}))
+													}
+													className="w-full px-0.5 py-0.5 text-[10px] border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+												>
+													<option value="Not Started">Not Started</option>
+													<option value="In Progress">In Progress</option>
+													<option value="On Hold">On Hold</option>
+													<option value="Completed">Completed</option>
+													<option value="Cancelled">Cancelled</option>
+												</select>
+											) : (
+												<span
+													className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
+														activity.status
+													)}`}
+												>
+													{activity.status || 'Not Started'}
+												</span>
+											)}
+										</td>
+										{/* Remark */}
 										<td className="py-1 px-2 text-center align-middle">
 											<div className="relative">
 												<input
 													type="text"
 													value={
-														remarkValues[activity.activity_id] !== undefined
-															? remarkValues[activity.activity_id]
-															: activity.remarks || ''
+														isEditing
+															? editForm.remark
+															: remarkValues[activity.activity_id] !== undefined
+																? remarkValues[activity.activity_id]
+																: activity.remarks || ''
 													}
 													onChange={(e) =>
-														handleRemarkChange(
-															activity.activity_id,
-															e.target.value
-														)
+														isEditing
+															? setEditForm((p) => ({
+																	...p,
+																	remark: e.target.value,
+																}))
+															: handleRemarkChange(
+																	activity.activity_id,
+																	e.target.value
+																)
 													}
-													onBlur={() =>
-														saveRemark(
-															activity.project_id,
-															activity.activity_id
-														)
-													}
+													onBlur={() => {
+														if (!isEditing)
+															saveRemark(
+																activity.project_id,
+																activity.activity_id
+															);
+													}}
 													onKeyDown={(e) => {
-														if (e.key === 'Enter') {
+														if (e.key === 'Enter' && !isEditing) {
 															e.target.blur();
 														}
 													}}
@@ -886,7 +1067,66 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 												)}
 											</div>
 										</td>
-										<td className="py-1 px-2 text-center align-middle" />
+										{/* Actions */}
+										<td className="py-1 px-2 text-center align-middle">
+											{isEditing ? (
+												<div className="flex items-center justify-center gap-1">
+													<button
+														onClick={() =>
+															submitEdit(
+																activity.project_id,
+																activity.activity_id
+															)
+														}
+														disabled={savingEdit}
+														className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50"
+														title="Save"
+													>
+														<CheckIcon className="w-3.5 h-3.5" />
+													</button>
+													<button
+														onClick={closeEditRow}
+														disabled={savingEdit}
+														className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+														title="Cancel"
+													>
+														<XMarkIcon className="w-3.5 h-3.5" />
+													</button>
+												</div>
+											) : (
+												<div className="flex items-center justify-center gap-1">
+													<button
+														onClick={() =>
+															openEditRow({
+																project_code,
+																activity,
+															})
+														}
+														className="p-1 rounded text-[#64126D] hover:bg-purple-100 transition-colors"
+														title="Edit"
+													>
+														<PencilSquareIcon className="w-3.5 h-3.5" />
+													</button>
+													<button
+														onClick={() =>
+															deleteActivity(
+																activity.project_id,
+																activity.activity_id
+															)
+														}
+														disabled={isDeleting}
+														className="p-1 rounded text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+														title="Delete"
+													>
+														{isDeleting ? (
+															<span className="inline-block w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+														) : (
+															<TrashIcon className="w-3.5 h-3.5" />
+														)}
+													</button>
+												</div>
+											)}
+										</td>
 									</tr>
 								);
 							})}
