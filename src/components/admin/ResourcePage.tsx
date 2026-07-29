@@ -1,7 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
 	PlusIcon,
 	ArrowPathIcon,
@@ -54,7 +55,7 @@ function getNested(
 	);
 }
 
-export default function ResourcePage({
+function ResourcePageInner({
 	title,
 	subtitle,
 	endpoint,
@@ -75,8 +76,10 @@ export default function ResourcePage({
 	rowActions,
 	disablePagination,
 }: ResourcePageProps) {
+	const urlSearchParams = useSearchParams();
+	const initialSearch = urlSearchParams?.get('search') ?? '';
+	const [search, setSearch] = useState(initialSearch);
 	const [page, setPage] = useState(1);
-	const [search, setSearch] = useState('');
 	const [modalState, setModalState] = useState<{
 		mode: ModalMode;
 		row: Record<string, unknown> | null;
@@ -310,5 +313,13 @@ export default function ResourcePage({
 				/>
 			) : null}
 		</div>
+	);
+}
+
+export default function ResourcePage(props: ResourcePageProps) {
+	return (
+		<Suspense fallback={null}>
+			<ResourcePageInner {...props} />
+		</Suspense>
 	);
 }

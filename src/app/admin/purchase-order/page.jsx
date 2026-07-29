@@ -18,6 +18,7 @@ import {
 	TrashIcon,
 	PlusIcon,
 	XMarkIcon,
+	EyeIcon,
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '@/lib/format';
 
@@ -331,6 +332,11 @@ export default function PurchaseOrderPage() {
 	// Handle Edit - Navigate to edit page
 	const handleEdit = (po) => {
 		router.push(`/admin/purchase-order/edit/${po.id}`);
+	};
+
+	// Handle View - Navigate to view page
+	const handleView = (po) => {
+		router.push(`/admin/purchase-order/view/${po.id}`);
 	};
 
 	// Handle Delete
@@ -825,6 +831,13 @@ export default function PurchaseOrderPage() {
 											</td>
 											<td className="px-6 py-4">
 												<div className="flex items-center justify-center gap-2">
+													<button
+														onClick={() => handleView(po)}
+														className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+														title="View"
+													>
+														<EyeIcon className="h-5 w-5" />
+													</button>
 													<button
 														onClick={() => handleEdit(po)}
 														className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"

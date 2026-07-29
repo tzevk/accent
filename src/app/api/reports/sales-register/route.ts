@@ -65,6 +65,7 @@ interface SalesRegisterRow {
 	company_name: string;
 	invoice_number: string;
 	po_number: string | null;
+	po_id: number | null;
 	invoice_date: string | null;
 	due_date: string | null;
 	gross_invoice_amount: string | null;
@@ -94,6 +95,7 @@ export interface SalesRegisterItem {
 	company_name: string;
 	invoice_number: string;
 	po_number: string | null;
+	po_id: number | null;
 	invoice_date: string | null;
 	due_date: string | null;
 	gross_invoice_amount: number;
@@ -190,6 +192,7 @@ export async function GET(request: Request) {
 				i.client_name AS company_name,
 				i.invoice_number,
 				i.po_number,
+				i.po_id,
 				i.invoice_date,
 				i.due_date,
 				i.gross_amount AS gross_invoice_amount,
@@ -287,6 +290,7 @@ export async function GET(request: Request) {
 				company_name: r.company_name,
 				invoice_number: r.invoice_number,
 				po_number: r.po_number,
+				po_id: r.po_id,
 				invoice_date: r.invoice_date,
 				due_date: r.due_date,
 				gross_invoice_amount: grossNum,

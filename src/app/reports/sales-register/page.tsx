@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
 	MagnifyingGlassIcon,
@@ -25,6 +26,7 @@ interface SalesRegisterItem {
 	company_name: string;
 	invoice_number: string;
 	po_number: string | null;
+	po_id: number | null;
 	invoice_date: string | null;
 	due_date: string | null;
 	gross_invoice_amount: number;
@@ -555,9 +557,6 @@ export default function SalesRegisterPage() {
 										Overdue
 										{sortIndicator('overdue_days')}
 									</th>
-									<th className="text-left px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-										Remark
-									</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -578,13 +577,36 @@ export default function SalesRegisterPage() {
 											{c.company_name}
 										</td>
 										<td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
-											{c.invoice_number}
+											<Link
+												href={`/admin/invoice/edit/${c.invoice_id}`}
+												className="text-purple-700 hover:text-purple-900 hover:underline"
+											>
+												{c.invoice_number}
+											</Link>
+										</td>
+										<td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
+											{c.po_id ? (
+												<Link
+													href={`/admin/purchase-order/view/${c.po_id}`}
+													className="text-purple-700 hover:text-purple-900 hover:underline"
+												>
+													{c.po_number}
+												</Link>
+											) : (
+												c.po_number || '—'
+											)}
 										</td>
 										<td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">
-											{c.po_number || '—'}
-										</td>
-										<td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">
-											{c.receipt_no || '—'}
+											{c.receipt_no ? (
+												<Link
+													href={`/admin/payment-entry?search=${encodeURIComponent(c.receipt_no)}`}
+													className="text-purple-700 hover:text-purple-900 hover:underline"
+												>
+													{c.receipt_no}
+												</Link>
+											) : (
+												'—'
+											)}
 										</td>
 										<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
 											{formatCurrency(c.gross_invoice_amount)}
@@ -650,12 +672,6 @@ export default function SalesRegisterPage() {
 												<span className="text-gray-300">—</span>
 											)}
 										</td>
-										<td
-											className="px-3 py-2.5 text-gray-500 max-w-[200px] truncate whitespace-nowrap"
-											title={c.remark || undefined}
-										>
-											{c.remark || '—'}
-										</td>
 									</tr>
 								))}
 							</tbody>
@@ -703,7 +719,6 @@ export default function SalesRegisterPage() {
 												{formatCurrency(totals.net_invoice_amount_receivable)}
 											</span>
 										</td>
-										<td className="px-3 py-2.5" />
 										<td className="px-3 py-2.5" />
 										<td className="px-3 py-2.5" />
 										<td className="px-3 py-2.5" />
