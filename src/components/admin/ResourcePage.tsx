@@ -1,7 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
 	PlusIcon,
 	ArrowPathIcon,
@@ -54,7 +55,7 @@ function getNested(
 	);
 }
 
-export default function ResourcePage({
+function ResourcePageInner({
 	title,
 	subtitle,
 	endpoint,
@@ -73,16 +74,23 @@ export default function ResourcePage({
 	employeeListEndpoint,
 	companyListEndpoint,
 	rowActions,
+	disablePagination,
 }: ResourcePageProps) {
+	const urlSearchParams = useSearchParams();
+	const initialSearch = urlSearchParams?.get('search') ?? '';
+	const [search, setSearch] = useState(initialSearch);
 	const [page, setPage] = useState(1);
-	const [search, setSearch] = useState('');
 	const [modalState, setModalState] = useState<{
 		mode: ModalMode;
 		row: Record<string, unknown> | null;
 	}>({ mode: null, row: null });
 
 	const filters = extraFilters ? extraFilters.values : {};
-	const queryParams = { page, limit: pageSize, search, ...filters };
+	const queryParams: Record<string, unknown> = { search, ...filters };
+	if (!disablePagination) {
+		queryParams.page = page;
+		queryParams.limit = pageSize;
+	}
 
 	const listQuery = useQuery<ApiListResponse>({
 		queryKey: [queryKey, queryParams],
@@ -270,14 +278,16 @@ export default function ResourcePage({
 								</TableBody>
 							</Table>
 						</div>
-						<div className="border-t border-gray-100 px-4">
-							<Pagination
-								page={pagination.page}
-								totalPages={pagination.totalPages}
-								total={pagination.total}
-								onPageChange={setPage}
-							/>
-						</div>
+						{!disablePagination ? (
+							<div className="border-t border-gray-100 px-4">
+								<Pagination
+									page={pagination.page}
+									totalPages={pagination.totalPages}
+									total={pagination.total}
+									onPageChange={setPage}
+								/>
+							</div>
+						) : null}
 					</div>
 				</div>
 			</div>
@@ -303,5 +313,13 @@ export default function ResourcePage({
 				/>
 			) : null}
 		</div>
+	);
+}
+
+export default function ResourcePage(props: ResourcePageProps) {
+	return (
+		<Suspense fallback={null}>
+			<ResourcePageInner {...props} />
+		</Suspense>
 	);
 }

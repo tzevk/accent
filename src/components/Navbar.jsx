@@ -76,6 +76,13 @@ const reportsMenuConfig = [
 		resource: 'reports',
 		reportField: 'project_activities',
 	},
+	{
+		name: 'Sales Register',
+		href: '/reports/sales-register',
+		icon: DocumentTextIcon,
+		resource: 'reports',
+		reportField: 'project_activities',
+	},
 ];
 
 function hasReportFieldAccess(user, fieldKey) {

@@ -22,10 +22,13 @@ export async function GET(request) {
 		const user = authResult.user;
 
 		const { searchParams } = new URL(request.url);
-		const page = parseInt(searchParams.get('page') || '1');
-		const limit = parseInt(searchParams.get('limit') || '20');
+		const pageParam = searchParams.get('page');
+		const limitParam = searchParams.get('limit');
+		const hasPagination = limitParam !== null;
+		const page = parseInt(pageParam || '1');
+		const limit = hasPagination ? parseInt(limitParam) : null;
 		const search = (searchParams.get('search') || '').trim();
-		const offset = (page - 1) * limit;
+		const offset = hasPagination ? (page - 1) * limit : null;
 
 		db = await dbConnect();
 
@@ -44,11 +47,19 @@ export async function GET(request) {
 			? `WHERE ${whereClauses.join(' AND ')}`
 			: '';
 
-		// Get entries with pagination
-		const [entries] = await db.execute(
-			`SELECT * FROM payment_entries ${whereSQL} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-			[...queryParams, limit, offset]
-		);
+		// Get entries
+		let entries;
+		if (hasPagination) {
+			[entries] = await db.execute(
+				`SELECT * FROM payment_entries ${whereSQL} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+				[...queryParams, limit, offset]
+			);
+		} else {
+			[entries] = await db.execute(
+				`SELECT * FROM payment_entries ${whereSQL} ORDER BY created_at DESC`,
+				queryParams
+			);
+		}
 
 		// Get total count for pagination
 		const [countResult] = await db.execute(
@@ -82,17 +93,20 @@ export async function GET(request) {
 			console.error('Error fetching stats:', statsError);
 		}
 
-		return NextResponse.json({
+		const responsePayload = {
 			success: true,
 			data: entries,
-			pagination: {
+			stats,
+		};
+		if (hasPagination) {
+			responsePayload.pagination = {
 				page,
 				limit,
 				total,
 				totalPages: Math.ceil(total / limit),
-			},
-			stats,
-		});
+			};
+		}
+		return NextResponse.json(responsePayload);
 	} catch (error) {
 		console.error('Payment entries list error:', error?.message);
 		return NextResponse.json(

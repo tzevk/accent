@@ -104,6 +104,7 @@ export interface ResourcePageProps {
 	searchPlaceholder?: string;
 	extraFilters?: ExtraFilters;
 	pageSize?: number;
+	disablePagination?: boolean;
 	canView?: boolean;
 	vendorListEndpoint?: string;
 	employeeListEndpoint?: string;
@@ -140,7 +141,7 @@ export interface Pagination {
 export interface ApiListResponse<T = Record<string, unknown>> {
 	success: boolean;
 	data: T[];
-	pagination: Pagination;
+	pagination?: Pagination;
 	stats?: Record<string, number | string | null>;
 	error?: string;
 }

@@ -1,19 +1,47 @@
 'use client';
 
+import { Suspense, useState, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
-import { useState, useCallback } from 'react';
 import {
-	PrinterIcon,
+	PlusIcon,
 	ArrowPathIcon,
+	EyeIcon,
+	PencilIcon,
+	TrashIcon,
+	PrinterIcon,
 	DocumentTextIcon,
 	CurrencyDollarIcon,
 	CheckCircleIcon,
 	AdjustmentsHorizontalIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
-import ResourcePage from '@/components/admin/ResourcePage';
-import { formatCurrency } from '@/lib/format';
+
+import Navbar from '@/components/Navbar';
+import Sidebar from '@/components/Sidebar';
+import {
+	Table,
+	TableHeader,
+	TableBody,
+	TableHead,
+	TableRow,
+	TableCell,
+	TableEmpty,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/form-fields';
+import { apiGet, apiDelete } from '@/lib/api-client';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { add } from '@/lib/money';
+import ResourceFormModal from '@/components/admin/ResourceFormModal';
+import type {
+	ModalMode,
+	ApiListResponse,
+	FormField,
+	StatsConfig,
+	StatTone,
+} from '@/types/admin';
 
 const schema = z.object({
 	company_name: z.string().min(1, 'Company name is required'),
@@ -58,12 +86,12 @@ const invoiceLabelFn = (item: Record<string, unknown>) => {
 	return `${inv} — ${client} | Net: ${net} | GST: ${gst} | Total: ${total}`;
 };
 
-const formFields = [
+const formFields: FormField[] = [
 	{
 		name: 'company_name',
 		label: 'Company Name',
 		required: true,
-		type: 'searchableSelect' as const,
+		type: 'searchableSelect',
 		companyAutofill: true,
 	},
 	{ name: 'city', label: 'City' },
@@ -72,11 +100,11 @@ const formFields = [
 		label: 'Receipt No',
 		hint: 'Auto-generated if blank',
 	},
-	{ name: 'receipt_date', label: 'Receipt Date', type: 'date' as const },
+	{ name: 'receipt_date', label: 'Receipt Date', type: 'date' },
 	{
 		name: 'invoice_no',
 		label: 'Invoice No',
-		type: 'searchableSelect' as const,
+		type: 'searchableSelect',
 		searchableEndpoint: '/api/admin/invoices?limit=500',
 		searchableValueKey: 'invoice_number',
 		searchableLabelFn: invoiceLabelFn,
@@ -86,11 +114,11 @@ const formFields = [
 		},
 		searchableDependency: { field: 'company_name', itemKey: 'client_name' },
 	},
-	{ name: 'invoice_date', label: 'Invoice Date', type: 'date' as const },
+	{ name: 'invoice_date', label: 'Invoice Date', type: 'date' },
 	{
 		name: 'invoice_amount',
 		label: 'Invoice Amount',
-		type: 'number' as const,
+		type: 'number',
 		step: '0.01',
 		disabled: true,
 		fullWidth: true,
@@ -98,26 +126,26 @@ const formFields = [
 	{
 		name: 'amount',
 		label: 'Amount',
-		type: 'number' as const,
+		type: 'number',
 		step: '0.01',
 		required: true,
 	},
 	{
 		name: 'tds_amount',
 		label: 'TDS',
-		type: 'number' as const,
+		type: 'number',
 		step: '0.01',
 	},
 	{
 		name: 'gst_amount',
 		label: 'GST',
-		type: 'number' as const,
+		type: 'number',
 		step: '0.01',
 	},
 	{
 		name: 'net_amount',
 		label: 'Net Amount',
-		type: 'number' as const,
+		type: 'number',
 		step: '0.01',
 		computed: {
 			dependsOn: ['amount', 'gst_amount', 'tds_amount'],
@@ -129,12 +157,12 @@ const formFields = [
 				).toNumber(),
 		},
 	},
-	{ name: 'payment_date', label: 'Payment Date', type: 'date' as const },
+	{ name: 'payment_date', label: 'Payment Date', type: 'date' },
 	{ name: 'transaction_id', label: 'Transaction ID' },
 	{
 		name: 'payment_type',
 		label: 'Payment Type',
-		type: 'select' as const,
+		type: 'select',
 		options: [
 			{ value: 'full', label: 'Full Payment' },
 			{ value: 'partial', label: 'Part Payment' },
@@ -142,73 +170,96 @@ const formFields = [
 	},
 ];
 
-const columns = [
-	{ key: 'company_name', label: 'Company Name' },
-	{ key: 'receipt_no', label: 'Receipt No', headClassName: 'w-32' },
-	{
-		key: 'amount',
-		label: 'Amount',
-		money: true,
-		headClassName: 'w-32 text-right',
-		cellClassName: 'text-right font-medium',
-	},
-	{
-		key: 'payment_type',
-		label: 'Type',
-		headClassName: 'w-24',
-		render: (row: Record<string, unknown>) => {
-			const val = row.payment_type;
-			if (val === 'full') return 'Full';
-			if (val === 'partial') return 'Partial';
-			return '—';
-		},
-	},
-	{ key: 'transaction_id', label: 'Transaction ID', headClassName: 'w-40' },
-	{ key: 'receipt_date', label: 'Date', date: true, headClassName: 'w-28' },
-];
-
-const statsConfig = [
+const statsConfig: StatsConfig[] = [
 	{
 		key: 'total',
 		label: 'Total Entries',
-		tone: 'slate' as const,
+		tone: 'slate',
 		icon: DocumentTextIcon,
 	},
 	{
 		key: 'totalAmount',
 		label: 'Total Amount',
-		tone: 'purple' as const,
+		tone: 'purple',
 		icon: CurrencyDollarIcon,
 		money: true,
 	},
 	{
 		key: 'full',
 		label: 'Full Payments',
-		tone: 'green' as const,
+		tone: 'green',
 		icon: CheckCircleIcon,
 	},
 	{
 		key: 'partial',
 		label: 'Partial Payments',
-		tone: 'amber' as const,
+		tone: 'amber',
 		icon: AdjustmentsHorizontalIcon,
 	},
 	{
 		key: 'tdsAmount',
 		label: 'TDS Amount',
-		tone: 'rose' as const,
+		tone: 'rose',
 		money: true,
 	},
 	{
 		key: 'netAmount',
 		label: 'Net Amount',
-		tone: 'sky' as const,
+		tone: 'sky',
 		money: true,
 	},
 ];
 
-export default function PaymentEntryPage() {
+const TONE_COLOR_MAP: Record<StatTone, string> = {
+	purple: 'text-purple-600',
+	green: 'text-green-600',
+	amber: 'text-amber-600',
+	rose: 'text-rose-600',
+	sky: 'text-sky-600',
+	slate: 'text-slate-600',
+	violet: 'text-violet-600',
+};
+
+function PaymentEntryPageInner() {
+	const urlSearchParams = useSearchParams();
+	const initialSearch = urlSearchParams?.get('search') ?? '';
+	const [search, setSearch] = useState(initialSearch);
+	const [modalState, setModalState] = useState<{
+		mode: ModalMode;
+		row: Record<string, unknown> | null;
+	}>({ mode: null, row: null });
 	const [printingId, setPrintingId] = useState<string | null>(null);
+
+	const listQuery = useQuery<ApiListResponse>({
+		queryKey: ['payment-entries', { search }],
+		queryFn: () => apiGet('/api/admin/payment-entries', { search }),
+	});
+
+	const rows = listQuery.data?.data ?? [];
+	const stats: Record<string, number | string | null> =
+		listQuery.data?.stats ?? {};
+
+	const openCreate = () => setModalState({ mode: 'create', row: null });
+	const openEdit = (row: Record<string, unknown>) =>
+		setModalState({ mode: 'edit', row });
+	const openView = (row: Record<string, unknown>) =>
+		setModalState({ mode: 'view', row });
+	const closeModal = () => setModalState({ mode: null, row: null });
+
+	const onDelete = async (row: Record<string, unknown>) => {
+		if (
+			!window.confirm(`Are you sure you want to delete this payment entry?`)
+		) {
+			return;
+		}
+		try {
+			await apiDelete(`/api/admin/payment-entries/${row.id}`);
+			toast.success('Payment entry deleted');
+			listQuery.refetch();
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Delete failed');
+		}
+	};
 
 	const handlePrint = useCallback(async (row: Record<string, unknown>) => {
 		setPrintingId(row.id as string);
@@ -249,7 +300,7 @@ export default function PaymentEntryPage() {
 		}
 	}, []);
 
-	const rowActions = useCallback(
+	const printAction = useCallback(
 		(row: Record<string, unknown>) => {
 			const isPrinting = printingId === (row.id as string);
 			return (
@@ -271,19 +322,180 @@ export default function PaymentEntryPage() {
 	);
 
 	return (
-		<ResourcePage
-			title="Payment Received from client"
-			subtitle="Payments received from client"
-			endpoint="/api/admin/payment-entries"
-			queryKey={['payment-entries']}
-			statsConfig={statsConfig}
-			columns={columns}
-			defaultValues={defaultValues}
-			zodSchema={schema}
-			formFields={formFields}
-			searchPlaceholder="Search company, receipt, transaction…"
-			companyListEndpoint="/api/companies"
-			rowActions={rowActions}
-		/>
+		<div className="h-screen bg-[var(--page-bg, #fafafa)] flex flex-col overflow-hidden">
+			<Navbar />
+			<Sidebar />
+			<div className="content-with-sidebar flex-1 min-h-0 flex flex-col pt-2 pb-4 px-2 sm:px-4 overflow-hidden">
+				<div className="max-w-full mx-auto w-full flex-1 min-h-0 flex flex-col space-y-5">
+					<header className="flex flex-wrap items-end justify-between gap-3">
+						<div>
+							<h1 className="text-2xl font-bold text-gray-900">
+								Payment Received from client
+							</h1>
+							<p className="text-sm text-gray-500 mt-0.5">
+								Payments received from client
+							</p>
+						</div>
+						<div className="flex items-center gap-2">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => listQuery.refetch()}
+								disabled={listQuery.isFetching}
+							>
+								<ArrowPathIcon
+									className={`h-4 w-4 ${listQuery.isFetching ? 'animate-spin' : ''}`}
+								/>
+								Refresh
+							</Button>
+							<Button size="sm" onClick={openCreate}>
+								<PlusIcon className="h-4 w-4" />
+								Add Payment Received from client
+							</Button>
+						</div>
+					</header>
+
+					{statsConfig.length > 0 ? (
+						<div className="flex gap-4 mb-6">
+							{statsConfig.map((s) => {
+								const displayValue = s.money
+									? formatCurrency(stats[s.key] ?? 0)
+									: (stats[s.key] ?? 0).toLocaleString('en-IN');
+								return (
+									<div
+										key={s.key}
+										className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2"
+									>
+										<div
+											className={`text-lg font-bold ${TONE_COLOR_MAP[s.tone] || 'text-gray-900'}`}
+										>
+											{displayValue}
+										</div>
+										<div className="text-xs text-gray-600">{s.label}</div>
+									</div>
+								);
+							})}
+						</div>
+					) : null}
+
+					<div className="rounded-xl border border-gray-200 bg-white shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
+						<div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
+							<div className="relative flex-1 min-w-[200px] max-w-md">
+								<Input
+									placeholder="Search company, receipt, transaction…"
+									value={search}
+									onChange={(e) => setSearch(e.target.value)}
+								/>
+							</div>
+						</div>
+
+						<div className="flex-1 min-h-0 overflow-auto">
+							<Table>
+								<TableHeader>
+									<TableRow className="sticky top-0 z-10 bg-white">
+										<TableHead className="w-auto">Company Name</TableHead>
+										<TableHead className="w-32">Receipt No</TableHead>
+										<TableHead className="w-32 text-right">Amount</TableHead>
+										<TableHead className="w-24">Type</TableHead>
+										<TableHead className="w-40">Transaction ID</TableHead>
+										<TableHead className="w-28">Date</TableHead>
+										<TableHead className="text-center">Actions</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{listQuery.isLoading ? (
+										<TableEmpty>Loading…</TableEmpty>
+									) : rows.length === 0 ? (
+										<TableEmpty>No records found.</TableEmpty>
+									) : (
+										rows.map((row) => {
+											const amount = row.amount as number;
+											const paymentType = row.payment_type as string;
+											const receiptDate = row.receipt_date as string;
+											return (
+												<TableRow key={row.id as string}>
+													<TableCell>
+														{(row.company_name as string) ?? '—'}
+													</TableCell>
+													<TableCell>
+														{(row.receipt_no as string) ?? '—'}
+													</TableCell>
+													<TableCell className="text-right font-medium">
+														{formatCurrency(amount)}
+													</TableCell>
+													<TableCell>
+														{paymentType === 'full'
+															? 'Full'
+															: paymentType === 'partial'
+																? 'Partial'
+																: '—'}
+													</TableCell>
+													<TableCell>
+														{(row.transaction_id as string) ?? '—'}
+													</TableCell>
+													<TableCell>{formatDate(receiptDate)}</TableCell>
+													<TableCell className="text-center">
+														<div className="inline-flex items-center gap-1">
+															<button
+																onClick={() => openView(row)}
+																className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+																title="View"
+															>
+																<EyeIcon className="h-4 w-4" />
+															</button>
+															<button
+																onClick={() => openEdit(row)}
+																className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+																title="Edit"
+															>
+																<PencilIcon className="h-4 w-4" />
+															</button>
+															<button
+																onClick={() => onDelete(row)}
+																className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+																title="Delete"
+															>
+																<TrashIcon className="h-4 w-4" />
+															</button>
+															{printAction(row)}
+														</div>
+													</TableCell>
+												</TableRow>
+											);
+										})
+									)}
+								</TableBody>
+							</Table>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			{modalState.mode ? (
+				<ResourceFormModal
+					mode={modalState.mode}
+					row={modalState.row}
+					title="Payment Received from client"
+					endpoint="/api/admin/payment-entries"
+					defaultValues={defaultValues}
+					zodSchema={schema}
+					formFields={formFields}
+					companyListEndpoint="/api/companies"
+					onClose={closeModal}
+					onSaved={() => {
+						closeModal();
+						listQuery.refetch();
+					}}
+				/>
+			) : null}
+		</div>
+	);
+}
+
+export default function PaymentEntryPage() {
+	return (
+		<Suspense fallback={null}>
+			<PaymentEntryPageInner />
+		</Suspense>
 	);
 }

@@ -518,6 +518,12 @@ export default function Sidebar() {
 								href="/reports/client-balance"
 								active={pathname.startsWith('/reports/client-balance')}
 							/>
+							<NavRow
+								icon={DocumentTextIcon}
+								label="Sales Register"
+								href="/reports/sales-register"
+								active={pathname.startsWith('/reports/sales-register')}
+							/>
 						</div>
 					</div>
 				)}
