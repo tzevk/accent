@@ -495,12 +495,6 @@ export default function SalesRegisterPage() {
 									>
 										Invoice #{sortIndicator('invoice_number')}
 									</th>
-									<th className="text-left px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-										PO #
-									</th>
-									<th className="text-left px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-										Rcpt No
-									</th>
 									<th
 										className="text-right px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 whitespace-nowrap"
 										onClick={() => toggleSort('gross_invoice_amount')}
@@ -524,6 +518,9 @@ export default function SalesRegisterPage() {
 										Total w/ Tax
 										{sortIndicator('total_invoice_amount_with_tax')}
 									</th>
+									<th className="text-left px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
+										Rcpt No
+									</th>
 									<th
 										className="text-right px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 whitespace-nowrap"
 										onClick={() => toggleSort('payment_received')}
@@ -546,9 +543,6 @@ export default function SalesRegisterPage() {
 									</th>
 									<th className="text-left px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
 										Pymt Date
-									</th>
-									<th className="text-center px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-										30d Credit
 									</th>
 									<th
 										className="text-right px-3 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 whitespace-nowrap"
@@ -584,30 +578,6 @@ export default function SalesRegisterPage() {
 												{c.invoice_number}
 											</Link>
 										</td>
-										<td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
-											{c.po_id ? (
-												<Link
-													href={`/admin/purchase-order/view/${c.po_id}`}
-													className="text-purple-700 hover:text-purple-900 hover:underline"
-												>
-													{c.po_number}
-												</Link>
-											) : (
-												c.po_number || '—'
-											)}
-										</td>
-										<td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">
-											{c.receipt_no ? (
-												<Link
-													href={`/admin/payment-entry?search=${encodeURIComponent(c.receipt_no)}`}
-													className="text-purple-700 hover:text-purple-900 hover:underline"
-												>
-													{c.receipt_no}
-												</Link>
-											) : (
-												'—'
-											)}
-										</td>
 										<td className="px-3 py-2.5 text-right tabular-nums text-gray-700 whitespace-nowrap">
 											{formatCurrency(c.gross_invoice_amount)}
 										</td>
@@ -622,6 +592,18 @@ export default function SalesRegisterPage() {
 										</td>
 										<td className="px-3 py-2.5 text-right tabular-nums font-semibold text-gray-900 whitespace-nowrap">
 											{formatCurrency(c.total_invoice_amount_with_tax)}
+										</td>
+										<td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">
+											{c.receipt_no ? (
+												<Link
+													href={`/admin/payment-entry?search=${encodeURIComponent(c.receipt_no)}`}
+													className="text-purple-700 hover:text-purple-900 hover:underline"
+												>
+													{c.receipt_no}
+												</Link>
+											) : (
+												'—'
+											)}
 										</td>
 										<td className="px-3 py-2.5 text-right tabular-nums text-green-700 whitespace-nowrap">
 											{c.payment_received > 0
@@ -652,17 +634,6 @@ export default function SalesRegisterPage() {
 										<td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">
 											{formatDate(c.payment_received_date)}
 										</td>
-										<td className="px-3 py-2.5 text-center">
-											{c.thirty_days_credit === 'Yes' ? (
-												<span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-green-100 text-green-700">
-													Yes
-												</span>
-											) : (
-												<span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-gray-100 text-gray-600">
-													No
-												</span>
-											)}
-										</td>
 										<td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
 											{c.overdue_days > 0 ? (
 												<span className="text-red-600 font-medium">
@@ -682,8 +653,6 @@ export default function SalesRegisterPage() {
 										<td className="px-3 py-2.5 text-gray-800">TOTAL</td>
 										<td className="px-3 py-2.5" />
 										<td className="px-3 py-2.5" />
-										<td className="px-3 py-2.5" />
-										<td className="px-3 py-2.5" />
 										<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 											{formatCurrency(totals.gross_invoice_amount)}
 										</td>
@@ -699,6 +668,7 @@ export default function SalesRegisterPage() {
 										<td className="px-3 py-2.5 text-right tabular-nums text-gray-900 whitespace-nowrap">
 											{formatCurrency(totals.total_invoice_amount_with_tax)}
 										</td>
+										<td className="px-3 py-2.5" />
 										<td className="px-3 py-2.5 text-right tabular-nums text-green-700 whitespace-nowrap">
 											{formatCurrency(totals.payment_received)}
 										</td>
@@ -719,7 +689,6 @@ export default function SalesRegisterPage() {
 												{formatCurrency(totals.net_invoice_amount_receivable)}
 											</span>
 										</td>
-										<td className="px-3 py-2.5" />
 										<td className="px-3 py-2.5" />
 										<td className="px-3 py-2.5" />
 									</tr>
