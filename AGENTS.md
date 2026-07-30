@@ -218,6 +218,147 @@ import {
 - **v4** via `@import 'tailwindcss'` in `globals.css` — no `tailwind.config.js`
 - Class merging: `import { cn } from '@/lib/cn'` (wraps `clsx` + `tailwind-merge`)
 
+### Color Scheme
+
+Accent uses a **purple** brand with conventional semantic colors. New code MUST follow these mappings — do not invent a second accent color, do not substitute Tailwind hues for established ones, and do not reach for `purple-25` (non-standard; use `purple-50` or `bg-purple-50/50`).
+
+#### Brand purple (primary action + brand identity)
+
+| Token              | Hex       | Tailwind class       | Used for                                                                                                                 |
+| ------------------ | --------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Sidebar background | `#4d025b` | `bg-[#4d025b]`       | Fixed sidebar (`var(--sidebar-bg)` in `globals.css`)                                                                     |
+| Brand deep         | `#64126D` | `bg-[#64126D]`       | Active nav item, sidebar accents, sign-in gradient anchor                                                                |
+| Brand primary      | `#7F2487` | `bg-[#7F2487]`       | Active row borders, icon accents, CTA when Tailwind tokens aren't enough                                                 |
+| Brand mid          | `#86288F` | `bg-[#86288F]`       | Gradient stop paired with `#64126D`                                                                                      |
+| Hover on `#7F2487` | `#6a1f72` | `hover:bg-[#6a1f72]` | Primary button hover (with `disabled:opacity-50 disabled:cursor-not-allowed`)                                            |
+| Brand via Tailwind | —         | `purple-50`/`100`    | **Backgrounds**: chip tints, hover states, soft containers                                                               |
+|                    | —         | `purple-200`         | **Borders** on purple-tinted cards; default sidebar border                                                               |
+|                    | —         | `purple-500`         | **Focus ring** (dominant — 326 uses; see Focus below)                                                                    |
+|                    | —         | `purple-600`         | **Primary buttons**: `bg-purple-600 text-white hover:bg-purple-700`; **icons** (`text-purple-600` on neutral icon tiles) |
+|                    | —         | `purple-700`         | **Text** on purple-50/100 backgrounds; **borders** for active tabs; **dark hover** on primary icons                      |
+|                    | —         | `purple-800`         | High-contrast text on `purple-100` chips (e.g. `view_page` action badge)                                                 |
+
+Use the **hex form** (`bg-[#7F2487]`) only when the exact brand swatch is required (active border, sign-in gradient, icon accent) — for everything else, use the Tailwind token so utilities like `hover:bg-purple-700` work.
+
+#### Semantic palette
+
+Map meaning to a single color. Never reuse one semantic color for a different meaning.
+
+| Meaning                                  | Light chip / bg                   | Text / fg                             | Solid button                      | Example usages                                                                     |
+| ---------------------------------------- | --------------------------------- | ------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------- |
+| **Success / approved / paid / done**     | `bg-green-50` / `100`             | `text-green-600` / `700`              | `bg-green-600 hover:bg-green-700` | Approved, paid, completed, "Actual" manhours, positive deltas                      |
+| **Danger / delete / rejected / overdue** | `bg-red-50` / `100`               | `text-red-500` / `600` / `700`        | `bg-red-600 hover:bg-red-700`     | Delete, reject, overdue, errors, previous-value diff, "Previous" cell in audit log |
+| **Info / in-progress / "actual"**        | `bg-blue-50` / `100`              | `text-blue-500` / `600` / `700`       | `bg-blue-600 hover:bg-blue-700`   | In-progress status, "Sent" stat, focus rings on form inputs, loading spinners      |
+| **Warning / pending / submitted**        | `bg-amber-100` or `bg-yellow-100` | `text-amber-700` or `text-yellow-700` | —                                 | Draft → submitted, pending approval, hold states                                   |
+| **Hold / paused**                        | `bg-orange-100`                   | `text-orange-600` / `700`             | —                                 | On hold, paused, over-budget manhours (when actual > estimated)                    |
+| **Neutral / muted**                      | `bg-gray-50` / `100`              | `text-gray-500` / `600` / `700`       | —                                 | Default badges, "logout" action, draft status, secondary text                      |
+
+> **Why gray, not slate**: `text-gray-*`/`bg-gray-*` is the dominant neutral (3,696 + 2,010 = 5,700+ uses); `slate` is reserved for specific status cases (e.g. `draft` in `expenses/page.jsx`). New code should default to `gray`.
+
+#### Standard status-to-color mapping (use verbatim)
+
+When you need to colorize a status string, reuse this table — don't invent a new pairing.
+
+| Status                                        | Classes                           |
+| --------------------------------------------- | --------------------------------- |
+| `draft`                                       | `bg-slate-100 text-slate-700`     |
+| `submitted`                                   | `bg-amber-100 text-amber-700`     |
+| `pending`                                     | `bg-yellow-100 text-yellow-700`   |
+| `approved`                                    | `bg-green-100 text-green-700`     |
+| `rejected`                                    | `bg-red-100 text-red-700`         |
+| `completed` / `paid`                          | `bg-green-100 text-green-700`     |
+| `in progress` / `sent` / `ongoing` / `active` | `bg-blue-100 text-blue-700`       |
+| `on hold` / `paused`                          | `bg-orange-100 text-orange-700`   |
+| `overdue` / `cancelled`                       | `bg-red-100 text-red-700`         |
+| `fulfilled`                                   | `bg-blue-100 text-blue-700`       |
+| `reimbursed`                                  | `bg-emerald-100 text-emerald-700` |
+| `view_page` (audit)                           | `bg-purple-100 text-purple-800`   |
+| `export` (audit)                              | `bg-yellow-100 text-yellow-800`   |
+| `login` (audit)                               | `bg-cyan-100 text-cyan-800`       |
+| `logout` (audit)                              | `bg-gray-100 text-gray-800`       |
+
+#### Component patterns
+
+**Status badge** (table rows, filter chips):
+
+```jsx
+<span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-{semantic}-100 text-{semantic}-700">
+	{/* optional icon */}
+	{label}
+</span>
+```
+
+**Stat card** (dashboard tiles, page summaries — extremely common):
+
+```jsx
+<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+	<div className="text-lg font-bold text-{semantic}-600">{value}</div>
+	<div className="text-xs text-gray-600">{label}</div>
+</div>
+```
+
+**Alert / error banner**:
+
+```jsx
+<div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
+	<ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
+	<span className="text-red-700">{message}</span>
+</div>
+```
+
+**Info / "how it works" panel**:
+
+```jsx
+<div className="bg-blue-50 border border-blue-200 rounded-xl p-4 shadow-sm">
+	<h3 className="text-sm font-semibold text-blue-900 mb-2">…</h3>
+	<p className="text-sm text-blue-800">…</p>
+</div>
+```
+
+**Row action icon button** (view / edit / delete):
+
+```jsx
+<button
+	className="p-2 text-gray-500 hover:text-{semantic}-600 hover:bg-{semantic}-50 rounded-lg transition-colors"
+	title="…"
+>
+	<Icon className="h-5 w-5" />
+</button>
+```
+
+(`text-gray-500` resting state; semantic color only on hover. Blue=view, green=download, red=delete.)
+
+#### Focus rings
+
+`focus:ring-purple-500` is the standard (326 uses). Other rings, in order of frequency:
+`focus:ring-blue-500` (form inputs, generic), `focus:ring-green-500` / `600`, `focus:ring-red-500`, `focus:ring-purple-300` (lighter on tinted backgrounds). Always pair with `focus:ring-2` and `focus:border-transparent` for inputs.
+
+#### Form text (global)
+
+`globals.css` forces all form field text to **black** to keep data legible on a busy background:
+
+```css
+input,
+textarea,
+select {
+	color: #000;
+}
+```
+
+Don't override this for "design consistency" — gray form text is a known readability problem on the Employees screen and is explicitly overridden back to black via `.employees-screen` (see `globals.css:599`). If a screen needs higher contrast on neutral labels, prefer `text-gray-900` over `text-gray-500`/`600`.
+
+#### Dark mode
+
+`globals.css` declares dark-mode CSS variables (`@media (prefers-color-scheme: dark)`), but **no Tailwind `dark:` variants are used anywhere in the codebase** — every screen is light-only in practice. Don't introduce `dark:` classes; if dark mode is ever needed, it requires a separate design pass and a global audit.
+
+#### Don'ts
+
+- **`bg-purple-25` / `text-purple-25`** — not in the default Tailwind scale. Use `bg-purple-50` or `bg-purple-50/50`. (Pre-existing 11 uses should be migrated when touching the file.)
+- **Two accent colors in one view** — the sidebar/header is purple, body CTAs are purple, but a single component should fill only its **own** primary action; secondaries stay neutral. Don't paint every button.
+- **Color for non-semantic emphasis** — reach for `text-gray-900` (bolder weight via color) before reaching for `text-purple-700` on body copy.
+- **`slate-*` outside the `draft`/specific-status exceptions** — gray is the neutral; introducing slate creates two "off-whites."
+- **Hardcoded hex where a Tailwind token exists** — `bg-purple-600` over `bg-[#7F2487]` unless the exact brand swatch is required.
+
 ### New Code Standards
 
 For all **new files**, follow these rules:
