@@ -5,7 +5,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchJSON } from '@/utils/http';
 import useSWR from 'swr';
 import { useSession } from '@/context/SessionContext';
@@ -14,6 +14,8 @@ import {
 	MapPinIcon,
 	ClipboardDocumentCheckIcon,
 	BuildingOffice2Icon,
+	ChevronLeftIcon,
+	ChevronRightIcon,
 	ClockIcon,
 	UserIcon,
 	TagIcon,
@@ -86,6 +88,37 @@ export default function ProjectViewPage() {
 	const id = params?.id;
 	const { user: sessionUser, can, RESOURCES, PERMISSIONS } = useSession();
 	const [activeTab, setActiveTab] = useState('project_details');
+	const tabScrollRef = useRef(null);
+
+	// Callback ref: attaches non-passive wheel listener on mount,
+	// survives re-renders, and cleans up on unmount. Unlike useEffect
+	// with [], this fires even when the element mounts after the first
+	// render (e.g. after loading completes).
+	const setTabScrollRef = useCallback((el) => {
+		tabScrollRef.current = el;
+		if (!el) return;
+		const onWheel = (e) => {
+			e.preventDefault();
+			// Normalize delta across deltaMode: 0=pixels, 1=lines, 2=pages
+			const delta =
+				e.deltaMode === 0
+					? e.deltaY
+					: e.deltaMode === 1
+						? e.deltaY * 18
+						: e.deltaY * (el.clientHeight || 600);
+			el.scrollLeft += delta;
+		};
+		el.addEventListener('wheel', onWheel, { passive: false });
+		return () => el.removeEventListener('wheel', onWheel);
+	}, []);
+
+	const scrollTabs = useCallback((direction) => {
+		if (!tabScrollRef.current) return;
+		tabScrollRef.current.scrollBy({
+			left: direction === 'left' ? -250 : 250,
+			behavior: 'smooth',
+		});
+	}, []);
 	const {
 		data: projectData,
 		error: fetchError,
@@ -407,7 +440,7 @@ export default function ProjectViewPage() {
 			<Navbar />
 			<div className="flex-1 overflow-hidden">
 				<div className="h-full overflow-y-auto">
-					<div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 pb-8 space-y-6 max-w-[1800px] mx-auto w-full">
+					<div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-6 pb-8 space-y-6 max-w-[1800px] mx-auto w-full">
 						<header className="bg-white/80 backdrop-blur-md border border-gray-200/60 rounded-2xl shadow-sm px-8 py-6 flex flex-col md:flex-row md:items-center md:justify-between gap-6 relative overflow-hidden">
 							<div className="absolute top-0 right-0 w-64 h-64 bg-[#7F2487]/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
 							<div className="space-y-3 relative z-10">
@@ -432,14 +465,14 @@ export default function ProjectViewPage() {
 								{canEditProjectContent && (
 									<Link
 										href={`/projects/${project.id ?? project.project_id ?? project.project_code}/edit`}
-										className="px-5 py-2.5 rounded-lg border border-[#7F2487] text-[#7F2487] bg-white hover:bg-[#7F2487]/5 transition-all shadow-sm flex items-center gap-2"
+										className="px-5 py-2.5 rounded-lg border border-[#7F2487] text-[#7F2487] bg-white hover:bg-[#7F2487]/5 transition-colors transition-shadow transition-transform shadow-sm flex items-center gap-2 active:scale-[0.96]"
 									>
 										Edit Project
 									</Link>
 								)}
 								<Link
 									href="/masters/activities"
-									className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+									className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors transition-shadow transition-transform shadow-md hover:shadow-lg transform hover:-translate-y-0.5 active:scale-[0.96]"
 								>
 									Configure Activity Library
 									<ArrowRightIcon className="h-4 w-4 stroke-2" />
@@ -448,32 +481,50 @@ export default function ProjectViewPage() {
 						</header>
 
 						{/* Tabs */}
-						<div
-							className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-2 py-2 overflow-x-auto"
-							style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-						>
-							<div
-								role="tablist"
-								aria-label="Project sections"
-								className="flex gap-1 min-w-max"
+						<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl flex items-center">
+							<button
+								type="button"
+								onClick={() => scrollTabs('left')}
+								aria-label="Scroll tabs left"
+								className="shrink-0 px-2 py-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-l-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7F2487] active:scale-[0.96]"
 							>
-								{visibleTabs.map((t) => (
-									<button
-										id={`tab-${t.id}`}
-										key={t.id}
-										role="tab"
-										aria-selected={activeTab === t.id}
-										onClick={() => setActiveTab(t.id)}
-										className={`px-4 py-2 text-sm font-semibold rounded-lg focus:outline-none transition-all duration-200 ease-out whitespace-nowrap ${
-											activeTab === t.id
-												? 'bg-[#7F2487] text-white shadow-md transform scale-100'
-												: 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-										}`}
-									>
-										{t.label}
-									</button>
-								))}
+								<ChevronLeftIcon className="h-4 w-4 stroke-2" />
+							</button>
+							<div
+								ref={setTabScrollRef}
+								className="overflow-x-auto scrollbar-thin flex-1 px-1 py-2 overscroll-y-contain"
+							>
+								<div
+									role="tablist"
+									aria-label="Project sections"
+									className="flex gap-1 min-w-max"
+								>
+									{visibleTabs.map((t) => (
+										<button
+											id={`tab-${t.id}`}
+											key={t.id}
+											role="tab"
+											aria-selected={activeTab === t.id}
+											onClick={() => setActiveTab(t.id)}
+											className={`px-4 py-2 text-sm font-semibold rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7F2487] transition-colors transition-shadow transition-transform duration-200 ease-out whitespace-nowrap active:scale-[0.96] ${
+												activeTab === t.id
+													? 'bg-[#7F2487] text-white shadow-md transform scale-100'
+													: 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+											}`}
+										>
+											{t.label}
+										</button>
+									))}
+								</div>
 							</div>
+							<button
+								type="button"
+								onClick={() => scrollTabs('right')}
+								aria-label="Scroll tabs right"
+								className="shrink-0 px-2 py-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-r-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7F2487] active:scale-[0.96]"
+							>
+								<ChevronRightIcon className="h-4 w-4 stroke-2" />
+							</button>
 						</div>
 
 						{activeTab === 'project_details' && (
@@ -495,7 +546,7 @@ export default function ProjectViewPage() {
 										<button
 											type="button"
 											onClick={() => toggleSection('basic')}
-											className="w-full flex items-center justify-between"
+											className="w-full flex items-center justify-between focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7F2487] rounded-lg py-1"
 										>
 											<div className="flex items-center gap-2">
 												<BuildingOffice2Icon className="h-5 w-5 text-[#7F2487]" />
@@ -512,7 +563,7 @@ export default function ProjectViewPage() {
 												{basicDetailsList.map((item) => (
 													<div
 														key={item.label}
-														className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+														className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 													>
 														<p className="text-xs text-gray-500 uppercase tracking-wide">
 															{item.label}
@@ -531,7 +582,7 @@ export default function ProjectViewPage() {
 										<button
 											type="button"
 											onClick={() => toggleSection('deliverables')}
-											className="w-full flex items-center justify-between"
+											className="w-full flex items-center justify-between focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7F2487] rounded-lg py-1"
 										>
 											<div className="flex items-center gap-2">
 												<DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
@@ -546,7 +597,7 @@ export default function ProjectViewPage() {
 										{openSections.deliverables && (
 											<div className="mt-3 space-y-3">
 												{deliverablesField ? (
-													<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
+													<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30">
 														<p className="text-sm text-gray-600 whitespace-pre-line">
 															{deliverablesField}
 														</p>
@@ -555,7 +606,7 @@ export default function ProjectViewPage() {
 													meetingDocuments.map((doc) => (
 														<div
 															key={doc.title}
-															className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+															className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 														>
 															<h4 className="text-xs font-semibold text-black uppercase tracking-wide">
 																{doc.title}
@@ -830,7 +881,7 @@ export default function ProjectViewPage() {
 								</h2>
 							</div>
 							<div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
+								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30">
 									<p className="text-xs text-gray-500 uppercase tracking-wide">
 										Project Value
 									</p>
@@ -843,7 +894,7 @@ export default function ProjectViewPage() {
 											: '—'}
 									</p>
 								</div>
-								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
+								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30">
 									<p className="text-xs text-gray-500 uppercase tracking-wide">
 										Currency
 									</p>
@@ -851,7 +902,7 @@ export default function ProjectViewPage() {
 										{project.currency || '—'}
 									</p>
 								</div>
-								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
+								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30">
 									<p className="text-xs text-gray-500 uppercase tracking-wide">
 										Payment Terms
 									</p>
@@ -859,7 +910,7 @@ export default function ProjectViewPage() {
 										{project.payment_terms || '—'}
 									</p>
 								</div>
-								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
+								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30">
 									<p className="text-xs text-gray-500 uppercase tracking-wide">
 										Invoicing Status
 									</p>
@@ -867,7 +918,7 @@ export default function ProjectViewPage() {
 										{project.invoicing_status || '—'}
 									</p>
 								</div>
-								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
+								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30">
 									<p className="text-xs text-gray-500 uppercase tracking-wide">
 										Cost to Company
 									</p>
@@ -880,7 +931,7 @@ export default function ProjectViewPage() {
 											: '—'}
 									</p>
 								</div>
-								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
+								<div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30">
 									<p className="text-xs text-gray-500 uppercase tracking-wide">
 										Profitability Estimate
 									</p>
@@ -914,7 +965,7 @@ export default function ProjectViewPage() {
 										{parsedProjectActivitiesList.map((act, idx) => (
 											<div
 												key={idx}
-												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 											>
 												<h4 className="text-base font-bold text-gray-900">
 													{act.activity || act.name || `Activity ${idx + 1}`}
@@ -951,7 +1002,7 @@ export default function ProjectViewPage() {
 										parsedDocumentsReceived.map((d, i) => (
 											<div
 												key={d.id || i}
-												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 											>
 												<div className="flex items-start justify-between">
 													<div>
@@ -1003,7 +1054,7 @@ export default function ProjectViewPage() {
 										parsedDocumentsIssued.map((d, i) => (
 											<div
 												key={d.id || i}
-												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 											>
 												<div className="flex items-start justify-between">
 													<div>
@@ -1051,7 +1102,7 @@ export default function ProjectViewPage() {
 										parsedProjectHandover.map((r, i) => (
 											<div
 												key={r.id || i}
-												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 											>
 												<div className="flex items-start justify-between">
 													<div>
@@ -1099,7 +1150,7 @@ export default function ProjectViewPage() {
 										parsedProjectManhours.map((m, i) => (
 											<div
 												key={m.id || i}
-												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 											>
 												<div className="flex items-start justify-between">
 													<div>
@@ -1156,7 +1207,7 @@ export default function ProjectViewPage() {
 										parsedQueryLog.map((q, i) => (
 											<div
 												key={q.id || i}
-												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 											>
 												<div className="flex items-start justify-between">
 													<div>
@@ -1206,7 +1257,7 @@ export default function ProjectViewPage() {
 										parsedAssumptions.map((a, i) => (
 											<div
 												key={a.id || i}
-												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 											>
 												<div className="flex items-start justify-between">
 													<div>
@@ -1257,7 +1308,7 @@ export default function ProjectViewPage() {
 										parsedLessonsLearnt.map((l, i) => (
 											<div
 												key={l.id || i}
-												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 											>
 												<div className="flex items-start justify-between">
 													<div>
@@ -1315,7 +1366,7 @@ export default function ProjectViewPage() {
 										parsedProjectSchedule.map((s, i) => (
 											<div
 												key={s.id || i}
-												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30"
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
 											>
 												<div className="flex items-start justify-between">
 													<div>

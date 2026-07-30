@@ -11,6 +11,7 @@ import {
 	CalendarDaysIcon,
 	ClockIcon,
 	FunnelIcon,
+	CalculatorIcon,
 } from '@heroicons/react/24/outline';
 
 /**
@@ -118,6 +119,7 @@ export default function ProjectActivityTab({ projectId }) {
 			blocker: 'bg-red-100 text-red-700',
 			note: 'bg-gray-100 text-gray-600',
 			review: 'bg-purple-100 text-purple-700',
+			activity: 'bg-indigo-100 text-indigo-700',
 		};
 		return map[type] || 'bg-gray-100 text-gray-600';
 	};
@@ -135,6 +137,7 @@ export default function ProjectActivityTab({ projectId }) {
 	/* ---- derived ---- */
 	const users = data?.users || [];
 	const totalLogs = data?.total_logs || 0;
+	const totalQty = data?.total_qty || 0;
 	const allUserNames = users.map((u) => ({ id: u.user_id, name: u.full_name }));
 
 	/* ---- render: loading ---- */
@@ -314,6 +317,15 @@ export default function ProjectActivityTab({ projectId }) {
 																</span>
 															</div>
 															<div className="flex items-center gap-2">
+																{day.day_qty_total > 0 && (
+																	<span
+																		className="flex items-center gap-1 text-xs font-medium text-[#7F2487] bg-[#7F2487]/10 px-2 py-0.5 rounded"
+																		title="Total quantity for this day"
+																	>
+																		<CalculatorIcon className="h-3.5 w-3.5" />
+																		Qty: {day.day_qty_total}
+																	</span>
+																)}
 																<span className="flex items-center gap-1 text-xs text-gray-500">
 																	<ClockIcon className="h-3.5 w-3.5" />
 																	{fmtMins(day.day_time_minutes)}
@@ -372,11 +384,14 @@ export default function ProjectActivityTab({ projectId }) {
 																				{log.category && (
 																					<span>{log.category}</span>
 																				)}
-																				{log.time_spent && (
+																				{log.time_spent > 0 && (
 																					<span className="flex items-center gap-0.5">
 																						<ClockIcon className="h-3 w-3" />{' '}
-																						{log.time_spent}
+																						{fmtMins(log.time_spent)}
 																					</span>
+																				)}
+																				{log.qty_done != null && (
+																					<span>Qty: {log.qty_done}</span>
 																				)}
 																			</div>
 																		</div>
@@ -398,7 +413,7 @@ export default function ProjectActivityTab({ projectId }) {
 
 			{/* Summary footer */}
 			{totalLogs > 0 && (
-				<div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between text-xs gap-2">
+				<div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between text-xs gap-x-4 gap-y-1">
 					<span className="text-gray-600">
 						<span className="font-semibold text-[#7F2487]">{totalLogs}</span>{' '}
 						work log
@@ -406,12 +421,20 @@ export default function ProjectActivityTab({ projectId }) {
 						<span className="font-semibold">{users.length}</span> member
 						{users.length !== 1 ? 's' : ''}
 					</span>
-					<span className="text-gray-600">
-						Total time:{' '}
-						<span className="font-semibold text-blue-600">
-							{fmtMins(users.reduce((s, u) => s + u.total_time_minutes, 0))}
+					<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+						<span className="text-gray-600">
+							Total time:{' '}
+							<span className="font-semibold text-blue-600">
+								{fmtMins(users.reduce((s, u) => s + u.total_time_minutes, 0))}
+							</span>
 						</span>
-					</span>
+						{totalQty > 0 && (
+							<span className="text-gray-600">
+								Total Qty:{' '}
+								<span className="font-semibold text-[#7F2487]">{totalQty}</span>
+							</span>
+						)}
+					</div>
 				</div>
 			)}
 		</Section>
