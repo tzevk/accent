@@ -26,6 +26,7 @@ import {
 	ArrowUpCircleIcon,
 	ArrowRightCircleIcon,
 	ClipboardDocumentCheckIcon,
+	ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { clearSessionCache } from '@/context/SessionContext';
@@ -82,6 +83,13 @@ const reportsMenuConfig = [
 		icon: DocumentTextIcon,
 		resource: 'reports',
 		reportField: 'project_activities',
+	},
+	{
+		name: 'Project Status',
+		href: '/reports/project-status',
+		icon: ClipboardDocumentListIcon,
+		resource: 'reports',
+		reportField: 'project_activities', // reuse so existing grants cover the new report
 	},
 ];
 

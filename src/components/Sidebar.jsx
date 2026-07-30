@@ -524,6 +524,12 @@ export default function Sidebar() {
 								href="/reports/sales-register"
 								active={pathname.startsWith('/reports/sales-register')}
 							/>
+							<NavRow
+								icon={ClipboardDocumentListIcon}
+								label="Project Status"
+								href="/reports/project-status"
+								active={pathname.startsWith('/reports/project-status')}
+							/>
 						</div>
 					</div>
 				)}
