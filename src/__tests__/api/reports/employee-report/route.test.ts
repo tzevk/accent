@@ -33,35 +33,34 @@ const mockEmployees = [
 	{ id: 3, first_name: 'Charlie', last_name: 'Patel', email: 'charlie@ac.com' },
 ];
 
-const mockProjectWithWork = {
+// Projects — only fields needed by the SELECT
+const mockProjectOmega = {
 	project_id: 10,
 	project_code: 'P-010',
 	project_name: 'Omega Plant',
-	project_activities_list: JSON.stringify([
-		{
-			id: 'act-1',
-			activity_name: 'Foundation Work',
-			sub_activity_name: 'Excavation',
-			assigned_users: [
-				{
-					user_id: 1,
-					planned_hours: 12,
-					daily_entries: [
-						{ date: '2026-03-01', hours: 4, qty_done: 2 },
-						{ date: '2026-03-02', hours: 8, qty_done: 3 },
-					],
-				},
-			],
-		},
-	]),
 };
 
-const mockProjectNoActivities = {
+const mockProjectEmpty = {
 	project_id: 30,
 	project_code: 'P-030',
 	project_name: 'Empty Project',
-	project_activities_list: '[]',
 };
+
+// user_activity_assignments rows matching UaaRow interface
+const mockAssignmentsForAlice = [
+	{
+		user_id: 1,
+		project_id: 10,
+		activity_id: 'act-1',
+		activity_name: 'Foundation Work',
+		sub_activity_name: 'Excavation',
+		estimated_hours: 12,
+		daily_entries: JSON.stringify([
+			{ date: '2026-03-01', hours: 4, qty_done: 2 },
+			{ date: '2026-03-02', hours: 8, qty_done: 3 },
+		]),
+	},
+];
 
 function createRequest() {
 	return { url: 'http://localhost/api/reports/employee-report' } as Request;
@@ -115,9 +114,9 @@ describe('Employee Report API — GET /api/reports/employee-report', () => {
 			if (sql.includes('FROM employees'))
 				return Promise.resolve([mockEmployees]);
 			if (sql.includes('FROM projects'))
-				return Promise.resolve([
-					[mockProjectWithWork, mockProjectNoActivities],
-				]);
+				return Promise.resolve([[mockProjectOmega, mockProjectEmpty]]);
+			if (sql.includes('FROM user_activity_assignments'))
+				return Promise.resolve([mockAssignmentsForAlice]);
 			return Promise.resolve([[]]);
 		});
 
@@ -204,16 +203,18 @@ describe('Employee Report API — GET /api/reports/employee-report', () => {
 		expect(json.data.length).toBe(2);
 	});
 
-	it('handles malformed project_activities_list JSON', async () => {
+	it('handles malformed daily_entries JSON', async () => {
 		const { getCurrentUser } = await import('@/utils/api-permissions');
 		(getCurrentUser as ReturnType<typeof vi.fn>).mockResolvedValue({
 			is_super_admin: 1,
 		});
 
-		const badProject = {
+		const badAssignment = {
+			user_id: 1,
 			project_id: 99,
-			project_code: 'P-099',
-			project_activities_list: '{invalid json',
+			activity_id: 'bad-act',
+			activity_name: 'Test',
+			daily_entries: '{invalid json',
 		};
 
 		mockQuery.mockImplementation((sql: string) => {
@@ -222,7 +223,10 @@ describe('Employee Report API — GET /api/reports/employee-report', () => {
 					[{ id: 1, full_name: 'Alice', email: 'a@ac.com' }],
 				]);
 			if (sql.includes('FROM employees')) return Promise.resolve([[]]);
-			if (sql.includes('FROM projects')) return Promise.resolve([[badProject]]);
+			if (sql.includes('FROM projects'))
+				return Promise.resolve([[{ project_id: 99, project_code: 'P-099' }]]);
+			if (sql.includes('FROM user_activity_assignments'))
+				return Promise.resolve([[badAssignment]]);
 			return Promise.resolve([[]]);
 		});
 
@@ -232,7 +236,12 @@ describe('Employee Report API — GET /api/reports/employee-report', () => {
 
 		expect(json.success).toBe(true);
 		expect(json.data.length).toBe(1);
-		expect(json.data[0].rows).toEqual([]);
+		// Malformed daily_entries → 0 parseable entries → one skeleton row
+		expect(json.data[0].rows.length).toBe(1);
+		expect(json.data[0].rows[0]).toMatchObject({
+			hours: 0,
+			activity_name: 'Test',
+		});
 	});
 
 	it('returns correct meta counts', async () => {
@@ -252,7 +261,9 @@ describe('Employee Report API — GET /api/reports/employee-report', () => {
 			if (sql.includes('FROM employees'))
 				return Promise.resolve([[{ id: 3, first_name: 'C' }]]);
 			if (sql.includes('FROM projects'))
-				return Promise.resolve([[mockProjectWithWork]]);
+				return Promise.resolve([[mockProjectOmega]]);
+			if (sql.includes('FROM user_activity_assignments'))
+				return Promise.resolve([mockAssignmentsForAlice]);
 			return Promise.resolve([[]]);
 		});
 
@@ -354,7 +365,6 @@ describe('Employee Report API — GET /api/reports/employee-report', () => {
 			project_id: 40,
 			project_code: 'P-040',
 			name: 'From Name Column',
-			project_activities_list: '[]',
 		};
 
 		mockQuery.mockImplementation((sql: string) => {
