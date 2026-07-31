@@ -37,7 +37,7 @@ describe('Invoice API — GET /api/admin/invoices/[id]', () => {
 	it('returns a single invoice by id', async () => {
 		const invoice = {
 			id: 1,
-			invoice_number: 'ATS-I/JAN-26/001',
+			invoice_number: 'ATS/I/JAN-26/001',
 			client_name: 'Test Client',
 			total: 50000,
 			line_items: JSON.stringify([
@@ -54,7 +54,7 @@ describe('Invoice API — GET /api/admin/invoices/[id]', () => {
 		const json = await response.json();
 
 		expect(json.success).toBe(true);
-		expect(json.data.invoice_number).toBe('ATS-I/JAN-26/001');
+		expect(json.data.invoice_number).toBe('ATS/I/JAN-26/001');
 	});
 
 	it('returns 404 when invoice not found', async () => {
@@ -69,7 +69,7 @@ describe('Invoice API — GET /api/admin/invoices/[id]', () => {
 	it('parses JSON line_items', async () => {
 		const invoice = {
 			id: 2,
-			invoice_number: 'ATS-I/JAN-26/002',
+			invoice_number: 'ATS/I/JAN-26/002',
 			client_name: 'Client',
 			line_items: JSON.stringify([
 				{ sr_no: 1, description: 'Consulting', amount: 30000 },

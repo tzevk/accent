@@ -592,7 +592,7 @@ export default function CreateInvoicePage() {
 													name="invoice_number"
 													value={formData.invoice_number}
 													onChange={handleChange}
-													placeholder="ATS-I/MAY-26/001"
+													placeholder="ATS/I/MAY-26/001"
 													className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 												/>
 											</div>
