@@ -490,10 +490,16 @@ export async function DELETE(request, { params }) {
 			);
 		}
 
-		// Soft delete invoice
-		await connection.execute('UPDATE invoices SET isDelete = 1 WHERE id = ?', [
-			id,
-		]);
+		// Soft delete invoice. The invoice_number must be renamed because
+		// `unique_active_invoice (invoice_number, isDelete)` only allows ONE
+		// soft-deleted row per number: deleting a re-created invoice that reused
+		// a freed number would collide with the earlier deleted row (ERROR 1062).
+		// Deleted rows are invisible to every query (all filter isDelete = 0), so
+		// the rename frees the number for reuse without any user-visible change.
+		await connection.execute(
+			'UPDATE invoices SET isDelete = 1, invoice_number = CONCAT(invoice_number, ?, ?) WHERE id = ?',
+			['-DEL', id, id]
+		);
 
 		return NextResponse.json({
 			success: true,

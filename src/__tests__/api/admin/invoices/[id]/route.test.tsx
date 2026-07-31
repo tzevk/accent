@@ -305,6 +305,35 @@ describe('Invoice API — DELETE /api/admin/invoices/[id]', () => {
 		expect(restoreCall[1][0]).toBeCloseTo(25000);
 	});
 
+	it('frees invoice_number on soft delete so a reused number can be deleted again', async () => {
+		mockExecute.mockImplementation((sql) => {
+			if (sql.includes('FROM invoices WHERE')) {
+				return Promise.resolve([[{ total: 25000, po_id: null }]]);
+			}
+			return Promise.resolve([]);
+		});
+
+		const response = await DELETE(createRequest({ method: 'DELETE' }), {
+			params: Promise.resolve({ id: '34' }),
+		});
+		const json = await response.json();
+
+		expect(json.success).toBe(true);
+
+		// unique_active_invoice (invoice_number, isDelete) allows only ONE
+		// soft-deleted row per number. Renaming on delete frees the number,
+		// otherwise deleting a re-created invoice (same number) throws
+		// ERROR 1062 Duplicate entry for key 'unique_active_invoice'.
+		const softDeleteCall = mockExecute.mock.calls.find(
+			([sql]) =>
+				typeof sql === 'string' &&
+				sql.includes('UPDATE invoices SET isDelete = 1')
+		);
+		expect(softDeleteCall).toBeDefined();
+		expect(softDeleteCall[0]).toContain('CONCAT(invoice_number');
+		expect(softDeleteCall[1]).toEqual(['-DEL', '34', '34']);
+	});
+
 	it('returns 404 when invoice not found', async () => {
 		mockExecute.mockImplementation((sql) => {
 			if (sql.includes('FROM invoices WHERE')) {
