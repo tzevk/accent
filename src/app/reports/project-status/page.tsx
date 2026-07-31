@@ -14,6 +14,7 @@ import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
+import SearchableSelect from '@/components/ui/searchable-select';
 import ActivityStatusMatrix, {
 	type ActivityStatusReport,
 } from '@/components/reports/ActivityStatusMatrix';
@@ -197,6 +198,28 @@ export default function ProjectStatusPage() {
 	const activities = useMemo<ProjectActivity[]>(
 		() => projectQuery.data?.data?.activities ?? [],
 		[projectQuery.data]
+	);
+
+	const projectOptions = useMemo(
+		() =>
+			projects.map((p) => ({
+				value: String(p.project_id),
+				label: p.project_code
+					? `${p.project_code} — ${p.project_name}`
+					: p.project_name,
+			})),
+		[projects]
+	);
+
+	const activityOptions = useMemo(
+		() =>
+			activities.map((a) => ({
+				value: a.sub_activity_name
+					? `sub::${a.sub_activity_name}`
+					: `act::${a.activity_name}`,
+				label: a.label,
+			})),
+		[activities]
 	);
 
 	// Reset the activity selection when the project changes.
@@ -418,62 +441,34 @@ export default function ProjectStatusPage() {
 						className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 items-end"
 					>
 						<legend className="sr-only">Filter the activity report</legend>
-
-						<div className="lg:col-span-4">
-							<label
-								htmlFor="project-picker"
-								className="block text-[11px] font-semibold text-gray-600 mb-1"
-							>
+						<label className="block lg:col-span-4">
+							<span className="block text-[11px] font-semibold text-gray-600 mb-1">
 								Project
-							</label>
-							<select
-								id="project-picker"
+							</span>
+							<SearchableSelect
+								options={projectOptions}
 								value={projectId}
-								onChange={(e) => setProjectId(e.target.value)}
-								className="w-full px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-md focus:outline-none focus:border-purple-400 focus-visible:ring-2 focus-visible:ring-purple-500"
-							>
-								<option value="">Select a project…</option>
-								{projects.map((p) => (
-									<option key={p.project_id} value={String(p.project_id)}>
-										{p.project_code
-											? `${p.project_code} — ${p.project_name}`
-											: p.project_name}
-									</option>
-								))}
-							</select>
-						</div>
+								onChange={(val) => setProjectId(String(val))}
+								placeholder="Select a project…"
+							/>
+						</label>
 
-						<div className="lg:col-span-4">
-							<label
-								htmlFor="activity-picker"
-								className="block text-[11px] font-semibold text-gray-600 mb-1"
-							>
+						<label className="block lg:col-span-4">
+							<span className="block text-[11px] font-semibold text-gray-600 mb-1">
 								Activity
-							</label>
-							<select
-								id="activity-picker"
+							</span>
+							<SearchableSelect
+								options={activityOptions}
 								value={activityKey}
-								onChange={(e) => setActivityKey(e.target.value)}
-								disabled={!projectId || projectQuery.isLoading}
-								className="w-full px-2.5 py-1.5 text-sm bg-white border border-gray-200 rounded-md focus:outline-none focus:border-purple-400 focus-visible:ring-2 focus-visible:ring-purple-500 disabled:bg-gray-50 disabled:text-gray-400"
-							>
-								<option value="">
-									{projectQuery.isLoading
+								onChange={(val) => setActivityKey(String(val))}
+								placeholder={
+									projectQuery.isLoading
 										? 'Loading activities…'
-										: 'Select an activity…'}
-								</option>
-								{activities.map((a) => {
-									const value = a.sub_activity_name
-										? `sub::${a.sub_activity_name}`
-										: `act::${a.activity_name}`;
-									return (
-										<option key={value} value={value}>
-											{a.label}
-										</option>
-									);
-								})}
-							</select>
-						</div>
+										: 'Select an activity…'
+								}
+								disabled={!projectId || projectQuery.isLoading}
+							/>
+						</label>
 
 						<div className="lg:col-span-2">
 							<label

@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
  * @param {string} [props.placeholder]
  * @param {string} [props.className]
  * @param {string} [props.buttonClassName]
+ * @param {boolean} [props.disabled]
  */
 export default function SearchableSelect({
 	options = [],
