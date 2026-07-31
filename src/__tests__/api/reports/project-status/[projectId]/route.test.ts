@@ -19,7 +19,6 @@ vi.mock('@/utils/permissions', () => ({
 	PERMISSIONS: { READ: 'read' },
 }));
 
-// Project meta returned for id=10
 const projectRow = {
 	project_id: 10,
 	project_name: 'Shroff Project',
@@ -27,6 +26,10 @@ const projectRow = {
 	client_name: 'Shroff',
 	start_date: '2026-07-01',
 	end_date: '2026-12-31',
+	project_team: JSON.stringify([
+		{ id: 1, name: 'Shubham Shirke' },
+		{ id: 2, name: 'Sudhir Pandhare' },
+	]),
 };
 
 // Two distinct (activity, sub) pairs
@@ -93,7 +96,14 @@ function setupMockQueries() {
 			return Promise.resolve([activityRows]);
 		if (s.includes('FROM user_activity_assignments'))
 			return Promise.resolve([mtoAssignments]);
-		if (s.includes('FROM users') && !s.includes('employee_id = ?'))
+		if (s.includes('FROM users') && s.includes('WHERE id = ?'))
+			return Promise.resolve([
+				userRows.filter(
+					(u) =>
+						String((u as Record<string, unknown>).id) === String(params?.[0])
+				),
+			]);
+		if (s.includes('FROM users') && !s.includes('WHERE id = ?'))
 			return Promise.resolve([userRows]);
 		if (s.includes('FROM employees')) return Promise.resolve([[]]);
 		return Promise.resolve([[]]);

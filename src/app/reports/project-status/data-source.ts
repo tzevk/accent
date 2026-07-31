@@ -308,21 +308,38 @@ export async function fetchActivityStatusReport(
 		match?.sub_activity_name || options.subActivityName || '';
 	const activityLabel = subActivityName || activityName;
 
-	// ── 2. Build the user roster (so empty rows still show up) ─────
+	// ── 2. Build the user roster from project team_members first ─
 	const roster = new Map<string, { user_id: string; user_name: string }>();
+
+	// Primary name source: the project's project_team JSON column
+	// (actively managed by addTeamMember/removeTeamMember in EditProjectForm).
+	// Falls back to team_members (older column) when project_team is empty.
 	try {
-		const [users] = await query(
-			`SELECT id, COALESCE(NULLIF(full_name, ''), username, email) AS user_name
-			 FROM users
-			 WHERE COALESCE(isDelete, 0) = 0`
+		const [projRows] = await query(
+			`SELECT project_team, team_members FROM projects WHERE project_id = ?`,
+			[projectId]
 		);
-		for (const u of users as DbRow[]) {
-			const id = s(u, 'id');
-			if (!id) continue;
-			roster.set(String(id), {
-				user_id: String(id),
-				user_name: s(u, 'user_name', `User ${id}`),
-			});
+		const raw = (projRows as DbRow[])[0];
+		if (raw) {
+			// Try project_team first, then team_members
+			const parseMembers = (v: unknown): Array<Record<string, unknown>> => {
+				if (v == null) return [];
+				const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+				return Array.isArray(parsed) ? parsed : [];
+			};
+			const members =
+				parseMembers(raw.project_team).length > 0
+					? parseMembers(raw.project_team)
+					: parseMembers(raw.team_members);
+			for (const m of members) {
+				const uid = s(m, 'id');
+				if (!uid) continue;
+				const name = s(m, 'name') || s(m, 'full_name');
+				roster.set(String(uid), {
+					user_id: String(uid),
+					user_name: name || `User ${uid}`,
+				});
+			}
 		}
 	} catch {
 		/* ignore */
@@ -361,26 +378,47 @@ export async function fetchActivityStatusReport(
 					user_id: id,
 					user_name: `User ${id}`,
 				});
+				// Try users table first, then employees
+				let resolved = false;
 				try {
-					const [empRows] = await query(
-						`SELECT COALESCE(NULLIF(first_name, ''), '') AS first_name,
-						        COALESCE(NULLIF(last_name, ''), '')  AS last_name,
-						        COALESCE(email, '')                  AS email
-						 FROM employees WHERE id = ? LIMIT 1`,
+					const [userRows] = await query(
+						`SELECT COALESCE(NULLIF(full_name, ''), username, email) AS user_name
+						 FROM users WHERE id = ? LIMIT 1`,
 						[id]
 					);
-					const emp = (empRows as DbRow[])[0];
-					if (emp) {
-						const full = [s(emp, 'first_name'), s(emp, 'last_name')]
-							.filter(Boolean)
-							.join(' ');
+					const u = (userRows as DbRow[])[0];
+					if (u) {
 						roster.set(id, {
 							user_id: id,
-							user_name: full || s(emp, 'email') || `User ${id}`,
+							user_name: s(u, 'user_name') || `User ${id}`,
 						});
+						resolved = true;
 					}
 				} catch {
-					/* employees table may not exist */
+					/* ignore */
+				}
+				if (!resolved) {
+					try {
+						const [empRows] = await query(
+							`SELECT COALESCE(NULLIF(first_name, ''), '') AS first_name,
+							        COALESCE(NULLIF(last_name, ''), '')  AS last_name,
+							        COALESCE(email, '')                  AS email
+							 FROM employees WHERE id = ? LIMIT 1`,
+							[id]
+						);
+						const emp = (empRows as DbRow[])[0];
+						if (emp) {
+							const full = [s(emp, 'first_name'), s(emp, 'last_name')]
+								.filter(Boolean)
+								.join(' ');
+							roster.set(id, {
+								user_id: id,
+								user_name: full || s(emp, 'email') || `User ${id}`,
+							});
+						}
+					} catch {
+						/* employees table may not exist */
+					}
 				}
 			}
 
