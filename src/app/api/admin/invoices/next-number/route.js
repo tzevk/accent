@@ -42,26 +42,32 @@ export async function GET(request) {
 		const now = new Date();
 		const year = now.getFullYear().toString().slice(-2);
 		const month = MONTHS[now.getMonth()];
-		const pattern = `ATS-I/${month}-${year}/%`;
+		const prefix = `${month}-${year}/`;
 
+		// Check both old (ATS-I/) and new (ATS/I/) formats in one query.
+		// CONCAT puts % in the SQL string, not the parameter, so it
+		// always acts as a LIKE wildcard regardless of driver mode.
 		const [rows] = await db.execute(
 			`SELECT invoice_number FROM invoices
-			 WHERE invoice_number LIKE ? AND isDelete = 0
+			 WHERE (invoice_number LIKE CONCAT('ATS/I/', ?, '%')
+			    OR invoice_number LIKE CONCAT('ATS-I/', ?, '%'))
+			   AND isDelete = 0
 			 ORDER BY id DESC LIMIT 1`,
-			[pattern]
+			[prefix, prefix]
 		);
 
 		let sequence = 1;
 		if (rows.length > 0 && rows[0].invoice_number) {
+			// Match either format: ATS/I/... or ATS-I/...
 			const match = rows[0].invoice_number.match(
-				new RegExp(`ATS-I/${month}-${year}/(\\d+)`)
+				new RegExp(`ATS[/-]I/${month}-${year}/(\\d+)`)
 			);
 			if (match) {
 				sequence = parseInt(match[1], 10) + 1;
 			}
 		}
 
-		const invoiceNumber = `ATS-I/${month}-${year}/${String(sequence).padStart(3, '0')}`;
+		const invoiceNumber = `ATS/I/${month}-${year}/${String(sequence).padStart(3, '0')}`;
 
 		return NextResponse.json({
 			success: true,

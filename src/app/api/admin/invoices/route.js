@@ -142,7 +142,7 @@ function generateInvoiceNumber(count) {
 	const year = date.getFullYear().toString().slice(-2);
 	const month = MONTHS[date.getMonth()];
 	const num = (count + 1).toString().padStart(3, '0');
-	return `ATS-I/${month}-${year}/${num}`;
+	return `ATS/I/${month}-${year}/${num}`;
 }
 
 // POST - Create new invoice

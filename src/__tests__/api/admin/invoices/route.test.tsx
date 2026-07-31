@@ -35,7 +35,7 @@ describe('Invoice API — GET /api/admin/invoices', () => {
 	const mockInvoices = [
 		{
 			id: 1,
-			invoice_number: 'ATS-I/JAN-26/001',
+			invoice_number: 'ATS/I/JAN-26/001',
 			client_name: 'Test Client',
 			total: 50000,
 			status: 'draft',
@@ -138,7 +138,7 @@ describe('Invoice API — POST /api/admin/invoices', () => {
 
 		expect(json.success).toBe(true);
 		expect(json.data.id).toBe(42);
-		expect(json.data.invoice_number).toMatch(/^ATS-I\//);
+		expect(json.data.invoice_number).toMatch(/^ATS\/I\//);
 	});
 
 	it('returns 400 when client_name is missing', async () => {
@@ -197,7 +197,7 @@ describe('Invoice API — POST /api/admin/invoices', () => {
 	it('returns 409 when invoice_number already exists', async () => {
 		const body = {
 			client_name: 'Test Client',
-			invoice_number: 'ATS-I/JAN-26/001',
+			invoice_number: 'ATS/I/JAN-26/001',
 			line_items: [
 				{
 					sr_no: 1,
