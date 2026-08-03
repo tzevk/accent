@@ -88,8 +88,8 @@ export async function DELETE(request, { params }) {
 		db = await dbConnect();
 
 		const [result] = await db.execute(
-			`UPDATE payment_issues SET isDelete = 1 WHERE id = ? AND isDelete = 0`,
-			[id]
+			`UPDATE payment_issues SET isDelete = 1, deleted_at = NOW(), deleted_by = ? WHERE id = ? AND isDelete = 0`,
+			[authResult.user?.id ?? null, id]
 		);
 
 		if (result.affectedRows === 0) {

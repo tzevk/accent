@@ -18,13 +18,11 @@ import {
 	ChevronRightIcon,
 	ShieldCheckIcon,
 	ChartBarIcon,
-	ScaleIcon,
+	// ScaleIcon (used by TEMP-HIDDEN 'Client Balance' report entry in reportsMenuConfig)
 	BanknotesIcon,
 	ReceiptPercentIcon,
 	WalletIcon,
-	ArrowDownCircleIcon,
 	ArrowUpCircleIcon,
-	ArrowRightCircleIcon,
 	ClipboardDocumentCheckIcon,
 	ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
@@ -56,13 +54,14 @@ const navigationConfig = [
 
 // Reports menu items
 const reportsMenuConfig = [
-	{
-		name: 'Project Activities',
-		href: '/reports/project-activities',
-		icon: ChartBarIcon,
-		resource: 'reports',
-		reportField: 'project_activities',
-	},
+	// TEMP-HIDDEN (2026-08-03): 'Project Activities' report hidden from nav. Uncomment to restore:
+	// {
+	// 	name: 'Project Activities',
+	// 	href: '/reports/project-activities',
+	// 	icon: ChartBarIcon,
+	// 	resource: 'reports',
+	// 	reportField: 'project_activities',
+	// },
 	{
 		name: 'Employee Report',
 		href: '/reports/employee-report',
@@ -70,15 +69,16 @@ const reportsMenuConfig = [
 		resource: 'reports',
 		reportField: 'project_activities',
 	},
+	// TEMP-HIDDEN (2026-08-03): 'Client Balance' report hidden from nav. Uncomment to restore:
+	// {
+	// 	name: 'Client Balance',
+	// 	href: '/reports/client-balance',
+	// 	icon: ScaleIcon,
+	// 	resource: 'reports',
+	// 	reportField: 'project_activities',
+	// },
 	{
-		name: 'Client Balance',
-		href: '/reports/client-balance',
-		icon: ScaleIcon,
-		resource: 'reports',
-		reportField: 'project_activities',
-	},
-	{
-		name: 'Sales Register',
+		name: 'Outstanding Balances',
 		href: '/reports/sales-register',
 		icon: DocumentTextIcon,
 		resource: 'reports',
@@ -162,21 +162,6 @@ const adminMenuConfig = [
 		resource: 'admin',
 	},
 	{
-		name: 'Payment Outgoing',
-		href: '/admin/payment-outgoing',
-		resource: 'admin',
-	},
-	{
-		name: 'Payment Payable',
-		href: '/admin/payment-payable',
-		resource: 'admin',
-	},
-	{
-		name: 'Payment Receivable',
-		href: '/admin/payment-receivable',
-		resource: 'admin',
-	},
-	{
 		name: 'Purchase Invoice',
 		href: '/admin/purchase-invoice',
 		resource: 'admin',
@@ -236,16 +221,6 @@ const adminMenuGroups = [
 				href: '/admin/purchase-invoice',
 				icon: ReceiptPercentIcon,
 			},
-			// {
-			// 	name: 'Payment Receivable',
-			// 	href: '/admin/payment-receivable',
-			// 	icon: ArrowDownCircleIcon,
-			// },
-			// {
-			// 	name: 'Payment Payable',
-			// 	href: '/admin/payment-payable',
-			// 	icon: ArrowUpCircleIcon,
-			// },
 		],
 	},
 	{
@@ -279,11 +254,6 @@ const adminMenuGroups = [
 				name: 'Payment Issued to client',
 				href: '/admin/payment-issue',
 				icon: ArrowUpCircleIcon,
-			},
-			{
-				name: 'Payment Outgoing',
-				href: '/admin/payment-outgoing',
-				icon: ArrowRightCircleIcon,
 			},
 		],
 	},

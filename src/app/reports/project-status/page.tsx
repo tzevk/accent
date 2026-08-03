@@ -15,6 +15,7 @@ import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
 import SearchableSelect from '@/components/ui/searchable-select';
+import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 import ActivityStatusMatrix, {
 	type ActivityStatusReport,
 } from '@/components/reports/ActivityStatusMatrix';
@@ -28,10 +29,9 @@ interface ProjectOption {
 	client_name: string;
 }
 
-interface ProjectActivity {
-	activity_name: string;
-	sub_activity_name: string;
-	label: string;
+interface RosterMember {
+	user_id: string;
+	user_name: string;
 }
 
 interface ProjectDetailResponse {
@@ -45,16 +45,14 @@ interface ProjectDetailResponse {
 			start_date: string | null;
 			end_date: string | null;
 		};
-		activities?: ProjectActivity[];
-		// matrix report shape (when activity/from/to set)
-		activity?: string;
-		activity_name?: string;
-		sub_activity_name?: string;
-		from?: string;
-		to?: string;
-		dates?: string[];
-		rows?: ActivityStatusReport['rows'];
+		roster?: RosterMember[];
 	};
+	error?: string;
+}
+
+interface MatrixResponse {
+	success: boolean;
+	data?: ActivityStatusReport;
 	error?: string;
 }
 
@@ -65,43 +63,9 @@ interface ProjectListResponse {
 	error?: string;
 }
 
-interface FieldPermissionsShape {
-	modules?: {
-		reports?: {
-			sections?: {
-				report_access?: {
-					enabled?: boolean;
-					fields?: Record<string, { permission?: string } | undefined>;
-				};
-			};
-		};
-	};
-}
-
 interface SessionUser {
 	is_super_admin?: boolean | number | null;
-	field_permissions?: FieldPermissionsShape | string | null;
-}
-
-function hasProjectActivitiesFieldPermission(
-	user: SessionUser | null | undefined
-): boolean {
-	if (!user) return false;
-	let fieldPerms = user.field_permissions;
-	if (typeof fieldPerms === 'string') {
-		try {
-			fieldPerms = JSON.parse(fieldPerms) as FieldPermissionsShape;
-		} catch {
-			fieldPerms = null;
-		}
-	}
-	const section = fieldPerms?.modules?.reports?.sections?.report_access;
-	if (!section?.enabled) return false;
-	const perm = section.fields?.project_activities?.permission;
-	const legacy = section.fields?.project_reports?.permission;
-	return (
-		perm === 'view' || perm === 'edit' || legacy === 'view' || legacy === 'edit'
-	);
+	field_permissions?: unknown;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -143,12 +107,12 @@ export default function ProjectStatusPage() {
 
 	// ── Filters ─────────────────────────────────────────────────
 	const [projectId, setProjectId] = useState<string>('');
-	const [activityKey, setActivityKey] = useState<string>('');
+	const [employeeId, setEmployeeId] = useState<string>('');
 	const [from, setFrom] = useState<string>(isoFirstOfMonth());
 	const [to, setTo] = useState<string>(isoToday());
 	const [applied, setApplied] = useState<{
 		projectId: string;
-		activityKey: string;
+		employeeId: string;
 		from: string;
 		to: string;
 	} | null>(null);
@@ -170,7 +134,7 @@ export default function ProjectStatusPage() {
 		queryFn: () => apiGet('/api/reports/project-status'),
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
-		enabled: !authLoading,
+		enabled: !authLoading && hasAccess,
 	});
 
 	const projects = useMemo<ProjectOption[]>(
@@ -179,14 +143,14 @@ export default function ProjectStatusPage() {
 	);
 
 	// Auto-pick first project once the list loads so the user can move
-	// straight to the activity dropdown.
+	// straight to picking a date range.
 	useEffect(() => {
 		if (!projectId && projects.length > 0) {
 			setProjectId(String(projects[0].project_id));
 		}
 	}, [projects, projectId]);
 
-	// ── Activity list (per project) ────────────────────────────
+	// ── Project roster (employee filter) ────────────────────────
 	const projectQuery = useQuery<ProjectDetailResponse>({
 		queryKey: ['reports', 'project-status', 'project', projectId || 'none'],
 		queryFn: () => apiGet(`/api/reports/project-status/${projectId}`),
@@ -195,10 +159,20 @@ export default function ProjectStatusPage() {
 		enabled: !!projectId && hasAccess,
 	});
 
-	const activities = useMemo<ProjectActivity[]>(
-		() => projectQuery.data?.data?.activities ?? [],
+	const roster = useMemo<RosterMember[]>(
+		() => projectQuery.data?.data?.roster ?? [],
 		[projectQuery.data]
 	);
+
+	const employeeOptions = useMemo(
+		() => roster.map((m) => ({ value: m.user_id, label: m.user_name })),
+		[roster]
+	);
+
+	// Reset the employee filter when the project changes.
+	useEffect(() => {
+		setEmployeeId('');
+	}, [projectId]);
 
 	const projectOptions = useMemo(
 		() =>
@@ -211,55 +185,21 @@ export default function ProjectStatusPage() {
 		[projects]
 	);
 
-	const activityOptions = useMemo(
-		() =>
-			activities.map((a) => ({
-				value: a.sub_activity_name
-					? `sub::${a.sub_activity_name}`
-					: `act::${a.activity_name}`,
-				label: a.label,
-			})),
-		[activities]
-	);
-
-	// Reset the activity selection when the project changes.
-	useEffect(() => {
-		setActivityKey('');
-	}, [projectId]);
-
-	// Auto-pick first activity when the list loads.
-	useEffect(() => {
-		if (!activityKey && activities.length > 0) {
-			const first = activities[0];
-			setActivityKey(
-				first.sub_activity_name
-					? `sub::${first.sub_activity_name}`
-					: `act::${first.activity_name}`
-			);
-		}
-	}, [activities, activityKey]);
-
 	// ── Matrix (only when filters applied) ─────────────────────
-	const matrixQuery = useQuery<ProjectDetailResponse>({
+	const matrixQuery = useQuery<MatrixResponse>({
 		queryKey: [
 			'reports',
 			'project-status',
 			'matrix',
 			applied?.projectId,
-			applied?.activityKey,
+			applied?.employeeId,
 			applied?.from,
 			applied?.to,
 		],
 		queryFn: () => {
 			const params = new URLSearchParams();
 			if (applied) {
-				const [kind, ...rest] = applied.activityKey.split('::');
-				if (kind === 'sub') {
-					params.set('activity', rest.join('::'));
-					params.set('sub_activity', rest.join('::'));
-				} else {
-					params.set('activity', rest.join('::'));
-				}
+				if (applied.employeeId) params.set('user_id', applied.employeeId);
 				params.set('from', applied.from);
 				params.set('to', applied.to);
 			}
@@ -269,47 +209,31 @@ export default function ProjectStatusPage() {
 		},
 		refetchOnWindowFocus: false,
 		staleTime: 0,
-		enabled:
-			!!applied &&
-			!!applied.projectId &&
-			!!applied.activityKey &&
-			!!applied.from &&
-			!!applied.to,
+		enabled: !!applied && !!applied.projectId && !!applied.from && !!applied.to,
 	});
 
-	const matrixReport = useMemo<ActivityStatusReport | null>(() => {
-		const d = matrixQuery.data?.data;
-		if (!d || !d.dates || !d.rows) return null;
-		return {
-			project: d.project,
-			activity: d.activity ?? '',
-			activity_name: d.activity_name ?? '',
-			sub_activity_name: d.sub_activity_name ?? '',
-			from: d.from ?? '',
-			to: d.to ?? '',
-			dates: d.dates,
-			rows: d.rows,
-		};
-	}, [matrixQuery.data]);
+	const matrixReport = useMemo<ActivityStatusReport | null>(
+		() => matrixQuery.data?.data ?? null,
+		[matrixQuery.data]
+	);
 
 	// ── Filter helpers ─────────────────────────────────────────
 	const days = rangeDays(from, to);
 	const dateRangeInvalid = !!from && !!to && from > to;
-	const canApply =
-		!!projectId && !!activityKey && !!from && !!to && !dateRangeInvalid;
+	const canApply = !!projectId && !!from && !!to && !dateRangeInvalid;
 
 	function handleApply() {
 		if (!canApply) return;
 		setApplied({
 			projectId,
-			activityKey,
+			employeeId,
 			from,
 			to,
 		});
 	}
 
 	function handleReset() {
-		setActivityKey('');
+		setEmployeeId('');
 		setFrom(isoFirstOfMonth());
 		setTo(isoToday());
 		setApplied(null);
@@ -395,8 +319,8 @@ export default function ProjectStatusPage() {
 								Project status
 							</h1>
 							<p className="text-xs text-gray-500 mt-0.5">
-								Print a per-day breakdown of hours and quantity for any project,
-								activity, and date range.
+								Print a per-day breakdown of hours and quantity for any project
+								and date range.
 							</p>
 						</div>
 						<div className="flex items-center gap-2">
@@ -455,16 +379,16 @@ export default function ProjectStatusPage() {
 
 						<label className="block lg:col-span-4">
 							<span className="block text-[11px] font-semibold text-gray-600 mb-1">
-								Activity
+								Employee
 							</span>
 							<SearchableSelect
-								options={activityOptions}
-								value={activityKey}
-								onChange={(val) => setActivityKey(String(val))}
+								options={employeeOptions}
+								value={employeeId}
+								onChange={(val) => setEmployeeId(String(val))}
 								placeholder={
 									projectQuery.isLoading
-										? 'Loading activities…'
-										: 'Select an activity…'
+										? 'Loading employees…'
+										: 'All employees'
 								}
 								disabled={!projectId || projectQuery.isLoading}
 							/>
@@ -528,25 +452,20 @@ export default function ProjectStatusPage() {
 								Reset
 							</button>
 
-							{selectedProject && (
-								<span
-									className="text-[11px] text-gray-500 ml-auto"
-									role="status"
-									aria-live="polite"
-								>
-									{projectQuery.isLoading
-										? 'Loading activities…'
-										: `${activities.length} ${
-												activities.length === 1 ? 'activity' : 'activities'
-											} available`}
-									{from && to && !dateRangeInvalid && days > 0 && (
-										<>
-											{' '}
-											· {days} day{days === 1 ? '' : 's'}
-										</>
-									)}
-								</span>
-							)}
+							{selectedProject &&
+								from &&
+								to &&
+								!dateRangeInvalid &&
+								days > 0 && (
+									<span
+										className="text-[11px] text-gray-500 ml-auto"
+										role="status"
+										aria-live="polite"
+									>
+										{roster.length} employee{roster.length === 1 ? '' : 's'} ·{' '}
+										{days} day{days === 1 ? '' : 's'}
+									</span>
+								)}
 
 							{dateRangeInvalid && (
 								<span className="text-[11px] text-red-600" role="alert">
@@ -583,10 +502,8 @@ export default function ProjectStatusPage() {
 					) : !matrixReport ? (
 						<EmptyState
 							title="No data for this range"
-							description="Try widening the date range or pick a different activity."
+							description="Try widening the date range."
 						/>
-					) : matrixReport.rows.length === 0 ? (
-						<ActivityStatusMatrix report={matrixReport} />
 					) : (
 						<ActivityStatusMatrix report={matrixReport} />
 					)}
@@ -600,7 +517,7 @@ export default function ProjectStatusPage() {
 
 function EmptyState({
 	title = 'No report yet',
-	description = 'Pick a project, activity, and date range above, then choose Generate report.',
+	description = 'Pick a project and date range above, then choose Generate report.',
 }: {
 	title?: string;
 	description?: string;

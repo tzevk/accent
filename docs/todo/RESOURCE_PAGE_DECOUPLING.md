@@ -1,71 +1,50 @@
-# ResourcePage Decoupling — TODO
+# ResourcePage Decoupling — DONE
 
-**Status:** 1 of 9 consumers migrated. `src/components/admin/ResourcePage.tsx` is no longer in the build path for `payment-entry` but is still imported by 8 other admin pages.
+**Status:** ✅ Complete (2026-08-03). All 9 consumers resolved — 6 migrated to self-contained pages, 3 deleted as unused. `src/components/admin/ResourcePage.tsx` has been deleted; `ResourceFormModal.tsx` remains as the shared form renderer.
 
-> **Why this exists:** `POOR_PRACTICES_AUDIT.md` (also moved to `docs/todo/`) flagged the over-loaded generic `ResourcePage` as accumulating feature creep — pagination, stats, search, modals, form rendering, row actions, money/date/render cell helpers all glued together. Each new requirement risks breaking the 9 unrelated consumers. The fix is to stop reusing it.
-
----
-
-## Done (2026-07-29)
-
-| Item                                                  | Notes                                                                                                                                |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| New `src/app/admin/purchase-order/view/[id]/page.jsx` | Read-only PO view, mirrors `edit/[id]/page.jsx`; Back + Download PDF + Edit in header                                                |
-| View button on `/admin/purchase-order` list           | `EyeIcon`, emerald, leftmost in the action cell                                                                                      |
-| PO link in `/reports/sales-register`                  | Surfaced `po_id` from `invoices` (FK already in schema, was unselected) → linked `po_number` to `/admin/purchase-order/view/{po_id}` |
-| Build error fix                                       | `ResourcePage.tsx` referenced undeclared `page`/`setPage` — added `useState(1)` at line 82                                           |
-| `payment-entry` decoupled                             | `src/app/admin/payment-entry/page.tsx` is now a 516-line self-contained page using `ResourceFormModal` directly                      |
+> **Why this existed:** `POOR_PRACTICES_AUDIT.md` (also moved to `docs/todo/`) flagged the over-loaded generic `ResourcePage` as accumulating feature creep — pagination, stats, search, modals, form rendering, row actions, money/date/render cell helpers all glued together. Each new requirement risked breaking the 9 unrelated consumers. The fix was to stop reusing it.
 
 ---
 
-## Remaining — 8 consumers still on `ResourcePage`
+## Done
 
-All 8 import `ResourcePage` from `@/components/admin/ResourcePage`. Each is a candidate for the same pattern that `payment-entry` just used.
-
-| Page                 | File                                        |
-| -------------------- | ------------------------------------------- |
-| `expenses`           | `src/app/admin/expenses/page.jsx`           |
-| `other-expenses`     | `src/app/admin/other-expenses/page.tsx`     |
-| `payment-issue`      | `src/app/admin/payment-issue/page.tsx`      |
-| `payment-outgoing`   | `src/app/admin/payment-outgoing/page.jsx`   |
-| `payment-payable`    | `src/app/admin/payment-payable/page.jsx`    |
-| `payment-receivable` | `src/app/admin/payment-receivable/page.jsx` |
-| `purchase-invoice`   | `src/app/admin/purchase-invoice/page.jsx`   |
-| `quotation-outgoing` | `src/app/admin/quotation-outgoing/page.jsx` |
-
-Run `grep -rn "from '@/components/admin/ResourcePage'" src/app/admin/` to confirm the current consumer list before starting each one.
+| Item                                                  | Notes                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New `src/app/admin/purchase-order/view/[id]/page.jsx` | Read-only PO view, mirrors `edit/[id]/page.jsx`; Back + Download PDF + Edit in header                                                                                                                                                                                                                                                          |
+| View button on `/admin/purchase-order` list           | `EyeIcon`, emerald, leftmost in the action cell                                                                                                                                                                                                                                                                                                |
+| PO link in `/reports/sales-register`                  | Surfaced `po_id` from `invoices` (FK already in schema, was unselected) → linked `po_number` to `/admin/purchase-order/view/{po_id}`                                                                                                                                                                                                           |
+| `payment-entry` decoupled                             | First migration; established the recipe (TanStack Query + Table + ResourceFormModal)                                                                                                                                                                                                                                                           |
+| `quotation-outgoing` decoupled                        | `page.jsx` → `page.tsx`. Computed tax/total fields, status filter, stats, pagination                                                                                                                                                                                                                                                           |
+| `FormField.type` union widened                        | Added `'email'` to `src/types/admin.ts` — modal fallback already renders it                                                                                                                                                                                                                                                                    |
+| `payment-payable` + `payment-receivable` deleted      | Pages unused — dirs + Navbar entries removed. API routes kept: tables feed `reports/client-balance` AR tracking; `soft-delete.test.ts` covers the routes                                                                                                                                                                                       |
+| `purchase-invoice` decoupled                          | `page.jsx` → `page.tsx`. Vendor autofill, derived due_date (+30d), 8-card stats, pagination                                                                                                                                                                                                                                                    |
+| `expenses` decoupled                                  | `page.jsx` → `page.tsx`. Also fixed expenses soft-delete: stats `isDelete = 0`, DELETE `deleted_at`/`deleted_by` + 404 guard, UNIQUE `expense_number` → generated `active_expense_number` (migration `20260803140000`)                                                                                                                         |
+| `other-expenses` decoupled                            | Rewritten off `ResourcePage` (was TSX). `transformSubmit`, vendor/employee autofill + `dependentOn` switching. Same soft-delete fixes (migration `20260803150000`)                                                                                                                                                                             |
+| `payment-issue` decoupled                             | Rewritten off `ResourcePage` (was TSX). 3 searchableSelects, computed net_amount. Soft-delete: both DELETE handlers set `deleted_at`/`deleted_by` (migration `20260803160000`)                                                                                                                                                                 |
+| `payment-outgoing` deleted                            | Dead feature: no `/api/admin/payment-outgoings` route ever existed, no `payment_outgoings` table, no data. Dirs + both Navbar entries removed                                                                                                                                                                                                  |
+| `ResourcePage.tsx` deleted                            | Zero consumers remaining; no barrel exports existed                                                                                                                                                                                                                                                                                            |
+| `types/admin.ts` cleaned                              | `ResourcePageProps` + `ExtraFilters` removed; `ResourceFormModalProps` is now a direct interface (title, endpoint, defaultValues, zodSchema, formFields, transformSubmit?, vendor/employee/companyListEndpoint?, mode, row, onClose, onSaved)                                                                                                  |
+| Soft-delete hardening (invoices + purchase-invoices)  | Migrations `20260803120000`/`130000`: `deleted_at`/`deleted_by` on both tables; unique keys re-scoped to active rows via generated columns (`active_invoice_number`/`active_invoice_number`). Invoice DELETE transactional (PO balance restore + flag), audit-logged, no `-DEL` rename; PUT transactional. Purchase-invoice stats filter fixed |
 
 ---
 
-## Migration recipe (proven on `payment-entry`)
+## Migration recipe (proven on `payment-entry`, used by all 6)
 
 1. Read the current page end-to-end. Note the constants: `schema`, `defaultValues`, `formFields`, `columns`, `statsConfig` (plus any `invoiceLabelFn`/helper used by `searchableLabelFn`).
 2. Type the constants explicitly against the existing types: `FormField[]` for `formFields`, `StatsConfig[]` for `statsConfig`, `Column[]` for `columns`. Remove per-field `as const` if it fights the explicit type.
 3. Import what `ResourcePage` was importing internally: `useState`/`useCallback`, `useSearchParams`, `useQuery`, `apiGet`/`apiDelete`, `Navbar`/`Sidebar`, the `Table*`/`Button`/`Input` UI primitives, `formatCurrency`/`formatDate`, `ResourceFormModal`, and the types `ModalMode`/`ApiListResponse`.
-4. In the component:
-   - `useState` for `search` (init from `useSearchParams().get('search') ?? ''`) and `modalState: { mode: ModalMode; row }`.
-   - `useQuery<ApiListResponse>({ queryKey: [...key, { search }], queryFn: () => apiGet(endpoint, { search }) })`.
-   - `openCreate` / `openEdit` / `openView` / `closeModal` mutators.
-   - `onDelete = async (row) => { if (!confirm(...)) return; await apiDelete(`${endpoint}/${row.id}`); listQuery.refetch(); }` (toast on success/error).
-5. Render in this order: `<Navbar />` → `<Sidebar />` → header (title + Refresh + Add) → stats grid (if any) → search row → `<Table>` with sticky header, `TableEmpty` for loading/empty, action cell with View/Edit/Delete plus any custom `rowActions` → `<ResourceFormModal>` gated on `modalState.mode`.
-6. `TONE_COLOR_MAP` keyed on `StatTone` (the type union includes `violet` — add `'text-violet-600'`). Falls back to `text-gray-900` for unknown tones.
-7. For column rendering, handle `c.money` → `formatCurrency`, `c.date` → `formatDate`, `c.render` → call it, else `?? '—'`. Money amounts may arrive as strings from `DECIMAL` columns — `formatCurrency` already guards.
-8. Pass `endpoint`, `defaultValues`, `zodSchema`, `formFields`, `companyListEndpoint`/`vendorListEndpoint`/`employeeListEndpoint` (only what the page used) to `ResourceFormModal`. `onSaved={() => { closeModal(); listQuery.refetch(); }}`.
-9. If the page had `disablePagination`, don't add a `<Pagination />` and don't pass `page`/`limit` query params. Pages that _do_ paginate should keep the `useState` page + `setPage(1)` on search + `<Pagination>` wiring that was previously inside `ResourcePage`.
+4. In the component: `useState` for `search` + `modalState`; `useQuery<ApiListResponse>` keyed on `[key, { search, status, page }]`; `openCreate`/`openEdit`/`openView`/`closeModal`; `onDelete` with confirm + `apiDelete` + refetch + toasts.
+5. Render: `<Navbar />` → `<Sidebar />` → header (title + Refresh + Add) → stats grid → search row (input + status Select) → `<Table>` with sticky header, `TableEmpty` states, action cell (View/Edit/Delete) → `<Pagination>` when the page paginates → `<ResourceFormModal>` gated on `modalState.mode`.
+6. `TONE_COLOR_MAP` keyed on `StatTone` (union includes `violet` — `'text-violet-600'`). Fallback `text-gray-900`.
+7. Column rendering: `c.money` → `formatCurrency`, `c.date` → `formatDate`, `c.render` → call it, else `?? '—'` (money arrives as strings from `DECIMAL` — `formatCurrency` guards).
+8. `Select` from `@/components/ui/form-fields` is untyped JS: re-type via `ComponentType<SelectHTMLAttributes<HTMLSelectElement> & RefAttributes<HTMLSelectElement>>` (pattern from `other-expenses`).
+9. Verify the endpoint's stats keys match `statsConfig[].key` and that it accepts `search`/`status`/`page`/`limit` before wiring the page.
 
 ---
 
-## After all 9 are migrated
+## Remaining notes / risks
 
-- Delete `src/components/admin/ResourcePage.tsx` and any remaining barrel exports.
-- `src/components/admin/ResourceFormModal.tsx` is still consumed by every decoupled page; keep it as the shared form renderer. If form rendering also drifts (each page wants different field types or different layouts), repeat the same exercise on the modal — but only when the abstraction actually costs more than it saves.
-- Drop `disablePagination`, `pageSize`, `canView`, `vendorListEndpoint`/`employeeListEndpoint`/`companyListEndpoint`, `rowActions`, `extraFilters`, `transformSubmit` plumbing from `src/types/admin.ts` once nothing reads them.
-
----
-
-## Open risks / decisions
-
-- **`/admin/purchase-order/page.jsx` is already decoupled** (custom 934-line page, not via `ResourcePage`). It is the structural model for the migrations above — copy its shell and stat layout, swap in the page-specific table and modal.
-- **The form-field vocabulary** (`searchableSelect` + `companyAutofill` + `searchableDependency` + `computed`) lives in `ResourceFormModal`. Any new field types must be added there, not on individual pages. Keep that contract.
-- **Stats response shape** is `Record<string, number | string | null>` from `ApiListResponse.stats`. The page's `statsConfig[].key` is a direct lookup — no nesting. If a page needs nested stats, fix the API to flatten or document the nested-key convention in `src/types/admin.ts`.
-- **API endpoints** must work without `page`/`limit` (since `payment-entry` already does). Verify each consumer's endpoint accepts the minimal `?search=…` query before refactoring; some endpoints may have an alternate list endpoint or a different default-limit contract — call this out per-page.
+- **`ResourceFormModal.tsx`** is still consumed by every decoupled page; keep it as the shared form renderer. If form rendering drifts (new field types or layouts), repeat the same exercise on the modal — only when the abstraction actually costs more than it saves.
+- **The form-field vocabulary** (`searchableSelect` + `companyAutofill` + `searchableDependency` + `computed` + `derived`) lives in `ResourceFormModal`. New field types must be added there, not on individual pages.
+- **Stats response shape** is `Record<string, number | string | null>` from `ApiListResponse.stats`; `statsConfig[].key` is a direct lookup. If a page needs nested stats, fix the API to flatten.
+- **Soft-delete convention** (established 2026-08-03): DELETE handlers set `isDelete = 1, deleted_at = NOW(), deleted_by = ?` with an `affectedRows === 0` → 404 guard; stats queries filter `isDelete = 0`; tables with unique business keys scope them to active rows via a generated `active_*` column (NULL once deleted). `expenses`, `other_expenses`, `payment_issues`, `invoices`, `purchase_invoices` upgraded; `payment_payables`/`payment_receivables` routes still use the bare `isDelete = 1` pattern if they ever need the same treatment.

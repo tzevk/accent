@@ -30,9 +30,7 @@ export interface ActivityStatusProject {
 
 export interface ActivityStatusReport {
 	project: ActivityStatusProject;
-	activity: string;
-	activity_name: string;
-	sub_activity_name: string;
+	activity: string; // 'All Activities' — the matrix aggregates every activity
 	from: string;
 	to: string;
 	dates: string[];

@@ -80,6 +80,7 @@ export async function GET(request) {
 				COALESCE(SUM(amount_paid), 0) as totalPaid,
 				COALESCE(SUM(balance_due), 0) as totalBalance
 			FROM ${TABLE}
+			WHERE isDelete = 0
 		`);
 
 		return NextResponse.json({

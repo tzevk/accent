@@ -4,54 +4,14 @@ import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 import {
 	fetchProjectMeta,
-	fetchProjectActivities,
+	fetchProjectRoster,
 	fetchActivityStatusReport,
 } from '@/app/reports/project-status/data-source';
-
-// ── Types ──────────────────────────────────────────────────────────
-
-interface FieldPermissionsShape {
-	modules?: {
-		reports?: {
-			sections?: {
-				report_access?: {
-					enabled?: boolean;
-					fields?: Record<string, { permission?: string } | undefined>;
-				};
-			};
-		};
-	};
-}
-
-interface ReportUser {
-	is_super_admin?: boolean | number;
-	field_permissions?: FieldPermissionsShape | string | null;
-}
+import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // ── Permission helpers ─────────────────────────────────────────────
-
-function hasProjectActivitiesFieldPermission(
-	user: ReportUser | null | undefined
-): boolean {
-	if (!user) return false;
-	let fieldPerms = user.field_permissions;
-	if (typeof fieldPerms === 'string') {
-		try {
-			fieldPerms = JSON.parse(fieldPerms) as FieldPermissionsShape;
-		} catch {
-			fieldPerms = null;
-		}
-	}
-	const section = fieldPerms?.modules?.reports?.sections?.report_access;
-	if (!section?.enabled) return false;
-	const perm = section.fields?.project_activities?.permission;
-	const legacy = section.fields?.project_reports?.permission;
-	return (
-		perm === 'view' || perm === 'edit' || legacy === 'view' || legacy === 'edit'
-	);
-}
 
 function unauthorized(message: string) {
 	return NextResponse.json({ success: false, error: message }, { status: 403 });
@@ -66,9 +26,11 @@ function notFound(message: string) {
 /**
  * GET /api/reports/project-status/[projectId]
  *
- * Resolves a single project. Without `activity`/`from`/`to` it returns the
- * project header plus the list of activities to choose from. With those
- * params it returns the (person × day) matrix used by the print report.
+ * Resolves a single project. Without `from`/`to` it returns the project
+ * header plus its roster (for the employee filter); with them it returns
+ * the (person × day) matrix — aggregated across every activity — used by
+ * the print report. An optional `user_id` narrows the matrix to one
+ * employee.
  */
 export async function GET(
 	request: Request,
@@ -108,18 +70,16 @@ export async function GET(
 		}
 
 		const url = new URL(request.url);
-		const activity = url.searchParams.get('activity')?.trim() || '';
-		const subActivity = url.searchParams.get('sub_activity')?.trim() || '';
-		const activityName = url.searchParams.get('activity_name')?.trim() || '';
 		const from = url.searchParams.get('from')?.trim() || '';
 		const to = url.searchParams.get('to')?.trim() || '';
+		const userId = url.searchParams.get('user_id')?.trim() || '';
 
-		// ── No matrix request → return project + activity list ───────
-		if (!activity || !from || !to) {
-			const activities = await fetchProjectActivities(projectId);
+		// ── No date range → project header + roster ────────────────
+		if (!from || !to) {
+			const roster = await fetchProjectRoster(projectId);
 			return NextResponse.json({
 				success: true,
-				data: { project, activities },
+				data: { project, roster },
 			});
 		}
 
@@ -145,11 +105,9 @@ export async function GET(
 
 		const report = await fetchActivityStatusReport({
 			projectId,
-			activity,
-			subActivityName: subActivity || undefined,
-			activityName: activityName || undefined,
 			from,
 			to,
+			userIds: userId ? [userId] : undefined,
 		});
 		if (!report) {
 			return notFound('Project not found');
