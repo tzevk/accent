@@ -19,12 +19,14 @@ vi.mock('@/utils/api-permissions', () => ({
 		DELETE: 'delete',
 	},
 	getCurrentUser: vi.fn().mockResolvedValue({ id: 1, is_super_admin: true }),
+	invalidateUserCache: vi.fn(),
 }));
 vi.mock('@/utils/rbac', () => ({
 	hasPermission: vi.fn().mockReturnValue(true),
 }));
 
-const { DELETE: routeDELETE } = await import('@/app/api/users/route');
+const { DELETE: routeDELETE, PUT: routePUT } =
+	await import('@/app/api/users/route');
 const { DELETE: idDELETE } = await import('@/app/api/users/[id]/route');
 const { GET: listGET } = await import('@/app/api/users/list/route');
 
@@ -69,6 +71,45 @@ describe('Users — soft delete', () => {
 		expect(sql).not.toContain('DELETE FROM');
 	});
 
+	it('route.js DELETE invalidates the cached user', async () => {
+		const invalidateUserCache = (await import('@/utils/api-permissions'))
+			.invalidateUserCache as ReturnType<typeof vi.fn>;
+		mockExecute
+			.mockResolvedValueOnce([[{ id: '1' }]])
+			.mockResolvedValueOnce([{ affectedRows: 1 }]);
+		await routeDELETE(
+			createRequest({
+				method: 'DELETE',
+				url: 'http://localhost/api/users?id=1',
+			})
+		);
+		expect(invalidateUserCache).toHaveBeenCalledWith('1');
+	});
+
+	it('route.js PUT invalidates the cached user after a permission update', async () => {
+		const invalidateUserCache = (await import('@/utils/api-permissions'))
+			.invalidateUserCache as ReturnType<typeof vi.fn>;
+		mockExecute
+			.mockResolvedValueOnce([[{ id: '1' }]]) // existing user
+			.mockResolvedValueOnce([[]]) // duplicate check
+			.mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE
+			.mockResolvedValueOnce([[{ id: '1', username: 'test' }]]); // fetch
+		const r = await routePUT(
+			createRequest({
+				method: 'PUT',
+				body: {
+					id: '1',
+					username: 'test',
+					permissions: ['leads:read'],
+					field_permissions: { modules: {} },
+				},
+			})
+		);
+		const json = await r.json();
+		expect(json.success).toBe(true);
+		expect(invalidateUserCache).toHaveBeenCalledWith('1');
+	});
+
 	it('[id]/route.js DELETE uses UPDATE SET isDelete = 1', async () => {
 		mockExecute.mockImplementation((sql: string) => {
 			if (sql.includes('UPDATE users SET isDelete'))
@@ -84,6 +125,20 @@ describe('Users — soft delete', () => {
 			(c[0] as string).includes('isDelete = 1')
 		)?.[0];
 		expect(deleteSql).toBeTruthy();
+	});
+
+	it('[id]/route.js DELETE invalidates the cached user', async () => {
+		const invalidateUserCache = (await import('@/utils/api-permissions'))
+			.invalidateUserCache as ReturnType<typeof vi.fn>;
+		mockExecute.mockImplementation((sql: string) => {
+			if (sql.includes('UPDATE users SET isDelete'))
+				return Promise.resolve([{ affectedRows: 1 }]);
+			return Promise.resolve([[{ id: 1, is_super_admin: false }]]);
+		});
+		await idDELETE(createRequest({ method: 'DELETE' }), {
+			params: Promise.resolve({ id: '1' }),
+		});
+		expect(invalidateUserCache).toHaveBeenCalledWith('1');
 	});
 
 	it('list/route.js filters by isDelete = 0 on all queries', async () => {

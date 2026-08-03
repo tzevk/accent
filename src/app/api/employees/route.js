@@ -4,6 +4,7 @@ import {
 	ensurePermission,
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
+	invalidateUserCache,
 } from '@/utils/api-permissions';
 
 // GET - Fetch all employees
@@ -552,6 +553,8 @@ export async function PUT(request) {
 						'UPDATE users SET role_id = ? WHERE employee_id = ?',
 						[roleRows[0].id, employeeId]
 					);
+					// Role assignment changes the user's effective (merged) permissions.
+					invalidateUserCache();
 				}
 			}
 			// If employment status provided, toggle user's is_active accordingly

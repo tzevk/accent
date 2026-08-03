@@ -250,6 +250,10 @@ export async function DELETE(request, { params }) {
 			'UPDATE users SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]
 		);
+
+		// Drop cached permissions so a deleted user's session stops being honored.
+		invalidateUserCache(id);
+
 		await db.release();
 
 		return NextResponse.json({

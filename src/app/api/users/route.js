@@ -4,6 +4,7 @@ import {
 	ensurePermission,
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
+	invalidateUserCache,
 } from '@/utils/api-permissions';
 import { hashPassword } from '@/utils/password';
 
@@ -345,6 +346,11 @@ export async function PUT(request) {
 			`UPDATE users SET ${fields.join(', ')} WHERE id = ? AND isDelete = 0`,
 			vals
 		);
+
+		// Invalidate the in-memory user cache so permission changes reflect
+		// immediately instead of after the 5-minute TTL expires.
+		invalidateUserCache(data.id);
+
 		const [rows] = await db.execute(
 			'SELECT * FROM users WHERE id = ? AND isDelete = 0',
 			[data.id]
@@ -402,6 +408,9 @@ export async function DELETE(request) {
 			'UPDATE users SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]
 		);
+
+		// Drop cached permissions so a deleted user's session stops being honored.
+		invalidateUserCache(id);
 
 		return NextResponse.json({ success: true, message: 'User deleted' });
 	} catch (error) {

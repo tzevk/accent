@@ -4,6 +4,7 @@ import {
 	ensurePermission,
 	RESOURCES,
 	PERMISSIONS,
+	invalidateUserCache,
 } from '@/utils/api-permissions';
 
 async function ensureRolesTable(db) {
@@ -172,6 +173,11 @@ export async function PUT(request) {
 			`UPDATE roles SET ${fields.join(', ')} WHERE id = ?`,
 			vals
 		);
+
+		// Role permissions are merged into every cached user with this role,
+		// so a role change must clear the whole in-memory cache.
+		invalidateUserCache();
+
 		const [rows] = await db.execute('SELECT * FROM roles WHERE id = ?', [
 			data.id,
 		]);
@@ -226,6 +232,9 @@ export async function DELETE(request) {
 		}
 
 		await db.execute('DELETE FROM roles WHERE id = ?', [id]);
+
+		// Users with this role may be cached with merged role permissions.
+		invalidateUserCache();
 
 		return NextResponse.json({ success: true, message: 'Role deleted' });
 	} catch (error) {
