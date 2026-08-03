@@ -104,6 +104,7 @@ const EMPTY_PROJECTS = [
 const buildFetch = ({
 	assignments = ASSIGNMENTS,
 	empty = EMPTY_PROJECTS,
+	accessible = [],
 } = {}) => {
 	const mock = vi.fn(async (url, options) => {
 		if (
@@ -133,7 +134,12 @@ const buildFetch = ({
 				headers: { get: () => 'application/json' },
 				json: async () => ({
 					success: true,
-					data: { assignments, emptyProjects: empty, stats: {} },
+					data: {
+						assignments,
+						emptyProjects: empty,
+						accessibleProjects: accessible,
+						stats: {},
+					},
 				}),
 			};
 		}
@@ -192,6 +198,12 @@ describe('ProjectActivityAssignments', () => {
 		// Project codes (rendered multiple times across rows)
 		expect(screen.getAllByText('P-001').length).toBe(2);
 		expect(screen.getAllByText('P-002').length).toBe(1);
+		expect(
+			screen.getAllByRole('link', { name: 'View details for Alpha Plant' })
+		).toHaveLength(2);
+		expect(
+			screen.getAllByRole('link', { name: 'View details for Alpha Plant' })[0]
+		).toHaveAttribute('href', '/projects/1');
 
 		// Project Name column is hidden — names should not appear as table cells
 		expect(screen.queryByText('Alpha Plant')).not.toBeInTheDocument();
@@ -218,7 +230,10 @@ describe('ProjectActivityAssignments', () => {
 			/>
 		);
 
-		expect(screen.getByText('No projects assigned to you')).toBeInTheDocument();
+		expect(screen.getByText('No projects assigned yet')).toBeInTheDocument();
+		expect(
+			screen.getByText('Contact your project manager to be added to a project.')
+		).toBeInTheDocument();
 		// No Add button when there are zero projects
 		expect(screen.queryByTitle('Add a new activity')).not.toBeInTheDocument();
 	});
@@ -234,6 +249,37 @@ describe('ProjectActivityAssignments', () => {
 		// Table is rendered (with the Add button), but there is at least one project
 		expect(screen.getByTitle('Add a new activity')).toBeInTheDocument();
 		expect(screen.getByText(/No activities yet\. Click/i)).toBeInTheDocument();
+		expect(screen.getByText('P-003 – Gamma Bridge')).toBeInTheDocument();
+		expect(
+			screen.getByRole('link', {
+				name: 'View project details for Gamma Bridge',
+			})
+		).toHaveAttribute('href', '/projects/3');
+	});
+	it('shows accessible projects when no activity rows exist', () => {
+		render(
+			<ProjectActivityAssignments
+				userId={42}
+				preloadedData={{
+					assignments: [],
+					emptyProjects: [],
+					accessibleProjects: [
+						{
+							project_id: 4,
+							project_name: 'Delta Warehouse',
+							project_code: 'P-004',
+						},
+					],
+				}}
+			/>
+		);
+
+		expect(screen.getByText('P-004 – Delta Warehouse')).toBeInTheDocument();
+		expect(
+			screen.getByRole('link', {
+				name: 'View project details for Delta Warehouse',
+			})
+		).toHaveAttribute('href', '/projects/4');
 	});
 
 	it('renders nothing when API returns 401/403 (no access)', async () => {

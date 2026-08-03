@@ -364,6 +364,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		activityAssignments: {
 			assignments: [],
 			emptyProjects: [],
+			accessibleProjects: [],
 			stats: {
 				totalAssignments: 0,
 				totalProjects: 0,
@@ -426,6 +427,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 						...prev,
 						activityAssignments: {
 							assignments: assignmentsList,
+							accessibleProjects:
+								activityRes.value.data.accessibleProjects || [],
 							emptyProjects: activityRes.value.data.emptyProjects || [],
 							stats:
 								activityRes.value.data.stats || prev.activityAssignments.stats,

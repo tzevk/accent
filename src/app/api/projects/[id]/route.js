@@ -12,23 +12,10 @@ import {
 	invalidateCache,
 } from '@/utils/schema-cache';
 
-// Helper to check if user is in project team
-function isUserInProjectTeam(projectTeam, userId, userEmail) {
-	if (!projectTeam) return false;
-	try {
-		const team =
-			typeof projectTeam === 'string' ? JSON.parse(projectTeam) : projectTeam;
-		if (!Array.isArray(team)) return false;
-		return team.some(
-			(member) =>
-				String(member.user_id) === String(userId) ||
-				String(member.id) === String(userId) ||
-				member.email === userEmail
-		);
-	} catch {
-		return false;
-	}
-}
+import {
+	hasUserProjectAssignment,
+	isUserInProjectTeam,
+} from '@/utils/project-access';
 
 // GET specific project
 export async function GET(request, { params }) {
@@ -161,16 +148,18 @@ export async function GET(request, { params }) {
 
 		const project = rows[0];
 
-		// Check if user is in project team (unless super admin)
+		// Check team and normalized activity-assignment access (unless super admin)
 		if (!canSeeAllProjects) {
 			const isTeamMember = isUserInProjectTeam(
 				project.project_team,
 				user.id,
 				user.email
 			);
-			if (!isTeamMember) {
+			const hasAssignment =
+				!isTeamMember && (await hasUserProjectAssignment(db, project, user.id));
+			if (!isTeamMember && !hasAssignment) {
 				console.log(
-					`[Projects API] User ${user.email} denied access to project ${id} - not a team member`
+					`[Projects API] User ${user.email} denied access to project ${id} - not a team member or assignee`
 				);
 				return Response.json(
 					{
@@ -181,7 +170,7 @@ export async function GET(request, { params }) {
 				);
 			}
 			console.log(
-				`[Projects API] User ${user.email} granted access to project ${id} as team member`
+				`[Projects API] User ${user.email} granted access to project ${id} as ${isTeamMember ? 'team member' : 'activity assignee'}`
 			);
 		}
 

@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchJSON } from '@/utils/http';
+import ProjectMemberDetails from '@/components/projects/ProjectMemberDetails';
 import useSWR from 'swr';
 import { useSession } from '@/context/SessionContext';
 import {
@@ -83,12 +84,152 @@ const TAB_CONFIG = [
 	{ id: 'upload_documents', label: 'Upload Documents', requiresUpdate: true },
 ];
 
+const EMPLOYEE_TAB_IDS = [
+	'scope',
+	'project_schedule',
+	'team',
+	'input_document',
+	'deliverables',
+	'assumption',
+	'discussion',
+	'query_log',
+	'lessons_learnt',
+];
+
+const EMPLOYEE_TAB_CONFIG = [
+	{ id: 'scope', label: 'Scope' },
+	{ id: 'project_schedule', label: 'Schedule' },
+	{ id: 'team', label: 'Project Team' },
+	{ id: 'input_document', label: 'Input Document' },
+	{ id: 'deliverables', label: 'Deliverables' },
+	{ id: 'assumption', label: 'Assumption' },
+	{ id: 'discussion', label: 'Discussion' },
+	{ id: 'query_log', label: 'Query Log' },
+	{ id: 'lessons_learnt', label: 'Lessons Learnt' },
+];
+
+function EmployeePanel({ id, title, Icon, children }) {
+	return (
+		<section
+			id={`panel-${id}`}
+			role="tabpanel"
+			aria-labelledby={`tab-${id}`}
+			tabIndex={0}
+			className="rounded-xl border border-gray-200/60 bg-white shadow-sm overflow-hidden"
+		>
+			<div className="flex items-center gap-3 border-b border-gray-100 bg-gray-50/50 px-5 py-4 sm:px-6">
+				<Icon className="h-5 w-5 text-[#7F2487]" aria-hidden="true" />
+				<h2 className="text-base font-bold text-gray-900">{title}</h2>
+			</div>
+			<div className="space-y-4 px-5 py-5 sm:px-6">{children}</div>
+		</section>
+	);
+}
+
+function EmployeeEmpty({ children }) {
+	return (
+		<p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+			{children}
+		</p>
+	);
+}
+
+function EmployeeScopePanel({ scope, additionalScope }) {
+	return (
+		<EmployeePanel id="scope" title="Scope" Icon={DocumentTextIcon}>
+			{scope || additionalScope ? (
+				<div className="space-y-4">
+					{scope ? (
+						<div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+							<h3 className="mb-2 text-sm font-semibold text-gray-900">
+								Original scope
+							</h3>
+							<HtmlContent html={scope} />
+						</div>
+					) : null}
+					{additionalScope ? (
+						<div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+							<h3 className="mb-2 text-sm font-semibold text-amber-800">
+								Additional scope
+							</h3>
+							<p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
+								{additionalScope}
+							</p>
+						</div>
+					) : null}
+				</div>
+			) : (
+				<EmployeeEmpty>No scope recorded.</EmployeeEmpty>
+			)}
+		</EmployeePanel>
+	);
+}
+
+function EmployeeListPanel({
+	id,
+	title,
+	Icon,
+	items,
+	emptyMessage,
+	renderItem,
+}) {
+	return (
+		<EmployeePanel id={id} title={title} Icon={Icon}>
+			{items.length > 0 ? (
+				<div className="space-y-3">
+					{items.map((item, index) => (
+						<article
+							key={item?.id || `${id}-${index}`}
+							className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+						>
+							{renderItem(item, index)}
+						</article>
+					))}
+				</div>
+			) : (
+				<EmployeeEmpty>{emptyMessage}</EmployeeEmpty>
+			)}
+		</EmployeePanel>
+	);
+}
+
+function employeeItemLabel(item, fallback) {
+	if (item && typeof item === 'object') {
+		return (
+			item.document_name ||
+			item.name ||
+			item.title ||
+			item.description ||
+			item.activity_description ||
+			item.activity ||
+			fallback
+		);
+	}
+	return item || fallback;
+}
+
+function parseStoredList(value) {
+	if (!value) return [];
+	if (Array.isArray(value)) return value;
+	if (typeof value !== 'string') return [];
+	try {
+		const parsed = JSON.parse(value);
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return value
+			.split(/\s*,\s*|\r?\n/)
+			.map((item) => item.trim())
+			.filter(Boolean);
+	}
+}
+
 export default function ProjectViewPage() {
 	const params = useParams();
 	const id = params?.id;
 	const { user: sessionUser, can, RESOURCES, PERMISSIONS } = useSession();
 	const [activeTab, setActiveTab] = useState('project_details');
 	const tabScrollRef = useRef(null);
+	const tabRefs = useRef({});
 
 	// Callback ref: attaches non-passive wheel listener on mount,
 	// survives re-renders, and cleans up on unmount. Unlike useEffect
@@ -131,21 +272,65 @@ export default function ProjectViewPage() {
 			? projectData.error || 'Failed to load project'
 			: null);
 
-	const isSuperAdmin = !!sessionUser?.is_super_admin;
+	const isSuperAdmin =
+		sessionUser?.is_super_admin === true ||
+		sessionUser?.is_super_admin === 1 ||
+		sessionUser?.is_super_admin === '1';
 	const canEditProjectContent =
 		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+	const isEmployeeWorkspace = !isSuperAdmin && !canEditProjectContent;
 
 	const visibleTabs = useMemo(
 		() =>
-			TAB_CONFIG.filter((tab) => !tab.requiresUpdate || canEditProjectContent),
-		[canEditProjectContent]
+			isEmployeeWorkspace
+				? EMPLOYEE_TAB_IDS.map((tabId) =>
+						EMPLOYEE_TAB_CONFIG.find((tab) => tab.id === tabId)
+					).filter(Boolean)
+				: TAB_CONFIG.filter(
+						(tab) => !tab.requiresUpdate || canEditProjectContent
+					),
+		[canEditProjectContent, isEmployeeWorkspace]
+	);
+
+	const focusTab = useCallback(
+		(index) => {
+			const tab = visibleTabs[index];
+			if (!tab) return;
+			setActiveTab(tab.id);
+			const focus = () => tabRefs.current[tab.id]?.focus();
+			if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+				window.requestAnimationFrame(focus);
+			} else {
+				setTimeout(focus, 0);
+			}
+		},
+		[visibleTabs]
+	);
+
+	const handleTabKeyDown = useCallback(
+		(event, index) => {
+			let nextIndex = null;
+			if (event.key === 'ArrowRight')
+				nextIndex = (index + 1) % visibleTabs.length;
+			if (event.key === 'ArrowLeft')
+				nextIndex = (index - 1 + visibleTabs.length) % visibleTabs.length;
+			if (event.key === 'Home') nextIndex = 0;
+			if (event.key === 'End') nextIndex = visibleTabs.length - 1;
+			if (nextIndex === null || visibleTabs.length === 0) return;
+			event.preventDefault();
+			focusTab(nextIndex);
+		},
+		[focusTab, visibleTabs]
 	);
 
 	useEffect(() => {
 		if (!visibleTabs.some((tab) => tab.id === activeTab)) {
-			setActiveTab(visibleTabs[0]?.id || 'project_details');
+			setActiveTab(
+				visibleTabs[0]?.id ||
+					(isEmployeeWorkspace ? 'scope' : 'project_details')
+			);
 		}
-	}, [activeTab, visibleTabs]);
+	}, [activeTab, isEmployeeWorkspace, visibleTabs]);
 
 	const scopeSummary = useMemo(() => {
 		if (!project) return [];
@@ -291,14 +476,17 @@ export default function ProjectViewPage() {
 
 	// Parse JSON fields safely for rendering
 	const parsedTeamMembers = useMemo(() => {
-		if (!project || !project.team_members) return [];
-		try {
-			return typeof project.team_members === 'string'
-				? JSON.parse(project.team_members)
-				: project.team_members;
-		} catch {
-			return [];
+		if (!project) return [];
+		for (const value of [project.project_team, project.team_members]) {
+			if (!value) continue;
+			try {
+				const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+				if (Array.isArray(parsed)) return parsed;
+			} catch {
+				// Try the legacy field when the canonical team list is malformed.
+			}
 		}
+		return [];
 	}, [project]);
 
 	const parsedProjectActivitiesList = useMemo(() => {
@@ -323,6 +511,13 @@ export default function ProjectViewPage() {
 		}
 	}, [project]);
 
+	const parsedInputDocuments = useMemo(() => {
+		if (!project) return [];
+		const canonical = parseStoredList(project.input_documents_list);
+		return canonical.length > 0
+			? canonical
+			: parseStoredList(project.input_document);
+	}, [project]);
 	const parsedDocumentsIssued = useMemo(() => {
 		if (!project || !project.documents_issued_list) return [];
 		try {
@@ -333,6 +528,13 @@ export default function ProjectViewPage() {
 			return [];
 		}
 	}, [project]);
+
+	const parsedEmployeeDeliverables = useMemo(() => {
+		if (!project) return [];
+		const canonical = parseStoredList(project.documents_issued_list);
+		if (canonical.length > 0) return canonical;
+		return parseStoredList(deliverablesField);
+	}, [deliverablesField, project]);
 
 	const parsedProjectHandover = useMemo(() => {
 		if (!project || !project.project_handover_list) return [];
@@ -390,19 +592,22 @@ export default function ProjectViewPage() {
 	}, [project]);
 
 	const parsedProjectSchedule = useMemo(() => {
-		if (!project || !project.project_schedule_list) return [];
-		try {
-			const parsed =
-				typeof project.project_schedule_list === 'string'
-					? JSON.parse(project.project_schedule_list)
-					: project.project_schedule_list;
-			if (Array.isArray(parsed)) return parsed;
-			if (parsed && typeof parsed === 'object' && Array.isArray(parsed.rows))
-				return parsed.rows;
-			return [];
-		} catch {
-			return [];
+		if (!project) return [];
+		let parsed = project.project_schedule_list;
+		if (typeof parsed === 'string') {
+			try {
+				parsed = JSON.parse(parsed);
+			} catch {
+				parsed = [];
+			}
 		}
+		if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+		if (parsed && typeof parsed === 'object' && Array.isArray(parsed.rows)) {
+			return parsed.rows;
+		}
+		return project.project_schedule
+			? [{ description: project.project_schedule }]
+			: [];
 	}, [project]);
 
 	if (loading) {
@@ -462,7 +667,15 @@ export default function ProjectViewPage() {
 								</p>
 							</div>
 							<div className="flex flex-wrap items-center gap-3 text-sm font-medium relative z-10">
-								{canEditProjectContent && (
+								{isEmployeeWorkspace && (
+									<Link
+										href="/user/dashboard"
+										className="text-sm font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+									>
+										Back to dashboard
+									</Link>
+								)}
+								{!isEmployeeWorkspace && canEditProjectContent && (
 									<Link
 										href={`/projects/${project.id ?? project.project_id ?? project.project_code}/edit`}
 										className="px-5 py-2.5 rounded-lg border border-[#7F2487] text-[#7F2487] bg-white hover:bg-[#7F2487]/5 transition-colors transition-shadow transition-transform shadow-sm flex items-center gap-2 active:scale-[0.96]"
@@ -470,13 +683,15 @@ export default function ProjectViewPage() {
 										Edit Project
 									</Link>
 								)}
-								<Link
-									href="/masters/activities"
-									className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors transition-shadow transition-transform shadow-md hover:shadow-lg transform hover:-translate-y-0.5 active:scale-[0.96]"
-								>
-									Configure Activity Library
-									<ArrowRightIcon className="h-4 w-4 stroke-2" />
-								</Link>
+								{!isEmployeeWorkspace && (
+									<Link
+										href="/masters/activities"
+										className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors transition-shadow transition-transform shadow-md hover:shadow-lg transform hover:-translate-y-0.5 active:scale-[0.96]"
+									>
+										Configure Activity Library
+										<ArrowRightIcon className="h-4 w-4 stroke-2" />
+									</Link>
+								)}
 							</div>
 						</header>
 
@@ -499,13 +714,20 @@ export default function ProjectViewPage() {
 									aria-label="Project sections"
 									className="flex gap-1 min-w-max"
 								>
-									{visibleTabs.map((t) => (
+									{visibleTabs.map((t, index) => (
 										<button
 											id={`tab-${t.id}`}
 											key={t.id}
+											ref={(element) => {
+												tabRefs.current[t.id] = element;
+											}}
+											type="button"
 											role="tab"
+											tabIndex={activeTab === t.id ? 0 : -1}
 											aria-selected={activeTab === t.id}
+											aria-controls={`panel-${t.id}`}
 											onClick={() => setActiveTab(t.id)}
+											onKeyDown={(event) => handleTabKeyDown(event, index)}
 											className={`px-4 py-2 text-sm font-semibold rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7F2487] transition-colors transition-shadow transition-transform duration-200 ease-out whitespace-nowrap active:scale-[0.96] ${
 												activeTab === t.id
 													? 'bg-[#7F2487] text-white shadow-md transform scale-100'
@@ -527,6 +749,144 @@ export default function ProjectViewPage() {
 							</button>
 						</div>
 
+						{isEmployeeWorkspace && (
+							<>
+								<ProjectMemberDetails
+									projectId={
+										project.id ?? project.project_id ?? project.project_code
+									}
+									activeSection={
+										[
+											'assumption',
+											'discussion',
+											'query_log',
+											'lessons_learnt',
+										].includes(activeTab)
+											? activeTab
+											: null
+									}
+									projectTeamMembers={parsedTeamMembers}
+									currentUser={
+										sessionUser
+											? {
+													id: sessionUser.id,
+													full_name: sessionUser.full_name,
+													username: sessionUser.username,
+												}
+											: null
+									}
+								/>
+								{activeTab === 'scope' && (
+									<EmployeeScopePanel
+										scope={scopeField}
+										additionalScope={project.additional_scope}
+									/>
+								)}
+								{activeTab === 'project_schedule' && (
+									<EmployeeListPanel
+										id="project_schedule"
+										title="Schedule"
+										Icon={CalendarIcon}
+										items={parsedProjectSchedule}
+										emptyMessage="No schedule items recorded."
+										renderItem={(item, index) => (
+											<>
+												<h3 className="text-sm font-semibold text-gray-900">
+													{employeeItemLabel(item, `Schedule ${index + 1}`)}
+												</h3>
+												<p className="mt-2 text-sm text-gray-600">
+													{item?.start_date || item?.startDate || '—'} →{' '}
+													{item?.end_date || item?.endDate || '—'}
+												</p>
+												{item?.remarks || item?.remark ? (
+													<p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">
+														{item.remarks || item.remark}
+													</p>
+												) : null}
+											</>
+										)}
+									/>
+								)}
+								{activeTab === 'input_document' && (
+									<EmployeeListPanel
+										id="input_document"
+										title="Input Document"
+										Icon={DocumentTextIcon}
+										items={parsedInputDocuments}
+										emptyMessage="No input documents recorded."
+										renderItem={(item, index) => (
+											<p className="whitespace-pre-wrap text-sm text-gray-700">
+												{employeeItemLabel(item, `Input document ${index + 1}`)}
+											</p>
+										)}
+									/>
+								)}
+								{activeTab === 'deliverables' && (
+									<EmployeeListPanel
+										id="deliverables"
+										title="Deliverables"
+										Icon={DocumentTextIcon}
+										items={parsedEmployeeDeliverables}
+										emptyMessage="No deliverables recorded."
+										renderItem={(item, index) => (
+											<p className="whitespace-pre-wrap text-sm text-gray-700">
+												{employeeItemLabel(item, `Deliverable ${index + 1}`)}
+											</p>
+										)}
+									/>
+								)}
+								{activeTab === 'team' && (
+									<EmployeePanel id="team" title="Project Team" Icon={UserIcon}>
+										<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+											<p className="text-sm text-gray-700">
+												<span className="font-semibold text-gray-900">
+													Project manager:
+												</span>{' '}
+												{project.project_manager || '—'}
+											</p>
+											<p className="text-sm text-gray-700">
+												<span className="font-semibold text-gray-900">
+													Primary client:
+												</span>{' '}
+												{project.client_name || '—'}
+											</p>
+											<p className="text-sm text-gray-700">
+												<span className="font-semibold text-gray-900">
+													Assigned to:
+												</span>{' '}
+												{project.assigned_to || '—'}
+											</p>
+										</div>
+										{parsedTeamMembers.length > 0 ? (
+											<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+												{parsedTeamMembers.map((member, index) => (
+													<article
+														key={member.id || member.user_id || index}
+														className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+													>
+														<h3 className="text-sm font-semibold text-gray-900">
+															{employeeItemLabel(
+																member,
+																`Team member ${index + 1}`
+															)}
+														</h3>
+														{member.role || member.designation ? (
+															<p className="mt-1 text-xs text-gray-500">
+																{member.role || member.designation}
+															</p>
+														) : null}
+													</article>
+												))}
+											</div>
+										) : (
+											<EmployeeEmpty>
+												No project team members recorded.
+											</EmployeeEmpty>
+										)}
+									</EmployeePanel>
+								)}
+							</>
+						)}
 						{activeTab === 'project_details' && (
 							<section
 								id="panel-project_details"
@@ -666,7 +1026,7 @@ export default function ProjectViewPage() {
 						)}
 
 						{/* Scope Tab - Enhanced with Original + Additional Scope */}
-						{activeTab === 'scope' && (
+						{!isEmployeeWorkspace && activeTab === 'scope' && (
 							<section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
 								{/* Header */}
 								<div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
@@ -1194,7 +1554,7 @@ export default function ProjectViewPage() {
 						)}
 
 						{/* Query Log Tab (read-only) */}
-						{activeTab === 'query_log' && (
+						{!isEmployeeWorkspace && activeTab === 'query_log' && (
 							<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
 								<div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
 									<DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
@@ -1244,7 +1604,7 @@ export default function ProjectViewPage() {
 						)}
 
 						{/* Assumption Tab (read-only) */}
-						{activeTab === 'assumption' && (
+						{!isEmployeeWorkspace && activeTab === 'assumption' && (
 							<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
 								<div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
 									<DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
@@ -1295,7 +1655,7 @@ export default function ProjectViewPage() {
 						)}
 
 						{/* Lessons Learnt Tab (read-only) */}
-						{activeTab === 'lessons_learnt' && (
+						{!isEmployeeWorkspace && activeTab === 'lessons_learnt' && (
 							<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
 								<div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
 									<DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
@@ -1353,7 +1713,7 @@ export default function ProjectViewPage() {
 						)}
 
 						{/* Project Schedule (read-only) */}
-						{activeTab === 'project_schedule' && (
+						{!isEmployeeWorkspace && activeTab === 'project_schedule' && (
 							<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
 								<div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
 									<CalendarIcon className="h-5 w-5 text-[#7F2487]" />
@@ -1425,55 +1785,59 @@ export default function ProjectViewPage() {
 						)}
 
 						{/* Project Team Tab */}
-						<section
-							id="panel-team"
-							role="tabpanel"
-							aria-labelledby="tab-team"
-							hidden={activeTab !== 'team'}
-							className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
-						>
-							<div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-								<UserIcon className="h-5 w-5 text-[#7F2487]" />
-								<h2 className="text-base font-bold text-gray-900">
-									Project Team
-								</h2>
-							</div>
-							<div className="px-6 py-5 space-y-3 text-sm text-gray-600">
-								<p>
-									<span className="font-semibold text-black">
-										Project Manager:
-									</span>{' '}
-									{project.project_manager || '—'}
-								</p>
-								<p>
-									<span className="font-semibold text-black">
-										Primary Client:
-									</span>{' '}
-									{project.client_name || '—'}
-								</p>
-								<p>
-									<span className="font-semibold text-black">Assigned To:</span>{' '}
-									{project.assigned_to || '—'}
-								</p>
-								<div className="mt-3">
-									<h4 className="text-xs font-semibold text-black uppercase tracking-wide">
-										Team Members
-									</h4>
-									{parsedTeamMembers && parsedTeamMembers.length > 0 ? (
-										parsedTeamMembers.map((m, i) => (
-											<div key={i} className="text-sm text-gray-600">
-												{m.name || m.employee_name || m}
-											</div>
-										))
-									) : (
-										<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
-											No team members added. Use the edit view to assign team
-											members.
-										</p>
-									)}
+						{!isEmployeeWorkspace && (
+							<section
+								id="panel-team"
+								role="tabpanel"
+								aria-labelledby="tab-team"
+								hidden={activeTab !== 'team'}
+								className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
+							>
+								<div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
+									<UserIcon className="h-5 w-5 text-[#7F2487]" />
+									<h2 className="text-base font-bold text-gray-900">
+										Project Team
+									</h2>
 								</div>
-							</div>
-						</section>
+								<div className="px-6 py-5 space-y-3 text-sm text-gray-600">
+									<p>
+										<span className="font-semibold text-black">
+											Project Manager:
+										</span>{' '}
+										{project.project_manager || '—'}
+									</p>
+									<p>
+										<span className="font-semibold text-black">
+											Primary Client:
+										</span>{' '}
+										{project.client_name || '—'}
+									</p>
+									<p>
+										<span className="font-semibold text-black">
+											Assigned To:
+										</span>{' '}
+										{project.assigned_to || '—'}
+									</p>
+									<div className="mt-3">
+										<h4 className="text-xs font-semibold text-black uppercase tracking-wide">
+											Team Members
+										</h4>
+										{parsedTeamMembers && parsedTeamMembers.length > 0 ? (
+											parsedTeamMembers.map((m, i) => (
+												<div key={i} className="text-sm text-gray-600">
+													{m.name || m.employee_name || m}
+												</div>
+											))
+										) : (
+											<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
+												No team members added. Use the edit view to assign team
+												members.
+											</p>
+										)}
+									</div>
+								</div>
+							</section>
+						)}
 
 						{/* Procurement Tab */}
 						<section

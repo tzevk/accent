@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { fetchJSON } from '@/utils/http';
+import Link from 'next/link';
 import {
 	ClipboardDocumentListIcon,
 	PlusIcon,
@@ -60,6 +61,7 @@ function SortHeader({ label, sortKey, sort, onSort }) {
 export default function ProjectActivityAssignments({ userId, preloadedData }) {
 	const [assignments, setAssignments] = useState([]);
 	const [emptyProjects, setEmptyProjects] = useState([]);
+	const [accessibleProjects, setAccessibleProjects] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [hasAccess, setHasAccess] = useState(true);
 	const [remarkValues, setRemarkValues] = useState({});
@@ -133,6 +135,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 	useEffect(() => {
 		if (preloadedData) {
 			setAssignments(preloadedData.assignments || []);
+			setAccessibleProjects(preloadedData.accessibleProjects || []);
 			setEmptyProjects(preloadedData.emptyProjects || []);
 			setLoading(false);
 		}
@@ -167,6 +170,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			}
 			const res = await response.json();
 			if (res.success) {
+				setAccessibleProjects(res.data.accessibleProjects || []);
 				setAssignments(res.data.assignments || []);
 				setEmptyProjects(res.data.emptyProjects || []);
 			} else {
@@ -366,7 +370,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
 	if (!hasAccess) return null;
 
-	// Group assignments by project
+	// Group activity rows and accessible projects by project.
 	const projectGroups = {};
 	const projectOrder = [];
 	assignments.forEach((a) => {
@@ -392,12 +396,25 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			projectOrder.push(pid);
 		}
 	});
+	accessibleProjects.forEach((p) => {
+		const pid = p.project_id || 'unknown';
+		if (!projectGroups[pid]) {
+			projectGroups[pid] = {
+				project_code: p.project_code,
+				project_name: p.project_name,
+				activities: [],
+			};
+			projectOrder.push(pid);
+		} else {
+			projectGroups[pid].project_code ||= p.project_code;
+			projectGroups[pid].project_name ||= p.project_name;
+		}
+	});
 
 	const COLS = 11; // + actions column
 
-	// Build the list of projects the user can add activities to: any project they
-	// already have assignments on, plus any team project with no activities yet.
-	// The server-side PATCH endpoint enforces userId, so this is a UI filter only.
+	// Build the project list for activity creation and detail links from every
+	// project the API authorized, even when it has no activity rows yet.
 	const assignableProjects = (() => {
 		const seen = new Set();
 		const list = [];
@@ -414,6 +431,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		};
 		assignments.forEach(push);
 		emptyProjects.forEach(push);
+		accessibleProjects.forEach(push);
 		return list;
 	})();
 
@@ -574,7 +592,10 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			{!hasAnyData ? (
 				<div className="text-center py-10 text-[#4A1254]">
 					<ClipboardDocumentListIcon className="w-14 h-14 mx-auto mb-3 opacity-50" />
-					<p className="text-sm">No projects assigned to you</p>
+					<p className="text-sm">No projects assigned yet</p>
+					<p className="mt-1 text-xs text-gray-500">
+						Contact your project manager to be added to a project.
+					</p>
 				</div>
 			) : (
 				<div>
@@ -665,9 +686,45 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									>
 										{baseRows.length === 0 ? (
 											<>
-												No activities yet. Click{' '}
-												<span className="font-semibold">Add</span> above to log
-												your first activity.
+												<p>
+													No activities yet. Click{' '}
+													<span className="font-semibold">Add</span> above to
+													log your first activity.
+												</p>
+												{assignableProjects.length > 0 && (
+													<div className="mt-4 space-y-2 text-left max-w-md mx-auto">
+														<p className="text-xs font-semibold text-gray-700">
+															Assigned projects
+														</p>
+														<ul className="space-y-2">
+															{assignableProjects.map((p) => {
+																const projectLabel =
+																	p.project_name ||
+																	p.project_code ||
+																	p.project_id;
+																return (
+																	<li
+																		key={p.project_id}
+																		className="flex items-center justify-between gap-3 rounded-lg border border-purple-100 bg-white px-3 py-2"
+																	>
+																		<span className="text-xs text-gray-700 break-words">
+																			{p.project_code
+																				? `${p.project_code} – ${p.project_name || ''}`
+																				: p.project_name || p.project_id}
+																		</span>
+																		<Link
+																			href={`/projects/${p.project_id}`}
+																			aria-label={`View project details for ${projectLabel}`}
+																			className="shrink-0 text-xs font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+																		>
+																			View project details
+																		</Link>
+																	</li>
+																);
+															})}
+														</ul>
+													</div>
+												)}
 											</>
 										) : (
 											<>No activities match the current search or filter.</>
@@ -876,7 +933,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 								</tr>
 							)}
 
-							{flatRows.map(({ project_code, activity }) => {
+							{flatRows.map(({ project_code, project_name, activity }) => {
 								const rowKey = `${activity.project_id}-${activity.activity_id}`;
 								const isEditing = editingKey === rowKey;
 								const isDeleting = deleting.has(rowKey);
@@ -890,12 +947,14 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									>
 										{/* Project Number */}
 										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className="font-mono text-[10px] text-[#4A1254] block break-words leading-tight"
+											<Link
+												href={`/projects/${activity.project_id}`}
+												aria-label={`View details for ${project_name || project_code || activity.project_id}`}
+												className="font-mono text-[10px] text-[#4A1254] block break-words leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 												title={project_code || '–'}
 											>
 												{project_code || '–'}
-											</span>
+											</Link>
 										</td>
 										{/* Discipline */}
 										<td className="py-1 px-2 text-center align-middle">
