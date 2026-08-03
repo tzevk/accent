@@ -4,6 +4,7 @@ import {
 	ensurePermission,
 	RESOURCES,
 	PERMISSIONS,
+	invalidateUserCache,
 } from '@/utils/api-permissions';
 
 // GET - list all active roles
@@ -243,6 +244,12 @@ export async function PUT(request) {
 			`UPDATE roles_master SET ${updates.join(', ')} WHERE id = ?`,
 			params
 		);
+
+		// Role permissions are merged into every cached user with this role,
+		// so a permission change must clear the whole in-memory cache.
+		if (permissions !== undefined) {
+			invalidateUserCache();
+		}
 
 		const [updatedRole] = await db.execute(
 			'SELECT * FROM roles_master WHERE id = ?',
