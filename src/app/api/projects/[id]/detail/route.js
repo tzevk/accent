@@ -1,26 +1,10 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-
-/**
- * Helper to check if user is in project team
- */
-function isUserInProjectTeam(projectTeam, userId, userEmail) {
-	if (!projectTeam) return false;
-	try {
-		const team =
-			typeof projectTeam === 'string' ? JSON.parse(projectTeam) : projectTeam;
-		if (!Array.isArray(team)) return false;
-		return team.some(
-			(member) =>
-				String(member.user_id) === String(userId) ||
-				String(member.id) === String(userId) ||
-				member.email === userEmail
-		);
-	} catch {
-		return false;
-	}
-}
+import {
+	hasUserProjectAssignment,
+	isUserInProjectTeam,
+} from '@/utils/project-access';
 
 /**
  * Helper to safely parse JSON fields
@@ -93,14 +77,17 @@ export async function GET(request, { params }) {
 				);
 			}
 
-			// Team access check
+			// Team or normalized activity-assignment access check
 			if (!canSeeAllProjects) {
 				const isTeamMember = isUserInProjectTeam(
 					project.project_team,
 					user.id,
 					user.email
 				);
-				if (!isTeamMember) {
+				const hasAssignment =
+					!isTeamMember &&
+					(await hasUserProjectAssignment(db, project, user.id));
+				if (!isTeamMember && !hasAssignment) {
 					return NextResponse.json(
 						{
 							success: false,

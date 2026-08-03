@@ -2,6 +2,7 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { randomUUID } from 'crypto';
+import { isUserInProjectTeam } from '@/utils/project-access';
 
 async function ensureTicketsTable(connection) {
 	await connection.execute(`
@@ -252,13 +253,61 @@ export async function GET(request, { params }) {
 			onHoldCount: assignments.filter((a) => a.status === 'On Hold').length,
 		};
 
-		// Find projects where the user is on the team but has no activities yet,
-		// so they can still be shown on the dashboard with an "Add Activity" option.
+		// Keep project visibility independent from activity-row existence.
 		const projectIdsWithActivities = new Set(
 			assignments.map((a) => String(a.project_id))
 		);
-		const userIdStr = String(requestedUserId);
 		const emptyProjects = [];
+		const accessibleProjects = [];
+		const accessibleProjectById = new Map();
+		const projectSummary = (project) => ({
+			project_id: project.project_id,
+			project_name: project.project_name || '',
+			project_code: project.project_code || '',
+			project_status: project.project_status || '',
+			project_start_date:
+				project.project_start_date ?? project.start_date ?? null,
+			project_end_date: project.project_end_date ?? project.end_date ?? null,
+		});
+		const addAccessibleProject = (project) => {
+			const projectId = String(project.project_id ?? '').trim();
+			if (!projectId) return;
+			const summary = projectSummary(project);
+			const existing = accessibleProjectById.get(projectId);
+			if (existing) {
+				for (const key of [
+					'project_name',
+					'project_code',
+					'project_status',
+					'project_start_date',
+					'project_end_date',
+				]) {
+					if (!existing[key] && summary[key]) existing[key] = summary[key];
+				}
+				return;
+			}
+			accessibleProjectById.set(projectId, summary);
+			accessibleProjects.push(summary);
+		};
+
+		assignments.forEach(addAccessibleProject);
+
+		let requestedUserEmail =
+			String(requestedUserId) === String(currentUser.id)
+				? currentUser.email || null
+				: null;
+		if (!requestedUserEmail) {
+			try {
+				const [requestedUsers] = await db.execute(
+					'SELECT email FROM users WHERE id = ? LIMIT 1',
+					[requestedUserId]
+				);
+				requestedUserEmail = requestedUsers?.[0]?.email || null;
+			} catch {
+				requestedUserEmail = null;
+			}
+		}
+
 		try {
 			const [teamProjects] = await db.execute(
 				`SELECT project_id, name as project_name, project_code, status as project_status,
@@ -269,29 +318,17 @@ export async function GET(request, { params }) {
 			);
 
 			for (const project of teamProjects) {
-				if (projectIdsWithActivities.has(String(project.project_id))) continue;
-				try {
-					const team =
-						typeof project.project_team === 'string'
-							? JSON.parse(project.project_team)
-							: project.project_team;
-					if (!Array.isArray(team)) continue;
-					const isMember = team.some((m) => {
-						const memberId = typeof m === 'object' ? (m.id ?? m.user_id) : m;
-						return String(memberId) === userIdStr;
-					});
-					if (isMember) {
-						emptyProjects.push({
-							project_id: project.project_id,
-							project_name: project.project_name,
-							project_code: project.project_code,
-							project_status: project.project_status,
-							project_start_date: project.start_date,
-							project_end_date: project.end_date,
-						});
-					}
-				} catch {
-					// ignore unparsable project_team
+				const isMember = isUserInProjectTeam(
+					project.project_team,
+					requestedUserId,
+					requestedUserEmail
+				);
+				if (!isMember) continue;
+
+				const summary = projectSummary(project);
+				addAccessibleProject(summary);
+				if (!projectIdsWithActivities.has(String(project.project_id))) {
+					emptyProjects.push(summary);
 				}
 			}
 		} catch (err) {
@@ -305,6 +342,7 @@ export async function GET(request, { params }) {
 			data: {
 				assignments,
 				emptyProjects,
+				accessibleProjects,
 				stats,
 			},
 		});
