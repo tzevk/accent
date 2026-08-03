@@ -3,8 +3,9 @@
  * Server-side data fetchers for the Project Status report.
  *
  * The page is an "Activity Status Report" — a printable matrix of
- * (person × day) hours and quantities for a chosen project, activity,
- * and date range. The data flows from:
+ * (person × day) hours and quantities for a chosen project and date
+ * range, aggregated across every activity the project has. The data
+ * flows from:
  *
  *   - GET /api/reports/project-status          → project picker list
  *   - GET /api/reports/project-status/[id]     → activity list + matrix
@@ -143,49 +144,81 @@ export async function fetchProjectMeta(
 	};
 }
 
-// ── Activity list (filter dropdown) ─────────────────────────────────
+// ── Project roster (employee filter) ────────────────────────────────
 
-/**
- * The unique (activity_name, sub_activity_name) pairs in use on a project.
- * `sub_activity_name` is the more specific label, so when present we prefer
- * it (matches the "ACTIVITY: MTO" granularity in the source document).
- */
-export interface ProjectActivity {
-	activity_name: string;
-	sub_activity_name: string;
-	label: string; // sub_activity_name || activity_name
+export interface RosterMember {
+	user_id: string;
+	user_name: string;
 }
 
-export async function fetchProjectActivities(
+/**
+ * The people who can appear on the report: project_team/team_members first,
+ * plus any user with assignments on the project. Names for users outside
+ * the team list are resolved in bulk (users table, then employees).
+ */
+export async function fetchProjectRoster(
 	projectId: number
-): Promise<ProjectActivity[]> {
-	const [rows] = (await query(
-		`SELECT
-			COALESCE(NULLIF(activity_name, ''), 'Unnamed') AS activity_name,
-			COALESCE(sub_activity_name, '')                AS sub_activity_name
-		FROM user_activity_assignments
-		WHERE project_id = ?
-		GROUP BY activity_name, sub_activity_name
-		ORDER BY activity_name ASC, sub_activity_name ASC`,
-		[projectId]
-	)) as [DbRow[], unknown];
+): Promise<RosterMember[]> {
+	const roster = new Map<string, string>(); // user_id → user_name
 
-	const seen = new Set<string>();
-	const result: ProjectActivity[] = [];
-	for (const row of rows) {
-		const activityName = s(row, 'activity_name', 'Unnamed');
-		const subActivityName = s(row, 'sub_activity_name');
-		const label = subActivityName || activityName;
-		const key = `${activityName}::${subActivityName}`;
-		if (seen.has(key)) continue;
-		seen.add(key);
-		result.push({
-			activity_name: activityName,
-			sub_activity_name: subActivityName,
-			label,
-		});
+	// Primary name source: the project's project_team JSON column
+	// (actively managed by addTeamMember/removeTeamMember in EditProjectForm).
+	// Falls back to team_members (older column) when project_team is empty.
+	try {
+		const [projRows] = await query(
+			`SELECT project_team, team_members FROM projects WHERE project_id = ?`,
+			[projectId]
+		);
+		const raw = (projRows as DbRow[])[0];
+		if (raw) {
+			const parseMembers = (v: unknown): Array<Record<string, unknown>> => {
+				if (v == null) return [];
+				const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+				return Array.isArray(parsed) ? parsed : [];
+			};
+			const members =
+				parseMembers(raw.project_team).length > 0
+					? parseMembers(raw.project_team)
+					: parseMembers(raw.team_members);
+			for (const m of members) {
+				const uid = s(m, 'id');
+				if (!uid) continue;
+				roster.set(
+					String(uid),
+					s(m, 'name') || s(m, 'full_name') || `User ${uid}`
+				);
+			}
+		}
+	} catch {
+		/* ignore */
 	}
-	return result;
+
+	// Users with assignments but no team entry (covers employees-table users).
+	const unknownIds = new Set<string>();
+	try {
+		const [rows] = await query(
+			`SELECT DISTINCT user_id
+			 FROM user_activity_assignments
+			 WHERE project_id = ?`,
+			[projectId]
+		);
+		for (const row of rows as DbRow[]) {
+			const uid = s(row, 'user_id');
+			if (uid && !roster.has(String(uid))) unknownIds.add(String(uid));
+		}
+	} catch {
+		/* table may not exist */
+	}
+
+	if (unknownIds.size > 0) {
+		const names = await resolveUserNames(unknownIds);
+		for (const [id, name] of names) roster.set(id, name);
+	}
+
+	return Array.from(roster, ([user_id, user_name]) => ({
+		user_id,
+		user_name,
+	})).sort((a, b) => a.user_name.localeCompare(b.user_name));
 }
 
 // ── Activity Status Report (matrix) ─────────────────────────────────
@@ -206,9 +239,7 @@ export interface ReportRow {
 
 export interface ActivityStatusReport {
 	project: ProjectMeta;
-	activity: string; // resolved label (sub_activity_name || activity_name)
-	activity_name: string;
-	sub_activity_name: string;
+	activity: string; // constant label — the matrix aggregates every activity
 	from: string; // YYYY-MM-DD
 	to: string; // YYYY-MM-DD
 	dates: string[]; // inclusive, YYYY-MM-DD
@@ -217,11 +248,9 @@ export interface ActivityStatusReport {
 
 interface FetchReportOptions {
 	projectId: number;
-	activity: string; // label to match (we resolve to the canonical pair)
-	subActivityName?: string;
-	activityName?: string;
 	from: string; // YYYY-MM-DD inclusive
 	to: string; // YYYY-MM-DD inclusive
+	userIds?: string[]; // restrict the matrix to these users (employee filter)
 }
 
 interface DailyEntryShape {
@@ -259,15 +288,67 @@ export function expandDateRange(from: string, to: string): string[] {
 }
 
 /**
- * Build the (person × day) matrix for a project + activity + date range.
- * Pulls every assignment row for the project, filters by activity match
- * in JS (daily_entries is a JSON blob, so SQL filtering is unreliable),
- * and aggregates hours / qty_done per (user, day).
+ * Best-effort name lookup for users not present in the project roster.
+ * One query per table (users, then employees) for the whole batch — avoids
+ * the N+1 of per-user lookups.
+ */
+async function resolveUserNames(
+	ids: Set<string>
+): Promise<Map<string, string>> {
+	const names = new Map<string, string>();
+	const idList = Array.from(ids);
+
+	try {
+		const [userRows] = await query(
+			`SELECT id, COALESCE(NULLIF(full_name, ''), username, email) AS user_name
+			 FROM users WHERE id IN (${idList.map(() => '?').join(', ')})`,
+			idList
+		);
+		for (const u of userRows as DbRow[]) {
+			const id = s(u, 'id');
+			if (id) names.set(id, s(u, 'user_name') || `User ${id}`);
+		}
+	} catch {
+		/* ignore */
+	}
+
+	const stillMissing = idList.filter((id) => !names.has(id));
+	if (stillMissing.length > 0) {
+		try {
+			const [empRows] = await query(
+				`SELECT id,
+				        COALESCE(NULLIF(first_name, ''), '') AS first_name,
+				        COALESCE(NULLIF(last_name, ''), '')  AS last_name,
+				        COALESCE(email, '')                  AS email
+				 FROM employees WHERE id IN (${stillMissing.map(() => '?').join(', ')})`,
+				stillMissing
+			);
+			for (const emp of empRows as DbRow[]) {
+				const id = s(emp, 'id');
+				if (!id) continue;
+				const full = [s(emp, 'first_name'), s(emp, 'last_name')]
+					.filter(Boolean)
+					.join(' ');
+				names.set(id, full || s(emp, 'email') || `User ${id}`);
+			}
+		} catch {
+			/* employees table may not exist */
+		}
+	}
+
+	return names;
+}
+
+/**
+ * Build the (person × day) matrix for a project + date range.
+ * Pulls every assignment row for the project (daily_entries is a JSON blob,
+ * so aggregation happens in JS) and sums hours / qty_done per (user, day)
+ * across ALL activities — one cell per person per day.
  */
 export async function fetchActivityStatusReport(
 	options: FetchReportOptions
 ): Promise<ActivityStatusReport | null> {
-	const { projectId, from, to } = options;
+	const { projectId, from, to, userIds } = options;
 	const project = await fetchProjectMeta(projectId);
 	if (!project) return null;
 
@@ -275,9 +356,7 @@ export async function fetchActivityStatusReport(
 	if (dates.length === 0) {
 		return {
 			project,
-			activity: options.activity,
-			activity_name: options.activityName || options.activity,
-			sub_activity_name: options.subActivityName || '',
+			activity: 'All Activities',
 			from,
 			to,
 			dates: [],
@@ -285,141 +364,30 @@ export async function fetchActivityStatusReport(
 		};
 	}
 
-	// ── 1. Resolve the activity pair (best-effort) ─────────────────
-	// We accept a free-form label and try to find a matching pair in the
-	// project. If we can't, we fall back to the label as activity_name.
-	const activities = await fetchProjectActivities(projectId);
-	const match =
-		activities.find(
-			(a) =>
-				a.sub_activity_name &&
-				options.subActivityName &&
-				a.sub_activity_name === options.subActivityName
-		) ||
-		activities.find(
-			(a) => a.sub_activity_name && a.sub_activity_name === options.activity
-		) ||
-		activities.find((a) => a.activity_name === options.activityName) ||
-		activities.find((a) => a.label === options.activity);
+	// ── 1. Roster: team members ∪ assignment users (names resolved in bulk) ─
+	const roster = new Map<string, RosterMember>(
+		(await fetchProjectRoster(projectId)).map((m) => [m.user_id, m])
+	);
 
-	const activityName =
-		match?.activity_name || options.activityName || options.activity;
-	const subActivityName =
-		match?.sub_activity_name || options.subActivityName || '';
-	const activityLabel = subActivityName || activityName;
-
-	// ── 2. Build the user roster from project team_members first ─
-	const roster = new Map<string, { user_id: string; user_name: string }>();
-
-	// Primary name source: the project's project_team JSON column
-	// (actively managed by addTeamMember/removeTeamMember in EditProjectForm).
-	// Falls back to team_members (older column) when project_team is empty.
-	try {
-		const [projRows] = await query(
-			`SELECT project_team, team_members FROM projects WHERE project_id = ?`,
-			[projectId]
-		);
-		const raw = (projRows as DbRow[])[0];
-		if (raw) {
-			// Try project_team first, then team_members
-			const parseMembers = (v: unknown): Array<Record<string, unknown>> => {
-				if (v == null) return [];
-				const parsed = typeof v === 'string' ? JSON.parse(v) : v;
-				return Array.isArray(parsed) ? parsed : [];
-			};
-			const members =
-				parseMembers(raw.project_team).length > 0
-					? parseMembers(raw.project_team)
-					: parseMembers(raw.team_members);
-			for (const m of members) {
-				const uid = s(m, 'id');
-				if (!uid) continue;
-				const name = s(m, 'name') || s(m, 'full_name');
-				roster.set(String(uid), {
-					user_id: String(uid),
-					user_name: name || `User ${uid}`,
-				});
-			}
-		}
-	} catch {
-		/* ignore */
-	}
-
-	// ── 3. Walk every assignment for the project, filter by activity ─
+	// ── 2. Walk every assignment (all activities) and aggregate ──
 	const rowsByUser = new Map<string, ReportRow>();
 
 	try {
 		const [assignments] = await query(
-			`SELECT user_id, activity_name, sub_activity_name, daily_entries
+			`SELECT user_id, daily_entries
 			 FROM user_activity_assignments
 			 WHERE project_id = ?`,
 			[projectId]
 		);
 
 		for (const row of assignments as DbRow[]) {
-			const rowActivity = s(row, 'activity_name');
-			const rowSub = s(row, 'sub_activity_name');
-			// Match by (sub_activity_name, activity_name) when sub is set,
-			// otherwise fall back to activity_name only.
-			const matches =
-				subActivityName && rowSub
-					? rowActivity === activityName && rowSub === subActivityName
-					: !subActivityName && rowActivity === activityName;
-
-			if (!matches) continue;
-
 			const userId = s(row, 'user_id');
 			if (!userId) continue;
 			const id = String(userId);
 
-			// Make sure the user has a roster entry (covers employees table users too).
+			// Safety net: assignment users missing from the roster still get a row.
 			if (!roster.has(id)) {
-				roster.set(id, {
-					user_id: id,
-					user_name: `User ${id}`,
-				});
-				// Try users table first, then employees
-				let resolved = false;
-				try {
-					const [userRows] = await query(
-						`SELECT COALESCE(NULLIF(full_name, ''), username, email) AS user_name
-						 FROM users WHERE id = ? LIMIT 1`,
-						[id]
-					);
-					const u = (userRows as DbRow[])[0];
-					if (u) {
-						roster.set(id, {
-							user_id: id,
-							user_name: s(u, 'user_name') || `User ${id}`,
-						});
-						resolved = true;
-					}
-				} catch {
-					/* ignore */
-				}
-				if (!resolved) {
-					try {
-						const [empRows] = await query(
-							`SELECT COALESCE(NULLIF(first_name, ''), '') AS first_name,
-							        COALESCE(NULLIF(last_name, ''), '')  AS last_name,
-							        COALESCE(email, '')                  AS email
-							 FROM employees WHERE id = ? LIMIT 1`,
-							[id]
-						);
-						const emp = (empRows as DbRow[])[0];
-						if (emp) {
-							const full = [s(emp, 'first_name'), s(emp, 'last_name')]
-								.filter(Boolean)
-								.join(' ');
-							roster.set(id, {
-								user_id: id,
-								user_name: full || s(emp, 'email') || `User ${id}`,
-							});
-						}
-					} catch {
-						/* employees table may not exist */
-					}
-				}
+				roster.set(id, { user_id: id, user_name: `User ${id}` });
 			}
 
 			const entries = parseDailyEntries(row.daily_entries);
@@ -453,7 +421,7 @@ export async function fetchActivityStatusReport(
 		/* table may not exist */
 	}
 
-	// ── 4. Finalize: ratio + sort by name ─────────────────────────
+	// ── 3. Finalize: ratio + sort by name ─────────────────────────
 	const rows: ReportRow[] = Array.from(roster.values())
 		.map((emp) => {
 			const existing = rowsByUser.get(emp.user_id);
@@ -481,14 +449,18 @@ export async function fetchActivityStatusReport(
 		})
 		.sort((a, b) => a.user_name.localeCompare(b.user_name));
 
+	// ── 4. Employee filter (optional) ────────────────────────────
+	const filteredRows =
+		userIds && userIds.length > 0
+			? rows.filter((r) => userIds.includes(r.user_id))
+			: rows;
+
 	return {
 		project,
-		activity: activityLabel,
-		activity_name: activityName,
-		sub_activity_name: subActivityName,
+		activity: 'All Activities',
 		from,
 		to,
 		dates,
-		rows,
+		rows: filteredRows,
 	};
 }

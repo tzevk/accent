@@ -89,6 +89,7 @@ export async function GET(request: Request) {
 				COALESCE(SUM(net_amount), 0) as totalAmount,
 				COALESCE(SUM(CASE WHEN status = 'approved' THEN net_amount ELSE 0 END), 0) as approvedAmount
 			FROM ${TABLE}
+			WHERE isDelete = 0
 		`);
 
 		return NextResponse.json({

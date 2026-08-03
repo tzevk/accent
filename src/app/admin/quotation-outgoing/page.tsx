@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * Quotation (Incoming) — quotations received from vendors.
+ * Simple CRUD for vendor quotations (vendor name, amount, status).
+ */
+
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -12,10 +17,9 @@ import type {
 } from 'react';
 import {
 	DocumentTextIcon,
+	PaperAirplaneIcon,
 	CheckCircleIcon,
 	XCircleIcon,
-	PaperAirplaneIcon,
-	BanknotesIcon,
 	PlusIcon,
 	ArrowPathIcon,
 	EyeIcon,
@@ -40,6 +44,7 @@ import { Button } from '@/components/ui/button';
 import { Input, Select as _Select } from '@/components/ui/form-fields';
 import { apiGet, apiDelete } from '@/lib/api-client';
 import { formatCurrency, formatDate } from '@/lib/format';
+import { R, pctOf, toNumber } from '@/lib/money';
 import ResourceFormModal from '@/components/admin/ResourceFormModal';
 import type {
 	ModalMode,
@@ -62,268 +67,163 @@ const PAGE_SIZE = 20;
 const STATUS_OPTIONS = [
 	{ value: 'all', label: 'All statuses' },
 	{ value: 'draft', label: 'Draft' },
-	{ value: 'submitted', label: 'Submitted' },
+	{ value: 'sent', label: 'Sent' },
 	{ value: 'approved', label: 'Approved' },
 	{ value: 'rejected', label: 'Rejected' },
-];
-
-const CATEGORY_OPTIONS = [
-	{ value: 'Office Supplies', label: 'Office Supplies' },
-	{ value: 'Repairs & Maintenance', label: 'Repairs & Maintenance' },
-	{ value: 'Bank Charges', label: 'Bank Charges' },
-	{ value: 'Conveyance', label: 'Conveyance' },
-	{ value: 'Printing & Stationery', label: 'Printing & Stationery' },
-	{ value: 'Postage & Courier', label: 'Postage & Courier' },
-	{ value: 'Telephone / Internet', label: 'Telephone / Internet' },
-	{ value: 'Subscription', label: 'Subscription' },
-	{ value: 'Training', label: 'Training' },
-	{ value: 'Miscellaneous', label: 'Miscellaneous' },
-];
-
-const PAYEE_TYPE_OPTIONS = [
-	{ value: 'vendor', label: 'Vendor' },
-	{ value: 'employee', label: 'Employee' },
+	{ value: 'expired', label: 'Expired' },
 ];
 
 const STATUS_BADGE: Record<string, string> = {
 	draft: 'bg-slate-100 text-slate-700',
-	submitted: 'bg-amber-100 text-amber-700',
-	approved: 'bg-sky-100 text-sky-700',
+	sent: 'bg-sky-100 text-sky-700',
+	approved: 'bg-emerald-100 text-emerald-700',
 	rejected: 'bg-rose-100 text-rose-700',
+	expired: 'bg-amber-100 text-amber-700',
 };
-
-const PAYEE_BADGE: Record<string, string> = {
-	vendor: 'bg-violet-100 text-violet-700',
-	employee: 'bg-cyan-100 text-cyan-700',
-};
-
-const STATUS_OPTIONS_FOR_FORM = STATUS_OPTIONS.filter((o) => o.value !== 'all');
 
 const schema = z.object({
-	voucher_number: z.string().nullable().optional(),
-	voucher_date: z.string().min(1, 'Voucher date is required'),
-	expense_category: z.string().min(1, 'Category is required'),
-	payee_type: z.enum(['vendor', 'employee']),
-	vendor_id: z.coerce.number().int().optional(),
-	vendor_name: z.string().nullable().optional(),
-	employee_id: z.coerce.number().int().optional(),
-	employee_name: z.string().nullable().optional(),
-	bill_no: z.string().nullable().optional(),
-	bill_date: z.string().nullable().optional(),
-	bill_amount: z.coerce.number().min(0, 'Bill amount must be ≥ 0'),
-	gst_amount: z.coerce.number().min(0).optional(),
-	description: z.string().nullable().optional(),
-	status: z.enum(['draft', 'submitted', 'approved', 'rejected']).optional(),
+	quotation_number: z.string().nullable().optional(),
+	quotation_date: z.string().nullable().optional(),
+	vendor_name: z.string().min(1, 'Vendor name is required'),
+	vendor_email: z
+		.string()
+		.email('Invalid email')
+		.nullable()
+		.optional()
+		.or(z.literal('')),
+	vendor_phone: z.string().nullable().optional(),
+	vendor_address: z.string().nullable().optional(),
+	subject: z.string().nullable().optional(),
+	subtotal: z.coerce.number().min(0).optional(),
+	tax_rate: z.coerce.number().min(0).optional(),
+	tax_amount: z.coerce.number().min(0).optional(),
+	discount: z.coerce.number().min(0).optional(),
+	total: z.coerce.number().min(0).optional(),
+	valid_until: z.string().nullable().optional(),
+	notes: z.string().nullable().optional(),
+	terms: z.string().nullable().optional(),
+	status: z
+		.enum(['draft', 'sent', 'approved', 'rejected', 'expired'])
+		.optional(),
 });
 
 const defaultValues = {
-	voucher_number: '',
-	voucher_date: new Date().toISOString().split('T')[0],
-	expense_category: 'Office Supplies',
-	payee_type: 'vendor',
+	quotation_number: '',
+	quotation_date: '',
 	vendor_name: '',
-	vendor_id: undefined,
-	employee_name: '',
-	employee_id: undefined,
-	bill_no: '',
-	bill_date: '',
-	bill_amount: '',
-	gst_amount: '',
-	description: '',
-	status: 'submitted',
+	vendor_email: '',
+	vendor_phone: '',
+	vendor_address: '',
+	subject: '',
+	subtotal: '',
+	tax_rate: 18,
+	tax_amount: '',
+	discount: '',
+	total: '',
+	valid_until: '',
+	notes: '',
+	terms: '',
+	status: 'draft',
 };
 
 const formFields: FormField[] = [
 	{
-		name: 'voucher_number',
-		label: 'Voucher #',
+		name: 'quotation_number',
+		label: 'Quotation #',
 		hint: 'Auto-generated if blank',
 	},
+	{ name: 'quotation_date', label: 'Quotation Date', type: 'date' },
+	{ name: 'vendor_name', label: 'Vendor Name', required: true },
+	{ name: 'vendor_email', label: 'Vendor Email', type: 'email' },
+	{ name: 'vendor_phone', label: 'Vendor Phone' },
 	{
-		name: 'voucher_date',
-		label: 'Voucher Date',
-		type: 'date',
-		required: true,
-	},
-	{
-		name: 'expense_category',
-		label: 'Expense Category',
-		type: 'select',
-		required: true,
-		options: CATEGORY_OPTIONS,
-	},
-	{
-		name: 'payee_type',
-		label: 'Payee Type',
-		type: 'select',
-		required: true,
-		options: PAYEE_TYPE_OPTIONS,
-	},
-	{
-		name: 'vendor_name',
-		label: 'Vendor',
-		vendorAutofill: true,
-		dependentOn: {
-			field: 'payee_type',
-			values: ['vendor'],
-			clearFields: ['vendor_id'],
-		},
-	},
-	{
-		name: 'employee_name',
-		label: 'Employee',
-		employeeAutofill: true,
-		dependentOn: {
-			field: 'payee_type',
-			values: ['employee'],
-			clearFields: ['employee_id'],
-		},
-	},
-	{ name: 'bill_no', label: 'Bill No.' },
-	{ name: 'bill_date', label: 'Bill Date', type: 'date' },
-	{
-		name: 'bill_amount',
-		label: 'Bill Amount',
-		type: 'number',
-		step: '0.01',
-		required: true,
-	},
-	{
-		name: 'gst_amount',
-		label: 'GST / IGST',
-		type: 'number',
-		step: '0.01',
-	},
-	{
-		name: 'description',
-		label: 'Description',
+		name: 'vendor_address',
+		label: 'Vendor Address',
 		type: 'textarea',
 		fullWidth: true,
 	},
+	{ name: 'subject', label: 'Subject', fullWidth: true },
+	{ name: 'subtotal', label: 'Subtotal', type: 'number', step: '0.01' },
+	{ name: 'tax_rate', label: 'Tax Rate (%)', type: 'number', step: '0.01' },
+	{
+		name: 'tax_amount',
+		label: 'Tax Amount',
+		type: 'number',
+		step: '0.01',
+		computed: {
+			dependsOn: ['subtotal', 'tax_rate'],
+			calculate: (values) =>
+				toNumber(
+					pctOf(
+						(values.subtotal as number) || 0,
+						(values.tax_rate as number) || 0
+					)
+				),
+		},
+	},
+	{ name: 'discount', label: 'Discount', type: 'number', step: '0.01' },
+	{
+		name: 'total',
+		label: 'Total',
+		type: 'number',
+		step: '0.01',
+		computed: {
+			dependsOn: ['subtotal', 'tax_rate', 'discount'],
+			calculate: (values) => {
+				const sub = R((values.subtotal as number) || 0);
+				const tax = pctOf(sub, (values.tax_rate as number) || 0);
+				return toNumber(sub.add(tax).minus((values.discount as number) || 0));
+			},
+		},
+	},
+	{ name: 'valid_until', label: 'Valid Until', type: 'date' },
 	{
 		name: 'status',
 		label: 'Status',
 		type: 'select',
-		options: STATUS_OPTIONS_FOR_FORM,
+		options: STATUS_OPTIONS.filter((o) => o.value !== 'all'),
+	},
+	{ name: 'notes', label: 'Notes', type: 'textarea', fullWidth: true },
+	{
+		name: 'terms',
+		label: 'Terms & Conditions',
+		type: 'textarea',
+		fullWidth: true,
 	},
 ];
 
 const columns: Column[] = [
-	{ key: 'sr_no', label: 'Sr. No', headClassName: 'w-16 text-center' },
+	{ key: 'quotation_number', label: 'Quotation #', headClassName: 'w-32' },
+	{ key: 'quotation_date', label: 'Date', date: true, headClassName: 'w-28' },
+	{ key: 'vendor_name', label: 'Vendor' },
+	{ key: 'subject', label: 'Subject' },
 	{
-		key: 'voucher_date',
-		label: 'Voucher Date',
-		date: true,
-		headClassName: 'w-28 text-center',
-	},
-	{
-		key: 'expense_category',
-		label: 'Expense Category',
-		headClassName: 'w-44 text-center',
-	},
-	{
-		key: 'payee_type',
-		label: 'Vendor / Employee',
-		headClassName: 'text-center',
-		render: (row) => {
-			const name: string = String(row.vendor_name || row.employee_name || '');
-			const displayName = name || '—';
-			const type = (row.payee_type as string) || 'vendor';
-			return (
-				<span className="inline-flex items-center gap-1.5">
-					{displayName}
-					<span
-						className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${PAYEE_BADGE[type] || PAYEE_BADGE.vendor}`}
-					>
-						{type === 'employee' ? 'EMP' : 'VND'}
-					</span>
-				</span>
-			);
-		},
-	},
-	{ key: 'bill_no', label: 'Bill No.', headClassName: 'text-center' },
-	{
-		key: 'bill_date',
-		label: 'Bill Date',
-		date: true,
-		headClassName: 'w-28 text-center',
-	},
-	{
-		key: 'bill_amount',
-		label: 'Bill Amount',
+		key: 'total',
+		label: 'Total',
 		money: true,
-		headClassName: 'w-32 text-center',
-		cellClassName: 'text-right tabular-nums',
-	},
-	{
-		key: 'gst_amount',
-		label: 'GST / IGST',
-		money: true,
-		headClassName: 'w-28 text-center',
-		cellClassName: 'text-right tabular-nums',
-	},
-	{
-		key: 'net_amount',
-		label: 'Net Bill Amount',
-		money: true,
-		headClassName: 'w-36 text-center',
-		cellClassName: 'text-right font-semibold tabular-nums',
+		headClassName: 'w-32 text-right',
+		cellClassName: 'text-right font-medium',
 	},
 	{
 		key: 'status',
 		label: 'Status',
-		headClassName: 'w-28 text-center',
-		render: (row) => {
-			const status = (row.status as string) || 'submitted';
-			return (
-				<span
-					className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_BADGE[status] || STATUS_BADGE.submitted}`}
-				>
-					{status}
-				</span>
-			);
-		},
+		headClassName: 'w-28',
+		render: (row) => (
+			<span
+				className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_BADGE[String(row.status)] || STATUS_BADGE.draft}`}
+			>
+				{(row.status as string) || 'draft'}
+			</span>
+		),
 	},
 ];
 
 const statsConfig: StatsConfig[] = [
-	{
-		key: 'total',
-		label: 'Total',
-		tone: 'purple',
-		icon: DocumentTextIcon,
-	},
-	{
-		key: 'submitted',
-		label: 'Submitted',
-		tone: 'amber',
-		icon: PaperAirplaneIcon,
-	},
-	{
-		key: 'approved',
-		label: 'Approved',
-		tone: 'sky',
-		icon: CheckCircleIcon,
-	},
-	{
-		key: 'rejected',
-		label: 'Rejected',
-		tone: 'rose',
-		icon: XCircleIcon,
-	},
-	{
-		key: 'totalAmount',
-		label: 'Total Amount',
-		tone: 'purple',
-		money: true,
-		icon: BanknotesIcon,
-	},
-	{
-		key: 'approvedAmount',
-		label: 'Approved',
-		tone: 'sky',
-		money: true,
-	},
+	{ key: 'total', label: 'Total', tone: 'purple', icon: DocumentTextIcon },
+	{ key: 'draft', label: 'Draft', tone: 'slate', icon: DocumentTextIcon },
+	{ key: 'sent', label: 'Sent', tone: 'sky', icon: PaperAirplaneIcon },
+	{ key: 'approved', label: 'Approved', tone: 'green', icon: CheckCircleIcon },
+	{ key: 'rejected', label: 'Rejected', tone: 'rose', icon: XCircleIcon },
 ];
 
 const TONE_COLOR_MAP: Record<StatTone, string> = {
@@ -335,20 +235,6 @@ const TONE_COLOR_MAP: Record<StatTone, string> = {
 	slate: 'text-slate-600',
 	violet: 'text-violet-600',
 };
-
-function transformSubmit(values: Record<string, unknown>) {
-	const result = { ...values };
-	if (result.payee_type === 'vendor') {
-		delete result.employee_name;
-		delete result.employee_id;
-	}
-	if (result.payee_type === 'employee') {
-		delete result.vendor_name;
-		delete result.vendor_id;
-	}
-	delete result.sr_no;
-	return result;
-}
 
 function getNested(
 	obj: Record<string, unknown>,
@@ -366,7 +252,7 @@ function getNested(
 	);
 }
 
-function OtherExpensesPageInner() {
+function OutgoingQuotationPageInner() {
 	const urlSearchParams = useSearchParams();
 	const initialSearch = urlSearchParams?.get('search') ?? '';
 	const [search, setSearch] = useState(initialSearch);
@@ -378,9 +264,9 @@ function OtherExpensesPageInner() {
 	}>({ mode: null, row: null });
 
 	const listQuery = useQuery<ApiListResponse>({
-		queryKey: ['other-expenses', { search, status: statusFilter, page }],
+		queryKey: ['outgoing-quotations', { search, status: statusFilter, page }],
 		queryFn: () =>
-			apiGet('/api/admin/other-expenses', {
+			apiGet('/api/admin/outgoing-quotations', {
 				search,
 				status: statusFilter,
 				page,
@@ -406,14 +292,12 @@ function OtherExpensesPageInner() {
 	const closeModal = () => setModalState({ mode: null, row: null });
 
 	const onDelete = async (row: Record<string, unknown>) => {
-		if (
-			!window.confirm('Are you sure you want to delete this other expense?')
-		) {
+		if (!window.confirm('Are you sure you want to delete this quotation?')) {
 			return;
 		}
 		try {
-			await apiDelete(`/api/admin/other-expenses/${row.id}`);
-			toast.success('Other expense deleted');
+			await apiDelete(`/api/admin/outgoing-quotations/${row.id}`);
+			toast.success('Quotation deleted');
 			listQuery.refetch();
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : 'Delete failed');
@@ -429,10 +313,10 @@ function OtherExpensesPageInner() {
 					<header className="flex flex-wrap items-end justify-between gap-3">
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900">
-								Other Expenses
+								Quotation (Incoming)
 							</h1>
 							<p className="text-sm text-gray-500 mt-0.5">
-								Track miscellaneous expenses against vendors and employees
+								Quotations received from vendors
 							</p>
 						</div>
 						<div className="flex items-center gap-2">
@@ -449,7 +333,7 @@ function OtherExpensesPageInner() {
 							</Button>
 							<Button size="sm" onClick={openCreate}>
 								<PlusIcon className="h-4 w-4" />
-								Add Other Expenses
+								Add Quotation (Incoming)
 							</Button>
 						</div>
 					</header>
@@ -481,7 +365,7 @@ function OtherExpensesPageInner() {
 						<div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
 							<div className="relative flex-1 min-w-[200px] max-w-md">
 								<Input
-									placeholder="Search by voucher #, bill #, vendor, employee…"
+									placeholder="Search by number, vendor, subject…"
 									value={search}
 									onChange={(e) => {
 										setSearch(e.target.value);
@@ -586,14 +470,11 @@ function OtherExpensesPageInner() {
 				<ResourceFormModal
 					mode={modalState.mode}
 					row={modalState.row}
-					title="Other Expenses"
-					endpoint="/api/admin/other-expenses"
+					title="Quotation (Incoming)"
+					endpoint="/api/admin/outgoing-quotations"
 					defaultValues={defaultValues}
 					zodSchema={schema}
 					formFields={formFields}
-					transformSubmit={transformSubmit}
-					vendorListEndpoint="/api/vendors"
-					employeeListEndpoint="/api/employees/list"
 					onClose={closeModal}
 					onSaved={() => {
 						closeModal();
@@ -605,10 +486,10 @@ function OtherExpensesPageInner() {
 	);
 }
 
-export default function OtherExpensesPage() {
+export default function OutgoingQuotationPage() {
 	return (
 		<Suspense fallback={null}>
-			<OtherExpensesPageInner />
+			<OutgoingQuotationPageInner />
 		</Suspense>
 	);
 }

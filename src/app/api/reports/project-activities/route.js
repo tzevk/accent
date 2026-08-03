@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 import { fetchProjectActivitiesData } from '@/app/reports/project-activities/data-source';
+import { hasProjectActivitiesFieldPermission as hasReportFieldPermission } from '@/utils/report-permissions';
 
 /**
  * GET /api/reports/project-activities
@@ -27,30 +28,7 @@ export async function GET(request) {
 			RESOURCES.REPORTS,
 			PERMISSIONS.READ
 		);
-		let hasProjectActivitiesFieldPermission = false;
-
-		let fieldPerms = user.field_permissions;
-		if (typeof fieldPerms === 'string') {
-			try {
-				fieldPerms = JSON.parse(fieldPerms);
-			} catch {
-				fieldPerms = null;
-			}
-		}
-
-		const reportAccessSection =
-			fieldPerms?.modules?.reports?.sections?.report_access;
-		if (reportAccessSection?.enabled) {
-			const projectActivitiesPerm =
-				reportAccessSection.fields?.project_activities?.permission;
-			const legacyPerm =
-				reportAccessSection.fields?.project_reports?.permission;
-			hasProjectActivitiesFieldPermission =
-				projectActivitiesPerm === 'view' ||
-				projectActivitiesPerm === 'edit' ||
-				legacyPerm === 'view' ||
-				legacyPerm === 'edit';
-		}
+		const hasProjectActivitiesFieldPermission = hasReportFieldPermission(user);
 
 		if (
 			!isSuperAdmin &&

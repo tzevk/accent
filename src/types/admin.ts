@@ -28,6 +28,7 @@ export interface FormField {
 	label: string;
 	type?:
 		| 'text'
+		| 'email'
 		| 'date'
 		| 'number'
 		| 'textarea'
@@ -83,48 +84,20 @@ export interface StatsConfig {
 	money?: boolean;
 }
 
-export interface ExtraFilters {
-	values: Record<string, string | number | boolean | undefined>;
-	node: ReactNode;
-}
+export type ModalMode = 'view' | 'edit' | 'create' | null;
 
-export interface ResourcePageProps {
+export interface ResourceFormModalProps {
 	title: string;
-	subtitle?: string;
 	endpoint: string;
-	queryKey: string | readonly unknown[];
-	statsConfig?: StatsConfig[];
-	columns: Column[];
 	defaultValues: Record<string, unknown>;
 	zodSchema: z.ZodTypeAny;
 	formFields: FormField[];
 	transformSubmit?: (
 		values: Record<string, unknown>
 	) => Record<string, unknown>;
-	searchPlaceholder?: string;
-	extraFilters?: ExtraFilters;
-	pageSize?: number;
-	disablePagination?: boolean;
-	canView?: boolean;
 	vendorListEndpoint?: string;
 	employeeListEndpoint?: string;
 	companyListEndpoint?: string;
-	rowActions?: (row: Record<string, unknown>) => ReactNode;
-}
-
-export type ModalMode = 'view' | 'edit' | 'create' | null;
-
-export interface ResourceFormModalProps extends Omit<
-	ResourcePageProps,
-	| 'subtitle'
-	| 'queryKey'
-	| 'statsConfig'
-	| 'columns'
-	| 'searchPlaceholder'
-	| 'extraFilters'
-	| 'pageSize'
-	| 'canView'
-> {
 	mode: ModalMode;
 	row: Record<string, unknown> | null;
 	onClose: () => void;

@@ -16,11 +16,10 @@ import {
 	TicketIcon,
 	BanknotesIcon,
 	CalendarDaysIcon,
-	ChartBarSquareIcon,
+	// ChartBarSquareIcon + ScaleIcon (used by TEMP-HIDDEN report nav rows below)
 	ClipboardDocumentListIcon,
 	BuildingLibraryIcon,
 	TagIcon,
-	ScaleIcon,
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -506,7 +505,8 @@ export default function Sidebar() {
 							<span>REPORTS</span>
 						</div>
 						<div className="space-y-1 mt-1">
-							<NavRow
+							{/* TEMP-HIDDEN (2026-08-03): 'Project Activities' + 'Client Balance' reports hidden from nav. Uncomment to restore: */}
+							{/* <NavRow
 								icon={ChartBarSquareIcon}
 								label="Project Activities"
 								href="/reports/project-activities"
@@ -517,10 +517,10 @@ export default function Sidebar() {
 								label="Client Balance"
 								href="/reports/client-balance"
 								active={pathname.startsWith('/reports/client-balance')}
-							/>
+							/> */}
 							<NavRow
 								icon={DocumentTextIcon}
-								label="Sales Register"
+								label="Outstanding Balances"
 								href="/reports/sales-register"
 								active={pathname.startsWith('/reports/sales-register')}
 							/>

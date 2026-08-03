@@ -32,18 +32,6 @@ const projectRow = {
 	]),
 };
 
-// Two distinct (activity, sub) pairs
-const activityRows = [
-	{
-		activity_name: 'Engineering',
-		sub_activity_name: 'MTO',
-	},
-	{
-		activity_name: 'Engineering',
-		sub_activity_name: 'Isometric',
-	},
-];
-
 // Assignments for the MTO sub-activity
 const mtoAssignments = [
 	{
@@ -69,17 +57,43 @@ const mtoAssignments = [
 	},
 ];
 
+// Assignments for a second activity, including a user outside the project
+// roster — the matrix must sum across activities per (user, day).
+const isoAssignments = [
+	{
+		user_id: 1,
+		activity_name: 'Engineering',
+		sub_activity_name: 'Isometric',
+		daily_entries: JSON.stringify([
+			{ date: '2026-07-22', hours: 2, qty_done: 3 },
+		]),
+	},
+	{
+		user_id: 3,
+		activity_name: 'Engineering',
+		sub_activity_name: 'Isometric',
+		daily_entries: JSON.stringify([
+			{ date: '2026-07-22', hours: 6, qty_done: 10 },
+		]),
+	},
+];
+
 // User rows for the roster
 const userRows = [
 	{ id: 1, user_name: 'Shubham Shirke' },
 	{ id: 2, user_name: 'Sudhir Pandhare' },
+	{ id: 3, user_name: 'Third Person' },
 ];
 
 function createRequest(url: string) {
 	return { url } as Request;
 }
 
-async function importGet(auth = { is_super_admin: 1 }) {
+async function importGet(
+	auth: { is_super_admin?: number; field_permissions?: unknown } = {
+		is_super_admin: 1,
+	}
+) {
 	const { getCurrentUser } = await import('@/utils/api-permissions');
 	(getCurrentUser as ReturnType<typeof vi.fn>).mockResolvedValue(auth);
 	const mod =
@@ -88,23 +102,13 @@ async function importGet(auth = { is_super_admin: 1 }) {
 }
 
 function setupMockQueries() {
-	mockQuery.mockImplementation((sql: string, params?: unknown[]) => {
+	mockQuery.mockImplementation((sql: string) => {
 		const s = String(sql);
 		if (s.includes('FROM projects') && s.includes('project_id = ?'))
 			return Promise.resolve([[projectRow]]);
-		if (s.includes('FROM user_activity_assignments') && s.includes('GROUP BY'))
-			return Promise.resolve([activityRows]);
 		if (s.includes('FROM user_activity_assignments'))
-			return Promise.resolve([mtoAssignments]);
-		if (s.includes('FROM users') && s.includes('WHERE id = ?'))
-			return Promise.resolve([
-				userRows.filter(
-					(u) =>
-						String((u as Record<string, unknown>).id) === String(params?.[0])
-				),
-			]);
-		if (s.includes('FROM users') && !s.includes('WHERE id = ?'))
-			return Promise.resolve([userRows]);
+			return Promise.resolve([[...mtoAssignments, ...isoAssignments]]);
+		if (s.includes('FROM users')) return Promise.resolve([userRows]);
 		if (s.includes('FROM employees')) return Promise.resolve([[]]);
 		return Promise.resolve([[]]);
 	});
@@ -169,7 +173,7 @@ describe('Project Status Detail — GET /api/reports/project-status/[projectId]'
 		expect(res.status).toBe(404);
 	});
 
-	it('returns project + activities when no matrix filters are set', async () => {
+	it('returns the project header when no date range is set', async () => {
 		const GET = await importGet();
 		setupMockQueries();
 
@@ -185,16 +189,19 @@ describe('Project Status Detail — GET /api/reports/project-status/[projectId]'
 		expect(json.data.project.project_code).toBe(
 			'571_07_2026_Shroff_C-1610_MTO'
 		);
-		expect(json.data.activities).toHaveLength(2);
-		expect(json.data.activities[0].label).toBe('MTO');
+		// Roster = project_team (1, 2) ∪ assignment users (3), sorted by name.
+		expect(json.data.roster).toHaveLength(3);
+		expect(
+			json.data.roster.map((m: { user_name: string }) => m.user_name)
+		).toEqual(['Shubham Shirke', 'Sudhir Pandhare', 'Third Person']);
 	});
 
-	it('builds a matrix for an activity + date range', async () => {
+	it('builds an all-activity matrix for a date range', async () => {
 		const GET = await importGet();
 		setupMockQueries();
 
 		const url =
-			'http://localhost/api/reports/project-status/10?activity=MTO&sub_activity=MTO&from=2026-07-22&to=2026-07-29';
+			'http://localhost/api/reports/project-status/10?from=2026-07-22&to=2026-07-29';
 		const res = await GET(createRequest(url), {
 			params: Promise.resolve({ projectId: '10' }),
 		});
@@ -204,7 +211,7 @@ describe('Project Status Detail — GET /api/reports/project-status/[projectId]'
 		expect(json.success).toBe(true);
 
 		const r = json.data;
-		expect(r.activity).toBe('MTO');
+		expect(r.activity).toBe('All Activities');
 		expect(r.dates).toEqual([
 			'2026-07-22',
 			'2026-07-23',
@@ -220,18 +227,47 @@ describe('Project Status Detail — GET /api/reports/project-status/[projectId]'
 			(rr: { user_name: string }) => rr.user_name === 'Shubham Shirke'
 		);
 		expect(shubham).toBeDefined();
-		// 8+4+4+8+8 = 32 hours, 0+0+12+41+44 = 97 qty
-		expect(shubham.total_hours).toBe(32);
-		expect(shubham.total_qty).toBe(97);
-		expect(shubham.days['2026-07-22']).toEqual({ hours: 8, qty_done: 0 });
+		// MTO 8+4+4+8+8 = 32h, 0+0+12+41+44 = 97 qty
+		// + Isometric 2h / 3 qty on 2026-07-22 → 34h / 100 qty total
+		expect(shubham.total_hours).toBe(34);
+		expect(shubham.total_qty).toBe(100);
+		// Both activities land in the same per-day cell
+		expect(shubham.days['2026-07-22']).toEqual({ hours: 10, qty_done: 3 });
 		expect(shubham.days['2026-07-24']).toEqual({ hours: 4, qty_done: 12 });
 		expect(shubham.days['2026-07-28']).toEqual({ hours: 8, qty_done: 41 });
-		// ratio = 32 / 97 = 0.33 (rounded to 1dp)
+		// ratio = 34 / 100 = 0.34 (rounded to 1dp)
 		expect(shubham.hours_per_qty).toBeCloseTo(0.3, 1);
 
 		const sudhir = r.rows.find(
 			(rr: { user_name: string }) => rr.user_name === 'Sudhir Pandhare'
 		);
+		expect(sudhir.total_hours).toBe(16);
+		expect(sudhir.total_qty).toBe(41);
+
+		// User outside the project roster still gets a named row.
+		const third = r.rows.find(
+			(rr: { user_name: string }) => rr.user_name === 'Third Person'
+		);
+		expect(third).toBeDefined();
+		expect(third.total_hours).toBe(6);
+		expect(third.total_qty).toBe(10);
+	});
+
+	it('narrows the matrix to a single employee via user_id', async () => {
+		const GET = await importGet();
+		setupMockQueries();
+
+		const url =
+			'http://localhost/api/reports/project-status/10?user_id=2&from=2026-07-22&to=2026-07-29';
+		const res = await GET(createRequest(url), {
+			params: Promise.resolve({ projectId: '10' }),
+		});
+		const json = await res.json();
+
+		expect(res.status).toBe(200);
+		expect(json.data.rows).toHaveLength(1);
+		const sudhir = json.data.rows[0];
+		expect(sudhir.user_name).toBe('Sudhir Pandhare');
 		expect(sudhir.total_hours).toBe(16);
 		expect(sudhir.total_qty).toBe(41);
 	});
@@ -241,7 +277,7 @@ describe('Project Status Detail — GET /api/reports/project-status/[projectId]'
 		setupMockQueries();
 
 		const url =
-			'http://localhost/api/reports/project-status/10?activity=MTO&from=2026-07-30&to=2026-07-22';
+			'http://localhost/api/reports/project-status/10?from=2026-07-30&to=2026-07-22';
 		const res = await GET(createRequest(url), {
 			params: Promise.resolve({ projectId: '10' }),
 		});
@@ -256,24 +292,19 @@ describe('Project Status Detail — GET /api/reports/project-status/[projectId]'
 		setupMockQueries();
 
 		const url =
-			'http://localhost/api/reports/project-status/10?activity=MTO&from=2026/07/22&to=2026-07-29';
+			'http://localhost/api/reports/project-status/10?from=2026/07/22&to=2026-07-29';
 		const res = await GET(createRequest(url), {
 			params: Promise.resolve({ projectId: '10' }),
 		});
 		expect(res.status).toBe(400);
 	});
 
-	it('returns an empty rows list when the activity has no assignments in the window', async () => {
+	it('returns an empty rows list when the project has no assignments in the window', async () => {
 		const GET = await importGet();
 		mockQuery.mockImplementation((sql: string) => {
 			const s = String(sql);
 			if (s.includes('FROM projects') && s.includes('project_id = ?'))
 				return Promise.resolve([[projectRow]]);
-			if (
-				s.includes('FROM user_activity_assignments') &&
-				s.includes('GROUP BY')
-			)
-				return Promise.resolve([activityRows]);
 			if (s.includes('FROM user_activity_assignments'))
 				return Promise.resolve([[]]);
 			if (s.includes('FROM users')) return Promise.resolve([userRows]);
@@ -282,7 +313,7 @@ describe('Project Status Detail — GET /api/reports/project-status/[projectId]'
 		});
 
 		const url =
-			'http://localhost/api/reports/project-status/10?activity=MTO&from=2026-08-01&to=2026-08-07';
+			'http://localhost/api/reports/project-status/10?from=2026-08-01&to=2026-08-07';
 		const res = await GET(createRequest(url), {
 			params: Promise.resolve({ projectId: '10' }),
 		});

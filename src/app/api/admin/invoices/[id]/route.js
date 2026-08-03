@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { getServerAuth } from '@/utils/server-auth';
+import { logActivity } from '@/utils/activity-logger';
 import {
 	validateInvoice,
 	classifyDuplicateError,
@@ -210,6 +211,11 @@ export async function PUT(request, { params }) {
 				);
 			}
 		}
+
+		// PO balance updates + the invoice UPDATE must be atomic: a crash between
+		// them would leave purchase_orders.remaining_balance wrong while the
+		// invoice row is unchanged (or vice versa).
+		await connection.beginTransaction();
 
 		const oldTotal = R(oldInvoice[0].total);
 		const oldPoNumber = oldInvoice[0].po_number;
@@ -422,11 +428,14 @@ export async function PUT(request, { params }) {
 			]
 		);
 
+		await connection.commit();
+
 		return NextResponse.json({
 			success: true,
 			message: 'Invoice updated successfully',
 		});
 	} catch (error) {
+		if (connection) await connection.rollback();
 		console.error('Error updating invoice:', error);
 		const dup = classifyDuplicateError(error);
 		if (dup) {
@@ -453,6 +462,11 @@ export async function PUT(request, { params }) {
 }
 
 // DELETE - Delete invoice
+// Soft delete: flags the row (isDelete = 1) and records deleted_at/deleted_by.
+// Active-number uniqueness is enforced by unique_active_invoice on the
+// generated column active_invoice_number (= invoice_number while active, NULL
+// once deleted), so a deleted number can be reused without renaming the row —
+// the old '-DEL' suffix workaround is no longer needed.
 export async function DELETE(request, { params }) {
 	let connection;
 	try {
@@ -468,38 +482,57 @@ export async function DELETE(request, { params }) {
 
 		connection = await dbConnect();
 
-		// Fetch invoice data before deleting
-		const [invoiceToDelete] = await connection.execute(
-			'SELECT total, po_id FROM invoices WHERE id = ? AND isDelete = 0',
-			[id]
-		);
-		if (!invoiceToDelete || invoiceToDelete.length === 0) {
-			return NextResponse.json(
-				{ success: false, message: 'Invoice not found' },
-				{ status: 404 }
-			);
-		}
+		// PO balance restore + the soft-delete flag must be atomic: a crash
+		// between them would restore the balance while the invoice stays visible
+		// (or vice versa).
+		await connection.beginTransaction();
 
-		// Restore PO remaining balance
-		const deleteTotal = R(invoiceToDelete[0].total).toNumber();
-		const deletePoId = invoiceToDelete[0].po_id;
-		if (deletePoId) {
+		let deletedInvoiceNumber = null;
+		try {
+			// Fetch invoice data before deleting
+			const [invoiceToDelete] = await connection.execute(
+				'SELECT total, po_id, invoice_number FROM invoices WHERE id = ? AND isDelete = 0',
+				[id]
+			);
+			if (!invoiceToDelete || invoiceToDelete.length === 0) {
+				await connection.rollback();
+				return NextResponse.json(
+					{ success: false, message: 'Invoice not found' },
+					{ status: 404 }
+				);
+			}
+			deletedInvoiceNumber = invoiceToDelete[0].invoice_number;
+
+			// Restore PO remaining balance
+			const deleteTotal = R(invoiceToDelete[0].total).toNumber();
+			const deletePoId = invoiceToDelete[0].po_id;
+			if (deletePoId) {
+				await connection.execute(
+					'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ?',
+					[deleteTotal, deletePoId]
+				);
+			}
+
+			// Soft delete the invoice
 			await connection.execute(
-				'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ?',
-				[deleteTotal, deletePoId]
+				'UPDATE invoices SET isDelete = 1, deleted_at = NOW(), deleted_by = ? WHERE id = ? AND isDelete = 0',
+				[authResult.user?.id ?? null, id]
 			);
+
+			await connection.commit();
+		} catch (err) {
+			await connection.rollback();
+			throw err;
 		}
 
-		// Soft delete invoice. The invoice_number must be renamed because
-		// `unique_active_invoice (invoice_number, isDelete)` only allows ONE
-		// soft-deleted row per number: deleting a re-created invoice that reused
-		// a freed number would collide with the earlier deleted row (ERROR 1062).
-		// Deleted rows are invisible to every query (all filter isDelete = 0), so
-		// the rename frees the number for reuse without any user-visible change.
-		await connection.execute(
-			'UPDATE invoices SET isDelete = 1, invoice_number = CONCAT(invoice_number, ?, ?) WHERE id = ?',
-			['-DEL', id, id]
-		);
+		await logActivity({
+			userId: authResult.user?.id,
+			actionType: 'delete',
+			resourceType: 'invoice',
+			resourceId: id,
+			description: `Deleted invoice ${deletedInvoiceNumber} (soft delete)`,
+			request,
+		});
 
 		return NextResponse.json({
 			success: true,

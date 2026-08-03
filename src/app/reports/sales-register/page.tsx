@@ -17,6 +17,7 @@ import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { formatCurrency, formatDate } from '@/lib/format';
+import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -60,55 +61,13 @@ interface ReportResponse {
 	error?: string;
 }
 
-interface FieldPermissionsShape {
-	modules?: {
-		reports?: {
-			sections?: {
-				report_access?: {
-					enabled?: boolean;
-					fields?: {
-						project_activities?: {
-							permission?: string;
-						};
-						project_reports?: {
-							permission?: string;
-						};
-					};
-				};
-			};
-		};
-	};
-}
-
 interface SessionUser {
 	id: number;
 	is_super_admin?: boolean | number;
-	field_permissions?: string | FieldPermissionsShape | null;
+	field_permissions?: unknown;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
-
-function hasProjectActivitiesFieldPermission(
-	user: SessionUser | null | undefined
-): boolean {
-	if (!user) return false;
-	if (user.is_super_admin) return true;
-	let fieldPerms = user.field_permissions;
-	if (typeof fieldPerms === 'string') {
-		try {
-			fieldPerms = JSON.parse(fieldPerms) as FieldPermissionsShape;
-		} catch {
-			fieldPerms = null;
-		}
-	}
-	const section = fieldPerms?.modules?.reports?.sections?.report_access;
-	if (!section?.enabled) return false;
-	const perm = section.fields?.project_activities?.permission;
-	const legacy = section.fields?.project_reports?.permission;
-	return (
-		perm === 'view' || perm === 'edit' || legacy === 'view' || legacy === 'edit'
-	);
-}
 
 type SortKey =
 	| 'invoice_date'
@@ -294,11 +253,11 @@ export default function SalesRegisterPage() {
 					<p className="text-xs text-gray-400 mb-0.5">
 						Home <span className="mx-1 text-gray-300">/</span> Reports{' '}
 						<span className="mx-1 text-gray-300">/</span>{' '}
-						<span className="text-gray-600">Sales Register</span>
+						<span className="text-gray-600">Outstanding Balances</span>
 					</p>
 					<div className="flex items-center justify-between flex-wrap gap-3">
 						<h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-							Sales Register
+							Outstanding Balances
 						</h1>
 						<div className="flex items-center gap-2">
 							<button

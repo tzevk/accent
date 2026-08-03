@@ -146,10 +146,16 @@ export async function DELETE(request, { params }) {
 		const { id } = await params;
 		const user = authResult.user;
 		db = await dbConnect();
-		await db.execute(
-			`UPDATE ${TABLE} SET isDelete = 1 WHERE id = ? AND isDelete = 0`,
-			[id]
+		const [result] = await db.execute(
+			`UPDATE ${TABLE} SET isDelete = 1, deleted_at = NOW(), deleted_by = ? WHERE id = ? AND isDelete = 0`,
+			[user?.id ?? null, id]
 		);
+		if (result.affectedRows === 0) {
+			return NextResponse.json(
+				{ success: false, error: 'Expense not found' },
+				{ status: 404 }
+			);
+		}
 
 		await logActivity({
 			userId: user?.id,

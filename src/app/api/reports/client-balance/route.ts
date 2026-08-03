@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 import { R, add, sub, toNumber } from '@/lib/money';
+import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 
 /**
  * GET /api/reports/client-balance
@@ -22,43 +23,9 @@ import { R, add, sub, toNumber } from '@/lib/money';
  * `project_activities` report field permission (view/edit).
  */
 
-interface FieldPermissionsShape {
-	modules?: {
-		reports?: {
-			sections?: {
-				report_access?: {
-					enabled?: boolean;
-					fields?: Record<string, { permission?: string } | undefined>;
-				};
-			};
-		};
-	};
-}
-
 interface ReportUser {
 	is_super_admin?: boolean | number;
-	field_permissions?: FieldPermissionsShape | string | null;
-}
-
-function hasProjectActivitiesFieldPermission(
-	user: ReportUser | null | undefined
-): boolean {
-	if (!user) return false;
-	let fieldPerms = user.field_permissions;
-	if (typeof fieldPerms === 'string') {
-		try {
-			fieldPerms = JSON.parse(fieldPerms) as FieldPermissionsShape;
-		} catch {
-			fieldPerms = null;
-		}
-	}
-	const section = fieldPerms?.modules?.reports?.sections?.report_access;
-	if (!section?.enabled) return false;
-	const perm = section.fields?.project_activities?.permission;
-	const legacy = section.fields?.project_reports?.permission;
-	return (
-		perm === 'view' || perm === 'edit' || legacy === 'view' || legacy === 'edit'
-	);
+	field_permissions?: unknown;
 }
 
 // ── Raw row shapes ────────────────────────────────────────────────

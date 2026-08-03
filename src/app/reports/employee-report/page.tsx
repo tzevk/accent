@@ -16,6 +16,7 @@ import EmployeeReportCard, {
 	type EmployeeReportItem,
 } from '@/components/reports/EmployeeReportCard';
 import { apiGet } from '@/lib/api-client';
+import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 
 type ReportResponse = {
 	success: boolean;
@@ -28,44 +29,9 @@ type ReportResponse = {
 	error?: string;
 };
 
-interface FieldPermissionsShape {
-	modules?: {
-		reports?: {
-			sections?: {
-				report_access?: {
-					enabled?: boolean;
-					fields?: Record<string, { permission?: string } | undefined>;
-				};
-			};
-		};
-	};
-}
-
 interface SessionUser {
 	is_super_admin?: boolean | number | null;
-	field_permissions?: FieldPermissionsShape | string | null;
-}
-
-function hasProjectActivitiesFieldPermission(
-	user: SessionUser | null | undefined
-): boolean {
-	if (!user) return false;
-	if (user.is_super_admin) return true;
-	let fieldPerms = user.field_permissions;
-	if (typeof fieldPerms === 'string') {
-		try {
-			fieldPerms = JSON.parse(fieldPerms) as FieldPermissionsShape;
-		} catch {
-			fieldPerms = null;
-		}
-	}
-	const section = fieldPerms?.modules?.reports?.sections?.report_access;
-	if (!section?.enabled) return false;
-	const perm = section.fields?.project_activities?.permission;
-	const legacy = section.fields?.project_reports?.permission;
-	return (
-		perm === 'view' || perm === 'edit' || legacy === 'view' || legacy === 'edit'
-	);
+	field_permissions?: unknown;
 }
 
 export default function EmployeeReportPage() {

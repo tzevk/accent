@@ -140,7 +140,7 @@ export default function InvoicePage() {
 	const handleDelete = async (invoice) => {
 		if (
 			!confirm(
-				`Are you sure you want to delete invoice ${invoice.invoice_number}? This action cannot be undone.`
+				`Are you sure you want to delete invoice ${invoice.invoice_number}? It will be soft-deleted and its linked PO balance restored.`
 			)
 		) {
 			return;

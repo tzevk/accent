@@ -4,11 +4,18 @@ const mockExecute = vi.fn();
 const mockEnd = vi.fn();
 const mockDbConnect = vi.fn().mockResolvedValue({
 	execute: mockExecute,
+	beginTransaction: vi.fn().mockResolvedValue(undefined),
+	commit: vi.fn().mockResolvedValue(undefined),
+	rollback: vi.fn().mockResolvedValue(undefined),
 	end: mockEnd,
 });
 
 vi.mock('@/utils/database', () => ({
 	dbConnect: mockDbConnect,
+}));
+
+vi.mock('@/utils/activity-logger', () => ({
+	logActivity: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/utils/server-auth', () => ({
@@ -320,18 +327,18 @@ describe('Invoice API — DELETE /api/admin/invoices/[id]', () => {
 
 		expect(json.success).toBe(true);
 
-		// unique_active_invoice (invoice_number, isDelete) allows only ONE
-		// soft-deleted row per number. Renaming on delete frees the number,
-		// otherwise deleting a re-created invoice (same number) throws
-		// ERROR 1062 Duplicate entry for key 'unique_active_invoice'.
+		// unique_active_invoice on the generated column active_invoice_number
+		// (= invoice_number while active, NULL once deleted) allows a deleted
+		// row (NULL) to coexist with a re-created number — no rename needed.
 		const softDeleteCall = mockExecute.mock.calls.find(
 			([sql]) =>
 				typeof sql === 'string' &&
 				sql.includes('UPDATE invoices SET isDelete = 1')
 		);
 		expect(softDeleteCall).toBeDefined();
-		expect(softDeleteCall[0]).toContain('CONCAT(invoice_number');
-		expect(softDeleteCall[1]).toEqual(['-DEL', '34', '34']);
+		expect(softDeleteCall[0]).toContain('deleted_at = NOW()');
+		expect(softDeleteCall[0]).not.toContain('CONCAT(invoice_number');
+		expect(softDeleteCall[1]).toEqual([1, '34']);
 	});
 
 	it('returns 404 when invoice not found', async () => {
