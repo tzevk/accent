@@ -21,19 +21,6 @@ export async function GET(request) {
 	try {
 		db = await dbConnect();
 
-		// Create documents_master table if it doesn't exist
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS documents_master (
-        id VARCHAR(36) PRIMARY KEY,
-        doc_key VARCHAR(100) UNIQUE,
-        name VARCHAR(255) NOT NULL,
-        status VARCHAR(50) DEFAULT 'active',
-        description TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-
 		const [rows] = await db.execute(
 			'SELECT id, doc_key, name, status, description, created_at, updated_at FROM documents_master ORDER BY name'
 		);

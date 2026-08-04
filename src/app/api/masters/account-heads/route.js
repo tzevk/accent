@@ -1,26 +1,11 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 
-// Create table if not exists
-async function ensureTable(db) {
-	await db.execute(`
-    CREATE TABLE IF NOT EXISTS account_head_master (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      account_head_name VARCHAR(255) NOT NULL,
-      is_active BOOLEAN DEFAULT TRUE,
-      created_by INT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `);
-}
-
 // GET - List all account heads
 export async function GET() {
 	let db;
 	try {
 		db = await dbConnect();
-		await ensureTable(db);
 
 		const [rows] = await db.execute(`
       SELECT * FROM account_head_master 
@@ -54,7 +39,6 @@ export async function POST(request) {
 		}
 
 		db = await dbConnect();
-		await ensureTable(db);
 
 		const [result] = await db.execute(
 			`INSERT INTO account_head_master (account_head_name, is_active, created_by) VALUES (?, ?, ?)`,
@@ -101,7 +85,6 @@ export async function PUT(request) {
 		}
 
 		db = await dbConnect();
-		await ensureTable(db);
 
 		await db.execute(
 			`UPDATE account_head_master SET account_head_name = ?, is_active = ? WHERE id = ?`,

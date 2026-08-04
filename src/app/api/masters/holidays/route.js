@@ -26,22 +26,6 @@ export async function GET(request) {
 
 		connection = await dbConnect();
 
-		// Check if table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS holiday_master (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        date DATE NOT NULL,
-        type ENUM('national', 'religious', 'regional', 'company', 'optional') DEFAULT 'national',
-        is_optional BOOLEAN DEFAULT FALSE,
-        description TEXT,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_holiday_date (name, date)
-      )
-    `);
-
 		let query = `
       SELECT * FROM holiday_master
       WHERE YEAR(date) = ? AND is_active = TRUE
@@ -101,22 +85,6 @@ export async function POST(request) {
 		}
 
 		connection = await dbConnect();
-
-		// Check if table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS holiday_master (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        date DATE NOT NULL,
-        type ENUM('national', 'religious', 'regional', 'company', 'optional') DEFAULT 'national',
-        is_optional BOOLEAN DEFAULT FALSE,
-        description TEXT,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_holiday_date (name, date)
-      )
-    `);
 
 		const [result] = await connection.execute(
 			`INSERT INTO holiday_master (name, date, type, is_optional, description, is_active) 

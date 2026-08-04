@@ -96,24 +96,6 @@ export async function PUT(request) {
 	let db;
 	try {
 		db = await dbConnect();
-		// Ensure employees table exists (minimal schema compatible with app)
-		try {
-			await db.execute(`
-        CREATE TABLE IF NOT EXISTS employees (
-          id INT PRIMARY KEY AUTO_INCREMENT,
-          employee_id VARCHAR(20) UNIQUE NOT NULL,
-          first_name VARCHAR(50) NOT NULL,
-          last_name VARCHAR(50) NOT NULL,
-          email VARCHAR(100) UNIQUE NOT NULL,
-          phone VARCHAR(20),
-          department VARCHAR(50),
-          position VARCHAR(100),
-          status ENUM('active','inactive','terminated') DEFAULT 'active',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
-		} catch {}
 
 		// Auto-create and link an employee record if requested and missing, unless the user is a super admin
 		if (

@@ -29,21 +29,6 @@ export async function GET(request) {
 
 		db = await dbConnect();
 
-		// Create table if not exists
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS account_master (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        account_code VARCHAR(50) UNIQUE,
-        account_name VARCHAR(255) NOT NULL,
-        account_type ENUM('expense', 'income', 'asset', 'liability') DEFAULT 'expense',
-        description TEXT,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-
 		const { searchParams } = new URL(request.url);
 		const activeOnly = searchParams.get('active') === 'true';
 

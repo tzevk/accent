@@ -2,27 +2,6 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 
-// Ensure todos table exists
-async function ensureTodosTable(db) {
-	await db.execute(`
-    CREATE TABLE IF NOT EXISTS todos (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      user_id INT NOT NULL,
-      title VARCHAR(255) NOT NULL,
-      description TEXT DEFAULT NULL,
-      priority ENUM('low', 'medium', 'high') DEFAULT 'medium',
-      status ENUM('pending', 'in_progress', 'completed') DEFAULT 'pending',
-      due_date DATE DEFAULT NULL,
-      completed_at TIMESTAMP NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_user_id (user_id),
-      INDEX idx_status (status),
-      INDEX idx_due_date (due_date)
-    )
-  `);
-}
-
 /**
  * GET /api/todos
  * Fetch todos for the current user
@@ -40,7 +19,6 @@ export async function GET(request) {
 		}
 
 		db = await dbConnect();
-		await ensureTodosTable(db);
 
 		const { searchParams } = new URL(request.url);
 		const status = searchParams.get('status');
@@ -111,7 +89,6 @@ export async function POST(request) {
 		}
 
 		db = await dbConnect();
-		await ensureTodosTable(db);
 
 		const [result] = await db.execute(
 			`INSERT INTO todos (user_id, title, description, priority, due_date)
@@ -179,7 +156,6 @@ export async function PUT(request) {
 		}
 
 		db = await dbConnect();
-		await ensureTodosTable(db);
 
 		// Verify ownership
 		const [existing] = await db.execute(
@@ -283,7 +259,6 @@ export async function DELETE(request) {
 		}
 
 		db = await dbConnect();
-		await ensureTodosTable(db);
 
 		const [result] = await db.execute(
 			'DELETE FROM todos WHERE id = ? AND user_id = ?',
