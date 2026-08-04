@@ -21,30 +21,6 @@ export async function GET(request: Request) {
 	try {
 		connection = await dbConnect();
 
-		// Create table if not exists
-		await connection.execute(`
-			CREATE TABLE IF NOT EXISTS outgoing_purchase_orders (
-				id INT AUTO_INCREMENT PRIMARY KEY,
-				sr_no INT,
-				company_name VARCHAR(255) NOT NULL,
-				city VARCHAR(255),
-				po_number VARCHAR(100) NOT NULL,
-				po_date DATE,
-				po_amount DECIMAL(15, 2) NOT NULL,
-				tax_amount DECIMAL(15, 2) DEFAULT 0,
-				net_amount DECIMAL(15, 2) DEFAULT 0,
-				project_number VARCHAR(100),
-				description VARCHAR(500),
-				remarks TEXT,
-				status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'pending',
-				isDelete TINYINT(1) NOT NULL DEFAULT 0,
-				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				INDEX idx_status (status),
-				INDEX idx_isDelete (isDelete)
-			)
-		`);
-
 		const [rows] = await connection.execute(
 			'SELECT * FROM outgoing_purchase_orders WHERE isDelete = 0 ORDER BY created_at DESC'
 		);
@@ -106,30 +82,6 @@ export async function POST(request: Request) {
 		}
 
 		connection = await dbConnect();
-
-		// Ensure table exists
-		await connection.execute(`
-			CREATE TABLE IF NOT EXISTS outgoing_purchase_orders (
-				id INT AUTO_INCREMENT PRIMARY KEY,
-				sr_no INT,
-				company_name VARCHAR(255) NOT NULL,
-				city VARCHAR(255),
-				po_number VARCHAR(100) NOT NULL,
-				po_date DATE,
-				po_amount DECIMAL(15, 2) NOT NULL,
-				tax_amount DECIMAL(15, 2) DEFAULT 0,
-				net_amount DECIMAL(15, 2) DEFAULT 0,
-				project_number VARCHAR(100),
-				description VARCHAR(500),
-				remarks TEXT,
-				status ENUM('draft', 'pending', 'approved', 'completed', 'cancelled') DEFAULT 'pending',
-				isDelete TINYINT(1) NOT NULL DEFAULT 0,
-				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				INDEX idx_status (status),
-				INDEX idx_isDelete (isDelete)
-			)
-		`);
 
 		const [countResult]: any = await connection.execute(
 			'SELECT COUNT(*) as total FROM outgoing_purchase_orders WHERE isDelete = 0'

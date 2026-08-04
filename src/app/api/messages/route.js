@@ -33,9 +33,6 @@ export async function GET(request) {
 
 		db = await dbConnect();
 
-		// Ensure tables exist
-		await ensureTablesExist(db);
-
 		let whereClause = '';
 		let params = [];
 
@@ -216,9 +213,6 @@ export async function POST(request) {
 
 		db = await dbConnect();
 
-		// Ensure tables exist
-		await ensureTablesExist(db);
-
 		let finalConversationId;
 		let receiverName = null;
 
@@ -385,94 +379,4 @@ async function getOrCreateDirectConversation(userA, userB, db) {
 	);
 
 	return conversationId;
-}
-
-/**
- * Helper function to ensure tables exist
- * Updated schema: receiver_id optional (for legacy), receivers determined by conversation_members
- */
-async function ensureTablesExist(db) {
-	try {
-		// Check if messages table exists
-		const [tables] = await db.execute(`SHOW TABLES LIKE 'messages'`);
-		if (tables.length === 0) {
-			// Create messages table - receiver_id kept for legacy but nullable
-			// Receivers now determined by conversation_members table
-			await db.execute(`
-        CREATE TABLE IF NOT EXISTS messages (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          sender_id INT NOT NULL,
-          receiver_id INT DEFAULT NULL,
-          conversation_id BIGINT NOT NULL,
-          subject VARCHAR(255) NOT NULL,
-          body TEXT,
-          related_module ENUM('lead', 'client', 'project', 'employee', 'company', 'proposal', 'none') DEFAULT 'none',
-          related_id INT DEFAULT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_sender (sender_id),
-          INDEX idx_conversation (conversation_id),
-          INDEX idx_created_at (created_at)
-        )
-      `);
-		} else {
-			// Table exists - ensure receiver_id is nullable for group chats
-			try {
-				await db.execute(
-					`ALTER TABLE messages MODIFY COLUMN receiver_id INT DEFAULT NULL`
-				);
-			} catch (alterErr) {
-				// Column might already be nullable or other constraint issue
-				console.log('Could not alter receiver_id column:', alterErr.message);
-			}
-		}
-
-		// Create message_attachments table
-		await db.execute(`
-        CREATE TABLE IF NOT EXISTS message_attachments (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          message_id INT NOT NULL,
-          file_name VARCHAR(255) NOT NULL,
-          original_name VARCHAR(255) NOT NULL,
-          file_path VARCHAR(500) NOT NULL,
-          file_type VARCHAR(100) NOT NULL,
-          file_size INT NOT NULL,
-          uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_message (message_id)
-        )
-      `);
-
-		// Create conversations table
-		await db.execute(`
-        CREATE TABLE IF NOT EXISTS conversations (
-          id BIGINT AUTO_INCREMENT PRIMARY KEY,
-          type ENUM('direct', 'group', 'project') NOT NULL DEFAULT 'direct',
-          related_module VARCHAR(50) DEFAULT NULL,
-          related_id INT DEFAULT NULL,
-          title VARCHAR(255) DEFAULT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_type (type),
-          INDEX idx_related (related_module, related_id)
-        )
-      `);
-
-		// Create conversation_members table
-		await db.execute(`
-        CREATE TABLE IF NOT EXISTS conversation_members (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          conversation_id BIGINT NOT NULL,
-          user_id INT NOT NULL,
-          last_read_at DATETIME DEFAULT NULL,
-          is_archived BOOLEAN DEFAULT FALSE,
-          is_muted BOOLEAN DEFAULT FALSE,
-          joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE KEY unique_member (conversation_id, user_id),
-          INDEX idx_user_conversations (user_id, conversation_id),
-          FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-        )
-      `);
-	} catch (error) {
-		console.error('Error ensuring message tables exist:', error);
-		throw error;
-	}
 }

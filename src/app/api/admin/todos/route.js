@@ -34,25 +34,6 @@ export async function GET(request) {
 
 		db = await dbConnect();
 
-		// Ensure todos table exists
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS todos (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        user_id INT NOT NULL,
-        title VARCHAR(255) NOT NULL,
-        description TEXT DEFAULT NULL,
-        priority ENUM('low', 'medium', 'high') DEFAULT 'medium',
-        status ENUM('pending', 'in_progress', 'completed') DEFAULT 'pending',
-        due_date DATE DEFAULT NULL,
-        completed_at TIMESTAMP NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_user_id (user_id),
-        INDEX idx_status (status),
-        INDEX idx_due_date (due_date)
-      )
-    `);
-
 		const { searchParams } = new URL(request.url);
 		const status = searchParams.get('status');
 		const userId = searchParams.get('user_id');

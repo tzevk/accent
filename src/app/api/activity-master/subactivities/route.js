@@ -6,16 +6,6 @@ export async function GET() {
 	let db;
 	try {
 		db = await dbConnect();
-		await db.execute(`CREATE TABLE IF NOT EXISTS sub_activities (
-      id VARCHAR(36) PRIMARY KEY,
-      activity_id VARCHAR(36) NOT NULL,
-      name VARCHAR(255) NOT NULL,
-      default_duration DECIMAL(10,2) DEFAULT 0,
-      default_manhours DECIMAL(10,2) DEFAULT 0,
-      default_rate DECIMAL(10,2) DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
 		const [subActivities] = await db.execute(
 			'SELECT id, activity_id, name, default_duration, default_manhours, default_rate, created_at, updated_at FROM sub_activities ORDER BY name'
 		);
@@ -57,15 +47,6 @@ export async function POST(request) {
 
 		const id = randomUUID();
 		db = await dbConnect();
-		await db.execute(`CREATE TABLE IF NOT EXISTS sub_activities (
-      id VARCHAR(36) PRIMARY KEY,
-      activity_id VARCHAR(36) NOT NULL,
-      name VARCHAR(255) NOT NULL,
-      default_duration DECIMAL(10,2) DEFAULT 0,
-      default_manhours DECIMAL(10,2) DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
 		await db.execute(
 			'INSERT INTO sub_activities (id, activity_id, name, default_duration, default_manhours, default_rate) VALUES (?, ?, ?, ?, ?, ?)',
 			[id, activity_id, name, default_duration, default_manhours, default_rate]

@@ -31,25 +31,6 @@ const ALLOWED_EXTENSIONS = [
 ];
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
-// Ensure the entity_documents table exists
-async function ensureTable() {
-	await query(`
-    CREATE TABLE IF NOT EXISTS entity_documents (
-      id VARCHAR(36) PRIMARY KEY,
-      entity_type ENUM('project','purchase_order','invoice') NOT NULL,
-      entity_id INT NOT NULL,
-      original_name VARCHAR(255) NOT NULL,
-      file_name VARCHAR(255) NOT NULL,
-      file_url VARCHAR(500) NOT NULL,
-      file_type VARCHAR(100),
-      file_size INT DEFAULT 0,
-      uploaded_by INT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_entity (entity_type, entity_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `);
-}
-
 /**
  * POST /api/document-upload
  * Upload a document for a project, purchase order, or invoice.
@@ -134,8 +115,7 @@ export async function POST(request) {
 		const buffer = Buffer.from(bytes);
 		await writeFile(filePath, buffer);
 
-		// Ensure DB table exists and insert record
-		await ensureTable();
+		// Insert record
 		const docId = uuidv4();
 		await query(
 			`INSERT INTO entity_documents (id, entity_type, entity_id, original_name, file_name, file_url, file_type, file_size, uploaded_by)
@@ -198,7 +178,6 @@ export async function GET(request) {
 			);
 		}
 
-		await ensureTable();
 		const [rows] = await query(
 			`SELECT * FROM entity_documents WHERE entity_type = ? AND entity_id = ? ORDER BY created_at DESC`,
 			[entityType, entityId]
@@ -237,8 +216,6 @@ export async function DELETE(request) {
 				{ status: 400 }
 			);
 		}
-
-		await ensureTable();
 
 		// Get file info before deleting
 		const [docs] = await query(`SELECT * FROM entity_documents WHERE id = ?`, [

@@ -11,44 +11,6 @@ import {
 // Table schema (created lazily): project_documents
 // Fields: id (uuid), project_id (int fk projects.id), name, doc_master_id (nullable, references documents_master.id), file_url, thumb_url, description, status, metadata (JSON), created_at, updated_at
 
-async function ensureTable(db) {
-	// project_documents table should already exist with proper foreign keys
-	// created by the fix-project-documents-fk.js script. This function just
-	// ensures it exists with a basic structure if it somehow doesn't.
-
-	const [tableCheck] = await db.execute(
-		`SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES 
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_documents'`
-	);
-
-	if (tableCheck[0].cnt === 0) {
-		console.warn(
-			'project_documents table does not exist. Creating basic structure...'
-		);
-		// Note: doc_master_id is int(11) to match documents_master.id, not VARCHAR(36)
-		await db.execute(`
-      CREATE TABLE IF NOT EXISTS project_documents (
-        id VARCHAR(36) PRIMARY KEY,
-        project_id INT(11) NOT NULL,
-        doc_master_id INT(11) NULL,
-        name VARCHAR(255) NOT NULL,
-        file_url VARCHAR(500),
-        thumb_url VARCHAR(500),
-        description TEXT,
-        status VARCHAR(50) DEFAULT 'active',
-        metadata JSON,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_project_id (project_id),
-        INDEX idx_doc_master_id (doc_master_id)
-      ) ENGINE=InnoDB
-    `);
-		console.log(
-			'Created project_documents table without foreign keys (add them manually if needed)'
-		);
-	}
-}
-
 export async function GET(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
@@ -64,7 +26,6 @@ export async function GET(request) {
 		const { searchParams } = new URL(request.url);
 		const projectId = searchParams.get('project_id');
 		db = await dbConnect();
-		await ensureTable(db);
 
 		let rows;
 		if (projectId) {
@@ -130,7 +91,6 @@ export async function POST(request) {
 			);
 		}
 		db = await dbConnect();
-		await ensureTable(db);
 
 		// Ensure project exists
 		const [proj] = await db.execute('SELECT id FROM projects WHERE id = ?', [
@@ -204,7 +164,6 @@ export async function PUT(request) {
 			);
 		}
 		db = await dbConnect();
-		await ensureTable(db);
 		await db.execute(
 			`UPDATE project_documents SET
          name = COALESCE(?, name),
@@ -265,7 +224,6 @@ export async function DELETE(request) {
 			);
 		}
 		db = await dbConnect();
-		await ensureTable(db);
 		await db.execute('DELETE FROM project_documents WHERE id = ?', [id]);
 
 		return NextResponse.json({

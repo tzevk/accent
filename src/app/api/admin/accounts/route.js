@@ -27,32 +27,6 @@ export async function GET(request) {
 
 		connection = await dbConnect();
 
-		// Check if table exists, create if not
-		await connection.execute(`
-      CREATE TABLE IF NOT EXISTS account_transactions (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        transaction_id VARCHAR(50) UNIQUE NOT NULL,
-        description VARCHAR(500),
-        category VARCHAR(100),
-        type ENUM('income', 'expense', 'transfer') DEFAULT 'expense',
-        amount DECIMAL(15, 2) DEFAULT 0,
-        reference VARCHAR(255),
-        account_from VARCHAR(100),
-        account_to VARCHAR(100),
-        transaction_date DATE,
-        notes TEXT,
-        attachments JSON,
-        status ENUM('completed', 'pending', 'cancelled') DEFAULT 'completed',
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_type (type),
-        INDEX idx_status (status),
-        INDEX idx_transaction_date (transaction_date),
-        INDEX idx_created_at (created_at)
-      )
-    `);
-
 		// Build query
 		let query = 'SELECT * FROM account_transactions WHERE 1=1';
 		const params = [];

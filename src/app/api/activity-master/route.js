@@ -7,8 +7,6 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 
-let _activityMasterSchemaReady = false;
-
 export async function GET(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
@@ -22,36 +20,6 @@ export async function GET(request) {
 	let db;
 	try {
 		db = await dbConnect();
-		if (!_activityMasterSchemaReady) {
-			// Ensure base tables exist
-			await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
-      id VARCHAR(36) PRIMARY KEY,
-      function_name VARCHAR(255) NOT NULL,
-      status VARCHAR(20) DEFAULT 'active',
-      description TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
-			await db.execute(`CREATE TABLE IF NOT EXISTS activities_master (
-      id VARCHAR(36) PRIMARY KEY,
-      function_id VARCHAR(36) NOT NULL,
-      activity_name VARCHAR(255) NOT NULL,
-      default_manhours DECIMAL(10,2) DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
-
-			// Add default_manhours column if it doesn't exist
-			try {
-				await db.execute(
-					`ALTER TABLE activities_master ADD COLUMN default_manhours DECIMAL(10,2) DEFAULT 0`
-				);
-			} catch (e) {
-				// Column already exists, ignore
-			}
-			_activityMasterSchemaReady = true;
-		} // end schema check
-
 		const [functions] = await db.execute(
 			'SELECT id, function_name, status, description, created_at, updated_at FROM functions_master ORDER BY function_name'
 		);
@@ -151,14 +119,6 @@ export async function POST(request) {
 
 		const id = randomUUID();
 		db = await dbConnect();
-		await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
-      id VARCHAR(36) PRIMARY KEY,
-      function_name VARCHAR(255) NOT NULL,
-      status VARCHAR(20) DEFAULT 'active',
-      description TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
 		await db.execute(
 			'INSERT INTO functions_master (id, function_name, status, description) VALUES (?, ?, ?, ?)',
 			[id, function_name, status, description]

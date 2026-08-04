@@ -162,36 +162,6 @@ export async function POST(request) {
 
 		connection = await dbConnect();
 
-		// Create table if it doesn't exist (only runs once due to IF NOT EXISTS)
-		await connection.query(`
-      CREATE TABLE IF NOT EXISTS employee_attendance (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        employee_id INT NOT NULL,
-        attendance_date DATE NOT NULL,
-        status VARCHAR(20) DEFAULT 'P',
-        overtime_hours DECIMAL(5, 2) DEFAULT 0,
-        is_weekly_off TINYINT(1) DEFAULT 0,
-        remarks TEXT,
-        in_time TIME,
-        out_time TIME,
-        idle_time INT DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_emp_date (employee_id, attendance_date),
-        INDEX idx_attendance_date (attendance_date),
-        INDEX idx_employee_id (employee_id)
-      )
-    `);
-
-		// Add idle_time column if it doesn't exist (for existing tables)
-		try {
-			await connection.query(
-				`ALTER TABLE employee_attendance ADD COLUMN idle_time INT DEFAULT 0 AFTER out_time`
-			);
-		} catch (e) {
-			// Column already exists – ignore
-		}
-
 		// Process in smaller batches of 50 records to avoid query size limits
 		const BATCH_SIZE = 50;
 		let totalProcessed = 0;
@@ -238,32 +208,6 @@ export async function POST(request) {
 		}
 
 		// --- Update monthly summary for each employee ---
-		// Create summary table if not exists
-		await connection.query(`
-      CREATE TABLE IF NOT EXISTS employee_attendance_summary (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        employee_id INT NOT NULL,
-        month VARCHAR(7) NOT NULL,
-        total_present INT DEFAULT 0,
-        total_absent INT DEFAULT 0,
-        total_weekly_off INT DEFAULT 0,
-        total_holiday INT DEFAULT 0,
-        total_privilege_leave INT DEFAULT 0,
-        total_casual_leave INT DEFAULT 0,
-        total_sick_leave INT DEFAULT 0,
-        total_lwp INT DEFAULT 0,
-        total_half_day INT DEFAULT 0,
-        total_overtime_hours DECIMAL(8,2) DEFAULT 0,
-        total_working_hours DECIMAL(8,2) DEFAULT 0,
-        std_in_time TIME,
-        std_out_time TIME,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_emp_month (employee_id, month),
-        INDEX idx_month (month)
-      )
-    `);
-
 		// Compute per-employee summary from the saved records for this month
 		const monthKey = body.month;
 		if (monthKey) {
@@ -391,7 +335,7 @@ export async function POST(request) {
 		if (connection && typeof connection.release === 'function') {
 			try {
 				connection.release();
-			} catch (_) {
+			} catch {
 				/* ignore */
 			}
 		}

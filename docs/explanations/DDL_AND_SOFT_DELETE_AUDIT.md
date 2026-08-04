@@ -1,99 +1,28 @@
 # DDL & Soft Delete Audit
 
-> Generated from `src/app/api/` — run `grep` to refresh.
+> Generated from `src/app/api/` — run `grep` to refresh. State verified 2026-08-04.
 
 **Knex migrations are now the single source of truth for schema.** `schema-init.js` is deprecated. All new DDL goes into `migrations/*.js` (see `AGENTS.md` for commands).
 
 ## 1. Inline DDL in API Routes
 
-50 files run `CREATE TABLE IF NOT EXISTS` and/or `ALTER TABLE` in request handlers. These should be migrated to knex migration files.
+0 files still run `CREATE TABLE IF NOT EXISTS` and/or `ALTER TABLE` in request handlers (down from 50). The baseline migration below guarantees the schema, so no inline DDL remains.
 
 ### Already has a knex baseline migration ✅
 
-All tables are covered by `migrations/20260722080106_baseline_schema.js` (110 tables from prod dump). This ensures tables exist on fresh DBs. Inline DDL in API routes is redundant but harmless — strip it as you touch each route.
+All tables are covered by `migrations/20260722080106_baseline_schema.js` (110 tables from prod dump). This ensures tables exist on fresh DBs. Inline DDL in API routes is redundant — strip it as you touch each route.
 
-### Already migrated to `schema-init.js` (legacy, now superseded by knex) 🗄️
+### Cleaned since the audit ✅
 
-| API Route                                   | Tables Previously Created/Altered                                         |
-| ------------------------------------------- | ------------------------------------------------------------------------- |
-| `petty-cash-expenses/route.ts`              | `petty_cash_expenses` (DDL + ensureTable)                                 |
-| `petty-cash-expenses/[id]/route.ts`         | — (no DDL, just added isDelete guard)                                     |
-| `cash-vouchers/route.js`                    | `cash_vouchers` (CREATE + ALTER), `petty_cash_expenses` (CREATE + ALTER)  |
-| `cash-vouchers/[id]/route.js`               | — (no DDL, just cascade soft-delete)                                      |
-| `cash-vouchers/next-number/route.js`        | `cash_vouchers` (CREATE)                                                  |
-| `admin/invoices/route.js`                   | `purchase_orders`, `invoices` (DDL + isDelete)                            |
-| `admin/invoices/[id]/route.js`              | `purchase_orders`, `invoices` (DDL + isDelete)                            |
-| `admin/invoices/download/route.js`          | `purchase_orders`, `invoices` (DDL + isDelete)                            |
-| `admin/invoices/po-balance/route.js`        | `purchase_orders`, `invoices` (DDL + isDelete)                            |
-| `admin/payment-entries/route.js`            | `payment_entries` (CREATE + 11 ALTER + INDEX)                             |
-| `admin/purchase-orders/route.js`            | `purchase_orders` (CREATE + 12 ALTER + INDEX + DROP legacy column)        |
-| `admin/purchase-orders/download/route.js`   | — (no DDL, only queries with isDelete check)                              |
-| `admin/quotations/route.js`                 | `quotations`, `project_quotations` (CREATE + 12 ALTER)                    |
-| `admin/quotations/[id]/route.js`            | `project_quotations`, `quotations` (60 ALTERs across 2 tables)            |
-| `admin/quotations/[id]/project/route.js`    | `quotations` (CREATE + ALTER + INDEX)                                     |
-| `admin/standalone-quotations/route.js`      | `quotations` (CREATE + 48 ALTER + 2 MODIFY + INDEX)                       |
-| `admin/standalone-quotations/[id]/route.js` | `quotations` (CREATE + 48 ALTER + 2 MODIFY + INDEX)                       |
-| `admin/quotations/[id]/route.js` (PUT)      | `proposals` (25 ALTER cols for quotation fields)                          |
-| `proposals/route.js`                        | `proposals` (38 ALTER via dead `ensureProposalColumns()`)                 |
-| `proposals/[id]/route.js`                   | `proposals` (50+ ALTER via module guard + MODIFY status + ALTER projects) |
-| `proposals/[id]/followups/route.js`         | `proposal_followups` (CREATE TABLE per GET/POST)                          |
-| `projects/[id]/route.js`                    | `projects` (LONGTEXT/TEXT auto-migration + user_activity_assignments DDL) |
-| `projects/[id]/followups/route.js`          | `project_followups` (CREATE TABLE + ALTER logged_by per GET)              |
-| `projects/[id]/invoice/route.js`            | `project_invoices` (CREATE TABLE + 8 ALTERs per GET/POST/PUT)             |
-| `projects/[id]/purchase-order/route.js`     | `project_purchase_orders` (CREATE TABLE + MODIFY per GET/POST)            |
-| `projects/[id]/quotation/route.js`          | `project_quotations` (CREATE TABLE + ALTER client_name per GET/POST)      |
-| `projects/mom-upload/route.js`              | `project_mom_documents` (CREATE TABLE per GET/POST)                       |
+Inline DDL was removed from these routes (previously listed under the schema-init legacy and module-guard tables):
 
-### Unguarded — runs on EVERY request (HIGH priority)
+`payroll/salary-profile/route.js` (was the sole Phase-1 unguarded route — CREATE + 35+ ALTERs/MODIFYs stripped, verified against live DB), `activities/route.js` (CREATE ×2 + ALTER `default_manhours` stripped), `attendance/route.js` (CREATE ×2 + ALTER `idle_time` stripped — upsert unique keys verified in baseline), `messages/route.js` (SHOW TABLES + 4 CREATEs + ALTER `receiver_id` stripped — was the top remaining per-request DDL offender), `admin/outgoing-quotations/route.js` (CREATE + 2 ALTER + 2 index migrations stripped; the `unique_active_quotation` composite it used to create at runtime is now a knex migration — `20260804120000_add_unique_active_quotation_index.js`), `admin/outgoing-purchase-orders/route.ts` (CREATE ×2 stripped — `unique_active_po` composite already in baseline, no migration needed), `masters/holidays/route.js` (CREATE ×2 stripped), `petty-cash-expenses/**`, `cash-vouchers/**`, `admin/invoices/**`, `admin/payment-entries/**`, `admin/purchase-orders/**`, `admin/quotations/**`, `admin/standalone-quotations/**`, `proposals/**`, `projects/[id]/**` (followups, invoice, purchase-order, quotation, mom-upload), `admin/payment-payables/**`, `admin/payment-receivables/**`, `admin/material-requisitions/**`, `admin/expenses/**`, `admin/other-expenses/**`, `admin/purchase-invoices/**`, `users/route.js`, `employees/route.js`, `vendors/route.js`, `tickets/route.js`, `followups/route.js`, `software/route.js`, `software-versions/route.js`, `software-master/route.js`, `masters/banks/route.js`, `activity-master/activities/route.js`, `admin/outgoing-purchase-orders/download/route.ts`
 
-| File                              | Tables Created/Altered                         |
-| --------------------------------- | ---------------------------------------------- |
-| `payroll/salary-profile/route.js` | `employee_salary_profile` (35+ ALTER + MODIFY) |
+Final 14 routes (2026-08-04): `todos/route.js`, `admin/todos/route.js`, `document-master/route.js`, `document-upload/route.js`, `project-docs/route.js`, `masters/accounts/route.js`, `masters/account-heads/route.js`, `admin/accounts/route.js`, `audit-logs/route.js`, `roles/route.js`, `activity-master/subactivities/route.js`, `activity-master/route.js`, `settings/profile/route.js`, `users/[id]/activity-assignments/route.js`. No migrations required — the baseline already covers all tables and unique keys. `support_tickets` enum values and `sub_activities` column types are pre-existing drift (route DDL was always an `IF NOT EXISTS` no-op after baseline) and are unchanged.
 
-### Has module-level guard — runs at most once per process (LOWER priority)
+### Remaining inline DDL
 
-| File                                               | Tables Created/Altered                                                     |
-| -------------------------------------------------- | -------------------------------------------------------------------------- |
-| `users/[id]/activity-assignments/route.js`         | `support_tickets`                                                          |
-| `followups/route.js`                               | `follow_ups`                                                               |
-| `attendance/route.js`                              | `employee_attendance`, `employee_attendance_summary`                       |
-| `activities/route.js`                              | `functions_master`, `activities_master`                                    |
-| `activity-master/route.js`                         | `functions_master`, `activities_master`                                    |
-| `messages/route.js`                                | `messages`, `message_attachments`, `conversations`, `conversation_members` |
-| `software/route.js`                                | `softwares`                                                                |
-| `software-versions/route.js`                       | `software_versions`                                                        |
-| `software-master/route.js`                         | `software_categories`, `softwares`, `software_versions`                    |
-| `masters/holidays/route.js`                        | `holiday_master`                                                           |
-| `masters/banks/route.js`                           | `bank_master`                                                              |
-| `masters/accounts/route.js`                        | `account_master`                                                           |
-| `masters/account-heads/route.js`                   | `account_head_master`                                                      |
-| `admin/outgoing-quotations/route.js`               | `outgoing_quotations`                                                      |
-| `admin/outgoing-purchase-orders/route.ts`          | `outgoing_purchase_orders`                                                 |
-| `admin/expenses/route.js`                          | `expenses`                                                                 |
-| `admin/other-expenses/route.ts`                    | `other_expenses`                                                           |
-| `admin/payment-payables/route.js`, `[id]`          | `payment_payables`                                                         |
-| `admin/payment-receivables/route.js`, `[id]`       | `payment_receivables`                                                      |
-| `admin/material-requisitions/next-number/route.js` | `material_requisitions`                                                    |
-| `admin/todos/route.js`                             | `todos`                                                                    |
-| `document-master/route.js`                         | `documents_master`                                                         |
-| `document-upload/route.js`                         | `entity_documents`                                                         |
-| `project-docs/route.js`                            | `project_documents`                                                        |
-| `audit-logs/route.js`                              | `audit_logs`                                                               |
-| `roles/route.js`                                   | `roles`                                                                    |
-| `todos/route.js`                                   | `todos`                                                                    |
-| `projects/mom-upload/route.js`                     | `project_mom_documents`                                                    |
-| `users/route.js`                                   | `users` (CREATE TABLE + 5 ALTERs), `roles` (CREATE TABLE)                  |
-| `employees/route.js`                               | `employees` (CREATE + 48 ALTERs + MODIFY employee_type)                    |
-| `vendors/route.js`                                 | `vendors` (CREATE TABLE + 24 ALTERs + MODIFY payment_terms)                |
-| `tickets/route.js`                                 | `support_tickets`, `ticket_comments` (CREATE TABLE + isDelete)             |
-| `admin/expenses/route.js`                          | `expenses` (CREATE TABLE + isDelete)                                       |
-| `admin/other-expenses/route.ts`                    | `other_expenses` (CREATE TABLE + isDelete)                                 |
-| `admin/accounts/route.js`                          | `account_transactions`                                                     |
-| `admin/purchase-invoices/route.js`                 | `purchase_invoices`                                                        |
-| `settings/profile/route.js`                        | `employees`                                                                |
-| `activity-master/subactivities/route.js`           | `sub_activities`                                                           |
-| `activity-master/activities/route.js`              | `activities_master`                                                        |
-| `admin/outgoing-purchase-orders/download/route.ts` | — (only queries with isDelete check)                                       |
+None remaining.
 
 ---
 
@@ -136,6 +65,8 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 | `softwares`                | `software/**`                                           |
 | `software_versions`        | `software-versions/**`                                  |
 
+> Some already-soft-deleted tables were upgraded beyond `isDelete` (2026-08-03 migrations): `invoices`, `purchase_invoices`, and `payment_issues` now carry `deleted_at`/`deleted_by` audit columns; `invoices`/`purchase_invoices` uniqueness is re-scoped to active rows via a generated `active_invoice_number` column (removes the `-DEL` rename workaround in the invoices DELETE handler).
+
 ### Hard delete — critical data (HIGH priority)
 
 | Table | API Route(s) | Delete Pattern |
@@ -144,30 +75,35 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 ### Hard delete — master/utility data (LOWER priority)
 
 > **Note:** `user_activity_assignments` is intentionally excluded from soft-delete conversion. The table uses a sync-replacement pattern (`DELETE FROM ... WHERE project_id = ?` followed by batch INSERT) when saving project activities — this is an atomic rebuild, not a user-facing delete. Adding `isDelete` to this table would require refactoring the sync logic to use UPSERT instead of DELETE+INSERT, which is a larger architectural change beyond the scope of straightforward soft-delete migration.
+>
+> `salary_structure_components` is excluded for the same reason — it is rebuilt (DELETE + batch INSERT) whenever a salary structure is saved. The user-facing delete in that flow is `salary_structures` itself, which IS listed below.
+>
+> `payroll_slips` also has a full-wipe `DELETE FROM payroll_slips` (no WHERE) in the "delete all slips" reset handler.
 
-| Table                                 | API Route(s)                                                 |
-| ------------------------------------- | ------------------------------------------------------------ |
-| `todos`                               | `todos/route.js`, `admin/todos/route.js`                     |
-| `categories` (category_master)        | `masters/categories/route.js`                                |
-| `descriptions` (description_master)   | `masters/descriptions/route.js`                              |
-| `holidays` (holiday_master)           | `masters/holidays/route.js`                                  |
-| `accounts` (account_master)           | `masters/accounts/route.js`                                  |
-| `account_heads` (account_head_master) | `masters/account-heads/route.js`                             |
-| `roles`                               | `roles/route.js`                                             |
-| `activities_master`                   | `activities/route.js`, `activity-master/activities/route.js` |
-| `functions_master`                    | `activity-master/route.js`                                   |
-| `sub_activities`                      | `activity-master/subactivities/route.js`                     |
-| `documents_master`                    | `document-master/route.js`                                   |
-| `entity_documents`                    | `document-upload/route.js`                                   |
-| `project_documents`                   | `project-docs/route.js`                                      |
-| `user_work_logs`                      | `work-logs/route.js`                                         |
-| `project_activities`                  | `projects/[id]/activities/route.js`                          |
-| `salary_structures`                   | `employees/[id]/salary-structure/route.js`                   |
-| `payroll_schedules`                   | `payroll/schedules/route.js`                                 |
-| `payroll_slips`                       | `payroll/slips/route.js`                                     |
-| `employee_salary_profile`             | `payroll/salary-profile/route.js`                            |
-| `da_schedule`                         | `payroll/da-schedule/route.js`                               |
-| `attendance_monthly`                  | `attendance/monthly/route.js`                                |
+| Table                                 | API Route(s)                                                                                                                       |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `todos`                               | `todos/route.js` (`admin/todos/route.js` has no DELETE handler)                                                                    |
+| `categories` (category_master)        | `masters/categories/route.js`                                                                                                      |
+| `descriptions` (description_master)   | `masters/descriptions/route.js`                                                                                                    |
+| `holidays` (holiday_master)           | `masters/holidays/route.js`                                                                                                        |
+| `accounts` (account_master)           | `masters/accounts/route.js`                                                                                                        |
+| `account_heads` (account_head_master) | `masters/account-heads/route.js`                                                                                                   |
+| `roles`                               | `roles/route.js`                                                                                                                   |
+| `activities_master`                   | `activities/route.js`, `activity-master/activities/route.js`                                                                       |
+| `functions_master`                    | `activity-master/route.js`                                                                                                         |
+| `sub_activities`                      | `activity-master/subactivities/route.js`                                                                                           |
+| `documents_master`                    | `document-master/route.js`                                                                                                         |
+| `entity_documents`                    | `document-upload/route.js`                                                                                                         |
+| `project_documents`                   | `project-docs/route.js`                                                                                                            |
+| `user_work_logs`                      | `work-logs/route.js`                                                                                                               |
+| `project_activities`                  | `projects/[id]/activities/route.js`                                                                                                |
+| `salary_structures`                   | `employees/[id]/salary-structure/route.js`                                                                                         |
+| `payroll_schedules`                   | `payroll/schedules/route.js`                                                                                                       |
+| `payroll_slips`                       | `payroll/slips/route.js`                                                                                                           |
+| `employee_salary_profile`             | `payroll/salary-profile/route.js`                                                                                                  |
+| `da_schedule`                         | `payroll/da-schedule/route.js`                                                                                                     |
+| `attendance_monthly`                  | `attendance/monthly/route.js`                                                                                                      |
+| `bank_master`                         | `masters/banks/route.js` — **missed by the original audit**; no `isDelete` column in baseline, hard delete on every DELETE request |
 
 ---
 
@@ -188,22 +124,15 @@ Step 4: Update SELECT/UPDATE queries to filter by isDelete = 0 (if applicable)
 
 ## 4. Plan: remove remaining inline DDL from API routes
 
-Since the baseline migration already covers all 110 tables, every inline `CREATE TABLE IF NOT EXISTS` is redundant. Strip it inline when touching a route; no dedicated migration run is needed for removal.
+Since the baseline migration already covers all 110 tables, every inline `CREATE TABLE IF NOT EXISTS` is redundant. Strip it; no dedicated migration run is needed for removal.
 
 ### Phased approach
 
-**Phase 1 — Unguarded (runs on every request):**
-Remove DDL from `payroll/salary-profile/route.js` (35+ ALTERs + MODIFYs on every call). This has the highest perf impact.
+**Phase 1 — Unguarded (runs on every request):** ✅ COMPLETE — all 13 unguarded routes stripped (`payroll/salary-profile/route.js`, `activities/route.js`, `attendance/route.js`, `messages/route.js`, `admin/outgoing-quotations/route.js`, `admin/outgoing-purchase-orders/route.ts`, `masters/holidays/route.js`, and the 13 single-table CREATE routes listed in Section 1).
 
-**Phase 2 — Module-level guard routes (runs once per process):**
-Each file below has a `let tableEnsured = false` guard. The DDL fires on the first request per process, then never again. Low risk, low urgency — strip when touching the route:
+**Phase 2 — Guarded (runs once per process):** ✅ COMPLETE — `activity-master/route.js` stripped (module guard, GET wrapper, and POST `functions_master` CREATE removed; defensive try/catches kept).
 
-`attendance/route.js`, `activities/route.js`, `activity-master/route.js`, `messages/route.js`, `masters/holidays/route.js`, `masters/accounts/route.js`, `masters/account-heads/route.js`, `admin/outgoing-quotations/route.js`, `admin/outgoing-purchase-orders/route.ts`, `admin/todos/route.js`, `document-master/route.js`, `document-upload/route.js`, `project-docs/route.js`, `audit-logs/route.js`, `roles/route.js`, `todos/route.js`, `activity-master/subactivities/route.js`, `admin/accounts/route.js`
-
-**Phase 3 — Routes already migrated to schema-init.js (legacy):**
-These passed through the old `schema-init.js` pattern. Baseline migration covers the tables; strip DDL as you touch each route:
-
-`petty-cash-expenses/route.ts`, `cash-vouchers/**`, `admin/invoices/**`, `admin/payment-entries/**`, `admin/purchase-orders/**`, `admin/quotations/**`, `admin/standalone-quotations/**`, `proposals/**`, `projects/[id]/**` (followups, invoice, purchase-order, quotation, mom-upload), `admin/payment-payables/**`, `admin/payment-receivables/**`, `admin/material-requisitions/**`, `admin/expenses/**`, `admin/other-expenses/**`, `admin/purchase-invoices/**`, `users/route.js`, `employees/route.js`, `vendors/route.js`, `tickets/route.js`, `settings/profile/route.js`
+**Phase 3 — Legacy routes already cleaned:** ✅ COMPLETE — the old schema-init list is done; `settings/profile/route.js` was stripped with Phase 1.
 
 ### What to remove
 
@@ -216,4 +145,9 @@ All of it — the baseline migration guarantees every table and column already e
 ### What NOT to touch in this cleanup
 
 - `src/utils/schema-init.js` — dead but harmless; delete it wholesale in a separate PR rather than inline-editing it across 50 route files.
-- DDL in `src/utils/activity-logger.js` — it creates `user_screen_time` at startup. Migrate that table to a knex migration first, then remove the DDL.
+- DDL in `src/utils/activity-logger.js` — it creates `user_screen_time` at startup. **No knex migration exists for `user_screen_time` yet** — create one first, then remove the DDL.
+
+### Follow-ups
+
+- **`hasColumn()` query-branching still live in 4 files:** `analytics/projects/route.js` (`projects.budget`), `projects/route.js` (`company_id`), `projects/[id]/status/route.js` (`project_status`/`status`), `projects/[id]/route.js` (`project_id`/`project_code`). All guarded columns exist in baseline — inline the truth.
+- **`users/route.js.backup`** — stale backup containing old CREATE/ALTER/DELETE code for `users`/`roles_master`; delete.

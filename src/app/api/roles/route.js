@@ -7,19 +7,6 @@ import {
 	invalidateUserCache,
 } from '@/utils/api-permissions';
 
-async function ensureRolesTable(db) {
-	await db.execute(`
-    CREATE TABLE IF NOT EXISTS roles (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      role_key VARCHAR(100) UNIQUE NOT NULL,
-      display_name VARCHAR(255),
-      permissions JSON,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `);
-}
-
 export async function GET(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
@@ -33,7 +20,6 @@ export async function GET(request) {
 	let db;
 	try {
 		db = await dbConnect();
-		await ensureRolesTable(db);
 
 		const [rows] = await db.execute(
 			'SELECT * FROM roles ORDER BY created_at DESC'
@@ -73,7 +59,6 @@ export async function POST(request) {
 			);
 
 		db = await dbConnect();
-		await ensureRolesTable(db);
 
 		const [existing] = await db.execute(
 			'SELECT id FROM roles WHERE role_key = ? LIMIT 1',
@@ -133,7 +118,6 @@ export async function PUT(request) {
 			);
 
 		db = await dbConnect();
-		await ensureRolesTable(db);
 
 		const [existing] = await db.execute(
 			'SELECT id FROM roles WHERE id = ? LIMIT 1',
@@ -219,7 +203,6 @@ export async function DELETE(request) {
 			);
 
 		db = await dbConnect();
-		await ensureRolesTable(db);
 		const [existing] = await db.execute(
 			'SELECT id FROM roles WHERE id = ? LIMIT 1',
 			[id]

@@ -4,38 +4,6 @@ import { getCurrentUser } from '@/utils/api-permissions';
 import { randomUUID } from 'crypto';
 import { isUserInProjectTeam } from '@/utils/project-access';
 
-async function ensureTicketsTable(connection) {
-	await connection.execute(`
-    CREATE TABLE IF NOT EXISTS support_tickets (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      ticket_number VARCHAR(20) UNIQUE NOT NULL,
-      user_id INT NOT NULL,
-      title VARCHAR(255) NOT NULL,
-      description TEXT NOT NULL,
-      category ENUM('payroll', 'leave', 'policy', 'access_cards', 'seating', 'maintenance', 'general_request', 'confidential') DEFAULT 'general_request',
-      priority ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium',
-      status ENUM('new', 'under_review', 'in_progress', 'waiting_for_employee', 'resolved', 'closed') DEFAULT 'new',
-      screenshots JSON,
-      browser_info TEXT,
-      page_url VARCHAR(500),
-      steps_to_reproduce TEXT,
-      expected_behavior TEXT,
-      actual_behavior TEXT,
-      assigned_to INT,
-      resolution_notes TEXT,
-      resolved_at DATETIME,
-      resolved_by INT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_user_id (user_id),
-      INDEX idx_status (status),
-      INDEX idx_priority (priority),
-      INDEX idx_category (category),
-      INDEX idx_created_at (created_at)
-    )
-  `);
-}
-
 async function generateTicketNumber(connection) {
 	const year = new Date().getFullYear();
 	const month = String(new Date().getMonth() + 1).padStart(2, '0');
@@ -633,8 +601,6 @@ export async function POST(request, { params }) {
 		}
 
 		db = await dbConnect();
-
-		await ensureTicketsTable(db);
 
 		const [projectRows] = await db.execute(
 			`SELECT project_id, name, project_code, project_manager

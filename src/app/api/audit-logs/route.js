@@ -7,30 +7,6 @@ import {
 } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 
-// Ensure audit_logs table exists
-async function ensureAuditLogsTable(db) {
-	await db.execute(`
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      user_id INT NOT NULL,
-      username VARCHAR(255) DEFAULT NULL,
-      action VARCHAR(50) NOT NULL,
-      resource VARCHAR(50) NOT NULL,
-      resource_id INT DEFAULT NULL,
-      old_value JSON DEFAULT NULL,
-      new_value JSON DEFAULT NULL,
-      ip_address VARCHAR(45) DEFAULT NULL,
-      user_agent TEXT DEFAULT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_user_id (user_id),
-      INDEX idx_action (action),
-      INDEX idx_resource (resource),
-      INDEX idx_resource_id (resource_id),
-      INDEX idx_created_at (created_at)
-    )
-  `);
-}
-
 /**
  * GET /api/audit-logs
  * Fetch audit logs with filtering and pagination
@@ -70,7 +46,6 @@ export async function GET(request) {
 		}
 
 		db = await dbConnect();
-		await ensureAuditLogsTable(db);
 
 		const { searchParams } = new URL(request.url);
 		const page = parseInt(searchParams.get('page')) || 1;
@@ -212,7 +187,6 @@ export async function POST(request) {
 		}
 
 		db = await dbConnect();
-		await ensureAuditLogsTable(db);
 
 		// Get IP and user agent from request
 		const forwarded = request.headers.get('x-forwarded-for');

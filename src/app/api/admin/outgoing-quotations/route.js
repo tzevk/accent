@@ -9,80 +9,6 @@ import { logActivity } from '@/utils/activity-logger';
 
 const TABLE = 'outgoing_quotations';
 
-const DDL = `
-  CREATE TABLE IF NOT EXISTS ${TABLE} (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    quotation_number VARCHAR(50) NOT NULL,
-    quotation_date DATE,
-    vendor_name VARCHAR(255) NOT NULL,
-    vendor_email VARCHAR(255),
-    vendor_phone VARCHAR(50),
-    vendor_address TEXT,
-    subject VARCHAR(500),
-    items JSON,
-    subtotal DECIMAL(15, 2) DEFAULT 0,
-    tax_rate DECIMAL(5, 2) DEFAULT 18,
-    tax_amount DECIMAL(15, 2) DEFAULT 0,
-    discount DECIMAL(15, 2) DEFAULT 0,
-    total DECIMAL(15, 2) DEFAULT 0,
-    valid_until DATE,
-    notes TEXT,
-    terms TEXT,
-    status ENUM('draft', 'sent', 'approved', 'rejected', 'expired') DEFAULT 'draft',
-    project_id INT NULL,
-    created_by INT,
-    isDelete TINYINT(1) NOT NULL DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_status (status),
-    INDEX idx_vendor (vendor_name),
-    INDEX idx_isDelete (isDelete)
-  )
-`;
-
-async function ensureTable(db) {
-	await db.execute(DDL);
-
-	const alterStatements = [
-		'ALTER TABLE outgoing_quotations ADD COLUMN isDelete TINYINT(1) NOT NULL DEFAULT 0',
-		'ALTER TABLE outgoing_quotations ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
-	];
-
-	for (const stmt of alterStatements) {
-		try {
-			await db.execute(stmt);
-		} catch (e) {
-			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
-				console.warn(
-					'Outgoing quotations schema update warning:',
-					e.message || e
-				);
-			}
-		}
-	}
-
-	const indexMigrations = [
-		'ALTER TABLE outgoing_quotations DROP INDEX quotation_number',
-		'ALTER TABLE outgoing_quotations ADD UNIQUE KEY unique_active_quotation (quotation_number, isDelete)',
-	];
-
-	for (const stmt of indexMigrations) {
-		try {
-			await db.execute(stmt);
-		} catch (e) {
-			if (
-				!e.message?.includes('check that it exists') &&
-				!e.message?.includes('Duplicate key name')
-			) {
-				console.warn(
-					'Outgoing quotations index migration warning:',
-					e.message || e
-				);
-			}
-		}
-	}
-}
-
 async function nextNumber(db) {
 	const [rows] = await db.execute(
 		`SELECT quotation_number FROM ${TABLE} WHERE quotation_number LIKE 'OQ-%' ORDER BY id DESC LIMIT 1`
@@ -115,7 +41,6 @@ export async function GET(request) {
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
-		await ensureTable(db);
 
 		const where = ['isDelete = 0'];
 		const params = [];
@@ -199,7 +124,6 @@ export async function POST(request) {
 		}
 
 		db = await dbConnect();
-		await ensureTable(db);
 
 		const quotationNumber = body.quotation_number || (await nextNumber(db));
 
