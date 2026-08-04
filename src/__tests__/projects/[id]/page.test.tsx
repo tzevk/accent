@@ -78,6 +78,18 @@ describe('employee project workspace', () => {
 	});
 
 	it('shows the exact nine employee tabs without admin controls', async () => {
+		useSWR.mockReturnValue({
+			data: {
+				success: true,
+				data: {
+					...project,
+					description: 'Private project summary',
+					scope_of_work: 'Visible scope',
+				},
+			},
+			isLoading: false,
+			error: null,
+		});
 		render(<ProjectViewPage />);
 
 		await waitFor(() => {
@@ -88,6 +100,10 @@ describe('employee project workspace', () => {
 		expect(screen.queryByText('Edit Project')).not.toBeInTheDocument();
 		expect(
 			screen.queryByText('Configure Activity Library')
+		).not.toBeInTheDocument();
+		expect(screen.queryByText('Ongoing')).not.toBeInTheDocument();
+		expect(
+			screen.queryByText('Private project summary')
 		).not.toBeInTheDocument();
 		expect(
 			screen.getByRole('link', { name: 'Back to dashboard' })

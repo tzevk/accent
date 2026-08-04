@@ -654,17 +654,21 @@ export default function ProjectViewPage() {
 										<ClipboardDocumentCheckIcon className="h-4 w-4 stroke-2" />
 										Project Overview
 									</span>
-									<span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold uppercase tracking-wider">
-										{project.status || 'Active'}
-									</span>
+									{!isEmployeeWorkspace && (
+										<span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold uppercase tracking-wider">
+											{project.status || 'Active'}
+										</span>
+									)}
 								</div>
 								<h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
 									{project.name}
 								</h1>
-								<p className="text-sm text-gray-500 max-w-2xl leading-relaxed">
-									{project.description ||
-										'No summary provided. Use the edit view to enrich scope details.'}
-								</p>
+								{!isEmployeeWorkspace && (
+									<p className="text-sm text-gray-500 max-w-2xl leading-relaxed">
+										{project.description ||
+											'No summary provided. Use the edit view to enrich scope details.'}
+									</p>
+								)}
 							</div>
 							<div className="flex flex-wrap items-center gap-3 text-sm font-medium relative z-10">
 								{isEmployeeWorkspace && (
