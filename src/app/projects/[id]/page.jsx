@@ -75,7 +75,11 @@ const TAB_CONFIG = [
 	},
 	{ id: 'project_schedule', label: 'Project Schedule', requiresUpdate: true },
 	{ id: 'project_activity', label: 'Project Activity', requiresUpdate: true },
-	{ id: 'documents_issued', label: 'Documents Issued', requiresUpdate: true },
+	{
+		id: 'documents_issued',
+		label: 'List of Deliverables',
+		requiresUpdate: true,
+	},
 	{ id: 'project_handover', label: 'Project Handover', requiresUpdate: true },
 	{ id: 'project_manhours', label: 'Project Manhours', requiresUpdate: true },
 	{ id: 'query_log', label: 'Query Log', requiresUpdate: true },
@@ -131,6 +135,67 @@ function EmployeeEmpty({ children }) {
 		<p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
 			{children}
 		</p>
+	);
+}
+
+// Read-only "List of Deliverables" register — same 15 columns as the edit tab.
+function DeliverablesRegisterTable({ rows }) {
+	const cell = 'py-2 px-2 text-gray-900';
+	const head = 'py-2 px-2 font-semibold text-gray-700';
+	return (
+		<div className="overflow-x-auto border border-gray-200 rounded-lg">
+			<table className="w-full text-xs border-collapse">
+				<thead className="bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
+					<tr>
+						<th className={`text-center ${head}`}>Sr No</th>
+						<th className={`text-left ${head}`}>Document No</th>
+						<th className={`text-left ${head}`}>Discipline</th>
+						<th className={`text-left ${head}`}>Category</th>
+						<th className={`text-left ${head}`}>Deliverable Name</th>
+						<th className={`text-left ${head}`}>Description</th>
+						<th className={`text-left ${head}`}>Revision</th>
+						<th className={`text-left ${head}`}>Status</th>
+						<th className={`text-left ${head}`}>Planned Date</th>
+						<th className={`text-left ${head}`}>Actual Date</th>
+						<th className={`text-left ${head}`}>Prepared By</th>
+						<th className={`text-left ${head}`}>Checked By</th>
+						<th className={`text-left ${head}`}>Approved By</th>
+						<th className={`text-left ${head}`}>Client Approval</th>
+						<th className={`text-left ${head}`}>Remarks</th>
+					</tr>
+				</thead>
+				<tbody>
+					{rows.map((d, index) => (
+						<tr
+							key={d.id || index}
+							className="hover:bg-gray-50 transition-colors align-top"
+						>
+							<td className={`text-center ${cell}`}>{index + 1}</td>
+							<td className={`text-left ${cell}`}>
+								{d.document_number || '—'}
+							</td>
+							<td className={`text-left ${cell}`}>{d.discipline || '—'}</td>
+							<td className={`text-left ${cell}`}>{d.category || '—'}</td>
+							<td className={`text-left ${cell}`}>{d.document_name || '—'}</td>
+							<td className={`text-left ${cell}`}>{d.description || '—'}</td>
+							<td className={`text-left ${cell}`}>
+								{d.revision_number || '—'}
+							</td>
+							<td className={`text-left ${cell}`}>{d.status || '—'}</td>
+							<td className={`text-left ${cell}`}>{d.planned_date || '—'}</td>
+							<td className={`text-left ${cell}`}>{d.actual_date || '—'}</td>
+							<td className={`text-left ${cell}`}>{d.prepared_by || '—'}</td>
+							<td className={`text-left ${cell}`}>{d.checked_by || '—'}</td>
+							<td className={`text-left ${cell}`}>{d.approved_by || '—'}</td>
+							<td className={`text-left ${cell}`}>
+								{d.client_approval || '—'}
+							</td>
+							<td className={`text-left ${cell}`}>{d.remarks || '—'}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
 	);
 }
 
@@ -518,23 +583,37 @@ export default function ProjectViewPage() {
 			? canonical
 			: parseStoredList(project.input_document);
 	}, [project]);
-	const parsedDocumentsIssued = useMemo(() => {
-		if (!project || !project.documents_issued_list) return [];
-		try {
-			return typeof project.documents_issued_list === 'string'
-				? JSON.parse(project.documents_issued_list)
-				: project.documents_issued_list;
-		} catch {
-			return [];
-		}
-	}, [project]);
-
 	const parsedEmployeeDeliverables = useMemo(() => {
 		if (!project) return [];
 		const canonical = parseStoredList(project.documents_issued_list);
 		if (canonical.length > 0) return canonical;
 		return parseStoredList(deliverablesField);
 	}, [deliverablesField, project]);
+
+	// Documents issued / deliverables register — normalized rows with
+	// legacy-key fallbacks so pre-reframe data renders in the same columns.
+	const parsedDeliverablesRegister = useMemo(() => {
+		return parsedEmployeeDeliverables
+			.filter((d) => d && typeof d === 'object')
+			.map((d) => ({
+				...d,
+				document_name:
+					d.document_name || d.name || d.title || d.description || '',
+				document_number: d.document_number || d.number || '',
+				discipline: d.discipline || '',
+				category: d.category || '',
+				description: d.description || '',
+				revision_number: d.revision_number || d.revision || '',
+				status: d.status || d.issued_for || '',
+				planned_date: d.planned_date || '',
+				actual_date: d.actual_date || d.issue_date || d.date || '',
+				prepared_by: d.prepared_by || '',
+				checked_by: d.checked_by || '',
+				approved_by: d.approved_by || '',
+				client_approval: d.client_approval || '',
+				remarks: d.remarks || '',
+			}));
+	}, [parsedEmployeeDeliverables]);
 
 	const parsedProjectHandover = useMemo(() => {
 		if (!project || !project.project_handover_list) return [];
@@ -825,20 +904,31 @@ export default function ProjectViewPage() {
 										)}
 									/>
 								)}
-								{activeTab === 'deliverables' && (
-									<EmployeeListPanel
-										id="deliverables"
-										title="Deliverables"
-										Icon={DocumentTextIcon}
-										items={parsedEmployeeDeliverables}
-										emptyMessage="No deliverables recorded."
-										renderItem={(item, index) => (
-											<p className="whitespace-pre-wrap text-sm text-gray-700">
-												{employeeItemLabel(item, `Deliverable ${index + 1}`)}
-											</p>
-										)}
-									/>
-								)}
+								{activeTab === 'deliverables' &&
+									(parsedDeliverablesRegister.length > 0 ? (
+										<EmployeePanel
+											id="deliverables"
+											title="Deliverables"
+											Icon={DocumentTextIcon}
+										>
+											<DeliverablesRegisterTable
+												rows={parsedDeliverablesRegister}
+											/>
+										</EmployeePanel>
+									) : (
+										<EmployeeListPanel
+											id="deliverables"
+											title="Deliverables"
+											Icon={DocumentTextIcon}
+											items={parsedEmployeeDeliverables}
+											emptyMessage="No deliverables recorded."
+											renderItem={(item, index) => (
+												<p className="whitespace-pre-wrap text-sm text-gray-700">
+													{employeeItemLabel(item, `Deliverable ${index + 1}`)}
+												</p>
+											)}
+										/>
+									))}
 								{activeTab === 'team' && (
 									<EmployeePanel id="team" title="Project Team" Icon={UserIcon}>
 										<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1404,48 +1494,23 @@ export default function ProjectViewPage() {
 							</section>
 						)}
 
-						{/* Documents Issued Tab (read-only) */}
+						{/* Documents Issued Tab (read-only) — deliverables register */}
 						{activeTab === 'documents_issued' && (
 							<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
 								<div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
 									<DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
 									<h2 className="text-base font-bold text-gray-900">
-										Documents Issued
+										List of Deliverables
 									</h2>
 								</div>
-								<div className="px-6 py-5 space-y-3">
-									{parsedDocumentsIssued && parsedDocumentsIssued.length > 0 ? (
-										parsedDocumentsIssued.map((d, i) => (
-											<div
-												key={d.id || i}
-												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-shadow transition-colors hover:shadow-md hover:border-[#7F2487]/30"
-											>
-												<div className="flex items-start justify-between">
-													<div>
-														<h4 className="text-base font-bold text-gray-900">
-															{d.document_name ||
-																d.description ||
-																`Issued ${i + 1}`}
-														</h4>
-														<p className="text-xs text-gray-500 mt-1">
-															Doc No: {d.document_number || d.number || '—'} •
-															Rev: {d.revision_number || d.revision || '—'}
-														</p>
-													</div>
-													<div className="text-sm text-gray-600 text-right">
-														{d.issue_date || d.date || '—'}
-													</div>
-												</div>
-												{d.remarks ? (
-													<p className="mt-2 text-sm text-gray-600 whitespace-pre-line">
-														{d.remarks}
-													</p>
-												) : null}
-											</div>
-										))
+								<div className="px-6 py-5">
+									{parsedDeliverablesRegister.length > 0 ? (
+										<DeliverablesRegisterTable
+											rows={parsedDeliverablesRegister}
+										/>
 									) : (
 										<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
-											No documents issued recorded.
+											No deliverables recorded.
 										</p>
 									)}
 								</div>

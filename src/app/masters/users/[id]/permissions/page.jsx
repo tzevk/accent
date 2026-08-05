@@ -322,6 +322,10 @@ const MODULE_FIELDS = {
 					issued_to: { label: 'Issued To', type: 'text' },
 					revision: { label: 'Revision', type: 'text' },
 					issued_file: { label: 'Document File', type: 'file' },
+					prepared_by: { label: 'Prepared By', type: 'text' },
+					checked_by: { label: 'Checked By', type: 'text' },
+					approved_by: { label: 'Approved By', type: 'text' },
+					client_approval: { label: 'Client Approval', type: 'text' },
 				},
 			},
 			project_handover: {
@@ -752,6 +756,19 @@ const MODULE_FIELDS = {
 					version_number: { label: 'Version Number', type: 'text' },
 					release_date: { label: 'Release Date', type: 'date' },
 					is_active: { label: 'Is Active', type: 'boolean' },
+				},
+			},
+		},
+	},
+	deliverables: {
+		name: 'Deliverables Master',
+		description: 'Manage the deliverables master list',
+		category: 'master',
+		sections: {
+			details: {
+				name: 'Deliverable',
+				fields: {
+					deliverable_name: { label: 'Deliverable Name', type: 'text' },
 				},
 			},
 		},
@@ -1401,6 +1418,16 @@ const getModulePerms = (module) => [
 	...(SPECIAL_PERMS[module] || []),
 ];
 
+// Signature-authorisation fields on the Documents Issued tab: default to 'edit'
+// (opt-out). An unsaved field otherwise loads as 'view', which would silently
+// lock signing for existing users after any permission-page save.
+const SIGNATURE_FIELD_DEFAULTS = [
+	'prepared_by',
+	'checked_by',
+	'approved_by',
+	'client_approval',
+];
+
 // Permission levels for fields
 const FIELD_PERMISSIONS = {
 	hidden: {
@@ -1581,7 +1608,11 @@ export default function UserPermissionsPage() {
 								const savedField = savedSection?.fields?.[fieldKey];
 								initialFieldPerms[moduleKey][fieldKey] =
 									savedField?.permission ||
-									(fields[fieldKey].sensitive ? 'hidden' : 'view');
+									(SIGNATURE_FIELD_DEFAULTS.includes(fieldKey)
+										? 'edit'
+										: fields[fieldKey].sensitive
+											? 'hidden'
+											: 'view');
 							});
 						});
 					} else {
@@ -1633,10 +1664,12 @@ export default function UserPermissionsPage() {
 									initialFieldPerms[moduleKey][fieldKey] = legacyPerm;
 									if (legacyPerm !== 'hidden') hasVisibleField = true;
 								} else {
-									initialFieldPerms[moduleKey][fieldKey] = fields[fieldKey]
-										.sensitive
-										? 'hidden'
-										: 'view';
+									initialFieldPerms[moduleKey][fieldKey] =
+										SIGNATURE_FIELD_DEFAULTS.includes(fieldKey)
+											? 'edit'
+											: fields[fieldKey].sensitive
+												? 'hidden'
+												: 'view';
 									if (!fields[fieldKey].sensitive) hasVisibleField = true;
 								}
 							});

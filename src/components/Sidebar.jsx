@@ -96,6 +96,10 @@ export default function Sidebar() {
 		adminRouteOverride ||
 		(!rbacLoading &&
 			(user?.is_super_admin || can(RESOURCES.ACTIVITIES, PERMISSIONS.READ)));
+	const canViewDeliverables =
+		adminRouteOverride ||
+		(!rbacLoading &&
+			(user?.is_super_admin || can(RESOURCES.DELIVERABLES, PERMISSIONS.READ)));
 	const canViewCompanies =
 		adminRouteOverride ||
 		(!rbacLoading &&
@@ -402,6 +406,14 @@ export default function Sidebar() {
 									label="Software Master"
 									href="/masters/software"
 									active={pathname.startsWith('/masters/software')}
+								/>
+							)}
+							{canViewDeliverables && (
+								<NavRow
+									icon={DocumentTextIcon}
+									label="Deliverables Master"
+									href="/masters/deliverables"
+									active={pathname.startsWith('/masters/deliverables')}
 								/>
 							)}
 							{canViewCompanies && (

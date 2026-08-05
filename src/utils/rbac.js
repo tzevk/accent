@@ -31,6 +31,7 @@ export const RESOURCES = {
 	ACTIVITIES: 'activities',
 	SOFTWARE: 'software',
 	DOCUMENTS: 'documents',
+	DELIVERABLES: 'deliverables',
 	ROLES: 'roles',
 	HOLIDAYS: 'holidays',
 	ACCOUNTS: 'accounts',
@@ -158,6 +159,12 @@ export const PERMISSION_DESCRIPTIONS = {
 		[PERMISSIONS.CREATE]: 'Create custom reports',
 		[PERMISSIONS.EXPORT]: 'Export report data',
 		[PERMISSIONS.DELETE]: 'Delete saved reports',
+	},
+	[RESOURCES.DELIVERABLES]: {
+		[PERMISSIONS.READ]: 'View deliverables master',
+		[PERMISSIONS.CREATE]: 'Create deliverables in the master',
+		[PERMISSIONS.UPDATE]: 'Edit deliverables in the master',
+		[PERMISSIONS.DELETE]: 'Delete deliverables from the master',
 	},
 };
 

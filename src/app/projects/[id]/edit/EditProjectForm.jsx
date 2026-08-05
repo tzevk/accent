@@ -348,6 +348,29 @@ export default function EditProjectForm() {
 		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
 	const canReadUsers = isSuperAdmin || can(RESOURCES.USERS, PERMISSIONS.READ);
 
+	// Signature-authorisation toggles for the Documents Issued tab
+	// (field permissions on projects > documents_issued). Unset = 'edit'
+	// (opt-out), so existing behaviour is preserved until an admin revokes.
+	const signaturePermissions = useMemo(() => {
+		const section =
+			sessionUser?.field_permissions?.modules?.projects?.sections
+				?.documents_issued;
+		const fields = section?.fields || {};
+		const out = {};
+		for (const key of [
+			'prepared_by',
+			'checked_by',
+			'approved_by',
+			'client_approval',
+		]) {
+			out[key] = fields[key]?.permission || 'edit';
+		}
+		if (isSuperAdmin) {
+			for (const key of Object.keys(out)) out[key] = 'edit';
+		}
+		return out;
+	}, [sessionUser, isSuperAdmin]);
+
 	const [activeTab, setActiveTab] = useState('project_details');
 	const [functions, setFunctions] = useState([]); // Top-level disciplines/functions
 	const [activities, setActivities] = useState([]); // Standalone activities list
@@ -476,14 +499,22 @@ export default function EditProjectForm() {
 	});
 	const newReceivedDescRef = useRef(null);
 
-	// Documents Issued - structured table rows (Document Issued to Client)
+	// Documents Issued - structured table rows (Deliverables issued to Client)
 	const [documentsIssued, setDocumentsIssued] = useState([]);
 	const [newIssuedDoc, setNewIssuedDoc] = useState({
 		document_name: '',
-		issued_for: '',
 		document_number: '',
+		discipline: '',
+		category: '',
+		description: '',
 		revision_number: '',
-		issue_date: '',
+		status: '',
+		planned_date: '',
+		actual_date: '',
+		prepared_by: '',
+		checked_by: '',
+		approved_by: '',
+		client_approval: '',
 		remarks: '',
 	});
 	const newIssuedDescRef = useRef(null);
@@ -655,16 +686,6 @@ export default function EditProjectForm() {
 			}))
 			.sort((a, b) => a.discipline.localeCompare(b.discipline));
 	}, [projectActivities, functions]);
-
-	const projectActivityDocumentNameOptions = useMemo(() => {
-		const unique = new Set();
-		(projectActivityScheduleGroups || []).forEach((g) => {
-			(g.options || []).forEach((opt) => {
-				if (opt) unique.add(opt);
-			});
-		});
-		return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
-	}, [projectActivityScheduleGroups]);
 
 	useEffect(() => {
 		if (scheduleAutofilledRef.current) return;
@@ -1507,7 +1528,19 @@ export default function EditProjectForm() {
 								typeof project.documents_issued_list === 'string'
 									? JSON.parse(project.documents_issued_list)
 									: project.documents_issued_list;
-							setDocumentsIssued(Array.isArray(parsed) ? parsed : []);
+							const normalized = (Array.isArray(parsed) ? parsed : []).map(
+								(d) => {
+									const row = {
+										...d,
+										status: d.status || d.issued_for || '',
+										actual_date: d.actual_date || d.issue_date || '',
+									};
+									delete row.issued_for;
+									delete row.issue_date;
+									return row;
+								}
+							);
+							setDocumentsIssued(normalized);
 						} catch {
 							setDocumentsIssued([]);
 						}
@@ -3105,15 +3138,32 @@ export default function EditProjectForm() {
 		if (!newIssuedDoc.document_name || !newIssuedDoc.document_name.trim())
 			return;
 		const issueDate =
-			newIssuedDoc.issue_date || new Date().toISOString().slice(0, 10);
-		const doc = { ...newIssuedDoc, id: Date.now(), issue_date: issueDate };
+			newIssuedDoc.actual_date || new Date().toISOString().slice(0, 10);
+		const doc = {
+			...newIssuedDoc,
+			id: Date.now(),
+			actual_date: issueDate,
+			prepared_by:
+				newIssuedDoc.prepared_by.trim() ||
+				(signaturePermissions.prepared_by === 'edit'
+					? sessionUser?.full_name || sessionUser?.username || ''
+					: ''),
+		};
 		setDocumentsIssued((prev) => [...prev, doc]);
 		setNewIssuedDoc({
 			document_name: '',
-			issued_for: '',
 			document_number: '',
+			discipline: '',
+			category: '',
+			description: '',
 			revision_number: '',
-			issue_date: '',
+			status: '',
+			planned_date: '',
+			actual_date: '',
+			prepared_by: '',
+			checked_by: '',
+			approved_by: '',
+			client_approval: '',
 			remarks: '',
 		});
 		setTimeout(() => newIssuedDescRef.current?.focus(), 10);
@@ -5039,13 +5089,14 @@ export default function EditProjectForm() {
 										newIssuedDoc={newIssuedDoc}
 										setNewIssuedDoc={setNewIssuedDoc}
 										canEditProjectContent={canEditProjectContent}
-										projectActivityDocumentNameOptions={
-											projectActivityDocumentNameOptions
-										}
 										addIssuedDocument={addIssuedDocument}
 										documentsIssued={documentsIssued}
 										updateIssuedDocument={updateIssuedDocument}
 										removeIssuedDocument={removeIssuedDocument}
+										sessionUserName={
+											sessionUser?.full_name || sessionUser?.username || ''
+										}
+										signaturePermissions={signaturePermissions}
 									/>
 								)}
 

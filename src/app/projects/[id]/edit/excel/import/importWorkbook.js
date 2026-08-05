@@ -215,11 +215,19 @@ export async function importProjectWorkbook({
 		const rows = sheetRowsToObjects(issuedWs)
 			.map((r) => ({
 				id: Date.now() + Math.random(),
-				document_name: r.document_name || '',
-				issued_for: r.issued_for || '',
-				document_number: r.document_number || '',
+				document_name: r.deliverable_name || r.document_name || '',
+				document_number: r.document_no || r.document_number || '',
+				discipline: r.discipline || '',
+				category: r.category || '',
+				description: r.description || '',
 				revision_number: r.revision || r.revision_number || '',
-				issue_date: toIsoDate(r.issue_date),
+				status: r.status || r.issued_for || '',
+				planned_date: toIsoDate(r.planned_date),
+				actual_date: toIsoDate(r.actual_date || r.issue_date),
+				prepared_by: r.prepared_by || '',
+				checked_by: r.checked_by || '',
+				approved_by: r.approved_by || '',
+				client_approval: r.client_approval || '',
 				remarks: r.remarks || '',
 			}))
 			.filter((r) => r.document_name || r.document_number);
