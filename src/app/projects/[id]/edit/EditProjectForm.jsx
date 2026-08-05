@@ -4836,7 +4836,10 @@ export default function EditProjectForm() {
 							role="tabpanel"
 							aria-label={`${visibleTabs.find((tab) => tab.id === activeTab)?.label || 'Project'} section`}
 						>
-							<fieldset disabled={!canEditProjectContent}>
+							<fieldset
+								disabled={!canEditProjectContent}
+								className="m-0 min-w-0 border-0 p-0"
+							>
 								{/* Enhanced Project Details Tab */}
 								{activeTab === 'project_details' && (
 									<ProjectDetailsTab
