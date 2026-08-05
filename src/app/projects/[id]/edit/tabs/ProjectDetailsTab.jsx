@@ -12,47 +12,21 @@ export default function ProjectDetailsTab({
 	addInputDocument,
 }) {
 	return (
-		<div className="space-y-20">
-			<section
-				className="rounded-2xl overflow-hidden"
-				style={{
-					background:
-						'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.95) 100%)',
-					border: '1.5px solid rgba(139, 92, 246, 0.1)',
-					boxShadow:
-						'0 4px 16px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
-				}}
-			>
-				<div
-					className="px-6 py-4"
-					style={{
-						background:
-							'linear-gradient(135deg, rgba(139, 92, 246, 0.03) 0%, rgba(124, 58, 237, 0.02) 100%)',
-						borderBottom: '1.5px solid rgba(139, 92, 246, 0.08)',
-					}}
-				>
+		<div className="space-y-6">
+			<section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+				<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
 					<div className="flex items-center gap-3">
-						<div
-							className="p-2 rounded-xl"
-							style={{
-								background:
-									'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.08) 100%)',
-								border: '1px solid rgba(139, 92, 246, 0.2)',
-							}}
-						>
-							<DocumentIcon className="h-4 w-4" style={{ color: '#8b5cf6' }} />
+						<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
+							<DocumentIcon
+								className="h-4 w-4 text-purple-600"
+								aria-hidden="true"
+							/>
 						</div>
 						<div>
-							<h2
-								className="text-base font-bold"
-								style={{
-									color: '#0f172a',
-									letterSpacing: '-0.01em',
-								}}
-							>
+							<h2 className="text-base font-semibold tracking-tight text-gray-900">
 								General Project Information
 							</h2>
-							<p className="text-xs font-medium" style={{ color: '#64748b' }}>
+							<p className="text-xs text-gray-500">
 								Core project details and metadata
 							</p>
 						</div>
@@ -60,70 +34,39 @@ export default function ProjectDetailsTab({
 				</div>
 				<div className="px-6 py-6 space-y-5">
 					{/* Enhanced Basic Details Section */}
-					<div
-						className="rounded-xl overflow-hidden"
-						style={{
-							background:
-								'linear-gradient(135deg, rgba(139, 92, 246, 0.02) 0%, rgba(255, 255, 255, 0.5) 100%)',
-							border: '1.5px solid rgba(139, 92, 246, 0.1)',
-							boxShadow: '0 2px 8px rgba(15, 23, 42, 0.02)',
-						}}
-					>
+					<div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50/40">
 						<button
 							type="button"
 							onClick={() => toggleSection('basic')}
-							className="w-full flex items-center justify-between px-4 py-3 transition-all duration-300 group"
-							onMouseEnter={(e) => {
-								e.currentTarget.style.background = 'rgba(139, 92, 246, 0.04)';
-							}}
-							onMouseLeave={(e) => {
-								e.currentTarget.style.background = 'transparent';
-							}}
+							aria-expanded={openSections.basic}
+							className="group flex w-full items-center justify-between px-4 py-3 transition-colors hover:bg-purple-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500"
 						>
 							<div className="flex items-center gap-3">
 								<div
-									className="p-1.5 rounded-lg transition-all duration-300"
-									style={{
-										background:
-											'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.08) 100%)',
-										border: '1px solid rgba(139, 92, 246, 0.15)',
-										transform: openSections.basic
-											? 'rotate(180deg)'
-											: 'rotate(0deg)',
-									}}
+									className={`rounded-lg bg-white p-1.5 ring-1 ring-inset ring-gray-200 transition-transform duration-200 ${openSections.basic ? 'rotate-180' : ''}`}
 								>
 									<ChevronDownIcon
-										className="h-4 w-4"
-										style={{ color: '#8b5cf6' }}
+										className="h-4 w-4 text-purple-600"
+										aria-hidden="true"
 									/>
 								</div>
-								<h3 className="text-sm font-bold" style={{ color: '#0f172a' }}>
+								<h3 className="text-sm font-semibold text-gray-900">
 									Basic Details
 								</h3>
 							</div>
 							<span
-								className="text-xs font-bold px-2 py-1 rounded-md"
-								style={{
-									background: openSections.basic
-										? 'rgba(139, 92, 246, 0.1)'
-										: 'rgba(100, 116, 139, 0.06)',
-									color: openSections.basic ? '#8b5cf6' : '#64748b',
-								}}
+								className={`rounded-md px-2 py-1 text-xs font-semibold ${openSections.basic ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-500'}`}
 							>
 								{openSections.basic ? 'Collapse' : 'Expand'}
 							</span>
 						</button>
 
 						{openSections.basic && (
-							<div
-								className="px-4 pb-4 pt-3 space-y-6"
-								style={{
-									borderTop: '1.5px solid rgba(139, 92, 246, 0.08)',
-								}}
-							>
+							<div className="space-y-6 border-t border-gray-200 px-4 pb-4 pt-4">
 								<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
 									<div className="space-y-2">
 										<label
+											htmlFor="project-code"
 											className="block text-xs font-bold"
 											style={{
 												color: '#475569',
@@ -133,12 +76,13 @@ export default function ProjectDetailsTab({
 											Project Code
 										</label>
 										<input
+											id="project-code"
 											type="text"
 											name="project_code"
 											value={form.project_code}
 											onChange={handleChange}
 											placeholder="Enter project code"
-											className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300"
+											className="w-full rounded-xl px-4 py-2.5 text-sm font-medium transition-[border-color,box-shadow] duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500/20 hover:border-purple-300"
 											style={{
 												background: 'rgba(255, 255, 255, 0.95)',
 												border: '1.5px solid rgba(139, 92, 246, 0.15)',
@@ -152,6 +96,7 @@ export default function ProjectDetailsTab({
 									</div>
 									<div className="space-y-2">
 										<label
+											htmlFor="project-name"
 											className="block text-xs font-bold"
 											style={{
 												color: '#475569',
@@ -161,12 +106,13 @@ export default function ProjectDetailsTab({
 											Project Name <span style={{ color: '#ef4444' }}>*</span>
 										</label>
 										<input
+											id="project-name"
 											type="text"
 											name="name"
 											value={form.name}
 											onChange={handleChange}
 											placeholder="Enter project name"
-											className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300"
+											className="w-full rounded-xl px-4 py-2.5 text-sm font-medium transition-[border-color,box-shadow] duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500/20 hover:border-purple-300"
 											style={{
 												background: 'rgba(255, 255, 255, 0.95)',
 												border: '1.5px solid rgba(139, 92, 246, 0.15)',
@@ -177,6 +123,7 @@ export default function ProjectDetailsTab({
 									</div>
 									<div className="space-y-2">
 										<label
+											htmlFor="client-name"
 											className="block text-xs font-bold"
 											style={{
 												color: '#475569',
@@ -186,12 +133,13 @@ export default function ProjectDetailsTab({
 											Client Name <span style={{ color: '#ef4444' }}>*</span>
 										</label>
 										<input
+											id="client-name"
 											type="text"
 											name="client_name"
 											value={form.client_name}
 											onChange={handleChange}
 											placeholder="Enter client name"
-											className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300"
+											className="w-full rounded-xl px-4 py-2.5 text-sm font-medium transition-[border-color,box-shadow] duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500/20 hover:border-purple-300"
 											style={{
 												background: 'rgba(255, 255, 255, 0.95)',
 												border: '1.5px solid rgba(139, 92, 246, 0.15)',
@@ -202,6 +150,7 @@ export default function ProjectDetailsTab({
 									</div>
 									<div className="space-y-2">
 										<label
+											htmlFor="project-start-date"
 											className="block text-xs font-bold"
 											style={{
 												color: '#475569',
@@ -211,11 +160,12 @@ export default function ProjectDetailsTab({
 											Project Start Date
 										</label>
 										<input
+											id="project-start-date"
 											type="date"
 											name="start_date"
 											value={form.start_date}
 											onChange={handleChange}
-											className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300"
+											className="w-full rounded-xl px-4 py-2.5 text-sm font-medium transition-[border-color,box-shadow] duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500/20 hover:border-purple-300"
 											style={{
 												background: 'rgba(255, 255, 255, 0.95)',
 												border: '1.5px solid rgba(139, 92, 246, 0.15)',
@@ -226,6 +176,7 @@ export default function ProjectDetailsTab({
 									</div>
 									<div className="space-y-2">
 										<label
+											htmlFor="project-end-date"
 											className="block text-xs font-bold"
 											style={{
 												color: '#475569',
@@ -235,11 +186,12 @@ export default function ProjectDetailsTab({
 											Project End Date
 										</label>
 										<input
+											id="project-end-date"
 											type="date"
 											name="end_date"
 											value={form.end_date}
 											onChange={handleChange}
-											className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300"
+											className="w-full rounded-xl px-4 py-2.5 text-sm font-medium transition-[border-color,box-shadow] duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500/20 hover:border-purple-300"
 											style={{
 												background: 'rgba(255, 255, 255, 0.95)',
 												border: '1.5px solid rgba(139, 92, 246, 0.15)',
@@ -250,6 +202,7 @@ export default function ProjectDetailsTab({
 									</div>
 									<div className="space-y-2">
 										<label
+											htmlFor="project-type"
 											className="block text-xs font-bold"
 											style={{
 												color: '#475569',
@@ -259,10 +212,11 @@ export default function ProjectDetailsTab({
 											Project Type
 										</label>
 										<select
+											id="project-type"
 											name="contract_type"
 											value={form.contract_type}
 											onChange={handleChange}
-											className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+											className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
 										>
 											<option value="">Select Type</option>
 											{TYPE_OPTIONS.map((type) => (
@@ -273,17 +227,21 @@ export default function ProjectDetailsTab({
 										</select>
 									</div>
 									<div className="space-y-2">
-										<label className="block text-sm font-semibold text-gray-700">
+										<label
+											htmlFor="estimated-manhours"
+											className="block text-sm font-semibold text-gray-700"
+										>
 											Estimated Manhours
 										</label>
 										<input
+											id="estimated-manhours"
 											type="number"
 											name="estimated_manhours"
 											value={form.estimated_manhours}
 											onChange={handleChange}
 											step="0.1"
 											placeholder="0.0"
-											className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+											className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
 										/>
 									</div>
 								</div>
@@ -342,11 +300,12 @@ export default function ProjectDetailsTab({
 					)}
 
 					{/* Enhanced Deliverables Section */}
-					<div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
+					<div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4 shadow-sm">
 						<button
+							aria-expanded={openSections.deliverables}
 							type="button"
 							onClick={() => toggleSection('deliverables')}
-							className="w-full flex items-center justify-between group hover:bg-white/50 rounded-md px-2 py-1.5 transition-colors"
+							className="group flex w-full items-center justify-between rounded-md px-2 py-1.5 transition-colors hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500"
 						>
 							<div className="flex items-center gap-2">
 								<ChevronDownIcon
@@ -364,16 +323,20 @@ export default function ProjectDetailsTab({
 						{openSections.deliverables && (
 							<div className="mt-4 space-y-4 pt-3 border-t border-purple-100">
 								<div className="space-y-3">
-									<label className="block text-sm font-semibold text-gray-700">
+									<label
+										htmlFor="project-deliverables"
+										className="block text-sm font-semibold text-gray-700"
+									>
 										List of Deliverables
 									</label>
 									<textarea
+										id="project-deliverables"
 										name="list_of_deliverables"
 										value={form.list_of_deliverables}
 										onChange={handleChange}
 										rows={4}
 										placeholder="List the key deliverables for this project..."
-										className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-y focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+										className="w-full resize-y rounded-lg border border-gray-300 px-4 py-3 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
 									/>
 								</div>
 							</div>

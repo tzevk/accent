@@ -416,6 +416,16 @@ export default function Sidebar() {
 									active={pathname.startsWith('/masters/deliverables')}
 								/>
 							)}
+							{canViewDeliverables && (
+								<NavRow
+									icon={DocumentTextIcon}
+									label="Deliverable Category Master"
+									href="/masters/deliverable-categories"
+									active={pathname.startsWith(
+										'/masters/deliverable-categories'
+									)}
+								/>
+							)}
 							{canViewCompanies && (
 								<NavRow
 									icon={BuildingOfficeIcon}
@@ -451,7 +461,7 @@ export default function Sidebar() {
 							{canViewCompanies && (
 								<NavRow
 									icon={TagIcon}
-									label="Category Master"
+									label="Expense Category Master"
 									href="/masters/categories"
 									active={pathname.startsWith('/masters/categories')}
 								/>
