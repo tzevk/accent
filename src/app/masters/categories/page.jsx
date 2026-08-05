@@ -392,10 +392,10 @@ export default function CategoryMaster() {
 					<div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between">
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900">
-								Category Master
+								Expense Category Master
 							</h1>
 							<p className="mt-1 text-sm text-gray-500">
-								Manage categories for organizing records
+								Manage expense categories for organizing records
 							</p>
 						</div>
 						{activeTab === 'list' && (

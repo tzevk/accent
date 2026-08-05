@@ -1,9 +1,10 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import DocumentsIssuedTab from '@/app/projects/[id]/edit/tabs/DocumentsIssuedTab';
+import { apiGet } from '@/lib/api-client';
 
 vi.mock('@/lib/api-client', () => ({
 	apiGet: vi.fn().mockResolvedValue({ success: true, data: [] }),
@@ -214,33 +215,35 @@ describe('DocumentsIssuedTab', () => {
 		);
 	});
 
-	it('shows switches only for signature fields the user may sign', async () => {
+	it('gates signature inputs by permission', async () => {
+		const user = userEvent.setup();
 		render(
 			<DocumentsIssuedTab
 				{...baseProps}
 				signaturePermissions={{
-					prepared_by: 'edit',
-					checked_by: 'view',
-					approved_by: 'edit',
-					client_approval: 'hidden',
+					prepared_by: 'view',
+					checked_by: 'edit',
+					approved_by: 'hidden',
+					client_approval: 'edit',
 				}}
 			/>,
 			{ wrapper: createWrapper() }
 		);
-		expect(screen.getAllByRole('switch')).toHaveLength(2);
-		expect(
-			screen.getByRole('switch', { name: 'Prepared By' })
-		).toBeInTheDocument();
-		expect(
-			screen.getByRole('switch', { name: 'Approved By' })
-		).toBeInTheDocument();
-		expect(screen.queryByRole('switch', { name: 'Checked By' })).toBeNull();
-		expect(
-			screen.queryByRole('switch', { name: 'Client Approval' })
-		).toBeNull();
+		await user.click(screen.getByTitle('Edit document'));
+		const row = screen.getByDisplayValue('DRW-ISS-001').closest('tr');
+		expect(row).not.toBeNull();
+		// Edit-mode inputs follow the fixed 15-column layout: doc no,
+		// discipline, category (searchable select), name, description,
+		// revision, status (select), planned, actual, prepared_by,
+		// checked_by, approved_by, client_approval, remarks.
+		const inputs = (row as HTMLTableRowElement).querySelectorAll('input');
+		expect(inputs[7]).toBeDisabled(); // prepared_by — view
+		expect(inputs[8]).toBeEnabled(); // checked_by — edit
+		expect(inputs[9]).toBeDisabled(); // approved_by — hidden
+		expect(inputs[10]).toBeEnabled(); // client_approval — edit
 	});
 
-	it('signs the deliverable when a switch is toggled on', async () => {
+	it('updates the signature field when typed into', async () => {
 		const user = userEvent.setup();
 		const updateIssuedDocument = vi.fn();
 		render(
@@ -250,60 +253,55 @@ describe('DocumentsIssuedTab', () => {
 			/>,
 			{ wrapper: createWrapper() }
 		);
-		await user.click(screen.getByRole('switch', { name: 'Prepared By' }));
+		await user.click(screen.getByTitle('Edit document'));
+		const row = screen.getByDisplayValue('DRW-ISS-001').closest('tr');
+		const inputs = (row as HTMLTableRowElement).querySelectorAll('input');
+		fireEvent.change(inputs[7], { target: { value: 'Alice' } });
 		expect(updateIssuedDocument).toHaveBeenCalledWith(
 			1,
 			'prepared_by',
-			'Current User'
+			'Alice'
 		);
 	});
 
-	it('clears the signature when an active switch is toggled off', async () => {
+	it('does not allow typing into signature inputs without permission', async () => {
 		const user = userEvent.setup();
 		const updateIssuedDocument = vi.fn();
-		const rowWithApproval = [
-			{
-				...mockDocsIssued[0],
-				approved_by: 'Carol Iyer',
-			},
-		];
 		render(
 			<DocumentsIssuedTab
 				{...baseProps}
-				documentsIssued={rowWithApproval}
+				signaturePermissions={{
+					prepared_by: 'view',
+					checked_by: 'edit',
+					approved_by: 'edit',
+					client_approval: 'edit',
+				}}
 				updateIssuedDocument={updateIssuedDocument}
 			/>,
 			{ wrapper: createWrapper() }
 		);
-		const approvedSwitch = screen.getByRole('switch', {
-			name: 'Approved By',
-		});
-		expect(approvedSwitch).toHaveAttribute('aria-checked', 'true');
-		await user.click(approvedSwitch);
-		expect(updateIssuedDocument).toHaveBeenCalledWith(1, 'approved_by', '');
+		await user.click(screen.getByTitle('Edit document'));
+		const row = screen.getByDisplayValue('DRW-ISS-001').closest('tr');
+		const inputs = (row as HTMLTableRowElement).querySelectorAll('input');
+		await user.type(inputs[7], 'x');
+		expect(updateIssuedDocument).not.toHaveBeenCalledWith(
+			1,
+			'prepared_by',
+			expect.anything()
+		);
 	});
 
-	it('still shows signature values for users without switch access', () => {
-		const rowWithApproval = [
-			{
-				...mockDocsIssued[0],
-				approved_by: 'Carol Iyer',
-			},
-		];
-		render(
-			<DocumentsIssuedTab
-				{...baseProps}
-				documentsIssued={rowWithApproval}
-				signaturePermissions={{
-					prepared_by: 'view',
-					checked_by: 'view',
-					approved_by: 'view',
-					client_approval: 'view',
-				}}
-			/>,
-			{ wrapper: createWrapper() }
-		);
-		expect(screen.queryAllByRole('switch')).toHaveLength(0);
-		expect(screen.getByText('Carol Iyer')).toBeInTheDocument();
+	it('offers categories from the category master in a searchable select', async () => {
+		vi.mocked(apiGet).mockResolvedValue({
+			success: true,
+			data: [{ id: 1, category_name: 'Design Basis' }],
+		});
+		const user = userEvent.setup();
+		render(<DocumentsIssuedTab {...baseProps} />, {
+			wrapper: createWrapper(),
+		});
+		await user.click(screen.getByText('Select Category'));
+		expect(await screen.findByText('Design Basis')).toBeInTheDocument();
+		expect(apiGet).toHaveBeenCalledWith('/api/masters/deliverable-categories');
 	});
 });

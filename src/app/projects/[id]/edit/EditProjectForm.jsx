@@ -4625,127 +4625,97 @@ export default function EditProjectForm() {
 
 	if (error) {
 		return (
-			<div className="h-screen bg-gray-50 flex flex-col">
+			<div className="min-h-screen bg-gray-50">
 				<Navbar />
-				<div className="flex-1 flex items-center justify-center">
-					<div className="text-center">
-						<p className="text-sm text-red-600 mb-4">{error}</p>
+				<main className="flex min-h-screen items-center justify-center px-4 pt-16">
+					<div className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm">
+						<div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600 ring-1 ring-inset ring-red-100">
+							<XMarkIcon className="h-5 w-5" aria-hidden="true" />
+						</div>
+						<h1 className="text-base font-semibold text-gray-950">
+							Unable to load project
+						</h1>
+						<p className="mt-2 text-sm leading-6 text-red-700">{error}</p>
 						<button
+							type="button"
 							onClick={() => router.push('/projects')}
-							className="text-sm text-[#7F2487] hover:underline"
+							className="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg bg-purple-600 px-4 text-sm font-semibold text-white transition-colors transition-transform hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 active:scale-[0.96]"
 						>
 							Back to Projects
 						</button>
 					</div>
-				</div>
+				</main>
 			</div>
 		);
 	}
 
 	return (
-		<div
-			className="min-h-screen flex flex-col overflow-x-hidden"
-			style={{ background: '#ffffff' }}
-		>
+		<div className="min-h-screen overflow-x-hidden bg-gray-50 text-gray-900">
 			<Navbar />
 
-			{/* Animated Background */}
-			<div
-				className="fixed inset-0 pointer-events-none overflow-hidden"
-				style={{ zIndex: 0 }}
-			>
-				<div
-					className="absolute -top-[10%] -right-[5%] w-96 h-96 rounded-full opacity-[0.04]"
-					style={{
-						background: 'radial-gradient(circle, #8b5cf6 0%, transparent 70%)',
-						filter: 'blur(60px)',
-						animation: 'orbit-smooth 20s ease-in-out infinite',
-					}}
-				/>
-				<div
-					className="absolute -bottom-[10%] -left-[5%] w-96 h-96 rounded-full opacity-[0.04]"
-					style={{
-						background: 'radial-gradient(circle, #3b82f6 0%, transparent 70%)',
-						filter: 'blur(60px)',
-						animation: 'orbit-smooth 25s ease-in-out infinite reverse',
-					}}
-				/>
-			</div>
-
-			<div className="flex-1 relative" style={{ zIndex: 1 }}>
-				<div className="h-full overflow-y-auto">
+			<div className="relative z-10">
+				<div>
 					<form onSubmit={handleSubmit}>
-						{/* Premium Header - Full Width Sticky */}
-						<header
-							className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-5 sticky top-16 z-30"
-							style={{
-								background:
-									'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.95) 100%)',
-								backdropFilter: 'blur(20px)',
-								borderBottom: '1.5px solid rgba(139, 92, 246, 0.1)',
-								boxShadow:
-									'0 4px 16px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
-							}}
-						>
-							<div className="flex items-center justify-between">
-								<div className="flex items-center gap-4">
+						<div className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 shadow-sm backdrop-blur-md">
+							<header className="mx-auto flex max-w-[1800px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8 xl:px-10">
+								<div className="flex min-w-0 items-start gap-3">
 									<button
 										type="button"
 										onClick={handleCancel}
-										className="p-2.5 rounded-xl transition-all duration-300 group"
-										style={{
-											background:
-												'linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%)',
-											border: '1.5px solid rgba(139, 92, 246, 0.1)',
-											boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)',
-										}}
-										onMouseEnter={(e) => {
-											e.currentTarget.style.transform = 'translateX(-2px)';
-											e.currentTarget.style.boxShadow =
-												'0 4px 12px rgba(139, 92, 246, 0.15)';
-											e.currentTarget.style.borderColor =
-												'rgba(139, 92, 246, 0.25)';
-										}}
-										onMouseLeave={(e) => {
-											e.currentTarget.style.transform = 'translateX(0)';
-											e.currentTarget.style.boxShadow =
-												'0 2px 4px rgba(15, 23, 42, 0.04)';
-											e.currentTarget.style.borderColor =
-												'rgba(139, 92, 246, 0.1)';
-										}}
+										className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors transition-transform hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 active:scale-[0.96]"
+										aria-label="Back to projects"
 										title="Back to Projects"
 									>
-										<ArrowLeftIcon
-											className="h-5 w-5 transition-transform duration-300 group-hover:-translate-x-0.5"
-											style={{ color: '#8b5cf6' }}
-										/>
+										<ArrowLeftIcon className="h-5 w-5" aria-hidden="true" />
 									</button>
-									<div>
-										<div className="flex items-center gap-3 mb-1">
-											<h1
-												className="text-2xl font-bold"
-												style={{ color: '#0f172a', letterSpacing: '-0.02em' }}
-											>
+									<div className="min-w-0">
+										<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+											<h1 className="text-xl font-semibold tracking-tight text-gray-950 sm:text-2xl">
 												Edit Project
 											</h1>
 											{form.name && (
 												<span
-													className="px-3 py-1 text-xs font-bold rounded-lg"
-													style={{
-														background:
-															'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.08) 100%)',
-														color: '#8b5cf6',
-														border: '1px solid rgba(139, 92, 246, 0.2)',
-													}}
+													className="max-w-[20rem] truncate rounded-full bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 ring-1 ring-inset ring-purple-100 sm:max-w-[28rem]"
+													title={form.name}
 												>
 													{form.name}
+												</span>
+											)}
+										</div>
+										<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+											{form.project_code && (
+												<span>
+													Code{' '}
+													<span className="font-medium text-gray-700">
+														{form.project_code}
+													</span>
+												</span>
+											)}
+											{form.client_name && (
+												<span className="inline-flex items-center gap-2">
+													<span
+														className="h-1 w-1 rounded-full bg-gray-300"
+														aria-hidden="true"
+													/>
+													<span className="max-w-[16rem] truncate">
+														{form.client_name}
+													</span>
+												</span>
+											)}
+											{form.status && (
+												<span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700">
+													<span
+														className="h-1.5 w-1.5 rounded-full bg-blue-500"
+														aria-hidden="true"
+													/>
+													{form.status}
 												</span>
 											)}
 										</div>
 									</div>
 								</div>
 
-								<div className="flex items-center gap-3">
+								<div className="flex w-full flex-wrap items-center gap-2 border-t border-gray-100 pt-3 lg:w-auto lg:justify-end lg:border-t-0 lg:pt-0">
 									<input
 										ref={excelImportInputRef}
 										type="file"
@@ -4759,21 +4729,19 @@ export default function EditProjectForm() {
 										disabled={
 											importingExcel || exportingExcel || !canEditProjectContent
 										}
-										className="px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-										style={{
-											background:
-												'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
-											border: '1.5px solid rgba(16, 185, 129, 0.28)',
-											color: '#059669',
-											boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)',
-										}}
+										className="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors transition-transform hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
+										aria-label="Import project workbook"
 									>
-										{importingExcel ? 'Importing...' : 'Import Excel'}
+										{importingExcel ? 'Importing…' : 'Import Excel'}
 									</button>
+									<label className="sr-only" htmlFor="project-export-sheet">
+										Export section
+									</label>
 									<select
+										id="project-export-sheet"
 										value={selectedExportSheet}
 										onChange={(e) => setSelectedExportSheet(e.target.value)}
-										className="px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-700"
+										className="min-h-10 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm transition-colors hover:border-purple-200 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 sm:w-auto"
 										title="Select sheet to export"
 									>
 										{EXPORT_TAB_OPTIONS.map((option) => (
@@ -4786,152 +4754,88 @@ export default function EditProjectForm() {
 										type="button"
 										onClick={handleExportSingleSheetExcel}
 										disabled={exportingExcel}
-										className="px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-										style={{
-											background:
-												'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
-											border: '1.5px solid rgba(30, 136, 229, 0.28)',
-											color: '#1E88E5',
-											boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)',
-										}}
+										className="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors transition-transform hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
+										aria-label="Export selected project section"
 									>
-										{exportingExcel ? 'Exporting...' : 'Export Section'}
+										{exportingExcel ? 'Exporting…' : 'Export Section'}
 									</button>
 									<button
 										type="button"
 										onClick={handleExportProjectTabsExcel}
 										disabled={exportingExcel}
-										className="px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-										style={{
-											background:
-												'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
-											border: '1.5px solid rgba(127, 36, 135, 0.22)',
-											color: '#7F2487',
-											boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)',
-										}}
+										className="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors transition-transform hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
+										aria-label="Export full project workbook"
 									>
-										{exportingExcel ? 'Exporting...' : 'Export Full Workbook'}
+										{exportingExcel ? 'Exporting…' : 'Export Workbook'}
 									</button>
+									<span
+										className="mx-1 hidden h-8 w-px bg-gray-200 lg:block"
+										aria-hidden="true"
+									/>
 									<button
 										type="button"
 										onClick={handleCancel}
-										className="px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300"
-										style={{
-											background:
-												'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
-											border: '1.5px solid rgba(100, 116, 139, 0.15)',
-											color: '#475569',
-											boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)',
-										}}
-										onMouseEnter={(e) => {
-											e.currentTarget.style.transform = 'translateY(-1px)';
-											e.currentTarget.style.boxShadow =
-												'0 4px 12px rgba(15, 23, 42, 0.08)';
-										}}
-										onMouseLeave={(e) => {
-											e.currentTarget.style.transform = 'translateY(0)';
-											e.currentTarget.style.boxShadow =
-												'0 2px 4px rgba(15, 23, 42, 0.04)';
-										}}
+										className="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm transition-colors transition-transform hover:bg-gray-50 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 active:scale-[0.96]"
 									>
 										Cancel
 									</button>
 									<button
 										type="submit"
 										disabled={submitting || !canEditProjectContent}
-										className="px-6 py-2.5 text-sm font-bold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-										style={{
-											background:
-												'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-											color: '#ffffff',
-											boxShadow:
-												'0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
-											letterSpacing: '0.01em',
-										}}
-										onMouseEnter={(e) =>
-											!submitting &&
-											(() => {
-												e.currentTarget.style.transform = 'translateY(-2px)';
-												e.currentTarget.style.boxShadow =
-													'0 8px 20px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
-											})()
-										}
-										onMouseLeave={(e) =>
-											!submitting &&
-											(() => {
-												e.currentTarget.style.transform = 'translateY(0)';
-												e.currentTarget.style.boxShadow =
-													'0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
-											})()
-										}
+										aria-busy={submitting}
+										className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors transition-shadow transition-transform hover:bg-purple-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
 									>
+										{submitting && (
+											<span
+												className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white motion-reduce:animate-none"
+												aria-hidden="true"
+											/>
+										)}
 										{submitting
-											? 'Saving...'
+											? 'Saving…'
 											: canEditProjectContent
 												? 'Update Project'
 												: 'View Only'}
 									</button>
 								</div>
-							</div>
-						</header>
+							</header>
 
-						{/* Minimalistic Tab Navigation */}
-						<div
-							className="px-6 lg:px-8 xl:px-12 2xl:px-16 sticky z-20 mt-20"
-							style={{
-								top: 'calc(4rem + 5.5rem)',
-								paddingTop: '1rem',
-								paddingBottom: '1rem',
-								background: '#ffffff',
-							}}
-						>
-							<div
-								className="rounded-lg overflow-hidden border border-gray-200"
-								style={{
-									background: '#ffffff',
-									boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-								}}
+							<nav
+								aria-label="Project sections"
+								className="mx-auto max-w-[1800px] px-4 pb-3 sm:px-6 lg:px-8 xl:px-10"
 							>
-								<div className="flex items-center gap-0 flex-wrap">
-									{visibleTabs.map((tab, index) => {
-										const isActive = activeTab === tab.id;
-										return (
-											<button
-												key={tab.id}
-												type="button"
-												onClick={() => setActiveTab(tab.id)}
-												className="relative px-6 py-3.5 text-sm font-medium transition-all duration-200 whitespace-nowrap flex-shrink-0"
-												style={{
-													color: isActive ? '#111827' : '#6b7280',
-													borderBottom: isActive
-														? '2px solid #111827'
-														: '2px solid transparent',
-													background: isActive ? '#f9fafb' : 'transparent',
-													fontWeight: isActive ? '600' : '500',
-												}}
-												onMouseEnter={(e) => {
-													if (!isActive) {
-														e.currentTarget.style.color = '#111827';
-														e.currentTarget.style.background = '#fafafa';
-													}
-												}}
-												onMouseLeave={(e) => {
-													if (!isActive) {
-														e.currentTarget.style.color = '#6b7280';
-														e.currentTarget.style.background = 'transparent';
-													}
-												}}
-											>
-												{tab.label}
-											</button>
-										);
-									})}
+								<div className="overflow-x-scroll rounded-xl border border-gray-200 bg-gray-50 p-1 shadow-sm">
+									<div className="flex min-w-max items-center gap-1">
+										{visibleTabs.map((tab) => {
+											const isActive = activeTab === tab.id;
+											return (
+												<button
+													key={tab.id}
+													type="button"
+													onClick={() => setActiveTab(tab.id)}
+													aria-pressed={isActive}
+													className={`min-h-10 shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors transition-shadow transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-1 active:scale-[0.96] ${
+														isActive
+															? 'bg-white text-purple-700 shadow-sm ring-1 ring-gray-200'
+															: 'text-gray-600 hover:bg-white/80 hover:text-gray-950'
+													}`}
+												>
+													{tab.label}
+												</button>
+											);
+										})}
+									</div>
 								</div>
-							</div>
+							</nav>
 						</div>
 
 						{/* Main Content Area */}
-						<div className="mt-5 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-8 space-y-6">
+						<div
+							id={`project-tab-panel-${activeTab}`}
+							className="mx-auto max-w-[1800px] px-4 pb-12 pt-6 sm:px-6 lg:px-8 xl:px-10"
+							role="tabpanel"
+							aria-label={`${visibleTabs.find((tab) => tab.id === activeTab)?.label || 'Project'} section`}
+						>
 							<fieldset disabled={!canEditProjectContent}>
 								{/* Enhanced Project Details Tab */}
 								{activeTab === 'project_details' && (

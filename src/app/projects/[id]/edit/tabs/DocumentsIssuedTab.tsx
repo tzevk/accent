@@ -34,13 +34,6 @@ type SignatureField =
 
 type SignaturePermissions = Record<SignatureField, 'hidden' | 'view' | 'edit'>;
 
-const SIGNATURE_LABELS: Record<SignatureField, string> = {
-	prepared_by: 'Prepared By',
-	checked_by: 'Checked By',
-	approved_by: 'Approved By',
-	client_approval: 'Client Approval',
-};
-
 interface DocumentsIssuedTabProps {
 	newIssuedDescRef: RefObject<HTMLInputElement | null>;
 	newIssuedDoc: Omit<IssuedDocRow, 'id'>;
@@ -74,39 +67,6 @@ const withKeepValue = (
 		? [{ value: current, label: current }, ...options]
 		: options;
 
-function SignatureToggle({
-	on,
-	disabled,
-	label,
-	onToggle,
-}: {
-	on: boolean;
-	disabled: boolean;
-	label: string;
-	onToggle: () => void;
-}) {
-	return (
-		<button
-			type="button"
-			role="switch"
-			aria-checked={on}
-			aria-label={label}
-			disabled={disabled}
-			onClick={onToggle}
-			title={on ? 'Signed — click to clear' : `Approve as ${label}`}
-			className={`relative inline-flex h-4 w-8 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-1 ${
-				on ? 'bg-green-600' : 'bg-gray-300'
-			} ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
-		>
-			<span
-				className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
-					on ? 'translate-x-[18px]' : 'translate-x-0.5'
-				}`}
-			/>
-		</button>
-	);
-}
-
 export default function DocumentsIssuedTab({
 	newIssuedDescRef,
 	newIssuedDoc,
@@ -124,31 +84,21 @@ export default function DocumentsIssuedTab({
 	const canSign = (field: SignatureField) =>
 		signaturePermissions[field] === 'edit';
 
-	const { data: deliverablesData } = useQuery<ApiListResponse>({
-		queryKey: ['deliverables-master'],
-		queryFn: () => apiGet('/api/masters/deliverables'),
-	});
-	const { data: activityOptionsData } = useQuery<ApiListResponse>({
-		queryKey: ['activity-master-options'],
-		queryFn: () => apiGet('/api/activity-master/options'),
+	const { data: categoryOptionsData } = useQuery<ApiListResponse>({
+		queryKey: ['deliverable-categories'],
+		queryFn: () => apiGet('/api/masters/deliverable-categories'),
 	});
 
-	const deliverableOptions: SelectOption[] = (
-		(deliverablesData?.data ?? []) as Array<{
+	const categoryOptions: SelectOption[] = (
+		(categoryOptionsData?.data ?? []) as Array<{
 			id: number;
-			deliverable_name: string;
+			category_name: string;
 		}>
-	).map((d) => ({
-		value: d.deliverable_name,
-		label: d.deliverable_name,
-		id: d.id,
+	).map((c) => ({
+		value: c.category_name,
+		label: c.category_name,
+		id: c.id,
 	}));
-	const disciplineOptions: string[] = (
-		(activityOptionsData?.data ?? []) as Array<{ function_name: string }>
-	).map((d) => d.function_name);
-	const disciplineSelectOptions: SelectOption[] = disciplineOptions.map(
-		(o) => ({ value: o, label: o })
-	);
 
 	const handleStatusChange = (d: IssuedDocRow, value: string) => {
 		updateIssuedDocument(d.id, 'status', value);
@@ -172,34 +122,6 @@ export default function DocumentsIssuedTab({
 		field: keyof Omit<IssuedDocRow, 'id'>,
 		value: string
 	) => setNewIssuedDoc((prev) => ({ ...prev, [field]: value }));
-
-	const toggleSignature = (d: IssuedDocRow, field: SignatureField) => {
-		if (!canEditProjectContent || !canSign(field)) return;
-		if (d[field]) {
-			updateIssuedDocument(d.id, field, '');
-		} else {
-			updateIssuedDocument(d.id, field, sessionUserName);
-		}
-	};
-
-	const renderSignatureCell = (d: IssuedDocRow, field: SignatureField) => {
-		const value = d[field] || '';
-		return (
-			<td className="py-2 px-2 text-gray-900">
-				<div className="flex items-center gap-1.5">
-					<span className="truncate max-w-[9rem]">{value || '—'}</span>
-					{canEditProjectContent && canSign(field) && (
-						<SignatureToggle
-							on={!!value}
-							disabled={false}
-							label={SIGNATURE_LABELS[field]}
-							onToggle={() => toggleSignature(d, field)}
-						/>
-					)}
-				</div>
-			</td>
-		);
-	};
 
 	const addRowInputClass =
 		'w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]';
@@ -240,6 +162,9 @@ export default function DocumentsIssuedTab({
 			))}
 		</select>
 	);
+
+	const signatureDisabled = (field: SignatureField) =>
+		!canEditProjectContent || !canSign(field);
 
 	return (
 		<section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
@@ -341,11 +266,23 @@ export default function DocumentsIssuedTab({
 									/>
 								</td>
 								<td className="py-2 px-2">
-									<SearchableSelect
-										options={disciplineSelectOptions}
+									<input
+										type="text"
 										value={newIssuedDoc.discipline}
-										onChange={(val) => updateNewIssued('discipline', val)}
-										placeholder="Select Discipline"
+										onChange={(e) =>
+											updateNewIssued('discipline', e.target.value)
+										}
+										placeholder="Discipline"
+										className={addRowInputClass}
+										disabled={!canEditProjectContent}
+									/>
+								</td>
+								<td className="py-2 px-2">
+									<SearchableSelect
+										options={categoryOptions}
+										value={newIssuedDoc.category}
+										onChange={(val) => updateNewIssued('category', val)}
+										placeholder="Select Category"
 										className="w-full"
 										disabled={!canEditProjectContent}
 									/>
@@ -353,22 +290,12 @@ export default function DocumentsIssuedTab({
 								<td className="py-2 px-2">
 									<input
 										type="text"
-										value={newIssuedDoc.category}
-										onChange={(e) =>
-											updateNewIssued('category', e.target.value)
-										}
-										placeholder="Category"
-										className={addRowInputClass}
-										disabled={!canEditProjectContent}
-									/>
-								</td>
-								<td className="py-2 px-2">
-									<SearchableSelect
-										options={deliverableOptions}
 										value={newIssuedDoc.document_name}
-										onChange={(val) => updateNewIssued('document_name', val)}
-										placeholder="Select Deliverable"
-										className="w-full"
+										onChange={(e) =>
+											updateNewIssued('document_name', e.target.value)
+										}
+										placeholder="Deliverable Name"
+										className={addRowInputClass}
 										disabled={!canEditProjectContent}
 									/>
 								</td>
@@ -419,10 +346,54 @@ export default function DocumentsIssuedTab({
 										disabled={!canEditProjectContent}
 									/>
 								</td>
-								<td className="py-2 px-2" />
-								<td className="py-2 px-2" />
-								<td className="py-2 px-2" />
-								<td className="py-2 px-2" />
+								<td className="py-2 px-2">
+									<input
+										type="text"
+										value={newIssuedDoc.prepared_by}
+										onChange={(e) =>
+											updateNewIssued('prepared_by', e.target.value)
+										}
+										placeholder="Prepared By"
+										className={addRowInputClass}
+										disabled={signatureDisabled('prepared_by')}
+									/>
+								</td>
+								<td className="py-2 px-2">
+									<input
+										type="text"
+										value={newIssuedDoc.checked_by}
+										onChange={(e) =>
+											updateNewIssued('checked_by', e.target.value)
+										}
+										placeholder="Checked By"
+										className={addRowInputClass}
+										disabled={signatureDisabled('checked_by')}
+									/>
+								</td>
+								<td className="py-2 px-2">
+									<input
+										type="text"
+										value={newIssuedDoc.approved_by}
+										onChange={(e) =>
+											updateNewIssued('approved_by', e.target.value)
+										}
+										placeholder="Approved By"
+										className={addRowInputClass}
+										disabled={signatureDisabled('approved_by')}
+									/>
+								</td>
+								<td className="py-2 px-2">
+									<input
+										type="text"
+										value={newIssuedDoc.client_approval}
+										onChange={(e) =>
+											updateNewIssued('client_approval', e.target.value)
+										}
+										placeholder="Client Approval"
+										className={addRowInputClass}
+										disabled={signatureDisabled('client_approval')}
+									/>
+								</td>
 								<td className="py-2 px-2">
 									<input
 										type="text"
@@ -476,28 +447,13 @@ export default function DocumentsIssuedTab({
 												/>
 											</td>
 											<td className="py-2 px-2">
-												<SearchableSelect
-													options={withKeepValue(
-														disciplineSelectOptions,
-														d.discipline
-													)}
-													value={d.discipline || ''}
-													onChange={(val) =>
-														updateIssuedDocument(d.id, 'discipline', val)
-													}
-													placeholder="Select Discipline"
-													className="w-full"
-													disabled={!canEditProjectContent}
-												/>
-											</td>
-											<td className="py-2 px-2">
 												<input
 													type="text"
-													value={d.category || ''}
+													value={d.discipline || ''}
 													onChange={(e) =>
 														updateIssuedDocument(
 															d.id,
-															'category',
+															'discipline',
 															e.target.value
 														)
 													}
@@ -507,16 +463,28 @@ export default function DocumentsIssuedTab({
 											</td>
 											<td className="py-2 px-2">
 												<SearchableSelect
-													options={withKeepValue(
-														deliverableOptions,
-														d.document_name
-													)}
-													value={d.document_name || ''}
+													options={withKeepValue(categoryOptions, d.category)}
+													value={d.category || ''}
 													onChange={(val) =>
-														updateIssuedDocument(d.id, 'document_name', val)
+														updateIssuedDocument(d.id, 'category', val)
 													}
-													placeholder="Select Deliverable"
+													placeholder="Select Category"
 													className="w-full"
+													disabled={!canEditProjectContent}
+												/>
+											</td>
+											<td className="py-2 px-2">
+												<input
+													type="text"
+													value={d.document_name || ''}
+													onChange={(e) =>
+														updateIssuedDocument(
+															d.id,
+															'document_name',
+															e.target.value
+														)
+													}
+													className={rowInputClass}
 													disabled={!canEditProjectContent}
 												/>
 											</td>
@@ -581,6 +549,81 @@ export default function DocumentsIssuedTab({
 													disabled={!canEditProjectContent}
 												/>
 											</td>
+											<td className="py-2 px-2">
+												<input
+													type="text"
+													value={d.prepared_by || ''}
+													onChange={(e) =>
+														updateIssuedDocument(
+															d.id,
+															'prepared_by',
+															e.target.value
+														)
+													}
+													className={rowInputClass}
+													disabled={signatureDisabled('prepared_by')}
+												/>
+											</td>
+											<td className="py-2 px-2">
+												<input
+													type="text"
+													value={d.checked_by || ''}
+													onChange={(e) =>
+														updateIssuedDocument(
+															d.id,
+															'checked_by',
+															e.target.value
+														)
+													}
+													className={rowInputClass}
+													disabled={signatureDisabled('checked_by')}
+												/>
+											</td>
+											<td className="py-2 px-2">
+												<input
+													type="text"
+													value={d.approved_by || ''}
+													onChange={(e) =>
+														updateIssuedDocument(
+															d.id,
+															'approved_by',
+															e.target.value
+														)
+													}
+													className={rowInputClass}
+													disabled={signatureDisabled('approved_by')}
+												/>
+											</td>
+											<td className="py-2 px-2">
+												<input
+													type="text"
+													value={d.client_approval || ''}
+													onChange={(e) =>
+														updateIssuedDocument(
+															d.id,
+															'client_approval',
+															e.target.value
+														)
+													}
+													className={rowInputClass}
+													disabled={signatureDisabled('client_approval')}
+												/>
+											</td>
+											<td className="py-2 px-2">
+												<input
+													type="text"
+													value={d.remarks || ''}
+													onChange={(e) =>
+														updateIssuedDocument(
+															d.id,
+															'remarks',
+															e.target.value
+														)
+													}
+													className={rowInputClass}
+													disabled={!canEditProjectContent}
+												/>
+											</td>
 										</>
 									) : (
 										<>
@@ -611,28 +654,22 @@ export default function DocumentsIssuedTab({
 											<td className="py-2 px-2 text-gray-900">
 												{d.actual_date || '—'}
 											</td>
+											<td className="py-2 px-2 text-gray-900">
+												{d.prepared_by || '—'}
+											</td>
+											<td className="py-2 px-2 text-gray-900">
+												{d.checked_by || '—'}
+											</td>
+											<td className="py-2 px-2 text-gray-900">
+												{d.approved_by || '—'}
+											</td>
+											<td className="py-2 px-2 text-gray-900">
+												{d.client_approval || '—'}
+											</td>
+											<td className="py-2 px-2 text-gray-900">
+												{d.remarks || '—'}
+											</td>
 										</>
-									)}
-									{renderSignatureCell(d, 'prepared_by')}
-									{renderSignatureCell(d, 'checked_by')}
-									{renderSignatureCell(d, 'approved_by')}
-									{renderSignatureCell(d, 'client_approval')}
-									{editingId === d.id ? (
-										<td className="py-2 px-2">
-											<input
-												type="text"
-												value={d.remarks || ''}
-												onChange={(e) =>
-													updateIssuedDocument(d.id, 'remarks', e.target.value)
-												}
-												className={rowInputClass}
-												disabled={!canEditProjectContent}
-											/>
-										</td>
-									) : (
-										<td className="py-2 px-2 text-gray-900">
-											{d.remarks || '—'}
-										</td>
 									)}
 									<td className="py-2 px-2 text-center">
 										<div className="inline-flex items-center gap-1">
