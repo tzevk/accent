@@ -200,28 +200,10 @@ export default function DocumentsIssuedTab({
 				</div>
 				<div className="max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-gray-200">
 					<div className="w-max min-w-full">
-						<table className="w-[1448px] min-w-full table-fixed border-collapse text-xs">
+						<table className="min-w-full table-auto border-collapse text-xs">
 							<caption className="sr-only">
 								Deliverables issued to client
 							</caption>
-							<colgroup>
-								<col className="w-[42px]" />
-								<col className="w-[88px]" />
-								<col className="w-[92px]" />
-								<col className="w-[82px]" />
-								<col className="w-[120px]" />
-								<col className="w-[140px]" />
-								<col className="w-[60px]" />
-								<col className="w-[80px]" />
-								<col className="w-[100px]" />
-								<col className="w-[100px]" />
-								<col className="w-[90px]" />
-								<col className="w-[90px]" />
-								<col className="w-[90px]" />
-								<col className="w-[90px]" />
-								<col className="w-[120px]" />
-								<col className="w-[64px]" />
-							</colgroup>
 							<thead className="bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
 								<tr>
 									<th className="text-center py-2 px-2 font-semibold text-gray-700">
@@ -658,46 +640,46 @@ export default function DocumentsIssuedTab({
 											</>
 										) : (
 											<>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.document_number || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.discipline || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.category || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.document_name || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.description || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.revision_number || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.status || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.planned_date || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.actual_date || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.prepared_by || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.checked_by || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.approved_by || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.client_approval || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900">
+												<td className="py-2 px-2 text-gray-900 break-words">
 													{d.remarks || '—'}
 												</td>
 											</>
