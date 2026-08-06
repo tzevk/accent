@@ -58,7 +58,7 @@ Super admin (`is_super_admin: '1'`) bypasses all checks. ~30 resources × 10 act
 | Directory         | Purpose                                                                                                                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/app/`        | Next.js App Router — pages (`page.jsx`/`page.tsx`), layouts, and API routes (`api/**/route.js`)                                                                                        |
-| `src/components/` | Shared React components — `ui/` (primitives: Button, Table, Modal, FormFields), `admin/ResourcePage.tsx` (CRUD template), `Sidebar`, `Navbar`, `AuthGate` (no-op)                      |
+| `src/components/` | Shared React components — `ui/` (primitives: Button, Table, Modal, FormFields), `admin/ResourceFormModal.tsx` (shared form renderer), `Sidebar`, `Navbar`, `AuthGate` (no-op)          |
 | `src/utils/`      | Server utilities — `database.js` (pool), `permissions.js`/`rbac.js`/`api-permissions.js` (RBAC), `activity-logger.js`, `password.ts`, `invoice-validation.ts`, `payroll-calculator.js` |
 | `src/lib/`        | Shared libraries — `money.ts` (decimal arithmetic), `format.js` (INR formatting), `api-client.js` (fetch wrapper), `cn.js` (Tailwind class merge)                                      |
 | `src/context/`    | React contexts — `SessionContext.jsx` (auth state + `can()` helper)                                                                                                                    |
@@ -371,21 +371,21 @@ For all **new files**, follow these rules:
 
 ## Important Files
 
-| File                                    | Role                                                                                                                  |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `middleware.ts`                         | **Single source of auth truth** — public path allowlist, auth enforcement, admin gating, rate limiting (5 categories) |
-| `src/utils/database.js`                 | MySQL pool manager — `dbConnect()`, `withDb()`, `query()`, `closePool()`                                              |
-| `src/utils/permissions.js`              | Central RBAC — `checkPermission()`, `hasAnyAccess()`, 30+ resources                                                   |
-| `src/utils/api-permissions.js`          | Server-side auth — `ensurePermission()`, `getCurrentUser()`, `checkPermissionFast()`                                  |
-| `src/context/SessionContext.jsx`        | Client auth — `useSession()`, `can(resource, action)`                                                                 |
-| `src/lib/money.ts`                      | Decimal.js money arithmetic — `R()`, `add`, `sub`, `pctOf`, `gte`, `toNumber`                                         |
-| `src/lib/format.js`                     | Shared formatting — `formatCurrency`, `formatDate`, `formatNumber`                                                    |
-| `src/utils/activity-logger.js`          | Audit trail — `logActivity()` for all mutations                                                                       |
-| `src/components/admin/ResourcePage.tsx` | Reusable CRUD page template (TanStack Query + TanStack Form)                                                          |
-| `knexfile.js`                           | Knex config — dev/staging/prod environments, `./migrations/` directory                                                |
-| `next.config.ts`                        | Next.js config — `serverExternalPackages`, image optimization, compression                                            |
-| `tsconfig.json`                         | TypeScript config — strict mode, `@/*` → `./src/*`, `allowJs: true`                                                   |
-| `vitest.config.ts`                      | Test config — jsdom, globals, `@/` alias                                                                              |
+| File                                         | Role                                                                                                                  |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `middleware.ts`                              | **Single source of auth truth** — public path allowlist, auth enforcement, admin gating, rate limiting (5 categories) |
+| `src/utils/database.js`                      | MySQL pool manager — `dbConnect()`, `withDb()`, `query()`, `closePool()`                                              |
+| `src/utils/permissions.js`                   | Central RBAC — `checkPermission()`, `hasAnyAccess()`, 30+ resources                                                   |
+| `src/utils/api-permissions.js`               | Server-side auth — `ensurePermission()`, `getCurrentUser()`, `checkPermissionFast()`                                  |
+| `src/context/SessionContext.jsx`             | Client auth — `useSession()`, `can(resource, action)`                                                                 |
+| `src/lib/money.ts`                           | Decimal.js money arithmetic — `R()`, `add`, `sub`, `pctOf`, `gte`, `toNumber`                                         |
+| `src/lib/format.js`                          | Shared formatting — `formatCurrency`, `formatDate`, `formatNumber`                                                    |
+| `src/utils/activity-logger.js`               | Audit trail — `logActivity()` for all mutations                                                                       |
+| `src/components/admin/ResourceFormModal.tsx` | Shared form renderer consumed by decoupled admin pages                                                                |
+| `knexfile.js`                                | Knex config — dev/staging/prod environments, `./migrations/` directory                                                |
+| `next.config.ts`                             | Next.js config — `serverExternalPackages`, image optimization, compression                                            |
+| `tsconfig.json`                              | TypeScript config — strict mode, `@/*` → `./src/*`, `allowJs: true`                                                   |
+| `vitest.config.ts`                           | Test config — jsdom, globals, `@/` alias                                                                              |
 
 ## Runtime & Tooling
 
