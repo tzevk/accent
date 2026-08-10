@@ -1,16 +1,33 @@
+/**
+ * Activity logging + screen-time tracking utilities.
+ *
+ * Screen-time uses a bucket model (borrowed from ActivityWatch): the client
+ * sends per-heartbeat DELTAS and `updateScreenTime` ACCUMULATES them per
+ * (user, date) — append-only semantics instead of replacing the row with the
+ * latest session's totals. Seconds columns hold the precise sum; the legacy
+ * minutes columns are derived floors so existing dashboard reads keep working.
+ */
+
 import { dbConnect } from '@/utils/database';
+import { hasColumn, invalidateCache } from '@/utils/schema-cache';
+
+type DbRow = Record<string, unknown>;
+
+// ─── logActivity ────────────────────────────────────────────────────
+
+export interface LogActivityParams {
+	userId: number | string;
+	actionType: string;
+	resourceType?: string | null;
+	resourceId?: string | number | null;
+	description?: string;
+	details?: unknown;
+	request?: Request | null;
+	status?: 'success' | 'failed' | 'pending' | string;
+}
 
 /**
  * Utility function to log user activity
- * @param {Object} params - Activity logging parameters
- * @param {number} params.userId - ID of the user performing the action
- * @param {string} params.actionType - Type of action (login, create, update, etc.)
- * @param {string} params.resourceType - Type of resource affected (leads, projects, etc.)
- * @param {number} params.resourceId - ID of the affected resource
- * @param {string} params.description - Human-readable description
- * @param {Object} params.details - Additional JSON details
- * @param {Request} params.request - Next.js request object for IP/user agent
- * @param {string} params.status - success, failed, or pending
  */
 export async function logActivity({
 	userId,
@@ -21,12 +38,12 @@ export async function logActivity({
 	details = null,
 	request = null,
 	status = 'success',
-}) {
+}: LogActivityParams): Promise<void> {
 	let db;
 	try {
 		db = await dbConnect();
 
-		const normalizedUserId = Number.parseInt(userId, 10);
+		const normalizedUserId = Number.parseInt(String(userId), 10);
 		// user_activity_logs.user_id has a FK to users.id, so invalid IDs (0/null/NaN)
 		// must be ignored to avoid breaking request flows.
 		if (!Number.isInteger(normalizedUserId) || normalizedUserId <= 0) {
@@ -34,8 +51,8 @@ export async function logActivity({
 		}
 
 		// Extract IP and user agent from request
-		let ipAddress = null;
-		let userAgent = null;
+		let ipAddress: string | null = null;
+		let userAgent: string | null = null;
 
 		if (request) {
 			// Get IP address from various headers
@@ -66,7 +83,7 @@ export async function logActivity({
 		);
 
 		// Update work session and daily summary asynchronously (don't block)
-		updateWorkSession(normalizedUserId, actionType).catch(console.error);
+		void updateWorkSession(normalizedUserId, actionType).catch(console.error);
 	} catch (error) {
 		console.error('Error logging activity:', error);
 		// Don't throw - logging failures shouldn't break the main flow
@@ -75,24 +92,73 @@ export async function logActivity({
 	}
 }
 
+// ─── Screen time (bucket model) ─────────────────────────────────────
+
+export interface ScreenTimePayload {
+	/** Active ms since the last heartbeat (bucket delta). */
+	activeDeltaMs?: number;
+	/** Idle ms since the last heartbeat (bucket delta). */
+	idleDeltaMs?: number;
+	/** Legacy: session-cumulative active ms. */
+	activeTimeMs?: number;
+	/** Legacy: session-cumulative idle ms. */
+	idleTimeMs?: number;
+	/** Total session ms (informational). */
+	sessionDurationMs?: number;
+}
+
+export interface NormalizedScreenTime {
+	activeSec: number;
+	idleSec: number;
+	totalSec: number;
+}
+
 /**
- * Update screen time for a user
- * @param {number} userId - User ID
- * @param {Object} screenData - Screen time data from heartbeat
+ * Normalize a heartbeat payload into whole-second deltas.
+ *
+ * Prefers per-heartbeat deltas. Falls back to legacy cumulative values so
+ * older clients keep working — cumulative payloads are still ADDED once per
+ * write, so a day of legacy sessions accumulates instead of overwriting.
  */
-export async function updateScreenTime(userId, screenData) {
+export function normalizeScreenTimePayload(
+	screenData: ScreenTimePayload = {}
+): NormalizedScreenTime {
+	const activeMs =
+		screenData.activeDeltaMs != null
+			? screenData.activeDeltaMs
+			: (screenData.activeTimeMs ?? 0);
+	const idleMs =
+		screenData.idleDeltaMs != null
+			? screenData.idleDeltaMs
+			: (screenData.idleTimeMs ?? 0);
+	const activeSec = Math.max(0, Math.round(activeMs / 1000));
+	const idleSec = Math.max(0, Math.round(idleMs / 1000));
+	return {
+		activeSec,
+		idleSec,
+		totalSec: activeSec + idleSec,
+	};
+}
+
+/**
+ * Update screen time for a user.
+ *
+ * @param userId - User ID
+ * @param screenData - Screen time data from heartbeat
+ */
+export async function updateScreenTime(
+	userId: number,
+	screenData: ScreenTimePayload
+): Promise<void> {
 	let db;
 	try {
 		db = await dbConnect();
 
-		const { activeTimeMs = 0, idleTimeMs = 0 } = screenData;
+		const { activeSec, idleSec, totalSec } =
+			normalizeScreenTimePayload(screenData);
+		if (totalSec <= 0) return;
 
-		// Convert milliseconds to minutes
-		const activeMinutes = Math.floor(activeTimeMs / 60000);
-		const idleMinutes = Math.floor(idleTimeMs / 60000);
-		const totalMinutes = activeMinutes + idleMinutes;
-
-		// Ensure screen time table exists
+		// Ensure screen time table exists (with seconds columns for fresh DBs)
 		await db.execute(`
       CREATE TABLE IF NOT EXISTS user_screen_time (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -101,6 +167,9 @@ export async function updateScreenTime(userId, screenData) {
         total_screen_time_minutes INT DEFAULT 0,
         active_time_minutes INT DEFAULT 0,
         idle_time_minutes INT DEFAULT 0,
+        screen_time_seconds INT DEFAULT 0,
+        active_time_seconds INT DEFAULT 0,
+        idle_time_seconds INT DEFAULT 0,
         total_clicks INT DEFAULT 0,
         total_scrolls INT DEFAULT 0,
         total_keypresses INT DEFAULT 0,
@@ -116,18 +185,39 @@ export async function updateScreenTime(userId, screenData) {
       )
     `);
 
-		// Update or insert screen time record for today
-		// Heartbeats send cumulative session values, so we REPLACE (not ADD) to avoid double-counting
+		// Migrate tables created before the seconds columns existed.
+		const hasActiveSeconds = await hasColumn(
+			db,
+			'user_screen_time',
+			'active_time_seconds'
+		);
+		if (!hasActiveSeconds) {
+			await db.execute(
+				`ALTER TABLE user_screen_time
+				 ADD COLUMN screen_time_seconds INT DEFAULT 0,
+				 ADD COLUMN active_time_seconds INT DEFAULT 0,
+				 ADD COLUMN idle_time_seconds INT DEFAULT 0`
+			);
+			invalidateCache('user_screen_time');
+		}
+
+		// Accumulate deltas into the seconds columns; minutes are derived
+		// floors (MySQL evaluates single-table SET clauses left-to-right, so
+		// the FLOOR() calls see the already-incremented seconds).
 		await db.execute(
-			`INSERT INTO user_screen_time 
-       (user_id, date, total_screen_time_minutes, active_time_minutes, idle_time_minutes, updated_at)
-       VALUES (?, CURDATE(), ?, ?, ?, CURRENT_TIMESTAMP)
+			`INSERT INTO user_screen_time
+       (user_id, date, screen_time_seconds, active_time_seconds, idle_time_seconds,
+        total_screen_time_minutes, active_time_minutes, idle_time_minutes, updated_at)
+       VALUES (?, CURDATE(), ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON DUPLICATE KEY UPDATE
-         total_screen_time_minutes = VALUES(total_screen_time_minutes),
-         active_time_minutes = VALUES(active_time_minutes),
-         idle_time_minutes = VALUES(idle_time_minutes),
+         screen_time_seconds = screen_time_seconds + VALUES(screen_time_seconds),
+         active_time_seconds = active_time_seconds + VALUES(active_time_seconds),
+         idle_time_seconds = idle_time_seconds + VALUES(idle_time_seconds),
+         total_screen_time_minutes = FLOOR(screen_time_seconds / 60),
+         active_time_minutes = FLOOR(active_time_seconds / 60),
+         idle_time_minutes = FLOOR(idle_time_seconds / 60),
          updated_at = CURRENT_TIMESTAMP`,
-			[userId, totalMinutes, activeMinutes, idleMinutes]
+			[userId, totalSec, activeSec, idleSec, totalSec, activeSec, idleSec]
 		);
 	} catch (error) {
 		console.error('Error updating screen time:', error);
@@ -136,21 +226,26 @@ export async function updateScreenTime(userId, screenData) {
 	}
 }
 
+// ─── Work sessions ──────────────────────────────────────────────────
+
 /**
  * Update active work session
  */
-async function updateWorkSession(userId, actionType) {
+async function updateWorkSession(
+	userId: number,
+	actionType: string
+): Promise<void> {
 	let db;
 	try {
 		db = await dbConnect();
 
 		// Get or create today's active session
-		const [sessions] = await db.execute(
+		const [sessions] = (await db.execute(
 			`SELECT id FROM user_work_sessions 
        WHERE user_id = ? AND status = 'active' AND DATE(session_start) = CURDATE()
        ORDER BY session_start DESC LIMIT 1`,
 			[userId]
-		);
+		)) as [DbRow[], unknown];
 
 		if (sessions.length > 0) {
 			// Update existing session
@@ -212,7 +307,7 @@ async function updateWorkSession(userId, actionType) {
 /**
  * End user session (call on logout)
  */
-export async function endUserSession(userId) {
+export async function endUserSession(userId: number): Promise<void> {
 	let db;
 	try {
 		db = await dbConnect();
@@ -246,21 +341,31 @@ export async function endUserSession(userId) {
 	}
 }
 
+// ─── Status queries ─────────────────────────────────────────────────
+
+export interface ActivityLogFilter {
+	userId?: number | null;
+	actionType?: string | null;
+	resourceType?: string | null;
+	startDate?: string | null;
+	endDate?: string | null;
+	limit?: number;
+	offset?: number;
+}
+
 /**
  * Get user activity logs with filters
  */
-export async function getUserActivityLogs({
-	userId = null,
-	actionType = null,
-	resourceType = null,
-	startDate = null,
-	endDate = null,
-	limit = 100,
-	offset = 0,
-}) {
+export async function getUserActivityLogs(
+	filters: ActivityLogFilter = {}
+): Promise<DbRow[]> {
 	let db;
 	try {
 		db = await dbConnect();
+
+		const { userId = null, actionType = null, resourceType = null } = filters;
+		const { startDate = null, endDate = null } = filters;
+		const { limit = 100, offset = 0 } = filters;
 
 		let query = `
       SELECT 
@@ -271,7 +376,7 @@ export async function getUserActivityLogs({
       LEFT JOIN users u ON ual.user_id = u.id
       WHERE 1=1
     `;
-		const params = [];
+		const params: unknown[] = [];
 
 		if (userId) {
 			query += ` AND ual.user_id = ?`;
@@ -301,7 +406,7 @@ export async function getUserActivityLogs({
 		query += ` ORDER BY ual.created_at DESC LIMIT ? OFFSET ?`;
 		params.push(limit, offset);
 
-		const [logs] = await db.execute(query, params);
+		const [logs] = (await db.execute(query, params)) as [DbRow[], unknown];
 
 		return logs;
 	} catch (error) {
@@ -312,18 +417,27 @@ export async function getUserActivityLogs({
 	}
 }
 
+export interface UserCurrentStatus {
+	status: 'online' | 'idle' | 'offline';
+	lastActivity: unknown;
+	currentPage: unknown;
+	sessionDuration: number | null;
+	username?: string;
+	fullName?: string;
+}
+
 /**
  * Get current status for a single user
- * @param {number} userId - User ID
- * @returns {Object} - { status, lastActivity, currentPage, sessionDuration }
  */
-export async function getUserCurrentStatus(userId) {
+export async function getUserCurrentStatus(
+	userId: number
+): Promise<UserCurrentStatus> {
 	let db;
 	try {
 		db = await dbConnect();
 
 		// Get user's last activity and current page
-		const [result] = await db.execute(
+		const [result] = (await db.execute(
 			`SELECT 
         u.id,
         u.username,
@@ -338,7 +452,7 @@ export async function getUserCurrentStatus(userId) {
       FROM users u
       WHERE u.id = ?`,
 			[userId]
-		);
+		)) as [DbRow[], unknown];
 
 		if (!result || result.length === 0) {
 			return {
@@ -352,10 +466,10 @@ export async function getUserCurrentStatus(userId) {
 		const user = result[0];
 		const status = getStatusFromActivity(user.last_activity);
 
-		let sessionDuration = null;
+		let sessionDuration: number | null = null;
 		if (user.session_start && status === 'online') {
 			sessionDuration = Math.floor(
-				(Date.now() - new Date(user.session_start).getTime()) / 1000
+				(Date.now() - new Date(String(user.session_start)).getTime()) / 1000
 			);
 		}
 
@@ -364,8 +478,8 @@ export async function getUserCurrentStatus(userId) {
 			lastActivity: user.last_activity,
 			currentPage: user.current_page,
 			sessionDuration,
-			username: user.username,
-			fullName: user.full_name,
+			username: user.username != null ? String(user.username) : undefined,
+			fullName: user.full_name != null ? String(user.full_name) : undefined,
 		};
 	} catch (error) {
 		console.error('Error getting user status:', error);
@@ -382,10 +496,10 @@ export async function getUserCurrentStatus(userId) {
 
 /**
  * Get current status for all users or multiple users
- * @param {Array<number>} userIds - Optional array of user IDs (if null, gets all users)
- * @returns {Array} - Array of user status objects
  */
-export async function getAllUsersStatus(userIds = null) {
+export async function getAllUsersStatus(
+	userIds: number[] | null = null
+): Promise<DbRow[]> {
 	let db;
 	try {
 		db = await dbConnect();
@@ -408,7 +522,7 @@ export async function getAllUsersStatus(userIds = null) {
       LEFT JOIN roles r ON u.role_id = r.id
     `;
 
-		let params = [];
+		let params: unknown[] = [];
 		if (userIds && userIds.length > 0) {
 			const placeholders = userIds.map(() => '?').join(',');
 			query += ` WHERE u.id IN (${placeholders})`;
@@ -417,16 +531,16 @@ export async function getAllUsersStatus(userIds = null) {
 
 		query += ` ORDER BY u.full_name`;
 
-		const [users] = await db.execute(query, params);
+		const [users] = (await db.execute(query, params)) as [DbRow[], unknown];
 
 		// Add status to each user
 		const usersWithStatus = users.map((user) => {
 			const status = getStatusFromActivity(user.last_activity);
 
-			let sessionDuration = null;
+			let sessionDuration: number | null = null;
 			if (user.session_start && status === 'online') {
 				sessionDuration = Math.floor(
-					(Date.now() - new Date(user.session_start).getTime()) / 1000
+					(Date.now() - new Date(String(user.session_start)).getTime()) / 1000
 				);
 			}
 
@@ -446,14 +560,18 @@ export async function getAllUsersStatus(userIds = null) {
 	}
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────
+
 /**
  * Helper: Determine status from last activity timestamp
  */
-function getStatusFromActivity(lastActivity) {
+function getStatusFromActivity(
+	lastActivity: unknown
+): 'online' | 'idle' | 'offline' {
 	if (!lastActivity) return 'offline';
 
 	const seconds = Math.floor(
-		(Date.now() - new Date(lastActivity).getTime()) / 1000
+		(Date.now() - new Date(String(lastActivity)).getTime()) / 1000
 	);
 
 	if (seconds < 120) return 'online'; // Active (< 2 min)
