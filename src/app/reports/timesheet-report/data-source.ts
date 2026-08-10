@@ -81,7 +81,13 @@ export interface TsMonthlyHours {
 	daily: Record<string, number>;
 	/** Sum of `daily` */
 	normal: number;
-	/** Attendance overtime hours */
+	/**
+	 * Overtime hours per YYYY-MM-DD. From logged project hours when the
+	 * employee logged time (excess over standard_working_hours per day),
+	 * else the attendance `overtime_hours` column.
+	 */
+	overtime_daily: Record<string, number>;
+	/** Sum of `overtime_daily` */
 	overtime: number;
 	/** normal + overtime */
 	total: number;
@@ -252,6 +258,22 @@ export function dayTypeFor(
 }
 
 /**
+ * Company weekly-off policy: Sundays plus the 2nd and 4th Saturdays of the
+ * month (every other Saturday is a working day). Dates are YYYY-MM-DD.
+ * Mirrors the rule the dashboard attendance card uses (2nd/4th Saturday =
+ * the Saturday of the 2nd/4th week, i.e. ceil(day / 7) ∈ {2, 4}).
+ */
+export function isScheduledWeeklyOff(date: string): boolean {
+	const weekday = weekdayFor(date);
+	if (weekday === 'Sun') return true;
+	if (weekday !== 'Sat') return false;
+	const day = Number(date.slice(8, 10));
+	if (!day) return false;
+	const saturdayOfMonth = Math.ceil(day / 7);
+	return saturdayOfMonth === 2 || saturdayOfMonth === 4;
+}
+
+/**
  * Build the day matrix for a month from raw attendance rows.
  * `month` is 'YYYY-MM'; rows are { date: 'YYYY-MM-DD', status, overtime_hours, is_weekly_off, is_holiday }.
  * Dates with no attendance record are still included (status null) so the
@@ -286,11 +308,11 @@ export function buildDays(
 			typeof rawStatus === 'string' && rawStatus !== '' ? rawStatus : null;
 		const weekday = weekdayFor(date);
 		// Weekly off comes from the attendance flag when a record exists;
-		// without a record, Sat/Sun are treated as weekends (the company's
-		// timesheet template colors Saturday + Sunday columns).
+		// without a record, apply the company rule (Sundays + 2nd/4th
+		// Saturdays only — the other Saturdays are working days).
 		const isWeeklyOff = row
 			? n(row, 'is_weekly_off') === 1
-			: weekday === 'Sat' || weekday === 'Sun';
+			: isScheduledWeeklyOff(date);
 		const holidayName = holidayNameByDate.get(date) ?? null;
 		days.push({
 			date,
@@ -420,15 +442,19 @@ export function buildProjectRows(rawRows: DbRow[], month: string): TsProject[] {
  * Resolve the monthly normal hours.
  *
  * When the employee logged project time in the month, those logged hours
- * ARE the normal hours (the Excel timesheet is a project-hours log).
- * Otherwise fall back to attendance-derived hours (status → 8h/4h).
+ * ARE the normal hours (the Excel timesheet is a project-hours log), and
+ * any daily excess over the standard working hours goes to overtime.
+ * Otherwise fall back to attendance-derived hours (status → 8h/4h) with
+ * the attendance `overtime_hours` column.
  */
 export function computeMonthlyHours(
 	projects: TsProject[],
-	days: TsDay[]
+	days: TsDay[],
+	settings: TsSettings = DEFAULT_SETTINGS
 ): TsMonthlyHours {
 	const withProjectHours = projects.filter((p) => p.total_hours > 0);
 	const daily: Record<string, number> = {};
+	const overtimeDaily: Record<string, number> = {};
 
 	if (withProjectHours.length > 0) {
 		for (const p of withProjectHours) {
@@ -436,17 +462,34 @@ export function computeMonthlyHours(
 				daily[date] = round2((daily[date] || 0) + hours);
 			}
 		}
+		// Rule: hours above the standard working day are overtime.
+		const std =
+			settings.standard_working_hours > 0
+				? settings.standard_working_hours
+				: DEFAULT_SETTINGS.standard_working_hours;
+		for (const [date, hours] of Object.entries(daily)) {
+			overtimeDaily[date] = round2(Math.max(0, hours - std));
+		}
 	} else {
 		for (const day of days) {
 			if (day.hours > 0) daily[day.date] = day.hours;
+			if (day.overtime_hours > 0) overtimeDaily[day.date] = day.overtime_hours;
 		}
 	}
 
-	const normal = round2(Object.values(daily).reduce((a, b) => a + b, 0));
-	const overtime = round2(days.reduce((a, d) => a + d.overtime_hours, 0));
+	const normal = round2(
+		Object.values(daily).reduce((a, b) => a + b, 0) -
+			(withProjectHours.length > 0
+				? Object.values(overtimeDaily).reduce((a, b) => a + b, 0)
+				: 0)
+	);
+	const overtime = round2(
+		Object.values(overtimeDaily).reduce((a, b) => a + b, 0)
+	);
 	return {
 		daily,
 		normal,
+		overtime_daily: overtimeDaily,
 		overtime,
 		total: round2(normal + overtime),
 		source: withProjectHours.length > 0 ? 'project' : 'attendance',
@@ -659,7 +702,7 @@ export async function fetchTimesheetData(
 		/* table may not exist */
 	}
 
-	const hours = computeMonthlyHours(projects, days);
+	const hours = computeMonthlyHours(projects, days, settings);
 
 	// Screen-time tracking (user_screen_time): real active seconds per day
 	// from the client heartbeat bucket. Keyed by login account, so the

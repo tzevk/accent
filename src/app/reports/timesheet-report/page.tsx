@@ -59,6 +59,7 @@ interface TsProject {
 interface TsMonthlyHours {
 	daily: Record<string, number>;
 	normal: number;
+	overtime_daily: Record<string, number>;
 	overtime: number;
 	total: number;
 	source: 'project' | 'attendance';
@@ -680,9 +681,8 @@ export default function TimesheetReportPage() {
 														className={`border border-black px-0 py-0 text-center align-middle tabular-nums ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : 'bg-white'}`}
 													>
 														{rowIndex === 0 &&
-														data.days.find((value) => value.date === day.date)
-															?.overtime_hours
-															? formatClock(day.overtime_hours)
+														data.hours.overtime_daily[day.date]
+															? formatClock(data.hours.overtime_daily[day.date])
 															: ''}
 													</td>
 												))}
