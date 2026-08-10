@@ -4,6 +4,7 @@ import {
 	hoursForStatus,
 	weekdayFor,
 	dayTypeFor,
+	isScheduledWeeklyOff,
 	buildDays,
 	buildSummary,
 	monthLabel,
@@ -85,6 +86,32 @@ describe('dayTypeFor', () => {
 			'weekly_off'
 		);
 		expect(dayTypeFor('2026-05-04', new Set(), false)).toBe('working');
+	});
+});
+
+describe('isScheduledWeeklyOff', () => {
+	it('marks every Sunday as a weekly off', () => {
+		expect(isScheduledWeeklyOff('2026-05-03')).toBe(true);
+		expect(isScheduledWeeklyOff('2026-05-31')).toBe(true);
+	});
+
+	it('marks only the 2nd and 4th Saturdays as weekly offs', () => {
+		// May 2026: Saturdays 2, 9, 16, 23, 30.
+		expect(isScheduledWeeklyOff('2026-05-02')).toBe(false); // 1st
+		expect(isScheduledWeeklyOff('2026-05-09')).toBe(true); // 2nd
+		expect(isScheduledWeeklyOff('2026-05-16')).toBe(false); // 3rd
+		expect(isScheduledWeeklyOff('2026-05-23')).toBe(true); // 4th
+		expect(isScheduledWeeklyOff('2026-05-30')).toBe(false); // 5th
+		// August 2026 starts on a Saturday.
+		expect(isScheduledWeeklyOff('2026-08-01')).toBe(false);
+		expect(isScheduledWeeklyOff('2026-08-08')).toBe(true);
+		expect(isScheduledWeeklyOff('2026-08-22')).toBe(true);
+		expect(isScheduledWeeklyOff('2026-08-29')).toBe(false);
+	});
+
+	it('returns false for weekdays and junk', () => {
+		expect(isScheduledWeeklyOff('2026-05-04')).toBe(false); // Mon
+		expect(isScheduledWeeklyOff('bogus')).toBe(false);
 	});
 });
 
@@ -175,13 +202,28 @@ describe('buildDays', () => {
 		});
 	});
 
-	it('treats unrecorded Saturdays/Sundays as weekly offs (template weekend)', () => {
+	it('treats unrecorded Sundays and 2nd/4th Saturdays as weekly offs', () => {
 		const days = buildDays('2026-05', [], holidays);
-		expect(days[1]).toMatchObject({ status: null, day_type: 'weekly_off' }); // May 2, Sat
-		expect(days[9]).toMatchObject({ status: null, day_type: 'weekly_off' }); // May 10, Sun
+		// May 2026: Saturdays are 2, 9, 16, 23, 30.
+		expect(days[1]).toMatchObject({ status: null, day_type: 'working' }); // May 2, 1st Sat
+		expect(days[8]).toMatchObject({ status: null, day_type: 'weekly_off' }); // May 9, 2nd Sat
+		expect(days[15]).toMatchObject({ status: null, day_type: 'working' }); // May 16, 3rd Sat
+		expect(days[22]).toMatchObject({ status: null, day_type: 'weekly_off' }); // May 23, 4th Sat
+		expect(days[29]).toMatchObject({ status: null, day_type: 'working' }); // May 30, 5th Sat
+		expect(days[2]).toMatchObject({ status: null, day_type: 'weekly_off' }); // May 3, Sun
 		expect(days[30]).toMatchObject({ status: null, day_type: 'weekly_off' }); // May 31, Sun
 		// Unrecorded weekdays stay working.
 		expect(days[3]).toMatchObject({ status: null, day_type: 'working' }); // May 4, Mon
+	});
+
+	it('applies the 2nd/4th Saturday rule when the month starts on a Saturday', () => {
+		// August 2026: Saturdays are 1, 8, 15, 22, 29.
+		const days = buildDays('2026-08', [], []);
+		expect(days[0]).toMatchObject({ day_type: 'working' }); // Aug 1, 1st Sat
+		expect(days[7]).toMatchObject({ day_type: 'weekly_off' }); // Aug 8, 2nd Sat
+		expect(days[14]).toMatchObject({ day_type: 'working' }); // Aug 15, 3rd Sat
+		expect(days[21]).toMatchObject({ day_type: 'weekly_off' }); // Aug 22, 4th Sat
+		expect(days[28]).toMatchObject({ day_type: 'working' }); // Aug 29, 5th Sat
 	});
 
 	it('respects recorded attendance over the weekend rule', () => {
@@ -441,8 +483,62 @@ describe('computeMonthlyHours', () => {
 		expect(hours.source).toBe('project');
 		expect(hours.daily).toEqual({ '2026-04-01': 6.5 });
 		expect(hours.normal).toBe(6.5);
+		expect(hours.overtime).toBe(0); // 6.5h ≤ 8h standard day → no overtime
+		expect(hours.total).toBe(6.5);
+	});
+
+	it('sends logged hours above the standard day to overtime', () => {
+		const projects = [
+			{
+				project_id: 1,
+				project_code: 'A',
+				project_name: '',
+				activity_name: 'X',
+				discipline_name: null,
+				status: null,
+				estimated_hours: 0,
+				actual_hours: 0,
+				qty_assigned: 0,
+				qty_completed: 0,
+				start_date: null,
+				due_date: null,
+				days: { '2026-04-01': 10 },
+				total_hours: 10,
+			},
+		];
+		const hours = computeMonthlyHours(projects, days);
+		expect(hours.daily).toEqual({ '2026-04-01': 10 });
+		expect(hours.overtime_daily).toEqual({ '2026-04-01': 2 });
+		expect(hours.normal).toBe(8);
 		expect(hours.overtime).toBe(2);
-		expect(hours.total).toBe(8.5);
+		expect(hours.total).toBe(10);
+	});
+
+	it('caps overtime at the configured standard working hours', () => {
+		const projects = [
+			{
+				project_id: 1,
+				project_code: 'A',
+				project_name: '',
+				activity_name: 'X',
+				discipline_name: null,
+				status: null,
+				estimated_hours: 0,
+				actual_hours: 0,
+				qty_assigned: 0,
+				qty_completed: 0,
+				start_date: null,
+				due_date: null,
+				days: { '2026-04-01': 10 },
+				total_hours: 10,
+			},
+		];
+		const hours = computeMonthlyHours(projects, days, {
+			standard_working_hours: 9,
+			half_day_hours: 4.5,
+		});
+		expect(hours.normal).toBe(9);
+		expect(hours.overtime).toBe(1);
 	});
 
 	it('falls back to attendance-derived hours without project log', () => {
@@ -450,6 +546,7 @@ describe('computeMonthlyHours', () => {
 		expect(hours.source).toBe('attendance');
 		expect(hours.daily).toEqual({ '2026-04-01': 8, '2026-04-02': 8 });
 		expect(hours.normal).toBe(16);
+		expect(hours.overtime_daily).toEqual({ '2026-04-02': 2 });
 		expect(hours.overtime).toBe(2);
 		expect(hours.total).toBe(18);
 	});
@@ -491,7 +588,8 @@ describe('computeMonthlyHours', () => {
 		];
 		const hours = computeMonthlyHours(projects, days);
 		expect(hours.daily['2026-04-01']).toBe(8.5);
-		expect(hours.normal).toBe(8.5);
+		expect(hours.normal).toBe(8); // 8.5h logged → 8 normal + 0.5 overtime
+		expect(hours.overtime).toBe(0.5);
 	});
 });
 

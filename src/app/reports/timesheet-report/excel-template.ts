@@ -407,8 +407,9 @@ export function buildWorkbook(data: TimesheetData): ExcelJS.Workbook {
 	data.days.forEach((day: TsDay, i: number) => {
 		const col = i + 2;
 		const cell = ws.getCell(cursor, col);
-		if (day.overtime_hours > 0) {
-			cell.value = hoursToDays(day.overtime_hours);
+		const otHours = data.hours.overtime_daily[day.date] ?? 0;
+		if (otHours > 0) {
+			cell.value = hoursToDays(otHours);
 			cell.numFmt = DAY_CELL_NUMFMT;
 			setFont(cell, { size: 9, color: 'FF1D4ED8' });
 		} else {
