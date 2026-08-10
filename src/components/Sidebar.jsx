@@ -552,6 +552,12 @@ export default function Sidebar() {
 								href="/reports/project-status"
 								active={pathname.startsWith('/reports/project-status')}
 							/>
+							<NavRow
+								icon={CalendarDaysIcon}
+								label="Timesheet Report"
+								href="/reports/timesheet-report"
+								active={pathname.startsWith('/reports/timesheet-report')}
+							/>
 						</div>
 					</div>
 				)}

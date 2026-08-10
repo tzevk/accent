@@ -20,6 +20,9 @@ export function useActivityTracker() {
 	const sessionStartRef = useRef(Date.now());
 	const activeTimeRef = useRef(0);
 	const idleTimeRef = useRef(0);
+	const lastTickRef = useRef(Date.now()); // last precise accumulation tick
+	const lastSentActiveRef = useRef(0); // active seconds reported at last heartbeat
+	const lastSentIdleRef = useRef(0); // idle seconds reported at last heartbeat
 	const isIdleRef = useRef(false);
 	const activityCountRef = useRef(0);
 	const currentPageRef = useRef('');
@@ -133,10 +136,15 @@ export function useActivityTracker() {
 		[queueActivityData]
 	);
 
-	// Send heartbeat
+	// Send heartbeat — reports the delta since the last heartbeat (bucket
+	// model), plus the legacy session totals for backward compatibility.
 	const sendHeartbeat = useCallback(() => {
 		const now = Date.now();
 		const sessionDuration = now - sessionStartRef.current;
+		const activeDeltaMs = activeTimeRef.current - lastSentActiveRef.current;
+		const idleDeltaMs = idleTimeRef.current - lastSentIdleRef.current;
+		lastSentActiveRef.current = activeTimeRef.current;
+		lastSentIdleRef.current = idleTimeRef.current;
 
 		queueActivityData({
 			actionType: 'other',
@@ -144,6 +152,8 @@ export function useActivityTracker() {
 			description: 'Session heartbeat',
 			details: {
 				sessionDurationMs: sessionDuration,
+				activeDeltaMs,
+				idleDeltaMs,
 				activeTime: activeTimeRef.current,
 				idleTime: idleTimeRef.current,
 				activityCount: activityCountRef.current,
@@ -153,7 +163,9 @@ export function useActivityTracker() {
 		});
 	}, [queueActivityData]);
 
-	// Check for idle state
+	// Check for idle state — accumulates precise elapsed time since the
+	// last tick (not a fixed interval), capped so a background-tab timer
+	// gap is never attributed wholesale to active/idle time.
 	const checkIdle = useCallback(() => {
 		const now = Date.now();
 		const timeSinceLastActivity = now - lastActivityRef.current;
@@ -168,10 +180,14 @@ export function useActivityTracker() {
 			});
 		}
 
-		if (isIdleRef.current) {
-			idleTimeRef.current += IDLE_CHECK_INTERVAL;
-		} else {
-			activeTimeRef.current += IDLE_CHECK_INTERVAL;
+		const delta = Math.min(now - lastTickRef.current, IDLE_CHECK_INTERVAL * 3);
+		if (delta > 0) {
+			lastTickRef.current = now;
+			if (isIdleRef.current) {
+				idleTimeRef.current += delta;
+			} else {
+				activeTimeRef.current += delta;
+			}
 		}
 	}, [queueActivityData]);
 
@@ -239,17 +255,25 @@ export function useActivityTracker() {
 		const handleBeforeUnload = () => {
 			flushActivityBatch();
 
+			// Flush the interval not yet covered by a heartbeat.
+			const activeDeltaMs = activeTimeRef.current - lastSentActiveRef.current;
+			const idleDeltaMs = idleTimeRef.current - lastSentIdleRef.current;
+			lastSentActiveRef.current = activeTimeRef.current;
+			lastSentIdleRef.current = idleTimeRef.current;
+
 			const totalSessionTime = Date.now() - sessionStartRef.current;
 			navigator.sendBeacon(
 				'/api/activity-logs/track-activity',
 				JSON.stringify({
 					userId: user.id,
-					actionType: 'status_change',
-					resourceType: 'session',
+					actionType: 'other',
+					resourceType: 'heartbeat',
 					description: 'Session ended',
 					details: {
 						status: 'ended',
 						totalSessionMs: totalSessionTime,
+						activeDeltaMs,
+						idleDeltaMs,
 						activeTime: activeTimeRef.current,
 						idleTime: idleTimeRef.current,
 					},

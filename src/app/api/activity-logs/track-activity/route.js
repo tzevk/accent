@@ -86,10 +86,11 @@ async function processActivity(userId, data, request) {
 	// Update screen time for heartbeat events
 	if (resourceType === 'heartbeat' && details) {
 		await updateScreenTime(userId, {
+			activeDeltaMs: details.activeDeltaMs || 0,
+			idleDeltaMs: details.idleDeltaMs || 0,
 			activeTimeMs: details.activeTime || 0,
 			idleTimeMs: details.idleTime || 0,
 			sessionDurationMs: details.sessionDurationMs || 0,
-			currentPage: details.currentPage || null,
 		});
 	}
 }

@@ -18,6 +18,7 @@ import {
 	ChevronRightIcon,
 	ShieldCheckIcon,
 	ChartBarIcon,
+	CalendarDaysIcon,
 	// ScaleIcon (used by TEMP-HIDDEN 'Client Balance' report entry in reportsMenuConfig)
 	BanknotesIcon,
 	ReceiptPercentIcon,
@@ -66,6 +67,13 @@ const reportsMenuConfig = [
 		name: 'Employee Report',
 		href: '/reports/employee-report',
 		icon: UserGroupIcon,
+		resource: 'reports',
+		reportField: 'project_activities',
+	},
+	{
+		name: 'Timesheet Report',
+		href: '/reports/timesheet-report',
+		icon: CalendarDaysIcon,
 		resource: 'reports',
 		reportField: 'project_activities',
 	},
