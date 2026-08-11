@@ -4,7 +4,11 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-import { logActivity, updateScreenTime } from '@/utils/activity-logger';
+import {
+	logActivity,
+	updateScreenTime,
+	updateUserPresence,
+} from '@/utils/activity-logger';
 
 /**
  * POST - Track detailed user activity (screen time, interactions, etc.)
@@ -93,4 +97,19 @@ async function processActivity(userId, data, request) {
 			sessionDurationMs: details.sessionDurationMs || 0,
 		});
 	}
+
+	// Update presence: any event refreshes last_seen; heartbeats carry the
+	// authoritative idle state, status_change marks idle/active transitions,
+	// view_page reports the current page.
+	const presence = { isIdle: null, currentPage: null };
+	if (resourceType === 'heartbeat' && details) {
+		presence.isIdle = details.isIdle === true;
+		presence.currentPage = details.currentPage || null;
+	} else if (actionType === 'status_change' && details) {
+		if (details.status === 'idle') presence.isIdle = true;
+		else if (details.status === 'active') presence.isIdle = false;
+	} else if (actionType === 'view_page' && details) {
+		presence.currentPage = details.page || null;
+	}
+	await updateUserPresence(userId, presence);
 }
