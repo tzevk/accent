@@ -226,6 +226,57 @@ export async function updateScreenTime(
 	}
 }
 
+// ─── Presence ───────────────────────────────────────────────────────
+
+export interface PresenceUpdate {
+	/** Client-reported idle state (heartbeat `details.isIdle`, status_change). */
+	isIdle?: boolean | null;
+	/** Client-reported current page (view_page / heartbeat fallback). */
+	currentPage?: string | null;
+}
+
+/**
+ * Upsert a user's presence row.
+ *
+ * `last_seen` refreshes on every call (any event = the browser is alive).
+ * `is_idle` and `current_page` are only overwritten when a value is supplied
+ * (COALESCE semantics) so events that carry neither never clobber state set
+ * by heartbeats or status changes. One row per user, PK lookup — presence
+ * reads never aggregate `user_activity_logs`.
+ */
+export async function updateUserPresence(
+	userId: number,
+	{ isIdle = null, currentPage = null }: PresenceUpdate = {}
+): Promise<void> {
+	let db;
+	try {
+		db = await dbConnect();
+
+		const normalizedUserId = Number.parseInt(String(userId), 10);
+		if (!Number.isInteger(normalizedUserId) || normalizedUserId <= 0) {
+			return;
+		}
+
+		const idleValue = typeof isIdle === 'boolean' ? (isIdle ? 1 : 0) : null;
+		const page = currentPage ?? null;
+
+		await db.execute(
+			`INSERT INTO user_presence (user_id, last_seen, is_idle, current_page)
+       VALUES (?, CURRENT_TIMESTAMP, COALESCE(?, 0), ?)
+       ON DUPLICATE KEY UPDATE
+         last_seen = CURRENT_TIMESTAMP,
+         is_idle = COALESCE(?, is_idle),
+         current_page = COALESCE(?, current_page)`,
+			[normalizedUserId, idleValue, page, idleValue, page]
+		);
+	} catch (error) {
+		console.error('Error updating user presence:', error);
+		// Don't throw - presence tracking failures shouldn't break activity flow
+	} finally {
+		if (db) await db.end();
+	}
+}
+
 // ─── Work sessions ──────────────────────────────────────────────────
 
 /**
@@ -417,164 +468,32 @@ export async function getUserActivityLogs(
 	}
 }
 
-export interface UserCurrentStatus {
-	status: 'online' | 'idle' | 'offline';
-	lastActivity: unknown;
-	currentPage: unknown;
-	sessionDuration: number | null;
-	username?: string;
-	fullName?: string;
-}
-
-/**
- * Get current status for a single user
- */
-export async function getUserCurrentStatus(
-	userId: number
-): Promise<UserCurrentStatus> {
-	let db;
-	try {
-		db = await dbConnect();
-
-		// Get user's last activity and current page
-		const [result] = (await db.execute(
-			`SELECT 
-        u.id,
-        u.username,
-        u.full_name,
-        (SELECT MAX(created_at) FROM user_activity_logs WHERE user_id = u.id) as last_activity,
-        (SELECT description FROM user_activity_logs 
-         WHERE user_id = u.id AND action_type = 'view_page' 
-         ORDER BY created_at DESC LIMIT 1) as current_page,
-        (SELECT session_start FROM user_work_sessions 
-         WHERE user_id = u.id AND status = 'active' 
-         ORDER BY session_start DESC LIMIT 1) as session_start
-      FROM users u
-      WHERE u.id = ?`,
-			[userId]
-		)) as [DbRow[], unknown];
-
-		if (!result || result.length === 0) {
-			return {
-				status: 'offline',
-				lastActivity: null,
-				currentPage: null,
-				sessionDuration: null,
-			};
-		}
-
-		const user = result[0];
-		const status = getStatusFromActivity(user.last_activity);
-
-		let sessionDuration: number | null = null;
-		if (user.session_start && status === 'online') {
-			sessionDuration = Math.floor(
-				(Date.now() - new Date(String(user.session_start)).getTime()) / 1000
-			);
-		}
-
-		return {
-			status,
-			lastActivity: user.last_activity,
-			currentPage: user.current_page,
-			sessionDuration,
-			username: user.username != null ? String(user.username) : undefined,
-			fullName: user.full_name != null ? String(user.full_name) : undefined,
-		};
-	} catch (error) {
-		console.error('Error getting user status:', error);
-		return {
-			status: 'offline',
-			lastActivity: null,
-			currentPage: null,
-			sessionDuration: null,
-		};
-	} finally {
-		if (db) await db.end();
-	}
-}
-
-/**
- * Get current status for all users or multiple users
- */
-export async function getAllUsersStatus(
-	userIds: number[] | null = null
-): Promise<DbRow[]> {
-	let db;
-	try {
-		db = await dbConnect();
-
-		let query = `
-      SELECT 
-        u.id as user_id,
-        u.username,
-        u.full_name,
-        u.email,
-        r.role_name,
-        (SELECT MAX(created_at) FROM user_activity_logs WHERE user_id = u.id) as last_activity,
-        (SELECT description FROM user_activity_logs 
-         WHERE user_id = u.id AND action_type = 'view_page' 
-         ORDER BY created_at DESC LIMIT 1) as current_page,
-        (SELECT session_start FROM user_work_sessions 
-         WHERE user_id = u.id AND status = 'active' 
-         ORDER BY session_start DESC LIMIT 1) as session_start
-      FROM users u
-      LEFT JOIN roles r ON u.role_id = r.id
-    `;
-
-		let params: unknown[] = [];
-		if (userIds && userIds.length > 0) {
-			const placeholders = userIds.map(() => '?').join(',');
-			query += ` WHERE u.id IN (${placeholders})`;
-			params = userIds;
-		}
-
-		query += ` ORDER BY u.full_name`;
-
-		const [users] = (await db.execute(query, params)) as [DbRow[], unknown];
-
-		// Add status to each user
-		const usersWithStatus = users.map((user) => {
-			const status = getStatusFromActivity(user.last_activity);
-
-			let sessionDuration: number | null = null;
-			if (user.session_start && status === 'online') {
-				sessionDuration = Math.floor(
-					(Date.now() - new Date(String(user.session_start)).getTime()) / 1000
-				);
-			}
-
-			return {
-				...user,
-				status,
-				session_duration: sessionDuration,
-			};
-		});
-
-		return usersWithStatus;
-	} catch (error) {
-		console.error('Error getting all users status:', error);
-		return [];
-	} finally {
-		if (db) await db.end();
-	}
-}
-
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /**
- * Helper: Determine status from last activity timestamp
+ * Determine a user's presence status from their last-seen timestamp and
+ * client-reported idle state.
+ *
+ * - `online`: heartbeats within 3 min AND the client reports active.
+ * - `idle`: client reports idle (any age under 10 min) OR heartbeats stopped
+ *   3–10 min ago.
+ * - `offline`: no presence row / no heartbeat for >10 min.
+ *
+ * The 180s online window is deliberately wider than the 120s heartbeat
+ * interval so a single dropped or late heartbeat doesn't flip status.
  */
-function getStatusFromActivity(
-	lastActivity: unknown
+export function getStatusFromActivity(
+	lastSeen: unknown,
+	isIdle: unknown = false
 ): 'online' | 'idle' | 'offline' {
-	if (!lastActivity) return 'offline';
+	if (!lastSeen) return 'offline';
 
 	const seconds = Math.floor(
-		(Date.now() - new Date(String(lastActivity)).getTime()) / 1000
+		(Date.now() - new Date(String(lastSeen)).getTime()) / 1000
 	);
 
-	if (seconds < 120) return 'online'; // Active (< 2 min)
+	if (isIdle) return seconds < 600 ? 'idle' : 'offline';
+	if (seconds < 180) return 'online'; // Active (< 3 min)
 	if (seconds < 600) return 'idle'; // Idle (< 10 min)
 	return 'offline'; // Away (> 10 min)
 }

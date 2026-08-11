@@ -1,13 +1,22 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { getCurrentUser } from '@/utils/api-permissions';
+import { getStatusFromActivity } from '@/utils/activity-logger';
 
 /**
  * GET /api/user-status
- * Fetch online status for one or multiple users
+ * Fetch presence status for one or multiple users.
+ *
+ * Presence lives in `user_presence` (one row per user, upserted by the
+ * activity tracker); status is derived from `last_seen` + client-reported
+ * `is_idle`, never aggregated from `user_activity_logs`.
+ *
  * Query params:
- * - user_id: single user ID or comma-separated list
+ * - user_id: single user ID or comma-separated list (admin or self only)
  * - include_stats: include today's activity statistics (default: true)
+ *
+ * Access: no user_id (all-users enumeration) requires admin; with user_id,
+ * admins may fetch anyone, everyone else only themselves.
  */
 export async function GET(request) {
 	let db;
@@ -24,10 +33,20 @@ export async function GET(request) {
 		const userIdParam = searchParams.get('user_id');
 		const includeStats = searchParams.get('include_stats') !== 'false';
 
+		const isAdmin =
+			currentUser.is_super_admin || currentUser.role?.code === 'admin';
+
 		db = await dbConnect();
 
-		// If no user_id provided, get all active users
+		// No user_id: presence for all active users (admin only)
 		if (!userIdParam) {
+			if (!isAdmin) {
+				return NextResponse.json(
+					{ success: false, error: 'Forbidden' },
+					{ status: 403 }
+				);
+			}
+
 			const [allUsers] = await db.execute(
 				`SELECT 
           u.id as user_id,
@@ -35,43 +54,53 @@ export async function GET(request) {
           u.full_name,
           u.email,
           r.role_name,
-          MAX(ual.created_at) as last_activity,
-          (SELECT description FROM user_activity_logs 
-           WHERE user_id = u.id AND action_type = 'view_page' 
-           ORDER BY created_at DESC LIMIT 1) as current_page
+          p.last_seen as last_activity,
+          p.is_idle,
+          p.current_page
         FROM users u
         LEFT JOIN roles_master r ON u.role_id = r.id
-        LEFT JOIN user_activity_logs ual ON u.id = ual.user_id
+        LEFT JOIN user_presence p ON p.user_id = u.id
         WHERE u.is_active = TRUE
-        GROUP BY u.id
-        ORDER BY last_activity DESC`
+        ORDER BY COALESCE(p.last_seen, '1970-01-01') DESC`
 			);
 
-			// Add status and stats if requested
-			const usersWithStatus = await Promise.all(
-				allUsers.map(async (user) => {
-					const status = getStatusFromActivity(user.last_activity);
+			const statsByUser = includeStats
+				? await getUsersTodayStats(
+						db,
+						allUsers.map((u) => u.user_id)
+					)
+				: null;
 
-					let stats = null;
-					if (includeStats) {
-						stats = await getUserTodayStats(db, user.user_id);
-					}
-
-					return {
-						...user,
-						status,
-						...stats,
-					};
-				})
-			);
+			const usersWithStatus = allUsers.map((user) => ({
+				...user,
+				status: getStatusFromActivity(user.last_activity, user.is_idle),
+				...(statsByUser ? (statsByUser.get(user.user_id) ?? {}) : {}),
+			}));
 
 			return NextResponse.json({ success: true, data: usersWithStatus });
 		}
 
-		// Get specific user(s)
-		const userIds = userIdParam.split(',').map((id) => parseInt(id.trim()));
-		const placeholders = userIds.map(() => '?').join(',');
+		// Specific user(s): admin or self
+		const userIds = userIdParam
+			.split(',')
+			.map((id) => parseInt(id.trim()))
+			.filter(Number.isInteger);
 
+		if (userIds.length === 0) {
+			return NextResponse.json(
+				{ success: false, error: 'Invalid user_id' },
+				{ status: 400 }
+			);
+		}
+
+		if (!isAdmin && !userIds.includes(currentUser.id)) {
+			return NextResponse.json(
+				{ success: false, error: 'Forbidden' },
+				{ status: 403 }
+			);
+		}
+
+		const placeholders = userIds.map(() => '?').join(',');
 		const [users] = await db.execute(
 			`SELECT 
         u.id as user_id,
@@ -79,45 +108,41 @@ export async function GET(request) {
         u.full_name,
         u.email,
         r.role_name,
-        (SELECT MAX(created_at) FROM user_activity_logs WHERE user_id = u.id) as last_activity,
-        (SELECT description FROM user_activity_logs 
-         WHERE user_id = u.id AND action_type = 'view_page' 
-         ORDER BY created_at DESC LIMIT 1) as current_page,
+        p.last_seen as last_activity,
+        p.is_idle,
+        p.current_page,
         (SELECT session_start FROM user_work_sessions 
          WHERE user_id = u.id AND status = 'active' 
          ORDER BY session_start DESC LIMIT 1) as session_start
       FROM users u
       LEFT JOIN roles_master r ON u.role_id = r.id
+      LEFT JOIN user_presence p ON p.user_id = u.id
       WHERE u.id IN (${placeholders})`,
 			userIds
 		);
 
+		const statsByUser = includeStats
+			? await getUsersTodayStats(db, userIds)
+			: null;
+
 		// Add status and stats
-		const usersWithStatus = await Promise.all(
-			users.map(async (user) => {
-				const status = getStatusFromActivity(user.last_activity);
+		const usersWithStatus = users.map((user) => {
+			const status = getStatusFromActivity(user.last_activity, user.is_idle);
 
-				let stats = null;
-				if (includeStats) {
-					stats = await getUserTodayStats(db, user.user_id);
-				}
+			let session_duration = null;
+			if (user.session_start && status === 'online') {
+				session_duration = Math.floor(
+					(Date.now() - new Date(user.session_start).getTime()) / 1000
+				);
+			}
 
-				// Calculate session duration if active
-				let session_duration = null;
-				if (user.session_start && status === 'online') {
-					session_duration = Math.floor(
-						(Date.now() - new Date(user.session_start).getTime()) / 1000
-					);
-				}
-
-				return {
-					...user,
-					status,
-					session_duration,
-					...stats,
-				};
-			})
-		);
+			return {
+				...user,
+				status,
+				session_duration,
+				...(statsByUser ? (statsByUser.get(user.user_id) ?? {}) : {}),
+			};
+		});
 
 		return NextResponse.json({
 			success: true,
@@ -126,7 +151,10 @@ export async function GET(request) {
 	} catch (error) {
 		console.error('Error fetching user status:', error);
 		return NextResponse.json(
-			{ success: false, error: 'Failed to fetch user status' },
+			{
+				success: false,
+				error: 'Failed to fetch user status',
+			},
 			{ status: 500 }
 		);
 	} finally {
@@ -135,109 +163,30 @@ export async function GET(request) {
 }
 
 /**
- * POST /api/user-status
- * Update user manual status (e.g., "In meeting", "On break")
- * Body: { status: string, user_id?: number }
+ * Helper: Get today's stats for many users at once (3 queries total, not
+ * 3 per user). Returns a Map keyed by user_id; missing users get no entry
+ * (callers merge with `?? {}`).
  */
-export async function POST(request) {
-	let db;
-	try {
-		const currentUser = await getCurrentUser(request);
-		if (!currentUser) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
+async function getUsersTodayStats(db, userIds) {
+	if (!userIds.length) return new Map();
 
-		const body = await request.json();
-		const { status, user_id } = body;
-
-		// Users can only update their own status unless they're admin
-		const targetUserId = user_id || currentUser.id;
-		if (targetUserId !== currentUser.id && currentUser.role !== 'Admin') {
-			return NextResponse.json(
-				{ success: false, error: 'Forbidden' },
-				{ status: 403 }
-			);
-		}
-
-		if (!status) {
-			return NextResponse.json(
-				{ success: false, error: 'Status is required' },
-				{ status: 400 }
-			);
-		}
-
-		db = await dbConnect();
-
-		// Log status change as activity
-		await db.execute(
-			`INSERT INTO user_activity_logs (
-        user_id, action_type, resource_type, description, details, status
-      ) VALUES (?, 'status_change', 'user_status', ?, ?, 'success')`,
-			[
-				targetUserId,
-				`Manual status update: ${status}`,
-				JSON.stringify({ manual_status: status }),
-			]
-		);
-
-		return NextResponse.json({
-			success: true,
-			message: 'Status updated successfully',
-			data: { user_id: targetUserId, status },
-		});
-	} catch (error) {
-		console.error('Error updating user status:', error);
-		return NextResponse.json(
-			{ success: false, error: 'Failed to update user status' },
-			{ status: 500 }
-		);
-	} finally {
-		if (db) db.release();
-	}
-}
-
-/**
- * Helper: Determine status from last activity timestamp
- */
-function getStatusFromActivity(lastActivity) {
-	if (!lastActivity) return 'offline';
-
-	const seconds = Math.floor(
-		(Date.now() - new Date(lastActivity).getTime()) / 1000
-	);
-
-	if (seconds < 120) return 'online'; // Active (< 2 min)
-	if (seconds < 600) return 'idle'; // Idle (< 10 min)
-	return 'offline'; // Away (> 10 min)
-}
-
-/**
- * Helper: Get user's today statistics
- */
-async function getUserTodayStats(db, userId) {
 	const today = new Date().toISOString().split('T')[0];
+	const placeholders = userIds.map(() => '?').join(',');
 
-	// Get daily summary
-	const [summary] = await db.execute(
+	const [summaries] = await db.execute(
 		`SELECT 
-      total_work_minutes,
+      user_id,
       activities_completed,
-      resources_created,
-      resources_updated,
-      resources_deleted,
       pages_viewed,
       productivity_score
     FROM user_daily_summary
-    WHERE user_id = ? AND date = ?`,
-		[userId, today]
+    WHERE user_id IN (${placeholders}) AND date = ?`,
+		[...userIds, today]
 	);
 
-	// Get screen time
-	const [screenTime] = await db.execute(
+	const [screenTimes] = await db.execute(
 		`SELECT 
+      user_id,
       total_screen_time_minutes,
       active_time_minutes,
       idle_time_minutes,
@@ -245,28 +194,42 @@ async function getUserTodayStats(db, userId) {
       total_scrolls,
       total_keypresses
     FROM user_screen_time
-    WHERE user_id = ? AND date = ?`,
-		[userId, today]
+    WHERE user_id IN (${placeholders}) AND date = ?`,
+		[...userIds, today]
 	);
 
-	// Get active session count
 	const [sessions] = await db.execute(
-		`SELECT COUNT(*) as activities_count,
-     SUM(resources_modified) as resources_modified
+		`SELECT 
+      user_id,
+      COUNT(*) as activities_count,
+      SUM(resources_modified) as resources_modified
     FROM user_work_sessions
-    WHERE user_id = ? AND DATE(session_start) = ?`,
-		[userId, today]
+    WHERE user_id IN (${placeholders}) AND DATE(session_start) = ?
+    GROUP BY user_id`,
+		[...userIds, today]
 	);
 
-	return {
-		total_screen_time_minutes: screenTime[0]?.total_screen_time_minutes || 0,
-		active_time_minutes: screenTime[0]?.active_time_minutes || 0,
-		idle_time_minutes: screenTime[0]?.idle_time_minutes || 0,
-		activities_count: summary[0]?.activities_completed || 0,
-		productivity_score: parseFloat(summary[0]?.productivity_score || 0),
-		pages_viewed: summary[0]?.pages_viewed || 0,
-		resources_modified: sessions[0]?.resources_modified || 0,
-		total_clicks: screenTime[0]?.total_clicks || 0,
-		total_scrolls: screenTime[0]?.total_scrolls || 0,
-	};
+	const summaryMap = new Map(summaries.map((r) => [r.user_id, r]));
+	const screenMap = new Map(screenTimes.map((r) => [r.user_id, r]));
+	const sessionMap = new Map(sessions.map((r) => [r.user_id, r]));
+
+	const statsByUser = new Map();
+	for (const id of userIds) {
+		const s = summaryMap.get(id) || {};
+		const st = screenMap.get(id) || {};
+		const sess = sessionMap.get(id) || {};
+		statsByUser.set(id, {
+			total_screen_time_minutes: st.total_screen_time_minutes || 0,
+			active_time_minutes: st.active_time_minutes || 0,
+			idle_time_minutes: st.idle_time_minutes || 0,
+			activities_count: s.activities_completed || 0,
+			productivity_score: parseFloat(s.productivity_score || 0),
+			pages_viewed: s.pages_viewed || 0,
+			resources_modified: sess.resources_modified || 0,
+			total_clicks: st.total_clicks || 0,
+			total_scrolls: st.total_scrolls || 0,
+		});
+	}
+
+	return statsByUser;
 }
