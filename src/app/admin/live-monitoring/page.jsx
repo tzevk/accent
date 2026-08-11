@@ -20,7 +20,7 @@ export default function LiveMonitoringPage() {
 	const [users, setUsers] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [searchTerm, setSearchTerm] = useState('');
-	const [statusFilter, setStatusFilter] = useState('online'); // 'all' | 'online' | 'idle' | 'offline'
+	const [statusFilter, setStatusFilter] = useState('active'); // 'all' | 'active' (online+idle) | 'online' | 'idle' | 'offline'
 	const [sortBy, setSortBy] = useState('status'); // 'status' | 'name' | 'screen_time'
 	const [autoRefresh, setAutoRefresh] = useState(true);
 
@@ -61,7 +61,11 @@ export default function LiveMonitoringPage() {
 		let filtered = users;
 
 		// Apply status filter
-		if (statusFilter !== 'all') {
+		if (statusFilter === 'active') {
+			filtered = filtered.filter(
+				(u) => u.status === 'online' || u.status === 'idle'
+			);
+		} else if (statusFilter !== 'all') {
 			filtered = filtered.filter((u) => u.status === statusFilter);
 		}
 
@@ -304,6 +308,7 @@ export default function LiveMonitoringPage() {
 										onChange={(e) => setStatusFilter(e.target.value)}
 										className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 									>
+										<option value="active">Online &amp; Idle</option>
 										<option value="online">Online Only</option>
 										<option value="all">All Status</option>
 										<option value="idle">Idle Only</option>

@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
-import {
-	ensurePermission,
-	RESOURCES,
-	PERMISSIONS,
-} from '@/utils/api-permissions';
+import { getCurrentUser } from '@/utils/api-permissions';
 import {
 	logActivity,
 	updateScreenTime,
@@ -13,17 +9,21 @@ import {
 /**
  * POST - Track detailed user activity (screen time, interactions, etc.)
  * This endpoint receives client-side activity data
+ *
+ * Auth: ANY logged-in user may report their own activity. The user id always
+ * comes from the session (getCurrentUser), never from the client payload, so
+ * users can only ever write rows for themselves. A permission gate here is
+ * wrong: users with limited roles (e.g. empty permission arrays) would 403
+ * and their presence/heartbeats would silently never arrive.
  */
 export async function POST(request) {
 	try {
-		// Users should always be able to track their own activity
-		const auth = await ensurePermission(
-			request,
-			RESOURCES.PROFILE,
-			PERMISSIONS.READ
-		);
-		if (auth instanceof NextResponse) {
-			return auth;
+		const currentUser = await getCurrentUser(request);
+		if (!currentUser) {
+			return NextResponse.json(
+				{ success: false, error: 'Unauthorized' },
+				{ status: 401 }
+			);
 		}
 
 		// Parse request body with error handling
@@ -42,13 +42,13 @@ export async function POST(request) {
 		// Handle batched activities
 		if (data.batch && data.activities) {
 			for (const activity of data.activities) {
-				await processActivity(auth.user.id, activity, request);
+				await processActivity(currentUser.id, activity, request);
 			}
 			return NextResponse.json({ success: true });
 		}
 
 		// Handle single activity
-		await processActivity(auth.user.id, data, request);
+		await processActivity(currentUser.id, data, request);
 
 		return NextResponse.json({ success: true });
 	} catch (error) {

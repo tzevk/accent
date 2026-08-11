@@ -138,7 +138,9 @@ describe('InvoicePage', () => {
 		const searchInput = screen.getByPlaceholderText('Search invoices...');
 		await user.type(searchInput, 'Another');
 
+		// Search filtering is async (debounced) — await the filtered row
+		// instead of asserting synchronously (flaked under suite load).
+		await screen.findByText('Another Client');
 		expect(screen.queryByText('ATS/I/JAN-26/001')).not.toBeInTheDocument();
-		expect(screen.getByText('Another Client')).toBeInTheDocument();
 	});
 });
