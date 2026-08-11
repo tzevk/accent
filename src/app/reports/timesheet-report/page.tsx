@@ -11,6 +11,7 @@ import {
 import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
+import { capProjectDays } from '@/lib/timesheet-cap';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 
 // ─── Client-safe API types ──────────────────────────────────────────
@@ -264,6 +265,17 @@ export default function TimesheetReportPage() {
 		() => (data ? projectRowsForMonth(data.projects, data.month) : []),
 		[data]
 	);
+	// The grid credits at most the standard working day per day in the top
+	// section — per-project cells are capped so the section sums to ≤ 8h,
+	// and the daily excess is already surfaced in the overtime row
+	// (data.hours.overtime_daily).
+	const displayedProjectRows = useMemo(
+		() =>
+			data
+				? capProjectDays(projectRows, data.settings.standard_working_hours)
+				: [],
+		[data, projectRows]
+	);
 
 	const isSuperAdmin =
 		user?.is_super_admin === true || user?.is_super_admin === 1;
@@ -427,7 +439,7 @@ export default function TimesheetReportPage() {
 					</div>
 				) : (
 					<div className="mx-auto max-w-[1550px] overflow-x-auto">
-						<section className="min-w-[1504px] bg-white font-[Arial,sans-serif] text-[10px] leading-none text-black">
+						<section className="min-w-[1950px] bg-white font-[Arial,sans-serif] text-[10px] leading-none text-black">
 							{/* Workbook header: logo, title, employee details, month/year. */}
 							<div className="grid min-h-[58px] grid-cols-[260px_310px_minmax(0,1fr)_145px] border-x border-t border-black">
 								<div className="flex items-center justify-center border-r border-black">
@@ -510,9 +522,9 @@ export default function TimesheetReportPage() {
 											style={{ width: '20.5px' }}
 										/>
 									))}
-									<col style={{ width: '34px' }} />
+									<col style={{ width: '48px' }} />
 									{days.map((day) => (
-										<col key={day.date} style={{ width: '34px' }} />
+										<col key={day.date} style={{ width: '48px' }} />
 									))}
 									<col style={{ width: '72px' }} />
 								</colgroup>
@@ -575,7 +587,7 @@ export default function TimesheetReportPage() {
 								<tbody>
 									{/* Fixed-height normal section: empty rows preserve the Excel layout and hold vertical labels. */}
 									{Array.from({ length: 20 }, (_, rowIndex) => {
-										const project = projectRows[rowIndex] ?? null;
+										const project = displayedProjectRows[rowIndex] ?? null;
 										return (
 											<tr key={`normal-${rowIndex}`} style={{ height: '15px' }}>
 												<td
@@ -591,7 +603,14 @@ export default function TimesheetReportPage() {
 												>
 													{projectActivity(project)}
 												</td>
-												<td className="border border-black px-1 py-0 text-center align-middle tabular-nums">
+												<td
+													className="border border-black px-1 py-0 text-center align-middle tabular-nums whitespace-nowrap overflow-hidden text-ellipsis"
+													title={
+														project?.qty_completed
+															? String(project.qty_completed)
+															: undefined
+													}
+												>
 													{project?.qty_completed ? project.qty_completed : ''}
 												</td>
 												{days.map((day) => {
@@ -610,7 +629,7 @@ export default function TimesheetReportPage() {
 																	? `${projectActivity(project)} — ${formatClock(hours)}`
 																	: undefined
 															}
-															className={`border border-black px-0 py-0 text-center align-middle tabular-nums ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : isLeave ? 'bg-white text-red-600' : 'bg-white text-black'}`}
+															className={`border border-black px-0 py-0 text-center align-middle tabular-nums whitespace-nowrap overflow-hidden text-ellipsis ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : isLeave ? 'bg-white text-red-600' : 'bg-white text-black'}`}
 														>
 															{hours > 0
 																? formatClock(hours)
@@ -632,7 +651,7 @@ export default function TimesheetReportPage() {
 										<td colSpan={9} className="border border-black px-1 py-0" />
 										<td
 											colSpan={20}
-											className="border border-black px-1 py-0 text-center font-normal"
+											className="border border-black px-1 py-0 text-center font-semibold text-blue-700"
 										>
 											Over Time Hours
 										</td>
@@ -648,7 +667,7 @@ export default function TimesheetReportPage() {
 									</tr>
 
 									{Array.from({ length: 6 }, (_, rowIndex) => {
-										const project = projectRows[rowIndex] ?? null;
+										const project = displayedProjectRows[rowIndex] ?? null;
 										return (
 											<tr
 												key={`overtime-${rowIndex}`}
@@ -675,18 +694,21 @@ export default function TimesheetReportPage() {
 													{rowIndex === 0 ? projectActivity(project) : ''}
 												</td>
 												<td className="border border-black px-1 py-0 text-center align-middle" />
-												{days.map((day) => (
-													<td
-														key={day.date}
-														className={`border border-black px-0 py-0 text-center align-middle tabular-nums ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : 'bg-white'}`}
-													>
-														{rowIndex === 0 &&
-														data.hours.overtime_daily[day.date]
-															? formatClock(data.hours.overtime_daily[day.date])
-															: ''}
-													</td>
-												))}
-												<td className="border border-black px-1 py-0 text-right tabular-nums">
+												{days.map((day) => {
+													const otValue = data.hours.overtime_daily[day.date];
+													return (
+														<td
+															key={day.date}
+															title={otValue ? formatClock(otValue) : undefined}
+															className={`border border-black px-0 py-0 text-center align-middle tabular-nums whitespace-nowrap overflow-hidden text-ellipsis ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : 'bg-white text-blue-700'}`}
+														>
+															{rowIndex === 0 && otValue
+																? formatClock(otValue)
+																: ''}
+														</td>
+													);
+												})}
+												<td className="border border-black px-1 py-0 text-right tabular-nums text-blue-700 font-semibold">
 													{rowIndex === 0
 														? formatElapsed(data.hours.overtime)
 														: '0:00:00'}
@@ -702,16 +724,20 @@ export default function TimesheetReportPage() {
 										>
 											Daily Man Hours
 										</td>
-										{days.map((day) => (
-											<td
-												key={day.date}
-												className={`border border-black px-0 py-0 text-center align-middle tabular-nums ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : 'bg-white'}`}
-											>
-												{data.hours.daily[day.date]
-													? formatClock(data.hours.daily[day.date])
-													: ''}
-											</td>
-										))}
+										{days.map((day) => {
+											const dailyValue = data.hours.daily[day.date];
+											return (
+												<td
+													key={day.date}
+													title={
+														dailyValue ? formatClock(dailyValue) : undefined
+													}
+													className={`border border-black px-0 py-0 text-center align-middle tabular-nums whitespace-nowrap overflow-hidden text-ellipsis ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : 'bg-white'}`}
+												>
+													{dailyValue ? formatClock(dailyValue) : ''}
+												</td>
+											);
+										})}
 										<td className="border border-black px-1 py-0 text-right tabular-nums">
 											{formatElapsed(data.hours.normal)}
 										</td>
@@ -730,7 +756,10 @@ export default function TimesheetReportPage() {
 												return (
 													<td
 														key={day.date}
-														className={`border border-black px-0 py-0 text-center align-middle tabular-nums ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : 'bg-white text-emerald-700'}`}
+														title={
+															seconds ? formatActiveSeconds(seconds) : undefined
+														}
+														className={`border border-black px-0 py-0 text-center align-middle tabular-nums whitespace-nowrap overflow-hidden text-ellipsis ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : 'bg-white text-emerald-700'}`}
 													>
 														{seconds ? formatActiveSeconds(seconds) : ''}
 													</td>

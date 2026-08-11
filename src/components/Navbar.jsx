@@ -77,6 +77,13 @@ const reportsMenuConfig = [
 		resource: 'reports',
 		reportField: 'project_activities',
 	},
+	{
+		name: 'Manhours Billing',
+		href: '/reports/manhours-billing',
+		icon: ReceiptPercentIcon,
+		resource: 'reports',
+		reportField: 'project_activities', // reuse so existing grants cover the new report
+	},
 	// TEMP-HIDDEN (2026-08-03): 'Client Balance' report hidden from nav. Uncomment to restore:
 	// {
 	// 	name: 'Client Balance',

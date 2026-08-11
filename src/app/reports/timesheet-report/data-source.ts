@@ -77,7 +77,8 @@ export interface TsProject {
 
 /** Monthly normal-hours breakdown — the row/column the matrix totals use. */
 export interface TsMonthlyHours {
-	/** Normal hours per YYYY-MM-DD: project hours when logged, else attendance-derived */
+	/** Normal hours per YYYY-MM-DD, capped at standard_working_hours when
+	 *  they come from logged project time (excess is overtime) */
 	daily: Record<string, number>;
 	/** Sum of `daily` */
 	normal: number;
@@ -441,9 +442,9 @@ export function buildProjectRows(rawRows: DbRow[], month: string): TsProject[] {
 /**
  * Resolve the monthly normal hours.
  *
- * When the employee logged project time in the month, those logged hours
- * ARE the normal hours (the Excel timesheet is a project-hours log), and
- * any daily excess over the standard working hours goes to overtime.
+ * When the employee logged project time in the month, the man-hours grid
+ * shows those hours capped at the standard working day per day, and any
+ * daily excess over the cap goes to overtime.
  * Otherwise fall back to attendance-derived hours (status → 8h/4h) with
  * the attendance `overtime_hours` column.
  */
@@ -462,13 +463,15 @@ export function computeMonthlyHours(
 				daily[date] = round2((daily[date] || 0) + hours);
 			}
 		}
-		// Rule: hours above the standard working day are overtime.
+		// Rules: the man-hours grid shows at most the standard working day
+		// per day; anything logged above the cap goes to overtime.
 		const std =
 			settings.standard_working_hours > 0
 				? settings.standard_working_hours
 				: DEFAULT_SETTINGS.standard_working_hours;
 		for (const [date, hours] of Object.entries(daily)) {
 			overtimeDaily[date] = round2(Math.max(0, hours - std));
+			daily[date] = round2(Math.min(hours, std));
 		}
 	} else {
 		for (const day of days) {
@@ -477,12 +480,7 @@ export function computeMonthlyHours(
 		}
 	}
 
-	const normal = round2(
-		Object.values(daily).reduce((a, b) => a + b, 0) -
-			(withProjectHours.length > 0
-				? Object.values(overtimeDaily).reduce((a, b) => a + b, 0)
-				: 0)
-	);
+	const normal = round2(Object.values(daily).reduce((a, b) => a + b, 0));
 	const overtime = round2(
 		Object.values(overtimeDaily).reduce((a, b) => a + b, 0)
 	);
@@ -672,7 +670,10 @@ export async function fetchTimesheetData(
 	// Project/activity rows the employee worked on, with per-day hours from
 	// the assignments' daily_entries (the same source the Project Status
 	// report's person×day matrix aggregates). Assignments are keyed by
-	// user_id, so the employee's login email/username widen the match.
+	// user_id, so the employee's login account widens the match: the
+	// explicit employee_id column, the users.employee_id link, or an
+	// email/username match (login emails routinely differ from the
+	// employee record's).
 	let projects: TsProject[] = [];
 	try {
 		const [projectRows] = (await query(
@@ -692,10 +693,11 @@ export async function fetchTimesheetData(
 			       SELECT u.id FROM users u
 			       WHERE (u.email <> '' AND u.email = ?)
 			          OR (u.username <> '' AND u.username = ?)
+			          OR (u.employee_id IS NOT NULL AND u.employee_id = ?)
 			     )
 			   )
 			 ORDER BY uaa.updated_at DESC`,
-			[employeeId, employeeEmail, employeeUsername]
+			[employeeId, employeeEmail, employeeUsername, employeeId]
 		)) as [DbRow[], unknown];
 		projects = buildProjectRows(projectRows, month);
 	} catch {
@@ -716,8 +718,10 @@ export async function fetchTimesheetData(
 	try {
 		const [userRows] = (await query(
 			`SELECT id FROM users u
-			 WHERE (u.email <> '' AND u.email = ?) OR (u.username <> '' AND u.username = ?)`,
-			[employeeEmail, employeeUsername]
+			 WHERE (u.email <> '' AND u.email = ?)
+			    OR (u.username <> '' AND u.username = ?)
+			    OR (u.employee_id IS NOT NULL AND u.employee_id = ?)`,
+			[employeeEmail, employeeUsername, employeeId]
 		)) as [DbRow[], unknown];
 		const userIds = userRows.map((r) => n(r, 'id')).filter((id) => id > 0);
 		if (userIds.length > 0) {

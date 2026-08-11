@@ -26,13 +26,12 @@ describe('ProjectTeamTab', () => {
 		},
 	];
 
-	it('renders project team lists correctly when sections are open', () => {
+	it('renders project team lists correctly when sections are open', async () => {
+		const user = userEvent.setup();
 		render(
 			<ProjectTeamTab
 				toggleSection={vi.fn()}
 				openSections={{ teamMemberAdd: true, currentTeam: true }}
-				teamMemberSearch=""
-				setTeamMemberSearch={vi.fn()}
 				usersLoading={false}
 				availableUsers={mockAvailableUsers}
 				allUsers={[]}
@@ -43,12 +42,14 @@ describe('ProjectTeamTab', () => {
 			/>
 		);
 
-		expect(screen.getByText('Alice Smith')).toBeInTheDocument();
 		expect(screen.getByText('Bob Jones')).toBeInTheDocument();
 		expect(screen.getByDisplayValue('Engineer')).toBeInTheDocument();
+
+		await user.click(screen.getByRole('button', { name: /Search users/ }));
+		expect(await screen.findByText(/Alice Smith/)).toBeInTheDocument();
 	});
 
-	it('calls addTeamMember when Add button is clicked', async () => {
+	it('calls addTeamMember when a user is selected', async () => {
 		const user = userEvent.setup();
 		const addTeamMember = vi.fn();
 
@@ -56,8 +57,6 @@ describe('ProjectTeamTab', () => {
 			<ProjectTeamTab
 				toggleSection={vi.fn()}
 				openSections={{ teamMemberAdd: true }}
-				teamMemberSearch=""
-				setTeamMemberSearch={vi.fn()}
 				usersLoading={false}
 				availableUsers={mockAvailableUsers}
 				allUsers={[]}
@@ -68,8 +67,9 @@ describe('ProjectTeamTab', () => {
 			/>
 		);
 
-		const addButton = screen.getByRole('button', { name: /^Add$/ });
-		await user.click(addButton);
+		await user.click(screen.getByRole('button', { name: /Search users/ }));
+		await user.type(screen.getByPlaceholderText('Search...'), 'Alice');
+		await user.click(await screen.findByText(/Alice Smith/));
 
 		expect(addTeamMember).toHaveBeenCalledWith(mockAvailableUsers[0]);
 	});
@@ -82,8 +82,6 @@ describe('ProjectTeamTab', () => {
 			<ProjectTeamTab
 				toggleSection={vi.fn()}
 				openSections={{ currentTeam: true }}
-				teamMemberSearch=""
-				setTeamMemberSearch={vi.fn()}
 				usersLoading={false}
 				availableUsers={[]}
 				allUsers={[]}
@@ -108,8 +106,6 @@ describe('ProjectTeamTab', () => {
 			<ProjectTeamTab
 				toggleSection={vi.fn()}
 				openSections={{ currentTeam: true }}
-				teamMemberSearch=""
-				setTeamMemberSearch={vi.fn()}
 				usersLoading={false}
 				availableUsers={[]}
 				allUsers={[]}

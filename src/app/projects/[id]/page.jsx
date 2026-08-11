@@ -1892,11 +1892,89 @@ export default function ProjectViewPage() {
 											Team Members
 										</h4>
 										{parsedTeamMembers && parsedTeamMembers.length > 0 ? (
-											parsedTeamMembers.map((m, i) => (
-												<div key={i} className="text-sm text-gray-600">
-													{m.name || m.employee_name || m}
+											<>
+												<div className="overflow-x-auto border border-gray-200 rounded-lg">
+													<table className="w-full text-xs">
+														<thead className="bg-gray-50 border-b border-gray-200">
+															<tr>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	#
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Employee ID
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Name
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Email
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Department
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Position
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Project Role
+																</th>
+															</tr>
+														</thead>
+														<tbody className="divide-y divide-gray-100">
+															{parsedTeamMembers.map((member, index) => (
+																<tr
+																	key={member.id || member.user_id || index}
+																	className="hover:bg-gray-50 transition-colors"
+																>
+																	<td className="px-3 py-2 text-gray-600">
+																		{index + 1}
+																	</td>
+																	<td className="px-3 py-2 text-gray-900 font-mono text-xs">
+																		{member.employee_id ||
+																			member.employee_code ||
+																			'—'}
+																	</td>
+																	<td className="px-3 py-2 text-gray-900 font-medium">
+																		{member.name || member.employee_name || '—'}
+																	</td>
+																	<td className="px-3 py-2 text-gray-600 text-xs">
+																		{member.email || '—'}
+																	</td>
+																	<td className="px-3 py-2 text-gray-600">
+																		{member.department || '—'}
+																	</td>
+																	<td className="px-3 py-2 text-gray-600">
+																		{member.position || '—'}
+																	</td>
+																	<td className="px-3 py-2 text-gray-600">
+																		{member.role || member.designation || '—'}
+																	</td>
+																</tr>
+															))}
+														</tbody>
+													</table>
 												</div>
-											))
+												<div className="mt-3 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-100">
+													<div className="flex items-center justify-between">
+														<div>
+															<h4 className="text-sm font-semibold text-gray-700">
+																Team Summary
+															</h4>
+															<p className="text-xs text-gray-600 mt-0.5">
+																Total members assigned to this project
+															</p>
+														</div>
+														<div className="text-right">
+															<div className="text-2xl font-bold text-[#7F2487]">
+																{parsedTeamMembers.length}
+															</div>
+															<div className="text-xs text-gray-600">
+																Team Members
+															</div>
+														</div>
+													</div>
+												</div>
+											</>
 										) : (
 											<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
 												No team members added. Use the edit view to assign team
