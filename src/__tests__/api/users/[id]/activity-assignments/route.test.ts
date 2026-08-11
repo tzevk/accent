@@ -132,6 +132,7 @@ describe('user activity assignments PUT', () => {
 	it('preserves extra daily_entries fields (isLocked) when updating', async () => {
 		mocks.mockExecute
 			.mockResolvedValueOnce([[{ id: 'row-1' }]]) // existing assignment
+			.mockResolvedValueOnce([[]]) // day-hours lookup: no other assignments
 			.mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE
 
 		const response = await PUT(
@@ -164,6 +165,44 @@ describe('user activity assignments PUT', () => {
 			},
 		]);
 	});
+
+	it('rejects daily_entries that push a calendar day over the 12h cap', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([[{ id: 'row-1' }]]) // existing assignment
+			// Another assignment already logged 10h on the same date; the
+			// update's own row (row-1) is excluded because it is replaced.
+			.mockResolvedValueOnce([
+				[
+					{
+						id: 'row-2',
+						project_id: 9,
+						activity_id: 'a9',
+						daily_entries: JSON.stringify([
+							{ date: '2026-08-10', hours: 10, qty_done: 5 },
+						]),
+					},
+				],
+			]);
+
+		const response = await PUT(
+			putRequest({
+				project_id: '1',
+				activity_id: 'a1',
+				daily_entries: [{ date: '2026-08-10', qty_done: '1', hours: '8' }],
+			}),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(400);
+		expect(body.success).toBe(false);
+		expect(String(body.error)).toContain('2026-08-10');
+		expect(
+			mocks.mockExecute.mock.calls.some(([sql]) =>
+				String(sql).startsWith('UPDATE user_activity_assignments')
+			)
+		).toBe(false); // nothing was written
+	});
 });
 
 describe('user activity assignments PATCH (self-service add)', () => {
@@ -192,6 +231,7 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			]) // project lookup
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: 87 }]]) // login link
+			.mockResolvedValueOnce([[]]) // day-hours lookup: nothing logged yet
 			.mockResolvedValueOnce([{ affectedRows: 1 }]); // normalized INSERT
 
 		const response = await PATCH(
@@ -243,6 +283,7 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			]) // project lookup
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: null }]]) // no login link
+			.mockResolvedValueOnce([[]]) // day-hours lookup: nothing logged yet
 			.mockResolvedValueOnce([{ affectedRows: 1 }]); // normalized INSERT
 
 		const response = await PATCH(
@@ -269,6 +310,51 @@ describe('user activity assignments PATCH (self-service add)', () => {
 		expect(entry.qty_done).toBe(2);
 		expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/); // today fallback
 		expect(insert[1][2]).toBeNull(); // employee_id null when unlinked
+	});
+
+	it('rejects a self-service entry that exceeds the user daily hours', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([
+				[{ project_id: 1, project_activities_list: '[]' }],
+			]) // project lookup
+			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
+			.mockResolvedValueOnce([[{ employee_id: null }]]) // login link
+			// Already logged 10h on 2026-08-20 across other assignments.
+			.mockResolvedValueOnce([
+				[
+					{
+						id: 'r1',
+						project_id: 3,
+						activity_id: 'a3',
+						daily_entries: JSON.stringify([
+							{ date: '2026-08-20', hours: 10, qty_done: 3 },
+						]),
+					},
+				],
+			]);
+
+		const response = await PATCH(
+			patchRequest({
+				project_id: '1',
+				discipline_name: 'Structural',
+				activity_name: 'RCC Check',
+				manhours_assigned: '8',
+				qty_completed: '1',
+				due_date: '2026-08-20',
+				status: 'Not Started',
+			}),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(400);
+		expect(body.success).toBe(false);
+		expect(String(body.error)).toContain('2026-08-20');
+		expect(
+			mocks.mockExecute.mock.calls.some(([sql]) =>
+				String(sql).includes('INSERT INTO user_activity_assignments')
+			)
+		).toBe(false); // nothing was written
 	});
 });
 

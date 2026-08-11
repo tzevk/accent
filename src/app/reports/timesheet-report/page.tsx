@@ -11,6 +11,7 @@ import {
 import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
+import { capProjectDays } from '@/lib/timesheet-cap';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 
 // ─── Client-safe API types ──────────────────────────────────────────
@@ -264,11 +265,18 @@ export default function TimesheetReportPage() {
 		() => (data ? projectRowsForMonth(data.projects, data.month) : []),
 		[data]
 	);
-	// The top section shows the RAW logged hours per project per day (from
-	// the assignments' daily_entries). The standard-day split lives in the
-	// aggregate rows below: "Daily Man Hours" credits at most the standard
-	// working day per day and the "Over Time Hours" row carries the daily
-	// excess (data.hours.daily / data.hours.overtime_daily).
+	// The grid credits at most the standard working day per day in the top
+	// section — per-project cells are capped so the section sums to ≤ 8h,
+	// and the daily excess is already surfaced in the overtime row
+	// (data.hours.overtime_daily). The cap splits an over-8h day across its
+	// projects proportionally so every project stays visible.
+	const displayedProjectRows = useMemo(
+		() =>
+			data
+				? capProjectDays(projectRows, data.settings.standard_working_hours)
+				: [],
+		[data, projectRows]
+	);
 
 	const isSuperAdmin =
 		user?.is_super_admin === true || user?.is_super_admin === 1;
@@ -580,7 +588,7 @@ export default function TimesheetReportPage() {
 								<tbody>
 									{/* Fixed-height normal section: empty rows preserve the Excel layout and hold vertical labels. */}
 									{Array.from({ length: 20 }, (_, rowIndex) => {
-										const project = projectRows[rowIndex] ?? null;
+										const project = displayedProjectRows[rowIndex] ?? null;
 										return (
 											<tr key={`normal-${rowIndex}`} style={{ height: '15px' }}>
 												<td
@@ -660,7 +668,7 @@ export default function TimesheetReportPage() {
 									</tr>
 
 									{Array.from({ length: 6 }, (_, rowIndex) => {
-										const project = projectRows[rowIndex] ?? null;
+										const project = displayedProjectRows[rowIndex] ?? null;
 										return (
 											<tr
 												key={`overtime-${rowIndex}`}

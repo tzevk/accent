@@ -14,6 +14,7 @@
 import ExcelJS from 'exceljs';
 import type { TimesheetData, TsDay } from './data-source';
 import { monthLabel } from './data-source';
+import { capProjectDays } from '@/lib/timesheet-cap';
 
 const BRAND_PURPLE = 'FF7F2487';
 const BRAND_PURPLE_LIGHT = 'FFF3E5F5';
@@ -317,11 +318,13 @@ export function buildWorkbook(data: TimesheetData): ExcelJS.Workbook {
 		ws.getRow(7).height = Math.min(maxLabelLen * 8 + 12, 260);
 
 	// ── Project/activity rows (per-day hours from daily_entries) ──────
-	// Cells show the RAW logged hours per project per day; the standard-day
-	// split is carried by the Daily Man Hours (normal) and Overtime rows
-	// below, matching the on-screen grid.
+	// Cap the rows at the standard working day per day (the daily excess
+	// is the overtime row), matching the on-screen grid.
 	let cursor = 8;
-	const projectRows = data.projects;
+	const projectRows = capProjectDays(
+		data.projects,
+		data.settings.standard_working_hours
+	);
 	for (const project of projectRows) {
 		if (project.total_hours <= 0) continue;
 		const labelCell = ws.getCell(`A${cursor}`);

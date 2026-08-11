@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { randomUUID } from 'crypto';
 import { isUserInProjectTeam } from '@/utils/project-access';
+import {
+	fetchExistingDayHours,
+	validateDayHours,
+} from '@/utils/activity-daily-hours';
 
 async function generateTicketNumber(connection) {
 	const year = new Date().getFullYear();
@@ -440,6 +444,7 @@ export async function PUT(request, { params }) {
 		// Build dynamic UPDATE with only the fields present in the request
 		const setClauses = [];
 		const updateParams = [];
+		let normalizedEntries = null;
 
 		if (qty_assigned !== undefined) {
 			setClauses.push('qty_assigned = ?');
@@ -479,7 +484,7 @@ export async function PUT(request, { params }) {
 		}
 		if (daily_entries !== undefined) {
 			setClauses.push('daily_entries = ?');
-			const entries = Array.isArray(daily_entries)
+			normalizedEntries = Array.isArray(daily_entries)
 				? daily_entries.map((e) => {
 						if (!e || typeof e !== 'object') return {};
 						// Normalize the known numeric/text fields but keep
@@ -494,7 +499,7 @@ export async function PUT(request, { params }) {
 						};
 					})
 				: [];
-			updateParams.push(JSON.stringify(entries));
+			updateParams.push(JSON.stringify(normalizedEntries));
 		}
 		// Activity-level fields
 		if (discipline_name !== undefined) {
@@ -517,6 +522,23 @@ export async function PUT(request, { params }) {
 				message: 'No fields to update',
 				affected_rows: 0,
 			});
+		}
+
+		// Daily-hour cap: the replacement entries must not push any calendar
+		// date over MAX_DAY_HOURS once the user's other assignments for that
+		// date are counted (this assignment's old entries are being replaced).
+		if (normalizedEntries !== null) {
+			const existingByDate = await fetchExistingDayHours(db, requestedUserId, {
+				excludeAssignmentIds: [existing[0].id],
+			});
+			const violation = validateDayHours(normalizedEntries, existingByDate);
+			if (violation) {
+				db.release();
+				return NextResponse.json(
+					{ success: false, error: violation },
+					{ status: 400 }
+				);
+			}
 		}
 
 		setClauses.push('updated_at = NOW()');
@@ -850,6 +872,17 @@ export async function PATCH(request, { params }) {
 				hours: parseFloat(manhours_assigned) || 0,
 				remarks: '',
 			};
+			// Daily-hour cap: the new entry must not push the user's total
+			// for that date over MAX_DAY_HOURS across all their assignments.
+			const existingByDate = await fetchExistingDayHours(db, requestedUserId);
+			const violation = validateDayHours([dailyEntry], existingByDate);
+			if (violation) {
+				db.release();
+				return NextResponse.json(
+					{ success: false, error: violation },
+					{ status: 400 }
+				);
+			}
 			await db.execute(
 				`INSERT INTO user_activity_assignments
          (id, user_id, employee_id, project_id, activity_id, activity_name,
