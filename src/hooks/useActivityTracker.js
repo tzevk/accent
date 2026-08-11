@@ -8,7 +8,6 @@ const IDLE_THRESHOLD = 5 * 60 * 1000; // 5 minutes of no activity = idle
 const HEARTBEAT_INTERVAL = 120 * 1000; // Send heartbeat every 120 seconds (was 60)
 const IDLE_CHECK_INTERVAL = 60 * 1000; // Check for idle every 60 seconds (was 30)
 const BATCH_INTERVAL = 30 * 1000; // Batch activities every 30 seconds (was 10)
-const SKIP_INITIAL_PAGE_VIEW = true; // Don't track page view on initial load
 
 /**
  * Activity Tracker Hook - Optimized for performance
@@ -124,7 +123,8 @@ export function useActivityTracker() {
 					resourceType: 'page',
 					description: `Viewed ${currentPageRef.current}`,
 					details: {
-						page: currentPageRef.current,
+						page: currentPageRef.current, // page being left
+						to: pathname, // destination — presence should track where the user is NOW
 						durationMs: timeOnPreviousPage,
 					},
 				});
@@ -284,10 +284,6 @@ export function useActivityTracker() {
 
 		window.addEventListener('beforeunload', handleBeforeUnload);
 
-		// Track navigation
-		const handlePopstate = () => trackPageView(window.location.pathname);
-		window.addEventListener('popstate', handlePopstate);
-
 		// Cleanup
 		return () => {
 			window.removeEventListener('mousemove', throttledActivity);
@@ -295,7 +291,6 @@ export function useActivityTracker() {
 			window.removeEventListener('keydown', throttledActivity);
 			window.removeEventListener('scroll', throttledActivity);
 			window.removeEventListener('beforeunload', handleBeforeUnload);
-			window.removeEventListener('popstate', handlePopstate);
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
 
 			clearInterval(heartbeatIntervalRef.current);

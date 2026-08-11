@@ -148,32 +148,34 @@ describe('updateUserPresence', () => {
 });
 
 describe('getStatusFromActivity', () => {
-	const secondsAgo = (s) => new Date(Date.now() - s * 1000).toISOString();
-
 	it('returns offline when there is no last-seen', () => {
 		expect(getStatusFromActivity(null)).toBe('offline');
 		expect(getStatusFromActivity(undefined)).toBe('offline');
 	});
 
 	it('is online within the 3-minute active window', () => {
-		expect(getStatusFromActivity(secondsAgo(179))).toBe('online');
+		expect(getStatusFromActivity(179)).toBe('online');
 	});
 
 	it('is idle from 3 to 10 minutes when heartbeats stopped', () => {
-		expect(getStatusFromActivity(secondsAgo(180))).toBe('idle');
-		expect(getStatusFromActivity(secondsAgo(599))).toBe('idle');
+		expect(getStatusFromActivity(180)).toBe('idle');
+		expect(getStatusFromActivity(599)).toBe('idle');
 	});
 
 	it('is offline past 10 minutes', () => {
-		expect(getStatusFromActivity(secondsAgo(600))).toBe('offline');
+		expect(getStatusFromActivity(600)).toBe('offline');
 	});
 
 	it('is idle immediately when the client reports idle', () => {
-		expect(getStatusFromActivity(secondsAgo(30), 1)).toBe('idle');
-		expect(getStatusFromActivity(secondsAgo(599), true)).toBe('idle');
+		expect(getStatusFromActivity(30, 1)).toBe('idle');
+		expect(getStatusFromActivity(599, true)).toBe('idle');
 	});
 
 	it('is offline for idle clients past 10 minutes', () => {
-		expect(getStatusFromActivity(secondsAgo(600), true)).toBe('offline');
+		expect(getStatusFromActivity(600, true)).toBe('offline');
+	});
+
+	it('treats negative ages (clock skew) as offline, never online', () => {
+		expect(getStatusFromActivity(-19800)).toBe('offline');
 	});
 });

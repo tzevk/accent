@@ -471,7 +471,8 @@ export async function getUserActivityLogs(
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /**
- * Determine a user's presence status from their last-seen timestamp and
+ * Determine a user's presence status from seconds since their last-seen
+ * (computed DB-side as `TIMESTAMPDIFF(SECOND, last_seen, NOW())`) and the
  * client-reported idle state.
  *
  * - `online`: heartbeats within 3 min AND the client reports active.
@@ -481,16 +482,23 @@ export async function getUserActivityLogs(
  *
  * The 180s online window is deliberately wider than the 120s heartbeat
  * interval so a single dropped or late heartbeat doesn't flip status.
+ *
+ * Age is computed in SQL (NOT `new Date(last_seen)` in JS) because the DB
+ * server and the app server may run on different clocks/timezones; parsing
+ * `dateStrings` timestamps as app-local time skews the recency windows by
+ * the offset (observed: IST DB vs UTC app → everyone "online" for hours).
  */
 export function getStatusFromActivity(
-	lastSeen: unknown,
+	ageSeconds: unknown,
 	isIdle: unknown = false
 ): 'online' | 'idle' | 'offline' {
-	if (!lastSeen) return 'offline';
+	// null (no presence row) → offline. Note: Number(null) is 0, so the
+	// null check must come first.
+	if (ageSeconds == null) return 'offline';
 
-	const seconds = Math.floor(
-		(Date.now() - new Date(String(lastSeen)).getTime()) / 1000
-	);
+	const seconds = Number(ageSeconds);
+	// NaN or negative (clock anomaly) → never online.
+	if (!Number.isFinite(seconds) || seconds < 0) return 'offline';
 
 	if (isIdle) return seconds < 600 ? 'idle' : 'offline';
 	if (seconds < 180) return 'online'; // Active (< 3 min)

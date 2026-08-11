@@ -15,11 +15,11 @@ vi.mock('@/utils/api-permissions', () => ({
 	getCurrentUser: vi.fn(),
 }));
 
-// Pass through the real window logic (null last_seen → offline) without
-// touching the logger's DB imports; boundaries are unit-tested elsewhere.
+// Pass through the real window logic (null age → offline) without touching
+// the logger's DB imports; boundaries are unit-tested elsewhere.
 vi.mock('@/utils/activity-logger', () => ({
-	getStatusFromActivity: vi.fn((lastSeen, isIdle) =>
-		lastSeen ? (isIdle ? 'idle' : 'online') : 'offline'
+	getStatusFromActivity: vi.fn((ageSeconds, isIdle) =>
+		ageSeconds == null ? 'offline' : isIdle ? 'idle' : 'online'
 	),
 }));
 
@@ -70,7 +70,7 @@ describe('GET /api/user-status — access control', () => {
 		vi.mocked(getCurrentUser).mockResolvedValue(regularUser);
 		mockExecute
 			.mockResolvedValueOnce([
-				[{ user_id: 5, is_idle: null, last_activity: null }],
+				[{ user_id: 5, is_idle: null, seconds_since_activity: null }],
 			])
 			.mockResolvedValueOnce([[]])
 			.mockResolvedValueOnce([[]])
@@ -94,6 +94,7 @@ describe('GET /api/user-status — all users', () => {
 			email: 'alice@example.com',
 			role_name: 'Admin',
 			last_activity: null, // no presence row yet
+			seconds_since_activity: null,
 			is_idle: null,
 			current_page: null,
 		},
@@ -103,7 +104,7 @@ describe('GET /api/user-status — all users', () => {
 			full_name: 'Bob',
 			email: 'bob@example.com',
 			role_name: 'Editor',
-			last_activity: new Date(Date.now() - 30_000).toISOString(),
+			seconds_since_activity: 30,
 			is_idle: 1,
 			current_page: '/dashboard',
 		},
@@ -141,17 +142,16 @@ describe('GET /api/user-status — all users', () => {
 			expect(u.productivity_score).toBe(0);
 		}
 
-		// Status derives from the presence join.
+		// Status derives from the presence join (DB-side recency age).
 		expect(getStatusFromActivity).toHaveBeenCalledWith(null, null);
-		expect(getStatusFromActivity).toHaveBeenCalledWith(
-			usersRows[1].last_activity,
-			1
-		);
+		expect(getStatusFromActivity).toHaveBeenCalledWith(30, 1);
 
-		// Query must join user_presence and never aggregate the audit log.
+		// Query must join user_presence, compute age in SQL, and never
+		// aggregate the audit log or parse timestamps in JS.
 		const usersQuery = mockExecute.mock.calls[0][0];
 		expect(usersQuery).toContain('LEFT JOIN user_presence p');
 		expect(usersQuery).toContain('LEFT JOIN roles_master r');
+		expect(usersQuery).toContain('TIMESTAMPDIFF(SECOND, p.last_seen, NOW())');
 		expect(usersQuery).not.toContain('GROUP BY');
 		expect(usersQuery).not.toContain('MAX(');
 		expect(usersQuery).not.toContain('user_activity_logs');
@@ -181,10 +181,10 @@ describe('GET /api/user-status — single user', () => {
 					full_name: 'Bob',
 					email: 'bob@example.com',
 					role_name: 'Editor',
-					last_activity: new Date(Date.now() - 30_000).toISOString(),
+					seconds_since_activity: 30,
 					is_idle: 0,
 					current_page: '/leads',
-					session_start: new Date(Date.now() - 3_600_000).toISOString(),
+					session_duration: 3600, // TIMESTAMPDIFF computed in SQL
 				},
 			],
 		]);
@@ -197,9 +197,15 @@ describe('GET /api/user-status — single user', () => {
 		const json = await res.json();
 
 		expect(json.data.status).toBe('online');
-		expect(json.data.session_duration).toBeGreaterThan(3500);
+		expect(json.data.session_duration).toBe(3600);
 		expect(json.data.current_page).toBe('/leads');
 		expect(mockExecute).toHaveBeenCalledTimes(1); // stats skipped
+
+		// Recency + duration are computed DB-side, never parsed in JS.
+		const query = mockExecute.mock.calls[0][0];
+		expect(query).toContain('TIMESTAMPDIFF(SECOND, p.last_seen, NOW())');
+		expect(query).toContain('TIMESTAMPDIFF(SECOND, session_start, NOW())');
+		expect(query).not.toContain('Date.now');
 	});
 
 	it('rejects invalid user ids', async () => {

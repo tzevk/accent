@@ -1,6 +1,13 @@
 # Live-Monitoring Presence Rework — DONE
 
-**Status:** ✅ Complete (2026-08-10). Presence now lives in `user_presence` (one row per user, upserted by the activity tracker), and status derives from `last_seen` + client-reported `is_idle` — never from aggregating `user_activity_logs`. All 4 consumers of `/api/user-status` unchanged. Full suite green (437 tests).
+**Status:** ✅ Complete (2026-08-10). Presence now lives in `user_presence` (one row per user, upserted by the activity tracker), and status derives from `last_seen` + client-reported `is_idle` — never from aggregating `user_activity_logs`. All 4 consumers of `/api/user-status` unchanged. Full suite green (438 tests).
+
+### Follow-up fixes (2026-08-11, reported as "live status not working")
+
+Two real defects found during browser verification:
+
+1. **App/DB clock skew made recency windows meaningless.** The DB server runs IST while the app server runs UTC (5h30m offset), and the pool uses `dateStrings: true` — so `new Date('2026-08-11 10:09:11')` parsed DB wall-clock as app-local time, producing _negative_ ages. Anyone with a presence row stayed **"online" for ~5.5 hours after leaving** instead of decaying to idle/offline in 3–10 min (the same latent bug existed pre-rework in the audit-log derivation; the presence table made it the sole source). Fix: recency is now computed **in SQL** — `TIMESTAMPDIFF(SECOND, p.last_seen, NOW()) as seconds_since_activity` — and `getStatusFromActivity` takes age-seconds (null/NaN/negative → offline). `session_duration` is likewise SQL-computed (`TIMESTAMPDIFF(SECOND, session_start, NOW())`); it was showing negative values before.
+2. **`current_page` never updated.** `trackPageView` fired only on `popstate`, which Next.js App Router navigation doesn't emit — the "Currently viewing" card was always stale/empty. Fix: `ActivityTracker` now reports route changes via `usePathname()`; the redundant popstate listener and dead `SKIP_INITIAL_PAGE_VIEW` constant were removed. Also, view_page events now carry `details.to` (the destination) because `details.page` is the page being _left_ — presence tracks where the user is now, preferring `to` over `page`.
 
 > **Why this exists:** the current "online" status is a heuristic bolted onto an audit table. `src/app/admin/live-monitoring/page.jsx` polls `GET /api/user-status` every 10s; the route derives `last_activity = MAX(user_activity_logs.created_at)` via a `GROUP BY` over a 216k+ row audit table plus a correlated subquery for `current_page`, then classifies by recency windows (`<120s` online, `<600s` idle, else offline). Four concrete failures:
 >

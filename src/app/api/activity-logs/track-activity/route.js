@@ -109,7 +109,9 @@ async function processActivity(userId, data, request) {
 		if (details.status === 'idle') presence.isIdle = true;
 		else if (details.status === 'active') presence.isIdle = false;
 	} else if (actionType === 'view_page' && details) {
-		presence.currentPage = details.page || null;
+		// `to` is the page the user navigated to (presence should reflect
+		// where they are NOW); `page` is the page they left.
+		presence.currentPage = details.to || details.page || null;
 	}
 	await updateUserPresence(userId, presence);
 }
