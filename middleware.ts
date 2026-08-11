@@ -121,8 +121,8 @@ function checkRateLimit(req: NextRequest): {
 	const ip = getClientIP(req);
 	const category = getRateLimitCategory(pathname);
 	const config = RATE_LIMITS[category];
-	const userId = req.cookies.get('user_id')?.value;
-	const keyIdentity = userId ? `${ip}:${userId}` : ip;
+	const sessionValue = req.cookies.get('session')?.value;
+	const keyIdentity = sessionValue ? `${ip}:${sessionValue}` : ip;
 
 	const key = `${keyIdentity}:${category}`;
 	const now = Date.now();
@@ -206,9 +206,13 @@ function cleanupRateLimitStore() {
  * This is the ONLY place where auth is enforced:
  * 1. Rate limiting for API routes
  * 2. Public routes are allowed through
- * 3. Authenticated users on /signin are redirected to their dashboard
+ * 3. Authenticated users on /signin are redirected to /dashboard
  * 4. Unauthenticated users are redirected to /signin
- * 5. Non-admins trying to access /admin/* are redirected to /user/dashboard
+ * 5. Admin gating happens server-side in src/app/admin/layout.tsx
+ *
+ * NOTE: Edge middleware can only check cookie presence. The session token is
+ * validated against the sessions table in Node (getCurrentUser / getServerAuth)
+ * on every API route and server layout.
  */
 export function middleware(req: NextRequest) {
 	const { pathname } = req.nextUrl;
@@ -233,20 +237,17 @@ export function middleware(req: NextRequest) {
 		);
 	}
 
-	// Get auth cookies
-	const auth = req.cookies.get('auth')?.value;
-	const userId = req.cookies.get('user_id')?.value;
-	const isAdmin = req.cookies.get('is_super_admin')?.value === '1';
-
-	// Check if user is authenticated (both cookies must be present)
-	const isAuthenticated = !!(auth && userId);
+	// Presence check only — real validation happens in Node via getCurrentUser
+	// (Edge cannot reach MySQL). A forgeable cookie here buys nothing: without a
+	// matching row in the sessions table every API route and server layout 401s.
+	const isAuthenticated = !!req.cookies.get('session')?.value;
 
 	// Allow public routes
 	if (isPublicPath(pathname)) {
-		// If authenticated user tries to access /signin, redirect to their dashboard
+		// If authenticated user tries to access /signin, redirect to dashboard
 		if (pathname === '/signin' && isAuthenticated) {
 			const url = req.nextUrl.clone();
-			url.pathname = isAdmin ? '/admin/dashboard' : '/user/dashboard';
+			url.pathname = '/dashboard';
 			return NextResponse.redirect(url);
 		}
 		return NextResponse.next();
@@ -268,12 +269,8 @@ export function middleware(req: NextRequest) {
 		return NextResponse.redirect(url);
 	}
 
-	// Admin route protection - non-admins cannot access /admin/*
-	if (pathname.startsWith('/admin') && !isAdmin) {
-		const url = req.nextUrl.clone();
-		url.pathname = '/user/dashboard';
-		return NextResponse.redirect(url);
-	}
+	// Admin route gating moved server-side to src/app/admin/layout.tsx
+	// (DB-backed is_super_admin / role check instead of the forgeable cookie).
 
 	// Add cache control headers to prevent caching of protected pages
 	const response = NextResponse.next();

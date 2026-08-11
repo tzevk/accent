@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { logActivity } from '@/utils/activity-logger';
 import { getDefaultPermissionsForLevel, mergePermissions } from '@/utils/rbac';
 import { verifyPassword, needsRehash, hashPassword } from '@/utils/password';
+import { createSession, SESSION_TTL_SECONDS } from '@/utils/session';
 
 // Helper to safely parse JSON
 function safeParse(json, fallback = []) {
@@ -17,6 +18,7 @@ function safeParse(json, fallback = []) {
 
 export async function POST(req) {
 	let db = null;
+	let sessionToken = null;
 	try {
 		let body = null;
 		try {
@@ -125,6 +127,11 @@ export async function POST(req) {
 						err?.code || err?.message || err
 					);
 				}
+
+				// Issue the server-side session token before the connection is
+				// released (db.end() below). On failure this propagates to a 500
+				// and no cookies are set — no partial login.
+				sessionToken = await createSession(db, userId);
 			} else {
 				logActivity({
 					userId: 0,
@@ -195,37 +202,26 @@ export async function POST(req) {
 				is_super_admin: isSuperAdmin,
 				user: userData,
 			});
-			const forwardedProto = req.headers.get('x-forwarded-proto');
-			const proto =
-				forwardedProto ||
-				(req.nextUrl?.protocol
-					? req.nextUrl.protocol.replace(':', '')
-					: 'http');
-			const isSecure = proto === 'https';
 
-			res.cookies.set('auth', '1', {
+			res.cookies.set('session', sessionToken, {
 				httpOnly: true,
 				sameSite: 'lax',
-				secure: isSecure,
+				secure: process.env.NODE_ENV === 'production',
 				path: '/',
 				priority: 'high',
+				maxAge: SESSION_TTL_SECONDS,
 			});
 
-			res.cookies.set('user_id', String(userId), {
-				httpOnly: true,
-				sameSite: 'lax',
-				secure: isSecure,
-				path: '/',
-				priority: 'high',
-			});
-
-			res.cookies.set('is_super_admin', isSuperAdmin ? '1' : '0', {
-				httpOnly: true,
-				sameSite: 'lax',
-				secure: isSecure,
-				path: '/',
-				priority: 'high',
-			});
+			// Defensive rollout hygiene: clear legacy cookie names so
+			// pre-deploy cookies don't linger in dev browsers.
+			for (const legacy of [
+				'auth',
+				'user_id',
+				'is_super_admin',
+				'session_permissions',
+			]) {
+				res.cookies.set(legacy, '', { maxAge: 0, path: '/' });
+			}
 
 			return res;
 		}

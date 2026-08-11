@@ -1,12 +1,32 @@
 import { NextResponse } from 'next/server';
 import { logActivity, endUserSession } from '@/utils/activity-logger';
 import { cookies } from 'next/headers';
+import { dbConnect } from '@/utils/database';
+import { revokeSession } from '@/utils/session';
 
 export async function POST(req) {
-	// Get user ID from cookie before clearing
+	// Get session token from cookie before clearing
 	const cookieStore = await cookies();
-	const userIdCookie = cookieStore.get('user_id');
-	const userId = userIdCookie ? parseInt(userIdCookie.value) : null;
+	const sessionToken = cookieStore.get('session')?.value;
+
+	let userId = null;
+	if (sessionToken) {
+		let db;
+		try {
+			db = await dbConnect();
+			userId = await revokeSession(db, sessionToken);
+		} catch (error) {
+			console.error('Logout session revocation failed:', error);
+		} finally {
+			if (db) {
+				try {
+					db.release();
+				} catch {
+					/* ignore */
+				}
+			}
+		}
+	}
 
 	if (userId) {
 		// Log logout activity
@@ -38,10 +58,7 @@ export async function POST(req) {
 		path: '/',
 	};
 
-	res.cookies.set('auth', '', { ...baseCookie, maxAge: 0 });
-	res.cookies.set('user_id', '', { ...baseCookie, maxAge: 0 });
-	res.cookies.set('is_super_admin', '', { ...baseCookie, maxAge: 0 });
-	res.cookies.set('session_permissions', '', { ...baseCookie, maxAge: 0 });
+	res.cookies.set('session', '', { ...baseCookie, maxAge: 0 });
 
 	return res;
 }

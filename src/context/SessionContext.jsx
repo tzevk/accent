@@ -65,18 +65,6 @@ export function SessionProvider({ children }) {
 
 	// Always fetch session from server — no client-side cache
 	const fetchSession = useCallback(async (_force = false) => {
-		const hasAuthCookies = () => {
-			try {
-				return (
-					typeof document !== 'undefined' &&
-					document.cookie.includes('auth=') &&
-					document.cookie.includes('user_id=')
-				);
-			} catch {
-				return false;
-			}
-		};
-
 		// Prevent concurrent fetches
 		if (fetchingRef.current) return;
 		fetchingRef.current = true;
@@ -88,25 +76,8 @@ export function SessionProvider({ children }) {
 
 			if (!res.ok) {
 				const status = res.status;
-				const hasCookies = hasAuthCookies();
 
 				if (status === 401) {
-					// Cookies exist but session API failed - retry once
-					if (hasCookies) {
-						await new Promise((r) => setTimeout(r, 100));
-						const retryRes = await fetch('/api/session', {
-							credentials: 'include',
-						});
-						if (retryRes.ok) {
-							const data = await retryRes.json();
-							if (mountedRef.current) {
-								setUser(data.user || null);
-								setAuthenticated(data.authenticated || false);
-							}
-							return;
-						}
-					}
-
 					// Real 401 — user is logged out
 					if (mountedRef.current) {
 						setUser(null);

@@ -8,10 +8,9 @@ import { getCurrentUser } from '@/utils/api-permissions';
 export async function getServerAuth() {
 	try {
 		const cookieStore = await cookies();
-		const authCookie = cookieStore.get('auth');
-		const userIdCookie = cookieStore.get('user_id');
+		const sessionCookie = cookieStore.get('session');
 
-		if (!authCookie || !userIdCookie) {
+		if (!sessionCookie?.value) {
 			return { authenticated: false, user: null, error: 'No active session' };
 		}
 
@@ -28,6 +27,11 @@ export async function getServerAuth() {
 
 		return { authenticated: true, user, error: null };
 	} catch (error) {
+		// Never swallow Next's static-generation signal: `cookies()` during a
+		// prerender throws DYNAMIC_SERVER_USAGE, which Next needs to receive so
+		// it can mark the route dynamic. Swallowing it logs noise and can bake
+		// a wrong redirect into a statically-rendered page.
+		if (error?.digest === 'DYNAMIC_SERVER_USAGE') throw error;
 		console.error('Server auth error:', error);
 		return { authenticated: false, user: null, error: error.message };
 	}
