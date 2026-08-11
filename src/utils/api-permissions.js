@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { mergePermissions } from '@/utils/rbac';
-import {
-	checkPermission,
-	checkPermissionFromSession,
-	RESOURCES,
-	PERMISSIONS,
-} from '@/utils/permissions';
+import { checkPermission, RESOURCES, PERMISSIONS } from '@/utils/permissions';
+import { hashSessionToken } from '@/utils/session';
 
 // Safely parse JSON fields stored in MySQL JSON columns
 function safeParse(json, fallback = []) {
@@ -19,9 +15,6 @@ function safeParse(json, fallback = []) {
 	}
 }
 
-// Cache expiry time (24 hours in milliseconds)
-const PERMISSIONS_CACHE_TTL = 24 * 60 * 60 * 1000;
-
 // ═══════════════════════════════════════════════════════════════════════════
 // In-memory user cache to reduce DB queries (short TTL for freshness)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -32,18 +25,18 @@ const MAX_CACHE_SIZE = 500;
 // share the single pending DB promise instead of both creating a connection.
 const pendingUserFetches = new Map();
 
-function getCachedUser(userId, allowExpired = false) {
-	const entry = userCache.get(userId);
+function getCachedUser(tokenHash, allowExpired = false) {
+	const entry = userCache.get(tokenHash);
 	if (!entry) return null;
 	if (Date.now() - entry.timestamp > USER_CACHE_TTL) {
 		if (allowExpired) return entry.user; // stale data is better than "Unauthorized"
-		userCache.delete(userId);
+		userCache.delete(tokenHash);
 		return null;
 	}
 	return entry.user;
 }
 
-function setCachedUser(userId, user) {
+function setCachedUser(tokenHash, user, userId) {
 	// Prevent unbounded growth
 	if (userCache.size >= MAX_CACHE_SIZE) {
 		// Remove oldest entries
@@ -51,12 +44,15 @@ function setCachedUser(userId, user) {
 		entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
 		entries.slice(0, 100).forEach(([key]) => userCache.delete(key));
 	}
-	userCache.set(userId, { user, timestamp: Date.now() });
+	userCache.set(tokenHash, { user, userId, timestamp: Date.now() });
 }
 
 function invalidateUserCache(userId) {
 	if (userId) {
-		userCache.delete(userId);
+		const numericId = Number(userId);
+		for (const [key, entry] of userCache.entries()) {
+			if (entry.userId === numericId) userCache.delete(key);
+		}
 	} else {
 		userCache.clear();
 	}
@@ -65,89 +61,30 @@ function invalidateUserCache(userId) {
 // Export for use elsewhere (e.g., after permission updates)
 export { invalidateUserCache };
 
-/**
- * Get permissions from session cookie (fast path - no DB query)
- * Returns null if cookie is missing, expired, or invalid
- */
-export function getSessionPermissions(request) {
-	try {
-		const sessionCookie = request?.cookies?.get?.('session_permissions')?.value;
-		if (!sessionCookie) return null;
-
-		const decoded = Buffer.from(sessionCookie, 'base64').toString('utf8');
-		const data = JSON.parse(decoded);
-
-		// Check if cache is expired
-		if (data.ts && Date.now() - data.ts > PERMISSIONS_CACHE_TTL) {
-			console.log('[Session] Permissions cache expired');
-			return null;
-		}
-
-		return {
-			permissions: data.p || [],
-			is_super_admin: !!data.sa,
-			timestamp: data.ts,
-		};
-	} catch (error) {
-		console.error(
-			'[Session] Failed to parse session permissions:',
-			error.message
-		);
-		return null;
-	}
-}
-
-/**
- * Fast permission check using session cookie
- * Falls back to DB lookup if session is missing
- */
-export async function checkPermissionFast(request, resource, permission) {
-	// Try session first (no DB query) — only trust for GRANTING access
-	const session = getSessionPermissions(request);
-	if (session) {
-		if (session.is_super_admin) return { authorized: true, source: 'session' };
-
-		const permissionKey = `${resource}:${permission}`;
-		if (session.permissions.includes(permissionKey)) {
-			return { authorized: true, source: 'session' };
-		}
-		// Session doesn't have permission — could be stale, fall through to DB
-	}
-
-	// Fall back to DB lookup
-	const user = await getCurrentUser(request);
-	if (!user) return { authorized: false, source: 'none' };
-
-	if (user.is_super_admin || checkPermission(user, resource, permission)) {
-		return { authorized: true, user, source: 'database' };
-	}
-
-	return { authorized: false, user, source: 'database' };
-}
-
 // Load current user from cookie and DB (includes role permissions)
 // Uses in-memory cache + in-flight deduplication to minimise DB connections.
 export async function getCurrentUser(request, options = {}) {
-	const userId = request?.cookies?.get?.('user_id')?.value;
-	if (!userId) return null;
+	const token = request?.cookies?.get?.('session')?.value;
+	if (!token) return null;
+
+	const tokenHash = hashSessionToken(token);
 
 	if (!options.skipCache) {
-		const cached = getCachedUser(userId);
+		const cached = getCachedUser(tokenHash);
 		if (cached) return cached;
 
 		// If another concurrent request is already fetching this user, share its promise
 		// instead of opening a second DB connection for the same data.
-		if (pendingUserFetches.has(userId)) {
-			return pendingUserFetches.get(userId);
+		if (pendingUserFetches.has(tokenHash)) {
+			return pendingUserFetches.get(tokenHash);
 		}
 	}
 
-	const authenticated = !!request?.cookies?.get?.('auth')?.value;
-	const promise = _fetchUserFromDb(userId, authenticated);
+	const promise = _fetchUserFromDb(tokenHash);
 
 	if (!options.skipCache) {
-		pendingUserFetches.set(userId, promise);
-		promise.finally(() => pendingUserFetches.delete(userId));
+		pendingUserFetches.set(tokenHash, promise);
+		promise.finally(() => pendingUserFetches.delete(tokenHash));
 	}
 	return promise;
 }
@@ -167,7 +104,7 @@ function stripDisabledModules(fp) {
 	return Object.keys(enabled).length > 0 ? { modules: enabled } : {};
 }
 
-async function _fetchUserFromDb(userId, authenticated) {
+async function _fetchUserFromDb(tokenHash) {
 	let db;
 	try {
 		db = await dbConnect();
@@ -206,12 +143,13 @@ async function _fetchUserFromDb(userId, authenticated) {
           e.profile_photo_url,
           e.emergency_contact_name,
           e.emergency_contact_phone
-       FROM users u
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
        LEFT JOIN roles_master r ON u.role_id = r.id
        LEFT JOIN employees e ON u.employee_id = e.id
-       WHERE u.id = ?
+       WHERE s.token_hash = ? AND s.expires_at > NOW() AND u.isDelete = 0
        LIMIT 1`,
-			[userId]
+			[tokenHash]
 		);
 
 		if (!rows || rows.length === 0) return null;
@@ -266,9 +204,7 @@ async function _fetchUserFromDb(userId, authenticated) {
 					}
 				: null,
 			is_super_admin: !!row.is_super_admin,
-			// Consider the session: if authenticated, treat as active even if flag wasn't updated yet
-			is_active:
-				row.is_active === null ? true : !!row.is_active || authenticated,
+			is_active: row.is_active === null ? true : !!row.is_active,
 			status: row.status,
 			last_login: row.last_login,
 			last_password_change: row.last_password_change,
@@ -280,14 +216,14 @@ async function _fetchUserFromDb(userId, authenticated) {
 		};
 
 		// Cache the user for subsequent requests
-		setCachedUser(userId, user);
+		setCachedUser(tokenHash, user, row.id);
 
 		return user;
 	} catch (error) {
 		console.error('[getCurrentUser]', error.message);
 		// On DB pool exhaustion, try returning a stale cached user rather than null
 		// which would cascade into "Unauthorized" everywhere.
-		const stale = getCachedUser(userId, true);
+		const stale = getCachedUser(tokenHash, true);
 		if (stale) {
 			console.warn(
 				'[getCurrentUser] Returning stale cached user due to DB error'
@@ -308,25 +244,6 @@ async function _fetchUserFromDb(userId, authenticated) {
 
 // Assert a specific permission for a resource; returns {authorized, user} or a NextResponse
 export async function ensurePermission(request, resource, permission) {
-	// Try fast path first (session cookie)
-	const sessionCheck = getSessionPermissions(request);
-	if (sessionCheck) {
-		if (sessionCheck.is_super_admin) {
-			// Still need user object for some operations, fetch it (cached)
-			const user = await getCurrentUser(request);
-			return { authorized: true, user };
-		}
-
-		const permissionKey = `${resource}:${permission}`;
-		if (sessionCheck.permissions.includes(permissionKey)) {
-			const user = await getCurrentUser(request);
-			return { authorized: true, user };
-		}
-
-		// Session cookie doesn't have this permission, but it might be stale.
-		// Fall through to DB lookup instead of immediately denying.
-	}
-
 	// Fall back to DB lookup (uses cache)
 	const user = await getCurrentUser(request);
 	if (!user) {
@@ -358,59 +275,11 @@ export async function ensurePermission(request, resource, permission) {
  * Returns true/false without fetching user data when possible
  */
 export async function hasPermission(request, resource, permission) {
-	// Check session cookie first
-	const sessionCheck = getSessionPermissions(request);
-	if (sessionCheck) {
-		if (sessionCheck.is_super_admin) return true;
-		if (sessionCheck.permissions.includes(`${resource}:${permission}`))
-			return true;
-	}
-
-	// Fall back to cached user lookup
+	// Cached user lookup
 	const user = await getCurrentUser(request);
 	if (!user) return false;
 
 	return user.is_super_admin || checkPermission(user, resource, permission);
-}
-
-/**
- * Create session permissions cookie value for a user
- * Use this when permissions are updated to refresh the session
- */
-export function createSessionPermissionsCookie(permissions, isSuperAdmin) {
-	const permissionsData = JSON.stringify({
-		p: permissions,
-		sa: isSuperAdmin,
-		ts: Date.now(),
-	});
-	return Buffer.from(permissionsData).toString('base64');
-}
-
-/**
- * Helper to set updated permissions on a response
- * Call this after updating user permissions to refresh their session
- */
-export function setPermissionsCookieOnResponse(
-	response,
-	permissions,
-	isSuperAdmin
-) {
-	const isProd = process.env.NODE_ENV === 'production';
-	const encodedPermissions = createSessionPermissionsCookie(
-		permissions,
-		isSuperAdmin
-	);
-
-	response.cookies.set('session_permissions', encodedPermissions, {
-		httpOnly: true,
-		sameSite: 'lax',
-		secure: isProd,
-		path: '/',
-		priority: 'high',
-		maxAge: 60 * 60 * 24, // 24 hours
-	});
-
-	return response;
 }
 
 export { RESOURCES, PERMISSIONS };

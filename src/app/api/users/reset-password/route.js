@@ -2,10 +2,12 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import {
 	ensurePermission,
+	invalidateUserCache,
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
 } from '@/utils/api-permissions';
 import { hashPassword } from '@/utils/password';
+import { revokeAllUserSessions } from '@/utils/session';
 
 // POST - reset user password
 export async function POST(request) {
@@ -63,6 +65,12 @@ export async function POST(request) {
 			'UPDATE users SET password_hash = ?, last_password_change = CURRENT_TIMESTAMP WHERE id = ?',
 			[hashed, user_id]
 		);
+
+		// SEC-14: revoke every existing session so the old password's
+		// sessions are invalidated immediately. Sweep the in-memory user cache
+		// so revoked sessions stop authenticating right away.
+		await revokeAllUserSessions(db, user_id);
+		invalidateUserCache(user_id);
 
 		return NextResponse.json({
 			success: true,

@@ -6,7 +6,7 @@ Accent CRM is an internal ERP/CRM platform built with **Next.js 15 App Router** 
 
 - **Runtime**: Node 24.x, ESM (`"type": "module"`)
 - **DB**: MySQL via `mysql2/promise` connection pool + Knex migrations
-- **Auth**: Cookie-based (`auth`, `user_id`, `is_super_admin`) enforced by Edge middleware
+- **Auth**: Opaque server-side session token in a single HttpOnly `session` cookie, validated against the `sessions` table on every API request (Edge middleware is presence-check only)
 - **Styling**: Tailwind CSS v4 (CSS-first, no `tailwind.config.js`)
 - **Language mix**: Legacy JS/JSX (dominant), newer code in TS/TSX. Migration is gradual — new files SHOULD be TypeScript.
 
@@ -16,7 +16,7 @@ Accent CRM is an internal ERP/CRM platform built with **Next.js 15 App Router** 
 Browser
   │
   ▼
-middleware.ts (Edge)          ← auth check, rate limiting, public-path allowlist
+middleware.ts (Edge)          ← session-cookie presence check, rate limiting, public-path allowlist
   │
   ▼
 Next.js App Router            ← pages (RSC + 'use client'), API routes
@@ -28,7 +28,7 @@ Next.js App Router            ← pages (RSC + 'use client'), API routes
   ▼
 API Routes (route.js/route.ts)
   │
-  ├─ ensurePermission()       ← server-side RBAC guard (cached via session_permissions cookie)
+  ├─ ensurePermission()       ← server-side RBAC guard (getCurrentUser validates the session token against the sessions table)
   ├─ dbConnect() / withDb()   ← MySQL connection pool (singleton, HMR-safe via globalThis)
   └─ logActivity()            ← audit trail for mutations
   │
@@ -38,11 +38,14 @@ MySQL                         ← DECIMAL for money, soft-delete (isDelete), 110
 
 ### Auth Flow
 
-1. `middleware.ts` checks `auth` + `user_id` cookies on every non-public request
-2. `/api/login` verifies bcrypt hash → sets cookies → returns merged permissions
-3. `SessionContext` hydrates from `sessionStorage` on mount, polls `/api/session` on route/visibility change
-4. Client checks permissions via `useSession().can(resource, action)` or legacy `useSessionRBAC()`
-5. Server API routes use `ensurePermission(request, RESOURCE, ACTION)` — returns 401/403 `NextResponse` if unauthorized
+1. `/api/login` verifies the bcrypt hash, inserts a `sessions` row (`token_hash` = SHA-256 of a fresh 256-bit token, `expires_at` +30 days), and sets one HttpOnly `session` cookie (`SameSite=Lax`, `Secure` in production, 30-day `Max-Age`). The legacy `auth`/`user_id`/`is_super_admin`/`session_permissions` cookies are cleared at login and have no readers anywhere.
+2. `middleware.ts` (Edge) is routing-only: it checks the `session` cookie's **presence** (Edge cannot reach MySQL) for the public-path allowlist, the authenticated-`/signin` bounce, and rate-limit identity. A planted/forged cookie passes middleware but fails at step 3.
+3. `getCurrentUser(request)` — called by `ensurePermission` on every API route and by `getServerAuth()` in server layouts — hashes the cookie token and validates it in one round trip: `sessions → users → roles_master/employees`, filtered by `expires_at > NOW()` and `isDelete = 0`. No DB row (missing, expired, or revoked) → `null` → 401.
+4. Logout deletes the current token's row (`revokeSession`); password change/reset delete every row for the user (`revokeAllUserSessions`) plus an in-memory user-cache sweep. Multi-session is supported — one row per login, revocation = row deletion.
+5. `SessionContext` hydrates from `/api/session` on mount and polls on route/visibility change; client checks use `useSession().can(resource, action)` or legacy `useSessionRBAC()`.
+6. Server API routes use `ensurePermission(request, RESOURCE, ACTION)` — returns 401/403 `NextResponse` if unauthorized.
+
+Session helpers live in `src/utils/session.ts` (`createSession`, `revokeSession`, `revokeAllUserSessions`, `SESSION_TTL_SECONDS`). Admin page gating is server-side in `src/app/admin/layout.tsx` (DB-backed `is_super_admin || role.code === 'admin'`).
 
 ### Permissions (RBAC)
 
@@ -51,22 +54,22 @@ Two systems coexist:
 - **Flat permissions** (legacy): `"resource:action"` arrays (e.g. `"leads:read"`), merged from role + user overrides
 - **Field permissions** (newer): nested JSON `{ modules: { leads: { enabled: true, crud: { read: true } } } }`
 
-Super admin (`is_super_admin: '1'`) bypasses all checks. ~30 resources × 10 actions with 4-tier templates (VIEWER/EDITOR/MANAGER/ADMIN).
+Super admin (`users.is_super_admin`, DB-backed) bypasses all checks; `/admin/*` pages are gated server-side by `src/app/admin/layout.tsx`. ~30 resources × 10 actions with 4-tier templates (VIEWER/EDITOR/MANAGER/ADMIN).
 
 ## Key Directories
 
-| Directory         | Purpose                                                                                                                                                                                |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/app/`        | Next.js App Router — pages (`page.jsx`/`page.tsx`), layouts, and API routes (`api/**/route.js`)                                                                                        |
-| `src/components/` | Shared React components — `ui/` (primitives: Button, Table, Modal, FormFields), `admin/ResourceFormModal.tsx` (shared form renderer), `Sidebar`, `Navbar`, `AuthGate` (no-op)          |
-| `src/utils/`      | Server utilities — `database.js` (pool), `permissions.js`/`rbac.js`/`api-permissions.js` (RBAC), `activity-logger.js`, `password.ts`, `invoice-validation.ts`, `payroll-calculator.js` |
-| `src/lib/`        | Shared libraries — `money.ts` (decimal arithmetic), `format.js` (INR formatting), `api-client.js` (fetch wrapper), `cn.js` (Tailwind class merge)                                      |
-| `src/context/`    | React contexts — `SessionContext.jsx` (auth state + `can()` helper)                                                                                                                    |
-| `src/hooks/`      | Custom hooks — `useActivityTracker.js`, `useIdleMonitor.js`, `useSpellCheck.js`                                                                                                        |
-| `src/__tests__/`  | Vitest tests — mirrors source tree structure                                                                                                                                           |
-| `migrations/`     | Knex migrations (6 total: 1 baseline + 5 incremental)                                                                                                                                  |
-| `scripts/`        | Operational scripts — seeding, data migration, salary import, diagnostics                                                                                                              |
-| `docs/`           | Internal documentation — RBAC architecture, activity normalization, responsive audit, poor practices audit                                                                             |
+| Directory         | Purpose                                                                                                                                                                                                        |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/`        | Next.js App Router — pages (`page.jsx`/`page.tsx`), layouts, and API routes (`api/**/route.js`)                                                                                                                |
+| `src/components/` | Shared React components — `ui/` (primitives: Button, Table, Modal, FormFields), `admin/ResourceFormModal.tsx` (shared form renderer), `Sidebar`, `Navbar`, `AuthGate` (no-op)                                  |
+| `src/utils/`      | Server utilities — `database.js` (pool), `permissions.js`/`rbac.js`/`api-permissions.js`/`session.ts` (RBAC + sessions), `activity-logger.js`, `password.ts`, `invoice-validation.ts`, `payroll-calculator.js` |
+| `src/lib/`        | Shared libraries — `money.ts` (decimal arithmetic), `format.js` (INR formatting), `api-client.js` (fetch wrapper), `cn.js` (Tailwind class merge)                                                              |
+| `src/context/`    | React contexts — `SessionContext.jsx` (auth state + `can()` helper)                                                                                                                                            |
+| `src/hooks/`      | Custom hooks — `useActivityTracker.js`, `useIdleMonitor.js`, `useSpellCheck.js`                                                                                                                                |
+| `src/__tests__/`  | Vitest tests — mirrors source tree structure                                                                                                                                                                   |
+| `migrations/`     | Knex migrations (17 total: 1 baseline + 16 incremental)                                                                                                                                                        |
+| `scripts/`        | Operational scripts — seeding, data migration, salary import, diagnostics                                                                                                                                      |
+| `docs/`           | Internal documentation — RBAC architecture, activity normalization, responsive audit, poor practices audit, `SECURITY_AUDIT.md` (findings + remediation status)                                                |
 
 ## Development Commands
 
@@ -371,21 +374,22 @@ For all **new files**, follow these rules:
 
 ## Important Files
 
-| File                                         | Role                                                                                                                  |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `middleware.ts`                              | **Single source of auth truth** — public path allowlist, auth enforcement, admin gating, rate limiting (5 categories) |
-| `src/utils/database.js`                      | MySQL pool manager — `dbConnect()`, `withDb()`, `query()`, `closePool()`                                              |
-| `src/utils/permissions.js`                   | Central RBAC — `checkPermission()`, `hasAnyAccess()`, 30+ resources                                                   |
-| `src/utils/api-permissions.js`               | Server-side auth — `ensurePermission()`, `getCurrentUser()`, `checkPermissionFast()`                                  |
-| `src/context/SessionContext.jsx`             | Client auth — `useSession()`, `can(resource, action)`                                                                 |
-| `src/lib/money.ts`                           | Decimal.js money arithmetic — `R()`, `add`, `sub`, `pctOf`, `gte`, `toNumber`                                         |
-| `src/lib/format.js`                          | Shared formatting — `formatCurrency`, `formatDate`, `formatNumber`                                                    |
-| `src/utils/activity-logger.js`               | Audit trail — `logActivity()` for all mutations                                                                       |
-| `src/components/admin/ResourceFormModal.tsx` | Shared form renderer consumed by decoupled admin pages                                                                |
-| `knexfile.js`                                | Knex config — dev/staging/prod environments, `./migrations/` directory                                                |
-| `next.config.ts`                             | Next.js config — `serverExternalPackages`, image optimization, compression                                            |
-| `tsconfig.json`                              | TypeScript config — strict mode, `@/*` → `./src/*`, `allowJs: true`                                                   |
-| `vitest.config.ts`                           | Test config — jsdom, globals, `@/` alias                                                                              |
+| File                                         | Role                                                                                                                                                                                 |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `middleware.ts`                              | Edge routing guard — public path allowlist, `session`-cookie presence check, rate limiting (5 categories). NOT the auth boundary: real validation happens in Node (`getCurrentUser`) |
+| `src/utils/database.js`                      | MySQL pool manager — `dbConnect()`, `withDb()`, `query()`, `closePool()`                                                                                                             |
+| `src/utils/permissions.js`                   | Central RBAC — `checkPermission()`, `hasAnyAccess()`, 30+ resources                                                                                                                  |
+| `src/utils/api-permissions.js`               | Server-side auth — `ensurePermission()`, `getCurrentUser()`, `invalidateUserCache()`, `RESOURCES`/`PERMISSIONS`                                                                      |
+| `src/utils/session.ts`                       | Session tokens — `createSession()`, `revokeSession()`, `revokeAllUserSessions()`, `SESSION_TTL_SECONDS`                                                                              |
+| `src/context/SessionContext.jsx`             | Client auth — `useSession()`, `can(resource, action)`                                                                                                                                |
+| `src/lib/money.ts`                           | Decimal.js money arithmetic — `R()`, `add`, `sub`, `pctOf`, `gte`, `toNumber`                                                                                                        |
+| `src/lib/format.js`                          | Shared formatting — `formatCurrency`, `formatDate`, `formatNumber`                                                                                                                   |
+| `src/utils/activity-logger.js`               | Audit trail — `logActivity()` for all mutations                                                                                                                                      |
+| `src/components/admin/ResourceFormModal.tsx` | Shared form renderer consumed by decoupled admin pages                                                                                                                               |
+| `knexfile.js`                                | Knex config — dev/staging/prod environments, `./migrations/` directory                                                                                                               |
+| `next.config.ts`                             | Next.js config — `serverExternalPackages`, image optimization, compression                                                                                                           |
+| `tsconfig.json`                              | TypeScript config — strict mode, `@/*` → `./src/*`, `allowJs: true`                                                                                                                  |
+| `vitest.config.ts`                           | Test config — jsdom, globals, `@/` alias                                                                                                                                             |
 
 ## Runtime & Tooling
 

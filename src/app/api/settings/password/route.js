@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { getCurrentUser } from '@/utils/api-permissions';
+import { getCurrentUser, invalidateUserCache } from '@/utils/api-permissions';
 import { hashPassword, verifyPassword } from '@/utils/password';
+import { revokeAllUserSessions } from '@/utils/session';
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -68,9 +69,16 @@ export async function POST(request) {
 
 		const hashed = await hashPassword(newPassword);
 		await db.execute(
-			'UPDATE users SET password_hash = ?, last_password_change = NOW(), updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+			'UPDATE users SET password_hash = ?, last_password_change = NOW() WHERE id = ?',
 			[hashed, user.id]
 		);
+
+		// SEC-14: revoke every existing session so all devices must log in
+		// again with the new password. The in-memory user cache would otherwise
+		// keep authenticating the deleted sessions for up to its TTL — sweep it
+		// so the next request 401s immediately.
+		await revokeAllUserSessions(db, user.id);
+		invalidateUserCache(user.id);
 	} catch (error) {
 		console.error('Password update failed:', error);
 		return NextResponse.json(

@@ -7,13 +7,6 @@ export const revalidate = 0;
 
 export async function GET(req) {
 	try {
-		const hasSession = !!req?.cookies?.get?.('auth')?.value;
-		const hasUserId = !!req?.cookies?.get?.('user_id')?.value;
-
-		if (!hasSession || !hasUserId) {
-			return NextResponse.json({ authenticated: false });
-		}
-
 		const user = await getCurrentUser(req);
 		if (!user) {
 			return NextResponse.json({ authenticated: false });

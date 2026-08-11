@@ -12,7 +12,7 @@ import { useSession } from '@/context/SessionContext';
  * - Regular users → /user/dashboard (protected)
  *
  * Uses SessionContext for consistent auth state.
- * Falls back to cookies if session not yet loaded.
+ * Bounces to /signin when the session is invalid or expired.
  */
 export default function DashboardRedirect() {
 	const router = useRouter();
@@ -22,22 +22,11 @@ export default function DashboardRedirect() {
 		// Wait for session to load
 		if (loading) return;
 
-		// Session loaded but not authenticated - check cookies as fallback
+		// Session loaded but not authenticated (invalid/expired session —
+		// middleware only sees cookie presence, not DB validity). Bounce to
+		// signin instead of trusting stale cookies.
 		if (!authenticated || !user) {
-			const hasCookies =
-				typeof document !== 'undefined' &&
-				document.cookie.includes('auth=') &&
-				document.cookie.includes('user_id=');
-
-			if (hasCookies) {
-				// Redirect based on is_super_admin cookie
-				const isSuperAdmin =
-					document.cookie.includes('is_super_admin=1') ||
-					document.cookie.includes('is_super_admin=true');
-				router.replace(isSuperAdmin ? '/admin/dashboard' : '/user/dashboard');
-				return;
-			}
-			// No cookies - let middleware handle redirect to signin
+			router.replace('/signin');
 			return;
 		}
 
