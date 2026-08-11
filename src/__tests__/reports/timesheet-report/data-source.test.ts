@@ -507,7 +507,7 @@ describe('computeMonthlyHours', () => {
 			},
 		];
 		const hours = computeMonthlyHours(projects, days);
-		expect(hours.daily).toEqual({ '2026-04-01': 10 });
+		expect(hours.daily).toEqual({ '2026-04-01': 8 }); // capped at 8h
 		expect(hours.overtime_daily).toEqual({ '2026-04-01': 2 });
 		expect(hours.normal).toBe(8);
 		expect(hours.overtime).toBe(2);
@@ -587,8 +587,8 @@ describe('computeMonthlyHours', () => {
 			},
 		];
 		const hours = computeMonthlyHours(projects, days);
-		expect(hours.daily['2026-04-01']).toBe(8.5);
-		expect(hours.normal).toBe(8); // 8.5h logged → 8 normal + 0.5 overtime
+		expect(hours.daily['2026-04-01']).toBe(8); // 8.5h logged → 8 normal + 0.5 overtime
+		expect(hours.normal).toBe(8);
 		expect(hours.overtime).toBe(0.5);
 	});
 });

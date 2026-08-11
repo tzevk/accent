@@ -16,6 +16,11 @@ import {
 	hasUserProjectAssignment,
 	isUserInProjectTeam,
 } from '@/utils/project-access';
+import {
+	fetchExistingDayHours,
+	parseDailyEntries,
+	validateDayHours,
+} from '@/utils/activity-daily-hours';
 
 // GET specific project
 export async function GET(request, { params }) {
@@ -1243,6 +1248,36 @@ export async function PUT(request, context) {
 								[...allUserIds]
 							);
 							for (const row of existingUsers) validUserIds.add(row.id);
+						}
+
+						// Daily-hour cap: reject the whole save when any user's
+						// per-date total — incoming payload entries plus their
+						// other assignments that are NOT being overwritten here —
+						// exceeds MAX_DAY_HOURS.
+						const dayViolations = [];
+						for (const uid of allUserIds) {
+							const incoming = [...incomingMap.values()].filter(
+								(r) => r.user_id === uid && r.daily_entries
+							);
+							if (incoming.length === 0) continue;
+							const keys = new Set(
+								incoming.map((r) => `${r.project_id}-${r.activity_id}`)
+							);
+							const existingByDate = await fetchExistingDayHours(db, uid, {
+								excludeAssignmentKeys: keys,
+							});
+							const newEntries = incoming.flatMap((r) =>
+								parseDailyEntries(r.daily_entries)
+							);
+							const violation = validateDayHours(newEntries, existingByDate);
+							if (violation) dayViolations.push(`User ${uid}: ${violation}`);
+						}
+						if (dayViolations.length > 0) {
+							await db.release();
+							return Response.json(
+								{ success: false, error: dayViolations.join('; ') },
+								{ status: 400 }
+							);
 						}
 
 						// UPSERT each assignment — preserves user data (daily_entries, remarks, etc.)

@@ -4,12 +4,11 @@ import {
 	ChevronDownIcon,
 	TrashIcon,
 } from '@heroicons/react/24/outline';
+import SearchableSelect from '@/components/ui/searchable-select';
 
 export default function ProjectTeamTab({
 	toggleSection,
 	openSections,
-	teamMemberSearch,
-	setTeamMemberSearch,
 	usersLoading,
 	availableUsers,
 	allUsers,
@@ -51,89 +50,36 @@ export default function ProjectTeamTab({
 
 					{openSections.teamMemberAdd && (
 						<div className="p-4 border-t border-purple-100">
-							{/* Search Box */}
-							<div className="mb-3">
-								<input
-									type="text"
-									value={teamMemberSearch}
-									onChange={(e) => setTeamMemberSearch(e.target.value)}
-									placeholder="Search users by name, email, or department..."
-									className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]"
-								/>
-							</div>
-
-							{/* Available Users List */}
+							<label className="mb-1 block text-xs font-semibold text-gray-700">
+								Search users by name, email, or department
+							</label>
+							<SearchableSelect
+								options={availableUsers.map((user) => ({
+									id: user.id,
+									value: String(user.id),
+									label: [
+										user.employee_name || user.full_name || user.username,
+										user.email,
+										user.employee_department || user.department,
+									]
+										.filter(Boolean)
+										.join(' — '),
+								}))}
+								placeholder="Search users..."
+								onChange={(val) => {
+									const user = availableUsers.find((u) => String(u.id) === val);
+									if (user) addTeamMember(user);
+								}}
+							/>
 							{usersLoading ? (
-								<div className="text-center py-8 text-gray-500">
-									<div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-									<p className="text-sm">Loading users...</p>
-								</div>
-							) : availableUsers.length > 0 ? (
-								<div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
-									<table className="w-full text-xs">
-										<thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
-											<tr>
-												<th className="px-3 py-2 text-left font-semibold text-gray-700">
-													Employee ID
-												</th>
-												<th className="px-3 py-2 text-left font-semibold text-gray-700">
-													Name
-												</th>
-												<th className="px-3 py-2 text-left font-semibold text-gray-700">
-													Email
-												</th>
-												<th className="px-3 py-2 text-left font-semibold text-gray-700">
-													Role
-												</th>
-												<th className="px-3 py-2 text-center font-semibold text-gray-700">
-													Action
-												</th>
-											</tr>
-										</thead>
-										<tbody className="divide-y divide-gray-100">
-											{availableUsers.map((user) => (
-												<tr
-													key={user.id}
-													className="hover:bg-purple-50 transition-colors"
-												>
-													<td className="px-3 py-2 text-gray-900 font-mono text-xs">
-														{user.employee_code || user.employee_id || user.id}
-													</td>
-													<td className="px-3 py-2 text-gray-900 font-medium">
-														{user.full_name || user.username}
-													</td>
-													<td className="px-3 py-2 text-gray-600">
-														{user.email || '-'}
-													</td>
-													<td className="px-3 py-2 text-gray-600">
-														{user.role_name || '-'}
-													</td>
-													<td className="px-3 py-2 text-center">
-														<button
-															type="button"
-															onClick={() => addTeamMember(user)}
-															className="px-3 py-1 bg-[#7F2487] text-white rounded-md text-xs font-medium hover:bg-[#6a1e73] transition-colors"
-														>
-															Add
-														</button>
-													</td>
-												</tr>
-											))}
-										</tbody>
-									</table>
-								</div>
-							) : (
-								<div className="text-center py-6 text-gray-500">
-									<UserIcon className="h-10 w-10 mx-auto text-gray-300 mb-2" />
-									<p className="text-sm">
-										{teamMemberSearch
-											? 'No users found matching your search'
-											: allUsers.length === 0
-												? 'No users loaded. Please refresh the page.'
-												: 'All users have been added to the team'}
-									</p>
-								</div>
-							)}
+								<p className="mt-2 text-xs text-gray-500">Loading users...</p>
+							) : availableUsers.length === 0 ? (
+								<p className="mt-2 text-xs text-gray-500">
+									{allUsers.length === 0
+										? 'No users loaded. Please refresh the page.'
+										: 'All users have been added to the team'}
+								</p>
+							) : null}
 						</div>
 					)}
 				</div>

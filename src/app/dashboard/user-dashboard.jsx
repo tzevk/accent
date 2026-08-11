@@ -436,10 +436,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					}));
 					setStatsReady(true);
 
-					// Check for pending daily entries
+					// Check for pending daily entries. Today counts as updated
+					// when an entry for today exists — entries are created
+					// unlocked, so requiring isLocked made the reminder fire
+					// even after the user submitted today's progress.
 					const missing = assignmentsList.filter((a) => {
 						const entries = a.daily_entries || [];
-						return !entries.some((e) => e && e.date === today && e.isLocked);
+						return !entries.some((e) => e && e.date === today);
 					});
 					if (missing.length > 0) {
 						setPendingActivities(missing);

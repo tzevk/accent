@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { randomUUID } from 'crypto';
 import { isUserInProjectTeam } from '@/utils/project-access';
+import {
+	fetchExistingDayHours,
+	validateDayHours,
+} from '@/utils/activity-daily-hours';
 
 async function generateTicketNumber(connection) {
 	const year = new Date().getFullYear();
@@ -440,6 +444,7 @@ export async function PUT(request, { params }) {
 		// Build dynamic UPDATE with only the fields present in the request
 		const setClauses = [];
 		const updateParams = [];
+		let normalizedEntries = null;
 
 		if (qty_assigned !== undefined) {
 			setClauses.push('qty_assigned = ?');
@@ -479,15 +484,22 @@ export async function PUT(request, { params }) {
 		}
 		if (daily_entries !== undefined) {
 			setClauses.push('daily_entries = ?');
-			const entries = Array.isArray(daily_entries)
-				? daily_entries.map((e) => ({
-						date: e.date || '',
-						qty_done: parseFloat(e.qty_done) || 0,
-						hours: parseFloat(e.hours) || 0,
-						remarks: e.remarks || '',
-					}))
+			normalizedEntries = Array.isArray(daily_entries)
+				? daily_entries.map((e) => {
+						if (!e || typeof e !== 'object') return {};
+						// Normalize the known numeric/text fields but keep
+						// every other flag (isLocked, …) intact — the old
+						// mapping silently dropped them on round-trip.
+						return {
+							...e,
+							date: e.date || '',
+							qty_done: parseFloat(e.qty_done) || 0,
+							hours: parseFloat(e.hours) || 0,
+							remarks: e.remarks || '',
+						};
+					})
 				: [];
-			updateParams.push(JSON.stringify(entries));
+			updateParams.push(JSON.stringify(normalizedEntries));
 		}
 		// Activity-level fields
 		if (discipline_name !== undefined) {
@@ -510,6 +522,23 @@ export async function PUT(request, { params }) {
 				message: 'No fields to update',
 				affected_rows: 0,
 			});
+		}
+
+		// Daily-hour cap: the replacement entries must not push any calendar
+		// date over MAX_DAY_HOURS once the user's other assignments for that
+		// date are counted (this assignment's old entries are being replaced).
+		if (normalizedEntries !== null) {
+			const existingByDate = await fetchExistingDayHours(db, requestedUserId, {
+				excludeAssignmentIds: [existing[0].id],
+			});
+			const violation = validateDayHours(normalizedEntries, existingByDate);
+			if (violation) {
+				db.release();
+				return NextResponse.json(
+					{ success: false, error: violation },
+					{ status: 400 }
+				);
+			}
 		}
 
 		setClauses.push('updated_at = NOW()');
@@ -826,25 +855,46 @@ export async function PATCH(request, { params }) {
 			[JSON.stringify(activitiesList), project.project_id]
 		);
 
-		// Also insert into normalized user_activity_assignments table
+		// Also insert into normalized user_activity_assignments table. The
+		// entered manhours/quantity are logged as that day's entry so they
+		// surface in the timesheet/man-hours reports; planned hours also go
+		// to estimated_hours. employee_id is carried over from the login
+		// account so reports that key on it can resolve the row directly.
 		try {
+			const [userRows] = await db.execute(
+				'SELECT employee_id FROM users WHERE id = ?',
+				[requestedUserId]
+			);
+			const employeeId = userRows[0]?.employee_id ?? null;
 			const dailyEntry = {
 				date: due_date || new Date().toISOString().split('T')[0],
 				qty_done: parseFloat(qty_completed) || 0,
 				hours: parseFloat(manhours_assigned) || 0,
 				remarks: '',
 			};
+			// Daily-hour cap: the new entry must not push the user's total
+			// for that date over MAX_DAY_HOURS across all their assignments.
+			const existingByDate = await fetchExistingDayHours(db, requestedUserId);
+			const violation = validateDayHours([dailyEntry], existingByDate);
+			if (violation) {
+				db.release();
+				return NextResponse.json(
+					{ success: false, error: violation },
+					{ status: 400 }
+				);
+			}
 			await db.execute(
 				`INSERT INTO user_activity_assignments
-         (id, user_id, project_id, activity_id, activity_name, discipline_name,
-          sub_activity_name, description, due_date, start_date,
+         (id, user_id, employee_id, project_id, activity_id, activity_name,
+          discipline_name, sub_activity_name, description, due_date, start_date,
           status, estimated_hours, actual_hours, qty_assigned, qty_completed,
           notes, remarks, default_manhours, progress_percentage,
           daily_entries, assigned_date, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
 				[
 					randomUUID(),
 					requestedUserId,
+					employeeId,
 					project_id,
 					newActivity.id,
 					activity_name,
@@ -951,14 +1001,64 @@ export async function DELETE(request, { params }) {
 			[requestedUserId, project_id, activity_id]
 		);
 
-		db.release();
-
 		if (deleteResult.affectedRows === 0) {
+			db.release();
 			return NextResponse.json(
 				{ success: false, error: 'Assignment not found' },
 				{ status: 404 }
 			);
 		}
+
+		// Also drop the user from the project_activities_list blob so a later
+		// project save (which re-syncs assignments from the blob) does not
+		// resurrect the deleted assignment.
+		try {
+			const [projects] = await db.execute(
+				'SELECT project_activities_list FROM projects WHERE project_id = ?',
+				[project_id]
+			);
+			let list = projects[0]?.project_activities_list;
+			if (typeof list === 'string') {
+				try {
+					list = list ? JSON.parse(list) : [];
+				} catch {
+					list = [];
+				}
+			}
+			if (Array.isArray(list)) {
+				const cleaned = list
+					.map((activity) => {
+						if (!activity || activity.id !== activity_id) return activity;
+						const users = Array.isArray(activity.assigned_users)
+							? activity.assigned_users.filter(
+									(u) => String(u?.user_id) !== String(requestedUserId)
+								)
+							: activity.assigned_users;
+						return { ...activity, assigned_users: users };
+					})
+					.filter(
+						(activity) =>
+							!activity ||
+							activity.id !== activity_id ||
+							!Array.isArray(activity.assigned_users) ||
+							activity.assigned_users.length > 0
+					);
+				if (JSON.stringify(cleaned) !== JSON.stringify(list)) {
+					await db.execute(
+						'UPDATE projects SET project_activities_list = ? WHERE project_id = ?',
+						[JSON.stringify(cleaned), project_id]
+					);
+				}
+			}
+		} catch (blobErr) {
+			// Non-fatal: the normalized row is gone either way.
+			console.error(
+				'Failed to remove assignment from project activities blob:',
+				blobErr
+			);
+		}
+
+		db.release();
 
 		return NextResponse.json({
 			success: true,

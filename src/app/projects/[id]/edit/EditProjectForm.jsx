@@ -471,7 +471,6 @@ export default function EditProjectForm() {
 	const [projectTeamMembers, setProjectTeamMembers] = useState([]);
 	const [allUsers, setAllUsers] = useState([]);
 	const [usersLoading, setUsersLoading] = useState(true);
-	const [teamMemberSearch, setTeamMemberSearch] = useState('');
 
 	// Software Management
 	const [softwareItems, setSoftwareItems] = useState([]);
@@ -2976,14 +2975,7 @@ export default function EditProjectForm() {
 
 	// Get filtered users for team selection (only show those not already in team)
 	const availableUsers = allUsers.filter(
-		(user) =>
-			!projectTeamMembers.some((member) => member.id === user.id) &&
-			(teamMemberSearch === '' ||
-				(user.full_name || user.username || '')
-					.toLowerCase()
-					.includes(teamMemberSearch.toLowerCase()) ||
-				user.email?.toLowerCase().includes(teamMemberSearch.toLowerCase()) ||
-				user.department?.toLowerCase().includes(teamMemberSearch.toLowerCase()))
+		(user) => !projectTeamMembers.some((member) => member.id === user.id)
 	);
 
 	// Get project team members for use in other tabs (replaces full user list)
@@ -4892,8 +4884,6 @@ export default function EditProjectForm() {
 									<ProjectTeamTab
 										toggleSection={toggleSection}
 										openSections={openSections}
-										teamMemberSearch={teamMemberSearch}
-										setTeamMemberSearch={setTeamMemberSearch}
 										usersLoading={usersLoading}
 										availableUsers={availableUsers}
 										allUsers={allUsers}

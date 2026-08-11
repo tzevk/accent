@@ -558,6 +558,12 @@ export default function Sidebar() {
 								href="/reports/timesheet-report"
 								active={pathname.startsWith('/reports/timesheet-report')}
 							/>
+							<NavRow
+								icon={BanknotesIcon}
+								label="Manhours Billing"
+								href="/reports/manhours-billing"
+								active={pathname.startsWith('/reports/manhours-billing')}
+							/>
 						</div>
 					</div>
 				)}
