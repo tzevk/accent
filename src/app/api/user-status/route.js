@@ -56,7 +56,8 @@ export async function GET(request) {
           r.role_name,
           p.last_seen as last_activity,
           p.is_idle,
-          p.current_page
+          p.current_page,
+          TIMESTAMPDIFF(SECOND, p.last_seen, NOW()) as seconds_since_activity
         FROM users u
         LEFT JOIN roles_master r ON u.role_id = r.id
         LEFT JOIN user_presence p ON p.user_id = u.id
@@ -73,7 +74,10 @@ export async function GET(request) {
 
 			const usersWithStatus = allUsers.map((user) => ({
 				...user,
-				status: getStatusFromActivity(user.last_activity, user.is_idle),
+				status: getStatusFromActivity(
+					user.seconds_since_activity,
+					user.is_idle
+				),
 				...(statsByUser ? (statsByUser.get(user.user_id) ?? {}) : {}),
 			}));
 
@@ -111,9 +115,10 @@ export async function GET(request) {
         p.last_seen as last_activity,
         p.is_idle,
         p.current_page,
-        (SELECT session_start FROM user_work_sessions 
+        TIMESTAMPDIFF(SECOND, p.last_seen, NOW()) as seconds_since_activity,
+        (SELECT TIMESTAMPDIFF(SECOND, session_start, NOW()) FROM user_work_sessions 
          WHERE user_id = u.id AND status = 'active' 
-         ORDER BY session_start DESC LIMIT 1) as session_start
+         ORDER BY session_start DESC LIMIT 1) as session_duration
       FROM users u
       LEFT JOIN roles_master r ON u.role_id = r.id
       LEFT JOIN user_presence p ON p.user_id = u.id
@@ -127,19 +132,16 @@ export async function GET(request) {
 
 		// Add status and stats
 		const usersWithStatus = users.map((user) => {
-			const status = getStatusFromActivity(user.last_activity, user.is_idle);
-
-			let session_duration = null;
-			if (user.session_start && status === 'online') {
-				session_duration = Math.floor(
-					(Date.now() - new Date(user.session_start).getTime()) / 1000
-				);
-			}
+			const status = getStatusFromActivity(
+				user.seconds_since_activity,
+				user.is_idle
+			);
 
 			return {
 				...user,
 				status,
-				session_duration,
+				// Only surface session duration while the user is online.
+				session_duration: status === 'online' ? user.session_duration : null,
 				...(statsByUser ? (statsByUser.get(user.user_id) ?? {}) : {}),
 			};
 		});
