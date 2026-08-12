@@ -24,22 +24,21 @@ Browser (filters: employee → month)
 data-source.ts
   ├─ fetchTimesheetMeta()  → active employees + months with data
   └─ fetchTimesheetData()  → employee, day matrix, holidays, project rows,
-  │                          summary, normal/OT hours, screen time
+  │                          summary, normal/OT hours
   ▼
 page.tsx (grid) / excel-template.ts (export) — same transforms
 ```
 
 ### Data sources
 
-| Section                     | Source table                | How it is derived                                                                                                 |
-| --------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **Employee header**         | `employees`                 | `CONCAT_WS(' ', first_name, last_name)`; designation = `position`/`designation`; `department`                     |
-| **Day matrix / statuses**   | `employee_attendance`       | `status` (P/HD/PL/WO/H/A/…), `overtime_hours`, `is_weekly_off`, `is_holiday` for the month                        |
-| **Holidays**                | `holiday_master`            | `is_active = 1` rows in the month; name + date                                                                    |
-| **Weekly-off policy**       | computed                    | Sundays + **2nd and 4th Saturdays** only (see below) when no attendance row exists                                |
-| **Project/activity rows**   | `user_activity_assignments` | Sum of `hours` in the assignment's `daily_entries` JSON array where `date` falls in the month                     |
-| **Screen time**             | `user_screen_time`          | Active/idle seconds per day from the client heartbeat bucket, aggregated across the employee's linked login users |
-| **Standard day / half day** | `attendance_settings`       | `standard_working_hours` (default 8), `half_day_hours` (default 4)                                                |
+| Section                     | Source table                | How it is derived                                                                             |
+| --------------------------- | --------------------------- | --------------------------------------------------------------------------------------------- |
+| **Employee header**         | `employees`                 | `CONCAT_WS(' ', first_name, last_name)`; designation = `position`/`designation`; `department` |
+| **Day matrix / statuses**   | `employee_attendance`       | `status` (P/HD/PL/WO/H/A/…), `overtime_hours`, `is_weekly_off`, `is_holiday` for the month    |
+| **Holidays**                | `holiday_master`            | `is_active = 1` rows in the month; name + date                                                |
+| **Weekly-off policy**       | computed                    | Sundays + **2nd and 4th Saturdays** only (see below) when no attendance row exists            |
+| **Project/activity rows**   | `user_activity_assignments` | Sum of `hours` in the assignment's `daily_entries` JSON array where `date` falls in the month |
+| **Standard day / half day** | `attendance_settings`       | `standard_working_hours` (default 8), `half_day_hours` (default 4)                            |
 
 ---
 
@@ -79,12 +78,6 @@ Rows with zero hours still appear when their `start_date`/`due_date` falls in th
 
 The `MAX_DAY_HOURS` entry cap (12h) is enforced on every writer, so days above 12h cannot enter the system going forward; legitimate 8–10h days and small multi-assignment splits pass untouched.
 
-## Screen time
-
-`buildScreenTime` aggregates `user_screen_time` active/idle seconds per day across the employee's linked login users. Rendered as an informational "Active Hours (Screen Time)" row — **not** part of the project/attendance hour totals.
-
----
-
 ## Auth
 
 Three-tier, same as `client-balance`, `manhours-billing`, `employee-report`, and `project-activities`:
@@ -122,7 +115,6 @@ interface TimesheetData {
 	projects: TsProject[]; // per-assignment rows with per-day hours
 	summary: TsSummary; // present/half/wo/holiday/absent/leave counts + hours
 	hours: TsMonthlyHours; // daily (normal, capped), overtime_daily, normal, overtime, total, source
-	screen_time: TsScreenTime;
 	settings: { standard_working_hours: number; half_day_hours: number };
 }
 ```
@@ -135,7 +127,7 @@ Validation: `employee_id` must be a positive integer, `month` must match `^\d{4}
 
 ### Filters (print-hidden)
 
-Two native selects: **Employee** (name + employee code) and **Month/Year**, plus Refresh and Export Excel buttons. Defaults applied once when meta arrives (first employee, `latest_month`).
+Two `SearchableSelect` dropdowns: **Employee** (name + employee code, searchable) and **Month/Year**, plus Refresh and Export Excel buttons. Defaults applied once when meta arrives (first employee, `latest_month`).
 
 ### Sheet
 
@@ -146,7 +138,6 @@ An Arial `text-[10px]` bordered grid (`border-black`, `min-w-[1950px]`):
 - 20 fixed-height normal rows (empty rows preserve the Excel layout): project code, activity, Count (`qty_completed`), per-day cells via `formatClock(hours)` (`9.3h → 09:18`), total via `formatElapsed(hours)` (`174.5h → 174:30:00`).
 - "Over Time Hours" row: daily OT values (`data.hours.overtime_daily`), blue text.
 - "Daily Man Hours" row: capped normal hours per day.
-- "Active Hours (Screen Time)" row when screen-time data exists (emerald, informational).
 - Totals: Sub-Total Of Normal Hours, Sub-Total Of Over Time Hours, Total Monthly Hours (bold).
 - Signature strip: Prepared By / Checked By / Approved By.
 
@@ -164,7 +155,7 @@ Loading (spinner + Navbar), Access Denied (red X panel), error (red panel + Retr
 - Row 5–6: weekday + day-number headers, blue on non-working columns
 - Row 7: attendance statuses / vertical day labels on blue columns
 - Project rows: same raw per-day hours, day cells stored as a fraction of a day with `hh:mm` number format, totals with `[h]:mm:ss`
-- Daily Man Hours (project log), Overtime Hours, Active Hours, sub-totals, grand total, day-type summary strip, signature strip
+- Daily Man Hours (project log), Overtime Hours, sub-totals, grand total, day-type summary strip, signature strip
 
 Filename: `Timesheet_<EMPLOYEE_NAME>_<MONTH_LABEL>.xlsx` (e.g. `Timesheet_ROSHAN_MALIK_AUGUST_2026.xlsx`).
 
@@ -179,7 +170,7 @@ Filename: `Timesheet_<EMPLOYEE_NAME>_<MONTH_LABEL>.xlsx` (e.g. `Timesheet_ROSHAN
 | `src/app/reports/timesheet-report/excel-template.ts`           | **Created** — ExcelJS workbook builder (mirrors the on-screen grid)                                     |
 | `src/app/api/reports/timesheet-report/route.ts`                | **Created** — meta/data JSON API with RBAC                                                              |
 | `src/app/api/reports/timesheet-report/download/route.ts`       | **Created** — Excel download with RBAC                                                                  |
-| `src/__tests__/reports/timesheet-report/data-source.test.ts`   | **Created** — 32 unit tests (statuses, weekly-off rule, day matrix, parsing, hours/OT, screen time)     |
+| `src/__tests__/reports/timesheet-report/data-source.test.ts`   | **Created** — unit tests (statuses, weekly-off rule, day matrix, parsing, hours/OT)                     |
 | `src/__tests__/reports/timesheet-report/timesheet-cap.test.ts` | **Created** — 7 unit tests for `capProjectDays`                                                         |
 | `src/lib/timesheet-cap.ts`                                     | **Created** — per-project per-day capping to the standard working day                                   |
 | `src/utils/activity-daily-hours.ts`                            | **Created** — `MAX_DAY_HOURS` (12h) per-user-per-date validation shared by every `daily_entries` writer |
@@ -188,3 +179,20 @@ Filename: `Timesheet_<EMPLOYEE_NAME>_<MONTH_LABEL>.xlsx` (e.g. `Timesheet_ROSHAN
 | `src/__tests__/utils/activity-daily-hours.test.ts`             | **Created** — parsing, per-date sums, exclusions, cap boundary tests                                    |
 
 > The per-project section intentionally caps at the standard working day (8h) — this matches the reference template and the "normal hours in the top section, everything above 8h as overtime" rule. The proportional split keeps every project visible on over-8h days; the entry-side `MAX_DAY_HOURS` cap stops the impossible days (18h/20h/32h) that used to reach the report.
+
+---
+
+## Removed: Active Hours (Screen Time) row
+
+The informational **Active Hours (Screen Time)** row — a per-day display of `user_screen_time` heartbeat seconds, excluded from all totals — has been removed from the report.
+
+**Removal logic** — every layer that touched screen time was deleted, not disabled, so no dead code or API surface remains:
+
+| Layer                 | What changed                                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `data-source.ts`      | Deleted `TsScreenTime` interface, `buildScreenTime()` transform, the `screen_time` field on `TimesheetData`, and the `user_screen_time` fetch (linked-user resolution + month-bounded seconds query) in `fetchTimesheetData()`. The employee → login-account link (`employeeEmail`/`employeeUsername`) is still used by the project-assignments query. |
+| `page.tsx`            | Deleted the `TsScreenTime` interface, `formatActiveSeconds()` helper, and the conditional "Active Hours (Screen Time)" grid row. The grid now goes straight from the Daily Man Hours row to the Sub-Total/Total rows.                                                                                                                                  |
+| `excel-template.ts`   | Deleted the Active Hours export row block (day cells as day-fractions + emerald totals) and the screen-time sentence from the workbook note. Row indices for the totals/summary/signature strips recompute from the cursor as before.                                                                                                                  |
+| `data-source.test.ts` | Deleted the `buildScreenTime` import and its 3 tests (per-day aggregation, no-active → not present, empty/malformed input).                                                                                                                                                                                                                            |
+
+Screen-time data collection (`activity-logger.ts`, `/api/screen-time`, live-monitoring, productivity, user-status) is untouched — only the timesheet's presentation of it is gone. The on-screen sheet and the Excel export stay in sync because both read the same `TimesheetData` shape.

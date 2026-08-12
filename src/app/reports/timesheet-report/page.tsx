@@ -67,13 +67,6 @@ interface TsMonthlyHours {
 	source: 'project' | 'attendance';
 }
 
-interface TsScreenTime {
-	days: Record<string, number>;
-	total_active_sec: number;
-	total_idle_sec: number;
-	present: boolean;
-}
-
 interface TsSummary {
 	present_days: number;
 	half_days: number;
@@ -96,7 +89,6 @@ interface TimesheetData {
 	projects: TsProject[];
 	summary: TsSummary;
 	hours: TsMonthlyHours;
-	screen_time: TsScreenTime;
 	settings: { standard_working_hours: number; half_day_hours: number };
 }
 
@@ -152,11 +144,6 @@ function formatElapsed(hours: number): string {
 	const mm = Math.floor((seconds % 3600) / 60);
 	const ss = seconds % 60;
 	return `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-}
-
-/** Active screen seconds use the same elapsed-time display. */
-function formatActiveSeconds(seconds: number): string {
-	return formatElapsed(seconds / 3600);
 }
 
 function isBlueDay(day: TsDay): boolean {
@@ -745,34 +732,6 @@ export default function TimesheetReportPage() {
 											{formatElapsed(data.hours.normal)}
 										</td>
 									</tr>
-
-									{data.screen_time.present && (
-										<tr style={{ height: '18px' }}>
-											<td
-												colSpan={9}
-												className="border border-black px-1 py-0 font-normal text-emerald-700"
-											>
-												Active Hours (Screen Time)
-											</td>
-											{days.map((day) => {
-												const seconds = data.screen_time.days[day.date] ?? 0;
-												return (
-													<td
-														key={day.date}
-														title={
-															seconds ? formatActiveSeconds(seconds) : undefined
-														}
-														className={`border border-black px-0 py-0 text-center align-middle tabular-nums whitespace-nowrap overflow-hidden text-ellipsis ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : 'bg-white text-emerald-700'}`}
-													>
-														{seconds ? formatActiveSeconds(seconds) : ''}
-													</td>
-												);
-											})}
-											<td className="border border-black px-1 py-0 text-right text-emerald-700 tabular-nums">
-												{formatActiveSeconds(data.screen_time.total_active_sec)}
-											</td>
-										</tr>
-									)}
 
 									<tr style={{ height: '18px' }}>
 										<td
