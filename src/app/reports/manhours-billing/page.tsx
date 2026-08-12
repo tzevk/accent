@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import {
 	ArrowPathIcon,
@@ -175,18 +176,8 @@ const mhbPrintStyles = `
 		justify-content: space-between;
 		gap: 6mm;
 	}
-	.mhb-print-brand-name {
-		font-size: 14pt;
-		font-weight: 700;
-		letter-spacing: 0.03em;
-		color: #4d025b;
-	}
-	.mhb-print-brand-sub {
-		display: block;
-		font-size: 6.5pt;
-		letter-spacing: 0.2em;
-		color: #6b7280;
-		text-transform: uppercase;
+	.mhb-print-brand {
+		min-width: 52mm;
 	}
 	.mhb-print-title {
 		flex: 1;
@@ -545,10 +536,13 @@ export default function ManhoursBillingReportPage() {
 							<header className="mhb-print-header hidden print:block">
 								<div className="mhb-print-header-row">
 									<div className="mhb-print-brand">
-										<span className="mhb-print-brand-name">ACCENT</span>
-										<span className="mhb-print-brand-sub">
-											Techno Solutions Pvt. Ltd.
-										</span>
+										<Image
+											src="/accent-logo.png"
+											alt="Accent Techno Solutions"
+											width={186}
+											height={116}
+											className="h-[13mm] w-auto object-contain"
+										/>
 									</div>
 									<h1 className="mhb-print-title">Manhours Billing Report</h1>
 									<div className="mhb-print-period">
