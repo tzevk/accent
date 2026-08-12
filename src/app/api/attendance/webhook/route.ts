@@ -77,6 +77,19 @@ function parsePunch(value: unknown): ParsedPunch | null {
 }
 
 export async function POST(request: Request) {
+	// TEMP-DEBUG: log every hit (before auth, so misconfigured Smart Office
+	// pushes — wrong header, wrong casing — are visible too). The secret
+	// itself is never logged. Remove once real traffic is confirmed.
+	console.log(
+		'[attendance-webhook] hit',
+		JSON.stringify({
+			method: request.method,
+			contentType: request.headers.get('content-type'),
+			contentLength: request.headers.get('content-length'),
+			authHeaderPresent: !!request.headers.get('authorization'),
+		})
+	);
+
 	// 1. Authenticate before anything else.
 	const secret = process.env.SMARTOFFICE_WEBHOOK_SECRET;
 	if (!secret) {
@@ -139,6 +152,13 @@ export async function POST(request: Request) {
 
 	// Accept a single object or an array of objects (IsArray toggle unknown).
 	const values = Array.isArray(parsed) ? parsed : [parsed];
+
+	// TEMP-DEBUG: surface the real payload shape (casing/nesting) in logs.
+	// Remove once Smart Office's actual body is confirmed.
+	console.log(
+		'[attendance-webhook] payload sample:',
+		JSON.stringify(parsed).slice(0, 500)
+	);
 	const punches: ParsedPunch[] = [];
 	const skipped: { index: number; reason: string }[] = [];
 	values.forEach((value, index) => {
