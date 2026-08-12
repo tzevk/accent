@@ -26,6 +26,7 @@ import {
 	ArrowUpCircleIcon,
 	ClipboardDocumentCheckIcon,
 	ClipboardDocumentListIcon,
+	FingerPrintIcon,
 } from '@heroicons/react/24/outline';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { clearSessionCache } from '@/context/SessionContext';
@@ -103,6 +104,13 @@ const reportsMenuConfig = [
 		name: 'Project Status',
 		href: '/reports/project-status',
 		icon: ClipboardDocumentListIcon,
+		resource: 'reports',
+		reportField: 'project_activities', // reuse so existing grants cover the new report
+	},
+	{
+		name: 'Attendance Report',
+		href: '/reports/attendance-report',
+		icon: FingerPrintIcon,
 		resource: 'reports',
 		reportField: 'project_activities', // reuse so existing grants cover the new report
 	},

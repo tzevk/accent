@@ -7,6 +7,9 @@ const publicPaths = [
 	'/api/logout',
 	'/api/auth',
 	'/api/session',
+	// Smart Office's outbound webhook sends no session cookie; the real
+	// auth boundary is the Bearer check inside the route handler.
+	'/api/attendance/webhook',
 	'/_next',
 	'/favicon.ico',
 	'/robots.txt',
