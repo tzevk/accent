@@ -229,9 +229,9 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			.mockResolvedValueOnce([
 				[{ project_id: 1, project_activities_list: '[]' }],
 			]) // project lookup
+			.mockResolvedValueOnce([[]]) // day-hours lookup: nothing logged yet
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: 87 }]]) // login link
-			.mockResolvedValueOnce([[]]) // day-hours lookup: nothing logged yet
 			.mockResolvedValueOnce([{ affectedRows: 1 }]); // normalized INSERT
 
 		const response = await PATCH(
@@ -281,9 +281,9 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			.mockResolvedValueOnce([
 				[{ project_id: 1, project_activities_list: '[]' }],
 			]) // project lookup
+			.mockResolvedValueOnce([[]]) // day-hours lookup: nothing logged yet
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: null }]]) // no login link
-			.mockResolvedValueOnce([[]]) // day-hours lookup: nothing logged yet
 			.mockResolvedValueOnce([{ affectedRows: 1 }]); // normalized INSERT
 
 		const response = await PATCH(
@@ -317,8 +317,6 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			.mockResolvedValueOnce([
 				[{ project_id: 1, project_activities_list: '[]' }],
 			]) // project lookup
-			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
-			.mockResolvedValueOnce([[{ employee_id: null }]]) // login link
 			// Already logged 10h on 2026-08-20 across other assignments.
 			.mockResolvedValueOnce([
 				[
@@ -331,7 +329,7 @@ describe('user activity assignments PATCH (self-service add)', () => {
 						]),
 					},
 				],
-			]);
+			]); // day-hours lookup
 
 		const response = await PATCH(
 			patchRequest({
@@ -350,11 +348,17 @@ describe('user activity assignments PATCH (self-service add)', () => {
 		expect(response.status).toBe(400);
 		expect(body.success).toBe(false);
 		expect(String(body.error)).toContain('2026-08-20');
+		// Nothing was written anywhere: no blob UPDATE, no normalized INSERT.
+		expect(
+			mocks.mockExecute.mock.calls.some(([sql]) =>
+				String(sql).startsWith('UPDATE projects SET project_activities_list')
+			)
+		).toBe(false);
 		expect(
 			mocks.mockExecute.mock.calls.some(([sql]) =>
 				String(sql).includes('INSERT INTO user_activity_assignments')
 			)
-		).toBe(false); // nothing was written
+		).toBe(false);
 	});
 });
 

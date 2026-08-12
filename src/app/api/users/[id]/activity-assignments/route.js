@@ -816,6 +816,30 @@ export async function PATCH(request, { params }) {
 		}
 		if (!Array.isArray(activitiesList)) activitiesList = [];
 
+		// The entered manhours/quantity are logged as that day's entry so they
+		// surface in the timesheet/man-hours reports; planned hours also go
+		// to estimated_hours.
+		const dailyEntry = {
+			date: due_date || new Date().toISOString().split('T')[0],
+			qty_done: parseFloat(qty_completed) || 0,
+			hours: parseFloat(manhours_assigned) || 0,
+			remarks: '',
+		};
+
+		// Daily-hour cap: validate BEFORE any write so a rejected entry
+		// (400) leaves the project's activity list untouched. The new entry
+		// must not push the user's total for that date over MAX_DAY_HOURS
+		// across all their assignments.
+		const existingByDate = await fetchExistingDayHours(db, requestedUserId);
+		const violation = validateDayHours([dailyEntry], existingByDate);
+		if (violation) {
+			db.release();
+			return NextResponse.json(
+				{ success: false, error: violation },
+				{ status: 400 }
+			);
+		}
+
 		const newActivity = {
 			id: randomUUID(),
 			activity_name,
@@ -836,14 +860,7 @@ export async function PATCH(request, { params }) {
 					remarks: remarks || '',
 					notes: '',
 					progress_percentage: 100,
-					daily_entries: [
-						{
-							date: due_date || new Date().toISOString().split('T')[0],
-							qty_done: parseFloat(qty_completed) || 0,
-							hours: parseFloat(manhours_assigned) || 0,
-							remarks: '',
-						},
-					],
+					daily_entries: [dailyEntry],
 				},
 			],
 		};
@@ -855,34 +872,15 @@ export async function PATCH(request, { params }) {
 			[JSON.stringify(activitiesList), project.project_id]
 		);
 
-		// Also insert into normalized user_activity_assignments table. The
-		// entered manhours/quantity are logged as that day's entry so they
-		// surface in the timesheet/man-hours reports; planned hours also go
-		// to estimated_hours. employee_id is carried over from the login
-		// account so reports that key on it can resolve the row directly.
+		// Also insert into normalized user_activity_assignments table.
+		// employee_id is carried over from the login account so reports that
+		// key on it can resolve the row directly.
 		try {
 			const [userRows] = await db.execute(
 				'SELECT employee_id FROM users WHERE id = ?',
 				[requestedUserId]
 			);
 			const employeeId = userRows[0]?.employee_id ?? null;
-			const dailyEntry = {
-				date: due_date || new Date().toISOString().split('T')[0],
-				qty_done: parseFloat(qty_completed) || 0,
-				hours: parseFloat(manhours_assigned) || 0,
-				remarks: '',
-			};
-			// Daily-hour cap: the new entry must not push the user's total
-			// for that date over MAX_DAY_HOURS across all their assignments.
-			const existingByDate = await fetchExistingDayHours(db, requestedUserId);
-			const violation = validateDayHours([dailyEntry], existingByDate);
-			if (violation) {
-				db.release();
-				return NextResponse.json(
-					{ success: false, error: violation },
-					{ status: 400 }
-				);
-			}
 			await db.execute(
 				`INSERT INTO user_activity_assignments
          (id, user_id, employee_id, project_id, activity_id, activity_name,
