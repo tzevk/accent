@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import {
 	ArrowPathIcon,
@@ -12,7 +13,7 @@ import Navbar from '@/components/Navbar';
 import SearchableSelect from '@/components/ui/searchable-select';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
-import { formatCurrency } from '@/lib/format';
+import { formatNumber } from '@/lib/format';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 
 // ─── Client-safe API types ──────────────────────────────────────────
@@ -37,10 +38,16 @@ interface BillingRow {
 	employee_code: string;
 	employee_name: string;
 	designation: string;
-	monthly_salary_ctc: number;
-	hourly_rate_ctc: number;
+	employee_charges: number;
 	total_manhours: number;
 	amount: number;
+	tds_rate: number;
+	tds: number;
+	net_payable: number;
+	accent_charges: number;
+	accent_amount: number;
+	pnl_after_deductions: number;
+	pnl_tds: number;
 }
 
 interface BillingData {
@@ -54,7 +61,15 @@ interface BillingData {
 	month_label: string;
 	year: number;
 	rows: BillingRow[];
-	totals: { total_manhours: number; total_amount: number };
+	totals: {
+		total_manhours: number;
+		total_amount: number;
+		total_tds: number;
+		total_net_payable: number;
+		total_accent_amount: number;
+		total_pnl_after_deductions: number;
+		total_pnl_tds: number;
+	};
 }
 
 interface ApiResponse {
@@ -86,10 +101,133 @@ function monthLabel(month: string): string {
 	return `${names[monthNumber - 1]} ${year}`;
 }
 
-/** "2.5" → "2.50"; keeps amounts aligned in the grid. */
+/** "176" stays "176"; "8.50" → "8.5"; aligns with the template's plain-hour cells. */
 function fmtHours(hours: number): string {
-	return hours.toFixed(2);
+	return String(Number(hours.toFixed(2)));
 }
+
+// ─── Print layout (A4 landscape letterhead) ─────────────────────────
+// Mirrors the ActivityStatusMatrix print pattern: @page landscape +
+// print-color-adjust, plus a print-only letterhead header, repeating
+// table header on page breaks, and a fixed footer (Chrome repeats
+// position:fixed elements on every printed page).
+const mhbPrintStyles = `
+@media print {
+	@page {
+		size: A4 landscape;
+		margin: 10mm 9mm 14mm 9mm;
+		@bottom-center {
+			content: "Accent CRM — Manhours Billing Report — Page " counter(page) " of " counter(pages);
+			font-size: 7pt;
+			color: #6b7280;
+		}
+	}
+	.mhb-print-page {
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+	/* Hide the app chrome: the page's top nav and the root-layout sidebar,
+	   and undo the content offset the fixed sidebar reserves on screen. */
+	.mhb-print-page nav {
+		display: none !important;
+	}
+	body > aside {
+		display: none !important;
+	}
+	.content-with-sidebar {
+		padding-left: 0 !important;
+		padding-top: 0 !important;
+	}
+	.mhb-print-page main {
+		padding: 0 !important;
+	}
+	.mhb-print-page .mhb-scroll {
+		overflow: visible !important;
+		max-width: none !important;
+		margin: 0 !important;
+	}
+	.mhb-sheet {
+		min-width: 0 !important;
+		font-size: 8pt;
+	}
+	.mhb-sheet table {
+		font-size: 8pt;
+	}
+	.mhb-sheet th,
+	.mhb-sheet td {
+		padding: 1.5px 3px !important;
+	}
+	.mhb-sheet thead {
+		display: table-header-group;
+	}
+	.mhb-sheet tbody tr {
+		break-inside: avoid;
+	}
+
+	/* Print-only letterhead header */
+	.mhb-print-header {
+		border-bottom: 2px solid #64126d;
+		padding-bottom: 3mm;
+		margin-bottom: 3mm;
+	}
+	.mhb-print-header-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6mm;
+	}
+	.mhb-print-brand {
+		min-width: 52mm;
+	}
+	.mhb-print-title {
+		flex: 1;
+		text-align: center;
+		font-size: 12pt;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: #111827;
+	}
+	.mhb-print-period {
+		min-width: 52mm;
+		text-align: right;
+		font-size: 8pt;
+		color: #374151;
+	}
+	.mhb-print-period b {
+		color: #111827;
+	}
+	.mhb-print-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 3mm 8mm;
+		font-size: 8pt;
+		color: #374151;
+		margin-top: 2mm;
+	}
+	.mhb-print-meta b {
+		color: #111827;
+	}
+	.mhb-print-meta .mhb-print-generated {
+		margin-left: auto;
+		color: #6b7280;
+	}
+
+	/* Print-only footer (repeats on every page in Chrome) */
+	.mhb-print-footer {
+		position: fixed;
+		bottom: 0;
+		left: 9mm;
+		right: 9mm;
+		display: flex;
+		justify-content: space-between;
+		font-size: 7pt;
+		color: #6b7280;
+		border-top: 1px solid #64126d;
+		padding-top: 1.5mm;
+	}
+}
+`;
 
 // ─── Page ───────────────────────────────────────────────────────────
 
@@ -162,6 +300,15 @@ export default function ManhoursBillingReportPage() {
 	});
 
 	const data = dataQuery.data?.data ?? null;
+
+	// Print letterhead timestamp — recomputed on render, stable for a print.
+	const generatedAt = new Date().toLocaleString('en-IN', {
+		day: '2-digit',
+		month: 'short',
+		year: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit',
+	});
 
 	const isSuperAdmin =
 		user?.is_super_admin === true || user?.is_super_admin === 1;
@@ -271,7 +418,8 @@ export default function ManhoursBillingReportPage() {
 	}
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="mhb-print-page min-h-screen bg-white text-black">
+			<style>{mhbPrintStyles}</style>
 			<Navbar />
 			<main className="px-1 pb-8 pt-1 sm:px-2">
 				{/* Filter bar — hidden when printing the sheet. */}
@@ -376,10 +524,53 @@ export default function ManhoursBillingReportPage() {
 						Select a client, project, and month to view the billing report.
 					</div>
 				) : (
-					<div className="mx-auto max-w-[1550px] overflow-x-auto">
-						<section className="min-w-[900px] bg-white font-[Arial,sans-serif] text-[10px] leading-none text-black">
+					<div className="mhb-scroll mx-auto max-w-[1550px] overflow-x-auto print:overflow-visible">
+						<section
+							className="mhb-sheet min-w-[900px] bg-white font-[Arial,sans-serif] text-[10px] leading-none text-black"
+							style={{
+								WebkitPrintColorAdjust: 'exact',
+								printColorAdjust: 'exact',
+							}}
+						>
+							{/* Print-only letterhead header (hidden on screen). */}
+							<header className="mhb-print-header hidden print:block">
+								<div className="mhb-print-header-row">
+									<div className="mhb-print-brand">
+										<Image
+											src="/accent-logo.png"
+											alt="Accent Techno Solutions"
+											width={186}
+											height={116}
+											priority
+											className="h-[13mm] w-auto object-contain"
+										/>
+									</div>
+									<h1 className="mhb-print-title">Manhours Billing Report</h1>
+									<div className="mhb-print-period">
+										<b>Period:</b> {data.month_label}
+									</div>
+								</div>
+								<div className="mhb-print-meta">
+									<span>
+										<b>Client:</b> {data.client_name}
+									</span>
+									<span>
+										<b>Project:</b>{' '}
+										{[data.project.project_code, data.project.project_name]
+											.filter(Boolean)
+											.join(' - ')}
+									</span>
+									<span>
+										<b>Month/Year:</b> {data.month_label}
+									</span>
+									<span className="mhb-print-generated">
+										<b>Generated:</b> {generatedAt}
+									</span>
+								</div>
+							</header>
+
 							{/* Header block: client / project / month, mirroring the template. */}
-							<div className="grid grid-cols-[150px_minmax(0,1fr)] border border-black">
+							<div className="grid grid-cols-[150px_minmax(0,1fr)] border border-black print:hidden">
 								<div className="border-b border-black px-2 py-1.5 font-semibold">
 									Client Name :
 								</div>
@@ -406,36 +597,94 @@ export default function ManhoursBillingReportPage() {
 									{data.project.project_name} in {data.month_label}
 								</caption>
 								<colgroup>
-									<col style={{ width: '7%' }} />
-									<col style={{ width: '24%' }} />
-									<col style={{ width: '18%' }} />
-									<col style={{ width: '15%' }} />
-									<col style={{ width: '12%' }} />
-									<col style={{ width: '12%' }} />
-									<col style={{ width: '12%' }} />
+									<col style={{ width: '5%' }} />
+									<col style={{ width: '14%' }} />
+									<col style={{ width: '8%' }} />
+									<col style={{ width: '8%' }} />
+									<col style={{ width: '8%' }} />
+									<col style={{ width: '9%' }} />
+									<col style={{ width: '8%' }} />
+									<col style={{ width: '8%' }} />
+									<col style={{ width: '8%' }} />
+									<col style={{ width: '8%' }} />
+									<col style={{ width: '8%' }} />
+									<col style={{ width: '8%' }} />
 								</colgroup>
 								<thead>
-									<tr className="h-[24px]">
-										<th className="border border-black bg-gray-100 px-1 py-1 text-center font-semibold">
+									<tr>
+										<th
+											rowSpan={2}
+											className="border border-black bg-yellow-100 px-1 py-1 text-center font-semibold"
+										>
 											Sr. No.
 										</th>
-										<th className="border border-black bg-gray-100 px-1 py-1 text-left font-semibold">
+										<th
+											rowSpan={2}
+											className="border border-black bg-yellow-100 px-1 py-1 text-left font-semibold"
+										>
 											Employee Name
 										</th>
-										<th className="border border-black bg-gray-100 px-1 py-1 text-left font-semibold">
+										<th
+											rowSpan={2}
+											className="border border-black bg-yellow-100 px-1 py-1 text-left font-semibold"
+										>
 											Designation
 										</th>
-										<th className="border border-black bg-gray-100 px-1 py-1 text-right font-semibold">
-											Monthly Salary CTC
-										</th>
-										<th className="border border-black bg-gray-100 px-1 py-1 text-right font-semibold">
-											Hourly Rate CTC
-										</th>
-										<th className="border border-black bg-gray-100 px-1 py-1 text-right font-semibold">
+										<th
+											rowSpan={2}
+											className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
+										>
 											Total Manhours
 										</th>
-										<th className="border border-black bg-gray-100 px-1 py-1 text-right font-semibold">
+										<th
+											rowSpan={2}
+											className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
+										>
+											Employee Charges
+										</th>
+										<th
+											rowSpan={2}
+											className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
+										>
 											Amount
+										</th>
+										<th
+											rowSpan={2}
+											className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
+										>
+											TDS
+										</th>
+										<th
+											rowSpan={2}
+											className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
+										>
+											Net Payable
+										</th>
+										<th
+											rowSpan={2}
+											className="border border-black bg-green-100 px-1 py-1 text-right font-semibold"
+										>
+											Accent Charges
+										</th>
+										<th
+											rowSpan={2}
+											className="border border-black bg-green-100 px-1 py-1 text-right font-semibold"
+										>
+											Amount
+										</th>
+										<th
+											colSpan={2}
+											className="border border-black bg-yellow-300 px-1 py-1 text-center font-semibold"
+										>
+											P&amp;L
+										</th>
+									</tr>
+									<tr>
+										<th className="border border-black bg-orange-200 px-1 py-1 text-right font-semibold">
+											After Deductions
+										</th>
+										<th className="border border-black bg-yellow-300 px-1 py-1 text-right font-semibold">
+											TDS
 										</th>
 									</tr>
 								</thead>
@@ -443,7 +692,7 @@ export default function ManhoursBillingReportPage() {
 									{data.rows.length === 0 ? (
 										<tr style={{ height: '32px' }}>
 											<td
-												colSpan={7}
+												colSpan={12}
 												className="border border-black px-2 py-2 text-center text-gray-500"
 											>
 												No manhours logged on this project in {data.month_label}
@@ -456,46 +705,86 @@ export default function ManhoursBillingReportPage() {
 												key={row.employee_id ?? row.sr_no}
 												style={{ height: '22px' }}
 											>
-												<td className="border border-black px-1 py-1 text-center tabular-nums">
+												<td className="border border-black bg-yellow-100 px-1 py-1 text-center tabular-nums">
 													{row.sr_no}
 												</td>
-												<td className="border border-black px-1 py-1">
+												<td className="border border-black bg-yellow-100 px-1 py-1">
 													{row.employee_name}
 												</td>
-												<td className="border border-black px-1 py-1">
+												<td className="border border-black bg-yellow-100 px-1 py-1">
 													{row.designation || '—'}
 												</td>
-												<td className="border border-black px-1 py-1 text-right tabular-nums">
-													{formatCurrency(row.monthly_salary_ctc)}
-												</td>
-												<td className="border border-black px-1 py-1 text-right tabular-nums">
-													{formatCurrency(row.hourly_rate_ctc)}
-												</td>
-												<td className="border border-black px-1 py-1 text-right tabular-nums">
+												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
 													{fmtHours(row.total_manhours)}
 												</td>
-												<td className="border border-black px-1 py-1 text-right font-semibold tabular-nums">
-													{formatCurrency(row.amount)}
+												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+													{formatNumber(row.employee_charges)}
+												</td>
+												<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
+													{formatNumber(row.amount)}
+												</td>
+												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+													{formatNumber(row.tds)}
+												</td>
+												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+													{formatNumber(row.net_payable)}
+												</td>
+												<td className="border border-black bg-green-100 px-1 py-1 text-right tabular-nums">
+													{formatNumber(row.accent_charges)}
+												</td>
+												<td className="border border-black bg-green-100 px-1 py-1 text-right tabular-nums">
+													{formatNumber(row.accent_amount)}
+												</td>
+												<td className="border border-black bg-orange-200 px-1 py-1 text-right tabular-nums">
+													{formatNumber(row.pnl_after_deductions)}
+												</td>
+												<td className="border border-black bg-yellow-300 px-1 py-1 text-right tabular-nums">
+													{formatNumber(row.pnl_tds)}
 												</td>
 											</tr>
 										))
 									)}
 									<tr style={{ height: '24px' }}>
 										<td
-											colSpan={5}
-											className="border border-black px-2 py-1 text-right font-semibold"
+											colSpan={3}
+											className="border border-black bg-yellow-100 px-2 py-1 text-right font-semibold"
 										>
 											Total
 										</td>
-										<td className="border border-black px-1 py-1 text-right font-semibold tabular-nums">
+										<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
 											{fmtHours(data.totals.total_manhours)}
 										</td>
-										<td className="border border-black px-1 py-1 text-right font-semibold tabular-nums">
-											{formatCurrency(data.totals.total_amount)}
+										<td className="border border-black bg-blue-100 px-1 py-1" />
+										<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
+											{formatNumber(data.totals.total_amount)}
+										</td>
+										<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
+											{formatNumber(data.totals.total_tds)}
+										</td>
+										<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
+											{formatNumber(data.totals.total_net_payable)}
+										</td>
+										<td className="border border-black bg-green-100 px-1 py-1" />
+										<td className="border border-black bg-green-100 px-1 py-1 text-right font-semibold tabular-nums">
+											{formatNumber(data.totals.total_accent_amount)}
+										</td>
+										<td className="border border-black bg-orange-200 px-1 py-1 text-right font-semibold tabular-nums">
+											{formatNumber(data.totals.total_pnl_after_deductions)}
+										</td>
+										<td className="border border-black bg-yellow-300 px-1 py-1 text-right font-semibold tabular-nums">
+											{formatNumber(data.totals.total_pnl_tds)}
 										</td>
 									</tr>
 								</tbody>
 							</table>
+
+							{/* Print-only footer (hidden on screen). */}
+							<footer className="mhb-print-footer hidden print:flex">
+								<span>
+									Accent CRM — Manhours Billing Report — {data.client_name}
+								</span>
+								<span>Generated {generatedAt}</span>
+							</footer>
 						</section>
 					</div>
 				)}
