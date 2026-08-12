@@ -6,13 +6,19 @@
  *   - GET /api/reports/manhours-billing/download (Excel, download/route.ts)
  *
  * The report bills one client project for one month: every employee who
- * logged manhours on that project appears as a row with their monthly
- * salary CTC, the derived hourly rate CTC, the total manhours logged that
- * month (from `user_activity_assignments.daily_entries`), and the billing
- * amount (hourly rate × manhours). Mirrors the company's Excel manhours
- * billing template (Client Name / Project Name-Number / Month-Year header
- * with a Sr. No. | Employee Name | Designation | Monthly Salary CTC |
- * Hourly Rate CTC | Total Manhours | Amount grid).
+ * logged manhours on that project appears as a row with their per-hour
+ * charges (company rate), the billed amount, TDS + net payable, the Accent
+ * rate billed to the client and its amount, and the P&L (profit) columns.
+ * Mirrors the company's Excel manhours billing template (Client Name /
+ * Project Name-Number / Month-Year header with a
+ * Sr. No. | Employee Name | Designation | Total Manhours | Employee
+ * Charges | Amount | TDS | Net Payable | Accent Charges | Amount |
+ * P&L (After Deductions | TDS) grid).
+ *
+ * Rates come from `projects.project_manhours_list` (the Project Manhours
+ * tab's RT/HR Company + RT/HR Accent columns), falling back to the
+ * salary-profile-derived hourly rate for the company rate. TDS uses the
+ * profile's `tds_percentage` (default 10%, payroll's convention).
  *
  * Hourly-rate conventions mirror `EditProjectForm`'s salary-profile lookup:
  *   - salary_type 'hourly'  → the profile's stored hourly_rate
@@ -26,7 +32,7 @@
  */
 
 import { query } from '@/utils/database';
-import { mul, toNumber } from '@/lib/money';
+import { R, mul, sub, pctOf, toNumber } from '@/lib/money';
 
 // ─── Public types ───────────────────────────────────────────────────
 
@@ -54,14 +60,26 @@ export interface BillingEmployeeRow {
 	employee_code: string;
 	employee_name: string;
 	designation: string;
-	/** Monthly salary CTC (gross) in INR */
-	monthly_salary_ctc: number;
-	/** Derived hourly rate CTC in INR */
-	hourly_rate_ctc: number;
+	/** Hourly rate the company charges for the employee (RT/HR Company) in INR */
+	employee_charges: number;
 	/** Manhours logged on the project during the month */
 	total_manhours: number;
-	/** hourly_rate_ctc × total_manhours, 2dp */
+	/** employee_charges × total_manhours, 2dp */
 	amount: number;
+	/** TDS percentage applied to the employee amount (profile tds_percentage, default 10) */
+	tds_rate: number;
+	/** amount × tds_rate / 100, 2dp */
+	tds: number;
+	/** amount − tds, 2dp */
+	net_payable: number;
+	/** Hourly rate Accent bills the client (RT/HR Accent) in INR */
+	accent_charges: number;
+	/** accent_charges × total_manhours, 2dp */
+	accent_amount: number;
+	/** accent_amount − net_payable, 2dp — profit after the employee's deductions */
+	pnl_after_deductions: number;
+	/** accent_amount − amount, 2dp — gross margin before the employee's TDS */
+	pnl_tds: number;
 }
 
 export interface BillingData {
@@ -77,7 +95,15 @@ export interface BillingData {
 	month_label: string;
 	year: number;
 	rows: BillingEmployeeRow[];
-	totals: { total_manhours: number; total_amount: number };
+	totals: {
+		total_manhours: number;
+		total_amount: number;
+		total_tds: number;
+		total_net_payable: number;
+		total_accent_amount: number;
+		total_pnl_after_deductions: number;
+		total_pnl_tds: number;
+	};
 }
 
 /** Salary-profile shape used for rate resolution (from employee_salary_profile). */
@@ -91,8 +117,17 @@ export interface SalaryProfile {
 	std_hours_per_day: number;
 	std_working_days: number;
 	salary_type: string;
+	tds_percentage: number;
 	effective_from: string | null;
 	effective_to: string | null;
+}
+
+/** Per-employee rates from `projects.project_manhours_list` (annual format). */
+export interface ProjectManhourConfig {
+	/** RT/HR (Company) — the rate the company charges for the employee */
+	rate_company: number;
+	/** RT/HR (Accent) — the rate Accent bills the client */
+	rate_accent: number;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -258,6 +293,11 @@ export function pickActiveProfile(
  * (user_id → users.employee_id), else an email/username match against the
  * employee table (legacy data). Employees with no logged hours in the
  * month are dropped — a billing report only charges worked time.
+ *
+ * Rates: `manhoursConfig` carries the Project Manhours tab's per-employee
+ * RT/HR Company + RT/HR Accent rates (keyed by employees.id). The company
+ * rate falls back to the salary-profile-derived hourly rate; TDS uses the
+ * profile's `tds_percentage` (10 when unset, matching payroll).
  */
 export function buildBillingRows(
 	assignmentRows: DbRow[],
@@ -265,6 +305,7 @@ export function buildBillingRows(
 	userToEmployee: Map<number, number>,
 	userEmailUsernameToEmployee: Map<string, number>,
 	salaryProfiles: SalaryProfile[],
+	manhoursConfig: Map<number, ProjectManhourConfig>,
 	month: string
 ): BillingEmployeeRow[] {
 	const hoursByEmployee = new Map<number, number>();
@@ -306,19 +347,47 @@ export function buildBillingRows(
 			salaryProfiles.filter((p) => p.employee_id === employeeId),
 			month
 		);
-		const salary = profile ? resolveMonthlySalary(profile) : 0;
-		const rate = profile ? resolveHourlyRate(profile) : 0;
-		const rawRate = profile ? computeRawHourlyRate(profile) : 0;
+		// Project-config rates win; the company rate falls back to the
+		// salary-derived hourly rate (RT/HR Company auto-fills from it).
+		const config = manhoursConfig.get(employeeId);
+		const configRate =
+			config && config.rate_company > 0 ? config.rate_company : 0;
+		const fallbackRate = profile ? resolveHourlyRate(profile) : 0;
+		const rawFallbackRate = profile ? computeRawHourlyRate(profile) : 0;
+		const employeeCharges = configRate || fallbackRate;
+		// Bill from the unrounded rate so totals stay exact (the grid shows
+		// the rounded rate) — same convention as the old template.
+		const billingRate = configRate || rawFallbackRate;
+		const accentCharges = config?.rate_accent ?? 0;
+		const tdsRate = profile?.tds_percentage || 10;
+
+		const amount = toNumber(mul(R(billingRate), manhours).toDecimalPlaces(2));
+		const tds = toNumber(pctOf(amount, tdsRate));
+		const netPayable = toNumber(sub(R(amount), R(tds)).toDecimalPlaces(2));
+		const accentAmount = toNumber(
+			mul(R(accentCharges), manhours).toDecimalPlaces(2)
+		);
+		const pnlAfterDeductions = toNumber(
+			sub(R(accentAmount), R(netPayable)).toDecimalPlaces(2)
+		);
+		const pnlTds = toNumber(sub(R(accentAmount), R(amount)).toDecimalPlaces(2));
+
 		rows.push({
 			sr_no: 0, // assigned after sorting
 			employee_id: employeeId,
 			employee_code: employee.employee_code,
 			employee_name: employee.name,
 			designation: employee.designation,
-			monthly_salary_ctc: salary,
-			hourly_rate_ctc: rate,
+			employee_charges: employeeCharges,
 			total_manhours: manhours,
-			amount: toNumber(mul(rawRate, manhours).toDecimalPlaces(2)),
+			amount,
+			tds_rate: tdsRate,
+			tds,
+			net_payable: netPayable,
+			accent_charges: accentCharges,
+			accent_amount: accentAmount,
+			pnl_after_deductions: pnlAfterDeductions,
+			pnl_tds: pnlTds,
 		});
 	}
 
@@ -333,16 +402,36 @@ export function buildBillingRows(
 export function buildTotals(rows: BillingEmployeeRow[]): {
 	total_manhours: number;
 	total_amount: number;
+	total_tds: number;
+	total_net_payable: number;
+	total_accent_amount: number;
+	total_pnl_after_deductions: number;
+	total_pnl_tds: number;
 } {
 	let manhours = 0;
 	let amount = 0;
+	let tds = 0;
+	let netPayable = 0;
+	let accentAmount = 0;
+	let pnlAfterDeductions = 0;
+	let pnlTds = 0;
 	for (const row of rows) {
 		manhours += row.total_manhours;
 		amount += row.amount;
+		tds += row.tds;
+		netPayable += row.net_payable;
+		accentAmount += row.accent_amount;
+		pnlAfterDeductions += row.pnl_after_deductions;
+		pnlTds += row.pnl_tds;
 	}
 	return {
 		total_manhours: round2(manhours),
-		total_amount: Math.round(amount * 100) / 100,
+		total_amount: round2(amount),
+		total_tds: round2(tds),
+		total_net_payable: round2(netPayable),
+		total_accent_amount: round2(accentAmount),
+		total_pnl_after_deductions: round2(pnlAfterDeductions),
+		total_pnl_tds: round2(pnlTds),
 	};
 }
 
@@ -436,7 +525,7 @@ export async function fetchBillingData(
 	const [projectRows] = (await query(
 		`SELECT project_id, project_code,
 		        COALESCE(NULLIF(project_title, ''), NULLIF(name, ''), '') AS project_name,
-		        client_name
+		        client_name, project_manhours_list
 		 FROM projects
 		 WHERE project_id = ? AND isDelete = 0`,
 		[projectId]
@@ -444,6 +533,33 @@ export async function fetchBillingData(
 	if (projectRows.length === 0) return null;
 
 	const project = projectRows[0];
+
+	// ── Per-employee rates from the Project Manhours tab ────────────
+	// project_manhours_list is a JSON array of annual rows like
+	// { employee_id, source_employee_id, rate_company, rate_accent, ... }.
+	// Keyed by employees.id via source_employee_id (internal members) with
+	// a fallback to employee_id (the tab stores String(employees.id)).
+	const manhoursConfig = new Map<number, ProjectManhourConfig>();
+	try {
+		const raw = project.project_manhours_list;
+		if (raw) {
+			const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+			if (Array.isArray(parsed)) {
+				for (const entry of parsed) {
+					if (!entry || typeof entry !== 'object') continue;
+					const employeeId =
+						toNum(entry.source_employee_id) || toNum(entry.employee_id);
+					if (!employeeId) continue;
+					manhoursConfig.set(employeeId, {
+						rate_company: toNum(entry.rate_company),
+						rate_accent: toNum(entry.rate_accent),
+					});
+				}
+			}
+		}
+	} catch {
+		/* malformed JSON — treat as no rates configured */
+	}
 
 	// ── Employees + login-account links (for resolving assignments) ──
 	const employeeIndex = new Map<number, EmployeeLookup>();
@@ -493,7 +609,7 @@ export async function fetchBillingData(
 		const [profileRows] = (await query(
 			`SELECT employee_id, gross, gross_salary, employer_cost,
 			        hourly_rate, daily_rate, std_hours_per_day, std_working_days,
-			        salary_type,
+			        salary_type, tds_percentage,
 			        DATE_FORMAT(effective_from, '%Y-%m-%d') AS effective_from,
 			        DATE_FORMAT(effective_to, '%Y-%m-%d') AS effective_to
 			 FROM employee_salary_profile
@@ -512,6 +628,7 @@ export async function fetchBillingData(
 				std_hours_per_day: n(p, 'std_hours_per_day', 8),
 				std_working_days: n(p, 'std_working_days', 26),
 				salary_type: s(p, 'salary_type', 'monthly'),
+				tds_percentage: n(p, 'tds_percentage', 0),
 				effective_from: s(p, 'effective_from', '') || null,
 				effective_to: s(p, 'effective_to', '') || null,
 			});
@@ -544,6 +661,7 @@ export async function fetchBillingData(
 		userToEmployee,
 		userEmailUsernameToEmployee,
 		salaryProfiles,
+		manhoursConfig,
 		month
 	);
 
