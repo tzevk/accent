@@ -5,6 +5,7 @@ import {
 	PencilIcon,
 	CheckIcon,
 } from '@heroicons/react/24/outline';
+import { add, sub, mul, toNumber } from '@/lib/money';
 
 export default function ProjectManhoursTab({
 	projectManhours,
@@ -121,6 +122,41 @@ export default function ProjectManhoursTab({
 		}));
 
 	const teamManhourPeople = [...teamEmployees, ...externalTeamMembers];
+
+	// FY Apr–Mar ordering for the month columns
+	const fyMonths = [
+		'Apr',
+		'May',
+		'Jun',
+		'Jul',
+		'Aug',
+		'Sep',
+		'Oct',
+		'Nov',
+		'Dec',
+		'Jan',
+		'Feb',
+		'Mar',
+	];
+	const fyMonthKeys = fyMonths.map((m) => m.toLowerCase());
+
+	const totals = projectManhours.reduce(
+		(acc, emp) => {
+			const hrs = add(...Object.values(emp.monthly_hours || {}));
+			acc.hours = add(acc.hours, hrs);
+			acc.company = add(acc.company, mul(emp.rate_company, hrs));
+			acc.accent = add(acc.accent, mul(emp.rate_accent, hrs));
+			return acc;
+		},
+		{ hours: add(), company: add(), accent: add() }
+	);
+	const totalPl = sub(totals.accent, totals.company);
+
+	const inrFormat = (value) =>
+		toNumber(value).toLocaleString('en-IN', {
+			minimumFractionDigits: 2,
+			maximumFractionDigits: 2,
+		});
 	return (
 		<section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
 			<div className="px-4 py-4 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
@@ -209,20 +245,7 @@ export default function ProjectManhoursTab({
 								>
 									RT/HR (Accent)
 								</th>
-								{[
-									'Jan',
-									'Feb',
-									'Mar',
-									'Apr',
-									'May',
-									'Jun',
-									'Jul',
-									'Aug',
-									'Sep',
-									'Oct',
-									'Nov',
-									'Dec',
-								].map((month) => (
+								{fyMonths.map((month) => (
 									<th
 										key={month}
 										className="text-center py-2 px-1 font-semibold text-gray-700 border-b border-gray-200 bg-amber-50/50"
@@ -250,6 +273,13 @@ export default function ProjectManhoursTab({
 									Accent Cost
 								</th>
 								<th
+									className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-gray-100"
+									style={{ minWidth: '100px' }}
+									title="Profit & Loss (Accent Cost − Company Cost)"
+								>
+									P&L
+								</th>
+								<th
 									className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200"
 									style={{ width: '60px' }}
 								>
@@ -260,14 +290,10 @@ export default function ProjectManhoursTab({
 						<tbody>
 							{projectManhours.map((empData, idx) => {
 								const monthlyHours = empData.monthly_hours || {};
-								const totalHrs = Object.values(monthlyHours).reduce(
-									(sum, h) => sum + (parseFloat(h) || 0),
-									0
-								);
-								const companyCost =
-									totalHrs * (parseFloat(empData.rate_company) || 0);
-								const accentCost =
-									totalHrs * (parseFloat(empData.rate_accent) || 0);
+								const totalHrs = add(...Object.values(monthlyHours));
+								const companyCost = mul(empData.rate_company, totalHrs);
+								const accentCost = mul(empData.rate_accent, totalHrs);
+								const pl = sub(accentCost, companyCost);
 
 								return (
 									<tr
@@ -411,20 +437,7 @@ export default function ProjectManhoursTab({
 												disabled={editingRowId !== empData.id}
 											/>
 										</td>
-										{[
-											'jan',
-											'feb',
-											'mar',
-											'apr',
-											'may',
-											'jun',
-											'jul',
-											'aug',
-											'sep',
-											'oct',
-											'nov',
-											'dec',
-										].map((month) => (
+										{fyMonthKeys.map((month) => (
 											<td
 												key={month}
 												className="py-2 px-0.5 text-center bg-amber-50/20"
@@ -465,18 +478,23 @@ export default function ProjectManhoursTab({
 											{totalHrs.toFixed(1)}
 										</td>
 										<td className="py-2 px-2 text-center font-semibold text-green-700 bg-green-50/50">
-											₹
-											{companyCost.toLocaleString('en-IN', {
-												minimumFractionDigits: 2,
-												maximumFractionDigits: 2,
-											})}
+											₹{inrFormat(companyCost)}
 										</td>
 										<td className="py-2 px-2 text-center font-semibold text-blue-700 bg-blue-50/50">
-											₹
-											{accentCost.toLocaleString('en-IN', {
-												minimumFractionDigits: 2,
-												maximumFractionDigits: 2,
-											})}
+											₹{inrFormat(accentCost)}
+										</td>
+										<td className="py-2 px-2 text-center bg-gray-50/50">
+											<span
+												className={`font-semibold ${
+													pl.gt(0)
+														? 'text-green-700'
+														: pl.lt(0)
+															? 'text-red-600'
+															: 'text-gray-400'
+												}`}
+											>
+												₹{inrFormat(pl)}
+											</span>
 										</td>
 										<td className="py-2 px-1 text-center">
 											<div className="flex items-center justify-center gap-1">
@@ -524,76 +542,40 @@ export default function ProjectManhoursTab({
 								<td className="py-2 px-2 bg-green-100/50"></td>
 								<td className="py-2 px-2 bg-blue-100/50"></td>
 								<td className="py-2 px-2 bg-blue-100/50"></td>
-								{[
-									'jan',
-									'feb',
-									'mar',
-									'apr',
-									'may',
-									'jun',
-									'jul',
-									'aug',
-									'sep',
-									'oct',
-									'nov',
-									'dec',
-								].map((month) => {
-									const monthTotal = projectManhours.reduce(
-										(sum, emp) =>
-											sum + (parseFloat(emp.monthly_hours?.[month]) || 0),
-										0
+								{fyMonthKeys.map((month) => {
+									const monthTotal = add(
+										...projectManhours.map((emp) => emp.monthly_hours?.[month])
 									);
 									return (
 										<td
 											key={month}
 											className="py-2 px-1 text-center text-gray-700 bg-amber-100/50"
 										>
-											{monthTotal > 0 ? monthTotal.toFixed(1) : '–'}
+											{monthTotal.gt(0) ? monthTotal.toFixed(1) : '–'}
 										</td>
 									);
 								})}
 								<td className="py-2 px-2 text-center text-purple-800 bg-purple-200/50">
-									{projectManhours
-										.reduce(
-											(sum, emp) =>
-												sum +
-												Object.values(emp.monthly_hours || {}).reduce(
-													(s, h) => s + (parseFloat(h) || 0),
-													0
-												),
-											0
-										)
-										.toFixed(1)}
+									{totals.hours.toFixed(1)}
 								</td>
 								<td className="py-2 px-2 text-center text-green-800 bg-green-200/50">
-									₹
-									{projectManhours
-										.reduce((sum, emp) => {
-											const hrs = Object.values(emp.monthly_hours || {}).reduce(
-												(s, h) => s + (parseFloat(h) || 0),
-												0
-											);
-											return sum + hrs * (parseFloat(emp.rate_company) || 0);
-										}, 0)
-										.toLocaleString('en-IN', {
-											minimumFractionDigits: 2,
-											maximumFractionDigits: 2,
-										})}
+									₹{inrFormat(totals.company)}
 								</td>
 								<td className="py-2 px-2 text-center text-blue-800 bg-blue-200/50">
-									₹
-									{projectManhours
-										.reduce((sum, emp) => {
-											const hrs = Object.values(emp.monthly_hours || {}).reduce(
-												(s, h) => s + (parseFloat(h) || 0),
-												0
-											);
-											return sum + hrs * (parseFloat(emp.rate_accent) || 0);
-										}, 0)
-										.toLocaleString('en-IN', {
-											minimumFractionDigits: 2,
-											maximumFractionDigits: 2,
-										})}
+									₹{inrFormat(totals.accent)}
+								</td>
+								<td className="py-2 px-2 text-center bg-gray-100/50">
+									<span
+										className={`font-semibold ${
+											totalPl.gt(0)
+												? 'text-green-800'
+												: totalPl.lt(0)
+													? 'text-red-700'
+													: 'text-gray-500'
+										}`}
+									>
+										₹{inrFormat(totalPl)}
+									</span>
 								</td>
 								<td className="py-2 px-1"></td>
 							</tr>
