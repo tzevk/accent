@@ -434,41 +434,6 @@ export function buildWorkbook(data: TimesheetData): ExcelJS.Workbook {
 	thinBorder(otCell, { left: true, right: true, top: true, bottom: true });
 	cursor++;
 
-	// ── Active Hours row (screen-time tracking; not part of the totals) ──
-	if (data.screen_time.present) {
-		const labelCell = ws.getCell(`A${cursor}`);
-		labelCell.value = 'Active Hours (Screen Time)';
-		setFont(labelCell, { bold: true, size: 10, color: 'FF047857' });
-		data.days.forEach((day: TsDay, i: number) => {
-			const col = i + 2;
-			const cell = ws.getCell(cursor, col);
-			const secs = data.screen_time.days[day.date] ?? 0;
-			if (secs > 0) {
-				cell.value = Math.round((secs / 86400) * 100000) / 100000;
-				cell.numFmt = DAY_CELL_NUMFMT;
-				setFont(cell, { size: 9, color: 'FF059669' });
-			} else {
-				cell.value = '';
-			}
-			if (isBlueColumn(day)) setFill(cell, BLUE);
-			cell.alignment = { horizontal: 'center', vertical: 'middle' };
-			thinBorder(cell, { left: true, right: true, top: true, bottom: true });
-		});
-		const actTotalCell = ws.getCell(cursor, totalCol);
-		actTotalCell.value =
-			Math.round((data.screen_time.total_active_sec / 86400) * 100000) / 100000;
-		actTotalCell.numFmt = TOTAL_NUMFMT;
-		setFont(actTotalCell, { bold: true, size: 10, color: 'FF059669' });
-		actTotalCell.alignment = { horizontal: 'center' };
-		thinBorder(actTotalCell, {
-			left: true,
-			right: true,
-			top: true,
-			bottom: true,
-		});
-		cursor++;
-	}
-
 	// ── Totals rows ───────────────────────────────────────────────────
 	const totalsStartRow = cursor;
 	const totalRows: [string, number, boolean][] = [
@@ -549,10 +514,7 @@ export function buildWorkbook(data: TimesheetData): ExcelJS.Workbook {
 		(data.hours.source === 'project'
 			? `Hours are from the project activity log for ${monthLabel(data.month)}. `
 			: `Generated from employee attendance records for ${monthLabel(data.month)}. `) +
-		'Overtime hours are from attendance records.' +
-		(data.screen_time.present
-			? ' Active hours are from screen-time tracking and are not included in the totals.'
-			: '');
+		'Overtime hours are from attendance records.';
 	setFont(noteCell, { size: 9, italic: true, color: 'FF6B7280' });
 	noteCell.alignment = { horizontal: 'left', vertical: 'middle' };
 

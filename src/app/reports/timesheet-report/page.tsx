@@ -9,6 +9,7 @@ import {
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
+import SearchableSelect from '@/components/ui/searchable-select';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { capProjectDays } from '@/lib/timesheet-cap';
@@ -66,13 +67,6 @@ interface TsMonthlyHours {
 	source: 'project' | 'attendance';
 }
 
-interface TsScreenTime {
-	days: Record<string, number>;
-	total_active_sec: number;
-	total_idle_sec: number;
-	present: boolean;
-}
-
 interface TsSummary {
 	present_days: number;
 	half_days: number;
@@ -95,7 +89,6 @@ interface TimesheetData {
 	projects: TsProject[];
 	summary: TsSummary;
 	hours: TsMonthlyHours;
-	screen_time: TsScreenTime;
 	settings: { standard_working_hours: number; half_day_hours: number };
 }
 
@@ -151,11 +144,6 @@ function formatElapsed(hours: number): string {
 	const mm = Math.floor((seconds % 3600) / 60);
 	const ss = seconds % 60;
 	return `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-}
-
-/** Active screen seconds use the same elapsed-time display. */
-function formatActiveSeconds(seconds: number): string {
-	return formatElapsed(seconds / 3600);
 }
 
 function isBlueDay(day: TsDay): boolean {
@@ -234,8 +222,24 @@ export default function TimesheetReportPage() {
 	});
 
 	const meta = metaQuery.data?.meta;
-	const employees = meta?.employees ?? [];
-	const months = meta?.months ?? [];
+	const employees = useMemo(() => meta?.employees ?? [], [meta]);
+	const months = useMemo(() => meta?.months ?? [], [meta]);
+
+	const employeeOptions = useMemo(
+		() =>
+			employees.map((employee) => ({
+				value: String(employee.id),
+				label: `${employee.name}${
+					employee.employee_id ? ` (${employee.employee_id})` : ''
+				}`,
+			})),
+		[employees]
+	);
+
+	const monthOptions = useMemo(
+		() => months.map((value) => ({ value, label: monthLabel(value) })),
+		[months]
+	);
 
 	useEffect(() => {
 		if (!meta) return;
@@ -362,39 +366,24 @@ export default function TimesheetReportPage() {
 				<div className="mx-auto mb-1 flex max-w-[1550px] flex-wrap items-center justify-between gap-2 print:hidden">
 					<div className="flex flex-wrap items-center gap-2 text-[11px]">
 						<span className="font-bold text-gray-700">Monthly Time Sheet</span>
-						<label htmlFor="ts-employee" className="sr-only">
-							Employee
-						</label>
-						<select
-							id="ts-employee"
+						<SearchableSelect
+							options={employeeOptions}
 							value={employeeId}
-							onChange={(event) => setEmployeeId(event.target.value)}
-							className="h-7 min-w-[210px] border border-gray-400 bg-white px-2 text-[11px] text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
-						>
-							<option value="">Select an employee</option>
-							{employees.map((employee) => (
-								<option key={employee.id} value={employee.id}>
-									{employee.name}
-									{employee.employee_id ? ` (${employee.employee_id})` : ''}
-								</option>
-							))}
-						</select>
-						<label htmlFor="ts-month" className="sr-only">
-							Month
-						</label>
-						<select
-							id="ts-month"
+							onChange={(val) => setEmployeeId(String(val))}
+							placeholder="Select an employee"
+							className="min-w-[210px]"
+							buttonClassName="h-7 rounded-none border-gray-400 text-[11px]"
+							aria-label="Employee"
+						/>
+						<SearchableSelect
+							options={monthOptions}
 							value={month}
-							onChange={(event) => setMonth(event.target.value)}
-							className="h-7 min-w-[130px] border border-gray-400 bg-white px-2 text-[11px] text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
-						>
-							<option value="">Select a month</option>
-							{months.map((value) => (
-								<option key={value} value={value}>
-									{monthLabel(value)}
-								</option>
-							))}
-						</select>
+							onChange={(val) => setMonth(String(val))}
+							placeholder="Select a month"
+							className="min-w-[130px]"
+							buttonClassName="h-7 rounded-none border-gray-400 text-[11px]"
+							aria-label="Month"
+						/>
 					</div>
 					<div className="flex items-center gap-1">
 						<button
@@ -743,34 +732,6 @@ export default function TimesheetReportPage() {
 											{formatElapsed(data.hours.normal)}
 										</td>
 									</tr>
-
-									{data.screen_time.present && (
-										<tr style={{ height: '18px' }}>
-											<td
-												colSpan={9}
-												className="border border-black px-1 py-0 font-normal text-emerald-700"
-											>
-												Active Hours (Screen Time)
-											</td>
-											{days.map((day) => {
-												const seconds = data.screen_time.days[day.date] ?? 0;
-												return (
-													<td
-														key={day.date}
-														title={
-															seconds ? formatActiveSeconds(seconds) : undefined
-														}
-														className={`border border-black px-0 py-0 text-center align-middle tabular-nums whitespace-nowrap overflow-hidden text-ellipsis ${isBlueDay(day) ? 'bg-[#0070C0] text-white' : 'bg-white text-emerald-700'}`}
-													>
-														{seconds ? formatActiveSeconds(seconds) : ''}
-													</td>
-												);
-											})}
-											<td className="border border-black px-1 py-0 text-right text-emerald-700 tabular-nums">
-												{formatActiveSeconds(data.screen_time.total_active_sec)}
-											</td>
-										</tr>
-									)}
 
 									<tr style={{ height: '18px' }}>
 										<td

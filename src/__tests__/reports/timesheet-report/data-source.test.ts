@@ -10,7 +10,6 @@ import {
 	monthLabel,
 	buildProjectRows,
 	computeMonthlyHours,
-	buildScreenTime,
 } from '@/app/reports/timesheet-report/data-source';
 
 describe('statusKind', () => {
@@ -590,47 +589,5 @@ describe('computeMonthlyHours', () => {
 		expect(hours.daily['2026-04-01']).toBe(8); // 8.5h logged → 8 normal + 0.5 overtime
 		expect(hours.normal).toBe(8);
 		expect(hours.overtime).toBe(0.5);
-	});
-});
-
-describe('buildScreenTime', () => {
-	it('aggregates active/idle seconds per day across linked users, month-filtered', () => {
-		const rows = [
-			{ date: '2026-08-10', active_time_seconds: 171, idle_time_seconds: 45 },
-			{ date: '2026-08-10', active_time_seconds: 60, idle_time_seconds: 0 }, // second account
-			{ date: '2026-08-09', active_time_seconds: 3600, idle_time_seconds: 300 },
-			{ date: '2026-09-01', active_time_seconds: 9999, idle_time_seconds: 0 }, // outside month
-			{ date: '2026-08-08', active_time_seconds: 0, idle_time_seconds: 120 }, // idle only, no active
-		];
-		const st = buildScreenTime(rows, '2026-08');
-		expect(st.days).toEqual({ '2026-08-10': 231, '2026-08-09': 3600 });
-		expect(st.total_active_sec).toBe(231 + 3600);
-		expect(st.total_idle_sec).toBe(45 + 300 + 120);
-		expect(st.present).toBe(true);
-	});
-
-	it('reports not present when there is no active time', () => {
-		const st = buildScreenTime(
-			[{ date: '2026-08-10', active_time_seconds: 0, idle_time_seconds: 500 }],
-			'2026-08'
-		);
-		expect(st.days).toEqual({});
-		expect(st.present).toBe(false);
-		expect(st.total_active_sec).toBe(0);
-		expect(st.total_idle_sec).toBe(500);
-	});
-
-	it('handles empty input and malformed months', () => {
-		expect(buildScreenTime([], '2026-08')).toMatchObject({
-			days: {},
-			total_active_sec: 0,
-			present: false,
-		});
-		expect(
-			buildScreenTime(
-				[{ date: '2026-08-10', active_time_seconds: 60 }],
-				'bogus'
-			).present
-		).toBe(false);
 	});
 });

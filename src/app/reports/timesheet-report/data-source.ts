@@ -96,22 +96,6 @@ export interface TsMonthlyHours {
 	source: 'project' | 'attendance';
 }
 
-/**
- * Screen-time tracking (user_screen_time) — actual active/idle seconds per
- * day from the client heartbeat bucket. Informational: NOT part of the
- * project/attendance hour totals.
- */
-export interface TsScreenTime {
-	/** Active seconds per YYYY-MM-DD, aggregated across the employee's linked users */
-	days: Record<string, number>;
-	/** Total active seconds in the month */
-	total_active_sec: number;
-	/** Total idle seconds in the month */
-	total_idle_sec: number;
-	/** Whether any screen-time data exists for the month */
-	present: boolean;
-}
-
 export interface TsSummary {
 	present_days: number;
 	half_days: number;
@@ -142,7 +126,6 @@ export interface TimesheetData {
 	projects: TsProject[];
 	summary: TsSummary;
 	hours: TsMonthlyHours;
-	screen_time: TsScreenTime;
 	settings: TsSettings;
 }
 
@@ -494,39 +477,6 @@ export function computeMonthlyHours(
 	};
 }
 
-// ─── Screen time (user_screen_time) ─────────────────────────────────
-
-/**
- * Aggregate raw user_screen_time rows into per-day active/idle seconds.
- * Rows are { date: 'YYYY-MM-DD', active_time_seconds, idle_time_seconds }
- * and may span several linked login accounts — all are summed per day.
- */
-export function buildScreenTime(rawRows: DbRow[], month: string): TsScreenTime {
-	const days: Record<string, number> = {};
-	let totalActiveSec = 0;
-	let totalIdleSec = 0;
-
-	for (const r of rawRows) {
-		const date = s(r, 'date');
-		if (!date || date < `${month}-01` || date > `${month}-31`) continue;
-		const activeSec = n(r, 'active_time_seconds');
-		const idleSec = n(r, 'idle_time_seconds');
-		if (activeSec <= 0 && idleSec <= 0) continue;
-		if (activeSec > 0) {
-			days[date] = (days[date] || 0) + activeSec;
-			totalActiveSec += activeSec;
-		}
-		totalIdleSec += idleSec;
-	}
-
-	return {
-		days,
-		total_active_sec: totalActiveSec,
-		total_idle_sec: totalIdleSec,
-		present: totalActiveSec > 0,
-	};
-}
-
 // ─── Server data fetch ──────────────────────────────────────────────
 
 /** Employees + available months for the filter bar. */
@@ -706,39 +656,6 @@ export async function fetchTimesheetData(
 
 	const hours = computeMonthlyHours(projects, days, settings);
 
-	// Screen-time tracking (user_screen_time): real active seconds per day
-	// from the client heartbeat bucket. Keyed by login account, so the
-	// employee's linked user ids are resolved first (same link as projects).
-	let screenTime: TsScreenTime = {
-		days: {},
-		total_active_sec: 0,
-		total_idle_sec: 0,
-		present: false,
-	};
-	try {
-		const [userRows] = (await query(
-			`SELECT id FROM users u
-			 WHERE (u.email <> '' AND u.email = ?)
-			    OR (u.username <> '' AND u.username = ?)
-			    OR (u.employee_id IS NOT NULL AND u.employee_id = ?)`,
-			[employeeEmail, employeeUsername, employeeId]
-		)) as [DbRow[], unknown];
-		const userIds = userRows.map((r) => n(r, 'id')).filter((id) => id > 0);
-		if (userIds.length > 0) {
-			const [screenRows] = (await query(
-				`SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date,
-				        active_time_seconds, idle_time_seconds
-				 FROM user_screen_time
-				 WHERE user_id IN (${userIds.map(() => '?').join(', ')})
-				   AND date BETWEEN ? AND ?`,
-				[...userIds, `${month}-01`, `${month}-31`]
-			)) as [DbRow[], unknown];
-			screenTime = buildScreenTime(screenRows, month);
-		}
-	} catch {
-		/* user_screen_time may not exist */
-	}
-
 	const y = Number(month.split('-')[0]);
 	return {
 		employee,
@@ -750,7 +667,6 @@ export async function fetchTimesheetData(
 		projects,
 		summary,
 		hours,
-		screen_time: screenTime,
 		settings,
 	};
 }
