@@ -541,6 +541,7 @@ export default function ManhoursBillingReportPage() {
 											alt="Accent Techno Solutions"
 											width={186}
 											height={116}
+											priority
 											className="h-[13mm] w-auto object-contain"
 										/>
 									</div>
