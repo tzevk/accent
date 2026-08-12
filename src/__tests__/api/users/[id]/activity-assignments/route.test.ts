@@ -229,7 +229,6 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			.mockResolvedValueOnce([
 				[{ project_id: 1, project_activities_list: '[]' }],
 			]) // project lookup
-			.mockResolvedValueOnce([[]]) // day-hours lookup: nothing logged yet
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: 87 }]]) // login link
 			.mockResolvedValueOnce([{ affectedRows: 1 }]); // normalized INSERT
@@ -281,7 +280,6 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			.mockResolvedValueOnce([
 				[{ project_id: 1, project_activities_list: '[]' }],
 			]) // project lookup
-			.mockResolvedValueOnce([[]]) // day-hours lookup: nothing logged yet
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: null }]]) // no login link
 			.mockResolvedValueOnce([{ affectedRows: 1 }]); // normalized INSERT
@@ -312,31 +310,25 @@ describe('user activity assignments PATCH (self-service add)', () => {
 		expect(insert[1][2]).toBeNull(); // employee_id null when unlinked
 	});
 
-	it('rejects a self-service entry that exceeds the user daily hours', async () => {
+	it('allows planned hours over the per-day cap (planned, not actual hours)', async () => {
+		// The self-service add records PLANNED manhours for a whole activity;
+		// multi-day tasks routinely exceed MAX_DAY_HOURS and must not 400.
+		// No day-hours lookup is issued — the cap applies only to
+		// actual-hours writers (PUT progress updates, project-edit sync).
 		mocks.mockExecute
 			.mockResolvedValueOnce([
 				[{ project_id: 1, project_activities_list: '[]' }],
 			]) // project lookup
-			// Already logged 10h on 2026-08-20 across other assignments.
-			.mockResolvedValueOnce([
-				[
-					{
-						id: 'r1',
-						project_id: 3,
-						activity_id: 'a3',
-						daily_entries: JSON.stringify([
-							{ date: '2026-08-20', hours: 10, qty_done: 3 },
-						]),
-					},
-				],
-			]); // day-hours lookup
+			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
+			.mockResolvedValueOnce([[{ employee_id: null }]]) // login link
+			.mockResolvedValueOnce([{ affectedRows: 1 }]); // normalized INSERT
 
 		const response = await PATCH(
 			patchRequest({
 				project_id: '1',
 				discipline_name: 'Structural',
 				activity_name: 'RCC Check',
-				manhours_assigned: '8',
+				manhours_assigned: '24',
 				qty_completed: '1',
 				due_date: '2026-08-20',
 				status: 'Not Started',
@@ -345,18 +337,20 @@ describe('user activity assignments PATCH (self-service add)', () => {
 		);
 		const body = await response.json();
 
-		expect(response.status).toBe(400);
-		expect(body.success).toBe(false);
-		expect(String(body.error)).toContain('2026-08-20');
-		// Nothing was written anywhere: no blob UPDATE, no normalized INSERT.
+		expect(response.status).toBe(200);
+		expect(body.success).toBe(true);
+
+		const insert = mocks.mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('INSERT INTO user_activity_assignments')
+		);
+		expect(insert).toBeDefined();
+		expect(JSON.parse(insert[1][20])).toEqual([
+			{ date: '2026-08-20', qty_done: 1, hours: 24, remarks: '' },
+		]);
+		// No per-date hours SELECT was issued.
 		expect(
 			mocks.mockExecute.mock.calls.some(([sql]) =>
-				String(sql).startsWith('UPDATE projects SET project_activities_list')
-			)
-		).toBe(false);
-		expect(
-			mocks.mockExecute.mock.calls.some(([sql]) =>
-				String(sql).includes('INSERT INTO user_activity_assignments')
+				String(sql).includes('FROM user_activity_assignments')
 			)
 		).toBe(false);
 	});

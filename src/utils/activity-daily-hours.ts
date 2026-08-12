@@ -4,11 +4,14 @@
  * One person can log at most `MAX_DAY_HOURS` hours per calendar date across
  * ALL their assignments. The standard working day is 8h (surfaced in the
  * Timesheet report as normal hours, with the excess as overtime), so the cap
- * is deliberately higher than 8h to keep legitimate OT days (10h shifts)
+ * deliberately higher than 8h to keep legitimate OT days (10h shifts)
  * legal — it exists to stop physically impossible days (18h/20h/32h
  * double-logging, where the same actual hours get entered against several
- * assignments). Every writer of `daily_entries` must call
- * `validateDayHours` before persisting.
+ * assignments). Every writer of actual-hours `daily_entries` (PUT progress
+ * updates, project-edit sync) must call `validateDayHours` before
+ * persisting. The self-service add (users/[id]/activity-assignments PATCH)
+ * intentionally does not: it records planned manhours for a whole activity,
+ * not worked hours.
  */
 
 export const MAX_DAY_HOURS = 12;
