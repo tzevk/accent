@@ -20,6 +20,7 @@ import {
 	ClipboardDocumentListIcon,
 	BuildingLibraryIcon,
 	TagIcon,
+	FingerPrintIcon,
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -563,6 +564,12 @@ export default function Sidebar() {
 								label="Manhours Billing"
 								href="/reports/manhours-billing"
 								active={pathname.startsWith('/reports/manhours-billing')}
+							/>
+							<NavRow
+								icon={FingerPrintIcon}
+								label="Attendance Report"
+								href="/reports/attendance-report"
+								active={pathname.startsWith('/reports/attendance-report')}
 							/>
 						</div>
 					</div>
