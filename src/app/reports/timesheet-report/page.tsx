@@ -9,6 +9,7 @@ import {
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
+import SearchableSelect from '@/components/ui/searchable-select';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { capProjectDays } from '@/lib/timesheet-cap';
@@ -234,8 +235,24 @@ export default function TimesheetReportPage() {
 	});
 
 	const meta = metaQuery.data?.meta;
-	const employees = meta?.employees ?? [];
-	const months = meta?.months ?? [];
+	const employees = useMemo(() => meta?.employees ?? [], [meta]);
+	const months = useMemo(() => meta?.months ?? [], [meta]);
+
+	const employeeOptions = useMemo(
+		() =>
+			employees.map((employee) => ({
+				value: String(employee.id),
+				label: `${employee.name}${
+					employee.employee_id ? ` (${employee.employee_id})` : ''
+				}`,
+			})),
+		[employees]
+	);
+
+	const monthOptions = useMemo(
+		() => months.map((value) => ({ value, label: monthLabel(value) })),
+		[months]
+	);
 
 	useEffect(() => {
 		if (!meta) return;
@@ -362,39 +379,24 @@ export default function TimesheetReportPage() {
 				<div className="mx-auto mb-1 flex max-w-[1550px] flex-wrap items-center justify-between gap-2 print:hidden">
 					<div className="flex flex-wrap items-center gap-2 text-[11px]">
 						<span className="font-bold text-gray-700">Monthly Time Sheet</span>
-						<label htmlFor="ts-employee" className="sr-only">
-							Employee
-						</label>
-						<select
-							id="ts-employee"
+						<SearchableSelect
+							options={employeeOptions}
 							value={employeeId}
-							onChange={(event) => setEmployeeId(event.target.value)}
-							className="h-7 min-w-[210px] border border-gray-400 bg-white px-2 text-[11px] text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
-						>
-							<option value="">Select an employee</option>
-							{employees.map((employee) => (
-								<option key={employee.id} value={employee.id}>
-									{employee.name}
-									{employee.employee_id ? ` (${employee.employee_id})` : ''}
-								</option>
-							))}
-						</select>
-						<label htmlFor="ts-month" className="sr-only">
-							Month
-						</label>
-						<select
-							id="ts-month"
+							onChange={(val) => setEmployeeId(String(val))}
+							placeholder="Select an employee"
+							className="min-w-[210px]"
+							buttonClassName="h-7 rounded-none border-gray-400 text-[11px]"
+							aria-label="Employee"
+						/>
+						<SearchableSelect
+							options={monthOptions}
 							value={month}
-							onChange={(event) => setMonth(event.target.value)}
-							className="h-7 min-w-[130px] border border-gray-400 bg-white px-2 text-[11px] text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
-						>
-							<option value="">Select a month</option>
-							{months.map((value) => (
-								<option key={value} value={value}>
-									{monthLabel(value)}
-								</option>
-							))}
-						</select>
+							onChange={(val) => setMonth(String(val))}
+							placeholder="Select a month"
+							className="min-w-[130px]"
+							buttonClassName="h-7 rounded-none border-gray-400 text-[11px]"
+							aria-label="Month"
+						/>
 					</div>
 					<div className="flex items-center gap-1">
 						<button
