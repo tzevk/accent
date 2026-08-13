@@ -72,11 +72,11 @@ page.tsx (grid) / excel-template.ts (export) — same transforms
 
 **The per-project cells and the "Monthly Man Hours" total column render hours capped at the standard working day per day** — `capProjectDays` splits an over-8h day across its projects proportionally so the top section never sums above the standard day, and the daily excess is surfaced in the Over Time Hours row. The cap exists to keep the top section honest; it never invents hours, and the raw log is preserved in the OT row and the grand total.
 
-The physically impossible days that used to reach the report (18h/20h/32h — the same actual hours entered against several assignments) are now **blocked at entry**: every writer of `daily_entries` (`users/[id]/activity-assignments` PUT/PATCH and the `projects/[id]` bulk sync) validates per-user-per-date totals against a `MAX_DAY_HOURS` cap (12h = 8h standard day + generous OT headroom) via `src/utils/activity-daily-hours.ts`. Legitimate 10h OT days still pass; double-logging a second full day is rejected with a 400 naming the date and total.
+The physically impossible days that used to reach the report (18h/20h/32h — the same actual hours entered against several assignments) were for a time **blocked at entry** by a `MAX_DAY_HOURS` (12h) per-user-per-date cap in `src/utils/activity-daily-hours.ts`; that entry-side enforcement was removed in Aug 2026 because it rejected legitimate bulk updates. The report's own per-day display cap (standard working day) and the OT split are unchanged.
 
 Rows with zero hours still appear when their `start_date`/`due_date` falls in the month (empty row, keeps the reference layout).
 
-The `MAX_DAY_HOURS` entry cap (12h) is enforced on every writer, so days above 12h cannot enter the system going forward; legitimate 8–10h days and small multi-assignment splits pass untouched.
+The report itself still caps the man-hours grid at the standard working day per day and moves the excess to overtime, regardless of what was logged.
 
 ## Auth
 
@@ -163,22 +163,18 @@ Filename: `Timesheet_<EMPLOYEE_NAME>_<MONTH_LABEL>.xlsx` (e.g. `Timesheet_ROSHAN
 
 ## Files changed
 
-| File                                                           | Change                                                                                                  |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `src/app/reports/timesheet-report/data-source.ts`              | **Created** — types, pure transforms (unit-tested), server fetchers                                     |
-| `src/app/reports/timesheet-report/page.tsx`                    | **Created** — filter bar + print-styled reference-grid sheet + Excel export button                      |
-| `src/app/reports/timesheet-report/excel-template.ts`           | **Created** — ExcelJS workbook builder (mirrors the on-screen grid)                                     |
-| `src/app/api/reports/timesheet-report/route.ts`                | **Created** — meta/data JSON API with RBAC                                                              |
-| `src/app/api/reports/timesheet-report/download/route.ts`       | **Created** — Excel download with RBAC                                                                  |
-| `src/__tests__/reports/timesheet-report/data-source.test.ts`   | **Created** — unit tests (statuses, weekly-off rule, day matrix, parsing, hours/OT)                     |
-| `src/__tests__/reports/timesheet-report/timesheet-cap.test.ts` | **Created** — 7 unit tests for `capProjectDays`                                                         |
-| `src/lib/timesheet-cap.ts`                                     | **Created** — per-project per-day capping to the standard working day                                   |
-| `src/utils/activity-daily-hours.ts`                            | **Created** — `MAX_DAY_HOURS` (12h) per-user-per-date validation shared by every `daily_entries` writer |
-| `src/app/api/users/[id]/activity-assignments/route.js`         | PUT/PATCH now reject entries that would push any date over `MAX_DAY_HOURS` (400, nothing written)       |
-| `src/app/api/projects/[id]/route.js`                           | Bulk activity sync validates every user's per-date totals before the UPSERT loop                        |
-| `src/__tests__/utils/activity-daily-hours.test.ts`             | **Created** — parsing, per-date sums, exclusions, cap boundary tests                                    |
+| File                                                           | Change                                                                              |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `src/app/reports/timesheet-report/data-source.ts`              | **Created** — types, pure transforms (unit-tested), server fetchers                 |
+| `src/app/reports/timesheet-report/page.tsx`                    | **Created** — filter bar + print-styled reference-grid sheet + Excel export button  |
+| `src/app/reports/timesheet-report/excel-template.ts`           | **Created** — ExcelJS workbook builder (mirrors the on-screen grid)                 |
+| `src/app/api/reports/timesheet-report/route.ts`                | **Created** — meta/data JSON API with RBAC                                          |
+| `src/app/api/reports/timesheet-report/download/route.ts`       | **Created** — Excel download with RBAC                                              |
+| `src/__tests__/reports/timesheet-report/data-source.test.ts`   | **Created** — unit tests (statuses, weekly-off rule, day matrix, parsing, hours/OT) |
+| `src/__tests__/reports/timesheet-report/timesheet-cap.test.ts` | **Created** — 7 unit tests for `capProjectDays`                                     |
+| `src/lib/timesheet-cap.ts`                                     | **Created** — per-project per-day capping to the standard working day               |
 
-> The per-project section intentionally caps at the standard working day (8h) — this matches the reference template and the "normal hours in the top section, everything above 8h as overtime" rule. The proportional split keeps every project visible on over-8h days; the entry-side `MAX_DAY_HOURS` cap stops the impossible days (18h/20h/32h) that used to reach the report.
+> The per-project section intentionally caps at the standard working day (8h) — this matches the reference template and the "normal hours in the top section, everything above 8h as overtime" rule. The proportional split keeps every project visible on over-8h days.
 
 ---
 

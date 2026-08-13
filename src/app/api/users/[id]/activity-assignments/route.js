@@ -3,10 +3,6 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { randomUUID } from 'crypto';
 import { isUserInProjectTeam } from '@/utils/project-access';
-import {
-	fetchExistingDayHours,
-	validateDayHours,
-} from '@/utils/activity-daily-hours';
 
 async function generateTicketNumber(connection) {
 	const year = new Date().getFullYear();
@@ -524,23 +520,6 @@ export async function PUT(request, { params }) {
 			});
 		}
 
-		// Daily-hour cap: the replacement entries must not push any calendar
-		// date over MAX_DAY_HOURS once the user's other assignments for that
-		// date are counted (this assignment's old entries are being replaced).
-		if (normalizedEntries !== null) {
-			const existingByDate = await fetchExistingDayHours(db, requestedUserId, {
-				excludeAssignmentIds: [existing[0].id],
-			});
-			const violation = validateDayHours(normalizedEntries, existingByDate);
-			if (violation) {
-				db.release();
-				return NextResponse.json(
-					{ success: false, error: violation },
-					{ status: 400 }
-				);
-			}
-		}
-
 		setClauses.push('updated_at = NOW()');
 		updateParams.push(requestedUserId, project_id, activity_id);
 
@@ -819,13 +798,6 @@ export async function PATCH(request, { params }) {
 		// The entered manhours/quantity are logged as that day's entry so they
 		// surface in the timesheet/man-hours reports; planned hours also go
 		// to estimated_hours.
-		//
-		// NOTE: no per-day hour cap applies here. The cap in
-		// `activity-daily-hours.ts` guards ACTUAL-hours writers (PUT progress
-		// updates, project-edit sync) against double-logging the same worked
-		// hours. This path records PLANNED manhours for a whole activity,
-		// which routinely exceeds one day (multi-day tasks); capping it made
-		// legitimate adds fail with a 400.
 		const dailyEntry = {
 			date: due_date || new Date().toISOString().split('T')[0],
 			qty_done: parseFloat(qty_completed) || 0,
