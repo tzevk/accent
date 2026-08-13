@@ -281,5 +281,175 @@ export async function hasPermission(request, resource, permission) {
 
 	return user.is_super_admin || checkPermission(user, resource, permission);
 }
+/**
+ * Validate that the caller has sufficient privileges to modify or delete a target user.
+ * - Super admins can modify any user.
+ * - Non-super-admins cannot modify or delete super admins.
+ * - Non-super-admins cannot modify or delete users with equal or higher role hierarchy.
+ */
+export function canModifyTargetUser(caller, targetUser) {
+	if (!caller) {
+		return {
+			allowed: false,
+			reason: 'Unauthorized',
+		};
+	}
+
+	if (caller.is_super_admin) return { allowed: true };
+
+	if (targetUser?.is_super_admin) {
+		return {
+			allowed: false,
+			reason: 'Forbidden: Cannot modify or delete a super admin user',
+		};
+	}
+
+	const callerHierarchy = Number(
+		caller.role?.hierarchy ?? caller.role_hierarchy ?? 0
+	);
+	const targetHierarchy = Number(
+		targetUser?.role_hierarchy ?? targetUser?.role?.hierarchy ?? 0
+	);
+
+	if (
+		Number(targetUser?.id) !== Number(caller.id) &&
+		targetHierarchy >= callerHierarchy
+	) {
+		return {
+			allowed: false,
+			reason:
+				'Forbidden: Cannot modify or delete a user with equal or higher role hierarchy',
+		};
+	}
+
+	return { allowed: true };
+}
+
+/**
+ * Validate roles, permissions, field_permissions, and super_admin grants.
+ * Prevents non-super-admins from escalating privileges or assigning roles/permissions beyond their own.
+ */
+export async function validateUserGrants(caller, data, db, options = {}) {
+	if (!caller) {
+		return {
+			allowed: false,
+			reason: 'Unauthorized',
+		};
+	}
+
+	if (caller.is_super_admin) return { allowed: true };
+
+	const isSelfUpdate = options.targetIsSelf || false;
+
+	// Non-super-admins cannot grant super admin
+	if (data?.is_super_admin) {
+		return {
+			allowed: false,
+			reason: 'Forbidden: Only super admins can grant super admin privileges',
+		};
+	}
+
+	// Non-super-admins cannot modify their own role or permissions
+	if (
+		isSelfUpdate &&
+		(data?.role_id !== undefined ||
+			data?.permissions !== undefined ||
+			data?.field_permissions !== undefined)
+	) {
+		return {
+			allowed: false,
+			reason:
+				'Forbidden: Only super admins can modify your own role or permissions',
+		};
+	}
+
+	const callerHierarchy = Number(
+		caller.role?.hierarchy ?? caller.role_hierarchy ?? 0
+	);
+
+	// Check role hierarchy for assigned role_id
+	if (
+		data?.role_id !== undefined &&
+		data?.role_id !== null &&
+		data?.role_id !== ''
+	) {
+		if (db) {
+			const [roles] = await db.execute(
+				'SELECT id, role_hierarchy FROM roles_master WHERE id = ? AND status = "active" LIMIT 1',
+				[data.role_id]
+			);
+			if (!roles || roles.length === 0) {
+				return {
+					allowed: false,
+					reason: 'Invalid role selected',
+				};
+			}
+			const assignedHierarchy = Number(roles[0].role_hierarchy ?? 0);
+			if (assignedHierarchy >= callerHierarchy) {
+				return {
+					allowed: false,
+					reason:
+						'Forbidden: Cannot assign a role with equal or higher hierarchy than your own',
+				};
+			}
+		}
+	}
+
+	// Check custom permissions subset
+	if (data?.permissions !== undefined && data?.permissions !== null) {
+		const rawPerms = Array.isArray(data.permissions)
+			? data.permissions
+			: safeParse(data.permissions, []);
+
+		if (Array.isArray(rawPerms) && rawPerms.length > 0) {
+			const callerPerms = new Set(
+				caller.merged_permissions || caller.permissions || []
+			);
+			for (const p of rawPerms) {
+				if (!callerPerms.has(p)) {
+					return {
+						allowed: false,
+						reason: `Forbidden: Cannot grant permission "${p}" that you do not possess`,
+					};
+				}
+			}
+		}
+	}
+
+	// Check field_permissions modules
+	if (
+		data?.field_permissions !== undefined &&
+		data?.field_permissions !== null
+	) {
+		const fp =
+			typeof data.field_permissions === 'object'
+				? data.field_permissions
+				: safeParse(data.field_permissions, {});
+
+		if (fp?.modules) {
+			const callerFpModules = caller.field_permissions?.modules || {};
+			const callerPerms = new Set(
+				caller.merged_permissions || caller.permissions || []
+			);
+
+			for (const [modKey, modVal] of Object.entries(fp.modules)) {
+				if (modVal?.enabled) {
+					const callerHasModuleInFp = !!callerFpModules[modKey]?.enabled;
+					const callerHasModuleInPerms = Array.from(callerPerms).some((p) =>
+						p.startsWith(`${modKey}:`)
+					);
+					if (!callerHasModuleInFp && !callerHasModuleInPerms) {
+						return {
+							allowed: false,
+							reason: `Forbidden: Cannot grant field permissions for module "${modKey}" that you do not possess`,
+						};
+					}
+				}
+			}
+		}
+	}
+
+	return { allowed: true };
+}
 
 export { RESOURCES, PERMISSIONS };

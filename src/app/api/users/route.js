@@ -5,6 +5,8 @@ import {
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
 	invalidateUserCache,
+	canModifyTargetUser,
+	validateUserGrants,
 } from '@/utils/api-permissions';
 import { hashPassword } from '@/utils/password';
 
@@ -121,6 +123,16 @@ export async function POST(request) {
 
 		db = await dbConnect();
 
+		// Validate grants (role_id, permissions, field_permissions, is_super_admin)
+		const grantCheck = await validateUserGrants(auth.user, data, db, {
+			targetIsSelf: false,
+		});
+		if (!grantCheck.allowed) {
+			return NextResponse.json(
+				{ success: false, error: grantCheck.reason },
+				{ status: 403 }
+			);
+		}
 		// check duplicates
 		const [existing] = await db.execute(
 			"SELECT id FROM users WHERE username = ? OR (email = ? AND email IS NOT NULL AND email != '') LIMIT 1",
@@ -268,13 +280,37 @@ export async function PUT(request) {
 		db = await dbConnect();
 
 		const [existing] = await db.execute(
-			'SELECT id FROM users WHERE id = ? AND isDelete = 0 LIMIT 1',
+			`SELECT u.id, u.is_super_admin, u.role_id, r.role_hierarchy
+       FROM users u
+       LEFT JOIN roles_master r ON u.role_id = r.id
+       WHERE u.id = ? AND u.isDelete = 0 LIMIT 1`,
 			[data.id]
 		);
 		if (!existing || existing.length === 0) {
 			return NextResponse.json(
 				{ success: false, error: 'User not found' },
 				{ status: 404 }
+			);
+		}
+
+		// Check target user access
+		const targetCheck = canModifyTargetUser(auth.user, existing[0]);
+		if (!targetCheck.allowed) {
+			return NextResponse.json(
+				{ success: false, error: targetCheck.reason },
+				{ status: 403 }
+			);
+		}
+
+		// Check grants (role_id, permissions, field_permissions, is_super_admin)
+		const isSelfUpdate = Number(data.id) === Number(auth.user.id);
+		const grantCheck = await validateUserGrants(auth.user, data, db, {
+			targetIsSelf: isSelfUpdate,
+		});
+		if (!grantCheck.allowed) {
+			return NextResponse.json(
+				{ success: false, error: grantCheck.reason },
+				{ status: 403 }
 			);
 		}
 
@@ -295,9 +331,9 @@ export async function PUT(request) {
 		const fields = [];
 		const vals = [];
 		// Allow updating role_id (system role), permissions, field_permissions, and user details
+		// NOTE: password_hash is explicitly excluded (SEC-04)
 		const allowed = [
 			'username',
-			'password_hash',
 			'email',
 			'employee_id',
 			'role',
@@ -394,13 +430,24 @@ export async function DELETE(request) {
 		db = await dbConnect();
 
 		const [existing] = await db.execute(
-			'SELECT id FROM users WHERE id = ? AND isDelete = 0 LIMIT 1',
+			`SELECT u.id, u.is_super_admin, u.role_id, r.role_hierarchy
+       FROM users u
+       LEFT JOIN roles_master r ON u.role_id = r.id
+       WHERE u.id = ? AND u.isDelete = 0 LIMIT 1`,
 			[id]
 		);
 		if (!existing || existing.length === 0) {
 			return NextResponse.json(
 				{ success: false, error: 'User not found' },
 				{ status: 404 }
+			);
+		}
+
+		const targetCheck = canModifyTargetUser(auth.user, existing[0]);
+		if (!targetCheck.allowed) {
+			return NextResponse.json(
+				{ success: false, error: targetCheck.reason },
+				{ status: 403 }
 			);
 		}
 

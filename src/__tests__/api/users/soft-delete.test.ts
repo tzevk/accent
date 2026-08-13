@@ -10,7 +10,10 @@ vi.mock('@/utils/database', () => ({ dbConnect: mockDbConnect }));
 vi.mock('@/utils/api-permissions', () => ({
 	ensurePermission: vi
 		.fn()
-		.mockResolvedValue({ authorized: true, user: { id: 1 } }),
+		.mockResolvedValue({
+			authorized: true,
+			user: { id: 1, is_super_admin: true },
+		}),
 	RESOURCES: { USERS: 'users' },
 	PERMISSIONS: {
 		READ: 'read',
@@ -20,6 +23,8 @@ vi.mock('@/utils/api-permissions', () => ({
 	},
 	getCurrentUser: vi.fn().mockResolvedValue({ id: 1, is_super_admin: true }),
 	invalidateUserCache: vi.fn(),
+	canModifyTargetUser: vi.fn().mockReturnValue({ allowed: true }),
+	validateUserGrants: vi.fn().mockResolvedValue({ allowed: true }),
 }));
 vi.mock('@/utils/rbac', () => ({
 	hasPermission: vi.fn().mockReturnValue(true),

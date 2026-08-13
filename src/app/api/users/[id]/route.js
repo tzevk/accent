@@ -5,6 +5,8 @@ import {
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
 	invalidateUserCache,
+	canModifyTargetUser,
+	validateUserGrants,
 } from '@/utils/api-permissions';
 
 // GET - fetch single user by ID
@@ -94,7 +96,10 @@ export async function PUT(request, { params }) {
 
 		// Check if user exists
 		const [existing] = await db.execute(
-			'SELECT id FROM users WHERE id = ? AND isDelete = 0 LIMIT 1',
+			`SELECT u.id, u.is_super_admin, u.role_id, r.role_hierarchy
+       FROM users u
+       LEFT JOIN roles_master r ON u.role_id = r.id
+       WHERE u.id = ? AND u.isDelete = 0 LIMIT 1`,
 			[id]
 		);
 		if (!existing || existing.length === 0) {
@@ -105,6 +110,26 @@ export async function PUT(request, { params }) {
 			);
 		}
 
+		const targetCheck = canModifyTargetUser(auth.user, existing[0]);
+		if (!targetCheck.allowed) {
+			await db.release();
+			return NextResponse.json(
+				{ success: false, error: targetCheck.reason },
+				{ status: 403 }
+			);
+		}
+
+		const isSelfUpdate = Number(id) === Number(auth.user.id);
+		const grantCheck = await validateUserGrants(auth.user, data, db, {
+			targetIsSelf: isSelfUpdate,
+		});
+		if (!grantCheck.allowed) {
+			await db.release();
+			return NextResponse.json(
+				{ success: false, error: grantCheck.reason },
+				{ status: 403 }
+			);
+		}
 		// Build update query dynamically based on provided fields
 		const updateFields = [];
 		const updateValues = [];
@@ -226,7 +251,10 @@ export async function DELETE(request, { params }) {
 
 		// Check if user exists
 		const [existing] = await db.execute(
-			'SELECT id, is_super_admin FROM users WHERE id = ? AND isDelete = 0 LIMIT 1',
+			`SELECT u.id, u.is_super_admin, u.role_id, r.role_hierarchy
+       FROM users u
+       LEFT JOIN roles_master r ON u.role_id = r.id
+       WHERE u.id = ? AND u.isDelete = 0 LIMIT 1`,
 			[id]
 		);
 		if (!existing || existing.length === 0) {
@@ -237,15 +265,14 @@ export async function DELETE(request, { params }) {
 			);
 		}
 
-		// Prevent deleting super admin
-		if (existing[0].is_super_admin) {
+		const targetCheck = canModifyTargetUser(auth.user, existing[0]);
+		if (!targetCheck.allowed) {
 			await db.release();
 			return NextResponse.json(
-				{ success: false, error: 'Cannot delete super admin user' },
+				{ success: false, error: targetCheck.reason },
 				{ status: 403 }
 			);
 		}
-
 		await db.execute(
 			'UPDATE users SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]

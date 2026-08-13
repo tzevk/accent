@@ -5,6 +5,7 @@ import {
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
 	invalidateUserCache,
+	validateUserGrants,
 } from '@/utils/api-permissions';
 
 // GET - Fetch all employees
@@ -545,10 +546,21 @@ export async function PUT(request) {
 			// If a role name was provided, map to roles_master.id and update user's role_id
 			if (Object.prototype.hasOwnProperty.call(data, 'role') && data.role) {
 				const [roleRows] = await connection.execute(
-					'SELECT id FROM roles_master WHERE role_name = ? AND status = "active" LIMIT 1',
+					'SELECT id, role_hierarchy FROM roles_master WHERE role_name = ? AND status = "active" LIMIT 1',
 					[data.role]
 				);
 				if (roleRows && roleRows.length > 0) {
+					const grantCheck = await validateUserGrants(
+						auth.user,
+						{ role_id: roleRows[0].id },
+						connection
+					);
+					if (!grantCheck.allowed) {
+						return NextResponse.json(
+							{ success: false, error: grantCheck.reason },
+							{ status: 403 }
+						);
+					}
 					await connection.execute(
 						'UPDATE users SET role_id = ? WHERE employee_id = ?',
 						[roleRows[0].id, employeeId]

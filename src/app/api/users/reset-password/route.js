@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import {
 	ensurePermission,
 	invalidateUserCache,
+	canModifyTargetUser,
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
 } from '@/utils/api-permissions';
@@ -48,14 +49,26 @@ export async function POST(request) {
 		db = await dbConnect();
 
 		// Verify user exists
+		// Verify user exists and check target access
 		const [existing] = await db.execute(
-			'SELECT id, username FROM users WHERE id = ? LIMIT 1',
+			`SELECT u.id, u.username, u.is_super_admin, u.role_id, r.role_hierarchy
+       FROM users u
+       LEFT JOIN roles_master r ON u.role_id = r.id
+       WHERE u.id = ? AND u.isDelete = 0 LIMIT 1`,
 			[user_id]
 		);
 		if (!existing || existing.length === 0) {
 			return NextResponse.json(
 				{ success: false, error: 'User not found' },
 				{ status: 404 }
+			);
+		}
+
+		const targetCheck = canModifyTargetUser(auth.user, existing[0]);
+		if (!targetCheck.allowed) {
+			return NextResponse.json(
+				{ success: false, error: targetCheck.reason },
+				{ status: 403 }
 			);
 		}
 

@@ -15,12 +15,15 @@ Typography (text wrapping, font rendering, tabular numbers, spacing) is covered 
 
 ## Quick Reference
 
-| Category                      | When to Use                                                                                         |
-| ----------------------------- | --------------------------------------------------------------------------------------------------- |
-| [Surfaces](surfaces.md)       | Border radius, optical alignment, shadows, image outlines                                           |
-| [Animations](animations.md)   | Interruptible animations, enter/exit transitions, icon animations, scale on press, motion restraint |
-| [Icons](icons.md)             | Icon stroke weight, states via `currentColor`, outline vs fill, sizing, RTL flipping                |
-| [Performance](performance.md) | Transition specificity, `will-change` usage                                                         |
+| Category                                 | When to Use                                                                                  |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------- |
+| [Surfaces](surfaces.md)                  | Border radius, optical alignment, shadows, image outlines                                    |
+| [Animations](animations.md)              | Interruptible transitions, scale on press, skipping animation on page load, motion restraint |
+| [Enter & Exit](enter-exit.md)            | Staged entrances, stagger timing, exit transitions                                           |
+| [Icon Transitions](icon-transitions.md)  | Cross-fading an icon on state change, with and without a motion library                      |
+| [Icons](icons.md)                        | Icon stroke weight, states via `currentColor`, outline vs fill, sizing, RTL flipping         |
+| [Performance](performance.md)            | Transition specificity, `will-change` usage                                                  |
+| [Review Output Format](review-output.md) | Severity scale, findings table, verification, verdict                                        |
 
 ## Core Principles
 
@@ -42,7 +45,7 @@ Use CSS transitions for interactive state changes: they can be interrupted mid-a
 
 ### 5. Split and Stagger Enter Animations
 
-For an infrequent staged entrance where sequence helps communicate hierarchy, break content into semantic chunks and stagger them by ~100ms instead of animating one container. Do not stagger routine, high-frequency interactions.
+For an infrequent staged entrance where sequence helps communicate hierarchy, break content into semantic chunks and stagger them by ~100ms instead of animating one container. Do not stagger routine, high-frequency interactions. [Stagger and exit recipes](enter-exit.md).
 
 ### 6. Subtle Exit Animations
 
@@ -50,7 +53,7 @@ Use a small fixed `translateY` instead of full height. Exits should be softer th
 
 ### 7. Contextual Icon Animations
 
-Animate icons with `opacity`, `scale`, and `blur` instead of toggling visibility. Use exactly these values: scale from `0.25` to `1`, opacity from `0` to `1`, blur from `4px` to `0px`. If the project has `motion` or `framer-motion` in `package.json`, match that package's import path (or the established nearby imports when both exist) and use `transition: { type: "spring", duration: 0.3, bounce: 0 }`; bounce must always be `0`. If no motion library is installed, keep both icons in the DOM (one absolute-positioned) and cross-fade with CSS transitions using `cubic-bezier(0.2, 0, 0, 1)`; this gives both enter and exit animations without any dependency.
+Animate icons with `opacity`, `scale`, and `blur` instead of toggling visibility. Use exactly these values: scale from `0.25` to `1`, opacity from `0` to `1`, blur from `4px` to `0px`. If the project has `motion` or `framer-motion` in `package.json`, match that package's import path (or the established nearby imports when both exist) and use `transition: { type: "spring", duration: 0.3, bounce: 0 }`; bounce must always be `0`. If no motion library is installed, keep both icons in the DOM (one absolute-positioned) and cross-fade with CSS transitions using `cubic-bezier(0.2, 0, 0, 1)`; this gives both enter and exit animations without any dependency. [Both recipes](icon-transitions.md).
 
 ### 8. Image Outlines
 
@@ -58,13 +61,13 @@ Add a subtle `1px` outline with low opacity to images for consistent depth. The 
 
 ### 9. Scale on Press
 
-A subtle `scale(0.96)` on click gives buttons tactile feedback. Always use `0.96`. Never use a value smaller than `0.95`: anything below feels exaggerated. Add a `static` prop to disable it when motion would be distracting.
+A subtle `scale(0.96)` on click gives buttons tactile feedback. Always use `0.96`; anything below `0.95` feels exaggerated. Add a `static` prop to disable it when motion would be distracting. [Recipes for CSS, Tailwind, and Motion](animations.md#scale-on-press).
 
 ### 10. Skip Animation on Page Load
 
 Use `initial={false}` on `AnimatePresence` to prevent enter animations on first render. Verify it doesn't break intentional entrance animations.
 
-### 11. Never Use `transition: all`
+### 11. Transition Only What Changes
 
 Always specify exact properties: `transition-property: scale, opacity`. Tailwind's `transition-transform` covers `transform, translate, scale, rotate`.
 
@@ -100,44 +103,6 @@ No custom animation on high-frequency interactions: the attention cost repeats o
 | Filled icons everywhere                                         | Outline as default, fill only for the active state                                   |
 | Entrance animation on every hover or keystroke                  | Instant feedback or ≤150ms opacity/color transition                                  |
 
-## Review Output Format
+## Reporting
 
-Use this format only when the user asks for a standalone UI-polish review. When `better-interface` orchestrates the review, provide domain evidence and findings to that skill and let its output format, severity scale, consolidation rules, cap, and verdict take precedence.
-
-Present the standalone review in two parts.
-
-### Findings
-
-Group all confirmed findings by principle. Use a markdown table with **Severity**, **Location**, **Before**, **After**, and **Why** columns. Never use separate "Before:" / "After:" lines.
-
-- **Severity**: `HIGH` makes an interaction misleading, unresponsive, or repeatedly disruptive; `MEDIUM` creates a noticeable craft or consistency problem; `LOW` is isolated polish.
-- **Location**: cite `path/to/file:line`. If the artifact has no source files, cite the exact screen and component instead.
-- **Before / After**: show the current implementation and an actionable replacement.
-- **Why**: name the violated principle and explain how it affects the interface.
-
-Consolidate a repeated systemic issue into one row and list every affected location. Omit principles with no findings.
-
-### Example
-
-#### Concentric border radius
-
-| Severity | Location          | Before                                                      | After                                                              | Why                                                    |
-| -------- | ----------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------ |
-| LOW      | `src/Card.tsx:28` | `rounded-xl` on card + `rounded-xl` on inner button (`p-2`) | `rounded-2xl` on card (`8 + 8 = 16`), `rounded-lg` on inner button | Nested corners should be concentric                    |
-| LOW      | `src/card.css:11` | `border-radius: 16px` on both nested surfaces               | Outer `24px`, inner `16px` with `8px` padding                      | Equal nested radii make the inner surface look pinched |
-
-#### Scale on press
-
-| Severity | Location            | Before                     | After                                          | Why                                              |
-| -------- | ------------------- | -------------------------- | ---------------------------------------------- | ------------------------------------------------ |
-| LOW      | `src/Button.tsx:19` | `<button className="...">` | Add `active:scale-[0.96] transition-transform` | Press feedback makes the control feel responsive |
-| MEDIUM   | `src/button.css:24` | `scale(0.9)` on press      | Raise to `scale(0.96)`                         | Anything below `0.95` feels exaggerated          |
-
-### Verification and Verdict
-
-After the findings:
-
-1. **Verification**: list the exact checks run and their observed results. Walk every relevant state and inspect motion at 10% speed when animation is involved. If a check was not run, state what still needs verification.
-2. **Verdict**: `Block` if any `HIGH` finding remains, `Needs changes` if only `MEDIUM` or `LOW` findings remain, and `Approve` only when no actionable findings remain.
-
-When there are no findings, omit the tables, state "No actionable UI-polish findings", report verification, and end with `Approve`.
+A standalone UI-polish review is finished when every confirmed finding is reported in the format in [review-output.md](review-output.md), with verification and a verdict. Under `better-interface`, its format governs instead.
