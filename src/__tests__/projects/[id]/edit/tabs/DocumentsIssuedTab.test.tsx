@@ -83,6 +83,15 @@ describe('DocumentsIssuedTab', () => {
 		},
 	};
 
+	// Edit-mode status <select> of the row being edited (option labels are
+	// enriched, so scope by accessible name instead of display value).
+	const getEditStatusSelect = () => {
+		const row = screen.getByDisplayValue('DRW-ISS-001').closest('tr');
+		return within(row as HTMLTableRowElement).getByRole('combobox', {
+			name: 'Status',
+		});
+	};
+
 	it('renders rows in display mode with values as text', () => {
 		render(<DocumentsIssuedTab {...baseProps} />, {
 			wrapper: createWrapper(),
@@ -109,7 +118,7 @@ describe('DocumentsIssuedTab', () => {
 		});
 		await user.click(screen.getByTitle('Edit document'));
 		expect(screen.getByDisplayValue('DRW-ISS-001')).toBeInTheDocument();
-		expect(screen.getByDisplayValue('IFC')).toBeInTheDocument();
+		expect(getEditStatusSelect()).toBeInTheDocument();
 		expect(screen.getByTitle('Done editing')).toBeInTheDocument();
 	});
 
@@ -138,7 +147,7 @@ describe('DocumentsIssuedTab', () => {
 			{ wrapper: createWrapper() }
 		);
 		await user.click(screen.getByTitle('Edit document'));
-		await user.selectOptions(screen.getByDisplayValue('IFC'), 'IFI');
+		await user.selectOptions(getEditStatusSelect(), 'IFI');
 		expect(updateIssuedDocument).toHaveBeenCalledWith(1, 'status', 'IFI');
 		expect(updateIssuedDocument).toHaveBeenCalledWith(
 			1,
@@ -158,13 +167,47 @@ describe('DocumentsIssuedTab', () => {
 			{ wrapper: createWrapper() }
 		);
 		await user.click(screen.getByTitle('Edit document'));
-		await user.selectOptions(screen.getByDisplayValue('IFC'), 'IFD');
+		await user.selectOptions(getEditStatusSelect(), 'IFD');
 		expect(updateIssuedDocument).toHaveBeenCalledWith(1, 'status', 'IFD');
 		expect(updateIssuedDocument).toHaveBeenCalledWith(
 			1,
 			'approved_by',
 			'Current User'
 		);
+	});
+
+	it('autofills Approved By when status changes to IFA with approval rights', async () => {
+		const user = userEvent.setup();
+		const updateIssuedDocument = vi.fn();
+		render(
+			<DocumentsIssuedTab
+				{...baseProps}
+				updateIssuedDocument={updateIssuedDocument}
+			/>,
+			{ wrapper: createWrapper() }
+		);
+		await user.click(screen.getByTitle('Edit document'));
+		await user.selectOptions(getEditStatusSelect(), 'IFA');
+		expect(updateIssuedDocument).toHaveBeenCalledWith(1, 'status', 'IFA');
+		expect(updateIssuedDocument).toHaveBeenCalledWith(
+			1,
+			'approved_by',
+			'Current User'
+		);
+	});
+
+	it('offers IFA in the status dropdown options', () => {
+		render(<DocumentsIssuedTab {...baseProps} />, {
+			wrapper: createWrapper(),
+		});
+		const addStatusSelect = screen.getByRole('combobox', {
+			name: 'Status',
+		});
+		expect(
+			within(addStatusSelect as HTMLSelectElement).getByRole('option', {
+				name: /IFA/,
+			})
+		).toBeInTheDocument();
 	});
 
 	it('does not autofill Approved By without approved_by edit permission', async () => {
@@ -182,7 +225,7 @@ describe('DocumentsIssuedTab', () => {
 			{ wrapper: createWrapper() }
 		);
 		await user.click(screen.getByTitle('Edit document'));
-		await user.selectOptions(screen.getByDisplayValue('IFC'), 'IFD');
+		await user.selectOptions(getEditStatusSelect(), 'IFD');
 		expect(updateIssuedDocument).toHaveBeenCalledWith(1, 'status', 'IFD');
 		expect(updateIssuedDocument).not.toHaveBeenCalledWith(
 			1,
@@ -206,7 +249,7 @@ describe('DocumentsIssuedTab', () => {
 			{ wrapper: createWrapper() }
 		);
 		await user.click(screen.getByTitle('Edit document'));
-		await user.selectOptions(screen.getByDisplayValue('IFC'), 'IFI');
+		await user.selectOptions(getEditStatusSelect(), 'IFI');
 		expect(updateIssuedDocument).toHaveBeenCalledWith(1, 'status', 'IFI');
 		expect(updateIssuedDocument).not.toHaveBeenCalledWith(
 			1,

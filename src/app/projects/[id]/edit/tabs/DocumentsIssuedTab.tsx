@@ -3,9 +3,15 @@
 import { useState } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CheckIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import {
+	CheckIcon,
+	DocumentTextIcon,
+	PencilIcon,
+	XMarkIcon,
+} from '@heroicons/react/24/outline';
 import SearchableSelect from '@/components/ui/searchable-select';
 import { apiGet } from '@/lib/api-client';
+import { formatDate } from '@/lib/format';
 import type { ApiListResponse } from '@/types/admin';
 
 interface IssuedDocRow {
@@ -51,7 +57,23 @@ interface DocumentsIssuedTabProps {
 	signaturePermissions: SignaturePermissions;
 }
 
-const STATUS_OPTIONS = ['IFI', 'IFR', 'IFD', 'IFC'];
+const STATUS_OPTIONS = ['IFI', 'IFR', 'IFA', 'IFD', 'IFC'];
+
+const STATUS_LABELS: Record<string, string> = {
+	IFI: 'Issued for Information',
+	IFR: 'Issued for Review',
+	IFA: 'Issued for Approval',
+	IFD: 'Issued for Design',
+	IFC: 'Issued for Construction',
+};
+
+const STATUS_BADGE_CLASSES: Record<string, string> = {
+	IFI: 'bg-blue-100 text-blue-700',
+	IFR: 'bg-amber-100 text-amber-700',
+	IFA: 'bg-yellow-100 text-yellow-700',
+	IFD: 'bg-purple-100 text-purple-700',
+	IFC: 'bg-green-100 text-green-700',
+};
 
 interface SelectOption {
 	value: string;
@@ -66,6 +88,19 @@ const withKeepValue = (
 	current && !options.some((o) => o.value === current)
 		? [{ value: current, label: current }, ...options]
 		: options;
+
+function StatusBadge({ status }: { status: string }) {
+	if (!status) return <span className="text-gray-400">—</span>;
+	const tone = STATUS_BADGE_CLASSES[status] ?? 'bg-gray-100 text-gray-700';
+	return (
+		<span
+			title={STATUS_LABELS[status] ?? status}
+			className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone}`}
+		>
+			{status}
+		</span>
+	);
+}
 
 export default function DocumentsIssuedTab({
 	newIssuedDescRef,
@@ -110,7 +145,7 @@ export default function DocumentsIssuedTab({
 			updateIssuedDocument(d.id, 'checked_by', sessionUserName);
 		}
 		if (
-			(value === 'IFC' || value === 'IFD') &&
+			(value === 'IFC' || value === 'IFD' || value === 'IFA') &&
 			!d.approved_by &&
 			canSign('approved_by')
 		) {
@@ -124,23 +159,33 @@ export default function DocumentsIssuedTab({
 	) => setNewIssuedDoc((prev) => ({ ...prev, [field]: value }));
 
 	const addRowInputClass =
-		'w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]';
+		'w-full text-sm px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed';
 	const rowInputClass =
-		'w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]';
+		'w-full text-sm px-2 py-1 border border-gray-200 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed';
+
+	const renderStatusOptions = (keepValue?: string) => (
+		<>
+			<option value="">Select Status</option>
+			{keepValue && !STATUS_OPTIONS.includes(keepValue) && (
+				<option value={keepValue}>{keepValue}</option>
+			)}
+			{STATUS_OPTIONS.map((s) => (
+				<option key={s} value={s}>
+					{s} – {STATUS_LABELS[s]}
+				</option>
+			))}
+		</>
+	);
 
 	const renderAddStatusSelect = () => (
 		<select
 			value={newIssuedDoc.status}
 			onChange={(e) => updateNewIssued('status', e.target.value)}
-			className={`${addRowInputClass} bg-white`}
+			aria-label="Status"
+			className={`${addRowInputClass} bg-white cursor-pointer`}
 			disabled={!canEditProjectContent}
 		>
-			<option value="">Select Status</option>
-			{STATUS_OPTIONS.map((s) => (
-				<option key={s} value={s}>
-					{s}
-				</option>
-			))}
+			{renderStatusOptions()}
 		</select>
 	);
 
@@ -148,18 +193,11 @@ export default function DocumentsIssuedTab({
 		<select
 			value={d.status || ''}
 			onChange={(e) => handleStatusChange(d, e.target.value)}
-			className={`${rowInputClass} bg-white`}
+			aria-label="Status"
+			className={`${rowInputClass} bg-white cursor-pointer`}
 			disabled={!canEditProjectContent}
 		>
-			<option value="">Select Status</option>
-			{d.status && !STATUS_OPTIONS.includes(d.status) && (
-				<option value={d.status}>{d.status}</option>
-			)}
-			{STATUS_OPTIONS.map((s) => (
-				<option key={s} value={s}>
-					{s}
-				</option>
-			))}
+			{renderStatusOptions(d.status)}
 		</select>
 	);
 
@@ -168,28 +206,25 @@ export default function DocumentsIssuedTab({
 
 	return (
 		<section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-			<div className="px-6 py-3 bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
-				<div className="flex items-center gap-2">
-					<svg
-						className="h-4 w-4 text-[#7F2487]"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						<path
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							strokeWidth={2}
-							d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+			<div className="px-6 py-3 bg-gradient-to-r from-purple-50 to-white border-b border-purple-100 flex items-center justify-between gap-4">
+				<div className="min-w-0">
+					<div className="flex items-center gap-2">
+						<DocumentTextIcon
+							className="h-4 w-4 text-[#7F2487]"
+							aria-hidden="true"
 						/>
-					</svg>
-					<h2 className="text-sm font-bold text-gray-900">
-						List of Deliverables
-					</h2>
+						<h2 className="text-sm font-bold text-gray-900">
+							List of Deliverables
+						</h2>
+					</div>
+					<p className="text-xs text-gray-600 mt-0.5">
+						Track deliverables issued to client
+					</p>
 				</div>
-				<p className="text-xs text-gray-600 mt-0.5">
-					Track deliverables issued to client
-				</p>
+				<span className="shrink-0 rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">
+					{documentsIssued.length} deliverable
+					{documentsIssued.length === 1 ? '' : 's'}
+				</span>
 			</div>
 
 			<div className="px-4 py-4 sm:px-6 sm:py-5">
@@ -206,62 +241,112 @@ export default function DocumentsIssuedTab({
 							</caption>
 							<thead className="bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
 								<tr>
-									<th className="text-center py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-center py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Sr No
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Document No
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Discipline
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Category
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Deliverable Name
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Description
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Revision
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Status
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Planned Date
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Actual Date
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Prepared By
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Checked By
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Approved By
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Client Approval
 									</th>
-									<th className="text-left py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-left py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Remarks
 									</th>
-									<th className="text-center py-2 px-2 font-semibold text-gray-700">
+									<th
+										scope="col"
+										className="text-center py-2.5 px-2 font-semibold text-gray-700 whitespace-nowrap"
+									>
 										Action
 									</th>
 								</tr>
 							</thead>
 							<tbody>
 								<tr className="bg-purple-50/30 border-b-2 border-purple-100">
-									<td className="py-2 px-2 text-center text-gray-400 font-semibold">
-										+
+									<td className="py-2.5 px-2 text-center">
+										<span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700">
+											+
+										</span>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											ref={newIssuedDescRef}
 											type="text"
@@ -274,7 +359,7 @@ export default function DocumentsIssuedTab({
 											disabled={!canEditProjectContent}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											type="text"
 											value={newIssuedDoc.discipline}
@@ -286,7 +371,7 @@ export default function DocumentsIssuedTab({
 											disabled={!canEditProjectContent}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<SearchableSelect
 											options={categoryOptions}
 											value={newIssuedDoc.category}
@@ -296,7 +381,7 @@ export default function DocumentsIssuedTab({
 											disabled={!canEditProjectContent}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											type="text"
 											value={newIssuedDoc.document_name}
@@ -308,7 +393,7 @@ export default function DocumentsIssuedTab({
 											disabled={!canEditProjectContent}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											type="text"
 											value={newIssuedDoc.description}
@@ -320,7 +405,7 @@ export default function DocumentsIssuedTab({
 											disabled={!canEditProjectContent}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											type="text"
 											value={newIssuedDoc.revision_number}
@@ -332,8 +417,8 @@ export default function DocumentsIssuedTab({
 											disabled={!canEditProjectContent}
 										/>
 									</td>
-									<td className="py-2 px-2">{renderAddStatusSelect()}</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">{renderAddStatusSelect()}</td>
+									<td className="py-2.5 px-2">
 										<input
 											type="date"
 											value={newIssuedDoc.planned_date}
@@ -344,7 +429,7 @@ export default function DocumentsIssuedTab({
 											disabled={!canEditProjectContent}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											type="date"
 											value={newIssuedDoc.actual_date}
@@ -355,7 +440,7 @@ export default function DocumentsIssuedTab({
 											disabled={!canEditProjectContent}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											type="text"
 											value={newIssuedDoc.prepared_by}
@@ -367,7 +452,7 @@ export default function DocumentsIssuedTab({
 											disabled={signatureDisabled('prepared_by')}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											type="text"
 											value={newIssuedDoc.checked_by}
@@ -379,7 +464,7 @@ export default function DocumentsIssuedTab({
 											disabled={signatureDisabled('checked_by')}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											type="text"
 											value={newIssuedDoc.approved_by}
@@ -391,7 +476,7 @@ export default function DocumentsIssuedTab({
 											disabled={signatureDisabled('approved_by')}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											type="text"
 											value={newIssuedDoc.client_approval}
@@ -403,7 +488,7 @@ export default function DocumentsIssuedTab({
 											disabled={signatureDisabled('client_approval')}
 										/>
 									</td>
-									<td className="py-2 px-2">
+									<td className="py-2.5 px-2">
 										<input
 											type="text"
 											value={newIssuedDoc.remarks}
@@ -415,7 +500,7 @@ export default function DocumentsIssuedTab({
 											disabled={!canEditProjectContent}
 										/>
 									</td>
-									<td className="py-2 px-2 text-center">
+									<td className="py-2.5 px-2 text-center">
 										<button
 											type="button"
 											onClick={addIssuedDocument}
@@ -425,24 +510,40 @@ export default function DocumentsIssuedTab({
 													newIssuedDoc.document_name.trim()
 												)
 											}
-											className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newIssuedDoc.document_name && newIssuedDoc.document_name.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+											className={`px-3 py-1.5 rounded-lg font-medium text-sm transition active:scale-[0.96] ${newIssuedDoc.document_name && newIssuedDoc.document_name.trim() ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
 											title="Add document"
 										>
 											Add
 										</button>
 									</td>
 								</tr>
+								{documentsIssued.length === 0 && (
+									<tr>
+										<td colSpan={16} className="px-4 py-12 text-center">
+											<DocumentTextIcon
+												className="mx-auto h-8 w-8 text-gray-300"
+												aria-hidden="true"
+											/>
+											<p className="mt-2 text-sm font-medium text-gray-900">
+												No deliverables yet
+											</p>
+											<p className="mt-1 text-xs text-gray-500">
+												Add the first deliverable using the form above.
+											</p>
+										</td>
+									</tr>
+								)}
 								{documentsIssued.map((d, index) => (
 									<tr
 										key={d.id}
 										className="hover:bg-gray-50 transition-colors align-top"
 									>
-										<td className="py-2 px-2 text-center text-gray-900">
+										<td className="py-2.5 px-2 text-center text-gray-900 whitespace-nowrap">
 											{index + 1}
 										</td>
 										{editingId === d.id ? (
 											<>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="text"
 														value={d.document_number || ''}
@@ -457,7 +558,7 @@ export default function DocumentsIssuedTab({
 														disabled={!canEditProjectContent}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="text"
 														value={d.discipline || ''}
@@ -472,7 +573,7 @@ export default function DocumentsIssuedTab({
 														disabled={!canEditProjectContent}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<SearchableSelect
 														options={withKeepValue(categoryOptions, d.category)}
 														value={d.category || ''}
@@ -484,7 +585,7 @@ export default function DocumentsIssuedTab({
 														disabled={!canEditProjectContent}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="text"
 														value={d.document_name || ''}
@@ -499,7 +600,7 @@ export default function DocumentsIssuedTab({
 														disabled={!canEditProjectContent}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="text"
 														value={d.description || ''}
@@ -514,7 +615,7 @@ export default function DocumentsIssuedTab({
 														disabled={!canEditProjectContent}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="text"
 														value={d.revision_number || ''}
@@ -529,10 +630,10 @@ export default function DocumentsIssuedTab({
 														disabled={!canEditProjectContent}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													{renderEditStatusSelect(d)}
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="date"
 														value={d.planned_date || ''}
@@ -547,7 +648,7 @@ export default function DocumentsIssuedTab({
 														disabled={!canEditProjectContent}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="date"
 														value={d.actual_date || ''}
@@ -562,7 +663,7 @@ export default function DocumentsIssuedTab({
 														disabled={!canEditProjectContent}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="text"
 														value={d.prepared_by || ''}
@@ -577,7 +678,7 @@ export default function DocumentsIssuedTab({
 														disabled={signatureDisabled('prepared_by')}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="text"
 														value={d.checked_by || ''}
@@ -592,7 +693,7 @@ export default function DocumentsIssuedTab({
 														disabled={signatureDisabled('checked_by')}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="text"
 														value={d.approved_by || ''}
@@ -607,7 +708,7 @@ export default function DocumentsIssuedTab({
 														disabled={signatureDisabled('approved_by')}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="text"
 														value={d.client_approval || ''}
@@ -622,7 +723,7 @@ export default function DocumentsIssuedTab({
 														disabled={signatureDisabled('client_approval')}
 													/>
 												</td>
-												<td className="py-2 px-2">
+												<td className="py-2.5 px-2">
 													<input
 														type="text"
 														value={d.remarks || ''}
@@ -640,81 +741,87 @@ export default function DocumentsIssuedTab({
 											</>
 										) : (
 											<>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.document_number || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.discipline || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.category || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.document_name || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.description || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.revision_number || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
-													{d.status || '—'}
+												<td className="py-2.5 px-2">
+													<StatusBadge status={d.status} />
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
-													{d.planned_date || '—'}
+												<td className="py-2.5 px-2 text-gray-900 whitespace-nowrap">
+													{formatDate(d.planned_date)}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
-													{d.actual_date || '—'}
+												<td className="py-2.5 px-2 text-gray-900 whitespace-nowrap">
+													{formatDate(d.actual_date)}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.prepared_by || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.checked_by || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.approved_by || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.client_approval || '—'}
 												</td>
-												<td className="py-2 px-2 text-gray-900 break-words">
+												<td className="py-2.5 px-2 text-gray-900 break-words">
 													{d.remarks || '—'}
 												</td>
 											</>
 										)}
-										<td className="py-2 px-2 text-center">
+										<td className="py-2.5 px-2 text-center">
 											<div className="inline-flex items-center gap-1">
 												{editingId === d.id ? (
 													<button
 														type="button"
 														onClick={() => setEditingId(null)}
-														className="p-1 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+														className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition active:scale-[0.96] disabled:opacity-40 disabled:cursor-not-allowed"
 														title="Done editing"
+														aria-label="Done editing"
 														disabled={!canEditProjectContent}
 													>
-														<CheckIcon className="h-4 w-4" />
+														<CheckIcon className="h-4 w-4" aria-hidden="true" />
 													</button>
 												) : (
 													<button
 														type="button"
 														onClick={() => setEditingId(d.id)}
-														className="p-1 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+														className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition active:scale-[0.96] disabled:opacity-40 disabled:cursor-not-allowed"
 														title="Edit document"
+														aria-label="Edit document"
 														disabled={!canEditProjectContent}
 													>
-														<PencilIcon className="h-4 w-4" />
+														<PencilIcon
+															className="h-4 w-4"
+															aria-hidden="true"
+														/>
 													</button>
 												)}
 												<button
 													type="button"
 													onClick={() => removeIssuedDocument(d.id)}
-													className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+													className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition active:scale-[0.96] disabled:opacity-40 disabled:cursor-not-allowed"
 													title="Remove document"
+													aria-label="Remove document"
 													disabled={!canEditProjectContent}
 												>
-													<XMarkIcon className="h-4 w-4" />
+													<XMarkIcon className="h-4 w-4" aria-hidden="true" />
 												</button>
 											</div>
 										</td>
