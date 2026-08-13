@@ -132,7 +132,6 @@ describe('user activity assignments PUT', () => {
 	it('preserves extra daily_entries fields (isLocked) when updating', async () => {
 		mocks.mockExecute
 			.mockResolvedValueOnce([[{ id: 'row-1' }]]) // existing assignment
-			.mockResolvedValueOnce([[]]) // day-hours lookup: no other assignments
 			.mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE
 
 		const response = await PUT(
@@ -164,44 +163,6 @@ describe('user activity assignments PUT', () => {
 				remarks: '',
 			},
 		]);
-	});
-
-	it('rejects daily_entries that push a calendar day over the 12h cap', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce([[{ id: 'row-1' }]]) // existing assignment
-			// Another assignment already logged 10h on the same date; the
-			// update's own row (row-1) is excluded because it is replaced.
-			.mockResolvedValueOnce([
-				[
-					{
-						id: 'row-2',
-						project_id: 9,
-						activity_id: 'a9',
-						daily_entries: JSON.stringify([
-							{ date: '2026-08-10', hours: 10, qty_done: 5 },
-						]),
-					},
-				],
-			]);
-
-		const response = await PUT(
-			putRequest({
-				project_id: '1',
-				activity_id: 'a1',
-				daily_entries: [{ date: '2026-08-10', qty_done: '1', hours: '8' }],
-			}),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(400);
-		expect(body.success).toBe(false);
-		expect(String(body.error)).toContain('2026-08-10');
-		expect(
-			mocks.mockExecute.mock.calls.some(([sql]) =>
-				String(sql).startsWith('UPDATE user_activity_assignments')
-			)
-		).toBe(false); // nothing was written
 	});
 });
 
@@ -310,11 +271,9 @@ describe('user activity assignments PATCH (self-service add)', () => {
 		expect(insert[1][2]).toBeNull(); // employee_id null when unlinked
 	});
 
-	it('allows planned hours over the per-day cap (planned, not actual hours)', async () => {
+	it('allows planned hours for a multi-day activity', async () => {
 		// The self-service add records PLANNED manhours for a whole activity;
-		// multi-day tasks routinely exceed MAX_DAY_HOURS and must not 400.
-		// No day-hours lookup is issued — the cap applies only to
-		// actual-hours writers (PUT progress updates, project-edit sync).
+		// multi-day tasks routinely exceed a single day's hours.
 		mocks.mockExecute
 			.mockResolvedValueOnce([
 				[{ project_id: 1, project_activities_list: '[]' }],
