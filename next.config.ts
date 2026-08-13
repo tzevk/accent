@@ -30,6 +30,22 @@ const nextConfig: NextConfig = {
 
 	// Generate source maps only in development
 	productionBrowserSourceMaps: false,
+
+	// SEC-02: user content under /uploads is always a server-rasterized PNG
+	// (see src/app/api/uploads/route.js); never let a browser sniff or render
+	// it inline. Content-Disposition: attachment makes direct navigation
+	// download instead of display; <img> subresource loads are unaffected.
+	async headers() {
+		return [
+			{
+				source: '/uploads/:path*',
+				headers: [
+					{ key: 'X-Content-Type-Options', value: 'nosniff' },
+					{ key: 'Content-Disposition', value: 'attachment' },
+				],
+			},
+		];
+	},
 };
 
 export default nextConfig;
