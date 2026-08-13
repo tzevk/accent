@@ -55,6 +55,16 @@ function secretsEqual(a: string, b: string): boolean {
 	return crypto.timingSafeEqual(digestA, digestB);
 }
 
+/**
+ * Smart Office leaves template tokens verbatim when it can't substitute
+ * them (seen live: "$$SerialNumber$$", "$$MachineLocation$$"). Such values
+ * are config artifacts, not real data — reject the record so literal
+ * tokens can't poison the unique key or the report's device list.
+ */
+function isUnresolvedToken(value: string): boolean {
+	return /^\$\$[\w]*\$\$$/.test(value);
+}
+
 /** Normalize one raw punch; returns null when required fields are missing. */
 function parsePunch(value: unknown): ParsedPunch | null {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -65,6 +75,13 @@ function parsePunch(value: unknown): ParsedPunch | null {
 	const serialNumber =
 		typeof raw.serialNumber === 'string' ? raw.serialNumber.trim() : '';
 	if (!employeeCode || !logDate || !serialNumber) return null;
+	if (
+		isUnresolvedToken(employeeCode) ||
+		isUnresolvedToken(logDate) ||
+		isUnresolvedToken(serialNumber)
+	) {
+		return null;
+	}
 	return {
 		record: {
 			employeeCode,
@@ -167,7 +184,8 @@ export async function POST(request: Request) {
 		else
 			skipped.push({
 				index,
-				reason: 'missing employeeCode/logDate/serialNumber or wrong type',
+				reason:
+					'missing employeeCode/logDate/serialNumber, wrong type, or unresolved $$ template token',
 			});
 	});
 

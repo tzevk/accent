@@ -237,4 +237,19 @@ describe('attendance webhook defensive parsing', () => {
 		expect(json).toMatchObject({ success: true, inserted: 0, skipped: 1 });
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
+
+	it('skips records with unresolved Smart Office template tokens', async () => {
+		// Live evidence: Smart Office left $$SerialNumber$$ / $$MachineLocation$$
+		// verbatim in the pushed body instead of substituting them.
+		const res = await post({
+			employeeCode: '1',
+			logDate: '2022-01-01 09:01:01',
+			serialNumber: '$$SerialNumber$$',
+			direction: 'in',
+		});
+		expect(res.status).toBe(200);
+		const json = await res.json();
+		expect(json).toMatchObject({ success: true, inserted: 0, skipped: 1 });
+		expect(mockExecute).not.toHaveBeenCalled();
+	});
 });
