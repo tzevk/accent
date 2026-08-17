@@ -51,6 +51,7 @@ repomix-output.xml
 test-connection.js
 .kilo/
 docs/extras
+setup.sh
 
 # Logs
 logs
