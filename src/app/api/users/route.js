@@ -29,7 +29,11 @@ export async function GET(request) {
 		db = await dbConnect();
 
 		const [rows] = await db.execute(
-			`SELECT u.*, 
+			`SELECT u.id, u.username, u.email, u.full_name, u.role_id,
+              u.employee_id, u.vendor_id, u.account_type, u.department,
+              u.is_active, u.status, u.is_super_admin,
+              u.permissions, u.field_permissions,
+              u.created_at, u.last_login, u.last_password_change,
               CONCAT(e.first_name, ' ', e.last_name) AS employee_name, 
               e.employee_id as employee_code,
               e.department as employee_department,
@@ -226,16 +230,19 @@ export async function POST(request) {
 		);
 
 		const [rows] = await db.execute(
-			`
-      SELECT u.*, 
-             CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
-             v.vendor_name,
-             r.role_name, r.role_code
-      FROM users u
-      LEFT JOIN employees e ON u.employee_id = e.id
-      LEFT JOIN vendors v ON u.vendor_id = v.id
-      LEFT JOIN roles_master r ON u.role_id = r.id
-      WHERE u.id = ?`,
+			`SELECT u.id, u.username, u.email, u.full_name, u.role_id,
+              u.employee_id, u.vendor_id, u.account_type, u.department,
+              u.is_active, u.status, u.is_super_admin,
+              u.permissions, u.field_permissions,
+              u.created_at, u.last_login, u.last_password_change,
+              CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+              v.vendor_name,
+              r.role_name, r.role_code
+       FROM users u
+       LEFT JOIN employees e ON u.employee_id = e.id
+       LEFT JOIN vendors v ON u.vendor_id = v.id
+       LEFT JOIN roles_master r ON u.role_id = r.id
+       WHERE u.id = ?`,
 			[result.insertId]
 		);
 
@@ -401,7 +408,12 @@ export async function PUT(request) {
 		invalidateUserCache(data.id);
 
 		const [rows] = await db.execute(
-			'SELECT * FROM users WHERE id = ? AND isDelete = 0',
+			`SELECT id, username, email, full_name, role_id,
+              employee_id, vendor_id, account_type, department,
+              is_active, status, is_super_admin,
+              permissions, field_permissions,
+              created_at, last_login, last_password_change
+       FROM users WHERE id = ? AND isDelete = 0`,
 			[data.id]
 		);
 

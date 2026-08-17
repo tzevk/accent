@@ -84,7 +84,17 @@ export async function GET(request) {
 		const offsetNum = Math.max(0, offset);
 		const [employees] = await connection.execute(
 			`SELECT 
-        e.*,
+        e.id, e.employee_id, e.first_name, e.middle_name, e.last_name, e.username,
+        e.email, e.personal_email, e.phone, e.mobile, e.gender, e.dob, e.marital_status,
+        e.department, e.position, e.designation, e.role, e.employee_type, e.grade, e.level,
+        e.workplace, e.status, e.employment_status, e.hire_date, e.joining_date, e.exit_date, e.exit_reason,
+        e.manager_id, e.reporting_to, e.deputation_company_id, e.company_name, e.profile_photo_url,
+        e.present_address, e.address, e.city, e.state, e.pin, e.country,
+        e.emergency_contact_name, e.emergency_contact_phone,
+        e.qualification, e.institute, e.passing_year, e.work_experience, e.notes,
+        e.bonus_eligible, e.stat_pf, e.stat_mlwf, e.stat_pt, e.stat_esic, e.stat_tds,
+        e.attendance_id, e.biometric_code, e.device_code, e.smartoffice_code, e.smartoffice_status,
+        e.created_at, e.updated_at,
         CONCAT(m.first_name, ' ', m.last_name) as manager_name
        FROM employees e
        LEFT JOIN employees m ON e.manager_id = m.id

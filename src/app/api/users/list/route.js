@@ -51,7 +51,11 @@ export async function GET(request) {
 			const [usersResult, countResult, statsResult] = await Promise.all([
 				// 1. Users with employee and role info
 				db.execute(
-					`SELECT u.*, 
+					`SELECT u.id, u.username, u.email, u.full_name, u.role_id,
+                  u.employee_id, u.vendor_id, u.account_type, u.department,
+                  u.is_active, u.status, u.is_super_admin,
+                  u.permissions, u.field_permissions,
+                  u.created_at, u.last_login, u.last_password_change,
                   CONCAT(e.first_name, ' ', e.last_name) AS employee_name, 
                   e.employee_id as employee_code,
                   e.department as employee_department,
