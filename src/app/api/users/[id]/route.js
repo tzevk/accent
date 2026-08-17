@@ -34,8 +34,11 @@ export async function GET(request, { params }) {
 		db = await dbConnect();
 
 		const [rows] = await db.execute(
-			`
-      SELECT u.*, 
+			`SELECT u.id, u.username, u.email, u.full_name, u.role_id,
+             u.employee_id, u.vendor_id, u.account_type, u.department,
+             u.is_active, u.status, u.is_super_admin,
+             u.permissions, u.field_permissions,
+             u.created_at, u.last_login, u.last_password_change,
              CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
              e.first_name, e.last_name, e.email as employee_email, e.department as employee_department,
              r.role_name, r.role_code
@@ -43,8 +46,7 @@ export async function GET(request, { params }) {
       LEFT JOIN employees e ON u.employee_id = e.id
       LEFT JOIN roles_master r ON u.role_id = r.id
       WHERE u.id = ? AND u.isDelete = 0
-      LIMIT 1
-    `,
+      LIMIT 1`,
 			[id]
 		);
 
@@ -207,15 +209,17 @@ export async function PUT(request, { params }) {
 
 		// Fetch updated user
 		const [rows] = await db.execute(
-			`
-      SELECT u.*, 
+			`SELECT u.id, u.username, u.email, u.full_name, u.role_id,
+             u.employee_id, u.vendor_id, u.account_type, u.department,
+             u.is_active, u.status, u.is_super_admin,
+             u.permissions, u.field_permissions,
+             u.created_at, u.last_login, u.last_password_change,
              CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
              r.role_name, r.role_code
       FROM users u
       LEFT JOIN employees e ON u.employee_id = e.id
       LEFT JOIN roles_master r ON u.role_id = r.id
-      WHERE u.id = ? AND u.isDelete = 0
-    `,
+      WHERE u.id = ? AND u.isDelete = 0`,
 			[id]
 		);
 

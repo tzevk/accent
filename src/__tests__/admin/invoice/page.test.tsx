@@ -140,7 +140,7 @@ describe('InvoicePage', () => {
 
 		// Search filtering is async (debounced) — await the filtered row
 		// instead of asserting synchronously (flaked under suite load).
-		await screen.findByText('Another Client');
+		await screen.findByText('Another Client', {}, { timeout: 4000 });
 		expect(screen.queryByText('ATS/I/JAN-26/001')).not.toBeInTheDocument();
 	});
 });

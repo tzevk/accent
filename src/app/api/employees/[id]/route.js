@@ -5,7 +5,54 @@ import {
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
 } from '@/utils/api-permissions';
+import { checkPermission } from '@/utils/permissions';
 
+const EMPLOYEE_COLUMNS = `
+  id, employee_id, first_name, middle_name, last_name, username,
+  email, personal_email, phone, mobile, gender, dob, marital_status,
+  department, position, designation, role, employee_type, grade, level,
+  workplace, status, employment_status, hire_date, joining_date, exit_date, exit_reason,
+  manager_id, reporting_to, deputation_company_id, company_name, profile_photo_url,
+  present_address, address, city, state, pin, country,
+  emergency_contact_name, emergency_contact_phone,
+  qualification, institute, passing_year, work_experience, notes,
+  bonus_eligible, stat_pf, stat_mlwf, stat_pt, stat_esic, stat_tds,
+  attendance_id, biometric_code, device_code, smartoffice_code, smartoffice_status,
+  bank_account_no, bank_ifsc, bank_name, bank_branch, account_holder_name,
+  pan, aadhar, gratuity_no, uan, esi_no, pf_no,
+  created_at, updated_at
+`;
+
+function sanitizeEmployeePII(employee, authUser) {
+	if (!employee) return employee;
+	const isSelf =
+		authUser?.employee_id &&
+		Number(authUser.employee_id) === Number(employee.id);
+	const isSuperAdmin = !!authUser?.is_super_admin;
+	const hasPayrollRead = checkPermission(
+		authUser,
+		API_RESOURCES.PAYROLL,
+		API_PERMISSIONS.READ
+	);
+
+	if (isSelf || isSuperAdmin || hasPayrollRead) {
+		return employee;
+	}
+
+	const sanitized = { ...employee };
+	delete sanitized.bank_account_no;
+	delete sanitized.bank_ifsc;
+	delete sanitized.bank_name;
+	delete sanitized.bank_branch;
+	delete sanitized.account_holder_name;
+	delete sanitized.pan;
+	delete sanitized.aadhar;
+	delete sanitized.gratuity_no;
+	delete sanitized.uan;
+	delete sanitized.esi_no;
+	delete sanitized.pf_no;
+	return sanitized;
+}
 // GET - fetch single employee by ID
 export async function GET(request, { params }) {
 	let db;
@@ -30,9 +77,7 @@ export async function GET(request, { params }) {
 		db = await dbConnect();
 
 		const [rows] = await db.execute(
-			`
-      SELECT * FROM employees WHERE id = ? AND isDelete = 0 LIMIT 1
-    `,
+			`SELECT ${EMPLOYEE_COLUMNS} FROM employees WHERE id = ? AND isDelete = 0 LIMIT 1`,
 			[id]
 		);
 
@@ -47,7 +92,7 @@ export async function GET(request, { params }) {
 
 		return NextResponse.json({
 			success: true,
-			data: rows[0],
+			data: sanitizeEmployeePII(rows[0], auth.user),
 		});
 	} catch (error) {
 		console.error('Error fetching employee:', error);
@@ -158,14 +203,14 @@ export async function PUT(request, { params }) {
 
 		// Fetch updated employee
 		const [rows] = await db.execute(
-			'SELECT * FROM employees WHERE id = ? AND isDelete = 0',
+			`SELECT ${EMPLOYEE_COLUMNS} FROM employees WHERE id = ? AND isDelete = 0`,
 			[id]
 		);
 		await db.release();
 
 		return NextResponse.json({
 			success: true,
-			data: rows[0],
+			data: sanitizeEmployeePII(rows[0], auth.user),
 			message: 'Employee updated successfully',
 		});
 	} catch (error) {
