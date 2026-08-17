@@ -9,7 +9,7 @@ import {
 	validateUserGrants,
 } from '@/utils/api-permissions';
 import { hashPassword } from '@/utils/password';
-
+import { revokeAllUserSessions } from '@/utils/session';
 // GET - list users with optional pagination and role information
 export async function GET(request) {
 	let db;
@@ -342,6 +342,7 @@ export async function PUT(request) {
 			'field_permissions',
 			'full_name',
 			'status',
+			'is_active',
 			'department',
 		];
 
@@ -363,6 +364,9 @@ export async function PUT(request) {
 					// Convert empty strings to NULL for integer fields
 					fields.push(`${k} = ?`);
 					vals.push(data[k] === '' || data[k] === null ? null : data[k]);
+				} else if (k === 'is_active') {
+					fields.push('is_active = ?');
+					vals.push(data.is_active ? 1 : 0);
 				} else {
 					fields.push(`${k} = ?`);
 					vals.push(data[k]);
@@ -382,6 +386,15 @@ export async function PUT(request) {
 			`UPDATE users SET ${fields.join(', ')} WHERE id = ? AND isDelete = 0`,
 			vals
 		);
+		// If user was deactivated, revoke all active sessions immediately (SEC-05)
+		const isDeactivating =
+			data.is_active === false ||
+			data.is_active === 0 ||
+			data.is_active === '0' ||
+			data.status === 'inactive';
+		if (isDeactivating) {
+			await revokeAllUserSessions(db, data.id);
+		}
 
 		// Invalidate the in-memory user cache so permission changes reflect
 		// immediately instead of after the 5-minute TTL expires.
@@ -455,6 +468,8 @@ export async function DELETE(request) {
 			'UPDATE users SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]
 		);
+		// Revoke all sessions for deleted user (SEC-05)
+		await revokeAllUserSessions(db, id);
 
 		// Drop cached permissions so a deleted user's session stops being honored.
 		invalidateUserCache(id);

@@ -129,9 +129,53 @@ describe('SEC-03 regression — session_permissions fast path is gone', () => {
 			PERMISSIONS.READ
 		);
 
-		expect(res.status).toBe(401);
-		const body = await res.json();
-		expect(body.error).toBe('Unauthorized');
+		expect(res).toBeInstanceOf(Response);
+		if (res instanceof Response) {
+			expect(res.status).toBe(401);
+			const body = await res.json();
+			expect(body.error).toBe('Unauthorized');
+		}
 		expect(mockDbConnect).not.toHaveBeenCalled();
+	});
+});
+describe('SEC-05 regression — deactivated users lose API access', () => {
+	const token = 'd'.repeat(64);
+
+	it('getCurrentUser query filters for active user and returns null if is_active is 0', async () => {
+		const inactiveRow = { ...baseUserRow, is_active: 0 };
+		mockExecute.mockResolvedValueOnce([[inactiveRow], {}]);
+
+		const user = await getCurrentUser(makeRequest({ session: token }));
+		expect(user).toBeNull();
+
+		const [sql] = mockExecute.mock.calls[0];
+		expect(sql).toContain('u.is_active = 1 OR u.is_active IS NULL');
+		expect(sql).toContain("u.status = 'active' OR u.status IS NULL");
+	});
+
+	it('getCurrentUser returns null if status is inactive', async () => {
+		const inactiveRow = { ...baseUserRow, status: 'inactive' };
+		mockExecute.mockResolvedValueOnce([[inactiveRow], {}]);
+
+		const user = await getCurrentUser(makeRequest({ session: token }));
+		expect(user).toBeNull();
+	});
+
+	it('ensurePermission returns 401 Unauthorized when user is deactivated', async () => {
+		const inactiveRow = { ...baseUserRow, is_active: 0 };
+		mockExecute.mockResolvedValueOnce([[inactiveRow], {}]);
+
+		const res = await ensurePermission(
+			makeRequest({ session: token }),
+			RESOURCES.LEADS,
+			PERMISSIONS.READ
+		);
+
+		expect(res).toBeInstanceOf(Response);
+		if (res instanceof Response) {
+			expect(res.status).toBe(401);
+			const body = await res.json();
+			expect(body.error).toBe('Unauthorized');
+		}
 	});
 });

@@ -17,7 +17,7 @@ export async function POST(request) {
 		db = await dbConnect();
 
 		const [rows] = await db.execute(
-			'SELECT id, username, password_hash FROM users WHERE username = ? AND isDelete = 0 LIMIT 1',
+			'SELECT id, username, password_hash, is_active, status FROM users WHERE username = ? AND isDelete = 0 AND (is_active = 1 OR is_active IS NULL) AND (status = "active" OR status IS NULL) LIMIT 1',
 			[username]
 		);
 

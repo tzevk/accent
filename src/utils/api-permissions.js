@@ -147,7 +147,11 @@ async function _fetchUserFromDb(tokenHash) {
        JOIN users u ON u.id = s.user_id
        LEFT JOIN roles_master r ON u.role_id = r.id
        LEFT JOIN employees e ON u.employee_id = e.id
-       WHERE s.token_hash = ? AND s.expires_at > NOW() AND u.isDelete = 0
+       WHERE s.token_hash = ?
+         AND s.expires_at > NOW()
+         AND u.isDelete = 0
+         AND (u.is_active = 1 OR u.is_active IS NULL)
+         AND (u.status = 'active' OR u.status IS NULL)
        LIMIT 1`,
 			[tokenHash]
 		);
@@ -155,6 +159,12 @@ async function _fetchUserFromDb(tokenHash) {
 		if (!rows || rows.length === 0) return null;
 
 		const row = rows[0];
+		const isActive =
+			(row.is_active === null ||
+				row.is_active === 1 ||
+				row.is_active === true) &&
+			(row.status === 'active' || !row.status);
+		if (!isActive) return null;
 		const userPermissions = safeParse(row.user_permissions, []);
 		const fieldPermissions = stripDisabledModules(
 			safeParse(row.user_field_permissions, {})

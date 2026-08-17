@@ -8,6 +8,7 @@ import {
 	canModifyTargetUser,
 	validateUserGrants,
 } from '@/utils/api-permissions';
+import { revokeAllUserSessions } from '@/utils/session';
 
 // GET - fetch single user by ID
 export async function GET(request, { params }) {
@@ -190,6 +191,15 @@ export async function PUT(request, { params }) {
 			`UPDATE users SET ${updateFields.join(', ')} WHERE id = ? AND isDelete = 0`,
 			updateValues
 		);
+		// If user was deactivated, revoke all active sessions immediately (SEC-05)
+		const isDeactivating =
+			data.is_active === false ||
+			data.is_active === 0 ||
+			data.is_active === '0' ||
+			data.status === 'inactive';
+		if (isDeactivating) {
+			await revokeAllUserSessions(db, id);
+		}
 
 		// Invalidate the in-memory user cache so getCurrentUser picks up
 		// the updated permissions on the next request.
@@ -277,6 +287,8 @@ export async function DELETE(request, { params }) {
 			'UPDATE users SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]
 		);
+		// Revoke all sessions for deleted user (SEC-05)
+		await revokeAllUserSessions(db, id);
 
 		// Drop cached permissions so a deleted user's session stops being honored.
 		invalidateUserCache(id);
