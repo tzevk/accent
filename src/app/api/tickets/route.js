@@ -122,7 +122,7 @@ export async function POST(request) {
 		const {
 			subject,
 			description,
-			category = 'general_request',
+			category = 'other',
 			priority = 'medium',
 		} = body;
 

@@ -19,7 +19,9 @@ vi.mock('@/utils/server-auth', () => ({
 	}),
 }));
 
-const { DELETE: idDELETE } = await import('@/app/api/tickets/[id]/route');
+const { GET: idGET, DELETE: idDELETE } =
+	await import('@/app/api/tickets/[id]/route');
+const { POST } = await import('@/app/api/tickets/route');
 
 type CreateRequestOpts = { url?: string; method?: string; body?: unknown };
 type MockRequest = {
@@ -85,5 +87,64 @@ describe('Tickets — soft delete', () => {
 				expect(sql).toContain('isDelete = 0');
 			}
 		}
+	});
+
+	it('uses a schema-supported category when category is omitted', async () => {
+		mockExecute
+			.mockResolvedValueOnce([[]])
+			.mockResolvedValueOnce([{ insertId: 1 }])
+			.mockResolvedValueOnce([[{ id: 1, category: 'other' }]]);
+
+		const response = await POST(
+			createRequest({
+				method: 'POST',
+				body: {
+					subject: 'Cannot access report',
+					description: 'The report page is unavailable.',
+				},
+			})
+		);
+
+		const json = await response.json();
+		expect(response.status).toBe(200);
+		expect(json.success).toBe(true);
+
+		const insertCall = mockExecute.mock.calls[1] as MockCall;
+		expect(insertCall[1]).toEqual([
+			expect.stringMatching(/^TKT-\d{6}-\d{4}$/),
+			1,
+			'Cannot access report',
+			'The report page is unavailable.',
+			'other',
+			'medium',
+		]);
+	});
+
+	it('returns empty attachments for malformed comment JSON', async () => {
+		mockExecute.mockReset();
+		mockExecute
+			.mockResolvedValueOnce([
+				[{ id: 4, user_id: 1, title: 'Cannot access report' }],
+			])
+			.mockResolvedValueOnce([
+				[
+					{ id: 1, attachments: '' },
+					{ id: 2, attachments: 'not-json' },
+					{ id: 3, attachments: '["file.pdf"]' },
+				],
+			]);
+
+		const response = await idGET(createRequest(), {
+			params: Promise.resolve({ id: '4' }),
+		});
+
+		const json = await response.json();
+		expect(response.status).toBe(200);
+		expect(json.success).toBe(true);
+		expect(json.data.comments).toEqual([
+			{ id: 1, attachments: [] },
+			{ id: 2, attachments: [] },
+			{ id: 3, attachments: ['file.pdf'] },
+		]);
 	});
 });

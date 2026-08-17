@@ -2,6 +2,19 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { getServerAuth } from '@/utils/server-auth';
 
+function parseAttachments(value) {
+	if (!value) return [];
+	if (Array.isArray(value)) return value;
+	if (typeof value !== 'string') return [];
+
+	try {
+		const parsed = JSON.parse(value);
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+
 // GET - Fetch single ticket with comments
 export async function GET(request, { params }) {
 	let connection;
@@ -85,7 +98,7 @@ export async function GET(request, { params }) {
 				...ticket,
 				comments: comments.map((c) => ({
 					...c,
-					attachments: c.attachments ? JSON.parse(c.attachments) : [],
+					attachments: parseAttachments(c.attachments),
 				})),
 			},
 		});
