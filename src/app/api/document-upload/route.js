@@ -1,83 +1,17 @@
 import { NextResponse } from 'next/server';
+import { ensurePermission, PERMISSIONS } from '@/utils/api-permissions';
 import {
-	ensurePermission,
-	RESOURCES,
-	PERMISSIONS,
-} from '@/utils/api-permissions';
+	ENTITY_RESOURCE_MAP,
+	ALLOWED_TYPES,
+	ALLOWED_EXTENSIONS,
+	MAX_FILE_SIZE,
+	verifyEntityExists,
+} from '@/utils/document-helpers';
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '@/utils/database';
-
-export const ENTITY_RESOURCE_MAP = {
-	project: RESOURCES.PROJECTS,
-	purchase_order: RESOURCES.PURCHASE_ORDERS,
-	invoice: RESOURCES.INVOICES,
-};
-
-// Allowed file types for document uploads
-const ALLOWED_TYPES = {
-	'application/pdf': '.pdf',
-	'application/msword': '.doc',
-	'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-		'.docx',
-	'application/vnd.openxmlformats-officedocument.presentationml.presentation':
-		'.pptx',
-	'application/vnd.ms-powerpoint': '.ppt',
-	'application/vnd.ms-excel': '.xls',
-	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
-	'image/jpeg': '.jpg',
-	'image/png': '.png',
-};
-
-const ALLOWED_EXTENSIONS = [
-	'pdf',
-	'doc',
-	'docx',
-	'pptx',
-	'ppt',
-	'xls',
-	'xlsx',
-	'jpg',
-	'jpeg',
-	'png',
-];
-const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
-
-/**
- * Verify whether the referenced entity exists and is not soft-deleted
- */
-export async function verifyEntityExists(entityType, entityId) {
-	const id = parseInt(entityId, 10);
-	if (isNaN(id) || id <= 0) return false;
-
-	if (entityType === 'project') {
-		const [rows] = await query(
-			'SELECT id FROM projects WHERE id = ? AND isDelete = 0',
-			[id]
-		);
-		return Array.isArray(rows) && rows.length > 0;
-	} else if (entityType === 'purchase_order') {
-		const [rows] = await query(
-			'SELECT id FROM purchase_orders WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
-			[id]
-		);
-		if (Array.isArray(rows) && rows.length > 0) return true;
-		const [projectPoRows] = await query(
-			'SELECT id FROM project_purchase_orders WHERE id = ?',
-			[id]
-		);
-		return Array.isArray(projectPoRows) && projectPoRows.length > 0;
-	} else if (entityType === 'invoice') {
-		const [rows] = await query(
-			'SELECT id FROM invoices WHERE id = ? AND isDelete = 0',
-			[id]
-		);
-		return Array.isArray(rows) && rows.length > 0;
-	}
-	return false;
-}
 
 /**
  * POST /api/document-upload
@@ -121,13 +55,14 @@ export async function POST(request) {
 		// RBAC authorization check (SEC-06)
 		const resource = ENTITY_RESOURCE_MAP[entityType];
 		const auth = await ensurePermission(request, resource, PERMISSIONS.UPDATE);
-		if (auth instanceof Response || (auth && typeof auth.status === 'number'))
-			return auth;
-		if (!auth.authorized)
+		if (auth instanceof Response) return auth;
+		if (!auth.authorized) {
 			return NextResponse.json(
 				{ success: false, error: 'Forbidden' },
 				{ status: 403 }
 			);
+		}
+
 		// Verify target entity exists and is active (SEC-06 IDOR check)
 		const exists = await verifyEntityExists(entityType, numericEntityId);
 		if (!exists) {
@@ -256,13 +191,14 @@ export async function GET(request) {
 		// RBAC authorization check (SEC-06)
 		const resource = ENTITY_RESOURCE_MAP[entityType];
 		const auth = await ensurePermission(request, resource, PERMISSIONS.READ);
-		if (auth instanceof Response || (auth && typeof auth.status === 'number'))
-			return auth;
-		if (!auth.authorized)
+		if (auth instanceof Response) return auth;
+		if (!auth.authorized) {
 			return NextResponse.json(
 				{ success: false, error: 'Forbidden' },
 				{ status: 403 }
 			);
+		}
+
 		// Verify target entity exists and is active (SEC-06 IDOR check)
 		const exists = await verifyEntityExists(entityType, numericEntityId);
 		if (!exists) {
@@ -344,7 +280,6 @@ export async function DELETE(request) {
 		);
 		const canDeleteDirectly =
 			!(authDelete instanceof Response) &&
-			!(authDelete && typeof authDelete.status === 'number') &&
 			(authDelete.user?.is_super_admin || authDelete.authorized);
 
 		if (!canDeleteDirectly) {
@@ -353,16 +288,13 @@ export async function DELETE(request) {
 				resource,
 				PERMISSIONS.UPDATE
 			);
-			if (
-				authUpdate instanceof Response ||
-				(authUpdate && typeof authUpdate.status === 'number')
-			)
-				return authUpdate;
-			if (!authUpdate.authorized)
+			if (authUpdate instanceof Response) return authUpdate;
+			if (!authUpdate.authorized) {
 				return NextResponse.json(
 					{ success: false, error: 'Forbidden' },
 					{ status: 403 }
 				);
+			}
 
 			const isOwner =
 				doc.uploaded_by &&

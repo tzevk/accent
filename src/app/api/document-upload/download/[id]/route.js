@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { handleDocumentDownload } from '../route';
+import { handleDocumentDownload } from '@/utils/document-helpers';
 
 /**
  * GET /api/document-upload/download/[id]
