@@ -30,7 +30,7 @@ const PRIORITIES = [
 		description: 'Needs attention',
 	},
 	{
-		value: 'urgent',
+		value: 'critical',
 		label: 'Urgent',
 		color: 'text-red-700',
 		description: 'Critical',

@@ -85,7 +85,7 @@ export async function GET(request) {
 
 		query += ` ORDER BY 
       CASE t.priority 
-        WHEN 'urgent' THEN 1 
+        WHEN 'critical' THEN 1
         WHEN 'high' THEN 2 
         WHEN 'medium' THEN 3 
         WHEN 'low' THEN 4 

@@ -29,7 +29,7 @@ const PRIORITIES = [
 		color: 'bg-orange-100 text-orange-700 border-orange-300',
 	},
 	{
-		value: 'urgent',
+		value: 'critical',
 		label: 'Urgent',
 		color: 'bg-red-100 text-red-700 border-red-300',
 	},
