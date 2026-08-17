@@ -7,6 +7,7 @@ import {
 	invalidateUserCache,
 	validateUserGrants,
 } from '@/utils/api-permissions';
+import { revokeAllUserSessions } from '@/utils/session';
 
 // GET - Fetch all employees
 export async function GET(request) {
@@ -580,14 +581,23 @@ export async function PUT(request) {
 					''
 				).toLowerCase();
 				if (['active', 'inactive', 'terminated'].includes(statusVal)) {
+					const isActive = statusVal === 'active';
 					await connection.execute(
 						'UPDATE users SET is_active = ? , status = ? WHERE employee_id = ?',
-						[
-							statusVal === 'active',
-							statusVal === 'inactive' ? 'inactive' : 'active',
-							employeeId,
-						]
+						[isActive, isActive ? 'active' : 'inactive', employeeId]
 					);
+					if (!isActive) {
+						const [linkedUsers] = await connection.execute(
+							'SELECT id FROM users WHERE employee_id = ? AND isDelete = 0',
+							[employeeId]
+						);
+						if (linkedUsers && linkedUsers.length > 0) {
+							for (const u of linkedUsers) {
+								await revokeAllUserSessions(connection, u.id);
+								invalidateUserCache(u.id);
+							}
+						}
+					}
 				}
 			}
 		} catch (syncErr) {
@@ -675,10 +685,20 @@ export async function DELETE(request) {
 		);
 		// Optionally deactivate linked user instead of hard delete
 		try {
+			const [linkedUsers] = await connection.execute(
+				'SELECT id FROM users WHERE employee_id = ? AND isDelete = 0',
+				[id]
+			);
 			await connection.execute(
 				'UPDATE users SET is_active = FALSE, status = "inactive" WHERE employee_id = ?',
 				[id]
 			);
+			if (linkedUsers && linkedUsers.length > 0) {
+				for (const u of linkedUsers) {
+					await revokeAllUserSessions(connection, u.id);
+					invalidateUserCache(u.id);
+				}
+			}
 		} catch {}
 
 		return NextResponse.json({

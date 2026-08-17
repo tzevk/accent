@@ -67,7 +67,7 @@ export async function POST(req) {
 		try {
 			const [qRows] = await db.execute(
 				`SELECT u.id, u.username, u.email, u.full_name, u.role_id,
-		              u.is_super_admin, u.is_active,
+		              u.is_super_admin, u.is_active, u.status,
 		              u.password_hash,
 		              u.permissions AS user_permissions,
 		              u.field_permissions AS user_field_permissions,
@@ -77,6 +77,8 @@ export async function POST(req) {
 		       LEFT JOIN roles_master r ON u.role_id = r.id
 		       WHERE (u.username = ? OR u.email = ?)
 		         AND u.isDelete = 0
+		         AND (u.is_active = 1 OR u.is_active IS NULL)
+		         AND (u.status = 'active' OR u.status IS NULL)
 		       LIMIT 1`,
 				[identifier, identifier]
 			);
@@ -102,16 +104,26 @@ export async function POST(req) {
 					);
 				}
 			}
+			if (rows.length > 0) {
+				const user = rows[0];
+				const isActive =
+					(user.is_active === 1 ||
+						user.is_active === true ||
+						user.is_active === null) &&
+					(user.status === 'active' || !user.status);
+				if (!isActive) {
+					rows = [];
+				}
+			}
 
 			if (rows.length > 0) {
 				const user = rows[0];
 				const userId = user.id;
 
 				try {
-					await db.execute(
-						'UPDATE users SET last_login = NOW(), is_active = TRUE, status = "active" WHERE id = ?',
-						[userId]
-					);
+					await db.execute('UPDATE users SET last_login = NOW() WHERE id = ?', [
+						userId,
+					]);
 
 					logActivity({
 						userId,

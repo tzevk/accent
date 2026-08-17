@@ -133,3 +133,53 @@ describe('POST /api/login — session cookie issuance', () => {
 		expect(res.cookies.get('session')).toBeUndefined();
 	});
 });
+
+describe('SEC-05 regression — account deactivation enforcement', () => {
+	it('includes active status filter in the login SELECT and only updates last_login without auto-reactivating', async () => {
+		mockExecute
+			.mockResolvedValueOnce([[loginRow], {}])
+			.mockResolvedValueOnce([[], {}])
+			.mockResolvedValueOnce([[], {}])
+			.mockResolvedValueOnce([[], {}]);
+
+		const res = await POST(makeLoginRequest());
+		expect(res.status).toBe(200);
+
+		// Verify the login query filters for is_active and active status
+		const selectCall = mockExecute.mock.calls[0];
+		const selectSql = selectCall[0];
+		expect(selectSql).toContain('u.is_active = 1 OR u.is_active IS NULL');
+		expect(selectSql).toContain("u.status = 'active' OR u.status IS NULL");
+
+		// Verify the update query does NOT auto-reactivate
+		const updateCall = mockExecute.mock.calls.find(([sql]) =>
+			sql.includes('UPDATE users SET')
+		);
+		expect(updateCall).toBeDefined();
+		expect(updateCall[0]).not.toContain('is_active = TRUE');
+		expect(updateCall[0]).not.toContain('status = "active"');
+		expect(updateCall[0]).toContain('last_login = NOW()');
+	});
+
+	it('rejects deactivated user (is_active = 0) with 401', async () => {
+		const deactivatedRow = { ...loginRow, is_active: 0 };
+		mockExecute.mockResolvedValueOnce([[deactivatedRow], {}]);
+
+		const res = await POST(makeLoginRequest());
+		expect(res.status).toBe(401);
+		const body = await res.json();
+		expect(body.success).toBe(false);
+		expect(res.cookies.get('session')).toBeUndefined();
+	});
+
+	it('rejects inactive status user (status = "inactive") with 401', async () => {
+		const inactiveRow = { ...loginRow, status: 'inactive' };
+		mockExecute.mockResolvedValueOnce([[inactiveRow], {}]);
+
+		const res = await POST(makeLoginRequest());
+		expect(res.status).toBe(401);
+		const body = await res.json();
+		expect(body.success).toBe(false);
+		expect(res.cookies.get('session')).toBeUndefined();
+	});
+});
