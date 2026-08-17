@@ -120,6 +120,29 @@ describe('Tickets — soft delete', () => {
 		]);
 	});
 
+	it('writes the schema-supported critical priority', async () => {
+		mockExecute.mockReset();
+		mockExecute
+			.mockResolvedValueOnce([[]])
+			.mockResolvedValueOnce([{ insertId: 1 }])
+			.mockResolvedValueOnce([[{ id: 1, priority: 'critical' }]]);
+
+		const response = await POST(
+			createRequest({
+				method: 'POST',
+				body: {
+					subject: 'Report is blocked',
+					description: 'The report cannot be opened.',
+					priority: 'critical',
+				},
+			})
+		);
+
+		expect(response.status).toBe(200);
+		const insertCall = mockExecute.mock.calls[1] as MockCall;
+		expect(insertCall[1][5]).toBe('critical');
+	});
+
 	it('returns empty attachments for malformed comment JSON', async () => {
 		mockExecute.mockReset();
 		mockExecute
