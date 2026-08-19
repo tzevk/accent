@@ -92,10 +92,11 @@ export async function POST(request) {
 		}
 		db = await dbConnect();
 
-		// Ensure project exists
-		const [proj] = await db.execute('SELECT id FROM projects WHERE id = ?', [
-			project_id,
-		]);
+		// Ensure project exists (PK is project_id)
+		const [proj] = await db.execute(
+			'SELECT project_id FROM projects WHERE project_id = ?',
+			[project_id]
+		);
 		if (proj.length === 0) {
 			return NextResponse.json(
 				{ success: false, error: 'Project not found' },

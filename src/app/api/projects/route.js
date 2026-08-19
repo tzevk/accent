@@ -321,9 +321,9 @@ export async function POST(request) {
 			]
 		);
 
-		// Get the created project
+		// Get the created project (PK is project_id)
 		const [newProject] = await db.execute(
-			'SELECT * FROM projects WHERE id = ? AND isDelete = 0',
+			'SELECT * FROM projects WHERE project_id = ? AND isDelete = 0',
 			[result.insertId]
 		);
 

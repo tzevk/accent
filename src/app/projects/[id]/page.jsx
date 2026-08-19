@@ -10,6 +10,7 @@ import { fetchJSON } from '@/utils/http';
 import ProjectMemberDetails from '@/components/projects/ProjectMemberDetails';
 import useSWR from 'swr';
 import { useSession } from '@/context/SessionContext';
+import { add, sub, mul, toNumber } from '@/lib/money';
 import {
 	CalendarIcon,
 	ClipboardDocumentCheckIcon,
@@ -21,7 +22,9 @@ import {
 	ArrowRightIcon,
 	DocumentTextIcon,
 	CheckCircleIcon,
+	ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
+import { PROJECT_TABS, TAB_ALIASES } from '@/lib/project-tabs';
 import dynamic from 'next/dynamic';
 const ProjectActivityTab = dynamic(
 	() => import('@/components/ProjectActivityTab'),
@@ -62,57 +65,22 @@ function HtmlContent({ html, className = '' }) {
 	);
 }
 
-const TAB_CONFIG = [
-	{ id: 'project_details', label: 'Project Details' },
-	{ id: 'scope', label: 'Scope', requiresUpdate: true },
-	{ id: 'project_activity', label: 'Project Activity', requiresUpdate: true },
-	{ id: 'project_schedule', label: 'Schedule', requiresUpdate: true },
-	{
-		id: 'documents_received',
-		label: 'List of Documents Received',
-		requiresUpdate: true,
-	},
-	{
-		id: 'documents_issued',
-		label: 'Deliverables',
-		requiresUpdate: true,
-	},
-	{ id: 'minutes_internal_meet', label: 'Meeting', requiresUpdate: true },
-	{
-		id: 'project_handover',
-		label: 'Progress Measurement',
-		requiresUpdate: true,
-	},
-	{ id: 'project_manhours', label: 'Project Manhours', requiresUpdate: true },
-	{ id: 'query_log', label: 'Query Log', requiresUpdate: true },
-	{ id: 'assumption', label: 'Assumption', requiresUpdate: true },
-	{ id: 'lessons_learnt', label: 'Lessons Learnt', requiresUpdate: true },
-	{ id: 'upload_documents', label: 'Upload Documents', requiresUpdate: true },
-];
-
+// Canonical tabs shared with edit page; employee workspace shows a filtered subset
+const TAB_CONFIG = PROJECT_TABS;
 const EMPLOYEE_TAB_IDS = [
 	'scope',
 	'project_schedule',
-	'team',
-	'input_document',
-	'deliverables',
+	'project_team',
+	'documents_received',
+	'documents_issued',
 	'assumption',
 	'discussion',
 	'query_log',
 	'lessons_learnt',
 ];
-
-const EMPLOYEE_TAB_CONFIG = [
-	{ id: 'scope', label: 'Scope' },
-	{ id: 'project_schedule', label: 'Schedule' },
-	{ id: 'team', label: 'Project Team' },
-	{ id: 'input_document', label: 'Input Document' },
-	{ id: 'deliverables', label: 'Deliverables' },
-	{ id: 'assumption', label: 'Assumption' },
-	{ id: 'discussion', label: 'Discussion' },
-	{ id: 'query_log', label: 'Query Log' },
-	{ id: 'lessons_learnt', label: 'Lessons Learnt' },
-];
+const EMPLOYEE_TAB_CONFIG = EMPLOYEE_TAB_IDS.map(
+	(id) => PROJECT_TABS.find((t) => t.id === id) || { id, label: id }
+);
 
 function EmployeePanel({ id, title, subtitle, Icon, children }) {
 	return (
@@ -378,6 +346,11 @@ export default function ProjectViewPage() {
 
 	const isEmployeeRef = useRef(isEmployeeWorkspace);
 	useEffect(() => {
+		const resolved = TAB_ALIASES[activeTab] || activeTab;
+		if (resolved !== activeTab) {
+			setActiveTab(resolved);
+			return;
+		}
 		// When the workspace flips (session loads), reset to that mode's
 		// default tab instead of keeping a leftover default.
 		if (isEmployeeRef.current !== isEmployeeWorkspace) {
@@ -567,6 +540,21 @@ export default function ProjectViewPage() {
 			? canonical
 			: parseStoredList(project.input_document);
 	}, [project]);
+	// Merged view for Input Documents — show either list so edit saves are visible
+	const parsedDocumentsReceivedCombined = useMemo(() => {
+		const a = parsedDocumentsReceived || [];
+		const b = parsedInputDocuments || [];
+		if (a.length > 0 && b.length > 0) {
+			const seen = new Set(
+				a.map((x) => `${x.description || x.document_name}-${x.id}`)
+			);
+			const extra = b.filter(
+				(x) => !seen.has(`${x.description || x.document_name}-${x.id}`)
+			);
+			return [...a, ...extra];
+		}
+		return a.length > 0 ? a : b;
+	}, [parsedDocumentsReceived, parsedInputDocuments]);
 	const parsedEmployeeDeliverables = useMemo(() => {
 		if (!project) return [];
 		const canonical = parseStoredList(project.documents_issued_list);
@@ -690,6 +678,19 @@ export default function ProjectViewPage() {
 			return typeof project.internal_meetings_list === 'string'
 				? JSON.parse(project.internal_meetings_list)
 				: project.internal_meetings_list;
+		} catch {
+			return [];
+		}
+	}, [project]);
+
+	const parsedSoftwareItems = useMemo(() => {
+		if (!project || !project.software_items) return [];
+		try {
+			const v =
+				typeof project.software_items === 'string'
+					? JSON.parse(project.software_items)
+					: project.software_items;
+			return Array.isArray(v) ? v : [];
 		} catch {
 			return [];
 		}
@@ -915,13 +916,14 @@ export default function ProjectViewPage() {
 									)}
 								/>
 							)}
-							{activeTab === 'input_document' && (
+							{(activeTab === 'input_document' ||
+								activeTab === 'documents_received') && (
 								<EmployeeListPanel
-									id="input_document"
+									id="documents_received"
 									title="Input Document"
 									subtitle="Documents received from the client"
 									Icon={DocumentTextIcon}
-									items={parsedInputDocuments}
+									items={parsedDocumentsReceivedCombined}
 									emptyMessage="No input documents recorded."
 									renderItem={(item, index) => (
 										<p className="whitespace-pre-wrap text-sm text-gray-700">
@@ -930,10 +932,11 @@ export default function ProjectViewPage() {
 									)}
 								/>
 							)}
-							{activeTab === 'deliverables' &&
+							{(activeTab === 'deliverables' ||
+								activeTab === 'documents_issued') &&
 								(parsedDeliverablesRegister.length > 0 ? (
 									<EmployeePanel
-										id="deliverables"
+										id="documents_issued"
 										title="Deliverables"
 										subtitle="Deliverables issued to the client"
 										Icon={DocumentTextIcon}
@@ -944,7 +947,7 @@ export default function ProjectViewPage() {
 									</EmployeePanel>
 								) : (
 									<EmployeeListPanel
-										id="deliverables"
+										id="documents_issued"
 										title="Deliverables"
 										subtitle="Deliverables issued to the client"
 										Icon={DocumentTextIcon}
@@ -957,9 +960,9 @@ export default function ProjectViewPage() {
 										)}
 									/>
 								))}
-							{activeTab === 'team' && (
+							{(activeTab === 'team' || activeTab === 'project_team') && (
 								<EmployeePanel
-									id="team"
+									id="project_team"
 									title="Project Team"
 									subtitle="Members assigned to this project"
 									Icon={UserIcon}
@@ -1650,71 +1653,76 @@ export default function ProjectViewPage() {
 						</div>
 					</section>
 
-					{/* Documents Received Tab (read-only) */}
-					{activeTab === 'documents_received' && (
-						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
-							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
-								<div className="flex items-center gap-3">
-									<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
-										<DocumentTextIcon
-											className="h-4 w-4 text-purple-600"
-											aria-hidden="true"
-										/>
-									</div>
-									<div>
-										<h2 className="text-base font-semibold tracking-tight text-gray-900">
-											List of Documents Received
-										</h2>
-										<p className="text-xs text-gray-500">
-											Record documents received with details
-										</p>
+					{/* Documents Received Tab (read-only, same source as edit) - admin only, employee uses panel above */}
+					{!isEmployeeWorkspace &&
+						(activeTab === 'documents_received' ||
+							activeTab === 'input_document' ||
+							activeTab === 'input_documents') && (
+							<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+								<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
+									<div className="flex items-center gap-3">
+										<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
+											<DocumentTextIcon
+												className="h-4 w-4 text-purple-600"
+												aria-hidden="true"
+											/>
+										</div>
+										<div>
+											<h2 className="text-base font-semibold tracking-tight text-gray-900">
+												List of Documents Received
+											</h2>
+											<p className="text-xs text-gray-500">
+												Record documents received with details (same as edit)
+											</p>
+										</div>
 									</div>
 								</div>
-							</div>
-							<div className="px-6 py-5 space-y-3">
-								{parsedDocumentsReceived &&
-								parsedDocumentsReceived.length > 0 ? (
-									parsedDocumentsReceived.map((d, i) => (
-										<div
-											key={d.id || i}
-											className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4"
-										>
-											<div className="flex items-start justify-between">
-												<div>
-													<h4 className="text-base font-bold text-gray-900">
-														{d.description ||
-															d.document_name ||
-															`Document ${i + 1}`}
-													</h4>
-													<p className="text-xs text-gray-500 mt-1">
-														Sr. No: {d.sr_no || d.id || i + 1}
-													</p>
-												</div>
-												<div className="text-sm text-gray-600 text-right">
-													<div>{d.date_received || d.received_date || '—'}</div>
-													<div className="text-xs text-gray-500">
-														{d.document_sent_by || ''}
+								<div className="px-6 py-5 space-y-3">
+									{parsedDocumentsReceivedCombined &&
+									parsedDocumentsReceivedCombined.length > 0 ? (
+										parsedDocumentsReceivedCombined.map((d, i) => (
+											<div
+												key={d.id || i}
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4"
+											>
+												<div className="flex items-start justify-between">
+													<div>
+														<h4 className="text-base font-bold text-gray-900">
+															{d.description ||
+																d.document_name ||
+																`Document ${i + 1}`}
+														</h4>
+														<p className="text-xs text-gray-500 mt-1">
+															Sr. No: {d.sr_no || d.id || i + 1}
+														</p>
+													</div>
+													<div className="text-sm text-gray-600 text-right">
+														<div>
+															{d.date_received || d.received_date || '—'}
+														</div>
+														<div className="text-xs text-gray-500">
+															{d.document_sent_by || ''}
+														</div>
 													</div>
 												</div>
+												{d.remarks ? (
+													<p className="mt-2 text-sm text-gray-600 whitespace-pre-line">
+														{d.remarks}
+													</p>
+												) : null}
 											</div>
-											{d.remarks ? (
-												<p className="mt-2 text-sm text-gray-600 whitespace-pre-line">
-													{d.remarks}
-												</p>
-											) : null}
-										</div>
-									))
-								) : (
-									<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
-										No documents received recorded.
-									</p>
-								)}
-							</div>
-						</section>
-					)}
+										))
+									) : (
+										<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
+											No documents received recorded.
+										</p>
+									)}
+								</div>
+							</section>
+						)}
 
-					{/* Documents Issued Tab (read-only) — deliverables register */}
-					{activeTab === 'documents_issued' && (
+					{/* Documents Issued Tab (read-only) — deliverables register, admin only */}
+					{!isEmployeeWorkspace && activeTab === 'documents_issued' && (
 						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
 							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
 								<div className="flex items-center gap-3">
@@ -1808,74 +1816,273 @@ export default function ProjectViewPage() {
 						</section>
 					)}
 
-					{/* Project Manhours Tab (read-only) */}
-					{activeTab === 'project_manhours' && (
-						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
-							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
-								<div className="flex items-center gap-3">
-									<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
-										<CalendarIcon
-											className="h-4 w-4 text-purple-600"
-											aria-hidden="true"
-										/>
-									</div>
-									<div>
-										<h2 className="text-base font-semibold tracking-tight text-gray-900">
-											Project Manhours
-										</h2>
-										<p className="text-xs text-gray-500">
-											Monthly manhours by team member
-										</p>
-									</div>
-								</div>
-							</div>
-							<div className="px-6 py-5 space-y-3">
-								{parsedProjectManhours && parsedProjectManhours.length > 0 ? (
-									parsedProjectManhours.map((m, i) => (
-										<div
-											key={m.id || i}
-											className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4"
-										>
-											<div className="flex items-start justify-between">
+					{/* Project Manhours Tab (read-only) — same table as edit, no inputs */}
+					{activeTab === 'project_manhours' &&
+						(() => {
+							const fyMonths = [
+								'Apr',
+								'May',
+								'Jun',
+								'Jul',
+								'Aug',
+								'Sep',
+								'Oct',
+								'Nov',
+								'Dec',
+								'Jan',
+								'Feb',
+								'Mar',
+							];
+							const fyMonthKeys = fyMonths.map((m) => m.toLowerCase());
+							const rows = Array.isArray(parsedProjectManhours)
+								? parsedProjectManhours
+								: [];
+							const totals = rows.reduce(
+								(acc, emp) => {
+									const hrs = add(...Object.values(emp.monthly_hours || {}));
+									acc.hours = add(acc.hours, hrs);
+									acc.company = add(acc.company, mul(emp.rate_company, hrs));
+									acc.accent = add(acc.accent, mul(emp.rate_accent, hrs));
+									return acc;
+								},
+								{ hours: add(), company: add(), accent: add() }
+							);
+							const totalPl = sub(totals.accent, totals.company);
+							const inrFormat = (v) =>
+								toNumber(v).toLocaleString('en-IN', {
+									minimumFractionDigits: 2,
+									maximumFractionDigits: 2,
+								});
+							if (rows.length === 0) {
+								return (
+									<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+										<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
+											<div className="flex items-center gap-3">
+												<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
+													<CalendarIcon
+														className="h-4 w-4 text-purple-600"
+														aria-hidden="true"
+													/>
+												</div>
 												<div>
-													<h4 className="text-base font-bold text-gray-900">
-														{m.name_of_engineer_designer ||
-															m.name ||
-															`Member ${i + 1}`}
-													</h4>
-													<p className="text-xs text-gray-500 mt-1">
-														Month: {m.month || '—'}
+													<h2 className="text-base font-semibold tracking-tight text-gray-900">
+														Project Manhours
+													</h2>
+													<p className="text-xs text-gray-500">
+														Monthly manhours by team member (same as edit)
 													</p>
 												</div>
-												<div className="text-sm text-gray-600 text-right">
-													Total:{' '}
-													{Object.keys(m)
-														.filter(
-															(k) =>
-																k !== 'id' &&
-																k !== 'month' &&
-																k !== 'name_of_engineer_designer' &&
-																k !== 'remarks'
-														)
-														.map((k) => `${k}: ${m[k]}`)
-														.join(', ')}
-												</div>
 											</div>
-											{m.remarks ? (
-												<p className="mt-2 text-sm text-gray-600 whitespace-pre-line">
-													{m.remarks}
-												</p>
-											) : null}
 										</div>
-									))
-								) : (
-									<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
-										No manhours recorded.
-									</p>
-								)}
-							</div>
-						</section>
-					)}
+										<div className="px-6 py-5">
+											<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
+												No manhours recorded.
+											</p>
+										</div>
+									</section>
+								);
+							}
+							return (
+								<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+									<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
+										<div className="flex items-center gap-3">
+											<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
+												<CalendarIcon
+													className="h-4 w-4 text-purple-600"
+													aria-hidden="true"
+												/>
+											</div>
+											<div>
+												<h2 className="text-base font-semibold tracking-tight text-gray-900">
+													Project Manhours
+												</h2>
+												<p className="text-xs text-gray-500">
+													Monthly manhours by team member — read-only (edit in
+													Project → Edit → Manhours)
+												</p>
+											</div>
+										</div>
+									</div>
+									<div className="px-4 py-4">
+										<div className="overflow-x-auto border border-gray-200 rounded-lg">
+											<table className="w-full text-xs border-collapse">
+												<thead>
+													<tr className="bg-gradient-to-r from-purple-50 to-gray-50">
+														<th
+															className="text-left py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 sticky left-0 bg-purple-50 z-10"
+															style={{ minWidth: '140px' }}
+														>
+															Team Member
+														</th>
+														<th
+															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-green-50"
+															style={{ minWidth: '80px' }}
+														>
+															Salary Type
+														</th>
+														<th
+															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-50"
+															style={{ minWidth: '90px' }}
+														>
+															RT/HR (Company)
+														</th>
+														<th
+															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-50"
+															style={{ minWidth: '90px' }}
+														>
+															RT/HR (Accent)
+														</th>
+														{fyMonths.map((m) => (
+															<th
+																key={m}
+																className="text-center py-2 px-1 font-semibold text-gray-700 border-b border-gray-200 bg-amber-50/50"
+																style={{ minWidth: '50px' }}
+															>
+																{m}
+															</th>
+														))}
+														<th
+															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-purple-100"
+															style={{ minWidth: '70px' }}
+														>
+															Total Hrs
+														</th>
+														<th
+															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-green-100"
+															style={{ minWidth: '100px' }}
+														>
+															Company Cost
+														</th>
+														<th
+															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-100"
+															style={{ minWidth: '100px' }}
+														>
+															Accent Cost
+														</th>
+														<th
+															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-gray-100"
+															style={{ minWidth: '100px' }}
+														>
+															P&L
+														</th>
+													</tr>
+												</thead>
+												<tbody>
+													{rows.map((empData, idx) => {
+														const monthlyHours = empData.monthly_hours || {};
+														const totalHrs = add(
+															...Object.values(monthlyHours)
+														);
+														const companyCost = mul(
+															empData.rate_company,
+															totalHrs
+														);
+														const accentCost = mul(
+															empData.rate_accent,
+															totalHrs
+														);
+														const pl = sub(accentCost, companyCost);
+														return (
+															<tr
+																key={empData.id || idx}
+																className="border-b border-gray-100 hover:bg-gray-50/50"
+															>
+																<td className="py-2 px-2 font-medium text-gray-800 sticky left-0 bg-white z-10 border-r border-gray-100">
+																	<span className="text-gray-400 text-[10px] mr-1">
+																		{idx + 1}.
+																	</span>
+																	{empData.employee_name ||
+																		empData.name_of_engineer_designer ||
+																		empData.name ||
+																		`Member ${idx + 1}`}
+																</td>
+																<td className="py-2 px-2 text-center bg-green-50/30">
+																	<span
+																		className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${empData.salary_type === 'hourly' ? 'bg-orange-100 text-orange-700' : empData.salary_type === 'daily' ? 'bg-green-100 text-green-700' : empData.salary_type === 'custom' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}
+																	>
+																		{empData.salary_type || 'monthly'}
+																	</span>
+																</td>
+																<td className="py-2 px-2 text-center bg-blue-50/30 font-medium">
+																	{empData.rate_company ?? '—'}
+																</td>
+																<td className="py-2 px-2 text-center bg-blue-50/30 font-medium">
+																	{empData.rate_accent ?? '—'}
+																</td>
+																{fyMonthKeys.map((mk) => (
+																	<td
+																		key={mk}
+																		className="py-2 px-1 text-center bg-amber-50/20"
+																	>
+																		{monthlyHours[mk] != null &&
+																		String(monthlyHours[mk]).trim() !== ''
+																			? Number(monthlyHours[mk]).toFixed(1)
+																			: '—'}
+																	</td>
+																))}
+																<td className="py-2 px-2 text-center font-semibold text-purple-700 bg-purple-50/50">
+																	{totalHrs.toFixed(1)}
+																</td>
+																<td className="py-2 px-2 text-center font-semibold text-green-700 bg-green-50/50">
+																	₹{inrFormat(companyCost)}
+																</td>
+																<td className="py-2 px-2 text-center font-semibold text-blue-700 bg-blue-50/50">
+																	₹{inrFormat(accentCost)}
+																</td>
+																<td className="py-2 px-2 text-center bg-gray-50/50">
+																	<span
+																		className={`font-semibold ${pl.gt(0) ? 'text-green-700' : pl.lt(0) ? 'text-red-600' : 'text-gray-400'}`}
+																	>
+																		₹{inrFormat(pl)}
+																	</span>
+																</td>
+															</tr>
+														);
+													})}
+													<tr className="bg-gradient-to-r from-purple-100 to-gray-100 font-semibold">
+														<td className="py-2 px-2 text-gray-800 sticky left-0 bg-purple-100 z-10 border-r border-gray-200">
+															Grand Total
+														</td>
+														<td className="py-2 px-2 bg-green-100/50"></td>
+														<td className="py-2 px-2 bg-blue-100/50"></td>
+														<td className="py-2 px-2 bg-blue-100/50"></td>
+														{fyMonthKeys.map((mk) => {
+															const mt = add(
+																...rows.map((e) => e.monthly_hours?.[mk])
+															);
+															return (
+																<td
+																	key={mk}
+																	className="py-2 px-1 text-center text-gray-700 bg-amber-100/50"
+																>
+																	{mt.gt(0) ? mt.toFixed(1) : '—'}
+																</td>
+															);
+														})}
+														<td className="py-2 px-2 text-center text-purple-800 bg-purple-200/50">
+															{totals.hours.toFixed(1)}
+														</td>
+														<td className="py-2 px-2 text-center text-green-800 bg-green-200/50">
+															₹{inrFormat(totals.company)}
+														</td>
+														<td className="py-2 px-2 text-center text-blue-800 bg-blue-200/50">
+															₹{inrFormat(totals.accent)}
+														</td>
+														<td className="py-2 px-2 text-center bg-gray-100/50">
+															<span
+																className={`font-semibold ${totalPl.gt(0) ? 'text-green-800' : totalPl.lt(0) ? 'text-red-700' : 'text-gray-500'}`}
+															>
+																₹{inrFormat(totalPl)}
+															</span>
+														</td>
+													</tr>
+												</tbody>
+											</table>
+										</div>
+									</div>
+								</section>
+							);
+						})()}
 
 					{/* Query Log Tab (read-only) */}
 					{!isEmployeeWorkspace && activeTab === 'query_log' && (
@@ -2165,138 +2372,351 @@ export default function ProjectViewPage() {
 						</section>
 					)}
 
-					{/* Project Team Tab */}
-					{!isEmployeeWorkspace && (
-						<section
-							id="panel-team"
-							role="tabpanel"
-							aria-labelledby="tab-team"
-							hidden={activeTab !== 'team'}
-							className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
-						>
-							<div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
-								<UserIcon className="h-5 w-5 text-[#7F2487]" />
-								<h2 className="text-base font-bold text-gray-900">
-									Project Team
-								</h2>
-							</div>
-							<div className="px-6 py-5 space-y-3 text-sm text-gray-600">
-								<p>
-									<span className="font-semibold text-gray-900">
-										Project Manager:
-									</span>{' '}
-									{project.project_manager || '—'}
-								</p>
-								<p>
-									<span className="font-semibold text-gray-900">
-										Primary Client:
-									</span>{' '}
-									{project.client_name || '—'}
-								</p>
-								<p>
-									<span className="font-semibold text-gray-900">
-										Assigned To:
-									</span>{' '}
-									{project.assigned_to || '—'}
-								</p>
-								<div className="mt-3">
-									<h4 className="text-xs font-semibold text-gray-900 uppercase tracking-wide">
-										Team Members
-									</h4>
-									{parsedTeamMembers && parsedTeamMembers.length > 0 ? (
-										<>
-											<div className="overflow-x-auto border border-gray-200 rounded-lg">
-												<table className="w-full text-xs">
-													<thead className="bg-gray-50 border-b border-gray-200">
-														<tr>
-															<th className="px-3 py-2 text-left font-semibold text-gray-700">
-																#
-															</th>
-															<th className="px-3 py-2 text-left font-semibold text-gray-700">
-																Employee ID
-															</th>
-															<th className="px-3 py-2 text-left font-semibold text-gray-700">
-																Name
-															</th>
-															<th className="px-3 py-2 text-left font-semibold text-gray-700">
-																Email
-															</th>
-															<th className="px-3 py-2 text-left font-semibold text-gray-700">
-																Department
-															</th>
-															<th className="px-3 py-2 text-left font-semibold text-gray-700">
-																Position
-															</th>
-															<th className="px-3 py-2 text-left font-semibold text-gray-700">
-																Project Role
-															</th>
-														</tr>
-													</thead>
-													<tbody className="divide-y divide-gray-100">
-														{parsedTeamMembers.map((member, index) => (
-															<tr
-																key={member.id || member.user_id || index}
-																className="hover:bg-gray-50 transition-colors"
-															>
-																<td className="px-3 py-2 text-gray-600">
-																	{index + 1}
-																</td>
-																<td className="px-3 py-2 text-gray-900 font-mono text-xs">
-																	{member.employee_id ||
-																		member.employee_code ||
-																		'—'}
-																</td>
-																<td className="px-3 py-2 text-gray-900 font-medium">
-																	{member.name || member.employee_name || '—'}
-																</td>
-																<td className="px-3 py-2 text-gray-600 text-xs">
-																	{member.email || '—'}
-																</td>
-																<td className="px-3 py-2 text-gray-600">
-																	{member.department || '—'}
-																</td>
-																<td className="px-3 py-2 text-gray-600">
-																	{member.position || '—'}
-																</td>
-																<td className="px-3 py-2 text-gray-600">
-																	{member.role || member.designation || '—'}
-																</td>
-															</tr>
-														))}
-													</tbody>
-												</table>
-											</div>
-											<div className="mt-3 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-100">
-												<div className="flex items-center justify-between">
-													<div>
-														<h4 className="text-sm font-semibold text-gray-700">
-															Team Summary
-														</h4>
-														<p className="text-xs text-gray-600 mt-0.5">
-															Total members assigned to this project
-														</p>
-													</div>
-													<div className="text-right">
-														<div className="text-2xl font-bold text-[#7F2487]">
-															{parsedTeamMembers.length}
-														</div>
-														<div className="text-xs text-gray-600">
-															Team Members
-														</div>
-													</div>
-												</div>
-											</div>
-										</>
-									) : (
-										<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
-											No team members added. Use the edit view to assign team
-											members.
+					{/* Software Tab (read-only, same data as edit's Software) */}
+					{activeTab === 'software' && (
+						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
+								<div className="flex items-center gap-3">
+									<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
+										<DocumentTextIcon
+											className="h-4 w-4 text-purple-600"
+											aria-hidden="true"
+										/>
+									</div>
+									<div>
+										<h2 className="text-base font-semibold tracking-tight text-gray-900">
+											Software
+										</h2>
+										<p className="text-xs text-gray-500">
+											Software used in this project (same as edit)
 										</p>
-									)}
+									</div>
 								</div>
+							</div>
+							<div className="px-6 py-5">
+								{parsedSoftwareItems.length > 0 ? (
+									<div className="space-y-3">
+										{parsedSoftwareItems.map((s, i) => (
+											<div
+												key={s.id || i}
+												className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4"
+											>
+												<h4 className="text-sm font-semibold text-gray-900">
+													{s.software_name || s.name || `Software ${i + 1}`}
+												</h4>
+												<p className="text-xs text-gray-500 mt-1">
+													{[s.category_name, s.version_name]
+														.filter(Boolean)
+														.join(' · ') ||
+														s.provider ||
+														'—'}
+												</p>
+												{s.notes ? (
+													<p className="mt-2 text-sm text-gray-600 whitespace-pre-line">
+														{s.notes}
+													</p>
+												) : null}
+											</div>
+										))}
+									</div>
+								) : (
+									<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
+										No software recorded. Edit this project to add software.
+									</p>
+								)}
 							</div>
 						</section>
 					)}
+
+					{/* Discussion Tab (read-only, same thread as edit) */}
+					{activeTab === 'discussion' && (
+						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
+								<div className="flex items-center gap-3">
+									<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
+										<ChatBubbleLeftRightIcon
+											className="h-4 w-4 text-purple-600"
+											aria-hidden="true"
+										/>
+									</div>
+									<div>
+										<h2 className="text-base font-semibold tracking-tight text-gray-900">
+											Discussion
+										</h2>
+										<p className="text-xs text-gray-500">
+											Project discussion (same as edit)
+										</p>
+									</div>
+								</div>
+							</div>
+							<div className="px-6 py-5">
+								<ProjectMemberDetails
+									projectId={
+										project.id ?? project.project_id ?? project.project_code
+									}
+									activeSection="discussion"
+									projectTeamMembers={parsedTeamMembers}
+									currentUser={
+										sessionUser
+											? {
+													id: sessionUser.id,
+													full_name: sessionUser.full_name,
+													username: sessionUser.username,
+												}
+											: null
+									}
+								/>
+							</div>
+						</section>
+					)}
+
+					{/* Quotation Tab (read-only) */}
+					{activeTab === 'quotation' && (
+						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
+								<div className="flex items-center gap-3">
+									<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
+										<DocumentTextIcon
+											className="h-4 w-4 text-purple-600"
+											aria-hidden="true"
+										/>
+									</div>
+									<div>
+										<h2 className="text-base font-semibold tracking-tight text-gray-900">
+											Quotation
+										</h2>
+										<p className="text-xs text-gray-500">
+											Quotation linked to this project (edit to manage)
+										</p>
+									</div>
+									{canEditProjectContent && (
+										<Link
+											href={`/projects/${project.id ?? project.project_id}/edit`}
+											className="ml-auto text-xs font-medium text-purple-600 hover:underline"
+										>
+											Edit →
+										</Link>
+									)}
+								</div>
+							</div>
+							<div className="px-6 py-5">
+								<p className="text-sm text-gray-500">
+									Quotation details are managed in the edit view under the
+									Quotation tab. Same project_quotation data is shown there for
+									editing.
+								</p>
+							</div>
+						</section>
+					)}
+
+					{/* Purchase Order Tab (read-only) */}
+					{activeTab === 'purchase_order' && (
+						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
+								<div className="flex items-center gap-3">
+									<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
+										<DocumentTextIcon
+											className="h-4 w-4 text-purple-600"
+											aria-hidden="true"
+										/>
+									</div>
+									<div>
+										<h2 className="text-base font-semibold tracking-tight text-gray-900">
+											Purchase Order
+										</h2>
+										<p className="text-xs text-gray-500">
+											Purchase orders for this project (edit to manage)
+										</p>
+									</div>
+									{canEditProjectContent && (
+										<Link
+											href={`/projects/${project.id ?? project.project_id}/edit`}
+											className="ml-auto text-xs font-medium text-purple-600 hover:underline"
+										>
+											Edit →
+										</Link>
+									)}
+								</div>
+							</div>
+							<div className="px-6 py-5">
+								<p className="text-sm text-gray-500">
+									Purchase orders are managed in the edit view. Data is shared
+									via the same project_purchase_orders table.
+								</p>
+							</div>
+						</section>
+					)}
+
+					{/* Invoice Tab (read-only) */}
+					{activeTab === 'invoice' && (
+						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
+								<div className="flex items-center gap-3">
+									<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
+										<DocumentTextIcon
+											className="h-4 w-4 text-purple-600"
+											aria-hidden="true"
+										/>
+									</div>
+									<div>
+										<h2 className="text-base font-semibold tracking-tight text-gray-900">
+											Invoice
+										</h2>
+										<p className="text-xs text-gray-500">
+											Invoices for this project (edit to manage)
+										</p>
+									</div>
+									{canEditProjectContent && (
+										<Link
+											href={`/projects/${project.id ?? project.project_id}/edit`}
+											className="ml-auto text-xs font-medium text-purple-600 hover:underline"
+										>
+											Edit →
+										</Link>
+									)}
+								</div>
+							</div>
+							<div className="px-6 py-5">
+								<p className="text-sm text-gray-500">
+									Invoices are managed in the edit view. Same project_invoices
+									data.
+								</p>
+							</div>
+						</section>
+					)}
+
+					{/* Project Team Tab (read-only, same data as edit's Project Team) */}
+					{(activeTab === 'project_team' || activeTab === 'team') &&
+						!isEmployeeWorkspace && (
+							<section
+								id="panel-project_team"
+								role="tabpanel"
+								aria-labelledby="tab-project_team"
+								className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
+							>
+								<div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
+									<UserIcon className="h-5 w-5 text-[#7F2487]" />
+									<h2 className="text-base font-bold text-gray-900">
+										Project Team
+									</h2>
+								</div>
+								<div className="px-6 py-5 space-y-3 text-sm text-gray-600">
+									<p>
+										<span className="font-semibold text-gray-900">
+											Project Manager:
+										</span>{' '}
+										{project.project_manager || '—'}
+									</p>
+									<p>
+										<span className="font-semibold text-gray-900">
+											Primary Client:
+										</span>{' '}
+										{project.client_name || '—'}
+									</p>
+									<p>
+										<span className="font-semibold text-gray-900">
+											Assigned To:
+										</span>{' '}
+										{project.assigned_to || '—'}
+									</p>
+									<div className="mt-3">
+										<h4 className="text-xs font-semibold text-gray-900 uppercase tracking-wide">
+											Team Members
+										</h4>
+										{parsedTeamMembers && parsedTeamMembers.length > 0 ? (
+											<>
+												<div className="overflow-x-auto border border-gray-200 rounded-lg">
+													<table className="w-full text-xs">
+														<thead className="bg-gray-50 border-b border-gray-200">
+															<tr>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	#
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Employee ID
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Name
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Email
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Department
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Position
+																</th>
+																<th className="px-3 py-2 text-left font-semibold text-gray-700">
+																	Project Role
+																</th>
+															</tr>
+														</thead>
+														<tbody className="divide-y divide-gray-100">
+															{parsedTeamMembers.map((member, index) => (
+																<tr
+																	key={member.id || member.user_id || index}
+																	className="hover:bg-gray-50 transition-colors"
+																>
+																	<td className="px-3 py-2 text-gray-600">
+																		{index + 1}
+																	</td>
+																	<td className="px-3 py-2 text-gray-900 font-mono text-xs">
+																		{member.employee_id ||
+																			member.employee_code ||
+																			'—'}
+																	</td>
+																	<td className="px-3 py-2 text-gray-900 font-medium">
+																		{member.name || member.employee_name || '—'}
+																	</td>
+																	<td className="px-3 py-2 text-gray-600 text-xs">
+																		{member.email || '—'}
+																	</td>
+																	<td className="px-3 py-2 text-gray-600">
+																		{member.department || '—'}
+																	</td>
+																	<td className="px-3 py-2 text-gray-600">
+																		{member.position || '—'}
+																	</td>
+																	<td className="px-3 py-2 text-gray-600">
+																		{member.role || member.designation || '—'}
+																	</td>
+																</tr>
+															))}
+														</tbody>
+													</table>
+												</div>
+												<div className="mt-3 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-100">
+													<div className="flex items-center justify-between">
+														<div>
+															<h4 className="text-sm font-semibold text-gray-700">
+																Team Summary
+															</h4>
+															<p className="text-xs text-gray-600 mt-0.5">
+																Total members assigned to this project
+															</p>
+														</div>
+														<div className="text-right">
+															<div className="text-2xl font-bold text-[#7F2487]">
+																{parsedTeamMembers.length}
+															</div>
+															<div className="text-xs text-gray-600">
+																Team Members
+															</div>
+														</div>
+													</div>
+												</div>
+											</>
+										) : (
+											<p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
+												No team members added. Use the edit view to assign team
+												members.
+											</p>
+										)}
+									</div>
+								</div>
+							</section>
+						)}
 
 					{/* Procurement Tab */}
 					<section

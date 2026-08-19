@@ -162,9 +162,10 @@ export async function POST(request) {
 			['CONVERTED', result.insertId, convertedAt, proposal.id]
 		);
 
-		const [created] = await db.execute('SELECT * FROM projects WHERE id = ?', [
-			result.insertId,
-		]);
+		const [created] = await db.execute(
+			'SELECT * FROM projects WHERE project_id = ?',
+			[result.insertId]
+		);
 		const [scope] = await db.execute(
 			'SELECT * FROM project_scope WHERE project_id = ?',
 			[result.insertId]

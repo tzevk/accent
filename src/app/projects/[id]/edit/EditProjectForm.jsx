@@ -47,6 +47,7 @@ import {
 	getWeekSpanForProjectRange,
 } from '@/utils/project-weeks';
 import LoadingFallback from '@/components/LoadingFallback';
+import { PROJECT_TABS, TAB_ALIASES } from '@/lib/project-tabs';
 import { getExportSheetPayloads } from './excel/export/buildPayloads';
 import {
 	exportProjectWorkbook,
@@ -85,6 +86,7 @@ import PlanningTab from './tabs/PlanningTab';
 import DocumentationTab from './tabs/DocumentationTab';
 import MeetingsTab from './tabs/MeetingsTab';
 import DocumentsReceivedTab from './tabs/DocumentsReceivedTab';
+import DocumentUpload from '@/components/DocumentUpload';
 
 const INITIAL_FORM = {
 	// Scope & Annexure fields
@@ -158,113 +160,61 @@ const INITIAL_FORM = {
 	kickoff_persons_involved: '',
 };
 
-// UI constants used by the edit form (kept local to avoid cross-file imports)
-const TABS = [
-	{
-		id: 'project_details',
-		label: 'Project Details',
-		projectSectionKey: 'project_details',
-	},
-	{
-		id: 'scope',
-		label: 'Scope',
-		requiresUpdate: true,
-		projectSectionKey: 'scope',
-	},
-	{
-		id: 'project_activity',
-		label: 'Project Activity',
-		adminOrActivities: true,
-		requiresUpdate: true,
-		projectSectionKey: 'project_activity',
-	},
-	{
-		id: 'project_schedule',
-		label: 'Schedule',
-		requiresUpdate: true,
-		projectSectionKey: 'project_schedule',
-	},
-	{
-		id: 'project_team_tab',
-		label: 'Project Team',
-		requiresUpdate: true,
-		projectSectionKey: 'project_details',
-	},
-	{
-		id: 'project_handover',
-		label: 'Progress Measurement',
-		requiresUpdate: true,
-		projectSectionKey: 'project_handover',
-	},
-	{
-		id: 'input_documents',
-		label: 'Input Document',
-		requiresUpdate: true,
-		projectSectionKey: 'documents_received',
-	},
-	{
-		id: 'documents_issued',
-		label: 'Deliverables',
-		requiresUpdate: true,
-		projectSectionKey: 'documents_issued',
-	},
-	{
-		id: 'minutes_internal_meet',
-		label: 'Meeting',
-		requiresUpdate: true,
-		projectSectionKey: 'minutes_internal_meet',
-	},
-	{
-		id: 'project_manhours',
-		label: 'Project Manhours',
-		requiresUpdate: true,
-		projectSectionKey: 'project_manhours',
-	},
-	{ id: 'software', label: 'Software', requiresUpdate: true },
-	{ id: 'my_activities', label: 'My Activities', userOnly: true },
-	{
-		id: 'query_log',
-		label: 'Query Log',
-		requiresUpdate: true,
-		projectSectionKey: 'query_log',
-	},
-	{
-		id: 'assumption',
-		label: 'Assumption',
-		requiresUpdate: true,
-		projectSectionKey: 'assumption',
-	},
-	{
-		id: 'lessons_learnt',
-		label: 'Lessons Learnt',
-		requiresUpdate: true,
-		projectSectionKey: 'lessons_learnt',
-	},
-	{
-		id: 'discussion',
-		label: 'Discussion',
-		requiresUpdate: true,
-		projectSectionKey: 'minutes_internal_meet',
-	},
-	{
-		id: 'quotation',
-		label: 'Quotation',
-		requiresPermission: 'quotations',
-		requiresUpdate: true,
-	},
-	{
-		id: 'purchase_order',
-		label: 'Purchase Order',
-		requiresPermission: 'purchase_orders',
-		requiresUpdate: true,
-	},
-	{
-		id: 'invoice',
-		label: 'Invoice',
-		requiresPermission: 'invoices',
-		requiresUpdate: true,
-	},
-];
+// Canonical tabs shared with view page — keep ids in sync with src/lib/project-tabs.js
+const _CANONICAL = PROJECT_TABS;
+const TABS = _CANONICAL.map((t) => {
+	const base = { ...t };
+	// augment with RBAC helpers used by visibleTabs
+	const sectionMap = {
+		project_details: 'project_details',
+		scope: 'scope',
+		project_activity: 'project_activity',
+		project_schedule: 'project_schedule',
+		project_team: 'project_team',
+		documents_received: 'documents_received',
+		documents_issued: 'documents_issued',
+		minutes_internal_meet: 'minutes_internal_meet',
+		project_handover: 'project_handover',
+		project_manhours: 'project_manhours',
+		query_log: 'query_log',
+		assumption: 'assumption',
+		lessons_learnt: 'lessons_learnt',
+		discussion: 'minutes_internal_meet',
+		quotation: null,
+		purchase_order: null,
+		invoice: null,
+		software: null,
+		upload_documents: null,
+	};
+	if (sectionMap[base.id]) base.projectSectionKey = sectionMap[base.id];
+	if (
+		[
+			'scope',
+			'project_activity',
+			'project_schedule',
+			'project_team',
+			'project_handover',
+			'documents_received',
+			'documents_issued',
+			'minutes_internal_meet',
+			'project_manhours',
+			'query_log',
+			'assumption',
+			'lessons_learnt',
+			'discussion',
+			'software',
+			'upload_documents',
+		].includes(base.id)
+	) {
+		base.requiresUpdate = true;
+	}
+	if (base.id === 'project_activity') base.adminOrActivities = true;
+	return base;
+});
+// Resolve legacy tab ids (bookmarks) to canonical
+function resolveTabIdLocal(id) {
+	return TAB_ALIASES[id] || id;
+}
 
 const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
 const CURRENCY_OPTIONS = ['INR', 'USD', 'EUR', 'GBP'];
@@ -4371,6 +4321,11 @@ export default function EditProjectForm() {
 	]);
 
 	useEffect(() => {
+		const resolved = resolveTabIdLocal(activeTab);
+		if (resolved !== activeTab) {
+			setActiveTab(resolved);
+			return;
+		}
 		if (!visibleTabs.some((tab) => tab.id === activeTab)) {
 			setActiveTab(visibleTabs[0]?.id || 'project_details');
 		}
@@ -4847,7 +4802,7 @@ export default function EditProjectForm() {
 									/>
 								)}
 
-								{/* Input Documents Tab - Inline Table Format */}
+								{/* Input Documents Tab - Inline Table Format (legacy, use Documents Received) */}
 								{activeTab === 'input_documents' && (
 									<InputDocumentsTab
 										newInputDocument={newInputDocument}
@@ -4880,7 +4835,8 @@ export default function EditProjectForm() {
 								)}
 
 								{/* Project Team Tab */}
-								{activeTab === 'project_team_tab' && (
+								{(activeTab === 'project_team' ||
+									activeTab === 'project_team_tab') && (
 									<ProjectTeamTab
 										toggleSection={toggleSection}
 										openSections={openSections}
@@ -5079,6 +5035,22 @@ export default function EditProjectForm() {
 										projectTeamMembers={projectTeamMembers}
 										sessionUser={sessionUser}
 									/>
+								)}
+								{/* Upload Documents Tab (same as view) */}
+								{activeTab === 'upload_documents' && (
+									<section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+										<div className="px-6 py-3 bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
+											<h2 className="text-sm font-bold text-gray-900">
+												Upload Documents
+											</h2>
+											<p className="text-xs text-gray-500 mt-0.5">
+												Attach documents to this project
+											</p>
+										</div>
+										<div className="px-6 py-5">
+											<DocumentUpload entityType="project" entityId={id} />
+										</div>
+									</section>
 								)}
 								{/* Quotation Tab - Read Only Details (from Proposal) */}
 								{activeTab === 'quotation' && (
