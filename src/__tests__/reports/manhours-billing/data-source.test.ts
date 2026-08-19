@@ -3,13 +3,20 @@ import {
 	parseDailyEntries,
 	sumMonthlyHours,
 	monthLabel,
+	monthToKey,
+	getFinancialYear,
+	formatFyLabel,
+	parseProjectManhoursList,
 	resolveMonthlySalary,
 	resolveHourlyRate,
 	pickActiveProfile,
 	buildBillingRows,
 	buildTotals,
+	buildAnnualBillingRows,
+	buildAnnualTotals,
 	type SalaryProfile,
 	type BillingEmployeeRow,
+	type ProjectManhourTabRow,
 } from '@/app/reports/manhours-billing/data-source';
 
 function profile(overrides: Partial<SalaryProfile> = {}): SalaryProfile {
@@ -533,5 +540,206 @@ describe('buildTotals', () => {
 			total_pnl_after_deductions: 0,
 			total_pnl_tds: 0,
 		});
+	});
+});
+
+describe('deputation & annual billing helpers', () => {
+	it('monthToKey maps YYYY-MM to short month key', () => {
+		expect(monthToKey('2026-05')).toBe('may');
+		expect(monthToKey('2026-01')).toBe('jan');
+		expect(monthToKey('2026-12')).toBe('dec');
+		expect(monthToKey('invalid')).toBe('');
+	});
+
+	it('getFinancialYear determines FY start year', () => {
+		expect(getFinancialYear(new Date('2026-05-15'))).toBe(2026);
+		expect(getFinancialYear(new Date('2026-01-10'))).toBe(2025);
+		expect(getFinancialYear(new Date('2026-03-31'))).toBe(2025);
+		expect(getFinancialYear(new Date('2026-04-01'))).toBe(2026);
+	});
+
+	it('formatFyLabel formats FY string', () => {
+		expect(formatFyLabel(2026)).toBe('FY 2026–27');
+		expect(formatFyLabel(2025)).toBe('FY 2025–26');
+	});
+
+	it('parseProjectManhoursList parses JSON strings and arrays', () => {
+		expect(
+			parseProjectManhoursList('[{"id":1,"employee_name":"Uttam"}]')
+		).toHaveLength(1);
+		expect(
+			parseProjectManhoursList([{ id: 1, employee_name: 'Uttam' }])
+		).toHaveLength(1);
+		expect(parseProjectManhoursList(null)).toEqual([]);
+		expect(parseProjectManhoursList('not json')).toEqual([]);
+	});
+});
+
+describe('buildBillingRows with Project Manhours tab (deputation resources)', () => {
+	const employees = new Map([
+		[
+			118,
+			{
+				employee_id: 118,
+				employee_code: 'EMP-118',
+				name: 'Anil Shukla',
+				designation: 'Senior Engineer',
+			},
+		],
+	]);
+
+	it('resolves hours and rates for both internal and external deputation members', () => {
+		const tabEntries: ProjectManhourTabRow[] = [
+			{
+				id: 't1',
+				employee_id: 'team:55',
+				employee_name: 'Uttam Lad(Layout Engineer) Associates',
+				salary_type: 'custom',
+				rate_company: '456',
+				rate_accent: '550',
+				monthly_hours: { may: '200', jun: '150' },
+			},
+			{
+				id: 't2',
+				employee_id: '118',
+				source_employee_id: 118,
+				employee_name: 'Anil Shukla',
+				salary_type: 'monthly',
+				rate_company: '350',
+				rate_accent: '450',
+				monthly_hours: { may: '180' },
+			},
+		];
+
+		const rows = buildBillingRows(
+			[],
+			employees,
+			new Map(),
+			new Map(),
+			[],
+			new Map(),
+			'2026-05',
+			tabEntries
+		);
+
+		expect(rows).toHaveLength(2);
+
+		const anil = rows.find((r) => r.employee_name === 'Anil Shukla')!;
+		expect(anil.employee_id).toBe(118);
+		expect(anil.employee_code).toBe('EMP-118');
+		expect(anil.total_manhours).toBe(180);
+		expect(anil.employee_charges).toBe(350);
+		expect(anil.amount).toBe(63000); // 180 * 350
+		expect(anil.tds).toBe(6300); // 10% of 63000
+		expect(anil.net_payable).toBe(56700);
+		expect(anil.accent_charges).toBe(450);
+		expect(anil.accent_amount).toBe(81000); // 180 * 450
+		expect(anil.pnl_after_deductions).toBe(24300); // 81000 - 56700
+		expect(anil.pnl_tds).toBe(18000); // 81000 - 63000
+
+		const uttam = rows.find((r) => r.employee_name.includes('Uttam Lad'))!;
+		expect(uttam.employee_id).toBeNull();
+		expect(uttam.total_manhours).toBe(200);
+		expect(uttam.employee_charges).toBe(456);
+		expect(uttam.amount).toBe(91200); // 200 * 456
+		expect(uttam.accent_charges).toBe(550);
+		expect(uttam.accent_amount).toBe(110000); // 200 * 550
+		expect(uttam.pnl_tds).toBe(18800); // 110000 - 91200
+	});
+});
+
+describe('buildAnnualBillingRows & buildAnnualTotals', () => {
+	it('constructs 12-month FY deputation matrix correctly', () => {
+		const employees = new Map([
+			[
+				118,
+				{
+					employee_id: 118,
+					employee_code: 'EMP-118',
+					name: 'Anil Shukla',
+					designation: 'Senior Engineer',
+				},
+			],
+		]);
+
+		const tabEntries: ProjectManhourTabRow[] = [
+			{
+				id: 't1',
+				employee_id: 'team:55',
+				employee_name: 'Uttam Lad',
+				salary_type: 'custom',
+				rate_company: '400',
+				rate_accent: '500',
+				monthly_hours: {
+					apr: 100,
+					may: 120,
+					jun: 80,
+					jul: 0,
+					aug: 0,
+					sep: 0,
+					oct: 0,
+					nov: 0,
+					dec: 0,
+					jan: 0,
+					feb: 0,
+					mar: 0,
+				},
+			},
+			{
+				id: 't2',
+				employee_id: '118',
+				source_employee_id: 118,
+				employee_name: 'Anil Shukla',
+				salary_type: 'monthly',
+				rate_company: '300',
+				rate_accent: '400',
+				monthly_hours: {
+					apr: 160,
+					may: 160,
+					jun: 160,
+					jul: 160,
+					aug: 160,
+					sep: 160,
+					oct: 160,
+					nov: 160,
+					dec: 160,
+					jan: 160,
+					feb: 160,
+					mar: 160,
+				},
+			},
+		];
+
+		const rows = buildAnnualBillingRows(
+			[],
+			employees,
+			new Map(),
+			new Map(),
+			[],
+			tabEntries,
+			2026
+		);
+
+		expect(rows).toHaveLength(2);
+
+		const uttam = rows.find((r) => r.employee_name === 'Uttam Lad')!;
+		expect(uttam.total_hours).toBe(300); // 100 + 120 + 80
+		expect(uttam.company_cost).toBe(120000); // 300 * 400
+		expect(uttam.accent_cost).toBe(150000); // 300 * 500
+		expect(uttam.pnl).toBe(30000); // 150000 - 120000
+
+		const anil = rows.find((r) => r.employee_name === 'Anil Shukla')!;
+		expect(anil.total_hours).toBe(1920); // 160 * 12
+		expect(anil.company_cost).toBe(576000); // 1920 * 300
+		expect(anil.accent_cost).toBe(768000); // 1920 * 400
+		expect(anil.pnl).toBe(192000);
+
+		const totals = buildAnnualTotals(rows);
+		expect(totals.total_hours).toBe(2220); // 300 + 1920
+		expect(totals.total_company_cost).toBe(696000); // 120000 + 576000
+		expect(totals.total_accent_cost).toBe(918000); // 150000 + 768000
+		expect(totals.total_pnl).toBe(222000); // 30000 + 192000
+		expect(totals.monthly_hours.apr).toBe(260); // 100 + 160
+		expect(totals.monthly_hours.may).toBe(280); // 120 + 160
 	});
 });

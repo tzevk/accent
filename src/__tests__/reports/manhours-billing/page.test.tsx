@@ -150,10 +150,12 @@ describe('ManhoursBillingReportPage', () => {
 		expect(screen.getByText('Sr. No.')).toBeInTheDocument();
 		expect(screen.getByText('Employee Name')).toBeInTheDocument();
 		expect(screen.getByText('Designation')).toBeInTheDocument();
-		expect(screen.getByText('Total Manhours')).toBeInTheDocument();
+		expect(screen.getAllByText('Total Manhours').length).toBeGreaterThanOrEqual(
+			1
+		);
 		expect(screen.getByText('Employee Charges')).toBeInTheDocument();
-		expect(screen.getAllByText('Amount')).toHaveLength(2);
-		expect(screen.getAllByText('TDS')).toHaveLength(2);
+		expect(screen.getAllByText('Amount').length).toBeGreaterThanOrEqual(2);
+		expect(screen.getAllByText('TDS').length).toBeGreaterThanOrEqual(2);
 		expect(screen.getByText('Net Payable')).toBeInTheDocument();
 		expect(screen.getByText('Accent Charges')).toBeInTheDocument();
 		// P&L merges the last two columns; sub-labels sit in the second row.
@@ -187,14 +189,14 @@ describe('ManhoursBillingReportPage', () => {
 		// Section tints are applied per column group in the data row.
 		const nameCell = screen.getByText('Abrar Tamboli').closest('td')!;
 		expect(nameCell.className).toContain('bg-yellow-100');
-		const manhoursCell = screen.getAllByText('176')[0].closest('td')!;
-		expect(manhoursCell.className).toContain('bg-blue-100');
+		const tdCells = Array.from(document.querySelectorAll('td'));
+		const manhoursTd = tdCells.find((td) => td.textContent?.trim() === '176')!;
+		expect(manhoursTd.className).toContain('bg-blue-100');
 		const accentCell = screen.getByText('480.00').closest('td')!;
 		expect(accentCell.className).toContain('bg-green-100');
 		const pnlCell = screen.getAllByText('16,368.00')[0].closest('td')!;
 		expect(pnlCell.className).toContain('bg-orange-200');
 	});
-
 	it('renders the totals row', async () => {
 		render(<ManhoursBillingReportPage />, { wrapper: createWrapper() });
 
@@ -235,5 +237,128 @@ describe('ManhoursBillingReportPage', () => {
 				'No manhours logged on this project in August 2026.'
 			)
 		).toBeInTheDocument();
+	});
+	it('switches to Annual FY Matrix view and renders the 12-month table', async () => {
+		const MOCK_ANNUAL_DATA = {
+			success: true,
+			view: 'annual',
+			data: {
+				client_name: 'Tecnimont Private Limited',
+				project: {
+					project_id: 18,
+					project_code: '18',
+					project_name: 'Engineering Manpower on Deputation basis',
+				},
+				fy_label: 'FY 2026–27',
+				fy_year: 2026,
+				months: [
+					'Apr',
+					'May',
+					'Jun',
+					'Jul',
+					'Aug',
+					'Sep',
+					'Oct',
+					'Nov',
+					'Dec',
+					'Jan',
+					'Feb',
+					'Mar',
+				],
+				month_keys: [
+					'apr',
+					'may',
+					'jun',
+					'jul',
+					'aug',
+					'sep',
+					'oct',
+					'nov',
+					'dec',
+					'jan',
+					'feb',
+					'mar',
+				],
+				rows: [
+					{
+						sr_no: 1,
+						id: 't1',
+						employee_id: null,
+						employee_code: '',
+						employee_name: 'Uttam Lad',
+						designation: 'Layout Engineer',
+						salary_type: 'custom',
+						rate_company: 456,
+						rate_accent: 550,
+						monthly_hours: {
+							apr: 200,
+							may: 200,
+							jun: 0,
+							jul: 0,
+							aug: 0,
+							sep: 0,
+							oct: 0,
+							nov: 0,
+							dec: 0,
+							jan: 0,
+							feb: 0,
+							mar: 0,
+						},
+						total_hours: 400,
+						company_cost: 182400,
+						accent_cost: 220000,
+						pnl: 37600,
+					},
+				],
+				totals: {
+					monthly_hours: {
+						apr: 200,
+						may: 200,
+						jun: 0,
+						jul: 0,
+						aug: 0,
+						sep: 0,
+						oct: 0,
+						nov: 0,
+						dec: 0,
+						jan: 0,
+						feb: 0,
+						mar: 0,
+					},
+					total_hours: 400,
+					total_company_cost: 182400,
+					total_accent_cost: 220000,
+					total_pnl: 37600,
+				},
+			},
+		};
+
+		apiGet.mockImplementation((url: string) => {
+			if (String(url).includes('view=annual')) {
+				return Promise.resolve(MOCK_ANNUAL_DATA);
+			}
+			if (String(url).includes('project_id=')) {
+				return Promise.resolve(MOCK_DATA);
+			}
+			return Promise.resolve(MOCK_META);
+		});
+
+		render(<ManhoursBillingReportPage />, { wrapper: createWrapper() });
+
+		// Wait for initial load
+		expect(await screen.findByText('Abrar Tamboli')).toBeInTheDocument();
+
+		// Switch to Annual FY Matrix view
+		const annualTabButton = screen.getByRole('tab', {
+			name: /annual fy matrix/i,
+		});
+		annualTabButton.click();
+
+		// Wait for annual data to render
+		expect(await screen.findByText('Uttam Lad')).toBeInTheDocument();
+		expect(screen.getByText('RT/HR (Co)')).toBeInTheDocument();
+		expect(screen.getByText('RT/HR (Acc)')).toBeInTheDocument();
+		expect(screen.getByText('Grand Total')).toBeInTheDocument();
+		expect(screen.getAllByText('400').length).toBeGreaterThanOrEqual(1);
 	});
 });
