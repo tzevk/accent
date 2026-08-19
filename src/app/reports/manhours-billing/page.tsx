@@ -8,12 +8,19 @@ import {
 	DocumentArrowDownIcon,
 	PrinterIcon,
 	XMarkIcon,
+	DocumentTextIcon,
+	CalendarDaysIcon,
+	UserGroupIcon,
+	BanknotesIcon,
+	ClockIcon,
+	ArrowTrendingUpIcon,
+	ArrowTrendingDownIcon,
 } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
 import SearchableSelect from '@/components/ui/searchable-select';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatCurrency } from '@/lib/format';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 
 // ─── Client-safe API types ──────────────────────────────────────────
@@ -25,14 +32,21 @@ interface BillingProject {
 	client_name: string;
 }
 
+interface FinancialYearOption {
+	year: number;
+	label: string;
+}
+
 interface BillingMeta {
 	clients: string[];
 	projects: BillingProject[];
 	months: string[];
 	latest_month: string | null;
+	financial_years: FinancialYearOption[];
+	current_fy: number;
 }
 
-interface BillingRow {
+interface MonthlyBillingRow {
 	sr_no: number;
 	employee_id: number | null;
 	employee_code: string;
@@ -50,7 +64,7 @@ interface BillingRow {
 	pnl_tds: number;
 }
 
-interface BillingData {
+interface MonthlyBillingData {
 	client_name: string;
 	project: {
 		project_id: number;
@@ -60,7 +74,7 @@ interface BillingData {
 	month: string;
 	month_label: string;
 	year: number;
-	rows: BillingRow[];
+	rows: MonthlyBillingRow[];
 	totals: {
 		total_manhours: number;
 		total_amount: number;
@@ -72,12 +86,53 @@ interface BillingData {
 	};
 }
 
-interface ApiResponse {
+interface AnnualEmployeeRow {
+	sr_no: number;
+	id: string | number;
+	employee_id: number | null;
+	employee_code: string;
+	employee_name: string;
+	designation: string;
+	salary_type: string;
+	rate_company: number;
+	rate_accent: number;
+	monthly_hours: Record<string, number>;
+	total_hours: number;
+	company_cost: number;
+	accent_cost: number;
+	pnl: number;
+}
+
+interface AnnualBillingData {
+	client_name: string;
+	project: {
+		project_id: number;
+		project_code: string;
+		project_name: string;
+	};
+	fy_label: string;
+	fy_year: number;
+	months: string[];
+	month_keys: string[];
+	rows: AnnualEmployeeRow[];
+	totals: {
+		monthly_hours: Record<string, number>;
+		total_hours: number;
+		total_company_cost: number;
+		total_accent_cost: number;
+		total_pnl: number;
+	};
+}
+
+interface ApiResponse<T = unknown> {
 	success: boolean;
-	data?: BillingData | null;
+	data?: T | null;
 	meta?: BillingMeta;
+	view?: 'monthly' | 'annual';
 	error?: string;
 }
+
+type ViewMode = 'monthly' | 'annual';
 
 function monthLabel(month: string): string {
 	const [year, monthNumber] = month.split('-').map(Number);
@@ -101,23 +156,19 @@ function monthLabel(month: string): string {
 	return `${names[monthNumber - 1]} ${year}`;
 }
 
-/** "176" stays "176"; "8.50" → "8.5"; aligns with the template's plain-hour cells. */
 function fmtHours(hours: number): string {
 	return String(Number(hours.toFixed(2)));
 }
 
 // ─── Print layout (A4 landscape letterhead) ─────────────────────────
-// Mirrors the ActivityStatusMatrix print pattern: @page landscape +
-// print-color-adjust, plus a print-only letterhead header, repeating
-// table header on page breaks, and a fixed footer (Chrome repeats
-// position:fixed elements on every printed page).
+
 const mhbPrintStyles = `
 @media print {
 	@page {
 		size: A4 landscape;
 		margin: 10mm 9mm 14mm 9mm;
 		@bottom-center {
-			content: "Accent CRM — Manhours Billing Report — Page " counter(page) " of " counter(pages);
+			content: "Accent CRM — Manhours & Deputation Billing Report — Page " counter(page) " of " counter(pages);
 			font-size: 7pt;
 			color: #6b7280;
 		}
@@ -126,8 +177,6 @@ const mhbPrintStyles = `
 		-webkit-print-color-adjust: exact;
 		print-color-adjust: exact;
 	}
-	/* Hide the app chrome: the page's top nav and the root-layout sidebar,
-	   and undo the content offset the fixed sidebar reserves on screen. */
 	.mhb-print-page nav {
 		display: none !important;
 	}
@@ -151,7 +200,7 @@ const mhbPrintStyles = `
 		font-size: 8pt;
 	}
 	.mhb-sheet table {
-		font-size: 8pt;
+		font-size: 7.5pt;
 	}
 	.mhb-sheet th,
 	.mhb-sheet td {
@@ -164,7 +213,6 @@ const mhbPrintStyles = `
 		break-inside: avoid;
 	}
 
-	/* Print-only letterhead header */
 	.mhb-print-header {
 		border-bottom: 2px solid #64126d;
 		padding-bottom: 3mm;
@@ -213,7 +261,6 @@ const mhbPrintStyles = `
 		color: #6b7280;
 	}
 
-	/* Print-only footer (repeats on every page in Chrome) */
 	.mhb-print-footer {
 		position: fixed;
 		bottom: 0;
@@ -249,9 +296,11 @@ export default function ManhoursBillingReportPage() {
 		PERMISSIONS: { READ: string };
 	};
 
+	const [viewMode, setViewMode] = useState<ViewMode>('monthly');
 	const [client, setClient] = useState('');
 	const [projectId, setProjectId] = useState('');
 	const [month, setMonth] = useState('');
+	const [fyYear, setFyYear] = useState('');
 	const [exporting, setExporting] = useState(false);
 
 	const metaQuery = useQuery<ApiResponse>({
@@ -265,11 +314,10 @@ export default function ManhoursBillingReportPage() {
 	const clients = useMemo(() => meta?.clients ?? [], [meta]);
 	const projects = useMemo(() => meta?.projects ?? [], [meta]);
 	const months = useMemo(() => meta?.months ?? [], [meta]);
+	const financialYears = useMemo(() => meta?.financial_years ?? [], [meta]);
 
 	useEffect(() => {
 		if (!meta) return;
-		// Defaults are applied once when metadata arrives: first client, its
-		// first project, and the latest month with data.
 		const initialClient = clients.find((c) => c === client) ?? clients[0] ?? '';
 		const clientProjects = projects.filter(
 			(p) => p.client_name === initialClient
@@ -285,23 +333,38 @@ export default function ManhoursBillingReportPage() {
 			return String(clientProjects[0]?.project_id ?? '');
 		});
 		setMonth((previous) => previous || meta.latest_month || '');
+		setFyYear((previous) => previous || String(meta.current_fy || 2026));
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [meta]);
 
-	const dataQuery = useQuery<ApiResponse>({
-		queryKey: ['reports', 'manhours-billing', 'data', projectId, month],
+	// Monthly query
+	const monthlyQuery = useQuery<ApiResponse<MonthlyBillingData>>({
+		queryKey: ['reports', 'manhours-billing', 'monthly', projectId, month],
 		queryFn: () =>
 			apiGet(
-				`/api/reports/manhours-billing?project_id=${projectId}&month=${month}`
+				`/api/reports/manhours-billing?project_id=${projectId}&month=${month}&view=monthly`
 			),
-		enabled: !!projectId && !!month,
+		enabled: viewMode === 'monthly' && !!projectId && !!month,
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
 	});
 
-	const data = dataQuery.data?.data ?? null;
+	// Annual query
+	const annualQuery = useQuery<ApiResponse<AnnualBillingData>>({
+		queryKey: ['reports', 'manhours-billing', 'annual', projectId, fyYear],
+		queryFn: () =>
+			apiGet(
+				`/api/reports/manhours-billing?project_id=${projectId}&fy=${fyYear}&view=annual`
+			),
+		enabled: viewMode === 'annual' && !!projectId && !!fyYear,
+		refetchOnWindowFocus: false,
+		staleTime: 30_000,
+	});
 
-	// Print letterhead timestamp — recomputed on render, stable for a print.
+	const activeQuery = viewMode === 'monthly' ? monthlyQuery : annualQuery;
+	const monthlyData = monthlyQuery.data?.data ?? null;
+	const annualData = annualQuery.data?.data ?? null;
+
 	const generatedAt = new Date().toLocaleString('en-IN', {
 		day: '2-digit',
 		month: 'short',
@@ -321,9 +384,11 @@ export default function ManhoursBillingReportPage() {
 	const hasAccess = isSuperAdmin || hasReportsPermission || hasFieldPermission;
 
 	const error =
-		dataQuery.error?.message || dataQuery.data?.error || metaQuery.data?.error;
+		activeQuery.error?.message ||
+		activeQuery.data?.error ||
+		metaQuery.data?.error;
 	const isLoading =
-		dataQuery.isLoading || (dataQuery.isFetching && !dataQuery.data);
+		activeQuery.isLoading || (activeQuery.isFetching && !activeQuery.data);
 
 	const clientOptions = useMemo(
 		() => clients.map((c) => ({ value: c, label: c })),
@@ -343,6 +408,14 @@ export default function ManhoursBillingReportPage() {
 		() => months.map((m) => ({ value: m, label: monthLabel(m) })),
 		[months]
 	);
+	const fyOptions = useMemo(
+		() =>
+			financialYears.map((fy) => ({
+				value: String(fy.year),
+				label: fy.label,
+			})),
+		[financialYears]
+	);
 
 	const handleClientChange = (value: string) => {
 		setClient(value);
@@ -355,13 +428,18 @@ export default function ManhoursBillingReportPage() {
 	};
 
 	const handleExport = async () => {
-		if (!projectId || !month) return;
+		if (!projectId) return;
+		if (viewMode === 'monthly' && !month) return;
+		if (viewMode === 'annual' && !fyYear) return;
+
 		setExporting(true);
 		try {
-			const response = await fetch(
-				`/api/reports/manhours-billing/download?project_id=${projectId}&month=${month}`,
-				{ credentials: 'include' }
-			);
+			const downloadUrl =
+				viewMode === 'monthly'
+					? `/api/reports/manhours-billing/download?project_id=${projectId}&month=${month}&view=monthly`
+					: `/api/reports/manhours-billing/download?project_id=${projectId}&fy=${fyYear}&view=annual`;
+
+			const response = await fetch(downloadUrl, { credentials: 'include' });
 			if (!response.ok) {
 				const message = await response.text().catch(() => '');
 				throw new Error(
@@ -373,7 +451,10 @@ export default function ManhoursBillingReportPage() {
 			const match = disposition.match(/filename="?([^";]+)"?/i);
 			const filename =
 				match?.[1] ||
-				`Manhours_Billing_${data?.client_name ?? ''}_${month}.xlsx`;
+				(viewMode === 'monthly'
+					? `Manhours_Billing_${client}_${month}.xlsx`
+					: `Deputation_Summary_${client}_FY${fyYear}.xlsx`);
+
 			const objectUrl = URL.createObjectURL(blob);
 			const anchor = document.createElement('a');
 			anchor.href = objectUrl;
@@ -417,22 +498,78 @@ export default function ManhoursBillingReportPage() {
 		);
 	}
 
+	const hasCurrentData = viewMode === 'monthly' ? !!monthlyData : !!annualData;
+
 	return (
-		<div className="mhb-print-page min-h-screen bg-white text-black">
+		<div className="mhb-print-page min-h-screen bg-gray-50/50 text-black">
 			<style>{mhbPrintStyles}</style>
 			<Navbar />
-			<main className="px-1 pb-8 pt-1 sm:px-2">
-				{/* Filter bar — hidden when printing the sheet. */}
+			<main className="px-2 pb-12 pt-2 sm:px-4 md:px-6">
+				{/* Top Bar Header + View Switcher */}
+				<div className="mx-auto mb-3 max-w-[1600px] print:hidden">
+					<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-200 pb-3">
+						<div>
+							<h1 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+								<span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#64126D]/10 text-[#64126D]">
+									<BanknotesIcon className="h-4 w-4" />
+								</span>
+								Manhours &amp; Deputation Billing Report
+							</h1>
+							<p className="text-xs text-gray-500 mt-0.5">
+								Monthly client invoicing statements and annual financial year
+								deputation tracking
+							</p>
+						</div>
+
+						{/* Segmented View Switcher Pill */}
+						<div
+							role="tablist"
+							aria-label="Report views"
+							className="inline-flex rounded-xl bg-gray-100/90 p-1 border border-gray-200/80 shadow-inner self-start sm:self-auto"
+						>
+							<button
+								type="button"
+								role="tab"
+								aria-selected={viewMode === 'monthly'}
+								onClick={() => setViewMode('monthly')}
+								className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+									viewMode === 'monthly'
+										? 'bg-[#64126D] text-white shadow-sm shadow-[#64126D]/20'
+										: 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+								}`}
+							>
+								<DocumentTextIcon className="h-3.5 w-3.5" />
+								Monthly Statement
+							</button>
+							<button
+								type="button"
+								role="tab"
+								aria-selected={viewMode === 'annual'}
+								onClick={() => setViewMode('annual')}
+								className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+									viewMode === 'annual'
+										? 'bg-[#64126D] text-white shadow-sm shadow-[#64126D]/20'
+										: 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+								}`}
+							>
+								<CalendarDaysIcon className="h-3.5 w-3.5" />
+								Annual FY Matrix
+							</button>
+						</div>
+					</div>
+				</div>
+
+				{/* Filter bar — print:hidden */}
 				<form
 					onSubmit={(e) => {
 						e.preventDefault();
-						dataQuery.refetch();
+						activeQuery.refetch();
 					}}
 					aria-label="Manhours billing filters"
-					className="mx-auto mb-3 flex max-w-[1550px] flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:hidden"
+					className="mx-auto mb-4 flex max-w-[1600px] flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm print:hidden"
 				>
 					<label className="block min-w-[200px] flex-1">
-						<span className="mb-1 block text-[11px] font-semibold text-gray-600">
+						<span className="mb-1 block text-[11px] font-semibold text-gray-700">
 							Client Name
 						</span>
 						<SearchableSelect
@@ -445,7 +582,7 @@ export default function ManhoursBillingReportPage() {
 					</label>
 
 					<label className="block min-w-[240px] flex-[2]">
-						<span className="mb-1 block text-[11px] font-semibold text-gray-600">
+						<span className="mb-1 block text-[11px] font-semibold text-gray-700">
 							Project Name/Number
 						</span>
 						<SearchableSelect
@@ -457,25 +594,44 @@ export default function ManhoursBillingReportPage() {
 						/>
 					</label>
 
-					<label className="block min-w-[160px] flex-1">
-						<span className="mb-1 block text-[11px] font-semibold text-gray-600">
-							Month/Year
-						</span>
-						<SearchableSelect
-							options={monthOptions}
-							value={month}
-							onChange={(val) => setMonth(String(val))}
-							placeholder="Select a month…"
-							disabled={metaQuery.isLoading}
-						/>
-					</label>
+					{viewMode === 'monthly' ? (
+						<label className="block min-w-[160px] flex-1">
+							<span className="mb-1 block text-[11px] font-semibold text-gray-700">
+								Month / Year
+							</span>
+							<SearchableSelect
+								options={monthOptions}
+								value={month}
+								onChange={(val) => setMonth(String(val))}
+								placeholder="Select month…"
+								disabled={metaQuery.isLoading}
+							/>
+						</label>
+					) : (
+						<label className="block min-w-[160px] flex-1">
+							<span className="mb-1 block text-[11px] font-semibold text-gray-700">
+								Financial Year (Apr–Mar)
+							</span>
+							<SearchableSelect
+								options={fyOptions}
+								value={fyYear}
+								onChange={(val) => setFyYear(String(val))}
+								placeholder="Select FY…"
+								disabled={metaQuery.isLoading}
+							/>
+						</label>
+					)}
 
-					<div className="flex items-center gap-1.5">
+					<div className="flex items-center gap-1.5 pt-1">
 						<button
 							type="button"
-							onClick={() => dataQuery.refetch()}
-							disabled={!projectId || !month || isLoading}
-							className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-[11px] font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 active:scale-[0.96] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:cursor-not-allowed disabled:opacity-40"
+							onClick={() => activeQuery.refetch()}
+							disabled={
+								!projectId ||
+								(viewMode === 'monthly' ? !month : !fyYear) ||
+								isLoading
+							}
+							className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 active:scale-[0.96] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] disabled:cursor-not-allowed disabled:opacity-40"
 						>
 							<ArrowPathIcon
 								className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`}
@@ -485,8 +641,8 @@ export default function ManhoursBillingReportPage() {
 						<button
 							type="button"
 							onClick={handlePrint}
-							disabled={!data}
-							className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-[11px] font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 active:scale-[0.96] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:cursor-not-allowed disabled:opacity-40"
+							disabled={!hasCurrentData}
+							className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 active:scale-[0.96] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] disabled:cursor-not-allowed disabled:opacity-40"
 						>
 							<PrinterIcon className="h-3.5 w-3.5" />
 							Print
@@ -494,8 +650,8 @@ export default function ManhoursBillingReportPage() {
 						<button
 							type="button"
 							onClick={handleExport}
-							disabled={!data || exporting}
-							className="inline-flex h-9 items-center gap-1.5 rounded-md border border-[#64126D] bg-[#64126D] px-3 text-[11px] font-semibold text-white hover:bg-[#7F2487] active:scale-[0.96] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+							disabled={!hasCurrentData || exporting}
+							className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#64126D] bg-[#64126D] px-3.5 text-xs font-semibold text-white hover:bg-[#52105a] shadow-sm shadow-[#64126D]/20 active:scale-[0.96] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							<DocumentArrowDownIcon className="h-3.5 w-3.5" />
 							{exporting ? 'Exporting…' : 'Export Excel'}
@@ -503,36 +659,496 @@ export default function ManhoursBillingReportPage() {
 					</div>
 				</form>
 
+				{/* KPI Summary Cards (screen-only) */}
+				{viewMode === 'monthly' &&
+					monthlyData &&
+					monthlyData.rows.length > 0 && (
+						<div className="mx-auto mb-4 grid max-w-[1600px] grid-cols-2 gap-3 sm:grid-cols-4 print:hidden">
+							<div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+								<div className="flex items-center justify-between">
+									<span className="text-[11px] font-medium text-gray-500">
+										Total Manhours
+									</span>
+									<ClockIcon className="h-4 w-4 text-blue-600" />
+								</div>
+								<p className="mt-1 text-lg font-bold text-gray-900 tabular-nums">
+									{fmtHours(monthlyData.totals.total_manhours)}
+									<span className="text-xs font-normal text-gray-500 ml-1">
+										hrs
+									</span>
+								</p>
+								<span className="text-[10px] text-gray-400">
+									{monthlyData.rows.length} resources billed
+								</span>
+							</div>
+
+							<div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+								<div className="flex items-center justify-between">
+									<span className="text-[11px] font-medium text-gray-500">
+										Billed to Client
+									</span>
+									<BanknotesIcon className="h-4 w-4 text-emerald-600" />
+								</div>
+								<p className="mt-1 text-lg font-bold text-emerald-700 tabular-nums">
+									{formatCurrency(monthlyData.totals.total_accent_amount)}
+								</p>
+								<span className="text-[10px] text-emerald-600">
+									Gross invoice value
+								</span>
+							</div>
+
+							<div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+								<div className="flex items-center justify-between">
+									<span className="text-[11px] font-medium text-gray-500">
+										Net Payable (Salary/Cost)
+									</span>
+									<UserGroupIcon className="h-4 w-4 text-indigo-600" />
+								</div>
+								<p className="mt-1 text-lg font-bold text-gray-800 tabular-nums">
+									{formatCurrency(monthlyData.totals.total_net_payable)}
+								</p>
+								<span className="text-[10px] text-gray-400">
+									After TDS: {formatCurrency(monthlyData.totals.total_tds)}
+								</span>
+							</div>
+
+							<div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+								<div className="flex items-center justify-between">
+									<span className="text-[11px] font-medium text-gray-500">
+										Net Margin (P&amp;L)
+									</span>
+									{monthlyData.totals.total_pnl_after_deductions >= 0 ? (
+										<ArrowTrendingUpIcon className="h-4 w-4 text-green-600" />
+									) : (
+										<ArrowTrendingDownIcon className="h-4 w-4 text-red-600" />
+									)}
+								</div>
+								<p
+									className={`mt-1 text-lg font-bold tabular-nums ${
+										monthlyData.totals.total_pnl_after_deductions >= 0
+											? 'text-green-700'
+											: 'text-red-600'
+									}`}
+								>
+									{formatCurrency(
+										monthlyData.totals.total_pnl_after_deductions
+									)}
+								</p>
+								<span className="text-[10px] text-gray-400">
+									P&amp;L before TDS:{' '}
+									{formatCurrency(monthlyData.totals.total_pnl_tds)}
+								</span>
+							</div>
+						</div>
+					)}
+
+				{viewMode === 'annual' && annualData && annualData.rows.length > 0 && (
+					<div className="mx-auto mb-4 grid max-w-[1600px] grid-cols-2 gap-3 sm:grid-cols-4 print:hidden">
+						<div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+							<div className="flex items-center justify-between">
+								<span className="text-[11px] font-medium text-gray-500">
+									FY Total Manhours
+								</span>
+								<ClockIcon className="h-4 w-4 text-blue-600" />
+							</div>
+							<p className="mt-1 text-lg font-bold text-gray-900 tabular-nums">
+								{fmtHours(annualData.totals.total_hours)}
+								<span className="text-xs font-normal text-gray-500 ml-1">
+									hrs
+								</span>
+							</p>
+							<span className="text-[10px] text-gray-400">
+								{annualData.rows.length} resources on deputation
+							</span>
+						</div>
+
+						<div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+							<div className="flex items-center justify-between">
+								<span className="text-[11px] font-medium text-gray-500">
+									Total Client Billing
+								</span>
+								<BanknotesIcon className="h-4 w-4 text-emerald-600" />
+							</div>
+							<p className="mt-1 text-lg font-bold text-emerald-700 tabular-nums">
+								{formatCurrency(annualData.totals.total_accent_cost)}
+							</p>
+							<span className="text-[10px] text-emerald-600">
+								Accent revenue in {annualData.fy_label}
+							</span>
+						</div>
+
+						<div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+							<div className="flex items-center justify-between">
+								<span className="text-[11px] font-medium text-gray-500">
+									Total Company Cost
+								</span>
+								<UserGroupIcon className="h-4 w-4 text-indigo-600" />
+							</div>
+							<p className="mt-1 text-lg font-bold text-gray-800 tabular-nums">
+								{formatCurrency(annualData.totals.total_company_cost)}
+							</p>
+							<span className="text-[10px] text-gray-400">
+								Resource payout cost
+							</span>
+						</div>
+
+						<div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+							<div className="flex items-center justify-between">
+								<span className="text-[11px] font-medium text-gray-500">
+									Annual Net P&amp;L
+								</span>
+								{annualData.totals.total_pnl >= 0 ? (
+									<ArrowTrendingUpIcon className="h-4 w-4 text-green-600" />
+								) : (
+									<ArrowTrendingDownIcon className="h-4 w-4 text-red-600" />
+								)}
+							</div>
+							<p
+								className={`mt-1 text-lg font-bold tabular-nums ${
+									annualData.totals.total_pnl >= 0
+										? 'text-green-700'
+										: 'text-red-600'
+								}`}
+							>
+								{formatCurrency(annualData.totals.total_pnl)}
+							</p>
+							<span className="text-[10px] text-gray-400">
+								{annualData.totals.total_accent_cost > 0
+									? `${((annualData.totals.total_pnl / annualData.totals.total_accent_cost) * 100).toFixed(1)}% margin`
+									: '—'}
+							</span>
+						</div>
+					</div>
+				)}
+
+				{/* Error / Loading / Content States */}
 				{error ? (
-					<div className="mx-auto max-w-[1550px] border border-red-300 bg-red-50 p-4 text-center text-sm text-red-700">
-						<p className="font-semibold">Couldn&apos;t load the report</p>
-						<p className="mt-1">{error}</p>
+					<div className="mx-auto max-w-[1600px] rounded-xl border border-red-200 bg-red-50 p-6 text-center text-sm text-red-700 shadow-sm">
+						<p className="font-semibold text-base">
+							Couldn&apos;t load the report
+						</p>
+						<p className="mt-1 text-xs text-red-600">{error}</p>
 						<button
 							type="button"
-							onClick={() => dataQuery.refetch()}
-							className="mt-3 border border-red-600 bg-red-600 px-3 py-1 text-xs text-white"
+							onClick={() => activeQuery.refetch()}
+							className="mt-3 rounded-lg border border-red-600 bg-red-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-red-700 shadow-sm"
 						>
 							Retry
 						</button>
 					</div>
 				) : isLoading ? (
-					<div className="mx-auto flex min-h-[300px] max-w-[1550px] items-center justify-center text-sm text-gray-500">
-						Loading billing report…
+					<div className="mx-auto flex min-h-[350px] max-w-[1600px] items-center justify-center rounded-xl border border-gray-200 bg-white p-8 text-sm text-gray-500 shadow-sm">
+						<div className="flex flex-col items-center gap-2">
+							<ArrowPathIcon className="h-6 w-6 animate-spin text-[#64126D]" />
+							<p className="text-xs text-gray-600">
+								Loading{' '}
+								{viewMode === 'monthly'
+									? 'monthly billing'
+									: 'annual deputation'}{' '}
+								report…
+							</p>
+						</div>
 					</div>
-				) : !data ? (
-					<div className="mx-auto flex min-h-[300px] max-w-[1550px] items-center justify-center border border-gray-300 text-sm text-gray-500">
-						Select a client, project, and month to view the billing report.
+				) : viewMode === 'monthly' ? (
+					/* ─── 1. Monthly Billing Sheet ────────────────────────── */
+					!monthlyData ? (
+						<div className="mx-auto flex min-h-[300px] max-w-[1600px] items-center justify-center rounded-xl border border-gray-200 bg-white p-8 text-sm text-gray-500 shadow-sm">
+							Select a client, project, and month to view the billing report.
+						</div>
+					) : (
+						<div className="mhb-scroll mx-auto max-w-[1600px] overflow-x-auto rounded-xl border border-gray-200 bg-white p-4 shadow-sm print:rounded-none print:border-none print:p-0 print:shadow-none">
+							<section
+								className="mhb-sheet min-w-[950px] bg-white font-[Arial,sans-serif] text-[10px] leading-none text-black"
+								style={{
+									WebkitPrintColorAdjust: 'exact',
+									printColorAdjust: 'exact',
+								}}
+							>
+								{/* Print-only letterhead header */}
+								<header className="mhb-print-header hidden print:block">
+									<div className="mhb-print-header-row">
+										<div className="mhb-print-brand">
+											<Image
+												src="/accent-logo.png"
+												alt="Accent Techno Solutions"
+												width={186}
+												height={116}
+												priority
+												className="h-[13mm] w-auto object-contain"
+											/>
+										</div>
+										<h1 className="mhb-print-title">
+											Manhours Billing Statement
+										</h1>
+										<div className="mhb-print-period">
+											<b>Period:</b> {monthlyData.month_label}
+										</div>
+									</div>
+									<div className="mhb-print-meta">
+										<span>
+											<b>Client:</b> {monthlyData.client_name}
+										</span>
+										<span>
+											<b>Project:</b>{' '}
+											{[
+												monthlyData.project.project_code,
+												monthlyData.project.project_name,
+											]
+												.filter(Boolean)
+												.join(' - ')}
+										</span>
+										<span>
+											<b>Month/Year:</b> {monthlyData.month_label}
+										</span>
+										<span className="mhb-print-generated">
+											<b>Generated:</b> {generatedAt}
+										</span>
+									</div>
+								</header>
+
+								{/* Header block mirroring Excel template */}
+								<div className="grid grid-cols-[150px_minmax(0,1fr)] border border-black print:hidden">
+									<div className="border-b border-black px-2 py-1.5 font-semibold bg-gray-50">
+										Client Name :
+									</div>
+									<div className="border-b border-black border-l border-l-black px-2 py-1.5 font-medium">
+										{monthlyData.client_name}
+									</div>
+									<div className="border-b border-black px-2 py-1.5 font-semibold bg-gray-50">
+										Project Name/Number :
+									</div>
+									<div className="border-b border-black border-l border-l-black px-2 py-1.5 font-medium">
+										{[
+											monthlyData.project.project_code,
+											monthlyData.project.project_name,
+										]
+											.filter(Boolean)
+											.join(' - ')}
+									</div>
+									<div className="px-2 py-1.5 font-semibold bg-gray-50">
+										Month/Year :
+									</div>
+									<div className="border-l border-l-black px-2 py-1.5 font-medium">
+										{monthlyData.month_label}
+									</div>
+								</div>
+
+								<table className="mt-0 w-full table-fixed border-collapse border border-black">
+									<caption className="sr-only">
+										Manhours billing for {monthlyData.client_name} on{' '}
+										{monthlyData.project.project_name} in{' '}
+										{monthlyData.month_label}
+									</caption>
+									<colgroup>
+										<col style={{ width: '4%' }} />
+										<col style={{ width: '15%' }} />
+										<col style={{ width: '9%' }} />
+										<col style={{ width: '8%' }} />
+										<col style={{ width: '8%' }} />
+										<col style={{ width: '9%' }} />
+										<col style={{ width: '7%' }} />
+										<col style={{ width: '8%' }} />
+										<col style={{ width: '8%' }} />
+										<col style={{ width: '8%' }} />
+										<col style={{ width: '8%' }} />
+										<col style={{ width: '8%' }} />
+									</colgroup>
+									<thead>
+										<tr>
+											<th
+												rowSpan={2}
+												className="border border-black bg-yellow-100 px-1 py-1 text-center font-semibold"
+											>
+												Sr. No.
+											</th>
+											<th
+												rowSpan={2}
+												className="border border-black bg-yellow-100 px-1 py-1 text-left font-semibold"
+											>
+												Employee Name
+											</th>
+											<th
+												rowSpan={2}
+												className="border border-black bg-yellow-100 px-1 py-1 text-left font-semibold"
+											>
+												Designation
+											</th>
+											<th
+												rowSpan={2}
+												className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
+											>
+												Total Manhours
+											</th>
+											<th
+												rowSpan={2}
+												className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
+											>
+												Employee Charges
+											</th>
+											<th
+												rowSpan={2}
+												className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
+											>
+												Amount
+											</th>
+											<th
+												rowSpan={2}
+												className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
+											>
+												TDS
+											</th>
+											<th
+												rowSpan={2}
+												className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
+											>
+												Net Payable
+											</th>
+											<th
+												rowSpan={2}
+												className="border border-black bg-green-100 px-1 py-1 text-right font-semibold"
+											>
+												Accent Charges
+											</th>
+											<th
+												rowSpan={2}
+												className="border border-black bg-green-100 px-1 py-1 text-right font-semibold"
+											>
+												Amount
+											</th>
+											<th
+												colSpan={2}
+												className="border border-black bg-yellow-300 px-1 py-1 text-center font-semibold"
+											>
+												P&amp;L
+											</th>
+										</tr>
+										<tr>
+											<th className="border border-black bg-orange-200 px-1 py-1 text-right font-semibold">
+												After Deductions
+											</th>
+											<th className="border border-black bg-yellow-300 px-1 py-1 text-right font-semibold">
+												TDS
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										{monthlyData.rows.length === 0 ? (
+											<tr style={{ height: '36px' }}>
+												<td
+													colSpan={12}
+													className="border border-black px-2 py-3 text-center text-gray-500"
+												>
+													No manhours logged on this project in{' '}
+													{monthlyData.month_label}.
+												</td>
+											</tr>
+										) : (
+											monthlyData.rows.map((row) => (
+												<tr
+													key={row.employee_id ?? row.sr_no}
+													style={{ height: '22px' }}
+												>
+													<td className="border border-black bg-yellow-100 px-1 py-1 text-center tabular-nums">
+														{row.sr_no}
+													</td>
+													<td className="border border-black bg-yellow-100 px-1 py-1 font-medium">
+														{row.employee_name}
+													</td>
+													<td className="border border-black bg-yellow-100 px-1 py-1">
+														{row.designation || '—'}
+													</td>
+													<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums font-semibold">
+														{fmtHours(row.total_manhours)}
+													</td>
+													<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+														{formatNumber(row.employee_charges)}
+													</td>
+													<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
+														{formatNumber(row.amount)}
+													</td>
+													<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+														{formatNumber(row.tds)}
+													</td>
+													<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+														{formatNumber(row.net_payable)}
+													</td>
+													<td className="border border-black bg-green-100 px-1 py-1 text-right tabular-nums">
+														{formatNumber(row.accent_charges)}
+													</td>
+													<td className="border border-black bg-green-100 px-1 py-1 text-right font-semibold tabular-nums">
+														{formatNumber(row.accent_amount)}
+													</td>
+													<td className="border border-black bg-orange-200 px-1 py-1 text-right font-semibold tabular-nums">
+														{formatNumber(row.pnl_after_deductions)}
+													</td>
+													<td className="border border-black bg-yellow-300 px-1 py-1 text-right font-semibold tabular-nums">
+														{formatNumber(row.pnl_tds)}
+													</td>
+												</tr>
+											))
+										)}
+										<tr style={{ height: '24px' }}>
+											<td
+												colSpan={3}
+												className="border border-black bg-yellow-100 px-2 py-1 text-right font-semibold"
+											>
+												Total
+											</td>
+											<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
+												{fmtHours(monthlyData.totals.total_manhours)}
+											</td>
+											<td className="border border-black bg-blue-100 px-1 py-1" />
+											<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
+												{formatNumber(monthlyData.totals.total_amount)}
+											</td>
+											<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
+												{formatNumber(monthlyData.totals.total_tds)}
+											</td>
+											<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
+												{formatNumber(monthlyData.totals.total_net_payable)}
+											</td>
+											<td className="border border-black bg-green-100 px-1 py-1" />
+											<td className="border border-black bg-green-100 px-1 py-1 text-right font-semibold tabular-nums">
+												{formatNumber(monthlyData.totals.total_accent_amount)}
+											</td>
+											<td className="border border-black bg-orange-200 px-1 py-1 text-right font-semibold tabular-nums">
+												{formatNumber(
+													monthlyData.totals.total_pnl_after_deductions
+												)}
+											</td>
+											<td className="border border-black bg-yellow-300 px-1 py-1 text-right font-semibold tabular-nums">
+												{formatNumber(monthlyData.totals.total_pnl_tds)}
+											</td>
+										</tr>
+									</tbody>
+								</table>
+
+								<footer className="mhb-print-footer hidden print:flex">
+									<span>
+										Accent CRM — Manhours Billing Statement —{' '}
+										{monthlyData.client_name}
+									</span>
+									<span>Generated {generatedAt}</span>
+								</footer>
+							</section>
+						</div>
+					)
+				) : /* ─── 2. Annual FY Deputation Matrix View ─────────────── */
+				!annualData ? (
+					<div className="mx-auto flex min-h-[300px] max-w-[1600px] items-center justify-center rounded-xl border border-gray-200 bg-white p-8 text-sm text-gray-500 shadow-sm">
+						Select a client, project, and financial year to view the deputation
+						matrix.
 					</div>
 				) : (
-					<div className="mhb-scroll mx-auto max-w-[1550px] overflow-x-auto print:overflow-visible">
+					<div className="mhb-scroll mx-auto max-w-[1600px] overflow-x-auto rounded-xl border border-gray-200 bg-white p-4 shadow-sm print:rounded-none print:border-none print:p-0 print:shadow-none">
 						<section
-							className="mhb-sheet min-w-[900px] bg-white font-[Arial,sans-serif] text-[10px] leading-none text-black"
+							className="mhb-sheet min-w-[1100px] bg-white font-[Arial,sans-serif] text-[10px] leading-none text-black"
 							style={{
 								WebkitPrintColorAdjust: 'exact',
 								printColorAdjust: 'exact',
 							}}
 						>
-							{/* Print-only letterhead header (hidden on screen). */}
+							{/* Print-only letterhead header */}
 							<header className="mhb-print-header hidden print:block">
 								<div className="mhb-print-header-row">
 									<div className="mhb-print-brand">
@@ -545,23 +1161,28 @@ export default function ManhoursBillingReportPage() {
 											className="h-[13mm] w-auto object-contain"
 										/>
 									</div>
-									<h1 className="mhb-print-title">Manhours Billing Report</h1>
+									<h1 className="mhb-print-title">
+										Annual Deputation Manhours Summary
+									</h1>
 									<div className="mhb-print-period">
-										<b>Period:</b> {data.month_label}
+										<b>Period:</b> {annualData.fy_label}
 									</div>
 								</div>
 								<div className="mhb-print-meta">
 									<span>
-										<b>Client:</b> {data.client_name}
+										<b>Client:</b> {annualData.client_name}
 									</span>
 									<span>
 										<b>Project:</b>{' '}
-										{[data.project.project_code, data.project.project_name]
+										{[
+											annualData.project.project_code,
+											annualData.project.project_name,
+										]
 											.filter(Boolean)
 											.join(' - ')}
 									</span>
 									<span>
-										<b>Month/Year:</b> {data.month_label}
+										<b>Financial Year:</b> {annualData.fy_label}
 									</span>
 									<span className="mhb-print-generated">
 										<b>Generated:</b> {generatedAt}
@@ -569,219 +1190,202 @@ export default function ManhoursBillingReportPage() {
 								</div>
 							</header>
 
-							{/* Header block: client / project / month, mirroring the template. */}
+							{/* Header block mirroring template */}
 							<div className="grid grid-cols-[150px_minmax(0,1fr)] border border-black print:hidden">
-								<div className="border-b border-black px-2 py-1.5 font-semibold">
+								<div className="border-b border-black px-2 py-1.5 font-semibold bg-gray-50">
 									Client Name :
 								</div>
-								<div className="border-b border-black border-l border-l-black px-2 py-1.5">
-									{data.client_name}
+								<div className="border-b border-black border-l border-l-black px-2 py-1.5 font-medium">
+									{annualData.client_name}
 								</div>
-								<div className="border-b border-black px-2 py-1.5 font-semibold">
+								<div className="border-b border-black px-2 py-1.5 font-semibold bg-gray-50">
 									Project Name/Number :
 								</div>
-								<div className="border-b border-black border-l border-l-black px-2 py-1.5">
-									{[data.project.project_code, data.project.project_name]
+								<div className="border-b border-black border-l border-l-black px-2 py-1.5 font-medium">
+									{[
+										annualData.project.project_code,
+										annualData.project.project_name,
+									]
 										.filter(Boolean)
 										.join(' - ')}
 								</div>
-								<div className="px-2 py-1.5 font-semibold">Month/Year :</div>
-								<div className="border-l border-l-black px-2 py-1.5">
-									{data.month_label}
+								<div className="px-2 py-1.5 font-semibold bg-gray-50">
+									Period / Financial Year :
+								</div>
+								<div className="border-l border-l-black px-2 py-1.5 font-medium">
+									{annualData.fy_label} (April {annualData.fy_year} – March{' '}
+									{annualData.fy_year + 1})
 								</div>
 							</div>
 
 							<table className="mt-0 w-full table-fixed border-collapse border border-black">
 								<caption className="sr-only">
-									Manhours billing for {data.client_name} on{' '}
-									{data.project.project_name} in {data.month_label}
+									Annual deputation summary for {annualData.client_name} on{' '}
+									{annualData.project.project_name} in {annualData.fy_label}
 								</caption>
 								<colgroup>
-									<col style={{ width: '5%' }} />
-									<col style={{ width: '14%' }} />
-									<col style={{ width: '8%' }} />
-									<col style={{ width: '8%' }} />
-									<col style={{ width: '8%' }} />
-									<col style={{ width: '9%' }} />
-									<col style={{ width: '8%' }} />
-									<col style={{ width: '8%' }} />
-									<col style={{ width: '8%' }} />
-									<col style={{ width: '8%' }} />
-									<col style={{ width: '8%' }} />
-									<col style={{ width: '8%' }} />
+									<col style={{ width: '3%' }} />
+									<col style={{ width: '13%' }} />
+									<col style={{ width: '6%' }} />
+									<col style={{ width: '6%' }} />
+									<col style={{ width: '6%' }} />
+									{/* 12 Months: 12 * 4.2% = ~50.4% */}
+									{annualData.month_keys.map((m) => (
+										<col key={m} style={{ width: '4.2%' }} />
+									))}
+									<col style={{ width: '5.5%' }} />
+									<col style={{ width: '7%' }} />
+									<col style={{ width: '7%' }} />
+									<col style={{ width: '7%' }} />
 								</colgroup>
 								<thead>
 									<tr>
-										<th
-											rowSpan={2}
-											className="border border-black bg-yellow-100 px-1 py-1 text-center font-semibold"
-										>
-											Sr. No.
+										<th className="border border-black bg-yellow-100 px-1 py-1.5 text-center font-semibold">
+											Sr.
 										</th>
-										<th
-											rowSpan={2}
-											className="border border-black bg-yellow-100 px-1 py-1 text-left font-semibold"
-										>
-											Employee Name
+										<th className="border border-black bg-yellow-100 px-1.5 py-1.5 text-left font-semibold">
+											Team Member
 										</th>
-										<th
-											rowSpan={2}
-											className="border border-black bg-yellow-100 px-1 py-1 text-left font-semibold"
-										>
-											Designation
+										<th className="border border-black bg-yellow-100 px-1 py-1.5 text-center font-semibold">
+											Salary Type
 										</th>
-										<th
-											rowSpan={2}
-											className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
-										>
-											Total Manhours
+										<th className="border border-black bg-blue-100 px-1 py-1.5 text-right font-semibold">
+											RT/HR (Co)
 										</th>
-										<th
-											rowSpan={2}
-											className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
-										>
-											Employee Charges
+										<th className="border border-black bg-blue-100 px-1 py-1.5 text-right font-semibold">
+											RT/HR (Acc)
 										</th>
-										<th
-											rowSpan={2}
-											className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
-										>
-											Amount
+										{annualData.months.map((m) => (
+											<th
+												key={m}
+												className="border border-black bg-amber-100/70 px-0.5 py-1.5 text-right font-semibold"
+											>
+												{m}
+											</th>
+										))}
+										<th className="border border-black bg-purple-100 px-1 py-1.5 text-right font-semibold">
+											Total Hrs
 										</th>
-										<th
-											rowSpan={2}
-											className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
-										>
-											TDS
+										<th className="border border-black bg-green-100 px-1 py-1.5 text-right font-semibold">
+											Company Cost
 										</th>
-										<th
-											rowSpan={2}
-											className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold"
-										>
-											Net Payable
+										<th className="border border-black bg-blue-100 px-1 py-1.5 text-right font-semibold">
+											Accent Cost
 										</th>
-										<th
-											rowSpan={2}
-											className="border border-black bg-green-100 px-1 py-1 text-right font-semibold"
-										>
-											Accent Charges
-										</th>
-										<th
-											rowSpan={2}
-											className="border border-black bg-green-100 px-1 py-1 text-right font-semibold"
-										>
-											Amount
-										</th>
-										<th
-											colSpan={2}
-											className="border border-black bg-yellow-300 px-1 py-1 text-center font-semibold"
-										>
+										<th className="border border-black bg-yellow-300 px-1 py-1.5 text-right font-semibold">
 											P&amp;L
-										</th>
-									</tr>
-									<tr>
-										<th className="border border-black bg-orange-200 px-1 py-1 text-right font-semibold">
-											After Deductions
-										</th>
-										<th className="border border-black bg-yellow-300 px-1 py-1 text-right font-semibold">
-											TDS
 										</th>
 									</tr>
 								</thead>
 								<tbody>
-									{data.rows.length === 0 ? (
-										<tr style={{ height: '32px' }}>
+									{annualData.rows.length === 0 ? (
+										<tr style={{ height: '36px' }}>
 											<td
-												colSpan={12}
-												className="border border-black px-2 py-2 text-center text-gray-500"
+												colSpan={21}
+												className="border border-black px-2 py-3 text-center text-gray-500"
 											>
-												No manhours logged on this project in {data.month_label}
-												.
+												No deputation manhours recorded for this project in{' '}
+												{annualData.fy_label}.
 											</td>
 										</tr>
 									) : (
-										data.rows.map((row) => (
-											<tr
-												key={row.employee_id ?? row.sr_no}
-												style={{ height: '22px' }}
-											>
+										annualData.rows.map((row) => (
+											<tr key={row.id || row.sr_no} style={{ height: '22px' }}>
 												<td className="border border-black bg-yellow-100 px-1 py-1 text-center tabular-nums">
 													{row.sr_no}
 												</td>
-												<td className="border border-black bg-yellow-100 px-1 py-1">
+												<td className="border border-black bg-yellow-100 px-1.5 py-1 font-medium truncate">
 													{row.employee_name}
 												</td>
-												<td className="border border-black bg-yellow-100 px-1 py-1">
-													{row.designation || '—'}
+												<td className="border border-black bg-yellow-100 px-1 py-1 text-center">
+													<span className="capitalize text-[9px] text-gray-700">
+														{row.salary_type || 'monthly'}
+													</span>
 												</td>
 												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-													{fmtHours(row.total_manhours)}
+													{formatNumber(row.rate_company)}
 												</td>
 												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.employee_charges)}
+													{formatNumber(row.rate_accent)}
 												</td>
-												<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
-													{formatNumber(row.amount)}
-												</td>
-												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.tds)}
-												</td>
-												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.net_payable)}
+												{annualData.month_keys.map((mKey) => {
+													const hrs = row.monthly_hours?.[mKey] || 0;
+													return (
+														<td
+															key={mKey}
+															className="border border-black bg-amber-50/50 px-0.5 py-1 text-right tabular-nums text-[9.5px]"
+														>
+															{hrs > 0 ? fmtHours(hrs) : '–'}
+														</td>
+													);
+												})}
+												<td className="border border-black bg-purple-100 px-1 py-1 text-right font-semibold tabular-nums text-purple-900">
+													{fmtHours(row.total_hours)}
 												</td>
 												<td className="border border-black bg-green-100 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.accent_charges)}
+													{formatNumber(row.company_cost)}
 												</td>
-												<td className="border border-black bg-green-100 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.accent_amount)}
+												<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums text-blue-900">
+													{formatNumber(row.accent_cost)}
 												</td>
-												<td className="border border-black bg-orange-200 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.pnl_after_deductions)}
-												</td>
-												<td className="border border-black bg-yellow-300 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.pnl_tds)}
+												<td
+													className={`border border-black px-1 py-1 text-right font-semibold tabular-nums ${
+														row.pnl >= 0
+															? 'bg-yellow-300 text-green-950'
+															: 'bg-red-200 text-red-900'
+													}`}
+												>
+													{formatNumber(row.pnl)}
 												</td>
 											</tr>
 										))
 									)}
+									{/* Grand Totals Row */}
 									<tr style={{ height: '24px' }}>
 										<td
-											colSpan={3}
+											colSpan={5}
 											className="border border-black bg-yellow-100 px-2 py-1 text-right font-semibold"
 										>
-											Total
+											Grand Total
 										</td>
-										<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
-											{fmtHours(data.totals.total_manhours)}
+										{annualData.month_keys.map((mKey) => {
+											const mTotal =
+												annualData.totals.monthly_hours?.[mKey] || 0;
+											return (
+												<td
+													key={mKey}
+													className="border border-black bg-amber-100 px-0.5 py-1 text-right font-semibold tabular-nums text-[9.5px]"
+												>
+													{mTotal > 0 ? fmtHours(mTotal) : '–'}
+												</td>
+											);
+										})}
+										<td className="border border-black bg-purple-200 px-1 py-1 text-right font-bold tabular-nums text-purple-950">
+											{fmtHours(annualData.totals.total_hours)}
 										</td>
-										<td className="border border-black bg-blue-100 px-1 py-1" />
-										<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
-											{formatNumber(data.totals.total_amount)}
+										<td className="border border-black bg-green-200 px-1 py-1 text-right font-bold tabular-nums text-green-950">
+											{formatNumber(annualData.totals.total_company_cost)}
 										</td>
-										<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
-											{formatNumber(data.totals.total_tds)}
+										<td className="border border-black bg-blue-200 px-1 py-1 text-right font-bold tabular-nums text-blue-950">
+											{formatNumber(annualData.totals.total_accent_cost)}
 										</td>
-										<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
-											{formatNumber(data.totals.total_net_payable)}
-										</td>
-										<td className="border border-black bg-green-100 px-1 py-1" />
-										<td className="border border-black bg-green-100 px-1 py-1 text-right font-semibold tabular-nums">
-											{formatNumber(data.totals.total_accent_amount)}
-										</td>
-										<td className="border border-black bg-orange-200 px-1 py-1 text-right font-semibold tabular-nums">
-											{formatNumber(data.totals.total_pnl_after_deductions)}
-										</td>
-										<td className="border border-black bg-yellow-300 px-1 py-1 text-right font-semibold tabular-nums">
-											{formatNumber(data.totals.total_pnl_tds)}
+										<td
+											className={`border border-black px-1 py-1 text-right font-bold tabular-nums ${
+												annualData.totals.total_pnl >= 0
+													? 'bg-yellow-300 text-green-950'
+													: 'bg-red-200 text-red-950'
+											}`}
+										>
+											{formatNumber(annualData.totals.total_pnl)}
 										</td>
 									</tr>
 								</tbody>
 							</table>
 
-							{/* Print-only footer (hidden on screen). */}
 							<footer className="mhb-print-footer hidden print:flex">
 								<span>
-									Accent CRM — Manhours Billing Report — {data.client_name}
+									Accent CRM — Annual Deputation Summary —{' '}
+									{annualData.client_name}
 								</span>
 								<span>Generated {generatedAt}</span>
 							</footer>

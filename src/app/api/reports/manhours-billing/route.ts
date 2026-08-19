@@ -6,6 +6,8 @@ import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions'
 import {
 	fetchBillingMeta,
 	fetchBillingData,
+	fetchAnnualBillingData,
+	getFinancialYear,
 } from '@/app/reports/manhours-billing/data-source';
 
 /**
@@ -62,11 +64,14 @@ export async function GET(request: Request) {
 		const url = new URL(request.url);
 		const projectIdParam = url.searchParams.get('project_id');
 		const month = url.searchParams.get('month');
+		const view = url.searchParams.get('view') || 'monthly';
+		const fyParam =
+			url.searchParams.get('fy') || url.searchParams.get('fy_year');
 
-		// Meta-only request: fill the filter bar.
-		if (!projectIdParam || !month) {
+		// Meta-only request when neither full monthly params nor annual params are provided
+		if (!projectIdParam || (view !== 'annual' && !month && !fyParam)) {
 			const meta = await fetchBillingMeta();
-			return NextResponse.json({ success: true, meta, data: null });
+			return NextResponse.json({ success: true, meta });
 		}
 
 		const projectId = Number(projectIdParam);
@@ -76,7 +81,26 @@ export async function GET(request: Request) {
 				{ status: 400 }
 			);
 		}
-		if (!/^\d{4}-\d{2}$/.test(month)) {
+
+		if (view === 'annual' || (!month && fyParam)) {
+			const fyYear = fyParam ? Number(fyParam) : getFinancialYear();
+			if (!Number.isInteger(fyYear) || fyYear < 2000 || fyYear > 2100) {
+				return NextResponse.json(
+					{ success: false, error: 'Invalid financial year (expected YYYY)' },
+					{ status: 400 }
+				);
+			}
+			const data = await fetchAnnualBillingData(projectId, fyYear);
+			if (!data) {
+				return NextResponse.json(
+					{ success: false, error: 'Project not found' },
+					{ status: 404 }
+				);
+			}
+			return NextResponse.json({ success: true, data, view: 'annual' });
+		}
+
+		if (!month || !/^\d{4}-\d{2}$/.test(month)) {
 			return NextResponse.json(
 				{ success: false, error: 'Invalid month (expected YYYY-MM)' },
 				{ status: 400 }
@@ -90,7 +114,7 @@ export async function GET(request: Request) {
 				{ status: 404 }
 			);
 		}
-		return NextResponse.json({ success: true, data });
+		return NextResponse.json({ success: true, data, view: 'monthly' });
 	} catch (error: unknown) {
 		console.error('Manhours billing report error:', error);
 		return NextResponse.json(

@@ -1,38 +1,29 @@
 /**
  * Server-side data fetch + pure transforms for the Manhours Billing report.
  *
- * Shared by:
- *   - GET /api/reports/manhours-billing          (JSON, route.ts)
- *   - GET /api/reports/manhours-billing/download (Excel, download/route.ts)
+ * Architecture:
+ * - Pure transform functions at the top (unit-tested in data-source.test.ts).
+ * - Server fetchers at the bottom (fetchBillingMeta, fetchBillingData,
+ *   fetchAnnualBillingData).
+ * - Money math goes through @/lib/money (Decimal.js) — no raw float math.
  *
- * The report bills one client project for one month: every employee who
- * logged manhours on that project appears as a row with their per-hour
- * charges (company rate), the billed amount, TDS + net payable, the Accent
- * rate billed to the client and its amount, and the P&L (profit) columns.
- * Mirrors the company's Excel manhours billing template (Client Name /
- * Project Name-Number / Month-Year header with a
- * Sr. No. | Employee Name | Designation | Total Manhours | Employee
- * Charges | Amount | TDS | Net Payable | Accent Charges | Amount |
- * P&L (After Deductions | TDS) grid).
+ * Supports two viewing modes:
+ * 1. Monthly Billing Statement: Detailed client invoice breakdown (Sr No,
+ *    Employee/Member, Designation, Total Manhours, Employee Charges,
+ *    Amount, TDS, Net Payable, Accent Charges, Accent Amount, P&L After
+ *    Deductions & TDS).
+ * 2. Annual FY Deputation Matrix: 12-month Financial Year (Apr–Mar) grid
+ *    matching ProjectManhoursTab.jsx for deputation staff & team tracking.
  *
- * Rates come from `projects.project_manhours_list` (the Project Manhours
- * tab's RT/HR Company + RT/HR Accent columns), falling back to the
- * salary-profile-derived hourly rate for the company rate. TDS uses the
- * profile's `tds_percentage` (default 10%, payroll's convention).
- *
- * Hourly-rate conventions mirror `EditProjectForm`'s salary-profile lookup:
- *   - salary_type 'hourly'  → the profile's stored hourly_rate
- *   - salary_type 'daily'   → the profile's stored daily_rate
- *   - salary_type 'custom'  → hourly_rate parsed from lumpsum_description,
- *                             else the stored hourly_rate
- *   - anything else (monthly) → gross / (std_working_days × std_hours_per_day)
- *
- * Money arithmetic goes through `@/lib/money` (decimal.js) — never raw
- * float operators on currency.
+ * Smart Data Resolution:
+ * - Pulls hours from `projects.project_manhours_list` (Project Manhours tab,
+ *   including external/vendor members and deputation resources) AND
+ *   `user_activity_assignments.daily_entries` (timesheet daily task logs).
  */
 
+import type Decimal from 'decimal.js';
 import { query } from '@/utils/database';
-import { R, mul, sub, pctOf, toNumber } from '@/lib/money';
+import { R, mul, sub, add, pctOf, toNumber, gt } from '@/lib/money';
 
 // ─── Public types ───────────────────────────────────────────────────
 
@@ -43,15 +34,18 @@ export interface BillingProject {
 	client_name: string;
 }
 
+export interface FinancialYearOption {
+	year: number; // e.g. 2026 for FY 2026–27
+	label: string; // e.g. "FY 2026–27"
+}
+
 export interface BillingMeta {
-	/** Distinct client names, sorted */
 	clients: string[];
-	/** All projects that carry a client name */
 	projects: BillingProject[];
-	/** YYYY-MM months that have logged project hours or attendance, newest first */
 	months: string[];
-	/** Newest month with data, or the current month */
 	latest_month: string | null;
+	financial_years: FinancialYearOption[];
+	current_fy: number;
 }
 
 export interface BillingEmployeeRow {
@@ -60,25 +54,15 @@ export interface BillingEmployeeRow {
 	employee_code: string;
 	employee_name: string;
 	designation: string;
-	/** Hourly rate the company charges for the employee (RT/HR Company) in INR */
 	employee_charges: number;
-	/** Manhours logged on the project during the month */
 	total_manhours: number;
-	/** employee_charges × total_manhours, 2dp */
 	amount: number;
-	/** TDS percentage applied to the employee amount (profile tds_percentage, default 10) */
 	tds_rate: number;
-	/** amount × tds_rate / 100, 2dp */
 	tds: number;
-	/** amount − tds, 2dp */
 	net_payable: number;
-	/** Hourly rate Accent bills the client (RT/HR Accent) in INR */
 	accent_charges: number;
-	/** accent_charges × total_manhours, 2dp */
 	accent_amount: number;
-	/** accent_amount − net_payable, 2dp — profit after the employee's deductions */
 	pnl_after_deductions: number;
-	/** accent_amount − amount, 2dp — gross margin before the employee's TDS */
 	pnl_tds: number;
 }
 
@@ -89,9 +73,7 @@ export interface BillingData {
 		project_code: string;
 		project_name: string;
 	};
-	/** YYYY-MM */
 	month: string;
-	/** e.g. "August 2026" */
 	month_label: string;
 	year: number;
 	rows: BillingEmployeeRow[];
@@ -103,6 +85,44 @@ export interface BillingData {
 		total_accent_amount: number;
 		total_pnl_after_deductions: number;
 		total_pnl_tds: number;
+	};
+}
+
+export interface AnnualEmployeeRow {
+	sr_no: number;
+	id: string | number;
+	employee_id: number | null;
+	employee_code: string;
+	employee_name: string;
+	designation: string;
+	salary_type: string;
+	rate_company: number;
+	rate_accent: number;
+	monthly_hours: Record<string, number>;
+	total_hours: number;
+	company_cost: number;
+	accent_cost: number;
+	pnl: number;
+}
+
+export interface AnnualBillingData {
+	client_name: string;
+	project: {
+		project_id: number;
+		project_code: string;
+		project_name: string;
+	};
+	fy_label: string;
+	fy_year: number;
+	months: string[];
+	month_keys: string[];
+	rows: AnnualEmployeeRow[];
+	totals: {
+		monthly_hours: Record<string, number>;
+		total_hours: number;
+		total_company_cost: number;
+		total_accent_cost: number;
+		total_pnl: number;
 	};
 }
 
@@ -124,15 +144,70 @@ export interface SalaryProfile {
 
 /** Per-employee rates from `projects.project_manhours_list` (annual format). */
 export interface ProjectManhourConfig {
-	/** RT/HR (Company) — the rate the company charges for the employee */
 	rate_company: number;
-	/** RT/HR (Accent) — the rate Accent bills the client */
 	rate_accent: number;
+}
+
+/** Raw shape of an item in `projects.project_manhours_list`. */
+export interface ProjectManhourTabRow {
+	id?: number | string;
+	employee_id?: number | string;
+	source_employee_id?: number | string;
+	employee_name?: string;
+	salary_type?: string;
+	rate_company?: number | string;
+	rate_accent?: number | string;
+	monthly_hours?: Record<string, number | string>;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const MONTH_NAMES = [
+export const FY_MONTHS = [
+	'Apr',
+	'May',
+	'Jun',
+	'Jul',
+	'Aug',
+	'Sep',
+	'Oct',
+	'Nov',
+	'Dec',
+	'Jan',
+	'Feb',
+	'Mar',
+] as const;
+
+export const FY_MONTH_KEYS = [
+	'apr',
+	'may',
+	'jun',
+	'jul',
+	'aug',
+	'sep',
+	'oct',
+	'nov',
+	'dec',
+	'jan',
+	'feb',
+	'mar',
+] as const;
+
+export const MONTH_TO_KEY: Record<string, string> = {
+	'01': 'jan',
+	'02': 'feb',
+	'03': 'mar',
+	'04': 'apr',
+	'05': 'may',
+	'06': 'jun',
+	'07': 'jul',
+	'08': 'aug',
+	'09': 'sep',
+	'10': 'oct',
+	'11': 'nov',
+	'12': 'dec',
+};
+
+export const MONTH_NAMES = [
 	'January',
 	'February',
 	'March',
@@ -147,40 +222,72 @@ const MONTH_NAMES = [
 	'December',
 ];
 
-// mysql2 rows are plain objects keyed by column name; read them through
-// narrow accessors so we never reach for `any`.
 type DbRow = Record<string, unknown>;
 
 function s(row: DbRow, key: string, fallback = ''): string {
 	const v = row[key];
-	if (v == null) return fallback;
 	if (typeof v === 'string') return v;
-	if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+	if (typeof v === 'number' || typeof v === 'bigint') return String(v);
 	return fallback;
 }
 
 function n(row: DbRow, key: string, fallback = 0): number {
 	const v = row[key];
-	if (v == null || v === '') return fallback;
-	const num = typeof v === 'number' ? v : parseFloat(String(v));
-	return Number.isFinite(num) ? num : fallback;
+	if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
+	if (typeof v === 'string') {
+		const parsed = Number(v);
+		return Number.isFinite(parsed) ? parsed : fallback;
+	}
+	return fallback;
 }
 
 function toNum(v: unknown, fallback = 0): number {
-	if (v == null || v === '') return fallback;
-	const num = typeof v === 'number' ? v : parseFloat(String(v));
-	return Number.isFinite(num) ? num : fallback;
+	if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
+	if (typeof v === 'string') {
+		const parsed = Number(v);
+		return Number.isFinite(parsed) ? parsed : fallback;
+	}
+	return fallback;
 }
 
-function round2(v: number): number {
+export function round2(v: number): number {
 	return Math.round(v * 100) / 100;
+}
+
+export function monthToKey(monthStr: string): string {
+	if (!monthStr) return '';
+	const mm = monthStr.includes('-') ? monthStr.split('-')[1] : monthStr;
+	return MONTH_TO_KEY[mm] || '';
+}
+export function getFinancialYear(date: Date = new Date()): number {
+	const month = date.getMonth() + 1; // 1-12
+	const year = date.getFullYear();
+	return month >= 4 ? year : year - 1;
+}
+
+export function formatFyLabel(fyStartYear: number): string {
+	const nextShort = String(fyStartYear + 1).slice(-2);
+	return `FY ${fyStartYear}–${nextShort}`;
+}
+
+export function parseProjectManhoursList(raw: unknown): ProjectManhourTabRow[] {
+	if (!raw) return [];
+	try {
+		const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+		if (!Array.isArray(parsed)) return [];
+		return parsed.filter((item) => item && typeof item === 'object');
+	} catch {
+		return [];
+	}
 }
 
 // ─── Pure helpers (unit-tested) ─────────────────────────────────────
 
 interface DailyEntryShape {
-	date?: string | null;
-	hours?: number | string | null;
+	date?: string;
+	hours?: number;
+	qty_done?: number;
+	remarks?: string;
 }
 
 export function parseDailyEntries(raw: unknown): DailyEntryShape[] {
@@ -189,7 +296,10 @@ export function parseDailyEntries(raw: unknown): DailyEntryShape[] {
 		const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
 		if (!Array.isArray(parsed)) return [];
 		return parsed.filter(
-			(e): e is DailyEntryShape => !!e && typeof e === 'object' && 'date' in e
+			(entry) =>
+				entry &&
+				typeof entry === 'object' &&
+				typeof (entry as DailyEntryShape).date === 'string'
 		);
 	} catch {
 		return [];
@@ -204,23 +314,27 @@ export function sumMonthlyHours(
 	raw: unknown,
 	month: string
 ): { total_hours: number; has_entries: boolean } {
+	const entries = parseDailyEntries(raw);
 	let total = 0;
 	let hasEntries = false;
-	for (const entry of parseDailyEntries(raw)) {
-		const date = typeof entry.date === 'string' ? entry.date : '';
-		if (!date || date < `${month}-01` || date > `${month}-31`) continue;
-		const hours = toNum(entry.hours);
-		if (hours <= 0) continue;
-		total += hours;
-		hasEntries = true;
+	for (const entry of entries) {
+		if (typeof entry.date === 'string' && entry.date.startsWith(month)) {
+			const h = toNum(entry.hours);
+			if (h > 0) {
+				total += h;
+				hasEntries = true;
+			}
+		}
 	}
 	return { total_hours: round2(total), has_entries: hasEntries };
 }
 
 export function monthLabel(month: string): string {
-	const [y, m] = month.split('-').map(Number);
-	if (!y || !m || m < 1 || m > 12) return month;
-	return `${MONTH_NAMES[m - 1]} ${y}`;
+	const [year, monthNumber] = month.split('-').map(Number);
+	if (!year || !monthNumber || monthNumber < 1 || monthNumber > 12) {
+		return month;
+	}
+	return `${MONTH_NAMES[monthNumber - 1]} ${year}`;
 }
 
 /** Monthly salary CTC for a profile: gross_salary, else gross, else employer_cost. */
@@ -230,22 +344,26 @@ export function resolveMonthlySalary(profile: SalaryProfile): number {
 
 /**
  * Unrounded hourly rate for a profile — the billing amount is computed from
- * this so totals stay exact (the template shows 83.33 yet bills
- * 16,666.67 = 83.333… × 200). Mirror of EditProjectForm's lookup:
- * hourly/custom use the stored hourly rate, monthly divides the gross
- * salary by (std_working_days × std_hours_per_day).
+ * this unrounded value (e.g. 20000 / 208 = 96.1538...) so that multiplying by
+ * hours gives the exact salary-apportioned sum matching the Excel template,
+ * while the display rate is rounded to 2dp via resolveHourlyRate.
  */
 export function computeRawHourlyRate(profile: SalaryProfile): number {
-	const type = (profile.salary_type || 'monthly').toLowerCase();
-	if (type === 'hourly') return profile.hourly_rate;
-	if (type === 'daily') return profile.daily_rate;
-	if (type === 'custom') return profile.hourly_rate;
-	const gross = resolveMonthlySalary(profile);
-	if (gross <= 0) return 0;
+	if (profile.salary_type === 'hourly' && profile.hourly_rate > 0) {
+		return profile.hourly_rate;
+	}
+	if (profile.salary_type === 'daily' && profile.daily_rate > 0) {
+		return profile.daily_rate;
+	}
+	if (profile.salary_type === 'custom' && profile.hourly_rate > 0) {
+		return profile.hourly_rate;
+	}
+	const monthly = resolveMonthlySalary(profile);
 	const days = profile.std_working_days > 0 ? profile.std_working_days : 26;
 	const hoursPerDay =
 		profile.std_hours_per_day > 0 ? profile.std_hours_per_day : 8;
-	return gross / (days * hoursPerDay);
+	const totalHours = days * hoursPerDay;
+	return totalHours > 0 ? monthly / totalHours : 0;
 }
 
 /** Display rate: the raw rate rounded to 2dp. */
@@ -262,21 +380,22 @@ export function pickActiveProfile(
 	profiles: SalaryProfile[],
 	month: string
 ): SalaryProfile | null {
-	if (profiles.length === 0) return null;
+	if (!profiles || profiles.length === 0) return null;
+	const [y, m] = month.split('-').map(Number);
+	if (!y || !m) return profiles[0];
+
+	// Month date range: YYYY-MM-01 through end of month.
 	const monthStart = `${month}-01`;
-	// Month end: last day of the month (31 covers any month; range checks
-	// are lexicographic on YYYY-MM-DD).
-	const monthEnd = `${month}-31`;
-	const covering = profiles.filter((p) => {
-		if (p.effective_from && p.effective_from > monthEnd) return false;
-		if (p.effective_to && p.effective_to < monthStart) return false;
-		return true;
+	const lastDay = new Date(y, m, 0).getDate();
+	const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`;
+
+	const covering = profiles.find((p) => {
+		const from = p.effective_from || '1970-01-01';
+		const to = p.effective_to || '9999-12-31';
+		return from <= monthEnd && to >= monthStart;
 	});
-	if (covering.length > 0) {
-		return covering.sort((a, b) =>
-			(b.effective_from || '').localeCompare(a.effective_from || '')
-		)[0];
-	}
+	if (covering) return covering;
+
 	return (
 		[...profiles].sort((a, b) =>
 			(b.effective_from || '').localeCompare(a.effective_from || '')
@@ -284,20 +403,28 @@ export function pickActiveProfile(
 	);
 }
 
+export interface EmployeeLookup {
+	employee_id: number;
+	employee_code: string;
+	name: string;
+	designation: string;
+}
+
+interface PersonBillingAccumulator {
+	key: string;
+	employeeId: number | null;
+	employeeCode: string;
+	employeeName: string;
+	designation: string;
+	hours: number;
+	rateCompany: number;
+	rateAccent: number;
+	tdsRate: number;
+}
+
 /**
- * Build billing rows from raw assignment rows for one project + month.
- *
- * `employeeIndex` maps employee id → { employee_id, employee_code, name,
- * designation }. Assignments are resolved to an employee via the explicit
- * `employee_id` column, else the linked login account's `employee_id`
- * (user_id → users.employee_id), else an email/username match against the
- * employee table (legacy data). Employees with no logged hours in the
- * month are dropped — a billing report only charges worked time.
- *
- * Rates: `manhoursConfig` carries the Project Manhours tab's per-employee
- * RT/HR Company + RT/HR Accent rates (keyed by employees.id). The company
- * rate falls back to the salary-profile-derived hourly rate; TDS uses the
- * profile's `tds_percentage` (10 when unset, matching payroll).
+ * Build billing rows from raw assignment rows and Project Manhours tab data
+ * for one project + month.
  */
 export function buildBillingRows(
 	assignmentRows: DbRow[],
@@ -306,13 +433,57 @@ export function buildBillingRows(
 	userEmailUsernameToEmployee: Map<string, number>,
 	salaryProfiles: SalaryProfile[],
 	manhoursConfig: Map<number, ProjectManhourConfig>,
-	month: string
+	month: string,
+	tabEntries: ProjectManhourTabRow[] = []
 ): BillingEmployeeRow[] {
-	const hoursByEmployee = new Map<number, number>();
-	const idByAssignment = new Map<string, number | null>();
+	const monthKey = monthToKey(month);
+	const peopleMap = new Map<string, PersonBillingAccumulator>();
 
+	// 1. Process Project Manhours Tab entries first (direct hours for the month)
+	for (const entry of tabEntries) {
+		if (!entry) continue;
+		const rawEmpId = entry.source_employee_id ?? entry.employee_id;
+		const numEmpId = toNum(rawEmpId);
+		const isInternal = numEmpId > 0 && employeeIndex.has(numEmpId);
+		const internalEmp = isInternal ? employeeIndex.get(numEmpId) : null;
+
+		const key = String(entry.employee_id || entry.id || numEmpId);
+		const employeeName =
+			entry.employee_name || internalEmp?.name || `Member ${key}`;
+		const employeeCode =
+			internalEmp?.employee_code ||
+			(typeof entry.employee_id === 'string' &&
+			!entry.employee_id.startsWith('team:')
+				? entry.employee_id
+				: '');
+		const designation =
+			internalEmp?.designation ||
+			(entry.salary_type === 'custom'
+				? 'External / Deputation'
+				: 'Deputation Member');
+
+		const tabHours = entry.monthly_hours
+			? toNum(entry.monthly_hours[monthKey])
+			: 0;
+		const rateCompany = toNum(entry.rate_company);
+		const rateAccent = toNum(entry.rate_accent);
+
+		peopleMap.set(key, {
+			key,
+			employeeId: isInternal ? numEmpId : null,
+			employeeCode,
+			employeeName,
+			designation,
+			hours: tabHours,
+			rateCompany,
+			rateAccent,
+			tdsRate: 10,
+		});
+	}
+
+	// 2. Process assignment rows (timesheet daily task entries)
+	const assignmentHoursByEmployee = new Map<number, number>();
 	for (const row of assignmentRows) {
-		const assignmentId = s(row, 'id');
 		const direct = n(row, 'employee_id', 0) || null;
 		const userId = n(row, 'user_id', 0) || null;
 		const viaUser = userId ? (userToEmployee.get(userId) ?? null) : null;
@@ -323,49 +494,76 @@ export function buildBillingRows(
 			userEmailUsernameToEmployee.get(username) ??
 			null;
 		const employeeId = direct || viaUser || viaContact;
-		idByAssignment.set(assignmentId, employeeId);
-	}
-
-	// Sum hours per employee across every assignment on the project.
-	for (const row of assignmentRows) {
-		const assignmentId = s(row, 'id');
-		const employeeId = idByAssignment.get(assignmentId);
 		if (employeeId == null) continue;
+
 		const { total_hours } = sumMonthlyHours(row.daily_entries, month);
 		if (total_hours <= 0) continue;
-		hoursByEmployee.set(
+		assignmentHoursByEmployee.set(
 			employeeId,
-			round2((hoursByEmployee.get(employeeId) || 0) + total_hours)
+			round2((assignmentHoursByEmployee.get(employeeId) || 0) + total_hours)
 		);
 	}
 
+	// Merge assignment hours if tab had 0 hours or if employee was only in assignments
+	for (const [employeeId, asgHours] of assignmentHoursByEmployee) {
+		const existingKey = String(employeeId);
+		const existing = peopleMap.get(existingKey);
+		if (existing) {
+			if (existing.hours <= 0 && asgHours > 0) {
+				existing.hours = asgHours;
+			}
+		} else {
+			const emp = employeeIndex.get(employeeId);
+			if (emp) {
+				const config = manhoursConfig.get(employeeId);
+				peopleMap.set(existingKey, {
+					key: existingKey,
+					employeeId,
+					employeeCode: emp.employee_code,
+					employeeName: emp.name,
+					designation: emp.designation,
+					hours: asgHours,
+					rateCompany: config ? config.rate_company : 0,
+					rateAccent: config ? config.rate_accent : 0,
+					tdsRate: 10,
+				});
+			}
+		}
+	}
+
+	// 3. Compute financial amounts for all people with logged hours > 0
 	const rows: BillingEmployeeRow[] = [];
-	for (const [employeeId, manhours] of hoursByEmployee) {
-		const employee = employeeIndex.get(employeeId);
-		if (!employee) continue;
-		const profile = pickActiveProfile(
-			salaryProfiles.filter((p) => p.employee_id === employeeId),
-			month
-		);
-		// Project-config rates win; the company rate falls back to the
-		// salary-derived hourly rate (RT/HR Company auto-fills from it).
-		const config = manhoursConfig.get(employeeId);
+	for (const person of peopleMap.values()) {
+		if (person.hours <= 0) continue;
+
+		const profile = person.employeeId
+			? pickActiveProfile(
+					salaryProfiles.filter((p) => p.employee_id === person.employeeId),
+					month
+				)
+			: null;
+
+		const config = person.employeeId
+			? manhoursConfig.get(person.employeeId)
+			: null;
+		const tabRateCompany = person.rateCompany;
 		const configRate =
 			config && config.rate_company > 0 ? config.rate_company : 0;
 		const fallbackRate = profile ? resolveHourlyRate(profile) : 0;
 		const rawFallbackRate = profile ? computeRawHourlyRate(profile) : 0;
-		const employeeCharges = configRate || fallbackRate;
-		// Bill from the unrounded rate so totals stay exact (the grid shows
-		// the rounded rate) — same convention as the old template.
-		const billingRate = configRate || rawFallbackRate;
-		const accentCharges = config?.rate_accent ?? 0;
-		const tdsRate = profile?.tds_percentage || 10;
 
-		const amount = toNumber(mul(R(billingRate), manhours).toDecimalPlaces(2));
+		const employeeCharges = tabRateCompany || configRate || fallbackRate;
+		const billingRate = tabRateCompany || configRate || rawFallbackRate;
+		const accentCharges = person.rateAccent || config?.rate_accent || 0;
+		const tdsRate = profile?.tds_percentage || person.tdsRate || 10;
+
+		const amount = toNumber(
+			mul(R(billingRate), person.hours).toDecimalPlaces(2)
+		);
 		const tds = toNumber(pctOf(amount, tdsRate));
 		const netPayable = toNumber(sub(R(amount), R(tds)).toDecimalPlaces(2));
 		const accentAmount = toNumber(
-			mul(R(accentCharges), manhours).toDecimalPlaces(2)
+			mul(R(accentCharges), person.hours).toDecimalPlaces(2)
 		);
 		const pnlAfterDeductions = toNumber(
 			sub(R(accentAmount), R(netPayable)).toDecimalPlaces(2)
@@ -374,12 +572,12 @@ export function buildBillingRows(
 
 		rows.push({
 			sr_no: 0, // assigned after sorting
-			employee_id: employeeId,
-			employee_code: employee.employee_code,
-			employee_name: employee.name,
-			designation: employee.designation,
+			employee_id: person.employeeId,
+			employee_code: person.employeeCode,
+			employee_name: person.employeeName,
+			designation: person.designation,
 			employee_charges: employeeCharges,
-			total_manhours: manhours,
+			total_manhours: person.hours,
 			amount,
 			tds_rate: tdsRate,
 			tds,
@@ -408,48 +606,258 @@ export function buildTotals(rows: BillingEmployeeRow[]): {
 	total_pnl_after_deductions: number;
 	total_pnl_tds: number;
 } {
-	let manhours = 0;
-	let amount = 0;
-	let tds = 0;
-	let netPayable = 0;
-	let accentAmount = 0;
-	let pnlAfterDeductions = 0;
-	let pnlTds = 0;
-	for (const row of rows) {
-		manhours += row.total_manhours;
-		amount += row.amount;
-		tds += row.tds;
-		netPayable += row.net_payable;
-		accentAmount += row.accent_amount;
-		pnlAfterDeductions += row.pnl_after_deductions;
-		pnlTds += row.pnl_tds;
+	let manhours = R(0);
+	let amount = R(0);
+	let tds = R(0);
+	let netPayable = R(0);
+	let accentAmount = R(0);
+	let pnlAfterDeductions = R(0);
+	let pnlTds = R(0);
+
+	for (const r of rows) {
+		manhours = add(manhours, r.total_manhours);
+		amount = add(amount, r.amount);
+		tds = add(tds, r.tds);
+		netPayable = add(netPayable, r.net_payable);
+		accentAmount = add(accentAmount, r.accent_amount);
+		pnlAfterDeductions = add(pnlAfterDeductions, r.pnl_after_deductions);
+		pnlTds = add(pnlTds, r.pnl_tds);
 	}
+
 	return {
-		total_manhours: round2(manhours),
-		total_amount: round2(amount),
-		total_tds: round2(tds),
-		total_net_payable: round2(netPayable),
-		total_accent_amount: round2(accentAmount),
-		total_pnl_after_deductions: round2(pnlAfterDeductions),
-		total_pnl_tds: round2(pnlTds),
+		total_manhours: round2(toNumber(manhours)),
+		total_amount: toNumber(amount.toDecimalPlaces(2)),
+		total_tds: toNumber(tds.toDecimalPlaces(2)),
+		total_net_payable: toNumber(netPayable.toDecimalPlaces(2)),
+		total_accent_amount: toNumber(accentAmount.toDecimalPlaces(2)),
+		total_pnl_after_deductions: toNumber(pnlAfterDeductions.toDecimalPlaces(2)),
+		total_pnl_tds: toNumber(pnlTds.toDecimalPlaces(2)),
+	};
+}
+
+/**
+ * Build 12-month Financial Year (Apr–Mar) deputation rows.
+ */
+export function buildAnnualBillingRows(
+	assignmentRows: DbRow[],
+	employeeIndex: Map<number, EmployeeLookup>,
+	userToEmployee: Map<number, number>,
+	userEmailUsernameToEmployee: Map<string, number>,
+	salaryProfiles: SalaryProfile[],
+	tabEntries: ProjectManhourTabRow[] = [],
+	fyYear: number = getFinancialYear()
+): AnnualEmployeeRow[] {
+	const rows: AnnualEmployeeRow[] = [];
+	const peopleSeen = new Set<string>();
+
+	// FY month key to calendar month mapping
+	// Apr-Dec of fyYear, Jan-Mar of fyYear+1
+	const fyCalendarMonthMap: Record<string, string> = {
+		apr: `${fyYear}-04`,
+		may: `${fyYear}-05`,
+		jun: `${fyYear}-06`,
+		jul: `${fyYear}-07`,
+		aug: `${fyYear}-08`,
+		sep: `${fyYear}-09`,
+		oct: `${fyYear}-10`,
+		nov: `${fyYear}-11`,
+		dec: `${fyYear}-12`,
+		jan: `${fyYear + 1}-01`,
+		feb: `${fyYear + 1}-02`,
+		mar: `${fyYear + 1}-03`,
+	};
+
+	// 1. Process Project Manhours tab rows
+	for (const entry of tabEntries) {
+		if (!entry) continue;
+		const rawEmpId = entry.source_employee_id ?? entry.employee_id;
+		const numEmpId = toNum(rawEmpId);
+		const isInternal = numEmpId > 0 && employeeIndex.has(numEmpId);
+		const internalEmp = isInternal ? employeeIndex.get(numEmpId) : null;
+		const key = String(entry.employee_id || entry.id || numEmpId);
+		peopleSeen.add(key);
+
+		const profile = isInternal
+			? pickActiveProfile(
+					salaryProfiles.filter((p) => p.employee_id === numEmpId),
+					`${fyYear}-04`
+				)
+			: null;
+
+		const rateCompany =
+			toNum(entry.rate_company) || (profile ? resolveHourlyRate(profile) : 0);
+		const rateAccent = toNum(entry.rate_accent);
+
+		const monthlyHours: Record<string, number> = {};
+		let totalHrs = R(0);
+		for (const mKey of FY_MONTH_KEYS) {
+			let h = entry.monthly_hours ? toNum(entry.monthly_hours[mKey]) : 0;
+			// If not in tab, check daily assignments for that FY calendar month
+			if (h <= 0 && isInternal) {
+				const calMonth = fyCalendarMonthMap[mKey];
+				for (const asg of assignmentRows) {
+					const direct = n(asg, 'employee_id', 0) || null;
+					const userId = n(asg, 'user_id', 0) || null;
+					const viaUser = userId ? (userToEmployee.get(userId) ?? null) : null;
+					const asgEmpId = direct || viaUser;
+					if (asgEmpId === numEmpId) {
+						const res = sumMonthlyHours(asg.daily_entries, calMonth);
+						h += res.total_hours;
+					}
+				}
+			}
+			monthlyHours[mKey] = round2(h);
+			totalHrs = add(totalHrs, h);
+		}
+
+		const totalHours = round2(toNumber(totalHrs));
+		const companyCost = toNumber(
+			mul(R(rateCompany), totalHours).toDecimalPlaces(2)
+		);
+		const accentCost = toNumber(
+			mul(R(rateAccent), totalHours).toDecimalPlaces(2)
+		);
+		const pnl = toNumber(sub(R(accentCost), R(companyCost)).toDecimalPlaces(2));
+
+		rows.push({
+			sr_no: 0,
+			id: entry.id || key,
+			employee_id: isInternal ? numEmpId : null,
+			employee_code: internalEmp?.employee_code || '',
+			employee_name:
+				entry.employee_name || internalEmp?.name || `Member ${key}`,
+			designation:
+				internalEmp?.designation ||
+				(entry.salary_type === 'custom'
+					? 'External / Deputation'
+					: 'Deputation Member'),
+			salary_type: entry.salary_type || 'monthly',
+			rate_company: rateCompany,
+			rate_accent: rateAccent,
+			monthly_hours: monthlyHours,
+			total_hours: totalHours,
+			company_cost: companyCost,
+			accent_cost: accentCost,
+			pnl,
+		});
+	}
+
+	// 2. Add any internal employees with logged assignment hours not in tab
+	for (const emp of employeeIndex.values()) {
+		const key = String(emp.employee_id);
+		if (peopleSeen.has(key)) continue;
+
+		const monthlyHours: Record<string, number> = {};
+		let totalHrs = R(0);
+		for (const mKey of FY_MONTH_KEYS) {
+			const calMonth = fyCalendarMonthMap[mKey];
+			let h = 0;
+			for (const asg of assignmentRows) {
+				const direct = n(asg, 'employee_id', 0) || null;
+				const userId = n(asg, 'user_id', 0) || null;
+				const viaUser = userId ? (userToEmployee.get(userId) ?? null) : null;
+				const asgEmpId = direct || viaUser;
+				if (asgEmpId === emp.employee_id) {
+					const res = sumMonthlyHours(asg.daily_entries, calMonth);
+					h += res.total_hours;
+				}
+			}
+			monthlyHours[mKey] = round2(h);
+			totalHrs = add(totalHrs, h);
+		}
+
+		if (gt(totalHrs, 0)) {
+			const profile = pickActiveProfile(
+				salaryProfiles.filter((p) => p.employee_id === emp.employee_id),
+				`${fyYear}-04`
+			);
+			const rateCompany = profile ? resolveHourlyRate(profile) : 0;
+			const totalHours = round2(toNumber(totalHrs));
+			const companyCost = toNumber(
+				mul(R(rateCompany), totalHours).toDecimalPlaces(2)
+			);
+			const accentCost = 0;
+			const pnl = toNumber(
+				sub(R(accentCost), R(companyCost)).toDecimalPlaces(2)
+			);
+			rows.push({
+				sr_no: 0,
+				id: emp.employee_id,
+				employee_id: emp.employee_id,
+				employee_code: emp.employee_code,
+				employee_name: emp.name,
+				designation: emp.designation,
+				salary_type: profile?.salary_type || 'monthly',
+				rate_company: rateCompany,
+				rate_accent: 0,
+				monthly_hours: monthlyHours,
+				total_hours: totalHours,
+				company_cost: companyCost,
+				accent_cost: accentCost,
+				pnl,
+			});
+		}
+	}
+
+	rows.sort((a, b) => a.employee_name.localeCompare(b.employee_name));
+	rows.forEach((row, index) => {
+		row.sr_no = index + 1;
+	});
+
+	return rows;
+}
+
+export function buildAnnualTotals(rows: AnnualEmployeeRow[]): {
+	monthly_hours: Record<string, number>;
+	total_hours: number;
+	total_company_cost: number;
+	total_accent_cost: number;
+	total_pnl: number;
+} {
+	const monthlyHours: Record<string, Decimal> = {};
+	for (const mKey of FY_MONTH_KEYS) {
+		monthlyHours[mKey] = R(0);
+	}
+	let totalHours = R(0);
+	let totalCompanyCost = R(0);
+	let totalAccentCost = R(0);
+	let totalPnl = R(0);
+
+	for (const r of rows) {
+		for (const mKey of FY_MONTH_KEYS) {
+			monthlyHours[mKey] = add(
+				monthlyHours[mKey],
+				r.monthly_hours?.[mKey] || 0
+			);
+		}
+		totalHours = add(totalHours, r.total_hours);
+		totalCompanyCost = add(totalCompanyCost, r.company_cost);
+		totalAccentCost = add(totalAccentCost, r.accent_cost);
+		totalPnl = add(totalPnl, r.pnl);
+	}
+
+	const roundedMonthlyHours: Record<string, number> = {};
+	for (const mKey of FY_MONTH_KEYS) {
+		roundedMonthlyHours[mKey] = round2(toNumber(monthlyHours[mKey]));
+	}
+
+	return {
+		monthly_hours: roundedMonthlyHours,
+		total_hours: round2(toNumber(totalHours)),
+		total_company_cost: toNumber(totalCompanyCost.toDecimalPlaces(2)),
+		total_accent_cost: toNumber(totalAccentCost.toDecimalPlaces(2)),
+		total_pnl: toNumber(totalPnl.toDecimalPlaces(2)),
 	};
 }
 
 // ─── Server data fetch ──────────────────────────────────────────────
 
-interface EmployeeLookup {
-	employee_id: number;
-	employee_code: string;
-	name: string;
-	designation: string;
-}
-
-/** Clients + projects + months for the filter bar. */
+/** Clients + projects + months + FYs for the filter bar. */
 export async function fetchBillingMeta(): Promise<BillingMeta> {
 	const [projectRows] = (await query(
 		`SELECT project_id, project_code,
 		        COALESCE(NULLIF(project_title, ''), NULLIF(name, ''), '') AS project_name,
-		        client_name
+		        client_name, project_manhours_list
 		 FROM projects
 		 WHERE isDelete = 0
 		   AND client_name IS NOT NULL AND client_name <> ''
@@ -458,6 +866,11 @@ export async function fetchBillingMeta(): Promise<BillingMeta> {
 
 	const clientsSet = new Set<string>();
 	const projects: BillingProject[] = [];
+	const yearsSet = new Set<number>();
+	const currentFy = getFinancialYear();
+	yearsSet.add(currentFy);
+	yearsSet.add(currentFy - 1);
+
 	for (const row of projectRows) {
 		const clientName = s(row, 'client_name');
 		if (!clientName) continue;
@@ -469,6 +882,11 @@ export async function fetchBillingMeta(): Promise<BillingMeta> {
 				s(row, 'project_name') || `Project #${s(row, 'project_id')}`,
 			client_name: clientName,
 		});
+
+		const tabList = parseProjectManhoursList(row.project_manhours_list);
+		if (tabList.length > 0) {
+			yearsSet.add(currentFy);
+		}
 	}
 
 	let months: string[] = [];
@@ -481,11 +899,9 @@ export async function fetchBillingMeta(): Promise<BillingMeta> {
 		)) as [DbRow[], unknown];
 		months = monthRows.map((r) => s(r, 'month')).filter(Boolean);
 	} catch {
-		/* employee_attendance may be empty — treat as no months */
+		/* employee_attendance may be empty */
 	}
 
-	// Union in months with logged project hours so a billing month is
-	// reachable even when no attendance was entered for it.
 	try {
 		const [asgRows] = (await query(
 			`SELECT daily_entries FROM user_activity_assignments
@@ -495,29 +911,45 @@ export async function fetchBillingMeta(): Promise<BillingMeta> {
 		for (const row of asgRows) {
 			for (const entry of parseDailyEntries(row.daily_entries)) {
 				const date = typeof entry.date === 'string' ? entry.date : '';
-				if (date.length >= 7) monthSet.add(date.slice(0, 7));
+				if (date.length >= 7) {
+					const m = date.slice(0, 7);
+					monthSet.add(m);
+					const y = Number(m.slice(0, 4));
+					if (y) {
+						yearsSet.add(y);
+						yearsSet.add(y - 1);
+					}
+				}
 			}
 		}
-		// YYYY-MM sorts lexically, so reverse() = newest first.
 		months = Array.from(monthSet).sort().reverse();
 	} catch {
 		/* user_activity_assignments may not exist */
 	}
 
-	// Always offer the current month.
+	// Always offer the current month and FY
 	const now = new Date();
 	const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-	if (!months.includes(currentMonth)) months.push(currentMonth);
+	if (!months.includes(currentMonth)) months.unshift(currentMonth);
+
+	const financialYears: FinancialYearOption[] = Array.from(yearsSet)
+		.sort((a, b) => b - a)
+		.map((y) => ({
+			year: y,
+			label: formatFyLabel(y),
+		}));
 
 	return {
 		clients: Array.from(clientsSet).sort((a, b) => a.localeCompare(b)),
 		projects,
 		months,
 		latest_month: months[0] ?? currentMonth,
+		financial_years: financialYears,
+		current_fy: currentFy,
 	};
 }
 
-/** Full billing payload for one project + month. */
+/** Full monthly billing payload for one project + month. */
 export async function fetchBillingData(
 	projectId: number,
 	month: string
@@ -533,35 +965,19 @@ export async function fetchBillingData(
 	if (projectRows.length === 0) return null;
 
 	const project = projectRows[0];
+	const tabEntries = parseProjectManhoursList(project.project_manhours_list);
 
-	// ── Per-employee rates from the Project Manhours tab ────────────
-	// project_manhours_list is a JSON array of annual rows like
-	// { employee_id, source_employee_id, rate_company, rate_accent, ... }.
-	// Keyed by employees.id via source_employee_id (internal members) with
-	// a fallback to employee_id (the tab stores String(employees.id)).
 	const manhoursConfig = new Map<number, ProjectManhourConfig>();
-	try {
-		const raw = project.project_manhours_list;
-		if (raw) {
-			const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-			if (Array.isArray(parsed)) {
-				for (const entry of parsed) {
-					if (!entry || typeof entry !== 'object') continue;
-					const employeeId =
-						toNum(entry.source_employee_id) || toNum(entry.employee_id);
-					if (!employeeId) continue;
-					manhoursConfig.set(employeeId, {
-						rate_company: toNum(entry.rate_company),
-						rate_accent: toNum(entry.rate_accent),
-					});
-				}
-			}
+	for (const entry of tabEntries) {
+		const empId = toNum(entry.source_employee_id) || toNum(entry.employee_id);
+		if (empId > 0) {
+			manhoursConfig.set(empId, {
+				rate_company: toNum(entry.rate_company),
+				rate_accent: toNum(entry.rate_accent),
+			});
 		}
-	} catch {
-		/* malformed JSON — treat as no rates configured */
 	}
 
-	// ── Employees + login-account links (for resolving assignments) ──
 	const employeeIndex = new Map<number, EmployeeLookup>();
 	const userToEmployee = new Map<number, number>();
 	const userEmailUsernameToEmployee = new Map<string, number>();
@@ -590,6 +1006,7 @@ export async function fetchBillingData(
 	} catch {
 		/* employees table unavailable */
 	}
+
 	try {
 		const [userRows] = (await query(
 			`SELECT id, employee_id, email, username FROM users`
@@ -603,7 +1020,6 @@ export async function fetchBillingData(
 		/* users table unavailable */
 	}
 
-	// ── Salary profiles (active only) ────────────────────────────────
 	const salaryProfiles: SalaryProfile[] = [];
 	try {
 		const [profileRows] = (await query(
@@ -637,7 +1053,6 @@ export async function fetchBillingData(
 		/* table may not exist */
 	}
 
-	// ── Assignments for the project (carry the manhours) ─────────────
 	let assignmentRows: DbRow[] = [];
 	try {
 		const [rows] = (await query(
@@ -662,7 +1077,8 @@ export async function fetchBillingData(
 		userEmailUsernameToEmployee,
 		salaryProfiles,
 		manhoursConfig,
-		month
+		month,
+		tabEntries
 	);
 
 	const y = Number(month.split('-')[0]);
@@ -679,5 +1095,142 @@ export async function fetchBillingData(
 		year: y || 0,
 		rows,
 		totals: buildTotals(rows),
+	};
+}
+
+/** Full annual FY billing payload for one project + financial year. */
+export async function fetchAnnualBillingData(
+	projectId: number,
+	fyYear: number = getFinancialYear()
+): Promise<AnnualBillingData | null> {
+	const [projectRows] = (await query(
+		`SELECT project_id, project_code,
+		        COALESCE(NULLIF(project_title, ''), NULLIF(name, ''), '') AS project_name,
+		        client_name, project_manhours_list
+		 FROM projects
+		 WHERE project_id = ? AND isDelete = 0`,
+		[projectId]
+	)) as [DbRow[], unknown];
+	if (projectRows.length === 0) return null;
+
+	const project = projectRows[0];
+	const tabEntries = parseProjectManhoursList(project.project_manhours_list);
+
+	const employeeIndex = new Map<number, EmployeeLookup>();
+	const userToEmployee = new Map<number, number>();
+	const userEmailUsernameToEmployee = new Map<string, number>();
+	try {
+		const [empRows] = (await query(
+			`SELECT id, employee_id,
+			        CONCAT_WS(' ', first_name, last_name) AS name,
+			        email, username, position, designation
+			 FROM employees
+			 WHERE isDelete = 0`
+		)) as [DbRow[], unknown];
+		for (const emp of empRows) {
+			const id = n(emp, 'id');
+			if (!id) continue;
+			employeeIndex.set(id, {
+				employee_id: id,
+				employee_code: s(emp, 'employee_id'),
+				name: s(emp, 'name') || `Employee ${id}`,
+				designation: s(emp, 'position') || s(emp, 'designation') || '',
+			});
+			const email = s(emp, 'email').toLowerCase();
+			const username = s(emp, 'username').toLowerCase();
+			if (email) userEmailUsernameToEmployee.set(email, id);
+			if (username) userEmailUsernameToEmployee.set(username, id);
+		}
+	} catch {
+		/* employees table unavailable */
+	}
+
+	try {
+		const [userRows] = (await query(
+			`SELECT id, employee_id, email, username FROM users`
+		)) as [DbRow[], unknown];
+		for (const u of userRows) {
+			const userId = n(u, 'id');
+			const empId = n(u, 'employee_id', 0);
+			if (userId && empId) userToEmployee.set(userId, empId);
+		}
+	} catch {
+		/* users table unavailable */
+	}
+
+	const salaryProfiles: SalaryProfile[] = [];
+	try {
+		const [profileRows] = (await query(
+			`SELECT employee_id, gross, gross_salary, employer_cost,
+			        hourly_rate, daily_rate, std_hours_per_day, std_working_days,
+			        salary_type, tds_percentage,
+			        DATE_FORMAT(effective_from, '%Y-%m-%d') AS effective_from,
+			        DATE_FORMAT(effective_to, '%Y-%m-%d') AS effective_to
+			 FROM employee_salary_profile
+			 WHERE is_active = 1`
+		)) as [DbRow[], unknown];
+		for (const p of profileRows) {
+			const employeeId = n(p, 'employee_id');
+			if (!employeeId) continue;
+			salaryProfiles.push({
+				employee_id: employeeId,
+				gross: n(p, 'gross'),
+				gross_salary: n(p, 'gross_salary'),
+				employer_cost: n(p, 'employer_cost'),
+				hourly_rate: n(p, 'hourly_rate'),
+				daily_rate: n(p, 'daily_rate'),
+				std_hours_per_day: n(p, 'std_hours_per_day', 8),
+				std_working_days: n(p, 'std_working_days', 26),
+				salary_type: s(p, 'salary_type', 'monthly'),
+				tds_percentage: n(p, 'tds_percentage', 0),
+				effective_from: s(p, 'effective_from', '') || null,
+				effective_to: s(p, 'effective_to', '') || null,
+			});
+		}
+	} catch {
+		/* table may not exist */
+	}
+
+	let assignmentRows: DbRow[] = [];
+	try {
+		const [rows] = (await query(
+			`SELECT uaa.id, uaa.user_id, uaa.employee_id, uaa.daily_entries,
+			        u.email AS user_email, u.username AS user_username
+			 FROM user_activity_assignments uaa
+			 LEFT JOIN users u ON u.id = uaa.user_id
+			 WHERE uaa.project_id = ?
+			   AND uaa.status <> 'Cancelled'
+			 ORDER BY uaa.updated_at DESC`,
+			[projectId]
+		)) as [DbRow[], unknown];
+		assignmentRows = rows;
+	} catch {
+		/* table may not exist */
+	}
+
+	const rows = buildAnnualBillingRows(
+		assignmentRows,
+		employeeIndex,
+		userToEmployee,
+		userEmailUsernameToEmployee,
+		salaryProfiles,
+		tabEntries,
+		fyYear
+	);
+
+	return {
+		client_name: s(project, 'client_name'),
+		project: {
+			project_id: n(project, 'project_id'),
+			project_code: s(project, 'project_code'),
+			project_name:
+				s(project, 'project_name') || `Project #${s(project, 'project_id')}`,
+		},
+		fy_label: formatFyLabel(fyYear),
+		fy_year: fyYear,
+		months: Array.from(FY_MONTHS),
+		month_keys: Array.from(FY_MONTH_KEYS),
+		rows,
+		totals: buildAnnualTotals(rows),
 	};
 }
