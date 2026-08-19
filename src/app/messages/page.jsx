@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { fetchJSON } from '@/utils/http';
 import Navbar from '@/components/Navbar';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 export default function MessagesPage() {
 	const { user, loading: authLoading } = useSessionRBAC();
@@ -1484,7 +1485,9 @@ export default function MessagesPage() {
 																		wordWrap: 'break-word',
 																		overflowWrap: 'break-word',
 																	}}
-																	dangerouslySetInnerHTML={{ __html: msg.body }}
+																	dangerouslySetInnerHTML={{
+																		__html: sanitizeHtml(msg.body),
+																	}}
 																	role="article"
 																	aria-label={`Message body from ${msg.sender_id === user?.id ? 'you' : msg.sender_name}`}
 																/>
