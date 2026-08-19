@@ -11,6 +11,7 @@ export default {
 			database: process.env.DEV_DB_NAME,
 		},
 		migrations: { directory: './migrations' },
+		seeds: { directory: './seeds' },
 	},
 	staging: {
 		client: 'mysql2',
@@ -21,6 +22,7 @@ export default {
 			database: process.env.STAGING_DB_NAME,
 		},
 		migrations: { directory: './migrations' },
+		seeds: { directory: './seeds' },
 	},
 	production: {
 		client: 'mysql2',
@@ -35,5 +37,6 @@ export default {
 			stub: './src/lib/migration.stub.mjs',
 			extension: 'mjs',
 		},
+		seeds: { directory: './seeds' },
 	},
 };
