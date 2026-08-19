@@ -53,8 +53,9 @@ export async function verifyEntityExists(entityType, entityId) {
 	if (isNaN(id) || id <= 0) return false;
 
 	if (entityType === 'project') {
+		// projects PK is `project_id`, not `id` (baseline migration uses project_id)
 		const [rows] = await query(
-			'SELECT id FROM projects WHERE id = ? AND isDelete = 0',
+			'SELECT project_id FROM projects WHERE project_id = ? AND isDelete = 0',
 			[id]
 		);
 		return Array.isArray(rows) && rows.length > 0;

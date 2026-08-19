@@ -274,7 +274,7 @@ async function getRelatedEntityName(db, module, id) {
 				query = 'SELECT name FROM companies WHERE id = ?';
 				break;
 			case 'project':
-				query = 'SELECT name FROM projects WHERE id = ?';
+				query = 'SELECT name FROM projects WHERE project_id = ?';
 				break;
 			case 'employee':
 				query =

@@ -1398,7 +1398,7 @@ export async function DELETE(request, { params }) {
 		// If user doesn't have full access, check if they're in the project team
 		if (!hasFullAccess) {
 			const [projectRows] = await db.execute(
-				'SELECT project_team FROM projects WHERE id = ? AND isDelete = 0',
+				'SELECT project_team FROM projects WHERE project_id = ? AND isDelete = 0',
 				[projectId]
 			);
 			if (projectRows && projectRows.length > 0) {

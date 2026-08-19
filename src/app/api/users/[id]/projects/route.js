@@ -186,7 +186,7 @@ export async function GET(request, { params }) {
 					try {
 						const [projectRow] = await db.execute(
 							`
-            SELECT team_members FROM projects WHERE id = ?
+            SELECT team_members FROM projects WHERE project_id = ?
           `,
 							[project.project_id]
 						);
