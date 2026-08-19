@@ -4,21 +4,20 @@ import {
 	PlusIcon,
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
+import { sanitizeHtml } from '@/lib/sanitize';
 
-// Helper to safely render HTML content
+// Helper to safely render HTML content — P0.1 sanitized
 function HtmlContent({ html, className = '' }) {
 	if (!html) return null;
-	// Check if content looks like HTML
 	const hasHtmlTags = /<[^>]+>/.test(html);
 	if (hasHtmlTags) {
 		return (
 			<div
 				className={`text-sm text-gray-700 leading-relaxed rich-text-content ${className}`}
-				dangerouslySetInnerHTML={{ __html: html }}
+				dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
 			/>
 		);
 	}
-	// Fallback for plain text (preserving line breaks)
 	return (
 		<p
 			className={`text-sm text-gray-700 whitespace-pre-wrap leading-relaxed ${className}`}

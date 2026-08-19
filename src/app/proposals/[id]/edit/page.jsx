@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import RichTextEditor from '@/components/RichTextEditor';
+import { sanitizeHtml } from '@/lib/sanitize';
 import {
 	DocumentTextIcon,
 	CurrencyDollarIcon,
@@ -2702,7 +2703,7 @@ function QuotationForm({ proposalData, setProposalData, proposalId }) {
 									<div
 										className="prose prose-sm max-w-none text-sm"
 										dangerouslySetInnerHTML={{
-											__html: proposalData.description,
+											__html: sanitizeHtml(proposalData.description),
 										}}
 									/>
 								) : (
