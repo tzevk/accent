@@ -25,7 +25,10 @@
 		"migrate": "knex migrate:latest",
 		"migrate:status": "knex migrate:status",
 		"migrate:make": "knex migrate:make",
-		"migrate:rollback": "knex migrate:rollback"
+		"migrate:rollback": "knex migrate:rollback",
+		"seed": "knex seed:run",
+		"seed:dev": "knex seed:run",
+		"seed:make": "knex seed:make"
 	},
 	"lint-staged": {
 		"**/*.{js,jsx,ts,tsx,json,css,md}": [

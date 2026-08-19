@@ -1,10 +1,13 @@
 /**
- * Seed mock leads + proposals for empty DBs — idempotent.
- * Runs only if tables are empty (count === 0). Safe to re-run.
- * Reuses companies seeded in 20260819120000_seed_dummy_data.js.
+ * Dev-only seed — idempotent, never runs in production.
+ * Run manually: `npm run seed` (runs both) or `npx knex seed:run --specific 02_dev_leads_proposals.js`
+ * Requires companies from 01_dev_dummy_data.js (or existing DB).
  */
-
-export async function up(knex) {
+export async function seed(knex) {
+	if (process.env.NODE_ENV === 'production') {
+		console.log('[seed:02_dev_leads_proposals] skipped in production');
+		return;
+	}
 	const leadCnt = await knex('leads')
 		.where({ isDelete: 0 })
 		.count('* as cnt')
@@ -13,9 +16,8 @@ export async function up(knex) {
 	if (Number(leadCnt?.cnt || 0) === 0) {
 		await seedLeads(knex);
 	} else {
-		console.log('[seed_leads_proposals] leads already exist, skipping');
+		console.log('[seed:02] leads already exist, skipping');
 	}
-
 	const propCnt = await knex('proposals')
 		.where({ isDelete: 0 })
 		.count('* as cnt')
@@ -24,7 +26,7 @@ export async function up(knex) {
 	if (Number(propCnt?.cnt || 0) === 0) {
 		await seedProposals(knex);
 	} else {
-		console.log('[seed_leads_proposals] proposals already exist, skipping');
+		console.log('[seed:02] proposals already exist, skipping');
 	}
 }
 
@@ -36,7 +38,6 @@ async function seedLeads(knex) {
 	const getCompany = (name) =>
 		byName[name] ||
 		companies[0] || { id: null, company_name: name, city: 'Mumbai' };
-
 	const today = new Date();
 	const daysAgo = (n) => {
 		const d = new Date(today);
@@ -48,7 +49,6 @@ async function seedLeads(knex) {
 		d.setDate(d.getDate() + 7);
 		return d.toISOString().slice(0, 10);
 	};
-
 	const leads = [
 		{
 			company_id: getCompany('Mumbai Metro Rail Corporation').id,
@@ -209,11 +209,8 @@ async function seedLeads(knex) {
 			isDelete: 0,
 		},
 	];
-
-	for (const l of leads) {
-		await knex('leads').insert(l);
-	}
-	console.log(`[seed_leads_proposals] inserted ${leads.length} leads`);
+	for (const l of leads) await knex('leads').insert(l);
+	console.log(`[seed:02] inserted ${leads.length} leads`);
 }
 
 async function seedProposals(knex) {
@@ -222,8 +219,6 @@ async function seedProposals(knex) {
 		.select('id', 'company_name');
 	const byName = Object.fromEntries(companies.map((c) => [c.company_name, c]));
 	const getCompanyId = (name) => byName[name]?.id ?? null;
-
-	// Try to link some proposals to leads (if leads were just seeded, fetch them)
 	const leads = await knex('leads')
 		.where({ isDelete: 0 })
 		.select('id', 'company_name')
@@ -231,7 +226,6 @@ async function seedProposals(knex) {
 	const leadByCompany = Object.fromEntries(
 		leads.map((l) => [l.company_name, l.id])
 	);
-
 	const today = new Date();
 	const iso = (d) => d.toISOString().slice(0, 10);
 	const daysAgo = (n) => {
@@ -244,10 +238,8 @@ async function seedProposals(knex) {
 		d.setDate(d.getDate() + n);
 		return iso(d);
 	};
-
 	const month = String(today.getMonth() + 1).padStart(2, '0');
 	const year = today.getFullYear();
-
 	const proposals = [
 		{
 			proposal_id: `PROP-${year}-${month}-001`,
@@ -477,9 +469,7 @@ async function seedProposals(knex) {
 			isDelete: 0,
 		},
 	];
-
 	for (const p of proposals) {
-		// Avoid duplicate proposal_id (unique)
 		const exists = await knex('proposals')
 			.where({ proposal_id: p.proposal_id })
 			.first();
@@ -487,31 +477,6 @@ async function seedProposals(knex) {
 		await knex('proposals').insert(p);
 	}
 	console.log(
-		`[seed_leads_proposals] proposals seeding done (attempted ${proposals.length})`
+		`[seed:02] proposals seeding done (attempted ${proposals.length})`
 	);
-}
-
-export async function down(knex) {
-	await knex('leads')
-		.whereIn(
-			'lead_id',
-			['001-', '002-', '003-', '004-', '005-', '006-', '007-'].map((prefix) =>
-				knex.raw(`CONCAT(?, DATE_FORMAT(NOW(), '%m-%Y'))`, [prefix])
-			)
-		)
-		.del()
-		.catch(() => {});
-	// Fallback: delete by company_name + project_description pattern for seeded rows
-	await knex('proposals')
-		.where('proposal_id', 'like', 'PROP-%')
-		.whereIn('client_name', [
-			'Mumbai Metro Rail Corporation',
-			'Adani Power Ltd',
-			'L&T Construction',
-			'Godrej Properties',
-			'Reliance Industries - Jamnagar',
-			'Infosys - Hyderabad Campus',
-		])
-		.del()
-		.catch(() => {});
 }

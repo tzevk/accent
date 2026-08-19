@@ -1,30 +1,34 @@
+/**
+ * Dev-only seed — idempotent, never runs in production.
+ * Run manually: `npm run seed` or `npm run seed:dev`
+ * Covers: roles_master, users (admin + rahul.sharma), employees, companies,
+ *         deliverable_categories, projects (5 with all tabs).
+ *
+ * This was previously a migration (20260819120000_seed_dummy_data.js) — moved
+ * to seeds/ so `knex migrate:latest` in prod never seeds dummy data.
+ */
 import bcrypt from 'bcrypt';
 
-// Seed dummy data for fresh/empty DBs — idempotent (no-ops if rows already exist).
-// Covers: roles_master, users (admin + regular), employees, companies, deliverable_categories, projects (5 with all tabs).
-export async function up(knex) {
+export async function seed(knex) {
+	if (process.env.NODE_ENV === 'production') {
+		console.log('[seed:01_dev_dummy_data] skipped in production');
+		return;
+	}
+
 	const hasUsers = await knex('users').count('* as cnt').first();
 	if (Number(hasUsers?.cnt || 0) > 0) {
-		// If any users exist, assume DB is not empty and skip projects seeding too
-		// but still ensure supporting masters exist.
 		console.log(
-			'[seed_dummy_data] users already exist, skipping user/project seed'
+			'[seed:01_dev_dummy_data] users already exist, checking masters/projects'
 		);
 	} else {
-		// Ensure roles
 		await ensureRoles(knex);
-		// Create users + employees
 		const { adminId, regularId } = await ensureUsers(knex);
-		// Ensure companies
 		await ensureCompanies(knex);
-		// Ensure deliverable categories
 		await ensureDeliverableCategories(knex);
-		// Seed projects with full tab payloads
 		await ensureProjects(knex, { adminId, regularId });
 		return;
 	}
 
-	// Even when users exist, ensure masters/projects exist if empty
 	await ensureCompanies(knex);
 	await ensureDeliverableCategories(knex);
 	const hasProjects = await knex('projects')
@@ -111,8 +115,6 @@ async function ensureRoles(knex) {
 async function ensureUsers(knex) {
 	const adminHash = await bcrypt.hash('Admin@123', 10);
 	const userHash = await bcrypt.hash('User@123', 10);
-
-	// Employees first (needed for users.employee_id FK)
 	const adminEmpId = await getOrCreateEmployee(knex, {
 		employee_id: 'EMP-001',
 		first_name: 'Admin',
@@ -133,14 +135,12 @@ async function ensureUsers(knex) {
 		phone: '8888888888',
 		status: 'active',
 	});
-
 	const superAdminRole = await knex('roles_master')
 		.where({ role_code: 'super_admin' })
 		.first();
 	const employeeRole = await knex('roles_master')
 		.where({ role_code: 'employee' })
 		.first();
-
 	const [adminId] = await knex('users').insert({
 		username: 'admin',
 		password_hash: adminHash,
@@ -154,7 +154,6 @@ async function ensureUsers(knex) {
 		account_type: 'employee',
 		isDelete: 0,
 	});
-
 	const [regularId] = await knex('users').insert({
 		username: 'rahul.sharma',
 		password_hash: userHash,
@@ -168,7 +167,6 @@ async function ensureUsers(knex) {
 		account_type: 'employee',
 		isDelete: 0,
 	});
-
 	return { adminId, regularId };
 }
 
@@ -250,8 +248,6 @@ async function ensureDeliverableCategories(knex) {
 async function ensureProjects(knex, { adminId, regularId }) {
 	const companies = await knex('companies').where({ isDelete: 0 }).select('id');
 	const companyId = companies[0]?.id || null;
-
-	const now = new Date().toISOString().slice(0, 10);
 	const teamJson = (aId, rId) =>
 		JSON.stringify([
 			{
@@ -271,7 +267,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 				role: 'Team Member',
 			},
 		]);
-
 	const activities = JSON.stringify([
 		{
 			id: 'act-001',
@@ -313,7 +308,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			],
 		},
 	]);
-
 	const schedule = JSON.stringify({
 		locked: false,
 		rows: [
@@ -345,7 +339,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			},
 		],
 	});
-
 	const docsReceived = JSON.stringify([
 		{
 			id: 1,
@@ -368,7 +361,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			remarks: 'Hard copy',
 		},
 	]);
-
 	const docsIssued = JSON.stringify([
 		{
 			id: 101,
@@ -422,7 +414,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			remarks: '',
 		},
 	]);
-
 	const handover = JSON.stringify([
 		{
 			id: 1,
@@ -439,7 +430,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			hand_over: '',
 		},
 	]);
-
 	const manhours = JSON.stringify([
 		{
 			id: 1,
@@ -451,7 +441,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			monthly_hours: { jan: 160, feb: 168, mar: 176, apr: 144 },
 		},
 	]);
-
 	const queryLog = JSON.stringify([
 		{
 			id: 1,
@@ -464,7 +453,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			remark: 'Closed',
 		},
 	]);
-
 	const assumptions = JSON.stringify([
 		{
 			id: 1,
@@ -475,7 +463,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			sr_no: 1,
 		},
 	]);
-
 	const lessons = JSON.stringify([
 		{
 			id: 1,
@@ -487,7 +474,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			sr_no: 1,
 		},
 	]);
-
 	const kickoff = JSON.stringify([
 		{
 			id: 1,
@@ -502,7 +488,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			mom_document: null,
 		},
 	]);
-
 	const internal = JSON.stringify([
 		{
 			id: 2,
@@ -517,7 +502,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			mom_document: null,
 		},
 	]);
-
 	const inputDocsList = JSON.stringify([
 		{
 			id: 11,
@@ -535,7 +519,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			subLot: 'A',
 		},
 	]);
-
 	const software = JSON.stringify([
 		{
 			id: 1,
@@ -547,7 +530,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			notes: 'Structural analysis',
 		},
 	]);
-
 	const projects = [
 		{
 			name: 'Mumbai Metro Line 3 - Station Design',
@@ -678,7 +660,6 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			updated_at: knex.fn.now(),
 		},
 	];
-
 	for (const p of projects) {
 		const base = {
 			...p,
@@ -701,20 +682,4 @@ async function ensureProjects(knex, { adminId, regularId }) {
 		};
 		await knex('projects').insert(base);
 	}
-}
-
-export async function down(knex) {
-	// Remove dummy projects by project_code; keep users/companies for manual recovery
-	await knex('projects')
-		.whereIn('project_code', [
-			'PROJ-001',
-			'PROJ-002',
-			'PROJ-003',
-			'PROJ-004',
-			'PROJ-005',
-		])
-		.del();
-	await knex('users').whereIn('username', ['admin', 'rahul.sharma']).del();
-	await knex('employees').whereIn('employee_id', ['EMP-001', 'EMP-002']).del();
-	// Keep companies/categories
 }
