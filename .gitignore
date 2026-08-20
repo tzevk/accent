@@ -196,3 +196,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# piolium audit output - contains vulnerabilities, keep local only
+/piolium/
