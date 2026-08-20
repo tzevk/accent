@@ -43,7 +43,10 @@ export async function POST(request) {
 		}
 
 		if (!rows || rows.length === 0) {
-			await db.end?.();
+			try {
+				await db.release();
+			} catch (_) {}
+			db = null;
 			return NextResponse.json(
 				{ success: false, error: 'Proposal not found' },
 				{ status: 404 }
@@ -98,69 +101,84 @@ export async function POST(request) {
 			notes: proposal.notes || null,
 		};
 
-		const [result] = await db.execute(insertSql, [
-			project_code,
-			projectData.name,
-			projectData.description,
-			projectData.company_id,
-			client_name,
-			projectData.start_date,
-			projectData.end_date,
-			projectData.target_date,
-			projectData.budget,
-			null,
-			projectData.status,
-			'ONGOING',
-			projectData.priority,
-			projectData.progress,
-			proposal.id,
-			projectData.notes,
-			JSON.stringify(proposal.activities || []),
-			JSON.stringify(proposal.disciplines || []),
-			JSON.stringify(proposal.discipline_descriptions || {}),
-			JSON.stringify([]),
-			proposal.project_schedule || null,
-			proposal.input_document || null,
-			proposal.list_of_deliverables || null,
-			proposal.kickoff_meeting || null,
-			proposal.in_house_meeting || null,
-		]);
+		// All three writes must be atomic — orphan project without scope would corrupt data
+		let result;
+		await db.beginTransaction();
+		try {
+			[result] = await db.execute(insertSql, [
+				project_code,
+				projectData.name,
+				projectData.description,
+				projectData.company_id,
+				client_name,
+				projectData.start_date,
+				projectData.end_date,
+				projectData.target_date,
+				projectData.budget,
+				null,
+				projectData.status,
+				'ONGOING',
+				projectData.priority,
+				projectData.progress,
+				proposal.id,
+				projectData.notes,
+				JSON.stringify(proposal.activities || []),
+				JSON.stringify(proposal.disciplines || []),
+				JSON.stringify(proposal.discipline_descriptions || {}),
+				JSON.stringify([]),
+				proposal.project_schedule || null,
+				proposal.input_document || null,
+				proposal.list_of_deliverables || null,
+				proposal.kickoff_meeting || null,
+				proposal.in_house_meeting || null,
+			]);
 
-		// Insert project_scope row with annexure fields from proposal
-		const scopeSql = `INSERT INTO project_scope (
+			// Insert project_scope row with annexure fields from proposal
+			const scopeSql = `INSERT INTO project_scope (
       project_id, scope_of_work, input_documents, deliverables, software_included, duration, mode_of_delivery, revision, site_visit, quotation_validity, exclusion, billing_and_payment_terms, other_terms_and_conditions, created_by, updated_by
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
-		await db.execute(scopeSql, [
-			result.insertId,
-			proposal.scope_of_work || proposal.scope || proposal.description || '',
-			proposal.input_documents || proposal.input_document || '',
-			proposal.deliverables || proposal.list_of_deliverables || '',
-			proposal.software_included || proposal.software || '',
-			proposal.duration || '',
-			proposal.mode_of_delivery || proposal.modeOfDelivery || '',
-			proposal.revision || '',
-			proposal.site_visit || proposal.siteVisit || '',
-			proposal.quotation_validity || '',
-			proposal.exclusion || proposal.exclusions || '',
-			proposal.billing_and_payment_terms ||
-				proposal.billing_payment_terms ||
-				proposal.billing ||
-				'',
-			proposal.other_terms_and_conditions ||
-				proposal.other_terms ||
-				proposal.terms_and_conditions ||
-				'',
-			proposal.created_by || 'system',
-			proposal.updated_by || 'system',
-		]);
+			await db.execute(scopeSql, [
+				result.insertId,
+				proposal.scope_of_work || proposal.scope || proposal.description || '',
+				proposal.input_documents || proposal.input_document || '',
+				proposal.deliverables || proposal.list_of_deliverables || '',
+				proposal.software_included || proposal.software || '',
+				proposal.duration || '',
+				proposal.mode_of_delivery || proposal.modeOfDelivery || '',
+				proposal.revision || '',
+				proposal.site_visit || proposal.siteVisit || '',
+				proposal.quotation_validity || '',
+				proposal.exclusion || proposal.exclusions || '',
+				proposal.billing_and_payment_terms ||
+					proposal.billing_payment_terms ||
+					proposal.billing ||
+					'',
+				proposal.other_terms_and_conditions ||
+					proposal.other_terms ||
+					proposal.terms_and_conditions ||
+					'',
+				proposal.created_by || 'system',
+				proposal.updated_by || 'system',
+			]);
 
-		// Update proposal status and link project_id
-		const convertedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
-		await db.execute(
-			'UPDATE proposals SET status = ?, project_id = ?, converted_at = ? WHERE id = ?',
-			['CONVERTED', result.insertId, convertedAt, proposal.id]
-		);
+			// Update proposal status and link project_id
+			const convertedAt = new Date()
+				.toISOString()
+				.slice(0, 19)
+				.replace('T', ' ');
+			await db.execute(
+				'UPDATE proposals SET status = ?, project_id = ?, converted_at = ? WHERE id = ?',
+				['CONVERTED', result.insertId, convertedAt, proposal.id]
+			);
+
+			await db.commit();
+		} catch (txErr) {
+			try {
+				await db.rollback();
+			} catch (_) {}
+			throw txErr;
+		}
 
 		const [created] = await db.execute(
 			'SELECT * FROM projects WHERE project_id = ?',
@@ -170,7 +188,6 @@ export async function POST(request) {
 			'SELECT * FROM project_scope WHERE project_id = ?',
 			[result.insertId]
 		);
-		await db.end?.();
 
 		let createdProject = null;
 		try {
@@ -181,8 +198,6 @@ export async function POST(request) {
 				e?.message || e,
 				{ created }
 			);
-		} finally {
-			if (db) db.release();
 		}
 
 		if (!createdProject) {
@@ -224,5 +239,11 @@ export async function POST(request) {
 			{ success: false, error: 'Conversion failed', details: err.message },
 			{ status: 500 }
 		);
+	} finally {
+		if (db) {
+			try {
+				await db.release();
+			} catch (_) {}
+		}
 	}
 }

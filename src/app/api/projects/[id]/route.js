@@ -1059,6 +1059,7 @@ export async function PUT(request, context) {
 			}
 
 			let result;
+			await db.beginTransaction();
 			try {
 				const ptParam = paramFieldMap.find((p) => p.col === 'project_team');
 				if (ptParam) {
@@ -1075,42 +1076,42 @@ export async function PUT(request, context) {
 						'[TEAM DEBUG PUT] project_team NOT in field values (skipping update)'
 					);
 				}
-				[result] = await db.execute(sql, queryParams);
-				console.log(
-					'[TEAM DEBUG PUT] Update result — affectedRows:',
-					result?.affectedRows
-				);
-			} catch (execError) {
-				console.error(
-					'PUT /api/projects/[id] - Execute error:',
-					execError.message
-				);
-				throw execError;
-			}
-
-			// Force-update project_team directly (bypasses schema cache which may not include it)
-			if (data.project_team !== undefined) {
-				const ptValue =
-					typeof data.project_team === 'object' && data.project_team !== null
-						? JSON.stringify(data.project_team)
-						: data.project_team;
-				console.log(
-					'[TEAM DEBUG PUT] Direct project_team update — value preview:',
-					typeof ptValue === 'string' ? ptValue.substring(0, 300) : ptValue
-				);
-				const [ptResult] = await db.execute(
-					`UPDATE projects SET project_team = ?, updated_at = CURRENT_TIMESTAMP WHERE ${pkCol} = ? AND isDelete = 0`,
-					[ptValue, projectId]
-				);
-				console.log(
-					'[TEAM DEBUG PUT] Direct project_team update — affectedRows:',
-					ptResult?.affectedRows
-				);
-			}
-
-			// Sync activity assignments to user_activity_assignments table
-			if (data.project_activities_list) {
 				try {
+					[result] = await db.execute(sql, queryParams);
+					console.log(
+						'[TEAM DEBUG PUT] Update result — affectedRows:',
+						result?.affectedRows
+					);
+				} catch (execError) {
+					console.error(
+						'PUT /api/projects/[id] - Execute error:',
+						execError.message
+					);
+					throw execError;
+				}
+
+				// Force-update project_team directly (bypasses schema cache which may not include it)
+				if (data.project_team !== undefined) {
+					const ptValue =
+						typeof data.project_team === 'object' && data.project_team !== null
+							? JSON.stringify(data.project_team)
+							: data.project_team;
+					console.log(
+						'[TEAM DEBUG PUT] Direct project_team update — value preview:',
+						typeof ptValue === 'string' ? ptValue.substring(0, 300) : ptValue
+					);
+					const [ptResult] = await db.execute(
+						`UPDATE projects SET project_team = ?, updated_at = CURRENT_TIMESTAMP WHERE ${pkCol} = ? AND isDelete = 0`,
+						[ptValue, projectId]
+					);
+					console.log(
+						'[TEAM DEBUG PUT] Direct project_team update — affectedRows:',
+						ptResult?.affectedRows
+					);
+				}
+
+				// Sync activity assignments to user_activity_assignments table — atomic within project transaction
+				if (data.project_activities_list) {
 					const activities =
 						typeof data.project_activities_list === 'string'
 							? JSON.parse(data.project_activities_list)
@@ -1274,51 +1275,52 @@ export async function PUT(request, context) {
 
 						for (const [, row] of incomingMap) {
 							if (!validUserIds.has(row.user_id)) continue;
-							try {
-								await db.execute(UPSERT_SQL, [
-									randomUUID(),
-									row.user_id,
-									row.project_id,
-									row.activity_id,
-									row.activity_name,
-									row.discipline_name,
-									row.description,
-									row.due_date,
-									row.start_date,
-									row.priority,
-									row.estimated_hours,
-									row.actual_hours,
-									row.qty_assigned,
-									row.qty_completed,
-									row.status,
-									row.notes,
-									row.daily_entries,
-								]);
-							} catch (upsertErr) {
-								console.error(
-									'UPSERT failed for assignment:',
-									upsertErr.message
-								);
-							}
+							await db.execute(UPSERT_SQL, [
+								randomUUID(),
+								row.user_id,
+								row.project_id,
+								row.activity_id,
+								row.activity_name,
+								row.discipline_name,
+								row.description,
+								row.due_date,
+								row.start_date,
+								row.priority,
+								row.estimated_hours,
+								row.actual_hours,
+								row.qty_assigned,
+								row.qty_completed,
+								row.status,
+								row.notes,
+								row.daily_entries,
+							]);
 						}
 					}
-				} catch (syncErr) {
-					console.error('Failed to sync activity assignments:', syncErr);
-					// Non-fatal - continue with success response
 				}
+
+				if (result.affectedRows === 0) {
+					await db.rollback();
+					await db.release();
+					db = null;
+					return Response.json(
+						{
+							success: false,
+							error: 'Project not found',
+						},
+						{ status: 404 }
+					);
+				}
+
+				await db.commit();
+			} catch (txError) {
+				try {
+					await db.rollback();
+				} catch (_) {}
+				throw txError;
 			}
 
 			await db.release();
-
-			if (result.affectedRows === 0) {
-				return Response.json(
-					{
-						success: false,
-						error: 'Project not found',
-					},
-					{ status: 404 }
-				);
-			}
+			db = null;
 
 			return Response.json({
 				success: true,

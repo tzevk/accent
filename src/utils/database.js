@@ -237,6 +237,42 @@ export async function withDb(fn) {
 }
 
 /**
+ * Execute a callback inside a transaction.  The transaction is committed on
+ * success and rolled back on error.  The connection is always released.
+ *
+ * Usage:
+ *   await withTransaction(async (db) => {
+ *     await db.execute('INSERT INTO projects ...', [...]);
+ *     await db.execute('INSERT INTO project_scope ...', [...]);
+ *   });
+ *
+ * @param {(db: import('mysql2/promise').PoolConnection) => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+export async function withTransaction(fn) {
+	const db = await dbConnect();
+	try {
+		await db.beginTransaction();
+		const result = await fn(db);
+		await db.commit();
+		return result;
+	} catch (error) {
+		try {
+			await db.rollback();
+		} catch (_) {
+			/* ignore rollback failure */
+		}
+		throw error;
+	} finally {
+		try {
+			db.release();
+		} catch (_) {
+			/* ignore */
+		}
+	}
+}
+
+/**
  * Execute a single query directly on the pool — no getConnection/release needed.
  * This is the SAFEST way to run simple queries because the pool handles the
  * connection lifecycle automatically. Use for any simple SELECT/INSERT/UPDATE.
