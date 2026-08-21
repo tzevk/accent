@@ -398,8 +398,8 @@ export function buildAnnualWorkbook(data: AnnualBillingData): ExcelJS.Workbook {
 		{ key: 'sr_no', width: 6 },
 		{ key: 'employee_name', width: 26 },
 		{ key: 'salary_type', width: 13 },
-		{ key: 'rate_company', width: 14 },
-		{ key: 'rate_accent', width: 14 },
+		{ key: 'rate_employee', width: 14 },
+		{ key: 'rate_client', width: 14 },
 		// 12 months columns
 		{ key: 'apr', width: 9 },
 		{ key: 'may', width: 9 },
@@ -467,8 +467,8 @@ export function buildAnnualWorkbook(data: AnnualBillingData): ExcelJS.Workbook {
 		{ col: 1, label: 'Sr. No.', align: 'center', tint: TINT_YELLOW },
 		{ col: 2, label: 'Team Member', align: 'left', tint: TINT_YELLOW },
 		{ col: 3, label: 'Salary Type', align: 'center', tint: TINT_YELLOW },
-		{ col: 4, label: 'RT/HR (Company)', align: 'right', tint: TINT_BLUE },
-		{ col: 5, label: 'RT/HR (Accent)', align: 'right', tint: TINT_BLUE },
+		{ col: 4, label: 'RT/HR (Employee)', align: 'right', tint: TINT_BLUE },
+		{ col: 5, label: 'RT/HR (Company)', align: 'right', tint: TINT_BLUE },
 		// 12 Months
 		{ col: 6, label: 'Apr', align: 'right', tint: TINT_AMBER_LIGHT },
 		{ col: 7, label: 'May', align: 'right', tint: TINT_AMBER_LIGHT },
@@ -484,8 +484,8 @@ export function buildAnnualWorkbook(data: AnnualBillingData): ExcelJS.Workbook {
 		{ col: 17, label: 'Mar', align: 'right', tint: TINT_AMBER_LIGHT },
 		// Totals
 		{ col: 18, label: 'Total Hrs', align: 'right', tint: TINT_PURPLE_LIGHT },
-		{ col: 19, label: 'Company Cost', align: 'right', tint: TINT_GREEN },
-		{ col: 20, label: 'Accent Cost', align: 'right', tint: TINT_BLUE },
+		{ col: 19, label: 'Employee Cost', align: 'right', tint: TINT_GREEN },
+		{ col: 20, label: 'Company Billing', align: 'right', tint: TINT_BLUE },
 		{ col: 21, label: 'P&L', align: 'right', tint: TINT_YELLOW_BRIGHT },
 	];
 
@@ -515,13 +515,13 @@ export function buildAnnualWorkbook(data: AnnualBillingData): ExcelJS.Workbook {
 			{ val: r.employee_name, align: 'left', tint: TINT_YELLOW },
 			{ val: r.salary_type || 'monthly', align: 'center', tint: TINT_YELLOW },
 			{
-				val: r.rate_company,
+				val: r.rate_employee,
 				align: 'right',
 				numFmt: '#,##0.00',
 				tint: TINT_BLUE,
 			},
 			{
-				val: r.rate_accent,
+				val: r.rate_client,
 				align: 'right',
 				numFmt: '#,##0.00',
 				tint: TINT_BLUE,

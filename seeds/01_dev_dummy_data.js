@@ -22,10 +22,16 @@ export async function seed(knex) {
 		);
 	} else {
 		await ensureRoles(knex);
-		const { adminId, regularId } = await ensureUsers(knex);
+		const { adminId, regularId, adminEmpId, regularEmpId } =
+			await ensureUsers(knex);
 		await ensureCompanies(knex);
 		await ensureDeliverableCategories(knex);
-		await ensureProjects(knex, { adminId, regularId });
+		await ensureProjects(knex, {
+			adminId,
+			regularId,
+			adminEmpId,
+			regularEmpId,
+		});
 		return;
 	}
 
@@ -40,7 +46,12 @@ export async function seed(knex) {
 		const regularRow = await knex('users').where({ is_super_admin: 0 }).first();
 		const adminId = adminRow?.id || 1;
 		const regularId = regularRow?.id || 2;
-		await ensureProjects(knex, { adminId, regularId });
+		await ensureProjects(knex, {
+			adminId,
+			regularId,
+			adminEmpId: adminRow?.employee_id || null,
+			regularEmpId: regularRow?.employee_id || null,
+		});
 	}
 }
 
@@ -167,7 +178,7 @@ async function ensureUsers(knex) {
 		account_type: 'employee',
 		isDelete: 0,
 	});
-	return { adminId, regularId };
+	return { adminId, regularId, adminEmpId, regularEmpId };
 }
 
 async function getOrCreateEmployee(knex, data) {
@@ -245,7 +256,10 @@ async function ensureDeliverableCategories(knex) {
 	]);
 }
 
-async function ensureProjects(knex, { adminId, regularId }) {
+async function ensureProjects(
+	knex,
+	{ adminId, regularId, adminEmpId, regularEmpId }
+) {
 	const companies = await knex('companies').where({ isDelete: 0 }).select('id');
 	const companyId = companies[0]?.id || null;
 	const teamJson = (aId, rId) =>
@@ -430,17 +444,99 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			hand_over: '',
 		},
 	]);
-	const manhours = JSON.stringify([
-		{
-			id: 1,
-			employee_id: String(regularId),
-			employee_name: 'Rahul Sharma',
-			salary_type: 'monthly',
-			rate_company: 450,
-			rate_accent: 500,
-			monthly_hours: { jan: 160, feb: 168, mar: 176, apr: 144 },
-		},
-	]);
+	// Distinct manhours per project so reports/filters show different data.
+	// Keys follow the current schema: rate_employee (what Accent pays the
+	// resource) and rate_client (what the client pays Accent).
+	const manhoursByProject = {
+		'PROJ-001': JSON.stringify([
+			{
+				id: 1,
+				employee_id: String(regularEmpId),
+				source_employee_id: regularEmpId,
+				employee_name: 'Rahul Sharma',
+				salary_type: 'monthly',
+				rate_employee: 450,
+				rate_client: 500,
+				monthly_hours: { jan: 160, feb: 168, mar: 176, apr: 144 },
+			},
+		]),
+		'PROJ-002': JSON.stringify([
+			{
+				id: 1,
+				employee_id: String(regularEmpId),
+				source_employee_id: regularEmpId,
+				employee_name: 'Rahul Sharma',
+				salary_type: 'monthly',
+				rate_employee: 475,
+				rate_client: 550,
+				monthly_hours: { may: 120, jun: 140 },
+			},
+			{
+				id: 2,
+				employee_id: String(adminEmpId),
+				source_employee_id: adminEmpId,
+				employee_name: 'Admin User',
+				salary_type: 'monthly',
+				rate_employee: 600,
+				rate_client: 700,
+				monthly_hours: { may: 80, jun: 96 },
+			},
+		]),
+		'PROJ-003': JSON.stringify([
+			{
+				id: 1,
+				employee_id: 'team:55',
+				employee_name: 'Uttam Lad (Layout Associates)',
+				salary_type: 'custom',
+				rate_employee: 456,
+				rate_client: 550,
+				monthly_hours: { jul: 200, aug: 150 },
+			},
+			{
+				id: 2,
+				employee_id: String(regularEmpId),
+				source_employee_id: regularEmpId,
+				employee_name: 'Rahul Sharma',
+				salary_type: 'monthly',
+				rate_employee: 430,
+				rate_client: 480,
+				monthly_hours: { sep: 176 },
+			},
+		]),
+		'PROJ-004': JSON.stringify([
+			{
+				id: 1,
+				employee_id: String(regularEmpId),
+				source_employee_id: regularEmpId,
+				employee_name: 'Rahul Sharma',
+				salary_type: 'monthly',
+				rate_employee: 400,
+				rate_client: 425,
+				monthly_hours: { oct: 80, nov: 96, dec: 40 },
+			},
+		]),
+		'PROJ-005': JSON.stringify([
+			{
+				id: 1,
+				employee_id: String(regularEmpId),
+				source_employee_id: regularEmpId,
+				employee_name: 'Rahul Sharma',
+				salary_type: 'monthly',
+				rate_employee: 500,
+				rate_client: 575,
+				monthly_hours: { feb: 180 },
+			},
+			{
+				id: 2,
+				employee_id: 'team:77',
+				employee_name: 'Vendor Deputation - Piping',
+				salary_type: 'custom',
+				rate_employee: 350,
+				rate_client: 420,
+				monthly_hours: { feb: 60, mar: 120 },
+			},
+		]),
+	};
 	const queryLog = JSON.stringify([
 		{
 			id: 1,
@@ -670,7 +766,7 @@ async function ensureProjects(knex, { adminId, regularId }) {
 			documents_received_list: docsReceived,
 			documents_issued_list: docsIssued,
 			project_handover_list: handover,
-			project_manhours_list: manhours,
+			project_manhours_list: manhoursByProject[p.project_code] || '[]',
 			project_query_log_list: queryLog,
 			project_assumption_list: assumptions,
 			project_lessons_learnt_list: lessons,

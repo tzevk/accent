@@ -750,8 +750,8 @@ export default function EditProjectForm() {
 			employee_id: '',
 			employee_name: '',
 			salary_type: '',
-			rate_company: '',
-			rate_accent: '',
+			rate_employee: '',
+			rate_client: '',
 			monthly_hours: {},
 		},
 	]);
@@ -1560,8 +1560,9 @@ export default function EditProjectForm() {
 											employee_name: row.employee_name || '',
 											source_employee_id: row.source_employee_id || '',
 											salary_type: row.salary_type || '',
-											rate_company: row.rate_company ?? '',
-											rate_accent: row.rate_accent ?? '',
+											rate_employee:
+												row.rate_employee ?? row.rate_company ?? '',
+											rate_client: row.rate_client ?? row.rate_accent ?? '',
 											monthly_hours: row.monthly_hours || {},
 										}))
 									);
@@ -1580,8 +1581,8 @@ export default function EditProjectForm() {
 													employee_id: entry.employee_id || '',
 													employee_name: entry.employee_name || '',
 													salary_type: entry.salary_type || 'monthly',
-													rate_company: entry.rate || '',
-													rate_accent: '',
+													rate_employee: entry.rate || '',
+													rate_client: '',
 													monthly_hours: {},
 												});
 											}
@@ -1598,8 +1599,8 @@ export default function EditProjectForm() {
 											employee_id: '',
 											employee_name: row.name_of_engineer_designer || '',
 											salary_type: 'monthly',
-											rate_company: '',
-											rate_accent: '',
+											rate_employee: '',
+											rate_client: '',
 											monthly_hours: {},
 											legacy_data: {
 												engineering: row.engineering,

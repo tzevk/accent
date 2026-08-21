@@ -144,13 +144,13 @@ export default function ProjectManhoursTab({
 		(acc, emp) => {
 			const hrs = add(...Object.values(emp.monthly_hours || {}));
 			acc.hours = add(acc.hours, hrs);
-			acc.company = add(acc.company, mul(emp.rate_company, hrs));
-			acc.accent = add(acc.accent, mul(emp.rate_accent, hrs));
+			acc.employee = add(acc.employee, mul(emp.rate_employee, hrs));
+			acc.client = add(acc.client, mul(emp.rate_client, hrs));
 			return acc;
 		},
-		{ hours: add(), company: add(), accent: add() }
+		{ hours: add(), employee: add(), client: add() }
 	);
-	const totalPl = sub(totals.accent, totals.company);
+	const totalPl = sub(totals.client, totals.employee);
 
 	const inrFormat = (value) =>
 		toNumber(value).toLocaleString('en-IN', {
@@ -195,8 +195,8 @@ export default function ProjectManhoursTab({
 										employee_id: '',
 										employee_name: '',
 										salary_type: '',
-										rate_company: '',
-										rate_accent: '',
+										rate_employee: '',
+										rate_client: '',
 										monthly_hours: {},
 									},
 								]);
@@ -237,13 +237,13 @@ export default function ProjectManhoursTab({
 									className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-50"
 									style={{ minWidth: '90px' }}
 								>
-									RT/HR (Company)
+									RT/HR (Employee)
 								</th>
 								<th
 									className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-50"
 									style={{ minWidth: '90px' }}
 								>
-									RT/HR (Accent)
+									RT/HR (Company)
 								</th>
 								{fyMonths.map((month) => (
 									<th
@@ -264,18 +264,18 @@ export default function ProjectManhoursTab({
 									className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-green-100"
 									style={{ minWidth: '100px' }}
 								>
-									Company Cost
+									Employee Cost
 								</th>
 								<th
 									className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-100"
 									style={{ minWidth: '100px' }}
 								>
-									Accent Cost
+									Company Billing
 								</th>
 								<th
 									className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-gray-100"
 									style={{ minWidth: '100px' }}
-									title="Profit & Loss (Accent Cost − Company Cost)"
+									title="Profit & Loss (Company Billing − Employee Cost)"
 								>
 									P&L
 								</th>
@@ -291,9 +291,9 @@ export default function ProjectManhoursTab({
 							{projectManhours.map((empData, idx) => {
 								const monthlyHours = empData.monthly_hours || {};
 								const totalHrs = add(...Object.values(monthlyHours));
-								const companyCost = mul(empData.rate_company, totalHrs);
-								const accentCost = mul(empData.rate_accent, totalHrs);
-								const pl = sub(accentCost, companyCost);
+								const employeeCost = mul(empData.rate_employee, totalHrs);
+								const clientBilling = mul(empData.rate_client, totalHrs);
+								const pl = sub(clientBilling, employeeCost);
 
 								return (
 									<tr
@@ -354,8 +354,8 @@ export default function ProjectManhoursTab({
 																							? ''
 																							: selectedEmp.id,
 																					salary_type: salaryType,
-																					rate_company: selectedEmp.rate || 0,
-																					rate_accent: m.rate_accent || '',
+																					rate_employee: selectedEmp.rate || 0,
+																					rate_client: m.rate_client || '',
 																					monthly_hours: monthlyHoursData,
 																				}
 																			: m
@@ -394,14 +394,14 @@ export default function ProjectManhoursTab({
 										<td className="py-2 px-1 text-center bg-blue-50/30">
 											<input
 												type="number"
-												value={empData.rate_company || ''}
+												value={empData.rate_employee || ''}
 												onChange={(e) =>
 													setProjectManhours((prev) =>
 														prev.map((m) =>
 															m.id === empData.id
 																? {
 																		...m,
-																		rate_company: e.target.value,
+																		rate_employee: e.target.value,
 																	}
 																: m
 														)
@@ -417,14 +417,14 @@ export default function ProjectManhoursTab({
 										<td className="py-2 px-1 text-center bg-blue-50/30">
 											<input
 												type="number"
-												value={empData.rate_accent || ''}
+												value={empData.rate_client || ''}
 												onChange={(e) =>
 													setProjectManhours((prev) =>
 														prev.map((m) =>
 															m.id === empData.id
 																? {
 																		...m,
-																		rate_accent: e.target.value,
+																		rate_client: e.target.value,
 																	}
 																: m
 														)
@@ -478,10 +478,10 @@ export default function ProjectManhoursTab({
 											{totalHrs.toFixed(1)}
 										</td>
 										<td className="py-2 px-2 text-center font-semibold text-green-700 bg-green-50/50">
-											₹{inrFormat(companyCost)}
+											₹{inrFormat(employeeCost)}
 										</td>
 										<td className="py-2 px-2 text-center font-semibold text-blue-700 bg-blue-50/50">
-											₹{inrFormat(accentCost)}
+											₹{inrFormat(clientBilling)}
 										</td>
 										<td className="py-2 px-2 text-center bg-gray-50/50">
 											<span
@@ -559,10 +559,10 @@ export default function ProjectManhoursTab({
 									{totals.hours.toFixed(1)}
 								</td>
 								<td className="py-2 px-2 text-center text-green-800 bg-green-200/50">
-									₹{inrFormat(totals.company)}
+									₹{inrFormat(totals.employee)}
 								</td>
 								<td className="py-2 px-2 text-center text-blue-800 bg-blue-200/50">
-									₹{inrFormat(totals.accent)}
+									₹{inrFormat(totals.client)}
 								</td>
 								<td className="py-2 px-2 text-center bg-gray-100/50">
 									<span

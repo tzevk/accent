@@ -35,11 +35,11 @@ data-source.ts
 | -------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ------------- |
 | **Total Manhours**                     | `user_activity_assignments`      | Sum of `hours` in the assignment's `daily_entries` JSON array where `date` falls in the selected month; summed across every non-cancelled assignment for the project |
 | **Employee Name / Designation / Code** | `employees`                      | `CONCAT_WS(' ', first_name, last_name)`; designation = `position`                                                                                                    |     | `designation` |
-| **Employee Charges**                   | `projects.project_manhours_list` | Project Manhours tab's `rate_company` (RT/HR Company); falls back to the salary-profile-derived hourly rate when unset                                               |
+| **Employee Charges**                   | `projects.project_manhours_list` | Project Manhours tab's `rate_company` (RT/HR Employee); falls back to the salary-profile-derived hourly rate when unset                                              |
 | **Amount**                             | computed                         | Employee Charges × manhours (unrounded rate), 2dp, decimal.js (`@/lib/money`)                                                                                        |
 | **TDS**                                | computed                         | Amount × `tds_percentage` from the salary profile in force for the month (default **10%**, payroll's convention)                                                     |
 | **Net Payable**                        | computed                         | Amount − TDS                                                                                                                                                         |
-| **Accent Charges**                     | `projects.project_manhours_list` | Project Manhours tab's `rate_accent` (RT/HR Accent); 0 when unset                                                                                                    |
+| **Accent Charges**                     | `projects.project_manhours_list` | Project Manhours tab's `rate_accent` (RT/HR Company); 0 when unset                                                                                                   |
 | **Accent Amount**                      | computed                         | Accent Charges × manhours, 2dp                                                                                                                                       |
 | **P&L After Deductions**               | computed                         | Accent Amount − Net Payable — profit after the employee's deductions                                                                                                 |
 | **P&L TDS**                            | computed                         | Accent Amount − Amount — gross margin before the employee's TDS (equivalently P&L After Deductions − TDS)                                                            |
@@ -171,7 +171,7 @@ Unauthenticated → 401. No permission → 403. The `download` route applies the
 interface BillingMeta {
 	clients: string[]; // distinct projects.client_name, sorted
 	projects: BillingProject[]; // { project_id, project_code, project_name, client_name }
-	months: string[]; // YYYY-MM, newest first: attendance months ∪ daily_entries months ∪ current month
+	months: string[]; // YYYY-MM, newest first: attendance months ∪ daily_entries months ∪ manhours-tab months ∪ current month
 	latest_month: string | null;
 }
 ```
@@ -203,13 +203,13 @@ interface BillingEmployeeRow {
 	employee_code: string;
 	employee_name: string;
 	designation: string;
-	employee_charges: number; // RT/HR Company (project config) or salary-derived, 2dp
+	employee_charges: number; // RT/HR Employee (project config) or salary-derived, 2dp
 	total_manhours: number; // 2dp
 	amount: number; // charges × manhours, 2dp
 	tds_rate: number; // profile tds_percentage, default 10
 	tds: number; // amount × tds_rate / 100, 2dp
 	net_payable: number; // amount − tds, 2dp
-	accent_charges: number; // RT/HR Accent (project config), 2dp
+	accent_charges: number; // RT/HR Company (project config), 2dp
 	accent_amount: number; // accent_charges × manhours, 2dp
 	pnl_after_deductions: number; // accent_amount − net_payable, 2dp
 	pnl_tds: number; // accent_amount − amount, 2dp

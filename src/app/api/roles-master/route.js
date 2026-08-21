@@ -7,6 +7,22 @@ import {
 	invalidateUserCache,
 } from '@/utils/api-permissions';
 
+// Tolerant permissions parser: handles JSON strings, already-parsed arrays,
+// and legacy comma-separated strings ("projects:read,employees:read") without crashing.
+function parsePermissions(value) {
+	if (!value) return [];
+	if (Array.isArray(value)) return value;
+	try {
+		const parsed = JSON.parse(value);
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return String(value)
+			.split(',')
+			.map((p) => p.trim())
+			.filter(Boolean);
+	}
+}
+
 // GET - list all active roles
 export async function GET(request) {
 	// RBAC check
@@ -55,7 +71,7 @@ export async function GET(request) {
 		// Parse permissions JSON for each role
 		const rolesWithPermissions = rows.map((role) => ({
 			...role,
-			permissions: role.permissions ? JSON.parse(role.permissions) : [],
+			permissions: parsePermissions(role.permissions),
 		}));
 
 		return NextResponse.json({ success: true, data: rolesWithPermissions });
@@ -136,9 +152,7 @@ export async function POST(request) {
 			success: true,
 			data: {
 				...newRole[0],
-				permissions: newRole[0].permissions
-					? JSON.parse(newRole[0].permissions)
-					: [],
+				permissions: parsePermissions(newRole[0].permissions),
 			},
 			message: 'Role created successfully',
 		});
@@ -260,9 +274,7 @@ export async function PUT(request) {
 			success: true,
 			data: {
 				...updatedRole[0],
-				permissions: updatedRole[0].permissions
-					? JSON.parse(updatedRole[0].permissions)
-					: [],
+				permissions: parsePermissions(updatedRole[0].permissions),
 			},
 			message: 'Role updated successfully',
 		});
