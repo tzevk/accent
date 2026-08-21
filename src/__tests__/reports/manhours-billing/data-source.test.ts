@@ -7,6 +7,8 @@ import {
 	getFinancialYear,
 	formatFyLabel,
 	parseProjectManhoursList,
+	collectManhoursTabMonths,
+	fyKeyToCalendarMonthMap,
 	resolveMonthlySalary,
 	resolveHourlyRate,
 	pickActiveProfile,
@@ -110,6 +112,55 @@ describe('monthLabel', () => {
 	it('returns the input for invalid months', () => {
 		expect(monthLabel('garbage')).toBe('garbage');
 		expect(monthLabel('2026-13')).toBe('2026-13');
+	});
+});
+
+describe('collectManhoursTabMonths', () => {
+	it('maps year-less tab keys onto the FY calendar (Apr–Dec of fyYear)', () => {
+		const entries: ProjectManhourTabRow[] = [
+			{ monthly_hours: { apr: 10, may: '12' } },
+		];
+		expect(collectManhoursTabMonths(entries, 2026)).toEqual([
+			'2026-04',
+			'2026-05',
+		]);
+	});
+
+	it('rolls Jan–Mar into the next calendar year', () => {
+		const entries: ProjectManhourTabRow[] = [
+			{ monthly_hours: { jan: 8, mar: '4.5' } },
+		];
+		expect(collectManhoursTabMonths(entries, 2026)).toEqual([
+			'2027-01',
+			'2027-03',
+		]);
+	});
+
+	it('ignores blank/zero hours and unknown keys', () => {
+		const entries: ProjectManhourTabRow[] = [
+			{ monthly_hours: { apr: 0, may: '', jun: '0', bogus: 5 } },
+			{ employee_name: 'No hours object' },
+		];
+		expect(collectManhoursTabMonths(entries, 2026)).toEqual([]);
+	});
+
+	it('dedupes months across rows and returns them sorted', () => {
+		const entries: ProjectManhourTabRow[] = [
+			{ monthly_hours: { apr: 2 } },
+			{ monthly_hours: { APR: 3, dec: 1 } },
+		];
+		expect(collectManhoursTabMonths(entries, 2025)).toEqual([
+			'2025-04',
+			'2025-12',
+		]);
+	});
+
+	it('exposes the same key→calendar mapping as the annual view', () => {
+		const map = fyKeyToCalendarMonthMap(2026);
+		expect(map.apr).toBe('2026-04');
+		expect(map.dec).toBe('2026-12');
+		expect(map.jan).toBe('2027-01');
+		expect(map.mar).toBe('2027-03');
 	});
 });
 
@@ -328,7 +379,7 @@ describe('buildBillingRows', () => {
 					tds_percentage: 10,
 				}),
 			],
-			new Map([[1, { rate_company: 430, rate_accent: 480 }]]),
+			new Map([[1, { rate_employee: 430, rate_client: 480 }]]),
 			'2026-04'
 		);
 		expect(rows).toHaveLength(1);
@@ -573,6 +624,26 @@ describe('deputation & annual billing helpers', () => {
 		expect(parseProjectManhoursList(null)).toEqual([]);
 		expect(parseProjectManhoursList('not json')).toEqual([]);
 	});
+
+	it('normalizes legacy rate_company/rate_accent keys to rate_employee/rate_client', () => {
+		const rows = parseProjectManhoursList(
+			'[{"id":1,"employee_name":"Legacy","rate_company":"300","rate_accent":"400"},' +
+				'{"id":2,"employee_name":"Current","rate_employee":"500","rate_client":"600"}]'
+		);
+		expect(rows).toHaveLength(2);
+		expect(rows[0]).toEqual({
+			id: 1,
+			employee_name: 'Legacy',
+			rate_employee: '300',
+			rate_client: '400',
+		});
+		expect(rows[1]).toEqual({
+			id: 2,
+			employee_name: 'Current',
+			rate_employee: '500',
+			rate_client: '600',
+		});
+	});
 });
 
 describe('buildBillingRows with Project Manhours tab (deputation resources)', () => {
@@ -595,8 +666,8 @@ describe('buildBillingRows with Project Manhours tab (deputation resources)', ()
 				employee_id: 'team:55',
 				employee_name: 'Uttam Lad(Layout Engineer) Associates',
 				salary_type: 'custom',
-				rate_company: '456',
-				rate_accent: '550',
+				rate_employee: '456',
+				rate_client: '550',
 				monthly_hours: { may: '200', jun: '150' },
 			},
 			{
@@ -605,8 +676,8 @@ describe('buildBillingRows with Project Manhours tab (deputation resources)', ()
 				source_employee_id: 118,
 				employee_name: 'Anil Shukla',
 				salary_type: 'monthly',
-				rate_company: '350',
-				rate_accent: '450',
+				rate_employee: '350',
+				rate_client: '450',
 				monthly_hours: { may: '180' },
 			},
 		];
@@ -668,8 +739,8 @@ describe('buildAnnualBillingRows & buildAnnualTotals', () => {
 				employee_id: 'team:55',
 				employee_name: 'Uttam Lad',
 				salary_type: 'custom',
-				rate_company: '400',
-				rate_accent: '500',
+				rate_employee: '400',
+				rate_client: '500',
 				monthly_hours: {
 					apr: 100,
 					may: 120,
@@ -691,8 +762,8 @@ describe('buildAnnualBillingRows & buildAnnualTotals', () => {
 				source_employee_id: 118,
 				employee_name: 'Anil Shukla',
 				salary_type: 'monthly',
-				rate_company: '300',
-				rate_accent: '400',
+				rate_employee: '300',
+				rate_client: '400',
 				monthly_hours: {
 					apr: 160,
 					may: 160,

@@ -600,9 +600,22 @@ export default function ProjectViewPage() {
 	const parsedProjectManhours = useMemo(() => {
 		if (!project || !project.project_manhours_list) return [];
 		try {
-			return typeof project.project_manhours_list === 'string'
-				? JSON.parse(project.project_manhours_list)
-				: project.project_manhours_list;
+			const list =
+				typeof project.project_manhours_list === 'string'
+					? JSON.parse(project.project_manhours_list)
+					: project.project_manhours_list;
+			if (!Array.isArray(list)) return [];
+			// Pre-rename rows stored rates under inverted keys.
+			return list.map((row) => {
+				if (!row || typeof row !== 'object') return row;
+				if (!('rate_company' in row) && !('rate_accent' in row)) return row;
+				const { rate_company, rate_accent, ...rest } = row;
+				return {
+					...rest,
+					rate_employee: rest.rate_employee ?? rate_company,
+					rate_client: rest.rate_client ?? rate_accent,
+				};
+			});
 		} catch {
 			return [];
 		}
@@ -1840,13 +1853,13 @@ export default function ProjectViewPage() {
 								(acc, emp) => {
 									const hrs = add(...Object.values(emp.monthly_hours || {}));
 									acc.hours = add(acc.hours, hrs);
-									acc.company = add(acc.company, mul(emp.rate_company, hrs));
-									acc.accent = add(acc.accent, mul(emp.rate_accent, hrs));
+									acc.employee = add(acc.employee, mul(emp.rate_employee, hrs));
+									acc.client = add(acc.client, mul(emp.rate_client, hrs));
 									return acc;
 								},
-								{ hours: add(), company: add(), accent: add() }
+								{ hours: add(), employee: add(), client: add() }
 							);
-							const totalPl = sub(totals.accent, totals.company);
+							const totalPl = sub(totals.client, totals.employee);
 							const inrFormat = (v) =>
 								toNumber(v).toLocaleString('en-IN', {
 									minimumFractionDigits: 2,
@@ -1923,13 +1936,13 @@ export default function ProjectViewPage() {
 															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-50"
 															style={{ minWidth: '90px' }}
 														>
-															RT/HR (Company)
+															RT/HR (Employee)
 														</th>
 														<th
 															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-50"
 															style={{ minWidth: '90px' }}
 														>
-															RT/HR (Accent)
+															RT/HR (Company)
 														</th>
 														{fyMonths.map((m) => (
 															<th
@@ -1950,13 +1963,13 @@ export default function ProjectViewPage() {
 															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-green-100"
 															style={{ minWidth: '100px' }}
 														>
-															Company Cost
+															Employee Cost
 														</th>
 														<th
 															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-100"
 															style={{ minWidth: '100px' }}
 														>
-															Accent Cost
+															Company Billing
 														</th>
 														<th
 															className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-gray-100"
@@ -1972,15 +1985,15 @@ export default function ProjectViewPage() {
 														const totalHrs = add(
 															...Object.values(monthlyHours)
 														);
-														const companyCost = mul(
-															empData.rate_company,
+														const employeeCost = mul(
+															empData.rate_employee,
 															totalHrs
 														);
-														const accentCost = mul(
-															empData.rate_accent,
+														const clientBilling = mul(
+															empData.rate_client,
 															totalHrs
 														);
-														const pl = sub(accentCost, companyCost);
+														const pl = sub(clientBilling, employeeCost);
 														return (
 															<tr
 																key={empData.id || idx}
@@ -2003,10 +2016,10 @@ export default function ProjectViewPage() {
 																	</span>
 																</td>
 																<td className="py-2 px-2 text-center bg-blue-50/30 font-medium">
-																	{empData.rate_company ?? '—'}
+																	{empData.rate_employee ?? '—'}
 																</td>
 																<td className="py-2 px-2 text-center bg-blue-50/30 font-medium">
-																	{empData.rate_accent ?? '—'}
+																	{empData.rate_client ?? '—'}
 																</td>
 																{fyMonthKeys.map((mk) => (
 																	<td
@@ -2023,10 +2036,10 @@ export default function ProjectViewPage() {
 																	{totalHrs.toFixed(1)}
 																</td>
 																<td className="py-2 px-2 text-center font-semibold text-green-700 bg-green-50/50">
-																	₹{inrFormat(companyCost)}
+																	₹{inrFormat(employeeCost)}
 																</td>
 																<td className="py-2 px-2 text-center font-semibold text-blue-700 bg-blue-50/50">
-																	₹{inrFormat(accentCost)}
+																	₹{inrFormat(clientBilling)}
 																</td>
 																<td className="py-2 px-2 text-center bg-gray-50/50">
 																	<span
@@ -2062,10 +2075,10 @@ export default function ProjectViewPage() {
 															{totals.hours.toFixed(1)}
 														</td>
 														<td className="py-2 px-2 text-center text-green-800 bg-green-200/50">
-															₹{inrFormat(totals.company)}
+															₹{inrFormat(totals.employee)}
 														</td>
 														<td className="py-2 px-2 text-center text-blue-800 bg-blue-200/50">
-															₹{inrFormat(totals.accent)}
+															₹{inrFormat(totals.client)}
 														</td>
 														<td className="py-2 px-2 text-center bg-gray-100/50">
 															<span

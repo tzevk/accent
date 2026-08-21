@@ -288,8 +288,8 @@ describe('ManhoursBillingReportPage', () => {
 						employee_name: 'Uttam Lad',
 						designation: 'Layout Engineer',
 						salary_type: 'custom',
-						rate_company: 456,
-						rate_accent: 550,
+						rate_employee: 456,
+						rate_client: 550,
 						monthly_hours: {
 							apr: 200,
 							may: 200,
@@ -356,8 +356,8 @@ describe('ManhoursBillingReportPage', () => {
 
 		// Wait for annual data to render
 		expect(await screen.findByText('Uttam Lad')).toBeInTheDocument();
+		expect(screen.getByText('RT/HR (Emp)')).toBeInTheDocument();
 		expect(screen.getByText('RT/HR (Co)')).toBeInTheDocument();
-		expect(screen.getByText('RT/HR (Acc)')).toBeInTheDocument();
 		expect(screen.getByText('Grand Total')).toBeInTheDocument();
 		expect(screen.getAllByText('400').length).toBeGreaterThanOrEqual(1);
 	});

@@ -10,8 +10,8 @@ describe('ProjectManhoursTab', () => {
 			employee_id: 101,
 			employee_name: 'John Doe',
 			salary_type: 'monthly',
-			rate_company: 500,
-			rate_accent: 600,
+			rate_employee: 500,
+			rate_client: 600,
 			monthly_hours: { jan: 10, feb: 20 },
 		},
 	];
@@ -64,7 +64,7 @@ describe('ProjectManhoursTab', () => {
 		expect(setProjectManhours).toHaveBeenCalled();
 	});
 
-	it('calls setProjectManhours when rate company is changed', async () => {
+	it('calls setProjectManhours when employee rate is changed', async () => {
 		const user = userEvent.setup();
 		const setProjectManhours = vi.fn();
 

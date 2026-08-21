@@ -94,8 +94,8 @@ interface AnnualEmployeeRow {
 	employee_name: string;
 	designation: string;
 	salary_type: string;
-	rate_company: number;
-	rate_accent: number;
+	rate_employee: number;
+	rate_client: number;
 	monthly_hours: Record<string, number>;
 	total_hours: number;
 	company_cost: number;
@@ -780,7 +780,7 @@ export default function ManhoursBillingReportPage() {
 						<div className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
 							<div className="flex items-center justify-between">
 								<span className="text-[11px] font-medium text-gray-500">
-									Total Company Cost
+									Total Employee Cost
 								</span>
 								<UserGroupIcon className="h-4 w-4 text-indigo-600" />
 							</div>
@@ -1250,10 +1250,10 @@ export default function ManhoursBillingReportPage() {
 											Salary Type
 										</th>
 										<th className="border border-black bg-blue-100 px-1 py-1.5 text-right font-semibold">
-											RT/HR (Co)
+											RT/HR (Emp)
 										</th>
 										<th className="border border-black bg-blue-100 px-1 py-1.5 text-right font-semibold">
-											RT/HR (Acc)
+											RT/HR (Co)
 										</th>
 										{annualData.months.map((m) => (
 											<th
@@ -1267,10 +1267,10 @@ export default function ManhoursBillingReportPage() {
 											Total Hrs
 										</th>
 										<th className="border border-black bg-green-100 px-1 py-1.5 text-right font-semibold">
-											Company Cost
+											Employee Cost
 										</th>
 										<th className="border border-black bg-blue-100 px-1 py-1.5 text-right font-semibold">
-											Accent Cost
+											Company Billing
 										</th>
 										<th className="border border-black bg-yellow-300 px-1 py-1.5 text-right font-semibold">
 											P&amp;L
@@ -1303,10 +1303,10 @@ export default function ManhoursBillingReportPage() {
 													</span>
 												</td>
 												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.rate_company)}
+													{formatNumber(row.rate_employee)}
 												</td>
 												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.rate_accent)}
+													{formatNumber(row.rate_client)}
 												</td>
 												{annualData.month_keys.map((mKey) => {
 													const hrs = row.monthly_hours?.[mKey] || 0;

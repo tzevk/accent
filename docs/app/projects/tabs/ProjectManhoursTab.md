@@ -2,7 +2,7 @@
 
 ## Overview
 
-`src/app/projects/[id]/edit/tabs/ProjectManhoursTab.jsx` — the **Project Manhours** tab in the project edit form. Per-team-member monthly manhours and cost tracking for the project: a row per team member with a rate (company / accent), twelve monthly-hour cells, and derived Total Hrs / Company Cost / Accent Cost / P&L columns. Rows are stored on the project as `project_manhours_list` (JSON).
+`src/app/projects/[id]/edit/tabs/ProjectManhoursTab.jsx` — the **Project Manhours** tab in the project edit form. Per-team-member monthly manhours and cost tracking for the project: a row per team member with a rate (employee cost / company billing), twelve monthly-hour cells, and derived Total Hrs / Employee Cost / Company Billing / P&L columns. Rows are stored on the project as `project_manhours_list` (JSON).
 
 Parent: `src/app/projects/[id]/edit/EditProjectForm.jsx` (state owner + save path).
 
@@ -19,8 +19,8 @@ Each row in `projectManhours` state (annual shape, written verbatim to `project_
 | `employee_name`      | string                                       | Display name                                                                    |
 | `source_employee_id` | string \| ''                                 | Employee PK (empty for external members)                                        |
 | `salary_type`        | `monthly` \| `hourly` \| `daily` \| `custom` | Rate type; `monthly` rows auto-fetch attendance hours                           |
-| `rate_company`       | string \| number                             | RT/HR (Company) — the cost rate                                                 |
-| `rate_accent`        | string \| number                             | RT/HR (Accent) — the billed/reckoned rate                                       |
+| `rate_company`       | string \| number                             | RT/HR (Employee) — what we pay the employee (cost rate)                         |
+| `rate_accent`        | string \| number                             | RT/HR (Company) — what the deputation company pays us (billed rate)             |
 | `monthly_hours`      | `{ jan…dec: string \| number }`              | Month-keyed hours (lowercase 3-letter keys, calendar order)                     |
 | `legacy_data`        | object (optional)                            | Preserved pre-column legacy row (engineering/designer/drafting/…)               |
 
@@ -49,12 +49,12 @@ Save always writes the annual-row shape: `project_manhours_list: JSON.stringify(
 
 ## Columns
 
-`Team Member | Salary Type | RT/HR (Company) | RT/HR (Accent) | <Apr … Mar> | Total Hrs | Company Cost | Accent Cost | P&L | Actions`
+`Team Member | Salary Type | RT/HR (Employee) | RT/HR (Company) | <Apr … Mar> | Total Hrs | Employee Cost | Company Billing | P&L | Actions`
 
 - **Month columns are FY-ordered (Apr → Mar)** — display order only; `monthly_hours` keys stay `jan…dec` calendar, so attendance auto-fill, month totals, and the save payload all map by key regardless of column order. Shared constants `fyMonths` / `fyMonthKeys` drive the header, row inputs, and totals row so the three stay in sync.
 - **Total Hrs** = Σ `monthly_hours`.
-- **Company Cost** = Total Hrs × `rate_company`; **Accent Cost** = Total Hrs × `rate_accent`.
-- **P&L** = Accent Cost − Company Cost (profit positive, loss negative). Header carries the tooltip "Profit & Loss (Accent Cost − Company Cost)". Cell color: green profit, red loss, gray at zero.
+- **Employee Cost** = Total Hrs × `rate_company`; **Company Billing** = Total Hrs × `rate_accent`.
+- **P&L** = Company Billing − Employee Cost (profit positive, loss negative). Header carries the tooltip "Profit & Loss (Company Billing − Employee Cost)". Cell color: green profit, red loss, gray at zero.
 - **Grand total row** sums hours and both costs across rows; per-month totals render `–` for zero months.
 
 ## Money arithmetic
@@ -76,7 +76,7 @@ The project workbook export (`edit/excel/export/buildPayloads.js`) does **not** 
 ## Verification
 
 - `next lint` — clean; `prettier --check` — clean.
-- Browser end-to-end (super-admin session, Project Manhours tab): headers read `Apr … Mar … Total Hrs, Company Cost, Accent Cost, P&L, Actions`; with `rate_company = 100`, `rate_accent = 150`, Apr = 10h, row and grand total both render `10.0 / ₹1,000.00 / ₹1,500.00 / ₹500.00` — same values before and after the money.ts conversion, confirming the decimal path preserves results.
+- Browser end-to-end (super-admin session, Project Manhours tab): headers read `Apr … Mar … Total Hrs, Employee Cost, Company Billing, P&L, Actions`; with `rate_company = 100`, `rate_accent = 150`, Apr = 10h, row and grand total both render `10.0 / ₹1,000.00 / ₹1,500.00 / ₹500.00` — same values before and after the money.ts conversion, confirming the decimal path preserves results.
 
 ## Files
 
