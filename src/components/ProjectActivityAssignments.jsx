@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { fetchJSON } from '@/utils/http';
 import Link from 'next/link';
 import {
@@ -12,6 +12,7 @@ import {
 	ArrowsUpDownIcon,
 	PencilSquareIcon,
 	TrashIcon,
+	ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -28,6 +29,86 @@ const STATUS_BADGE_CLASSES = {
 
 const getStatusBadge = (status) =>
 	STATUS_BADGE_CLASSES[status] || 'bg-gray-100 text-gray-600 border-gray-200';
+
+/**
+ * Textarea that grows with its content so users always see what they type.
+ * Starts at one row to match table density, expands as the user types, and
+ * scrolls internally once it reaches its max height (set via className).
+ */
+function AutoGrowTextarea({ value, className = '', ...props }) {
+	const ref = useRef(null);
+
+	useLayoutEffect(() => {
+		const el = ref.current;
+		if (!el) return;
+		// border-box sizing: scrollHeight excludes the 2px vertical borders
+		el.style.height = 'auto';
+		el.style.height = `${el.scrollHeight + 2}px`;
+	}, [value]);
+
+	return (
+		<textarea
+			ref={ref}
+			rows={1}
+			value={value}
+			{...props}
+			className={`w-full resize-none overflow-y-auto rounded border leading-5 transition-[border-color,box-shadow] duration-150 focus:outline-none ${className}`}
+		/>
+	);
+}
+
+const REMARK_STATUS_LABELS = {
+	saving: 'Saving remark…',
+	saved: 'Remark saved',
+	error: 'Failed to save remark',
+};
+
+/** Compact save-state cue for the inline remark editor (spinner / tick / alert / dirty dot). */
+function RemarkStatus({ status, isDirty }) {
+	if (status === 'saving') {
+		return (
+			<span
+				className="pointer-events-none absolute right-1 top-1 flex items-center"
+				title={REMARK_STATUS_LABELS.saving}
+			>
+				<span className="inline-block w-2.5 h-2.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+			</span>
+		);
+	}
+	if (status === 'saved') {
+		return (
+			<span
+				className="pointer-events-none absolute right-1 top-1 flex items-center"
+				role="status"
+				title={REMARK_STATUS_LABELS.saved}
+			>
+				<CheckIcon className="w-3 h-3 rounded-full bg-white p-px text-green-600 shadow-sm" />
+			</span>
+		);
+	}
+	if (status === 'error') {
+		return (
+			<span
+				className="pointer-events-none absolute right-1 top-1 flex items-center"
+				role="alert"
+				title={REMARK_STATUS_LABELS.error}
+			>
+				<ExclamationCircleIcon className="w-3 h-3 rounded-full bg-white p-px text-red-500 shadow-sm" />
+			</span>
+		);
+	}
+	if (isDirty) {
+		return (
+			<span
+				className="pointer-events-none absolute right-1 top-1.5 flex items-center"
+				title="Unsaved change — press Esc to discard or Ctrl+Enter to save"
+			>
+				<span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ring-1 ring-amber-200" />
+			</span>
+		);
+	}
+	return null;
+}
 
 function SortHeader({ label, sortKey, sort, onSort }) {
 	const isActive = sort.key === sortKey;
@@ -65,7 +146,10 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 	const [loading, setLoading] = useState(true);
 	const [hasAccess, setHasAccess] = useState(true);
 	const [remarkValues, setRemarkValues] = useState({});
-	const [savingRemarks, setSavingRemarks] = useState(new Set());
+	// Per-row remark save state: 'saving' | 'saved' | 'error' (keyed by rowKey)
+	const [remarkStatus, setRemarkStatus] = useState({});
+	const [remarkErrors, setRemarkErrors] = useState({});
+	const remarkTimersRef = useRef({});
 	const [saving, setSaving] = useState(false);
 	const [disciplineOptions, setDisciplineOptions] = useState([]);
 
@@ -101,15 +185,17 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 		});
 	};
 
-	const handleRemarkChange = (activityId, value) => {
-		setRemarkValues((prev) => ({ ...prev, [activityId]: value }));
+	const handleRemarkChange = (key, value) => {
+		setRemarkValues((prev) => ({ ...prev, [key]: value }));
 	};
 
-	const saveRemark = async (projectId, activityId) => {
-		const remark = remarkValues[activityId];
-		if (remark === undefined) return;
+	// Auto-save an edited remark on commit (blur / Ctrl+Enter). Skips the
+	// request when the value was reverted back to the saved one.
+	const saveRemark = async (projectId, activityId, key, originalValue) => {
+		const value = remarkValues[key];
+		if (value === undefined || value === originalValue) return;
 
-		setSavingRemarks((prev) => new Set(prev).add(activityId));
+		setRemarkStatus((prev) => ({ ...prev, [key]: 'saving' }));
 		try {
 			await fetchJSON(`/api/users/${userId}/activity-assignments`, {
 				method: 'PUT',
@@ -117,19 +203,42 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 				body: JSON.stringify({
 					project_id: projectId,
 					activity_id: activityId,
-					remarks: remark,
+					remarks: value,
 				}),
 			});
-		} catch (err) {
-			console.error('Failed to save remark:', err);
-		} finally {
-			setSavingRemarks((prev) => {
-				const next = new Set(prev);
-				next.delete(activityId);
+			setRemarkStatus((prev) => ({ ...prev, [key]: 'saved' }));
+			setRemarkErrors((prev) => {
+				if (!(key in prev)) return prev;
+				const next = { ...prev };
+				delete next[key];
 				return next;
 			});
+			clearTimeout(remarkTimersRef.current[key]);
+			remarkTimersRef.current[key] = setTimeout(() => {
+				setRemarkStatus((prev) => {
+					if (prev[key] !== 'saved') return prev;
+					const next = { ...prev };
+					delete next[key];
+					return next;
+				});
+			}, 1800);
+		} catch (err) {
+			console.error('Failed to save remark:', err);
+			setRemarkStatus((prev) => ({ ...prev, [key]: 'error' }));
+			setRemarkErrors((prev) => ({
+				...prev,
+				[key]: err?.message || 'Failed to save remark',
+			}));
 		}
 	};
+
+	// Clear any pending "saved" indicator timers on unmount.
+	useEffect(
+		() => () => {
+			Object.values(remarkTimersRef.current).forEach(clearTimeout);
+		},
+		[]
+	);
 
 	// Use preloaded data if available (from parent dashboard)
 	useEffect(() => {
@@ -361,8 +470,9 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 	if (loading) {
 		return (
 			<div className="bg-white rounded-xl shadow-md border-2 border-purple-200 p-6 mb-6">
-				<div className="text-center text-[#4A1254] text-sm">
-					Loading assignments...
+				<div className="flex items-center justify-center gap-2 text-[#4A1254] text-sm">
+					<span className="inline-block w-3.5 h-3.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+					Loading assignments…
 				</div>
 			</div>
 		);
@@ -532,7 +642,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 					<button
 						onClick={openAddRow}
 						disabled={isAdding}
-						className="flex items-center gap-1 px-2 py-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors text-xs font-semibold disabled:opacity-50"
+						className="flex items-center gap-1 px-2 py-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors text-xs font-semibold disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 						title="Add a new activity"
 					>
 						<PlusIcon className="w-3.5 h-3.5" />
@@ -601,16 +711,16 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 				<div>
 					<table className="w-full text-sm border-collapse table-fixed">
 						<colgroup>
+							<col className="w-[10%]" />
+							<col className="w-[8%]" />
+							<col className="w-[13%]" />
 							<col className="w-[12%]" />
-							<col className="w-[11%]" />
-							<col className="w-[14%]" />
-							<col className="w-[14%]" />
-							<col className="w-[7%]" />
-							<col className="w-[7%]" />
+							<col className="w-[5%]" />
 							<col className="w-[6%]" />
-							<col className="w-[8%]" />
-							<col className="w-[7%]" />
-							<col className="w-[8%]" />
+							<col className="w-[6%]" />
+							<col className="w-[9%]" />
+							<col className="w-[9%]" />
+							<col className="w-[16%]" />
 							<col className="w-[6%]" />
 						</colgroup>
 						<thead className="bg-[#64126D]/10">
@@ -896,9 +1006,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 											<option value="Cancelled">Cancelled</option>
 										</select>
 									</td>
-									<td className="py-1 px-2 text-center align-middle">
-										<input
-											type="text"
+									<td className="py-1 px-2 align-middle">
+										<AutoGrowTextarea
 											value={addForm.remark}
 											onChange={(e) =>
 												setAddForm((p) => ({
@@ -906,8 +1015,9 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 													remark: e.target.value,
 												}))
 											}
-											placeholder="Remark…"
-											className="w-full px-1.5 py-0.5 text-[10px] border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+											placeholder="Add remark…"
+											aria-label="Remark"
+											className="max-h-36 px-1.5 py-0.5 text-left text-xs border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-200"
 										/>
 									</td>
 									<td className="py-1 px-2 text-center align-middle">
@@ -915,7 +1025,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 											<button
 												onClick={() => submitAdd()}
 												disabled={saving}
-												className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50"
+												className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 												title="Save"
 											>
 												<CheckIcon className="w-3.5 h-3.5" />
@@ -923,7 +1033,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 											<button
 												onClick={closeAddRow}
 												disabled={saving}
-												className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+												className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 												title="Cancel"
 											>
 												<XMarkIcon className="w-3.5 h-3.5" />
@@ -937,6 +1047,15 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 								const rowKey = `${activity.project_id}-${activity.activity_id}`;
 								const isEditing = editingKey === rowKey;
 								const isDeleting = deleting.has(rowKey);
+								const originalRemark = activity.remarks || '';
+								const currentRemark =
+									remarkValues[rowKey] !== undefined
+										? remarkValues[rowKey]
+										: originalRemark;
+								const remarkStatusForKey = remarkStatus[rowKey];
+								const isRemarkDirty =
+									currentRemark !== originalRemark &&
+									remarkStatusForKey !== 'saving';
 
 								return (
 									<tr
@@ -1081,16 +1200,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 											)}
 										</td>
 										{/* Remark */}
-										<td className="py-1 px-2 text-center align-middle">
+										<td className="py-1 px-2 align-middle">
 											<div className="relative">
-												<input
-													type="text"
+												<AutoGrowTextarea
 													value={
-														isEditing
-															? editForm.remark
-															: remarkValues[activity.activity_id] !== undefined
-																? remarkValues[activity.activity_id]
-																: activity.remarks || ''
+														isEditing ? editForm.remark || '' : currentRemark
 													}
 													onChange={(e) =>
 														isEditing
@@ -1098,32 +1212,53 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 																	...p,
 																	remark: e.target.value,
 																}))
-															: handleRemarkChange(
-																	activity.activity_id,
-																	e.target.value
-																)
+															: handleRemarkChange(rowKey, e.target.value)
 													}
 													onBlur={() => {
 														if (!isEditing)
 															saveRemark(
 																activity.project_id,
-																activity.activity_id
+																activity.activity_id,
+																rowKey,
+																originalRemark
 															);
 													}}
 													onKeyDown={(e) => {
-														if (e.key === 'Enter' && !isEditing) {
-															e.target.blur();
+														if (isEditing) return;
+														if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+															e.preventDefault();
+															e.currentTarget.blur();
+														} else if (e.key === 'Escape') {
+															// Revert to the saved remark, then blur
+															// (blur skips the request when unchanged).
+															handleRemarkChange(rowKey, originalRemark);
+															e.currentTarget.blur();
 														}
 													}}
 													placeholder="Add remark…"
-													className="w-full px-1.5 py-0.5 text-[10px] border border-gray-200 rounded focus:border-purple-400 focus:ring-1 focus:ring-purple-200 focus:outline-none hover:border-gray-300 transition-colors"
-													title={activity.remarks || ''}
+													aria-label={`Remark for ${
+														activity.activity_name || 'activity'
+													}`}
+													title={
+														remarkStatusForKey === 'error'
+															? `Failed to save remark: ${
+																	remarkErrors[rowKey] || 'unknown error'
+																}`
+															: originalRemark || undefined
+													}
+													className={`max-h-36 px-1.5 py-0.5 pr-4 text-left text-xs focus:ring-1 ${
+														remarkStatusForKey === 'error'
+															? 'border-red-300 bg-red-50/40 focus:border-red-400 focus:ring-red-100'
+															: 'border-gray-200 hover:border-gray-300 focus:border-purple-400 focus:ring-purple-200'
+													}`}
 												/>
-												{savingRemarks.has(activity.activity_id) && (
-													<span className="absolute right-1 top-1/2 -translate-y-1/2">
-														<span className="inline-block w-2 h-2 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-													</span>
-												)}
+												{!isEditing &&
+													(remarkStatusForKey || isRemarkDirty) && (
+														<RemarkStatus
+															status={remarkStatusForKey}
+															isDirty={isRemarkDirty}
+														/>
+													)}
 											</div>
 										</td>
 										{/* Actions */}
@@ -1138,7 +1273,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 															)
 														}
 														disabled={savingEdit}
-														className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50"
+														className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 														title="Save"
 													>
 														<CheckIcon className="w-3.5 h-3.5" />
@@ -1146,7 +1281,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 													<button
 														onClick={closeEditRow}
 														disabled={savingEdit}
-														className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+														className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 														title="Cancel"
 													>
 														<XMarkIcon className="w-3.5 h-3.5" />
@@ -1161,7 +1296,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 																activity,
 															})
 														}
-														className="p-1 rounded text-[#64126D] hover:bg-purple-100 transition-colors"
+														className="p-1 rounded text-[#64126D] hover:bg-purple-100 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 														title="Edit"
 													>
 														<PencilSquareIcon className="w-3.5 h-3.5" />
@@ -1174,7 +1309,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 															)
 														}
 														disabled={isDeleting}
-														className="p-1 rounded text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+														className="p-1 rounded text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
 														title="Delete"
 													>
 														{isDeleting ? (
