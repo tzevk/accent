@@ -832,3 +832,58 @@ textarea::placeholder {
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
 	background-color: #94a3b8;
 }
+
+/* ── View Transitions (Next 16) — directional slide for Leads nav ─────────
+   Types are attached per-navigation: router.push(href, { transitionTypes })
+   in src/app/leads/*. Browsers without the View Transitions API simply
+   skip these animations (graceful no-op). */
+::view-transition-old(.nav-forward) {
+	--slide-offset: -60px;
+	animation:
+		150ms ease-in both fade reverse,
+		400ms ease-in-out both slide reverse;
+}
+::view-transition-new(.nav-forward) {
+	--slide-offset: 60px;
+	animation:
+		210ms ease-out 150ms both fade,
+		400ms ease-in-out both slide;
+}
+::view-transition-old(.nav-back) {
+	--slide-offset: 60px;
+	animation:
+		150ms ease-in both fade reverse,
+		400ms ease-in-out both slide reverse;
+}
+::view-transition-new(.nav-back) {
+	--slide-offset: -60px;
+	animation:
+		210ms ease-out 150ms both fade,
+		400ms ease-in-out both slide;
+}
+
+@keyframes slide {
+	from {
+		translate: var(--slide-offset);
+	}
+	to {
+		translate: 0;
+	}
+}
+@keyframes fade {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-old(*),
+	::view-transition-new(*),
+	::view-transition-group(*) {
+		animation-duration: 0s !important;
+		animation-delay: 0s !important;
+	}
+}

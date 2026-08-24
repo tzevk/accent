@@ -10,8 +10,8 @@
 				"command": ["node", "scripts/mcp-mysql.mjs"]
 			},
 			"context7": {
-				"type": "local",
-				"command": ["cmd", "/c", "npx", "-y", "@upstash/context7-mcp"],
+				"type": "remote",
+				"url": "https://mcp.context7.com/mcp",
 				"enabled": true
 			}
 		}

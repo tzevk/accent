@@ -870,14 +870,22 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
 										<td className="w-40 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
 											<div className="flex items-center justify-center space-x-1">
 												<button
-													onClick={() => router.push(`/leads/${lead.id}`)}
+													onClick={() =>
+														router.push(`/leads/${lead.id}`, {
+															transitionTypes: ['nav-forward'],
+														})
+													}
 													className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors"
 													title="View Details"
 												>
 													<EyeIcon className="h-4 w-4" />
 												</button>
 												<button
-													onClick={() => router.push(`/leads/${lead.id}/edit`)}
+													onClick={() =>
+														router.push(`/leads/${lead.id}/edit`, {
+															transitionTypes: ['nav-forward'],
+														})
+													}
 													className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-full transition-colors"
 													title="Edit Lead"
 												>
