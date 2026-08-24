@@ -1,6 +1,7 @@
 # App Health Roadmap — Accent CRM
 
 > Generated 2026-08-19 from codebase audit of `src/app/projects`, `migrations/`, `src/utils/*`, `src/app/api/*`.
+>
 > Complements `POOR_PRACTICES_AUDIT.md` — does not duplicate fixed items there. Each item has `file:line`, impact, and concrete fix.
 
 ## What was fixed in this pass
@@ -14,7 +15,7 @@
 | **P0.1 XSS via `dangerouslySetInnerHTML`**                                                                                                              | `src/lib/sanitize.js:1` (new), `src/app/projects/[id]/page.jsx:14` + `:54`, `src/app/projects/[id]/edit/tabs/ScopeTab.jsx:7` + `:16`, `src/app/messages/page.jsx:6` + `:1487`, `src/app/proposals/[id]/edit/page.jsx:6` + `:2704`                                                                  | `isomorphic-dompurify` + `sanitizeHtml()` wrapper; all 4 `dangerouslySetInnerHTML` sites now sanitized; TipTap scope/content and message bodies strip `<script>`/`on*`/`javascript:`                                                                                                   |
 | **P0.2 Missing transaction on multi-write project update**                                                                                              | `src/utils/database.js:252` (new `withTransaction`), `src/app/api/projects/[id]/route.js:1062` (PUT transaction), `src/app/api/proposals/convert/route.js:103` (convert transaction)                                                                                                               | `withTransaction()` helper + `beginTransaction`/`commit`/`rollback` — `PUT /api/projects/[id]` atomic `UPDATE`+`team`+`UPSERT`s, `POST /api/proposals/convert` atomic `INSERT project`+`INSERT scope`+`UPDATE proposal`; `affectedRows===0` triggers rollback; `finally` release guard |
 
-Verification: `npm run lint` on touched files clean, `npx tsc --noEmit` pre-existing errors only, `npx vitest run` 86/86 598/598 (full suite green after transaction fix).
+Verification: `npm run lint` on touched files clean, `npx tsc --noEmit` pre-existing errors only, `npx vitest run` — 87 files / 615 tests, full suite green (refreshed 2026-08-24 after Employee Project Cost report).
 
 ---
 
@@ -40,9 +41,9 @@ Verification: `npm run lint` on touched files clean, `npx tsc --noEmit` pre-exis
 
 ### P0.4 Rate limiter + userCache won't scale
 
-- **Where:** `middleware.ts:35` `rateLimitStore Map`, `src/utils/api-permissions.js:21` `userCache Map + pendingUserFetches`.
+- **Where:** `proxy.ts:38` `rateLimitStore Map`, `src/utils/api-permissions.js:21` `userCache Map + pendingUserFetches`.
 - **Impact:** Per-instance limits on Vercel/multi-pod; cache stale 5m can serve revoked user.
-- **Fix:** Move `rateLimitStore` to Upstash Redis / Vercel KV; keep `userCache` but invalidate on `revokeSession` `src/utils/session.ts` already does — add `invalidateUserCache` call in `POST /api/logout`.
+- **Fix:** Move `rateLimitStore` to Upstash Redis / Vercel KV; keep `userCache` but invalidate on `revokeSession` (`src/utils/session.ts` already does) — add `invalidateUserCache` call in `POST /api/logout`.
 
 ## P1 — High value (<1 day each)
 
