@@ -8,6 +8,11 @@
 			"accent-db": {
 				"type": "local",
 				"command": ["node", "scripts/mcp-mysql.mjs"]
+			},
+			"context7": {
+				"type": "local",
+				"command": ["cmd", "/c", "npx", "-y", "@upstash/context7-mcp"],
+				"enabled": true
 			}
 		}
 	}

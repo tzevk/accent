@@ -15,7 +15,7 @@ import { resolveDirection } from '@/app/reports/attendance-report/data-source';
  * Auth: `Authorization: Bearer <SMARTOFFICE_WEBHOOK_SECRET>` — the only
  * verification Smart Office's webhook config supports. Missing/mismatched
  * header → 401 before any parsing or DB work. This route is in
- * middleware.ts's publicPaths (Smart Office sends no session cookie); the
+ * proxy.ts's publicPaths (Smart Office sends no session cookie); the
  * real boundary is the Bearer check here, same posture as /api/login.
  *
  * Mapping: `employee_code` matches `employees.smartoffice_code`. Unmatched

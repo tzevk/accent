@@ -18,7 +18,7 @@ export async function GET(request, { params }) {
 
 	let db;
 	try {
-		const { id } = params;
+		const { id } = await params;
 
 		if (!id || isNaN(parseInt(id))) {
 			return Response.json(
@@ -69,7 +69,7 @@ export async function PUT(request, { params }) {
 
 	let db;
 	try {
-		const { id } = params;
+		const { id } = await params;
 		const data = await request.json();
 
 		if (!id || isNaN(parseInt(id))) {
@@ -177,7 +177,7 @@ export async function DELETE(request, { params }) {
 
 	let db;
 	try {
-		const { id } = params;
+		const { id } = await params;
 
 		if (!id || isNaN(parseInt(id))) {
 			return Response.json(
