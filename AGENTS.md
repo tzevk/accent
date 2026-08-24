@@ -1,6 +1,16 @@
 # Accent CRM — Agent Guide
 
-> Next.js 15 App Router + React 19 + MySQL. Keep this file compact — every line should be something an agent would miss without help.
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
+
+> Next.js 16 App Router (Turbopack default) + React 19 + MySQL. Keep this file compact — every line should be something an agent would miss without help.
 
 ## Stack & Runtime
 
@@ -13,7 +23,7 @@
 
 | Task          | Command                                                                                                                 |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Dev           | `npm run dev` / `npm run dev:turbo` (Turbopack)                                                                         |
+| Dev           | `npm run dev` (Turbopack is the default bundler in Next 16)                                                             |
 | Build / Start | `npm run build` (strict) then `npm run start`                                                                           |
 | Lint          | `npm run lint` (ESLint 9 flat, `src` + `scripts` only)                                                                  |
 | Format        | `npm run format` (Prettier: tabs, width 2, single-quote) — pre-commit runs `lint-staged: prettier --write` via Husky v9 |
@@ -29,11 +39,11 @@ Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before 
 
 ## Architecture Gotchas
 
-- **Auth split**: `middleware.ts` (Edge) only checks `session` cookie presence + rate-limits. Real validation is `getCurrentUser(request)` / `getServerAuth()` in `src/utils/api-permissions.js` — hashes token with SHA-256 and queries `sessions JOIN users LEFT JOIN roles_master LEFT JOIN employees` where `expires_at > NOW()` and `u.isDelete = 0`. Cached 5 min (`userCache` + `pendingUserFetches` dedup); invalidate via `invalidateUserCache(userId)`.
+- **Auth split**: `proxy.ts` (Next 16 renamed `middleware`; runs on Node.js runtime) only checks `session` cookie presence + rate-limits. Real validation is `getCurrentUser(request)` / `getServerAuth()` in `src/utils/api-permissions.js` — hashes token with SHA-256 and queries `sessions JOIN users LEFT JOIN roles_master LEFT JOIN employees` where `expires_at > NOW()` and `u.isDelete = 0`. Cached 5 min (`userCache` + `pendingUserFetches` dedup); invalidate via `invalidateUserCache(userId)`.
   - Login (`/api/login`) creates 256-bit token (`crypto.randomBytes(32)`), stores `token_hash`, 30-day expiry, HttpOnly `SameSite=Lax` cookie. Logout calls `revokeSession`; password change calls `revokeAllUserSessions`.
-  - Public paths in `middleware.ts:4` include `/signin`, `/api/login`, `/api/session`, `/api/attendance/webhook` (Bearer auth inside handler), `/_next`, `/uploads`.
+  - Public paths in `proxy.ts:4` include `/signin`, `/api/login`, `/api/session`, `/api/attendance/webhook` (Bearer auth inside handler), `/_next`, `/uploads`.
 
-- **Rate limits** (`middleware.ts:41`): `auth` 10/15m, `session` 120/m, `dashboard` 60/m, `api` 120/m, `heavy` (export/report/bulk) 10/m — in-memory `rateLimitStore`, per-IP+session key.
+- **Rate limits** (`proxy.ts:41`): `auth` 10/15m, `session` 120/m, `dashboard` 60/m, `api` 120/m, `heavy` (export/report/bulk) 10/m — in-memory `rateLimitStore`, per-IP+session key.
 
 - **RBAC** (`src/utils/permissions.js`, `src/utils/rbac.js`): two structures merged via `mergePermissions` (set union).
   - Flat `resource:action` strings in `roles_master.permissions` + `users.permissions` → `user.merged_permissions`.

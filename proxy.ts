@@ -27,7 +27,7 @@ function isPublicPath(pathname: string) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// In-memory rate limiter (Edge-compatible)
+// In-memory rate limiter (runtime-agnostic; Next 16 proxy runs on Node.js)
 // ═══════════════════════════════════════════════════════════════════════════
 interface RateLimitEntry {
 	count: number;
@@ -204,7 +204,8 @@ function cleanupRateLimitStore() {
 }
 
 /**
- * Middleware - Single source of truth for authentication
+ * Proxy - Single source of truth for authentication (Next 16 renamed the
+ * `middleware` file convention to `proxy`; it runs on the Node.js runtime)
  *
  * This is the ONLY place where auth is enforced:
  * 1. Rate limiting for API routes
@@ -213,11 +214,11 @@ function cleanupRateLimitStore() {
  * 4. Unauthenticated users are redirected to /signin
  * 5. Admin gating happens server-side in src/app/admin/layout.tsx
  *
- * NOTE: Edge middleware can only check cookie presence. The session token is
- * validated against the sessions table in Node (getCurrentUser / getServerAuth)
- * on every API route and server layout.
+ * NOTE: The proxy only checks cookie presence — by design, not limitation.
+ * The session token is validated against the sessions table in Node
+ * (getCurrentUser / getServerAuth) on every API route and server layout.
  */
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
 	const { pathname } = req.nextUrl;
 
 	// Cleanup old rate limit entries periodically
@@ -298,7 +299,7 @@ export const config = {
 	matcher: [
 		/*
 		 * Match all request paths except for the ones starting with:
-		 * - api (API routes) - handled separately in middleware
+		 * - api (API routes) - handled separately in proxy
 		 * - _next/static (static files)
 		 * - _next/image (image optimization files)
 		 * - favicon.ico (favicon file)
