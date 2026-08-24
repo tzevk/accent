@@ -88,12 +88,12 @@ export default function EditLead({ params }) {
 				} else {
 					console.error('Error fetching lead:', result.error);
 					alert('Lead not found');
-					router.push('/leads');
+					router.push('/leads', { transitionTypes: ['nav-back'] });
 				}
 			} catch (error) {
 				console.error('Error:', error);
 				alert('Error loading lead details');
-				router.push('/leads');
+				router.push('/leads', { transitionTypes: ['nav-back'] });
 			} finally {
 				setLoading(false);
 			}
@@ -221,7 +221,9 @@ export default function EditLead({ params }) {
 
 			if (result.success) {
 				alert('Lead updated successfully!');
-				router.push(`/leads/${lead.id}`);
+				router.push(`/leads/${lead.id}`, {
+					transitionTypes: ['nav-forward'],
+				});
 			} else {
 				alert('Error updating lead: ' + result.error);
 			}
@@ -326,7 +328,7 @@ export default function EditLead({ params }) {
 	};
 
 	const handleCancel = () => {
-		router.push('/leads');
+		router.push('/leads', { transitionTypes: ['nav-back'] });
 	};
 
 	if (loading) {
@@ -356,7 +358,9 @@ export default function EditLead({ params }) {
 							The lead you&apos;re trying to edit doesn&apos;t exist.
 						</p>
 						<button
-							onClick={() => router.push('/leads')}
+							onClick={() =>
+								router.push('/leads', { transitionTypes: ['nav-back'] })
+							}
 							className="mt-4 bg-accent-primary text-white px-4 py-2 rounded-md hover:bg-accent-primary/90"
 						>
 							Back to Leads

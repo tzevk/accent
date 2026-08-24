@@ -42,12 +42,12 @@ export default function LeadDetails({ params }) {
 				} else {
 					console.error('Error fetching lead:', result.error);
 					alert('Lead not found');
-					router.push('/leads');
+					router.push('/leads', { transitionTypes: ['nav-back'] });
 				}
 			} catch (error) {
 				console.error('Error:', error);
 				alert('Error loading lead details');
-				router.push('/leads');
+				router.push('/leads', { transitionTypes: ['nav-back'] });
 			} finally {
 				setLoading(false);
 			}
@@ -102,7 +102,9 @@ export default function LeadDetails({ params }) {
 	};
 
 	const handleEdit = () => {
-		router.push(`/leads/${lead.id}/edit`);
+		router.push(`/leads/${lead.id}/edit`, {
+			transitionTypes: ['nav-forward'],
+		});
 	};
 
 	const handleDelete = async () => {
@@ -118,7 +120,7 @@ export default function LeadDetails({ params }) {
 
 				if (result.success) {
 					alert('Lead deleted successfully!');
-					router.push('/leads');
+					router.push('/leads', { transitionTypes: ['nav-back'] });
 				} else {
 					alert('Error deleting lead: ' + result.error);
 				}
@@ -236,7 +238,7 @@ export default function LeadDetails({ params }) {
 					'Proposal created: ' +
 						(proposalId || 'ID ' + (result.data && result.data.id))
 				);
-				router.push('/leads');
+				router.push('/leads', { transitionTypes: ['nav-back'] });
 			}
 		} catch (error) {
 			console.error('Error converting lead:', error);
@@ -271,7 +273,9 @@ export default function LeadDetails({ params }) {
 							The lead you&apos;re looking for doesn&apos;t exist.
 						</p>
 						<button
-							onClick={() => router.push('/leads')}
+							onClick={() =>
+								router.push('/leads', { transitionTypes: ['nav-back'] })
+							}
 							className="mt-4 bg-accent-primary text-white px-4 py-2 rounded-md hover:bg-accent-primary/90"
 						>
 							Back to Leads
