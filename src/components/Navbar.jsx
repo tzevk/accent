@@ -85,6 +85,13 @@ const reportsMenuConfig = [
 		resource: 'reports',
 		reportField: 'project_activities', // reuse so existing grants cover the new report
 	},
+	{
+		name: 'Employee Project Cost',
+		href: '/reports/employee-project-cost',
+		icon: BanknotesIcon,
+		resource: 'reports',
+		reportField: 'project_activities', // reuse so existing grants cover the new report
+	},
 	// TEMP-HIDDEN (2026-08-03): 'Client Balance' report hidden from nav. Uncomment to restore:
 	// {
 	// 	name: 'Client Balance',
