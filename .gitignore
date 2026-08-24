@@ -53,6 +53,9 @@ test-connection.js
 docs/extras
 setup.sh
 
+# Payroll spreadsheets contain employee PII — never commit
+scripts/*.xlsx
+
 # Logs
 logs
 *.log

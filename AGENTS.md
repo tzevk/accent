@@ -25,8 +25,6 @@
 | Single name   | `npx vitest run -t "ensurePermission"`                                                                                  |
 | Migrations    | `npm run migrate` / `migrate:status` / `migrate:rollback` / `migrate:make -- <name>`                                    |
 
-**Stale scripts — do not run** (deleted backing files, will fail): `migrate:add-enquiry-no`, `migrate:add-project-lists`, `clear-leads`, `setup`, `update-dates`, `db:check`, `db:kill`.
-
 Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before pushing; `npm run build` is the final gate.
 
 ## Architecture Gotchas
