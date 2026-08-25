@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { logActivity, endUserSession } from '@/utils/activity-logger';
+import { invalidateUserCache } from '@/utils/api-permissions';
 import { cookies } from 'next/headers';
 import { dbConnect } from '@/utils/database';
 import { revokeSession } from '@/utils/session';
@@ -29,6 +30,11 @@ export async function POST(req) {
 	}
 
 	if (userId) {
+		// Evict the cached user keyed by this token's hash — otherwise a replayed
+		// cookie stays authenticated for up to USER_CACHE_TTL (5 min) after the
+		// session row is deleted.
+		invalidateUserCache(userId);
+
 		// Log logout activity
 		logActivity({
 			userId,
