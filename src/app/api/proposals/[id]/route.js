@@ -148,8 +148,18 @@ export async function POST(request, { params }) {
 
 		const client_name = proposal.client_name || proposal.client || null;
 
-		// Build INSERT dynamically based on actual columns present in `projects` table
-		const dbName = process.env.DB_NAME || null;
+		// Build INSERT dynamically based on actual columns present in `projects` table.
+		// Resolve the schema from the live connection: DB_NAME is not part of this app's
+		// env contract (the pool connects via DEV_DB_* / STAGING_DB_* / PROD_DB_*), and a
+		// missing/wrong name makes INFORMATION_SCHEMA return 0 columns, silently falling
+		// back to the legacy hardcoded INSERT below.
+		let dbName = null;
+		try {
+			const [dbRows] = await pool.execute('SELECT DATABASE() AS db');
+			dbName = dbRows?.[0]?.db || null;
+		} catch (e) {
+			console.warn('Could not resolve current database name:', e?.message || e);
+		}
 		let insertSql;
 		let insertValues = [];
 		if (dbName) {
@@ -673,11 +683,14 @@ export async function PUT(request, { params }) {
 		const { dbConnect } = await import('@/utils/database');
 		pool = await dbConnect();
 
-		// Build the UPDATE dynamically so we only try to set columns that actually exist
-		const dbName = process.env.DB_NAME || 'accent';
+		// Build the UPDATE dynamically so we only try to set columns that actually exist.
+		// TABLE_SCHEMA = DATABASE() resolves the connected schema directly: DB_NAME is not
+		// part of this app's env contract (the pool uses DEV_DB_* / STAGING_DB_* / PROD_DB_*),
+		// and the old `process.env.DB_NAME || 'accent'` fallback made this lookup return 0
+		// columns, so every pushIf no-op'd and saves failed with
+		// "No updatable columns found for proposals table".
 		const [cols] = await pool.execute(
-			`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'proposals'`,
-			[dbName]
+			`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proposals'`
 		);
 		const existing = new Set(cols.map((c) => c.COLUMN_NAME));
 
