@@ -21,19 +21,19 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Commands
 
-| Task          | Command                                                                                                                 |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Dev           | `npm run dev` (Turbopack is the default bundler in Next 16)                                                             |
-| Build / Start | `npm run build` (strict) then `npm run start`                                                                           |
-| Lint          | `npm run lint` (ESLint 9 flat, `src` + `scripts` only)                                                                  |
-| Format        | `npm run format` (Prettier: tabs, width 2, single-quote) — pre-commit runs `lint-staged: prettier --write` via Husky v9 |
-| Typecheck     | `npx tsc --noEmit` (no npm script)                                                                                      |
-| Test (watch)  | `npm test`                                                                                                              |
-| Test (once)   | `npm run test:run`                                                                                                      |
-| Coverage      | `npm run test:coverage`                                                                                                 |
-| Single file   | `npx vitest run src/__tests__/utils/money.test.ts`                                                                      |
-| Single name   | `npx vitest run -t "ensurePermission"`                                                                                  |
-| Migrations    | `npm run migrate` / `migrate:status` / `migrate:rollback` / `migrate:make -- <name>`                                    |
+| Task          | Command                                                                                                                                                                                  |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dev           | `npm run dev` (Turbopack is the default bundler in Next 16)                                                                                                                              |
+| Build / Start | `npm run build` (strict) then `npm run start`                                                                                                                                            |
+| Lint          | `npm run lint` (ESLint 9 flat, `src` + `scripts` only)                                                                                                                                   |
+| Format        | `npm run format` (Prettier: tabs, width 2, single-quote) — pre-commit runs `lint-staged: prettier --write` via Husky v9                                                                  |
+| Typecheck     | `npx tsc --noEmit` (no npm script)                                                                                                                                                       |
+| Test (watch)  | `npm test`                                                                                                                                                                               |
+| Test (once)   | `npm run test:run`                                                                                                                                                                       |
+| Coverage      | `npm run test:coverage`                                                                                                                                                                  |
+| Single file   | `npx vitest run src/__tests__/utils/money.test.ts`                                                                                                                                       |
+| Single name   | `npx vitest run -t "ensurePermission"`                                                                                                                                                   |
+| Migrations    | `npm run migrate` / `migrate:status` / `migrate:rollback` / `migrate:make -- <name>` — prod DB: `migrate:prod` (+ `:status` / `:rollback`); plain `npm run migrate` targets **dev** only |
 
 Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before pushing; `npm run build` is the final gate.
 
