@@ -173,6 +173,7 @@ export async function PUT(request, { params }) {
 			'personal_email',
 			'profile_photo_url',
 			'status',
+			'smartoffice_code',
 		];
 
 		const updateFields = [];
