@@ -120,6 +120,7 @@ export default function EmployeesPageInner({ employeeType = null }) {
 		level: '',
 		reporting_to: '',
 		joining_date: '',
+		smartoffice_code: '',
 
 		// Statutory toggles (match API)
 		bonus_eligible: false,
@@ -5154,6 +5155,22 @@ export default function EmployeesPageInner({ employeeType = null }) {
 																</div>
 																<div>
 																	<label className="block text-sm font-medium text-gray-700 mb-2">
+																		Smart Office Code
+																	</label>
+																	<input
+																		type="text"
+																		value={formData.smartoffice_code || ''}
+																		onChange={(e) =>
+																			setFormData({
+																				...formData,
+																				smartoffice_code: e.target.value,
+																			})
+																		}
+																		className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+																	/>
+																</div>
+																<div>
+																	<label className="block text-sm font-medium text-gray-700 mb-2">
 																		Reporting To
 																	</label>
 																	<input
@@ -6550,6 +6567,22 @@ export default function EmployeesPageInner({ employeeType = null }) {
 																					setFormData({
 																						...formData,
 																						level: e.target.value,
+																					})
+																				}
+																				className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+																			/>
+																		</div>
+																		<div>
+																			<label className="block text-sm font-medium text-gray-700 mb-2">
+																				Smart Office Code
+																			</label>
+																			<input
+																				type="text"
+																				value={formData.smartoffice_code || ''}
+																				onChange={(e) =>
+																					setFormData({
+																						...formData,
+																						smartoffice_code: e.target.value,
 																					})
 																				}
 																				className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"

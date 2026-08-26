@@ -1,0 +1,17 @@
+{
+	"name": "smartoffice-sync",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Polls SmartOfficeDb (MSSQL) for biometric punches and pushes them to the Accent CRM attendance webhook. Runs on an always-on machine on the office LAN.",
+	"engines": {
+		"node": ">=18"
+	},
+	"scripts": {
+		"start": "node sync.mjs",
+		"once": "node sync.mjs --once"
+	},
+	"dependencies": {
+		"mssql": "^11.0.1"
+	}
+}
