@@ -21,12 +21,14 @@ import {
 	ArrowRightStartOnRectangleIcon,
 	CalendarDaysIcon,
 	CalendarIcon,
+	ArrowRightIcon,
 	FireIcon,
 	ExclamationTriangleIcon,
 	ComputerDesktopIcon,
 	ExclamationCircleIcon,
 	ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
+import LeaveLoginToast from '@/components/LeaveLoginToast';
 import { useIdleMonitor } from '@/hooks/useIdleMonitor';
 
 // ── Lazy-load heavy components (code-split, only fetched when needed) ──
@@ -615,6 +617,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
 			<Navbar />
 
+			{/* One-time toast when a recent leave request was approved/rejected */}
+			<LeaveLoginToast />
+
 			{/* Activity Reminder Modal */}
 			{showActivityReminder && pendingActivities.length > 0 && (
 				<div
@@ -1038,8 +1043,14 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											)}
 										</div>
 									</div>
-									{/* Leave Days */}
-									<div className="group relative rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-yellow-50 p-3 hover:shadow-lg hover:border-amber-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+									{/* Leave Days — click to open full Leave Management */}
+									<button
+										type="button"
+										onClick={() => router.push('/user/leaves')}
+										aria-label="Open leave management — view balances and apply for leave"
+										title="View balances and apply for leave"
+										className="group relative rounded-xl text-left border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-yellow-50 p-3 cursor-pointer hover:shadow-lg hover:border-amber-400 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]/50 focus-visible:ring-offset-1"
+									>
 										<div className="absolute top-0 right-0 w-20 h-20 bg-amber-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
@@ -1064,8 +1075,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 												<span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />{' '}
 												{attendance.leaves.balance} remaining
 											</p>
+											<p className="mt-1.5 pt-1.5 border-t border-amber-200/60 -mx-px flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#64126D] transition-colors duration-150 group-hover:text-[#4a0d52]">
+												View &amp; apply
+												<ArrowRightIcon className="h-2.5 w-2.5 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
+											</p>
 										</div>
-									</div>
+									</button>
 									{/* Overtime */}
 									<div className="group relative rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-3 hover:shadow-lg hover:border-orange-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
 										<div className="absolute top-0 right-0 w-20 h-20 bg-orange-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />

@@ -50,6 +50,7 @@ export const RESOURCES = {
 	OTHER_EXPENSES: 'other_expenses',
 	PETTY_CASH_EXPENSES: 'petty_cash_expenses',
 	ATTENDANCE: 'attendance',
+	LEAVES: 'leaves',
 };
 
 export const PERMISSIONS = {
@@ -165,6 +166,14 @@ export const PERMISSION_DESCRIPTIONS = {
 		[PERMISSIONS.CREATE]: 'Create deliverables in the master',
 		[PERMISSIONS.UPDATE]: 'Edit deliverables in the master',
 		[PERMISSIONS.DELETE]: 'Delete deliverables from the master',
+	},
+	[RESOURCES.LEAVES]: {
+		[PERMISSIONS.READ]:
+			'View leave applications (own unless approve is granted)',
+		[PERMISSIONS.CREATE]: 'Apply for leave',
+		[PERMISSIONS.UPDATE]: 'Modify pending leave applications',
+		[PERMISSIONS.DELETE]: 'Withdraw or delete leave applications',
+		[PERMISSIONS.APPROVE]: 'Approve or reject leave applications',
 	},
 };
 
