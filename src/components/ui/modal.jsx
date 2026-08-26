@@ -16,15 +16,29 @@ export default function Modal({
 }) {
 	const panelRef = useRef(null);
 
+	// Latest-handler refs: callers pass inline closures, so onClose's identity
+	// changes on every parent render. Reading them through refs keeps the
+	// open/close effect below dependent ONLY on `open` — otherwise each parent
+	// re-render (e.g. typing in a controlled field inside the modal) would
+	// re-run the effect and yank focus away from the focused input.
+	const onCloseRef = useRef(onClose);
+	onCloseRef.current = onClose;
+	const dismissibleRef = useRef(dismissible);
+	dismissibleRef.current = dismissible;
+
 	useEffect(() => {
 		if (!open) return undefined;
 
-		const previouslyFocused = document.activeElement;
+		const previouslyFocused =
+			document.activeElement instanceof HTMLElement
+				? document.activeElement
+				: null;
 		panelRef.current?.focus?.();
 
 		const onKey = (e) => {
-			if (e.key === 'Escape' && dismissible) {
-				onClose?.();
+			if (e.key === 'Escape' && dismissibleRef.current) {
+				e.stopPropagation();
+				onCloseRef.current?.();
 				return;
 			}
 			// Lightweight focus trap: wrap Tab within the dialog.
@@ -51,11 +65,9 @@ export default function Modal({
 			document.removeEventListener('keydown', onKey);
 			document.body.style.overflow = '';
 			// Restore focus to the trigger that opened the dialog.
-			if (previouslyFocused instanceof HTMLElement) {
-				previouslyFocused.focus();
-			}
+			previouslyFocused?.focus?.();
 		};
-	}, [open, onClose, dismissible]);
+	}, [open]);
 
 	// Rendered through a portal: an ancestor with backdrop-filter/transform
 	// (e.g. the dashboard's blurred cards) would otherwise become the
