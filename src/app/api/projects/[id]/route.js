@@ -510,9 +510,16 @@ export async function PUT(request, context) {
 	const hasCloseAccess =
 		user.is_super_admin ||
 		hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.CLOSE);
+	// projects:update OR projects:assign permits updating the project.
+	// `assign` is the granular "team management" grant — it lets a user (e.g. a
+	// sub-admin not on the team) manage project_team members. The client UI
+	// restricts an assign-only user to the Project Team tab, so only team
+	// changes are submitted; this mirrors the existing isUserInProjectTeam
+	// fallback which already allows any team member to PUT the whole project.
 	const hasUpdateAccess =
 		user.is_super_admin ||
-		hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+		hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE) ||
+		hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.ASSIGN);
 	const hasFullAccess =
 		hasUpdateAccess || (hasCloseAccess && isStatusOnlyUpdate);
 

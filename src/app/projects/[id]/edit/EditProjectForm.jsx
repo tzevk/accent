@@ -296,6 +296,12 @@ export default function EditProjectForm() {
 		can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
 	const canEditProjectContent =
 		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+	// Team management only — granted via projects:assign (or full update / super admin).
+	// Lets a user edit the Project Team tab without full project edit rights.
+	const canManageTeam =
+		isSuperAdmin ||
+		can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE) ||
+		can(RESOURCES.PROJECTS, PERMISSIONS.ASSIGN);
 	const canReadUsers = isSuperAdmin || can(RESOURCES.USERS, PERMISSIONS.READ);
 
 	// Signature-authorisation toggles for the Documents Issued tab
@@ -4291,7 +4297,14 @@ export default function EditProjectForm() {
 				return false;
 			if (tab.userOnly && isAdminUser) return false;
 			// "requiresUpdate" means the tab contains edit controls, but view-only users should still be able to see it.
-			if (tab.requiresUpdate && !canViewProjectContent) return false;
+			// The Project Team tab is also shown to users granted projects:assign (team management only),
+			// even though they lack projects:read/update.
+			if (
+				tab.requiresUpdate &&
+				!canViewProjectContent &&
+				!(tab.projectSectionKey === 'project_team' && canManageTeam)
+			)
+				return false;
 
 			if (tab.projectSectionKey) {
 				if (projectModule?.enabled === false && !canViewProjectContent)
@@ -4318,6 +4331,7 @@ export default function EditProjectForm() {
 		isSuperAdmin,
 		PERMISSIONS,
 		canViewProjectContent,
+		canManageTeam,
 		sessionUser,
 	]);
 
@@ -4460,7 +4474,7 @@ export default function EditProjectForm() {
 	const handleSubmit = async (event) => {
 		event.preventDefault();
 
-		if (!canEditProjectContent) {
+		if (!canEditProjectContent && !canManageTeam) {
 			alert('You do not have permission to update this project.');
 			return;
 		}
@@ -4729,7 +4743,9 @@ export default function EditProjectForm() {
 									</button>
 									<button
 										type="submit"
-										disabled={submitting || !canEditProjectContent}
+										disabled={
+											submitting || (!canEditProjectContent && !canManageTeam)
+										}
 										aria-busy={submitting}
 										className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors transition-shadow transition-transform hover:bg-purple-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
 									>
@@ -4741,7 +4757,7 @@ export default function EditProjectForm() {
 										)}
 										{submitting
 											? 'Saving…'
-											: canEditProjectContent
+											: canEditProjectContent || canManageTeam
 												? 'Update Project'
 												: 'View Only'}
 									</button>
@@ -4832,22 +4848,6 @@ export default function EditProjectForm() {
 										softwareItems={softwareItems}
 										addSoftwareItem={addSoftwareItem}
 										removeSoftwareItem={removeSoftwareItem}
-									/>
-								)}
-
-								{/* Project Team Tab */}
-								{(activeTab === 'project_team' ||
-									activeTab === 'project_team_tab') && (
-									<ProjectTeamTab
-										toggleSection={toggleSection}
-										openSections={openSections}
-										usersLoading={usersLoading}
-										availableUsers={availableUsers}
-										allUsers={allUsers}
-										addTeamMember={addTeamMember}
-										projectTeamMembers={projectTeamMembers}
-										updateTeamMemberRole={updateTeamMemberRole}
-										removeTeamMember={removeTeamMember}
 									/>
 								)}
 
@@ -5193,6 +5193,28 @@ export default function EditProjectForm() {
 									<MeetingsTab form={form} handleChange={handleChange} />
 								)}
 							</fieldset>
+
+							{/* Project Team Tab — rendered outside the global fieldset so it honors
+							    canManageTeam (projects:assign) independently of full project edit rights. */}
+							{(activeTab === 'project_team' ||
+								activeTab === 'project_team_tab') && (
+								<fieldset
+									disabled={!canManageTeam}
+									className="m-0 min-w-0 border-0 p-0"
+								>
+									<ProjectTeamTab
+										toggleSection={toggleSection}
+										openSections={openSections}
+										usersLoading={usersLoading}
+										availableUsers={availableUsers}
+										allUsers={allUsers}
+										addTeamMember={addTeamMember}
+										projectTeamMembers={projectTeamMembers}
+										updateTeamMemberRole={updateTeamMemberRole}
+										removeTeamMember={removeTeamMember}
+									/>
+								</fieldset>
+							)}
 						</div>
 					</form>
 				</div>

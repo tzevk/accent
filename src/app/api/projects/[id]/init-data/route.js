@@ -101,17 +101,18 @@ export async function GET(request) {
 		let users = [];
 		try {
 			const [rows] = await db.execute(
-				`SELECT u.id, u.username, u.full_name, u.email, u.role, u.department, u.status, u.is_super_admin, u.employee_id, u.vendor_id, u.account_type,
+				`SELECT u.id, u.username, u.full_name, u.email, u.department, u.status, u.is_super_admin, u.employee_id, u.vendor_id, u.account_type, u.role_id,
                 CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
                 e.employee_id as employee_code,
                 e.department as employee_department,
                 e.position as employee_position,
-                r.display_name as role_name,
-                r.role_key
+                r.role_name as role_name,
+                r.role_code as role_key,
+                r.role_hierarchy
          FROM users u
-         LEFT JOIN employees e ON u.employee_id = e.id
-         LEFT JOIN roles r ON u.role_id = r.id
-         WHERE u.is_active = TRUE
+         LEFT JOIN employees e ON u.employee_id = e.id AND e.isDelete = 0
+         LEFT JOIN roles_master r ON u.role_id = r.id
+         WHERE u.is_active = 1 AND u.isDelete = 0
          ORDER BY u.created_at DESC`
 			);
 			users = rows;
@@ -123,7 +124,7 @@ export async function GET(request) {
 			// Fallback: simpler query if JOINs fail (tables may not exist)
 			try {
 				const [rows] = await db.execute(
-					'SELECT id, username, full_name, email, role, department, status, is_super_admin, employee_id FROM users WHERE is_active = TRUE ORDER BY created_at DESC'
+					'SELECT id, username, full_name, email, department, status, is_super_admin, employee_id, role_id, vendor_id, account_type FROM users WHERE is_active = 1 AND isDelete = 0 ORDER BY created_at DESC'
 				);
 				users = rows;
 			} catch (simpleFail) {
