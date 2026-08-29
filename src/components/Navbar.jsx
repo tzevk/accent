@@ -86,8 +86,8 @@ const reportsMenuConfig = [
 		reportField: 'project_activities', // reuse so existing grants cover the new report
 	},
 	{
-		name: 'Employee Project Cost',
-		href: '/reports/employee-project-cost',
+		name: 'Employee Project Monthly Cost',
+		href: '/reports/employee-project-monthly-cost',
 		icon: BanknotesIcon,
 		resource: 'reports',
 		reportField: 'project_activities', // reuse so existing grants cover the new report

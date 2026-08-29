@@ -579,9 +579,11 @@ export default function Sidebar() {
 							/>
 							<NavRow
 								icon={ClockIcon}
-								label="Employee Project Cost"
-								href="/reports/employee-project-cost"
-								active={pathname.startsWith('/reports/employee-project-cost')}
+								label="Employee Project Monthly Cost"
+								href="/reports/employee-project-monthly-cost"
+								active={pathname.startsWith(
+									'/reports/employee-project-monthly-cost'
+								)}
 							/>
 							<NavRow
 								icon={FingerPrintIcon}
