@@ -398,6 +398,12 @@ const MODULE_FIELDS = {
 					lesson_date: { label: 'Date Recorded', type: 'date' },
 				},
 			},
+			project_team: {
+				name: 'Project Team',
+				fields: {
+					project_team: { label: 'Project Team', type: 'view' },
+				},
+			},
 		},
 	},
 	quotations: {
@@ -1418,6 +1424,45 @@ const getModulePerms = (module) => [
 	...(SPECIAL_PERMS[module] || []),
 ];
 
+// Layout config for module groups — single source for label + visual cue
+const CATEGORY_GROUPS = [
+	{ key: 'module', label: 'Main Modules', tone: 'blue' },
+	{ key: 'master', label: 'Masters', tone: 'purple' },
+	{ key: 'financial', label: 'Financial Documents', tone: 'emerald' },
+	{ key: 'admin', label: 'Admin', tone: 'amber' },
+];
+
+const toneClasses = {
+	blue: {
+		headerBg: 'bg-blue-50',
+		headerText: 'text-blue-700',
+		checkbox: 'text-blue-600 focus:ring-blue-500',
+		activeRing: 'ring-blue-500 bg-blue-50',
+		enabledChip: 'bg-blue-50 text-blue-700',
+	},
+	purple: {
+		headerBg: 'bg-purple-50',
+		headerText: 'text-purple-700',
+		checkbox: 'text-purple-600 focus:ring-purple-500',
+		activeRing: 'ring-purple-500 bg-purple-50',
+		enabledChip: 'bg-purple-100 text-purple-700',
+	},
+	emerald: {
+		headerBg: 'bg-emerald-50',
+		headerText: 'text-emerald-700',
+		checkbox: 'text-emerald-600 focus:ring-emerald-500',
+		activeRing: 'ring-emerald-500 bg-emerald-50',
+		enabledChip: 'bg-emerald-100 text-emerald-700',
+	},
+	amber: {
+		headerBg: 'bg-amber-50',
+		headerText: 'text-amber-700',
+		checkbox: 'text-amber-600 focus:ring-amber-500',
+		activeRing: 'ring-amber-500 bg-amber-50',
+		enabledChip: 'bg-amber-100 text-amber-700',
+	},
+};
+
 // Signature-authorisation fields on the Documents Issued tab: default to 'edit'
 // (opt-out). An unsaved field otherwise loads as 'view', which would silently
 // lock signing for existing users after any permission-page save.
@@ -1475,6 +1520,7 @@ export default function UserPermissionsPage() {
 	const [saving, setSaving] = useState(false);
 	const [hasChanges, setHasChanges] = useState(false);
 	const [isReady, setIsReady] = useState(false); // Prevents UI flash until everything is loaded
+	const [moduleSearch, setModuleSearch] = useState('');
 
 	useEffect(() => {
 		if (userId && !rbacLoading) {
@@ -2262,334 +2308,163 @@ export default function UserPermissionsPage() {
 					</div>
 				</div>
 
-				<div className="flex gap-6 h-[calc(100vh-200px)]">
+				<div className="flex flex-col xl:flex-row gap-6 lg:h-[calc(100vh-200px)]">
 					{/* Module List - Left Side */}
-					<div className="w-1/2 flex-shrink-0">
-						<div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-full flex flex-col">
-							<div className="p-4 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+					<div className="w-full xl:w-[380px] xl:shrink-0 xl:flex flex-col min-h-0">
+						<div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0 flex-1">
+							<div className="p-4 bg-gray-50 border-b border-gray-200 flex-shrink-0 space-y-3">
 								<div className="flex items-center justify-between">
 									<h3 className="font-semibold text-gray-900">Modules</h3>
-									<span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+									<span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full tabular-nums">
 										{enabledCount} enabled
 									</span>
 								</div>
-								<p className="text-xs text-gray-500 mt-1">
-									Check modules to enable access
+								<p className="text-xs text-gray-500">
+									Enable modules, then select one to configure
 								</p>
+								<label htmlFor="module-search" className="sr-only">
+									Search modules
+								</label>
+								<div className="relative">
+									<input
+										id="module-search"
+										type="search"
+										value={moduleSearch}
+										onChange={(e) => setModuleSearch(e.target.value)}
+										placeholder="Search modules…"
+										className="w-full h-9 rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+									/>
+									<span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+										<svg
+											className="h-4 w-4"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											strokeWidth="2"
+											aria-hidden="true"
+										>
+											<circle cx="11" cy="11" r="7" />
+											<path d="M20 20l-3.5-3.5" />
+										</svg>
+									</span>
+								</div>
 							</div>
 
-							<div className="p-3 overflow-y-auto flex-1">
-								{/* Main Modules */}
-								<div className="mb-4">
-									<div className="flex items-center justify-between px-2 py-1 mb-2">
-										<span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-											Main Modules
-										</span>
-										<button
-											onClick={() => toggleCategoryModules('module')}
-											className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-0.5 rounded transition-colors"
-											title="Toggle all main modules"
-										>
-											{Object.keys(MODULE_FIELDS)
-												.filter((m) => MODULE_FIELDS[m].category === 'module')
-												.every((m) => enabledModules[m])
-												? 'Deselect All'
-												: 'Select All'}
-										</button>
-									</div>
-									<div className="space-y-1">
-										{Object.keys(MODULE_FIELDS)
-											.filter((m) => MODULE_FIELDS[m].category === 'module')
-											.map((module) => {
-												const moduleDef = MODULE_FIELDS[module];
-												const isEnabled = enabledModules[module];
-												const isActive = activeModule === module;
-												const moduleCount = getModulePermCount(module);
+							<div className="p-3 overflow-y-auto flex-1 space-y-5">
+								{CATEGORY_GROUPS.map((group) => {
+									const tone = toneClasses[group.tone];
+									const modulesInGroup = Object.keys(MODULE_FIELDS).filter(
+										(m) => MODULE_FIELDS[m].category === group.key
+									);
+									const filteredModules = modulesInGroup.filter((m) => {
+										if (!moduleSearch.trim()) return true;
+										const q = moduleSearch.toLowerCase();
+										const def = MODULE_FIELDS[m];
+										return (
+											def.name.toLowerCase().includes(q) ||
+											def.description.toLowerCase().includes(q) ||
+											m.toLowerCase().includes(q)
+										);
+									});
+									if (filteredModules.length === 0 && moduleSearch.trim())
+										return null;
+									const allEnabled = modulesInGroup.every(
+										(m) => enabledModules[m]
+									);
 
-												return (
-													<div
-														key={module}
-														className={`flex items-center p-3 rounded-lg transition-all cursor-pointer ${
-															isActive
-																? 'bg-blue-50 ring-2 ring-blue-500'
-																: isEnabled
-																	? 'bg-green-50 hover:bg-green-100'
-																	: 'bg-gray-50 hover:bg-gray-100'
-														}`}
-													>
-														<input
-															type="checkbox"
-															checked={isEnabled}
-															onChange={() => toggleModuleEnabled(module)}
-															className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-														/>
+									return (
+										<div key={group.key}>
+											<div
+												className={`flex items-center justify-between px-2 py-1.5 mb-2 rounded-lg ${tone.headerBg}`}
+											>
+												<span
+													className={`text-xs font-semibold uppercase tracking-wide ${tone.headerText}`}
+												>
+													{group.label}
+												</span>
+												<button
+													type="button"
+													onClick={() => toggleCategoryModules(group.key)}
+													aria-label={`${allEnabled ? 'Deselect' : 'Select'} all ${group.label}`}
+													className={`text-xs font-medium px-2 py-1 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${tone.headerText} hover:bg-white/60 focus-visible:ring-blue-500`}
+												>
+													{allEnabled ? 'Deselect All' : 'Select All'}
+												</button>
+											</div>
+											<div className="space-y-1.5">
+												{filteredModules.map((module) => {
+													const moduleDef = MODULE_FIELDS[module];
+													const isEnabled = enabledModules[module];
+													const isActive = activeModule === module;
+													const moduleCount = getModulePermCount(module);
+
+													return (
 														<div
-															className="ml-3 flex-1"
-															onClick={() =>
-																isEnabled && setActiveModule(module)
-															}
+															key={module}
+															className={`group flex items-center gap-3 p-3 rounded-xl border text-left transition-colors focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-0 ${
+																isActive
+																	? `${tone.activeRing} ring-2 border-transparent shadow-sm`
+																	: isEnabled
+																		? 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+																		: 'bg-gray-50 border-gray-200 hover:bg-white'
+															}`}
 														>
-															<div className="flex items-center justify-between">
-																<span
-																	className={`font-medium text-sm ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}
-																>
-																	{moduleDef.name}
-																</span>
-																{isEnabled && (
-																	<span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
-																		{moduleCount}/
-																		{getModulePerms(module).length}
+															<input
+																id={`module-${module}`}
+																type="checkbox"
+																checked={isEnabled}
+																onChange={() => toggleModuleEnabled(module)}
+																aria-label={`${isEnabled ? 'Disable' : 'Enable'} ${moduleDef.name}`}
+																className={`h-4 w-4 shrink-0 rounded border-gray-300 focus:ring-2 focus:ring-offset-0 ${tone.checkbox}`}
+															/>
+															<button
+																type="button"
+																disabled={!isEnabled}
+																onClick={() =>
+																	isEnabled && setActiveModule(module)
+																}
+																aria-current={isActive ? 'true' : undefined}
+																aria-label={`${isEnabled ? 'Configure' : 'Enable to configure'} ${moduleDef.name}`}
+																className={`flex-1 min-w-0 text-left rounded-md -m-1 p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed ${!isEnabled ? 'opacity-60' : ''}`}
+															>
+																<div className="flex items-center justify-between gap-2">
+																	<span
+																		className={`truncate font-medium text-sm ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}
+																	>
+																		{moduleDef.name}
 																	</span>
-																)}
-															</div>
-															<p className="text-xs text-gray-500 mt-0.5">
-																{moduleDef.description}
-															</p>
+																	{isEnabled && (
+																		<span
+																			className={`shrink-0 text-xs px-2 py-0.5 rounded-full tabular-nums ${tone.enabledChip}`}
+																		>
+																			{moduleCount}/
+																			{getModulePerms(module).length}
+																		</span>
+																	)}
+																</div>
+																<p className="mt-0.5 line-clamp-2 text-xs leading-4 text-gray-500">
+																	{moduleDef.description}
+																</p>
+															</button>
+															{isEnabled && (
+																<ChevronRightIcon
+																	className={`h-4 w-4 shrink-0 ${isActive ? tone.headerText : 'text-gray-400'} ${isActive ? '' : 'opacity-60 group-hover:opacity-100'}`}
+																	aria-hidden="true"
+																/>
+															)}
 														</div>
-														{isEnabled && (
-															<ChevronRightIcon className="h-4 w-4 text-gray-400 ml-2" />
-														)}
-													</div>
-												);
-											})}
-									</div>
-								</div>
-
-								{/* Masters */}
-								<div className="mb-4">
-									<div className="flex items-center justify-between px-2 py-1 mb-2 bg-purple-50 rounded">
-										<span className="text-xs font-semibold text-purple-600 uppercase tracking-wide">
-											Masters
-										</span>
-										<button
-											onClick={() => toggleCategoryModules('master')}
-											className="text-xs font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-100 px-2 py-0.5 rounded transition-colors"
-											title="Toggle all master modules"
-										>
-											{Object.keys(MODULE_FIELDS)
-												.filter((m) => MODULE_FIELDS[m].category === 'master')
-												.every((m) => enabledModules[m])
-												? 'Deselect All'
-												: 'Select All'}
-										</button>
-									</div>
-									<div className="space-y-1">
-										{Object.keys(MODULE_FIELDS)
-											.filter((m) => MODULE_FIELDS[m].category === 'master')
-											.map((module) => {
-												const moduleDef = MODULE_FIELDS[module];
-												const isEnabled = enabledModules[module];
-												const isActive = activeModule === module;
-												const moduleCount = getModulePermCount(module);
-
-												return (
-													<div
-														key={module}
-														className={`flex items-center p-3 rounded-lg transition-all cursor-pointer ${
-															isActive
-																? 'bg-purple-50 ring-2 ring-purple-500'
-																: isEnabled
-																	? 'bg-purple-50/50 hover:bg-purple-100'
-																	: 'bg-gray-50 hover:bg-gray-100'
-														}`}
-													>
-														<input
-															type="checkbox"
-															checked={isEnabled}
-															onChange={() => toggleModuleEnabled(module)}
-															className="h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
-														/>
-														<div
-															className="ml-3 flex-1"
-															onClick={() =>
-																isEnabled && setActiveModule(module)
-															}
-														>
-															<div className="flex items-center justify-between">
-																<span
-																	className={`font-medium text-sm ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}
-																>
-																	{moduleDef.name}
-																</span>
-																{isEnabled && (
-																	<span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
-																		{moduleCount}/
-																		{getModulePerms(module).length}
-																	</span>
-																)}
-															</div>
-															<p className="text-xs text-gray-500 mt-0.5">
-																{moduleDef.description}
-															</p>
-														</div>
-														{isEnabled && (
-															<ChevronRightIcon className="h-4 w-4 text-gray-400 ml-2" />
-														)}
-													</div>
-												);
-											})}
-									</div>
-								</div>
-
-								{/* Financial Documents */}
-								<div className="mb-4">
-									<div className="flex items-center justify-between px-2 py-1 mb-2 bg-emerald-50 rounded">
-										<span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">
-											Financial Documents
-										</span>
-										<button
-											onClick={() => toggleCategoryModules('financial')}
-											className="text-xs font-medium text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100 px-2 py-0.5 rounded transition-colors"
-											title="Toggle all financial modules"
-										>
-											{Object.keys(MODULE_FIELDS)
-												.filter(
-													(m) => MODULE_FIELDS[m].category === 'financial'
-												)
-												.every((m) => enabledModules[m])
-												? 'Deselect All'
-												: 'Select All'}
-										</button>
-									</div>
-									<div className="space-y-1">
-										{Object.keys(MODULE_FIELDS)
-											.filter((m) => MODULE_FIELDS[m].category === 'financial')
-											.map((module) => {
-												const moduleDef = MODULE_FIELDS[module];
-												const isEnabled = enabledModules[module];
-												const isActive = activeModule === module;
-												const moduleCount = getModulePermCount(module);
-
-												return (
-													<div
-														key={module}
-														className={`flex items-center p-3 rounded-lg transition-all cursor-pointer ${
-															isActive
-																? 'bg-emerald-50 ring-2 ring-emerald-500'
-																: isEnabled
-																	? 'bg-emerald-50/50 hover:bg-emerald-100'
-																	: 'bg-gray-50 hover:bg-gray-100'
-														}`}
-													>
-														<input
-															type="checkbox"
-															checked={isEnabled}
-															onChange={() => toggleModuleEnabled(module)}
-															className="h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
-														/>
-														<div
-															className="ml-3 flex-1"
-															onClick={() =>
-																isEnabled && setActiveModule(module)
-															}
-														>
-															<div className="flex items-center justify-between">
-																<span
-																	className={`font-medium text-sm ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}
-																>
-																	{moduleDef.name}
-																</span>
-																{isEnabled && (
-																	<span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">
-																		{moduleCount}/
-																		{getModulePerms(module).length}
-																	</span>
-																)}
-															</div>
-															<p className="text-xs text-gray-500 mt-0.5">
-																{moduleDef.description}
-															</p>
-														</div>
-														{isEnabled && (
-															<ChevronRightIcon className="h-4 w-4 text-emerald-400 ml-2" />
-														)}
-													</div>
-												);
-											})}
-									</div>
-								</div>
-
-								{/* Admin */}
-								<div className="mb-4">
-									<div className="flex items-center justify-between px-2 py-1 mb-2 bg-amber-50 rounded">
-										<span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">
-											Admin
-										</span>
-										<button
-											onClick={() => toggleCategoryModules('admin')}
-											className="text-xs font-medium text-amber-600 hover:text-amber-800 hover:bg-amber-100 px-2 py-0.5 rounded transition-colors"
-											title="Toggle all admin modules"
-										>
-											{Object.keys(MODULE_FIELDS)
-												.filter((m) => MODULE_FIELDS[m].category === 'admin')
-												.every((m) => enabledModules[m])
-												? 'Deselect All'
-												: 'Select All'}
-										</button>
-									</div>
-									<div className="space-y-1">
-										{Object.keys(MODULE_FIELDS)
-											.filter((m) => MODULE_FIELDS[m].category === 'admin')
-											.map((module) => {
-												const moduleDef = MODULE_FIELDS[module];
-												const isEnabled = enabledModules[module];
-												const isActive = activeModule === module;
-												const moduleCount = getModulePermCount(module);
-
-												return (
-													<div
-														key={module}
-														className={`flex items-center p-3 rounded-lg transition-all cursor-pointer ${
-															isActive
-																? 'bg-amber-50 ring-2 ring-amber-500'
-																: isEnabled
-																	? 'bg-amber-50/50 hover:bg-amber-100'
-																	: 'bg-gray-50 hover:bg-gray-100'
-														}`}
-													>
-														<input
-															type="checkbox"
-															checked={isEnabled}
-															onChange={() => toggleModuleEnabled(module)}
-															className="h-4 w-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500"
-														/>
-														<div
-															className="ml-3 flex-1"
-															onClick={() =>
-																isEnabled && setActiveModule(module)
-															}
-														>
-															<div className="flex items-center justify-between">
-																<span
-																	className={`font-medium text-sm ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}
-																>
-																	{moduleDef.name}
-																</span>
-																{isEnabled && (
-																	<span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
-																		{moduleCount}/
-																		{getModulePerms(module).length}
-																	</span>
-																)}
-															</div>
-															<p className="text-xs text-gray-500 mt-0.5">
-																{moduleDef.description}
-															</p>
-														</div>
-														{isEnabled && (
-															<ChevronRightIcon className="h-4 w-4 text-gray-400 ml-2" />
-														)}
-													</div>
-												);
-											})}
-									</div>
-								</div>
+													);
+												})}
+											</div>
+										</div>
+									);
+								})}
 							</div>
 						</div>
 					</div>
 
 					{/* Field-Level Permissions - Right Side */}
-					<div className="w-1/2 h-full">
+					<div className="w-full xl:flex-1 min-h-[480px] xl:min-h-0 xl:h-full flex flex-col">
 						{!activeModule ? (
 							<div className="bg-white rounded-xl shadow-sm border border-gray-200 h-full flex items-center justify-center">
 								<div className="text-center p-8">
@@ -2652,24 +2527,37 @@ export default function UserPermissionsPage() {
 										</div>
 
 										{/* Module-level Permissions */}
-										<div className="p-4 bg-gray-50 rounded-lg">
+										<div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
 											<h3 className="font-medium text-gray-900 mb-3">
-												Module Access (CRUD)
+												Module Access
 											</h3>
-											<div className="flex flex-wrap gap-2">
-												{getModulePerms(activeModule).map((perm) => (
-													<button
-														key={perm}
-														onClick={() => toggleModulePerm(activeModule, perm)}
-														className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-															modulePermissions[activeModule]?.[perm]
-																? 'bg-blue-600 text-white shadow-sm'
-																: 'bg-white border border-gray-300 text-gray-600 hover:border-blue-300 hover:bg-blue-50'
-														}`}
-													>
-														{perm.charAt(0).toUpperCase() + perm.slice(1)}
-													</button>
-												))}
+											<div
+												className="flex flex-wrap gap-2"
+												role="group"
+												aria-label="Module permissions"
+											>
+												{getModulePerms(activeModule).map((perm) => {
+													const pressed =
+														!!modulePermissions[activeModule]?.[perm];
+													return (
+														<button
+															key={perm}
+															type="button"
+															onClick={() =>
+																toggleModulePerm(activeModule, perm)
+															}
+															aria-pressed={pressed}
+															aria-label={`${perm} for ${currentModule.name}`}
+															className={`px-3.5 py-2 rounded-full text-sm font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
+																pressed
+																	? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+																	: 'bg-white border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-white'
+															}`}
+														>
+															{perm.charAt(0).toUpperCase() + perm.slice(1)}
+														</button>
+													);
+												})}
 											</div>
 										</div>
 									</div>
