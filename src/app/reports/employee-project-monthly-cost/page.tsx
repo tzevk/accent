@@ -210,6 +210,208 @@ function monthLabel(month: string): string {
 	return `${names[m - 1]} ${y}`;
 }
 
+function compactMonthLabel(month: string): string {
+	if (!month || !month.includes('-')) return month;
+	const [year, monthNumber] = month.split('-').map(Number);
+	const names = [
+		'Jan',
+		'Feb',
+		'Mar',
+		'Apr',
+		'May',
+		'Jun',
+		'Jul',
+		'Aug',
+		'Sep',
+		'Oct',
+		'Nov',
+		'Dec',
+	];
+	if (!year || !monthNumber || monthNumber < 1 || monthNumber > 12) {
+		return month;
+	}
+	return `${names[monthNumber - 1]}-${String(year).slice(-2)}`;
+}
+
+function projectKey(
+	projectId: number | null,
+	projectCode: string,
+	projectName: string
+): string {
+	return projectId != null
+		? String(projectId)
+		: projectCode || projectName || 'unknown';
+}
+
+function projectLabel(project: {
+	project_code: string;
+	project_name: string;
+}): string {
+	return (
+		[project.project_code, project.project_name].filter(Boolean).join(' - ') ||
+		'Unknown project'
+	);
+}
+
+interface ProjectWiseMonthlySection {
+	project: MonthlyProjectRow;
+	rows: MonthlyRow[];
+}
+
+interface ProjectWiseMonthlyReportProps {
+	sections: ProjectWiseMonthlySection[];
+	month: string;
+	monthLabel: string;
+	totalCost: number;
+}
+
+function ProjectWiseMonthlyReport({
+	sections,
+	month,
+	monthLabel: selectedMonthLabel,
+	totalCost,
+}: ProjectWiseMonthlyReportProps) {
+	if (sections.length === 0) {
+		return (
+			<div className="px-4 py-12 text-center">
+				<p className="text-sm font-medium text-gray-700">
+					No logged manhours for {selectedMonthLabel}
+				</p>
+				<p className="mt-1 text-xs text-gray-500">
+					Hours come from daily activity logs.
+				</p>
+			</div>
+		);
+	}
+
+	const columnWidths = ['12%', '45%', '14%', '14%', '15%'];
+
+	return (
+		<div className="epc-project-wise-sheet min-w-[680px] bg-white font-[Arial,sans-serif] text-[13px] leading-tight text-black">
+			{sections.map(({ project, rows }) => (
+				<section
+					key={`${projectKey(project.project_id, project.project_code, project.project_name)}-${project.sr_no}`}
+					className="epc-project-section mb-6"
+				>
+					<div className="epc-project-meta grid grid-cols-[130px_minmax(0,1fr)] border border-black">
+						<div className="border-b border-black px-2 py-2 font-bold">
+							Project No.:
+						</div>
+						<div className="border-b border-l border-black px-2 py-2 font-semibold">
+							{projectLabel(project)}
+						</div>
+						<div className="border-b border-black px-2 py-2 font-bold">
+							Project Name:
+						</div>
+						<div className="border-b border-l border-black px-2 py-2 font-semibold">
+							{project.project_name || '—'}
+						</div>
+						<div className="border-b border-black px-2 py-2 font-bold">
+							Client Name:
+						</div>
+						<div className="border-b border-l border-black px-2 py-2 font-semibold">
+							{project.client_name || '—'}
+						</div>
+						<div className="px-2 py-2 font-bold">Month:</div>
+						<div className="border-l border-black px-2 py-2 font-semibold">
+							{compactMonthLabel(month)}
+						</div>
+					</div>
+
+					<table className="w-full table-fixed border-collapse border border-black">
+						<caption className="sr-only">
+							Employee cost for {projectLabel(project)} in {selectedMonthLabel}
+						</caption>
+						<colgroup>
+							{columnWidths.map((width, index) => (
+								<col key={`project-column-${index}`} style={{ width }} />
+							))}
+						</colgroup>
+						<thead>
+							<tr>
+								<th className="border border-black px-2 py-3 text-center font-bold text-[#64126D]">
+									Sr. No.
+								</th>
+								<th className="border border-black px-2 py-3 text-left font-bold text-[#64126D]">
+									Employee Name
+								</th>
+								<th className="border border-black px-2 py-3 text-right font-bold text-[#64126D]">
+									Hourly Cost
+								</th>
+								<th className="border border-black px-2 py-3 text-right font-bold text-[#64126D]">
+									Working Hours
+								</th>
+								<th className="border border-black px-2 py-3 text-right font-bold text-[#64126D]">
+									Amount
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							{rows.map((row, rowIndex) => (
+								<tr key={`${row.employee_id}-${row.sr_no}`}>
+									<td className="border border-black px-2 py-1.5 text-center tabular-nums">
+										{rowIndex + 1}
+									</td>
+									<td className="border border-black px-2 py-1.5 font-medium text-[#4A1254]">
+										{row.employee_name}
+									</td>
+									<td className="border border-black px-2 py-1.5 text-right tabular-nums">
+										{row.hourly_rate > 0 ? formatNumber(row.hourly_rate) : '-'}
+									</td>
+									<td className="border border-black px-2 py-1.5 text-right tabular-nums">
+										{formatNumber(row.hours).replace(/\.00$/, '')}
+									</td>
+									<td className="border border-black px-2 py-1.5 text-right font-semibold tabular-nums">
+										{formatNumber(row.cost)}
+									</td>
+								</tr>
+							))}
+						</tbody>
+						<tfoot>
+							<tr className="bg-[#8FD3ED]">
+								<td
+									colSpan={3}
+									className="border border-black px-2 py-2 text-right text-base font-bold"
+								>
+									Total &gt;&gt;&gt;
+								</td>
+								<td className="border border-black px-2 py-2 text-right text-base font-bold tabular-nums">
+									{formatNumber(project.hours).replace(/\.00$/, '')}
+								</td>
+								<td className="border border-black px-2 py-2 text-right text-base font-bold tabular-nums">
+									{formatNumber(project.cost)}
+								</td>
+							</tr>
+						</tfoot>
+					</table>
+				</section>
+			))}
+
+			<table className="w-full table-fixed border-collapse border border-black">
+				<caption className="sr-only">Total amount for all projects</caption>
+				<colgroup>
+					{columnWidths.map((width, index) => (
+						<col key={`total-column-${index}`} style={{ width }} />
+					))}
+				</colgroup>
+				<tfoot>
+					<tr className="bg-[#B5E5A2]">
+						<td
+							colSpan={4}
+							className="border border-black px-2 py-3 text-right text-base font-bold"
+						>
+							Total Amount for All project &gt;&gt;&gt;
+						</td>
+						<td className="border border-black px-2 py-3 text-right text-base font-bold tabular-nums">
+							{formatNumber(totalCost)}
+						</td>
+					</tr>
+				</tfoot>
+			</table>
+		</div>
+	);
+}
+
 const epcPrintStyles = `
 @media print {
 	@page {
@@ -239,6 +441,12 @@ const epcPrintStyles = `
 	.epc-print-page main {
 		padding: 0 !important;
 	}
+	.epc-sheet {
+		overflow: visible !important;
+		border: 0 !important;
+		border-radius: 0 !important;
+		box-shadow: none !important;
+	}
 	.epc-sheet table {
 		font-size: 7.5pt;
 	}
@@ -251,6 +459,26 @@ const epcPrintStyles = `
 	}
 	.epc-sheet tbody tr {
 		break-inside: avoid;
+	}
+	.epc-project-wise-sheet {
+		min-width: 0 !important;
+		font-size: 9pt;
+	}
+	.epc-project-wise-sheet table {
+		min-width: 0 !important;
+		font-size: 8.5pt;
+	}
+	.epc-project-section {
+		break-inside: avoid;
+		page-break-inside: avoid;
+	}
+	.epc-project-meta {
+		break-inside: avoid;
+		page-break-inside: avoid;
+	}
+	.epc-project-wise-sheet th,
+	.epc-project-wise-sheet td {
+		padding: 2mm 2.5mm !important;
 	}
 }`;
 
@@ -435,6 +663,38 @@ export default function EmployeeProjectMonthlyCostPage() {
 		);
 	}, [monthlyData, normalizedSearch, matchesSearch]);
 
+	const projectWiseMonthlySections = useMemo<
+		ProjectWiseMonthlySection[]
+	>(() => {
+		if (!monthlyData) return [];
+
+		const rowsByProject = new Map<string, MonthlyRow[]>();
+		for (const row of filteredMonthlyRows) {
+			const key = projectKey(
+				row.project_id,
+				row.project_code,
+				row.project_name
+			);
+			const rows = rowsByProject.get(key) ?? [];
+			rows.push(row);
+			rowsByProject.set(key, rows);
+		}
+
+		return monthlyData.project_rows
+			.map((project) => ({
+				project,
+				rows:
+					rowsByProject.get(
+						projectKey(
+							project.project_id,
+							project.project_code,
+							project.project_name
+						)
+					) ?? [],
+			}))
+			.filter((section) => section.rows.length > 0);
+	}, [monthlyData, filteredMonthlyRows]);
+
 	const filteredFyRows = useMemo(() => {
 		if (!fyData) return [];
 		if (!normalizedSearch) return fyData.rows;
@@ -528,122 +788,13 @@ export default function EmployeeProjectMonthlyCostPage() {
 				);
 			}
 			if (breakdown === 'detailed') {
-				if (filteredMonthlyRows.length === 0) {
-					return (
-						<div className="px-4 py-12 text-center">
-							<p className="text-sm font-medium text-gray-700">
-								No logged manhours for {monthlyData.month_label}
-							</p>
-							<p className="mt-1 text-xs text-gray-500">
-								Hours come from daily activity logs.
-							</p>
-						</div>
-					);
-				}
 				return (
-					<table className="w-full min-w-[1100px] border-collapse text-xs">
-						<thead>
-							<tr className="border-b border-[#64126D]/40 bg-[#64126D]/10">
-								<th className="px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wide text-[#64126D]">
-									Sr
-								</th>
-								<th className="min-w-[180px] px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[#64126D]">
-									Employee
-								</th>
-								<th className="px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[#64126D]">
-									Dept
-								</th>
-								<th className="min-w-[200px] px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[#64126D]">
-									Project
-								</th>
-								<th className="px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[#64126D]">
-									Client
-								</th>
-								<th className="px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wide text-[#64126D]">
-									Rate/Hr
-								</th>
-								<th className="px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wide text-[#64126D]">
-									Hours
-								</th>
-								<th className="bg-[#64126D]/20 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wide text-[#64126D]">
-									Cost
-								</th>
-							</tr>
-						</thead>
-						<tbody className="divide-y divide-gray-200">
-							{filteredMonthlyRows.map((r) => (
-								<tr
-									key={`${r.employee_id}-${r.project_id ?? r.project_code}-${r.sr_no}`}
-									className="hover:bg-purple-50/40"
-								>
-									<td className="px-2 py-1 text-center text-gray-500">
-										{r.sr_no}
-									</td>
-									<td className="px-2 py-1">
-										<div className="font-medium text-[#4A1254]">
-											{r.employee_name}
-										</div>
-										<div className="text-[10px] text-gray-500">
-											{r.employee_code}
-										</div>
-									</td>
-									<td className="px-2 py-1 text-gray-600">
-										{r.department || '—'}
-									</td>
-									<td className="px-2 py-1">
-										{r.project_id ? (
-											<Link
-												href={`/projects/${r.project_id}`}
-												className="font-medium text-[#4A1254] underline-offset-2 hover:underline"
-											>
-												{r.project_code
-													? `${r.project_code} – ${r.project_name}`
-													: r.project_name}
-											</Link>
-										) : (
-											<span className="font-medium text-[#4A1254]">
-												{r.project_name}
-											</span>
-										)}
-									</td>
-									<td
-										className="max-w-[140px] truncate px-2 py-1 text-gray-600"
-										title={r.client_name}
-									>
-										{r.client_name || '—'}
-									</td>
-									<td className="px-2 py-1 text-right font-mono text-gray-700">
-										{r.hourly_rate > 0 ? formatCurrency(r.hourly_rate) : '—'}
-									</td>
-									<td className="px-2 py-1 text-right font-mono text-gray-900">
-										{formatNumber(r.hours).replace(/\.00$/, '')}
-									</td>
-									<td className="bg-purple-50/60 px-2 py-1 text-right font-mono font-semibold text-[#64126D]">
-										{formatCurrency(r.cost)}
-									</td>
-								</tr>
-							))}
-						</tbody>
-						<tfoot>
-							<tr className="border-t-2 border-[#64126D]/40 bg-[#64126D]/10 font-bold">
-								<td
-									colSpan={6}
-									className="px-2 py-1.5 text-right text-[11px] uppercase tracking-wide text-[#4A1254]"
-								>
-									Grand Total — Company Cost for {monthlyData.month_label}
-								</td>
-								<td className="px-2 py-1.5 text-right font-mono text-[#4A1254]">
-									{formatNumber(monthlyTotals?.total_hours ?? 0).replace(
-										/\.00$/,
-										''
-									)}
-								</td>
-								<td className="bg-[#64126D]/20 px-2 py-1.5 text-right font-mono text-[#4A1254]">
-									{formatCurrency(monthlyTotals?.total_cost ?? 0)}
-								</td>
-							</tr>
-						</tfoot>
-					</table>
+					<ProjectWiseMonthlyReport
+						sections={projectWiseMonthlySections}
+						month={monthlyData.month}
+						monthLabel={monthlyData.month_label}
+						totalCost={monthlyData.totals.total_cost}
+					/>
 				);
 			}
 			if (breakdown === 'byEmployee') {
@@ -1411,10 +1562,14 @@ export default function EmployeeProjectMonthlyCostPage() {
 									className={`rounded-t-lg border-b-2 px-3 py-1.5 text-xs font-semibold ${breakdown === tab ? 'border-[#64126D] bg-[#64126D]/5 text-[#64126D]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
 								>
 									{tab === 'detailed'
-										? 'Detailed (Emp × Project)'
+										? viewMode === 'monthly'
+											? 'Project Wise'
+											: 'Detailed (Emp × Project)'
 										: tab === 'byEmployee'
 											? 'By Employee'
-											: 'By Project'}
+											: viewMode === 'monthly'
+												? 'Project Summary'
+												: 'By Project'}
 								</button>
 							)
 						)}
@@ -1423,7 +1578,9 @@ export default function EmployeeProjectMonthlyCostPage() {
 						</span>
 					</div>
 				</div>
-				<div className="mx-auto mb-2 hidden max-w-[1600px] print:block">
+				<div
+					className={`mx-auto mb-2 hidden max-w-[1600px] ${viewMode === 'fy' || breakdown !== 'detailed' ? 'print:block' : ''}`}
+				>
 					<div className="border-b-2 border-[#64126d] pb-1">
 						<h2 className="text-base font-bold text-[#4A1254]">
 							Employee Project Monthly Cost —{' '}
@@ -1438,7 +1595,9 @@ export default function EmployeeProjectMonthlyCostPage() {
 					</div>
 				</div>
 				{viewMode === 'monthly' && monthlyTotals && (
-					<div className="mx-auto mb-3 grid max-w-[1600px] grid-cols-2 gap-2 md:grid-cols-5 print:mb-1 print:grid-cols-5">
+					<div
+						className={`mx-auto mb-3 grid max-w-[1600px] grid-cols-2 gap-2 md:grid-cols-5 ${breakdown === 'detailed' ? 'print:hidden' : 'print:mb-1 print:grid-cols-5'}`}
+					>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
 							<div className="flex items-center justify-between">
 								<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
@@ -1561,7 +1720,7 @@ export default function EmployeeProjectMonthlyCostPage() {
 						</div>
 					</div>
 				)}
-				<div className="epc-sheet mx-auto max-w-[1600px] overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+				<div className="epc-sheet mx-auto max-w-[1600px] overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm print:overflow-visible print:rounded-none print:border-none print:shadow-none">
 					{renderContent()}
 				</div>
 				<p className="mx-auto mt-2 max-w-[1600px] text-[10px] leading-relaxed text-gray-400 print:hidden">
