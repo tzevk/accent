@@ -6,6 +6,41 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 
+function buildActivityDays(rows, month) {
+	const activityDays = {};
+
+	for (const row of rows || []) {
+		const employeeId = row.employee_id;
+		if (employeeId == null) continue;
+
+		let entries = row.daily_entries;
+		if (typeof entries === 'string') {
+			try {
+				entries = entries ? JSON.parse(entries) : [];
+			} catch {
+				entries = [];
+			}
+		}
+		if (!Array.isArray(entries)) continue;
+
+		for (const entry of entries) {
+			const date =
+				typeof entry?.date === 'string' ? entry.date.slice(0, 10) : '';
+			if (
+				!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+				(month && date.slice(0, 7) !== month)
+			) {
+				continue;
+			}
+
+			if (!activityDays[employeeId]) activityDays[employeeId] = {};
+			activityDays[employeeId][date] = true;
+		}
+	}
+
+	return activityDays;
+}
+
 // GET - Fetch attendance records
 export async function GET(request) {
 	// RBAC check
@@ -65,6 +100,56 @@ export async function GET(request) {
 		query += ' ORDER BY a.attendance_date DESC, e.employee_id ASC';
 
 		const [records] = await connection.execute(query, queryParams);
+		// Activity dates are stored in the same daily_entries used by
+		// ProjectActivityAssignments.
+		let activityDays = {};
+		try {
+			let activityQuery = `
+        SELECT
+          COALESCE(
+            uaa.employee_id,
+            u.employee_id,
+            email_employee.id,
+            username_employee.id
+          ) AS employee_id,
+          uaa.daily_entries
+        FROM user_activity_assignments uaa
+        LEFT JOIN users u
+          ON u.id = uaa.user_id AND u.isDelete = 0
+        LEFT JOIN employees email_employee
+          ON email_employee.isDelete = 0
+         AND u.email IS NOT NULL
+         AND u.email != ''
+         AND LOWER(email_employee.email) = LOWER(u.email)
+        LEFT JOIN employees username_employee
+          ON username_employee.isDelete = 0
+         AND u.username IS NOT NULL
+         AND u.username != ''
+         AND LOWER(username_employee.username) = LOWER(u.username)
+        WHERE (uaa.status IS NULL OR uaa.status <> 'Cancelled')
+          AND uaa.daily_entries IS NOT NULL
+          AND uaa.daily_entries NOT IN ('', '[]')
+      `;
+			const activityParams = [];
+			if (employeeId) {
+				activityQuery += ` AND COALESCE(
+          uaa.employee_id,
+          u.employee_id,
+          email_employee.id,
+          username_employee.id
+        ) = ?`;
+				activityParams.push(employeeId);
+			}
+
+			const [activityRows] = await connection.execute(
+				activityQuery,
+				activityParams
+			);
+			activityDays = buildActivityDays(activityRows, month);
+		} catch (activityError) {
+			// Keep attendance readable if activity data is unavailable.
+			console.error('Error fetching activity dates:', activityError);
+		}
 
 		// Group by employee for summary
 		const employeeSummary = {};
@@ -116,6 +201,7 @@ export async function GET(request) {
 			success: true,
 			records,
 			summary: Object.values(employeeSummary),
+			activityDays,
 		});
 	} catch (error) {
 		console.error('Error fetching attendance:', error);
