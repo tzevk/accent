@@ -104,6 +104,7 @@ export default function AttendancePage() {
 	// Data
 	const [employees, setEmployees] = useState([]);
 	const [attendanceData, setAttendanceData] = useState({}); // { empId: { 'YYYY-MM-DD': { status, overtime_hours, ... } } }
+	const [activityDays, setActivityDays] = useState({}); // { empId: { 'YYYY-MM-DD': true } }
 	const [salaryProfiles, setSalaryProfiles] = useState({}); // { empId: { basic, da, basic_plus_da, ... } }
 	const [holidays, setHolidays] = useState([]);
 	const [loading, setLoading] = useState(true);
@@ -207,12 +208,13 @@ export default function AttendancePage() {
 			const monthStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 			const res = await fetch(`/api/attendance?month=${monthStr}`);
 			const data = await res.json();
-			if (data.success && data.summary) {
+			if (data.success) {
 				const map = {};
-				data.summary.forEach((emp) => {
+				(data.summary || []).forEach((emp) => {
 					map[emp.employee_id] = emp.days || {};
 				});
 				setAttendanceData(map);
+				setActivityDays(data.activityDays || {});
 			}
 		} catch (err) {
 			console.error('Error fetching attendance:', err);
@@ -268,7 +270,8 @@ export default function AttendancePage() {
 		);
 	}, [fetchEmployees, fetchAttendance, fetchHolidays]);
 
-	// Default all unmarked days to Present while preserving existing statuses.
+	// Default only days with a logged project activity to Present while
+	// preserving existing statuses.
 	useEffect(() => {
 		if (loading || employees.length === 0 || monthDates.length === 0) return;
 
@@ -279,7 +282,7 @@ export default function AttendancePage() {
 			employees.forEach((emp) => {
 				const empDays = { ...(updated[emp.id] || {}) };
 				monthDates.forEach(({ dateStr }) => {
-					if (!empDays[dateStr]?.status) {
+					if (!empDays[dateStr]?.status && activityDays[emp.id]?.[dateStr]) {
 						empDays[dateStr] = { ...(empDays[dateStr] || {}), status: 'P' };
 						changed = true;
 					}
@@ -289,7 +292,7 @@ export default function AttendancePage() {
 
 			return changed ? updated : prev;
 		});
-	}, [loading, employees, monthDates]);
+	}, [loading, employees, monthDates, activityDays]);
 
 	useEffect(() => {
 		if (employees.length > 0) {
@@ -415,14 +418,21 @@ export default function AttendancePage() {
 		setHasChanges(true);
 	};
 
-	// Mark all days as Present (overrides existing statuses)
+	// Mark activity days as Present (overrides existing statuses)
 	const markAllPresent = () => {
+		const hasActivityDays = employees.some((emp) =>
+			monthDates.some(({ dateStr }) => activityDays[emp.id]?.[dateStr])
+		);
+		if (!hasActivityDays) return;
+
 		setAttendanceData((prev) => {
 			const updated = { ...prev };
 			employees.forEach((emp) => {
 				const empDays = { ...(updated[emp.id] || {}) };
 				monthDates.forEach(({ dateStr }) => {
-					empDays[dateStr] = { ...(empDays[dateStr] || {}), status: 'P' };
+					if (activityDays[emp.id]?.[dateStr]) {
+						empDays[dateStr] = { ...(empDays[dateStr] || {}), status: 'P' };
+					}
 				});
 				updated[emp.id] = empDays;
 			});
