@@ -16,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
+const monthStartStr = () => `${todayStr().slice(0, 7)}-01`;
 
 const STATUS_BADGE_CLASSES = {
 	Completed: 'bg-green-100 text-green-700 border-green-200',
@@ -175,6 +176,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 	// Search / filter / sort state
 	const [search, setSearch] = useState('');
 	const [statusFilter, setStatusFilter] = useState('all');
+	const [startDate, setStartDate] = useState(() => monthStartStr());
+	const [endDate, setEndDate] = useState(() => todayStr());
 	const [sort, setSort] = useState({ key: 'due_date', dir: 'desc' });
 
 	const toggleSort = (key) => {
@@ -567,6 +570,20 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 	// Apply search, status filter, and sort.
 	const q = search.trim().toLowerCase();
 	let flatRows = baseRows;
+	if (startDate || endDate) {
+		flatRows = flatRows.filter((r) => {
+			const activityDate =
+				typeof r.activity.due_date === 'string'
+					? r.activity.due_date.slice(0, 10)
+					: '';
+			return (
+				activityDate &&
+				(!startDate || activityDate >= startDate) &&
+				(!endDate || activityDate <= endDate)
+			);
+		});
+	}
+
 	if (q) {
 		flatRows = flatRows.filter((r) => {
 			const a = r.activity;
@@ -653,7 +670,39 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
 			{/* Search / filter toolbar */}
 			{hasAnyData && (
-				<div className="px-3 py-2 border-b border-purple-100 bg-white/60 flex flex-wrap items-center gap-2">
+				<div className="px-3 py-2 border-b border-purple-100 bg-white/60 flex flex-wrap items-end gap-2">
+					<div>
+						<label
+							htmlFor="activity-start-date"
+							className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1"
+						>
+							From
+						</label>
+						<input
+							id="activity-start-date"
+							type="date"
+							value={startDate}
+							max={endDate || undefined}
+							onChange={(e) => setStartDate(e.target.value)}
+							className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+						/>
+					</div>
+					<div>
+						<label
+							htmlFor="activity-end-date"
+							className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1"
+						>
+							To
+						</label>
+						<input
+							id="activity-end-date"
+							type="date"
+							value={endDate}
+							min={startDate || undefined}
+							onChange={(e) => setEndDate(e.target.value)}
+							className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+						/>
+					</div>
 					<div className="relative flex-1 min-w-[180px] max-w-xs">
 						<MagnifyingGlassIcon className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
 						<input
@@ -661,6 +710,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 							value={search}
 							onChange={(e) => setSearch(e.target.value)}
 							placeholder="Search code, project, activity…"
+							aria-label="Search activities"
 							className="w-full pl-7 pr-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 						/>
 					</div>
@@ -669,6 +719,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 						onChange={(e) => setStatusFilter(e.target.value)}
 						className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 						title="Filter by status"
+						aria-label="Filter by status"
 					>
 						<option value="all">All statuses</option>
 						{statusOptions.map((s) => (
@@ -682,6 +733,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 							onClick={() => {
 								setSearch('');
 								setStatusFilter('all');
+								setStartDate(monthStartStr());
+								setEndDate(todayStr());
 								setSort({ key: 'due_date', dir: 'desc' });
 							}}
 							className="px-2 py-1 text-xs font-semibold text-[#64126D] hover:bg-purple-50 rounded"
