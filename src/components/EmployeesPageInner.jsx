@@ -64,6 +64,26 @@ const formatCurrency = (value) => {
 	});
 };
 
+// Normalize legacy salary rows where basic_plus_da sometimes contained Basic
+// instead of the combined Basic + DA amount.
+const normalizeSalaryBreakdown = (profile) => {
+	const storedBasic = parseFloat(profile?.basic);
+	const da = parseFloat(profile?.da) || 0;
+	const storedBasicPlusDa = parseFloat(profile?.basic_plus_da);
+	const basic = Number.isFinite(storedBasic)
+		? storedBasic
+		: Math.max(
+				0,
+				(Number.isFinite(storedBasicPlusDa) ? storedBasicPlusDa : 0) - da
+			);
+	const basicPlusDa =
+		Number.isFinite(storedBasicPlusDa) && storedBasicPlusDa > basic
+			? storedBasicPlusDa
+			: basic + da;
+
+	return { basic, da, basicPlusDa };
+};
+
 export default function EmployeesPageInner({ employeeType = null }) {
 	// Safe profile photo change handler: forwards to canonical handler if present,
 	// otherwise shows a friendly error and avoids runtime ReferenceError while
@@ -326,7 +346,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
 		setInlineSalaryLoading(employeeId);
 		try {
 			const res = await fetch(
-				`/api/payroll/salary-profile?employee_id=${employeeId}`
+				`/api/payroll/salary-profile?employee_id=${employeeId}&_t=${Date.now()}`,
+				{ cache: 'no-store' }
 			);
 			const data = await res.json();
 			if (data.success) {
@@ -352,6 +373,22 @@ export default function EmployeesPageInner({ employeeType = null }) {
 		} finally {
 			setInlineSalaryLoading(null);
 		}
+	};
+
+	// The inline salary preview is cached while the list is open. Invalidate it
+	// after editing a profile so returning to the list cannot show stale values.
+	const invalidateInlineSalary = (employeeId) => {
+		if (!employeeId) return;
+
+		setInlineSalaryData((prev) => {
+			if (!prev[employeeId]) return prev;
+			const next = { ...prev };
+			delete next[employeeId];
+			return next;
+		});
+		setExpandedSalaryId((currentId) =>
+			currentId === employeeId ? null : currentId
+		);
 	};
 
 	// Attendance summary for employee master
@@ -2102,6 +2139,12 @@ export default function EmployeesPageInner({ employeeType = null }) {
 						}
 					}
 
+					const {
+						basic: savedBasic,
+						da: storedDa,
+						basicPlusDa: savedBasicPlusDa,
+					} = normalizeSalaryBreakdown(savedProfile);
+
 					// Load gross and other settings
 					setSalaryPreview({
 						gross: savedProfile.gross_salary || savedProfile.gross || '',
@@ -2166,8 +2209,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
 						custom_ctc: customData.ctc || savedProfile.employer_cost || '',
 						custom_hourly_rate: savedProfile.hourly_rate || '',
 						custom_monthly_hours: customData.monthly_hours || '160',
-						custom_basic: savedProfile.basic || '',
-						custom_da: savedProfile.da || '',
+						custom_basic: savedBasic || '',
+						custom_da: storedDa || '',
 						custom_hra: savedProfile.hra || '',
 						custom_conveyance: savedProfile.conveyance || '',
 						custom_call_allowance: savedProfile.call_allowance || '',
@@ -2225,11 +2268,9 @@ export default function EmployeesPageInner({ employeeType = null }) {
 					// Load the saved breakdown values directly (frozen/fixed)
 					setPreviewBreakdown({
 						gross: savedProfile.gross_salary || savedProfile.gross || 0,
-						basic_plus_da: parseFloat(savedProfile.basic_plus_da) || 0,
-						da: parseFloat(savedProfile.da) || 0,
-						basic_da_total:
-							(parseFloat(savedProfile.basic_plus_da) || 0) +
-							(parseFloat(savedProfile.da) || 0),
+						basic_plus_da: savedBasic,
+						da: storedDa,
+						basic_da_total: savedBasicPlusDa,
 						hra: parseFloat(savedProfile.hra) || 0,
 						conveyance: parseFloat(savedProfile.conveyance) || 0,
 						call_allowance: parseFloat(savedProfile.call_allowance) || 0,
@@ -2253,8 +2294,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
 
 					// Load saved values into manualValues for editing
 					setManualValues({
-						basic_plus_da: savedProfile.basic_plus_da?.toString() || '',
-						da: savedProfile.da?.toString() || '',
+						basic_plus_da: savedBasic.toString(),
+						da: storedDa.toString(),
 						hra: savedProfile.hra?.toString() || '',
 						conveyance: savedProfile.conveyance?.toString() || '',
 						call_allowance: savedProfile.call_allowance?.toString() || '',
@@ -2270,8 +2311,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
 					});
 
 					// Set DA value
-					if (savedProfile.da) {
-						setCurrentDA(parseFloat(savedProfile.da));
+					if (storedDa) {
+						setCurrentDA(storedDa);
 					}
 
 					// Set Insurance value
@@ -2340,6 +2381,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
 			}
 		}
 
+		const { basic: editBasic, da: storedDa } =
+			normalizeSalaryBreakdown(profile);
 		setSalaryPreview({
 			salary_type: 'custom',
 			gross: profile.gross_salary || profile.gross || '',
@@ -2385,8 +2428,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
 			custom_ctc: customData.ctc || profile.employer_cost || '',
 			custom_hourly_rate: profile.hourly_rate || '',
 			custom_monthly_hours: customData.monthly_hours || '160',
-			custom_basic: profile.basic || '',
-			custom_da: profile.da || '',
+			custom_basic: editBasic || '',
+			custom_da: storedDa || '',
 			custom_hra: profile.hra || '',
 			custom_conveyance: profile.conveyance || '',
 			custom_call_allowance: profile.call_allowance || '',
@@ -2451,8 +2494,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
 		}
 		// Set manual values if available
 		setManualValues({
-			basic_plus_da: profile.basic_plus_da || '',
-			da: profile.da || '',
+			basic_plus_da: editBasic || '',
+			da: storedDa || '',
 			hra: profile.hra || '',
 			conveyance: profile.conveyance || '',
 			call_allowance: profile.call_allowance || '',
@@ -2641,9 +2684,9 @@ export default function EmployeesPageInner({ employeeType = null }) {
 					insurance_applicable: salaryPreview.insurance_applicable,
 					// Include breakdown values (manual or calculated)
 					basic: previewBreakdown.basic_plus_da, // Basic (without DA)
-					basic_plus_da: previewBreakdown.basic_plus_da,
+					basic_plus_da: previewBreakdown.basic_da_total, // Combined Basic + DA
 					da: previewBreakdown.da,
-					basic_da_total: previewBreakdown.basic_da_total, // Combined Basic + DA
+					basic_da_total: previewBreakdown.basic_da_total, // Kept for API/client compatibility
 					hra: previewBreakdown.hra,
 					conveyance: previewBreakdown.conveyance,
 					call_allowance: previewBreakdown.call_allowance,
@@ -2832,7 +2875,9 @@ export default function EmployeesPageInner({ employeeType = null }) {
 			);
 
 			// Refresh saved profiles to show the new/updated record
-			await fetchSavedSalaryProfiles(selectedEmployee.id);
+			const savedEmployeeId = selectedEmployee.id;
+			invalidateInlineSalary(savedEmployeeId);
+			await fetchSavedSalaryProfiles(savedEmployeeId);
 
 			// Reset form after successful save
 			handleResetSalaryForm();
