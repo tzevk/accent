@@ -1,7 +1,17 @@
-import { render, screen, within, waitFor } from '@testing-library/react';
+import {
+	render,
+	screen,
+	within,
+	waitFor,
+	fireEvent,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import ProjectActivityAssignments from '@/components/ProjectActivityAssignments';
+
+const currentDate = new Date().toISOString().split('T')[0];
+const currentMonthDate = `${currentDate.slice(0, 7)}-01`;
 
 const DISCIPLINE_OPTIONS = [
 	{
@@ -51,7 +61,7 @@ const ASSIGNMENTS = [
 		default_manhours: 12,
 		planned_hours: 8,
 		actual_hours: 4,
-		due_date: '2026-02-15',
+		due_date: currentMonthDate,
 		status: 'In Progress',
 	},
 	{
@@ -68,7 +78,7 @@ const ASSIGNMENTS = [
 		default_manhours: 0,
 		planned_hours: 5,
 		actual_hours: 0,
-		due_date: '2026-03-01',
+		due_date: currentMonthDate,
 		status: 'Not Started',
 	},
 	{
@@ -85,7 +95,7 @@ const ASSIGNMENTS = [
 		default_manhours: 10,
 		planned_hours: 16,
 		actual_hours: 8,
-		due_date: '2026-04-01',
+		due_date: currentMonthDate,
 		status: 'On Hold',
 	},
 ];
@@ -100,6 +110,12 @@ const EMPTY_PROJECTS = [
 		project_end_date: '2026-09-30',
 	},
 ];
+const OLD_ASSIGNMENT = {
+	...ASSIGNMENTS[0],
+	activity_id: 'act-old',
+	activity_name: 'Old Activity',
+	due_date: '2000-01-01',
+};
 
 const buildFetch = ({
 	assignments = ASSIGNMENTS,
@@ -208,6 +224,32 @@ describe('ProjectActivityAssignments', () => {
 		// Project Name column is hidden — names should not appear as table cells
 		expect(screen.queryByText('Alpha Plant')).not.toBeInTheDocument();
 		expect(screen.queryByText('Beta Tower')).not.toBeInTheDocument();
+	});
+	it('defaults to the current month and filters by the selected range', () => {
+		render(
+			<ProjectActivityAssignments
+				userId={42}
+				preloadedData={{
+					assignments: [ASSIGNMENTS[0], OLD_ASSIGNMENT],
+					emptyProjects: [],
+				}}
+			/>
+		);
+
+		expect(screen.getByLabelText('From')).toHaveValue(currentMonthDate);
+		expect(screen.getByLabelText('To')).toHaveValue(currentDate);
+		expect(screen.getByText('Foundation Work')).toBeInTheDocument();
+		expect(screen.queryByText('Old Activity')).not.toBeInTheDocument();
+
+		fireEvent.change(screen.getByLabelText('From'), {
+			target: { value: '2000-01-01' },
+		});
+		fireEvent.change(screen.getByLabelText('To'), {
+			target: { value: '2000-01-31' },
+		});
+
+		expect(screen.getByText('Old Activity')).toBeInTheDocument();
+		expect(screen.queryByText('Foundation Work')).not.toBeInTheDocument();
 	});
 
 	it('shows Total Manhours as the sum of planned_hours across all rows', () => {
@@ -490,7 +532,7 @@ describe('ProjectActivityAssignments', () => {
 		const activitySelect = screen.getAllByRole('combobox')[3];
 		const subActivitySelect = screen.getAllByRole('combobox')[4];
 		const manhoursInput = screen.getByPlaceholderText('Hrs');
-		const dateInput = document.querySelector('input[type="date"]');
+		const dateInput = document.querySelectorAll('input[type="date"]')[2];
 
 		await user.selectOptions(projectSelect, '1');
 		await user.selectOptions(disciplineSelect, 'd1');
