@@ -1,24 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { useSession } from '@/context/SessionContext';
 
 export default function Home() {
 	const router = useRouter();
-	const [checking, setChecking] = useState(true);
+	const { loading, authenticated } = useSession();
 
 	useEffect(() => {
-		// Middleware gates /: unauthenticated users are bounced to /signin
-		// before this component renders. Authenticated users land here and
-		// DashboardRedirect routes them by their session user.
-		router.replace('/dashboard');
-		setChecking(false);
-	}, [router]);
+		if (loading) return;
+		if (!authenticated) {
+			router.replace('/signin');
+		} else {
+			router.replace('/dashboard');
+		}
+	}, [router, loading, authenticated]);
 
 	return (
 		<LoadingSpinner
-			message={checking ? 'Loading' : 'Redirecting'}
+			message={loading ? 'Loading' : 'Redirecting'}
 			subMessage="Please wait..."
 		/>
 	);

@@ -294,17 +294,9 @@ export function proxy(req: NextRequest) {
 	return response;
 }
 
-// Configure which paths the middleware runs on
+// Configure which paths the proxy runs on
+// Keep matcher minimal: only skip Next internals. Public vs protected
+// is decided inside proxy() via isPublicPath(), not by the matcher.
 export const config = {
-	matcher: [
-		/*
-		 * Match all request paths except for the ones starting with:
-		 * - api (API routes) - handled separately in proxy
-		 * - _next/static (static files)
-		 * - _next/image (image optimization files)
-		 * - favicon.ico (favicon file)
-		 * - public folder
-		 */
-		'/((?!_next/static|_next/image|favicon.ico|public|uploads).*)',
-	],
+	matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
