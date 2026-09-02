@@ -30,6 +30,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { clearSessionCache } from '@/context/SessionContext';
+import NotificationsBell from '@/components/NotificationsBell';
 
 // Base navigation items with their resource keys
 const navigationConfig = [
@@ -757,6 +758,10 @@ export default function Navbar() {
 
 						{/* Profile Menu and Mobile Button */}
 						<div className="flex items-center space-x-3">
+							{/* Notifications (leave approvers only) */}
+							<div className="flex">
+								<NotificationsBell />
+							</div>
 							{/* User Profile Display */}
 							<div className="hidden md:flex items-center space-x-3">
 								<div className="flex items-center space-x-2 px-3 py-2 rounded-xl text-white/90">
