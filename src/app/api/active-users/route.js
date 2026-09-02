@@ -74,4 +74,3 @@ export async function GET(request) {
 		if (db) db.release();
 	}
 }
-

@@ -17,7 +17,10 @@ describe('filterApprovers', () => {
 
 	it('includes approvers via role permissions', () => {
 		const rows = [
-			candidate({ id: 2, role_permissions: ['projects:read', 'leaves:approve'] }),
+			candidate({
+				id: 2,
+				role_permissions: ['projects:read', 'leaves:approve'],
+			}),
 		];
 		expect(filterApprovers(rows, 99)).toEqual([2]);
 	});

@@ -98,13 +98,17 @@ export default function NotificationsBell() {
 			{open && (
 				<div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl bg-white shadow-xl ring-1 ring-black/5 overflow-hidden z-50">
 					<div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-						<span className="text-sm font-semibold text-gray-900">Notifications</span>
+						<span className="text-sm font-semibold text-gray-900">
+							Notifications
+						</span>
 						{hasPending ? (
 							<span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
 								{pendingCount} pending
 							</span>
 						) : (
-							<span className="text-xs text-gray-500">{items.length} total</span>
+							<span className="text-xs text-gray-500">
+								{items.length} total
+							</span>
 						)}
 					</div>
 
@@ -162,7 +166,9 @@ export default function NotificationsBell() {
 							</div>
 						) : (
 							<div className="px-4 py-3">
-								<p className="text-xs text-center text-gray-400">No pending leave requests</p>
+								<p className="text-xs text-center text-gray-400">
+									No pending leave requests
+								</p>
 							</div>
 						)}
 
@@ -184,9 +190,17 @@ export default function NotificationsBell() {
 										}}
 										className="w-full text-left px-4 py-3 hover:bg-purple-50 transition-colors"
 									>
-										<p className="text-sm font-medium text-gray-900">{n.title}</p>
-										{n.body && <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</p>}
-										<p className="text-[11px] text-gray-400 mt-1">{formatDateTime(n.created_at)}</p>
+										<p className="text-sm font-medium text-gray-900">
+											{n.title}
+										</p>
+										{n.body && (
+											<p className="text-xs text-gray-600 mt-0.5 line-clamp-2">
+												{n.body}
+											</p>
+										)}
+										<p className="text-[11px] text-gray-400 mt-1">
+											{formatDateTime(n.created_at)}
+										</p>
 									</button>
 								))}
 							</div>

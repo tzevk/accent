@@ -68,7 +68,12 @@ export async function GET(request) {
 
 		return NextResponse.json({
 			success: true,
-			data: { notifications: rows, unread_count, pending_leaves, pending_count },
+			data: {
+				notifications: rows,
+				unread_count,
+				pending_leaves,
+				pending_count,
+			},
 		});
 	} catch (error) {
 		console.error('Error fetching notifications:', error);
