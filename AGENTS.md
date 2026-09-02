@@ -85,3 +85,17 @@ Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before 
 
 - `knexfile.js` branches on `NODE_ENV` → `DEV_DB_*` / `STAGING_DB_*` / `PROD_DB_*` (plus `DB_HOST`/`DB_PORT`). Migrations are ESM `up(knex)/down(knex)` in `migrations/`.
 - `.env` is gitignored; `src/utils/database.js:1` does `dotenv.config()` for scripts. Production `connectionLimit` stays `5` (below MySQL `max_user_connections`).
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues (gh CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles mapped 1:1. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context (CONTEXT.md + docs/adr/ at root). See `docs/agents/domain.md`.

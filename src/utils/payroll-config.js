@@ -1,4 +1,4 @@
-import { R, pctOf, roundR, toNumber } from '@/lib/money';
+import { R, add, pctOf, roundR, toNumber } from '@/lib/money';
 /**
  * Centralized Payroll Configuration
  * All salary structure rules and calculation constants in one place
@@ -243,7 +243,7 @@ export function calculatePF(
 		employeeContribution,
 		employerEPF,
 		employerEPS,
-		employerTotal: employerEPF + employerEPS,
+		employerTotal: toNumber(add(employerEPF, employerEPS)),
 		pfAdmin,
 	};
 }
