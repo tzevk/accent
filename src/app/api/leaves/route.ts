@@ -7,6 +7,7 @@ import {
 } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { logActivity } from '@/utils/activity-logger';
+import { notifyLeaveApprovers } from '@/utils/notifications';
 import {
 	computeDurationDays,
 	parseDateInput,
@@ -247,6 +248,14 @@ export async function POST(request: Request) {
 			details: null,
 			request,
 			status: 'success',
+		});
+
+		notifyLeaveApprovers({
+			applicantId: authResult.user.id,
+			applicantName: authResult.user.full_name ?? null,
+			leaveTypeName: typeRows[0].name,
+			durationDays,
+			startDate,
 		});
 
 		return NextResponse.json({
