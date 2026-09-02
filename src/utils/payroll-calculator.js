@@ -10,13 +10,21 @@
  *  - holiday_master (for official holidays)
  */
 
-import PAYROLL_CONFIG, {
-	calculatePF,
-	calculateESIC,
-	calculateProfessionalTax,
-} from './payroll-config';
+import PAYROLL_CONFIG from './payroll-config';
 import { dbConnect } from './database';
-import { R, add, sub, pctOf, roundR, toNumber } from '@/lib/money';
+import {
+	calculatePayroll,
+	calculatePayrollBreakdown,
+	calculatePayrollBoundary,
+	normalizeSalaryProfile,
+} from './payroll-calculation';
+
+export {
+	calculatePayroll,
+	calculatePayrollBreakdown,
+	calculatePayrollBoundary,
+	normalizeSalaryProfile,
+};
 
 /**
  * Get current active DA amount from da_schedule
@@ -47,6 +55,91 @@ export async function getCurrentDA(forDate = new Date()) {
 			db.release();
 		} catch (_) {
 			/* ignore */
+		}
+	}
+}
+
+const scheduleDate = (value) =>
+	typeof value === 'string'
+		? value.substring(0, 10)
+		: value.toISOString().split('T')[0];
+
+/**
+ * Load the effective Payroll Schedule once for a calculation run. The
+ * canonical payroll_schedules table is preferred; the legacy DA table remains
+ * a compatibility fallback until DA storage is unified.
+ */
+export async function getEffectivePayrollSchedule(
+	forDate = new Date(),
+	existingDb = null
+) {
+	const date = scheduleDate(forDate);
+	const db = existingDb || (await dbConnect());
+	const ownsConnection = !existingDb;
+	const components = {};
+
+	try {
+		try {
+			const [rows] = await db.execute(
+				`SELECT component_type, value_type, value, min_salary, max_salary, id
+         FROM payroll_schedules
+         WHERE is_active = 1
+           AND effective_from <= ?
+           AND (effective_to IS NULL OR effective_to >= ?)
+         ORDER BY component_type, effective_from DESC, id DESC`,
+				[date, date]
+			);
+
+			for (const row of rows) {
+				if (row.component_type === 'pt') {
+					if (!components.pt) components.pt = [];
+					components.pt.push(row);
+				} else if (!components[row.component_type]) {
+					components[row.component_type] = row;
+				}
+			}
+		} catch (error) {
+			// Keep existing deployments working while the canonical table is absent.
+			console.warn('Payroll schedule lookup skipped:', error.message);
+		}
+
+		if (!components.da) {
+			try {
+				const [rows] = await db.execute(
+					`SELECT da_amount, effective_from, effective_to
+           FROM da_schedule
+           WHERE is_active = 1
+             AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31')
+           ORDER BY effective_from DESC, id DESC
+           LIMIT 1`,
+					[date]
+				);
+				if (rows.length > 0) {
+					components.da = {
+						value_type: 'fixed',
+						value: rows[0].da_amount,
+					};
+				}
+			} catch (error) {
+				console.warn('Legacy DA lookup skipped:', error.message);
+			}
+		}
+
+		if (!components.da) {
+			components.da = {
+				value_type: 'fixed',
+				value: PAYROLL_CONFIG.DA_FIXED_AMOUNT,
+			};
+		}
+
+		return { date, components };
+	} finally {
+		if (ownsConnection) {
+			try {
+				db.release();
+			} catch (_) {
+				/* ignore */
+			}
 		}
 	}
 }
@@ -360,90 +453,45 @@ export async function getEmployeeAttendance(employeeId, month) {
 }
 
 /**
- * Get employee's current salary profile from salary_structures table
- * @param {number} employeeId - Employee ID
- * @param {Date} forDate - Date to check (defaults to today)
- * @returns {Promise<object|null>} Salary profile or null
+ * Get the effective Salary Profile. The canonical employee_salary_profile is
+ * selected first; salary_structures is read-only compatibility fallback data.
  */
 export async function getEmployeeSalaryProfile(
 	employeeId,
 	forDate = new Date()
 ) {
 	const db = await dbConnect();
-
-	// Format date for MySQL
-	const dateStr =
-		typeof forDate === 'string' ? forDate : forDate.toISOString().split('T')[0];
+	const dateStr = scheduleDate(forDate);
 
 	try {
-		// Always fetch employee_salary_profile for individual component values
-		const [legacyRows] = await db.execute(
-			`SELECT * 
-       FROM employee_salary_profile 
-       WHERE employee_id = ? 
+		const [canonicalRows] = await db.execute(
+			`SELECT *
+       FROM employee_salary_profile
+       WHERE employee_id = ?
          AND is_active = 1
-       ORDER BY effective_from DESC
+         AND effective_from <= ?
+         AND (effective_to IS NULL OR effective_to >= ?)
+       ORDER BY effective_from DESC, id DESC
        LIMIT 1`,
-			[employeeId]
+			[employeeId, dateStr, dateStr]
 		);
-		const legacyProfile = legacyRows.length > 0 ? legacyRows[0] : null;
-
-		// Try the salary_structures table (newer)
-		const [rows] = await db.execute(
-			`SELECT 
-        ss.*
-       FROM salary_structures ss
-       WHERE ss.employee_id = ? 
-         AND ss.is_active = 1
-       ORDER BY ss.effective_from DESC
+		const [legacyRows] = await db.execute(
+			`SELECT *
+       FROM salary_structures
+       WHERE employee_id = ?
+         AND is_active = 1
+         AND effective_from <= ?
+         AND (effective_to IS NULL OR effective_to >= ?)
+       ORDER BY effective_from DESC, id DESC
        LIMIT 1`,
-			[employeeId]
+			[employeeId, dateStr, dateStr]
 		);
 
-		if (rows.length > 0) {
-			const profile = rows[0];
-
-			// Use gross_salary (total earnings), NOT CTC.
-			// CTC includes employer contributions (PF employer, ESIC employer, bonus, insurance, etc.)
-			// and should NOT be used as the base for salary component calculations.
-			// Only fall back to CTC if gross_salary is truly unavailable.
-			const grossSalary =
-				(parseFloat(profile.gross_salary) || 0) > 0
-					? parseFloat(profile.gross_salary)
-					: (legacyProfile ? parseFloat(legacyProfile.gross_salary) || 0 : 0) >
-						  0
-						? parseFloat(legacyProfile.gross_salary)
-						: parseFloat(profile.ctc) || 0;
-
-			// Merge: start with legacy profile (has individual components like basic, da, hra),
-			// then overlay salary_structures values (has overall parameters and flags).
-			// This ensures the payroll calculator has access to saved component breakdowns.
-			return {
-				...(legacyProfile || {}),
-				...profile,
-				gross_salary: grossSalary,
-				// Carry individual component values from legacy profile if salary_structures doesn't have them
-				basic: profile.basic || (legacyProfile ? legacyProfile.basic : null),
-				da: profile.da || (legacyProfile ? legacyProfile.da : null),
-				hra: profile.hra || (legacyProfile ? legacyProfile.hra : null),
-				conveyance:
-					profile.conveyance ||
-					(legacyProfile ? legacyProfile.conveyance : null),
-				call_allowance:
-					profile.call_allowance ||
-					(legacyProfile ? legacyProfile.call_allowance : null),
-				other_allowances:
-					profile.other_allowances ||
-					(legacyProfile ? legacyProfile.other_allowances : null),
-				bonus: profile.bonus || (legacyProfile ? legacyProfile.bonus : null),
-				incentive:
-					profile.incentive || (legacyProfile ? legacyProfile.incentive : null),
-				standard_working_days: profile.standard_working_days || 26,
-			};
-		}
-
-		// Fallback to employee_salary_profile if no salary_structures record
-		return legacyProfile;
+		const canonical = canonicalRows.length > 0 ? canonicalRows[0] : null;
+		const legacy = legacyRows.length > 0 ? legacyRows[0] : null;
+		return canonical || legacy
+			? normalizeSalaryProfile(canonical, legacy)
+			: null;
 	} catch (error) {
 		console.error('Error getting employee salary profile:', error);
 		return null;
@@ -470,28 +518,28 @@ export async function calculateEmployeePayroll(
 	month,
 	options = {}
 ) {
-	const includeBonus = options.include_bonus === true;
-	// Get employee's salary profile
+	const includeBonus =
+		options.include_bonus === true || options.includeBonus === true;
 	const profile = await getEmployeeSalaryProfile(employeeId, month);
 
-	if (!profile) {
-		// Return null instead of throwing - let caller handle missing profile
-		return null;
-	}
+	if (!profile) return null;
 
-	// Get current DA
-	const daAmount = await getCurrentDA(month);
-
-	// Get attendance data for the month
-	const attendance = await getEmployeeAttendance(employeeId, month);
+	const [payrollSchedule, attendance] = await Promise.all([
+		options.payrollSchedule ||
+			options.schedule ||
+			getEffectivePayrollSchedule(month),
+		options.attendance || getEmployeeAttendance(employeeId, month),
+	]);
 
 	return computePayroll(
 		employeeId,
 		month,
 		profile,
-		daAmount,
+		undefined,
 		attendance,
-		includeBonus
+		includeBonus,
+		payrollSchedule,
+		options.overrides || options.manualOverrides || {}
 	);
 }
 
@@ -658,78 +706,52 @@ export async function generatePayrollSlip(employeeId, month, options = {}) {
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Fetch salary profiles for a list of employee IDs in a single query.
- * Returns a Map<employee_id, profile>.
+ * Fetch effective Salary Profiles for a list of employees in two queries.
+ * Canonical profiles are merged over legacy fallback rows field by field.
  */
-async function batchGetSalaryProfiles(db, employeeIds) {
+async function batchGetSalaryProfiles(db, employeeIds, forDate) {
 	if (employeeIds.length === 0) return new Map();
 
 	const placeholders = employeeIds.map(() => '?').join(',');
-
-	// Always fetch employee_salary_profile for individual component values (basic, da, hra, etc.)
-	const [allLegacyRows] = await db.execute(
-		`SELECT esp.*
-     FROM employee_salary_profile esp
-     INNER JOIN (
-       SELECT employee_id, MAX(id) as max_id
-       FROM employee_salary_profile
-       WHERE is_active = 1 AND employee_id IN (${placeholders})
-       GROUP BY employee_id
-     ) latest ON esp.id = latest.max_id`,
-		employeeIds
+	const date = scheduleDate(forDate);
+	const [canonicalRows] = await db.execute(
+		`SELECT *
+     FROM employee_salary_profile
+     WHERE is_active = 1
+       AND employee_id IN (${placeholders})
+       AND effective_from <= ?
+       AND (effective_to IS NULL OR effective_to >= ?)
+     ORDER BY employee_id, effective_from DESC, id DESC`,
+		[...employeeIds, date, date]
 	);
+	const [legacyRows] = await db.execute(
+		`SELECT *
+     FROM salary_structures
+     WHERE is_active = 1
+       AND employee_id IN (${placeholders})
+       AND effective_from <= ?
+       AND (effective_to IS NULL OR effective_to >= ?)
+     ORDER BY employee_id, effective_from DESC, id DESC`,
+		[...employeeIds, date, date]
+	);
+
+	const canonicalMap = new Map();
+	for (const row of canonicalRows) {
+		if (!canonicalMap.has(row.employee_id)) {
+			canonicalMap.set(row.employee_id, row);
+		}
+	}
 	const legacyMap = new Map();
-	for (const row of allLegacyRows) legacyMap.set(row.employee_id, row);
-
-	// Newer salary_structures table (takes priority for overall parameters)
-	const [ssRows] = await db.execute(
-		`SELECT ss.*
-     FROM salary_structures ss
-     INNER JOIN (
-       SELECT employee_id, MAX(id) as max_id
-       FROM salary_structures
-       WHERE is_active = 1 AND employee_id IN (${placeholders})
-       GROUP BY employee_id
-     ) latest ON ss.id = latest.max_id`,
-		employeeIds
-	);
-
-	const profileMap = new Map();
-	for (const row of ssRows) {
-		const legacyProfile = legacyMap.get(row.employee_id) || {};
-
-		// Use gross_salary (total earnings), NOT CTC.
-		// CTC includes employer contributions and should not be used as salary base.
-		const grossSalary =
-			(parseFloat(row.gross_salary) || 0) > 0
-				? parseFloat(row.gross_salary)
-				: (parseFloat(legacyProfile.gross_salary) || 0) > 0
-					? parseFloat(legacyProfile.gross_salary)
-					: parseFloat(row.ctc) || 0;
-
-		profileMap.set(row.employee_id, {
-			...legacyProfile,
-			...row,
-			gross_salary: grossSalary,
-			// Carry individual component values from legacy profile if salary_structures doesn't have them
-			basic: row.basic || legacyProfile.basic || null,
-			da: row.da || legacyProfile.da || null,
-			hra: row.hra || legacyProfile.hra || null,
-			conveyance: row.conveyance || legacyProfile.conveyance || null,
-			call_allowance:
-				row.call_allowance || legacyProfile.call_allowance || null,
-			other_allowances:
-				row.other_allowances || legacyProfile.other_allowances || null,
-			bonus: row.bonus || legacyProfile.bonus || null,
-			incentive: row.incentive || legacyProfile.incentive || null,
-			standard_working_days: row.standard_working_days || 26,
-		});
+	for (const row of legacyRows) {
+		if (!legacyMap.has(row.employee_id)) legacyMap.set(row.employee_id, row);
 	}
 
-	// For employees not found in salary_structures, use legacy profile directly
-	for (const [empId, legacyProfile] of legacyMap) {
-		if (!profileMap.has(empId)) {
-			profileMap.set(empId, legacyProfile);
+	const profileMap = new Map();
+	for (const employeeId of employeeIds) {
+		const canonical = canonicalMap.get(employeeId);
+		const legacy = legacyMap.get(employeeId);
+		if (canonical || legacy) {
+			profileMap.set(employeeId, normalizeSalaryProfile(canonical, legacy));
 		}
 	}
 
@@ -853,9 +875,8 @@ async function batchGetAttendance(db, employeeIds, month) {
 }
 
 /**
- * Compute payroll breakdown in-memory (no DB calls).
- * Same logic as calculateEmployeePayroll but accepts pre-fetched data.
- * @param {boolean} includeBonus - Whether to include bonus (default: false)
+ * Compute payroll using the dependency-free calculation boundary. This is the
+ * compatibility interface retained by existing server orchestration callers.
  */
 export function computePayroll(
 	employeeId,
@@ -863,184 +884,34 @@ export function computePayroll(
 	profile,
 	daAmount,
 	attendance,
-	includeBonus = false
+	includeBonus = false,
+	payrollSchedule = null,
+	overrides = {}
 ) {
-	const fullGross = R(profile.gross_salary || profile.gross);
-	const fullOtherAllowances = R(profile.other_allowances);
-	const pfApplicable = profile.pf_applicable === 1;
-	const esicApplicable = profile.esic_applicable === 1;
-	const ptApplicable = profile.pt_applicable === 1;
-	const mlwfApplicable = profile.mlwf_applicable === 1;
-	const retentionApplicable = profile.retention_applicable === 1;
-	const bonusApplicable = profile.bonus_applicable === 1;
-	const monthlyBonus = profile.monthly_bonus === 1;
-	const incentiveApplicable = profile.incentive_applicable === 1;
-	const insuranceApplicable = profile.insurance_applicable === 1;
+	let schedule = payrollSchedule || {};
 
-	// Use profile values directly — no attendance-based pro-rata
-	const gross = fullGross;
-	const otherAllowances = fullOtherAllowances;
-	const lopDeduction = 0;
-
-	let basic, da, hra, conveyance, callAllowance, bonus, incentive;
-
-	if (profile.basic && profile.da) {
-		basic = toNumber(roundR(profile.basic));
-		da = toNumber(roundR(profile.da));
-		hra = toNumber(roundR(profile.hra));
-		conveyance = toNumber(roundR(profile.conveyance));
-		callAllowance = toNumber(roundR(profile.call_allowance));
-		bonus =
-			monthlyBonus || (includeBonus && bonusApplicable)
-				? toNumber(roundR(profile.bonus))
-				: 0;
-		incentive = incentiveApplicable ? toNumber(roundR(profile.incentive)) : 0;
-	} else {
-		const basicDaTotal = toNumber(
-			pctOf(gross, PAYROLL_CONFIG.BASIC_DA_PERCENT, 0)
-		);
-		basic = basicDaTotal - Math.round(daAmount);
-		da = Math.round(daAmount);
-		hra = toNumber(pctOf(gross, PAYROLL_CONFIG.HRA_PERCENT, 0));
-		conveyance = toNumber(pctOf(gross, PAYROLL_CONFIG.CONVEYANCE_PERCENT, 0));
-		callAllowance = toNumber(
-			pctOf(gross, PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT, 0)
-		);
-		bonus = 0;
-		incentive = 0;
+	// Older callers pass DA as a positional argument. Preserve it without
+	// replacing a schedule supplied by the new orchestration path.
+	if (daAmount !== undefined && daAmount !== null) {
+		if (schedule.components) {
+			schedule = {
+				...schedule,
+				components: { ...schedule.components, da: daAmount },
+			};
+		} else {
+			schedule = { ...schedule, da: daAmount };
+		}
 	}
 
-	const overtimeHours = parseFloat(attendance.totalOvertimeHours || 0);
-	const otRate =
-		overtimeHours > 0
-			? toNumber(
-					R(basic + da)
-						.div(8)
-						.times(overtimeHours)
-						.toDecimalPlaces(2)
-				)
-			: 0;
-	const totalEarnings = toNumber(
-		add(
-			basic,
-			da,
-			hra,
-			conveyance,
-			callAllowance,
-			toNumber(otherAllowances),
-			bonus,
-			incentive,
-			otRate
-		)
-	);
-	const pfBreakdown = calculatePF(gross, pfApplicable, '15000');
-	const pfEmployee = pfBreakdown.employeeContribution;
-	const esicBreakdown = calculateESIC(gross, esicApplicable);
-	const esicEmployee = esicBreakdown.employeeContribution;
-	const pt = ptApplicable ? calculateProfessionalTax(fullGross) : 0;
-	const mlwfMonth = new Date(month).getMonth() + 1;
-	const isMLWFMonth = mlwfMonth === 6 || mlwfMonth === 12;
-	const mlwf =
-		mlwfApplicable && isMLWFMonth ? parseFloat(profile.mlwf) || 0 : 0;
-	const retention = retentionApplicable
-		? parseFloat(profile.retention) || 0
-		: 0;
-	const totalDeductions = toNumber(
-		add(pfEmployee, esicEmployee, pt, mlwf, retention)
-	);
-	const netPay = toNumber(sub(totalEarnings, totalDeductions));
-	const pfEmployer = pfBreakdown.employerTotal;
-	const esicEmployer = esicBreakdown.employerContribution;
-	const mlwfEmployer =
-		mlwfApplicable && isMLWFMonth ? parseFloat(profile.mlwf_employer) || 0 : 0;
-	const insurance = insuranceApplicable
-		? parseFloat(profile.insurance) || 0
-		: 0;
-	const fullBasic =
-		R(profile.basic).toNumber() ||
-		pctOf(fullGross, PAYROLL_CONFIG.BASIC_DA_PERCENT, 0)
-			.minus(daAmount)
-			.toNumber();
-	const gratuity = toNumber(
-		pctOf(fullBasic, PAYROLL_CONFIG.GRATUITY_PERCENT, 0)
-	);
-	const pfAdmin = pfBreakdown.pfAdmin;
-	const edli = toNumber(
-		pctOf(pfBreakdown.wageBase, PAYROLL_CONFIG.EDLI_PERCENT, 0)
-	);
-	const totalEmployerContributions = toNumber(
-		add(
-			pfEmployer,
-			esicEmployer,
-			mlwfEmployer,
-			bonus,
-			insurance,
-			gratuity,
-			pfAdmin,
-			edli
-		)
-	);
-	const employerCost = toNumber(add(totalEarnings, totalEmployerContributions));
-
-	return {
+	return calculatePayroll({
+		employeeId,
 		month,
-		employee_id: employeeId,
-		gross: toNumber(gross),
-		da_used: daAmount,
-		da,
-		basic,
-		hra,
-		conveyance,
-		call_allowance: callAllowance,
-		other_allowances: toNumber(otherAllowances),
-		bonus,
-		incentive,
-		ot_rate: otRate,
-		total_earnings: totalEarnings,
-		pf_employee: pfEmployee,
-		esic_employee: esicEmployee,
-		pt,
-		mlwf,
-		retention,
-		lwf: 0,
-		tds: 0,
-		other_deductions: 0,
-		total_deductions: totalDeductions,
-		net_pay: netPay,
-		pf_employer: pfEmployer,
-		esic_employer: esicEmployer,
-		mlwf_employer: mlwfEmployer,
-		insurance,
-		gratuity,
-		pf_admin: pfAdmin,
-		edli,
-		total_employer_contributions: totalEmployerContributions,
-		employer_cost: employerCost,
-		attendance: {
-			standard_working_days: attendance.standardWorkingDays,
-			days_present: attendance.daysPresent,
-			days_absent: attendance.daysAbsent,
-			days_leave: attendance.daysLeave,
-			weekly_off: attendance.weeklyOff,
-			holidays: attendance.holidays,
-			half_days: attendance.halfDays,
-			payable_days: attendance.payableDays,
-			lop_days: attendance.lopDays,
-			overtime_hours: attendance.totalOvertimeHours,
-			has_attendance_data: attendance.hasAttendanceData,
-		},
-		full_month: {
-			gross: toNumber(fullGross),
-			other_allowances: toNumber(fullOtherAllowances),
-		},
-		lop_deduction: lopDeduction,
-		pl_total: parseInt(profile.pl_total) || 21,
-		pl_used: parseInt(profile.pl_used) || 0,
-		pl_balance:
-			parseInt(profile.pl_balance) || 21 - (parseInt(profile.pl_used) || 0),
-		payment_status: 'pending',
-		remarks: null,
-	};
+		salaryProfile: profile,
+		payrollSchedule: schedule,
+		attendance,
+		overrides,
+		includeBonus,
+	});
 }
 
 /**
@@ -1073,26 +944,16 @@ export async function generateMonthlyPayroll(
 		const isPayrollFilter = salaryType === 'payroll';
 		const isContractFilter = salaryType === 'contract';
 
-		// ── 1. Fetch employee list (same logic, single connection) ──
-		let ssQuery = `SELECT DISTINCT ss.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name
-       FROM salary_structures ss
-       JOIN employees e ON e.id = ss.employee_id
-       LEFT JOIN employee_salary_profile esp ON esp.employee_id = e.id AND esp.is_active = 1
-       WHERE (e.status = 'active' OR e.status IS NULL)
-         AND ss.is_active = 1`;
-		const ssParams = [];
-		if (isPayrollFilter)
-			ssQuery += ` AND (esp.salary_type IS NULL OR esp.salary_type != 'contract')`;
-		else if (isContractFilter) ssQuery += ` AND esp.salary_type = 'contract'`;
-		const [ssEmployees] = await db.execute(ssQuery, ssParams);
-
+		// ── 1. Fetch employee list (canonical profiles first) ──
+		const date = scheduleDate(month);
 		let espQuery = `SELECT DISTINCT esp.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name
        FROM employee_salary_profile esp
        JOIN employees e ON e.id = esp.employee_id
        WHERE (e.status = 'active' OR e.status IS NULL)
          AND esp.is_active = 1
-         AND esp.employee_id NOT IN (SELECT employee_id FROM salary_structures WHERE is_active = 1)`;
-		const espParams = [];
+         AND esp.effective_from <= ?
+         AND (esp.effective_to IS NULL OR esp.effective_to >= ?)`;
+		const espParams = [date, date];
 		if (isPayrollFilter)
 			espQuery += ` AND (esp.salary_type IS NULL OR esp.salary_type != 'contract')`;
 		else if (isContractFilter) espQuery += ` AND esp.salary_type = 'contract'`;
@@ -1102,7 +963,31 @@ export async function generateMonthlyPayroll(
 		}
 		const [espEmployees] = await db.execute(espQuery, espParams);
 
-		const employees = [...ssEmployees, ...espEmployees];
+		let ssQuery = `SELECT DISTINCT ss.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name
+       FROM salary_structures ss
+       JOIN employees e ON e.id = ss.employee_id
+       WHERE (e.status = 'active' OR e.status IS NULL)
+         AND ss.is_active = 1
+         AND ss.effective_from <= ?
+         AND (ss.effective_to IS NULL OR ss.effective_to >= ?)
+         AND NOT EXISTS (
+           SELECT 1 FROM employee_salary_profile esp
+           WHERE esp.employee_id = ss.employee_id
+             AND esp.is_active = 1
+             AND esp.effective_from <= ?
+             AND (esp.effective_to IS NULL OR esp.effective_to >= ?)
+         )`;
+		const ssParams = [date, date, date, date];
+		if (isPayrollFilter)
+			ssQuery += ` AND (ss.pay_type IS NULL OR ss.pay_type != 'contract')`;
+		else if (isContractFilter) ssQuery += ` AND ss.pay_type = 'contract'`;
+		else if (filterBySalaryType) {
+			ssQuery += ` AND (ss.pay_type = ? OR (ss.pay_type IS NULL AND ? = 'monthly'))`;
+			ssParams.push(salaryType, salaryType);
+		}
+		const [ssEmployees] = await db.execute(ssQuery, ssParams);
+
+		const employees = [...espEmployees, ...ssEmployees];
 		if (employees.length === 0) {
 			return { month, total: 0, success: 0, failed: 0, skipped: 0, errors: [] };
 		}
@@ -1134,18 +1019,9 @@ export async function generateMonthlyPayroll(
 			return results;
 		}
 
-		// ── 3. Batch-fetch DA, salary profiles, attendance ──
-		const [daRows] = await db.execute(
-			`SELECT da_amount FROM da_schedule WHERE is_active = 1
-       AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31') LIMIT 1`,
-			[month]
-		);
-		const daAmount =
-			daRows.length > 0
-				? parseFloat(daRows[0].da_amount)
-				: PAYROLL_CONFIG.DA_FIXED_AMOUNT;
-
-		const profileMap = await batchGetSalaryProfiles(db, newIds);
+		// ── 3. Batch-fetch effective schedules, profiles, and attendance ──
+		const payrollSchedule = await getEffectivePayrollSchedule(month, db);
+		const profileMap = await batchGetSalaryProfiles(db, newIds, month);
 		const attendanceMap = await batchGetAttendance(db, newIds, month);
 
 		// ── 4. Ensure schema once ──
@@ -1191,9 +1067,10 @@ export async function generateMonthlyPayroll(
 					empId,
 					month,
 					profile,
-					daAmount,
+					undefined,
 					attendance,
-					empIncludeBonus
+					empIncludeBonus,
+					payrollSchedule
 				);
 				toInsert.push(payroll);
 			} catch (err) {
@@ -1301,18 +1178,9 @@ export async function generatePayrollSlipsBatch(
 			return results;
 		}
 
-		// Batch-fetch
-		const [daRows] = await db.execute(
-			`SELECT da_amount FROM da_schedule WHERE is_active = 1
-       AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31') LIMIT 1`,
-			[month]
-		);
-		const daAmount =
-			daRows.length > 0
-				? parseFloat(daRows[0].da_amount)
-				: PAYROLL_CONFIG.DA_FIXED_AMOUNT;
-
-		const profileMap = await batchGetSalaryProfiles(db, newIds);
+		// Batch-fetch effective schedules, profiles, and attendance.
+		const payrollSchedule = await getEffectivePayrollSchedule(month, db);
+		const profileMap = await batchGetSalaryProfiles(db, newIds, month);
 		const attendanceMap = await batchGetAttendance(db, newIds, month);
 		await ensurePayrollColumns(db);
 
@@ -1349,9 +1217,10 @@ export async function generatePayrollSlipsBatch(
 					empId,
 					month,
 					profile,
-					daAmount,
+					undefined,
 					attendance,
-					empIncludeBonus
+					empIncludeBonus,
+					payrollSchedule
 				);
 				await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
 				results.success++;
@@ -1379,6 +1248,7 @@ export async function generatePayrollSlipsBatch(
 
 const payrollCalculator = {
 	getCurrentDA,
+	getEffectivePayrollSchedule,
 	getEmployeeAttendance,
 	getEmployeeSalaryProfile,
 	calculateEmployeePayroll,
