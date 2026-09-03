@@ -39,7 +39,7 @@ describe('calculatePayroll', () => {
 			payrollSchedule: {
 				components: {
 					da: { value_type: 'fixed', value: 3_000 },
-					mlwf: { value_type: 'fixed', value: 25 },
+					mlwf_employee: { value_type: 'fixed', value: 25 },
 					mlwf_employer: { value_type: 'fixed', value: 75 },
 					insurance: { value_type: 'fixed', value: 125 },
 					tds: { value_type: 'percentage', value: 10 },

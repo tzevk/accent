@@ -345,21 +345,42 @@ export function calculatePayroll(
 	}
 	const basicPlusDaTotal = money(add(basic, da));
 
-	const salaryHead = (name, fallback) =>
+	const salaryHead = (name, fallback, scheduled) =>
 		money(
-			overrideValue(manual, [name]) ?? valueFrom(profile, [name]) ?? fallback
+			overrideValue(manual, [name]) ??
+				valueFrom(profile, [name]) ??
+				scheduled?.amount ??
+				fallback
 		);
+	const scheduledHra = scheduleComponent(
+		schedule,
+		['hra', 'hra_percent'],
+		fullGross
+	);
+	const scheduledConveyance = scheduleComponent(
+		schedule,
+		['conveyance', 'conveyance_percent'],
+		fullGross
+	);
+	const scheduledCallAllowance = scheduleComponent(
+		schedule,
+		['call_allowance', 'call_allowance_percent'],
+		fullGross
+	);
 	const hra = salaryHead(
 		'hra',
-		pctOf(fullGross, PAYROLL_CONFIG.HRA_PERCENT, 0)
+		pctOf(fullGross, PAYROLL_CONFIG.HRA_PERCENT, 0),
+		scheduledHra
 	);
 	const conveyance = salaryHead(
 		'conveyance',
-		pctOf(fullGross, PAYROLL_CONFIG.CONVEYANCE_PERCENT, 0)
+		pctOf(fullGross, PAYROLL_CONFIG.CONVEYANCE_PERCENT, 0),
+		scheduledConveyance
 	);
 	const callAllowance = salaryHead(
 		'call_allowance',
-		pctOf(fullGross, PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT, 0)
+		pctOf(fullGross, PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT, 0),
+		scheduledCallAllowance
 	);
 	const otherAllowances = money(
 		overrideValue(manual, ['other_allowances']) ?? fullOtherAllowances
@@ -515,7 +536,11 @@ export function calculatePayroll(
 
 	const mlwfMonth = monthNumber(payrollMonth);
 	const isMLWFMonth = mlwfMonth === 6 || mlwfMonth === 12;
-	const scheduledMLWF = scheduleComponent(schedule, ['mlwf'], fullGross);
+	const scheduledMLWF = scheduleComponent(
+		schedule,
+		['mlwf', 'mlwf_employee'],
+		fullGross
+	);
 	const scheduledMLWFEmployer = scheduleComponent(
 		schedule,
 		['mlwf_employer'],
