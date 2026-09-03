@@ -1,7 +1,7 @@
 'use client';
 
-import EmployeesPageInner from '@/components/EmployeesPageInner';
+import EmployeeHub from '@/components/EmployeeHub';
 
 export default function EmployeesPage() {
-	return <EmployeesPageInner />;
+	return <EmployeeHub />;
 }
