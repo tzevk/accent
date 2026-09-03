@@ -35,6 +35,33 @@ const breakdown = {
 };
 
 describe('MonthlySalaryPreview', () => {
+	it('allows an authorized operator to override and reset a component', () => {
+		const onOverrideChange = vi.fn();
+		const onOverrideReset = vi.fn();
+
+		render(
+			<MonthlySalaryPreview
+				profile={{}}
+				breakdown={breakdown}
+				canOverride
+				overrideMode
+				overrides={{ basic: 14000 }}
+				onOverrideChange={onOverrideChange}
+				onOverrideReset={onOverrideReset}
+			/>
+		);
+
+		expect(screen.getByText('Overridden')).toBeVisible();
+		fireEvent.change(screen.getByLabelText('Basic override value'), {
+			target: { value: '14500' },
+		});
+		expect(onOverrideChange).toHaveBeenCalledWith('basic', '14500');
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Reset Basic to derived value' })
+		);
+		expect(onOverrideReset).toHaveBeenCalledWith('basic');
+	});
+
 	it('renders calculation results and sends applicability changes upward', () => {
 		const onApplicabilityChange = vi.fn();
 

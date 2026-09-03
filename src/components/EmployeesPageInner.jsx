@@ -5,7 +5,12 @@ import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import PAYROLL_CONFIG from '@/utils/payroll-config';
 import { usePayrollPreview } from '@/hooks/usePayrollPreview';
+import {
+	getSalaryProfileOverrides,
+	hasSalaryOverrides,
+} from '@/utils/payroll-calculation';
 import MonthlySalaryPreview from '@/components/MonthlySalaryPreview';
+import { useSessionRBAC } from '@/utils/client-rbac';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -88,6 +93,12 @@ const normalizeSalaryBreakdown = (profile) => {
 
 export default function EmployeesPageInner({ employeeType = null }) {
 	const defaultSalaryType = employeeType === 'Payroll' ? 'monthly' : 'custom';
+	const { user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
+	const canOverrideSalary = Boolean(
+		user?.is_super_admin ||
+		can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE) ||
+		can(RESOURCES.EMPLOYEES, PERMISSIONS.UPDATE)
+	);
 
 	// Safe profile photo change handler: forwards to canonical handler if present,
 	// otherwise shows a friendly error and avoids runtime ReferenceError while
@@ -479,6 +490,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
 				pf_employer: '',
 				esic_employer: '',
 			});
+			setSalaryOverrides({});
+			setSalaryOverrideMode(false);
 			setSalaryPreview({
 				salary_type:
 					employee.employee_type === 'Payroll' || employeeType === 'Payroll'
@@ -884,6 +897,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
 	const [currentBonus, setCurrentBonus] = useState(0);
 	const [currentIncentive, setCurrentIncentive] = useState(0);
 	const [currentInsurance, setCurrentInsurance] = useState(0);
+	const [salaryOverrides, setSalaryOverrides] = useState({});
+	const [salaryOverrideMode, setSalaryOverrideMode] = useState(false);
 	const [manualValues, setManualValues] = useState({
 		basic_plus_da: '',
 		da: '',
@@ -928,6 +943,7 @@ export default function EmployeesPageInner({ employeeType = null }) {
 		attendance: {
 			standardWorkingDays: salaryPreview.std_working_days || 26,
 		},
+		overrides: salaryOverrides,
 		includeBonus: true,
 	});
 
@@ -1354,6 +1370,9 @@ export default function EmployeesPageInner({ employeeType = null }) {
 				// If there's a saved profile, load it into the form
 				if (data.data.length > 0) {
 					const savedProfile = data.data[0]; // Most recent profile
+					const savedOverrides = getSalaryProfileOverrides(savedProfile);
+					setSalaryOverrides(savedOverrides);
+					setSalaryOverrideMode(hasSalaryOverrides(savedOverrides));
 
 					// Parse custom data from lumpsum_description if salary_type is custom
 					let customData = {
@@ -1563,6 +1582,9 @@ export default function EmployeesPageInner({ employeeType = null }) {
 	// Function to edit an existing salary profile - load it into the form
 	const handleEditSalaryProfile = (profile) => {
 		setEditingSalaryProfileId(profile.id);
+		const savedOverrides = getSalaryProfileOverrides(profile);
+		setSalaryOverrides(savedOverrides);
+		setSalaryOverrideMode(hasSalaryOverrides(savedOverrides));
 
 		// Parse custom data from lumpsum_description if salary_type is custom
 		let customData = { ctc: null, monthly_hours: 160, custom_components: [] };
@@ -1691,6 +1713,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
 	// Function to reset salary form for adding a new profile
 	const handleResetSalaryForm = () => {
 		setEditingSalaryProfileId(null);
+		setSalaryOverrides({});
+		setSalaryOverrideMode(false);
 		setSalaryPreview({
 			salary_type: defaultSalaryType,
 			gross: '',
@@ -1783,6 +1807,14 @@ export default function EmployeesPageInner({ employeeType = null }) {
 		// Validate based on salary type
 		const salaryType = salaryPreview.salary_type || 'custom';
 		const breakdown = salaryType === 'monthly' ? derivedPayrollPreview : null;
+		const profileHasOverrides =
+			salaryType === 'monthly' && hasSalaryOverrides(salaryOverrides);
+		const hasOverride = (key) =>
+			salaryOverrides[key] !== undefined &&
+			salaryOverrides[key] !== null &&
+			salaryOverrides[key] !== '';
+		const persistedOverride = (key) =>
+			hasOverride(key) ? (breakdown?.[key] ?? null) : null;
 
 		if (salaryType === 'monthly') {
 			if (!salaryPreview.gross) {
@@ -1829,7 +1861,7 @@ export default function EmployeesPageInner({ employeeType = null }) {
 				effective_from: salaryPreview.effective_from || currentDate,
 				effective_to: salaryPreview.effective_to || null,
 				da_year: currentYear,
-				is_manual_override: false,
+				is_manual_override: profileHasOverrides,
 				std_in_time: salaryPreview.std_in_time || '09:00',
 				std_out_time: salaryPreview.std_out_time || '17:30',
 				// Privilege Leave (PL) fields
@@ -1862,29 +1894,31 @@ export default function EmployeesPageInner({ employeeType = null }) {
 					monthly_bonus: salaryPreview.monthly_bonus,
 					incentive_applicable: salaryPreview.incentive_applicable,
 					insurance_applicable: salaryPreview.insurance_applicable,
-					// Persist the shared breakdown without changing its meaning.
-					basic: breakdown.basic,
-					basic_plus_da: breakdown.basic_plus_da,
-					da: breakdown.da,
-					basic_da_total: breakdown.basic_da_total, // Kept for API/client compatibility
-					hra: breakdown.hra,
-					conveyance: breakdown.conveyance,
-					call_allowance: breakdown.call_allowance,
-					bonus: breakdown.bonus || 0,
-					incentive: breakdown.incentive || 0,
-					pf_employee: breakdown.pf_employee,
-					esic_employee: breakdown.esic_employee,
-					pt: breakdown.pt || 0,
-					mlwf: breakdown.mlwf || 0,
-					mlwf_employer: breakdown.mlwf_employer || 0,
-					retention: breakdown.retention || 0,
-					insurance: breakdown.insurance || 0,
-					pf_employer: breakdown.pf_employer,
-					esic_employer: breakdown.esic_employer,
+					// Persist only deliberate component exceptions. The calculation
+					// boundary derives null components from the current schedule.
+					basic: persistedOverride('basic'),
+					basic_plus_da: null,
+					da: persistedOverride('da'),
+					basic_da_total: null, // Kept for API/client compatibility
+					hra: persistedOverride('hra'),
+					conveyance: persistedOverride('conveyance'),
+					call_allowance: persistedOverride('call_allowance'),
+					bonus: persistedOverride('bonus'),
+					incentive: persistedOverride('incentive'),
+					pf_employee: persistedOverride('pf_employee'),
+					esic_employee: persistedOverride('esic_employee'),
+					pt: persistedOverride('pt'),
+					mlwf: persistedOverride('mlwf'),
+					mlwf_employer: persistedOverride('mlwf_employer'),
+					retention: persistedOverride('retention'),
+					insurance: persistedOverride('insurance'),
+					pf_employer: persistedOverride('pf_employer'),
+					esic_employer: persistedOverride('esic_employer'),
+					tds_percentage: persistedOverride('tds_percentage'),
 					total_earnings: breakdown.total_earnings,
 					total_deductions: breakdown.total_deductions,
 					net_pay: breakdown.net_pay,
-					employer_cost: breakdown.employer_cost || 0,
+					employer_cost: breakdown.employer_cost,
 				};
 				console.log(
 					'Monthly salary payload - employer_cost (CTC):',
@@ -8461,6 +8495,30 @@ export default function EmployeesPageInner({ employeeType = null }) {
 																				'monthly' && (
 																				<MonthlySalaryPreview
 																					profile={salaryPreview}
+																					canOverride={canOverrideSalary}
+																					overrideMode={salaryOverrideMode}
+																					overrides={salaryOverrides}
+																					onOverrideModeChange={(enabled) => {
+																						setSalaryOverrideMode(enabled);
+																						if (!enabled)
+																							setSalaryOverrides({});
+																					}}
+																					onOverrideChange={(name, value) =>
+																						setSalaryOverrides((prev) => ({
+																							...prev,
+																							[name]: value,
+																						}))
+																					}
+																					onOverrideReset={(name) =>
+																						setSalaryOverrides((prev) => {
+																							const next = { ...prev };
+																							delete next[name];
+																							return next;
+																						})
+																					}
+																					onResetOverrides={() =>
+																						setSalaryOverrides({})
+																					}
 																					breakdown={derivedPayrollPreview}
 																					scheduleLoading={scheduleLoading}
 																					scheduleError={scheduleError}

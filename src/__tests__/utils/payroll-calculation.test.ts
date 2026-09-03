@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	calculatePayroll,
+	getSalaryProfileOverrides,
 	normalizeSalaryProfile,
 } from '@/utils/payroll-calculation';
 
@@ -129,6 +130,85 @@ describe('calculatePayroll', () => {
 		);
 	});
 
+	it('uses the effective schedule for derived profiles even when old snapshots exist', () => {
+		const result = calculatePayroll({
+			month: '2026-01-01',
+			salaryProfile: {
+				gross_salary: 30_000,
+				basic: 1_000,
+				da: 2_000,
+				hra: 2_000,
+				is_manual_override: false,
+			},
+			payrollSchedule: {
+				components: {
+					da: { value_type: 'fixed', value: 3_000 },
+					hra: { value_type: 'percentage', value: 25 },
+				},
+			},
+			attendance,
+		});
+
+		expect(result.da).toBe(3_000);
+		expect(result.basic).toBe(15_000);
+		expect(result.hra).toBe(7_500);
+	});
+
+	it('keeps saved overrides while recalculating the remaining components', () => {
+		const result = calculatePayroll({
+			month: '2026-01-01',
+			salaryProfile: {
+				gross_salary: 30_000,
+				basic: 14_000,
+				da: null,
+				is_manual_override: true,
+			},
+			payrollSchedule: {
+				components: { da: { value_type: 'fixed', value: 3_000 } },
+			},
+			attendance,
+		});
+
+		expect(result.basic).toBe(14_000);
+		expect(result.da).toBe(3_000);
+		expect(result.total_earnings - result.total_deductions).toBe(
+			result.net_pay
+		);
+	});
+
+	it('applies a saved bonus override even when bonus is not scheduled monthly', () => {
+		const result = calculatePayroll({
+			month: '2026-01-01',
+			salaryProfile: {
+				gross_salary: 30_000,
+				bonus: 500,
+				bonus_applicable: 0,
+				monthly_bonus: 0,
+				is_manual_override: true,
+			},
+			attendance,
+		});
+
+		expect(result.bonus).toBe(500);
+		expect(result.total_earnings).toBe(30_500);
+	});
+
+	it('restores a reset component from current rules', () => {
+		const result = calculatePayroll({
+			month: '2026-01-01',
+			salaryProfile: {
+				gross_salary: 30_000,
+				basic: null,
+				da: 3_000,
+				is_manual_override: true,
+			},
+			attendance,
+		});
+
+		expect(result.basic).toBe(15_000);
+		expect(result.da).toBe(3_000);
+	});
+
 	it('uses explicit amount overrides and keeps CTC out of the earnings base', () => {
 		const result = calculatePayroll({
 			month: '2026-01-01',
@@ -145,6 +225,23 @@ describe('calculatePayroll', () => {
 		expect(result.gross).toBe(30_000);
 		expect(result.basic).toBe(14_000);
 		expect(result.tds).toBe(2_000);
+	});
+});
+
+describe('salary profile overrides', () => {
+	it('round-trips only explicit persisted component values', () => {
+		expect(
+			getSalaryProfileOverrides({
+				is_manual_override: 1,
+				basic: '14000.00',
+				da: null,
+				tds_percentage: '5.00',
+				total_earnings: '30000.00',
+			})
+		).toEqual({ basic: '14000.00', tds_percentage: '5.00' });
+		expect(
+			getSalaryProfileOverrides({ is_manual_override: 0, basic: 14000 })
+		).toEqual({});
 	});
 });
 
