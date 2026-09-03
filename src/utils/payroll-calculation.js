@@ -40,6 +40,44 @@ const firstPositive = (source, keys) => {
 const enabled = (value) =>
 	value === true || value === 1 || value === '1' || value === 'true';
 
+export const SALARY_OVERRIDE_FIELDS = [
+	'basic',
+	'da',
+	'hra',
+	'conveyance',
+	'call_allowance',
+	'incentive',
+	'pf_employee',
+	'esic_employee',
+	'pt',
+	'mlwf',
+	'retention',
+	'pf_employer',
+	'esic_employer',
+	'mlwf_employer',
+	'bonus',
+	'insurance',
+	'tds_percentage',
+];
+
+export const hasSalaryOverrides = (overrides) =>
+	SALARY_OVERRIDE_FIELDS.some(
+		(key) =>
+			overrides?.[key] !== undefined &&
+			overrides?.[key] !== null &&
+			overrides?.[key] !== ''
+	);
+
+export const getSalaryProfileOverrides = (profile = {}) => {
+	if (!enabled(profile?.is_manual_override)) return {};
+
+	return Object.fromEntries(
+		SALARY_OVERRIDE_FIELDS.filter(
+			(key) => profile[key] !== undefined && profile[key] !== null
+		).map((key) => [key, profile[key]])
+	);
+};
+
 const monthNumber = (month) => {
 	const match = String(month || '').match(/^\d{4}-(\d{2})/);
 	return match ? Number(match[1]) : 0;
@@ -302,7 +340,14 @@ export function calculatePayroll(
 	const salaryType = String(
 		profile.salary_type || profile.pay_type || 'monthly'
 	).toLowerCase();
-	const savedOverrides = enabled(profile.is_manual_override) ? profile : {};
+	// Persisted component columns are exceptions only when the profile explicitly
+	// opts into override mode. Otherwise they are historical snapshots and the
+	// effective schedule remains the source of truth.
+	const savedOverrides = enabled(profile.is_manual_override)
+		? getSalaryProfileOverrides(profile)
+		: profile.is_manual_override === undefined
+			? profile // Legacy callers without the flag stored component values directly.
+			: {};
 
 	const scheduledDA = scheduleComponent(
 		schedule,
@@ -310,7 +355,7 @@ export function calculatePayroll(
 		fullGross
 	);
 	const scheduleDA = scheduledDA?.amount;
-	const profileDA = valueFrom(profile, ['da']);
+	const profileDA = valueFrom(savedOverrides, ['da']);
 	const overriddenDA = overrideValue(manual, ['da', 'da_amount']);
 	const da = money(
 		overriddenDA ?? profileDA ?? scheduleDA ?? PAYROLL_CONFIG.DA_FIXED_AMOUNT
@@ -321,8 +366,8 @@ export function calculatePayroll(
 		'basic_plus_da',
 		'basic_da_total',
 	]);
-	const profileBasic = valueFrom(profile, ['basic']);
-	const profileBasicPlusDa = valueFrom(profile, [
+	const profileBasic = valueFrom(savedOverrides, ['basic']);
+	const profileBasicPlusDa = valueFrom(savedOverrides, [
 		'basic_plus_da',
 		'basic_da_total',
 	]);
@@ -348,7 +393,7 @@ export function calculatePayroll(
 	const salaryHead = (name, fallback, scheduled) =>
 		money(
 			overrideValue(manual, [name]) ??
-				valueFrom(profile, [name]) ??
+				valueFrom(savedOverrides, [name]) ??
 				scheduled?.amount ??
 				fallback
 		);
@@ -392,16 +437,14 @@ export function calculatePayroll(
 		basicPlusDaTotal
 	);
 	const overriddenBonus = overrideValue(manual, ['bonus']);
+	const savedBonus = valueFrom(savedOverrides, ['bonus']);
 	const bonusValue =
-		overriddenBonus ??
-		valueFrom(savedOverrides, ['bonus']) ??
-		valueFrom(profile, ['bonus']) ??
-		bonusSchedule?.amount ??
-		0;
+		overriddenBonus ?? savedBonus ?? bonusSchedule?.amount ?? 0;
 	const bonus =
 		monthlyBonus ||
 		(args.includeBonus === true && bonusApplicable) ||
-		overriddenBonus !== null
+		overriddenBonus !== null ||
+		savedBonus !== null
 			? money(bonusValue)
 			: 0;
 
@@ -414,7 +457,6 @@ export function calculatePayroll(
 		? money(
 				overrideValue(manual, ['incentive']) ??
 					valueFrom(savedOverrides, ['incentive']) ??
-					valueFrom(profile, ['incentive']) ??
 					incentiveSchedule?.amount ??
 					0
 			)
@@ -551,7 +593,6 @@ export function calculatePayroll(
 			? money(
 					overrideValue(manual, ['mlwf']) ??
 						valueFrom(savedOverrides, ['mlwf']) ??
-						valueFrom(profile, ['mlwf']) ??
 						scheduledMLWF?.amount ??
 						0
 				)
@@ -561,7 +602,6 @@ export function calculatePayroll(
 			? money(
 					overrideValue(manual, ['mlwf_employer']) ??
 						valueFrom(savedOverrides, ['mlwf_employer']) ??
-						valueFrom(profile, ['mlwf_employer']) ??
 						scheduledMLWFEmployer?.amount ??
 						0
 				)
@@ -576,7 +616,6 @@ export function calculatePayroll(
 		? money(
 				overrideValue(manual, ['retention']) ??
 					valueFrom(savedOverrides, ['retention']) ??
-					valueFrom(profile, ['retention']) ??
 					scheduledRetention?.amount ??
 					0
 			)
@@ -591,7 +630,6 @@ export function calculatePayroll(
 		? money(
 				overrideValue(manual, ['insurance']) ??
 					valueFrom(savedOverrides, ['insurance']) ??
-					valueFrom(profile, ['insurance']) ??
 					scheduledInsurance?.amount ??
 					0
 			)
@@ -601,7 +639,6 @@ export function calculatePayroll(
 	const lwf = money(
 		overrideValue(manual, ['lwf']) ??
 			valueFrom(savedOverrides, ['lwf']) ??
-			valueFrom(profile, ['lwf']) ??
 			scheduledLWF?.amount ??
 			0
 	);

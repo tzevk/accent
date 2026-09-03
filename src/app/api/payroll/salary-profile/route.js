@@ -6,28 +6,41 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 
+const numberOrNull = (value) => {
+	if (value === undefined || value === null || value === '') return null;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : null;
+};
+
+const numberOrZero = (value) => numberOrNull(value) ?? 0;
+
+const ensureSalaryPermission = async (request, permission) => {
+	const employeePermission = await ensurePermission(
+		request,
+		RESOURCES.EMPLOYEES,
+		permission
+	);
+	if (employeePermission?.authorized) return employeePermission;
+
+	const payrollPermission = await ensurePermission(
+		request,
+		RESOURCES.PAYROLL,
+		permission
+	);
+	return payrollPermission?.authorized ? payrollPermission : employeePermission;
+};
+
 // POST /api/payroll/salary-profile - Create/Update employee salary profile
 // If `id` is provided, it updates that specific profile
 // If `id` is not provided, it creates a new profile
 export async function POST(request) {
 	let db;
 	try {
-		// Check permission - wrap in try-catch to provide better error messages
-		try {
-			await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.UPDATE);
-		} catch (permErr) {
-			console.error('Permission check failed:', permErr);
-			return NextResponse.json(
-				{
-					success: false,
-					error:
-						'Permission denied: ' +
-						(permErr.message ||
-							'You do not have permission to update employees'),
-				},
-				{ status: 403 }
-			);
-		}
+		const permission = await ensureSalaryPermission(
+			request,
+			PERMISSIONS.UPDATE
+		);
+		if (!permission?.authorized) return permission;
 
 		const body = await request.json();
 		console.log('Received salary profile data:', JSON.stringify(body, null, 2));
@@ -141,9 +154,9 @@ export async function POST(request) {
 
 		// Prepare common values array
 		const values = [
-			parseFloat(gross_salary) || 0, // gross (legacy column)
-			parseFloat(gross_salary) || 0, // gross_salary
-			parseFloat(other_allowances) || 0,
+			numberOrZero(gross_salary), // gross (legacy column)
+			numberOrZero(gross_salary), // gross_salary
+			numberOrZero(other_allowances),
 			effective_from,
 			effective_to || null,
 			da_year,
@@ -156,27 +169,27 @@ export async function POST(request) {
 			monthly_bonus ? 1 : 0,
 			incentive_applicable ? 1 : 0,
 			insurance_applicable ? 1 : 0,
-			parseFloat(basic_plus_da) || null,
-			parseFloat(da) || null,
-			parseFloat(basic) || null,
-			parseFloat(hra) || null,
-			parseFloat(conveyance) || null,
-			parseFloat(call_allowance) || null,
-			parseFloat(bonus) || null,
-			parseFloat(incentive) || null,
-			parseFloat(pf_employee) || null,
-			parseFloat(esic_employee) || null,
-			parseFloat(pf_employer) || null,
-			parseFloat(esic_employer) || null,
-			parseFloat(pt) || null,
-			parseFloat(mlwf) || null,
-			parseFloat(mlwf_employer) || null,
-			parseFloat(retention) || null,
-			parseFloat(insurance) || null,
-			parseFloat(total_earnings) || null,
-			parseFloat(total_deductions) || null,
-			parseFloat(net_pay) || null,
-			parseFloat(employer_cost) || null,
+			numberOrNull(basic_plus_da),
+			numberOrNull(da),
+			numberOrNull(basic),
+			numberOrNull(hra),
+			numberOrNull(conveyance),
+			numberOrNull(call_allowance),
+			numberOrNull(bonus),
+			numberOrNull(incentive),
+			numberOrNull(pf_employee),
+			numberOrNull(esic_employee),
+			numberOrNull(pf_employer),
+			numberOrNull(esic_employer),
+			numberOrNull(pt),
+			numberOrNull(mlwf),
+			numberOrNull(mlwf_employer),
+			numberOrNull(retention),
+			numberOrNull(insurance),
+			numberOrNull(total_earnings),
+			numberOrNull(total_deductions),
+			numberOrNull(net_pay),
+			numberOrNull(employer_cost),
 			is_manual_override ? 1 : 0,
 			salary_type || 'monthly',
 			parseFloat(hourly_rate) || null,
@@ -191,7 +204,7 @@ export async function POST(request) {
 			contract_end_date || null,
 			parseFloat(lumpsum_amount) || null,
 			lumpsum_description || null,
-			parseFloat(tds_percentage) || null,
+			numberOrNull(tds_percentage),
 			parseInt(pl_total) || 0,
 			parseInt(pl_used) || 0,
 			parseInt(pl_balance) || 0,
@@ -320,7 +333,8 @@ export async function POST(request) {
 export async function GET(request) {
 	let db;
 	try {
-		await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+		const permission = await ensureSalaryPermission(request, PERMISSIONS.READ);
+		if (!permission?.authorized) return permission;
 
 		const { searchParams } = new URL(request.url);
 		const employee_id = searchParams.get('employee_id');
@@ -378,7 +392,11 @@ export async function GET(request) {
 export async function DELETE(request) {
 	let db;
 	try {
-		await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.DELETE);
+		const permission = await ensureSalaryPermission(
+			request,
+			PERMISSIONS.DELETE
+		);
+		if (!permission?.authorized) return permission;
 
 		const { searchParams } = new URL(request.url);
 		const id = searchParams.get('id');
