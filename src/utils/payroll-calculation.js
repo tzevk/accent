@@ -175,8 +175,9 @@ const integerValue = (value, fallback) => {
 };
 
 /**
- * Normalize the two persisted pay-agreement shapes without allowing the
- * read-only legacy Salary Structure to overwrite a canonical Salary Profile.
+ * LEGACY COMPAT (future migration): read-only fallback for rows that still
+ * live in `salary_structures`. Canonical `employee_salary_profile` always
+ * wins; do not extend this mapping. See docs/adr/0001.
  * CTC is intentionally not considered when selecting Gross.
  */
 export function normalizeSalaryProfile(
@@ -825,6 +826,3 @@ export function calculatePayroll(
 		remarks: null,
 	};
 }
-
-export const calculatePayrollBreakdown = calculatePayroll;
-export const calculatePayrollBoundary = calculatePayroll;

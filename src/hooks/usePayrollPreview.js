@@ -49,7 +49,7 @@ export function usePayrollPreview(options = {}) {
 		includeBonus,
 	]);
 
-	return { preview, breakdown: preview };
+	return { preview };
 }
 
 export default usePayrollPreview;

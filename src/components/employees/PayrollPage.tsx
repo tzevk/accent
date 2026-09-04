@@ -65,9 +65,10 @@ const storedTotal = (
 };
 
 /**
- * Inline salary summary built from the same normalized Salary Profile the
- * editor persists: stored component columns plus the persisted totals the
- * shared calculation boundary saved with the profile.
+ * Inline salary summary: display-only view of persisted boundary values.
+ * Totals come from the shared calculation boundary at save time; the local
+ * sums below only cover legacy rows that lack persisted totals and must not
+ * be mistaken for a second payroll truth.
  */
 export function summarizeProfile(profile: SalaryProfileRecord) {
 	const customData = parseJson(profile.lumpsum_description);

@@ -14,22 +14,15 @@ import PAYROLL_CONFIG from './payroll-config';
 import { dbConnect } from './database';
 import {
 	calculatePayroll,
-	calculatePayrollBreakdown,
-	calculatePayrollBoundary,
 	normalizeSalaryProfile,
 } from './payroll-calculation';
 
-export {
-	calculatePayroll,
-	calculatePayrollBreakdown,
-	calculatePayrollBoundary,
-	normalizeSalaryProfile,
-};
+export { calculatePayroll, normalizeSalaryProfile };
 
 /**
- * Get current active DA amount from da_schedule
- * @param {Date} forDate - Date to check (defaults to today)
- * @returns {Promise<number>} Current DA amount
+ * LEGACY COMPAT (future migration): reads the legacy `da_schedule` table.
+ * Canonical rates come from `payroll_schedules` via
+ * getEffectivePayrollSchedule; do not add new callers.
  */
 export async function getCurrentDA(forDate = new Date()) {
 	const db = await dbConnect();
@@ -65,9 +58,10 @@ const scheduleDate = (value) =>
 		: value.toISOString().split('T')[0];
 
 /**
- * Load the effective Payroll Schedule once for a calculation run. The
- * canonical payroll_schedules table is preferred; the legacy DA table remains
- * a compatibility fallback until DA storage is unified.
+ * Load the effective Payroll Schedule once for a calculation run.
+ * LEGACY COMPAT (future migration): the `da_schedule` branch below is a
+ * compatibility fallback until DA storage is unified. Canonical source is
+ * `payroll_schedules`; do not extend the fallback.
  */
 export async function getEffectivePayrollSchedule(
 	forDate = new Date(),
@@ -453,8 +447,9 @@ export async function getEmployeeAttendance(employeeId, month) {
 }
 
 /**
- * Get the effective Salary Profile. The canonical employee_salary_profile is
- * selected first; salary_structures is read-only compatibility fallback data.
+ * LEGACY COMPAT (future migration): canonical `employee_salary_profile`
+ * first; `salary_structures` is a read-only fallback. Do not write new
+ * `salary_structures` rows from payroll code.
  */
 export async function getEmployeeSalaryProfile(
 	employeeId,
@@ -706,8 +701,9 @@ export async function generatePayrollSlip(employeeId, month, options = {}) {
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Fetch effective Salary Profiles for a list of employees in two queries.
- * Canonical profiles are merged over legacy fallback rows field by field.
+ * LEGACY COMPAT (future migration): canonical `employee_salary_profile` rows
+ * merged over read-only `salary_structures` fallback via
+ * normalizeSalaryProfile. Do not extend.
  */
 async function batchGetSalaryProfiles(db, employeeIds, forDate) {
 	if (employeeIds.length === 0) return new Map();
@@ -945,10 +941,13 @@ export async function generateMonthlyPayroll(
 		const isContractFilter = salaryType === 'contract';
 
 		// ── 1. Fetch employee list (canonical profiles first) ──
+		// LEGACY COMPAT (future migration): ssQuery covers employees that only
+		// have `salary_structures` rows. Canonical `employee_salary_profile`
+		// wins via the NOT EXISTS guard; do not extend.
 		const date = scheduleDate(month);
 		let espQuery = `SELECT DISTINCT esp.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name
-       FROM employee_salary_profile esp
-       JOIN employees e ON e.id = esp.employee_id
+      FROM employee_salary_profile esp
+      JOIN employees e ON e.id = esp.employee_id
        WHERE (e.status = 'active' OR e.status IS NULL)
          AND esp.is_active = 1
          AND esp.effective_from <= ?
