@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import type { EmployeeRecord } from '@/hooks/useEmployeeDirectory';
 import type { EmployeeFormBoundary } from '@/hooks/useEmployeeForm';
@@ -18,6 +19,16 @@ interface EmployeeEditorProps {
 	onBack: () => void;
 	onEdit: () => void;
 	workplaces: string[];
+	/**
+	 * Optional route-owned section (e.g. the Salary Profile on the Payroll
+	 * page). Rendered after Work Details; unmounts when another section is
+	 * active so its state stays scoped to the owning route.
+	 */
+	extraSection?: {
+		key: string;
+		label: string;
+		render: () => ReactNode;
+	};
 }
 
 function AttendancePanel({ form }: { form: EmployeeFormBoundary }) {
@@ -131,18 +142,20 @@ function AttendancePanel({ form }: { form: EmployeeFormBoundary }) {
 }
 
 function SectionNavigation({
+	sections,
 	activeSection,
 	onSelect,
 }: {
-	activeSection: EmployeeSection;
-	onSelect: (section: EmployeeSection) => void;
+	sections: { key: string; label: string }[];
+	activeSection: string;
+	onSelect: (section: string) => void;
 }) {
 	return (
 		<nav
 			className="flex flex-wrap gap-2 border-b border-gray-200"
 			aria-label="Employee Sections"
 		>
-			{EMPLOYEE_SECTIONS.map((section) => (
+			{sections.map((section) => (
 				<button
 					key={section.key}
 					type="button"
@@ -235,6 +248,7 @@ export default function EmployeeEditor({
 	onBack,
 	onEdit,
 	workplaces,
+	extraSection,
 }: EmployeeEditorProps) {
 	const readOnly = mode === 'view' || form.profileLocked;
 	const title =
@@ -245,22 +259,59 @@ export default function EmployeeEditor({
 				: 'Edit Employee';
 	const name = `${form.formData.first_name} ${form.formData.last_name}`.trim();
 	const { activeSection, attendanceSummaryMonth, loadAttendance } = form;
+	const [extraActive, setExtraActive] = useState(false);
+	const extraUsable = Boolean(extraSection) && mode === 'edit';
+
 	useEffect(() => {
 		if (mode !== 'add' && activeSection === 'attendance') void loadAttendance();
 	}, [activeSection, attendanceSummaryMonth, loadAttendance, mode]);
 
-	const selectSection = async (section: EmployeeSection) => {
-		if (mode === 'edit' && form.activeSection !== 'attendance')
+	const [lastEmployeeId, setLastEmployeeId] = useState<string | number | null>(
+		form.selectedEmployee?.id ?? null
+	);
+	if (lastEmployeeId !== (form.selectedEmployee?.id ?? null)) {
+		// Adjusting during render: a newly selected employee restarts on the
+		// first section instead of the previous employee's route-owned tab.
+		setLastEmployeeId(form.selectedEmployee?.id ?? null);
+		setExtraActive(false);
+	}
+
+	const sections = useMemo(() => {
+		const list: { key: string; label: string }[] = EMPLOYEE_SECTIONS.map(
+			(section) => ({ ...section })
+		);
+		if (extraUsable && extraSection) {
+			list.splice(3, 0, {
+				key: extraSection.key,
+				label: extraSection.label,
+			});
+		}
+		return list;
+	}, [extraSection, extraUsable]);
+
+	const activeKey =
+		extraActive && extraSection ? extraSection.key : activeSection;
+
+	const selectSection = async (section: string) => {
+		if (extraUsable && extraSection && section === extraSection.key) {
+			if (mode === 'edit' && form.activeSection !== 'attendance')
+				await form.autoSaveEmployee();
+			setExtraActive(true);
+			return;
+		}
+		setExtraActive(false);
+		// Leaving the route-owned section does not autosave employee fields;
+		// switching between employee sections keeps the existing autosave.
+		if (mode === 'edit' && !extraActive && form.activeSection !== 'attendance')
 			await form.autoSaveEmployee();
-		form.setActiveSection(section);
+		form.setActiveSection(section as EmployeeSection);
 	};
 
 	const moveSection = async (direction: -1 | 1) => {
-		const currentIndex = EMPLOYEE_SECTIONS.findIndex(
-			(section) => section.key === form.activeSection
-		);
-		const next = EMPLOYEE_SECTIONS[currentIndex + direction];
-		if (next) await selectSection(next.key);
+		const keys = sections.map((section) => section.key);
+		const currentIndex = keys.indexOf(activeKey);
+		const next = keys[currentIndex + direction];
+		if (next) await selectSection(next);
 	};
 
 	return (
@@ -324,7 +375,8 @@ export default function EmployeeEditor({
 				</div>
 				<div className="p-6 lg:p-8">
 					<SectionNavigation
-						activeSection={form.activeSection}
+						sections={sections}
+						activeSection={activeKey}
 						onSelect={(section) => void selectSection(section)}
 					/>
 					{form.successMessage && (
@@ -356,7 +408,9 @@ export default function EmployeeEditor({
 							disabled={readOnly}
 							className={readOnly ? 'opacity-70' : ''}
 						>
-							{form.activeSection === 'attendance' && mode !== 'add' ? (
+							{extraActive && extraSection ? (
+								extraSection.render()
+							) : form.activeSection === 'attendance' && mode !== 'add' ? (
 								<AttendancePanel form={form} />
 							) : (
 								<EmployeeFields
@@ -377,7 +431,7 @@ export default function EmployeeEditor({
 							<button
 								type="button"
 								onClick={() => void moveSection(-1)}
-								disabled={form.activeSection === EMPLOYEE_SECTIONS[0].key}
+								disabled={activeKey === sections[0].key}
 								className="rounded-lg border border-gray-300 px-4 py-2 text-sm disabled:opacity-40"
 							>
 								Previous
@@ -402,10 +456,7 @@ export default function EmployeeEditor({
 								<button
 									type="button"
 									onClick={() => void moveSection(1)}
-									disabled={
-										form.activeSection ===
-										EMPLOYEE_SECTIONS[EMPLOYEE_SECTIONS.length - 1].key
-									}
+									disabled={activeKey === sections[sections.length - 1].key}
 									className="rounded-lg bg-[#64126D] px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
 								>
 									Next

@@ -2,18 +2,26 @@ import { useMemo } from 'react';
 import { calculatePayroll } from '@/utils/payroll-calculation';
 
 /**
- * Client-safe salary preview boundary. Schedule loading stays in the caller;
- * all payroll arithmetic stays in the shared calculation module.
+ * @param {{
+ *   employeeId?: number | string,
+ *   month?: string,
+ *   salaryProfile?: Record<string, unknown> | null,
+ *   payrollSchedule?: Record<string, unknown>,
+ *   attendance?: Record<string, unknown>,
+ *   overrides?: Record<string, unknown>,
+ *   includeBonus?: boolean,
+ * }} options
  */
-export function usePayrollPreview({
-	employeeId,
-	month,
-	salaryProfile,
-	payrollSchedule = {},
-	attendance = {},
-	overrides = {},
-	includeBonus = false,
-} = {}) {
+export function usePayrollPreview(options = {}) {
+	const {
+		employeeId,
+		month,
+		salaryProfile,
+		payrollSchedule = {},
+		attendance = {},
+		overrides = {},
+		includeBonus = false,
+	} = options;
 	const preview = useMemo(() => {
 		if (
 			!salaryProfile ||
