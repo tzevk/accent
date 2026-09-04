@@ -92,7 +92,7 @@ interface SalaryProfileSectionProps {
 	canOverride: boolean;
 }
 
-const today = () => new Date().toISOString().split('T')[0];
+export const today = () => new Date().toISOString().split('T')[0];
 
 /** Coerce an unknown API/DB scalar to a finite number (0 when unusable). */
 export const num = (value: unknown): number => {
@@ -105,12 +105,12 @@ export const num = (value: unknown): number => {
 export const enabled = (value: unknown): boolean =>
 	value === true || value === 1 || value === '1' || value === 'true';
 
-const timePart = (value: unknown, fallback: string): string => {
+export const timePart = (value: unknown, fallback: string): string => {
 	const text = typeof value === 'string' ? value : '';
 	return text ? text.substring(0, 5) : fallback;
 };
 
-const datePart = (value: unknown): string => {
+export const datePart = (value: unknown): string => {
 	const text = typeof value === 'string' ? value : '';
 	return text ? text.split('T')[0] : '';
 };

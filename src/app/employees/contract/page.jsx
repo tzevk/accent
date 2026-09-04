@@ -1,7 +1,7 @@
 'use client';
 
-import EmployeesPageInner from '@/components/EmployeesPageInner';
+import ContractPage from '@/components/employees/ContractPage';
 
 export default function ContractEmployeesPage() {
-	return <EmployeesPageInner employeeType="Contract" />;
+	return <ContractPage />;
 }
