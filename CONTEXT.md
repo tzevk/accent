@@ -39,3 +39,11 @@ Total earnings for the month before deductions (basic+da+hra+conveyance+call*all
 **CTC**:
 Cost to company — Gross plus employer contributions (PF employer, ESIC employer, bonus, insurance, gratuity, etc.). Display-only; not an input to `computePayroll`.
 _Avoid_: Gross, Package
+
+**Leave Application**:
+An employee's request for time off with a start date, end date, type, reason, and status (`pending`, `approved`, or `rejected`). One employee can never hold two intersecting `pending`/`approved` applications — the server rejects that as its own overlap.
+_Avoid_: Leave (ambiguous), Overlapping leaves (when meaning one person's own collision)
+
+**Leave Overlap**:
+Two or more _different_ employees whose `pending` or `approved` applications intersect on at least one calendar date. `rejected` applications never count toward an overlap.
+_Avoid_: Concurrent Leave
