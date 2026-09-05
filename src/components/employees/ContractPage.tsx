@@ -93,7 +93,7 @@ export default function ContractPage() {
 
 	const statusBadgeClass = (value: unknown): string => {
 		const status = String(value || 'active');
-		if (status === 'active') return 'bg-green-100 text-green-800';
+		if (status === 'active') return 'bg-blue-100 text-blue-800';
 		if (status === 'inactive') return 'bg-amber-100 text-amber-800';
 		return 'bg-red-100 text-red-800';
 	};
