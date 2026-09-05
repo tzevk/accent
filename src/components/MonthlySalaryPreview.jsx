@@ -170,6 +170,22 @@ function ApplicabilityControl({ label, name, checked, onChange }) {
 	);
 }
 
+/**
+ * @param {{
+ *   profile?: Record<string, unknown>,
+ *   breakdown?: Record<string, unknown> | null,
+ *   scheduleLoading?: boolean,
+ *   scheduleError?: string,
+ *   onApplicabilityChange?: (name: string, value: boolean) => void,
+ *   canOverride?: boolean,
+ *   overrideMode?: boolean,
+ *   overrides?: Record<string, unknown>,
+ *   onOverrideModeChange?: (enabled: boolean) => void,
+ *   onOverrideChange?: (name: string, value: unknown) => void,
+ *   onOverrideReset?: (name: string) => void,
+ *   onResetOverrides?: () => void,
+ * }} props
+ */
 export default function MonthlySalaryPreview({
 	profile = {},
 	breakdown,
