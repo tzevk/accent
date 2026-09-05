@@ -116,6 +116,13 @@ const reportsMenuConfig = [
 		reportField: 'project_activities', // reuse so existing grants cover the new report
 	},
 	{
+		name: 'Leave Overlaps',
+		href: '/reports/leave-overlaps',
+		icon: CalendarDaysIcon,
+		resource: 'reports',
+		reportField: 'project_activities', // reuse so existing grants cover the new report
+	},
+	{
 		name: 'Attendance Report',
 		href: '/reports/attendance-report',
 		icon: FingerPrintIcon,
