@@ -290,6 +290,13 @@ export function buildDays(
 		// Saturdays only — the other Saturdays are working days).
 		const weeklyOff = row ? n(row, 'is_weekly_off') === 1 : isWeeklyOff(date);
 		const holidayName = holidayNameByDate.get(date) ?? null;
+		// Holiday flag persists on H saves; historical rows without the flag
+		// resolve via the status string (no backfill). Holiday-master
+		// membership still counts so unrecorded holidays keep their identity.
+		const rawHoliday = row?.['is_holiday'];
+		const flagHoliday =
+			rawHoliday === 1 || rawHoliday === true || rawHoliday === '1';
+		const isHoliday = flagHoliday || status === 'H' || holidayName != null;
 		days.push({
 			date,
 			day,
@@ -297,7 +304,7 @@ export function buildDays(
 			status,
 			overtime_hours: row ? n(row, 'overtime_hours') : 0,
 			is_weekly_off: weeklyOff,
-			is_holiday: holidayName != null,
+			is_holiday: isHoliday,
 			holiday_name: holidayName,
 			hours: hoursForStatus(status, settings),
 			day_type: dayTypeFor(date, holidaySet, weeklyOff),

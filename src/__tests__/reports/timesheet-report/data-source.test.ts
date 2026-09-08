@@ -259,6 +259,48 @@ describe('buildDays', () => {
 		expect(days[7]).toMatchObject({ status: 'WO', day_type: 'weekly_off' }); // flagged Friday
 	});
 
+	it('persists the Holiday flag from stored rows', () => {
+		const rows = [
+			{
+				date: '2026-05-10',
+				status: 'H',
+				overtime_hours: 0,
+				is_weekly_off: 0,
+				is_holiday: 1,
+			},
+		];
+		const days = buildDays('2026-05', rows, []);
+		expect(days[9]).toMatchObject({ status: 'H', is_holiday: true });
+	});
+
+	it('falls back to status-derived Holiday for historical rows without the flag', () => {
+		const rows = [
+			{
+				date: '2026-05-10',
+				status: 'H',
+				overtime_hours: 0,
+				is_weekly_off: 0,
+				is_holiday: 0,
+			},
+		];
+		const days = buildDays('2026-05', rows, []);
+		expect(days[9]).toMatchObject({ status: 'H', is_holiday: true });
+	});
+
+	it('leaves non-holiday rows without the flag as non-holidays', () => {
+		const rows = [
+			{
+				date: '2026-05-04',
+				status: 'P',
+				overtime_hours: 0,
+				is_weekly_off: 0,
+				is_holiday: 0,
+			},
+		];
+		const days = buildDays('2026-05', rows, []);
+		expect(days[3]).toMatchObject({ status: 'P', is_holiday: false });
+	});
+
 	it('returns [] for a malformed month', () => {
 		expect(buildDays('not-a-month', [], [])).toEqual([]);
 	});

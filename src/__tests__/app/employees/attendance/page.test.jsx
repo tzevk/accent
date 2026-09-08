@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fetchMock = vi.fn();
@@ -153,5 +153,115 @@ describe('attendance page activity defaults', () => {
 			expect(screen.getAllByText('3.0')).toHaveLength(2);
 			expect(screen.getByText('16.0')).toBeInTheDocument();
 		});
+	});
+});
+
+describe('attendance page Saturday bulk-mark', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.setSystemTime(new Date('2026-08-15T12:00:00'));
+		vi.stubGlobal('fetch', fetchMock);
+		fetchMock.mockImplementation((url) => {
+			if (url.startsWith('/api/employees/list')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						employees: [
+							{
+								id: 1,
+								employee_id: 'ATS001',
+								first_name: 'Alice',
+								last_name: 'Worker',
+								department: 'Projects',
+							},
+						],
+					}),
+				});
+			}
+			if (url.startsWith('/api/attendance?month=2026-08')) {
+				return Promise.resolve({
+					json: async () => ({ success: true, summary: [], activityDays: {} }),
+				});
+			}
+			if (url.startsWith('/api/masters/holidays')) {
+				return Promise.resolve({ json: async () => ({ holidays: [] }) });
+			}
+			if (url.startsWith('/api/payroll/salary-profile/batch')) {
+				return Promise.resolve({
+					json: async () => ({ success: true, data: {} }),
+				});
+			}
+			return Promise.reject(new Error(`Unexpected request: ${url}`));
+		});
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	});
+
+	it('marks only 2nd and 4th Saturdays as Weekly Off', async () => {
+		render(<AttendancePage />);
+		// August 2026: Saturdays are 1, 8, 15, 22, 29.
+		expect(await screen.findByTitle(/ 1: Click to mark$/)).toBeInTheDocument();
+		fireEvent.click(screen.getByRole('button', { name: /2nd.*4th/i }));
+		// 2nd (8th) and 4th (22nd) become Weekly Off; 1st/3rd/5th stay empty.
+		expect(await screen.findByTitle(/ 8: Weekly Off$/)).toBeInTheDocument();
+		expect(screen.getByTitle(/ 22: Weekly Off$/)).toBeInTheDocument();
+		expect(screen.getByTitle(/ 1: Click to mark$/)).toBeInTheDocument();
+		expect(screen.getByTitle(/ 15: Click to mark$/)).toBeInTheDocument();
+		expect(screen.getByTitle(/ 29: Click to mark$/)).toBeInTheDocument();
+	});
+
+	it('fills empty cells only and lets Holidays win on collision', async () => {
+		fetchMock.mockImplementation((url) => {
+			if (url.startsWith('/api/employees/list')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						employees: [
+							{
+								id: 1,
+								employee_id: 'ATS001',
+								first_name: 'Alice',
+								last_name: 'Worker',
+								department: 'Projects',
+							},
+						],
+					}),
+				});
+			}
+			if (url.startsWith('/api/attendance?month=2026-08')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						summary: [
+							{ employee_id: 1, days: { '2026-08-08': { status: 'P' } } },
+						],
+						activityDays: {},
+					}),
+				});
+			}
+			if (url.startsWith('/api/masters/holidays')) {
+				return Promise.resolve({
+					json: async () => ({
+						holidays: [{ name: 'Test Holiday', date: '2026-08-22' }],
+					}),
+				});
+			}
+			if (url.startsWith('/api/payroll/salary-profile/batch')) {
+				return Promise.resolve({
+					json: async () => ({ success: true, data: {} }),
+				});
+			}
+			return Promise.reject(new Error(`Unexpected request: ${url}`));
+		});
+		render(<AttendancePage />);
+		expect(await screen.findByTitle(/ 8: Present$/)).toBeInTheDocument();
+		fireEvent.click(screen.getByRole('button', { name: /2nd.*4th/i }));
+		// Recorded Present survives; holiday Saturday stays empty (never WO).
+		expect(screen.getByTitle(/ 8: Present$/)).toBeInTheDocument();
+		expect(screen.getByTitle(/ 22: Click to mark$/)).toBeInTheDocument();
+		expect(screen.queryByTitle(/ 22: Weekly Off$/)).not.toBeInTheDocument();
 	});
 });

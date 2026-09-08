@@ -177,6 +177,7 @@ export async function GET(request) {
 				status: record.status,
 				overtime_hours: record.overtime_hours,
 				is_weekly_off: record.is_weekly_off,
+				is_holiday: record.is_holiday,
 				remarks: record.remarks,
 				in_time: record.in_time,
 				out_time: record.out_time,
@@ -259,29 +260,40 @@ export async function POST(request) {
 
 			for (const record of batch) {
 				const status = (record.status || 'P').substring(0, 20);
+				// Holiday flag persists on H saves; status fallback keeps older
+				// clients (which never sent the flag) writing it correctly.
+				const isHoliday =
+					record.is_holiday === 1 ||
+					record.is_holiday === true ||
+					record.is_holiday === '1' ||
+					status === 'H'
+						? 1
+						: 0;
 				values.push(
 					record.employee_id,
 					record.attendance_date,
 					status,
 					record.overtime_hours || 0,
 					record.is_weekly_off ? 1 : 0,
+					isHoliday,
 					record.remarks || null,
 					record.in_time || null,
 					record.out_time || null,
 					record.idle_time || 0
 				);
-				placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?)');
+				placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 			}
 
 			// Use query instead of execute for better performance with dynamic queries
 			const batchQuery = `
-        INSERT INTO employee_attendance 
-          (employee_id, attendance_date, status, overtime_hours, is_weekly_off, remarks, in_time, out_time, idle_time)
+        INSERT INTO employee_attendance
+          (employee_id, attendance_date, status, overtime_hours, is_weekly_off, is_holiday, remarks, in_time, out_time, idle_time)
         VALUES ${placeholders.join(', ')}
         ON DUPLICATE KEY UPDATE
           status = VALUES(status),
           overtime_hours = VALUES(overtime_hours),
           is_weekly_off = VALUES(is_weekly_off),
+          is_holiday = VALUES(is_holiday),
           remarks = VALUES(remarks),
           in_time = VALUES(in_time),
           out_time = VALUES(out_time),

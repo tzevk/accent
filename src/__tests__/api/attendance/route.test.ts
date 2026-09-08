@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	mockExecute: vi.fn(),
+	mockQuery: vi.fn(),
 	mockRelease: vi.fn(),
 	mockDbConnect: vi.fn(),
 	mockEnsurePermission: vi.fn(),
@@ -11,13 +12,14 @@ vi.mock('@/utils/database', () => ({ dbConnect: mocks.mockDbConnect }));
 vi.mock('@/utils/api-permissions', () => ({
 	ensurePermission: mocks.mockEnsurePermission,
 	RESOURCES: { EMPLOYEES: 'employees' },
-	PERMISSIONS: { READ: 'read' },
+	PERMISSIONS: { READ: 'read', UPDATE: 'update' },
 }));
 
-const { GET } = await import('@/app/api/attendance/route');
+const { GET, POST } = await import('@/app/api/attendance/route');
 
 const db = {
 	execute: mocks.mockExecute,
+	query: mocks.mockQuery,
 	release: mocks.mockRelease,
 };
 
@@ -62,5 +64,74 @@ describe('attendance activity-day lookup', () => {
 		expect(mocks.mockExecute.mock.calls[1][0]).toContain(
 			"uaa.status <> 'Cancelled'"
 		);
+	});
+});
+
+describe('attendance bulk save Holiday flag', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mocks.mockDbConnect.mockResolvedValue(db);
+		mocks.mockEnsurePermission.mockResolvedValue({
+			authorized: true,
+			response: null,
+		});
+		mocks.mockQuery.mockResolvedValue([{}]);
+		mocks.mockExecute.mockResolvedValue([[]]);
+	});
+
+	it('persists is_holiday=1 for Holiday saves', async () => {
+		const response = await POST(
+			new Request('http://localhost/api/attendance', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					attendance_records: [
+						{
+							employee_id: 1,
+							attendance_date: '2026-08-15',
+							status: 'H',
+							overtime_hours: 0,
+							is_weekly_off: 0,
+							is_holiday: 1,
+						},
+					],
+					month: '2026-08',
+				}),
+			})
+		);
+		const body = await response.json();
+		expect(body.success).toBe(true);
+		const [sql, params] = mocks.mockQuery.mock.calls[0];
+		expect(sql).toContain('is_holiday');
+		// values order: employee_id, date, status, ot, weekly_off, holiday, remarks, in, out, idle
+		expect(params[2]).toBe('H');
+		expect(params[5]).toBe(1);
+	});
+
+	it('stores is_holiday=0 for non-Holiday saves', async () => {
+		const response = await POST(
+			new Request('http://localhost/api/attendance', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					attendance_records: [
+						{
+							employee_id: 1,
+							attendance_date: '2026-08-16',
+							status: 'P',
+							overtime_hours: 0,
+							is_weekly_off: 0,
+							is_holiday: 0,
+						},
+					],
+					month: '2026-08',
+				}),
+			})
+		);
+		const body = await response.json();
+		expect(body.success).toBe(true);
+		const [, params] = mocks.mockQuery.mock.calls[0];
+		expect(params[2]).toBe('P');
+		expect(params[5]).toBe(0);
 	});
 });

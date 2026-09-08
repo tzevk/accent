@@ -15,6 +15,7 @@ import {
 	PAYABLE_OT_HEADER,
 	PAYABLE_OT_TOOLTIP,
 } from '@/lib/attendance-summary';
+import { isWeeklyOff } from '@/utils/weekly-off';
 import {
 	CalendarDaysIcon,
 	ChevronLeftIcon,
@@ -426,6 +427,27 @@ export default function AttendancePage() {
 		setHasChanges(true);
 	};
 
+	// Mark 2nd & 4th Saturdays as WO for all employees (fill empty only;
+	// 1st/3rd/5th Saturdays stay working, Holidays keep their identity).
+	const markSaturdaysAsWO = () => {
+		setAttendanceData((prev) => {
+			const updated = { ...prev };
+			employees.forEach((emp) => {
+				const empDays = { ...(updated[emp.id] || {}) };
+				monthDates.forEach(({ dateStr, day, date }) => {
+					if (date.getDay() !== 6) return;
+					if (!isWeeklyOff(dateStr)) return;
+					if (holidayDateSet.has(day)) return;
+					if (empDays[dateStr]?.status) return;
+					empDays[dateStr] = { ...(empDays[dateStr] || {}), status: 'WO' };
+				});
+				updated[emp.id] = empDays;
+			});
+			return updated;
+		});
+		setHasChanges(true);
+	};
+
 	// Mark holidays for all employees
 	const markHolidays = () => {
 		setAttendanceData((prev) => {
@@ -484,6 +506,7 @@ export default function AttendancePage() {
 							status: dayData.status,
 							overtime_hours: dayData.overtime_hours || 0,
 							is_weekly_off: dayData.status === 'WO' ? 1 : 0,
+							is_holiday: dayData.status === 'H' ? 1 : 0,
 							remarks: dayData.remarks || '',
 							in_time: dayData.in_time || null,
 							out_time: dayData.out_time || null,
@@ -846,6 +869,12 @@ export default function AttendancePage() {
 									className="px-3 py-2 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 border border-blue-200 transition-colors"
 								>
 									Mark Sundays WO
+								</button>
+								<button
+									onClick={markSaturdaysAsWO}
+									className="px-3 py-2 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 border border-blue-200 transition-colors"
+								>
+									Mark 2nd & 4th Sats WO
 								</button>
 								<button
 									onClick={markHolidays}
