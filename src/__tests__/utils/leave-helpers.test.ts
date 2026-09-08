@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { applyApprovedLeave } from '@/utils/leave-helpers';
+import {
+	applyApprovedLeave,
+	computeDurationDays,
+	splitDaysByYear,
+} from '@/utils/leave-helpers';
 
 function makeDb(holidayRows: Array<Record<string, unknown>>) {
 	const writes: Array<{ sql: string; params: unknown[] }> = [];
@@ -99,6 +103,66 @@ describe('applyApprovedLeave weekly offs', () => {
 		expect(result.attendance.map((a) => a.date)).toEqual([
 			'2026-05-01',
 			'2026-05-02',
+		]);
+	});
+});
+
+describe('ledger fix: in-range off-days unbilled (#231)', () => {
+	it('excludes in-range Weekly Off days from the billed duration (Fri-to-Mon charges 2)', () => {
+		// May 2026: Fri 8, Sat 9 (2nd Saturday WO), Sun 10 (WO), Mon 11.
+		expect(computeDurationDays('2026-05-08', '2026-05-11')).toBe(2);
+	});
+
+	it('excludes Holiday days in the set from the billed duration', () => {
+		// Tue 2026-08-25 + Wed 2026-08-26 (holiday) bills 1.
+		expect(
+			computeDurationDays(
+				'2026-08-25',
+				'2026-08-26',
+				false,
+				new Set(['2026-08-26'])
+			)
+		).toBe(1);
+	});
+
+	it('leaves half-day single-date flow unchanged', () => {
+		expect(computeDurationDays('2026-08-25', '2026-08-25', true)).toBe(0.5);
+	});
+
+	it('apportions billable days per year across a multi-year split', () => {
+		// Wed 2026-12-30, Thu 31, Fri 2027-01-01, Sat 01-02 (1st Sat, working),
+		// Sun 01-03 (WO), Mon 01-04 → 2026:2, 2027:3.
+		expect(splitDaysByYear('2026-12-30', '2027-01-04')).toEqual([
+			{ year: 2026, days: 2 },
+			{ year: 2027, days: 3 },
+		]);
+	});
+
+	it('deducts only billable days in the approval ledger (WO excluded)', async () => {
+		const { db } = makeDb([]);
+		const result = await applyApprovedLeave(
+			db as never,
+			application({
+				start_date: '2026-05-08',
+				end_date: '2026-05-11',
+				requires_balance: 1,
+			}),
+			1
+		);
+		expect(result.balances).toEqual([
+			{ leave_type_id: 1, year: 2026, days: 2 },
+		]);
+	});
+
+	it('deducts only billable days in the approval ledger (Holiday excluded)', async () => {
+		const { db } = makeDb([{ date: '2026-08-26' }]);
+		const result = await applyApprovedLeave(
+			db as never,
+			application({ requires_balance: 1 }),
+			1
+		);
+		expect(result.balances).toEqual([
+			{ leave_type_id: 1, year: 2026, days: 1 },
 		]);
 	});
 });

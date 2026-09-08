@@ -114,6 +114,36 @@ describe('PATCH /api/leaves/[id]', () => {
 		expect(audit.balances).toEqual([{ leave_type_id: 1, year: 2026, days: 2 }]);
 	});
 
+	it('approving a Friday-to-Monday range deducts only billable days', async () => {
+		mockExecute.mockResolvedValueOnce([
+			[
+				appRow({
+					start_date: '2026-05-08',
+					end_date: '2026-05-11',
+					duration_days: 2,
+				}),
+			],
+		]); // loadApplication
+		mockExecute.mockResolvedValue([[]]); // existing attendance / holidays / inserts / update
+
+		const req = new Request('http://localhost/api/leaves/5', {
+			method: 'PATCH',
+			body: JSON.stringify({ status: 'approved', review_notes: 'Enjoy' }),
+		});
+		const res = await PATCH(req, { params: Promise.resolve({ id: '5' }) });
+
+		expect(res.status).toBe(200);
+		const updateCall = mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('UPDATE leave_applications')
+		);
+		const audit = JSON.parse(updateCall[1][3]);
+		expect(audit.attendance.map((a) => a.date)).toEqual([
+			'2026-05-08',
+			'2026-05-11',
+		]);
+		expect(audit.balances).toEqual([{ leave_type_id: 1, year: 2026, days: 2 }]);
+	});
+
 	it('returns 409 when the application is already in the requested status', async () => {
 		mockExecute.mockResolvedValueOnce([[appRow({ status: 'approved' })]]);
 		const req = new Request('http://localhost/api/leaves/5', {

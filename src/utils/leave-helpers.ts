@@ -33,49 +33,98 @@ export function parseDateInput(value) {
 }
 
 /**
- * Inclusive day count between two validated dates. A half-day is only
- * meaningful for a single-date range and yields 0.5.
+ * Inclusive billable day count between two validated dates. In-range Weekly
+ * Off days (shared isWeeklyOff rule) and Holidays in the set are excluded —
+ * the ledger bills only working days. A half-day single-date range still
+ * yields 0.5 unchanged.
  *
  * @param {string} startDate YYYY-MM-DD
  * @param {string} endDate   YYYY-MM-DD
  * @param {boolean} [halfDay]
- * @returns {number} positive day count (0.5 steps)
+ * @param {Set<string>} [holidays] active holiday YYYY-MM-DD set in range
+ * @returns {number} billable day count (0.5 steps)
  */
-export function computeDurationDays(startDate, endDate, halfDay = false) {
+export function computeDurationDays(
+	startDate,
+	endDate,
+	halfDay = false,
+	holidays: Set<string> = new Set()
+) {
 	const start = Date.parse(`${startDate}T00:00:00Z`);
 	const end = Date.parse(`${endDate}T00:00:00Z`);
 	const days = Math.round((end - start) / 86_400_000) + 1;
 	if (days <= 0) return 0;
-	return halfDay && days === 1 ? 0.5 : days;
+	if (halfDay && days === 1) return 0.5;
+	let billable = 0;
+	const cursor = new Date(`${startDate}T00:00:00Z`);
+	const stop = new Date(`${endDate}T00:00:00Z`);
+	while (cursor <= stop) {
+		const date = cursor.toISOString().slice(0, 10);
+		if (!isWeeklyOff(date) && !holidays.has(date)) billable += 1;
+		cursor.setUTCDate(cursor.getUTCDate() + 1);
+	}
+	return billable;
 }
 
 /**
- * Split an inclusive date range into per-year calendar day counts so
- * multi-year approvals hit the right employee_leaves rows.
+ * Split an inclusive date range into per-year billable day counts so
+ * multi-year approvals hit the right employee_leaves rows. Weekly Off and
+ * Holiday days are excluded; years with zero billable days are omitted.
  *
  * @param {string} startDate
  * @param {string} endDate
  * @param {boolean} [halfDay]
+ * @param {Set<string>} [holidays]
  * @returns {Array<{ year: number, days: number }>}
  */
-export function splitDaysByYear(startDate, endDate, halfDay = false) {
+export function splitDaysByYear(
+	startDate,
+	endDate,
+	halfDay = false,
+	holidays: Set<string> = new Set()
+) {
 	if (halfDay) return [{ year: Number(startDate.slice(0, 4)), days: 0.5 }];
 
 	const start = new Date(`${startDate}T00:00:00Z`);
 	const end = new Date(`${endDate}T00:00:00Z`);
-	const segments: Array<{ year: number; days: number }> = [];
-	let cursor = new Date(start);
+	const perYear = new Map<number, number>();
+	const cursor = new Date(start);
 
 	while (cursor <= end) {
-		const year = cursor.getUTCFullYear();
-		const yearEnd = Date.UTC(year, 11, 31);
-		const segmentEnd = end.getTime() < yearEnd ? end : new Date(yearEnd);
-		const days =
-			Math.round((segmentEnd.getTime() - cursor.getTime()) / 86_400_000) + 1;
-		segments.push({ year, days });
-		cursor = new Date(Date.UTC(year + 1, 0, 1));
+		const date = cursor.toISOString().slice(0, 10);
+		if (!isWeeklyOff(date) && !holidays.has(date)) {
+			const year = cursor.getUTCFullYear();
+			perYear.set(year, (perYear.get(year) ?? 0) + 1);
+		}
+		cursor.setUTCDate(cursor.getUTCDate() + 1);
 	}
-	return segments;
+	return [...perYear.entries()]
+		.sort(([a], [b]) => a - b)
+		.map(([year, days]) => ({ year, days }));
+}
+
+/**
+ * Active holidays in range — same set the timesheet report uses
+ * (holiday_master.date where is_active = 1). Missing table → empty set,
+ * so every non-weekly-off day counts as working.
+ *
+ * @param {{ execute: Function }} db pool or transaction connection
+ */
+export async function getActiveHolidaysInRange(db, startDate, endDate) {
+	const holidays = new Set<string>();
+	try {
+		const [holidayRows] = await db.execute(
+			`SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date FROM holiday_master
+       WHERE is_active = 1 AND date BETWEEN ? AND ?`,
+			[startDate, endDate]
+		);
+		for (const row of holidayRows) {
+			holidays.add(String(row.date).slice(0, 10));
+		}
+	} catch {
+		/* holiday_master missing — treat every non-weekly-off day as working */
+	}
+	return holidays;
 }
 
 function attendanceMarker(applicationId) {
@@ -117,21 +166,8 @@ export async function applyApprovedLeave(db, application, reviewerId) {
 		])
 	);
 
-	// Official holidays inside the range — same active set the timesheet
-	// report uses (holiday_master.date where is_active = 1).
-	const holidays = new Set<string>();
-	try {
-		const [holidayRows] = await db.execute(
-			`SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date FROM holiday_master
-       WHERE is_active = 1 AND date BETWEEN ? AND ?`,
-			[startDate, endDate]
-		);
-		for (const row of holidayRows) {
-			holidays.add(String(row.date).slice(0, 10));
-		}
-	} catch {
-		/* holiday_master missing — treat every non-weekly-off day as working */
-	}
+	// Official holidays inside the range — shared helper, same set POST uses.
+	const holidays = await getActiveHolidaysInRange(db, startDate, endDate);
 
 	// Half-day payroll semantics (payroll-calculator.js):
 	//   'HD' costs 0.5 payable days → correct for unpaid half-days.
@@ -196,7 +232,8 @@ export async function applyApprovedLeave(db, application, reviewerId) {
 		for (const segment of splitDaysByYear(
 			startDate,
 			endDate,
-			Boolean(application.half_day)
+			Boolean(application.half_day),
+			holidays
 		)) {
 			await db.execute(
 				`INSERT INTO employee_leaves (employee_id, leave_type_id, year, total_leaves, used_leaves)

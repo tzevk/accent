@@ -10,6 +10,7 @@ import { logActivity } from '@/utils/activity-logger';
 import { notifyLeaveApprovers } from '@/utils/notifications';
 import {
 	computeDurationDays,
+	getActiveHolidaysInRange,
 	parseDateInput,
 	MAX_LEAVE_RANGE_DAYS,
 } from '@/utils/leave-helpers';
@@ -165,14 +166,19 @@ export async function POST(request: Request) {
 			);
 		}
 
-		const durationDays = computeDurationDays(startDate, endDate, halfDay);
-		if (durationDays <= 0) {
+		const calendarDays =
+			Math.round(
+				(Date.parse(`${endDate}T00:00:00Z`) -
+					Date.parse(`${startDate}T00:00:00Z`)) /
+					86_400_000
+			) + 1;
+		if (calendarDays <= 0) {
 			return NextResponse.json(
 				{ success: false, error: 'end_date must be on or after start_date' },
 				{ status: 400 }
 			);
 		}
-		if (durationDays > MAX_LEAVE_RANGE_DAYS) {
+		if (calendarDays > MAX_LEAVE_RANGE_DAYS) {
 			return NextResponse.json(
 				{
 					success: false,
@@ -192,6 +198,25 @@ export async function POST(request: Request) {
 		}
 
 		db = await dbConnect();
+
+		// Billable duration excludes in-range Weekly Offs + active Holidays.
+		const holidays = await getActiveHolidaysInRange(db, startDate, endDate);
+		const durationDays = computeDurationDays(
+			startDate,
+			endDate,
+			halfDay,
+			holidays
+		);
+		if (durationDays <= 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'Leave range contains no billable working days (Weekly Off/Holiday only)',
+				},
+				{ status: 400 }
+			);
+		}
 
 		const [typeRows] = await db.execute(
 			`SELECT id, name FROM leave_types WHERE id = ? AND isDelete = 0`,
