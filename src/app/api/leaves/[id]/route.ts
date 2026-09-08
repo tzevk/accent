@@ -3,7 +3,13 @@ import { dbConnect, withTransaction } from '@/utils/database';
 import { ensurePermission, getCurrentUser } from '@/utils/api-permissions';
 import { RESOURCES, PERMISSIONS, hasPermission } from '@/utils/rbac';
 import { logActivity } from '@/utils/activity-logger';
-import { applyApprovedLeave, revertApprovedLeave } from '@/utils/leave-helpers';
+import {
+	applyApprovedLeave,
+	deriveSandwichDatesInRange,
+	getActiveHolidaysInRange,
+	parseSandwichAcknowledgedDays,
+	revertApprovedLeave,
+} from '@/utils/leave-helpers';
 
 const VALID_STATUSES = ['pending', 'approved', 'rejected'];
 
@@ -33,11 +39,15 @@ async function loadApplication(
  * PATCH /api/leaves/[id]
  *
  * Review workflow — requires leaves:approve.
- * Body: { status: 'approved' | 'rejected' | 'pending', review_notes? }
+ * Body: { status: 'approved' | 'rejected' | 'pending', review_notes?,
+ *         sandwich_acknowledged_days? }
  *
- * Approving writes attendance rows + balance ledger inside one transaction;
- * moving an approved request back to rejected/pending reverses them using the
- * written_attendance audit payload. Rejecting requires review_notes.
+ * Approving re-derives Sandwich extras server-side and writes attendance
+ * rows + capped balance ledger inside one transaction; an explicitly sent
+ * `sandwich_acknowledged_days` that mismatches the derived count is
+ * rejected. Moving an approved request back to rejected/pending reverses
+ * them using the versioned written_attendance audit payload. Rejecting
+ * requires review_notes.
  */
 export async function PATCH(
 	request: Request,
@@ -61,7 +71,12 @@ export async function PATCH(
 		);
 	}
 
-	let body: { status?: string; review_notes?: string };
+	let body: {
+		status?: string;
+		review_notes?: string;
+		sandwich_acknowledged_days?: unknown;
+		acknowledged_sandwich_days?: unknown;
+	};
 	try {
 		body = await request.json();
 	} catch (_) {
@@ -102,6 +117,33 @@ export async function PATCH(
 			if (!app) return null;
 			if (app.status === nextStatus) {
 				throw new Error(`Leave application is already ${nextStatus}`);
+			}
+
+			// Server re-derives the Sandwich on review so a bypassed client
+			// warning cannot smuggle free bracketed days through approval.
+			if (nextStatus === 'approved') {
+				const startDate = String(app.start_date).slice(0, 10);
+				const endDate = String(app.end_date).slice(0, 10);
+				const holidays = await getActiveHolidaysInRange(db, startDate, endDate);
+				const sandwichDates = deriveSandwichDatesInRange(
+					startDate,
+					endDate,
+					Boolean(app.half_day),
+					holidays
+				);
+				const hasAck =
+					body?.sandwich_acknowledged_days !== undefined ||
+					body?.acknowledged_sandwich_days !== undefined;
+				if (hasAck) {
+					const acknowledged = parseSandwichAcknowledgedDays(body);
+					if (acknowledged === null || acknowledged !== sandwichDates.length) {
+						throw new Error(
+							sandwichDates.length > 0
+								? `Sandwich applies: ${sandwichDates.length} extra day(s) (${sandwichDates.join(', ')}) will be deducted. Resubmit with sandwich_acknowledged_days: ${sandwichDates.length} to acknowledge.`
+								: 'Sandwich acknowledgment mismatch: this range has no extra Sandwich days.'
+						);
+					}
+				}
 			}
 
 			let auditJson: string | null = null;
@@ -156,10 +198,13 @@ export async function PATCH(
 			error instanceof Error ? error.message : 'Failed to update leave';
 		const notFound = message.includes('not found');
 		const conflict = message.startsWith('Leave application is already');
+		const sandwichMismatch =
+			message.startsWith('Sandwich applies:') ||
+			message.startsWith('Sandwich acknowledgment mismatch');
 		console.error('Error reviewing leave application:', error);
 		return NextResponse.json(
 			{ success: false, error: message },
-			{ status: conflict ? 409 : notFound ? 404 : 500 }
+			{ status: conflict ? 409 : notFound ? 404 : sandwichMismatch ? 400 : 500 }
 		);
 	}
 }

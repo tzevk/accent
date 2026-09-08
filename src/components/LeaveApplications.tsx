@@ -36,6 +36,7 @@ import {
 import { apiGet, apiPost, apiDelete } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/cn';
+import { isWeeklyOff } from '@/utils/weekly-off';
 
 interface LeaveTypeBalance {
 	id: number;
@@ -81,6 +82,45 @@ const STATUS_BADGE: Record<string, string> = {
 	rejected: 'bg-red-100 text-red-700',
 };
 
+/** Weekly-Off-only Sandwich preview (server re-derives with Holidays). */
+function clientSandwichDates(
+	startDate: string,
+	endDate: string,
+	halfDay: boolean
+): string[] {
+	if (!startDate || !endDate || halfDay) return [];
+	const start = Date.parse(`${startDate}T00:00:00Z`);
+	const end = Date.parse(`${endDate}T00:00:00Z`);
+	if (Number.isNaN(start) || Number.isNaN(end) || end < start) return [];
+	const dates: string[] = [];
+	const isOff: boolean[] = [];
+	const cursor = new Date(`${startDate}T00:00:00Z`);
+	const stop = new Date(`${endDate}T00:00:00Z`);
+	while (cursor <= stop) {
+		const date = cursor.toISOString().slice(0, 10);
+		dates.push(date);
+		// Holidays unknown client-side; the server adds them on submit.
+		isOff.push(isWeeklyOff(date));
+		cursor.setUTCDate(cursor.getUTCDate() + 1);
+	}
+	let first = -1;
+	let last = -1;
+	let billable = 0;
+	for (let i = 0; i < dates.length; i++) {
+		if (!isOff[i]) {
+			if (first === -1) first = i;
+			last = i;
+			billable += 1;
+		}
+	}
+	if (billable < 2) return [];
+	const sandwich: string[] = [];
+	for (let i = first + 1; i < last; i++) {
+		if (isOff[i]) sandwich.push(dates[i]);
+	}
+	return sandwich;
+}
+
 /** Mirrors the server-side inclusive day count (see leave-helpers.ts). */
 function clientDuration(
 	startDate: string,
@@ -112,6 +152,7 @@ export default function LeaveApplications() {
 		half_day: false,
 		reason: '',
 	});
+	const [sandwichAck, setSandwichAck] = useState(false);
 
 	const balances = useQuery<BalancesResponse['data']>({
 		queryKey: ['leaves', 'balances'],
@@ -145,17 +186,19 @@ export default function LeaveApplications() {
 	);
 
 	const applyMutation = useMutation({
-		mutationFn: async () =>
+		mutationFn: async (acknowledgedCount: number) =>
 			apiPost('/api/leaves', {
 				leave_type_id: Number(form.leave_type_id),
 				start_date: form.start_date,
 				end_date: form.end_date,
 				half_day: form.half_day,
 				reason: form.reason,
+				sandwich_acknowledged_days: acknowledgedCount,
 			}),
 		onSuccess: () => {
 			toast.success('Leave application submitted');
 			setApplyOpen(false);
+			setSandwichAck(false);
 			setForm((f) => ({
 				...f,
 				leave_type_id: '',
@@ -186,14 +229,20 @@ export default function LeaveApplications() {
 		form.end_date,
 		form.half_day
 	);
+	const sandwichPreview = useMemo(
+		() => clientSandwichDates(form.start_date, form.end_date, form.half_day),
+		[form.start_date, form.end_date, form.half_day]
+	);
 	const canSubmit =
 		form.leave_type_id !== '' &&
 		duration > 0 &&
 		form.reason.trim().length > 0 &&
+		(sandwichPreview.length === 0 || sandwichAck) &&
 		!applyMutation.isPending;
 
 	function resetAndClose() {
 		setApplyOpen(false);
+		setSandwichAck(false);
 		applyMutation.reset();
 	}
 
@@ -426,7 +475,7 @@ export default function LeaveApplications() {
 					className="space-y-3"
 					onSubmit={(e) => {
 						e.preventDefault();
-						if (canSubmit) applyMutation.mutate();
+						if (canSubmit) applyMutation.mutate(sandwichPreview.length);
 					}}
 				>
 					<FieldGroup label="Leave type" required>
@@ -457,14 +506,15 @@ export default function LeaveApplications() {
 								type="date"
 								value={form.start_date}
 								min={today()}
-								onChange={(e) =>
+								onChange={(e) => {
+									setSandwichAck(false);
 									setForm((f) => ({
 										...f,
 										start_date: e.target.value,
 										end_date:
 											f.end_date < e.target.value ? e.target.value : f.end_date,
-									}))
-								}
+									}));
+								}}
 								required
 							/>
 						</FieldGroup>
@@ -473,9 +523,10 @@ export default function LeaveApplications() {
 								type="date"
 								value={form.end_date}
 								min={form.start_date || today()}
-								onChange={(e) =>
-									setForm((f) => ({ ...f, end_date: e.target.value }))
-								}
+								onChange={(e) => {
+									setSandwichAck(false);
+									setForm((f) => ({ ...f, end_date: e.target.value }));
+								}}
 								required
 							/>
 						</FieldGroup>
@@ -487,9 +538,10 @@ export default function LeaveApplications() {
 								type="checkbox"
 								checked={form.half_day}
 								disabled={form.start_date !== form.end_date}
-								onChange={(e) =>
-									setForm((f) => ({ ...f, half_day: e.target.checked }))
-								}
+								onChange={(e) => {
+									setSandwichAck(false);
+									setForm((f) => ({ ...f, half_day: e.target.checked }));
+								}}
 								className="rounded border-gray-300 text-[#64126D] focus:ring-[#64126D]"
 							/>
 							Half day
@@ -520,6 +572,31 @@ export default function LeaveApplications() {
 							required
 						/>
 					</FieldGroup>
+
+					{sandwichPreview.length > 0 && (
+						<div
+							role="alert"
+							className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800"
+						>
+							<p className="font-semibold">
+								Sandwich applies: {sandwichPreview.length} extra day
+								{sandwichPreview.length === 1 ? '' : 's'} (
+								{sandwichPreview.join(', ')}) will be deducted in addition to{' '}
+								{duration} working day
+								{duration === 1 ? '' : 's'}.
+							</p>
+							<label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs font-medium">
+								<input
+									type="checkbox"
+									checked={sandwichAck}
+									onChange={(e) => setSandwichAck(e.target.checked)}
+									className="rounded border-amber-300 text-[#64126D] focus:ring-[#64126D]"
+								/>
+								I acknowledge {sandwichPreview.length} extra day
+								{sandwichPreview.length === 1 ? '' : 's'} will be deducted
+							</label>
+						</div>
+					)}
 
 					<div className="flex justify-end gap-2 pt-1">
 						<Button type="button" variant="outline" onClick={resetAndClose}>

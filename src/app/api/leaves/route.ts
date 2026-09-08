@@ -10,8 +10,10 @@ import { logActivity } from '@/utils/activity-logger';
 import { notifyLeaveApprovers } from '@/utils/notifications';
 import {
 	computeDurationDays,
+	deriveSandwichDatesInRange,
 	getActiveHolidaysInRange,
 	parseDateInput,
+	parseSandwichAcknowledgedDays,
 	MAX_LEAVE_RANGE_DAYS,
 } from '@/utils/leave-helpers';
 
@@ -118,13 +120,14 @@ export async function GET(request: Request) {
 		if (db) await db.release();
 	}
 }
-
 /**
  * POST /api/leaves
  *
  * Creates a pending leave application. duration_days is always computed
- * server-side; overlapping pending/approved requests are rejected.
- * Body: { leave_type_id, start_date, end_date, half_day?, reason }
+ * server-side (billable working days only); Sandwich extras are re-derived
+ * server-side and must be explicitly acknowledged via
+ * `sandwich_acknowledged_days` when present. Body: { leave_type_id,
+ * start_date, end_date, half_day?, reason, sandwich_acknowledged_days? }
  */
 export async function POST(request: Request) {
 	const authResult = await ensurePermission(
@@ -200,6 +203,8 @@ export async function POST(request: Request) {
 		db = await dbConnect();
 
 		// Billable duration excludes in-range Weekly Offs + active Holidays.
+		// Sandwich extras are bracketed off-days inside the same range that
+		// approval will additionally deduct (same type, unpaid overflow).
 		const holidays = await getActiveHolidaysInRange(db, startDate, endDate);
 		const durationDays = computeDurationDays(
 			startDate,
@@ -213,6 +218,36 @@ export async function POST(request: Request) {
 					success: false,
 					error:
 						'Leave range contains no billable working days (Weekly Off/Holiday only)',
+				},
+				{ status: 400 }
+			);
+		}
+		const sandwichDates = deriveSandwichDatesInRange(
+			startDate,
+			endDate,
+			halfDay,
+			holidays
+		);
+		const acknowledged = parseSandwichAcknowledgedDays(body);
+		if (acknowledged === null) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'sandwich_acknowledged_days must be a non-negative integer',
+				},
+				{ status: 400 }
+			);
+		}
+		if (acknowledged !== sandwichDates.length) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						sandwichDates.length > 0
+							? `Sandwich applies: ${sandwichDates.length} extra day(s) (${sandwichDates.join(', ')}) will be deducted in addition to ${durationDays} working day(s). Resubmit with sandwich_acknowledged_days: ${sandwichDates.length} to acknowledge.`
+							: 'Sandwich acknowledgment mismatch: this range has no extra Sandwich days.',
+					sandwich_days: sandwichDates,
+					sandwich_days_count: sandwichDates.length,
 				},
 				{ status: 400 }
 			);
@@ -269,7 +304,7 @@ export async function POST(request: Request) {
 			actionType: 'create',
 			resourceType: 'leave_applications',
 			resourceId: insertId,
-			description: `Applied for ${typeRows[0].name} (${durationDays} day(s), ${startDate} → ${endDate})`,
+			description: `Applied for ${typeRows[0].name} (${durationDays} day(s), ${startDate} → ${endDate}${sandwichDates.length > 0 ? `, +${sandwichDates.length} sandwich day(s)` : ''})`,
 			details: null,
 			request,
 			status: 'success',
@@ -292,6 +327,8 @@ export async function POST(request: Request) {
 				end_date: endDate,
 				half_day: halfDay,
 				duration_days: durationDays,
+				sandwich_days: sandwichDates,
+				sandwich_days_count: sandwichDates.length,
 				reason,
 				status: 'pending',
 			},

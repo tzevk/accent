@@ -192,7 +192,7 @@ describe('POST /api/leaves', () => {
 		expect(body.data.duration_days).toBe(0.5);
 	});
 
-	it('bills a Friday-to-Monday range as 2 days (Sunday + 2nd-Saturday off)', async () => {
+	it('bills a Friday-to-Monday range as 2 days plus 2 acknowledged Sandwich extras', async () => {
 		// May 2026: Fri 8, Sat 9 (2nd Saturday WO), Sun 10 (WO), Mon 11.
 		mockExecute.mockResolvedValueOnce([[]]); // holidays
 		mockExecute.mockResolvedValueOnce([[{ id: 1, name: 'Casual Leave' }]]);
@@ -204,12 +204,46 @@ describe('POST /api/leaves', () => {
 				...validBody,
 				start_date: '2026-05-08',
 				end_date: '2026-05-11',
+				sandwich_acknowledged_days: 2,
 			}),
 		});
 		const res = await POST(req);
 		const body = await res.json();
 		expect(res.status).toBe(200);
 		expect(body.data.duration_days).toBe(2);
+		expect(body.data.sandwich_days).toEqual(['2026-05-09', '2026-05-10']);
+		expect(body.data.sandwich_days_count).toBe(2);
+	});
+
+	it('rejects a Sandwich range when the acknowledged count mismatches', async () => {
+		mockExecute.mockResolvedValueOnce([[]]); // holidays
+		const req = new Request('http://localhost/api/leaves', {
+			method: 'POST',
+			body: JSON.stringify({
+				...validBody,
+				start_date: '2026-05-08',
+				end_date: '2026-05-11',
+				sandwich_acknowledged_days: 0,
+			}),
+		});
+		const res = await POST(req);
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatch(/Sandwich applies/i);
+		expect(body.sandwich_days).toEqual(['2026-05-09', '2026-05-10']);
+		expect(body.sandwich_days_count).toBe(2);
+	});
+
+	it('rejects a non-Sandwich range carrying a stray acknowledgment', async () => {
+		mockExecute.mockResolvedValueOnce([[]]); // holidays
+		const req = new Request('http://localhost/api/leaves', {
+			method: 'POST',
+			body: JSON.stringify({ ...validBody, sandwich_acknowledged_days: 1 }),
+		});
+		const res = await POST(req);
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatch(/no extra Sandwich days/i);
 	});
 
 	it('excludes active holidays from the billed duration', async () => {

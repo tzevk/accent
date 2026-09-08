@@ -114,7 +114,7 @@ describe('PATCH /api/leaves/[id]', () => {
 		expect(audit.balances).toEqual([{ leave_type_id: 1, year: 2026, days: 2 }]);
 	});
 
-	it('approving a Friday-to-Monday range deducts only billable days', async () => {
+	it('approving a Friday-to-Monday range deducts billable days plus Sandwich extras', async () => {
 		mockExecute.mockResolvedValueOnce([
 			[
 				appRow({
@@ -139,9 +139,37 @@ describe('PATCH /api/leaves/[id]', () => {
 		const audit = JSON.parse(updateCall[1][3]);
 		expect(audit.attendance.map((a) => a.date)).toEqual([
 			'2026-05-08',
+			'2026-05-09',
+			'2026-05-10',
 			'2026-05-11',
 		]);
-		expect(audit.balances).toEqual([{ leave_type_id: 1, year: 2026, days: 2 }]);
+		expect(audit.balances).toEqual([{ leave_type_id: 1, year: 2026, days: 4 }]);
+		expect(audit.version).toBe(2);
+		expect(audit.sandwich.dates).toEqual(['2026-05-09', '2026-05-10']);
+	});
+
+	it('rejects approval when an explicitly acknowledged Sandwich count mismatches', async () => {
+		mockExecute.mockResolvedValueOnce([
+			[
+				appRow({
+					start_date: '2026-05-08',
+					end_date: '2026-05-11',
+					duration_days: 2,
+				}),
+			],
+		]); // loadApplication
+		mockExecute.mockResolvedValue([[]]); // holidays lookup
+		const req = new Request('http://localhost/api/leaves/5', {
+			method: 'PATCH',
+			body: JSON.stringify({
+				status: 'approved',
+				sandwich_acknowledged_days: 0,
+			}),
+		});
+		const res = await PATCH(req, { params: Promise.resolve({ id: '5' }) });
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatch(/Sandwich applies/i);
 	});
 
 	it('returns 409 when the application is already in the requested status', async () => {
