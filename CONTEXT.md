@@ -47,3 +47,23 @@ _Avoid_: Leave (ambiguous), Overlapping leaves (when meaning one person's own co
 **Leave Overlap**:
 Two or more _different_ employees whose `pending` or `approved` applications intersect on at least one calendar date. `rejected` applications never count toward an overlap.
 _Avoid_: Concurrent Leave
+
+**Capacity**:
+Net available working hours for an Employee in a period — 8h per working day (excluding Sundays, 2nd/4th Saturdays, and active `holiday_master` dates), minus approved leave (8h per full day, 4h per half-day).
+_Avoid_: Expected hours, Standard hours (ambiguous), Bandwidth
+
+**Logged Hours**:
+Sum of `user_activity_assignments.daily_entries.hours` (`actual_hours`) entered via Project Activity Assignments, including overtime. The billed-effort truth for utilization; never `planned_hours`/`estimated_hours`.
+_Avoid_: Manhours (ambiguous), Planned hours, Assigned hours
+
+**Utilization**:
+`total_logged / capacity × 100` per employee per month. Under <80%, healthy 80–100%, over >100%. Answers whether an Employee is underworked or overworked.
+_Avoid_: Attendance %, Allocation %, Productivity
+
+**Monthly Cost**:
+CTC-based monthly price of an Employee — `employee_salary_profile.employer_cost` (stored CTC), falling back to `gross_salary` then `gross`. Profile picked by `pickActiveProfile` (effective-range cover, else latest active).
+_Avoid_: Gross, Salary (ambiguous), Hourly rate
+
+**Bench Cost**:
+`monthly_cost − ctc_rate × logged_hours`, where `ctc_rate` is Monthly Cost apportioned over `std_working_days` (default 26) × `std_hours_per_day` (default 8); hourly/daily/custom types use their direct rate. Rows without a covering profile show blank cost, never zero.
+_Avoid_: Fractional cost, Loss, Waste
