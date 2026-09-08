@@ -15,6 +15,7 @@
  */
 
 import { query } from '@/utils/database';
+import { isWeeklyOff } from '@/utils/weekly-off';
 
 // ─── Public types ───────────────────────────────────────────────────
 
@@ -242,19 +243,12 @@ export function dayTypeFor(
 }
 
 /**
- * Company weekly-off policy: Sundays plus the 2nd and 4th Saturdays of the
- * month (every other Saturday is a working day). Dates are YYYY-MM-DD.
- * Mirrors the rule the dashboard attendance card uses (2nd/4th Saturday =
- * the Saturday of the 2nd/4th week, i.e. ceil(day / 7) ∈ {2, 4}).
+ * Company weekly-off policy (Sundays + 2nd/4th Saturdays).
+ * Thin alias over the shared predicate — new code imports `isWeeklyOff`
+ * from `@/utils/weekly-off` directly.
  */
 export function isScheduledWeeklyOff(date: string): boolean {
-	const weekday = weekdayFor(date);
-	if (weekday === 'Sun') return true;
-	if (weekday !== 'Sat') return false;
-	const day = Number(date.slice(8, 10));
-	if (!day) return false;
-	const saturdayOfMonth = Math.ceil(day / 7);
-	return saturdayOfMonth === 2 || saturdayOfMonth === 4;
+	return isWeeklyOff(date);
 }
 
 /**
@@ -294,9 +288,7 @@ export function buildDays(
 		// Weekly off comes from the attendance flag when a record exists;
 		// without a record, apply the company rule (Sundays + 2nd/4th
 		// Saturdays only — the other Saturdays are working days).
-		const isWeeklyOff = row
-			? n(row, 'is_weekly_off') === 1
-			: isScheduledWeeklyOff(date);
+		const weeklyOff = row ? n(row, 'is_weekly_off') === 1 : isWeeklyOff(date);
 		const holidayName = holidayNameByDate.get(date) ?? null;
 		days.push({
 			date,
@@ -304,11 +296,11 @@ export function buildDays(
 			weekday,
 			status,
 			overtime_hours: row ? n(row, 'overtime_hours') : 0,
-			is_weekly_off: isWeeklyOff,
+			is_weekly_off: weeklyOff,
 			is_holiday: holidayName != null,
 			holiday_name: holidayName,
 			hours: hoursForStatus(status, settings),
-			day_type: dayTypeFor(date, holidaySet, isWeeklyOff),
+			day_type: dayTypeFor(date, holidaySet, weeklyOff),
 		});
 	}
 	return days;

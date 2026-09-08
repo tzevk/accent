@@ -23,8 +23,9 @@
  * above; the gap is documented, not hidden.
  *
  * Calendar logic is reused verbatim from the timesheet report (`statusKind`,
- * `dayTypeFor`, `isScheduledWeeklyOff`); profile selection reuses
- * `pickActiveProfile` (effective-range cover, else latest active). Holiday
+ * `dayTypeFor`); the weekly-off rule comes from the shared predicate.
+ * Profile selection reuses `pickActiveProfile` (effective-range cover, else
+ * latest active). Holiday
  * sets are injected by the caller, so this module has no DB dependency.
  * No mid-month pro-rating: joiners/leavers are measured against full-month
  * capacity in v1.
@@ -33,8 +34,8 @@
 import {
 	statusKind,
 	dayTypeFor,
-	isScheduledWeeklyOff,
 } from '@/app/reports/timesheet-report/data-source';
+import { isWeeklyOff } from '@/utils/weekly-off';
 import {
 	parseDailyEntries,
 	pickActiveProfile,
@@ -210,11 +211,11 @@ export function buildCapacity(
 		const date = `${month}-${String(day).padStart(2, '0')}`;
 		const row = byDate.get(date);
 		const flag = row?.is_weekly_off;
-		const isWeeklyOff =
+		const weeklyOff =
 			flag === null || flag === undefined
-				? isScheduledWeeklyOff(date)
+				? isWeeklyOff(date)
 				: flag === true || flag === 1;
-		const dayType = dayTypeFor(date, holidaySet, isWeeklyOff);
+		const dayType = dayTypeFor(date, holidaySet, weeklyOff);
 		if (dayType === 'weekly_off') {
 			weeklyOffDays++;
 			continue;

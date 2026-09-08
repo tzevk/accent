@@ -12,6 +12,8 @@
  *                                     src/app/api/users/[id]/attendance/route.js
  */
 
+import { isWeeklyOff } from './weekly-off';
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Max calendar span for a single application. */
@@ -128,7 +130,7 @@ export async function applyApprovedLeave(db, application, reviewerId) {
 			holidays.add(String(row.date).slice(0, 10));
 		}
 	} catch {
-		/* holiday_master missing — treat every non-Sunday as a working day */
+		/* holiday_master missing — treat every non-weekly-off day as working */
 	}
 
 	// Half-day payroll semantics (payroll-calculator.js):
@@ -153,7 +155,7 @@ export async function applyApprovedLeave(db, application, reviewerId) {
 	while (cursor <= end) {
 		const date = cursor.toISOString().slice(0, 10);
 
-		if (cursor.getUTCDay() !== 0 && !holidays.has(date)) {
+		if (!isWeeklyOff(date) && !holidays.has(date)) {
 			const prevStatus = existing.get(date) ?? null;
 			const normalizedPrev =
 				prevStatus === null || prevStatus === undefined

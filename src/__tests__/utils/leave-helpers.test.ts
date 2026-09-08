@@ -68,3 +68,37 @@ describe('applyApprovedLeave holiday set', () => {
 		]);
 	});
 });
+
+describe('applyApprovedLeave weekly offs', () => {
+	it('skips 2nd/4th Saturdays like Sundays', async () => {
+		// May 2026: Fri 8, Sat 9 (2nd Saturday), Sun 10, Mon 11.
+		const { db, writes } = makeDb([]);
+		const result = await applyApprovedLeave(
+			db as never,
+			application({ start_date: '2026-05-08', end_date: '2026-05-11' }),
+			1
+		);
+		const writtenDates = writes.map((w) => w.params[1]);
+		expect(writtenDates).toEqual(['2026-05-08', '2026-05-11']);
+		expect(result.attendance.map((a) => a.date)).toEqual([
+			'2026-05-08',
+			'2026-05-11',
+		]);
+	});
+
+	it('still writes 1st/3rd/5th Saturdays as working days', async () => {
+		// May 2026: Fri 1, Sat 2 (1st Saturday), Sun 3.
+		const { db, writes } = makeDb([]);
+		const result = await applyApprovedLeave(
+			db as never,
+			application({ start_date: '2026-05-01', end_date: '2026-05-03' }),
+			1
+		);
+		const writtenDates = writes.map((w) => w.params[1]);
+		expect(writtenDates).toEqual(['2026-05-01', '2026-05-02']);
+		expect(result.attendance.map((a) => a.date)).toEqual([
+			'2026-05-01',
+			'2026-05-02',
+		]);
+	});
+});
