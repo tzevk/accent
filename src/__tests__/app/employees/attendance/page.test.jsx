@@ -76,4 +76,82 @@ describe('attendance page activity defaults', () => {
 			).toBeInTheDocument();
 		});
 	});
+
+	it('labels overtime as gate-filtered Payable OT with threshold visible', async () => {
+		render(<AttendancePage />);
+
+		const header = await screen.findByText('Payable OT (>2h)');
+		expect(header).toBeInTheDocument();
+		expect(header.closest('th')).toHaveAttribute(
+			'title',
+			expect.stringMatching(/past 2h/i)
+		);
+		expect(
+			await screen.findByText(/gate-filtered.*past 2h/i)
+		).toBeInTheDocument();
+		expect(screen.queryByText(/OT Amount/i)).not.toBeInTheDocument();
+	});
+
+	it('folds approval-introduced EL/UL/OT codes into summary counts', async () => {
+		fetchMock.mockImplementation((url) => {
+			if (url.startsWith('/api/employees/list')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						employees: [
+							{
+								id: 1,
+								employee_id: 'ATS001',
+								first_name: 'Alice',
+								last_name: 'Worker',
+								department: 'Projects',
+							},
+						],
+					}),
+				});
+			}
+			if (url.startsWith('/api/attendance?month=2026-08')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						summary: [
+							{
+								employee_id: 1,
+								days: {
+									'2026-08-01': { status: 'P' },
+									'2026-08-02': { status: 'EL' },
+									'2026-08-03': { status: 'UL' },
+									'2026-08-04': { status: 'OT', overtime_hours: 3 },
+								},
+							},
+						],
+						activityDays: {},
+					}),
+				});
+			}
+			if (url.startsWith('/api/masters/holidays')) {
+				return Promise.resolve({ json: async () => ({ holidays: [] }) });
+			}
+			if (url.startsWith('/api/payroll/salary-profile/batch')) {
+				return Promise.resolve({
+					json: async () => ({ success: true, data: {} }),
+				});
+			}
+			return Promise.reject(new Error(`Unexpected request: ${url}`));
+		});
+		render(<AttendancePage />);
+
+		// EL/UL/OT cells render with their own labels, not Present fallback
+		expect(await screen.findByTitle(/ 2: Earned Leave$/)).toBeInTheDocument();
+		expect(await screen.findByTitle(/ 3: Unpaid Leave$/)).toBeInTheDocument();
+		expect(
+			await screen.findByTitle(/ 4: Overtime Present$/)
+		).toBeInTheDocument();
+		// Payable = P + EL + OT-as-present = 3.0; hours = P 8 + OT 8 = 16.0;
+		// payable OT = 3.0 (gated). UL groups with LWP so no separate column.
+		await waitFor(() => {
+			expect(screen.getAllByText('3.0')).toHaveLength(2);
+			expect(screen.getByText('16.0')).toBeInTheDocument();
+		});
+	});
 });
