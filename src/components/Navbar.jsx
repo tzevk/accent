@@ -116,7 +116,7 @@ const reportsMenuConfig = [
 		reportField: 'project_activities', // reuse so existing grants cover the new report
 	},
 	{
-		name: 'Leave Overlaps',
+		name: 'Employee Leave Report',
 		href: '/reports/leave-overlaps',
 		icon: CalendarDaysIcon,
 		resource: 'reports',

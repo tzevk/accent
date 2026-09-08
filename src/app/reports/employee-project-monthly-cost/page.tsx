@@ -293,7 +293,7 @@ function ProjectWiseMonthlyReport({
 					key={`${projectKey(project.project_id, project.project_code, project.project_name)}-${project.sr_no}`}
 					className="epc-project-section mb-6"
 				>
-					<div className="epc-project-meta grid grid-cols-[130px_minmax(0,1fr)] border border-black">
+					<div className="epc-project-meta grid grid-cols-[12%_minmax(0,1fr)] border border-black border-b-0">
 						<div className="border-b border-black px-2 py-2 font-bold">
 							Project No.:
 						</div>

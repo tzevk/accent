@@ -3,7 +3,7 @@
  * Verify Employee Project Cost report inputs for Rahul Sharma:
  * aggregates every non-cancelled assignment's daily_entries into FY months
  * (Apr–Mar), applies payroll hourly rate (gross_salary ÷ std days × std hrs),
- * and prints the matrix exactly like /reports/employee-project-cost.
+ * and prints the matrix exactly like /reports/employee-project-monthly-cost (FY view).
  *
  * Run: node scripts/verify-rahul-cost.js
  */
