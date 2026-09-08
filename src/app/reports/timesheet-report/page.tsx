@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
@@ -193,7 +193,7 @@ function projectRowsForMonth(
 
 // ─── Page ───────────────────────────────────────────────────────────
 
-export default function TimesheetReportPage() {
+function TimesheetReportPageInner() {
 	const {
 		loading: authLoading,
 		user,
@@ -806,5 +806,13 @@ export default function TimesheetReportPage() {
 				)}
 			</main>
 		</div>
+	);
+}
+
+export default function TimesheetReportPage() {
+	return (
+		<Suspense fallback={null}>
+			<TimesheetReportPageInner />
+		</Suspense>
 	);
 }
