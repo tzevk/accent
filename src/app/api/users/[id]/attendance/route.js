@@ -1,6 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
+import { isWeeklyOff } from '@/utils/weekly-off';
 
 /**
  * GET /api/users/[id]/attendance
@@ -175,18 +176,11 @@ export async function GET(request, { params }) {
 				console.log('Activity logs table also not found:', logError.message);
 			}
 
-			// Calculate weekly offs (Sundays + 2nd & 4th Saturdays in the month)
+			// Weekly offs via the shared company rule (Sundays + 2nd/4th Saturdays).
 			let weeklyOff = 0;
 			for (let d = 1; d <= daysInMonth; d++) {
-				const date = new Date(currentYear, currentMonth - 1, d);
-				const dayOfWeek = date.getDay();
-				if (dayOfWeek === 0) {
-					weeklyOff++; // Sunday
-				} else if (dayOfWeek === 6) {
-					// 2nd and 4th Saturday
-					const saturdayOfMonth = Math.ceil(d / 7);
-					if (saturdayOfMonth === 2 || saturdayOfMonth === 4) weeklyOff++;
-				}
+				const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+				if (isWeeklyOff(dateStr)) weeklyOff++;
 			}
 			attendanceData.weeklyOff = weeklyOff;
 		}

@@ -67,3 +67,19 @@ _Avoid_: Gross, Salary (ambiguous), Hourly rate
 **Bench Cost**:
 `monthly_cost − ctc_rate × logged_hours`, where `ctc_rate` is Monthly Cost apportioned over `std_working_days` (default 26) × `std_hours_per_day` (default 8); hourly/daily/custom types use their direct rate. Rows without a covering profile show blank cost, never zero.
 _Avoid_: Fractional cost, Loss, Waste
+
+**Weekly Off**:
+A scheduled non-working day — every Sunday plus the 2nd and 4th Saturdays of the month. Stored as attendance status `WO`.
+_Avoid_: Weekend, Holiday, Sunday-off
+
+**Sandwich**:
+A Weekly Off or Holiday run bracketed by leave on both sides inside one continuous absence — each bracketed day is deducted as leave. Canonical: Sat leave + Sun WO + Mon leave → Sun deducted.
+_Avoid_: Sandwich holiday, Bridge leave
+
+**Payable Day**:
+Attendance credit toward salary — `P` = 1, `HD` = 0.5, paid leave (`PL`/`CL`/`SL`/`EL`) = 1; `WO`/`H`/`A`/`LWP`/`UL` = 0.
+_Avoid_: Present day, Working day
+
+**Payable OT**:
+Overtime that clears the payability gate — daily excess over 8h only when it exceeds 2h. Coexists with worked-hours OT in the timesheet report, which counts every minute past 8.
+_Avoid_: OT (ambiguous), Overtime (ambiguous)

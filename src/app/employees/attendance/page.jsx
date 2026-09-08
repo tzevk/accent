@@ -11,6 +11,13 @@ import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import {
+	computeAttendanceSummary,
+	PAYABLE_OT_HEADER,
+	PAYABLE_OT_TOOLTIP,
+} from '@/lib/attendance-summary';
+import { isWeeklyOff } from '@/utils/weekly-off';
+import { getSandwichConversions } from '@/utils/sandwich';
+import {
 	CalendarDaysIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
@@ -78,6 +85,27 @@ const STATUS_OPTIONS = [
 		color: 'bg-orange-500',
 		textColor: 'text-orange-700',
 		bgLight: 'bg-orange-100',
+	},
+	{
+		value: 'EL',
+		label: 'Earned Leave',
+		color: 'bg-emerald-500',
+		textColor: 'text-emerald-700',
+		bgLight: 'bg-emerald-100',
+	},
+	{
+		value: 'UL',
+		label: 'Unpaid Leave',
+		color: 'bg-stone-500',
+		textColor: 'text-stone-700',
+		bgLight: 'bg-stone-100',
+	},
+	{
+		value: 'OT',
+		label: 'Overtime Present',
+		color: 'bg-indigo-500',
+		textColor: 'text-indigo-700',
+		bgLight: 'bg-indigo-100',
 	},
 	{
 		value: 'LWP',
@@ -400,6 +428,27 @@ export default function AttendancePage() {
 		setHasChanges(true);
 	};
 
+	// Mark 2nd & 4th Saturdays as WO for all employees (fill empty only;
+	// 1st/3rd/5th Saturdays stay working, Holidays keep their identity).
+	const markSaturdaysAsWO = () => {
+		setAttendanceData((prev) => {
+			const updated = { ...prev };
+			employees.forEach((emp) => {
+				const empDays = { ...(updated[emp.id] || {}) };
+				monthDates.forEach(({ dateStr, day, date }) => {
+					if (date.getDay() !== 6) return;
+					if (!isWeeklyOff(dateStr)) return;
+					if (holidayDateSet.has(day)) return;
+					if (empDays[dateStr]?.status) return;
+					empDays[dateStr] = { ...(empDays[dateStr] || {}), status: 'WO' };
+				});
+				updated[emp.id] = empDays;
+			});
+			return updated;
+		});
+		setHasChanges(true);
+	};
+
 	// Mark holidays for all employees
 	const markHolidays = () => {
 		setAttendanceData((prev) => {
@@ -441,15 +490,36 @@ export default function AttendancePage() {
 		setHasChanges(true);
 	};
 
-	// Save attendance
+	// Save attendance — Sandwich rule (ADR-0005): bracketed WO/H preview-convert
+	// to the bracketing leave type so the grid matches the persisted record.
 	const saveAttendance = async () => {
 		setSaving(true);
 		setSaveMessage(null);
 		try {
+			const convertedData = { ...attendanceData };
+			let convertedCount = 0;
+			Object.entries(attendanceData).forEach(([empId, days]) => {
+				const statusByDate = {};
+				Object.entries(days || {}).forEach(([dateStr, dayData]) => {
+					if (dayData?.status) statusByDate[dateStr] = dayData.status;
+				});
+				const conversions = getSandwichConversions(statusByDate);
+				if (Object.keys(conversions).length > 0) {
+					const empDays = { ...(convertedData[empId] || {}) };
+					Object.entries(conversions).forEach(([dateStr, target]) => {
+						if (empDays[dateStr]?.status) {
+							empDays[dateStr] = { ...empDays[dateStr], status: target };
+							convertedCount += 1;
+						}
+					});
+					convertedData[empId] = empDays;
+				}
+			});
+			if (convertedCount > 0) setAttendanceData(convertedData);
 			const records = [];
 			const monthStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
-			Object.entries(attendanceData).forEach(([empId, days]) => {
+			Object.entries(convertedData).forEach(([empId, days]) => {
 				Object.entries(days).forEach(([dateStr, dayData]) => {
 					if (dayData.status) {
 						records.push({
@@ -458,6 +528,7 @@ export default function AttendancePage() {
 							status: dayData.status,
 							overtime_hours: dayData.overtime_hours || 0,
 							is_weekly_off: dayData.status === 'WO' ? 1 : 0,
+							is_holiday: dayData.status === 'H' ? 1 : 0,
 							remarks: dayData.remarks || '',
 							in_time: dayData.in_time || null,
 							out_time: dayData.out_time || null,
@@ -491,60 +562,17 @@ export default function AttendancePage() {
 		}
 	};
 
-	// Compute summary stats for an employee
+	// Compute summary stats for an employee — delegates to the shared
+	// Payable Day helper so approval-introduced codes (EL/UL/OT) stay
+	// consistent with payroll. Grid stays hours-only; amounts remain
+	// in CSV export and payroll.
 	const getEmployeeSummary = (empId) => {
 		const days = attendanceData[empId] || {};
-		const summary = {
-			P: 0,
-			A: 0,
-			HD: 0,
-			WO: 0,
-			H: 0,
-			PL: 0,
-			CL: 0,
-			SL: 0,
-			LWP: 0,
-			totalHours: 0,
-			totalOTHours: 0,
-			totalOTAmount: 0,
-		};
 		const profile = salaryProfiles[empId] || {};
-		const basicDa =
-			parseFloat(profile.basic_plus_da || 0) ||
-			(parseFloat(profile.basic || 0) || 0) +
-				(parseFloat(profile.da || 0) || 0);
-		const perHourRate = basicDa > 0 ? basicDa / 8 : 0;
-
-		Object.values(days).forEach((d) => {
-			if (d.status && summary[d.status] !== undefined) {
-				summary[d.status]++;
-			}
-			// Calculate working hours — use in/out times if available, else standard 8h (P) / 4h (HD)
-			if (d.status === 'P' || d.status === 'HD') {
-				if (d.in_time && d.out_time) {
-					const inStr = d.in_time.toString().substring(0, 5);
-					const outStr = d.out_time.toString().substring(0, 5);
-					const [inH, inM] = inStr.split(':').map(Number);
-					const [outH, outM] = outStr.split(':').map(Number);
-					const hrs = outH + outM / 60 - (inH + inM / 60);
-					if (hrs > 0) summary.totalHours += hrs;
-				} else {
-					summary.totalHours += d.status === 'HD' ? 4 : 8;
-				}
-			}
-			// OT payout formula: (Basic + DA) / 8 * OT hours
-			const ot = parseFloat(d.overtime_hours || 0);
-			if (ot > 0) {
-				summary.totalOTHours += ot;
-				summary.totalOTAmount += perHourRate * ot;
-			}
-		});
-		summary.payable =
-			summary.P + summary.HD * 0.5 + summary.PL + summary.CL + summary.SL;
-		return summary;
+		return computeAttendanceSummary(days, profile);
 	};
 
-	// Export to CSV
+	// Export to CSV — full leave split (amounts stay in export, not grid)
 	const exportCSV = () => {
 		const headers = [
 			'Employee ID',
@@ -559,10 +587,11 @@ export default function AttendancePage() {
 			'PL',
 			'CL',
 			'SL',
-			'LWP',
+			'EL',
+			'LWP (incl. UL)',
 			'Payable Days',
 			'Total Hours',
-			'OT Hours',
+			'Payable OT Hours',
 			'OT Amount',
 		];
 		const rows = filteredEmployees.map((emp) => {
@@ -584,6 +613,7 @@ export default function AttendancePage() {
 				summary.PL,
 				summary.CL,
 				summary.SL,
+				summary.EL,
 				summary.LWP,
 				summary.payable.toFixed(1),
 				summary.totalHours.toFixed(1),
@@ -709,11 +739,11 @@ export default function AttendancePage() {
 										const extra = worked - 8;
 										let msg, cls;
 										if (computedOT > 2) {
-											msg = `⏱ Auto OT: ${computedOT.toFixed(2)} hrs (time beyond 8h shift)`;
+											msg = `⏱ Payable OT: ${computedOT.toFixed(2)} hrs (daily excess over 8h counts only past 2h)`;
 											cls =
 												'bg-orange-50 text-orange-700 border border-orange-200';
 										} else if (extra > 0) {
-											msg = `OT not applicable — extra ${extra.toFixed(2)} hrs must exceed 2 hrs to qualify`;
+											msg = `Payable OT not applicable — extra ${extra.toFixed(2)} hrs must exceed 2 hrs to qualify`;
 											cls = 'bg-gray-50 text-gray-500 border border-gray-200';
 										} else {
 											msg = `Worked ${worked > 0 ? worked.toFixed(2) : 0} hrs — no overtime`;
@@ -729,7 +759,7 @@ export default function AttendancePage() {
 								{/* Manual OT override */}
 								<div>
 									<label className="block text-xs font-medium text-gray-700 mb-1">
-										OT Hours{' '}
+										Payable OT Hours{' '}
 										<span className="text-gray-400 font-normal">
 											(override — applied only if &gt; 2 hrs)
 										</span>
@@ -863,6 +893,12 @@ export default function AttendancePage() {
 									Mark Sundays WO
 								</button>
 								<button
+									onClick={markSaturdaysAsWO}
+									className="px-3 py-2 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 border border-blue-200 transition-colors"
+								>
+									Mark 2nd & 4th Sats WO
+								</button>
+								<button
 									onClick={markHolidays}
 									className="px-3 py-2 text-xs font-medium bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 border border-purple-200 transition-colors"
 									disabled={holidays.length === 0}
@@ -980,14 +1016,20 @@ export default function AttendancePage() {
 											<th className="px-2 py-3 text-center text-[10px] font-semibold text-blue-700 uppercase bg-blue-50 min-w-[32px]">
 												WO
 											</th>
-											<th className="px-2 py-3 text-center text-[10px] font-semibold text-teal-700 uppercase bg-teal-50 min-w-[44px]">
+											<th
+												title="Payable days = Present (incl. OT) + Half-Day ÷ 2 + paid leave (PL/CL/SL/EL). Unpaid codes total with LWP."
+												className="px-2 py-3 text-center text-[10px] font-semibold text-teal-700 uppercase bg-teal-50 min-w-[44px]"
+											>
 												Pay
 											</th>
 											<th className="px-2 py-3 text-center text-[10px] font-semibold text-indigo-700 uppercase bg-indigo-50 min-w-[44px]">
 												Hrs
 											</th>
-											<th className="px-2 py-3 text-center text-[10px] font-semibold text-orange-700 uppercase bg-orange-50 min-w-[32px]">
-												OT
+											<th
+												title={PAYABLE_OT_TOOLTIP}
+												className="px-2 py-3 text-center text-[10px] font-semibold text-orange-700 uppercase bg-orange-50 min-w-[64px]"
+											>
+												{PAYABLE_OT_HEADER}
 											</th>
 										</tr>
 									</thead>
@@ -1077,11 +1119,18 @@ export default function AttendancePage() {
 								</table>
 							</div>
 
-							{/* Footer */}
-							<div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex items-center justify-between text-xs text-gray-500">
+							{/* Footer — gate threshold visible to editors; grid stays hours-only */}
+							<div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex flex-col gap-1 text-xs text-gray-500">
 								<span>
 									Showing {filteredEmployees.length} of {employees.length}{' '}
 									employees
+								</span>
+								<span>
+									Payable OT is gate-filtered (daily excess over 8h counts only
+									past 2h); timesheet report shows every minute past 8h. Payable
+									days = Present + Half-Day ÷ 2 + paid leave (PL/CL/SL/EL).
+									Unpaid codes total with LWP. Grid shows hours only — amounts
+									remain in exports and payroll.
 								</span>
 								<span>Click on a cell to open the attendance entry modal</span>
 							</div>
