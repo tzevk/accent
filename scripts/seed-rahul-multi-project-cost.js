@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Seed mock multi-project activity data for Rahul Sharma so the Employee
- * Project Cost report (/reports/employee-project-cost) shows a consolidated
- * matrix across several projects.
+ * Project Monthly Cost report (/reports/employee-project-monthly-cost) shows a
+ * consolidated matrix across several projects.
  *
  * Dev-only credentials exercised by this data (dev DB — fine to keep here):
  *   admin@accent.test  / Admin@123   (super admin — used as assigned_by)
