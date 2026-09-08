@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
 	ArrowPathIcon,
 	ChartBarIcon,
+	DocumentArrowDownIcon,
 	MagnifyingGlassIcon,
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
@@ -156,6 +157,7 @@ export default function EmployeeUtilizationPage() {
 	const [month, setMonth] = useState('');
 	const [flag, setFlag] = useState<'' | UtilizationBand>('');
 	const [search, setSearch] = useState('');
+	const [exporting, setExporting] = useState(false);
 
 	const isSuperAdmin =
 		user?.is_super_admin === true || user?.is_super_admin === 1;
@@ -224,6 +226,45 @@ export default function EmployeeUtilizationPage() {
 		dataQuery.isLoading || (dataQuery.isFetching && !dataQuery.data);
 	const searchActive = search.trim().length > 0;
 
+	// Export mirrors the current month view (month + flag). Search stays
+	// client-side: totals cover the full month view, so the workbook does too.
+	const handleExport = async () => {
+		if (!month || exporting) return;
+		setExporting(true);
+		try {
+			const params = new URLSearchParams({ month });
+			if (flag) params.append('flag', flag);
+			const response = await fetch(
+				`/api/reports/employee-utilization/download?${params.toString()}`,
+				{ credentials: 'include' }
+			);
+			if (!response.ok) {
+				const msg = await response.text().catch(() => '');
+				throw new Error(
+					`Export failed (${response.status})${msg ? `: ${msg}` : ''}`
+				);
+			}
+			const blob = await response.blob();
+			const disposition = response.headers.get('Content-Disposition') || '';
+			const match = disposition.match(/filename="?([^";]+)"?/i);
+			const filename =
+				match?.[1] ?? `Utilization_${month}${flag ? `_${flag}` : ''}.xlsx`;
+			const objectUrl = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = objectUrl;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+		} catch (e) {
+			console.error(e);
+			alert(e instanceof Error ? e.message : 'Failed to export');
+		} finally {
+			setExporting(false);
+		}
+	};
+
 	if (authLoading) {
 		return (
 			<div className="min-h-screen bg-white">
@@ -273,17 +314,30 @@ export default function EmployeeUtilizationPage() {
 									</p>
 								</div>
 							</div>
-							<button
-								type="button"
-								onClick={() => dataQuery.refetch()}
-								disabled={isLoading || !month}
-								className="inline-flex h-9 items-center gap-1.5 rounded-md bg-white/15 px-3 text-sm font-medium ring-1 ring-white/25 hover:bg-white/25 disabled:opacity-50"
-							>
-								<ArrowPathIcon
-									className={cn('h-4 w-4', isLoading && 'animate-spin')}
-								/>
-								Refresh
-							</button>
+							<div className="flex flex-wrap items-center gap-2">
+								<button
+									type="button"
+									onClick={() => dataQuery.refetch()}
+									disabled={isLoading || !month}
+									className="inline-flex h-9 items-center gap-1.5 rounded-md bg-white/15 px-3 text-sm font-medium ring-1 ring-white/25 hover:bg-white/25 disabled:opacity-50"
+								>
+									<ArrowPathIcon
+										className={cn('h-4 w-4', isLoading && 'animate-spin')}
+									/>
+									Refresh
+								</button>
+								<button
+									type="button"
+									onClick={handleExport}
+									disabled={exporting || isLoading || !month || !rows.length}
+									className="inline-flex h-9 items-center gap-1.5 rounded-md bg-white/15 px-3 text-sm font-medium ring-1 ring-white/25 hover:bg-white/25 disabled:opacity-50"
+								>
+									<DocumentArrowDownIcon
+										className={cn('h-4 w-4', exporting && 'animate-pulse')}
+									/>
+									{exporting ? 'Exporting…' : 'Export Excel'}
+								</button>
+							</div>
 						</div>
 					</div>
 
