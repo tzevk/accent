@@ -265,3 +265,166 @@ describe('attendance page Saturday bulk-mark', () => {
 		expect(screen.queryByTitle(/ 22: Weekly Off$/)).not.toBeInTheDocument();
 	});
 });
+
+describe('attendance page Sandwich save auto-convert (#234)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.setSystemTime(new Date('2026-08-15T12:00:00'));
+		vi.stubGlobal('fetch', fetchMock);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	});
+
+	it('converts a bracketed Weekly Off to leave on save and persists it', async () => {
+		let savedBody = null;
+		fetchMock.mockImplementation((url, options) => {
+			if (url.startsWith('/api/employees/list')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						employees: [
+							{
+								id: 1,
+								employee_id: 'ATS001',
+								first_name: 'Alice',
+								last_name: 'Worker',
+								department: 'Projects',
+							},
+						],
+					}),
+				});
+			}
+			if (url.startsWith('/api/attendance?month=2026-08')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						summary: [
+							{
+								employee_id: 1,
+								days: {
+									'2026-08-08': { status: 'CL' },
+									'2026-08-09': { status: 'WO' },
+									'2026-08-10': { status: 'CL' },
+								},
+							},
+						],
+						activityDays: {},
+					}),
+				});
+			}
+			if (url.startsWith('/api/masters/holidays')) {
+				return Promise.resolve({ json: async () => ({ holidays: [] }) });
+			}
+			if (url.startsWith('/api/payroll/salary-profile/batch')) {
+				return Promise.resolve({
+					json: async () => ({ success: true, data: {} }),
+				});
+			}
+			if (url === '/api/attendance' && options?.method === 'POST') {
+				savedBody = JSON.parse(options.body);
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						successCount: savedBody.attendance_records.length,
+						sandwichConverted: [
+							{
+								employee_id: 1,
+								attendance_date: '2026-08-09',
+								from: 'WO',
+								to: 'CL',
+							},
+						],
+					}),
+				});
+			}
+			return Promise.reject(new Error(`Unexpected request: ${url}`));
+		});
+		render(<AttendancePage />);
+		// Sandwich pattern loads: Sat CL, Sun WO, Mon CL.
+		expect(await screen.findByTitle(/ 9: Weekly Off$/)).toBeInTheDocument();
+		// Touch the grid so the save bar appears (fill-empty never clobbers CL).
+		fireEvent.click(screen.getByRole('button', { name: /2nd.*4th/i }));
+		fireEvent.click(screen.getByRole('button', { name: /Save Attendance/i }));
+		await waitFor(() => expect(savedBody).not.toBeNull());
+		const saved = new Map(
+			savedBody.attendance_records.map((r) => [r.attendance_date, r.status])
+		);
+		// Persisted payload carries the converted leave code, not WO.
+		expect(saved.get('2026-08-09')).toBe('CL');
+		expect(saved.get('2026-08-08')).toBe('CL');
+		expect(saved.get('2026-08-10')).toBe('CL');
+		// Grid matches the persisted record after save.
+		expect(await screen.findByTitle(/ 9: Casual Leave$/)).toBeInTheDocument();
+	});
+
+	it('leaves an unsandwiched Weekly Off alone on save', async () => {
+		let savedBody = null;
+		fetchMock.mockImplementation((url, options) => {
+			if (url.startsWith('/api/employees/list')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						employees: [
+							{
+								id: 1,
+								employee_id: 'ATS001',
+								first_name: 'Alice',
+								last_name: 'Worker',
+								department: 'Projects',
+							},
+						],
+					}),
+				});
+			}
+			if (url.startsWith('/api/attendance?month=2026-08')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						summary: [
+							{
+								employee_id: 1,
+								days: {
+									'2026-08-07': { status: 'CL' },
+									'2026-08-08': { status: 'WO' },
+								},
+							},
+						],
+						activityDays: {},
+					}),
+				});
+			}
+			if (url.startsWith('/api/masters/holidays')) {
+				return Promise.resolve({ json: async () => ({ holidays: [] }) });
+			}
+			if (url.startsWith('/api/payroll/salary-profile/batch')) {
+				return Promise.resolve({
+					json: async () => ({ success: true, data: {} }),
+				});
+			}
+			if (url === '/api/attendance' && options?.method === 'POST') {
+				savedBody = JSON.parse(options.body);
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						successCount: savedBody.attendance_records.length,
+						sandwichConverted: [],
+					}),
+				});
+			}
+			return Promise.reject(new Error(`Unexpected request: ${url}`));
+		});
+		render(<AttendancePage />);
+		expect(await screen.findByTitle(/ 8: Weekly Off$/)).toBeInTheDocument();
+		fireEvent.click(screen.getByRole('button', { name: /2nd.*4th/i }));
+		fireEvent.click(screen.getByRole('button', { name: /Save Attendance/i }));
+		await waitFor(() => expect(savedBody).not.toBeNull());
+		const saved = new Map(
+			savedBody.attendance_records.map((r) => [r.attendance_date, r.status])
+		);
+		expect(saved.get('2026-08-08')).toBe('WO');
+		expect(screen.getByTitle(/ 8: Weekly Off$/)).toBeInTheDocument();
+	});
+});

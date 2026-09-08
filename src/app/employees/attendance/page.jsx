@@ -16,6 +16,7 @@ import {
 	PAYABLE_OT_TOOLTIP,
 } from '@/lib/attendance-summary';
 import { isWeeklyOff } from '@/utils/weekly-off';
+import { getSandwichConversions } from '@/utils/sandwich';
 import {
 	CalendarDaysIcon,
 	ChevronLeftIcon,
@@ -489,15 +490,36 @@ export default function AttendancePage() {
 		setHasChanges(true);
 	};
 
-	// Save attendance
+	// Save attendance — Sandwich rule (ADR-0005): bracketed WO/H preview-convert
+	// to the bracketing leave type so the grid matches the persisted record.
 	const saveAttendance = async () => {
 		setSaving(true);
 		setSaveMessage(null);
 		try {
+			const convertedData = { ...attendanceData };
+			let convertedCount = 0;
+			Object.entries(attendanceData).forEach(([empId, days]) => {
+				const statusByDate = {};
+				Object.entries(days || {}).forEach(([dateStr, dayData]) => {
+					if (dayData?.status) statusByDate[dateStr] = dayData.status;
+				});
+				const conversions = getSandwichConversions(statusByDate);
+				if (Object.keys(conversions).length > 0) {
+					const empDays = { ...(convertedData[empId] || {}) };
+					Object.entries(conversions).forEach(([dateStr, target]) => {
+						if (empDays[dateStr]?.status) {
+							empDays[dateStr] = { ...empDays[dateStr], status: target };
+							convertedCount += 1;
+						}
+					});
+					convertedData[empId] = empDays;
+				}
+			});
+			if (convertedCount > 0) setAttendanceData(convertedData);
 			const records = [];
 			const monthStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
-			Object.entries(attendanceData).forEach(([empId, days]) => {
+			Object.entries(convertedData).forEach(([empId, days]) => {
 				Object.entries(days).forEach(([dateStr, dayData]) => {
 					if (dayData.status) {
 						records.push({
