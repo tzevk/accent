@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import {
 	ChevronDownIcon,
+	ChartBarSquareIcon,
 	ClockIcon,
 	MapPinIcon,
 	UserGroupIcon,
@@ -584,6 +585,12 @@ export default function Sidebar() {
 								active={pathname.startsWith(
 									'/reports/employee-project-monthly-cost'
 								)}
+							/>
+							<NavRow
+								icon={ChartBarSquareIcon}
+								label="Employee Utilization"
+								href="/reports/employee-utilization"
+								active={pathname.startsWith('/reports/employee-utilization')}
 							/>
 							<NavRow
 								icon={FingerPrintIcon}

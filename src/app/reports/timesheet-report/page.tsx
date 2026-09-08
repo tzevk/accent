@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -192,7 +193,7 @@ function projectRowsForMonth(
 
 // ─── Page ───────────────────────────────────────────────────────────
 
-export default function TimesheetReportPage() {
+function TimesheetReportPageInner() {
 	const {
 		loading: authLoading,
 		user,
@@ -210,8 +211,13 @@ export default function TimesheetReportPage() {
 		PERMISSIONS: { READ: string };
 	};
 
-	const [employeeId, setEmployeeId] = useState('');
-	const [month, setMonth] = useState('');
+	const searchParams = useSearchParams();
+	// Deep-link defaults so sibling reports (e.g. utilization) can drill
+	// through with ?employee_id=&month=; validated against metadata below.
+	const [employeeId, setEmployeeId] = useState(
+		() => searchParams.get('employee_id') ?? ''
+	);
+	const [month, setMonth] = useState(() => searchParams.get('month') ?? '');
 	const [exporting, setExporting] = useState(false);
 
 	const metaQuery = useQuery<ApiResponse>({
@@ -243,8 +249,14 @@ export default function TimesheetReportPage() {
 
 	useEffect(() => {
 		if (!meta) return;
-		setEmployeeId((previous) => previous || String(employees[0]?.id ?? ''));
-		setMonth((previous) => previous || meta.latest_month || '');
+		setEmployeeId((previous) =>
+			previous && employees.some((e) => String(e.id) === previous)
+				? previous
+				: String(employees[0]?.id ?? '')
+		);
+		setMonth((previous) =>
+			previous && months.includes(previous) ? previous : meta.latest_month || ''
+		);
 		// Defaults are intentionally applied once when metadata arrives.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [meta]);
@@ -794,5 +806,13 @@ export default function TimesheetReportPage() {
 				)}
 			</main>
 		</div>
+	);
+}
+
+export default function TimesheetReportPage() {
+	return (
+		<Suspense fallback={null}>
+			<TimesheetReportPageInner />
+		</Suspense>
 	);
 }
