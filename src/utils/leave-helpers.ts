@@ -115,18 +115,19 @@ export async function applyApprovedLeave(db, application, reviewerId) {
 		])
 	);
 
-	// Official holidays inside the range (best effort — table always exists in prod).
+	// Official holidays inside the range — same active set the timesheet
+	// report uses (holiday_master.date where is_active = 1).
 	const holidays = new Set<string>();
 	try {
 		const [holidayRows] = await db.execute(
-			`SELECT holiday_date FROM holiday_master
-       WHERE holiday_date BETWEEN ? AND ?`,
+			`SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date FROM holiday_master
+       WHERE is_active = 1 AND date BETWEEN ? AND ?`,
 			[startDate, endDate]
 		);
 		for (const row of holidayRows) {
-			holidays.add(String(row.holiday_date).slice(0, 10));
+			holidays.add(String(row.date).slice(0, 10));
 		}
-	} catch (_) {
+	} catch {
 		/* holiday_master missing — treat every non-Sunday as a working day */
 	}
 
