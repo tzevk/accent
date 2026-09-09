@@ -104,6 +104,35 @@ describe('applyInferredDirections', () => {
 		const result = applyInferredDirections(rows);
 		expect(result.map((r) => r.direction)).toEqual(['out', 'in']);
 	});
+	it('collapses double-taps without advancing the alternation', () => {
+		// Seen live: retry taps 15s apart rendering as a phantom in/out pair.
+		const rows = [
+			punch('102', '2026-08-12 09:15:29'),
+			punch('102', '2026-08-12 09:15:44'),
+			punch('102', '2026-08-12 18:02:11'),
+		];
+		const result = applyInferredDirections(rows);
+		expect(result.map((r) => r.direction)).toEqual(['in', 'in', 'out']);
+	});
+
+	it('alternates punches outside the collapse window', () => {
+		const rows = [
+			punch('102', '2026-08-12 09:15:29'),
+			punch('102', '2026-08-12 09:18:00'),
+		];
+		const result = applyInferredDirections(rows);
+		expect(result.map((r) => r.direction)).toEqual(['in', 'out']);
+	});
+
+	it('never collapses explicit device directions', () => {
+		const rows = [
+			punch('102', '2026-08-12 09:15:29', 'in'),
+			punch('102', '2026-08-12 09:15:44'),
+			punch('102', '2026-08-12 09:15:50', 'out'),
+		];
+		const result = applyInferredDirections(rows);
+		expect(result.map((r) => r.direction)).toEqual(['in', 'in', 'out']);
+	});
 });
 
 describe('buildStats', () => {

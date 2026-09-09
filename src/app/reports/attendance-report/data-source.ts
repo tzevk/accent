@@ -141,6 +141,15 @@ interface DirectionSource {
 	direction?: string | null;
 }
 
+/** Blank retry within this long after a kept punch inherits its direction. */
+const TAP_COLLAPSE_SECONDS = 120;
+
+/** 'YYYY-MM-DD HH:mm:ss' → seconds since midnight; TZ-free, same-day diffs only. */
+function daySeconds(logDate: string): number {
+	const time = logDate.slice(11).split(':').map(Number);
+	return time[0] * 3600 + time[1] * 60 + time[2];
+}
+
 /**
  * Fill in missing directions by alternating in → out per employee per day.
  *
@@ -148,6 +157,11 @@ interface DirectionSource {
  * from punch order: first punch of the day = in, next = out, and so on.
  * Device-provided directions are always kept. Input order is preserved —
  * only the `direction` field changes.
+ *
+ * Double-taps (a blank retry seconds after a punch — seen live: 15s apart)
+ * inherit the previous punch's direction without advancing the alternation,
+ * so one action never renders as an in/out pair. Explicit device directions
+ * are never collapsed.
  */
 export function applyInferredDirections<P extends DirectionSource>(
 	punches: P[]
@@ -173,10 +187,22 @@ export function applyInferredDirections<P extends DirectionSource>(
 		// Every punch in the day advances the position — a device-reported
 		// 'in' followed by a blank punch yields 'out' for the blank.
 		let position = 0;
+		let keptTime = -1;
+		let keptDirection: PunchDirection = 'unknown';
 		for (const index of bucket) {
 			const resolved = resolveDirection(punches[index].direction);
-			result[index].direction =
+			if (resolved === 'unknown' && keptTime >= 0) {
+				const time = daySeconds(punches[index].log_date);
+				if (time - keptTime <= TAP_COLLAPSE_SECONDS) {
+					result[index].direction = keptDirection;
+					continue;
+				}
+			}
+			const direction =
 				resolved === 'unknown' ? (position % 2 === 0 ? 'in' : 'out') : resolved;
+			result[index].direction = direction;
+			keptTime = daySeconds(punches[index].log_date);
+			keptDirection = direction;
 			position++;
 		}
 	}
