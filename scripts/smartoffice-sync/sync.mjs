@@ -113,13 +113,15 @@ function log(level, msg) {
 
 const p2 = (x) => String(x).padStart(2, '0');
 
-/** Naive local 'YYYY-MM-DD HH:mm:ss' — the DB stores IST wall time and
- * tedious hands it back as a client-local Date, so local getters round-trip
- * the punch clock exactly. Do NOT use toISOString() (UTC shift). */
+/** Naive local 'YYYY-MM-DD HH:mm:ss' — SmartOffice stores IST wall time in a
+ * tz-naive DATETIME, and tedious hands it back UTC-interpreted (12:45 wall
+ * becomes 12:45Z). UTC getters therefore recover the wall clock exactly on
+ * any box timezone. Do NOT use local getters (an IST box would add +5:30)
+ * or toISOString() (UTC shift). */
 function fmtLocal(d) {
 	return (
-		`${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ` +
-		`${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`
+		`${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())} ` +
+		`${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())}`
 	);
 }
 

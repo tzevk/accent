@@ -83,10 +83,9 @@ and pushes them to the Accent CRM attendance webhook. Bridges the office LAN
 
 ## Troubleshooting
 
-| Symptom                  | Fix                                                                                                                                 |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `SQL Browser timeout`    | UDP 1434 blocked → pin `MSSQL_PORT=54996` (check current port on the server or ask IT).                                             |
-| Punches stop appearing   | Check `sync.log`, then device pings (`SELECT Name, LastPing FROM Devices` — devices ping even when log download is broken).         |
-| `Unmatched codes` in log | Punch `UserId` not in CRM `employees.smartoffice_code` — map it; the punch is stored and back-fills automatically on the next push. |
-| Wrong times              | Machine timezone must be IST (the DB stores wall-clock IST).                                                                        |
-| Start from scratch       | Delete `state.json` (optionally set `--backfill-days=N` for one run).                                                               |
+| Symptom                  | Fix                                                                                                                                                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SQL Browser timeout`    | UDP 1434 blocked → pin `MSSQL_PORT=54996` (check current port on the server or ask IT).                                                                                                                               |
+| Punches stop appearing   | Check `sync.log`, then device pings (`SELECT DeviceFName, LastPing FROM Devices` — devices ping even when log download is broken).                                                                                    |
+| `Unmatched codes` in log | Punch `UserId` not in CRM `employees.smartoffice_code` — map it; the punch is stored and back-fills automatically on the next push.                                                                                   |
+| Wrong times              | Box timezone no longer matters (`fmtLocal` uses UTC getters over tedious' UTC-interpreted wall time). If old rows are +5:30 off, they were written before the fix — shift them back in `attendance_logs` (see below). |
