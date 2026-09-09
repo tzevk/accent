@@ -67,6 +67,13 @@ const cfg = {
 	batchSize: parseInt(process.env.BATCH_SIZE || '400', 10),
 	stateFile: path.join(HERE, process.env.STATE_FILE || 'state.json'),
 	logFile: process.env.LOG_FILE ? path.join(HERE, process.env.LOG_FILE) : null,
+	// Optional allowlist: comma-separated device serials. Empty = all real devices.
+	deviceSerials: new Set(
+		String(process.env.DEVICE_SERIALS || '')
+			.split(',')
+			.map((s) => s.trim())
+			.filter(Boolean)
+	),
 };
 
 const ONCE = process.argv.includes('--once');
@@ -238,6 +245,8 @@ async function fetchShards(db, shards, since) {
 		for (const r of rows) {
 			const serialNumber = String(r.SerialNumber ?? '').trim();
 			if (VIRTUAL_SERIALS.has(serialNumber)) continue;
+			if (cfg.deviceSerials.size > 0 && !cfg.deviceSerials.has(serialNumber))
+				continue;
 			const record = {
 				employeeCode: String(r.UserId ?? '').trim(),
 				logDate: fmtLocal(r.LogDate),
@@ -352,7 +361,10 @@ async function runPass() {
 async function main() {
 	log(
 		'info',
-		`smartoffice-sync starting (${ONCE ? 'once' : 'loop'}${DRY_RUN ? ', dry-run' : ''})`
+		`smartoffice-sync starting (${ONCE ? 'once' : 'loop'}${DRY_RUN ? ', dry-run' : ''})` +
+			(cfg.deviceSerials.size > 0
+				? ` devices=[${[...cfg.deviceSerials].join(',')}]`
+				: ' devices=all')
 	);
 	do {
 		try {

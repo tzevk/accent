@@ -63,9 +63,9 @@ and pushes them to the Accent CRM attendance webhook. Bridges the office LAN
 | `WEBHOOK_URL`             | Full URL of the CRM's `/api/attendance/webhook` as reachable from this machine.                                                                 |
 | `WEBHOOK_SECRET`          | Must equal `SMARTOFFICE_WEBHOOK_SECRET` in the CRM `.env`.                                                                                      |
 | `POLL_SECONDS`            | Loop-mode cadence (default 300).                                                                                                                |
-| `LOOKBACK_MINUTES`        | Re-send window behind the saved position (default 120). Overlap is free — the webhook upserts.                                                  |
 | `BACKFILL_DAYS`           | Where a first run (no `state.json`) starts from (default 3).                                                                                    |
 | `BATCH_SIZE`              | Punches per POST (default 400).                                                                                                                 |
+| `DEVICE_SERIALS`          | Optional allowlist, comma-separated (e.g. `84E0F4293A531501` for ATS head office only). Empty = all real devices.                               |
 
 ## Guarantees & behaviour
 
