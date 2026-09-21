@@ -18,21 +18,30 @@ and pushes them to the Accent CRM attendance webhook. Bridges the office LAN
         Accent CRM → Reports > Attendance Report
 ```
 
+## Files
+
+| File             | Purpose                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `sync.mjs`       | the poller (only runtime dep: `mssql`)                                                     |
+| `setup-task.bat` | one-shot Task Scheduler setup: registers the task, then runs it once and prints the result |
+| `task.xml`       | Task Scheduler task definition template that `setup-task.bat` fills in (`__TOKENS__`)      |
+| `.env.example`   | settings template — copy it to `.env`                                                      |
+
 ## Setup (office machine)
 
 1. Install Node.js 18+ (LTS).
 2. Copy this folder to e.g. `C:\smartoffice-sync`, then:
 
-   ```powershell
+   ```bat
    cd C:\smartoffice-sync
    npm install
-   Copy-Item .env.example .env
+   copy .env.example .env
    notepad .env   # fill in values — see table below
    ```
 
 3. Smoke test (no data is pushed):
 
-   ```powershell
+   ```bat
    node sync.mjs --once --dry-run --backfill-days=30
    ```
 
@@ -41,64 +50,82 @@ and pushes them to the Accent CRM attendance webhook. Bridges the office LAN
 
 4. Live single pass (real push; webhook upserts, so safe to repeat):
 
-   ```powershell
+   ```bat
    node sync.mjs --once
    ```
 
-5. Schedule it — Task Scheduler, every 5 minutes. Run this in an **elevated**
-   PowerShell:
+5. Schedule it — one command, from an **elevated Command Prompt**
+   (`Run as administrator`) in the deployed folder. cmd only, no PowerShell:
 
-   ```powershell
-   $dir = 'C:\smartoffice-sync'
-   $action  = New-ScheduledTaskAction -Execute (Get-Command node).Source `
-     -Argument "$dir\sync.mjs --once" -WorkingDirectory $dir
-   $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
-     -RepetitionInterval (New-TimeSpan -Minutes 5)
-   $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
-     -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
-   $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' `
-     -LogonType ServiceAccount -RunLevel Highest
-   Register-ScheduledTask -TaskName 'SmartOffice Attendance Sync' `
-     -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force
+   ```bat
+   setup-task.bat
    ```
 
-   Do **not** register it with the bare `schtasks /Create /SC MINUTE ...` form.
-   Its defaults set `DisallowStartIfOnBatteries` + `StopIfGoingOnBatteries` and
-   bind the task to the interactive logon, so on a box that is on battery or
-   logged off the task stays `Queued` and silently pushes nothing — the
-   identical command works when run by hand. (Reproduced 2026-09-21: a task
-   created that way showed `Status: Queued`, `Last Result: 0`, and no log file
-   while the machine was on battery.) Absolute `node.exe` + `SYSTEM` also
-   removes the other two silent killers: `node` missing from the task account's
-   `PATH`, and nobody being logged on.
+   The script resolves `node.exe`, runs `npm install` if `node_modules\mssql` is
+   missing, refuses to continue if `.env` is missing, fills `task.xml` in with
+   the real paths and folder, registers the task **"SmartOffice Attendance
+   Sync"** (`/F`, so re-running replaces it), then fires one real pass and prints
+   the task's `Last Result` plus the tail of `sync.log`. Without admin rights,
+   `setup-task.bat /user` registers it as the signed-in user instead — that
+   variant only runs while that user is signed in.
 
-   Already created the task the old way? Keep the trigger, fix the rest:
+   Why a generated XML instead of `schtasks /Create /SC MINUTE`: that form has
+   **no switches** for power/logon behaviour, and its defaults are the ones that
+   silently break unattended runs:
+   - such a task reports `Power Management: Stop On Battery Mode, No Start On
+Batteries` and `Logon Mode: Interactive only`
+     (`schtasks /Query /TN <name> /V`);
+   - on a box that is on battery, or logged off, such a task stays `Queued`
+     with `Last Result: 0` and writes nothing at all — while the identical
+     `node sync.mjs --once` run by hand works. (Reproduced 2026-09-21 on a
+     laptop: `Status: Queued`, no log file; the same task ran fine once the two
+     battery flags were turned off.)
 
-   ```powershell
-   $s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
-     -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
-   Set-ScheduledTask -TaskName 'SmartOffice Attendance Sync' -Settings $s
-   Set-ScheduledTask -TaskName 'SmartOffice Attendance Sync' -Principal `
-     (New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest)
+   `task.xml` (the template — its `__TOKENS__` are filled in by the script)
+   sets `DisallowStartIfOnBatteries=false`, `StopIfGoingOnBatteries=false`,
+   `StartWhenAvailable=true`, `MultipleInstancesPolicy=IgnoreNew`, an
+   `ExecutionTimeLimit` of 1 hour (so a hung pass cannot hold the task
+   "Running" and block every later trigger) and a 5-minute repetition. The
+   default principal is LOCAL SYSTEM (`S-1-5-18`, with **no** `<LogonType>`
+   element — schtasks rejects `ServiceAccount`), so nobody needs to be signed
+   in. `/user` instead uses `DOMAIN\user` + `InteractiveToken`.
+
+   The filled-in XML is written to `%TEMP%\smartoffice-attendance-task.xml` and
+   printed, so it can be inspected, edited or registered by hand:
+
+   ```bat
+   schtasks /Create /TN "SmartOffice Attendance Sync" /XML %TEMP%\smartoffice-attendance-task.xml /F
    ```
 
-6. Verify the scheduled run (don't wait for the 5-minute trigger; same elevated
-   PowerShell, since the task runs as SYSTEM):
+   Keep the first line of the XML as `<?xml version="1.0"?>` — with an explicit
+   `encoding="UTF-8"` attribute, `schtasks /Create /XML` fails with
+   `(1,40)::ERROR: unable to switch the encoding`. Also note that XML comments
+   (and any `!` in the file) do not survive the template substitution, which is
+   why `task.xml` carries no comment block.
 
-   ```powershell
+6. Re-check at any time (elevated cmd, since the task runs as SYSTEM):
+
+   ```bat
    schtasks /Run /TN "SmartOffice Attendance Sync"
-   Get-ScheduledTaskInfo -TaskName "SmartOffice Attendance Sync" |
-     Format-List LastRunTime, LastTaskResult, NextRunTime, NumberOfMissedRuns
-   Get-Content C:\smartoffice-sync\sync.log -Tail 20
+   ping -n 26 127.0.0.1 >nul
+   schtasks /Query /TN "SmartOffice Attendance Sync" /V /FO LIST | findstr /I "Status Logon Power Last Run Time Last Result Task To Run Start In"
+   type C:\smartoffice-sync\sync.log
    ```
 
-   `LastTaskResult` is the process exit code: `0` = pass accepted, `1` = the
-   pass failed (reason is in `sync.log`), `2` = bad argument in the action,
-   `0x41303` = has not run yet. Every run appends a header line naming the
-   account, `args`, working directory, script directory and resolved config, so
-   a scheduled pass can be compared line-for-line with a hand run.
-   **No new `sync.log` line after `/Run`** means the process never started —
-   wrong path/account in the action, or the task is gated (see step 5).
+   Read it as:
+   - `Last Result`: `0` = pass accepted, `1` = the pass failed (reason is in
+     `sync.log`), `2` = bad argument in the action, `267011` (`0x41303`) = has
+     not run yet, `267009` (`0x41301`) = a pass is still running,
+     `-2147024894` (`0x80070002`) = "program not found" — the `node.exe` path in
+     the task does not exist;
+   - `Power Management` must be **empty** — any text there means the task is
+     still gated (battery/logon conditions);
+   - `Task To Run` / `Start In` must be the real `node.exe` and folder;
+   - every run appends a header line naming the account, `args`, working
+     directory, script directory and resolved config, so a scheduled pass can be
+     compared line-for-line with a hand run;
+   - **no new `sync.log` line** means the process never started — wrong
+     path/account in the action, or the task is gated.
 
    Alternatively run `npm start` (loop mode) under NSSM as a Windows service.
 

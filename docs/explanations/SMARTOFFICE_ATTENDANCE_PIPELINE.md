@@ -113,10 +113,13 @@ direction}`; Bearer auth (`SMARTOFFICE_WEBHOOK_SECRET`); upsert into
    the dynamic port, scans current+previous month shards, skips virtual
    devices, batches POSTs with retries, keeps a lookback overlap window, and
    advances `state.json` only after full success (at-least-once delivery).
-   Register the scheduled task with the README's PowerShell block, **not** bare
-   `schtasks /Create`: its defaults set `DisallowStartIfOnBatteries` and bind
-   the task to the interactive logon, so on battery or while logged off the
-   task sits `Queued` and silently pushes nothing (manual runs still work).
+   Register the scheduled task with the shipped `setup-task.bat` from an
+   elevated cmd (it fills in `task.xml` and runs `schtasks /Create /TN "..." /XML ...`),
+   **not** bare `schtasks /Create /SC MINUTE`: the CLI has no switches for
+   power/logon behaviour, so its defaults set `DisallowStartIfOnBatteries` and
+   bind the task to the interactive logon — on battery or while logged off the
+   task then sits `Queued` and silently pushes nothing (manual runs still work;
+   confirmed 2026-09-21, `Power Management: Stop On Battery Mode, No Start On Batteries`).
    Every run appends to `sync.log`, and a failed `--once` pass exits `1`
    (Task Scheduler _Last Result_), so a silent scheduler is diagnosable from
    the log alone. See its README for setup.
