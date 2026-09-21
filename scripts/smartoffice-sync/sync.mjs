@@ -26,9 +26,17 @@
  *   node sync.mjs            loop (default, POLL_SECONDS cadence)
  *   node sync.mjs --once     single pass (for Task Scheduler)
  *   node sync.mjs --once --dry-run   fetch + transform, print, no POST
+ *   node sync.mjs --backfill-days=N  force the window to the last N days,
+ *                            ignoring state.json (webhook upserts, so safe)
+ *   node sync.mjs --help     usage
  *
  * State (state.json) only advances when every batch was accepted, so a
  * failed pass naturally retries the same window next time.
+ *
+ * Exit codes: 0 ok, 1 a --once pass failed (Task Scheduler "Last Result" /
+ * config incomplete), 2 unknown argument. Every run appends to LOG_FILE
+ * (default: sync.log next to this script) — a Task Scheduler pass has no
+ * console, so that file is the only record of what it did.
  */
 
 import fs from 'node:fs';
@@ -66,7 +74,10 @@ const cfg = {
 	backfillDays: parseInt(process.env.BACKFILL_DAYS || '3', 10),
 	batchSize: parseInt(process.env.BATCH_SIZE || '400', 10),
 	stateFile: path.join(HERE, process.env.STATE_FILE || 'state.json'),
-	logFile: process.env.LOG_FILE ? path.join(HERE, process.env.LOG_FILE) : null,
+	// Default on: a Task Scheduler pass has no console, so this file is the
+	// only record of what a scheduled run did. A relative path lands next to
+	// the script (HERE), independent of the process working directory.
+	logFile: path.join(HERE, process.env.LOG_FILE || 'sync.log'),
 	// Optional allowlist: comma-separated device serials. Empty = all real devices.
 	deviceSerials: new Set(
 		String(process.env.DEVICE_SERIALS || '')
@@ -75,25 +86,6 @@ const cfg = {
 			.filter(Boolean)
 	),
 };
-
-const ONCE = process.argv.includes('--once');
-const DRY_RUN = process.argv.includes('--dry-run');
-const backfillArg = process.argv.find((a) => a.startsWith('--backfill-days='));
-if (backfillArg)
-	cfg.backfillDays =
-		parseInt(backfillArg.split('=')[1], 10) || cfg.backfillDays;
-
-for (const [k, v] of Object.entries({
-	MSSQL_USER: cfg.user,
-	MSSQL_PASSWORD: cfg.password,
-	WEBHOOK_URL: DRY_RUN ? 'x' : cfg.webhookUrl,
-	WEBHOOK_SECRET: DRY_RUN ? 'x' : cfg.webhookSecret,
-})) {
-	if (!v) {
-		console.error(`Missing required setting: ${k} (see .env.example)`);
-		process.exit(1);
-	}
-}
 
 // ─── Logging ─────────────────────────────────────────────────────────
 
@@ -106,6 +98,52 @@ function log(level, msg) {
 		} catch {
 			/* logging must never kill the pass */
 		}
+	}
+}
+
+// ─── Arguments ───────────────────────────────────────────────────────
+
+const USAGE =
+	'Usage: node sync.mjs [--once] [--dry-run] [--backfill-days=N] [--help]';
+const ARGS = process.argv.slice(2);
+const BACKFILL_FLAG = /^--backfill-days=(\d+)$/;
+const backfillArg = ARGS.find((a) => BACKFILL_FLAG.test(a));
+
+// A typo'd flag (e.g. --run-once) must fail loudly: ignoring it would start
+// an endless loop-mode process under Task Scheduler, and the default
+// IgnoreNew policy then skips every later trigger while it hangs around.
+const unknownArgs = ARGS.filter(
+	(a) =>
+		!['--once', '--dry-run', '--help'].includes(a) && !BACKFILL_FLAG.test(a)
+);
+if (unknownArgs.length > 0) {
+	log('error', `Unknown argument(s): ${unknownArgs.join(' ')}`);
+	log('error', USAGE);
+	process.exit(2);
+}
+if (ARGS.includes('--help')) {
+	log('info', USAGE);
+	process.exit(0);
+}
+
+const ONCE = ARGS.includes('--once');
+const DRY_RUN = ARGS.includes('--dry-run');
+/** Explicit window override — --backfill-days=N ignores state.json. */
+const forcedBackfillDays = backfillArg
+	? parseInt(backfillArg.match(BACKFILL_FLAG)[1], 10)
+	: 0;
+if (forcedBackfillDays > 0) cfg.backfillDays = forcedBackfillDays;
+
+for (const [k, v] of Object.entries({
+	MSSQL_USER: cfg.user,
+	MSSQL_PASSWORD: cfg.password,
+	WEBHOOK_URL: DRY_RUN ? 'x' : cfg.webhookUrl,
+	WEBHOOK_SECRET: DRY_RUN ? 'x' : cfg.webhookSecret,
+})) {
+	if (!v) {
+		// Via log() so a headless run's failure also lands in the log file.
+		log('error', `Missing required setting: ${k} (see .env.example)`);
+		process.exit(1);
 	}
 }
 
@@ -204,16 +242,28 @@ function writeState(state) {
 	fs.renameSync(tmp, cfg.stateFile);
 }
 
+/** Window for this pass, plus why it was picked (logged for headless runs). */
 function sinceDate(state) {
+	if (forcedBackfillDays > 0) {
+		const d = new Date();
+		d.setDate(d.getDate() - forcedBackfillDays);
+		return { since: d, reason: `--backfill-days=${forcedBackfillDays}` };
+	}
 	if (state?.lastLogDate) {
 		// Overlap window: re-send anything newer than position - lookback.
 		const d = new Date(`${state.lastLogDate.replace(' ', 'T')}`);
 		d.setMinutes(d.getMinutes() - cfg.lookbackMinutes);
-		return d;
+		return {
+			since: d,
+			reason: `state ${state.lastLogDate} - ${cfg.lookbackMinutes}m lookback`,
+		};
 	}
 	const d = new Date();
 	d.setDate(d.getDate() - cfg.backfillDays);
-	return d;
+	return {
+		since: d,
+		reason: `first run (BACKFILL_DAYS=${cfg.backfillDays})`,
+	};
 }
 
 // ─── Fetch ───────────────────────────────────────────────────────────
@@ -325,11 +375,8 @@ async function push(punches) {
 
 async function runPass() {
 	const state = readState();
-	const since = sinceDate(state);
-	log(
-		'info',
-		`Pass starting (since ${fmtLocal(since)}, state=${state ? state.lastLogDate : 'none'})`
-	);
+	const { since, reason } = sinceDate(state);
+	log('info', `Pass starting (since ${fmtLocal(since)} — ${reason})`);
 
 	const db = await sql.connect(await connectConfig());
 	try {
@@ -364,20 +411,34 @@ async function main() {
 	log(
 		'info',
 		`smartoffice-sync starting (${ONCE ? 'once' : 'loop'}${DRY_RUN ? ', dry-run' : ''})` +
-			(cfg.deviceSerials.size > 0
-				? ` devices=[${[...cfg.deviceSerials].join(',')}]`
-				: ' devices=all')
+			` pid=${process.pid} node=${process.version} args=[${ARGS.join(' ')}]` +
+			` user=${process.env.USERDOMAIN || '?'}\\${process.env.USERNAME || '?'}` +
+			` cwd=${process.cwd()} scriptDir=${HERE}`
 	);
+	// Whose .env/state this run actually read — the usual scheduled-vs-manual
+	// difference is a different copy, account, or URL.
+	log(
+		'info',
+		`config: instance=${cfg.instance} db=${cfg.database} webhook=${cfg.webhookUrl}` +
+			` state=${cfg.stateFile} log=${cfg.logFile}` +
+			` lookback=${cfg.lookbackMinutes}m backfill=${cfg.backfillDays}d batch=${cfg.batchSize}` +
+			` devices=${cfg.deviceSerials.size > 0 ? `[${[...cfg.deviceSerials].join(',')}]` : 'all'}`
+	);
+	let failed = 0;
 	do {
 		try {
 			await runPass();
 		} catch (e) {
+			failed++;
 			log('error', `Pass failed: ${e.message}`);
 		}
 		if (ONCE) break;
 		await new Promise((r) => setTimeout(r, cfg.pollSeconds * 1000));
 	} while (true);
-	log('info', 'smartoffice-sync stopped.');
+	log('info', `smartoffice-sync stopped (failed passes: ${failed}).`);
+	// Task Scheduler reports this as "Last Result": 0 = the pass was accepted,
+	// 1 = read sync.log. Without it every scheduled failure looks like success.
+	if (ONCE && failed > 0) process.exitCode = 1;
 }
 
 main();

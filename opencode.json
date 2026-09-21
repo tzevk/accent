@@ -20,6 +20,23 @@
 			"type": "remote",
 			"url": "https://mcp.context7.com/mcp",
 			"enabled": true
+		},
+		"servers": {
+			"smartoffice-db": {
+				"type": "local",
+				"command": ["npx", "-y", "mssql-mcp-node"],
+				"enabled": true,
+				"environment": {
+					"MSSQL_SERVER": "{env:MSSQL_SERVER}",
+					"MSSQL_PORT": "{env:MSSQL_PORT}",
+					"MSSQL_USER": "{env:MSSQL_USER}",
+					"MSSQL_PASSWORD": "{env:MSSQL_PASSWORD}",
+					"MSSQL_DATABASE": "{env:MSSQL_DATABASE}",
+					"MSSQL_ENCRYPT": "{env:MSSQL_ENCRYPT}",
+					"MSSQL_TRUST_SERVER_CERTIFICATE": "{env:MSSQL_TRUST_SERVER_CERTIFICATE}",
+					"MSSQL_CONNECTION_TIMEOUT_MS": "{env:MSSQL_CONNECTION_TIMEOUT_MS}"
+				}
+			}
 		}
 	},
 	"plugin": ["@dietrichgebert/ponytail"]
