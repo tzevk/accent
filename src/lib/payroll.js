@@ -3,8 +3,8 @@
  * employee and month: the Payroll Slip detail route asks it for the document,
  * so its URL and download filename are derived in exactly one place.
  */
-export function payrollSlipPdfRequest(slip, month) {
-	const slipMonth = String(slip.month || month || '');
+export function payrollSlipPdfRequest(slip) {
+	const slipMonth = String(slip.month || '');
 
 	return {
 		url: `/api/payroll/bulk-pdf?month=${slipMonth}&employee_id=${slip.employee_id}`,

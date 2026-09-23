@@ -26,6 +26,33 @@ import {
  * with payment status. Each row opens its Payroll Slip on the detail route,
  * which owns inspecting and printing a single slip.
  */
+/** payroll_slips.payment_status, in display order, with one badge/text style each. */
+const PAYMENT_STATUSES = {
+	paid: {
+		label: 'paid',
+		badge: 'bg-green-100 text-green-700',
+		text: 'text-green-600',
+	},
+	processed: {
+		label: 'processed',
+		badge: 'bg-gray-100 text-gray-700',
+		text: 'text-gray-600',
+	},
+	pending: {
+		label: 'pending',
+		badge: 'bg-yellow-100 text-yellow-700',
+		text: 'text-yellow-600',
+	},
+	hold: {
+		label: 'hold',
+		badge: 'bg-red-100 text-red-700',
+		text: 'text-red-600',
+	},
+};
+
+const paymentStatus = (slip) =>
+	PAYMENT_STATUSES[slip.payment_status] || PAYMENT_STATUSES.pending;
+
 const STREAMS = [
 	{ value: 'payroll', label: 'Payroll' },
 	{ value: 'contract', label: 'Contract' },
@@ -45,9 +72,8 @@ export default function PayrollRunDashboard() {
 	const [success, setSuccess] = useState('');
 	const [scheduledDA, setScheduledDA] = useState(0);
 
-	const streamLabel =
-		STREAMS.find((s) => s.value === stream)?.label || 'Payroll';
-	const streamNoun = stream === 'payroll' ? 'Payroll Slips' : 'Contract Slips';
+	const currentStream = STREAMS.find((s) => s.value === stream) || STREAMS[0];
+	const streamLabel = currentStream.label;
 	const monthSlug = month.substring(0, 7);
 
 	useEffect(() => {
@@ -97,7 +123,7 @@ export default function PayrollRunDashboard() {
 	const generateSlips = async () => {
 		if (
 			!confirm(
-				`Generate ${streamNoun} for all ${streamLabel} employees for ${formatMonth(month)}?`
+				`Generate Payroll Slips for all ${streamLabel} employees for ${formatMonth(month)}?`
 			)
 		)
 			return;
@@ -119,8 +145,9 @@ export default function PayrollRunDashboard() {
 
 			const data = await res.json();
 			if (data.success) {
+				const results = data.results || {};
 				setSuccess(
-					`${streamNoun} generated: ${data.results?.generated || 0} created, ${data.results?.skipped || 0} skipped, ${data.results?.errors || 0} errors`
+					`Payroll Slips generated for ${streamLabel} employees: ${results.success || 0} created, ${results.skipped || 0} skipped, ${results.failed || 0} failed`
 				);
 				fetchSlips();
 			} else {
@@ -161,9 +188,7 @@ export default function PayrollRunDashboard() {
 				`${streamLabel}_Slips_${monthSlug}.pdf`
 			);
 
-			setSuccess(
-				`PDF generated for all ${slips.length} ${streamLabel.toLowerCase()} employees`
-			);
+			setSuccess(`PDF downloaded for ${formatMonth(month)}`);
 		} catch (err) {
 			setError(err.message || 'Failed to export PDF');
 		} finally {
@@ -222,10 +247,11 @@ export default function PayrollRunDashboard() {
 			return add(sum, (Number(s.total_deductions) || 0) + ptDiff);
 		}, R(0))
 	);
-	const paidCount = slips.filter((s) => s.payment_status === 'paid').length;
-	const pendingCount = slips.filter(
-		(s) => s.payment_status === 'pending'
-	).length;
+	const statusCounts = slips.reduce((counts, s) => {
+		const status = s.payment_status || 'pending';
+		counts[status] = (counts[status] || 0) + 1;
+		return counts;
+	}, {});
 
 	return (
 		<div className="min-h-screen bg-gray-50">
@@ -256,7 +282,7 @@ export default function PayrollRunDashboard() {
 								) : (
 									<CurrencyRupeeIcon className="w-4 h-4 mr-2" />
 								)}
-								Generate {streamNoun}
+								Generate Payroll Slips
 							</button>
 
 							<button
@@ -383,11 +409,20 @@ export default function PayrollRunDashboard() {
 					</div>
 
 					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-yellow-600">
-							<span className="text-green-600">{paidCount} paid</span> /{' '}
-							<span className="text-yellow-600">{pendingCount} pending</span>
+						<div className="text-lg font-bold flex flex-wrap items-baseline gap-x-2">
+							{slips.length === 0 ? (
+								<span className="text-gray-400">—</span>
+							) : (
+								Object.entries(PAYMENT_STATUSES)
+									.filter(([key]) => statusCounts[key])
+									.map(([key, { label, text }]) => (
+										<span key={key} className={text}>
+											{statusCounts[key]} {label}
+										</span>
+									))
+							)}
 						</div>
-						<div className="text-xs text-gray-600">Status</div>
+						<div className="text-xs text-gray-600">Payment</div>
 					</div>
 				</div>
 
@@ -398,8 +433,8 @@ export default function PayrollRunDashboard() {
 						className="px-4 py-3 border-b border-gray-200 text-sm text-gray-600"
 					>
 						{loading
-							? `Loading ${streamNoun}...`
-							: `Showing ${slips.length} ${streamLabel.toLowerCase()} ${slips.length === 1 ? 'employee' : 'employees'} for ${formatMonth(month)}`}
+							? `Loading Payroll Slips...`
+							: `Showing ${slips.length} ${stream} ${slips.length === 1 ? 'employee' : 'employees'} for ${formatMonth(month)}`}
 					</div>
 
 					<div className="overflow-x-auto">
@@ -412,7 +447,7 @@ export default function PayrollRunDashboard() {
 								<DocumentTextIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
 								<p className="font-medium">No Payroll Slips found</p>
 								<p className="text-sm mt-1">
-									Generate {streamNoun} for {formatMonth(month)} to see data
+									Generate Payroll Slips for {formatMonth(month)} to see data
 									here.
 								</p>
 							</div>
@@ -583,17 +618,9 @@ export default function PayrollRunDashboard() {
 											</td>
 											<td className="px-3 py-3 text-center">
 												<span
-													className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-														slip.payment_status === 'paid'
-															? 'bg-green-100 text-green-700'
-															: slip.payment_status === 'pending'
-																? 'bg-yellow-100 text-yellow-700'
-																: slip.payment_status === 'hold'
-																	? 'bg-red-100 text-red-700'
-																	: 'bg-gray-100 text-gray-700'
-													}`}
+													className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${paymentStatus(slip).badge}`}
 												>
-													{slip.payment_status || 'pending'}
+													{paymentStatus(slip).label}
 												</span>
 											</td>
 										</tr>

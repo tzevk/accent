@@ -76,7 +76,7 @@ export default function PayrollSlipDetailPage() {
 			setDownloading(true);
 			setError('');
 
-			const { url, filename } = payrollSlipPdfRequest(slip, slip.month);
+			const { url, filename } = payrollSlipPdfRequest(slip);
 			await downloadFile(url, filename);
 		} catch (err) {
 			setError(err.message || 'Failed to export PDF');

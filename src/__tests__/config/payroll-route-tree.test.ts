@@ -5,6 +5,11 @@ import nextConfig from '../../../next.config';
 
 const APP_DIR = path.resolve(process.cwd(), 'src/app');
 
+async function redirectsBySource() {
+	const redirects = (await nextConfig.redirects?.()) ?? [];
+	return new Map(redirects.map((redirect) => [redirect.source, redirect]));
+}
+
 /**
  * Issue #240: the payroll module moved under /admin/payroll/*. These pin the
  * route-tree contract — the pages that must resolve and the old paths that
@@ -38,10 +43,7 @@ describe('payroll route tree (issue #240)', () => {
 	});
 
 	it('sends every old payroll URL to its /admin/payroll/* home permanently', async () => {
-		const redirects = (await nextConfig.redirects?.()) ?? [];
-		const bySource = new Map(
-			redirects.map((redirect) => [redirect.source, redirect])
-		);
+		const bySource = await redirectsBySource();
 
 		expect(bySource.get('/admin/salary-sheet')).toMatchObject({
 			destination: '/admin/payroll',
@@ -69,27 +71,19 @@ describe('payroll route tree (issue #240)', () => {
  * slip still opens on the detail route.
  */
 describe('run dashboard merge (issue #241)', () => {
-	it('no longer serves a Payroll Slips list page', () => {
+	it('dissolves the Payroll Slips list into the dashboard, keeping one slip detail route', async () => {
 		expect(existsSync(path.join(APP_DIR, 'admin/payroll/slips/page.jsx'))).toBe(
 			false
 		);
-	});
+		expect(
+			existsSync(path.join(APP_DIR, 'admin/payroll/slips/[id]/page.jsx'))
+		).toBe(true);
 
-	it('permanently redirects the dissolved slips list to the run dashboard', async () => {
-		const redirects = (await nextConfig.redirects?.()) ?? [];
-		const bySource = new Map(
-			redirects.map((redirect) => [redirect.source, redirect])
-		);
+		const bySource = await redirectsBySource();
 
 		expect(bySource.get('/admin/payroll/slips')).toMatchObject({
 			destination: '/admin/payroll',
 			permanent: true,
 		});
-	});
-
-	it('keeps the single-slip detail route reachable', () => {
-		expect(
-			existsSync(path.join(APP_DIR, 'admin/payroll/slips/[id]/page.jsx'))
-		).toBe(true);
 	});
 });
