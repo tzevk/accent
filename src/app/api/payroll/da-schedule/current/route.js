@@ -1,5 +1,31 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
+
+/**
+ * Either-or gate (issue #239): this route had ZERO permission check before.
+ * EMPLOYEES:READ or PAYROLL:READ each suffice, consistent with the other
+ * rates reads whose callers may sit behind /employees gating.
+ */
+const ensureDaReadPermission = async (request) => {
+	const employeePermission = await ensurePermission(
+		request,
+		RESOURCES.EMPLOYEES,
+		PERMISSIONS.READ
+	);
+	if (employeePermission?.authorized) return employeePermission;
+
+	const payrollPermission = await ensurePermission(
+		request,
+		RESOURCES.PAYROLL,
+		PERMISSIONS.READ
+	);
+	return payrollPermission?.authorized ? payrollPermission : employeePermission;
+};
 
 /**
  * GET - Fetch current active DA for a specific date and year
@@ -8,6 +34,10 @@ import { dbConnect } from '@/utils/database';
 export async function GET(request) {
 	let db;
 	try {
+		const authResult = await ensureDaReadPermission(request);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult?.authorized) return authResult;
+
 		const { searchParams } = new URL(request.url);
 		const dateParam = searchParams.get('date');
 		const yearParam = searchParams.get('year');
