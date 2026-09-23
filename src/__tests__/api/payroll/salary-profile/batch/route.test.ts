@@ -9,11 +9,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/utils/database', () => ({ dbConnect: mocks.mockDbConnect }));
 vi.mock('@/utils/api-permissions', () => ({
 	ensurePermission: mocks.mockEnsurePermission,
-	RESOURCES: {
-		PAYROLL: 'payroll',
-		SETTINGS: 'settings',
-		EMPLOYEES: 'employees',
-	},
+	RESOURCES: { PAYROLL: 'payroll', EMPLOYEES: 'employees' },
 	PERMISSIONS: {
 		READ: 'read',
 		CREATE: 'create',
@@ -22,61 +18,51 @@ vi.mock('@/utils/api-permissions', () => ({
 	},
 }));
 
-const { GET } = await import('@/app/api/payroll/schedules/current/route');
+const { GET } = await import('@/app/api/payroll/salary-profile/batch/route');
 
 const grant = grantFor(mocks.mockEnsurePermission);
 
-const db = {
-	query: vi.fn(),
-	end: vi.fn(),
+const connection = {
+	execute: vi.fn(),
+	release: vi.fn(),
 };
 
-describe('current component values API — either-or permission (issue #239)', () => {
+describe('batch salary-profile API — either-or permission (issue #239)', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
-		mocks.mockDbConnect.mockResolvedValue(db);
+		mocks.mockDbConnect.mockResolvedValue(connection);
+		connection.execute.mockResolvedValue([[], undefined]);
 	});
 
-	// This route serves SalaryProfileSection behind /employees gating, so it
-	// must accept EMPLOYEES:READ *or* PAYROLL:READ — never neither, and it
-	// must actually consume the gate result (the old check discarded it).
+	// Previously EMPLOYEES-only; PAYROLL must now be sufficient everywhere.
 	it('denies a caller holding neither employees:read nor payroll:read', async () => {
 		grant();
 
 		const res = await GET(
-			new Request('http://localhost/api/payroll/schedules/current?gross=50000')
+			new Request('http://localhost/api/payroll/salary-profile/batch')
 		);
 
 		expect(res.status).toBe(403);
 		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
 	});
 
-	it('allows an employees-only caller (callers sit behind /employees gating)', async () => {
+	it('allows an employees-only caller (caller sits behind /employees gating)', async () => {
 		grant('employees:read');
-		db.query.mockResolvedValue([
-			[{ component_type: 'bonus', value_type: 'fixed', value: '100' }],
-			[],
-		]);
 
 		const res = await GET(
-			new Request('http://localhost/api/payroll/schedules/current?gross=50000')
+			new Request('http://localhost/api/payroll/salary-profile/batch')
 		);
 
 		expect(res.status).toBe(200);
 		const body = await res.json();
 		expect(body.success).toBe(true);
-		expect(body.data.components).toHaveProperty('bonus');
 	});
 
 	it('allows a payroll-only caller (PAYROLL must be sufficient everywhere)', async () => {
 		grant('payroll:read');
-		db.query.mockResolvedValue([
-			[{ component_type: 'bonus', value_type: 'fixed', value: '100' }],
-			[],
-		]);
 
 		const res = await GET(
-			new Request('http://localhost/api/payroll/schedules/current?gross=50000')
+			new Request('http://localhost/api/payroll/salary-profile/batch')
 		);
 
 		expect(res.status).toBe(200);

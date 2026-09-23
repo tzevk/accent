@@ -157,6 +157,10 @@ describe('da-schedule API reads/writes canonical Component Rates only', () => {
 		expect(body.data).toMatchObject({ da_amount: 2500 });
 		expect(executedSql()[0]).toContain('FROM payroll_schedules');
 		expect(executedSql()[0]).toContain("'da'");
+		// "current" must honour the requested date's effective window —
+		// an expired or future-dated row is not current (issue #239 fix).
+		expect(executedSql()[0]).toContain('effective_from <= ?');
+		expect(executedSql()[0]).toContain('effective_to IS NULL OR');
 		expect(executedSql().some((sql) => sql.includes('da_schedule'))).toBe(
 			false
 		);

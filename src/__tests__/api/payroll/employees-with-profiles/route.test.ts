@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextResponse } from 'next/server';
+import { grantFor } from '../test-perms';
 
 const mocks = vi.hoisted(() => ({
 	mockDbConnect: vi.fn(),
@@ -9,23 +9,22 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/utils/database', () => ({ dbConnect: mocks.mockDbConnect }));
 vi.mock('@/utils/api-permissions', () => ({
 	ensurePermission: mocks.mockEnsurePermission,
-	RESOURCES: { PAYROLL: 'payroll', SETTINGS: 'settings', EMPLOYEES: 'employees' },
-	PERMISSIONS: { READ: 'read', CREATE: 'create', UPDATE: 'update', DELETE: 'delete' },
+	RESOURCES: {
+		PAYROLL: 'payroll',
+		SETTINGS: 'settings',
+		EMPLOYEES: 'employees',
+	},
+	PERMISSIONS: {
+		READ: 'read',
+		CREATE: 'create',
+		UPDATE: 'update',
+		DELETE: 'delete',
+	},
 }));
 
 const { GET } = await import('@/app/api/payroll/employees-with-profiles/route');
 
-/** Gate mirroring ensurePermission: authorized object or 403 Response. */
-const grant = (...keys: string[]) =>
-	mocks.mockEnsurePermission.mockImplementation(
-		async (_request: Request, resource: string, permission: string) =>
-			keys.includes(`${resource}:${permission}`)
-				? { authorized: true, response: null }
-				: NextResponse.json(
-						{ success: false, error: 'Forbidden: missing permission' },
-						{ status: 403 }
-					)
-	);
+const grant = grantFor(mocks.mockEnsurePermission);
 
 const db = {
 	query: vi.fn(),

@@ -25,7 +25,7 @@ const scheduleDate = (value) =>
 		: value.toISOString().split('T')[0];
 
 /**
- * Load the effective Payroll Schedule once for a calculation run.
+ * Load the effective Component Rates (payroll_schedules) once per run.
  * All component rates — including DA — resolve from `payroll_schedules`
  * (Component Rates); there is no legacy DA-table fallback.
  */

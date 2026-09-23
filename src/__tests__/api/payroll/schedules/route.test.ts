@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextResponse } from 'next/server';
+import { grantFor } from '../test-perms';
 
 const mocks = vi.hoisted(() => ({
 	mockDbConnect: vi.fn(),
@@ -9,30 +9,23 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/utils/database', () => ({ dbConnect: mocks.mockDbConnect }));
 vi.mock('@/utils/api-permissions', () => ({
 	ensurePermission: mocks.mockEnsurePermission,
-	RESOURCES: { PAYROLL: 'payroll', SETTINGS: 'settings', EMPLOYEES: 'employees' },
-	PERMISSIONS: { READ: 'read', CREATE: 'create', UPDATE: 'update', DELETE: 'delete' },
+	RESOURCES: {
+		PAYROLL: 'payroll',
+		SETTINGS: 'settings',
+		EMPLOYEES: 'employees',
+	},
+	PERMISSIONS: {
+		READ: 'read',
+		CREATE: 'create',
+		UPDATE: 'update',
+		DELETE: 'delete',
+	},
 }));
 
-const { GET, POST, PUT, DELETE } = await import(
-	'@/app/api/payroll/schedules/route'
-);
+const { GET, POST, PUT, DELETE } =
+	await import('@/app/api/payroll/schedules/route');
 
-/**
- * Fake permission gate mirroring the real ensurePermission contract:
- * authorized object when the caller holds `resource:permission`, otherwise
- * a 403 Response. Tests grant only `payroll:*` or only `settings:*` to pin
- * which resource the route consults.
- */
-const grant = (...keys: string[]) =>
-	mocks.mockEnsurePermission.mockImplementation(
-		async (_request: Request, resource: string, permission: string) =>
-			keys.includes(`${resource}:${permission}`)
-				? { authorized: true, response: null }
-				: NextResponse.json(
-						{ success: false, error: 'Forbidden: missing permission' },
-						{ status: 403 }
-					)
-	);
+const grant = grantFor(mocks.mockEnsurePermission);
 
 const db = {
 	query: vi.fn(),
@@ -123,9 +116,7 @@ describe('payroll component schedules API — PAYROLL permission (issue #239)', 
 		it('denies a settings-only caller', async () => {
 			grant('settings:update');
 
-			const res = await PUT(
-				jsonRequest('PUT', { id: 1, value: 250 })
-			);
+			const res = await PUT(jsonRequest('PUT', { id: 1, value: 250 }));
 
 			expect(res.status).toBe(403);
 			expect(mocks.mockDbConnect).not.toHaveBeenCalled();

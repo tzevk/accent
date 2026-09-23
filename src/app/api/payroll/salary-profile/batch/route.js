@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import {
-	ensurePermission,
-	RESOURCES,
-	PERMISSIONS,
-} from '@/utils/api-permissions';
+import { PERMISSIONS } from '@/utils/api-permissions';
+import { ensureEmployeesOrPayroll } from '@/utils/ensure-employees-or-payroll';
 
 /**
  * GET /api/payroll/salary-profile/batch
@@ -17,13 +14,11 @@ import {
  *   full  - if "1" returns all columns instead of the lightweight subset
  */
 export async function GET(request) {
-	const authResult = await ensurePermission(
-		request,
-		RESOURCES.EMPLOYEES,
-		PERMISSIONS.READ
-	);
+	// Either-or gate: PAYROLL must be sufficient everywhere; EMPLOYEES:READ
+	// stays acceptable because the sole caller sits behind /employees gating
+	// (issue #239 — this route previously checked EMPLOYEES only).
+	const authResult = await ensureEmployeesOrPayroll(request, PERMISSIONS.READ);
 	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {
