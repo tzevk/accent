@@ -118,12 +118,10 @@ export default function DASchedulePage() {
 									<ol className="inline-flex items-center gap-2">
 										<li>Admin</li>
 										<li className="text-gray-300">/</li>
-										<li className="text-gray-700">DA Schedule</li>
+										<li className="text-gray-700">DA Rates</li>
 									</ol>
 								</nav>
-								<h1 className="text-3xl font-bold text-gray-900">
-									DA Schedule Management
-								</h1>
+								<h1 className="text-3xl font-bold text-gray-900">DA Rates</h1>
 							</div>
 						</div>
 						<div className="flex items-center justify-between">
@@ -245,15 +243,15 @@ export default function DASchedulePage() {
 					<div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
 						<div className="px-6 py-4 border-b border-gray-200">
 							<h2 className="text-lg font-semibold text-gray-900">
-								Current DA Schedule
+								Current DA Rates
 							</h2>
 						</div>
 
 						{loading ? (
-							<InlineSpinner message="Loading DA schedule..." />
+							<InlineSpinner message="Loading DA rates..." />
 						) : schedule.length === 0 ? (
 							<div className="p-8 text-center text-gray-500">
-								No DA schedule entries found. Add one to get started.
+								No DA rate entries found. Add one to get started.
 							</div>
 						) : (
 							<div className="overflow-x-auto">
