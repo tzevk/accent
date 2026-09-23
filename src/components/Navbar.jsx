@@ -130,7 +130,7 @@ const reportsMenuConfig = [
 		reportField: 'project_activities', // reuse so existing grants cover the new report
 	},
 	{
-		name: 'Attendance Report',
+		name: 'Biometric Attendance Report',
 		href: '/reports/attendance-report',
 		icon: FingerPrintIcon,
 		resource: 'reports',
