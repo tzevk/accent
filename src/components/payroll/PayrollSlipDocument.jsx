@@ -4,8 +4,8 @@ import { formatDateNumeric, formatMonth } from '@/lib/format';
  * The printable Payroll Slip document — company banner, earnings/deductions
  * tables and net-pay footer for one month's slip.
  *
- * Shared by the admin Payroll Slips list preview modal and the
- * /admin/payroll/slips/[id] detail route so a slip has exactly one rendering.
+ * Rendered by the /admin/payroll/slips/[id] detail route, so a slip has exactly
+ * one rendering.
  */
 export default function PayrollSlipDocument({ slip }) {
 	if (!slip) return null;

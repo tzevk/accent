@@ -271,11 +271,6 @@ const adminMenuGroups = [
 				icon: ClipboardDocumentCheckIcon,
 			},
 			{
-				name: 'Payroll Slips',
-				href: '/admin/payroll/slips',
-				icon: DocumentTextIcon,
-			},
-			{
 				name: 'Component Rates',
 				href: '/admin/payroll/rates',
 				icon: BanknotesIcon,

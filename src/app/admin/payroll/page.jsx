@@ -1,31 +1,42 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { R, add, sub, toNumber } from '@/lib/money';
 import { formatCurrency, formatMonth } from '@/lib/format';
 import { downloadFile } from '@/lib/download';
 import { InlineSpinner } from '@/components/LoadingSpinner';
-import { useRouter } from 'next/navigation';
 import {
-	ArrowLeftIcon,
 	ArrowDownTrayIcon,
-	DocumentTextIcon,
 	CalendarIcon,
-	UserGroupIcon,
-	CurrencyRupeeIcon,
 	CheckCircleIcon,
+	CurrencyRupeeIcon,
+	DocumentDuplicateIcon,
+	DocumentTextIcon,
 	ExclamationCircleIcon,
-	FunnelIcon,
 } from '@heroicons/react/24/outline';
 
-export default function PayrollRunPage() {
-	const router = useRouter();
+/**
+ * Payroll Run — the one dashboard for a month's Payroll Slips (issue #241).
+ *
+ * Replaces the former salary-sheet run page and the near-duplicate slips list:
+ * a month picker, a Payroll | Contract Employee Type toggle that filters the
+ * rows and scopes Generate and the Excel/PDF exports, and one row per employee
+ * with payment status. Each row opens its Payroll Slip on the detail route,
+ * which owns inspecting and printing a single slip.
+ */
+const STREAMS = [
+	{ value: 'payroll', label: 'Payroll' },
+	{ value: 'contract', label: 'Contract' },
+];
+
+export default function PayrollRunDashboard() {
 	const [month, setMonth] = useState(() => {
 		const now = new Date();
 		return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 	});
-	const [salaryType, setSalaryType] = useState('payroll');
+	const [stream, setStream] = useState('payroll');
 	const [slips, setSlips] = useState([]);
 	const [loading, setLoading] = useState(false);
 	const [exporting, setExporting] = useState(false);
@@ -34,17 +45,16 @@ export default function PayrollRunPage() {
 	const [success, setSuccess] = useState('');
 	const [scheduledDA, setScheduledDA] = useState(0);
 
-	const salaryTypes = [
-		{ value: 'payroll', label: 'Payroll Employees' },
-		{ value: 'contract', label: 'Contract Employees' },
-		{ value: 'all', label: 'All Employees' },
-	];
+	const streamLabel =
+		STREAMS.find((s) => s.value === stream)?.label || 'Payroll';
+	const streamNoun = stream === 'payroll' ? 'Payroll Slips' : 'Contract Slips';
+	const monthSlug = month.substring(0, 7);
 
 	useEffect(() => {
 		fetchSlips();
 		fetchScheduledDA();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [month, salaryType]);
+	}, [month, stream]);
 
 	const fetchScheduledDA = async () => {
 		try {
@@ -68,11 +78,9 @@ export default function PayrollRunPage() {
 		try {
 			setLoading(true);
 			setError('');
-			let url = `/api/payroll/slips?month=${month}`;
-			if (salaryType !== 'all') {
-				url += `&salary_type=${salaryType}`;
-			}
-			const res = await fetch(url);
+			const res = await fetch(
+				`/api/payroll/slips?month=${month}&salary_type=${stream}`
+			);
 			const data = await res.json();
 			if (data.success) {
 				setSlips(data.data || []);
@@ -86,9 +94,11 @@ export default function PayrollRunPage() {
 		}
 	};
 
-	const generatePayroll = async () => {
+	const generateSlips = async () => {
 		if (
-			!confirm(`Generate payroll for all employees for ${formatMonth(month)}?`)
+			!confirm(
+				`Generate ${streamNoun} for all ${streamLabel} employees for ${formatMonth(month)}?`
+			)
 		)
 			return;
 
@@ -103,14 +113,14 @@ export default function PayrollRunPage() {
 				body: JSON.stringify({
 					month,
 					all: true,
-					salary_type: salaryType !== 'all' ? salaryType : null,
+					salary_type: stream,
 				}),
 			});
 
 			const data = await res.json();
 			if (data.success) {
 				setSuccess(
-					`Payroll generated: ${data.results?.generated || 0} slips created, ${data.results?.skipped || 0} skipped, ${data.results?.errors || 0} errors`
+					`${streamNoun} generated: ${data.results?.generated || 0} created, ${data.results?.skipped || 0} skipped, ${data.results?.errors || 0} errors`
 				);
 				fetchSlips();
 			} else {
@@ -128,16 +138,34 @@ export default function PayrollRunPage() {
 			setExporting(true);
 			setError('');
 
-			let url = `/api/payroll/export-sheet?month=${month}`;
-			if (salaryType !== 'all') {
-				url += `&salary_type=${salaryType}`;
-			}
-
-			await downloadFile(url, `Payroll_Run_${month.substring(0, 7)}.xlsx`);
+			await downloadFile(
+				`/api/payroll/export-sheet?month=${month}&salary_type=${stream}`,
+				`${streamLabel}_Run_${monthSlug}.xlsx`
+			);
 
 			setSuccess('Excel file downloaded successfully');
 		} catch (err) {
 			setError(err.message || 'Failed to export Excel');
+		} finally {
+			setExporting(false);
+		}
+	};
+
+	const exportBulkPDF = async () => {
+		try {
+			setExporting(true);
+			setError('');
+
+			await downloadFile(
+				`/api/payroll/bulk-pdf?month=${month}&salary_type=${stream}`,
+				`${streamLabel}_Slips_${monthSlug}.pdf`
+			);
+
+			setSuccess(
+				`PDF generated for all ${slips.length} ${streamLabel.toLowerCase()} employees`
+			);
+		} catch (err) {
+			setError(err.message || 'Failed to export PDF');
 		} finally {
 			setExporting(false);
 		}
@@ -206,37 +234,29 @@ export default function PayrollRunPage() {
 			<div className="w-full px-4 sm:px-6 lg:px-8 py-6">
 				{/* Header */}
 				<div className="mb-6">
-					<button
-						onClick={() => router.push('/employees')}
-						className="flex items-center text-sm text-gray-600 hover:text-gray-900 mb-3 transition-colors"
-					>
-						<ArrowLeftIcon className="w-4 h-4 mr-1" />
-						Back
-					</button>
-
-					<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+					<div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-								<DocumentTextIcon className="w-7 h-7 text-green-600" />
+								<DocumentTextIcon className="w-7 h-7 text-[#64126D]" />
 								Payroll Run
 							</h1>
 							<p className="text-sm text-gray-500 mt-0.5">
-								Generate, review and export the month&apos;s Payroll Slips
+								Review the month&apos;s Payroll Slips, generate and export
 							</p>
 						</div>
 
-						<div className="flex items-center gap-3">
+						<div className="flex flex-wrap items-center gap-3">
 							<button
-								onClick={generatePayroll}
+								onClick={generateSlips}
 								disabled={generating}
-								className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm font-medium"
+								className="inline-flex items-center px-4 py-2 bg-[#64126D] text-white rounded-lg hover:bg-[#52105a] disabled:opacity-50 transition-colors text-sm font-medium"
 							>
 								{generating ? (
 									<InlineSpinner className="w-4 h-4 mr-2" />
 								) : (
 									<CurrencyRupeeIcon className="w-4 h-4 mr-2" />
 								)}
-								Generate Payroll
+								Generate {streamNoun}
 							</button>
 
 							<button
@@ -251,20 +271,39 @@ export default function PayrollRunPage() {
 								)}
 								Export Excel
 							</button>
+
+							<button
+								onClick={exportBulkPDF}
+								disabled={exporting || slips.length === 0}
+								className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm font-medium"
+							>
+								{exporting ? (
+									<InlineSpinner className="w-4 h-4 mr-2" />
+								) : (
+									<DocumentDuplicateIcon className="w-4 h-4 mr-2" />
+								)}
+								Download All PDFs
+							</button>
 						</div>
 					</div>
 				</div>
 
 				{/* Alerts */}
 				{error && (
-					<div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+					<div
+						role="alert"
+						className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700"
+					>
 						<ExclamationCircleIcon className="w-5 h-5 flex-shrink-0" />
 						<span className="text-sm">{error}</span>
 					</div>
 				)}
 
 				{success && (
-					<div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
+					<div
+						role="status"
+						className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700"
+					>
 						<CheckCircleIcon className="w-5 h-5 flex-shrink-0" />
 						<span className="text-sm">{success}</span>
 					</div>
@@ -275,32 +314,41 @@ export default function PayrollRunPage() {
 					<div className="flex flex-wrap items-center gap-4">
 						<div className="flex items-center gap-2">
 							<CalendarIcon className="w-5 h-5 text-gray-400" />
-							<label className="text-sm font-medium text-gray-700">
+							<label
+								htmlFor="payroll-run-month"
+								className="text-sm font-medium text-gray-700"
+							>
 								Month:
 							</label>
 							<input
+								id="payroll-run-month"
 								type="month"
-								value={month.substring(0, 7)}
+								value={monthSlug}
 								onChange={(e) => setMonth(`${e.target.value}-01`)}
-								className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+								className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
 							/>
 						</div>
 
-						<div className="flex items-center gap-2">
-							<FunnelIcon className="w-5 h-5 text-gray-400" />
-							<label className="text-sm font-medium text-gray-700">Type:</label>
-							<select
-								value={salaryType}
-								onChange={(e) => setSalaryType(e.target.value)}
-								className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-							>
-								{salaryTypes.map((t) => (
-									<option key={t.value} value={t.value}>
-										{t.label}
-									</option>
+						<fieldset className="flex items-center gap-2">
+							<legend className="sr-only">Employee Type</legend>
+							<div className="inline-flex rounded-lg border border-gray-300 bg-gray-100 p-0.5">
+								{STREAMS.map((s) => (
+									<button
+										key={s.value}
+										type="button"
+										onClick={() => setStream(s.value)}
+										aria-pressed={stream === s.value}
+										className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+											stream === s.value
+												? 'bg-white text-gray-900 shadow-sm'
+												: 'text-gray-600 hover:text-gray-900'
+										}`}
+									>
+										{s.label}
+									</button>
 								))}
-							</select>
-						</div>
+							</div>
+						</fieldset>
 					</div>
 				</div>
 
@@ -345,20 +393,27 @@ export default function PayrollRunPage() {
 
 				{/* Table */}
 				<div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+					<div
+						role="status"
+						className="px-4 py-3 border-b border-gray-200 text-sm text-gray-600"
+					>
+						{loading
+							? `Loading ${streamNoun}...`
+							: `Showing ${slips.length} ${streamLabel.toLowerCase()} ${slips.length === 1 ? 'employee' : 'employees'} for ${formatMonth(month)}`}
+					</div>
+
 					<div className="overflow-x-auto">
 						{loading ? (
 							<div className="flex items-center justify-center py-12">
 								<InlineSpinner className="w-8 h-8" />
-								<span className="ml-3 text-gray-500">
-									Loading payroll data...
-								</span>
 							</div>
 						) : slips.length === 0 ? (
 							<div className="text-center py-12 text-gray-500">
 								<DocumentTextIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-								<p className="font-medium">No payroll slips found</p>
+								<p className="font-medium">No Payroll Slips found</p>
 								<p className="text-sm mt-1">
-									Generate payroll for {formatMonth(month)} to see data here.
+									Generate {streamNoun} for {formatMonth(month)} to see data
+									here.
 								</p>
 							</div>
 						) : (
@@ -446,9 +501,12 @@ export default function PayrollRunPage() {
 												{idx + 1}
 											</td>
 											<td className="px-3 py-3 sticky left-8 bg-white z-10">
-												<div className="font-medium text-gray-900">
+												<Link
+													href={`/admin/payroll/slips/${slip.id}`}
+													className="font-medium text-gray-900 hover:text-[#64126D] hover:underline"
+												>
 													{slip.employee_name}
-												</div>
+												</Link>
 												<div className="text-xs text-gray-500">
 													{slip.employee_code}
 												</div>
@@ -496,9 +554,7 @@ export default function PayrollRunPage() {
 												{formatCurrency(slip.esic_employee)}
 											</td>
 											<td className="px-3 py-3 text-right text-red-600">
-												{formatCurrency(
-													month.split('-')[1] === '02' ? 300 : slip.pt
-												)}
+												{formatCurrency(isFeb ? 300 : slip.pt)}
 											</td>
 											<td className="px-3 py-3 text-right text-red-600">
 												{formatCurrency(slip.mlwf)}
@@ -626,7 +682,7 @@ export default function PayrollRunPage() {
 										</td>
 										<td className="px-3 py-3 text-right text-red-600">
 											{formatCurrency(
-												month.split('-')[1] === '02'
+												isFeb
 													? 300 * slips.length
 													: slips.reduce((s, r) => s + (Number(r.pt) || 0), 0)
 											)}

@@ -11,10 +11,9 @@ const APP_DIR = path.resolve(process.cwd(), 'src/app');
  * must not come back (they are covered by permanent redirects).
  */
 describe('payroll route tree (issue #240)', () => {
-	it('serves the four payroll pages plus the slip detail route under /admin/payroll', () => {
+	it('serves the payroll pages plus the slip detail route under /admin/payroll', () => {
 		const routes = [
 			'admin/payroll/page.jsx',
-			'admin/payroll/slips/page.jsx',
 			'admin/payroll/slips/[id]/page.jsx',
 			'admin/payroll/rates/page.jsx',
 			'admin/payroll/rates/da/page.jsx',
@@ -48,8 +47,9 @@ describe('payroll route tree (issue #240)', () => {
 			destination: '/admin/payroll',
 			permanent: true,
 		});
+		// Issue #241: the slips list dissolved into the run dashboard.
 		expect(bySource.get('/admin/salary-slip')).toMatchObject({
-			destination: '/admin/payroll/slips',
+			destination: '/admin/payroll',
 			permanent: true,
 		});
 		expect(bySource.get('/admin/payroll-schedules')).toMatchObject({
@@ -60,5 +60,36 @@ describe('payroll route tree (issue #240)', () => {
 			destination: '/admin/payroll/rates/da',
 			permanent: true,
 		});
+	});
+});
+
+/**
+ * Issue #241: the former Payroll Slips list is no longer a page of its own —
+ * /admin/payroll is the one list of the month's Payroll Slips, and one person's
+ * slip still opens on the detail route.
+ */
+describe('run dashboard merge (issue #241)', () => {
+	it('no longer serves a Payroll Slips list page', () => {
+		expect(existsSync(path.join(APP_DIR, 'admin/payroll/slips/page.jsx'))).toBe(
+			false
+		);
+	});
+
+	it('permanently redirects the dissolved slips list to the run dashboard', async () => {
+		const redirects = (await nextConfig.redirects?.()) ?? [];
+		const bySource = new Map(
+			redirects.map((redirect) => [redirect.source, redirect])
+		);
+
+		expect(bySource.get('/admin/payroll/slips')).toMatchObject({
+			destination: '/admin/payroll',
+			permanent: true,
+		});
+	});
+
+	it('keeps the single-slip detail route reachable', () => {
+		expect(
+			existsSync(path.join(APP_DIR, 'admin/payroll/slips/[id]/page.jsx'))
+		).toBe(true);
 	});
 });

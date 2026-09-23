@@ -18,8 +18,8 @@ import {
 
 /**
  * Single Payroll Slip — the focused inspect/print view for one slip id.
- * The document itself is PayrollSlipDocument, shared with the Payroll Slips
- * list preview so both render the slip identically.
+ * Reached from the Payroll Run dashboard's rows; the document itself is
+ * PayrollSlipDocument, so the slip has exactly one rendering.
  */
 export default function PayrollSlipDetailPage() {
 	const params = useParams();
@@ -92,11 +92,11 @@ export default function PayrollSlipDetailPage() {
 			<div className="w-full px-4 sm:px-6 lg:px-8 py-6">
 				<div className="mb-6 print:hidden">
 					<Link
-						href="/admin/payroll/slips"
+						href="/admin/payroll"
 						className="flex items-center text-sm text-gray-600 hover:text-gray-900 mb-3 transition-colors w-fit"
 					>
 						<ArrowLeftIcon className="w-4 h-4 mr-1" />
-						Back to Payroll Slips
+						Back to Payroll Run
 					</Link>
 
 					<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
