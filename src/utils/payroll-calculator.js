@@ -3,7 +3,7 @@
  * ---------------------------
  * Uses frozen PAYROLL_CONFIG to calculate all salary components
  * Integrates with core payroll tables:
- *  - da_schedule
+ *  - payroll_schedules (Component Rates, incl. DA)
  *  - employee_salary_profile
  *  - payroll_slips
  *  - employee_attendance (for monthly calculations)
@@ -19,39 +19,6 @@ import {
 
 export { calculatePayroll, normalizeSalaryProfile };
 
-/**
- * LEGACY COMPAT (future migration): reads the legacy `da_schedule` table.
- * Canonical rates come from `payroll_schedules` via
- * getEffectivePayrollSchedule; do not add new callers.
- */
-export async function getCurrentDA(forDate = new Date()) {
-	const db = await dbConnect();
-
-	try {
-		const [rows] = await db.execute(
-			`SELECT da_amount 
-       FROM da_schedule 
-       WHERE is_active = 1 
-         AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31')
-       LIMIT 1`,
-			[forDate]
-		);
-
-		return rows.length > 0
-			? parseFloat(rows[0].da_amount)
-			: PAYROLL_CONFIG.DA_FIXED_AMOUNT;
-	} catch (error) {
-		console.error('Error getting current DA:', error);
-		return PAYROLL_CONFIG.DA_FIXED_AMOUNT; // Fallback to config default
-	} finally {
-		try {
-			db.release();
-		} catch (_) {
-			/* ignore */
-		}
-	}
-}
-
 const scheduleDate = (value) =>
 	typeof value === 'string'
 		? value.substring(0, 10)
@@ -59,9 +26,8 @@ const scheduleDate = (value) =>
 
 /**
  * Load the effective Payroll Schedule once for a calculation run.
- * LEGACY COMPAT (future migration): the `da_schedule` branch below is a
- * compatibility fallback until DA storage is unified. Canonical source is
- * `payroll_schedules`; do not extend the fallback.
+ * All component rates — including DA — resolve from `payroll_schedules`
+ * (Component Rates); there is no legacy DA-table fallback.
  */
 export async function getEffectivePayrollSchedule(
 	forDate = new Date(),
@@ -95,28 +61,6 @@ export async function getEffectivePayrollSchedule(
 		} catch (error) {
 			// Keep existing deployments working while the canonical table is absent.
 			console.warn('Payroll schedule lookup skipped:', error.message);
-		}
-
-		if (!components.da) {
-			try {
-				const [rows] = await db.execute(
-					`SELECT da_amount, effective_from, effective_to
-           FROM da_schedule
-           WHERE is_active = 1
-             AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31')
-           ORDER BY effective_from DESC, id DESC
-           LIMIT 1`,
-					[date]
-				);
-				if (rows.length > 0) {
-					components.da = {
-						value_type: 'fixed',
-						value: rows[0].da_amount,
-					};
-				}
-			} catch (error) {
-				console.warn('Legacy DA lookup skipped:', error.message);
-			}
 		}
 
 		if (!components.da) {
@@ -1246,7 +1190,6 @@ export async function generatePayrollSlipsBatch(
 }
 
 const payrollCalculator = {
-	getCurrentDA,
 	getEffectivePayrollSchedule,
 	getEmployeeAttendance,
 	getEmployeeSalaryProfile,

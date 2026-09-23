@@ -24,7 +24,10 @@ export async function GET(request) {
 		db = await dbConnect();
 
 		const [rows] = await db.execute(
-			`SELECT * FROM da_schedule ORDER BY effective_from DESC`
+			`SELECT id, value AS da_amount, effective_from, effective_to, is_active, remarks
+       FROM payroll_schedules
+       WHERE component_type = 'da'
+       ORDER BY effective_from DESC`
 		);
 
 		return NextResponse.json({
@@ -73,14 +76,16 @@ export async function POST(request) {
 
 		db = await dbConnect();
 
-		// If marking as active, deactivate all other entries
+		// If marking as active, deactivate sibling DA rates only — never other component types.
 		if (is_active) {
-			await db.execute(`UPDATE da_schedule SET is_active = 0`);
+			await db.execute(
+				`UPDATE payroll_schedules SET is_active = 0 WHERE component_type = 'da'`
+			);
 		}
 
 		const [result] = await db.execute(
-			`INSERT INTO da_schedule (da_amount, effective_from, effective_to, is_active, remarks)
-       VALUES (?, ?, ?, ?, ?)`,
+			`INSERT INTO payroll_schedules (component_type, value_type, value, effective_from, effective_to, is_active, remarks)
+       VALUES ('da', 'fixed', ?, ?, ?, ?, ?)`,
 			[
 				da_amount,
 				effective_from,
@@ -140,21 +145,22 @@ export async function PUT(request) {
 
 		db = await dbConnect();
 
-		// If marking as active, deactivate all other entries
+		// If marking as active, deactivate sibling DA rates only — never other component types.
 		if (is_active) {
-			await db.execute(`UPDATE da_schedule SET is_active = 0 WHERE id != ?`, [
-				id,
-			]);
+			await db.execute(
+				`UPDATE payroll_schedules SET is_active = 0 WHERE component_type = 'da' AND id != ?`,
+				[id]
+			);
 		}
 
 		await db.execute(
-			`UPDATE da_schedule 
-       SET da_amount = COALESCE(?, da_amount),
+			`UPDATE payroll_schedules 
+       SET value = COALESCE(?, value),
            effective_from = COALESCE(?, effective_from),
            effective_to = ?,
            is_active = COALESCE(?, is_active),
            remarks = ?
-       WHERE id = ?`,
+       WHERE id = ? AND component_type = 'da'`,
 			[
 				da_amount ?? null,
 				effective_from ?? null,
@@ -211,7 +217,10 @@ export async function DELETE(request) {
 
 		db = await dbConnect();
 
-		await db.execute(`DELETE FROM da_schedule WHERE id = ?`, [id]);
+		await db.execute(
+			`DELETE FROM payroll_schedules WHERE id = ? AND component_type = 'da'`,
+			[id]
+		);
 
 		return NextResponse.json({
 			success: true,

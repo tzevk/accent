@@ -47,9 +47,9 @@ export async function GET(request) {
 		db = await dbConnect();
 
 		const [rows] = await db.execute(
-			`SELECT da_amount, effective_from, effective_to
-       FROM da_schedule 
-       WHERE is_active = 1 
+			`SELECT value AS da_amount, effective_from, effective_to
+       FROM payroll_schedules
+       WHERE component_type = 'da' AND is_active = 1
        ORDER BY effective_from DESC
        LIMIT 1`,
 			[]
