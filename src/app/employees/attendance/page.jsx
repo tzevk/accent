@@ -132,7 +132,9 @@ export default function AttendancePage() {
 	// Data
 	const [employees, setEmployees] = useState([]);
 	const [attendanceData, setAttendanceData] = useState({}); // { empId: { 'YYYY-MM-DD': { status, overtime_hours, ... } } }
-	const [activityDays, setActivityDays] = useState({}); // { empId: { 'YYYY-MM-DD': true } }
+	// Punch evidence per day: { empId: { 'YYYY-MM-DD': { in_time, out_time, overtime_hours } } }
+	// from GET /api/attendance (derived from attendance_logs, ADR-0007).
+	const [punchDays, setPunchDays] = useState({});
 	const [salaryProfiles, setSalaryProfiles] = useState({}); // { empId: { basic, da, basic_plus_da, ... } }
 	const [holidays, setHolidays] = useState([]);
 	const [loading, setLoading] = useState(true);
@@ -242,7 +244,7 @@ export default function AttendancePage() {
 					map[emp.employee_id] = emp.days || {};
 				});
 				setAttendanceData(map);
-				setActivityDays(data.activityDays || {});
+				setPunchDays(data.punchDays || {});
 			}
 		} catch (err) {
 			console.error('Error fetching attendance:', err);
@@ -298,29 +300,55 @@ export default function AttendancePage() {
 		);
 	}, [fetchEmployees, fetchAttendance, fetchHolidays]);
 
-	// Default only days with a logged project activity to Present while
-	// preserving existing statuses.
+	// One shape for "punch evidence lands on an empty cell": status P plus
+	// device times/OT (auto-default effect and Fill Present both use it).
+	const applyPunch = (empDays, dateStr, punch) => {
+		empDays[dateStr] = {
+			...(empDays[dateStr] || {}),
+			status: 'P',
+			in_time: punch.in_time,
+			out_time: punch.out_time,
+			overtime_hours: punch.overtime_hours || 0,
+		};
+	};
+
+	// Default days with a biometric punch to Present while preserving
+	// existing statuses; device times/OT ride along on the prefilled cell
+	// (punches win — ADR-0007). Prefill marks the bar unsaved so the
+	// device times are actually persistable (spec: save persists them).
 	useEffect(() => {
 		if (loading || employees.length === 0 || monthDates.length === 0) return;
 
-		setAttendanceData((prev) => {
-			let changed = false;
-			const updated = { ...prev };
+		// Compute from current state (updaters run lazily — can't read a
+		// flag set inside one). Converges: once every punched day has a
+		// status, willPrefill is false and nothing re-fires.
+		const willPrefill = employees.some((emp) =>
+			monthDates.some(
+				({ dateStr }) =>
+					!attendanceData[emp.id]?.[dateStr]?.status &&
+					punchDays[emp.id]?.[dateStr]
+			)
+		);
+		if (!willPrefill) return;
 
+		setAttendanceData((prev) => {
+			const updated = { ...prev };
+			let changed = false;
 			employees.forEach((emp) => {
 				const empDays = { ...(updated[emp.id] || {}) };
 				monthDates.forEach(({ dateStr }) => {
-					if (!empDays[dateStr]?.status && activityDays[emp.id]?.[dateStr]) {
-						empDays[dateStr] = { ...(empDays[dateStr] || {}), status: 'P' };
+					const punch = punchDays[emp.id]?.[dateStr];
+					if (!empDays[dateStr]?.status && punch) {
+						applyPunch(empDays, dateStr, punch);
 						changed = true;
 					}
 				});
 				updated[emp.id] = empDays;
 			});
-
 			return changed ? updated : prev;
 		});
-	}, [loading, employees, monthDates, activityDays]);
+		setHasChanges(true);
+	}, [loading, employees, monthDates, punchDays, attendanceData]);
 
 	useEffect(() => {
 		if (employees.length > 0) {
@@ -467,20 +495,22 @@ export default function AttendancePage() {
 		setHasChanges(true);
 	};
 
-	// Mark activity days as Present (overrides existing statuses)
+	// Fill Present — bulk-P punch-days that have no status yet (empty
+	// cells only; authored statuses are never overridden, ADR-0007).
 	const markAllPresent = () => {
-		const hasActivityDays = employees.some((emp) =>
-			monthDates.some(({ dateStr }) => activityDays[emp.id]?.[dateStr])
+		const hasPunchDays = employees.some((emp) =>
+			monthDates.some(({ dateStr }) => punchDays[emp.id]?.[dateStr])
 		);
-		if (!hasActivityDays) return;
+		if (!hasPunchDays) return;
 
 		setAttendanceData((prev) => {
 			const updated = { ...prev };
 			employees.forEach((emp) => {
 				const empDays = { ...(updated[emp.id] || {}) };
 				monthDates.forEach(({ dateStr }) => {
-					if (activityDays[emp.id]?.[dateStr]) {
-						empDays[dateStr] = { ...(empDays[dateStr] || {}), status: 'P' };
+					const punch = punchDays[emp.id]?.[dateStr];
+					if (punch && !empDays[dateStr]?.status) {
+						applyPunch(empDays, dateStr, punch);
 					}
 				});
 				updated[emp.id] = empDays;
@@ -570,6 +600,33 @@ export default function AttendancePage() {
 		const days = attendanceData[empId] || {};
 		const profile = salaryProfiles[empId] || {};
 		return computeAttendanceSummary(days, profile);
+	};
+
+	// Cell tooltip: status label + device times (when punched) + a conflict
+	// warning when punches contradict an authored leave/WO/absent status.
+	const CONFLICT_STATUSES = new Set([
+		'PL',
+		'CL',
+		'SL',
+		'EL',
+		'LWP',
+		'UL',
+		'A',
+		'WO',
+	]);
+	const cellTitle = (emp, d, status) => {
+		const base = `${emp.first_name} ${emp.last_name} - ${d.dayName} ${d.day}: ${
+			status ? getStatusInfo(status).label : 'Click to mark'
+		}`;
+		const punch = punchDays[emp.id]?.[d.dateStr];
+		if (!punch || (punch.in_time == null && punch.out_time == null))
+			return base;
+		const times = `device ${punch.in_time ?? '?'} → ${punch.out_time ?? '?'}`;
+		const conflict =
+			status && CONFLICT_STATUSES.has(status)
+				? ' — ⚠ punch on leave/absent/weekly-off day'
+				: '';
+		return `${base} (${times})${conflict}`;
 	};
 
 	// Export to CSV — full leave split (amounts stay in export, not grid)
@@ -1072,7 +1129,7 @@ export default function AttendancePage() {
 																		`${d.dayName}, ${d.day} ${monthLabel}`
 																	)
 																}
-																title={`${emp.first_name} ${emp.last_name} - ${d.dayName} ${d.day}: ${status ? getStatusInfo(status).label : 'Click to mark'}`}
+																title={cellTitle(emp, d, status)}
 															>
 																{status ? (
 																	<span
