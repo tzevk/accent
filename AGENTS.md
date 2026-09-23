@@ -1,5 +1,7 @@
 # Accent CRM — Agent Guide
 
+Follow YAGNI rules, DRY use best principles.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
