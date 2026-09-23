@@ -6,6 +6,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { jsPDF } from 'jspdf';
+import { formatDateNumeric, formatMonth } from '@/lib/format';
 
 const safeNum = (v) => {
 	const n = Number(v);
@@ -21,20 +22,6 @@ const fmtAmt = (v) => {
 			})
 		: '';
 };
-
-function formatMonthLabel(monthStr) {
-	if (!monthStr) return '';
-	const d = new Date(monthStr);
-	return d
-		.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
-		.toUpperCase();
-}
-
-function formatDate(dateStr) {
-	if (!dateStr) return '';
-	const d = new Date(dateStr);
-	return d.toLocaleDateString('en-IN');
-}
 
 /**
  * Render one salary slip on the given jsPDF page.
@@ -84,7 +71,7 @@ function renderSlip(doc, slip, yStart) {
 	doc.setFont('helvetica', 'bold');
 	doc.setTextColor(255, 255, 255);
 	doc.text(
-		`SALARY SLIP FOR THE MONTH OF ${formatMonthLabel(slip.month)}`,
+		`PAYROLL SLIP FOR THE MONTH OF ${formatMonth(slip.month).toUpperCase()}`,
 		pageW / 2,
 		y + 5.5,
 		{ align: 'center' }
@@ -101,7 +88,10 @@ function renderSlip(doc, slip, yStart) {
 		],
 		[
 			{ label: 'DEPARTMENT', value: safeStr(slip.department) },
-			{ label: 'DATE OF JOINING', value: formatDate(slip.joining_date) },
+			{
+				label: 'DATE OF JOINING',
+				value: slip.joining_date ? formatDateNumeric(slip.joining_date) : '',
+			},
 			{ label: 'PRESENT DAYS', value: safeStr(slip.payable_days) },
 			{ label: 'PL USED', value: safeStr(slip.pl_used || 0) },
 		],
@@ -372,7 +362,7 @@ function renderSlip(doc, slip, yStart) {
 	doc.setFontSize(6);
 	doc.setTextColor(100, 18, 109);
 	doc.text(
-		"NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE DOESN'T REQUIRE SIGNATURE",
+		"NOTE: THIS IS A COMPUTER GENERATED PAYROLL SLIP HENCE DOESN'T REQUIRE SIGNATURE",
 		pageW / 2,
 		y + 4.5,
 		{ align: 'center' }
@@ -525,8 +515,8 @@ export async function GET(request) {
 		// Use employee name for single slip, otherwise use generic name
 		const filename =
 			employeeId && normalizedSlips.length === 1
-				? `Salary_Slip_${normalizedSlips[0].employee_name?.replace(/\s+/g, '_') || employeeId}_${monthLabel}.pdf`
-				: `Salary_Slips_${monthLabel}.pdf`;
+				? `Payroll_Slip_${normalizedSlips[0].employee_name?.replace(/\s+/g, '_') || employeeId}_${monthLabel}.pdf`
+				: `Payroll_Slips_${monthLabel}.pdf`;
 
 		return new Response(pdfBuffer, {
 			status: 200,

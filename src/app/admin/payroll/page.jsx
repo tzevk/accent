@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import { R, add, sub, toNumber } from '@/lib/money';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatMonth } from '@/lib/format';
+import { downloadFile } from '@/lib/download';
 import { InlineSpinner } from '@/components/LoadingSpinner';
 import { useRouter } from 'next/navigation';
 import {
@@ -18,7 +19,7 @@ import {
 	FunnelIcon,
 } from '@heroicons/react/24/outline';
 
-export default function SalarySheetPage() {
+export default function PayrollRunPage() {
 	const router = useRouter();
 	const [month, setMonth] = useState(() => {
 		const now = new Date();
@@ -87,9 +88,7 @@ export default function SalarySheetPage() {
 
 	const generatePayroll = async () => {
 		if (
-			!confirm(
-				`Generate payroll for all employees for ${formatMonthDisplay(month)}?`
-			)
+			!confirm(`Generate payroll for all employees for ${formatMonth(month)}?`)
 		)
 			return;
 
@@ -134,22 +133,7 @@ export default function SalarySheetPage() {
 				url += `&salary_type=${salaryType}`;
 			}
 
-			const res = await fetch(url);
-
-			if (!res.ok) {
-				const data = await res.json();
-				throw new Error(data.error || 'Export failed');
-			}
-
-			const blob = await res.blob();
-			const downloadUrl = window.URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = downloadUrl;
-			a.download = `Salary_Sheet_${month.substring(0, 7)}.xlsx`;
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-			window.URL.revokeObjectURL(downloadUrl);
+			await downloadFile(url, `Payroll_Run_${month.substring(0, 7)}.xlsx`);
 
 			setSuccess('Excel file downloaded successfully');
 		} catch (err) {
@@ -157,11 +141,6 @@ export default function SalarySheetPage() {
 		} finally {
 			setExporting(false);
 		}
-	};
-
-	const formatMonthDisplay = (monthStr) => {
-		const d = new Date(monthStr);
-		return d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 	};
 
 	// Calculate summary stats
@@ -239,10 +218,10 @@ export default function SalarySheetPage() {
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
 								<DocumentTextIcon className="w-7 h-7 text-green-600" />
-								Salary Sheet
+								Payroll Run
 							</h1>
 							<p className="text-sm text-gray-500 mt-0.5">
-								Export monthly salary data for all employees to Excel
+								Generate, review and export the month&apos;s Payroll Slips
 							</p>
 						</div>
 
@@ -379,8 +358,7 @@ export default function SalarySheetPage() {
 								<DocumentTextIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
 								<p className="font-medium">No payroll slips found</p>
 								<p className="text-sm mt-1">
-									Generate payroll for {formatMonthDisplay(month)} to see data
-									here.
+									Generate payroll for {formatMonth(month)} to see data here.
 								</p>
 							</div>
 						) : (

@@ -15,6 +15,7 @@ const safeNum = (v) => {
  * GET - Fetch payroll slips
  * Query params:
  *  - month: Filter by month (YYYY-MM-01)
+ *  - id: Filter by a single slip id (used by the Payroll Slip detail route)
  *  - employee_id: Filter by employee
  *  - payment_status: Filter by status (pending, processed, paid, hold)
  */
@@ -32,6 +33,7 @@ export async function GET(request) {
 	try {
 		const { searchParams } = new URL(request.url);
 		const month = searchParams.get('month');
+		const slipId = searchParams.get('id');
 		const employee_id = searchParams.get('employee_id');
 		const payment_status = searchParams.get('payment_status');
 		const salary_type = searchParams.get('salary_type');
@@ -65,6 +67,11 @@ export async function GET(request) {
 			params.push(month);
 		}
 
+		if (slipId) {
+			query += ` AND ps.id = ?`;
+			params.push(slipId);
+		}
+
 		if (employee_id) {
 			query += ` AND ps.employee_id = ?`;
 			params.push(employee_id);
@@ -86,10 +93,13 @@ export async function GET(request) {
 		const [rows] = await db.execute(query, params);
 
 		// Normalize BASIC/DA from canonical sources so all UIs read consistent values.
+		// A single-slip lookup knows its month only from the row it just fetched, and
+		// must still resolve the scheduled DA the month listing would have used.
+		const daMonth = month || rows[0]?.month || null;
 		let scheduledDA = 0;
-		if (month) {
+		if (daMonth) {
 			try {
-				const [yr, mn] = String(month).split('-');
+				const [yr, mn] = String(daMonth).split('-');
 				const monthDate = `${yr}-${mn}-01`;
 				const [daRows] = await db.execute(
 					`SELECT value_type, value

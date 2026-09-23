@@ -355,7 +355,7 @@ export default function Sidebar() {
 												}`}
 											>
 												<span className="hidden sidebar-open:inline">
-													Payroll
+													Salary Profiles
 												</span>
 											</Link>
 											<Link

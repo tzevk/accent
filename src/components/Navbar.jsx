@@ -170,71 +170,6 @@ function hasReportFieldAccess(user, fieldKey) {
 // Quotation naming convention:
 // - /admin/quotation         → Outgoing (Accent → client), from proposals/projects
 // - /admin/quotation-outgoing → Incoming (vendor → Accent), vendor quotations
-// Admin menu items with their resource keys
-const adminMenuConfig = [
-	{ name: 'Admin Logs', href: '/admin/activity-logs', resource: 'admin' },
-	{ name: 'All Todos', href: '/admin/todos', resource: 'admin' },
-	{ name: 'Cash Voucher', href: '/admin/cash-voucher', resource: 'admin' },
-	{ name: 'Expenses', href: '/admin/expenses', resource: 'admin' },
-	{
-		name: 'Other Expenses',
-		href: '/admin/other-expenses',
-		resource: 'admin',
-	},
-	{
-		name: 'Petty Cash Expenses',
-		href: '/admin/petty-cash-expenses',
-		resource: 'admin',
-	},
-	{
-		name: 'Live Monitoring',
-		href: '/admin/live-monitoring',
-		resource: 'admin',
-	},
-	{
-		name: 'Material Requisition',
-		href: '/admin/material-requisition',
-		resource: 'admin',
-	},
-	{
-		name: 'Payment Received from client',
-		href: '/admin/payment-entry',
-		resource: 'admin',
-	},
-	{
-		name: 'Payment Issued to client',
-		href: '/admin/payment-issue',
-		resource: 'admin',
-	},
-	{
-		name: 'Purchase Invoice',
-		href: '/admin/purchase-invoice',
-		resource: 'admin',
-	},
-	{
-		name: 'Purchase Order (Incoming)',
-		href: '/admin/purchase-order',
-		resource: 'admin',
-	},
-	{
-		name: 'Purchase Order (Outgoing)',
-		href: '/admin/outgoing-purchase-order',
-		resource: 'admin',
-	},
-	{ name: 'Quotation (Outgoing)', href: '/admin/quotation', resource: 'admin' },
-	{
-		name: 'Quotation (Incoming)',
-		href: '/admin/quotation-outgoing',
-		resource: 'admin',
-	},
-	{
-		name: 'Salary Sheet (Excel)',
-		href: '/admin/salary-sheet',
-		resource: 'admin',
-	},
-	{ name: 'Salary Slip (PDF)', href: '/admin/salary-slip', resource: 'admin' },
-	{ name: 'Sale Invoice', href: '/admin/invoice', resource: 'admin' },
-];
 
 // Admin menu grouped into categories for the hover-flyout navbar dropdown
 const adminMenuGroups = [
@@ -331,19 +266,36 @@ const adminMenuGroups = [
 		icon: ClipboardDocumentCheckIcon,
 		items: [
 			{
-				name: 'Material Requisition',
-				href: '/admin/material-requisition',
+				name: 'Payroll Run',
+				href: '/admin/payroll',
 				icon: ClipboardDocumentCheckIcon,
 			},
 			{
-				name: 'Salary Sheet (Excel)',
-				href: '/admin/salary-sheet',
+				name: 'Payroll Slips',
+				href: '/admin/payroll/slips',
 				icon: DocumentTextIcon,
 			},
 			{
-				name: 'Salary Slip (PDF)',
-				href: '/admin/salary-slip',
+				name: 'Component Rates',
+				href: '/admin/payroll/rates',
+				icon: BanknotesIcon,
+			},
+			{
+				name: 'DA Rates',
+				href: '/admin/payroll/rates/da',
 				icon: DocumentTextIcon,
+			},
+		],
+	},
+	{
+		key: 'procurement',
+		name: 'Procurement',
+		icon: ClipboardDocumentCheckIcon,
+		items: [
+			{
+				name: 'Material Requisition',
+				href: '/admin/material-requisition',
+				icon: ClipboardDocumentCheckIcon,
 			},
 		],
 	},
@@ -401,20 +353,13 @@ export default function Navbar() {
 		});
 	}, [user, userLoading, can, PERMISSIONS]);
 
-	// Filter admin menu items based on permissions
-	const adminMenuItems = useMemo(() => {
-		if (userLoading || !user) return []; // Hide admin while loading
-		if (user.is_super_admin) return adminMenuConfig; // Super admin sees all
-
-		// Show admin menu only if user has admin permission
-		if (can(RESOURCES.ADMIN, PERMISSIONS.READ) || can('admin', 'read')) {
-			return adminMenuConfig;
-		}
-		return [];
+	// Admin menu visibility: super admins, or anyone holding admin:read. The
+	// group definitions above are the single source of what the menu contains.
+	const showAdminMenu = useMemo(() => {
+		if (userLoading || !user) return false; // Hide admin while loading
+		if (user.is_super_admin) return true;
+		return can(RESOURCES.ADMIN, PERMISSIONS.READ) || can('admin', 'read');
 	}, [user, userLoading, can, RESOURCES, PERMISSIONS]);
-
-	// Check if admin menu should be visible
-	const showAdminMenu = adminMenuItems.length > 0;
 
 	// Filter reports menu items based on permissions
 	const reportsMenuItems = useMemo(() => {
@@ -487,7 +432,7 @@ export default function Navbar() {
 	return (
 		<>
 			<nav
-				className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 anim-fade-in ${
+				className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 anim-fade-in print:hidden ${
 					scrolled ? 'shadow-xl backdrop-blur-lg' : 'shadow-lg'
 				}`}
 			>

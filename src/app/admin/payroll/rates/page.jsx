@@ -1,14 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { InlineSpinner } from '@/components/LoadingSpinner';
 import { useRouter } from 'next/navigation';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
-export default function PayrollSchedulesPage() {
+export default function ComponentRatesPage() {
 	const router = useRouter();
-	const [schedules, setSchedules] = useState([]);
+	const [componentRates, setComponentRates] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState('');
 	const [showForm, setShowForm] = useState(false);
@@ -142,32 +143,32 @@ export default function PayrollSchedulesPage() {
 		return Object.values(componentCategories).flatMap((cat) => cat.components);
 	};
 
-	const getFilteredSchedules = () => {
-		if (selectedCategory === 'all') return schedules;
+	const getFilteredComponentRates = () => {
+		if (selectedCategory === 'all') return componentRates;
 		const categoryComponents = componentCategories[
 			selectedCategory
 		].components.map((c) => c.value);
-		return schedules.filter((s) =>
+		return componentRates.filter((s) =>
 			categoryComponents.includes(s.component_type)
 		);
 	};
 
 	useEffect(() => {
-		fetchSchedules();
+		fetchComponentRates();
 	}, []);
 
-	const fetchSchedules = async () => {
+	const fetchComponentRates = async () => {
 		try {
 			setLoading(true);
 			const res = await fetch('/api/payroll/schedules');
 			const data = await res.json();
 			if (data.success) {
-				setSchedules(data.data || []);
+				setComponentRates(data.data || []);
 			} else {
 				setError(data.error);
 			}
 		} catch (err) {
-			setError('Failed to fetch payroll schedules');
+			setError('Failed to fetch Component Rates');
 		} finally {
 			setLoading(false);
 		}
@@ -207,17 +208,18 @@ export default function PayrollSchedulesPage() {
 					is_active: true,
 					remarks: '',
 				});
-				fetchSchedules();
+				fetchComponentRates();
 			} else {
 				setError(data.error);
 			}
 		} catch (err) {
-			setError('Failed to add schedule');
+			setError('Failed to add Component Rate');
 		}
 	};
 
 	const handleDelete = async (id) => {
-		if (!confirm('Are you sure you want to delete this schedule?')) return;
+		if (!confirm('Are you sure you want to delete this Component Rate?'))
+			return;
 
 		try {
 			const res = await fetch(`/api/payroll/schedules?id=${id}`, {
@@ -226,12 +228,12 @@ export default function PayrollSchedulesPage() {
 
 			const data = await res.json();
 			if (data.success) {
-				fetchSchedules();
+				fetchComponentRates();
 			} else {
 				setError(data.error);
 			}
 		} catch (err) {
-			setError('Failed to delete schedule');
+			setError('Failed to delete Component Rate');
 		}
 	};
 
@@ -253,7 +255,7 @@ export default function PayrollSchedulesPage() {
 	const selectedComponentInfo = getAllComponents().find(
 		(c) => c.value === formData.component_type
 	);
-	const filteredSchedules = getFilteredSchedules();
+	const filteredComponentRates = getFilteredComponentRates();
 
 	return (
 		<div className="min-h-screen bg-gray-50">
@@ -263,7 +265,7 @@ export default function PayrollSchedulesPage() {
 				{/* Header */}
 				<div className="mb-4">
 					<button
-						onClick={() => router.push('/employees')}
+						onClick={() => router.push('/admin/payroll')}
 						className="flex items-center text-sm text-gray-600 hover:text-gray-900 mb-3 transition-colors"
 					>
 						<ArrowLeftIcon className="w-4 h-4 mr-1" />
@@ -273,18 +275,26 @@ export default function PayrollSchedulesPage() {
 					<div className="flex items-center justify-between">
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900">
-								Payroll Schedules
+								Component Rates
 							</h1>
 							<p className="text-sm text-gray-500 mt-0.5">
-								Manage all payroll component rates
+								Manage all component rates
 							</p>
 						</div>
-						<button
-							onClick={() => setShowForm(!showForm)}
-							className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
-						>
-							{showForm ? 'Cancel' : '+ Add'}
-						</button>
+						<div className="flex items-center gap-4">
+							<Link
+								href="/admin/payroll/rates/da"
+								className="text-sm text-purple-700 underline hover:text-purple-900"
+							>
+								DA Rates
+							</Link>
+							<button
+								onClick={() => setShowForm(!showForm)}
+								className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
+							>
+								{showForm ? 'Cancel' : '+ Add'}
+							</button>
+						</div>
 					</div>
 				</div>
 
@@ -326,7 +336,9 @@ export default function PayrollSchedulesPage() {
 				{/* Add Form */}
 				{showForm && (
 					<div className="bg-white rounded border shadow-sm p-4 mb-4">
-						<h3 className="text-sm font-semibold mb-3">Add New Schedule</h3>
+						<h3 className="text-sm font-semibold mb-3">
+							Add New Component Rate
+						</h3>
 						<form onSubmit={handleSubmit}>
 							<div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
 								<div>
@@ -459,13 +471,13 @@ export default function PayrollSchedulesPage() {
 					</div>
 				)}
 
-				{/* Schedules List */}
+				{/* Component Rates List */}
 				<div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
 					{loading ? (
-						<InlineSpinner message="Loading schedules..." />
-					) : filteredSchedules.length === 0 ? (
+						<InlineSpinner message="Loading component rates..." />
+					) : filteredComponentRates.length === 0 ? (
 						<div className="p-8 text-center text-sm text-gray-500">
-							No schedules found
+							No component rates found
 						</div>
 					) : (
 						<div className="overflow-x-auto">
@@ -496,30 +508,30 @@ export default function PayrollSchedulesPage() {
 									</tr>
 								</thead>
 								<tbody className="divide-y divide-gray-100">
-									{filteredSchedules.map((schedule, index) => (
+									{filteredComponentRates.map((rate, index) => (
 										<tr
-											key={schedule.id}
+											key={rate.id}
 											className={`transition-colors duration-150 hover:bg-purple-50/50 ${
 												index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
 											}`}
 										>
 											<td className="px-4 py-3.5 text-sm font-semibold text-gray-900">
-												{getComponentLabel(schedule.component_type)}
+												{getComponentLabel(rate.component_type)}
 											</td>
 											<td className="px-4 py-3.5 text-sm font-medium text-purple-700">
-												{schedule.value_type === 'percentage'
-													? `${schedule.value}%`
-													: `₹${parseFloat(schedule.value).toLocaleString('en-IN')}`}
+												{rate.value_type === 'percentage'
+													? `${rate.value}%`
+													: `₹${parseFloat(rate.value).toLocaleString('en-IN')}`}
 											</td>
 											<td className="px-4 py-3.5 text-sm text-gray-700">
-												{new Date(schedule.effective_from).toLocaleDateString(
+												{new Date(rate.effective_from).toLocaleDateString(
 													'en-IN',
 													{ day: '2-digit', month: 'short', year: 'numeric' }
 												)}
 											</td>
 											<td className="px-4 py-3.5 text-sm text-gray-700">
-												{schedule.effective_to ? (
-													new Date(schedule.effective_to).toLocaleDateString(
+												{rate.effective_to ? (
+													new Date(rate.effective_to).toLocaleDateString(
 														'en-IN',
 														{ day: '2-digit', month: 'short', year: 'numeric' }
 													)
@@ -528,8 +540,8 @@ export default function PayrollSchedulesPage() {
 												)}
 											</td>
 											<td className="px-4 py-3.5 text-sm text-gray-700">
-												{schedule.min_salary && schedule.max_salary ? (
-													`₹${parseFloat(schedule.min_salary).toLocaleString('en-IN')} - ₹${parseFloat(schedule.max_salary).toLocaleString('en-IN')}`
+												{rate.min_salary && rate.max_salary ? (
+													`₹${parseFloat(rate.min_salary).toLocaleString('en-IN')} - ₹${parseFloat(rate.max_salary).toLocaleString('en-IN')}`
 												) : (
 													<span className="text-gray-400">—</span>
 												)}
@@ -537,24 +549,22 @@ export default function PayrollSchedulesPage() {
 											<td className="px-4 py-3.5">
 												<span
 													className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
-														schedule.is_active
+														rate.is_active
 															? 'bg-green-100 text-green-800 ring-1 ring-green-600/20'
 															: 'bg-gray-100 text-gray-700 ring-1 ring-gray-600/20'
 													}`}
 												>
 													<span
 														className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
-															schedule.is_active
-																? 'bg-green-600'
-																: 'bg-gray-500'
+															rate.is_active ? 'bg-green-600' : 'bg-gray-500'
 														}`}
 													></span>
-													{schedule.is_active ? 'Active' : 'Inactive'}
+													{rate.is_active ? 'Active' : 'Inactive'}
 												</span>
 											</td>
 											<td className="px-4 py-3.5">
 												<button
-													onClick={() => handleDelete(schedule.id)}
+													onClick={() => handleDelete(rate.id)}
 													className="text-xs font-medium text-red-600 hover:text-white hover:bg-red-600 px-3 py-1.5 rounded transition-all duration-150 border border-transparent hover:border-red-600"
 												>
 													Delete
