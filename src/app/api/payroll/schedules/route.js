@@ -9,7 +9,13 @@ import {
 // GET /api/payroll/schedules - Get all or specific payroll component schedules
 export async function GET(request) {
 	try {
-		await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
+		const authResult = await ensurePermission(
+			request,
+			RESOURCES.PAYROLL,
+			PERMISSIONS.READ
+		);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { searchParams } = new URL(request.url);
 		const componentType = searchParams.get('component_type');
@@ -73,7 +79,13 @@ export async function GET(request) {
 // POST /api/payroll/schedules - Create new payroll component schedule
 export async function POST(request) {
 	try {
-		await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.CREATE);
+		const authResult = await ensurePermission(
+			request,
+			RESOURCES.PAYROLL,
+			PERMISSIONS.CREATE
+		);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const body = await request.json();
 		const {
@@ -161,7 +173,13 @@ export async function POST(request) {
 // PUT /api/payroll/schedules - Update payroll component schedule
 export async function PUT(request) {
 	try {
-		await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+		const authResult = await ensurePermission(
+			request,
+			RESOURCES.PAYROLL,
+			PERMISSIONS.UPDATE
+		);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const body = await request.json();
 		const {
@@ -245,7 +263,13 @@ export async function PUT(request) {
 // DELETE /api/payroll/schedules - Delete payroll component schedule
 export async function DELETE(request) {
 	try {
-		await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.DELETE);
+		const authResult = await ensurePermission(
+			request,
+			RESOURCES.PAYROLL,
+			PERMISSIONS.DELETE
+		);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { searchParams } = new URL(request.url);
 		const id = searchParams.get('id');

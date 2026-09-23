@@ -6,10 +6,34 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 
+/**
+ * Either-or gate mirroring salary-profile's ensureSalaryPermission: this
+ * route serves SalaryProfileSection behind /employees gating, so EMPLOYEES:READ
+ * or PAYROLL:READ each suffice (ADR-0008 / issue #239). The old check
+ * discarded the gate result entirely — denials never applied.
+ */
+const ensureScheduleReadPermission = async (request) => {
+	const employeePermission = await ensurePermission(
+		request,
+		RESOURCES.EMPLOYEES,
+		PERMISSIONS.READ
+	);
+	if (employeePermission?.authorized) return employeePermission;
+
+	const payrollPermission = await ensurePermission(
+		request,
+		RESOURCES.PAYROLL,
+		PERMISSIONS.READ
+	);
+	return payrollPermission?.authorized ? payrollPermission : employeePermission;
+};
+
 // GET /api/payroll/schedules/current - Get current active values for all payroll components
 export async function GET(request) {
 	try {
-		await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+		const authResult = await ensureScheduleReadPermission(request);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult?.authorized) return authResult;
 
 		const { searchParams } = new URL(request.url);
 		const date =
