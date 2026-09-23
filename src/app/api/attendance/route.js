@@ -6,40 +6,36 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { getSandwichConversions } from '@/utils/sandwich';
+import { deriveDayTimes, deriveOvertime } from '@/lib/punch';
 
-function buildActivityDays(rows, month) {
-	const activityDays = {};
-
+/**
+ * Group mapped punches for the month into per-employee per-day derived
+ * cells: { [employee_id]: { 'YYYY-MM-DD': { in_time, out_time,
+ * overtime_hours } } }. Directions are inferred inside deriveDayTimes.
+ */
+function buildPunchDays(rows) {
+	const groups = new Map();
 	for (const row of rows || []) {
-		const employeeId = row.employee_id;
-		if (employeeId == null) continue;
-
-		let entries = row.daily_entries;
-		if (typeof entries === 'string') {
-			try {
-				entries = entries ? JSON.parse(entries) : [];
-			} catch {
-				entries = [];
-			}
-		}
-		if (!Array.isArray(entries)) continue;
-
-		for (const entry of entries) {
-			const date =
-				typeof entry?.date === 'string' ? entry.date.slice(0, 10) : '';
-			if (
-				!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-				(month && date.slice(0, 7) !== month)
-			) {
-				continue;
-			}
-
-			if (!activityDays[employeeId]) activityDays[employeeId] = {};
-			activityDays[employeeId][date] = true;
-		}
+		if (row.employee_id == null || !row.log_date) continue;
+		const date = String(row.log_date).slice(0, 10);
+		const key = `${row.employee_id}|${date}`;
+		const group = groups.get(key);
+		if (group) group.push(row);
+		else groups.set(key, [row]);
 	}
 
-	return activityDays;
+	const punchDays = {};
+	for (const [key, dayPunches] of groups) {
+		const [empId, date] = key.split('|');
+		const times = deriveDayTimes(dayPunches);
+		if (times.in_time == null && times.out_time == null) continue;
+		if (!punchDays[empId]) punchDays[empId] = {};
+		punchDays[empId][date] = {
+			...times,
+			overtime_hours: deriveOvertime(times.in_time, times.out_time),
+		};
+	}
+	return punchDays;
 }
 
 // GET - Fetch attendance records
@@ -101,55 +97,36 @@ export async function GET(request) {
 		query += ' ORDER BY a.attendance_date DESC, e.employee_id ASC';
 
 		const [records] = await connection.execute(query, queryParams);
-		// Activity dates are stored in the same daily_entries used by
-		// ProjectActivityAssignments.
-		let activityDays = {};
-		try {
-			let activityQuery = `
-        SELECT
-          COALESCE(
-            uaa.employee_id,
-            u.employee_id,
-            email_employee.id,
-            username_employee.id
-          ) AS employee_id,
-          uaa.daily_entries
-        FROM user_activity_assignments uaa
-        LEFT JOIN users u
-          ON u.id = uaa.user_id AND u.isDelete = 0
-        LEFT JOIN employees email_employee
-          ON email_employee.isDelete = 0
-         AND u.email IS NOT NULL
-         AND u.email != ''
-         AND LOWER(email_employee.email) = LOWER(u.email)
-        LEFT JOIN employees username_employee
-          ON username_employee.isDelete = 0
-         AND u.username IS NOT NULL
-         AND u.username != ''
-         AND LOWER(username_employee.username) = LOWER(u.username)
-        WHERE (uaa.status IS NULL OR uaa.status <> 'Cancelled')
-          AND uaa.daily_entries IS NOT NULL
-          AND uaa.daily_entries NOT IN ('', '[]')
-      `;
-			const activityParams = [];
-			if (employeeId) {
-				activityQuery += ` AND COALESCE(
-          uaa.employee_id,
-          u.employee_id,
-          email_employee.id,
-          username_employee.id
-        ) = ?`;
-				activityParams.push(employeeId);
-			}
 
-			const [activityRows] = await connection.execute(
-				activityQuery,
-				activityParams
-			);
-			activityDays = buildActivityDays(activityRows, month);
-		} catch (activityError) {
-			// Keep attendance readable if activity data is unavailable.
-			console.error('Error fetching activity dates:', activityError);
+		// Punch evidence (ADR-0007): mapped Smart Office punches for the
+		// month, derived into per-day in/out + payable OT. Read-only — the
+		// client prefills empty cells from punchDays and persists on save.
+		let punchDays = {};
+		if (month || employeeId) {
+			try {
+				const punchConditions = [];
+				const punchParams = [];
+				if (employeeId) {
+					punchConditions.push('al.employee_id = ?');
+					punchParams.push(employeeId);
+				}
+				if (month) {
+					punchConditions.push("DATE_FORMAT(al.log_date, '%Y-%m') = ?");
+					punchParams.push(month);
+				}
+				const [punchRows] = await connection.execute(
+					`SELECT al.employee_id, al.log_date, al.direction
+           FROM attendance_logs al
+          WHERE al.employee_id IS NOT NULL
+            AND ${punchConditions.join(' AND ')}
+          ORDER BY al.log_date`,
+					punchParams
+				);
+				punchDays = buildPunchDays(punchRows);
+			} catch (punchError) {
+				// attendance_logs may be empty/missing — grid stays manual.
+				console.error('Error deriving punch days:', punchError);
+			}
 		}
 
 		// Group by employee for summary
@@ -174,7 +151,7 @@ export async function GET(request) {
 			const dateKey = new Date(record.attendance_date)
 				.toISOString()
 				.split('T')[0];
-			employeeSummary[record.employee_id].days[dateKey] = {
+			const day = {
 				status: record.status,
 				overtime_hours: record.overtime_hours,
 				is_weekly_off: record.is_weekly_off,
@@ -184,6 +161,18 @@ export async function GET(request) {
 				out_time: record.out_time,
 				idle_time: record.idle_time || 0,
 			};
+			// Punches always win on times (ADR-0007) and re-derive OT on
+			// every punch-day — one precedence rule — except Half Day,
+			// where HR's authored intent defeats device evidence.
+			const punch = punchDays[record.employee_id]?.[dateKey];
+			if (punch) {
+				day.in_time = punch.in_time;
+				day.out_time = punch.out_time;
+				if (String(record.status || '').toUpperCase() !== 'HD') {
+					day.overtime_hours = punch.overtime_hours;
+				}
+			}
+			employeeSummary[record.employee_id].days[dateKey] = day;
 
 			// Update totals
 			if (record.status === 'P')
@@ -203,7 +192,7 @@ export async function GET(request) {
 			success: true,
 			records,
 			summary: Object.values(employeeSummary),
-			activityDays,
+			punchDays,
 		});
 	} catch (error) {
 		console.error('Error fetching attendance:', error);

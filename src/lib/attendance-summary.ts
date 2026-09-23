@@ -61,6 +61,7 @@ function toNum(value: unknown): number {
 function hoursForDay(day: AttendanceDayInput): number {
 	const status = (day.status ?? '').toUpperCase();
 	if (status !== 'P' && status !== 'HD' && status !== 'OT') return 0;
+	let span = 0;
 	if (day.in_time != null && day.out_time != null) {
 		const inStr = String(day.in_time).substring(0, 5);
 		const outStr = String(day.out_time).substring(0, 5);
@@ -73,10 +74,16 @@ function hoursForDay(day: AttendanceDayInput): number {
 			Number.isFinite(outM)
 		) {
 			const hrs = outH + outM / 60 - (inH + inM / 60);
-			if (hrs > 0) return hrs;
+			if (hrs > 0) span = hrs;
 		}
 	}
-	return status === 'HD' ? HALF_DAY_HOURS : STANDARD_HOURS_PER_DAY;
+	if (status === 'HD') {
+		// Half Day is HR intent, not a measurement: device-injected punch
+		// spans must not push it past HALF_DAY_HOURS (ADR-0007), while a
+		// shorter authored span still credits only what was worked.
+		return span > 0 ? Math.min(span, HALF_DAY_HOURS) : HALF_DAY_HOURS;
+	}
+	return span > 0 ? span : STANDARD_HOURS_PER_DAY;
 }
 
 export function computeAttendanceSummary(

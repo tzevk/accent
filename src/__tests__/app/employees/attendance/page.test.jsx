@@ -16,7 +16,7 @@ vi.mock('@/components/Navbar', () => ({
 const { default: AttendancePage } =
 	await import('@/app/employees/attendance/page.jsx');
 
-describe('attendance page activity defaults', () => {
+describe('attendance page punch defaults (ADR-0007)', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.setSystemTime(new Date('2026-08-15T12:00:00'));
@@ -43,7 +43,15 @@ describe('attendance page activity defaults', () => {
 					json: async () => ({
 						success: true,
 						summary: [],
-						activityDays: { 1: { '2026-08-10': true } },
+						punchDays: {
+							1: {
+								'2026-08-10': {
+									in_time: '09:15',
+									out_time: '19:45',
+									overtime_hours: 2.5,
+								},
+							},
+						},
 					}),
 				});
 			}
@@ -64,17 +72,99 @@ describe('attendance page activity defaults', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('defaults present only on days with project activity', async () => {
+	it('defaults Present with device times on punched days and offers save', async () => {
 		render(<AttendancePage />);
 
+		// Punched day: prefilled Present, tooltip carries device times.
+		const punched = await screen.findByTitle(
+			/Alice Worker - .* 10: Present \(device 09:15 → 19:45\)$/
+		);
+		expect(punched).toBeInTheDocument();
+		// Prefill marks the bar so the device times are persistable —
+		// without this, spec line 9 (save persists device times) is dead.
 		expect(
-			await screen.findByTitle(/Alice Worker - .* 10: Present$/)
+			await screen.findByRole('button', { name: /Save Attendance/i })
 		).toBeInTheDocument();
+		// Un-punched day stays empty.
 		await waitFor(() => {
 			expect(
 				screen.getByTitle(/Alice Worker - .* 11: Click to mark$/)
 			).toBeInTheDocument();
 		});
+		// Derived OT rides the prefill so Payable OT isn't zero.
+		await waitFor(() => {
+			expect(screen.getByText('2.5')).toBeInTheDocument();
+		});
+	});
+
+	it('warns in the tooltip when punches contradict an authored status', async () => {
+		fetchMock.mockImplementation((url) => {
+			if (url.startsWith('/api/employees/list')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						employees: [
+							{
+								id: 1,
+								employee_id: 'ATS001',
+								first_name: 'Alice',
+								last_name: 'Worker',
+								department: 'Projects',
+							},
+						],
+					}),
+				});
+			}
+			if (url.startsWith('/api/attendance?month=2026-08')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						// Authored PL on the 10th but the device saw punches.
+						summary: [
+							{
+								employee_id: 1,
+								days: {
+									'2026-08-10': {
+										status: 'PL',
+										in_time: null,
+										out_time: null,
+										overtime_hours: 0,
+									},
+								},
+							},
+						],
+						punchDays: {
+							1: {
+								'2026-08-10': {
+									in_time: '09:15',
+									out_time: '18:02',
+									overtime_hours: 0,
+								},
+							},
+						},
+					}),
+				});
+			}
+			if (url.startsWith('/api/masters/holidays')) {
+				return Promise.resolve({ json: async () => ({ holidays: [] }) });
+			}
+			if (url.startsWith('/api/payroll/salary-profile/batch')) {
+				return Promise.resolve({
+					json: async () => ({ success: true, data: {} }),
+				});
+			}
+			return Promise.reject(new Error(`Unexpected request: ${url}`));
+		});
+		render(<AttendancePage />);
+
+		// Status stays authored (PL), times from the device, warning shown.
+		expect(
+			await screen.findByTitle(
+				/Alice Worker - .* 10: Privilege Leave \(device 09:15 → 18:02\) — ⚠ punch on leave\/absent\/weekly-off day$/
+			)
+		).toBeInTheDocument();
+		// Not prefilled to P — authored status wins.
+		expect(screen.queryByTitle(/10: Present/)).not.toBeInTheDocument();
 	});
 
 	it('labels overtime as gate-filtered Payable OT with threshold visible', async () => {
@@ -125,7 +215,7 @@ describe('attendance page activity defaults', () => {
 								},
 							},
 						],
-						activityDays: {},
+						punchDays: {},
 					}),
 				});
 			}
@@ -180,7 +270,7 @@ describe('attendance page Saturday bulk-mark', () => {
 			}
 			if (url.startsWith('/api/attendance?month=2026-08')) {
 				return Promise.resolve({
-					json: async () => ({ success: true, summary: [], activityDays: {} }),
+					json: async () => ({ success: true, summary: [], punchDays: {} }),
 				});
 			}
 			if (url.startsWith('/api/masters/holidays')) {
@@ -238,7 +328,7 @@ describe('attendance page Saturday bulk-mark', () => {
 						summary: [
 							{ employee_id: 1, days: { '2026-08-08': { status: 'P' } } },
 						],
-						activityDays: {},
+						punchDays: {},
 					}),
 				});
 			}
@@ -311,7 +401,7 @@ describe('attendance page Sandwich save auto-convert (#234)', () => {
 								},
 							},
 						],
-						activityDays: {},
+						punchDays: {},
 					}),
 				});
 			}
@@ -392,7 +482,7 @@ describe('attendance page Sandwich save auto-convert (#234)', () => {
 								},
 							},
 						],
-						activityDays: {},
+						punchDays: {},
 					}),
 				});
 			}

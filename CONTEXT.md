@@ -76,6 +76,14 @@ _Avoid_: Weekend, Holiday, Sunday-off
 A Weekly Off or Holiday run bracketed by leave on both sides inside one continuous absence — each bracketed day is deducted as leave. Canonical: Sat leave + Sun WO + Mon leave → Sun deducted.
 _Avoid_: Sandwich holiday, Bridge leave
 
+**Punch**:
+A single biometric check-in/out event captured by a Smart Office device, stored in `attendance_logs` under the device's employee code. Direction may be inferred when the device doesn't report one.
+_Avoid_: Attendance log (ambiguous), Log entry, Scan
+
+**Attendance Record**:
+The human-authored daily attendance cell for one Employee — status (`P`/`HD`/leave codes/`WO`/`H`), in/out times, and OT — stored in `employee_attendance`. Status is authoritative over Punch evidence; times on a punch day follow the device (ADR-0007).
+_Avoid_: Attendance (ambiguous), Attendance log (when meaning the cell), Punch (when meaning the day)
+
 **Payable Day**:
 Attendance credit toward salary — `P` = 1, `HD` = 0.5, paid leave (`PL`/`CL`/`SL`/`EL`) = 1; `WO`/`H`/`A`/`LWP`/`UL` = 0.
 _Avoid_: Present day, Working day

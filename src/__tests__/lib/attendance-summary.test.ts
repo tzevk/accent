@@ -69,6 +69,46 @@ describe('computeAttendanceSummary', () => {
 		expect(summary.totalHours).toBe(24);
 	});
 
+	it('caps Half Day at 4h even when punch-derived times span more', () => {
+		// ADR-0007: device times must not defeat HR's half-day intent —
+		// an HD day with 09:00→18:30 punches still credits HALF_DAY_HOURS.
+		const summary = computeAttendanceSummary(
+			{
+				'2026-08-01': {
+					status: 'HD',
+					in_time: '09:00',
+					out_time: '18:30',
+				},
+			},
+			{}
+		);
+		expect(summary.totalHours).toBe(4);
+	});
+
+	it('credits only the authored span when Half Day worked less', () => {
+		// Cap, not floor: a hand-entered 3h half-day still credits 3h —
+		// over-crediting 4h would pay for time not worked.
+		const summary = computeAttendanceSummary(
+			{
+				'2026-08-01': {
+					status: 'HD',
+					in_time: '09:00',
+					out_time: '12:00',
+				},
+			},
+			{}
+		);
+		expect(summary.totalHours).toBe(3);
+	});
+
+	it('keeps Half Day at 4h when no times exist', () => {
+		const summary = computeAttendanceSummary(
+			{ '2026-08-01': { status: 'HD' } },
+			{}
+		);
+		expect(summary.totalHours).toBe(4);
+	});
+
 	it('keeps payable math auditable across mixed codes', () => {
 		const summary = computeAttendanceSummary(
 			{
