@@ -57,6 +57,12 @@ const jsonRequest = (body: unknown) =>
 const statements = () =>
 	mocks.mockExecute.mock.calls.map(([sql]) => String(sql));
 
+/** The INSERT the route made into payroll_audit_logs, or undefined if none. */
+const auditInsert = () =>
+	mocks.mockExecute.mock.calls.find(([sql]) =>
+		String(sql).includes('INSERT INTO payroll_audit_logs')
+	);
+
 describe('payroll finalize API — completeness gate and run lock (issue #242)', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
@@ -307,5 +313,94 @@ describe('payroll finalize API — completeness gate and run lock (issue #242)',
 		expect(statements().some((sql) => sql.includes("status = 'draft'"))).toBe(
 			true
 		);
+	});
+});
+
+describe('payroll finalize API — the transition is audited (issue #243)', () => {
+	beforeEach(() => {
+		vi.resetAllMocks();
+		mocks.mockDbConnect.mockResolvedValue({
+			execute: mocks.mockExecute,
+			release: vi.fn(),
+		});
+		mocks.mockExecute.mockResolvedValue([[], undefined]);
+	});
+
+	/** The happy path: the run, both gates, the month's slips, the UPDATE. */
+	const finalizeRun = () => {
+		mocks.mockEnsurePermission.mockImplementation(async () => ({
+			authorized: true,
+			user: { id: 9 },
+		}));
+		mocks.mockExecute
+			.mockResolvedValueOnce([[DRAFT_RUN], undefined])
+			.mockResolvedValueOnce([[], undefined])
+			.mockResolvedValueOnce([[], undefined])
+			.mockResolvedValueOnce([MONTH_SLIPS, undefined])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, undefined]);
+	};
+
+	it('records who finalized the run, and the totals they signed off', async () => {
+		grant('payroll:update');
+		finalizeRun();
+
+		const res = await POST(jsonRequest({ month: '2026-08-01' }));
+
+		expect(res.status).toBe(200);
+		const insert = auditInsert();
+		expect(insert).toBeDefined();
+		const [sql, params] = insert!;
+		// performed_at is deliberately absent from the column list: the column's
+		// current_timestamp() default is the timestamp, so the entry is stamped by
+		// the database rather than by an app clock.
+		expect(String(sql)).toContain('performed_by');
+		expect(String(sql)).not.toContain('performed_at');
+		expect(params[0]).toBe('payroll_run');
+		expect(params[1]).toBe(7);
+		expect(params[2]).toBeNull(); // a run is not one employee
+		expect(params[3]).toBe('finalize');
+		expect(JSON.parse(params[4] as string)).toEqual({ status: 'draft' });
+		expect(JSON.parse(params[5] as string)).toEqual({
+			status: 'finalized',
+			total_employees: 2,
+			total_gross: 79405.46,
+			total_deductions: 200.3,
+			total_net_pay: 79205.16,
+			total_employer_contribution: 300,
+		});
+		expect(params[6]).toBe(7); // payroll_run_id
+		expect(params[7]).toBe(8); // month
+		expect(params[8]).toBe(2026); // year
+		// The performer is the authenticated session user.
+		expect(params[9]).toBe(9);
+	});
+
+	it('still finalizes when the audit write fails', async () => {
+		// An audit row that cannot be written must not cost the caller the
+		// finalize they asked for — or the lock it put on the month.
+		grant('payroll:update');
+		finalizeRun();
+		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		mocks.mockExecute.mockImplementation(async (sql: string) =>
+			String(sql).includes('INSERT INTO payroll_audit_logs')
+				? Promise.reject(new Error('payroll_audit_logs is missing'))
+				: [[], undefined]
+		);
+
+		const res = await POST(jsonRequest({ month: '2026-08-01' }));
+
+		const body = await res.json();
+		expect(res.status).toBe(200);
+		expect(body.success).toBe(true);
+		expect(body.data.status).toBe('finalized');
+		expect(body.data.total_net_pay).toBe(79205.16);
+		// The failure really happened (the INSERT was attempted) and the helper
+		// owned it.
+		expect(auditInsert()).toBeDefined();
+		expect(errorSpy).toHaveBeenCalledWith(
+			'Payroll audit log write failed:',
+			expect.any(Error)
+		);
+		errorSpy.mockRestore();
 	});
 });
