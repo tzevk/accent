@@ -87,3 +87,26 @@ describe('run dashboard merge (issue #241)', () => {
 		});
 	});
 });
+
+/**
+ * Issue #247 / ADR-0008: employees get a first-ever My Payroll Slips page in
+ * the user area, served by a dedicated /api/me/payslips that scopes every read
+ * to the signed-in employee.
+ */
+describe('self-service Payroll Slips (issue #247)', () => {
+	it('serves My Payroll Slips in the user area, not the admin payroll tree', () => {
+		expect(existsSync(path.join(APP_DIR, 'user/payslips/page.tsx'))).toBe(true);
+		expect(existsSync(path.join(APP_DIR, 'admin/payroll/payslips'))).toBe(
+			false
+		);
+	});
+
+	it('serves the list and the single-slip PDF from the self-service endpoint', () => {
+		expect(existsSync(path.join(APP_DIR, 'api/me/payslips/route.js'))).toBe(
+			true
+		);
+		expect(existsSync(path.join(APP_DIR, 'api/me/payslips/pdf/route.js'))).toBe(
+			true
+		);
+	});
+});

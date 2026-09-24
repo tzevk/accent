@@ -59,6 +59,30 @@ export function isRunLocked(run) {
 }
 
 /**
+ * SQL for the self-service publish rule (ADR-0008): a Payroll Slip is visible to
+ * its employee when its month has no Payroll Run row at all — the ~3.2k
+ * grandfathered historical slips — or when that month's run is finalized/paid.
+ * A draft, processing, or cancelled run keeps the month's provisional numbers
+ * internal.
+ *
+ * `join` and `where` are used together: the predicate reads the joined run
+ * alias, and `params` are the bindings the caller appends after its own. The
+ * join compares the run's integer month/year against YEAR()/MONTH() of the slip
+ * because `payroll_slips.month` is a DATE; that also holds when a caller sends
+ * 'YYYY-MM', since a stored slip month is always the first of its month.
+ *
+ * Publishing follows the lock: the transition that locks a month against
+ * regenerating its slips is the one that publishes them.
+ */
+export const SLIP_VISIBILITY = {
+	join: `LEFT JOIN payroll_runs pr
+              ON pr.month = MONTH(ps.month) AND pr.year = YEAR(ps.month)
+             AND pr.run_number = 1`,
+	where: `(pr.id IS NULL OR pr.status IN (${LOCKED_STATUSES.map(() => '?').join(', ')}))`,
+	params: LOCKED_STATUSES,
+};
+
+/**
  * The most recent locked run, or null when no month is locked.
  *
  * Used to protect operations that are not scoped to one month — deleting every
