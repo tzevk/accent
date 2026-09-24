@@ -27,15 +27,16 @@ const connection = {
 	release: vi.fn(),
 };
 
-describe('batch salary-profile API — either-or permission (issue #239)', () => {
+describe('batch salary-profile API — payroll permission only (issue #239)', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
 		mocks.mockDbConnect.mockResolvedValue(connection);
 		connection.execute.mockResolvedValue([[], undefined]);
 	});
 
-	// Previously EMPLOYEES-only; PAYROLL must now be sufficient everywhere.
-	it('denies a caller holding neither employees:read nor payroll:read', async () => {
+	// Previously EMPLOYEES-only, then either-or; RESOURCES.PAYROLL is now the
+	// only grant that reads salary data.
+	it('denies a caller without payroll:read', async () => {
 		grant();
 
 		const res = await GET(
@@ -46,19 +47,18 @@ describe('batch salary-profile API — either-or permission (issue #239)', () =>
 		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
 	});
 
-	it('allows an employees-only caller (caller sits behind /employees gating)', async () => {
+	it('denies an employees-only caller: what people are paid is payroll data', async () => {
 		grant('employees:read');
 
 		const res = await GET(
 			new Request('http://localhost/api/payroll/salary-profile/batch')
 		);
 
-		expect(res.status).toBe(200);
-		const body = await res.json();
-		expect(body.success).toBe(true);
+		expect(res.status).toBe(403);
+		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
 	});
 
-	it('allows a payroll-only caller (PAYROLL must be sufficient everywhere)', async () => {
+	it('allows a payroll caller', async () => {
 		grant('payroll:read');
 
 		const res = await GET(

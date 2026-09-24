@@ -337,9 +337,7 @@ export default function PayrollPage() {
 	const directory = useEmployeeDirectory('Payroll');
 	const { user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
 	const canOverrideSalary = Boolean(
-		user?.is_super_admin ||
-		can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE) ||
-		can(RESOURCES.EMPLOYEES, PERMISSIONS.UPDATE)
+		user?.is_super_admin || can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE)
 	);
 	const [mode, setMode] = useState<'list' | 'edit' | 'view'>('list');
 	const [actionMessage, setActionMessage] = useState('');
@@ -481,7 +479,7 @@ export default function PayrollPage() {
 
 	return (
 		<AccessGuard
-			resource="employees"
+			resource="payroll"
 			permission="read"
 			fallback={null}
 			showNavbar={false}

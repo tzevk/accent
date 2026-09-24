@@ -1,18 +1,24 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { PERMISSIONS } from '@/utils/api-permissions';
-import { ensureEmployeesOrPayroll } from '@/utils/ensure-employees-or-payroll';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET /api/payroll/schedules/current - Get current active values for all payroll components
 export async function GET(request) {
 	try {
-		// Either-or gate (EMPLOYEES:READ | PAYROLL:READ); the old check
-		// discarded the gate result entirely — denials never applied.
-		const authResult = await ensureEmployeesOrPayroll(
+		// Component rates are payroll data: RESOURCES.PAYROLL is the only grant
+		// that reads them (issue #239 — the old check discarded the gate result
+		// entirely, so denials never applied).
+		const authResult = await ensurePermission(
 			request,
+			RESOURCES.PAYROLL,
 			PERMISSIONS.READ
 		);
 		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { searchParams } = new URL(request.url);
 		const date =

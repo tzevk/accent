@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { grantFor } from '../../test-perms';
 import { isRunLocked } from '@/app/api/payroll/_lib/payroll-run';
+import { payrollAuditRows } from '../../audit-rows';
 
 const mocks = vi.hoisted(() => ({
 	mockDbConnect: vi.fn(),
@@ -55,11 +56,8 @@ const updates = () =>
 		String(sql).includes('UPDATE payroll_runs')
 	);
 
-/** The INSERT the route made into payroll_audit_logs, or undefined if none. */
-const auditInsert = () =>
-	mocks.mockExecute.mock.calls.find(([sql]) =>
-		String(sql).includes('INSERT INTO payroll_audit_logs')
-	);
+/** The audit entries the route wrote, with their columns named. */
+const audits = () => payrollAuditRows(mocks.mockExecute);
 
 /** A session that holds payroll:update — super-admin unless told otherwise. */
 const signIn = (isSuperAdmin: boolean) => {
@@ -101,7 +99,7 @@ describe('payroll reopen API — unlocking a finalized month (issue #244)', () =
 		// Identity decides this, so the database is never even consulted.
 		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
 		expect(updates()).toHaveLength(0);
-		expect(auditInsert()).toBeUndefined();
+		expect(audits()).toHaveLength(0);
 	});
 
 	it('rejects a request without a month', async () => {
@@ -134,7 +132,7 @@ describe('payroll reopen API — unlocking a finalized month (issue #244)', () =
 		const body = await res.json();
 		expect(body.error).toMatch(/not finalized/i);
 		expect(updates()).toHaveLength(0);
-		expect(auditInsert()).toBeUndefined();
+		expect(audits()).toHaveLength(0);
 	});
 
 	it('refuses while any slip of the month is paid', async () => {
@@ -157,7 +155,7 @@ describe('payroll reopen API — unlocking a finalized month (issue #244)', () =
 		expect(body.error).toMatch(/permanent/i);
 		expect(body.paid_slips).toBe(1);
 		expect(updates()).toHaveLength(0);
-		expect(auditInsert()).toBeUndefined();
+		expect(audits()).toHaveLength(0);
 	});
 
 	it('returns a finalized run with no paid slips to draft, audit-logged', async () => {
@@ -191,21 +189,23 @@ describe('payroll reopen API — unlocking a finalized month (issue #244)', () =
 		expect(updates()).toHaveLength(1);
 		expect(updates()[0][1]).toEqual([7, 'finalized', 'paid', '2026-08-01']);
 
-		const audit = auditInsert();
-		expect(audit).toBeDefined();
-		const [, params] = audit as [string, unknown[]];
-		expect(params[0]).toBe('payroll_run');
-		expect(params[1]).toBe(7);
-		expect(params[3]).toBe('reopen');
-		expect(params[6]).toBe(7);
-		expect(params[7]).toBe(8);
-		expect(params[8]).toBe(2026);
-		expect(params[9]).toBe(5);
+		const [audit] = audits();
+		expect(audit).toMatchObject({
+			entityType: 'payroll_run',
+			entityId: 7,
+			action: 'reopen',
+			payrollRunId: 7,
+			month: 8,
+			year: 2026,
+			performedBy: 5,
+		});
 		// Old values keep what the reopen displaced — the signed-off totals and
 		// the performer who signed them — and new values say draft.
-		expect(String(params[4])).toContain('"status":"finalized"');
-		expect(String(params[4])).toContain('"total_net_pay":"79205.16"');
-		expect(String(params[5])).toContain('"status":"draft"');
+		expect(audit.oldValues).toMatchObject({
+			status: 'finalized',
+			total_net_pay: '79205.16',
+		});
+		expect(audit.newValues).toMatchObject({ status: 'draft' });
 	});
 
 	it('reopens a run left at the legacy stored `paid` status', async () => {
@@ -242,7 +242,7 @@ describe('payroll reopen API — unlocking a finalized month (issue #244)', () =
 		const body = await res.json();
 		expect(body.error).toMatch(/already paid/i);
 		expect(body.paid_slips).toBe(1);
-		expect(auditInsert()).toBeUndefined();
+		expect(audits()).toHaveLength(0);
 	});
 
 	it('reports the conflict when a concurrent request reopened the run first', async () => {
@@ -257,6 +257,6 @@ describe('payroll reopen API — unlocking a finalized month (issue #244)', () =
 		const body = await res.json();
 		expect(body.error).toMatch(/another request/i);
 		// Nothing transitioned, so nothing is attributed.
-		expect(auditInsert()).toBeUndefined();
+		expect(audits()).toHaveLength(0);
 	});
 });

@@ -67,7 +67,7 @@ export async function GET(request) {
               sp_inner.basic as profile_basic,
               sp_inner.basic_plus_da as profile_basic_plus_da
          FROM payroll_slips ps
-         JOIN employees e ON e.id = ps.employee_id
+         JOIN employees e ON e.id = ps.employee_id AND e.isDelete = 0
          LEFT JOIN salary_structures ss_inner ON ss_inner.employee_id = e.id AND ss_inner.is_active = 1
          LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
          ${SLIP_VISIBILITY.join}

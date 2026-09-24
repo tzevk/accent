@@ -253,11 +253,30 @@ describe('payroll slips API — deletion cannot strip a locked month (issue #242
 		).toBe(false);
 	});
 
-	it('allows the bulk wipe when no month is locked', async () => {
-		grant('payroll:delete');
+	it('allows the bulk wipe when no month is locked, auditing every slip it erased', async () => {
+		mocks.mockEnsurePermission.mockResolvedValue({
+			authorized: true,
+			user: { id: 9 },
+		});
 		mocks.mockExecute
 			.mockResolvedValueOnce(slipped([])) // no locked run anywhere
-			.mockResolvedValueOnce(affected(4));
+			.mockResolvedValueOnce(
+				slipped([
+					{
+						id: 1,
+						employee_id: 11,
+						month: '2026-08-01',
+						payment_status: 'pending',
+					},
+					{
+						id: 2,
+						employee_id: 12,
+						month: '2026-08-01',
+						payment_status: 'paid',
+					},
+				])
+			)
+			.mockResolvedValueOnce(affected(2));
 
 		const res = await DELETE(deleteRequest('?all=true'));
 
@@ -265,6 +284,72 @@ describe('payroll slips API — deletion cannot strip a locked month (issue #242
 		expect(
 			statements().some((sql) => sql.includes('DELETE FROM payroll_slips'))
 		).toBe(true);
+
+		// Deleting payroll history is a mutation like any other: once the rows are
+		// gone, these entries are the only record of what they held.
+		const audits = mocks.mockExecute.mock.calls.filter(([sql]) =>
+			String(sql).includes('INSERT INTO payroll_audit_logs')
+		);
+		expect(audits).toHaveLength(2);
+		expect(audits.map(([, params]) => params[1])).toEqual([1, 2]);
+		expect(audits.map(([, params]) => params[3])).toEqual(['delete', 'delete']);
+		expect(audits[0][1][9]).toBe(9);
+	});
+
+	it('audits the slip it deleted, with the row it displaced', async () => {
+		mocks.mockEnsurePermission.mockResolvedValue({
+			authorized: true,
+			user: { id: 9 },
+		});
+		mocks.mockExecute
+			.mockResolvedValueOnce(
+				slipped([
+					{
+						id: 42,
+						employee_id: 7,
+						month: '2026-08-01',
+						payment_status: 'pending',
+						payment_date: null,
+						payment_reference: null,
+					},
+				])
+			)
+			.mockResolvedValueOnce(slipped([DRAFT_RUN]))
+			.mockResolvedValueOnce(affected(1));
+
+		const res = await DELETE(deleteRequest('?id=42'));
+
+		expect(res.status).toBe(200);
+		const [, params] = auditInsert()!;
+		expect(params[0]).toBe('payroll_slip');
+		expect(params[1]).toBe(42);
+		expect(params[2]).toBe(7);
+		expect(params[3]).toBe('delete');
+		expect(JSON.parse(params[4] as string)).toMatchObject({
+			payment_status: 'pending',
+		});
+		expect(params[5]).toBeNull();
+		expect(params[7]).toBe(8);
+		expect(params[8]).toBe(2026);
+		expect(params[9]).toBe(9);
+	});
+
+	it('writes no entry for a delete that removed nothing', async () => {
+		mocks.mockEnsurePermission.mockResolvedValue({
+			authorized: true,
+			user: { id: 9 },
+		});
+		mocks.mockExecute
+			.mockResolvedValueOnce(
+				slipped([{ id: 42, employee_id: 7, month: '2026-08-01' }])
+			)
+			.mockResolvedValueOnce(slipped([DRAFT_RUN]))
+			.mockResolvedValueOnce(affected(0));
+
+		const res = await DELETE(deleteRequest('?id=42'));
+
+		expect(res.status).toBe(200);
+		expect(auditInsert()).toBeUndefined();
 	});
 });
 

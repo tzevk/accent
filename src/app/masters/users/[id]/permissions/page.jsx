@@ -1299,26 +1299,6 @@ const MODULE_FIELDS = {
 			},
 		},
 	},
-	da_schedule: {
-		name: 'DA Schedule',
-		description: 'Dearness Allowance schedule management',
-		category: 'admin',
-		sections: {
-			da_details: {
-				name: 'DA Details',
-				fields: {
-					effective_date: { label: 'Effective Date', type: 'date' },
-					da_percentage: {
-						label: 'DA Percentage',
-						type: 'number',
-						sensitive: true,
-					},
-					applicable_to: { label: 'Applicable To', type: 'select' },
-					status: { label: 'Status', type: 'select' },
-				},
-			},
-		},
-	},
 	cash_voucher: {
 		name: 'Cash Voucher',
 		description: 'Cash voucher management',

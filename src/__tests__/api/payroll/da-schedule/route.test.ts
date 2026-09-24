@@ -6,9 +6,15 @@ const mockExecute = vi.fn();
 // Hoisted so the audit tests at the bottom can re-pin the permission gate.
 const mockEnsurePermission = vi.hoisted(() => vi.fn());
 vi.mock('@/utils/database', () => ({
-	dbConnect: vi.fn(async () => ({ execute: mockExecute, release: vi.fn() })),
-	withDb: vi.fn(),
-	query: vi.fn(),
+	// The DA writers run in a transaction, so the mocked connection carries the
+	// full transaction surface, not just execute().
+	dbConnect: vi.fn(async () => ({
+		execute: mockExecute,
+		beginTransaction: vi.fn(),
+		commit: vi.fn(),
+		rollback: vi.fn(),
+		release: vi.fn(),
+	})),
 }));
 vi.mock('@/utils/api-permissions', () => ({
 	ensurePermission: mockEnsurePermission,
@@ -149,7 +155,8 @@ describe('da-schedule API reads/writes canonical Component Rates only', () => {
 		mockExecute.mockResolvedValue([
 			[
 				{
-					da_amount: 2500,
+					value_type: 'fixed',
+					value: '2500.00',
 					effective_from: '2026-04-01',
 					effective_to: null,
 				},

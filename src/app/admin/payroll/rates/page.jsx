@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { InlineSpinner } from '@/components/LoadingSpinner';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { useRouter } from 'next/navigation';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
@@ -521,30 +522,25 @@ export default function ComponentRatesPage() {
 											<td className="px-4 py-3.5 text-sm font-medium text-purple-700">
 												{rate.value_type === 'percentage'
 													? `${rate.value}%`
-													: `₹${parseFloat(rate.value).toLocaleString('en-IN')}`}
+													: formatCurrency(rate.value)}
 											</td>
 											<td className="px-4 py-3.5 text-sm text-gray-700">
-												{new Date(rate.effective_from).toLocaleDateString(
-													'en-IN',
-													{ day: '2-digit', month: 'short', year: 'numeric' }
-												)}
+												{formatDate(rate.effective_from)}
 											</td>
 											<td className="px-4 py-3.5 text-sm text-gray-700">
 												{rate.effective_to ? (
-													new Date(rate.effective_to).toLocaleDateString(
-														'en-IN',
-														{ day: '2-digit', month: 'short', year: 'numeric' }
-													)
+													formatDate(rate.effective_to)
 												) : (
 													<span className="text-gray-400">—</span>
 												)}
 											</td>
 											<td className="px-4 py-3.5 text-sm text-gray-700">
-												{rate.min_salary && rate.max_salary ? (
-													`₹${parseFloat(rate.min_salary).toLocaleString('en-IN')} - ₹${parseFloat(rate.max_salary).toLocaleString('en-IN')}`
-												) : (
+												{rate.min_salary && rate.max_salary
+													? `${formatCurrency(rate.min_salary)} - ${formatCurrency(rate.max_salary)}`
+													: null}
+												{!rate.min_salary || !rate.max_salary ? (
 													<span className="text-gray-400">—</span>
-												)}
+												) : null}
 											</td>
 											<td className="px-4 py-3.5">
 												<span

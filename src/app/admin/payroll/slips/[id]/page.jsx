@@ -7,6 +7,7 @@ import Navbar from '@/components/Navbar';
 import { InlineSpinner } from '@/components/LoadingSpinner';
 import PayrollSlipDocument from '@/components/payroll/PayrollSlipDocument';
 import { formatMonth } from '@/lib/format';
+import { apiGet } from '@/lib/api-client';
 import { downloadFile } from '@/lib/download';
 import { payrollSlipPdfRequest } from '@/lib/payroll';
 import {
@@ -39,16 +40,10 @@ export default function PayrollSlipDetailPage() {
 			try {
 				setLoading(true);
 				setError('');
-				const res = await fetch(
-					`/api/payroll/slips?id=${encodeURIComponent(slipId)}`
-				);
-				const data = await res.json();
+				// apiGet throws with the server's message, so a refusal reads the
+				// same here as it does in the API's own tests.
+				const data = await apiGet('/api/payroll/slips', { id: slipId });
 				if (cancelled) return;
-
-				if (!data.success) {
-					setError(data.error || 'Failed to load payroll slip');
-					return;
-				}
 
 				const found = data.data?.[0];
 				if (!found) {
@@ -57,8 +52,8 @@ export default function PayrollSlipDetailPage() {
 				}
 
 				setSlip(found);
-			} catch {
-				if (!cancelled) setError('Failed to load payroll slip');
+			} catch (err) {
+				if (!cancelled) setError(err.message || 'Failed to load payroll slip');
 			} finally {
 				if (!cancelled) setLoading(false);
 			}

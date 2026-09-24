@@ -25,7 +25,8 @@ import { apiGet } from '@/lib/api-client';
 import { downloadFile } from '@/lib/download';
 import { cn } from '@/lib/cn';
 import { formatCurrency, formatDate, formatMonth } from '@/lib/format';
-import { slipPdfFilename } from '@/lib/payroll';
+import { myPayrollSlipPdfRequest } from '@/lib/payroll';
+import { paymentStatusBadge } from '@/lib/payment-status';
 
 /** One row of GET /api/me/payslips — the signed-in employee's own slip. */
 interface MyPayrollSlip {
@@ -41,23 +42,6 @@ interface MyPayrollSlipsResponse {
 	success: boolean;
 	data: MyPayrollSlip[];
 }
-
-/**
- * payroll_slips.payment_status → badge, mirroring the admin Payroll Run
- * dashboard's PAYMENT_STATUSES so a slip's status reads the same to an employee
- * as it does to payroll.
- */
-const PAYMENT_STATUS_BADGES: Record<string, { label: string; badge: string }> =
-	{
-		paid: { label: 'paid', badge: 'bg-green-100 text-green-700' },
-		processed: { label: 'processed', badge: 'bg-gray-100 text-gray-700' },
-		pending: { label: 'pending', badge: 'bg-yellow-100 text-yellow-700' },
-		hold: { label: 'hold', badge: 'bg-red-100 text-red-700' },
-	};
-
-const paymentBadge = (slip: MyPayrollSlip) =>
-	PAYMENT_STATUS_BADGES[slip.payment_status ?? ''] ??
-	PAYMENT_STATUS_BADGES.pending;
 
 /**
  * My Payroll Slips — the signed-in employee's own monthly slips, newest first,
@@ -116,10 +100,8 @@ export default function MyPayrollSlipsPage() {
 		setDownloadingId(slip.id);
 		setDownloadError('');
 		try {
-			await downloadFile(
-				`/api/me/payslips/pdf?month=${slip.month}`,
-				slipPdfFilename(slip)
-			);
+			const { url, filename } = myPayrollSlipPdfRequest(slip);
+			await downloadFile(url, filename);
 		} catch (error) {
 			setDownloadError(
 				error instanceof Error ? error.message : 'Could not download this slip.'
@@ -221,10 +203,14 @@ export default function MyPayrollSlipsPage() {
 																<span
 																	className={cn(
 																		'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize',
-																		paymentBadge(slip).badge
+																		paymentStatusBadge(slip.payment_status)
+																			.badge
 																	)}
 																>
-																	{paymentBadge(slip).label}
+																	{
+																		paymentStatusBadge(slip.payment_status)
+																			.label
+																	}
 																</span>
 															</TableCell>
 															<TableCell className="whitespace-nowrap text-sm text-gray-600">

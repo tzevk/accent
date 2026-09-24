@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { PERMISSIONS } from '@/utils/api-permissions';
-import { ensureEmployeesOrPayroll } from '@/utils/ensure-employees-or-payroll';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 /**
  * GET /api/payroll/salary-profile/batch
@@ -14,11 +17,16 @@ import { ensureEmployeesOrPayroll } from '@/utils/ensure-employees-or-payroll';
  *   full  - if "1" returns all columns instead of the lightweight subset
  */
 export async function GET(request) {
-	// Either-or gate: PAYROLL must be sufficient everywhere; EMPLOYEES:READ
-	// stays acceptable because the sole caller sits behind /employees gating
-	// (issue #239 — this route previously checked EMPLOYEES only).
-	const authResult = await ensureEmployeesOrPayroll(request, PERMISSIONS.READ);
+	// Every payroll-namespace route authorizes with RESOURCES.PAYROLL (issue
+	// #239): salary data is payroll data, so a salary-profile read requires the
+	// payroll grant and nothing else stands in for it.
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.PAYROLL,
+		PERMISSIONS.READ
+	);
 	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
 
 	let connection;
 	try {

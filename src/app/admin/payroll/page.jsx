@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { useSession } from '@/context/SessionContext';
-import { R, add, sub, toNumber } from '@/lib/money';
+import { R, add, mul, sub, toNumber } from '@/lib/money';
 import { formatCurrency, formatMonth } from '@/lib/format';
+import { PAYMENT_STATUS, paymentStatusBadge } from '@/lib/payment-status';
 import { downloadFile } from '@/lib/download';
 import { InlineSpinner } from '@/components/LoadingSpinner';
 import {
@@ -29,32 +30,11 @@ import {
  * with payment status. Each row opens its Payroll Slip on the detail route,
  * which owns inspecting and printing a single slip.
  */
-/** payroll_slips.payment_status, in display order, with one badge/text style each. */
-const PAYMENT_STATUSES = {
-	paid: {
-		label: 'paid',
-		badge: 'bg-green-100 text-green-700',
-		text: 'text-green-600',
-	},
-	processed: {
-		label: 'processed',
-		badge: 'bg-gray-100 text-gray-700',
-		text: 'text-gray-600',
-	},
-	pending: {
-		label: 'pending',
-		badge: 'bg-yellow-100 text-yellow-700',
-		text: 'text-yellow-600',
-	},
-	hold: {
-		label: 'hold',
-		badge: 'bg-red-100 text-red-700',
-		text: 'text-red-600',
-	},
-};
-
-const paymentStatus = (slip) =>
-	PAYMENT_STATUSES[slip.payment_status] || PAYMENT_STATUSES.pending;
+/**
+ * February's Professional Tax is a flat ₹300 for everyone, whatever a slip
+ * stored — the dashboard and the Excel export both apply this correction.
+ */
+const FEBRUARY_PT = 300;
 
 /**
  * payroll_runs.status → badge. A month with no run row has never been
@@ -441,19 +421,24 @@ export default function PayrollRunDashboard() {
 		}
 	};
 
-	// Calculate summary stats
+	// Calculate summary stats.
+	//
+	// February's PT is a flat ₹300 for everyone, so a slip's stored PT is
+	// corrected by the difference. Both that correction and every total below go
+	// through the money library — never float arithmetic (AGENTS.md), because
+	// these are the numbers finance signs off on.
 	const isFeb = month.split('-')[1] === '02';
 	const calcBasicPlusDa = (s) =>
 		Math.max(
 			0,
-			Number(s.structure_basic_salary) ||
-				0 ||
-				Number(s.profile_basic) ||
-				0 ||
-				Number(s.profile_basic_plus_da) ||
-				0 ||
-				Number(s.basic) ||
-				0
+			toNumber(
+				R(
+					s.structure_basic_salary ||
+						s.profile_basic ||
+						s.profile_basic_plus_da ||
+						s.basic
+				)
+			)
 		);
 	const calcGross = (s) =>
 		toNumber(
@@ -469,29 +454,23 @@ export default function PayrollRunDashboard() {
 				s.ot_rate
 			)
 		);
-	const totalGross = toNumber(
-		slips.reduce((sum, s) => add(sum, calcGross(s)), R(0))
-	);
-	const totalNet = toNumber(
-		slips.reduce(
-			(sum, s) =>
-				add(
-					sum,
-					sub(
-						calcGross(s),
-						(Number(s.total_deductions) || 0) +
-							(isFeb ? 300 - (Number(s.pt) || 0) : 0)
-					)
-				),
-			R(0)
-		)
-	);
-	const totalDeductions = toNumber(
-		slips.reduce((sum, s) => {
-			const ptDiff = isFeb ? 300 - (Number(s.pt) || 0) : 0;
-			return add(sum, (Number(s.total_deductions) || 0) + ptDiff);
-		}, R(0))
-	);
+	/** The February PT correction for one slip: flat 300 minus what it stored. */
+	const ptAdjustment = (s) => (isFeb ? sub(FEBRUARY_PT, s.pt) : R(0));
+	/** What the slip actually deducts this month, PT correction included. */
+	const calcDeductions = (s) =>
+		toNumber(add(s.total_deductions, ptAdjustment(s)));
+	/** What the slip actually pays out this month. */
+	const calcNet = (s) => toNumber(sub(calcGross(s), calcDeductions(s)));
+	/** Basic+DA net of the month's scheduled DA, which is what the row shows. */
+	const calcBasic = (s) => toNumber(sub(calcBasicPlusDa(s), scheduledDA));
+
+	const sumBy = (fn) =>
+		toNumber(slips.reduce((sum, s) => add(sum, fn(s)), R(0)));
+	/** The footer total for one Payroll Slip column, summed the same way. */
+	const columnTotal = (column) => sumBy((slip) => slip[column]);
+	const totalGross = sumBy(calcGross);
+	const totalNet = sumBy(calcNet);
+	const totalDeductions = sumBy(calcDeductions);
 	const statusCounts = slips.reduce((counts, s) => {
 		const status = s.payment_status || 'pending';
 		counts[status] = (counts[status] || 0) + 1;
@@ -731,7 +710,7 @@ export default function PayrollRunDashboard() {
 							{slips.length === 0 ? (
 								<span className="text-gray-400">—</span>
 							) : (
-								Object.entries(PAYMENT_STATUSES)
+								Object.entries(PAYMENT_STATUS)
 									.filter(([key]) => statusCounts[key])
 									.map(([key, { label, text }]) => (
 										<span key={key} className={text}>
@@ -874,7 +853,7 @@ export default function PayrollRunDashboard() {
 												{slip.payable_days || slip.standard_working_days || 0}
 											</td>
 											<td className="px-3 py-3 text-right text-gray-900">
-												{formatCurrency(calcBasicPlusDa(slip) - scheduledDA)}
+												{formatCurrency(calcBasic(slip))}
 											</td>
 											<td className="px-3 py-3 text-right text-gray-900">
 												{formatCurrency(slip.hra)}
@@ -907,7 +886,7 @@ export default function PayrollRunDashboard() {
 												{formatCurrency(slip.esic_employee)}
 											</td>
 											<td className="px-3 py-3 text-right text-red-600">
-												{formatCurrency(isFeb ? 300 : slip.pt)}
+												{formatCurrency(isFeb ? FEBRUARY_PT : slip.pt)}
 											</td>
 											<td className="px-3 py-3 text-right text-red-600">
 												{formatCurrency(slip.mlwf)}
@@ -922,23 +901,16 @@ export default function PayrollRunDashboard() {
 												{formatCurrency(slip.lop_deduction)}
 											</td>
 											<td className="px-3 py-3 text-right font-semibold text-red-600 bg-red-50">
-												{formatCurrency(
-													(Number(slip.total_deductions) || 0) +
-														(isFeb ? 300 - (Number(slip.pt) || 0) : 0)
-												)}
+												{formatCurrency(calcDeductions(slip))}
 											</td>
 											<td className="px-3 py-3 text-right font-bold text-green-700 bg-green-100 sticky right-0 z-10">
-												{formatCurrency(
-													calcGross(slip) -
-														((Number(slip.total_deductions) || 0) +
-															(isFeb ? 300 - (Number(slip.pt) || 0) : 0))
-												)}
+												{formatCurrency(calcNet(slip))}
 											</td>
 											<td className="px-3 py-3 text-center">
 												<span
-													className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${paymentStatus(slip).badge}`}
+													className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${paymentStatusBadge(slip.payment_status).badge}`}
 												>
-													{paymentStatus(slip).label}
+													{paymentStatusBadge(slip.payment_status).label}
 												</span>
 											</td>
 										</tr>
@@ -954,109 +926,56 @@ export default function PayrollRunDashboard() {
 										</td>
 										<td colSpan="2" className="px-3 py-3"></td>
 										<td className="px-3 py-3 text-right text-gray-900">
-											{formatCurrency(
-												slips.reduce(
-													(s, r) => s + (calcBasicPlusDa(r) - scheduledDA),
-													0
-												)
-											)}
+											{formatCurrency(sumBy(calcBasic))}
 										</td>
 										<td className="px-3 py-3 text-right text-gray-900">
-											{formatCurrency(
-												slips.reduce((s, r) => s + (Number(r.hra) || 0), 0)
-											)}
+											{formatCurrency(columnTotal('hra'))}
 										</td>
 										<td className="px-3 py-3 text-right text-gray-900">
-											{formatCurrency(scheduledDA * slips.length)}
+											{formatCurrency(toNumber(mul(scheduledDA, slips.length)))}
 										</td>
 										<td className="px-3 py-3 text-right text-gray-900">
-											{formatCurrency(
-												slips.reduce(
-													(s, r) => s + (Number(r.conveyance) || 0),
-													0
-												)
-											)}
+											{formatCurrency(columnTotal('conveyance'))}
 										</td>
 										<td className="px-3 py-3 text-right text-gray-900">
-											{formatCurrency(
-												slips.reduce(
-													(s, r) => s + (Number(r.call_allowance) || 0),
-													0
-												)
-											)}
+											{formatCurrency(columnTotal('call_allowance'))}
 										</td>
 										<td className="px-3 py-3 text-right text-gray-900">
-											{formatCurrency(
-												slips.reduce(
-													(s, r) => s + (Number(r.other_allowances) || 0),
-													0
-												)
-											)}
+											{formatCurrency(columnTotal('other_allowances'))}
 										</td>
 										<td className="px-3 py-3 text-right text-gray-900">
-											{formatCurrency(
-												slips.reduce((s, r) => s + (Number(r.bonus) || 0), 0)
-											)}
+											{formatCurrency(columnTotal('bonus'))}
 										</td>
 										<td className="px-3 py-3 text-right text-gray-900">
-											{formatCurrency(
-												slips.reduce(
-													(s, r) => s + (Number(r.incentive) || 0),
-													0
-												)
-											)}
+											{formatCurrency(columnTotal('incentive'))}
 										</td>
 										<td className="px-3 py-3 text-right text-gray-900 bg-green-50">
 											{formatCurrency(totalGross)}
 										</td>
 										<td className="px-3 py-3 text-right text-red-600">
-											{formatCurrency(
-												slips.reduce(
-													(s, r) => s + (Number(r.pf_employee) || 0),
-													0
-												)
-											)}
+											{formatCurrency(columnTotal('pf_employee'))}
 										</td>
 										<td className="px-3 py-3 text-right text-red-600">
-											{formatCurrency(
-												slips.reduce(
-													(s, r) => s + (Number(r.esic_employee) || 0),
-													0
-												)
-											)}
+											{formatCurrency(columnTotal('esic_employee'))}
 										</td>
 										<td className="px-3 py-3 text-right text-red-600">
 											{formatCurrency(
 												isFeb
-													? 300 * slips.length
-													: slips.reduce((s, r) => s + (Number(r.pt) || 0), 0)
+													? toNumber(mul(FEBRUARY_PT, slips.length))
+													: columnTotal('pt')
 											)}
 										</td>
 										<td className="px-3 py-3 text-right text-red-600">
-											{formatCurrency(
-												slips.reduce((s, r) => s + (Number(r.mlwf) || 0), 0)
-											)}
+											{formatCurrency(columnTotal('mlwf'))}
 										</td>
 										<td className="px-3 py-3 text-right text-red-600">
-											{formatCurrency(
-												slips.reduce((s, r) => s + (Number(r.tds) || 0), 0)
-											)}
+											{formatCurrency(columnTotal('tds'))}
 										</td>
 										<td className="px-3 py-3 text-right text-red-600">
-											{formatCurrency(
-												slips.reduce(
-													(s, r) => s + (Number(r.retention) || 0),
-													0
-												)
-											)}
+											{formatCurrency(columnTotal('retention'))}
 										</td>
 										<td className="px-3 py-3 text-right text-red-600">
-											{formatCurrency(
-												slips.reduce(
-													(s, r) => s + (Number(r.lop_deduction) || 0),
-													0
-												)
-											)}
+											{formatCurrency(columnTotal('lop_deduction'))}
 										</td>
 										<td className="px-3 py-3 text-right text-red-600 bg-red-50">
 											{formatCurrency(totalDeductions)}

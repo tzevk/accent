@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { grantFor } from '../../test-perms';
+import { payrollAuditRows } from '../../audit-rows';
 
 const mocks = vi.hoisted(() => ({
 	mockDbConnect: vi.fn(),
@@ -51,11 +52,8 @@ const jsonRequest = (body: unknown) =>
 const statements = () =>
 	mocks.mockExecute.mock.calls.map(([sql]) => String(sql));
 
-/** Every INSERT the route made into payroll_audit_logs, in call order. */
-const auditInserts = () =>
-	mocks.mockExecute.mock.calls.filter(([sql]) =>
-		String(sql).includes('INSERT INTO payroll_audit_logs')
-	);
+/** The audit entries the route wrote, with their columns named. */
+const auditRows = () => payrollAuditRows(mocks.mockExecute);
 
 const updates = () =>
 	mocks.mockExecute.mock.calls.filter(([sql]) =>
@@ -157,7 +155,7 @@ describe('payroll mark-paid API — bulk payment for a finalized month (issue #2
 		expect(body.success).toBe(false);
 		expect(body.error).toMatch(/not finalized/i);
 		expect(updates()).toHaveLength(0);
-		expect(auditInserts()).toHaveLength(0);
+		expect(auditRows()).toHaveLength(0);
 	});
 
 	it('marks every slip of the month paid in one action, auditing each one', async () => {
@@ -194,18 +192,20 @@ describe('payroll mark-paid API — bulk payment for a finalized month (issue #2
 		]);
 
 		// One entry per slip, so a batch is still traceable slip by slip.
-		const audits = auditInserts();
+		const audits = auditRows();
 		expect(audits).toHaveLength(2);
-		for (const [, params] of audits) {
-			expect(params[0]).toBe('payroll_slip');
-			expect(params[3]).toBe('update');
-			expect(params[9]).toBe(5);
-			expect(String(params[5])).toContain('"payment_status":"paid"');
+		for (const audit of audits) {
+			expect(audit).toMatchObject({
+				entityType: 'payroll_slip',
+				action: 'update',
+				performedBy: 5,
+				month: 8,
+				year: 2026,
+			});
+			expect(audit.newValues).toMatchObject({ payment_status: 'paid' });
 		}
-		expect(audits.map(([, params]) => params[1])).toEqual([1, 2]);
-		expect(audits.map(([, params]) => params[2])).toEqual([11, 12]);
-		expect(audits.map(([, params]) => params[7])).toEqual([8, 8]);
-		expect(audits.map(([, params]) => params[8])).toEqual([2026, 2026]);
+		expect(audits.map((audit) => audit.entityId)).toEqual([1, 2]);
+		expect(audits.map((audit) => audit.employeeId)).toEqual([11, 12]);
 	});
 
 	it('binds a null reference when none was supplied so each slip keeps its own', async () => {
@@ -251,9 +251,9 @@ describe('payroll mark-paid API — bulk payment for a finalized month (issue #2
 		});
 		// Re-running the batch must not manufacture history for a slip that was
 		// already paid on that date.
-		const audits = auditInserts();
+		const audits = auditRows();
 		expect(audits).toHaveLength(1);
-		expect(audits[0][1][1]).toBe(1);
+		expect(audits[0].entityId).toBe(1);
 	});
 
 	it('corrects the date of a slip that is paid on a different day', async () => {
@@ -273,10 +273,10 @@ describe('payroll mark-paid API — bulk payment for a finalized month (issue #2
 		expect(res.status).toBe(200);
 		const body = await res.json();
 		expect(body.data.updated).toBe(1);
-		const audits = auditInserts();
+		const audits = auditRows();
 		expect(audits).toHaveLength(1);
 		// The pre-write row is what the entry displaced, not what the caller said.
-		expect(String(audits[0][1][4])).toContain('"payment_date":"2026-08-15"');
+		expect(audits[0].oldValues).toMatchObject({ payment_date: '2026-08-15' });
 	});
 
 	it('refuses when the run stops being finalized before the write lands', async () => {
@@ -292,7 +292,7 @@ describe('payroll mark-paid API — bulk payment for a finalized month (issue #2
 		expect(res.status).toBe(409);
 		const body = await res.json();
 		expect(body.error).toMatch(/not finalized/i);
-		expect(auditInserts()).toHaveLength(0);
+		expect(auditRows()).toHaveLength(0);
 	});
 
 	it('reports a finalized month with no slips without writing anything', async () => {
@@ -311,7 +311,7 @@ describe('payroll mark-paid API — bulk payment for a finalized month (issue #2
 			is_paid: false,
 		});
 		expect(updates()).toHaveLength(0);
-		expect(auditInserts()).toHaveLength(0);
+		expect(auditRows()).toHaveLength(0);
 	});
 
 	it('normalises a short month form before it reaches the queries', async () => {

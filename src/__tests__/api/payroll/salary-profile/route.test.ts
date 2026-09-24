@@ -75,7 +75,7 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 		connection.execute.mockResolvedValue([[], undefined]);
 	});
 
-	it('denies a caller holding neither employees:update nor payroll:update', async () => {
+	it('denies a caller without payroll:update', async () => {
 		grant();
 
 		const res = await POST(
@@ -86,8 +86,19 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
 	});
 
-	it('audits a new Salary Profile as a create, attributed to the session user', async () => {
+	it('denies an employees-only caller: a pay agreement is payroll data', async () => {
 		grant('employees:update');
+
+		const res = await POST(
+			jsonRequest({ employee_id: 7, gross_salary: 60000 })
+		);
+
+		expect(res.status).toBe(403);
+		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
+	});
+
+	it('audits a new Salary Profile as a create, attributed to the session user', async () => {
+		grant('payroll:update');
 		signedInAs(3);
 		connection.query
 			.mockResolvedValueOnce(rows([{ id: 7 }])) // the employee exists
@@ -159,7 +170,7 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 	});
 
 	it('audits the existing profile an employee+effective_from save overwrote', async () => {
-		grant('employees:update');
+		grant('payroll:update');
 		signedInAs(3);
 		connection.query
 			.mockResolvedValueOnce(rows([{ id: 7 }]))
@@ -209,7 +220,7 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 	});
 
 	it('audits the profile it deleted', async () => {
-		grant('employees:delete');
+		grant('payroll:delete');
 		signedInAs(3);
 		connection.query
 			.mockResolvedValueOnce(rows([PRIOR_PROFILE])) // read before the DELETE

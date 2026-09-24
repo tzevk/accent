@@ -6,6 +6,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { formatMonth } from '@/lib/format';
+import { resolveScheduledDA } from '@/lib/payroll';
 import {
 	payrollPeriod,
 	findPayrollRun,
@@ -109,27 +110,12 @@ export async function GET(request) {
 		// Normalize BASIC/DA from canonical sources so all UIs read consistent values.
 		// A single-slip lookup knows its month only from the row it just fetched, and
 		// must still resolve the scheduled DA the month listing would have used.
+		// A DA lookup must never break the listing, so a failure reads as "no DA".
 		const daMonth = month || rows[0]?.month || null;
 		let scheduledDA = 0;
 		if (daMonth) {
 			try {
-				const [yr, mn] = String(daMonth).split('-');
-				const monthDate = `${yr}-${mn}-01`;
-				const [daRows] = await db.execute(
-					`SELECT value_type, value
-           FROM payroll_schedules
-           WHERE component_type = 'da' AND is_active = 1
-             AND effective_from <= ?
-             AND (effective_to IS NULL OR effective_to >= ?)
-           ORDER BY effective_from DESC
-           LIMIT 1`,
-					[monthDate, monthDate]
-				);
-				if (daRows.length > 0) {
-					const daRow = daRows[0];
-					scheduledDA =
-						daRow.value_type === 'percentage' ? 0 : safeNum(daRow.value);
-				}
+				scheduledDA = await resolveScheduledDA(db, daMonth);
 			} catch (daErr) {
 				console.log('DA fetch in slips route skipped:', daErr.message);
 			}
@@ -322,8 +308,31 @@ export async function DELETE(request) {
 				);
 			}
 
+			// Read what is about to be erased: deleting Payroll Slips is a mutation
+			// like any other, and once the rows are gone the audit entry is the only
+			// record of what they held. The locked-run guard above is what makes
+			// everything read here deletable.
+			const [doomed] = await db.execute(
+				`SELECT id, employee_id, month, payment_status, payment_date, payment_reference
+           FROM payroll_slips`
+			);
+
 			// Delete all payroll slips
 			const [result] = await db.execute('DELETE FROM payroll_slips');
+
+			for (const slip of doomed) {
+				const slipPeriod = payrollPeriod(slip.month);
+				await recordPayrollAudit(db, {
+					entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_SLIP,
+					entityId: slip.id,
+					action: PAYROLL_AUDIT_ACTION.DELETE,
+					employeeId: slip.employee_id,
+					month: slipPeriod ? slipPeriod.monthNumber : null,
+					year: slipPeriod ? slipPeriod.year : null,
+					performedBy: authResult.user?.id,
+					oldValues: auditSnapshot(slip),
+				});
+			}
 
 			return NextResponse.json({
 				success: true,
@@ -341,7 +350,10 @@ export async function DELETE(request) {
 		// A slip in a finalized month is part of a signed-off run, so it cannot be
 		// removed — that is what makes the month's lock mean anything.
 		const [slips] = await db.execute(
-			'SELECT month FROM payroll_slips WHERE id = ? LIMIT 1',
+			`SELECT id, employee_id, month, payment_status, payment_date, payment_reference
+         FROM payroll_slips
+        WHERE id = ?
+        LIMIT 1`,
 			[id]
 		);
 		if (!slips[0]) {
@@ -365,7 +377,25 @@ export async function DELETE(request) {
 			);
 		}
 
-		await db.execute('DELETE FROM payroll_slips WHERE id = ?', [id]);
+		const [deleted] = await db.execute(
+			'DELETE FROM payroll_slips WHERE id = ?',
+			[id]
+		);
+
+		// The row read before the delete is the snapshot: it is all that is left
+		// of a slip whose month's run was not locked.
+		if (deleted.affectedRows > 0) {
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_SLIP,
+				entityId: slips[0].id,
+				action: PAYROLL_AUDIT_ACTION.DELETE,
+				employeeId: slips[0].employee_id,
+				month: period ? period.monthNumber : null,
+				year: period ? period.year : null,
+				performedBy: authResult.user?.id,
+				oldValues: auditSnapshot(slips[0]),
+			});
+		}
 
 		return NextResponse.json({
 			success: true,

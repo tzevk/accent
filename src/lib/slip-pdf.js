@@ -9,13 +9,21 @@
 
 import { jsPDF } from 'jspdf';
 import { formatDateNumeric, formatMonth } from '@/lib/format';
+import { resolveScheduledDA } from '@/lib/payroll';
 
 const safeNum = (v) => {
 	const n = Number(v);
 	return Number.isFinite(n) ? n : 0;
 };
 const safeStr = (v) => (v == null ? '' : String(v));
-const fmtAmt = (v) => {
+/**
+ * A money cell in the PDF tables.
+ *
+ * Deliberately not `formatCurrency`: these are dense numeric columns, so the
+ * currency symbol lives in the header and a zero prints as a blank cell. Every
+ * other money value in the app goes through src/lib/format.js.
+ */
+const pdfAmount = (v) => {
 	const n = safeNum(v);
 	return n
 		? n.toLocaleString('en-IN', {
@@ -285,10 +293,10 @@ function renderSlip(doc, slip, yStart) {
 	for (const row of earningsDeductions) {
 		const vals = [
 			{ text: row.earn, align: 'left' },
-			{ text: fmtAmt(row.eGross), align: 'right' },
-			{ text: fmtAmt(row.eEarn), align: 'right' },
+			{ text: pdfAmount(row.eGross), align: 'right' },
+			{ text: pdfAmount(row.eEarn), align: 'right' },
 			{ text: row.ded, align: 'left' },
-			{ text: fmtAmt(row.dAmt), align: 'right' },
+			{ text: pdfAmount(row.dAmt), align: 'right' },
 		];
 		let rx = margin;
 		for (let ci = 0; ci < cols.length; ci++) {
@@ -314,9 +322,12 @@ function renderSlip(doc, slip, yStart) {
 	const totalVals = [
 		{ text: 'GROSS EARNING', align: 'left' },
 		{ text: '', align: 'right' },
-		{ text: fmtAmt(slip.total_earnings || slip.gross_salary), align: 'right' },
+		{
+			text: pdfAmount(slip.total_earnings || slip.gross_salary),
+			align: 'right',
+		},
 		{ text: 'TOTAL DEDUCTION', align: 'left' },
-		{ text: fmtAmt(slip.total_deductions), align: 'right' },
+		{ text: pdfAmount(slip.total_deductions), align: 'right' },
 	];
 	let tx = margin;
 	for (let ci = 0; ci < cols.length; ci++) {
@@ -350,7 +361,7 @@ function renderSlip(doc, slip, yStart) {
 	// Amount cell
 	doc.rect(margin + leftW + netLabelW, y, netAmtW, netH, 'FD');
 	doc.text(
-		fmtAmt(slip.net_salary || slip.net_pay),
+		pdfAmount(slip.net_salary || slip.net_pay),
 		margin + leftW + netLabelW + netAmtW - 2,
 		y + 5.2,
 		{ align: 'right' }
@@ -388,23 +399,7 @@ function renderSlip(doc, slip, yStart) {
 export async function normalizeSlips(db, rows, month) {
 	let scheduledDA = 0;
 	try {
-		const [yr, mn] = String(month).split('-');
-		const monthDate = `${yr}-${mn}-01`;
-		const [daRows] = await db.execute(
-			`SELECT value_type, value
-         FROM payroll_schedules
-         WHERE component_type = 'da' AND is_active = 1
-           AND effective_from <= ?
-           AND (effective_to IS NULL OR effective_to >= ?)
-         ORDER BY effective_from DESC
-         LIMIT 1`,
-			[monthDate, monthDate]
-		);
-		if (daRows.length > 0) {
-			const daRow = daRows[0];
-			scheduledDA =
-				daRow.value_type === 'percentage' ? 0 : safeNum(daRow.value);
-		}
+		scheduledDA = await resolveScheduledDA(db, month);
 	} catch (daErr) {
 		console.log('DA fetch for the Payroll Slip PDF skipped:', daErr.message);
 	}

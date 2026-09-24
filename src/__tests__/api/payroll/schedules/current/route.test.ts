@@ -31,16 +31,16 @@ const db = {
 	end: vi.fn(),
 };
 
-describe('current component values API — either-or permission (issue #239)', () => {
+describe('current component values API — payroll permission only (issue #239)', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
 		mocks.mockDbConnect.mockResolvedValue(db);
 	});
 
-	// This route serves SalaryProfileSection behind /employees gating, so it
-	// must accept EMPLOYEES:READ *or* PAYROLL:READ — never neither, and it
-	// must actually consume the gate result (the old check discarded it).
-	it('denies a caller holding neither employees:read nor payroll:read', async () => {
+	// Component rates are payroll data: RESOURCES.PAYROLL is the only grant that
+	// reads them, and the gate result must actually be consumed (the old check
+	// discarded it).
+	it('denies a caller without payroll:read', async () => {
 		grant();
 
 		const res = await GET(
@@ -51,7 +51,7 @@ describe('current component values API — either-or permission (issue #239)', (
 		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
 	});
 
-	it('allows an employees-only caller (callers sit behind /employees gating)', async () => {
+	it('denies an employees-only caller', async () => {
 		grant('employees:read');
 		db.query.mockResolvedValue([
 			[{ component_type: 'bonus', value_type: 'fixed', value: '100' }],
@@ -62,13 +62,11 @@ describe('current component values API — either-or permission (issue #239)', (
 			new Request('http://localhost/api/payroll/schedules/current?gross=50000')
 		);
 
-		expect(res.status).toBe(200);
-		const body = await res.json();
-		expect(body.success).toBe(true);
-		expect(body.data.components).toHaveProperty('bonus');
+		expect(res.status).toBe(403);
+		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
 	});
 
-	it('allows a payroll-only caller (PAYROLL must be sufficient everywhere)', async () => {
+	it('allows a payroll caller', async () => {
 		grant('payroll:read');
 		db.query.mockResolvedValue([
 			[{ component_type: 'bonus', value_type: 'fixed', value: '100' }],

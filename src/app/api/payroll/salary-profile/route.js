@@ -20,33 +20,23 @@ const numberOrNull = (value) => {
 
 const numberOrZero = (value) => numberOrNull(value) ?? 0;
 
-const ensureSalaryPermission = async (request, permission) => {
-	const employeePermission = await ensurePermission(
-		request,
-		RESOURCES.EMPLOYEES,
-		permission
-	);
-	if (employeePermission?.authorized) return employeePermission;
-
-	const payrollPermission = await ensurePermission(
-		request,
-		RESOURCES.PAYROLL,
-		permission
-	);
-	return payrollPermission?.authorized ? payrollPermission : employeePermission;
-};
-
 // POST /api/payroll/salary-profile - Create/Update employee salary profile
 // If `id` is provided, it updates that specific profile
 // If `id` is not provided, it creates a new profile
 export async function POST(request) {
 	let db;
 	try {
-		const permission = await ensureSalaryPermission(
+		// Salary profiles are payroll data: every verb here authorizes with
+		// RESOURCES.PAYROLL and nothing else (issue #239). There is deliberately
+		// no EMPLOYEES fallback — a grant that can read employee records must not
+		// also rewrite what people are paid.
+		const authResult = await ensurePermission(
 			request,
+			RESOURCES.PAYROLL,
 			PERMISSIONS.UPDATE
 		);
-		if (!permission?.authorized) return permission;
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const body = await request.json();
 		console.log('Received salary profile data:', JSON.stringify(body, null, 2));
@@ -328,7 +318,7 @@ export async function POST(request) {
 					? PAYROLL_AUDIT_ACTION.UPDATE
 					: PAYROLL_AUDIT_ACTION.CREATE,
 				employeeId: employee_id,
-				performedBy: permission.user?.id,
+				performedBy: authResult.user?.id,
 				// The displaced row, and the fields the caller submitted.
 				oldValues: isUpdate ? auditSnapshot(before) : null,
 				newValues: auditSnapshot(body),
@@ -372,8 +362,13 @@ export async function POST(request) {
 export async function GET(request) {
 	let db;
 	try {
-		const permission = await ensureSalaryPermission(request, PERMISSIONS.READ);
-		if (!permission?.authorized) return permission;
+		const authResult = await ensurePermission(
+			request,
+			RESOURCES.PAYROLL,
+			PERMISSIONS.READ
+		);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { searchParams } = new URL(request.url);
 		const employee_id = searchParams.get('employee_id');
@@ -431,11 +426,13 @@ export async function GET(request) {
 export async function DELETE(request) {
 	let db;
 	try {
-		const permission = await ensureSalaryPermission(
+		const authResult = await ensurePermission(
 			request,
+			RESOURCES.PAYROLL,
 			PERMISSIONS.DELETE
 		);
-		if (!permission?.authorized) return permission;
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { searchParams } = new URL(request.url);
 		const id = searchParams.get('id');
@@ -475,7 +472,7 @@ export async function DELETE(request) {
 				entityId: profile ? profile.id : id,
 				action: PAYROLL_AUDIT_ACTION.DELETE,
 				employeeId: profile ? profile.employee_id : null,
-				performedBy: permission.user?.id,
+				performedBy: authResult.user?.id,
 				oldValues: auditSnapshot(profile),
 			});
 

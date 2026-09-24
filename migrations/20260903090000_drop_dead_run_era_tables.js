@@ -18,16 +18,37 @@
  * until those dead tables get their own cleanup ticket.
  */
 
+/**
+ * Drop one constraint only when it is still there.
+ *
+ * MySQL has no `DROP FOREIGN KEY IF EXISTS`, so an interrupted or re-run `up()`
+ * would otherwise fail on a constraint it already dropped — which is exactly
+ * when a migration is being retried by hand.
+ */
+async function dropForeignKeyIfExists(knex, table, constraint) {
+	const [rows] = await knex.raw(
+		`SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+        AND CONSTRAINT_NAME = ? AND CONSTRAINT_TYPE = 'FOREIGN KEY'`,
+		[table, constraint]
+	);
+	if (rows.length === 0) return false;
+	await knex.raw(`ALTER TABLE \`${table}\` DROP FOREIGN KEY \`${constraint}\``);
+	return true;
+}
+
 export async function up(knex) {
 	// Inbound FKs must go before their parent table.
-	await knex.raw(
-		'ALTER TABLE `salary_manual_overrides` DROP FOREIGN KEY `salary_manual_overrides_ibfk_1`'
+	await dropForeignKeyIfExists(
+		knex,
+		'salary_manual_overrides',
+		'salary_manual_overrides_ibfk_1'
 	);
-	await knex.raw(
-		'ALTER TABLE `salary_slips` DROP FOREIGN KEY `salary_slips_ibfk_1`'
-	);
-	await knex.raw(
-		'ALTER TABLE `loan_repayment_schedule` DROP FOREIGN KEY `fk_loan_repayment_payroll`'
+	await dropForeignKeyIfExists(knex, 'salary_slips', 'salary_slips_ibfk_1');
+	await dropForeignKeyIfExists(
+		knex,
+		'loan_repayment_schedule',
+		'fk_loan_repayment_payroll'
 	);
 
 	// FK-safe order: components before its parent employee_payroll.
@@ -150,13 +171,38 @@ CREATE TABLE IF NOT EXISTS \`statutory_payments\` (
 
 	// Re-add the inbound FKs dropped in up() (baseline definitions:
 	// RESTRICT on the two NOT NULL columns, SET NULL for the nullable one).
-	await knex.raw(
-		'ALTER TABLE `salary_manual_overrides` ADD CONSTRAINT `salary_manual_overrides_ibfk_1` FOREIGN KEY (`employee_payroll_id`) REFERENCES `employee_payroll` (`id`)'
-	);
-	await knex.raw(
-		'ALTER TABLE `salary_slips` ADD CONSTRAINT `salary_slips_ibfk_1` FOREIGN KEY (`employee_payroll_id`) REFERENCES `employee_payroll` (`id`)'
-	);
-	await knex.raw(
-		'ALTER TABLE `loan_repayment_schedule` ADD CONSTRAINT `fk_loan_repayment_payroll` FOREIGN KEY (`payroll_id`) REFERENCES `employee_payroll` (`id`) ON DELETE SET NULL'
-	);
+	//
+	// Only when the child table holds no orphaned reference: up() dropped the
+	// parent, so any row those tables kept now points at an id the recreated
+	// (empty) `employee_payroll` does not have, and MySQL refuses the constraint
+	// with errno 1452. Skipping it is the honest outcome — the rows are already
+	// orphans, and a failed rollback would leave the migration half-applied.
+	const orphans = async (table, column) => {
+		const [rows] = await knex.raw(
+			`SELECT 1 FROM \`${table}\` WHERE \`${column}\` IS NOT NULL LIMIT 1`
+		);
+		if (rows.length > 0) {
+			console.warn(
+				`Skipping FK ${table}.${column} -> employee_payroll: the table still holds rows whose parent was dropped by this migration.`
+			);
+			return true;
+		}
+		return false;
+	};
+
+	if (!(await orphans('salary_manual_overrides', 'employee_payroll_id'))) {
+		await knex.raw(
+			'ALTER TABLE `salary_manual_overrides` ADD CONSTRAINT `salary_manual_overrides_ibfk_1` FOREIGN KEY (`employee_payroll_id`) REFERENCES `employee_payroll` (`id`)'
+		);
+	}
+	if (!(await orphans('salary_slips', 'employee_payroll_id'))) {
+		await knex.raw(
+			'ALTER TABLE `salary_slips` ADD CONSTRAINT `salary_slips_ibfk_1` FOREIGN KEY (`employee_payroll_id`) REFERENCES `employee_payroll` (`id`)'
+		);
+	}
+	if (!(await orphans('loan_repayment_schedule', 'payroll_id'))) {
+		await knex.raw(
+			'ALTER TABLE `loan_repayment_schedule` ADD CONSTRAINT `fk_loan_repayment_payroll` FOREIGN KEY (`payroll_id`) REFERENCES `employee_payroll` (`id`) ON DELETE SET NULL'
+		);
+	}
 }

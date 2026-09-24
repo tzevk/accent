@@ -31,14 +31,15 @@ const db = {
 	release: vi.fn(),
 };
 
-describe('current DA API — either-or permission, security gap closed (issue #239)', () => {
+describe('current DA API — payroll permission only (issue #239)', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
 		mocks.mockDbConnect.mockResolvedValue(db);
 	});
 
-	// This route had ZERO permission check before this issue.
-	it('denies a caller holding neither employees:read nor payroll:read', async () => {
+	// This route had ZERO permission check before this issue, then either-or;
+	// DA is one Component Rate among many, so it authorizes with PAYROLL alone.
+	it('denies a caller without payroll:read', async () => {
 		grant();
 
 		const res = await GET(
@@ -49,12 +50,13 @@ describe('current DA API — either-or permission, security gap closed (issue #2
 		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
 	});
 
-	it('allows an employees-only caller', async () => {
+	it('denies an employees-only caller', async () => {
 		grant('employees:read');
 		db.execute.mockResolvedValue([
 			[
 				{
-					da_amount: 250,
+					value_type: 'fixed',
+					value: '250',
 					effective_from: '2026-01-01',
 					effective_to: null,
 				},
@@ -66,18 +68,17 @@ describe('current DA API — either-or permission, security gap closed (issue #2
 			new Request('http://localhost/api/payroll/da-schedule/current')
 		);
 
-		expect(res.status).toBe(200);
-		const body = await res.json();
-		expect(body.success).toBe(true);
-		expect(body.data.da_amount).toBe(250);
+		expect(res.status).toBe(403);
+		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
 	});
 
-	it('allows a payroll-only caller (PAYROLL must be sufficient everywhere)', async () => {
+	it('allows a payroll caller', async () => {
 		grant('payroll:read');
 		db.execute.mockResolvedValue([
 			[
 				{
-					da_amount: 250,
+					value_type: 'fixed',
+					value: '250',
 					effective_from: '2026-01-01',
 					effective_to: null,
 				},

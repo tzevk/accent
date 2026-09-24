@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { PERMISSIONS } from '@/utils/api-permissions';
-import { ensureEmployeesOrPayroll } from '@/utils/ensure-employees-or-payroll';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
+import { findEffectiveDAOn } from '@/lib/payroll';
 
 /**
  * GET - Fetch the DA Component Rate effective on a specific date
@@ -10,13 +14,16 @@ import { ensureEmployeesOrPayroll } from '@/utils/ensure-employees-or-payroll';
 export async function GET(request) {
 	let db;
 	try {
-		// Either-or gate (EMPLOYEES:READ | PAYROLL:READ) — this route had
-		// ZERO permission check before issue #239.
-		const authResult = await ensureEmployeesOrPayroll(
+		// DA is one Component Rate among many, so it authorizes like the rest of
+		// the payroll namespace (issue #239 — this route had no check at all
+		// before that ticket).
+		const authResult = await ensurePermission(
 			request,
+			RESOURCES.PAYROLL,
 			PERMISSIONS.READ
 		);
 		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { searchParams } = new URL(request.url);
 		const dateParam = searchParams.get('date');
@@ -24,18 +31,11 @@ export async function GET(request) {
 
 		db = await dbConnect();
 
-		const [rows] = await db.execute(
-			`SELECT value AS da_amount, effective_from, effective_to
-       FROM payroll_schedules
-       WHERE component_type = 'da' AND is_active = 1
-         AND effective_from <= ?
-         AND (effective_to IS NULL OR effective_to >= ?)
-       ORDER BY effective_from DESC
-       LIMIT 1`,
-			[forDate, forDate]
-		);
+		// DA resolves through the one shared lookup, so the rate this endpoint
+		// reports is the rate the calculator, the listing and the exports use.
+		const da = await findEffectiveDAOn(db, forDate);
 
-		if (rows.length === 0) {
+		if (!da) {
 			return NextResponse.json({
 				success: true,
 				data: { da_amount: 0, effective_from: forDate, effective_to: null },
@@ -45,7 +45,14 @@ export async function GET(request) {
 
 		return NextResponse.json({
 			success: true,
-			data: rows[0],
+			data: {
+				// A number, not the DECIMAL column's string: the endpoint's whole
+				// contract is "the current DA amount", so it should not depend on
+				// how the driver renders DECIMAL.
+				da_amount: Number(da.value) || 0,
+				effective_from: da.effective_from,
+				effective_to: da.effective_to,
+			},
 		});
 	} catch (error) {
 		console.error('GET /api/payroll/da-schedule/current error:', error);

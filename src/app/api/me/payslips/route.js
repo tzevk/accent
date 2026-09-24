@@ -43,7 +43,7 @@ export async function GET(request) {
               ps.payment_date,
               CONCAT(e.first_name, ' ', e.last_name) AS employee_name
          FROM payroll_slips ps
-         JOIN employees e ON e.id = ps.employee_id
+         JOIN employees e ON e.id = ps.employee_id AND e.isDelete = 0
          ${SLIP_VISIBILITY.join}
         WHERE ps.employee_id = ?
           AND ${SLIP_VISIBILITY.where}

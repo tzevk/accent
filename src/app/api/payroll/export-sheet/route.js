@@ -6,6 +6,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import ExcelJS from 'exceljs';
+import { resolveScheduledDA } from '@/lib/payroll';
 
 /** Convert any value to a finite number; returns 0 for NaN/Infinity/null/undefined/strings */
 const safeNum = (v) => {
@@ -169,20 +170,7 @@ export async function GET(request) {
 		// Fetch DA using the same active schedule logic as the Manage Schedule flow
 		let scheduledDA = 0;
 		try {
-			const monthDate = `${yr}-${mn}-01`;
-			const [daRows] = await db.execute(
-				`SELECT value_type, value FROM payroll_schedules 
-         WHERE component_type = 'da' AND is_active = 1 
-           AND effective_from <= ?
-           AND (effective_to IS NULL OR effective_to >= ?)
-         ORDER BY effective_from DESC LIMIT 1`,
-				[monthDate, monthDate]
-			);
-			if (daRows.length > 0) {
-				const daRow = daRows[0];
-				scheduledDA =
-					daRow.value_type === 'percentage' ? 0 : parseFloat(daRow.value) || 0;
-			}
+			scheduledDA = await resolveScheduledDA(db, `${yr}-${mn}-01`);
 		} catch (daErr) {
 			console.log('DA schedule fetch for export skipped:', daErr.message);
 		}
