@@ -218,19 +218,43 @@ export async function findEmployeesWithoutProfiles(db, month) {
 }
 
 /**
- * Headcount and money totals of the month's Payroll Slips, summed with the
- * money library (never float arithmetic). These are the numbers Finalize signs
- * off on and records on the run.
+ * Every Payroll Slip of the month with the columns the run lock, the payment
+ * state and the Finalize sign-off read.
+ *
+ * One run covers both Employee Type streams, so "the month's slips" is always
+ * the whole month and never one stream's subset — the run-level paid indicator
+ * and the reopen block both have to look at every slip the run pays.
  */
-export async function summarizeMonthSlips(db, month) {
+export async function findMonthSlips(db, month) {
 	const [slips] = await db.execute(
-		`SELECT gross, total_deductions, net_pay, total_employer_contributions
+		`SELECT id, employee_id, payment_status, payment_date, payment_reference,
+              gross, total_deductions, net_pay, total_employer_contributions
        FROM payroll_slips
-      WHERE month = ?`,
+      WHERE month = ?
+      ORDER BY id`,
 		[month]
 	);
+	return slips;
+}
+
+/**
+ * Headcount, money totals and payment progress of the month's Payroll Slips.
+ * Money is summed with the money library (never float arithmetic); these are
+ * the numbers Finalize signs off on and records on the run.
+ *
+ * `is_paid` is the run-level paid indicator (issue #245), derived from the
+ * slips themselves: true only when every slip of the month is paid. It is never
+ * stored on the run, so the run header cannot disagree with per-slip truth — if
+ * one slip leaves `paid`, this returns to false. A month with no slips is not
+ * paid.
+ */
+export async function summarizeMonthSlips(db, month) {
+	const slips = await findMonthSlips(db, month);
 	const sum = (column) =>
 		toNumber(slips.reduce((total, slip) => add(total, slip[column]), R(0)));
+	const paidSlips = slips.filter(
+		(slip) => slip.payment_status === 'paid'
+	).length;
 
 	return {
 		headcount: slips.length,
@@ -238,5 +262,7 @@ export async function summarizeMonthSlips(db, month) {
 		total_deductions: sum('total_deductions'),
 		total_net_pay: sum('net_pay'),
 		total_employer_contribution: sum('total_employer_contributions'),
+		paid_slips: paidSlips,
+		is_paid: slips.length > 0 && paidSlips === slips.length,
 	};
 }

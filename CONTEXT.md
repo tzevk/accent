@@ -25,7 +25,7 @@ A computed monthly instance for one employee and month (YYYY-MM-01) — earnings
 _Avoid_: Payslip, Salary Slip, Payroll Record
 
 **Payroll Run**:
-The month-level lifecycle record for one pay period (month/year) — starts `draft`, becomes `finalized`, which locks its slips against regeneration. Payment is tracked per-slip, not on the run. Canonical table `payroll_runs`.
+The month-level lifecycle record for one pay period (month/year) — starts `draft`, becomes `finalized`, which locks its slips against regeneration; only a super-admin can reopen a finalized run, and only while no slip in the month is `paid`. Payment is tracked per-slip, not on the run: the run's `paid` state is derived (every slip of the month paid), never a stored transition. Canonical table `payroll_runs`.
 _Avoid_: Month (ambiguous), Pay cycle, Batch
 
 **Component Rate** (was "Payroll Schedule"):

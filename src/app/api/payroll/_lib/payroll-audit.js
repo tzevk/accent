@@ -31,12 +31,14 @@ export const PAYROLL_AUDIT_ENTITY = {
 	COMPONENT_RATE: 'component_rate',
 };
 
-/** action values written here. */
+/** action values written here. The column's enum is widened by
+ *  migrations/20260924170000_add_payroll_audit_reopen_action.js. */
 export const PAYROLL_AUDIT_ACTION = {
 	CREATE: 'create',
 	UPDATE: 'update',
 	DELETE: 'delete',
 	FINALIZE: 'finalize',
+	REOPEN: 'reopen',
 };
 
 /** Row bookkeeping nobody disputes — never worth storing in a snapshot. */

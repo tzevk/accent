@@ -28,7 +28,7 @@ const runRequest = (month?: string) =>
 		`http://localhost/api/payroll/runs${month ? `?month=${month}` : ''}`
 	);
 
-describe('payroll runs API — month status and totals (issue #242)', () => {
+describe('payroll runs API — month status, totals and derived paid indicator (issues #242, #245)', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
 		mocks.mockDbConnect.mockResolvedValue({
@@ -70,7 +70,55 @@ describe('payroll runs API — month status and totals (issue #242)', () => {
 			total_deductions: 0,
 			total_net_pay: 0,
 			total_employer_contribution: 0,
+			paid_slips: 0,
+			is_paid: false,
 		});
+	});
+
+	it('reports the run as paid only once every slip of the month is paid', async () => {
+		grant('payroll:read');
+		mocks.mockExecute
+			.mockResolvedValueOnce([
+				[{ id: 7, month: 8, year: 2026, run_number: 1, status: 'finalized' }],
+				undefined,
+			])
+			.mockResolvedValueOnce([
+				[
+					{ payment_status: 'paid', gross: '100.00' },
+					{ payment_status: 'processed', gross: '100.00' },
+				],
+				undefined,
+			]);
+
+		const res = await GET(runRequest('2026-08-01'));
+
+		const body = await res.json();
+		// Derived from the slips on every read, so the indicator drops the moment
+		// one slip leaves `paid` — the header can never disagree with them.
+		expect(body.data.summary.paid_slips).toBe(1);
+		expect(body.data.summary.is_paid).toBe(false);
+	});
+
+	it('reports the run as paid when all of its slips are paid', async () => {
+		grant('payroll:read');
+		mocks.mockExecute
+			.mockResolvedValueOnce([
+				[{ id: 7, month: 8, year: 2026, run_number: 1, status: 'finalized' }],
+				undefined,
+			])
+			.mockResolvedValueOnce([
+				[
+					{ payment_status: 'paid', gross: '100.00' },
+					{ payment_status: 'paid', gross: '100.00' },
+				],
+				undefined,
+			]);
+
+		const res = await GET(runRequest('2026-08-01'));
+
+		const body = await res.json();
+		expect(body.data.summary.paid_slips).toBe(2);
+		expect(body.data.summary.is_paid).toBe(true);
 	});
 
 	it("returns the month's run status with money-library totals", async () => {

@@ -20,6 +20,12 @@ import {
  * `run` is null for a month that was never generated. `summary` always
  * describes the Payroll Slips currently on the month, across both Employee
  * Type streams, so the dashboard can sign off on the numbers before locking.
+ *
+ * `summary.is_paid` is the run-level paid indicator (issue #245): derived from
+ * those slips on every read — true only when every slip of the month is paid —
+ * and never stored on the run, so the header cannot disagree with per-slip
+ * truth. It drops the moment one slip leaves `paid`, and a month with no slips
+ * is not paid. `summary.paid_slips` is the count behind it.
  */
 export async function GET(request) {
 	// RBAC check

@@ -3,12 +3,15 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
+import { useSession } from '@/context/SessionContext';
 import { R, add, sub, toNumber } from '@/lib/money';
 import { formatCurrency, formatMonth } from '@/lib/format';
 import { downloadFile } from '@/lib/download';
 import { InlineSpinner } from '@/components/LoadingSpinner';
 import {
 	ArrowDownTrayIcon,
+	ArrowPathIcon,
+	BanknotesIcon,
 	CalendarIcon,
 	CheckCircleIcon,
 	CurrencyRupeeIcon,
@@ -56,10 +59,15 @@ const paymentStatus = (slip) =>
 /**
  * payroll_runs.status → badge. A month with no run row has never been
  * generated, so it says so rather than pretending to be a draft.
+ *
+ * `paid` is not a stored status: it is derived from the month's Payroll Slips
+ * (100% paid), which is why the header reads it from the summary rather than
+ * from the run row — the two can then never disagree.
  */
 const RUN_STATUSES = {
 	draft: { label: 'Draft', badge: 'bg-slate-100 text-slate-700' },
 	finalized: { label: 'Finalized', badge: 'bg-green-100 text-green-700' },
+	paid: { label: 'Paid', badge: 'bg-emerald-100 text-emerald-700' },
 };
 
 const runStatus = (run) =>
@@ -69,6 +77,15 @@ const runStatus = (run) =>
 				badge: 'bg-gray-100 text-gray-700',
 			}
 		: { label: 'Not generated', badge: 'bg-gray-100 text-gray-600' };
+
+/** Today as a `type="date"` input wants it — local, like the month picker. */
+const todayInput = () => {
+	const now = new Date();
+	return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+		2,
+		'0'
+	)}-${String(now.getDate()).padStart(2, '0')}`;
+};
 
 const STREAMS = [
 	{ value: 'payroll', label: 'Payroll' },
@@ -89,13 +106,27 @@ export default function PayrollRunDashboard() {
 	const [success, setSuccess] = useState('');
 	const [scheduledDA, setScheduledDA] = useState(0);
 	const [run, setRun] = useState(null);
+	const [summary, setSummary] = useState(null);
 	const [finalizing, setFinalizing] = useState(false);
+	const [markingPaid, setMarkingPaid] = useState(false);
+	const [reopening, setReopening] = useState(false);
+	const [paymentDate, setPaymentDate] = useState(todayInput);
+	const { user } = useSession();
 
 	const currentStream = STREAMS.find((s) => s.value === stream) || STREAMS[0];
 	const streamLabel = currentStream.label;
 	const monthSlug = month.substring(0, 7);
-	const runBadge = runStatus(run);
 	const isFinalized = run?.status === 'finalized';
+	// Derived from the month's slips, never stored on the run: paid means every
+	// slip is paid, so it drops off the moment one slip leaves `paid`.
+	const isPaid = !!summary?.is_paid;
+	const runBadge = isPaid ? RUN_STATUSES.paid : runStatus(run);
+	// Bulk payment belongs to a locked month, and reopening is for the
+	// super-admin who has to unlock it — and only while no slip is paid, since
+	// a paid month is permanent.
+	const canMarkPaid = isFinalized && !isPaid;
+	const canReopen =
+		isFinalized && summary?.paid_slips === 0 && !!user?.is_super_admin;
 
 	useEffect(() => {
 		fetchSlips();
@@ -142,14 +173,25 @@ export default function PayrollRunDashboard() {
 		}
 	};
 
-	/** Read the month's Payroll Run, whose status is the month's lock. */
+	/**
+	 * Read the month's Payroll Run, whose status is the month's lock, together
+	 * with the summary of the slips behind it — the run's paid indicator and the
+	 * reopen block both come from those slips, not from the run row.
+	 */
 	const fetchRun = async () => {
 		try {
 			const res = await fetch(`/api/payroll/runs?month=${month}`);
 			const data = await res.json();
-			setRun(data.success ? data.data.run : null);
+			if (data.success) {
+				setRun(data.data.run);
+				setSummary(data.data.summary);
+			} else {
+				setRun(null);
+				setSummary(null);
+			}
 		} catch {
 			setRun(null);
+			setSummary(null);
 		}
 	};
 
@@ -182,8 +224,11 @@ export default function PayrollRunDashboard() {
 				setSuccess(
 					`Payroll Slips generated for ${streamLabel} employees: ${results.success || 0} created, ${results.skipped || 0} skipped, ${results.failed || 0} failed`
 				);
-				if (data.run) setRun(data.run);
 				fetchSlips();
+				// A first generate also creates the month's Payroll Run, and the
+				// header, the reopen block and the mark-paid confirmation all read
+				// the run and the summary of the slips behind it.
+				fetchRun();
 			} else {
 				setError(data.error);
 			}
@@ -241,6 +286,9 @@ export default function PayrollRunDashboard() {
 
 			if (finalizeData.success) {
 				setRun(finalizeData.data);
+				// The month is locked now; the summary read a moment ago still
+				// describes its slips, and the reopen block reads it.
+				setSummary(monthSummary);
 				setSuccess(finalizeData.message);
 				fetchSlips();
 			} else {
@@ -250,6 +298,110 @@ export default function PayrollRunDashboard() {
 			setError('Failed to finalize the Payroll Run');
 		} finally {
 			setFinalizing(false);
+		}
+	};
+
+	/**
+	 * One bank batch, one action: every Payroll Slip of the month becomes paid
+	 * on the chosen date, and each change is audit-logged slip by slip.
+	 */
+	const markMonthPaid = async () => {
+		try {
+			setError('');
+			setSuccess('');
+
+			// Re-read the run before asking, the way Finalize does: the
+			// confirmation names the number of slips this batch will touch, so it
+			// must not quote a summary the month has already moved past.
+			const res = await fetch(`/api/payroll/runs?month=${month}`);
+			const data = await res.json();
+			if (!data.success) {
+				setError(data.error || 'Failed to load the Payroll Run');
+				return;
+			}
+
+			const monthRun = data.data.run;
+			const monthSummary = data.data.summary;
+			setRun(monthRun);
+			setSummary(monthSummary);
+
+			if (!monthRun || monthRun.status !== 'finalized') {
+				setError(
+					`${formatMonth(month)} has no finalized Payroll Run — finalize the month before marking it paid.`
+				);
+				return;
+			}
+
+			if (
+				!confirm(
+					`Mark all ${monthSummary.headcount} Payroll Slips for ${formatMonth(
+						month
+					)} paid on ${paymentDate}?\n\n` +
+						'Every slip of the month is set to paid with that payment date, and each change is audit-logged.'
+				)
+			)
+				return;
+
+			setMarkingPaid(true);
+
+			const markRes = await fetch('/api/payroll/runs/mark-paid', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ month, payment_date: paymentDate }),
+			});
+			const markData = await markRes.json();
+
+			if (markData.success) {
+				setSuccess(markData.message);
+				fetchSlips();
+				fetchRun();
+			} else {
+				setError(markData.error || 'Failed to mark the month paid');
+			}
+		} catch {
+			setError('Failed to mark the month paid');
+		} finally {
+			setMarkingPaid(false);
+		}
+	};
+
+	/**
+	 * Super-admin unlock: the month returns to draft, so a pre-payment error can
+	 * be corrected and Generate works again.
+	 */
+	const reopenRun = async () => {
+		if (
+			!confirm(
+				`Reopen the finalized Payroll Run for ${formatMonth(month)}?\n\n` +
+					'The month returns to draft and its Payroll Slips can be generated again. The reopen is audit-logged.'
+			)
+		)
+			return;
+
+		try {
+			setReopening(true);
+			setError('');
+			setSuccess('');
+
+			const res = await fetch('/api/payroll/runs/reopen', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ month }),
+			});
+			const data = await res.json();
+
+			if (data.success) {
+				setRun(data.data);
+				setSuccess(data.message);
+				fetchRun();
+				fetchSlips();
+			} else {
+				setError(data.error || 'Failed to reopen the Payroll Run');
+			}
+		} catch {
+			setError('Failed to reopen the Payroll Run');
+		} finally {
+			setReopening(false);
 		}
 	};
 
@@ -404,6 +556,52 @@ export default function PayrollRunDashboard() {
 								)}
 								Finalize Payroll Run
 							</button>
+
+							{canMarkPaid && (
+								<>
+									<label
+										htmlFor="payroll-payment-date"
+										className="text-sm font-medium text-gray-700"
+									>
+										Payment date:
+									</label>
+									<input
+										id="payroll-payment-date"
+										type="date"
+										value={paymentDate}
+										onChange={(e) => setPaymentDate(e.target.value)}
+										className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
+									/>
+									<button
+										onClick={markMonthPaid}
+										disabled={markingPaid || !paymentDate}
+										className="inline-flex items-center px-4 py-2 bg-[#7F2487] text-white rounded-lg hover:bg-[#86288F] disabled:opacity-50 transition-colors text-sm font-medium"
+									>
+										{markingPaid ? (
+											<InlineSpinner className="w-4 h-4 mr-2" />
+										) : (
+											<BanknotesIcon className="w-4 h-4 mr-2" />
+										)}
+										Mark month paid
+									</button>
+								</>
+							)}
+
+							{canReopen && (
+								<button
+									onClick={reopenRun}
+									disabled={reopening}
+									title="Super-admin only — returns the month to draft so its slips can be regenerated"
+									className="inline-flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors text-sm font-medium"
+								>
+									{reopening ? (
+										<InlineSpinner className="w-4 h-4 mr-2" />
+									) : (
+										<ArrowPathIcon className="w-4 h-4 mr-2" />
+									)}
+									Reopen
+								</button>
+							)}
 
 							<button
 								onClick={exportToExcel}
