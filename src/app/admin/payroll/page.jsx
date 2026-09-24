@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Navbar from '@/components/Navbar';
 import { useSession } from '@/context/SessionContext';
 import { R, add, mul, sub, toNumber } from '@/lib/money';
 import { formatCurrency, formatMonth } from '@/lib/format';
-import { FEBRUARY_PT } from '@/lib/payroll';
+import { FEBRUARY_PT, slipFigures } from '@/lib/payroll';
 import { PAYMENT_STATUS, paymentStatusBadge } from '@/lib/payment-status';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { downloadFile } from '@/lib/download';
@@ -68,26 +69,85 @@ const STREAMS = [
 	{ value: 'contract', label: 'Contract' },
 ];
 
+/**
+ * The month's Payroll Run and the summary of the slips behind it: the run row
+ * carries the month's lock, while the paid indicator and the reopen block come
+ * from those slips, not from the run row. A month that was never generated
+ * reads as two nulls.
+ */
+const readRun = async (month) => {
+	const data = await apiGet('/api/payroll/runs', { month });
+	return data.success
+		? { run: data.data?.run ?? null, summary: data.data?.summary ?? null }
+		: { run: null, summary: null };
+};
+
+/**
+ * The DA Component Rate in force for the month. A month with no scheduled rate
+ * and a refused read both come back 0, which is the fixed amount readers then
+ * show — the slip's own stored DA is what a 0 falls back to.
+ */
+const readScheduledDA = async (month) => {
+	const [yr, mn] = month.split('-');
+	const data = await apiGet('/api/payroll/schedules', {
+		component_type: 'da',
+		active_only: 'true',
+		date: `${yr}-${mn}-01`,
+	});
+	return data.success && data.data?.length
+		? parseFloat(data.data[0].value) || 0
+		: 0;
+};
+
 export default function PayrollRunDashboard() {
 	const [month, setMonth] = useState(() => {
 		const now = new Date();
 		return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 	});
 	const [stream, setStream] = useState('payroll');
-	const [slips, setSlips] = useState([]);
-	const [loading, setLoading] = useState(false);
 	const [exporting, setExporting] = useState(false);
-	const [generating, setGenerating] = useState(false);
 	const [error, setError] = useState('');
 	const [success, setSuccess] = useState('');
-	const [scheduledDA, setScheduledDA] = useState(0);
-	const [run, setRun] = useState(null);
-	const [summary, setSummary] = useState(null);
-	const [finalizing, setFinalizing] = useState(false);
-	const [markingPaid, setMarkingPaid] = useState(false);
-	const [reopening, setReopening] = useState(false);
 	const [paymentDate, setPaymentDate] = useState(todayInput);
 	const { user } = useSession();
+	const queryClient = useQueryClient();
+
+	// The month and the Employee Type are the reads' query keys, so the pickers
+	// still drive what the page shows — only now the cache is the one place the
+	// table, the header badge and the DA column come from.
+	const runQuery = useQuery({
+		queryKey: ['payroll', 'run', month],
+		queryFn: () => readRun(month),
+	});
+
+	const slipsQuery = useQuery({
+		queryKey: ['payroll', 'slips', month, stream],
+		queryFn: async () => {
+			const data = await apiGet('/api/payroll/slips', {
+				month,
+				salary_type: stream,
+			});
+			return data.success ? data.data || [] : [];
+		},
+	});
+
+	const daQuery = useQuery({
+		queryKey: ['payroll', 'schedules', 'da', month],
+		queryFn: () => readScheduledDA(month),
+	});
+
+	const run = runQuery.data?.run ?? null;
+	const summary = runQuery.data?.summary ?? null;
+	const slips = slipsQuery.data || [];
+	// "Loading" has always meant "a slips read is in flight": the first one, the
+	// one a month or stream change starts, and the refetch a write triggers.
+	const loading = slipsQuery.isFetching;
+	const scheduledDA = daQuery.data ?? 0;
+	// A refused slips read keeps the message the hand-rolled fetch showed; the
+	// message state below still belongs to the actions.
+	const readError = slipsQuery.error
+		? slipsQuery.error.message || 'Failed to fetch payroll data'
+		: '';
 
 	const currentStream = STREAMS.find((s) => s.value === stream) || STREAMS[0];
 	const streamLabel = currentStream.label;
@@ -104,72 +164,49 @@ export default function PayrollRunDashboard() {
 	const canReopen =
 		isFinalized && summary?.paid_slips === 0 && !!user?.is_super_admin;
 
-	useEffect(() => {
-		fetchSlips();
-		fetchScheduledDA();
-		fetchRun();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [month, stream]);
-
-	const fetchScheduledDA = async () => {
-		try {
-			const [yr, mn] = month.split('-');
-			const monthDate = `${yr}-${mn}-01`;
-			const data = await apiGet('/api/payroll/schedules', {
-				component_type: 'da',
-				active_only: 'true',
-				date: monthDate,
-			});
-			if (data.success && data.data && data.data.length > 0) {
-				setScheduledDA(parseFloat(data.data[0].value) || 0);
-			} else {
-				setScheduledDA(0);
-			}
-		} catch {
-			setScheduledDA(0);
-		}
-	};
-
-	const fetchSlips = async () => {
-		try {
-			setLoading(true);
-			setError('');
-			const data = await apiGet('/api/payroll/slips', {
-				month,
-				salary_type: stream,
-			});
-			if (data.success) {
-				setSlips(data.data || []);
-			} else {
-				setError(data.error);
-			}
-		} catch (err) {
-			setError(err.message || 'Failed to fetch payroll data');
-		} finally {
-			setLoading(false);
-		}
-	};
-
 	/**
-	 * Read the month's Payroll Run, whose status is the month's lock, together
-	 * with the summary of the slips behind it — the run's paid indicator and the
-	 * reopen block both come from those slips, not from the run row.
+	 * A write moved the month's Payroll Run and the slips behind it, so both
+	 * reads refetch. The slips key stops at the month rather than at the Employee
+	 * Type on screen: a bulk mark-paid and a reopen move every slip of the
+	 * month, whichever stream the picker happens to be showing.
 	 */
-	const fetchRun = async () => {
-		try {
-			const data = await apiGet('/api/payroll/runs', { month });
-			if (data.success) {
-				setRun(data.data.run);
-				setSummary(data.data.summary);
-			} else {
-				setRun(null);
-				setSummary(null);
-			}
-		} catch {
-			setRun(null);
-			setSummary(null);
-		}
+	const invalidateRunAndSlips = (monthKey) => {
+		queryClient.invalidateQueries({ queryKey: ['payroll', 'run', monthKey] });
+		queryClient.invalidateQueries({
+			queryKey: ['payroll', 'slips', monthKey],
+		});
 	};
+
+	const generateMutation = useMutation({
+		mutationFn: ({ month: runMonth, salary_type }) =>
+			apiPost('/api/payroll/generate', {
+				month: runMonth,
+				all: true,
+				salary_type,
+			}),
+		onSuccess: (_data, variables) => invalidateRunAndSlips(variables.month),
+	});
+
+	const finalizeMutation = useMutation({
+		mutationFn: ({ month: runMonth }) =>
+			apiPost('/api/payroll/runs/finalize', { month: runMonth }),
+		onSuccess: (_data, variables) => invalidateRunAndSlips(variables.month),
+	});
+
+	const markPaidMutation = useMutation({
+		mutationFn: ({ month: runMonth, payment_date }) =>
+			apiPost('/api/payroll/runs/mark-paid', {
+				month: runMonth,
+				payment_date,
+			}),
+		onSuccess: (_data, variables) => invalidateRunAndSlips(variables.month),
+	});
+
+	const reopenMutation = useMutation({
+		mutationFn: ({ month: runMonth }) =>
+			apiPost('/api/payroll/runs/reopen', { month: runMonth }),
+		onSuccess: (_data, variables) => invalidateRunAndSlips(variables.month),
+	});
 
 	const generateSlips = async () => {
 		if (
@@ -180,32 +217,22 @@ export default function PayrollRunDashboard() {
 			return;
 
 		try {
-			setGenerating(true);
 			setError('');
 			setSuccess('');
 
-			const data = await apiPost('/api/payroll/generate', {
+			// A first generate also creates the month's Payroll Run; the mutation's
+			// onSuccess refetches the run and the slips, so the header, the reopen
+			// block and the mark-paid confirmation read the month as it now is.
+			const data = await generateMutation.mutateAsync({
 				month,
-				all: true,
 				salary_type: stream,
 			});
-			if (data.success) {
-				const results = data.results || {};
-				setSuccess(
-					`Payroll Slips generated for ${streamLabel} employees: ${results.success || 0} created, ${results.skipped || 0} skipped, ${results.failed || 0} failed`
-				);
-				fetchSlips();
-				// A first generate also creates the month's Payroll Run, and the
-				// header, the reopen block and the mark-paid confirmation all read
-				// the run and the summary of the slips behind it.
-				fetchRun();
-			} else {
-				setError(data.error);
-			}
+			const results = data.results || {};
+			setSuccess(
+				`Payroll Slips generated for ${streamLabel} employees: ${results.success || 0} created, ${results.skipped || 0} skipped, ${results.failed || 0} failed`
+			);
 		} catch (err) {
 			setError(err.message || 'Failed to generate payroll');
-		} finally {
-			setGenerating(false);
 		}
 	};
 
@@ -215,10 +242,15 @@ export default function PayrollRunDashboard() {
 			setSuccess('');
 
 			// Re-read the run so the confirmation signs off on current numbers.
-			const data = await apiGet('/api/payroll/runs', { month });
-			const monthRun = data.data.run;
-			const monthSummary = data.data.summary;
-			setRun(monthRun);
+			// Through the cache, so the badge above and the dialog can never quote
+			// two different months; `staleTime: 0` because "current" means the read
+			// that just happened, not a cache entry the mount left behind.
+			const { run: monthRun, summary: monthSummary } =
+				await queryClient.fetchQuery({
+					queryKey: ['payroll', 'run', month],
+					queryFn: () => readRun(month),
+					staleTime: 0,
+				});
 
 			if (!monthRun) {
 				setError(
@@ -239,26 +271,12 @@ export default function PayrollRunDashboard() {
 			)
 				return;
 
-			setFinalizing(true);
-
-			const finalizeData = await apiPost('/api/payroll/runs/finalize', {
-				month,
-			});
-
-			if (finalizeData.success) {
-				setRun(finalizeData.data);
-				// The month is locked now; the summary read a moment ago still
-				// describes its slips, and the reopen block reads it.
-				setSummary(monthSummary);
-				setSuccess(finalizeData.message);
-				fetchSlips();
-			} else {
-				setError(finalizeData.error || 'Failed to finalize the Payroll Run');
-			}
+			// The mutation refetches the run and the slips on success, so the
+			// locked month and its summary land in the cache the dialog read.
+			const data = await finalizeMutation.mutateAsync({ month });
+			setSuccess(data.message);
 		} catch (err) {
 			setError(err.message || 'Failed to finalize the Payroll Run');
-		} finally {
-			setFinalizing(false);
 		}
 	};
 
@@ -273,12 +291,14 @@ export default function PayrollRunDashboard() {
 
 			// Re-read the run before asking, the way Finalize does: the
 			// confirmation names the number of slips this batch will touch, so it
-			// must not quote a summary the month has already moved past.
-			const data = await apiGet('/api/payroll/runs', { month });
-			const monthRun = data.data.run;
-			const monthSummary = data.data.summary;
-			setRun(monthRun);
-			setSummary(monthSummary);
+			// must not quote a summary the month has already moved past. Through
+			// the cache, so the badge above cannot quote a different one.
+			const { run: monthRun, summary: monthSummary } =
+				await queryClient.fetchQuery({
+					queryKey: ['payroll', 'run', month],
+					queryFn: () => readRun(month),
+					staleTime: 0,
+				});
 
 			if (!monthRun || monthRun.status !== 'finalized') {
 				setError(
@@ -297,24 +317,15 @@ export default function PayrollRunDashboard() {
 			)
 				return;
 
-			setMarkingPaid(true);
-
-			const markData = await apiPost('/api/payroll/runs/mark-paid', {
+			// Both reads refetch on success: the run's paid indicator moves, and so
+			// does the payment status of every row behind it.
+			const data = await markPaidMutation.mutateAsync({
 				month,
 				payment_date: paymentDate,
 			});
-
-			if (markData.success) {
-				setSuccess(markData.message);
-				fetchSlips();
-				fetchRun();
-			} else {
-				setError(markData.error || 'Failed to mark the month paid');
-			}
+			setSuccess(data.message);
 		} catch (err) {
 			setError(err.message || 'Failed to mark the month paid');
-		} finally {
-			setMarkingPaid(false);
 		}
 	};
 
@@ -332,24 +343,15 @@ export default function PayrollRunDashboard() {
 			return;
 
 		try {
-			setReopening(true);
 			setError('');
 			setSuccess('');
 
-			const data = await apiPost('/api/payroll/runs/reopen', { month });
-
-			if (data.success) {
-				setRun(data.data);
-				setSuccess(data.message);
-				fetchRun();
-				fetchSlips();
-			} else {
-				setError(data.error || 'Failed to reopen the Payroll Run');
-			}
+			// The mutation refetches the run and the slips on success: the month is
+			// draft again and its slips are back in play.
+			const data = await reopenMutation.mutateAsync({ month });
+			setSuccess(data.message);
 		} catch (err) {
 			setError(err.message || 'Failed to reopen the Payroll Run');
-		} finally {
-			setReopening(false);
 		}
 	};
 
@@ -396,21 +398,10 @@ export default function PayrollRunDashboard() {
 	// through the money library — never float arithmetic (AGENTS.md), because
 	// these are the numbers finance signs off on.
 	const isFeb = month.split('-')[1] === '02';
-	/** A numeric read of a column that may be a DECIMAL string, null or missing. */
-	const num = (value) => toNumber(R(value));
-	// Same candidate order as the API's own normalization (src/app/api/payroll/
-	// slips/route.js), and each candidate is compared as a NUMBER: a stored
-	// "0.00" is a real zero and must fall through to the next source, which
-	// string truthiness would get wrong.
-	const calcBasicPlusDa = (s) =>
-		Math.max(
-			0,
-			num(s.structure_basic_salary) ||
-				num(s.profile_basic) ||
-				num(s.profile_basic_plus_da) ||
-				num(s.basic) ||
-				0
-		);
+	// Basic+DA comes from the shared slip figures (src/lib/payroll.js) — the same
+	// candidate chain the Payroll Slip document and both exports read, so the
+	// dashboard cannot report an amount the slip disagrees with.
+	const calcBasicPlusDa = (s) => slipFigures(s, { scheduledDA }).basicPlusDa;
 	const calcGross = (s) =>
 		toNumber(
 			add(
@@ -475,7 +466,7 @@ export default function PayrollRunDashboard() {
 						<div className="flex flex-wrap items-center gap-3">
 							<button
 								onClick={generateSlips}
-								disabled={generating || isFinalized}
+								disabled={generateMutation.isPending || isFinalized}
 								title={
 									isFinalized
 										? 'The month is locked by its finalized Payroll Run'
@@ -483,7 +474,7 @@ export default function PayrollRunDashboard() {
 								}
 								className="inline-flex items-center px-4 py-2 bg-[#64126D] text-white rounded-lg hover:bg-[#52105a] disabled:opacity-50 transition-colors text-sm font-medium"
 							>
-								{generating ? (
+								{generateMutation.isPending ? (
 									<InlineSpinner className="w-4 h-4 mr-2" />
 								) : (
 									<CurrencyRupeeIcon className="w-4 h-4 mr-2" />
@@ -493,13 +484,13 @@ export default function PayrollRunDashboard() {
 
 							<button
 								onClick={finalizeRun}
-								disabled={finalizing || isFinalized}
+								disabled={finalizeMutation.isPending || isFinalized}
 								title={
 									isFinalized ? 'This month is already finalized' : undefined
 								}
 								className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium"
 							>
-								{finalizing ? (
+								{finalizeMutation.isPending ? (
 									<InlineSpinner className="w-4 h-4 mr-2" />
 								) : (
 									<CheckCircleIcon className="w-4 h-4 mr-2" />
@@ -524,10 +515,10 @@ export default function PayrollRunDashboard() {
 									/>
 									<button
 										onClick={markMonthPaid}
-										disabled={markingPaid || !paymentDate}
+										disabled={markPaidMutation.isPending || !paymentDate}
 										className="inline-flex items-center px-4 py-2 bg-[#7F2487] text-white rounded-lg hover:bg-[#86288F] disabled:opacity-50 transition-colors text-sm font-medium"
 									>
-										{markingPaid ? (
+										{markPaidMutation.isPending ? (
 											<InlineSpinner className="w-4 h-4 mr-2" />
 										) : (
 											<BanknotesIcon className="w-4 h-4 mr-2" />
@@ -540,11 +531,11 @@ export default function PayrollRunDashboard() {
 							{canReopen && (
 								<button
 									onClick={reopenRun}
-									disabled={reopening}
+									disabled={reopenMutation.isPending}
 									title="Super-admin only — returns the month to draft so its slips can be regenerated"
 									className="inline-flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors text-sm font-medium"
 								>
-									{reopening ? (
+									{reopenMutation.isPending ? (
 										<InlineSpinner className="w-4 h-4 mr-2" />
 									) : (
 										<ArrowPathIcon className="w-4 h-4 mr-2" />
@@ -583,13 +574,13 @@ export default function PayrollRunDashboard() {
 				</div>
 
 				{/* Alerts */}
-				{error && (
+				{(error || readError) && (
 					<div
 						role="alert"
 						className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700"
 					>
 						<ExclamationCircleIcon className="w-5 h-5 flex-shrink-0" />
-						<span className="text-sm">{error}</span>
+						<span className="text-sm">{error || readError}</span>
 					</div>
 				)}
 
