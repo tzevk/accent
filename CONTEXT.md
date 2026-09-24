@@ -21,8 +21,8 @@ An earlier 25-column pay agreement in `salary_structures` (+ `salary_structure_c
 _Avoid_: Salary Profile (when meaning the legacy table)
 
 **Payroll Slip**:
-A computed monthly instance for one employee and month (YYYY-MM-01) — earnings, deductions, net pay, employer cost, attendance snapshot. Stored in `payroll_slips` (UNIQUE month+employee), produced by `computePayroll`/`generatePayrollSlip`.
-_Avoid_: Payslip, Salary Slip, Payroll Record
+A computed monthly instance for one employee and month (YYYY-MM-01) — earnings, deductions, net pay, employer cost, attendance snapshot. Stored in `payroll_slips` (UNIQUE month+employee), produced by `computePayroll`/`generatePayrollSlip`. The employee's own view of them is "My Payroll Slips".
+_Avoid_: Payslip, Salary Slip, Payroll Record — the self-service path segment `/api/me/payslips` is a kept exception (a URL, not a name for the entity)
 
 **Payroll Run**:
 The month-level lifecycle record for one pay period (month/year) — starts `draft`, becomes `finalized`, which locks its slips against regeneration; only a super-admin can reopen a finalized run, and only while no slip in the month is `paid`. Payment is tracked per-slip, not on the run: the run's `paid` state is derived (every slip of the month paid), never a stored transition. Canonical table `payroll_runs`.
