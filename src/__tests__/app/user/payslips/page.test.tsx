@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -20,6 +21,19 @@ vi.mock('@/lib/api-client', () => ({ apiGet: mocks.mockApiGet }));
 vi.mock('@/lib/download', () => ({ downloadFile: mocks.mockDownloadFile }));
 
 import MyPayrollSlipsPage from '@/app/user/payslips/page';
+
+// The page reads through TanStack Query, so it needs a client of its own — one
+// per render, so no test sees another's cache.
+function renderPage() {
+	const client = new QueryClient({
+		defaultOptions: { queries: { retry: false, gcTime: 0 } },
+	});
+	return render(
+		<QueryClientProvider client={client}>
+			<MyPayrollSlipsPage />
+		</QueryClientProvider>
+	);
+}
 
 const SLIPS = [
 	{
@@ -49,7 +63,7 @@ describe('My Payroll Slips page (issue #247)', () => {
 	it('lists the employee’s slips month-wise, newest first', async () => {
 		mocks.mockApiGet.mockResolvedValue({ success: true, data: SLIPS });
 
-		render(<MyPayrollSlipsPage />);
+		renderPage();
 
 		expect(await screen.findByText('July 2026')).toBeInTheDocument();
 		expect(screen.getByText('June 2026')).toBeInTheDocument();
@@ -62,7 +76,7 @@ describe('My Payroll Slips page (issue #247)', () => {
 	it('shows an empty state when no month has been published yet', async () => {
 		mocks.mockApiGet.mockResolvedValue({ success: true, data: [] });
 
-		render(<MyPayrollSlipsPage />);
+		renderPage();
 
 		expect(await screen.findByText(/No Payroll Slips yet/)).toBeInTheDocument();
 	});
@@ -70,7 +84,7 @@ describe('My Payroll Slips page (issue #247)', () => {
 	it('downloads one slip from the self-service PDF endpoint', async () => {
 		mocks.mockApiGet.mockResolvedValue({ success: true, data: SLIPS });
 
-		render(<MyPayrollSlipsPage />);
+		renderPage();
 		await screen.findByText('July 2026');
 
 		fireEvent.click(screen.getAllByRole('button', { name: /PDF/ })[0]);
@@ -89,7 +103,7 @@ describe('My Payroll Slips page (issue #247)', () => {
 			new Error('No Payroll Slip found for this month')
 		);
 
-		render(<MyPayrollSlipsPage />);
+		renderPage();
 		await screen.findByText('July 2026');
 
 		fireEvent.click(screen.getAllByRole('button', { name: /PDF/ })[0]);

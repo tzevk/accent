@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/Navbar';
 import { InlineSpinner } from '@/components/LoadingSpinner';
 import PayrollSlipDocument from '@/components/payroll/PayrollSlipDocument';
@@ -26,55 +27,38 @@ export default function PayrollSlipDetailPage() {
 	const params = useParams();
 	const slipId = params?.id;
 
-	const [slip, setSlip] = useState(null);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState('');
+	const [downloadError, setDownloadError] = useState('');
 	const [downloading, setDownloading] = useState(false);
 
-	useEffect(() => {
-		if (!slipId) return;
+	const slipQuery = useQuery({
+		queryKey: ['payroll', 'slip', slipId],
+		// apiGet throws with the server's message, so a refusal reads the same
+		// here as it does in the API's own tests. The endpoint answers a listing,
+		// filtered down to this one id.
+		queryFn: () => apiGet('/api/payroll/slips', { id: slipId }),
+		enabled: !!slipId,
+	});
 
-		let cancelled = false;
-
-		const load = async () => {
-			try {
-				setLoading(true);
-				setError('');
-				// apiGet throws with the server's message, so a refusal reads the
-				// same here as it does in the API's own tests.
-				const data = await apiGet('/api/payroll/slips', { id: slipId });
-				if (cancelled) return;
-
-				const found = data.data?.[0];
-				if (!found) {
-					setError('Payroll slip not found');
-					return;
-				}
-
-				setSlip(found);
-			} catch (err) {
-				if (!cancelled) setError(err.message || 'Failed to load payroll slip');
-			} finally {
-				if (!cancelled) setLoading(false);
-			}
-		};
-
-		load();
-
-		return () => {
-			cancelled = true;
-		};
-	}, [slipId]);
+	const slip = slipQuery.data?.data?.[0] ?? null;
+	// An unknown id is a 200 with an empty list, not a failure, so "not found"
+	// is this page's own reading of a successful query with no row in it.
+	const loadError = slipQuery.isError
+		? slipQuery.error?.message || 'Failed to load payroll slip'
+		: slipQuery.isSuccess && !slip
+			? 'Payroll slip not found'
+			: '';
+	const loading = slipQuery.isPending;
+	const error = loadError || downloadError;
 
 	const downloadPDF = async () => {
 		try {
 			setDownloading(true);
-			setError('');
+			setDownloadError('');
 
 			const { url, filename } = payrollSlipPdfRequest(slip);
 			await downloadFile(url, filename);
 		} catch (err) {
-			setError(err.message || 'Failed to export PDF');
+			setDownloadError(err.message || 'Failed to export PDF');
 		} finally {
 			setDownloading(false);
 		}

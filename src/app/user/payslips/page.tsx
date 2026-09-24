@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
 	ArrowDownTrayIcon,
 	ArrowLeftIcon,
@@ -55,12 +56,8 @@ export default function MyPayrollSlipsPage() {
 		loading: boolean;
 		authenticated: boolean;
 	};
-	const [slips, setSlips] = useState<MyPayrollSlip[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [loadError, setLoadError] = useState('');
 	const [downloadError, setDownloadError] = useState('');
 	const [downloadingId, setDownloadingId] = useState<number | null>(null);
-	const [reloadToken, setReloadToken] = useState(0);
 
 	// Session gate — proxy.ts checks cookie presence only.
 	useEffect(() => {
@@ -69,32 +66,19 @@ export default function MyPayrollSlipsPage() {
 		}
 	}, [session.loading, session.authenticated, router]);
 
-	useEffect(() => {
-		if (session.loading || !session.authenticated) return;
-		let cancelled = false;
+	// The endpoint scopes the read to the session's own Employee and withholds
+	// months whose Payroll Run is not finalized, so the list is exactly what it
+	// publishes — nothing here filters months again.
+	const slipsQuery = useQuery<MyPayrollSlipsResponse>({
+		queryKey: ['me', 'payslips'],
+		queryFn: () => apiGet<MyPayrollSlipsResponse>('/api/me/payslips'),
+		// The session lands after mount; reading before it does would 401.
+		enabled: !session.loading && session.authenticated,
+	});
 
-		apiGet<MyPayrollSlipsResponse>('/api/me/payslips')
-			.then((body) => {
-				if (cancelled) return;
-				setSlips(body.data ?? []);
-				setLoadError('');
-			})
-			.catch((error: Error) => {
-				if (!cancelled) setLoadError(error.message);
-			})
-			.finally(() => {
-				if (!cancelled) setLoading(false);
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [session.loading, session.authenticated, reloadToken]);
-
-	const retry = useCallback(() => {
-		setLoading(true);
-		setReloadToken((token) => token + 1);
-	}, []);
+	const slips = slipsQuery.data?.data ?? [];
+	const loading = slipsQuery.isPending;
+	const loadError = slipsQuery.error?.message ?? '';
 
 	const downloadSlip = useCallback(async (slip: MyPayrollSlip) => {
 		setDownloadingId(slip.id);
@@ -154,7 +138,7 @@ export default function MyPayrollSlipsPage() {
 										<Button
 											variant="outline"
 											size="sm"
-											onClick={retry}
+											onClick={() => slipsQuery.refetch()}
 											className="ml-auto"
 										>
 											Retry
