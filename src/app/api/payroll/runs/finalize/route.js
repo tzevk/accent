@@ -82,8 +82,11 @@ export async function POST(request) {
 			);
 		}
 
-		const missing = await findEmployeesMissingSlips(db, month);
-		const withoutProfiles = await findEmployeesWithoutProfiles(db, month);
+		const missing = await findEmployeesMissingSlips(db, period.month);
+		const withoutProfiles = await findEmployeesWithoutProfiles(
+			db,
+			period.month
+		);
 
 		if (missing.length > 0 || withoutProfiles.length > 0) {
 			const problems = [];
@@ -117,10 +120,13 @@ export async function POST(request) {
 			);
 		}
 
-		const summary = await summarizeMonthSlips(db, month);
+		const summary = await summarizeMonthSlips(db, period.month);
 		const finalizedBy = authResult.user?.id ?? null;
 
-		await db.execute(
+		// `AND status = 'draft'` makes the transition atomic: if a concurrent
+		// request finalized this run first, this matches no row and we report the
+		// conflict instead of overwriting its finalized_by/at and totals.
+		const [result] = await db.execute(
 			`UPDATE payroll_runs
           SET status = 'finalized',
               finalized_by = ?,
@@ -130,7 +136,7 @@ export async function POST(request) {
               total_deductions = ?,
               total_net_pay = ?,
               total_employer_contribution = ?
-        WHERE id = ?`,
+        WHERE id = ? AND status = 'draft'`,
 			[
 				finalizedBy,
 				summary.headcount,
@@ -141,6 +147,18 @@ export async function POST(request) {
 				run.id,
 			]
 		);
+
+		if (result.affectedRows === 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: `The Payroll Run for ${formatMonth(
+						period.month
+					)} was finalized by another request.`,
+				},
+				{ status: 409 }
+			);
+		}
 
 		return NextResponse.json({
 			success: true,

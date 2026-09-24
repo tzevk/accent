@@ -47,7 +47,7 @@ export async function GET(request) {
 		db = await dbConnect();
 
 		const run = await findPayrollRun(db, period);
-		const summary = await summarizeMonthSlips(db, month);
+		const summary = await summarizeMonthSlips(db, period.month);
 
 		return NextResponse.json({ success: true, data: { run, summary } });
 	} catch (error) {

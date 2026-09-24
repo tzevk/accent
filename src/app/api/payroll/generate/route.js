@@ -70,9 +70,13 @@ export async function POST(request) {
 			);
 		}
 
+		// Normalised to the first of the month, so the Payroll Run lookup, the slip
+		// rows and the completeness gate all compare the same DATE.
+		const periodMonth = period.month;
+
 		// Preview mode - calculate without saving
 		if (preview && employee_id) {
-			const payroll = await calculateEmployeePayroll(employee_id, month, {
+			const payroll = await calculateEmployeePayroll(employee_id, periodMonth, {
 				include_bonus: !!include_bonus,
 			});
 
@@ -110,7 +114,9 @@ export async function POST(request) {
 				return NextResponse.json(
 					{
 						success: false,
-						error: `The Payroll Run for ${formatMonth(month)} is finalized — the month is locked, so Payroll Slips cannot be regenerated.`,
+						error: `The Payroll Run for ${formatMonth(
+							periodMonth
+						)} is finalized — the month is locked, so Payroll Slips cannot be regenerated.`,
 					},
 					{ status: 409 }
 				);
@@ -132,7 +138,7 @@ export async function POST(request) {
 				? bonus_employee_ids
 				: null;
 			const results = await generateMonthlyPayroll(
-				month,
+				periodMonth,
 				salary_type || null,
 				!!include_bonus,
 				bonusIds
@@ -140,7 +146,7 @@ export async function POST(request) {
 
 			return NextResponse.json({
 				success: true,
-				message: `Payroll generation completed for ${month}`,
+				message: `Payroll generation completed for ${periodMonth}`,
 				results,
 				run,
 			});
@@ -157,7 +163,7 @@ export async function POST(request) {
 				: null;
 			const results = await generatePayrollSlipsBatch(
 				employee_ids,
-				month,
+				periodMonth,
 				!!include_bonus,
 				bonusIds
 			);
@@ -172,7 +178,7 @@ export async function POST(request) {
 
 		// Generate for single employee
 		try {
-			const slip = await generatePayrollSlip(employee_id, month, {
+			const slip = await generatePayrollSlip(employee_id, periodMonth, {
 				include_bonus: !!include_bonus,
 			});
 

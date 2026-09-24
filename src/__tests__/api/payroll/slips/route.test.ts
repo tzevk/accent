@@ -19,9 +19,18 @@ vi.mock('@/utils/api-permissions', () => ({
 	},
 }));
 
-const { GET } = await import('@/app/api/payroll/slips/route');
+const { GET, DELETE } = await import('@/app/api/payroll/slips/route');
 
 const grant = grantFor(mocks.mockEnsurePermission);
+
+/** SQL strings the route handed to the mocked connection, in call order. */
+const statements = () =>
+	mocks.mockExecute.mock.calls.map(([sql]) => String(sql));
+
+const slipped = (rows: unknown[]) => [rows, undefined];
+
+/** UPDATE/DELETE result: mysql2 hands back a ResultSetHeader, not rows. */
+const affected = (count: number) => [{ affectedRows: count }, undefined];
 
 describe('payroll slips API — single-slip read (issue #240)', () => {
 	beforeEach(() => {
@@ -126,5 +135,129 @@ describe('payroll slips API — single-slip read (issue #240)', () => {
 		expect(String(sql)).toContain('ps.month = ?');
 		expect(String(sql)).not.toContain('ps.id = ?');
 		expect(params).toContain('2026-08-01');
+	});
+});
+
+describe('payroll slips API — deletion cannot strip a locked month (issue #242)', () => {
+	beforeEach(() => {
+		vi.resetAllMocks();
+		mocks.mockDbConnect.mockResolvedValue({
+			execute: mocks.mockExecute,
+			release: vi.fn(),
+		});
+		mocks.mockExecute.mockResolvedValue([[], undefined]);
+	});
+
+	const deleteRequest = (query: string) =>
+		new Request(`http://localhost/api/payroll/slips${query}`, {
+			method: 'DELETE',
+		});
+
+	const DRAFT_RUN = {
+		id: 7,
+		month: 8,
+		year: 2026,
+		run_number: 1,
+		status: 'draft',
+	};
+
+	it('denies a caller without payroll:delete', async () => {
+		grant('payroll:read');
+
+		const res = await DELETE(deleteRequest('?id=5'));
+
+		expect(res.status).toBe(403);
+		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
+	});
+
+	it('deletes a slip whose month has no Payroll Run', async () => {
+		grant('payroll:delete');
+		mocks.mockExecute
+			.mockResolvedValueOnce(slipped([{ month: '2026-08-01' }])) // the slip
+			.mockResolvedValueOnce(slipped([])) // month was never generated
+			.mockResolvedValueOnce(affected(1));
+
+		const res = await DELETE(deleteRequest('?id=5'));
+
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.success).toBe(true);
+		expect(
+			statements().some((sql) => sql.includes('DELETE FROM payroll_slips'))
+		).toBe(true);
+	});
+
+	it('deletes a slip whose month is still a draft run', async () => {
+		grant('payroll:delete');
+		mocks.mockExecute
+			.mockResolvedValueOnce(slipped([{ month: '2026-08-01' }]))
+			.mockResolvedValueOnce(slipped([DRAFT_RUN]))
+			.mockResolvedValueOnce(affected(1));
+
+		const res = await DELETE(deleteRequest('?id=5'));
+
+		expect(res.status).toBe(200);
+		expect(
+			statements().some((sql) => sql.includes('DELETE FROM payroll_slips'))
+		).toBe(true);
+	});
+
+	it('refuses to delete a slip in a finalized month', async () => {
+		grant('payroll:delete');
+		mocks.mockExecute
+			.mockResolvedValueOnce(slipped([{ month: '2026-08-01' }]))
+			.mockResolvedValueOnce(slipped([{ ...DRAFT_RUN, status: 'finalized' }]));
+
+		const res = await DELETE(deleteRequest('?id=5'));
+
+		expect(res.status).toBe(409);
+		const body = await res.json();
+		expect(body.success).toBe(false);
+		expect(body.error).toMatch(/locked/i);
+		expect(
+			statements().some((sql) => sql.includes('DELETE FROM payroll_slips'))
+		).toBe(false);
+	});
+
+	it('404s a slip id that does not exist, without deleting', async () => {
+		grant('payroll:delete');
+		mocks.mockExecute.mockResolvedValueOnce(slipped([]));
+
+		const res = await DELETE(deleteRequest('?id=999'));
+
+		expect(res.status).toBe(404);
+		expect(
+			statements().some((sql) => sql.includes('DELETE FROM payroll_slips'))
+		).toBe(false);
+	});
+
+	it('refuses the bulk wipe while any month is locked', async () => {
+		grant('payroll:delete');
+		mocks.mockExecute.mockResolvedValueOnce(
+			slipped([{ ...DRAFT_RUN, status: 'finalized' }])
+		);
+
+		const res = await DELETE(deleteRequest('?all=true'));
+
+		expect(res.status).toBe(409);
+		const body = await res.json();
+		expect(body.error).toMatch(/locked/i);
+		expect(
+			statements().some((sql) => sql.includes('DELETE FROM payroll_slips'))
+		).toBe(false);
+	});
+
+	it('allows the bulk wipe when no month is locked', async () => {
+		grant('payroll:delete');
+		mocks.mockExecute
+			.mockResolvedValueOnce(slipped([])) // no locked run anywhere
+			.mockResolvedValueOnce(affected(4));
+
+		const res = await DELETE(deleteRequest('?all=true'));
+
+		expect(res.status).toBe(200);
+		expect(
+			statements().some((sql) => sql.includes('DELETE FROM payroll_slips'))
+		).toBe(true);
 	});
 });

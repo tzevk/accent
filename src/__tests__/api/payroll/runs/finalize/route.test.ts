@@ -229,7 +229,7 @@ describe('payroll finalize API — completeness gate and run lock (issue #242)',
 			.mockResolvedValueOnce([[], undefined]) // nobody missing a slip
 			.mockResolvedValueOnce([[], undefined]) // nobody typed Payroll/Contract without a profile
 			.mockResolvedValueOnce([MONTH_SLIPS, undefined]) // the month's slips
-			.mockResolvedValueOnce([[{ affectedRows: 1 }], undefined]); // UPDATE
+			.mockResolvedValueOnce([{ affectedRows: 1 }, undefined]); // UPDATE
 
 		const res = await POST(jsonRequest({ month: '2026-08-01' }));
 
@@ -249,5 +249,63 @@ describe('payroll finalize API — completeness gate and run lock (issue #242)',
 		expect(
 			statements().some((sql) => sql.includes('UPDATE payroll_runs'))
 		).toBe(true);
+	});
+
+	it('excludes soft-deleted employees from both gate queries', async () => {
+		// Employee deletion is soft: it sets isDelete and leaves status 'active'.
+		// Without the predicate a deleted employee with a live profile would block
+		// Finalize forever and be named as missing.
+		grant('payroll:update');
+		mocks.mockExecute.mockResolvedValueOnce([[DRAFT_RUN], undefined]);
+
+		await POST(jsonRequest({ month: '2026-08-01' }));
+
+		const gateStatements = statements().filter((sql) =>
+			sql.includes('FROM employees')
+		);
+		expect(gateStatements).toHaveLength(2);
+		for (const sql of gateStatements) {
+			expect(sql).toContain('isDelete = 0');
+		}
+	});
+
+	it('normalises a short YYYY-MM month before comparing against slip months', async () => {
+		// payroll_slips.month is a DATE, so an unnormalised '2026-08' would match no
+		// slip and report every profiled employee as missing.
+		grant('payroll:update');
+		mocks.mockExecute.mockResolvedValueOnce([[DRAFT_RUN], undefined]);
+
+		const res = await POST(jsonRequest({ month: '2026-08' }));
+
+		expect(res.status).not.toBe(400);
+		const gateCalls = mocks.mockExecute.mock.calls.filter(([sql]) =>
+			String(sql).includes('FROM employees')
+		);
+		expect(gateCalls).toHaveLength(2);
+		for (const [, params] of gateCalls) {
+			expect(params).toContain('2026-08-01');
+		}
+	});
+
+	it('reports a conflict when another request finalized the run first', async () => {
+		grant('payroll:update');
+		mocks.mockExecute
+			.mockResolvedValueOnce([[DRAFT_RUN], undefined])
+			.mockResolvedValueOnce([[], undefined]) // nobody missing a slip
+			.mockResolvedValueOnce([[], undefined]) // nobody without a profile
+			.mockResolvedValueOnce([MONTH_SLIPS, undefined])
+			.mockResolvedValueOnce([{ affectedRows: 0 }, undefined]); // UPDATE matched nothing
+
+		const res = await POST(jsonRequest({ month: '2026-08-01' }));
+
+		expect(res.status).toBe(409);
+		const body = await res.json();
+		expect(body.success).toBe(false);
+		expect(body.error).toMatch(/finalized by another request/i);
+		// The transition is guarded, so a losing racer cannot overwrite the winner's
+		// finalized_by/at and totals.
+		expect(statements().some((sql) => sql.includes("status = 'draft'"))).toBe(
+			true
+		);
 	});
 });

@@ -5,6 +5,14 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import { formatMonth } from '@/lib/format';
+import {
+	payrollPeriod,
+	findPayrollRun,
+	isRunLocked,
+	findAnyLockedRun,
+	runMonthDate,
+} from '@/app/api/payroll/_lib/payroll-run';
 
 const safeNum = (v) => {
 	const n = Number(v);
@@ -246,6 +254,22 @@ export async function DELETE(request) {
 		db = await dbConnect();
 
 		if (all === 'true') {
+			// Deleting every slip would strip Payroll Slips out of finalized months,
+			// leaving those runs' recorded totals permanently wrong — and a finalized
+			// month cannot be regenerated until a reopen action exists.
+			const lockedRun = await findAnyLockedRun(db);
+			if (lockedRun) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: `Cannot delete all Payroll Slips: ${formatMonth(
+							runMonthDate(lockedRun)
+						)} is locked by its finalized Payroll Run.`,
+					},
+					{ status: 409 }
+				);
+			}
+
 			// Delete all payroll slips
 			const [result] = await db.execute('DELETE FROM payroll_slips');
 
@@ -259,6 +283,33 @@ export async function DELETE(request) {
 			return NextResponse.json(
 				{ success: false, error: 'ID is required' },
 				{ status: 400 }
+			);
+		}
+
+		// A slip in a finalized month is part of a signed-off run, so it cannot be
+		// removed — that is what makes the month's lock mean anything.
+		const [slips] = await db.execute(
+			'SELECT month FROM payroll_slips WHERE id = ? LIMIT 1',
+			[id]
+		);
+		if (!slips[0]) {
+			return NextResponse.json(
+				{ success: false, error: 'Payroll slip not found' },
+				{ status: 404 }
+			);
+		}
+
+		const period = payrollPeriod(slips[0].month);
+		const run = period ? await findPayrollRun(db, period) : null;
+		if (isRunLocked(run)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: `Cannot delete this Payroll Slip: ${formatMonth(
+						period.month
+					)} is locked by its finalized Payroll Run.`,
+				},
+				{ status: 409 }
 			);
 		}
 
