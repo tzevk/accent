@@ -1,4 +1,5 @@
 import { formatDateNumeric, formatMonth } from '@/lib/format';
+import { slipFigures } from '@/lib/payroll';
 
 /**
  * The printable Payroll Slip document — company banner, earnings/deductions
@@ -9,6 +10,12 @@ import { formatDateNumeric, formatMonth } from '@/lib/format';
  */
 export default function PayrollSlipDocument({ slip }) {
 	if (!slip) return null;
+
+	// GROSS / DEDUCTION / NET come from the shared derivation, so this document
+	// prints the numbers the slips listing and the PDFs report. The cells used to
+	// print the stored DECIMAL strings, so keep two decimals to hold the same
+	// characters on screen.
+	const { gross, deductions, net } = slipFigures(slip);
 
 	return (
 		<div
@@ -870,7 +877,7 @@ export default function PayrollSlipDocument({ slip }) {
 								color: '#15803d',
 							}}
 						>
-							{slip.total_earnings || slip.gross || '0.00'}
+							{gross.toFixed(2)}
 						</td>
 						<td
 							className="px-2 py-1.5"
@@ -889,7 +896,7 @@ export default function PayrollSlipDocument({ slip }) {
 								color: '#b91c1c',
 							}}
 						>
-							{slip.total_deductions || '0.00'}
+							{deductions.toFixed(2)}
 						</td>
 					</tr>
 					{/* Net Salary Row */}
@@ -913,7 +920,7 @@ export default function PayrollSlipDocument({ slip }) {
 							className="px-2 py-2 text-right text-white font-extrabold text-[13px] font-mono"
 							style={{ border: '1px solid #a855f7' }}
 						>
-							{slip.net_pay || '0.00'}
+							{net.toFixed(2)}
 						</td>
 					</tr>
 				</tbody>

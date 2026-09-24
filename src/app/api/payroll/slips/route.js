@@ -6,7 +6,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { formatMonth } from '@/lib/format';
-import { resolveScheduledDA } from '@/lib/payroll';
+import { resolveScheduledDA, slipFigures } from '@/lib/payroll';
 import {
 	payrollPeriod,
 	findPayrollRun,
@@ -20,11 +20,6 @@ import {
 	auditSnapshot,
 	recordPayrollAudit,
 } from '@/app/api/payroll/_lib/payroll-audit';
-
-const safeNum = (v) => {
-	const n = Number(v);
-	return Number.isFinite(n) ? n : 0;
-};
 
 /**
  * GET - Fetch payroll slips
@@ -122,22 +117,15 @@ export async function GET(request) {
 		}
 
 		const normalizedRows = rows.map((row) => {
-			const basicPlusDaSource = Math.max(
-				0,
-				safeNum(row.structure_basic_salary) ||
-					safeNum(row.profile_basic) ||
-					safeNum(row.profile_basic_plus_da) ||
-					safeNum(row.basic)
-			);
-			const da =
-				scheduledDA > 0 ? scheduledDA : safeNum(row.da_used) || safeNum(row.da);
-			const basic = Math.max(0, basicPlusDaSource - da);
+			// The fallback chain lives in slipFigures so this listing, the on-screen
+			// Payroll Slip and both PDF exports report the same numbers.
+			const figures = slipFigures(row, { scheduledDA });
 
 			return {
 				...row,
-				basic,
-				da,
-				basic_plus_da_source: basicPlusDaSource,
+				basic: figures.basic,
+				da: figures.da,
+				basic_plus_da_source: figures.basicPlusDa,
 			};
 		});
 

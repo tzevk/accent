@@ -19,6 +19,51 @@ const monthDate = (month) =>
  */
 export const FEBRUARY_PT = 300;
 
+/** A numeric read of a column that may be a DECIMAL string, null or missing. */
+export const safeNum = (v) => {
+	const n = Number(v);
+	return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * The six money figures of one Payroll Slip, derived in exactly one place.
+ *
+ * The admin listing, the on-screen Payroll Slip document and both PDF exports
+ * all render these numbers, so the fallback chains live here rather than once
+ * per renderer — two copies of them is how the same slip reports two different
+ * amounts.
+ *
+ * `scheduledDA` is the month's DA Component Rate (`resolveScheduledDA`); a
+ * percentage-valued or absent rate is 0 and the slip's own stored DA stands in.
+ * Every candidate is compared as a NUMBER: a stored `"0.00"` is a real zero and
+ * falls through to the next source, which string truthiness would get wrong.
+ *
+ * Takes a RAW slip row, the shape the queries select. A row that has already
+ * been through this (its `basic` is the chain's own last candidate) must not be
+ * fed back in — readers of a normalized row take `gross`/`deductions`/`net`
+ * from here and leave Basic and DA as they were written.
+ */
+export function slipFigures(row, { scheduledDA = 0 } = {}) {
+	const basicPlusDa = Math.max(
+		0,
+		safeNum(row.structure_basic_salary) ||
+			safeNum(row.profile_basic) ||
+			safeNum(row.profile_basic_plus_da) ||
+			safeNum(row.basic)
+	);
+	const da =
+		scheduledDA > 0 ? scheduledDA : safeNum(row.da_used) || safeNum(row.da);
+
+	return {
+		basic: Math.max(0, basicPlusDa - da),
+		da,
+		basicPlusDa,
+		gross: safeNum(row.total_earnings) || safeNum(row.gross),
+		deductions: safeNum(row.total_deductions),
+		net: safeNum(row.net_pay),
+	};
+}
+
 /**
  * The DA Component Rate in force on a date, or null when none is scheduled.
  *

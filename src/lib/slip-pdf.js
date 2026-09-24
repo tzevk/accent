@@ -9,12 +9,8 @@
 
 import { jsPDF } from 'jspdf';
 import { formatDateNumeric, formatMonth } from '@/lib/format';
-import { resolveScheduledDA } from '@/lib/payroll';
+import { resolveScheduledDA, safeNum, slipFigures } from '@/lib/payroll';
 
-const safeNum = (v) => {
-	const n = Number(v);
-	return Number.isFinite(n) ? n : 0;
-};
 const safeStr = (v) => (v == null ? '' : String(v));
 /**
  * A money cell in the PDF tables.
@@ -39,6 +35,10 @@ const pdfAmount = (v) => {
  * Draws everything inside a single outer box with equal spacing.
  */
 function renderSlip(doc, slip, yStart) {
+	// The three totals come from the shared derivation, so the PDF prints the
+	// same GROSS / DEDUCTION / NET the slips listing and the on-screen document
+	// show for this slip.
+	const figures = slipFigures(slip);
 	const pageW = doc.internal.pageSize.getWidth();
 	const margin = 14;
 	const tableW = pageW - margin * 2;
@@ -323,11 +323,11 @@ function renderSlip(doc, slip, yStart) {
 		{ text: 'GROSS EARNING', align: 'left' },
 		{ text: '', align: 'right' },
 		{
-			text: pdfAmount(slip.total_earnings || slip.gross_salary),
+			text: pdfAmount(figures.gross),
 			align: 'right',
 		},
 		{ text: 'TOTAL DEDUCTION', align: 'left' },
-		{ text: pdfAmount(slip.total_deductions), align: 'right' },
+		{ text: pdfAmount(figures.deductions), align: 'right' },
 	];
 	let tx = margin;
 	for (let ci = 0; ci < cols.length; ci++) {
@@ -361,7 +361,7 @@ function renderSlip(doc, slip, yStart) {
 	// Amount cell
 	doc.rect(margin + leftW + netLabelW, y, netAmtW, netH, 'FD');
 	doc.text(
-		pdfAmount(slip.net_salary || slip.net_pay),
+		pdfAmount(figures.net),
 		margin + leftW + netLabelW + netAmtW - 2,
 		y + 5.2,
 		{ align: 'right' }
@@ -405,17 +405,17 @@ export async function normalizeSlips(db, rows, month) {
 	}
 
 	return rows.map((row) => {
-		const basicPlusDaSource = Math.max(
-			0,
-			safeNum(row.structure_basic_salary) ||
-				safeNum(row.profile_basic) ||
-				safeNum(row.profile_basic_plus_da) ||
-				safeNum(row.basic)
-		);
-		const da =
-			scheduledDA > 0 ? scheduledDA : safeNum(row.da_used) || safeNum(row.da);
-		const basic = Math.max(0, basicPlusDaSource - da);
-		return { ...row, basic, da, basic_plus_da_source: basicPlusDaSource };
+		// One derivation for Basic/DA, shared with the slips listing and the
+		// on-screen Payroll Slip: two copies of the chain is how the same slip
+		// ends up with two sets of numbers.
+		const figures = slipFigures(row, { scheduledDA });
+
+		return {
+			...row,
+			basic: figures.basic,
+			da: figures.da,
+			basic_plus_da_source: figures.basicPlusDa,
+		};
 	});
 }
 
