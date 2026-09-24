@@ -5,6 +5,12 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	PAYROLL_AUDIT_ACTION,
+	PAYROLL_AUDIT_ENTITY,
+	auditSnapshot,
+	recordPayrollAudit,
+} from '@/app/api/payroll/_lib/payroll-audit';
 
 // GET /api/payroll/schedules - Get all or specific payroll component schedules
 export async function GET(request) {
@@ -140,6 +146,26 @@ export async function POST(request) {
 
 			await db.commit();
 
+			// After commit, before end(): the rate is stored either way, and an audit
+			// failure must never roll back the rate the rest of payroll now reads.
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.COMPONENT_RATE,
+				entityId: result.insertId,
+				action: PAYROLL_AUDIT_ACTION.CREATE,
+				performedBy: authResult.user?.id,
+				newValues: auditSnapshot({
+					component_type,
+					value_type,
+					value,
+					effective_from,
+					effective_to,
+					is_active,
+					min_salary,
+					max_salary,
+					remarks,
+				}),
+			});
+
 			return NextResponse.json({
 				success: true,
 				data: {
@@ -206,6 +232,14 @@ export async function PUT(request) {
 		try {
 			await db.beginTransaction();
 
+			// Read the rate before the write: this is the value payroll was paying
+			// with, and it is what a dispute has to be able to reconstruct.
+			const [priorRows] = await db.query(
+				'SELECT * FROM payroll_schedules WHERE id = ? LIMIT 1',
+				[id]
+			);
+			const before = priorRows[0] || null;
+
 			const [result] = await db.query(
 				`UPDATE payroll_schedules 
         SET 
@@ -240,6 +274,26 @@ export async function PUT(request) {
 			}
 
 			await db.commit();
+
+			// After commit, before end(): the rate is stored either way, and an audit
+			// failure must never roll back the rate the rest of payroll now reads.
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.COMPONENT_RATE,
+				entityId: before ? before.id : id,
+				action: PAYROLL_AUDIT_ACTION.UPDATE,
+				performedBy: authResult.user?.id,
+				oldValues: auditSnapshot(before),
+				newValues: auditSnapshot({
+					value_type,
+					value,
+					effective_from,
+					effective_to,
+					is_active,
+					min_salary,
+					max_salary,
+					remarks,
+				}),
+			});
 
 			return NextResponse.json({
 				success: true,
@@ -286,6 +340,14 @@ export async function DELETE(request) {
 		try {
 			await db.beginTransaction();
 
+			// Read before deleting: afterwards there is no record of the rate that
+			// was in force, or of which component it belonged to.
+			const [priorRows] = await db.query(
+				'SELECT * FROM payroll_schedules WHERE id = ? LIMIT 1',
+				[id]
+			);
+			const before = priorRows[0] || null;
+
 			const [result] = await db.query(
 				'DELETE FROM payroll_schedules WHERE id = ?',
 				[id]
@@ -300,6 +362,16 @@ export async function DELETE(request) {
 			}
 
 			await db.commit();
+
+			// After commit, before end(): the rate is gone either way, and an audit
+			// failure must never resurrect it.
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.COMPONENT_RATE,
+				entityId: id,
+				action: PAYROLL_AUDIT_ACTION.DELETE,
+				performedBy: authResult.user?.id,
+				oldValues: auditSnapshot(before),
+			});
 
 			return NextResponse.json({
 				success: true,

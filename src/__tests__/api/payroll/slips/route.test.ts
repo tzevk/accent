@@ -19,7 +19,7 @@ vi.mock('@/utils/api-permissions', () => ({
 	},
 }));
 
-const { GET, DELETE } = await import('@/app/api/payroll/slips/route');
+const { GET, PUT, DELETE } = await import('@/app/api/payroll/slips/route');
 
 const grant = grantFor(mocks.mockEnsurePermission);
 
@@ -31,6 +31,12 @@ const slipped = (rows: unknown[]) => [rows, undefined];
 
 /** UPDATE/DELETE result: mysql2 hands back a ResultSetHeader, not rows. */
 const affected = (count: number) => [{ affectedRows: count }, undefined];
+
+/** The INSERT the route made into payroll_audit_logs, or undefined if none. */
+const auditInsert = () =>
+	mocks.mockExecute.mock.calls.find(([sql]) =>
+		String(sql).includes('INSERT INTO payroll_audit_logs')
+	);
 
 describe('payroll slips API — single-slip read (issue #240)', () => {
 	beforeEach(() => {
@@ -259,5 +265,130 @@ describe('payroll slips API — deletion cannot strip a locked month (issue #242
 		expect(
 			statements().some((sql) => sql.includes('DELETE FROM payroll_slips'))
 		).toBe(true);
+	});
+});
+
+describe('payroll slips API — payment changes are audited (issue #243)', () => {
+	/**
+	 * `grant()` authorizes without a user, and the audit trail must name a real
+	 * performer — so give the mocked gate a session user for the write tests.
+	 */
+	const signedInAs = (id: number) =>
+		mocks.mockEnsurePermission.mockImplementation(async () => ({
+			authorized: true,
+			user: { id },
+		}));
+
+	beforeEach(() => {
+		vi.resetAllMocks();
+		mocks.mockDbConnect.mockResolvedValue({
+			execute: mocks.mockExecute,
+			release: vi.fn(),
+		});
+		mocks.mockExecute.mockResolvedValue([[], undefined]);
+	});
+
+	const putRequest = (body: unknown) =>
+		new Request('http://localhost/api/payroll/slips', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body),
+		});
+
+	/** The slip as it stood before the payment change. */
+	const PENDING_SLIP = {
+		id: 42,
+		employee_id: 7,
+		month: '2026-08-01',
+		payment_status: 'pending',
+		payment_date: null,
+		payment_reference: null,
+		remarks: null,
+		created_at: '2026-08-02 10:00:00',
+		updated_at: '2026-08-02 10:00:00',
+	};
+
+	it('records who marked a slip paid, and the payment state it displaced', async () => {
+		grant('payroll:update');
+		signedInAs(12);
+		mocks.mockExecute
+			.mockResolvedValueOnce(slipped([PENDING_SLIP]))
+			.mockResolvedValueOnce(affected(1));
+
+		const res = await PUT(
+			putRequest({
+				id: 42,
+				payment_status: 'paid',
+				payment_date: '2026-09-05',
+				payment_reference: 'NEFT/9911',
+			})
+		);
+
+		expect(res.status).toBe(200);
+		const insert = auditInsert();
+		expect(insert).toBeDefined();
+		const [, params] = insert!;
+		expect(params[0]).toBe('payroll_slip');
+		expect(params[1]).toBe(42);
+		expect(params[2]).toBe(7); // the employee the slip belongs to
+		expect(params[3]).toBe('update');
+		// The row is read before the write, so old_values is the real prior state
+		// — minus the row's own history columns.
+		expect(JSON.parse(params[4] as string)).toEqual({
+			id: 42,
+			employee_id: 7,
+			month: '2026-08-01',
+			payment_status: 'pending',
+			payment_date: null,
+			payment_reference: null,
+			remarks: null,
+		});
+		expect(JSON.parse(params[5] as string)).toEqual({
+			payment_status: 'paid',
+			payment_date: '2026-09-05',
+			payment_reference: 'NEFT/9911',
+		});
+		expect(params[7]).toBe(8); // month
+		expect(params[8]).toBe(2026); // year
+		expect(params[9]).toBe(12); // the session user
+	});
+
+	it('writes nothing when the slip id matched no row', async () => {
+		grant('payroll:update');
+		mocks.mockExecute
+			.mockResolvedValueOnce(slipped([]))
+			.mockResolvedValueOnce(affected(0));
+
+		const res = await PUT(putRequest({ id: 999, payment_status: 'paid' }));
+
+		// The response contract is unchanged, and an entry pointing at a row that
+		// was never written would be a lie.
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.success).toBe(true);
+		expect(auditInsert()).toBeUndefined();
+	});
+
+	it('still updates the slip when the audit write fails', async () => {
+		grant('payroll:update');
+		signedInAs(12);
+		mocks.mockExecute
+			.mockResolvedValueOnce(slipped([PENDING_SLIP]))
+			.mockResolvedValueOnce(affected(1));
+		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		mocks.mockExecute.mockImplementation(async (sql: string) =>
+			String(sql).includes('INSERT INTO payroll_audit_logs')
+				? Promise.reject(new Error('payroll_audit_logs is missing'))
+				: [[], undefined]
+		);
+
+		const res = await PUT(putRequest({ id: 42, payment_status: 'paid' }));
+
+		const body = await res.json();
+		expect(res.status).toBe(200);
+		expect(body.success).toBe(true);
+		expect(body.message).toMatch(/updated successfully/i);
+		expect(auditInsert()).toBeDefined();
+		errorSpy.mockRestore();
 	});
 });

@@ -13,6 +13,12 @@ import {
 	findAnyLockedRun,
 	runMonthDate,
 } from '@/app/api/payroll/_lib/payroll-run';
+import {
+	PAYROLL_AUDIT_ACTION,
+	PAYROLL_AUDIT_ENTITY,
+	auditSnapshot,
+	recordPayrollAudit,
+} from '@/app/api/payroll/_lib/payroll-audit';
 
 const safeNum = (v) => {
 	const n = Number(v);
@@ -196,8 +202,20 @@ export async function PUT(request) {
 
 		db = await dbConnect();
 
+		// Read the row before the write: the audit trail has to hold the payment
+		// state this change displaced, not what the caller claims it was.
+		const [priorRows] = await db.execute(
+			`SELECT id, employee_id, month, payment_status, payment_date,
+              payment_reference, remarks
+         FROM payroll_slips
+        WHERE id = ?
+        LIMIT 1`,
+			[id]
+		);
+		const slip = priorRows[0] || null;
+
 		// Only allow updating payment-related fields (slip data is immutable)
-		await db.execute(
+		const [result] = await db.execute(
 			`UPDATE payroll_slips 
        SET payment_status = COALESCE(?, payment_status),
            payment_date = ?,
@@ -212,6 +230,29 @@ export async function PUT(request) {
 				id,
 			]
 		);
+
+		// A slip id that matched nothing changed nothing, so there is nobody to
+		// attribute. Payment is tracked per slip, so this is the entry that says
+		// who marked it paid and when.
+		if (result.affectedRows > 0 && slip) {
+			const period = payrollPeriod(slip.month);
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_SLIP,
+				entityId: slip.id,
+				action: PAYROLL_AUDIT_ACTION.UPDATE,
+				employeeId: slip.employee_id,
+				month: period ? period.monthNumber : null,
+				year: period ? period.year : null,
+				performedBy: authResult.user?.id,
+				oldValues: auditSnapshot(slip),
+				newValues: auditSnapshot({
+					payment_status,
+					payment_date,
+					payment_reference,
+					remarks,
+				}),
+			});
+		}
 
 		return NextResponse.json({
 			success: true,

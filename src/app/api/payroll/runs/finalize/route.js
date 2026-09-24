@@ -14,6 +14,11 @@ import {
 	findEmployeesWithoutProfiles,
 	summarizeMonthSlips,
 } from '@/app/api/payroll/_lib/payroll-run';
+import {
+	PAYROLL_AUDIT_ACTION,
+	PAYROLL_AUDIT_ENTITY,
+	recordPayrollAudit,
+} from '@/app/api/payroll/_lib/payroll-audit';
 
 /** "Asha Rao (EMP011), Ravi Kumar (EMP012)" — the people a refusal names. */
 const nameList = (employees) =>
@@ -159,6 +164,27 @@ export async function POST(request) {
 				{ status: 409 }
 			);
 		}
+
+		// The month is now locked, so who locked it and on what numbers is the
+		// entry a dispute starts from.
+		await recordPayrollAudit(db, {
+			entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_RUN,
+			entityId: run.id,
+			action: PAYROLL_AUDIT_ACTION.FINALIZE,
+			payrollRunId: run.id,
+			month: period.monthNumber,
+			year: period.year,
+			performedBy: finalizedBy,
+			oldValues: { status: 'draft' },
+			newValues: {
+				status: 'finalized',
+				total_employees: summary.headcount,
+				total_gross: summary.total_gross,
+				total_deductions: summary.total_deductions,
+				total_net_pay: summary.total_net_pay,
+				total_employer_contribution: summary.total_employer_contribution,
+			},
+		});
 
 		return NextResponse.json({
 			success: true,

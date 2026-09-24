@@ -5,6 +5,12 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	PAYROLL_AUDIT_ACTION,
+	PAYROLL_AUDIT_ENTITY,
+	auditSnapshot,
+	recordPayrollAudit,
+} from '@/app/api/payroll/_lib/payroll-audit';
 
 /**
  * GET - Fetch all DA schedule entries
@@ -95,6 +101,24 @@ export async function POST(request) {
 			]
 		);
 
+		// This facade writes the same payroll_schedules row /api/payroll/schedules
+		// writes, so a DA change is a Component Rate change and is audited as one.
+		await recordPayrollAudit(db, {
+			entityType: PAYROLL_AUDIT_ENTITY.COMPONENT_RATE,
+			entityId: result.insertId,
+			action: PAYROLL_AUDIT_ACTION.CREATE,
+			performedBy: authResult.user?.id,
+			newValues: auditSnapshot({
+				component_type: 'da',
+				value_type: 'fixed',
+				value: da_amount,
+				effective_from,
+				effective_to: effective_to || null,
+				is_active: is_active ? 1 : 0,
+				remarks: remarks || null,
+			}),
+		});
+
 		return NextResponse.json(
 			{
 				success: true,
@@ -153,7 +177,15 @@ export async function PUT(request) {
 			);
 		}
 
-		await db.execute(
+		// Read the rate before the write: this is the DA payroll was paying with,
+		// and it is what a dispute has to be able to reconstruct.
+		const [priorRows] = await db.execute(
+			`SELECT * FROM payroll_schedules WHERE id = ? AND component_type = 'da' LIMIT 1`,
+			[id]
+		);
+		const before = priorRows[0] || null;
+
+		const [result] = await db.execute(
 			`UPDATE payroll_schedules 
        SET value = COALESCE(?, value),
            effective_from = COALESCE(?, effective_from),
@@ -170,6 +202,25 @@ export async function PUT(request) {
 				id,
 			]
 		);
+
+		// This route reports success even for an id it never matched, so gate the
+		// entry on a row that was really written.
+		if (result.affectedRows > 0) {
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.COMPONENT_RATE,
+				entityId: before ? before.id : id,
+				action: PAYROLL_AUDIT_ACTION.UPDATE,
+				performedBy: authResult.user?.id,
+				oldValues: auditSnapshot(before),
+				newValues: auditSnapshot({
+					value: da_amount ?? undefined,
+					effective_from: effective_from ?? undefined,
+					effective_to,
+					is_active: is_active === undefined ? undefined : is_active ? 1 : 0,
+					remarks,
+				}),
+			});
+		}
 
 		return NextResponse.json({
 			success: true,
@@ -217,10 +268,30 @@ export async function DELETE(request) {
 
 		db = await dbConnect();
 
-		await db.execute(
+		// Read before deleting: afterwards nothing records the DA rate that was in
+		// force, or which component row it was.
+		const [priorRows] = await db.execute(
+			`SELECT * FROM payroll_schedules WHERE id = ? AND component_type = 'da' LIMIT 1`,
+			[id]
+		);
+		const before = priorRows[0] || null;
+
+		const [result] = await db.execute(
 			`DELETE FROM payroll_schedules WHERE id = ? AND component_type = 'da'`,
 			[id]
 		);
+
+		// This route reports success even for an id it never matched, so gate the
+		// entry on a row that really went away.
+		if (result.affectedRows > 0 && before) {
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.COMPONENT_RATE,
+				entityId: before.id,
+				action: PAYROLL_AUDIT_ACTION.DELETE,
+				performedBy: authResult.user?.id,
+				oldValues: auditSnapshot(before),
+			});
+		}
 
 		return NextResponse.json({
 			success: true,
