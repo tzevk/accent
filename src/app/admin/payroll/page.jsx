@@ -53,6 +53,23 @@ const PAYMENT_STATUSES = {
 const paymentStatus = (slip) =>
 	PAYMENT_STATUSES[slip.payment_status] || PAYMENT_STATUSES.pending;
 
+/**
+ * payroll_runs.status → badge. A month with no run row has never been
+ * generated, so it says so rather than pretending to be a draft.
+ */
+const RUN_STATUSES = {
+	draft: { label: 'Draft', badge: 'bg-slate-100 text-slate-700' },
+	finalized: { label: 'Finalized', badge: 'bg-green-100 text-green-700' },
+};
+
+const runStatus = (run) =>
+	run
+		? RUN_STATUSES[run.status] || {
+				label: run.status,
+				badge: 'bg-gray-100 text-gray-700',
+			}
+		: { label: 'Not generated', badge: 'bg-gray-100 text-gray-600' };
+
 const STREAMS = [
 	{ value: 'payroll', label: 'Payroll' },
 	{ value: 'contract', label: 'Contract' },
@@ -71,14 +88,19 @@ export default function PayrollRunDashboard() {
 	const [error, setError] = useState('');
 	const [success, setSuccess] = useState('');
 	const [scheduledDA, setScheduledDA] = useState(0);
+	const [run, setRun] = useState(null);
+	const [finalizing, setFinalizing] = useState(false);
 
 	const currentStream = STREAMS.find((s) => s.value === stream) || STREAMS[0];
 	const streamLabel = currentStream.label;
 	const monthSlug = month.substring(0, 7);
+	const runBadge = runStatus(run);
+	const isFinalized = run?.status === 'finalized';
 
 	useEffect(() => {
 		fetchSlips();
 		fetchScheduledDA();
+		fetchRun();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [month, stream]);
 
@@ -120,6 +142,17 @@ export default function PayrollRunDashboard() {
 		}
 	};
 
+	/** Read the month's Payroll Run, whose status is the month's lock. */
+	const fetchRun = async () => {
+		try {
+			const res = await fetch(`/api/payroll/runs?month=${month}`);
+			const data = await res.json();
+			setRun(data.success ? data.data.run : null);
+		} catch {
+			setRun(null);
+		}
+	};
+
 	const generateSlips = async () => {
 		if (
 			!confirm(
@@ -149,6 +182,7 @@ export default function PayrollRunDashboard() {
 				setSuccess(
 					`Payroll Slips generated for ${streamLabel} employees: ${results.success || 0} created, ${results.skipped || 0} skipped, ${results.failed || 0} failed`
 				);
+				if (data.run) setRun(data.run);
 				fetchSlips();
 			} else {
 				setError(data.error);
@@ -157,6 +191,65 @@ export default function PayrollRunDashboard() {
 			setError('Failed to generate payroll');
 		} finally {
 			setGenerating(false);
+		}
+	};
+
+	const finalizeRun = async () => {
+		try {
+			setError('');
+			setSuccess('');
+
+			// Re-read the run so the confirmation signs off on current numbers.
+			const res = await fetch(`/api/payroll/runs?month=${month}`);
+			const data = await res.json();
+			if (!data.success) {
+				setError(data.error || 'Failed to load the Payroll Run');
+				return;
+			}
+
+			const monthRun = data.data.run;
+			const monthSummary = data.data.summary;
+			setRun(monthRun);
+
+			if (!monthRun) {
+				setError(
+					`No Payroll Run exists for ${formatMonth(month)} yet — generate Payroll Slips first.`
+				);
+				return;
+			}
+
+			if (
+				!confirm(
+					`Finalize the Payroll Run for ${formatMonth(month)}?\n\n` +
+						`Employees: ${monthSummary.headcount}\n` +
+						`Total Gross: ${formatCurrency(monthSummary.total_gross)}\n` +
+						`Total Deductions: ${formatCurrency(monthSummary.total_deductions)}\n` +
+						`Net Pay: ${formatCurrency(monthSummary.total_net_pay)}\n\n` +
+						'Finalizing locks the month — Payroll Slips can no longer be generated.'
+				)
+			)
+				return;
+
+			setFinalizing(true);
+
+			const finalizeRes = await fetch('/api/payroll/runs/finalize', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ month }),
+			});
+			const finalizeData = await finalizeRes.json();
+
+			if (finalizeData.success) {
+				setRun(finalizeData.data);
+				setSuccess(finalizeData.message);
+				fetchSlips();
+			} else {
+				setError(finalizeData.error || 'Failed to finalize the Payroll Run');
+			}
+		} catch {
+			setError('Failed to finalize the Payroll Run');
+		} finally {
+			setFinalizing(false);
 		}
 	};
 
@@ -265,16 +358,27 @@ export default function PayrollRunDashboard() {
 							<h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
 								<DocumentTextIcon className="w-7 h-7 text-[#64126D]" />
 								Payroll Run
+								<span
+									className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${runBadge.badge}`}
+								>
+									{runBadge.label}
+								</span>
 							</h1>
 							<p className="text-sm text-gray-500 mt-0.5">
-								Review the month&apos;s Payroll Slips, generate and export
+								Review the month&apos;s Payroll Slips, generate, finalize and
+								export
 							</p>
 						</div>
 
 						<div className="flex flex-wrap items-center gap-3">
 							<button
 								onClick={generateSlips}
-								disabled={generating}
+								disabled={generating || isFinalized}
+								title={
+									isFinalized
+										? 'The month is locked by its finalized Payroll Run'
+										: undefined
+								}
 								className="inline-flex items-center px-4 py-2 bg-[#64126D] text-white rounded-lg hover:bg-[#52105a] disabled:opacity-50 transition-colors text-sm font-medium"
 							>
 								{generating ? (
@@ -283,6 +387,22 @@ export default function PayrollRunDashboard() {
 									<CurrencyRupeeIcon className="w-4 h-4 mr-2" />
 								)}
 								Generate Payroll Slips
+							</button>
+
+							<button
+								onClick={finalizeRun}
+								disabled={finalizing || isFinalized}
+								title={
+									isFinalized ? 'This month is already finalized' : undefined
+								}
+								className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium"
+							>
+								{finalizing ? (
+									<InlineSpinner className="w-4 h-4 mr-2" />
+								) : (
+									<CheckCircleIcon className="w-4 h-4 mr-2" />
+								)}
+								Finalize Payroll Run
 							</button>
 
 							<button
