@@ -391,4 +391,49 @@ describe('payroll slips API — payment changes are audited (issue #243)', () =>
 		expect(auditInsert()).toBeDefined();
 		errorSpy.mockRestore();
 	});
+
+	/**
+	 * The audit tests above send payment_date and payment_reference, but the one
+	 * caller in the app (the Reports edit form, src/app/reports/page.jsx) sends
+	 * only { id, payment_status, remarks }. Those two fields then arrive
+	 * undefined, and mysql2's execute() rejects ANY undefined binding with
+	 * "Bind parameters must not contain undefined" — so the request 500ed before
+	 * the audit INSERT above could ever run. Mocking db.execute hid it, because
+	 * the mock never inspects the bindings.
+	 */
+	it('accepts the edit form body, whose omitted payment fields are not undefined bindings', async () => {
+		grant('payroll:update');
+		signedInAs(12);
+		mocks.mockExecute
+			.mockResolvedValueOnce(slipped([PENDING_SLIP]))
+			.mockResolvedValueOnce(affected(1));
+
+		const res = await PUT(
+			putRequest({ id: 42, payment_status: 'paid', remarks: 'paid by NEFT' })
+		);
+
+		expect(res.status).toBe(200);
+
+		const update = mocks.mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('UPDATE payroll_slips')
+		);
+		expect(update).toBeDefined();
+		const [sql, params] = update!;
+
+		// The exact failure mysql2 would raise, prevented at the binding site.
+		expect(
+			(params as unknown[]).filter((value) => value === undefined)
+		).toEqual([]);
+		// An omitted field must mean "leave it alone". Binding NULL without the
+		// COALESCE would wipe a recorded payment_date on a status-only edit.
+		expect(String(sql)).toContain('payment_date = COALESCE(?, payment_date)');
+		expect(String(sql)).toContain(
+			'payment_reference = COALESCE(?, payment_reference)'
+		);
+		expect((params as unknown[])[1]).toBeNull();
+		expect((params as unknown[])[2]).toBeNull();
+
+		// And the entry the criterion is about does fire for that body.
+		expect(auditInsert()).toBeDefined();
+	});
 });

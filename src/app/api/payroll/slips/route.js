@@ -214,19 +214,30 @@ export async function PUT(request) {
 		);
 		const slip = priorRows[0] || null;
 
-		// Only allow updating payment-related fields (slip data is immutable)
+		// Only allow updating payment-related fields (slip data is immutable).
+		//
+		// Every column is COALESCEd and every binding is `?? null`, because BOTH
+		// halves of that are load-bearing:
+		//   - mysql2's execute() throws "Bind parameters must not contain
+		//     undefined" on a single undefined binding, so an omitted field used to
+		//     fail the whole request with a 500 instead of updating the rest.
+		//   - the COALESCE is what makes an omitted field mean "leave it alone".
+		//     Binding NULL without it would wipe a recorded payment_date every time
+		//     someone only changed the status.
+		// The admin Reports edit form is the only caller and sends exactly
+		// { id, payment_status, remarks }.
 		const [result] = await db.execute(
 			`UPDATE payroll_slips 
        SET payment_status = COALESCE(?, payment_status),
-           payment_date = ?,
-           payment_reference = ?,
-           remarks = ?
+           payment_date = COALESCE(?, payment_date),
+           payment_reference = COALESCE(?, payment_reference),
+           remarks = COALESCE(?, remarks)
        WHERE id = ?`,
 			[
 				payment_status ?? null,
-				payment_date !== undefined ? payment_date : undefined,
-				payment_reference !== undefined ? payment_reference : undefined,
-				remarks !== undefined ? remarks : undefined,
+				payment_date ?? null,
+				payment_reference ?? null,
+				remarks ?? null,
 				id,
 			]
 		);
