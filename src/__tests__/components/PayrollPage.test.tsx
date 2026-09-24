@@ -175,7 +175,7 @@ describe('PayrollPage', () => {
 		);
 	});
 
-	it('lists only Payroll employees with payroll actions and no add/contract controls', async () => {
+	it('lists only Payroll employees with Salary Profile master data actions', async () => {
 		renderPage();
 
 		expect(
@@ -197,13 +197,16 @@ describe('PayrollPage', () => {
 		});
 
 		expect(
-			screen.getByRole('button', { name: 'Generate Payroll' })
-		).toBeVisible();
+			screen.queryByRole('button', { name: 'Generate Payroll' })
+		).not.toBeInTheDocument();
 		expect(
-			screen.getByRole('button', { name: 'Salary Slip (PDF)' })
-		).toBeVisible();
+			screen.queryByRole('button', { name: 'Salary Slip (PDF)' })
+		).not.toBeInTheDocument();
 		expect(
-			screen.getByRole('button', { name: 'Salary Sheet (Excel)' })
+			screen.queryByRole('button', { name: 'Salary Sheet (Excel)' })
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole('button', { name: 'Salary Structure (All Users)' })
 		).toBeVisible();
 		expect(screen.queryByText('Add Employee')).not.toBeInTheDocument();
 
@@ -244,50 +247,18 @@ describe('PayrollPage', () => {
 		).toBeVisible();
 	});
 
-	it('generates monthly payroll and reports skipped duplicates', async () => {
-		fetchMock.mockImplementation(
-			(input: RequestInfo | URL, init?: RequestInit) => {
-				const url = String(input);
-				if (url.startsWith('/api/employees/list')) {
-					return response({
-						success: true,
-						employees,
-						departments: ['Finance'],
-						workplaces: ['Mumbai'],
-						pagination: { total: 1, totalRecords: 2, limit: 100 },
-					});
-				}
-				if (url === '/api/payroll/generate' && init?.method === 'POST') {
-					return response({
-						success: true,
-						results: { generated: 3, skipped: 1 },
-					});
-				}
-				return Promise.reject(new Error(`Unexpected request: ${url}`));
-			}
-		);
-
+	it('never calls the payroll run endpoints (generation, PDF and Excel exports)', async () => {
 		renderPage();
-		fireEvent.click(
-			await screen.findByRole('button', { name: 'Generate Payroll' })
-		);
+		await screen.findByText('Alice Payroll');
 
-		await waitFor(() => {
-			expect(screen.getByText(/3 slips created, 1 skipped/)).toBeVisible();
-		});
-		const generateCall = fetchMock.mock.calls.find(
-			([url]) => String(url) === '/api/payroll/generate'
+		const runCalls = fetchMock.mock.calls.filter(([url]) =>
+			/^\/api\/payroll\/(generate|bulk-pdf|export-sheet)/.test(String(url))
 		);
-		expect(JSON.parse(String(generateCall?.[1]?.body))).toEqual({
-			month: expect.stringMatching(/^\d{4}-\d{2}-01$/),
-			all: true,
-			salary_type: 'payroll',
-		});
+		expect(runCalls).toEqual([]);
 	});
 
-	it('exports salary slips as PDF and salary sheet as Excel', async () => {
-		const pdfBlob = { size: 10 } as Blob;
-		const excelBlob = { size: 12 } as Blob;
+	it('exports the all-users salary structure (master data export)', async () => {
+		const structureBlob = { size: 12 } as Blob;
 		fetchMock.mockImplementation((input: RequestInfo | URL) => {
 			const url = String(input);
 			if (url.startsWith('/api/employees/list')) {
@@ -299,18 +270,10 @@ describe('PayrollPage', () => {
 					pagination: { total: 1, totalRecords: 2, limit: 100 },
 				});
 			}
-			if (url.startsWith('/api/payroll/bulk-pdf')) {
-				expect(url).toContain('salary_type=payroll');
+			if (url.startsWith('/api/employees/salary-structure/export')) {
 				return Promise.resolve({
 					ok: true,
-					blob: async () => pdfBlob,
-				});
-			}
-			if (url.startsWith('/api/payroll/export-sheet')) {
-				expect(url).toContain('salary_type=payroll');
-				return Promise.resolve({
-					ok: true,
-					blob: async () => excelBlob,
+					blob: async () => structureBlob,
 				});
 			}
 			return Promise.reject(new Error(`Unexpected request: ${url}`));
@@ -319,17 +282,17 @@ describe('PayrollPage', () => {
 		renderPage();
 		await screen.findByText('Alice Payroll');
 
-		fireEvent.click(screen.getByRole('button', { name: 'Salary Slip (PDF)' }));
-		expect(
-			await screen.findByText('Salary slips PDF downloaded')
-		).toBeVisible();
-
 		fireEvent.click(
-			screen.getByRole('button', { name: 'Salary Sheet (Excel)' })
+			screen.getByRole('button', { name: 'Salary Structure (All Users)' })
 		);
 		expect(
-			await screen.findByText('Salary sheet Excel downloaded')
+			await screen.findByText('All-users salary structure Excel downloaded')
 		).toBeVisible();
+
+		const exportCalls = fetchMock.mock.calls.filter(([url]) =>
+			String(url).startsWith('/api/employees/salary-structure/export')
+		);
+		expect(exportCalls.length).toBe(1);
 	});
 
 	it('loads the saved Salary Profile and derives the monthly breakdown through the shared boundary', async () => {

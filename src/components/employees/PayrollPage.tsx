@@ -4,18 +4,14 @@ import { Fragment, useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
-	ArrowPathIcon,
-	CalendarDaysIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
 	CurrencyRupeeIcon,
 	DocumentArrowDownIcon,
-	DocumentTextIcon,
 	EyeIcon,
 	FunnelIcon,
 	MagnifyingGlassIcon,
 	PencilIcon,
-	TableCellsIcon,
 	TrashIcon,
 	UserGroupIcon,
 } from '@heroicons/react/24/outline';
@@ -23,7 +19,7 @@ import EmployeeEditor from '@/components/employees/EmployeeEditor';
 import AccessGuard from '@/components/AccessGuard';
 import Navbar from '@/components/Navbar';
 import EmployeeAvatar from '@/components/employees/EmployeeAvatar';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiGet } from '@/lib/api-client';
 import SalaryProfileSection, {
 	enabled,
 	type SalaryProfileRecord,
@@ -37,11 +33,6 @@ import {
 } from '@/hooks/useEmployeeDirectory';
 import { useEmployeeForm } from '@/hooks/useEmployeeForm';
 import { useSessionRBAC } from '@/utils/client-rbac';
-
-const currentMonth = () => {
-	const now = new Date();
-	return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-};
 
 const parseJson = (value: unknown): Record<string, unknown> => {
 	if (typeof value !== 'string' || !value) return {};
@@ -356,17 +347,11 @@ export default function PayrollPage() {
 	const [expandedSalaryId, setExpandedSalaryId] = useState<
 		number | string | null
 	>(null);
-	const [payrollMonth, setPayrollMonth] = useState(currentMonth);
-	const [generatingPayroll, setGeneratingPayroll] = useState(false);
-	const [exportingSlipPdf, setExportingSlipPdf] = useState(false);
-	const [exportingSheetExcel, setExportingSheetExcel] = useState(false);
 	const [exportingAllStructures, setExportingAllStructures] = useState(false);
 	const [payrollMessage, setPayrollMessage] = useState<PayrollMessage>({
 		type: '',
 		text: '',
 	});
-
-	const payrollMonthForApi = `${payrollMonth}-01`;
 
 	const form = useEmployeeForm({
 		employeeType: 'Payroll',
@@ -423,73 +408,6 @@ export default function PayrollPage() {
 		},
 		[]
 	);
-
-	const generatePayroll = async () => {
-		const monthLabel = new Date(
-			`${payrollMonthForApi}T00:00:00`
-		).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-		if (
-			!window.confirm(
-				`Generate payroll for all Payroll employees for ${monthLabel}?`
-			)
-		)
-			return;
-		setGeneratingPayroll(true);
-		setPayrollMessage({ type: '', text: '' });
-		try {
-			const data = (await apiPost('/api/payroll/generate', {
-				month: payrollMonthForApi,
-				all: true,
-				salary_type: 'payroll',
-			})) as {
-				success?: boolean;
-				error?: string;
-				results?: { generated?: number; skipped?: number };
-			};
-			if (data.success) {
-				setPayrollMessage({
-					type: 'success',
-					text: `Payroll generated: ${data.results?.generated || 0} slips created, ${data.results?.skipped || 0} skipped`,
-				});
-			} else {
-				setPayrollMessage({
-					type: 'error',
-					text: data.error || 'Generation failed',
-				});
-			}
-		} catch {
-			setPayrollMessage({ type: 'error', text: 'Failed to generate payroll' });
-		} finally {
-			setGeneratingPayroll(false);
-			setTimeout(() => setPayrollMessage({ type: '', text: '' }), 5000);
-		}
-	};
-
-	const exportSalarySlipPdf = async () => {
-		setExportingSlipPdf(true);
-		setPayrollMessage({ type: '', text: '' });
-		await downloadFile(
-			`/api/payroll/bulk-pdf?month=${payrollMonthForApi}&salary_type=payroll`,
-			`Salary_Slips_Payroll_${payrollMonth}.pdf`,
-			'Salary slips PDF downloaded',
-			'Failed to export PDF'
-		);
-		setExportingSlipPdf(false);
-		setTimeout(() => setPayrollMessage({ type: '', text: '' }), 5000);
-	};
-
-	const exportSalarySheetExcel = async () => {
-		setExportingSheetExcel(true);
-		setPayrollMessage({ type: '', text: '' });
-		await downloadFile(
-			`/api/payroll/export-sheet?month=${payrollMonthForApi}&salary_type=payroll`,
-			`Salary_Sheet_Payroll_${payrollMonth}.xlsx`,
-			'Salary sheet Excel downloaded',
-			'Failed to export Excel'
-		);
-		setExportingSheetExcel(false);
-		setTimeout(() => setPayrollMessage({ type: '', text: '' }), 5000);
-	};
 
 	const exportAllSalaryStructures = async () => {
 		setExportingAllStructures(true);
@@ -578,8 +496,10 @@ export default function PayrollPage() {
 								Payroll Employees
 							</h1>
 							<p className="text-gray-600">
-								Salary Profiles, monthly Payroll Slip generation, and payroll
-								exports for Payroll employees. Add employees from the{' '}
+								Salary Profiles for Payroll employees: pay agreements,
+								components, and applicability flags. Monthly Payroll Runs
+								(generation and exports) live in the admin payroll section. Add
+								employees from the{' '}
 								<Link href="/employees" className="text-purple-700 underline">
 									employee hub
 								</Link>
@@ -622,55 +542,9 @@ export default function PayrollPage() {
 						/>
 					) : (
 						<>
-							{/* Monthly payroll actions */}
+							{/* Salary Profile master data actions */}
 							<div className="mb-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
 								<div className="flex flex-wrap items-center gap-3">
-									<div className="flex items-center gap-2">
-										<CalendarDaysIcon className="h-5 w-5 text-gray-500" />
-										<input
-											aria-label="Payroll month"
-											type="month"
-											value={payrollMonth}
-											onChange={(event) => setPayrollMonth(event.target.value)}
-											className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-										/>
-									</div>
-									<div className="h-8 w-px bg-gray-200" />
-									<button
-										type="button"
-										onClick={() => void generatePayroll()}
-										disabled={generatingPayroll}
-										className="flex items-center gap-2 rounded-lg bg-[#64126D] px-4 py-2 text-sm font-medium text-white hover:bg-[#86288F] disabled:cursor-not-allowed disabled:opacity-50"
-									>
-										<ArrowPathIcon
-											className={`h-4 w-4 ${generatingPayroll ? 'animate-spin' : ''}`}
-										/>
-										{generatingPayroll ? 'Generating...' : 'Generate Payroll'}
-									</button>
-									<button
-										type="button"
-										onClick={() => void exportSalarySlipPdf()}
-										disabled={exportingSlipPdf}
-										className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-									>
-										<DocumentTextIcon
-											className={`h-4 w-4 ${exportingSlipPdf ? 'animate-pulse' : ''}`}
-										/>
-										{exportingSlipPdf ? 'Exporting...' : 'Salary Slip (PDF)'}
-									</button>
-									<button
-										type="button"
-										onClick={() => void exportSalarySheetExcel()}
-										disabled={exportingSheetExcel}
-										className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-									>
-										<TableCellsIcon
-											className={`h-4 w-4 ${exportingSheetExcel ? 'animate-pulse' : ''}`}
-										/>
-										{exportingSheetExcel
-											? 'Exporting...'
-											: 'Salary Sheet (Excel)'}
-									</button>
 									<button
 										type="button"
 										onClick={() => void exportAllSalaryStructures()}
