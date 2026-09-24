@@ -535,12 +535,11 @@ export default function ComponentRatesPage() {
 												)}
 											</td>
 											<td className="px-4 py-3.5 text-sm text-gray-700">
-												{rate.min_salary && rate.max_salary
-													? `${formatCurrency(rate.min_salary)} - ${formatCurrency(rate.max_salary)}`
-													: null}
-												{!rate.min_salary || !rate.max_salary ? (
+												{rate.min_salary && rate.max_salary ? (
+													`${formatCurrency(rate.min_salary)} - ${formatCurrency(rate.max_salary)}`
+												) : (
 													<span className="text-gray-400">—</span>
-												) : null}
+												)}
 											</td>
 											<td className="px-4 py-3.5">
 												<span

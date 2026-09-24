@@ -3,8 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fetchMock = vi.fn();
 
+const sessionRbac = {
+	user: { is_super_admin: true },
+	can: () => true,
+	RESOURCES: { PAYROLL: 'payroll' },
+	PERMISSIONS: { READ: 'read' },
+	loading: false,
+};
+
 vi.mock('@/utils/client-rbac', () => ({
-	useSessionRBAC: vi.fn(),
+	// The page asks this hook whether the caller may read payroll data (the
+	// PL/OT-payout fetch), so the mock carries the shape the real hook returns —
+	// one stable object, like a context value, not a new one per render.
+	useSessionRBAC: () => sessionRbac,
 }));
 vi.mock('@/components/AccessGuard', () => ({
 	default: ({ children }) => children,

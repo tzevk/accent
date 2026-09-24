@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { grantFor } from '../test-perms';
+import { payrollAuditRows } from '../audit-rows';
 
 const mocks = vi.hoisted(() => ({
 	mockDbConnect: vi.fn(),
@@ -32,11 +33,8 @@ const slipped = (rows: unknown[]) => [rows, undefined];
 /** UPDATE/DELETE result: mysql2 hands back a ResultSetHeader, not rows. */
 const affected = (count: number) => [{ affectedRows: count }, undefined];
 
-/** The INSERT the route made into payroll_audit_logs, or undefined if none. */
-const auditInsert = () =>
-	mocks.mockExecute.mock.calls.find(([sql]) =>
-		String(sql).includes('INSERT INTO payroll_audit_logs')
-	);
+/** The audit entries the route wrote, with their columns named. */
+const auditRows = () => payrollAuditRows(mocks.mockExecute);
 
 describe('payroll slips API — single-slip read (issue #240)', () => {
 	beforeEach(() => {
@@ -320,18 +318,18 @@ describe('payroll slips API — deletion cannot strip a locked month (issue #242
 		const res = await DELETE(deleteRequest('?id=42'));
 
 		expect(res.status).toBe(200);
-		const [, params] = auditInsert()!;
-		expect(params[0]).toBe('payroll_slip');
-		expect(params[1]).toBe(42);
-		expect(params[2]).toBe(7);
-		expect(params[3]).toBe('delete');
-		expect(JSON.parse(params[4] as string)).toMatchObject({
-			payment_status: 'pending',
+		const [audit] = auditRows();
+		expect(audit).toMatchObject({
+			entityType: 'payroll_slip',
+			entityId: 42,
+			employeeId: 7,
+			action: 'delete',
+			payrollRunId: null,
+			month: 8,
+			year: 2026,
+			performedBy: 9,
 		});
-		expect(params[5]).toBeNull();
-		expect(params[7]).toBe(8);
-		expect(params[8]).toBe(2026);
-		expect(params[9]).toBe(9);
+		expect(audit.oldValues).toMatchObject({ payment_status: 'pending' });
 	});
 
 	it('writes no entry for a delete that removed nothing', async () => {
@@ -349,7 +347,7 @@ describe('payroll slips API — deletion cannot strip a locked month (issue #242
 		const res = await DELETE(deleteRequest('?id=42'));
 
 		expect(res.status).toBe(200);
-		expect(auditInsert()).toBeUndefined();
+		expect(auditRows()).toHaveLength(0);
 	});
 });
 
@@ -410,16 +408,19 @@ describe('payroll slips API — payment changes are audited (issue #243)', () =>
 		);
 
 		expect(res.status).toBe(200);
-		const insert = auditInsert();
-		expect(insert).toBeDefined();
-		const [, params] = insert!;
-		expect(params[0]).toBe('payroll_slip');
-		expect(params[1]).toBe(42);
-		expect(params[2]).toBe(7); // the employee the slip belongs to
-		expect(params[3]).toBe('update');
-		// The row is read before the write, so old_values is the real prior state
+		const [audit] = auditRows();
+		expect(audit).toMatchObject({
+			entityType: 'payroll_slip',
+			entityId: 42,
+			employeeId: 7, // the employee the slip belongs to
+			action: 'update',
+			month: 8,
+			year: 2026,
+			performedBy: 12, // the session user
+		});
+		// The row is read before the write, so oldValues is the real prior state
 		// — minus the row's own history columns.
-		expect(JSON.parse(params[4] as string)).toEqual({
+		expect(audit.oldValues).toEqual({
 			id: 42,
 			employee_id: 7,
 			month: '2026-08-01',
@@ -428,14 +429,11 @@ describe('payroll slips API — payment changes are audited (issue #243)', () =>
 			payment_reference: null,
 			remarks: null,
 		});
-		expect(JSON.parse(params[5] as string)).toEqual({
+		expect(audit.newValues).toEqual({
 			payment_status: 'paid',
 			payment_date: '2026-09-05',
 			payment_reference: 'NEFT/9911',
 		});
-		expect(params[7]).toBe(8); // month
-		expect(params[8]).toBe(2026); // year
-		expect(params[9]).toBe(12); // the session user
 	});
 
 	it('writes nothing when the slip id matched no row', async () => {
@@ -451,7 +449,7 @@ describe('payroll slips API — payment changes are audited (issue #243)', () =>
 		expect(res.status).toBe(200);
 		const body = await res.json();
 		expect(body.success).toBe(true);
-		expect(auditInsert()).toBeUndefined();
+		expect(auditRows()).toHaveLength(0);
 	});
 
 	it('still updates the slip when the audit write fails', async () => {
@@ -473,7 +471,7 @@ describe('payroll slips API — payment changes are audited (issue #243)', () =>
 		expect(res.status).toBe(200);
 		expect(body.success).toBe(true);
 		expect(body.message).toMatch(/updated successfully/i);
-		expect(auditInsert()).toBeDefined();
+		expect(auditRows()).toHaveLength(1);
 		errorSpy.mockRestore();
 	});
 
@@ -519,6 +517,6 @@ describe('payroll slips API — payment changes are audited (issue #243)', () =>
 		expect((params as unknown[])[2]).toBeNull();
 
 		// And the entry the criterion is about does fire for that body.
-		expect(auditInsert()).toBeDefined();
+		expect(auditRows()).toHaveLength(1);
 	});
 });

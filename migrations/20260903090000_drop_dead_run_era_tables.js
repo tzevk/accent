@@ -177,30 +177,28 @@ CREATE TABLE IF NOT EXISTS \`statutory_payments\` (
 	// (empty) `employee_payroll` does not have, and MySQL refuses the constraint
 	// with errno 1452. Skipping it is the honest outcome — the rows are already
 	// orphans, and a failed rollback would leave the migration half-applied.
-	const orphans = async (table, column) => {
+	const hasOrphans = async (table, column) => {
 		const [rows] = await knex.raw(
 			`SELECT 1 FROM \`${table}\` WHERE \`${column}\` IS NOT NULL LIMIT 1`
 		);
-		if (rows.length > 0) {
-			console.warn(
-				`Skipping FK ${table}.${column} -> employee_payroll: the table still holds rows whose parent was dropped by this migration.`
-			);
-			return true;
-		}
-		return false;
+		if (rows.length === 0) return false;
+		console.warn(
+			`Skipping FK ${table}.${column} -> employee_payroll: the table still holds rows whose parent was dropped by this migration.`
+		);
+		return true;
 	};
 
-	if (!(await orphans('salary_manual_overrides', 'employee_payroll_id'))) {
+	if (!(await hasOrphans('salary_manual_overrides', 'employee_payroll_id'))) {
 		await knex.raw(
 			'ALTER TABLE `salary_manual_overrides` ADD CONSTRAINT `salary_manual_overrides_ibfk_1` FOREIGN KEY (`employee_payroll_id`) REFERENCES `employee_payroll` (`id`)'
 		);
 	}
-	if (!(await orphans('salary_slips', 'employee_payroll_id'))) {
+	if (!(await hasOrphans('salary_slips', 'employee_payroll_id'))) {
 		await knex.raw(
 			'ALTER TABLE `salary_slips` ADD CONSTRAINT `salary_slips_ibfk_1` FOREIGN KEY (`employee_payroll_id`) REFERENCES `employee_payroll` (`id`)'
 		);
 	}
-	if (!(await orphans('loan_repayment_schedule', 'payroll_id'))) {
+	if (!(await hasOrphans('loan_repayment_schedule', 'payroll_id'))) {
 		await knex.raw(
 			'ALTER TABLE `loan_repayment_schedule` ADD CONSTRAINT `fk_loan_repayment_payroll` FOREIGN KEY (`payroll_id`) REFERENCES `employee_payroll` (`id`) ON DELETE SET NULL'
 		);

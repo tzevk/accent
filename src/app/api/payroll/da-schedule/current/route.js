@@ -46,10 +46,12 @@ export async function GET(request) {
 		return NextResponse.json({
 			success: true,
 			data: {
-				// A number, not the DECIMAL column's string: the endpoint's whole
-				// contract is "the current DA amount", so it should not depend on
-				// how the driver renders DECIMAL.
-				da_amount: Number(da.value) || 0,
+				// The same rule the calculator, the listing, the PDF and the export
+				// apply: only a fixed DA is an amount, so a percentage-valued row
+				// reports 0 here and says so in value_type rather than handing back
+				// a percentage dressed up as rupees.
+				da_amount: da.value_type === 'percentage' ? 0 : Number(da.value) || 0,
+				value_type: da.value_type,
 				effective_from: da.effective_from,
 				effective_to: da.effective_to,
 			},

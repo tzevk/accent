@@ -6,7 +6,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import ExcelJS from 'exceljs';
-import { resolveScheduledDA } from '@/lib/payroll';
+import { FEBRUARY_PT, resolveScheduledDA } from '@/lib/payroll';
 
 /** Convert any value to a finite number; returns 0 for NaN/Infinity/null/undefined/strings */
 const safeNum = (v) => {
@@ -599,14 +599,14 @@ export async function GET(request) {
 				const esicEmployee = isAbsent
 					? safeNum(slip.esic_employee) * prorataFactor
 					: safeNum(slip.esic_employee);
-				// PT is always 300 in February, but also pro-rate if absent
+				// PT is a flat FEBRUARY_PT in February, but also pro-rate if absent
 				const originalPt = safeNum(slip.pt);
 				const pt = isAbsent
 					? monthNum === 2
-						? 300 * prorataFactor
+						? FEBRUARY_PT * prorataFactor
 						: originalPt * prorataFactor
 					: monthNum === 2
-						? 300
+						? FEBRUARY_PT
 						: originalPt;
 				const empLoanAdvance = loanAdvanceMap[slip.employee_id] || {
 					loan: 0,

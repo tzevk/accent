@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { grantFor } from '../test-perms';
+import { payrollAuditRows } from '../audit-rows';
 
 const mocks = vi.hoisted(() => ({
 	mockDbConnect: vi.fn(),
@@ -61,11 +62,11 @@ const jsonRequest = (body: unknown) =>
 		body: JSON.stringify(body),
 	});
 
-/** The audit INSERT the route made — it writes over the caller's connection. */
-const auditInsert = () =>
-	connection.execute.mock.calls.find(([sql]) =>
-		String(sql).includes('INSERT INTO payroll_audit_logs')
-	);
+/**
+ * The audit entries the route wrote, with their columns named. This route
+ * writes over the caller's pooled connection, so they live on its execute mock.
+ */
+const auditRows = () => payrollAuditRows(connection.execute);
 
 describe('salary-profile API — edits are audited (issue #243)', () => {
 	beforeEach(() => {
@@ -116,20 +117,20 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 		expect(res.status).toBe(200);
 		expect((await res.json()).success).toBe(true);
 
-		const insert = auditInsert();
-		expect(insert).toBeDefined();
-		const [, params] = insert!;
-		expect(params[0]).toBe('salary_profile');
-		expect(params[1]).toBe(61); // the row the INSERT created
-		expect(params[2]).toBe(7); // employee_id
-		expect(params[3]).toBe('create');
-		expect(params[4]).toBeNull(); // a create displaces nothing
-		expect(JSON.parse(params[5] as string)).toMatchObject({
+		const [audit] = auditRows();
+		expect(audit).toMatchObject({
+			entityType: 'salary_profile',
+			entityId: 61, // the row the INSERT created
+			employeeId: 7,
+			action: 'create',
+			oldValues: null, // a create displaces nothing
+		});
+		expect(audit.newValues).toMatchObject({
 			employee_id: 7,
 			gross_salary: 60000,
 			effective_from: '2026-09-01',
 		});
-		expect(params[9]).toBe(3);
+		expect(audit.performedBy).toBe(3);
 	});
 
 	it('audits an edit with the gross and flags it displaced', async () => {
@@ -146,13 +147,15 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 
 		expect(res.status).toBe(200);
 
-		const [, params] = auditInsert()!;
-		expect(params[0]).toBe('salary_profile');
-		expect(params[1]).toBe(55);
-		expect(params[2]).toBe(7);
-		expect(params[3]).toBe('update');
-		// old_values is the real prior row, free of the row's own history noise.
-		expect(JSON.parse(params[4] as string)).toEqual({
+		const [audit] = auditRows();
+		expect(audit).toMatchObject({
+			entityType: 'salary_profile',
+			entityId: 55,
+			employeeId: 7,
+			action: 'update',
+		});
+		// oldValues is the real prior row, free of the row's own history noise.
+		expect(audit.oldValues).toEqual({
 			id: 55,
 			employee_id: 7,
 			gross: 50000,
@@ -162,11 +165,11 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 			effective_to: null,
 			is_manual_override: 0,
 		});
-		expect(JSON.parse(params[5] as string)).toMatchObject({
+		expect(audit.newValues).toMatchObject({
 			id: 55,
 			gross_salary: 72000,
 		});
-		expect(params[9]).toBe(3);
+		expect(audit.performedBy).toBe(3);
 	});
 
 	it('audits the existing profile an employee+effective_from save overwrote', async () => {
@@ -193,11 +196,11 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 		);
 		expect(lookups).toHaveLength(1);
 
-		const [, params] = auditInsert()!;
-		expect(params[1]).toBe(55);
-		expect(params[3]).toBe('update');
-		expect(JSON.parse(params[4] as string)).toMatchObject({
-			gross_salary: 50000,
+		const [audit] = auditRows();
+		expect(audit).toMatchObject({
+			entityId: 55,
+			action: 'update',
+			oldValues: { gross_salary: 50000 },
 		});
 	});
 
@@ -216,7 +219,7 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 		// Existing response contract is untouched; there is simply nothing that
 		// was mutated to attribute.
 		expect(res.status).toBe(200);
-		expect(auditInsert()).toBeUndefined();
+		expect(auditRows()).toHaveLength(0);
 	});
 
 	it('audits the profile it deleted', async () => {
@@ -234,15 +237,15 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 
 		expect(res.status).toBe(200);
 
-		const [, params] = auditInsert()!;
-		expect(params[0]).toBe('salary_profile');
-		expect(params[1]).toBe(55);
-		expect(params[2]).toBe(7);
-		expect(params[3]).toBe('delete');
-		expect(JSON.parse(params[4] as string)).toMatchObject({
-			gross_salary: 50000,
+		const [audit] = auditRows();
+		expect(audit).toMatchObject({
+			entityType: 'salary_profile',
+			entityId: 55,
+			employeeId: 7,
+			action: 'delete',
+			newValues: null,
+			oldValues: { gross_salary: 50000 },
 		});
-		expect(params[5]).toBeNull();
 	});
 
 	it('writes no entry for a delete that removed nothing', async () => {
@@ -259,6 +262,6 @@ describe('salary-profile API — edits are audited (issue #243)', () => {
 		);
 
 		expect(res.status).toBe(404);
-		expect(auditInsert()).toBeUndefined();
+		expect(auditRows()).toHaveLength(0);
 	});
 });

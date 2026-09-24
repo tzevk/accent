@@ -6,7 +6,9 @@ import Navbar from '@/components/Navbar';
 import { useSession } from '@/context/SessionContext';
 import { R, add, mul, sub, toNumber } from '@/lib/money';
 import { formatCurrency, formatMonth } from '@/lib/format';
+import { FEBRUARY_PT } from '@/lib/payroll';
 import { PAYMENT_STATUS, paymentStatusBadge } from '@/lib/payment-status';
+import { apiGet, apiPost } from '@/lib/api-client';
 import { downloadFile } from '@/lib/download';
 import { InlineSpinner } from '@/components/LoadingSpinner';
 import {
@@ -30,12 +32,6 @@ import {
  * with payment status. Each row opens its Payroll Slip on the detail route,
  * which owns inspecting and printing a single slip.
  */
-/**
- * February's Professional Tax is a flat ₹300 for everyone, whatever a slip
- * stored — the dashboard and the Excel export both apply this correction.
- */
-const FEBRUARY_PT = 300;
-
 /**
  * payroll_runs.status → badge. A month with no run row has never been
  * generated, so it says so rather than pretending to be a draft.
@@ -119,10 +115,11 @@ export default function PayrollRunDashboard() {
 		try {
 			const [yr, mn] = month.split('-');
 			const monthDate = `${yr}-${mn}-01`;
-			const res = await fetch(
-				`/api/payroll/schedules?component_type=da&active_only=true&date=${monthDate}`
-			);
-			const data = await res.json();
+			const data = await apiGet('/api/payroll/schedules', {
+				component_type: 'da',
+				active_only: 'true',
+				date: monthDate,
+			});
 			if (data.success && data.data && data.data.length > 0) {
 				setScheduledDA(parseFloat(data.data[0].value) || 0);
 			} else {
@@ -137,17 +134,17 @@ export default function PayrollRunDashboard() {
 		try {
 			setLoading(true);
 			setError('');
-			const res = await fetch(
-				`/api/payroll/slips?month=${month}&salary_type=${stream}`
-			);
-			const data = await res.json();
+			const data = await apiGet('/api/payroll/slips', {
+				month,
+				salary_type: stream,
+			});
 			if (data.success) {
 				setSlips(data.data || []);
 			} else {
 				setError(data.error);
 			}
-		} catch {
-			setError('Failed to fetch payroll data');
+		} catch (err) {
+			setError(err.message || 'Failed to fetch payroll data');
 		} finally {
 			setLoading(false);
 		}
@@ -160,8 +157,7 @@ export default function PayrollRunDashboard() {
 	 */
 	const fetchRun = async () => {
 		try {
-			const res = await fetch(`/api/payroll/runs?month=${month}`);
-			const data = await res.json();
+			const data = await apiGet('/api/payroll/runs', { month });
 			if (data.success) {
 				setRun(data.data.run);
 				setSummary(data.data.summary);
@@ -188,17 +184,11 @@ export default function PayrollRunDashboard() {
 			setError('');
 			setSuccess('');
 
-			const res = await fetch('/api/payroll/generate', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					month,
-					all: true,
-					salary_type: stream,
-				}),
+			const data = await apiPost('/api/payroll/generate', {
+				month,
+				all: true,
+				salary_type: stream,
 			});
-
-			const data = await res.json();
 			if (data.success) {
 				const results = data.results || {};
 				setSuccess(
@@ -212,8 +202,8 @@ export default function PayrollRunDashboard() {
 			} else {
 				setError(data.error);
 			}
-		} catch {
-			setError('Failed to generate payroll');
+		} catch (err) {
+			setError(err.message || 'Failed to generate payroll');
 		} finally {
 			setGenerating(false);
 		}
@@ -225,13 +215,7 @@ export default function PayrollRunDashboard() {
 			setSuccess('');
 
 			// Re-read the run so the confirmation signs off on current numbers.
-			const res = await fetch(`/api/payroll/runs?month=${month}`);
-			const data = await res.json();
-			if (!data.success) {
-				setError(data.error || 'Failed to load the Payroll Run');
-				return;
-			}
-
+			const data = await apiGet('/api/payroll/runs', { month });
 			const monthRun = data.data.run;
 			const monthSummary = data.data.summary;
 			setRun(monthRun);
@@ -257,12 +241,9 @@ export default function PayrollRunDashboard() {
 
 			setFinalizing(true);
 
-			const finalizeRes = await fetch('/api/payroll/runs/finalize', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ month }),
+			const finalizeData = await apiPost('/api/payroll/runs/finalize', {
+				month,
 			});
-			const finalizeData = await finalizeRes.json();
 
 			if (finalizeData.success) {
 				setRun(finalizeData.data);
@@ -274,8 +255,8 @@ export default function PayrollRunDashboard() {
 			} else {
 				setError(finalizeData.error || 'Failed to finalize the Payroll Run');
 			}
-		} catch {
-			setError('Failed to finalize the Payroll Run');
+		} catch (err) {
+			setError(err.message || 'Failed to finalize the Payroll Run');
 		} finally {
 			setFinalizing(false);
 		}
@@ -293,13 +274,7 @@ export default function PayrollRunDashboard() {
 			// Re-read the run before asking, the way Finalize does: the
 			// confirmation names the number of slips this batch will touch, so it
 			// must not quote a summary the month has already moved past.
-			const res = await fetch(`/api/payroll/runs?month=${month}`);
-			const data = await res.json();
-			if (!data.success) {
-				setError(data.error || 'Failed to load the Payroll Run');
-				return;
-			}
-
+			const data = await apiGet('/api/payroll/runs', { month });
 			const monthRun = data.data.run;
 			const monthSummary = data.data.summary;
 			setRun(monthRun);
@@ -324,12 +299,10 @@ export default function PayrollRunDashboard() {
 
 			setMarkingPaid(true);
 
-			const markRes = await fetch('/api/payroll/runs/mark-paid', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ month, payment_date: paymentDate }),
+			const markData = await apiPost('/api/payroll/runs/mark-paid', {
+				month,
+				payment_date: paymentDate,
 			});
-			const markData = await markRes.json();
 
 			if (markData.success) {
 				setSuccess(markData.message);
@@ -338,8 +311,8 @@ export default function PayrollRunDashboard() {
 			} else {
 				setError(markData.error || 'Failed to mark the month paid');
 			}
-		} catch {
-			setError('Failed to mark the month paid');
+		} catch (err) {
+			setError(err.message || 'Failed to mark the month paid');
 		} finally {
 			setMarkingPaid(false);
 		}
@@ -363,12 +336,7 @@ export default function PayrollRunDashboard() {
 			setError('');
 			setSuccess('');
 
-			const res = await fetch('/api/payroll/runs/reopen', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ month }),
-			});
-			const data = await res.json();
+			const data = await apiPost('/api/payroll/runs/reopen', { month });
 
 			if (data.success) {
 				setRun(data.data);
@@ -378,8 +346,8 @@ export default function PayrollRunDashboard() {
 			} else {
 				setError(data.error || 'Failed to reopen the Payroll Run');
 			}
-		} catch {
-			setError('Failed to reopen the Payroll Run');
+		} catch (err) {
+			setError(err.message || 'Failed to reopen the Payroll Run');
 		} finally {
 			setReopening(false);
 		}
@@ -428,17 +396,20 @@ export default function PayrollRunDashboard() {
 	// through the money library — never float arithmetic (AGENTS.md), because
 	// these are the numbers finance signs off on.
 	const isFeb = month.split('-')[1] === '02';
+	/** A numeric read of a column that may be a DECIMAL string, null or missing. */
+	const num = (value) => toNumber(R(value));
+	// Same candidate order as the API's own normalization (src/app/api/payroll/
+	// slips/route.js), and each candidate is compared as a NUMBER: a stored
+	// "0.00" is a real zero and must fall through to the next source, which
+	// string truthiness would get wrong.
 	const calcBasicPlusDa = (s) =>
 		Math.max(
 			0,
-			toNumber(
-				R(
-					s.structure_basic_salary ||
-						s.profile_basic ||
-						s.profile_basic_plus_da ||
-						s.basic
-				)
-			)
+			num(s.structure_basic_salary) ||
+				num(s.profile_basic) ||
+				num(s.profile_basic_plus_da) ||
+				num(s.basic) ||
+				0
 		);
 	const calcGross = (s) =>
 		toNumber(

@@ -6,7 +6,14 @@
  * it. Tokens follow AGENTS.md: paid green, processed slate, pending amber,
  * hold orange.
  */
-export const PAYMENT_STATUS = {
+/** One status's display tokens. */
+type PaymentStatusStyle = {
+	label: string;
+	badge: string;
+	text: string;
+};
+
+export const PAYMENT_STATUS: Record<string, PaymentStatusStyle> = {
 	paid: {
 		label: 'paid',
 		badge: 'bg-green-100 text-green-700',
@@ -30,5 +37,6 @@ export const PAYMENT_STATUS = {
 };
 
 /** The badge for a slip's status; an unknown or missing status reads pending. */
-export const paymentStatusBadge = (status) =>
-	PAYMENT_STATUS[status] || PAYMENT_STATUS.pending;
+export const paymentStatusBadge = (
+	status?: string | null
+): PaymentStatusStyle => PAYMENT_STATUS[status ?? ''] || PAYMENT_STATUS.pending;

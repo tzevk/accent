@@ -13,6 +13,13 @@ const monthDate = (month) =>
 	`${(month instanceof Date ? month.toISOString() : String(month)).slice(0, 7)}-01`;
 
 /**
+ * February's Professional Tax is a flat ₹300 for everyone, whatever a slip
+ * stored. The run dashboard and the Excel export both apply this correction, so
+ * the rule lives in one place rather than as a literal in each reader.
+ */
+export const FEBRUARY_PT = 300;
+
+/**
  * The DA Component Rate in force on a date, or null when none is scheduled.
  *
  * `payroll_schedules` is the single source for every component rate, DA
