@@ -1,10 +1,23 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET /api/payroll/employees-with-profiles - Get all active employees from employee master
 export async function GET(request) {
 	let db;
 	try {
+		const authResult = await ensurePermission(
+			request,
+			RESOURCES.PAYROLL,
+			PERMISSIONS.READ
+		);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
+
 		db = await dbConnect();
 
 		// Get all active employees from employee master

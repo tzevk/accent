@@ -45,7 +45,6 @@ export const RESOURCES = {
 	ADMIN_PRODUCTIVITY: 'admin_productivity',
 	PAYROLL: 'payroll',
 	MATERIAL_REQUISITION: 'material_requisition',
-	DA_SCHEDULE: 'da_schedule',
 	CASH_VOUCHER: 'cash_voucher',
 	OTHER_EXPENSES: 'other_expenses',
 	PETTY_CASH_EXPENSES: 'petty_cash_expenses',

@@ -205,3 +205,6 @@ vite.config.ts.timestamp-*
 
 # piolium audit output - contains vulnerabilities, keep local only
 /piolium/
+
+# Pi agent runtime state (background task output, session scratch)
+.pi/

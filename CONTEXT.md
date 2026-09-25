@@ -21,15 +21,19 @@ An earlier 25-column pay agreement in `salary_structures` (+ `salary_structure_c
 _Avoid_: Salary Profile (when meaning the legacy table)
 
 **Payroll Slip**:
-A computed monthly instance for one employee and month (YYYY-MM-01) — earnings, deductions, net pay, employer cost, attendance snapshot. Stored in `payroll_slips`, produced by `computePayroll`/`generatePayrollSlip`.
-_Avoid_: Payslip, Salary Slip, Payroll Record
+A computed monthly instance for one employee and month (YYYY-MM-01) — earnings, deductions, net pay, employer cost, attendance snapshot. Stored in `payroll_slips` (UNIQUE month+employee), produced by `computePayroll`/`generatePayrollSlip`. The employee's own view of them is "My Payroll Slips". It is a snapshot: every reader shows its stored figures (`slipFigures`), a later Salary Profile revision never re-prices a past month, and only the month's DA Component Rate stays authoritative (ADR-0009).
+_Avoid_: Payslip, Salary Slip, Payroll Record — the self-service path segment `/api/me/payslips` is a kept exception (a URL, not a name for the entity)
 
-**Payroll Schedule**:
-A versioned rate for a statutory or allowance component (DA, PT, MLWF, bonus, incentive, insurance) with `component_type`, `value`/`value_type`, and `effective_from`/`effective_to`. Canonical table is `payroll_schedules`.
-_Avoid_: DA Schedule (when meaning the unified table), Config, Slab
+**Payroll Run**:
+The month-level lifecycle record for one pay period (month/year) — starts `draft`, becomes `finalized`, which locks its slips against regeneration; only a super-admin can reopen a finalized run, and only while no slip in the month is `paid`. Payment is tracked per-slip, not on the run: the run's `paid` state is derived (every slip of the month paid), never a stored transition. Canonical table `payroll_runs`.
+_Avoid_: Month (ambiguous), Pay cycle, Batch
+
+**Component Rate** (was "Payroll Schedule"):
+The versioned rate for a statutory or allowance component (DA, PT, MLWF, bonus, incentive, insurance) with `component_type`, `value`/`value_type`, and `effective_from`/`effective_to`. Canonical table is `payroll_schedules` — the single source for ALL component rates, incl. DA (legacy `da_schedule` retired). Served under `/admin/payroll/rates`.
+_Avoid_: Payroll Schedule (collides with pay-period cadence), Config, Slab
 
 **DA** (Dearness Allowance):
-The inflation-linked component of Basic+DA, read from `payroll_schedules` (component*type `da`) for the component UI and from `da_schedule` (legacy) for the calculator until unification.
+The inflation-linked component of Basic+DA, read from `payroll_schedules` (component*type `da`) everywhere.
 \_Avoid*: Allowance without qualifier
 
 **Gross**:

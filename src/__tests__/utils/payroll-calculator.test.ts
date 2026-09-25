@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock database module before importing payroll-calculator
 vi.mock('@/utils/database', () => ({
@@ -6,7 +6,12 @@ vi.mock('@/utils/database', () => ({
 }));
 
 // Static imports after mock
-import { computePayroll } from '@/utils/payroll-calculator';
+import { dbConnect } from '@/utils/database';
+import {
+	computePayroll,
+	getEffectivePayrollSchedule,
+} from '@/utils/payroll-calculator';
+import PAYROLL_CONFIG from '@/utils/payroll-config';
 
 /** Default attendance record matching the expected shape. */
 function defaultAttendance(overrides = {}) {
@@ -182,5 +187,81 @@ describe('computePayroll', () => {
 		// gratuity = 4.81% of 30000 = 1443
 		expect(result.gratuity).toBe(1_443);
 		expect(result.basic).toBe(30_000);
+	});
+});
+
+/** Minimal db stub whose execute routes by SQL so call order never matters. */
+function scheduleDb(
+	canonicalRows: Record<string, unknown>[],
+	legacyRows: Record<string, unknown>[] = []
+) {
+	const executed: string[] = [];
+	return {
+		executed,
+		execute: vi.fn(async (sql: string) => {
+			executed.push(sql);
+			if (sql.includes('FROM payroll_schedules'))
+				return [canonicalRows, undefined];
+			if (sql.includes('FROM da_schedule')) return [legacyRows, undefined];
+			return [[], undefined];
+		}),
+		release: vi.fn(),
+	};
+}
+
+describe('getEffectivePayrollSchedule DA resolution (canonical Component Rates only)', () => {
+	beforeEach(() => {
+		vi.mocked(dbConnect).mockReset();
+	});
+
+	it('resolves DA from a payroll_schedules Component Rate row', async () => {
+		const db = scheduleDb([
+			{
+				component_type: 'da',
+				value_type: 'fixed',
+				value: 2500,
+				min_salary: null,
+				max_salary: null,
+				id: 7,
+			},
+		]);
+		vi.mocked(dbConnect).mockResolvedValue(db as never);
+
+		const { components } = await getEffectivePayrollSchedule('2026-06-01');
+
+		expect(components.da).toMatchObject({ value_type: 'fixed', value: 2500 });
+	});
+
+	it('never queries the legacy da_schedule table', async () => {
+		// Canonical table has other components but no DA row — the case where the
+		// legacy fallback used to fire.
+		const db = scheduleDb([
+			{
+				component_type: 'pt',
+				value_type: 'fixed',
+				value: 200,
+				min_salary: null,
+				max_salary: null,
+				id: 1,
+			},
+		]);
+		vi.mocked(dbConnect).mockResolvedValue(db as never);
+
+		const { components } = await getEffectivePayrollSchedule('2026-06-01');
+
+		expect(db.executed.some((sql) => sql.includes('da_schedule'))).toBe(false);
+	});
+
+	it('falls back to the frozen config default when no Component Rate DA row exists', async () => {
+		const db = scheduleDb([]);
+		vi.mocked(dbConnect).mockResolvedValue(db as never);
+
+		const { components } = await getEffectivePayrollSchedule('2026-06-01');
+
+		expect(components.da).toEqual({
+			value_type: 'fixed',
+			value: PAYROLL_CONFIG.DA_FIXED_AMOUNT,
+		});
+		expect(db.executed.some((sql) => sql.includes('da_schedule'))).toBe(false);
 	});
 });

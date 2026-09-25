@@ -31,6 +31,42 @@ const nextConfig: NextConfig = {
 	// Generate source maps only in development
 	productionBrowserSourceMaps: false,
 
+	// ADR-0008 / issues #240-#241: the payroll module moved under /admin/payroll/*,
+	// and the near-duplicate slips list dissolved into the run dashboard.
+	// Permanent redirects keep bookmarks and saved links to the old URLs working.
+	async redirects() {
+		return [
+			{
+				source: '/admin/salary-sheet',
+				destination: '/admin/payroll',
+				permanent: true,
+			},
+			{
+				source: '/admin/salary-slip',
+				destination: '/admin/payroll',
+				permanent: true,
+			},
+			{
+				// Issue #241: the slips list is part of the dashboard now; the
+				// source matches only the bare path, so /admin/payroll/slips/[id]
+				// still resolves to the single-slip detail route.
+				source: '/admin/payroll/slips',
+				destination: '/admin/payroll',
+				permanent: true,
+			},
+			{
+				source: '/admin/payroll-schedules',
+				destination: '/admin/payroll/rates',
+				permanent: true,
+			},
+			{
+				source: '/admin/da-schedule',
+				destination: '/admin/payroll/rates/da',
+				permanent: true,
+			},
+		];
+	},
+
 	// SEC-02: user content under /uploads is always a server-rasterized PNG
 	// (see src/app/api/uploads/route.js); never let a browser sniff or render
 	// it inline. Content-Disposition: attachment makes direct navigation

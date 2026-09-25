@@ -1,14 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { InlineSpinner } from '@/components/LoadingSpinner';
 import { useRouter } from 'next/navigation';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
-export default function DASchedulePage() {
+export default function DaRatesPage() {
 	const router = useRouter();
-	const [schedule, setSchedule] = useState([]);
+	const [daRates, setDaRates] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState('');
 	const [showForm, setShowForm] = useState(false);
@@ -20,21 +21,21 @@ export default function DASchedulePage() {
 	});
 
 	useEffect(() => {
-		fetchSchedule();
+		fetchDaRates();
 	}, []);
 
-	const fetchSchedule = async () => {
+	const fetchDaRates = async () => {
 		try {
 			setLoading(true);
 			const res = await fetch('/api/payroll/da-schedule');
 			const data = await res.json();
 			if (data.success) {
-				setSchedule(data.data || []);
+				setDaRates(data.data || []);
 			} else {
 				setError(data.error);
 			}
 		} catch (err) {
-			setError('Failed to fetch DA schedule');
+			setError('Failed to fetch DA rates');
 		} finally {
 			setLoading(false);
 		}
@@ -65,18 +66,17 @@ export default function DASchedulePage() {
 					is_active: true,
 				});
 				setShowForm(false);
-				fetchSchedule();
+				fetchDaRates();
 			} else {
 				setError(data.error);
 			}
 		} catch (err) {
-			setError('Failed to save DA schedule');
+			setError('Failed to save DA rate');
 		}
 	};
 
 	const handleDelete = async (id) => {
-		if (!confirm('Are you sure you want to delete this DA schedule entry?'))
-			return;
+		if (!confirm('Are you sure you want to delete this DA rate?')) return;
 
 		try {
 			const res = await fetch(`/api/payroll/da-schedule?id=${id}`, {
@@ -86,12 +86,12 @@ export default function DASchedulePage() {
 			const data = await res.json();
 
 			if (data.success) {
-				fetchSchedule();
+				fetchDaRates();
 			} else {
 				setError(data.error);
 			}
 		} catch (err) {
-			setError('Failed to delete DA schedule');
+			setError('Failed to delete DA rate');
 		}
 	};
 
@@ -104,9 +104,9 @@ export default function DASchedulePage() {
 					<div className="mb-6">
 						<div className="flex items-center gap-4 mb-3">
 							<button
-								onClick={() => router.push('/employees?tab=edit&subtab=salary')}
+								onClick={() => router.push('/admin/payroll/rates')}
 								className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors bg-white"
-								title="Back to Salary Structure"
+								title="Back to Component Rates"
 							>
 								<ArrowLeftIcon className="w-5 h-5 text-gray-600" />
 							</button>
@@ -118,12 +118,19 @@ export default function DASchedulePage() {
 									<ol className="inline-flex items-center gap-2">
 										<li>Admin</li>
 										<li className="text-gray-300">/</li>
-										<li className="text-gray-700">DA Schedule</li>
+										<li>
+											<Link
+												href="/admin/payroll/rates"
+												className="hover:text-gray-700 hover:underline"
+											>
+												Component Rates
+											</Link>
+										</li>
+										<li className="text-gray-300">/</li>
+										<li className="text-gray-700">DA Rates</li>
 									</ol>
 								</nav>
-								<h1 className="text-3xl font-bold text-gray-900">
-									DA Schedule Management
-								</h1>
+								<h1 className="text-3xl font-bold text-gray-900">DA Rates</h1>
 							</div>
 						</div>
 						<div className="flex items-center justify-between">
@@ -241,19 +248,19 @@ export default function DASchedulePage() {
 						</div>
 					)}
 
-					{/* DA Schedule Table */}
+					{/* DA Rates Table */}
 					<div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
 						<div className="px-6 py-4 border-b border-gray-200">
 							<h2 className="text-lg font-semibold text-gray-900">
-								Current DA Schedule
+								Current DA Rates
 							</h2>
 						</div>
 
 						{loading ? (
-							<InlineSpinner message="Loading DA schedule..." />
-						) : schedule.length === 0 ? (
+							<InlineSpinner message="Loading DA rates..." />
+						) : daRates.length === 0 ? (
 							<div className="p-8 text-center text-gray-500">
-								No DA schedule entries found. Add one to get started.
+								No DA rate entries found. Add one to get started.
 							</div>
 						) : (
 							<div className="overflow-x-auto">
@@ -281,7 +288,7 @@ export default function DASchedulePage() {
 										</tr>
 									</thead>
 									<tbody className="divide-y divide-gray-200">
-										{schedule.map((entry) => (
+										{daRates.map((entry) => (
 											<tr key={entry.id} className="hover:bg-gray-50">
 												<td className="px-6 py-4 text-sm font-medium text-gray-900">
 													₹{parseFloat(entry.da_amount).toLocaleString('en-IN')}
