@@ -102,7 +102,9 @@ export async function GET(request) {
 
 		const [rows] = await db.execute(query, params);
 
-		// Normalize BASIC/DA from canonical sources so all UIs read consistent values.
+		// Normalize BASIC/DA through the shared slip figures, so every reader of
+		// this listing, the Payroll Slip document and the PDFs shows one set of
+		// numbers for a slip — its own snapshot (ADR-0009).
 		// A single-slip lookup knows its month only from the row it just fetched, and
 		// must still resolve the scheduled DA the month listing would have used.
 		// A DA lookup must never break the listing, so a failure reads as "no DA".

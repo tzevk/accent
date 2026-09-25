@@ -8,7 +8,8 @@
  * flow into the next month's run.
  */
 
-import { R, add, toNumber } from '@/lib/money';
+import { R, add, sub, toNumber } from '@/lib/money';
+import { ptAdjustmentFor, slipFigures } from '@/lib/payroll';
 
 /** Run statuses that lock the month against regenerating its Payroll Slips. */
 const LOCKED_STATUSES = ['finalized', 'paid'];
@@ -228,7 +229,8 @@ export async function findEmployeesWithoutProfiles(db, month) {
 export async function findMonthSlips(db, month) {
 	const [slips] = await db.execute(
 		`SELECT id, employee_id, payment_status, payment_date, payment_reference,
-              gross, total_deductions, net_pay, total_employer_contributions
+              gross, total_earnings, total_deductions, net_pay, pt,
+              total_employer_contributions
        FROM payroll_slips
       WHERE month = ?
       ORDER BY id`,
@@ -250,18 +252,35 @@ export async function findMonthSlips(db, month) {
  */
 export async function summarizeMonthSlips(db, month) {
 	const slips = await findMonthSlips(db, month);
-	const sum = (column) =>
-		toNumber(slips.reduce((total, slip) => add(total, slip[column]), R(0)));
+	const sum = (pick) =>
+		toNumber(slips.reduce((total, slip) => add(total, pick(slip)), R(0)));
 	const paidSlips = slips.filter(
 		(slip) => slip.payment_status === 'paid'
 	).length;
 
+	// The month's money is the Payroll Slips' own figures (src/lib/payroll.js) —
+	// the same ones the run dashboard, the Payroll Slip document and both PDFs
+	// print — so the confirmation that asks an admin to sign off on these totals
+	// cannot quote a number the screen behind it contradicts. The `gross` column
+	// is the full-month contractual gross, not what the month earned, so it is
+	// not the total here.
+	//
+	// February's PT is a flat FEBRUARY_PT for everyone, so the deductions carry
+	// the same correction the dashboard shows per slip; a summary that skipped it
+	// would disagree with that screen for one month a year.
+	const gross = sum((slip) => slipFigures(slip).gross);
+	const deductions = sum((slip) =>
+		add(slipFigures(slip).deductions, ptAdjustmentFor(slip, month))
+	);
+
 	return {
 		headcount: slips.length,
-		total_gross: sum('gross'),
-		total_deductions: sum('total_deductions'),
-		total_net_pay: sum('net_pay'),
-		total_employer_contribution: sum('total_employer_contributions'),
+		total_gross: gross,
+		total_deductions: deductions,
+		total_net_pay: toNumber(sub(gross, deductions)),
+		total_employer_contribution: sum(
+			(slip) => slip.total_employer_contributions
+		),
 		paid_slips: paidSlips,
 		is_paid: slips.length > 0 && paidSlips === slips.length,
 	};

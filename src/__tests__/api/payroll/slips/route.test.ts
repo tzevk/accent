@@ -110,9 +110,11 @@ describe('payroll slips API — single-slip read (issue #240)', () => {
 
 		const body = await res.json();
 		// Same normalization the month listing applies: Basic/DA must not depend
-		// on whether the caller asked by id or by month.
+		// on whether the caller asked by id or by month. The slip's own Basic+DA
+		// (50000 + 0) stands, and the month's rate only moves the split.
 		expect(body.data[0].da).toBe(2500);
-		expect(body.data[0].basic).toBe(57500);
+		expect(body.data[0].basic).toBe(47500);
+		expect(body.data[0].basic_plus_da_source).toBe(50000);
 		const daLookup = mocks.mockExecute.mock.calls[1];
 		expect(String(daLookup[0])).toContain('FROM payroll_schedules');
 		expect(daLookup[1]).toContain('2026-08-01');

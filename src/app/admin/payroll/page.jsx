@@ -7,7 +7,12 @@ import Navbar from '@/components/Navbar';
 import { useSession } from '@/context/SessionContext';
 import { R, add, mul, sub, toNumber } from '@/lib/money';
 import { formatCurrency, formatMonth } from '@/lib/format';
-import { FEBRUARY_PT, slipFigures } from '@/lib/payroll';
+import {
+	FEBRUARY_PT,
+	isFebruaryMonth,
+	normalizedSlipFigures,
+	ptAdjustmentFor,
+} from '@/lib/payroll';
 import { PAYMENT_STATUS, paymentStatusBadge } from '@/lib/payment-status';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { downloadFile } from '@/lib/download';
@@ -82,23 +87,6 @@ const readRun = async (month) => {
 		: { run: null, summary: null };
 };
 
-/**
- * The DA Component Rate in force for the month. A month with no scheduled rate
- * and a refused read both come back 0, which is the fixed amount readers then
- * show — the slip's own stored DA is what a 0 falls back to.
- */
-const readScheduledDA = async (month) => {
-	const [yr, mn] = month.split('-');
-	const data = await apiGet('/api/payroll/schedules', {
-		component_type: 'da',
-		active_only: 'true',
-		date: `${yr}-${mn}-01`,
-	});
-	return data.success && data.data?.length
-		? parseFloat(data.data[0].value) || 0
-		: 0;
-};
-
 export default function PayrollRunDashboard() {
 	const [month, setMonth] = useState(() => {
 		const now = new Date();
@@ -131,18 +119,12 @@ export default function PayrollRunDashboard() {
 		},
 	});
 
-	const daQuery = useQuery({
-		queryKey: ['payroll', 'schedules', 'da', month],
-		queryFn: () => readScheduledDA(month),
-	});
-
 	const run = runQuery.data?.run ?? null;
 	const summary = runQuery.data?.summary ?? null;
 	const slips = slipsQuery.data || [];
 	// "Loading" has always meant "a slips read is in flight": the first one, the
 	// one a month or stream change starts, and the refetch a write triggers.
 	const loading = slipsQuery.isFetching;
-	const scheduledDA = daQuery.data ?? 0;
 	// A refused slips read keeps the message the hand-rolled fetch showed; the
 	// message state below still belongs to the actions.
 	const readError = slipsQuery.error
@@ -397,34 +379,22 @@ export default function PayrollRunDashboard() {
 	// corrected by the difference. Both that correction and every total below go
 	// through the money library — never float arithmetic (AGENTS.md), because
 	// these are the numbers finance signs off on.
-	const isFeb = month.split('-')[1] === '02';
-	// Basic+DA comes from the shared slip figures (src/lib/payroll.js) — the same
-	// candidate chain the Payroll Slip document and both exports read, so the
-	// dashboard cannot report an amount the slip disagrees with.
-	const calcBasicPlusDa = (s) => slipFigures(s, { scheduledDA }).basicPlusDa;
-	const calcGross = (s) =>
-		toNumber(
-			add(
-				calcBasicPlusDa(s),
-				s.hra,
-				s.conveyance,
-				s.call_allowance,
-				s.other_allowances,
-				s.bonus,
-				s.incentive,
-				s.paid_holiday,
-				s.ot_rate
-			)
-		);
-	/** The February PT correction for one slip: flat 300 minus what it stored. */
-	const ptAdjustment = (s) => (isFeb ? sub(FEBRUARY_PT, s.pt) : R(0));
+	const isFeb = isFebruaryMonth(month);
+	// Every money column reads the shared slip figures (src/lib/payroll.js),
+	// which are the Payroll Slip's own snapshot: Basic, DA, Gross, Deductions
+	// and Net Pay as the month was computed and paid. The listing already
+	// derived Basic and DA, so this reads them back rather than deriving again —
+	// re-deriving is how this page reported a Net the slip's own document and
+	// the Finalize confirmation both contradicted.
+	const figures = (s) => normalizedSlipFigures(s);
+	const calcBasic = (s) => figures(s).basic;
+	const calcDa = (s) => figures(s).da;
+	const calcGross = (s) => figures(s).gross;
 	/** What the slip actually deducts this month, PT correction included. */
 	const calcDeductions = (s) =>
-		toNumber(add(s.total_deductions, ptAdjustment(s)));
+		toNumber(add(figures(s).deductions, ptAdjustmentFor(s, month)));
 	/** What the slip actually pays out this month. */
-	const calcNet = (s) => toNumber(sub(calcGross(s), calcDeductions(s)));
-	/** Basic+DA net of the month's scheduled DA, which is what the row shows. */
-	const calcBasic = (s) => toNumber(sub(calcBasicPlusDa(s), scheduledDA));
+	const calcNet = (s) => toNumber(sub(figures(s).gross, calcDeductions(s)));
 
 	const sumBy = (fn) =>
 		toNumber(slips.reduce((sum, s) => add(sum, fn(s)), R(0)));
@@ -821,7 +791,7 @@ export default function PayrollRunDashboard() {
 												{formatCurrency(slip.hra)}
 											</td>
 											<td className="px-3 py-3 text-right text-gray-900">
-												{formatCurrency(scheduledDA)}
+												{formatCurrency(calcDa(slip))}
 											</td>
 											<td className="px-3 py-3 text-right text-gray-900">
 												{formatCurrency(slip.conveyance)}
@@ -894,7 +864,7 @@ export default function PayrollRunDashboard() {
 											{formatCurrency(columnTotal('hra'))}
 										</td>
 										<td className="px-3 py-3 text-right text-gray-900">
-											{formatCurrency(toNumber(mul(scheduledDA, slips.length)))}
+											{formatCurrency(sumBy(calcDa))}
 										</td>
 										<td className="px-3 py-3 text-right text-gray-900">
 											{formatCurrency(columnTotal('conveyance'))}

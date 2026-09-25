@@ -9,7 +9,12 @@
 
 import { jsPDF } from 'jspdf';
 import { formatDateNumeric, formatMonth } from '@/lib/format';
-import { resolveScheduledDA, safeNum, slipFigures } from '@/lib/payroll';
+import {
+	normalizedSlipFigures,
+	resolveScheduledDA,
+	safeNum,
+	slipFigures,
+} from '@/lib/payroll';
 
 const safeStr = (v) => (v == null ? '' : String(v));
 /**
@@ -38,7 +43,7 @@ function renderSlip(doc, slip, yStart) {
 	// The three totals come from the shared derivation, so the PDF prints the
 	// same GROSS / DEDUCTION / NET the slips listing and the on-screen document
 	// show for this slip.
-	const figures = slipFigures(slip);
+	const figures = normalizedSlipFigures(slip);
 	const pageW = doc.internal.pageSize.getWidth();
 	const margin = 14;
 	const tableW = pageW - margin * 2;
@@ -392,9 +397,10 @@ function renderSlip(doc, slip, yStart) {
 }
 
 /**
- * Resolve each slip row's Basic/DA from the canonical sources so every reader
- * — the run dashboard, the Excel export, and this PDF — shows one set of
- * numbers. `month` is the first-of-month date the slips belong to.
+ * Resolve each slip row's Basic/DA through the shared slip figures, so this PDF
+ * prints the same numbers as the run dashboard, the on-screen Payroll Slip
+ * document and the Excel export — the slip's own snapshot (ADR-0009).
+ * `month` is the first-of-month date the slips belong to.
  */
 export async function normalizeSlips(db, rows, month) {
 	let scheduledDA = 0;

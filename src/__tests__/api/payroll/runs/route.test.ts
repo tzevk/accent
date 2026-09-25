@@ -28,6 +28,14 @@ const runRequest = (month?: string) =>
 		`http://localhost/api/payroll/runs${month ? `?month=${month}` : ''}`
 	);
 
+const DRAFT_RUN = {
+	id: 7,
+	month: 8,
+	year: 2026,
+	run_number: 1,
+	status: 'draft',
+};
+
 describe('payroll runs API — month status, totals and derived paid indicator (issues #242, #245)', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
@@ -158,5 +166,67 @@ describe('payroll runs API — month status, totals and derived paid indicator (
 		expect(body.data.summary.total_deductions).toBe(200.3);
 		expect(body.data.summary.total_net_pay).toBe(79205.16);
 		expect(body.data.summary.total_employer_contribution).toBe(300);
+	});
+
+	it("sums the slips' own earnings, never the contractual gross", async () => {
+		grant('payroll:read');
+		mocks.mockExecute
+			.mockResolvedValueOnce([[DRAFT_RUN], undefined])
+			.mockResolvedValueOnce([
+				[
+					// The shape a Payroll Slip really carries: `gross` is the
+					// full-month contractual gross, `total_earnings` what the month
+					// earned. A summary that summed `gross` would print a pair that
+					// cannot both be true (45000 - 2000 != 52000).
+					{
+						gross: '45000.00',
+						total_earnings: '54000.00',
+						total_deductions: '2000.00',
+						net_pay: '52000.00',
+						total_employer_contributions: '3250.00',
+						pt: '200.00',
+					},
+				],
+				undefined,
+			]);
+
+		const res = await GET(runRequest('2026-08-01'));
+
+		const body = await res.json();
+		expect(body.data.summary.total_gross).toBe(54000);
+		expect(body.data.summary.total_deductions).toBe(2000);
+		expect(body.data.summary.total_net_pay).toBe(52000);
+		// The invariant every reader depends on.
+		expect(
+			body.data.summary.total_gross - body.data.summary.total_deductions
+		).toBe(body.data.summary.total_net_pay);
+	});
+
+	it('corrects February PT the way the run dashboard does', async () => {
+		grant('payroll:read');
+		mocks.mockExecute
+			.mockResolvedValueOnce([[DRAFT_RUN], undefined])
+			.mockResolvedValueOnce([
+				[
+					{
+						gross: '45000.00',
+						total_earnings: '54000.00',
+						total_deductions: '2000.00',
+						net_pay: '52000.00',
+						total_employer_contributions: '3250.00',
+						pt: '200.00',
+					},
+				],
+				undefined,
+			]);
+
+		const res = await GET(runRequest('2026-02-01'));
+
+		const body = await res.json();
+		// February's PT is a flat 300 for everyone: the 200 stored is corrected by
+		// the difference, so the dialog that asks for sign-off cannot disagree with
+		// the dashboard's own Net Pay for the same slip.
+		expect(body.data.summary.total_deductions).toBe(2100);
+		expect(body.data.summary.total_net_pay).toBe(51900);
 	});
 });

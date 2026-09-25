@@ -6,7 +6,12 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import ExcelJS from 'exceljs';
-import { FEBRUARY_PT, resolveScheduledDA } from '@/lib/payroll';
+import {
+	FEBRUARY_PT,
+	isFebruaryMonth,
+	resolveScheduledDA,
+	slipFigures,
+} from '@/lib/payroll';
 
 /** Convert any value to a finite number; returns 0 for NaN/Infinity/null/undefined/strings */
 const safeNum = (v) => {
@@ -62,24 +67,9 @@ export async function GET(request) {
         e.position,
         e.uan,
         e.pf_no,
-        e.esi_no,
-        ss_inner.basic_salary as structure_basic_salary,
-        ss_inner.gross_salary as structure_gross_salary,
-        sp_inner.gross_salary as profile_gross,
-        sp_inner.employer_cost as profile_ctc,
-        sp_inner.total_earnings as profile_total_earnings,
-        sp_inner.basic_plus_da as profile_basic_plus_da,
-        sp_inner.basic as profile_basic,
-        sp_inner.da as profile_da,
-        sp_inner.hra as profile_hra,
-        sp_inner.conveyance as profile_conveyance,
-        sp_inner.call_allowance as profile_call_allowance,
-        sp_inner.other_allowances as profile_other_allowances,
-        sp_inner.incentive as profile_incentive
+        e.esi_no
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
-      LEFT JOIN salary_structures ss_inner ON ss_inner.employee_id = e.id AND ss_inner.is_active = 1
-      LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
       WHERE ps.month = ?`;
 		const params = [month];
 
@@ -544,24 +534,14 @@ export async function GET(request) {
 							)
 						: 1;
 
-				const structureBasicPlusDa = safeNum(slip.structure_basic_salary);
-				const profileBasic = safeNum(slip.profile_basic);
-				const profileBasicPlusDa = safeNum(slip.profile_basic_plus_da);
-				const basicPlusDaFull = Math.max(
-					0,
-					structureBasicPlusDa > 0
-						? structureBasicPlusDa
-						: profileBasic > 0
-							? profileBasic
-							: profileBasicPlusDa > 0
-								? profileBasicPlusDa
-								: safeNum(slip.basic) ||
-									safeNum(slip.profile_basic) + safeNum(slip.profile_da)
-				);
-				const daFull =
-					scheduledDA > 0 ? scheduledDA : safeNum(slip.da_used || slip.da);
-				const basicFull = Math.max(0, basicPlusDaFull - daFull);
-				const basicPlusDa = basicFull + daFull;
+				// Basic/DA come from the shared slip figures (src/lib/payroll.js) —
+				// the same numbers the Payroll Slip document and both PDFs print, so
+				// this sheet cannot split one slip two ways. Everything below stays
+				// the sheet's own prorated working figures.
+				const slipMoney = slipFigures(slip, { scheduledDA });
+				const basicFull = slipMoney.basic;
+				const daFull = slipMoney.da;
+				const basicPlusDa = slipMoney.basicPlusDa;
 				const hraFull = safeNum(slip.hra);
 				const conveyanceFull = safeNum(slip.conveyance);
 				const callAllowanceFull = safeNum(slip.call_allowance);
@@ -580,7 +560,8 @@ export async function GET(request) {
 				const otherAllowances = otherAllowancesFull * prorataFactor;
 				const bonus = bonusFull * prorataFactor;
 				const otRate = otRateFull * prorataFactor;
-				// Gross = total earnings using fetched Basic + DA from salary structure/profile
+				// Gross = the sheet's own working total: the slip's Basic+DA plus
+				// the allowance columns above, pro-rated for absences.
 				const gross =
 					basicPlusDa +
 					hra +
@@ -599,13 +580,13 @@ export async function GET(request) {
 				const esicEmployee = isAbsent
 					? safeNum(slip.esic_employee) * prorataFactor
 					: safeNum(slip.esic_employee);
-				// PT is a flat FEBRUARY_PT in February, but also pro-rate if absent
+				// PT is a flat FEBRUARY_PT in February (src/lib/payroll.js), and this
+				// sheet also pro-rates it when the employee was absent.
+				const isFebruary = isFebruaryMonth(month);
 				const originalPt = safeNum(slip.pt);
 				const pt = isAbsent
-					? monthNum === 2
-						? FEBRUARY_PT * prorataFactor
-						: originalPt * prorataFactor
-					: monthNum === 2
+					? (isFebruary ? FEBRUARY_PT : originalPt) * prorataFactor
+					: isFebruary
 						? FEBRUARY_PT
 						: originalPt;
 				const empLoanAdvance = loanAdvanceMap[slip.employee_id] || {

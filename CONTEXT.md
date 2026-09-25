@@ -21,7 +21,7 @@ An earlier 25-column pay agreement in `salary_structures` (+ `salary_structure_c
 _Avoid_: Salary Profile (when meaning the legacy table)
 
 **Payroll Slip**:
-A computed monthly instance for one employee and month (YYYY-MM-01) — earnings, deductions, net pay, employer cost, attendance snapshot. Stored in `payroll_slips` (UNIQUE month+employee), produced by `computePayroll`/`generatePayrollSlip`. The employee's own view of them is "My Payroll Slips".
+A computed monthly instance for one employee and month (YYYY-MM-01) — earnings, deductions, net pay, employer cost, attendance snapshot. Stored in `payroll_slips` (UNIQUE month+employee), produced by `computePayroll`/`generatePayrollSlip`. The employee's own view of them is "My Payroll Slips". It is a snapshot: every reader shows its stored figures (`slipFigures`), a later Salary Profile revision never re-prices a past month, and only the month's DA Component Rate stays authoritative (ADR-0009).
 _Avoid_: Payslip, Salary Slip, Payroll Record — the self-service path segment `/api/me/payslips` is a kept exception (a URL, not a name for the entity)
 
 **Payroll Run**:

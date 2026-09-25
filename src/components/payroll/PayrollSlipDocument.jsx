@@ -1,5 +1,5 @@
 import { formatDateNumeric, formatMonth } from '@/lib/format';
-import { slipFigures } from '@/lib/payroll';
+import { normalizedSlipFigures } from '@/lib/payroll';
 
 /**
  * The printable Payroll Slip document — company banner, earnings/deductions
@@ -15,7 +15,7 @@ export default function PayrollSlipDocument({ slip }) {
 	// prints the numbers the slips listing and the PDFs report. The cells used to
 	// print the stored DECIMAL strings, so keep two decimals to hold the same
 	// characters on screen.
-	const { gross, deductions, net } = slipFigures(slip);
+	const { gross, deductions, net } = normalizedSlipFigures(slip);
 
 	return (
 		<div
