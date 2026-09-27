@@ -209,7 +209,65 @@ describe('calculatePayroll', () => {
 		expect(result.da).toBe(3_000);
 	});
 
-	it('uses explicit amount overrides and keeps CTC out of the earnings base', () => {
+	it('prices the month from the stored CTC over the month’s hours, paid at the hours logged', () => {
+		const result = calculatePayroll({
+			month: '2026-01-01',
+			salaryProfile: {
+				employer_cost: 26_000,
+				gross_salary: 20_000,
+				pf_applicable: 0,
+				esic_applicable: 0,
+				pt_applicable: 0,
+			},
+			attendance: { ...attendance, loggedHours: 104 },
+		});
+
+		expect(result.ctc_used).toBe(26_000);
+		expect(result.basis_hours).toBe(208);
+		expect(result.hourly_rate).toBe(125);
+		expect(result.logged_hours).toBe(104);
+		expect(result.gross).toBe(13_000);
+		expect(result.basic).toBe(7_800);
+		expect(result.total_earnings).toBe(13_000);
+		// A fully logged month pays exactly the CTC.
+		expect(result.full_month.gross).toBe(26_000);
+	});
+
+	it('pays nothing for a month with no logged hours', () => {
+		const result = calculatePayroll({
+			month: '2026-01-01',
+			salaryProfile: {
+				employer_cost: 26_000,
+				pf_applicable: 0,
+				esic_applicable: 0,
+				pt_applicable: 0,
+			},
+			attendance: { ...attendance, loggedHours: 0 },
+		});
+
+		expect(result.logged_hours).toBe(0);
+		expect(result.gross).toBe(0);
+		expect(result.total_earnings).toBe(0);
+		expect(result.net_pay).toBe(0);
+	});
+
+	it('weights the full month when a preview supplies no logged hours', () => {
+		const result = calculatePayroll({
+			month: '2026-01-01',
+			salaryProfile: {
+				employer_cost: 26_000,
+				pf_applicable: 0,
+				esic_applicable: 0,
+				pt_applicable: 0,
+			},
+			attendance,
+		});
+
+		expect(result.logged_hours).toBe(208);
+		expect(result.gross).toBe(26_000);
+	});
+
+	it('reads the CTC base from employer_cost, never from a non-column ctc value', () => {
 		const result = calculatePayroll({
 			month: '2026-01-01',
 			salaryProfile: {
@@ -222,6 +280,7 @@ describe('calculatePayroll', () => {
 			overrides: { basic: 14_000, tds: 2_000 },
 		});
 
+		expect(result.ctc_used).toBe(30_000);
 		expect(result.gross).toBe(30_000);
 		expect(result.basic).toBe(14_000);
 		expect(result.tds).toBe(2_000);

@@ -8,6 +8,7 @@ vi.mock('@/utils/database', () => ({
 // Static imports after mock
 import { dbConnect } from '@/utils/database';
 import {
+	calculateEmployeePayroll,
 	computePayroll,
 	getEffectivePayrollSchedule,
 } from '@/utils/payroll-calculator';
@@ -114,11 +115,13 @@ describe('computePayroll', () => {
 		expect(result.employer_cost).toBe(30_866);
 	});
 
-	it('handles overtime correctly', () => {
-		const gross = 30_000;
-		const profile = makeProfile(gross);
+	it('pays the logged hours at the CTC rate and drops the attendance OT premium', () => {
+		const profile = makeProfile(30_000, { employer_cost: 30_000 });
 		const daAmount = 0;
-		const attendance = defaultAttendance({ totalOvertimeHours: 8 });
+		const attendance = defaultAttendance({
+			totalOvertimeHours: 8,
+			loggedHours: 104,
+		});
 
 		const result = computePayroll(
 			'EMP001',
@@ -129,10 +132,14 @@ describe('computePayroll', () => {
 			false
 		);
 
-		// OT = (basic + da) / 8 * overtimeHours = 18000/8*8 = 18000
-		expect(result.ot_rate).toBe(18_000);
-		expect(result.total_earnings).toBe(30_000 + 18_000);
-		expect(result.net_pay).toBe(30_000 + 18_000);
+		// rate = 30000 / (26 × 8) = 144.23; 104h logged → 15000 for the month.
+		expect(result.basis_hours).toBe(208);
+		expect(result.hourly_rate).toBe(144.23);
+		expect(result.logged_hours).toBe(104);
+		expect(result.gross).toBe(15_000);
+		expect(result.ot_rate).toBe(0);
+		expect(result.total_earnings).toBe(15_000);
+		expect(result.net_pay).toBe(15_000);
 	});
 
 	it('uses saved profile values when available', () => {
@@ -263,5 +270,81 @@ describe('getEffectivePayrollSchedule DA resolution (canonical Component Rates o
 			value: PAYROLL_CONFIG.DA_FIXED_AMOUNT,
 		});
 		expect(db.executed.some((sql) => sql.includes('da_schedule'))).toBe(false);
+	});
+});
+
+describe('calculateEmployeePayroll — hours-based pay', () => {
+	beforeEach(() => {
+		vi.mocked(dbConnect).mockReset();
+	});
+
+	/** DB stub routing by SQL so call order never matters. */
+	function payrollDb() {
+		return {
+			executed: [] as string[],
+			execute: vi.fn(async (sql: string) => {
+				if (sql.includes('FROM employee_salary_profile')) {
+					return [
+						[
+							{
+								employee_id: 7,
+								employer_cost: 26_000,
+								gross_salary: 20_000,
+								pf_applicable: 0,
+								esic_applicable: 0,
+								pt_applicable: 0,
+								effective_from: '2026-01-01',
+							},
+						],
+						undefined,
+					];
+				}
+				if (sql.includes('FROM user_activity_assignments')) {
+					return [
+						[
+							{
+								employee_id: null,
+								user_employee_id: 7,
+								user_email: null,
+								user_username: null,
+								daily_entries: JSON.stringify([
+									{ date: '2026-06-01', hours: 8 },
+									{ date: '2026-06-15', hours: 4 },
+									// Another month's entry never counts.
+									{ date: '2026-05-30', hours: 8 },
+								]),
+							},
+							{
+								// Nothing links this row to a pay agreement — dropped.
+								employee_id: null,
+								user_employee_id: null,
+								user_email: 'ghost@example.com',
+								user_username: null,
+								daily_entries: JSON.stringify([
+									{ date: '2026-06-02', hours: 8 },
+								]),
+							},
+						],
+						undefined,
+					];
+				}
+				return [[], undefined];
+			}),
+			release: vi.fn(),
+		};
+	}
+
+	it('prices the month from the logged assignment hours', async () => {
+		vi.mocked(dbConnect).mockResolvedValue(payrollDb() as never);
+
+		const payroll = await calculateEmployeePayroll(7, '2026-06-01');
+
+		// June 2026 has 26 working days (Sundays excluded) → 208 payable hours.
+		expect(payroll?.basis_hours).toBe(208);
+		expect(payroll?.ctc_used).toBe(26_000);
+		expect(payroll?.hourly_rate).toBe(125);
+		expect(payroll?.logged_hours).toBe(12);
+		expect(payroll?.gross).toBe(1_500);
+		expect(payroll?.total_earnings).toBe(1_500);
 	});
 });

@@ -5,7 +5,7 @@ import {
 } from '@/app/reports/attendance-report/data-source';
 
 // resolveDirection / applyInferredDirections now live in @/lib/punch —
-// covered by src/__tests__/lib/punch.test.ts; data-source re-exports them.
+// covered by src/lib/punch.test.ts; data-source re-exports them.
 
 describe('buildStats', () => {
 	const punchRow = (

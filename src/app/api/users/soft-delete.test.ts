@@ -8,12 +8,10 @@ const mockDbConnect = vi.fn().mockResolvedValue({
 
 vi.mock('@/utils/database', () => ({ dbConnect: mockDbConnect }));
 vi.mock('@/utils/api-permissions', () => ({
-	ensurePermission: vi
-		.fn()
-		.mockResolvedValue({
-			authorized: true,
-			user: { id: 1, is_super_admin: true },
-		}),
+	ensurePermission: vi.fn().mockResolvedValue({
+		authorized: true,
+		user: { id: 1, is_super_admin: true },
+	}),
 	RESOURCES: { USERS: 'users' },
 	PERMISSIONS: {
 		READ: 'read',
