@@ -1,0 +1,53 @@
+name: E2E
+
+on:
+  push:
+    branches: [main, master, feat/**]
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: accent
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      NODE_ENV: development
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DEV_DB_USER: root
+      DEV_DB_PASSWORD: root
+      DEV_DB_NAME: accent
+      AUTH_SECRET: ci-e2e-secret
+      JWT_SECRET: ci-e2e-secret
+      SMARTOFFICE_WEBHOOK_SECRET: ci-e2e-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-artifacts
+          path: |
+            e2e/artifacts
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14
