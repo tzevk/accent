@@ -403,6 +403,8 @@ export default function PayrollRunDashboard() {
 	const totalGross = sumBy(calcGross);
 	const totalNet = sumBy(calcNet);
 	const totalDeductions = sumBy(calcDeductions);
+	/** Paid project hours across the month's slips — what the Gross was bought with. */
+	const totalHours = sumBy((slip) => slip.logged_hours);
 	const statusCounts = slips.reduce((counts, s) => {
 		const status = s.payment_status || 'pending';
 		counts[status] = (counts[status] || 0) + 1;
@@ -699,6 +701,12 @@ export default function PayrollRunDashboard() {
 										<th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[80px]">
 											Present
 										</th>
+										<th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[70px]">
+											Hrs Logged
+										</th>
+										<th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[80px]">
+											Rate/Hr
+										</th>
 										<th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[90px]">
 											Basic
 										</th>
@@ -784,6 +792,14 @@ export default function PayrollRunDashboard() {
 											<td className="px-3 py-3 text-right text-gray-600">
 												{slip.payable_days || slip.standard_working_days || 0}
 											</td>
+											<td className="px-3 py-3 text-right text-gray-600">
+												{slip.logged_hours || 0}
+											</td>
+											<td className="px-3 py-3 text-right text-gray-600">
+												{slip.hourly_rate
+													? formatCurrency(slip.hourly_rate)
+													: '—'}
+											</td>
 											<td className="px-3 py-3 text-right text-gray-900">
 												{formatCurrency(calcBasic(slip))}
 											</td>
@@ -857,6 +873,10 @@ export default function PayrollRunDashboard() {
 											TOTALS:
 										</td>
 										<td colSpan="2" className="px-3 py-3"></td>
+										<td className="px-3 py-3 text-right text-gray-900">
+											{totalHours}
+										</td>
+										<td className="px-3 py-3"></td>
 										<td className="px-3 py-3 text-right text-gray-900">
 											{formatCurrency(sumBy(calcBasic))}
 										</td>

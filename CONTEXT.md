@@ -21,7 +21,7 @@ An earlier 25-column pay agreement in `salary_structures` (+ `salary_structure_c
 _Avoid_: Salary Profile (when meaning the legacy table)
 
 **Payroll Slip**:
-A computed monthly instance for one employee and month (YYYY-MM-01) — earnings, deductions, net pay, employer cost, attendance snapshot. Stored in `payroll_slips` (UNIQUE month+employee), produced by `computePayroll`/`generatePayrollSlip`. The employee's own view of them is "My Payroll Slips". It is a snapshot: every reader shows its stored figures (`slipFigures`), a later Salary Profile revision never re-prices a past month, and only the month's DA Component Rate stays authoritative (ADR-0009).
+A computed monthly instance for one employee and month (YYYY-MM-01) — earnings, deductions, net pay, employer cost, attendance snapshot, and the hours basis it was priced with (CTC, Basis Hours, Hourly Rate, Logged Hours). Stored in `payroll_slips` (UNIQUE month+employee), produced by `computePayroll`/`generatePayrollSlip`. The employee's own view of them is "My Payroll Slips". It is a snapshot: every reader shows its stored figures (`slipFigures`), a later Salary Profile revision never re-prices a past month, and only the month's DA Component Rate stays authoritative (ADR-0009).
 _Avoid_: Payslip, Salary Slip, Payroll Record — the self-service path segment `/api/me/payslips` is a kept exception (a URL, not a name for the entity)
 
 **Payroll Run**:
@@ -37,12 +37,28 @@ The inflation-linked component of Basic+DA, read from `payroll_schedules` (compo
 \_Avoid*: Allowance without qualifier
 
 **Gross**:
-Total earnings for the month before deductions (basic+da+hra+conveyance+call*allowance+other_allowances+bonus+incentive+ot). Never use CTC as the base for payroll math.
+The month's earnings before deductions — Hourly Rate × Logged Hours, from which
+basic+da+hra+conveyance+call*allowance+other_allowances+bonus+incentive are
+derived. Never the Salary Profile's agreed `gross_salary`, and never CTC itself.
 \_Avoid*: CTC, Basic, Salary (ambiguous)
 
 **CTC**:
-Cost to company — Gross plus employer contributions (PF employer, ESIC employer, bonus, insurance, gratuity, etc.). Display-only; not an input to `computePayroll`.
+Cost to company — the monthly pay base in `employee_salary_profile.employer_cost`
+(falling back to `gross_salary`, then `gross`). Apportioned over the month's
+Basis Hours to give the Hourly Rate (ADR-0010); the employer contributions it
+adds (PF/ESIC employer, gratuity, insurance) stay display-only.
 _Avoid_: Gross, Package
+
+**Basis Hours**:
+The payroll month's payable hours — working days (Sundays and active
+`holiday_master` dates excluded) × the Salary Profile's `std_hours_per_day`
+(default 8). The divisor that turns the month's CTC into its Hourly Rate.
+_Avoid_: Standard hours, Capacity (that is net of leave)
+
+**Hourly Rate**:
+CTC ÷ Basis Hours. Gross is Hourly Rate × Logged Hours; the slip stores the
+two-decimal rate it printed while the money math uses the unrounded value.
+_Avoid_: Rate (unqualified), ctc_rate (the utilization report's 26×8 denominator)
 
 **Leave Application**:
 An employee's request for time off with a start date, end date, type, reason, and status (`pending`, `approved`, or `rejected`). One employee can never hold two intersecting `pending`/`approved` applications — the server rejects that as its own overlap.
@@ -57,7 +73,7 @@ Net available working hours for an Employee in a period — 8h per working day (
 _Avoid_: Expected hours, Standard hours (ambiguous), Bandwidth
 
 **Logged Hours**:
-Sum of `user_activity_assignments.daily_entries.hours` (`actual_hours`) entered via Project Activity Assignments, including overtime. The billed-effort truth for utilization; never `planned_hours`/`estimated_hours`.
+Sum of `user_activity_assignments.daily_entries.hours` (`actual_hours`) entered via Project Activity Assignments, including overtime. The billed-effort truth for utilization, and the payroll numerator: Gross = Hourly Rate × Logged Hours (ADR-0010); never `planned_hours`/`estimated_hours`.
 _Avoid_: Manhours (ambiguous), Planned hours, Assigned hours
 
 **Utilization**:
@@ -69,7 +85,7 @@ CTC-based monthly price of an Employee — `employee_salary_profile.employer_cos
 _Avoid_: Gross, Salary (ambiguous), Hourly rate
 
 **Bench Cost**:
-`monthly_cost − ctc_rate × logged_hours`, where `ctc_rate` is Monthly Cost apportioned over `std_working_days` (default 26) × `std_hours_per_day` (default 8); hourly/daily/custom types use their direct rate. Rows without a covering profile show blank cost, never zero.
+`monthly_cost − ctc_rate × logged_hours`, where `ctc_rate` is Monthly Cost apportioned over `std_working_days` (default 26) × `std_hours_per_day` (default 8); hourly/daily/custom types use their direct rate. That denominator is the utilization report's own — payroll's Hourly Rate apportions over the month's working days instead (ADR-0010). Rows without a covering profile show blank cost, never zero.
 _Avoid_: Fractional cost, Loss, Waste
 
 **Weekly Off**:

@@ -133,6 +133,13 @@ function renderSlip(doc, slip, yStart) {
 			{ label: 'PAYMENT MODE', value: safeStr(slip.payment_mode || 'NEFT') },
 			{ label: '', value: '' },
 		],
+		// The hours basis: month CTC ÷ month hours = rate, paid at the hours logged.
+		[
+			{ label: 'CTC', value: safeStr(slip.ctc_used) },
+			{ label: 'BASIS HOURS', value: safeStr(slip.basis_hours) },
+			{ label: 'HOURS LOGGED', value: safeStr(slip.logged_hours) },
+			{ label: 'HOURLY RATE', value: safeStr(slip.hourly_rate) },
+		],
 	];
 
 	// 8 equal columns across the full table width

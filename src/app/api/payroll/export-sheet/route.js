@@ -513,8 +513,6 @@ export async function GET(request) {
 				// All numeric values use safeNum() to guarantee finite numbers (never NaN/Infinity/strings)
 				const tds = safeNum(slip.tds);
 				const totalDays = daysInMonth;
-				const standardWorkingDays =
-					safeNum(slip.standard_working_days) || totalDays;
 				const lopDays =
 					lwpMap[slip.employee_id] != null
 						? safeNum(lwpMap[slip.employee_id])
@@ -524,20 +522,14 @@ export async function GET(request) {
 				const weeklyOff = weeklyOffDaysInMonth;
 				const daysPresent = Math.max(0, totalDays - weeklyOff - absentDays);
 				const payableDays = Math.max(0, totalDays - lopDays);
-				// Only apply pro-rata when there are actual absent/LOP days
-				const isAbsent = absentDays > 0;
-				const prorataFactor =
-					isAbsent && standardWorkingDays > 0
-						? Math.min(
-								1,
-								(standardWorkingDays - absentDays) / standardWorkingDays
-							)
-						: 1;
+				// Pay is settled at the hours logged: the slip's Gross already
+				// carries the only absence effect there is, so this sheet never
+				// re-prorates money for absent days (ADR-0009, ADR-0010).
 
 				// Basic/DA come from the shared slip figures (src/lib/payroll.js) —
 				// the same numbers the Payroll Slip document and both PDFs print, so
-				// this sheet cannot split one slip two ways. Everything below stays
-				// the sheet's own prorated working figures.
+				// this sheet cannot split one slip two ways. The rest of the money
+				// rows are the slip's own stored columns for that same reason.
 				const slipMoney = slipFigures(slip, { scheduledDA });
 				const basicFull = slipMoney.basic;
 				const daFull = slipMoney.da;
@@ -554,14 +546,14 @@ export async function GET(request) {
 				// Basic/DA split should match salary structure + Manage Schedule exactly
 				const basic = basicFull;
 				const da = daFull;
-				const hra = hraFull * prorataFactor;
-				const conveyance = conveyanceFull * prorataFactor;
-				const callAllowance = callAllowanceFull * prorataFactor;
-				const otherAllowances = otherAllowancesFull * prorataFactor;
-				const bonus = bonusFull * prorataFactor;
-				const otRate = otRateFull * prorataFactor;
-				// Gross = the sheet's own working total: the slip's Basic+DA plus
-				// the allowance columns above, pro-rated for absences.
+				const hra = hraFull;
+				const conveyance = conveyanceFull;
+				const callAllowance = callAllowanceFull;
+				const otherAllowances = otherAllowancesFull;
+				const bonus = bonusFull;
+				const otRate = otRateFull;
+				// Gross = the slip's own earnings: Basic+DA plus the allowance
+				// columns, exactly as the Payroll Slip stores them.
 				const gross =
 					basicPlusDa +
 					hra +
@@ -573,31 +565,19 @@ export async function GET(request) {
 					otRate +
 					incentive;
 
-				// Pro-rate percentage-based deductions only if person is absent
-				const pfEmployee = isAbsent
-					? safeNum(slip.pf_employee) * prorataFactor
-					: safeNum(slip.pf_employee);
-				const esicEmployee = isAbsent
-					? safeNum(slip.esic_employee) * prorataFactor
-					: safeNum(slip.esic_employee);
-				// PT is a flat FEBRUARY_PT in February (src/lib/payroll.js), and this
-				// sheet also pro-rates it when the employee was absent.
+				// Deductions read the slip's snapshot for the same reason.
+				const pfEmployee = safeNum(slip.pf_employee);
+				const esicEmployee = safeNum(slip.esic_employee);
+				// PT is a flat FEBRUARY_PT in February (src/lib/payroll.js).
 				const isFebruary = isFebruaryMonth(month);
-				const originalPt = safeNum(slip.pt);
-				const pt = isAbsent
-					? (isFebruary ? FEBRUARY_PT : originalPt) * prorataFactor
-					: isFebruary
-						? FEBRUARY_PT
-						: originalPt;
+				const pt = isFebruary ? FEBRUARY_PT : safeNum(slip.pt);
 				const empLoanAdvance = loanAdvanceMap[slip.employee_id] || {
 					loan: 0,
 					advance: 0,
 				};
 				const loan = empLoanAdvance.loan || safeNum(slip.loan);
 				const advance = empLoanAdvance.advance || safeNum(slip.advance);
-				const retention = isAbsent
-					? safeNum(slip.retention) * prorataFactor
-					: safeNum(slip.retention);
+				const retention = safeNum(slip.retention);
 				// MLWF: deduct only in June and December, but keep configured value in profile.
 				const mlwf = monthNum === 6 || monthNum === 12 ? safeNum(slip.mlwf) : 0;
 				// Recalculate total_deductions from pro-rated components

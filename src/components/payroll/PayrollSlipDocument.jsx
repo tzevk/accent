@@ -333,6 +333,73 @@ export default function PayrollSlipDocument({ slip }) {
 							{slip.payment_mode || ''}
 						</td>
 					</tr>
+					{/* The hours basis: month CTC ÷ month hours = rate, paid at the hours logged. */}
+					<tr>
+						<td
+							className="px-2 py-1.5 font-bold text-[10px]"
+							style={{
+								border: '1px solid #d8b4fe',
+								background: '#faf5ff',
+								color: '#64126D',
+							}}
+						>
+							CTC :
+						</td>
+						<td
+							className="px-2 py-1.5 bg-white"
+							style={{ border: '1px solid #d8b4fe' }}
+						>
+							{slip.ctc_used || ''}
+						</td>
+						<td
+							className="px-2 py-1.5 font-bold text-[10px]"
+							style={{
+								border: '1px solid #d8b4fe',
+								background: '#faf5ff',
+								color: '#64126D',
+							}}
+						>
+							BASIS HOURS :
+						</td>
+						<td
+							className="px-2 py-1.5 bg-white"
+							style={{ border: '1px solid #d8b4fe' }}
+						>
+							{slip.basis_hours || ''}
+						</td>
+						<td
+							className="px-2 py-1.5 font-bold text-[10px]"
+							style={{
+								border: '1px solid #d8b4fe',
+								background: '#faf5ff',
+								color: '#64126D',
+							}}
+						>
+							HOURS LOGGED :
+						</td>
+						<td
+							className="px-2 py-1.5 bg-white"
+							style={{ border: '1px solid #d8b4fe' }}
+						>
+							{slip.logged_hours || ''}
+						</td>
+						<td
+							className="px-2 py-1.5 font-bold text-[10px]"
+							style={{
+								border: '1px solid #d8b4fe',
+								background: '#faf5ff',
+								color: '#64126D',
+							}}
+						>
+							HOURLY RATE :
+						</td>
+						<td
+							className="px-2 py-1.5 bg-white"
+							style={{ border: '1px solid #d8b4fe' }}
+						>
+							{slip.hourly_rate || ''}
+						</td>
+					</tr>
 				</tbody>
 			</table>
 
