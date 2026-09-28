@@ -7,14 +7,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { updateInvoicePaymentStatus } from '@/utils/payment-utils';
-
-/** mysql2 duplicate-key error (unique index violation). */
-function isDuplicateKeyError(error: unknown): boolean {
-	if (typeof error !== 'object' || error === null) return false;
-	const errno = 'errno' in error ? error.errno : undefined;
-	const code = 'code' in error ? error.code : undefined;
-	return errno === 1062 || code === 'ER_DUP_ENTRY';
-}
+import { isDuplicateKeyError } from '@/utils/db-number-retry';
 
 export async function PUT(
 	request: Request,

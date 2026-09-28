@@ -49,17 +49,18 @@ const XML_MARKUP_MARKERS = [
 	'<!doctype svg',
 ];
 
-export const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB — parity with src/utils/document-helpers.js
+export const MAX_FILE_SIZE: number = 20 * 1024 * 1024; // 20MB — parity with src/utils/document-helpers.js
 
 /**
  * Largest JSON upload body that can still decode to `MAX_FILE_SIZE`: base64
  * expands 3 bytes to 4 characters, plus the `{"filename":…,"b64":…}` envelope.
  * Used to reject on the declared `Content-Length` before the body is parsed.
  */
-export const MAX_REQUEST_BYTES = Math.ceil(MAX_FILE_SIZE / 3) * 4 + 4096;
+export const MAX_REQUEST_BYTES: number =
+	Math.ceil(MAX_FILE_SIZE / 3) * 4 + 4096;
 
 /** Shared rejection reason for uploads whose bytes are markup. */
-export const MARKUP_REJECTION_ERROR =
+export const MARKUP_REJECTION_ERROR: string =
 	'File content is HTML, SVG or script markup, which is not allowed';
 
 /**
@@ -71,7 +72,7 @@ export const MARKUP_REJECTION_ERROR =
  * @param {Buffer} buffer raw upload bytes
  * @returns {string} normalised head, or '' when there is nothing to inspect
  */
-function sniffHead(buffer) {
+function sniffHead(buffer: Buffer): string {
 	if (buffer.length === 0) return '';
 
 	let offset = 0;
@@ -99,7 +100,7 @@ function sniffHead(buffer) {
  * @param {Buffer} buffer raw upload bytes
  * @returns {boolean} true when the payload must not be stored
  */
-export function hasMarkupSignature(buffer) {
+export function hasMarkupSignature(buffer: unknown): boolean {
 	if (!Buffer.isBuffer(buffer)) return false;
 
 	const head = sniffHead(buffer);
@@ -124,7 +125,7 @@ export function hasMarkupSignature(buffer) {
  * @param {string} value base64 (or data-URL) content
  * @returns {number} estimated decoded size in bytes
  */
-export function estimateBase64DecodedBytes(value) {
+export function estimateBase64DecodedBytes(value: unknown): number {
 	if (typeof value !== 'string' || value.length === 0) return 0;
 	const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
 	return Math.max(0, Math.floor((value.length * 3) / 4) - padding);

@@ -19,7 +19,7 @@ const TABLE = 'petty_cash_expenses';
 // backstop and a collision retries with a fresh read.
 async function nextNumber(db: PoolConnection): Promise<string> {
 	const [rows] = await db.execute<RowDataPacket[]>(
-		`SELECT transaction_number FROM ${TABLE} WHERE transaction_number LIKE 'PCX-%' ORDER BY created_at DESC LIMIT 1 FOR UPDATE`
+		`SELECT transaction_number FROM ${TABLE} WHERE transaction_number LIKE 'PCX-%' AND isDelete = 0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`
 	);
 	let next = 1;
 	if (rows.length > 0) {

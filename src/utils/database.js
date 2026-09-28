@@ -18,7 +18,7 @@ dotenv.config();
  * Default is 'off' so local dev/E2E keep working until the server requires TLS.
  * An unknown mode throws rather than silently downgrading to plaintext.
  *
- * Single source of truth: `knexfile.js` imports this. `src/utils/proxy-db.js`
+ * Single source of truth: `knexfile.js` imports this. `src/utils/proxy-db.ts`
  * deliberately keeps its own copy — the proxy must not share modules with the
  * route handlers (ADR-0011).
  */

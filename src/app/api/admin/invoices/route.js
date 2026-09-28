@@ -344,7 +344,7 @@ export async function POST(request) {
 						calculatedBalance = toNumber(sub(oldRemaining, invoiceTotal));
 
 						await connection.execute(
-							'UPDATE purchase_orders SET remaining_balance = remaining_balance - ? WHERE id = ?',
+							'UPDATE purchase_orders SET remaining_balance = remaining_balance - ? WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 							[toNumber(invoiceTotal), poId]
 						);
 					} else {

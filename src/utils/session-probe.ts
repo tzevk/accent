@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { queryProxy } from './proxy-db.js';
+import { queryProxy } from './proxy-db';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Session probe (ADR-0011)
@@ -28,22 +28,32 @@ const SESSION_LOOKUP_SQL = `
      AND u.isDelete = 0
    LIMIT 1`;
 
-/** @type {Map<string, { valid: boolean, expiresAt: number }>} */
-const sessionCache = new Map();
+interface SessionRow {
+	user_id: number;
+	is_active: number | boolean | null;
+	status: string | null;
+}
+
+interface CacheEntry {
+	valid: boolean;
+	expiresAt: number;
+}
+
+const sessionCache = new Map<string, CacheEntry>();
 
 /** SHA-256 hex of the cookie value — the digest stored in sessions.token_hash. */
-export function hashSessionToken(token) {
+export function hashSessionToken(token: string): string {
 	return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function isActiveUser(row) {
+function isActiveUser(row: SessionRow): boolean {
 	return (
 		(row.is_active === null || row.is_active === 1 || row.is_active === true) &&
 		(row.status === 'active' || !row.status)
 	);
 }
 
-function remember(tokenHash, valid) {
+function remember(tokenHash: string, valid: boolean): void {
 	if (sessionCache.size >= CACHE_MAX_SIZE) {
 		// Map iterates in insertion order — drop the oldest entries.
 		let remaining = CACHE_EVICT_COUNT;
@@ -63,7 +73,9 @@ function remember(tokenHash, valid) {
  * Never throws: an unreachable DB serves a fresh cached verdict if there is
  * one, and denies otherwise.
  */
-export async function isSessionValid(token) {
+export async function isSessionValid(
+	token: string | undefined | null
+): Promise<boolean> {
 	if (!token) return false;
 
 	const tokenHash = hashSessionToken(token);
@@ -71,14 +83,14 @@ export async function isSessionValid(token) {
 	if (cached && cached.expiresAt > Date.now()) return cached.valid;
 
 	try {
-		const rows = await queryProxy(SESSION_LOOKUP_SQL, [tokenHash]);
-		const valid = rows?.length > 0 && isActiveUser(rows[0]);
+		const rows = await queryProxy<SessionRow>(SESSION_LOOKUP_SQL, [tokenHash]);
+		const valid = rows.length > 0 && isActiveUser(rows[0]);
 		remember(tokenHash, valid);
 		return valid;
 	} catch (error) {
 		console.error(
 			'[proxy] session probe failed, denying request:',
-			error?.message ?? error
+			error instanceof Error ? error.message : error
 		);
 		const fallback = sessionCache.get(tokenHash);
 		if (fallback && fallback.expiresAt > Date.now()) return fallback.valid;

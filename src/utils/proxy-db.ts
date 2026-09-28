@@ -16,10 +16,13 @@ import mysql from 'mysql2/promise';
 // cover this pool *plus* the app pool for every instance (ADR-0011).
 const CONNECTION_LIMIT = Number(process.env.PROXY_DB_CONNECTION_LIMIT || 2);
 
-let pool = null;
+/** One result row; callers narrow the fields they read. */
+export type ProxyRow = Record<string, unknown>;
 
-function readDbConfig() {
-	const environment = process.env.NODE_ENV || 'development';
+let pool: mysql.Pool | null = null;
+
+function readDbConfig(): mysql.PoolOptions {
+	const environment = String(process.env.NODE_ENV || 'development');
 	let database;
 	let user;
 	let password;
@@ -50,7 +53,7 @@ function readDbConfig() {
 // SEC-20: the proxy holds its own pool, so it has to honour the same
 // DB_SSL_MODE / DB_SSL_CA_PATH contract as src/utils/database.js (off |
 // require | verify) instead of silently connecting without TLS.
-function getDbSslConfig() {
+function getDbSslConfig(): mysql.SslOptions | undefined {
 	const mode = String(process.env.DB_SSL_MODE || 'off').toLowerCase();
 	if (mode === 'off') return undefined;
 	if (mode !== 'require' && mode !== 'verify') {
@@ -59,13 +62,16 @@ function getDbSslConfig() {
 		);
 	}
 	const caPath = process.env.DB_SSL_CA_PATH;
+	const ca = caPath ? fs.readFileSync(caPath) : undefined;
 	return {
-		rejectUnauthorized: mode === 'verify',
-		...(caPath ? { ca: fs.readFileSync(caPath) } : {}),
+		// A configured CA always enables verification; 'verify' also verifies
+		// against the system trust store when no CA is given.
+		rejectUnauthorized: mode === 'verify' || Boolean(ca),
+		...(ca ? { ca } : {}),
 	};
 }
 
-function getPool() {
+function getPool(): mysql.Pool {
 	if (!pool) {
 		const created = mysql.createPool({
 			...readDbConfig(),
@@ -82,7 +88,7 @@ function getPool() {
 		});
 		// A dropped connection must not surface as an unhandled 'error' event.
 		created.on('connection', (connection) => {
-			connection.on('error', (error) => {
+			connection.on('error', (error: Error) => {
 				console.error('[proxy-db] MySQL connection error:', error.message);
 			});
 		});
@@ -91,13 +97,19 @@ function getPool() {
 	return pool;
 }
 
+/** One bound parameter; callers pass scalars only. */
+export type ProxyParam = string | number | boolean | Date | null;
+
 /**
  * Run one parameterized statement on the proxy pool.
  * Returns the result rows, or the result header for writes.
  * Throws when the statement fails — the caller decides whether that means
  * "deny" (session probe) or "fail open" (rate limiting).
  */
-export async function queryProxy(sql, params = []) {
+export async function queryProxy<T = ProxyRow>(
+	sql: string,
+	params: ProxyParam[] = []
+): Promise<T[]> {
 	const [rows] = await getPool().execute(sql, params);
-	return rows;
+	return rows as T[];
 }

@@ -9,7 +9,7 @@
  * Isomorphic on purpose: route handlers and client-side print builders share it.
  */
 
-export function escapeHtml(value) {
+export function escapeHtml(value: unknown): string {
 	if (value === null || value === undefined) return '';
 	return String(value)
 		.replace(/&/g, '&amp;')

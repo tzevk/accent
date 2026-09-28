@@ -9,11 +9,7 @@ import {
 	sanitizeJsonStrings,
 	sanitizeOptionalRichText,
 } from '@/lib/sanitize-fields';
-
-/** mysql2 duplicate-key error (unique index violation). */
-function isDuplicateKeyError(error) {
-	return error?.errno === 1062 || error?.code === 'ER_DUP_ENTRY';
-}
+import { isDuplicateKeyError } from '@/utils/db-number-retry';
 
 const parseFloatOrZero = (val) => {
 	const parsed = parseFloat(val);

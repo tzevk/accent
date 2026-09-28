@@ -2,11 +2,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 // Relative imports on purpose: the proxy must not rely on shared modules with
 // the route handlers (ADR-0011), and it stays independent of the app's alias
 // configuration and of src/utils/database.js's shared global pool.
-import { isSessionValid, hashSessionToken } from './utils/session-probe.js';
+import { isSessionValid, hashSessionToken } from './utils/session-probe';
 import {
 	consumeRateLimitBucket,
 	deleteExpiredRateLimitBuckets,
-} from './utils/rate-limit-store.js';
+} from './utils/rate-limit-store';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Unauthenticated surface (ADR-0014)

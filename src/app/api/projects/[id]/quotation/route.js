@@ -152,7 +152,7 @@ export async function POST(request, { params }) {
           gst_amount = ?,
           net_amount = ?,
           updated_at = NOW()
-        WHERE project_id = ?`,
+        WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
 						[
 							quotationNumber,
 							quotation_date || null,

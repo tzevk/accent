@@ -17,7 +17,7 @@ const TABLE = 'purchase_invoices';
 // backstop and a collision retries with a fresh read.
 async function nextNumber(db) {
 	const [rows] = await db.execute(
-		`SELECT invoice_number FROM ${TABLE} WHERE invoice_number LIKE 'PI-%' ORDER BY id DESC LIMIT 1 FOR UPDATE`
+		`SELECT invoice_number FROM ${TABLE} WHERE invoice_number LIKE 'PI-%' AND isDelete = 0 ORDER BY id DESC LIMIT 1 FOR UPDATE`
 	);
 	let next = 1;
 	if (rows.length > 0) {

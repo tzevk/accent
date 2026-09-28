@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 
 // This is a simple redirect/proxy to the document-master API
 // for compatibility with the assignment functionality
-export async function GET() {
+export async function GET(request) {
 	try {
 		// Since we're in the same application, we can import and use the document-master API directly
 		const documentMasterModule = await import('../document-master/route.js');
-		return documentMasterModule.GET();
+		return documentMasterModule.GET(request);
 	} catch (error) {
 		console.error('Documents API error:', error);
 		return NextResponse.json(

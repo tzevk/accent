@@ -236,7 +236,7 @@ export async function PUT(request, { params }) {
 			// Restore old PO balance
 			if (oldPoId) {
 				await connection.execute(
-					'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ?',
+					'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 					[oldTotal.toNumber(), oldPoId]
 				);
 			}
@@ -253,7 +253,7 @@ export async function PUT(request, { params }) {
 					const remaining = R(newPO[0].remaining_balance);
 					calculatedBalance = toNumber(sub(remaining, newTotal));
 					await connection.execute(
-						'UPDATE purchase_orders SET remaining_balance = remaining_balance - ? WHERE id = ?',
+						'UPDATE purchase_orders SET remaining_balance = remaining_balance - ? WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 						[toNumber(newTotal), newPoId]
 					);
 				} else {
@@ -291,11 +291,11 @@ export async function PUT(request, { params }) {
 			// Same PO — adjust remaining_balance by difference
 			const diff = toNumber(sub(oldTotal, newTotal));
 			await connection.execute(
-				'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ?',
+				'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 				[diff, oldPoId]
 			);
 			const [poRecord] = await connection.execute(
-				'SELECT remaining_balance FROM purchase_orders WHERE id = ? FOR UPDATE',
+				'SELECT remaining_balance FROM purchase_orders WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
 				[oldPoId]
 			);
 			calculatedBalance = R(poRecord?.[0]?.remaining_balance).toNumber();
@@ -311,7 +311,7 @@ export async function PUT(request, { params }) {
 				const remaining = R(existingPO[0].remaining_balance);
 				calculatedBalance = toNumber(sub(remaining, newTotal));
 				await connection.execute(
-					'UPDATE purchase_orders SET remaining_balance = remaining_balance - ? WHERE id = ?',
+					'UPDATE purchase_orders SET remaining_balance = remaining_balance - ? WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 					[toNumber(newTotal), newPoId]
 				);
 			} else {
@@ -523,7 +523,7 @@ export async function DELETE(request, { params }) {
 			const deletePoId = invoiceToDelete[0].po_id;
 			if (deletePoId) {
 				await connection.execute(
-					'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ?',
+					'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 					[deleteTotal, deletePoId]
 				);
 			}

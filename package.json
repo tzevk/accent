@@ -9,6 +9,7 @@
 		"start": "next start",
 		"lint": "eslint src scripts",
 		"check:route-auth": "node scripts/check-route-auth.mjs",
+		"security:poc-reruns": "node scripts/security-poc-reruns.mjs",
 		"test": "vitest",
 		"test:ui": "vitest --ui",
 		"test:run": "vitest run",

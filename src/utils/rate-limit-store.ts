@@ -1,4 +1,4 @@
-import { queryProxy } from './proxy-db.js';
+import { queryProxy } from './proxy-db';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DB-backed fixed-window rate-limit buckets (ADR-0013)
@@ -25,6 +25,21 @@ const COUNT_SQL = `
 const DELETE_EXPIRED_SQL =
 	'DELETE FROM rate_limit_buckets WHERE window_start < ?';
 
+export interface RateLimitBucketArgs {
+	bucketKey: string;
+	windowMs: number;
+	maxRequests: number;
+	now?: number;
+}
+
+export interface RateLimitBucketResult {
+	limited: boolean;
+	count: number;
+	remaining: number;
+	resetIn: number;
+	limit: number;
+}
+
 /**
  * Count one request against a fixed-window bucket and report the verdict.
  *
@@ -40,14 +55,17 @@ export async function consumeRateLimitBucket({
 	windowMs,
 	maxRequests,
 	now = Date.now(),
-}) {
+}: RateLimitBucketArgs): Promise<RateLimitBucketResult> {
 	const windowStart = Math.floor(now / windowMs) * windowMs;
 	const resetIn = Math.max(1, Math.ceil((windowStart + windowMs - now) / 1000));
 
 	try {
 		await queryProxy(UPSERT_SQL, [bucketKey, windowStart]);
-		const rows = await queryProxy(COUNT_SQL, [bucketKey, windowStart]);
-		const count = Number(rows?.[0]?.count ?? 1);
+		const rows = await queryProxy<{ count: number }>(COUNT_SQL, [
+			bucketKey,
+			windowStart,
+		]);
+		const count = Number(rows[0]?.count ?? 1);
 
 		return {
 			limited: count > maxRequests,
@@ -59,7 +77,7 @@ export async function consumeRateLimitBucket({
 	} catch (error) {
 		console.error(
 			'[RateLimit] bucket write failed, failing open:',
-			error?.message ?? error
+			error instanceof Error ? error.message : error
 		);
 		return {
 			limited: false,
@@ -76,15 +94,15 @@ export async function consumeRateLimitBucket({
  * Never throws — the sweep piggybacks on proxy.ts's cleanup interval.
  */
 export async function deleteExpiredRateLimitBuckets(
-	retentionMs,
+	retentionMs: number,
 	now = Date.now()
-) {
+): Promise<void> {
 	try {
 		await queryProxy(DELETE_EXPIRED_SQL, [now - retentionMs]);
 	} catch (error) {
 		console.error(
 			'[RateLimit] bucket cleanup failed:',
-			error?.message ?? error
+			error instanceof Error ? error.message : error
 		);
 	}
 }

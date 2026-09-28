@@ -300,7 +300,7 @@ export async function POST(request) {
 
 					// Find highest lead_id serial number for current month/year
 					const [leads] = await db.execute(
-						'SELECT lead_id FROM leads WHERE lead_id LIKE ? ORDER BY lead_id DESC FOR UPDATE',
+						'SELECT lead_id FROM leads WHERE lead_id LIKE ? AND isDelete = 0 ORDER BY lead_id DESC FOR UPDATE',
 						[`%${currentPattern}`]
 					);
 

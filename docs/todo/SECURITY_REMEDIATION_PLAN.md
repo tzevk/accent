@@ -12,7 +12,7 @@
 >
 > **Findings discovered while implementing**: SEC-30 (the proxy had never been compiled — root cause behind the "presence check" claim), SEC-31 (`POST /api/projects` INSERT was invalid: every create 500'd), SEC-32 (activity logging deadlocked the 5-connection pool under concurrent creates). All three are fixed and recorded in `docs/SECURITY_AUDIT.md`.
 >
-> **Evidence**: `npm run e2e` — 40/40 including 34 security specs; per-flow artifacts under `e2e/artifacts/security-*.json`; piolium PoC re-runs in `e2e/artifacts/security-poc-reruns.json`; unit suite 807 tests green; `npm run check:route-auth` exit 0.
+> **Evidence**: `npm run e2e` — 40/40 including 34 security specs; per-flow artifacts under `e2e/artifacts/security-*.json`; piolium PoC re-runs in `e2e/artifacts/security-poc-reruns.json` (regenerate with `npm run security:poc-reruns` against a current `build:e2e`; the script skips cleanly where the gitignored `piolium/` audit bundle is absent, i.e. in CI); unit suite 807 tests green; `npm run check:route-auth` exit 0.
 
 > Created 2026-09-28. Inputs: `docs/SECURITY_AUDIT.md` (SEC-01…SEC-25, re-verified against HEAD `ff7440a`) and the piolium deep audit (`piolium/final-audit-report.md`, 2026-09-02, commit `f00d6ad`): **C1** forged-session master-data access, **C2** active-users cookie forgery (already fixed in code — `active-users/route.js` now uses `getCurrentUser` + `r.role_name`), **H1** regex-sanitizer stored XSS.
 >

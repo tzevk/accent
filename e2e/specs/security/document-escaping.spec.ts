@@ -31,7 +31,7 @@ const IMG = '<img src=x onerror=alert(1)>';
 /** Attribute break-out followed by a script element. */
 const BREAKOUT = '"><script>alert(1)</script>';
 
-/** What `src/lib/escape-html.js` must produce for each payload. */
+/** What `src/lib/escape-html.ts` must produce for each payload. */
 const ESCAPED = {
 	svg: '&lt;svg/onload=alert(1)&gt;',
 	img: '&lt;img src=x onerror=alert(1)&gt;',
@@ -95,6 +95,7 @@ const pdfResults: PdfSinkResult[] = [];
 
 let admin: APIRequestContext | undefined;
 let quotationId = 0;
+let invoiceId = 0;
 
 const PDF_NOTE =
 	'PDF page text is compressed and font-coded, so escaping is asserted at ' +
@@ -163,6 +164,7 @@ const SEEDED_TARGETS = [
 	['material_requisitions', 'requisition_number'],
 	['outgoing_purchase_orders', 'po_number'],
 	['quotations', 'quotation_number'],
+	['invoices', 'invoice_number'],
 ] as const;
 
 /** Delete every row this spec owns. Idempotent; returns rows removed. */
@@ -252,6 +254,14 @@ test.describe('security: document escaping (workstream D)', () => {
 			]
 		);
 		quotationId = quotation.insertId;
+
+		const invoice = await exec(
+			`INSERT INTO invoices
+	       (invoice_number, client_name, client_address, invoice_date, total, status, isDelete)
+	     VALUES (?, ?, ?, '2026-09-01', 100, 'draft', 0)`,
+			[`${RUN}-INV`, SVG, BREAKOUT]
+		);
+		invoiceId = invoice.insertId;
 
 		// The premise: the payload is stored verbatim, not sanitized on the way in
 		// (the write-path sanitizer owns rich-text columns; these are plain text).
@@ -523,6 +533,35 @@ test.describe('security: document escaping (workstream D)', () => {
 			seededFields: {
 				client_name: SVG,
 				'scope_items[0].description': IMG,
+			},
+			note: PDF_NOTE,
+		});
+	});
+
+	test('invoices PDF still renders for hostile payloads', async () => {
+		test.setTimeout(120_000);
+		expect(invoiceId).toBeGreaterThan(0);
+		const context = requireAdmin();
+		const route = `/api/admin/invoices/download?id=${invoiceId}`;
+		const response = await context.get(route);
+		expect(response.status()).toBe(200);
+		const contentType = response.headers()['content-type'] ?? '';
+		expect(contentType).toContain('application/pdf');
+		const body = await response.body();
+		expect(body.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+
+		pdfResults.push({
+			name: 'invoice',
+			template: 'src/app/api/admin/invoices/download/route.js',
+			route,
+			method: 'GET',
+			status: response.status(),
+			contentType,
+			contentDisposition: response.headers()['content-disposition'] ?? '',
+			pdfMagic: true,
+			seededFields: {
+				client_name: SVG,
+				client_address: BREAKOUT,
 			},
 			note: PDF_NOTE,
 		});

@@ -15,7 +15,7 @@ const TABLE = 'expenses';
 // behind it; the unique active expense-number index is the backstop.
 async function nextNumber(db) {
 	const [rows] = await db.execute(
-		`SELECT expense_number FROM ${TABLE} WHERE expense_number LIKE 'EXP-%' ORDER BY id DESC LIMIT 1 FOR UPDATE`
+		`SELECT expense_number FROM ${TABLE} WHERE expense_number LIKE 'EXP-%' AND isDelete = 0 ORDER BY id DESC LIMIT 1 FOR UPDATE`
 	);
 	let next = 1;
 	if (rows.length > 0) {

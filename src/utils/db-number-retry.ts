@@ -13,9 +13,20 @@
  * Callers should only retry a collision when the number was auto-generated —
  * an explicit collision on a client-supplied number is a 4xx, not a retry.
  */
-export function isRetryableNumberError(error) {
-	const errno = error?.errno;
-	const code = error?.code;
+
+/** Read the errno/code fields mysql2 puts on driver errors, if present. */
+function mysqlErrorFields(error: unknown): { errno?: unknown; code?: unknown } {
+	if (error && typeof error === 'object') {
+		return {
+			errno: 'errno' in error ? error.errno : undefined,
+			code: 'code' in error ? error.code : undefined,
+		};
+	}
+	return {};
+}
+
+export function isRetryableNumberError(error: unknown): boolean {
+	const { errno, code } = mysqlErrorFields(error);
 	return (
 		errno === 1062 ||
 		errno === 1213 ||
@@ -24,4 +35,14 @@ export function isRetryableNumberError(error) {
 		code === 'ER_LOCK_DEADLOCK' ||
 		code === 'ER_LOCK_WAIT_TIMEOUT'
 	);
+}
+
+/**
+ * Strict duplicate-key predicate for routes that classify a collision as a 409
+ * instead of retrying (an explicitly supplied number). Kept here so every route
+ * reads the same definition.
+ */
+export function isDuplicateKeyError(error: unknown): boolean {
+	const { errno, code } = mysqlErrorFields(error);
+	return errno === 1062 || code === 'ER_DUP_ENTRY';
 }

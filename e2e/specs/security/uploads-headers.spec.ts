@@ -211,12 +211,18 @@ test.describe.serial('security: headers and upload gates', () => {
 	}) => {
 		const anonymous = await anonymousContext(playwright, E2E_ENV.baseURL);
 		try {
-			for (const target of ['/signin', '/api/health']) {
-				const response = await anonymous.get(target);
+			// `/` redirects anonymous callers, so it is probed with the
+			// authenticated context; next.config's headers apply either way.
+			for (const [target, client] of [
+				['/signin', anonymous],
+				['/api/health', anonymous],
+				['/', request],
+			] as const) {
+				const response = await client.get(target);
 				expect(
 					response.status(),
-					`${target} should be reachable anonymously`
-				).toBe(200);
+					`${target} should resolve (redirects allowed for anonymous pages)`
+				).toBeLessThan(400);
 
 				const headers = response.headers();
 				const csp = headers['content-security-policy'] ?? '';

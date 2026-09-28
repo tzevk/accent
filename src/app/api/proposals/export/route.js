@@ -234,16 +234,8 @@ export async function GET(request) {
 					const docXmlPath = 'word/document.xml';
 					let docXml = zip2.file(docXmlPath).asText();
 
-					const escapeXml = (str) =>
-						String(str)
-							.replace(/&/g, '&amp;')
-							.replace(/</g, '&lt;')
-							.replace(/>/g, '&gt;')
-							.replace(/"/g, '&quot;')
-							.replace(/'/g, '&#039;');
-
 					const insertParagraph = (text) =>
-						`</w:p><w:p><w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
+						`</w:p><w:p><w:r><w:t xml:space="preserve">${escapeHtml(text)}</w:t></w:r></w:p>`;
 
 					const headingMap = {
 						Proposal: 'proposal_title',

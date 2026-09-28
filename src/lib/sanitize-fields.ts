@@ -12,10 +12,10 @@
  */
 import { sanitizeRichText } from './sanitize.js';
 
-export const sanitizeOptionalRichText = (value) =>
+export const sanitizeOptionalRichText = <T>(value: T): T | string =>
 	value === undefined || value === null ? value : sanitizeRichText(value);
 
-export const sanitizeJsonStrings = (value) => {
+export const sanitizeJsonStrings = (value: unknown): unknown => {
 	if (typeof value === 'string') {
 		try {
 			const parsed = JSON.parse(value);
@@ -28,9 +28,11 @@ export const sanitizeJsonStrings = (value) => {
 	}
 	if (Array.isArray(value)) return value.map(sanitizeJsonStrings);
 	if (value && typeof value === 'object') {
-		const sanitized = {};
+		const sanitized: Record<string, unknown> = {};
 		for (const key of Object.keys(value)) {
-			sanitized[key] = sanitizeJsonStrings(value[key]);
+			sanitized[key] = sanitizeJsonStrings(
+				(value as Record<string, unknown>)[key]
+			);
 		}
 		return sanitized;
 	}
