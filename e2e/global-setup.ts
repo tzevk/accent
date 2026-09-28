@@ -1,4 +1,4 @@
-import { closeDb, rows } from './lib/db';
+import { closeDb, exec, rows } from './lib/db';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 
 /**
@@ -8,6 +8,16 @@ import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 export default async function globalSetup(): Promise<void> {
 	try {
 		await cleanupFixtures();
+
+		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
+		// trusted IP header; browser sign-ins carry no such header, so they land
+		// under the shared `unknown:anon:auth` bucket. Clear it so repeated runs
+		// inside the same 15-minute window start from zero (the harness makes
+		// fewer than 10 unauthenticated logins per run; specs that need their own
+		// budget set the header and purge their own rows).
+		await exec(`DELETE FROM rate_limit_buckets WHERE bucket_key LIKE ?`, [
+			'%:anon:auth',
+		]);
 
 		const existingRun = await rows<{ status: string }>(
 			`SELECT status FROM payroll_runs
