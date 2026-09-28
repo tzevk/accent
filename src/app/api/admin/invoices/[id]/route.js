@@ -177,12 +177,19 @@ export async function PUT(request, { params }) {
 
 		connection = await dbConnect();
 
-		// Fetch old invoice data before updating
+		// The PO balance updates + the invoice UPDATE must be atomic, and both
+		// the invoice row and every PO row they touch are locked (FOR UPDATE)
+		// for the whole read-modify-write: two concurrent PUTs must not compute
+		// their PO deltas from the same stale total (lost update).
+		await connection.beginTransaction();
+
+		// Fetch and lock the old invoice data before updating
 		const [oldInvoice] = await connection.execute(
-			'SELECT total, po_number, client_name, balance_po_value, po_id FROM invoices WHERE id = ? AND isDelete = 0',
+			'SELECT total, po_number, client_name, balance_po_value, po_id FROM invoices WHERE id = ? AND isDelete = 0 FOR UPDATE',
 			[id]
 		);
 		if (!oldInvoice || oldInvoice.length === 0) {
+			await connection.rollback();
 			return NextResponse.json(
 				{ success: false, message: 'Invoice not found' },
 				{ status: 404 }
@@ -196,6 +203,7 @@ export async function PUT(request, { params }) {
 				[invoice_number, id]
 			);
 			if (existingInvoice.length > 0) {
+				await connection.rollback();
 				return NextResponse.json(
 					{
 						success: false,
@@ -211,11 +219,6 @@ export async function PUT(request, { params }) {
 				);
 			}
 		}
-
-		// PO balance updates + the invoice UPDATE must be atomic: a crash between
-		// them would leave purchase_orders.remaining_balance wrong while the
-		// invoice row is unchanged (or vice versa).
-		await connection.beginTransaction();
 
 		const oldTotal = R(oldInvoice[0].total);
 		const oldPoNumber = oldInvoice[0].po_number;
@@ -241,7 +244,7 @@ export async function PUT(request, { params }) {
 			// Handle new PO
 			if (po_number && client_name) {
 				const [newPO] = await connection.execute(
-					'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ?',
+					'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
 					[po_number]
 				);
 
@@ -250,34 +253,36 @@ export async function PUT(request, { params }) {
 					const remaining = R(newPO[0].remaining_balance);
 					calculatedBalance = toNumber(sub(remaining, newTotal));
 					await connection.execute(
-						'UPDATE purchase_orders SET remaining_balance = ? WHERE id = ?',
-						[calculatedBalance, newPoId]
+						'UPDATE purchase_orders SET remaining_balance = remaining_balance - ? WHERE id = ?',
+						[toNumber(newTotal), newPoId]
 					);
 				} else {
 					const poValue = R(original_po_value);
 					calculatedBalance = toNumber(sub(poValue, newTotal));
 					await connection.execute(
-						`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
-             VALUES (?, ?, ?, ?, ?)
+						`INSERT INTO purchase_orders (po_number, original_value, remaining_balance, po_date)
+             VALUES (?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
-               remaining_balance = VALUES(remaining_balance),
+               remaining_balance = remaining_balance - ?,
                original_value = VALUES(original_value),
-               client_name = VALUES(client_name),
                po_date = VALUES(po_date)`,
 						[
 							po_number,
-							client_name,
-							poValue,
+							toNumber(poValue),
 							calculatedBalance,
 							po_date || null,
+							toNumber(newTotal),
 						]
 					);
 
 					const [poRow] = await connection.execute(
-						'SELECT id FROM purchase_orders WHERE po_number = ?',
+						'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
 						[po_number]
 					);
 					newPoId = poRow?.[0]?.id ?? null;
+					if (poRow?.[0]) {
+						calculatedBalance = toNumber(R(poRow[0].remaining_balance));
+					}
 				}
 			} else {
 				newPoId = null;
@@ -290,14 +295,14 @@ export async function PUT(request, { params }) {
 				[diff, oldPoId]
 			);
 			const [poRecord] = await connection.execute(
-				'SELECT remaining_balance FROM purchase_orders WHERE id = ?',
+				'SELECT remaining_balance FROM purchase_orders WHERE id = ? FOR UPDATE',
 				[oldPoId]
 			);
 			calculatedBalance = R(poRecord?.[0]?.remaining_balance).toNumber();
 		} else if (po_number && client_name) {
 			// No old PO, but new PO info — create/upsert
 			const [existingPO] = await connection.execute(
-				'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ?',
+				'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
 				[po_number]
 			);
 
@@ -306,28 +311,36 @@ export async function PUT(request, { params }) {
 				const remaining = R(existingPO[0].remaining_balance);
 				calculatedBalance = toNumber(sub(remaining, newTotal));
 				await connection.execute(
-					'UPDATE purchase_orders SET remaining_balance = ? WHERE id = ?',
-					[calculatedBalance, newPoId]
+					'UPDATE purchase_orders SET remaining_balance = remaining_balance - ? WHERE id = ?',
+					[toNumber(newTotal), newPoId]
 				);
 			} else {
 				const poValue = R(original_po_value);
 				calculatedBalance = toNumber(sub(poValue, newTotal));
 				await connection.execute(
-					`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
-           VALUES (?, ?, ?, ?, ?)
+					`INSERT INTO purchase_orders (po_number, original_value, remaining_balance, po_date)
+           VALUES (?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE
-             remaining_balance = VALUES(remaining_balance),
+             remaining_balance = remaining_balance - ?,
              original_value = VALUES(original_value),
-             client_name = VALUES(client_name),
              po_date = VALUES(po_date)`,
-					[po_number, client_name, poValue, calculatedBalance, po_date || null]
+					[
+						po_number,
+						toNumber(poValue),
+						calculatedBalance,
+						po_date || null,
+						toNumber(newTotal),
+					]
 				);
 
 				const [poRow] = await connection.execute(
-					'SELECT id FROM purchase_orders WHERE po_number = ?',
+					'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
 					[po_number]
 				);
 				newPoId = poRow?.[0]?.id ?? null;
+				if (poRow?.[0]) {
+					calculatedBalance = toNumber(R(poRow[0].remaining_balance));
+				}
 			}
 		}
 
@@ -489,9 +502,11 @@ export async function DELETE(request, { params }) {
 
 		let deletedInvoiceNumber = null;
 		try {
-			// Fetch invoice data before deleting
+			// Fetch and lock invoice data before deleting: two concurrent
+			// DELETEs must not both restore the PO balance (the second sees
+			// isDelete = 1 after the lock is released and returns 404).
 			const [invoiceToDelete] = await connection.execute(
-				'SELECT total, po_id, invoice_number FROM invoices WHERE id = ? AND isDelete = 0',
+				'SELECT total, po_id, invoice_number FROM invoices WHERE id = ? AND isDelete = 0 FOR UPDATE',
 				[id]
 			);
 			if (!invoiceToDelete || invoiceToDelete.length === 0) {

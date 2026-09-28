@@ -8,12 +8,18 @@ import {
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
 import crypto from 'node:crypto';
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
 
 const TABLE = 'petty_cash_expenses';
 
-async function nextNumber(db: any): Promise<string> {
-	const [rows] = await db.execute(
-		`SELECT transaction_number FROM ${TABLE} WHERE transaction_number LIKE 'PCX-%' ORDER BY created_at DESC LIMIT 1`
+// Petty-cash numbers are PCX-#####. The read runs inside the caller's
+// transaction with a row lock (FOR UPDATE) on the newest row so concurrent
+// POSTs serialize behind it; the unique transaction-number index is the
+// backstop and a collision retries with a fresh read.
+async function nextNumber(db: PoolConnection): Promise<string> {
+	const [rows] = await db.execute<RowDataPacket[]>(
+		`SELECT transaction_number FROM ${TABLE} WHERE transaction_number LIKE 'PCX-%' ORDER BY created_at DESC LIMIT 1 FOR UPDATE`
 	);
 	let next = 1;
 	if (rows.length > 0) {
@@ -147,7 +153,6 @@ export async function POST(request: Request) {
 		db = await dbConnect();
 
 		const id = crypto.randomUUID();
-		const transactionNumber = body.transaction_number || (await nextNumber(db));
 
 		let custodianName = body.custodian_employee_name || null;
 		const custodianId = body.custodian_employee_id || null;
@@ -164,34 +169,59 @@ export async function POST(request: Request) {
 			? parseInt(body.source_voucher_id, 10) || null
 			: null;
 
-		await db.execute(
-			`INSERT INTO ${TABLE}
+		// Number generation and INSERT are one transaction so concurrent POSTs
+		// cannot mint the same PCX number; the unique transaction-number index
+		// makes a lost race a duplicate-key error, which retries from a fresh read.
+		let transactionNumber = '';
+		for (let attempt = 1; ; attempt++) {
+			await db.beginTransaction();
+			try {
+				transactionNumber = body.transaction_number || (await nextNumber(db));
+
+				await db.execute(
+					`INSERT INTO ${TABLE}
 				(id, transaction_number, transaction_date, credit_amount, debit_amount, expense_category,
 				 description, payment_mode, payment_reference, recipient_name,
 				 custodian_employee_id, custodian_employee_name,
 				 bill_no, bill_date, status, notes, created_by, source_voucher_id)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				id,
-				transactionNumber,
-				body.transaction_date,
-				creditAmt,
-				debitAmt,
-				body.expense_category || null,
-				body.description || null,
-				body.payment_mode || 'cash',
-				body.payment_reference || null,
-				body.recipient_name || null,
-				custodianId,
-				custodianName,
-				body.bill_no || null,
-				body.bill_date || null,
-				body.status || 'submitted',
-				body.notes || null,
-				user?.id || null,
-				sourceVoucherId,
-			]
-		);
+					[
+						id,
+						transactionNumber,
+						body.transaction_date,
+						creditAmt,
+						debitAmt,
+						body.expense_category || null,
+						body.description || null,
+						body.payment_mode || 'cash',
+						body.payment_reference || null,
+						body.recipient_name || null,
+						custodianId,
+						custodianName,
+						body.bill_no || null,
+						body.bill_date || null,
+						body.status || 'submitted',
+						body.notes || null,
+						user?.id || null,
+						sourceVoucherId,
+					]
+				);
+
+				await db.commit();
+				break;
+			} catch (error) {
+				await db.rollback();
+				if (
+					!body.transaction_number &&
+					isRetryableNumberError(error) &&
+					attempt < 5
+				) {
+					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+					continue;
+				}
+				throw error;
+			}
+		}
 
 		await (logActivity as any)({
 			userId: user?.id,

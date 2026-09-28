@@ -140,9 +140,10 @@ export async function POST(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
-		PERMISSIONS.WRITE
+		RESOURCES.PURCHASE_ORDERS,
+		PERMISSIONS.CREATE
 	);
+	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
 	const { user } = authResult;
 
@@ -339,8 +340,8 @@ export async function PUT(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
-		PERMISSIONS.WRITE
+		RESOURCES.PURCHASE_ORDERS,
+		PERMISSIONS.UPDATE
 	);
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
@@ -477,7 +478,7 @@ export async function DELETE(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
+		RESOURCES.PURCHASE_ORDERS,
 		PERMISSIONS.DELETE
 	);
 	if (authResult instanceof Response) return authResult;

@@ -1,8 +1,21 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Fetch purchase order for a project
 export async function GET(request, { params }) {
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.PURCHASE_ORDERS,
+		PERMISSIONS.READ
+	);
+	if (auth instanceof Response) return auth;
+	if (!auth.authorized) return auth.response;
+
 	let connection;
 	try {
 		const { id } = await params;
@@ -41,6 +54,14 @@ export async function GET(request, { params }) {
 
 // POST - Create or update purchase order for a project
 export async function POST(request, { params }) {
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.PURCHASE_ORDERS,
+		PERMISSIONS.CREATE
+	);
+	if (auth instanceof Response) return auth;
+	if (!auth.authorized) return auth.response;
+
 	let connection;
 	try {
 		const { id } = await params;

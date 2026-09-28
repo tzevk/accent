@@ -7,12 +7,17 @@ import {
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
 import { R, sub, gte, gt, toNumber } from '@/lib/money';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
 
 const TABLE = 'purchase_invoices';
 
+// Purchase-invoice numbers are PI-#####. The read runs inside the caller's
+// transaction with a row lock (FOR UPDATE) on the newest row so concurrent
+// POSTs serialize behind it; the unique active invoice-number index is the
+// backstop and a collision retries with a fresh read.
 async function nextNumber(db) {
 	const [rows] = await db.execute(
-		`SELECT invoice_number FROM ${TABLE} WHERE invoice_number LIKE 'PI-%' ORDER BY id DESC LIMIT 1`
+		`SELECT invoice_number FROM ${TABLE} WHERE invoice_number LIKE 'PI-%' ORDER BY id DESC LIMIT 1 FOR UPDATE`
 	);
 	let next = 1;
 	if (rows.length > 0) {
@@ -25,7 +30,7 @@ async function nextNumber(db) {
 export async function GET(request) {
 	const authResult = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
+		RESOURCES.PURCHASE_ORDERS,
 		PERMISSIONS.READ
 	);
 	if (authResult instanceof Response) return authResult;
@@ -108,7 +113,7 @@ export async function GET(request) {
 export async function POST(request) {
 	const authResult = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
+		RESOURCES.PURCHASE_ORDERS,
 		PERMISSIONS.CREATE
 	);
 	if (authResult instanceof Response) return authResult;
@@ -128,7 +133,6 @@ export async function POST(request) {
 
 		db = await dbConnect();
 
-		const invoiceNumber = body.invoice_number || (await nextNumber(db));
 		const total = R(body.total ?? 0);
 		const amountPaid = R(body.amount_paid ?? 0);
 		const balanceDue = toNumber(sub(total, amountPaid));
@@ -140,48 +144,80 @@ export async function POST(request) {
 					? 'partial'
 					: 'unpaid');
 
-		const [result] = await db.execute(
-			`INSERT INTO ${TABLE}
+		// Number generation and INSERT are one transaction so concurrent POSTs
+		// cannot mint the same PI number; the unique active-number index makes a
+		// lost race a duplicate-key error, which retries from a fresh read.
+		let invoiceNumber;
+		let result;
+		for (let attempt = 1; ; attempt++) {
+			await db.beginTransaction();
+			try {
+				invoiceNumber = body.invoice_number || (await nextNumber(db));
+
+				[result] = await db.execute(
+					`INSERT INTO ${TABLE}
 				(invoice_number, invoice_date, due_date, vendor_name, vendor_email, vendor_phone, vendor_address,
 				 vendor_gstin, vendor_pan, po_number, po_date, po_id, description, items,
 				 subtotal, tax_rate, tax_amount, cgst_amount, sgst_amount, igst_amount,
 				 discount, total, amount_paid, balance_due, payment_status,
 				 notes, terms, attachment_url, status, project_id, created_by)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				invoiceNumber,
-				body.invoice_date || null,
-				body.due_date || null,
-				body.vendor_name,
-				body.vendor_email || null,
-				body.vendor_phone || null,
-				body.vendor_address || null,
-				body.vendor_gstin || null,
-				body.vendor_pan || null,
-				body.po_number || null,
-				body.po_date || null,
-				body.po_id || null,
-				body.description || null,
-				body.items ? JSON.stringify(body.items) : null,
-				body.subtotal ?? 0,
-				body.tax_rate ?? 18,
-				body.tax_amount ?? 0,
-				body.cgst_amount ?? 0,
-				body.sgst_amount ?? 0,
-				body.igst_amount ?? 0,
-				body.discount ?? 0,
-				toNumber(total),
-				toNumber(amountPaid),
-				balanceDue,
-				paymentStatus,
-				body.notes || null,
-				body.terms || null,
-				body.attachment_url || null,
-				body.status || 'draft',
-				body.project_id || null,
-				user?.id || null,
-			]
-		);
+					[
+						invoiceNumber,
+						body.invoice_date || null,
+						body.due_date || null,
+						body.vendor_name,
+						body.vendor_email || null,
+						body.vendor_phone || null,
+						body.vendor_address || null,
+						body.vendor_gstin || null,
+						body.vendor_pan || null,
+						body.po_number || null,
+						body.po_date || null,
+						body.po_id || null,
+						body.description || null,
+						body.items ? JSON.stringify(body.items) : null,
+						body.subtotal ?? 0,
+						body.tax_rate ?? 18,
+						body.tax_amount ?? 0,
+						body.cgst_amount ?? 0,
+						body.sgst_amount ?? 0,
+						body.igst_amount ?? 0,
+						body.discount ?? 0,
+						toNumber(total),
+						toNumber(amountPaid),
+						balanceDue,
+						paymentStatus,
+						body.notes || null,
+						body.terms || null,
+						body.attachment_url || null,
+						body.status || 'draft',
+						body.project_id || null,
+						user?.id || null,
+					]
+				);
+
+				await db.commit();
+				break;
+			} catch (error) {
+				await db.rollback();
+				if (
+					!body.invoice_number &&
+					isRetryableNumberError(error) &&
+					attempt < 5
+				) {
+					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+					continue;
+				}
+				throw error;
+			}
+		}
+
+		// The logger checks out its own pooled connection; holding this one while
+		// it waits can starve the pool when several creates run concurrently.
+		// Release first; the `finally` stays as the error-path guard.
+		await db.release();
+		db = null;
 
 		await logActivity({
 			userId: user?.id,

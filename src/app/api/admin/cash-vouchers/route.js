@@ -2,6 +2,7 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import crypto from 'node:crypto';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
 
 /**
  * GET /api/admin/cash-vouchers
@@ -173,95 +174,113 @@ export async function POST(request) {
 
 		db = await dbConnect();
 
-		// Generate voucher number if not provided
-		let voucherNumber = data.voucher_number;
-		if (!voucherNumber) {
-			const [lastVoucher] = await db.execute(
-				`SELECT voucher_number FROM cash_vouchers 
-         WHERE (isDelete IS NULL OR isDelete = 0)
-         ORDER BY id DESC LIMIT 1`
-			);
-
-			voucherNumber = 'CV-0001';
-			if (lastVoucher.length > 0 && lastVoucher[0].voucher_number) {
-				const lastNum =
-					parseInt(lastVoucher[0].voucher_number.replace('CV-', '')) || 0;
-				voucherNumber = `CV-${String(lastNum + 1).padStart(4, '0')}`;
-			}
-		}
-
 		const totalAmount = data.total_amount || 0;
 
-		await db.execute('START TRANSACTION');
+		// Number generation and both inserts are one transaction: the generator
+		// locks the newest voucher row (FOR UPDATE) so concurrent creates
+		// serialize, and the unique voucher_number index catches a lost race and
+		// retries from a fresh read. Generation used to run before the
+		// transaction, which is what let two creates share a number.
+		let voucherNumber;
+		let voucherId;
+		for (let attempt = 1; ; attempt++) {
+			voucherNumber = data.voucher_number;
+			await db.execute('START TRANSACTION');
 
-		try {
-			const [result] = await db.execute(
-				`INSERT INTO cash_vouchers (
+			try {
+				if (!voucherNumber) {
+					const [lastVoucher] = await db.execute(
+						`SELECT voucher_number FROM cash_vouchers 
+         WHERE (isDelete IS NULL OR isDelete = 0) AND voucher_number LIKE 'CV-%'
+         ORDER BY id DESC LIMIT 1
+         FOR UPDATE`
+					);
+
+					voucherNumber = 'CV-0001';
+					if (lastVoucher.length > 0 && lastVoucher[0].voucher_number) {
+						const lastNum =
+							parseInt(lastVoucher[0].voucher_number.replace('CV-', '')) || 0;
+						voucherNumber = `CV-${String(lastNum + 1).padStart(4, '0')}`;
+					}
+				}
+
+				const [result] = await db.execute(
+					`INSERT INTO cash_vouchers (
 					voucher_number, voucher_date, voucher_type, paid_to, project_number,
 					payment_mode, total_amount, amount_in_words, line_items,
 					prepared_by, checked_by, approved_by_name, receiver_signature,
 					description, status, notes, created_by
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				[
-					voucherNumber,
-					data.voucher_date || new Date().toISOString().split('T')[0],
-					data.voucher_type || 'payment',
-					data.paid_to || '',
-					data.project_number || '',
-					data.payment_mode || 'cash',
-					totalAmount,
-					data.amount_in_words || '',
-					JSON.stringify(data.line_items || []),
-					data.prepared_by || '',
-					data.checked_by || '',
-					data.approved_by || '',
-					data.receiver_signature || '',
-					data.description || data.notes || '',
-					data.status || 'pending',
-					data.notes || '',
-					user.id,
-				]
-			);
+					[
+						voucherNumber,
+						data.voucher_date || new Date().toISOString().split('T')[0],
+						data.voucher_type || 'payment',
+						data.paid_to || '',
+						data.project_number || '',
+						data.payment_mode || 'cash',
+						totalAmount,
+						data.amount_in_words || '',
+						JSON.stringify(data.line_items || []),
+						data.prepared_by || '',
+						data.checked_by || '',
+						data.approved_by || '',
+						data.receiver_signature || '',
+						data.description || data.notes || '',
+						data.status || 'pending',
+						data.notes || '',
+						user.id,
+					]
+				);
 
-			const voucherId = result.insertId;
+				voucherId = result.insertId;
 
-			// Create funding credit entry in petty_cash_expenses
-			const voucherDescription = data.description || data.notes || '';
-			if (totalAmount > 0) {
-				const pceId = crypto.randomUUID();
-				await db.execute(
-					`INSERT INTO petty_cash_expenses
+				// Create funding credit entry in petty_cash_expenses
+				const voucherDescription = data.description || data.notes || '';
+				if (totalAmount > 0) {
+					const pceId = crypto.randomUUID();
+					await db.execute(
+						`INSERT INTO petty_cash_expenses
 						(id, transaction_number, transaction_date, credit_amount, debit_amount,
 						 description, status, created_by, source_voucher_id)
 					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					[
-						pceId,
-						voucherNumber,
-						data.voucher_date || new Date().toISOString().split('T')[0],
-						totalAmount,
-						0,
-						voucherDescription,
-						'submitted',
-						user.id,
-						voucherId,
-					]
-				);
+						[
+							pceId,
+							voucherNumber,
+							data.voucher_date || new Date().toISOString().split('T')[0],
+							totalAmount,
+							0,
+							voucherDescription,
+							'submitted',
+							user.id,
+							voucherId,
+						]
+					);
+				}
+
+				await db.execute('COMMIT');
+				break;
+			} catch (txError) {
+				await db.execute('ROLLBACK');
+				if (
+					!data.voucher_number &&
+					isRetryableNumberError(txError) &&
+					attempt < 5
+				) {
+					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+					continue;
+				}
+				throw txError;
 			}
-
-			await db.execute('COMMIT');
-
-			return NextResponse.json({
-				success: true,
-				data: {
-					id: result.insertId,
-					voucher_number: voucherNumber,
-				},
-				message: 'Cash voucher created successfully',
-			});
-		} catch (txError) {
-			await db.execute('ROLLBACK');
-			throw txError;
 		}
+
+		return NextResponse.json({
+			success: true,
+			data: {
+				id: voucherId,
+				voucher_number: voucherNumber,
+			},
+			message: 'Cash voucher created successfully',
+		});
 	} catch (error) {
 		console.error('Create cash voucher error:', error?.message);
 		return NextResponse.json(

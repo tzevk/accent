@@ -2,8 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextResponse } from 'next/server';
 
 const mockExecute = vi.fn();
+const mockBeginTransaction = vi.fn().mockResolvedValue(undefined);
+const mockCommit = vi.fn().mockResolvedValue(undefined);
+const mockRollback = vi.fn().mockResolvedValue(undefined);
 const mockDbConnect = vi.fn().mockResolvedValue({
 	execute: mockExecute,
+	beginTransaction: mockBeginTransaction,
+	commit: mockCommit,
+	rollback: mockRollback,
 	end: vi.fn(),
 });
 
@@ -118,6 +124,9 @@ describe('Invoice API — POST /api/admin/invoices', () => {
 			if (sql.includes('SELECT COUNT')) {
 				return Promise.resolve([[{ count: 0 }]]);
 			}
+			if (sql.includes('SELECT invoice_number FROM invoices')) {
+				return Promise.resolve([[]]);
+			}
 			if (sql.includes('FROM purchase_orders WHERE')) {
 				return Promise.resolve([[]]);
 			}
@@ -165,6 +174,9 @@ describe('Invoice API — POST /api/admin/invoices', () => {
 			if (sql.includes('SELECT COUNT')) {
 				return Promise.resolve([[{ count: 5 }]]);
 			}
+			if (sql.includes('SELECT invoice_number FROM invoices')) {
+				return Promise.resolve([[]]);
+			}
 			if (sql.includes('FROM purchase_orders WHERE')) {
 				return Promise.resolve([[{ id: 5, remaining_balance: 70000 }]]);
 			}
@@ -186,12 +198,16 @@ describe('Invoice API — POST /api/admin/invoices', () => {
 		expect(json.success).toBe(true);
 		expect(json.data.id).toBe(43);
 
-		const updateCall = mockExecute.mock.calls.find(
-			([sql]) =>
-				typeof sql === 'string' && sql.includes('UPDATE purchase_orders')
-		);
-		expect(updateCall).toBeDefined();
-		expect(updateCall[1][0]).toBeCloseTo(40000);
+		// E1 contract: the PO is locked (FOR UPDATE) and decremented RELATIVELY,
+		// never written with an absolute balance computed from a stale read.
+		const [updateSql, updateParams] =
+			mockExecute.mock.calls.find(
+				([sql]) =>
+					typeof sql === 'string' && sql.includes('UPDATE purchase_orders')
+			) ?? [];
+		expect(updateSql).toMatch(/remaining_balance = remaining_balance - \?/);
+		expect(updateParams[0]).toBeCloseTo(30000);
+		expect(updateParams[1]).toBe(5);
 	});
 
 	it('returns 409 when invoice_number already exists', async () => {
@@ -249,6 +265,9 @@ describe('Invoice API — POST /api/admin/invoices', () => {
 		mockExecute.mockImplementation((sql) => {
 			if (sql.includes('SELECT COUNT')) {
 				return Promise.resolve([[{ count: 0 }]]);
+			}
+			if (sql.includes('SELECT invoice_number FROM invoices')) {
+				return Promise.resolve([[]]);
 			}
 			if (sql.includes('FROM invoices WHERE invoice_number')) {
 				return Promise.resolve([[]]);

@@ -1,8 +1,22 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Generate next requisition number
-export async function GET() {
+export async function GET(request) {
+	// Preview endpoint for the create form — same permission as creating.
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.MATERIAL_REQUISITION,
+		PERMISSIONS.CREATE
+	);
+	if (auth instanceof Response) return auth;
+	if (!auth.authorized) return auth.response;
+
 	let db;
 	try {
 		db = await dbConnect();

@@ -8,12 +8,18 @@ import {
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
 import crypto from 'node:crypto';
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
 
 const TABLE = 'other_expenses';
 
-async function nextNumber(db: any): Promise<string> {
-	const [rows] = await db.execute(
-		`SELECT voucher_number FROM ${TABLE} WHERE voucher_number LIKE 'OEX-%' ORDER BY created_at DESC LIMIT 1`
+// Other-expense vouchers are OEX-#####. The read runs inside the caller's
+// transaction with a row lock (FOR UPDATE) on the newest row so concurrent
+// POSTs serialize behind it; the unique active voucher-number index is the
+// backstop and a collision retries with a fresh read.
+async function nextNumber(db: PoolConnection): Promise<string> {
+	const [rows] = await db.execute<RowDataPacket[]>(
+		`SELECT voucher_number FROM ${TABLE} WHERE voucher_number LIKE 'OEX-%' ORDER BY created_at DESC LIMIT 1 FOR UPDATE`
 	);
 	let next = 1;
 	if (rows.length > 0) {
@@ -150,7 +156,6 @@ export async function POST(request: Request) {
 		db = await dbConnect();
 
 		const id = crypto.randomUUID();
-		const voucherNumber = body.voucher_number || (await nextNumber(db));
 		const billAmount = Number(body.bill_amount ?? 0);
 		const gstAmount = Number(body.gst_amount ?? 0);
 		const netAmount = body.net_amount ?? billAmount + gstAmount;
@@ -175,33 +180,58 @@ export async function POST(request: Request) {
 			employeeName = eRows[0]?.full_name || null;
 		}
 
-		await db.execute(
-			`INSERT INTO ${TABLE}
+		// Number generation and INSERT are one transaction so concurrent POSTs
+		// cannot mint the same OEX number; the unique active voucher-number index
+		// makes a lost race a duplicate-key error, which retries from a fresh read.
+		let voucherNumber = '';
+		for (let attempt = 1; ; attempt++) {
+			await db.beginTransaction();
+			try {
+				voucherNumber = body.voucher_number || (await nextNumber(db));
+
+				await db.execute(
+					`INSERT INTO ${TABLE}
 				(id, voucher_number, voucher_date, expense_category, payee_type,
 				 vendor_id, vendor_name, employee_id, employee_name,
 				 bill_no, bill_date, bill_amount, gst_amount, net_amount,
 				 description, status, created_by)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				id,
-				voucherNumber,
-				body.voucher_date,
-				body.expense_category,
-				body.payee_type,
-				vendorId,
-				vendorName,
-				employeeId,
-				employeeName,
-				body.bill_no || null,
-				body.bill_date || null,
-				billAmount,
-				gstAmount,
-				netAmount,
-				body.description || null,
-				body.status || 'submitted',
-				user?.id || null,
-			]
-		);
+					[
+						id,
+						voucherNumber,
+						body.voucher_date,
+						body.expense_category,
+						body.payee_type,
+						vendorId,
+						vendorName,
+						employeeId,
+						employeeName,
+						body.bill_no || null,
+						body.bill_date || null,
+						billAmount,
+						gstAmount,
+						netAmount,
+						body.description || null,
+						body.status || 'submitted',
+						user?.id || null,
+					]
+				);
+
+				await db.commit();
+				break;
+			} catch (error) {
+				await db.rollback();
+				if (
+					!body.voucher_number &&
+					isRetryableNumberError(error) &&
+					attempt < 5
+				) {
+					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+					continue;
+				}
+				throw error;
+			}
+		}
 
 		const payeeLabel =
 			body.payee_type === 'vendor'

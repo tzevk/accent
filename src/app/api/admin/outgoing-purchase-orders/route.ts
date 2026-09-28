@@ -6,6 +6,7 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
 
 export async function GET(request: Request) {
 	// RBAC check
@@ -83,40 +84,61 @@ export async function POST(request: Request) {
 
 		connection = await dbConnect();
 
-		const [countResult]: any = await connection.execute(
-			'SELECT COUNT(*) as total FROM outgoing_purchase_orders WHERE isDelete = 0'
-		);
-		const total = countResult[0]?.total || 0;
-		const nextSrNo = total + 1;
-
 		const finalNetAmount =
 			net_amount ??
 			(parseFloat(po_amount) || 0) + (parseFloat(tax_amount) || 0);
 
-		const [result]: any = await connection.execute(
-			`INSERT INTO outgoing_purchase_orders 
+		// sr_no generation and the INSERT are one transaction: the read locks the
+		// highest serial (FOR UPDATE) so concurrent POSTs serialize, and the
+		// unique active_sr_no index makes a lost race a duplicate-key error that
+		// retries from a fresh read.
+		let nextSrNo = 0;
+		let newId: number | null = null;
+		for (let attempt = 1; ; attempt++) {
+			await connection.beginTransaction();
+			try {
+				const [lastRows] = await connection.execute(
+					'SELECT sr_no FROM outgoing_purchase_orders WHERE isDelete = 0 AND sr_no IS NOT NULL ORDER BY sr_no DESC LIMIT 1 FOR UPDATE'
+				);
+				nextSrNo = (lastRows?.[0]?.sr_no ?? 0) + 1;
+
+				const [result] = await connection.execute(
+					`INSERT INTO outgoing_purchase_orders 
 			 (sr_no, company_name, city, po_number, po_date, po_amount, tax_amount, net_amount, project_number, description, remarks, status)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				nextSrNo,
-				company_name,
-				city || null,
-				po_number,
-				po_date,
-				parseFloat(po_amount),
-				parseFloat(tax_amount) || 0,
-				finalNetAmount,
-				project_number || null,
-				description || null,
-				remarks || null,
-				status || 'pending',
-			]
-		);
+					[
+						nextSrNo,
+						company_name,
+						city || null,
+						po_number,
+						po_date,
+						parseFloat(po_amount),
+						parseFloat(tax_amount) || 0,
+						finalNetAmount,
+						project_number || null,
+						description || null,
+						remarks || null,
+						status || 'pending',
+					]
+				);
+				newId = result.insertId;
+
+				await connection.commit();
+				break;
+			} catch (error) {
+				await connection.rollback();
+				if (isRetryableNumberError(error) && attempt < 5) {
+					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+					continue;
+				}
+				throw error;
+			}
+		}
 
 		return NextResponse.json({
 			success: true,
 			message: 'Outgoing purchase order created successfully',
-			data: { id: result.insertId, sr_no: nextSrNo },
+			data: { id: newId, sr_no: nextSrNo },
 		});
 	} catch (error: any) {
 		console.error('Error creating outgoing purchase order:', error);

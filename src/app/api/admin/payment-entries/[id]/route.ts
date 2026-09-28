@@ -8,6 +8,14 @@ import {
 } from '@/utils/api-permissions';
 import { updateInvoicePaymentStatus } from '@/utils/payment-utils';
 
+/** mysql2 duplicate-key error (unique index violation). */
+function isDuplicateKeyError(error: unknown): boolean {
+	if (typeof error !== 'object' || error === null) return false;
+	const errno = 'errno' in error ? error.errno : undefined;
+	const code = 'code' in error ? error.code : undefined;
+	return errno === 1062 || code === 'ER_DUP_ENTRY';
+}
+
 export async function PUT(
 	request: Request,
 	{ params }: { params: Promise<{ id: string }> }
@@ -69,6 +77,13 @@ export async function PUT(
 		});
 	} catch (error: any) {
 		console.error('Update payment entry error:', error?.message);
+		// Active receipt-number unique index: surface a collision as 409.
+		if (isDuplicateKeyError(error)) {
+			return NextResponse.json(
+				{ success: false, error: 'This receipt number already exists' },
+				{ status: 409 }
+			);
+		}
 		return NextResponse.json(
 			{
 				success: false,

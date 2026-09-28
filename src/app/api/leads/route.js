@@ -6,6 +6,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { getTableColumns } from '@/utils/schema-cache';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
 
 // GET all leads with pagination and filtering
 export async function GET(request) {
@@ -275,89 +276,119 @@ export async function POST(request) {
 		// Convert empty company_id to null
 		const companyIdValue = company_id && company_id !== '' ? company_id : null;
 
-		// Auto-generate lead_id in format: serial-month-year (e.g., 001-10-2024)
-		let generatedLeadId = lead_id;
-		if (!generatedLeadId || !generatedLeadId.trim()) {
-			const now = new Date();
-			const month = String(now.getMonth() + 1).padStart(2, '0');
-			const year = now.getFullYear();
-			const currentPattern = `-${month}-${year}`;
+		// lead_id generation and the INSERT are one transaction: the read locks
+		// every candidate row (FOR UPDATE) so concurrent POSTs serialize behind
+		// it, and the unique active_lead_id index makes a lost race a
+		// duplicate-key error, which retries from a fresh read.
+		let normalizedLeadId = normalize(lead_id);
+		let normalizedCompanyName = null;
+		let normalizedEnquiryStatus = null;
+		let insertId = null;
+		for (let attempt = 1; ; attempt++) {
+			await db.beginTransaction();
+			try {
+				// Reset per attempt so a generated id that collided is
+				// regenerated from a fresh read instead of retried as-is.
+				normalizedLeadId = normalize(lead_id);
 
-			// Find highest lead_id serial number for current month/year
-			const [leads] = await db.execute(
-				'SELECT lead_id FROM leads WHERE lead_id LIKE ? ORDER BY lead_id DESC',
-				[`%${currentPattern}`]
-			);
+				// Auto-generate lead_id in format: serial-month-year (e.g., 001-10-2024)
+				if (!normalizedLeadId) {
+					const now = new Date();
+					const month = String(now.getMonth() + 1).padStart(2, '0');
+					const year = now.getFullYear();
+					const currentPattern = `-${month}-${year}`;
 
-			let maxSerial = 0;
-			leads.forEach((l) => {
-				if (l.lead_id && l.lead_id.endsWith(currentPattern)) {
-					const serialPart = l.lead_id.split('-')[0];
-					const serial = parseInt(serialPart, 10);
-					if (!isNaN(serial) && serial > maxSerial) {
-						maxSerial = serial;
-					}
+					// Find highest lead_id serial number for current month/year
+					const [leads] = await db.execute(
+						'SELECT lead_id FROM leads WHERE lead_id LIKE ? ORDER BY lead_id DESC FOR UPDATE',
+						[`%${currentPattern}`]
+					);
+
+					let maxSerial = 0;
+					leads.forEach((l) => {
+						if (l.lead_id && l.lead_id.endsWith(currentPattern)) {
+							const serialPart = l.lead_id.split('-')[0];
+							const serial = parseInt(serialPart, 10);
+							if (!isNaN(serial) && serial > maxSerial) {
+								maxSerial = serial;
+							}
+						}
+					});
+
+					const nextSerial = String(maxSerial + 1).padStart(3, '0');
+					normalizedLeadId = normalize(`${nextSerial}-${month}-${year}`);
 				}
-			});
 
-			const nextSerial = String(maxSerial + 1).padStart(3, '0');
-			generatedLeadId = `${nextSerial}-${month}-${year}`;
-		}
+				// Prepare normalized values for insert using the typed normalize helper
+				const normalizedCompanyId = normalize(companyIdValue, 'int');
+				normalizedCompanyName = normalize(company_name);
+				const normalizedContactName = normalize(contact_name);
+				const normalizedContactEmail = normalize(contact_email, 'email');
+				const normalizedInquiryEmail = normalize(inquiry_email, 'email');
+				const normalizedCc = normalize(cc_emails, 'cc');
+				const normalizedPhone = normalize(phone);
+				const normalizedDesignation = normalize(designation);
+				const normalizedCity = normalize(city);
+				const normalizedProject = normalize(project_description);
+				const normalizedEnquiryType = normalize(enquiry_type);
+				normalizedEnquiryStatus = normalize(enquiry_status);
+				const normalizedEnquiryDate = normalize(enquiry_date, 'date');
+				const normalizedLeadSource = normalize(lead_source);
+				const normalizedPriority = normalize(priority, 'priority');
+				const normalizedNotes = normalize(notes);
 
-		// Prepare normalized values for insert using the typed normalize helper
-		const normalizedLeadId = normalize(generatedLeadId);
-		const normalizedCompanyId = normalize(companyIdValue, 'int');
-		const normalizedCompanyName = normalize(company_name);
-		const normalizedContactName = normalize(contact_name);
-		const normalizedContactEmail = normalize(contact_email, 'email');
-		const normalizedInquiryEmail = normalize(inquiry_email, 'email');
-		const normalizedCc = normalize(cc_emails, 'cc');
-		const normalizedPhone = normalize(phone);
-		const normalizedDesignation = normalize(designation);
-		const normalizedCity = normalize(city);
-		const normalizedProject = normalize(project_description);
-		const normalizedEnquiryType = normalize(enquiry_type);
-		const normalizedEnquiryStatus = normalize(enquiry_status);
-		const normalizedEnquiryDate = normalize(enquiry_date, 'date');
-		const normalizedLeadSource = normalize(lead_source);
-		const normalizedPriority = normalize(priority, 'priority');
-		const normalizedNotes = normalize(notes);
-
-		const [result] = await db.execute(
-			`
+				const [result] = await db.execute(
+					`
       INSERT INTO leads (
         lead_id, company_id, company_name, contact_name, contact_email, inquiry_email, cc_emails,
         phone, designation, city, project_description, enquiry_type, enquiry_status, enquiry_date,
         lead_source, priority, notes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-			[
-				normalizedLeadId,
-				normalizedCompanyId,
-				normalizedCompanyName,
-				normalizedContactName,
-				normalizedContactEmail,
-				normalizedInquiryEmail,
-				normalizedCc,
-				normalizedPhone,
-				normalizedDesignation,
-				normalizedCity,
-				normalizedProject,
-				normalizedEnquiryType,
-				normalizedEnquiryStatus,
-				normalizedEnquiryDate,
-				normalizedLeadSource,
-				normalizedPriority,
-				normalizedNotes,
-			]
-		);
+					[
+						normalizedLeadId,
+						normalizedCompanyId,
+						normalizedCompanyName,
+						normalizedContactName,
+						normalizedContactEmail,
+						normalizedInquiryEmail,
+						normalizedCc,
+						normalizedPhone,
+						normalizedDesignation,
+						normalizedCity,
+						normalizedProject,
+						normalizedEnquiryType,
+						normalizedEnquiryStatus,
+						normalizedEnquiryDate,
+						normalizedLeadSource,
+						normalizedPriority,
+						normalizedNotes,
+					]
+				);
+				insertId = result.insertId;
+
+				await db.commit();
+				break;
+			} catch (error) {
+				await db.rollback();
+				if (
+					!(lead_id && String(lead_id).trim()) &&
+					isRetryableNumberError(error) &&
+					attempt < 5
+				) {
+					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+					continue;
+				}
+				throw error;
+			}
+		}
 
 		// Log the activity
 		logActivity(
 			{
 				actionType: 'create',
 				resourceType: 'lead',
-				resourceId: result.insertId.toString(),
+				resourceId: String(insertId),
 				description: `Created lead: ${normalizedCompanyName}`,
 				details: {
 					lead_id: normalizedLeadId,
@@ -371,7 +402,7 @@ export async function POST(request) {
 		return Response.json({
 			success: true,
 			data: {
-				id: result.insertId,
+				id: insertId,
 			},
 			message: 'Lead created successfully',
 		});

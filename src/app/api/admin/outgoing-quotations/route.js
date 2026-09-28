@@ -6,12 +6,17 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
 
 const TABLE = 'outgoing_quotations';
 
+// Outgoing quotations are OQ-#####. The read runs inside the caller's
+// transaction with a row lock (FOR UPDATE) on the newest row so concurrent
+// POSTs serialize behind it; the unique active quotation-number index is the
+// backstop and a collision retries with a fresh read.
 async function nextNumber(db) {
 	const [rows] = await db.execute(
-		`SELECT quotation_number FROM ${TABLE} WHERE quotation_number LIKE 'OQ-%' ORDER BY id DESC LIMIT 1`
+		`SELECT quotation_number FROM ${TABLE} WHERE quotation_number LIKE 'OQ-%' ORDER BY id DESC LIMIT 1 FOR UPDATE`
 	);
 	let next = 1;
 	if (rows.length > 0) {
@@ -125,36 +130,66 @@ export async function POST(request) {
 
 		db = await dbConnect();
 
-		const quotationNumber = body.quotation_number || (await nextNumber(db));
+		// Number generation and INSERT are one transaction so concurrent POSTs
+		// cannot mint the same OQ number; the unique active-number index makes a
+		// lost race a duplicate-key error, which retries from a fresh read.
+		let quotationNumber = '';
+		let result;
+		for (let attempt = 1; ; attempt++) {
+			await db.beginTransaction();
+			try {
+				quotationNumber = body.quotation_number || (await nextNumber(db));
 
-		const [result] = await db.execute(
-			`INSERT INTO ${TABLE}
+				[result] = await db.execute(
+					`INSERT INTO ${TABLE}
 				(quotation_number, quotation_date, vendor_name, vendor_email, vendor_phone, vendor_address,
 				 subject, items, subtotal, tax_rate, tax_amount, discount, total, valid_until, notes, terms,
 				 status, project_id, created_by)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				quotationNumber,
-				body.quotation_date || null,
-				body.vendor_name,
-				body.vendor_email || null,
-				body.vendor_phone || null,
-				body.vendor_address || null,
-				body.subject || null,
-				body.items ? JSON.stringify(body.items) : null,
-				body.subtotal ?? 0,
-				body.tax_rate ?? 18,
-				body.tax_amount ?? 0,
-				body.discount ?? 0,
-				body.total ?? 0,
-				body.valid_until || null,
-				body.notes || null,
-				body.terms || null,
-				body.status || 'draft',
-				body.project_id || null,
-				user?.id || null,
-			]
-		);
+					[
+						quotationNumber,
+						body.quotation_date || null,
+						body.vendor_name,
+						body.vendor_email || null,
+						body.vendor_phone || null,
+						body.vendor_address || null,
+						body.subject || null,
+						body.items ? JSON.stringify(body.items) : null,
+						body.subtotal ?? 0,
+						body.tax_rate ?? 18,
+						body.tax_amount ?? 0,
+						body.discount ?? 0,
+						body.total ?? 0,
+						body.valid_until || null,
+						body.notes || null,
+						body.terms || null,
+						body.status || 'draft',
+						body.project_id || null,
+						user?.id || null,
+					]
+				);
+
+				await db.commit();
+				break;
+			} catch (error) {
+				await db.rollback();
+				if (
+					!body.quotation_number &&
+					isRetryableNumberError(error) &&
+					attempt < 5
+				) {
+					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+					continue;
+				}
+				throw error;
+			}
+		}
+
+		// The logger checks out its own pooled connection; holding this one while
+		// it waits can starve the pool when several creates run concurrently.
+		// Release first; the `finally` stays as the error-path guard.
+		await db.release();
+		db = null;
 
 		await logActivity({
 			userId: user?.id,
