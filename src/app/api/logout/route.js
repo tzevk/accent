@@ -31,7 +31,7 @@ export async function POST(req) {
 
 	if (userId) {
 		// Evict the cached user keyed by this token's hash — otherwise a replayed
-		// cookie stays authenticated for up to USER_CACHE_TTL (5 min) after the
+		// cookie stays authenticated for up to USER_CACHE_TTL (60 s) after the
 		// session row is deleted.
 		invalidateUserCache(userId);
 
