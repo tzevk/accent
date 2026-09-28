@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import fs from 'node:fs';
 import puppeteer from 'puppeteer';
 import chromium from '@sparticuz/chromium';
 import { buildReceiptHTML, ReceiptData } from '@/utils/buildReceiptHTML';
@@ -34,6 +35,15 @@ export async function POST(req: NextRequest): Promise<Response> {
 
 	const isVercel = process.env.VERCEL === '1';
 
+	// Prefer a system Chrome on Windows; on any other host — or when that path
+	// is absent — fall back to puppeteer's bundled Chromium so Linux CI works.
+	const WINDOWS_CHROME =
+		'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+	const localChromePath =
+		process.platform === 'win32' && fs.existsSync(WINDOWS_CHROME)
+			? WINDOWS_CHROME
+			: undefined;
+
 	const browser = await puppeteer.launch(
 		isVercel
 			? {
@@ -45,9 +55,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 			: {
 					headless: true,
 					defaultViewport: viewport,
-					// use system Chrome locally
-					executablePath:
-						'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+					...(localChromePath ? { executablePath: localChromePath } : {}),
 				}
 	);
 
