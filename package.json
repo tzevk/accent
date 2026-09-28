@@ -10,6 +10,7 @@
 		"lint": "eslint src scripts",
 		"check:route-auth": "node scripts/check-route-auth.mjs",
 		"security:poc-reruns": "node scripts/security-poc-reruns.mjs",
+		"security:scrub": "node scripts/scrub-stored-html.mjs",
 		"test": "vitest",
 		"test:ui": "vitest --ui",
 		"test:run": "vitest run",

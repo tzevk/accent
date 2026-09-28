@@ -20,6 +20,8 @@
  *   node scripts/scrub-stored-html.mjs --apply                    # dev write
  *   node scripts/scrub-stored-html.mjs --apply --backup dump.json # backup first
  *   node scripts/scrub-stored-html.mjs --target=prod              # PROD_DB_*
+ *   node scripts/scrub-stored-html.mjs --artifact e2e/artifacts/security-scrub-dry-run.json
+ *                                                    # record the run summary
  *
  * Columns — enumerated from the code on 2026-09-28 (rich text only):
  *   messages.body                        rendered at messages/page.jsx:1488
@@ -48,7 +50,8 @@
  * No DDL: the script only SELECTs and UPDATEs.
  */
 import 'dotenv/config';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import mysql from 'mysql2/promise';
 import { sanitizeRichText } from '../src/lib/sanitize.js';
 import { getDbSslConfig } from '../src/utils/database.js';
@@ -199,23 +202,32 @@ function parseArgs(argv) {
 	let apply = false;
 	let target = 'dev';
 	let backupPath = null;
+	let artifactPath = null;
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
 		if (arg === '--apply') {
 			apply = true;
-		} else if (arg === '--backup' || arg === '--target') {
+		} else if (
+			arg === '--backup' ||
+			arg === '--target' ||
+			arg === '--artifact'
+		) {
 			const value = argv[index + 1];
 			if (!value || value.startsWith('--')) {
 				throw new Error(`${arg} needs a value`);
 			}
 			if (arg === '--backup') backupPath = value;
-			else target = value;
+			else if (arg === '--target') target = value;
+			else artifactPath = value;
 			index += 1;
 		} else if (arg.startsWith('--target=')) {
 			target = arg.slice('--target='.length);
 		} else if (arg.startsWith('--backup=')) {
 			backupPath = arg.slice('--backup='.length);
 			if (!backupPath) throw new Error('--backup needs a value');
+		} else if (arg.startsWith('--artifact=')) {
+			artifactPath = arg.slice('--artifact='.length);
+			if (!artifactPath) throw new Error('--artifact needs a value');
 		} else {
 			throw new Error(`unknown argument: ${arg}`);
 		}
@@ -225,7 +237,7 @@ function parseArgs(argv) {
 			`unknown --target ${JSON.stringify(target)} (dev|staging|prod)`
 		);
 	}
-	return { apply, target, backupPath };
+	return { apply, target, backupPath, artifactPath };
 }
 
 function truncate(value, length = 160) {
@@ -233,7 +245,9 @@ function truncate(value, length = 160) {
 	return text.length > length ? `${text.slice(0, length)}…` : text;
 }
 
-const { apply, target, backupPath } = parseArgs(process.argv.slice(2));
+const { apply, target, backupPath, artifactPath } = parseArgs(
+	process.argv.slice(2)
+);
 const envPrefix = ENV_PREFIX_BY_TARGET[target];
 const database = process.env[`${envPrefix}_NAME`];
 const user = process.env[`${envPrefix}_USER`];
@@ -405,23 +419,38 @@ try {
 		console.log('[scrub] nothing to do — every stored value is already clean');
 	}
 
-	console.log(
-		`[scrub] summary ${JSON.stringify({
-			target,
-			database,
-			mode: apply ? 'apply' : 'dry-run',
-			scanned: report.reduce((total, entry) => total + entry.scanned, 0),
-			changed: report.reduce((total, entry) => total + entry.changed, 0),
-			skippedCells: report.reduce(
-				(total, entry) => total + entry.skippedCells,
-				0
-			),
-			written,
-			skipped,
-			failed,
-			columns: report,
-		})}`
-	);
+	const summary = {
+		target,
+		database,
+		mode: apply ? 'apply' : 'dry-run',
+		scanned: report.reduce((total, entry) => total + entry.scanned, 0),
+		changed: report.reduce((total, entry) => total + entry.changed, 0),
+		skippedCells: report.reduce(
+			(total, entry) => total + entry.skippedCells,
+			0
+		),
+		written,
+		skipped,
+		failed,
+		columns: report,
+	};
+	console.log(`[scrub] summary ${JSON.stringify(summary)}`);
+	if (artifactPath) {
+		await mkdir(path.dirname(artifactPath), { recursive: true });
+		await writeFile(
+			artifactPath,
+			`${JSON.stringify(
+				{
+					flow: 'security-scrub',
+					generatedAt: new Date().toISOString(),
+					...summary,
+				},
+				null,
+				2
+			)}\n`
+		);
+		console.log(`[scrub] artifact written to ${artifactPath}`);
+	}
 	if (failed > 0) process.exitCode = 1;
 } finally {
 	await connection.end();
