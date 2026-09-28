@@ -1,0 +1,13 @@
+# Rate-limit identity is the platform-verified IP; counters live in MySQL for auth/heavy categories
+
+SEC-11 (open since the first audit) has two halves: the limiter trusts client-supplied `x-forwarded-for`, so rotating the header mints a fresh `auth: 10/15 min` budget for unlimited password guessing; and the counter Map is per instance, so on Vercel an attacker hops instances. Roadmap item P0.4 had recorded the second half as accepted risk for an internal CRM (revisit triggers: abuse observed, customer-facing, or Vercel Pro firewall) — the first half was never closed, and P0.4's referenced plan doc was never written.
+
+We decided to close both, superseding P0.4:
+
+- **Identity**: derive the client IP only from the platform-set header (`x-vercel-forwarded-for` when present; configurable for a future non-Vercel deployment). Client-supplied `x-forwarded-for` is never trusted as the first hop. The rate-limit key stays `IP:session-token-hash:category` so a logged-in attacker cannot rotate identity either.
+- **Store**: `auth` and `heavy` categories count in a MySQL fixed-window table (unique `(bucket_key, window_start)`, `ON DUPLICATE KEY UPDATE count = count + 1`), shared across instances; `session`/`dashboard`/`api` stay in the in-memory Map because their windows are short and the worst case is bounded. 429 responses carry `Retry-After`.
+- **Session cache**: `USER_CACHE_TTL` drops 5 min → 60 s (stale-on-error retained), so revocation and deactivation propagate across instances within a minute; the proxy's own cache uses the same 60 s bound.
+
+Considered: (a) Upstash/Redis — rejected for now: new infra and another credential for two throttled categories when the MySQL pool already exists; (b) keep in-memory + fix identity only — rejected because on Vercel the per-instance reset is the cheaper bypass of the two; (c) Vercel Pro platform firewall — rejected as a dependency: it prices a security control behind a plan upgrade and does not cover the `heavy` API categories; (d) trust the last `x-forwarded-for` hop — rejected, the platform's own header is unambiguous.
+
+Consequences: every `auth`/`heavy` request performs one extra upsert; the limiter now depends on the DB being reachable (a DB outage disables rate limiting rather than failing closed — the login path's bcrypt cost remains the backstop); the rate-limit table is another soft-delete-free operational table needing a cleanup sweep, reusing the existing cleanup interval; P0.4's "accepted risk" note and `docs/todo/APP_HEALTH_ROADMAP.md` must record the supersede.

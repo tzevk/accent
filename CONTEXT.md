@@ -111,3 +111,11 @@ _Avoid_: Present day, Working day
 **Payable OT**:
 Overtime that clears the payability gate — daily excess over 8h only when it exceeds 2h. Coexists with worked-hours OT in the timesheet report, which counts every minute past 8.
 _Avoid_: OT (ambiguous), Overtime (ambiguous)
+
+**Session**:
+One browser's authenticated login of one User — established by logging in, ended by logging out, a password change/reset, or deactivation. Ending a Session does not end the User's other Sessions, and a Session is the unit revocation acts on.
+_Avoid_: Login (the act, not the state), Token (the credential, not the identity), Cookie (the carrier)
+
+**Public endpoint**:
+An API endpoint that deliberately answers without a Session — exactly: login, logout, the session probe, the attendance webhook (authenticated by its own Bearer secret), and the minimal health probe. Everything else requires a Session and a permission check.
+_Avoid_: Unauthenticated route, Anonymous API, Open endpoint

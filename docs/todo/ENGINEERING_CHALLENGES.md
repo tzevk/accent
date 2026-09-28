@@ -1,6 +1,8 @@
 # Engineering Challenges — Accent CRM
 
 > Captured 2026-09-09. Load-bearing work only — each item fixes a live weakness and teaches one hard skill. Sources: `docs/SECURITY_AUDIT.md`, `proxy.ts`, `src/utils/database.js`, `CONTEXT.md`, `docs/todo/`.
+>
+> **2026-09-28: security scope moved.** Items 1, 2, 3 and 6 are covered and superseded by `docs/todo/SECURITY_REMEDIATION_PLAN.md` (workstreams F, B/D, C, A/E respectively) with decisions in ADR-0011…ADR-0014; their acceptance criteria are folded into that plan. Items 4 (payroll correctness) and 5 (connection pool) remain here.
 
 ## 1. Distributed rate limiter — `proxy.ts:38-177`
 
