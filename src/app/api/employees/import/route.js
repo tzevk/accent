@@ -349,6 +349,14 @@ export async function POST(request) {
 
 // GET - Download CSV/Excel template
 export async function GET(request) {
+	// RBAC check — mirrors the POST import guard
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.EMPLOYEES,
+		PERMISSIONS.CREATE
+	);
+	if (authResult instanceof Response) return authResult;
+
 	try {
 		const { searchParams } = new URL(request.url);
 		const format = searchParams.get('format') || 'csv';

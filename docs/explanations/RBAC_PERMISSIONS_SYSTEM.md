@@ -17,14 +17,14 @@ The system has **two coexisting permission formats** evaluated by a single centr
 
 ### Resources (45 total — `rbac.js:7`)
 
-| Category    | Resources                                                                                                                                |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **CRM**     | `leads`, `proposals`, `projects`, `followups`, `tickets`, `work_logs`, `todos`                                                           |
-| **People**  | `employees`, `users`, `companies`, `vendors`                                                                                             |
-| **Finance** | `quotations`, `purchase_orders`, `invoices`, `accounts`, `cash_voucher`, `material_requisition`, `other_expenses`, `petty_cash_expenses` |
-| **Masters** | `activities`, `software`, `documents`, `roles`, `holidays`                                                                               |
-| **Admin**   | `admin`, `admin_monitoring`, `admin_activity_logs`, `admin_audit_logs`, `admin_productivity`, `payroll`, `attendance`, `da_schedule`     |
-| **Other**   | `dashboard`, `reports`, `messages`, `profile`, `settings`                                                                                |
+| Category    | Resources                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **CRM**     | `leads`, `proposals`, `projects`, `followups`, `tickets`, `work_logs`, `todos`                                                       |
+| **People**  | `employees`, `users`, `companies`, `vendors`                                                                                         |
+| **Finance** | `quotations`, `purchase_orders`, `invoices`, `cash_voucher`, `material_requisition`, `other_expenses`, `petty_cash_expenses`         |
+| **Masters** | `activities`, `software`, `documents`, `deliverables`, `roles`, `holidays`, `accounts`                                               |
+| **Admin**   | `admin`, `admin_monitoring`, `admin_activity_logs`, `admin_audit_logs`, `admin_productivity`, `payroll`, `attendance`, `da_schedule` |
+| **Other**   | `dashboard`, `reports`, `messages`, `profile`, `settings`                                                                            |
 
 ### Actions (10 — `rbac.js:54`)
 
@@ -232,17 +232,15 @@ const { can, RESOURCES, PERMISSIONS } = useSession();
 
 ---
 
-## Middleware layer (`middleware.ts`)
+## Proxy layer (`src/proxy.ts`)
 
-Middleware handles **authentication** (not authorization) and **rate limiting**:
+The Next 16 proxy (renamed from `middleware.ts`, Node.js runtime) handles **authentication** (not authorization) and **rate limiting**:
 
-- **Public paths** bypass auth: `/signin`, `/api/login`, `/api/logout`, `/api/auth`, `/api/session`, `/_next`, `/uploads`, static assets
-- **Auth check:** reads `auth` + `user_id` cookies. Unauthenticated → redirect to `/signin` (pages) or `401` JSON (API)
-- **Admin gate:** `/admin/*` paths redirect non-super-admins to `/user/dashboard`
-- **Already-authenticated gate:** users with auth cookies hitting `/signin` are redirected to their dashboard
-- **Rate limiting:** per-IP+user, tiered by endpoint category — `auth` (10/15min, 30min block), `session` (120/min), `heavy` export/bulk (10/min, 2min block), default `api` (120/min). Returns `429` with `Retry-After` / `X-RateLimit-*` headers
+- **Public endpoints** are an exact-match allowlist (ADR-0014): `/signin`, `/api/login`, `/api/logout`, `/api/session`, `/api/attendance/webhook`, `/api/health`, plus static assets (`/_next`, `/public`, `/uploads`, `favicon.ico`, …). No prefix matching except those asset trees.
+- **Auth check:** SHA-256 the `session` cookie and verify it against `sessions JOIN users` (unexpired, active, not soft-deleted). Invalid → redirect to `/signin` (pages) or `401` JSON (API). A forged cookie value is worthless.
+- **Rate limiting:** identity is the platform-set IP header (`x-vercel-forwarded-for`) plus the validated session token hash, tiered by endpoint category — `auth` (10/15 min) and `heavy` export/report/bulk (10/min) count in MySQL fixed windows shared across instances; `session` (120/min), `dashboard` (60/min) and default `api` (120/min) stay in-process. Returns `429` with `Retry-After` / `X-RateLimit-*` headers.
 
-Middleware does **not** check resource-level permissions — that is handled by `ensurePermission()` inside each API route.
+The proxy does **not** check resource-level permissions — every API route authorizes through `ensurePermission()`, and `npm run check:route-auth` fails CI when a handler lacks an auth reference.
 
 ---
 

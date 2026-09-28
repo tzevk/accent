@@ -1,7 +1,20 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
-export async function GET() {
+export async function GET(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.READ
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		db = await dbConnect();
@@ -24,10 +37,18 @@ export async function GET() {
 }
 
 export async function POST(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.UPDATE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const body = await request.json();
-		const { category_name, is_active = true, created_by } = body;
+		const { category_name, is_active = true } = body;
 
 		if (!category_name?.trim()) {
 			return NextResponse.json(
@@ -40,7 +61,7 @@ export async function POST(request) {
 
 		const [result] = await db.execute(
 			`INSERT INTO category_master (category_name, is_active, created_by) VALUES (?, ?, ?)`,
-			[category_name.trim(), is_active ? 1 : 0, created_by || null]
+			[category_name.trim(), is_active ? 1 : 0, auth.user.id]
 		);
 
 		return NextResponse.json({
@@ -59,6 +80,14 @@ export async function POST(request) {
 }
 
 export async function PUT(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.UPDATE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const { searchParams } = new URL(request.url);
@@ -101,6 +130,14 @@ export async function PUT(request) {
 }
 
 export async function DELETE(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.DELETE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const { searchParams } = new URL(request.url);

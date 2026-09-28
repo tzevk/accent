@@ -1,41 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getPoolStats, dbConnect } from '@/utils/database';
 
-export async function GET() {
-	try {
-		const stats = getPoolStats();
-		let dbOk = false;
-		let db;
-
-		try {
-			db = await dbConnect();
-			const [rows] = await db.execute('SELECT 1');
-			dbOk = rows.length > 0;
-		} catch (err) {
-			console.error('Health check DB error:', err);
-		} finally {
-			if (db) {
-				if (typeof db.release === 'function') {
-					db.release();
-				} else {
-					await db.end();
-				}
-			}
-		}
-
-		return NextResponse.json({
-			success: true,
-			status: dbOk ? 'healthy' : 'degraded',
-			database: {
-				connected: dbOk,
-				pool: stats || { message: 'Pool not initialized' },
-			},
-			timestamp: new Date().toISOString(),
-		});
-	} catch (error) {
-		return NextResponse.json(
-			{ success: false, status: 'unhealthy', error: error.message },
-			{ status: 500 }
-		);
-	}
+// ADR-0014: the unauthenticated uptime probe. It must never gain
+// data-bearing fields — no pool stats, versions, or internals.
+export function GET() {
+	return NextResponse.json({ status: 'ok' });
 }

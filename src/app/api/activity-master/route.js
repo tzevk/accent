@@ -141,6 +141,14 @@ export async function POST(request) {
 }
 
 export async function PUT(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.UPDATE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const body = await request.json();
@@ -180,6 +188,14 @@ export async function PUT(request) {
 }
 
 export async function DELETE(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.DELETE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const { searchParams } = new URL(request.url);
@@ -199,8 +215,6 @@ export async function DELETE(request) {
 			]);
 		} catch {
 			// ignore if table missing
-		} finally {
-			if (db) db.release();
 		}
 		await db.execute('DELETE FROM functions_master WHERE id = ?', [id]);
 
@@ -215,5 +229,7 @@ export async function DELETE(request) {
 			},
 			{ status: 500 }
 		);
+	} finally {
+		if (db) db.release();
 	}
 }
