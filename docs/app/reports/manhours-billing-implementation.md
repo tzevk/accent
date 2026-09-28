@@ -272,13 +272,13 @@ Filename: `Manhours_Billing_<CLIENT>_<PROJECTCODE>_<MONTH>.xlsx`.
 
 ## Files changed
 
-| File                                                         | Change                                                                                    |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `src/app/reports/manhours-billing/data-source.ts`            | **Created** — types, pure transforms (unit-tested), server fetchers                       |
-| `src/app/reports/manhours-billing/page.tsx`                  | **Created** — filter bar + print-styled sheet + Excel export button                       |
-| `src/app/reports/manhours-billing/excel-template.ts`         | **Created** — ExcelJS workbook builder                                                    |
-| `src/app/api/reports/manhours-billing/route.ts`              | **Created** — meta/data JSON API with RBAC                                                |
-| `src/app/api/reports/manhours-billing/download/route.ts`     | **Created** — Excel download with RBAC                                                    |
-| `src/__tests__/reports/manhours-billing/data-source.test.ts` | **Created** — 24 unit tests (parsing, rate math, profile selection, row building, totals) |
-| `src/components/Navbar.jsx`                                  | Added "Manhours Billing" entry to `reportsMenuConfig` (`ReceiptPercentIcon`)              |
-| `src/components/Sidebar.jsx`                                 | Added `NavRow` "Manhours Billing" in Reports section (`BanknotesIcon`)                    |
+| File                                                     | Change                                                                                    |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `src/app/reports/manhours-billing/data-source.ts`        | **Created** — types, pure transforms (unit-tested), server fetchers                       |
+| `src/app/reports/manhours-billing/page.tsx`              | **Created** — filter bar + print-styled sheet + Excel export button                       |
+| `src/app/reports/manhours-billing/excel-template.ts`     | **Created** — ExcelJS workbook builder                                                    |
+| `src/app/api/reports/manhours-billing/route.ts`          | **Created** — meta/data JSON API with RBAC                                                |
+| `src/app/api/reports/manhours-billing/download/route.ts` | **Created** — Excel download with RBAC                                                    |
+| `src/app/reports/manhours-billing/data-source.test.ts`   | **Created** — 24 unit tests (parsing, rate math, profile selection, row building, totals) |
+| `src/components/Navbar.jsx`                              | Added "Manhours Billing" entry to `reportsMenuConfig` (`ReceiptPercentIcon`)              |
+| `src/components/Sidebar.jsx`                             | Added `NavRow` "Manhours Billing" in Reports section (`BanknotesIcon`)                    |

@@ -120,7 +120,13 @@ const getStatusInfo = (code) =>
 	STATUS_OPTIONS.find((s) => s.value === code) || STATUS_OPTIONS[0];
 
 export default function AttendancePage() {
-	useSessionRBAC();
+	const { user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
+	// A primitive, not the hook's own values: this is a dependency of a
+	// useCallback below, and the hook's object identities are not guaranteed
+	// stable — depending on them re-creates the callback every render.
+	const canReadPayroll = Boolean(
+		user?.is_super_admin || can(RESOURCES.PAYROLL, PERMISSIONS.READ)
+	);
 
 	// Month/Year selector
 	const now = new Date();
@@ -264,33 +270,43 @@ export default function AttendancePage() {
 		}
 	}, [selectedYear]);
 
-	// Fetch salary profiles (full) for currently loaded employees to compute OT payout
-	const fetchSalaryProfiles = useCallback(async (employeeList) => {
-		try {
-			if (!employeeList || employeeList.length === 0) {
-				setSalaryProfiles({});
-				return;
-			}
-			const ids = employeeList.map((e) => e.id).filter(Boolean);
-			if (ids.length === 0) {
-				setSalaryProfiles({});
-				return;
-			}
+	// Fetch salary profiles (full) for currently loaded employees to compute OT payout.
+	// Pay agreements are payroll data, so this asks only when the caller holds the
+	// payroll grant — otherwise the API refuses and the summary simply shows no
+	// OT-payout figures.
+	const fetchSalaryProfiles = useCallback(
+		async (employeeList) => {
+			try {
+				if (!canReadPayroll) {
+					setSalaryProfiles({});
+					return;
+				}
+				if (!employeeList || employeeList.length === 0) {
+					setSalaryProfiles({});
+					return;
+				}
+				const ids = employeeList.map((e) => e.id).filter(Boolean);
+				if (ids.length === 0) {
+					setSalaryProfiles({});
+					return;
+				}
 
-			const res = await fetch(
-				`/api/payroll/salary-profile/batch?ids=${ids.join(',')}&full=1`
-			);
-			const data = await res.json();
-			if (data.success && data.data) {
-				setSalaryProfiles(data.data);
-			} else {
+				const res = await fetch(
+					`/api/payroll/salary-profile/batch?ids=${ids.join(',')}&full=1`
+				);
+				const data = await res.json();
+				if (data.success && data.data) {
+					setSalaryProfiles(data.data);
+				} else {
+					setSalaryProfiles({});
+				}
+			} catch (err) {
+				console.error('Error fetching salary profiles:', err);
 				setSalaryProfiles({});
 			}
-		} catch (err) {
-			console.error('Error fetching salary profiles:', err);
-			setSalaryProfiles({});
-		}
-	}, []);
+		},
+		[canReadPayroll]
+	);
 
 	// Load data
 	useEffect(() => {

@@ -13,6 +13,13 @@
 # testing
 /coverage
 
+# Playwright E2E runtime output
+/e2e/.auth/
+/e2e/artifacts/
+/playwright-report/
+/test-results/
+/blob-report/
+
 # next.js
 /.next/
 /out/
@@ -205,3 +212,6 @@ vite.config.ts.timestamp-*
 
 # piolium audit output - contains vulnerabilities, keep local only
 /piolium/
+
+# Pi agent runtime state (background task output, session scratch)
+.pi/

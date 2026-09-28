@@ -103,7 +103,7 @@ export default function ContractPage() {
 
 	return (
 		<AccessGuard
-			resource="employees"
+			resource="payroll"
 			permission="read"
 			fallback={null}
 			showNavbar={false}

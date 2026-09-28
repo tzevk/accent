@@ -17,9 +17,12 @@ import {
  *   full  - if "1" returns all columns instead of the lightweight subset
  */
 export async function GET(request) {
+	// Every payroll-namespace route authorizes with RESOURCES.PAYROLL (issue
+	// #239): salary data is payroll data, so a salary-profile read requires the
+	// payroll grant and nothing else stands in for it.
 	const authResult = await ensurePermission(
 		request,
-		RESOURCES.EMPLOYEES,
+		RESOURCES.PAYROLL,
 		PERMISSIONS.READ
 	);
 	if (authResult instanceof Response) return authResult;

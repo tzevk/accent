@@ -44,7 +44,7 @@ Verification: `npm run lint` on touched files clean, `npx tsc --noEmit` pre-exis
 
 - **Where:** `proxy.ts:38` `rateLimitStore Map`, `src/utils/api-permissions.js:21` `userCache Map + pendingUserFetches`, `src/app/api/logout/route.js` (the actual bug).
 - **Reassessment:** not a scaling issue for this app — every session-revocation path already called `invalidateUserCache()` except `POST /api/logout`, so a replayed cookie stayed authenticated for up to 5 min (`USER_CACHE_TTL`) after logout.
-- **Fixed:** `logout/route.js` now calls `invalidateUserCache(userId)` once `revokeSession` resolves a userId; regression coverage in new `src/__tests__/api/logout/route.test.ts` (5 cases: invalidation call, cookie cleared `Max-Age=0`, DB-failure tolerance, no-cookie no-op, unknown-token no-op). Cross-instance staleness window accepted (per-instance Maps mean invalidation only clears the serving instance) — optional hardening knob: drop `USER_CACHE_TTL` 5 min → 60 s.
+- **Fixed:** `logout/route.js` now calls `invalidateUserCache(userId)` once `revokeSession` resolves a userId; regression coverage in new `src/app/api/logout/route.test.ts` (5 cases: invalidation call, cookie cleared `Max-Age=0`, DB-failure tolerance, no-cookie no-op, unknown-token no-op). Cross-instance staleness window accepted (per-instance Maps mean invalidation only clears the serving instance) — optional hardening knob: drop `USER_CACHE_TTL` 5 min → 60 s.
 - **Deferred (was "move to Upstash/Vercel KV"):** in-memory per-instance rate limiting is acceptable for an internal CRM on Vercel — worst case ≈ N instances × bounded attempts against bcrypt-throttled logins. Revisit triggers: abuse observed in logs, app becomes customer-facing, or Vercel Pro available (prefer platform Firewall rules then — zero code). Full decision record + ready-to-use Upstash sketch: plan doc `p0.4-rate-limit-and-usercache.md`. Related measured fact: dev MySQL reports `max_user_connections=0` (unlimited), `max_connections=300` shared server-wide — keep pools small anyway (Vercel multiplies per instance); tune via `DB_CONNECTION_LIMIT` env, never unbounded.
 
 ## P1 — High value (<1 day each)
@@ -77,14 +77,14 @@ Verification: `npm run lint` on touched files clean, `npx tsc --noEmit` pre-exis
 
 - **Money vs format drift:** `src/lib/money.ts:15` (Decimal) vs `src/lib/format.js` (Intl on floats) — keep money math in Decimal, only `toNumber` at DB boundary (already done in manhours fix).
 - **Shared `ProjectManhoursTable`:** View now duplicates edit FY table. Extract `src/components/projects/ProjectManhoursTable.tsx` with `readOnly` prop to avoid drift.
-- **Typecheck script missing:** `package.json` has no `typecheck` — add `"typecheck": "tsc --noEmit"` and fix pre-existing 60+ errors in `src/__tests__/api/admin/invoices/*`.
-- **Document upload coverage:** `src/app/api/document-upload/route.js` + `src/utils/document-helpers.js` had 0 tests before the `id` bug. Add `src/__tests__/api/document-upload/route.test.ts` mocking `query` for `project_id` path.
+- **Typecheck script missing:** `package.json` has no `typecheck` — add `"typecheck": "tsc --noEmit"` and fix pre-existing 60+ errors in `src/app/api/admin/invoices/*`.
+- **Document upload coverage:** `src/app/api/document-upload/route.js` + `src/utils/document-helpers.js` had 0 tests before the `id` bug. Add `src/app/api/document-upload/route.test.ts` mocking `query` for `project_id` path.
 
 ## How to verify each P0
 
 1. `npx tsc --noEmit` — must be 0 new errors after XSS sanitizer + priority migration.
 2. `npm run migrate && npm run migrate:status` — 20/20, no pending.
-3. `npx vitest run src/__tests__/projects src/__tests__/api/document-upload` — green.
+3. `npx vitest run src/app/projects src/app/api/document-upload` — green.
 4. Manual: login as `admin/Admin@123` and `rahul.sharma/User@123`, open `PROJ-001` view vs edit — every tab shows same `documents_received`/`documents_issued`/`manhours` (no `[object Object]`), upload a PDF in view → appears in edit and vice versa, `project_team` filter hides `PROJ-001` from a third user not in team.
 
 ## Ownership

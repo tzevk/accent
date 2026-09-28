@@ -1,5 +1,10 @@
 # Accent CRM — Agent Guide
 
+- Follow YAGNI rules, DRY use best principles.
+- NEVER write unit tests after you write code.
+- Highly prefer E2E tests as the sole testing mechanism. Use them to verify complex features work. At the end of E2E tests, produce a verifiable and repeatable artifact.
+- If you must test a system in isolation, FIRST write all the ways it could fail, THEN write the code.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
@@ -31,11 +36,13 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | Test (watch)  | `npm test`                                                                                                                                                                               |
 | Test (once)   | `npm run test:run`                                                                                                                                                                       |
 | Coverage      | `npm run test:coverage`                                                                                                                                                                  |
-| Single file   | `npx vitest run src/__tests__/utils/money.test.ts`                                                                                                                                       |
+| Single file   | `npx vitest run src/lib/money.test.ts`                                                                                                                                                   |
 | Single name   | `npx vitest run -t "ensurePermission"`                                                                                                                                                   |
+| E2E (full)    | `npm run e2e` — bootstraps the E2E DB, production build, then Playwright; artifacts land in `e2e/artifacts/`                                                                             |
+| E2E (tests)   | `npm run e2e:test` (reuses the last build; needs `npm run build:e2e` at least once); `npm run e2e:ui` for the interactive runner                                                         |
 | Migrations    | `npm run migrate` / `migrate:status` / `migrate:rollback` / `migrate:make -- <name>` — prod DB: `migrate:prod` (+ `:status` / `:rollback`); plain `npm run migrate` targets **dev** only |
 
-Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before pushing; `npm run build` is the final gate.
+Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before pushing; `npm run build:e2e` is the final gate (plain `npm run build` inherits `NODE_ENV=development` from `.env` and fails static prerendering).
 
 ## Architecture Gotchas
 
@@ -56,6 +63,8 @@ Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before 
 
 - **Money** (`src/lib/money.ts`): never `parseFloat`/`+`/`-`/`*`/`/` for billing/salary. Use `R`, `add`, `sub`, `mul`, `div`, `pctOf`, `roundR`, `gte`, `isZero`, `toNumber` (Decimal.js, precision 20, `ROUND_HALF_UP`). Convert to number only at DB/JSON boundary.
 
+- **Payroll pay formula** (ADR-0010): Gross = **Hourly Rate × Logged Hours**. Hourly Rate = CTC (`employee_salary_profile.employer_cost`) ÷ **Basis Hours** (month's working days from `getWorkingDaysForMonth` × profile `std_hours_per_day`); Logged Hours = the month's `user_activity_assignments.daily_entries` hours. Hours alone decide pay — attendance OT and LOP never add or subtract money, and no reader re-prorates a slip for absences. HR/admin flow: `docs/app/payroll/operator-guide.md`.
+
 ## Conventions That Break If Guessed
 
 - **Formatting** (`src/lib/format.js`): `formatCurrency`/`formatNumber`/`formatDate`/`formatDateTime`/`formatDateInput` — `en-IN`, returns `"—"` on null/NaN. Don't write local formatters.
@@ -72,14 +81,18 @@ Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before 
 - `src/utils/` — `database.js`, `api-permissions.js`, `permissions.js`/`rbac.js`, `session.ts`, `activity-logger.ts`, `schema-cache.js`, `payroll-calculator.js`.
 - `src/lib/` — `money.ts`, `format.js`, `api-client.js`, `cn.js`.
 - `src/context/SessionContext.jsx` (`useSession()/can()`), `src/hooks/` (`useActivityTracker.js` delta heartbeat every 120s → `user_screen_time`).
-- `src/__tests__/` — 85 Vitest suites mirroring `src/`; `migrations/` (knex ESM); `scripts/` (seeding/diagnostics); `docs/SECURITY_AUDIT.md`.
+- Tests are colocated: `<module>.test.*` sits beside the module/route/page it covers (`src/**/*.test.*`) — there is no central test tree. `e2e/` — Playwright E2E harness (`npm run e2e`); `migrations/` (knex ESM); `scripts/` (seeding/diagnostics); `docs/SECURITY_AUDIT.md`.
 
 ## Testing Notes
 
-- Vitest `jsdom`, `globals: true`, `setupFiles: vitest.setup.ts` (`@testing-library/jest-dom`), include `src/__tests__/**/*.test.{js,jsx,ts,tsx}`, alias `@` → `src` (`vitest.config.ts:1`).
-- **Mock hoisting**: `vi.mock('@/utils/database', ...)` and `vi.mock('@/utils/api-permissions', ...)` must be defined _before_ dynamic `await import('@/app/api/.../route')` in tests. DB mocks return tuple `[rows, fields]` via `mockExecute`; params wrapped as `Promise.resolve({ id: '1' })` for Next 15.
-- Component tests wrap with `QueryClientProvider` (`retry:false gcTime:0`), mock `next/navigation` (`useRouter/useParams`).
-- No integration DB needed — all API tests are mocked. `money.test.ts` checks `add(0.1,0.2) === 0.3`; payroll tests assert `total_earnings - total_deductions === net_pay`.
+- **Unit tests are the exception, not the default.** Only write them _before_ the code, for systems tested in isolation whose failure modes you enumerate first; NEVER write unit tests after the fact (verify with E2E instead).
+- **Never add route-handler, page, or component tests.** Mock-echo tests (stubbed DB rows flowing back out, mocks-called assertions), render smoke, source/route-tree pins, and duplicated CRUD templates were purged on 2026-09-27 — do not recreate them; add E2E coverage instead.
+- **E2E is the default verification**: drive the real app + DB and leave a rerunnable artifact. The committed harness is `e2e/` (Playwright): `npm run e2e` bootstraps the DB, builds, boots `next start` on the real database and drives browser + API flows; every spec writes `e2e/artifacts/<flow>.json` (CI uploads artifacts + the HTML report). Verify new features here — do not add unit tests instead.
+- E2E data stays out of everyone's way: fixtures are namespaced (`e2e_*` users, `E2E-EMP-*` employees, `E2E Deliverable *`, pay month 2019-01) and purged/reseeded by `e2e/lib/fixtures.ts` on every run; global setup refuses to run if that month's payroll run already exists, so real payroll data is never touched. Locally it uses the dev DB; set `E2E_DB_NAME` to target a dedicated database (CI does).
+- Specs assert what the API returns **and** what landed in the database (their own `mysql2` client in `e2e/lib/db.ts`), so mocks can't hide a broken write.
+- The 73 surviving suites are frozen pure-logic checks: money/Decimal (`money`, payroll per ADR-0010), leave/date/sandwich/week-off math, payroll config & statutory math, RBAC/authz decisions (sec04/05/07), sanitization, and report data-source aggregation. Keep them green; don't extend in kind.
+- Config: Vitest `jsdom`, `globals: true`, `setupFiles: vitest.setup.ts` (`@testing-library/jest-dom`), include `src/**/*.test.{js,jsx,ts,tsx}` (tests are colocated), alias `@` → `src` (`vitest.config.ts:1`); run once with `npm run test:run`.
+- Surviving payroll API suites mock `@/utils/database` + dynamic `await import` of the route (mock-hoisting order matters; DB mocks return `[rows, fields]`). Shared helpers: `src/app/api/payroll/{test-perms,audit-rows}.ts`.
 
 ## Env & Migrations
 

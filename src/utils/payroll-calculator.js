@@ -3,7 +3,7 @@
  * ---------------------------
  * Uses frozen PAYROLL_CONFIG to calculate all salary components
  * Integrates with core payroll tables:
- *  - da_schedule
+ *  - payroll_schedules (Component Rates, incl. DA)
  *  - employee_salary_profile
  *  - payroll_slips
  *  - employee_attendance (for monthly calculations)
@@ -19,49 +19,15 @@ import {
 
 export { calculatePayroll, normalizeSalaryProfile };
 
-/**
- * LEGACY COMPAT (future migration): reads the legacy `da_schedule` table.
- * Canonical rates come from `payroll_schedules` via
- * getEffectivePayrollSchedule; do not add new callers.
- */
-export async function getCurrentDA(forDate = new Date()) {
-	const db = await dbConnect();
-
-	try {
-		const [rows] = await db.execute(
-			`SELECT da_amount 
-       FROM da_schedule 
-       WHERE is_active = 1 
-         AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31')
-       LIMIT 1`,
-			[forDate]
-		);
-
-		return rows.length > 0
-			? parseFloat(rows[0].da_amount)
-			: PAYROLL_CONFIG.DA_FIXED_AMOUNT;
-	} catch (error) {
-		console.error('Error getting current DA:', error);
-		return PAYROLL_CONFIG.DA_FIXED_AMOUNT; // Fallback to config default
-	} finally {
-		try {
-			db.release();
-		} catch (_) {
-			/* ignore */
-		}
-	}
-}
-
 const scheduleDate = (value) =>
 	typeof value === 'string'
 		? value.substring(0, 10)
 		: value.toISOString().split('T')[0];
 
 /**
- * Load the effective Payroll Schedule once for a calculation run.
- * LEGACY COMPAT (future migration): the `da_schedule` branch below is a
- * compatibility fallback until DA storage is unified. Canonical source is
- * `payroll_schedules`; do not extend the fallback.
+ * Load the effective Component Rates (payroll_schedules) once per run.
+ * All component rates — including DA — resolve from `payroll_schedules`
+ * (Component Rates); there is no legacy DA-table fallback.
  */
 export async function getEffectivePayrollSchedule(
 	forDate = new Date(),
@@ -95,28 +61,6 @@ export async function getEffectivePayrollSchedule(
 		} catch (error) {
 			// Keep existing deployments working while the canonical table is absent.
 			console.warn('Payroll schedule lookup skipped:', error.message);
-		}
-
-		if (!components.da) {
-			try {
-				const [rows] = await db.execute(
-					`SELECT da_amount, effective_from, effective_to
-           FROM da_schedule
-           WHERE is_active = 1
-             AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31')
-           ORDER BY effective_from DESC, id DESC
-           LIMIT 1`,
-					[date]
-				);
-				if (rows.length > 0) {
-					components.da = {
-						value_type: 'fixed',
-						value: rows[0].da_amount,
-					};
-				}
-			} catch (error) {
-				console.warn('Legacy DA lookup skipped:', error.message);
-			}
 		}
 
 		if (!components.da) {
@@ -500,12 +444,15 @@ export async function getEmployeeSalaryProfile(
 }
 
 /**
- * Calculate complete payroll breakdown for an employee
- * Links salary structure with attendance for monthly calculations
+ * Calculate complete payroll breakdown for an employee.
+ * Links the Salary Profile with the month's attendance calendar and the
+ * hours logged in Project Activity Assignments: Gross is the CTC apportioned
+ * over the month's payable hours and paid at the hours actually logged.
  * @param {number} employeeId - Employee ID
  * @param {Date} month - Payroll month (YYYY-MM-01 format)
  * @param {object} options - Optional settings
  * @param {boolean} options.include_bonus - Whether to include bonus (default: false)
+ * @param {number} options.loggedHours - Override the month's logged hours (preview/tests)
  * @returns {Promise<object>} Complete payroll breakdown
  */
 export async function calculateEmployeePayroll(
@@ -519,11 +466,14 @@ export async function calculateEmployeePayroll(
 
 	if (!profile) return null;
 
-	const [payrollSchedule, attendance] = await Promise.all([
+	const [payrollSchedule, attendance, loggedHours] = await Promise.all([
 		options.payrollSchedule ||
 			options.schedule ||
 			getEffectivePayrollSchedule(month),
 		options.attendance || getEmployeeAttendance(employeeId, month),
+		options.loggedHours !== undefined
+			? options.loggedHours
+			: getEmployeeLoggedHours(employeeId, month),
 	]);
 
 	return computePayroll(
@@ -531,7 +481,7 @@ export async function calculateEmployeePayroll(
 		month,
 		profile,
 		undefined,
-		attendance,
+		{ ...attendance, loggedHours: Number(loggedHours) || 0 },
 		includeBonus,
 		payrollSchedule,
 		options.overrides || options.manualOverrides || {}
@@ -583,24 +533,82 @@ async function ensurePayrollColumns(db) {
 // Helper to convert undefined to null
 const n = (val) => (val === undefined ? null : val);
 
+/**
+ * The payroll_slips columns a slip is written with, in `payrollToParams`
+ * order. Both the single-row and the batch insert build from this one list,
+ * so the two can never drift apart (the batch previously carried its own
+ * shorter list, which silently failed every generated row back through the
+ * one-by-one fallback).
+ */
+const SLIP_INSERT_COLUMNS = [
+	'month',
+	'employee_id',
+	'gross',
+	'ctc_used',
+	'basis_hours',
+	'hourly_rate',
+	'logged_hours',
+	'da_used',
+	'da',
+	'basic',
+	'hra',
+	'conveyance',
+	'call_allowance',
+	'other_allowances',
+	'bonus',
+	'incentive',
+	'ot_rate',
+	'total_earnings',
+	'pf_employee',
+	'esic_employee',
+	'pt',
+	'mlwf',
+	'retention',
+	'lwf',
+	'tds',
+	'other_deductions',
+	'total_deductions',
+	'net_pay',
+	'pf_employer',
+	'esic_employer',
+	'mlwf_employer',
+	'insurance',
+	'gratuity',
+	'pf_admin',
+	'edli',
+	'total_employer_contributions',
+	'employer_cost',
+	'standard_working_days',
+	'days_present',
+	'days_absent',
+	'days_leave',
+	'payable_days',
+	'lop_days',
+	'lop_deduction',
+	'overtime_hours',
+	'full_month_gross',
+	'pl_total',
+	'pl_used',
+	'pl_balance',
+	'payment_status',
+	'remarks',
+];
+
+const SLIP_PLACEHOLDER = `(${SLIP_INSERT_COLUMNS.map(() => '?').join(', ')})`;
+
 const INSERT_SLIP_SQL = `INSERT INTO payroll_slips (
-  month, employee_id, gross, da_used, da, basic, hra, conveyance, call_allowance,
-  other_allowances, bonus, incentive, ot_rate, total_earnings,
-  pf_employee, esic_employee, pt, mlwf, retention, lwf, tds,
-  other_deductions, total_deductions, net_pay,
-  pf_employer, esic_employer, mlwf_employer, insurance,
-  gratuity, pf_admin, edli, total_employer_contributions, employer_cost,
-  standard_working_days, days_present, days_absent, days_leave, payable_days, lop_days,
-  lop_deduction, overtime_hours, full_month_gross,
-  pl_total, pl_used, pl_balance,
-  payment_status, remarks
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  ${SLIP_INSERT_COLUMNS.join(', ')}
+) VALUES ${SLIP_PLACEHOLDER}`;
 
 function payrollToParams(payroll) {
 	return [
 		payroll.month,
 		payroll.employee_id,
 		n(payroll.gross) || 0,
+		n(payroll.ctc_used) || 0,
+		n(payroll.basis_hours) || 0,
+		n(payroll.hourly_rate) || 0,
+		n(payroll.logged_hours) || 0,
 		n(payroll.da_used) || 0,
 		n(payroll.da) || 0,
 		n(payroll.basic) || 0,
@@ -871,6 +879,136 @@ async function batchGetAttendance(db, employeeIds, month) {
 }
 
 /**
+ * Parse one assignment's `daily_entries` payload into an array. Tolerates the
+ * column arriving as a JSON string (mysql2 longtext) or an already-parsed
+ * array, and drops malformed payloads — the tolerance the timesheet,
+ * utilization and project-cost reports already use.
+ */
+function parseDailyEntries(raw) {
+	if (!raw) return [];
+	if (typeof raw === 'string') {
+		try {
+			const parsed = JSON.parse(raw);
+			return Array.isArray(parsed) ? parsed : [];
+		} catch {
+			return [];
+		}
+	}
+	return Array.isArray(raw) ? raw : [];
+}
+
+/**
+ * Hours logged in one month across `daily_entries` payloads. Entries with no
+ * date, another month, or hours ≤ 0 are ignored; overtime counts (CONTEXT.md:
+ * Logged Hours).
+ */
+function sumLoggedHours(dailyEntriesList, month) {
+	let total = 0;
+	for (const raw of dailyEntriesList) {
+		for (const entry of parseDailyEntries(raw)) {
+			if (!entry || typeof entry.date !== 'string') continue;
+			if (!entry.date.startsWith(month)) continue;
+			const hours = parseFloat(entry.hours);
+			if (hours > 0) total += hours;
+		}
+	}
+	return Math.round(total * 100) / 100;
+}
+
+/**
+ * Logged project hours per employee for a payroll month, from
+ * `user_activity_assignments.daily_entries` — the same source as the
+ * timesheet, utilization and project-cost reports, and the one the Project
+ * Activity Assignments screen writes. Rows resolve to an employee by
+ * `employee_id`, else the linked user's `employee_id`, else an
+ * email/username match, the resolution the company-wide cost report
+ * established for rows without a link. A month with no logged rows yields 0
+ * for that employee: hours alone decide pay.
+ */
+async function batchGetLoggedHours(db, employeeIds, month) {
+	const wanted = new Set(
+		employeeIds.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+	);
+	const totals = new Map();
+	if (wanted.size === 0) return totals;
+
+	const monthPrefix = String(month).substring(0, 7);
+	const [assignments] = await db.execute(
+		`SELECT uaa.employee_id, uaa.daily_entries,
+            u.employee_id AS user_employee_id,
+            u.email AS user_email, u.username AS user_username
+     FROM user_activity_assignments uaa
+     LEFT JOIN users u ON u.id = uaa.user_id AND u.isDelete = 0
+     WHERE uaa.status <> 'Cancelled'
+       AND uaa.daily_entries IS NOT NULL AND uaa.daily_entries NOT IN ('', '[]')`
+	);
+	if (assignments.length === 0) return totals;
+
+	const [employees] = await db.execute(
+		`SELECT id, email, username FROM employees WHERE isDelete = 0`
+	);
+	const [users] = await db.execute(
+		`SELECT employee_id, email, username FROM users
+     WHERE isDelete = 0 AND employee_id IS NOT NULL`
+	);
+
+	const byIdentifier = new Map();
+	const addIdentifier = (value, employeeId) => {
+		const key = String(value || '')
+			.trim()
+			.toLowerCase();
+		if (key && !byIdentifier.has(key)) {
+			byIdentifier.set(key, Number(employeeId));
+		}
+	};
+	for (const row of employees) {
+		addIdentifier(row.email, row.id);
+		addIdentifier(row.username, row.id);
+	}
+	for (const row of users) {
+		addIdentifier(row.email, row.employee_id);
+		addIdentifier(row.username, row.employee_id);
+	}
+
+	for (const row of assignments) {
+		const employeeId =
+			Number(row.employee_id) ||
+			Number(row.user_employee_id) ||
+			byIdentifier.get(String(row.user_email || '').toLowerCase()) ||
+			byIdentifier.get(String(row.user_username || '').toLowerCase()) ||
+			0;
+		if (!employeeId || !wanted.has(employeeId)) continue;
+		const hours = sumLoggedHours([row.daily_entries], monthPrefix);
+		if (hours > 0)
+			totals.set(employeeId, (totals.get(employeeId) || 0) + hours);
+	}
+
+	for (const [employeeId, hours] of totals) {
+		totals.set(employeeId, Math.round(hours * 100) / 100);
+	}
+	return totals;
+}
+
+/**
+ * One employee's logged hours for a payroll month, on its own connection.
+ * The preview endpoint and single-slip generation price exactly what a
+ * payroll run would.
+ */
+async function getEmployeeLoggedHours(employeeId, month) {
+	const db = await dbConnect();
+	try {
+		const totals = await batchGetLoggedHours(db, [employeeId], month);
+		return totals.get(Number(employeeId)) || 0;
+	} finally {
+		try {
+			db.release();
+		} catch (_) {
+			/* ignore */
+		}
+	}
+}
+
+/**
  * Compute payroll using the dependency-free calculation boundary. This is the
  * compatibility interface retained by existing server orchestration callers.
  */
@@ -1018,10 +1156,11 @@ export async function generateMonthlyPayroll(
 			return results;
 		}
 
-		// ── 3. Batch-fetch effective schedules, profiles, and attendance ──
+		// ── 3. Batch-fetch effective schedules, profiles, attendance, hours ──
 		const payrollSchedule = await getEffectivePayrollSchedule(month, db);
 		const profileMap = await batchGetSalaryProfiles(db, newIds, month);
 		const attendanceMap = await batchGetAttendance(db, newIds, month);
+		const hoursMap = await batchGetLoggedHours(db, newIds, month);
 
 		// ── 4. Ensure schema once ──
 		await ensurePayrollColumns(db);
@@ -1055,7 +1194,10 @@ export async function generateMonthlyPayroll(
 				payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
 				lopDays: 0,
 			};
-			const attendance = attendanceMap.get(empId) || defaultAtt;
+			const attendance = {
+				...(attendanceMap.get(empId) || defaultAtt),
+				loggedHours: hoursMap.get(empId) || 0,
+			};
 
 			try {
 				// If bonusEmployeeIds is provided, only include bonus for those specific employees
@@ -1085,20 +1227,12 @@ export async function generateMonthlyPayroll(
 		// Multi-row INSERT in batches of BATCH_SIZE
 		for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
 			const batch = toInsert.slice(i, i + BATCH_SIZE);
-			const singlePlaceholder = '(' + new Array(43).fill('?').join(',') + ')';
+			const singlePlaceholder = SLIP_PLACEHOLDER;
 			const allPlaceholders = batch.map(() => singlePlaceholder).join(',');
 			const allParams = batch.flatMap(payrollToParams);
 
 			const batchSQL = `INSERT INTO payroll_slips (
-        month, employee_id, gross, da_used, da, basic, hra, conveyance, call_allowance,
-        other_allowances, bonus, incentive, total_earnings,
-        pf_employee, esic_employee, pt, mlwf, retention, lwf, tds,
-        other_deductions, total_deductions, net_pay,
-        pf_employer, esic_employer, mlwf_employer, insurance,
-        gratuity, pf_admin, edli, total_employer_contributions, employer_cost,
-        standard_working_days, days_present, days_absent, days_leave, payable_days, lop_days,
-        lop_deduction, overtime_hours, full_month_gross,
-        payment_status, remarks
+        ${SLIP_INSERT_COLUMNS.join(', ')}
       ) VALUES ${allPlaceholders}`;
 
 			try {
@@ -1177,10 +1311,11 @@ export async function generatePayrollSlipsBatch(
 			return results;
 		}
 
-		// Batch-fetch effective schedules, profiles, and attendance.
+		// Batch-fetch effective schedules, profiles, attendance, and hours.
 		const payrollSchedule = await getEffectivePayrollSchedule(month, db);
 		const profileMap = await batchGetSalaryProfiles(db, newIds, month);
 		const attendanceMap = await batchGetAttendance(db, newIds, month);
+		const hoursMap = await batchGetLoggedHours(db, newIds, month);
 		await ensurePayrollColumns(db);
 
 		for (const empId of newIds) {
@@ -1206,7 +1341,10 @@ export async function generatePayrollSlipsBatch(
 				payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
 				lopDays: 0,
 			};
-			const attendance = attendanceMap.get(empId) || defaultAtt;
+			const attendance = {
+				...(attendanceMap.get(empId) || defaultAtt),
+				loggedHours: hoursMap.get(empId) || 0,
+			};
 			try {
 				// If bonusEmployeeIds is provided, only include bonus for those specific employees
 				const empIncludeBonus =
@@ -1246,7 +1384,6 @@ export async function generatePayrollSlipsBatch(
 }
 
 const payrollCalculator = {
-	getCurrentDA,
 	getEffectivePayrollSchedule,
 	getEmployeeAttendance,
 	getEmployeeSalaryProfile,

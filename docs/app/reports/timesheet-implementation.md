@@ -163,16 +163,16 @@ Filename: `Timesheet_<EMPLOYEE_NAME>_<MONTH_LABEL>.xlsx` (e.g. `Timesheet_ROSHAN
 
 ## Files changed
 
-| File                                                           | Change                                                                              |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `src/app/reports/timesheet-report/data-source.ts`              | **Created** — types, pure transforms (unit-tested), server fetchers                 |
-| `src/app/reports/timesheet-report/page.tsx`                    | **Created** — filter bar + print-styled reference-grid sheet + Excel export button  |
-| `src/app/reports/timesheet-report/excel-template.ts`           | **Created** — ExcelJS workbook builder (mirrors the on-screen grid)                 |
-| `src/app/api/reports/timesheet-report/route.ts`                | **Created** — meta/data JSON API with RBAC                                          |
-| `src/app/api/reports/timesheet-report/download/route.ts`       | **Created** — Excel download with RBAC                                              |
-| `src/__tests__/reports/timesheet-report/data-source.test.ts`   | **Created** — unit tests (statuses, weekly-off rule, day matrix, parsing, hours/OT) |
-| `src/__tests__/reports/timesheet-report/timesheet-cap.test.ts` | **Created** — 7 unit tests for `capProjectDays`                                     |
-| `src/lib/timesheet-cap.ts`                                     | **Created** — per-project per-day capping to the standard working day               |
+| File                                                     | Change                                                                              |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `src/app/reports/timesheet-report/data-source.ts`        | **Created** — types, pure transforms (unit-tested), server fetchers                 |
+| `src/app/reports/timesheet-report/page.tsx`              | **Created** — filter bar + print-styled reference-grid sheet + Excel export button  |
+| `src/app/reports/timesheet-report/excel-template.ts`     | **Created** — ExcelJS workbook builder (mirrors the on-screen grid)                 |
+| `src/app/api/reports/timesheet-report/route.ts`          | **Created** — meta/data JSON API with RBAC                                          |
+| `src/app/api/reports/timesheet-report/download/route.ts` | **Created** — Excel download with RBAC                                              |
+| `src/app/reports/timesheet-report/data-source.test.ts`   | **Created** — unit tests (statuses, weekly-off rule, day matrix, parsing, hours/OT) |
+| `src/lib/timesheet-cap.test.ts`                          | **Created** — 7 unit tests for `capProjectDays`                                     |
+| `src/lib/timesheet-cap.ts`                               | **Created** — per-project per-day capping to the standard working day               |
 
 > The per-project section intentionally caps at the standard working day (8h) — this matches the reference template and the "normal hours in the top section, everything above 8h as overtime" rule. The proportional split keeps every project visible on over-8h days.
 

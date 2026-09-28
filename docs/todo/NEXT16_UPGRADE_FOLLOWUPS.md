@@ -5,12 +5,12 @@
 
 ## Upgrade state at hand-off
 
-| Gate               | Status                         | Caveat                                              |
-| ------------------ | ------------------------------ | --------------------------------------------------- |
-| `npm run lint`     | ✅ 0 errors                    | 397 warnings (see Item 3)                           |
-| `npx tsc --noEmit` | ✅ clean                       | `src/__tests__` excluded from tsconfig (see Item 2) |
-| `npm run test:run` | ✅ 86/86 suites, 604/604 tests | —                                                   |
-| `npm run build`    | ✅ Turbopack production build  | Type-checks app code only, per tsconfig             |
+| Gate               | Status                         | Caveat                                                         |
+| ------------------ | ------------------------------ | -------------------------------------------------------------- |
+| `npm run lint`     | ✅ 0 errors                    | 397 warnings (see Item 3)                                      |
+| `npx tsc --noEmit` | ✅ clean                       | test files (`**/*.test.*`) excluded from tsconfig (see Item 2) |
+| `npm run test:run` | ✅ 86/86 suites, 604/604 tests | —                                                              |
+| `npm run build`    | ✅ Turbopack production build  | Type-checks app code only, per tsconfig                        |
 
 Proven at upgrade time via a clean-HEAD worktree probe: all type errors below pre-date the upgrade (identical count at HEAD); the upgrade introduced zero regressions.
 
@@ -23,11 +23,11 @@ Proven at upgrade time via a clean-HEAD worktree probe: all type errors below pr
 - **Fix:** Mechanical delete/rename/underscore-prefix per site. Where an unused param documents a callback shape, rename to `_name` rather than removing.
 - **Effort:** ~1 hr. **Risk:** near zero.
 
-## Item 2 — Test-file typing debt (124 errors) → re-include `src/__tests__`
+## Item 2 — Test-file typing debt (124 errors) → re-include test files in typechecking
 
-- **Where:** `src/__tests__/api/**` route tests mostly. Distribution: 42× TS2322 (assigning fixtures to `never[]`/`null` mock params), 29× TS18048 (`mock.calls[0][x]` possibly undefined), 21× TS2339 (`.json` on literal request stubs, `.code/.errno/.sqlMessage` on `Error`), 10× TS2741 (missing ref props in tab tests), 9× TS2345, 6× TS2739, rest singletons.
+- **Where:** route tests (`src/app/api/**/*.test.*`) mostly. Distribution: 42× TS2322 (assigning fixtures to `never[]`/`null` mock params), 29× TS18048 (`mock.calls[0][x]` possibly undefined), 21× TS2339 (`.json` on literal request stubs, `.code/.errno/.sqlMessage` on `Error`), 10× TS2741 (missing ref props in tab tests), 9× TS2345, 6× TS2739, rest singletons.
 - **Impact:** Tests are invisible to `tsc --noEmit` and to `next build` type-checking until this is fixed. Runtime is fully covered by the 604 vitest tests, so nothing is untested today — but future API-signature drift won't be caught by types in test files.
-- **Fix:** Tighten `vi.fn<...>` generics, add non-null assertions or guards on `mock.calls`, extend request stubs, add missing props to rendered tab components. Then remove `"src/__tests__"` from `exclude` in `tsconfig.json` and confirm both gates stay green.
+- **Fix:** Tighten `vi.fn<...>` generics, add non-null assertions or guards on `mock.calls`, extend request stubs, add missing props to rendered tab components. Then remove the `**/*.test.*` globs from `exclude` in `tsconfig.json` and confirm both gates stay green.
 - **Effort:** ~half a day. **Risk:** low (type-only changes; suite must still pass).
 
 **Live checklist:** temporarily remove the exclude and run `npx tsc --noEmit` — the full error list regenerates itself.

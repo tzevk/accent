@@ -50,7 +50,7 @@
 - `next lint --file src/app/projects/[id]/page.jsx` — clean.
 - `tsc --noEmit` — 0 errors in this file (114 pre-existing errors elsewhere, untouched).
 - `prettier --check` — clean.
-- `npx vitest run src/__tests__/projects/[id]/page.test.tsx` — 2/2 pass.
+- `npx vitest run src/app/projects/[id]/page.test.tsx` — 2/2 pass.
 - Browser (dev server, super-admin session, 1440×900):
   - Admin default lands on Project Details → "General Project Information" panel; all 13 tabs render their panels.
   - Employee workspace renders its 9 tabs, defaults to Scope, back button → `/user/dashboard`.

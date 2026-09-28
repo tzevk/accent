@@ -5,6 +5,12 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	PAYROLL_AUDIT_ACTION,
+	PAYROLL_AUDIT_ENTITY,
+	auditSnapshot,
+	recordPayrollAudit,
+} from '@/app/api/payroll/_lib/payroll-audit';
 
 /**
  * GET - Fetch all DA schedule entries
@@ -24,7 +30,10 @@ export async function GET(request) {
 		db = await dbConnect();
 
 		const [rows] = await db.execute(
-			`SELECT * FROM da_schedule ORDER BY effective_from DESC`
+			`SELECT id, value AS da_amount, effective_from, effective_to, is_active, remarks
+       FROM payroll_schedules
+       WHERE component_type = 'da'
+       ORDER BY effective_from DESC`
 		);
 
 		return NextResponse.json({
@@ -73,31 +82,65 @@ export async function POST(request) {
 
 		db = await dbConnect();
 
-		// If marking as active, deactivate all other entries
-		if (is_active) {
-			await db.execute(`UPDATE da_schedule SET is_active = 0`);
+		try {
+			await db.beginTransaction();
+
+			// Deactivating the siblings and inserting the replacement are ONE
+			// change: a failure between them would leave DA with no active rate
+			// at all, which silently pays zero everywhere it is read.
+			// Only DA rows are touched — never another component type.
+			if (is_active) {
+				await db.execute(
+					`UPDATE payroll_schedules SET is_active = 0 WHERE component_type = 'da'`
+				);
+			}
+
+			const [result] = await db.execute(
+				`INSERT INTO payroll_schedules (component_type, value_type, value, effective_from, effective_to, is_active, remarks)
+       VALUES ('da', 'fixed', ?, ?, ?, ?, ?)`,
+				[
+					da_amount,
+					effective_from,
+					effective_to || null,
+					is_active ? 1 : 0,
+					remarks || null,
+				]
+			);
+
+			await db.commit();
+
+			// This facade writes the same payroll_schedules row /api/payroll/schedules
+			// writes, so a DA change is a Component Rate change and is audited as one.
+			// After commit, before release(): the rate is stored either way, and an
+			// audit failure must never roll back the rate payroll now reads.
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.COMPONENT_RATE,
+				entityId: result.insertId,
+				action: PAYROLL_AUDIT_ACTION.CREATE,
+				performedBy: authResult.user?.id,
+				newValues: auditSnapshot({
+					component_type: 'da',
+					value_type: 'fixed',
+					value: da_amount,
+					effective_from,
+					effective_to: effective_to || null,
+					is_active: is_active ? 1 : 0,
+					remarks: remarks || null,
+				}),
+			});
+
+			return NextResponse.json(
+				{
+					success: true,
+					message: 'DA schedule entry created successfully',
+					id: result.insertId,
+				},
+				{ status: 201 }
+			);
+		} catch (error) {
+			await db.rollback().catch(() => {});
+			throw error;
 		}
-
-		const [result] = await db.execute(
-			`INSERT INTO da_schedule (da_amount, effective_from, effective_to, is_active, remarks)
-       VALUES (?, ?, ?, ?, ?)`,
-			[
-				da_amount,
-				effective_from,
-				effective_to || null,
-				is_active ? 1 : 0,
-				remarks || null,
-			]
-		);
-
-		return NextResponse.json(
-			{
-				success: true,
-				message: 'DA schedule entry created successfully',
-				id: result.insertId,
-			},
-			{ status: 201 }
-		);
 	} catch (error) {
 		console.error('POST /api/payroll/da-schedule error:', error);
 		return NextResponse.json(
@@ -140,35 +183,74 @@ export async function PUT(request) {
 
 		db = await dbConnect();
 
-		// If marking as active, deactivate all other entries
-		if (is_active) {
-			await db.execute(`UPDATE da_schedule SET is_active = 0 WHERE id != ?`, [
-				id,
-			]);
-		}
+		try {
+			await db.beginTransaction();
 
-		await db.execute(
-			`UPDATE da_schedule 
-       SET da_amount = COALESCE(?, da_amount),
+			// Same reasoning as POST: deactivating the siblings and writing the
+			// replacement rate are one change, so a failure cannot leave DA with
+			// no active rate. Only DA rows are touched — never another type.
+			if (is_active) {
+				await db.execute(
+					`UPDATE payroll_schedules SET is_active = 0 WHERE component_type = 'da' AND id != ?`,
+					[id]
+				);
+			}
+
+			// Read the rate before the write: this is the DA payroll was paying with,
+			// and it is what a dispute has to be able to reconstruct.
+			const [priorRows] = await db.execute(
+				`SELECT * FROM payroll_schedules WHERE id = ? AND component_type = 'da' LIMIT 1`,
+				[id]
+			);
+			const before = priorRows[0] || null;
+
+			const [result] = await db.execute(
+				`UPDATE payroll_schedules 
+       SET value = COALESCE(?, value),
            effective_from = COALESCE(?, effective_from),
            effective_to = ?,
            is_active = COALESCE(?, is_active),
            remarks = ?
-       WHERE id = ?`,
-			[
-				da_amount ?? null,
-				effective_from ?? null,
-				effective_to !== undefined ? effective_to : undefined,
-				is_active !== undefined ? (is_active ? 1 : 0) : null,
-				remarks !== undefined ? remarks : undefined,
-				id,
-			]
-		);
+       WHERE id = ? AND component_type = 'da'`,
+				[
+					da_amount ?? null,
+					effective_from ?? null,
+					effective_to !== undefined ? effective_to : undefined,
+					is_active !== undefined ? (is_active ? 1 : 0) : null,
+					remarks !== undefined ? remarks : undefined,
+					id,
+				]
+			);
 
-		return NextResponse.json({
-			success: true,
-			message: 'DA schedule entry updated successfully',
-		});
+			await db.commit();
+
+			// After commit: this route reports success even for an id it never
+			// matched, so gate the entry on a row that was really written.
+			if (result.affectedRows > 0) {
+				await recordPayrollAudit(db, {
+					entityType: PAYROLL_AUDIT_ENTITY.COMPONENT_RATE,
+					entityId: before ? before.id : id,
+					action: PAYROLL_AUDIT_ACTION.UPDATE,
+					performedBy: authResult.user?.id,
+					oldValues: auditSnapshot(before),
+					newValues: auditSnapshot({
+						value: da_amount ?? undefined,
+						effective_from: effective_from ?? undefined,
+						effective_to,
+						is_active: is_active === undefined ? undefined : is_active ? 1 : 0,
+						remarks,
+					}),
+				});
+			}
+
+			return NextResponse.json({
+				success: true,
+				message: 'DA schedule entry updated successfully',
+			});
+		} catch (error) {
+			await db.rollback().catch(() => {});
+			throw error;
+		}
 	} catch (error) {
 		console.error('PUT /api/payroll/da-schedule error:', error);
 		return NextResponse.json(
@@ -211,7 +293,30 @@ export async function DELETE(request) {
 
 		db = await dbConnect();
 
-		await db.execute(`DELETE FROM da_schedule WHERE id = ?`, [id]);
+		// Read before deleting: afterwards nothing records the DA rate that was in
+		// force, or which component row it was.
+		const [priorRows] = await db.execute(
+			`SELECT * FROM payroll_schedules WHERE id = ? AND component_type = 'da' LIMIT 1`,
+			[id]
+		);
+		const before = priorRows[0] || null;
+
+		const [result] = await db.execute(
+			`DELETE FROM payroll_schedules WHERE id = ? AND component_type = 'da'`,
+			[id]
+		);
+
+		// This route reports success even for an id it never matched, so gate the
+		// entry on a row that really went away.
+		if (result.affectedRows > 0 && before) {
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.COMPONENT_RATE,
+				entityId: before.id,
+				action: PAYROLL_AUDIT_ACTION.DELETE,
+				performedBy: authResult.user?.id,
+				oldValues: auditSnapshot(before),
+			});
+		}
 
 		return NextResponse.json({
 			success: true,

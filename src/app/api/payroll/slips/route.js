@@ -5,16 +5,27 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-
-const safeNum = (v) => {
-	const n = Number(v);
-	return Number.isFinite(n) ? n : 0;
-};
+import { formatMonth } from '@/lib/format';
+import { resolveScheduledDA, slipFigures } from '@/lib/payroll';
+import {
+	payrollPeriod,
+	findPayrollRun,
+	isRunLocked,
+	findAnyLockedRun,
+	runMonthDate,
+} from '@/app/api/payroll/_lib/payroll-run';
+import {
+	PAYROLL_AUDIT_ACTION,
+	PAYROLL_AUDIT_ENTITY,
+	auditSnapshot,
+	recordPayrollAudit,
+} from '@/app/api/payroll/_lib/payroll-audit';
 
 /**
  * GET - Fetch payroll slips
  * Query params:
  *  - month: Filter by month (YYYY-MM-01)
+ *  - id: Filter by a single slip id (used by the Payroll Slip detail route)
  *  - employee_id: Filter by employee
  *  - payment_status: Filter by status (pending, processed, paid, hold)
  */
@@ -32,6 +43,7 @@ export async function GET(request) {
 	try {
 		const { searchParams } = new URL(request.url);
 		const month = searchParams.get('month');
+		const slipId = searchParams.get('id');
 		const employee_id = searchParams.get('employee_id');
 		const payment_status = searchParams.get('payment_status');
 		const salary_type = searchParams.get('salary_type');
@@ -65,6 +77,11 @@ export async function GET(request) {
 			params.push(month);
 		}
 
+		if (slipId) {
+			query += ` AND ps.id = ?`;
+			params.push(slipId);
+		}
+
 		if (employee_id) {
 			query += ` AND ps.employee_id = ?`;
 			params.push(employee_id);
@@ -85,49 +102,32 @@ export async function GET(request) {
 
 		const [rows] = await db.execute(query, params);
 
-		// Normalize BASIC/DA from canonical sources so all UIs read consistent values.
+		// Normalize BASIC/DA through the shared slip figures, so every reader of
+		// this listing, the Payroll Slip document and the PDFs shows one set of
+		// numbers for a slip — its own snapshot (ADR-0009).
+		// A single-slip lookup knows its month only from the row it just fetched, and
+		// must still resolve the scheduled DA the month listing would have used.
+		// A DA lookup must never break the listing, so a failure reads as "no DA".
+		const daMonth = month || rows[0]?.month || null;
 		let scheduledDA = 0;
-		if (month) {
+		if (daMonth) {
 			try {
-				const [yr, mn] = String(month).split('-');
-				const monthDate = `${yr}-${mn}-01`;
-				const [daRows] = await db.execute(
-					`SELECT value_type, value
-           FROM payroll_schedules
-           WHERE component_type = 'da' AND is_active = 1
-             AND effective_from <= ?
-             AND (effective_to IS NULL OR effective_to >= ?)
-           ORDER BY effective_from DESC
-           LIMIT 1`,
-					[monthDate, monthDate]
-				);
-				if (daRows.length > 0) {
-					const daRow = daRows[0];
-					scheduledDA =
-						daRow.value_type === 'percentage' ? 0 : safeNum(daRow.value);
-				}
+				scheduledDA = await resolveScheduledDA(db, daMonth);
 			} catch (daErr) {
 				console.log('DA fetch in slips route skipped:', daErr.message);
 			}
 		}
 
 		const normalizedRows = rows.map((row) => {
-			const basicPlusDaSource = Math.max(
-				0,
-				safeNum(row.structure_basic_salary) ||
-					safeNum(row.profile_basic) ||
-					safeNum(row.profile_basic_plus_da) ||
-					safeNum(row.basic)
-			);
-			const da =
-				scheduledDA > 0 ? scheduledDA : safeNum(row.da_used) || safeNum(row.da);
-			const basic = Math.max(0, basicPlusDaSource - da);
+			// The fallback chain lives in slipFigures so this listing, the on-screen
+			// Payroll Slip and both PDF exports report the same numbers.
+			const figures = slipFigures(row, { scheduledDA });
 
 			return {
 				...row,
-				basic,
-				da,
-				basic_plus_da_source: basicPlusDaSource,
+				basic: figures.basic,
+				da: figures.da,
+				basic_plus_da_source: figures.basicPlusDa,
 			};
 		});
 
@@ -178,22 +178,68 @@ export async function PUT(request) {
 
 		db = await dbConnect();
 
-		// Only allow updating payment-related fields (slip data is immutable)
-		await db.execute(
+		// Read the row before the write: the audit trail has to hold the payment
+		// state this change displaced, not what the caller claims it was.
+		const [priorRows] = await db.execute(
+			`SELECT id, employee_id, month, payment_status, payment_date,
+              payment_reference, remarks
+         FROM payroll_slips
+        WHERE id = ?
+        LIMIT 1`,
+			[id]
+		);
+		const slip = priorRows[0] || null;
+
+		// Only allow updating payment-related fields (slip data is immutable).
+		//
+		// Every column is COALESCEd and every binding is `?? null`, because BOTH
+		// halves of that are load-bearing:
+		//   - mysql2's execute() throws "Bind parameters must not contain
+		//     undefined" on a single undefined binding, so an omitted field used to
+		//     fail the whole request with a 500 instead of updating the rest.
+		//   - the COALESCE is what makes an omitted field mean "leave it alone".
+		//     Binding NULL without it would wipe a recorded payment_date every time
+		//     someone only changed the status.
+		// The admin Reports edit form is the only caller and sends exactly
+		// { id, payment_status, remarks }.
+		const [result] = await db.execute(
 			`UPDATE payroll_slips 
        SET payment_status = COALESCE(?, payment_status),
-           payment_date = ?,
-           payment_reference = ?,
-           remarks = ?
+           payment_date = COALESCE(?, payment_date),
+           payment_reference = COALESCE(?, payment_reference),
+           remarks = COALESCE(?, remarks)
        WHERE id = ?`,
 			[
 				payment_status ?? null,
-				payment_date !== undefined ? payment_date : undefined,
-				payment_reference !== undefined ? payment_reference : undefined,
-				remarks !== undefined ? remarks : undefined,
+				payment_date ?? null,
+				payment_reference ?? null,
+				remarks ?? null,
 				id,
 			]
 		);
+
+		// A slip id that matched nothing changed nothing, so there is nobody to
+		// attribute. Payment is tracked per slip, so this is the entry that says
+		// who marked it paid and when.
+		if (result.affectedRows > 0 && slip) {
+			const period = payrollPeriod(slip.month);
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_SLIP,
+				entityId: slip.id,
+				action: PAYROLL_AUDIT_ACTION.UPDATE,
+				employeeId: slip.employee_id,
+				month: period ? period.monthNumber : null,
+				year: period ? period.year : null,
+				performedBy: authResult.user?.id,
+				oldValues: auditSnapshot(slip),
+				newValues: auditSnapshot({
+					payment_status,
+					payment_date,
+					payment_reference,
+					remarks,
+				}),
+			});
+		}
 
 		return NextResponse.json({
 			success: true,
@@ -236,8 +282,47 @@ export async function DELETE(request) {
 		db = await dbConnect();
 
 		if (all === 'true') {
+			// Deleting every slip would strip Payroll Slips out of finalized months,
+			// leaving those runs' recorded totals permanently wrong — and a finalized
+			// month cannot be regenerated until a reopen action exists.
+			const lockedRun = await findAnyLockedRun(db);
+			if (lockedRun) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: `Cannot delete all Payroll Slips: ${formatMonth(
+							runMonthDate(lockedRun)
+						)} is locked by its finalized Payroll Run.`,
+					},
+					{ status: 409 }
+				);
+			}
+
+			// Read what is about to be erased: deleting Payroll Slips is a mutation
+			// like any other, and once the rows are gone the audit entry is the only
+			// record of what they held. The locked-run guard above is what makes
+			// everything read here deletable.
+			const [doomed] = await db.execute(
+				`SELECT id, employee_id, month, payment_status, payment_date, payment_reference
+           FROM payroll_slips`
+			);
+
 			// Delete all payroll slips
 			const [result] = await db.execute('DELETE FROM payroll_slips');
+
+			for (const slip of doomed) {
+				const slipPeriod = payrollPeriod(slip.month);
+				await recordPayrollAudit(db, {
+					entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_SLIP,
+					entityId: slip.id,
+					action: PAYROLL_AUDIT_ACTION.DELETE,
+					employeeId: slip.employee_id,
+					month: slipPeriod ? slipPeriod.monthNumber : null,
+					year: slipPeriod ? slipPeriod.year : null,
+					performedBy: authResult.user?.id,
+					oldValues: auditSnapshot(slip),
+				});
+			}
 
 			return NextResponse.json({
 				success: true,
@@ -252,7 +337,55 @@ export async function DELETE(request) {
 			);
 		}
 
-		await db.execute('DELETE FROM payroll_slips WHERE id = ?', [id]);
+		// A slip in a finalized month is part of a signed-off run, so it cannot be
+		// removed — that is what makes the month's lock mean anything.
+		const [slips] = await db.execute(
+			`SELECT id, employee_id, month, payment_status, payment_date, payment_reference
+         FROM payroll_slips
+        WHERE id = ?
+        LIMIT 1`,
+			[id]
+		);
+		if (!slips[0]) {
+			return NextResponse.json(
+				{ success: false, error: 'Payroll slip not found' },
+				{ status: 404 }
+			);
+		}
+
+		const period = payrollPeriod(slips[0].month);
+		const run = period ? await findPayrollRun(db, period) : null;
+		if (isRunLocked(run)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: `Cannot delete this Payroll Slip: ${formatMonth(
+						period.month
+					)} is locked by its finalized Payroll Run.`,
+				},
+				{ status: 409 }
+			);
+		}
+
+		const [deleted] = await db.execute(
+			'DELETE FROM payroll_slips WHERE id = ?',
+			[id]
+		);
+
+		// The row read before the delete is the snapshot: it is all that is left
+		// of a slip whose month's run was not locked.
+		if (deleted.affectedRows > 0) {
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_SLIP,
+				entityId: slips[0].id,
+				action: PAYROLL_AUDIT_ACTION.DELETE,
+				employeeId: slips[0].employee_id,
+				month: period ? period.monthNumber : null,
+				year: period ? period.year : null,
+				performedBy: authResult.user?.id,
+				oldValues: auditSnapshot(slips[0]),
+			});
+		}
 
 		return NextResponse.json({
 			success: true,

@@ -3,7 +3,7 @@ import PAYROLL_CONFIG, {
 	calculatePF,
 	calculateProfessionalTax,
 } from './payroll-config';
-import { R, add, sub, pctOf, roundR, toNumber } from '@/lib/money';
+import { R, add, div, mul, pctOf, roundR, sub, toNumber } from '@/lib/money';
 
 const hasValue = (value) =>
 	value !== undefined && value !== null && value !== '';
@@ -323,8 +323,46 @@ export function calculatePayroll(
 	const employeeId = args.employeeId;
 	const payrollMonth = args.month;
 
-	const grossInput = firstPositive(profile, ['gross_salary', 'gross']);
-	const fullGross = decimal(grossInput);
+	// Hours-based pay: the month's CTC apportioned over the month's payable
+	// hours (the attendance calendar: working days × hours per day) gives the
+	// hourly rate, and the month's earnings are the hours logged in Project
+	// Activity Assignments at that rate. Without a logged-hours figure — the
+	// Salary Profile preview has no timesheet — the full month is weighted.
+	// See CONTEXT.md (CTC, Logged Hours) and docs/adr/0010.
+	const ctcUsed = decimal(
+		firstPositive(profile, ['employer_cost']) ||
+			firstPositive(profile, ['gross_salary', 'gross']) ||
+			0
+	);
+	const standardWorkingDays = number(
+		valueFrom(
+			snapshot,
+			['standardWorkingDays', 'standard_working_days'],
+			valueFrom(
+				profile,
+				['std_working_days', 'standard_working_days'],
+				PAYROLL_CONFIG.STANDARD_WORKING_DAYS
+			)
+		)
+	);
+	const standardHoursPerDay =
+		number(
+			valueFrom(profile, ['std_hours_per_day', 'standard_hours_per_day'])
+		) || PAYROLL_CONFIG.STANDARD_HOURS_PER_DAY;
+	const basisHours = number(
+		mul(R(standardWorkingDays), R(standardHoursPerDay)).toDecimalPlaces(2)
+	);
+	// Money math uses the unrounded rate (as the utilization report's CTC rate
+	// does) so a fully logged month pays the CTC exactly; `hourly_rate` stores
+	// the two-decimal display rate, since `money()` would round a rate to whole
+	// rupees and print 144 for 144.2308.
+	const rawRate = basisHours > 0 ? div(ctcUsed, R(basisHours)) : R(0);
+	const hourlyRate = toNumber(rawRate.toDecimalPlaces(2));
+	const loggedHoursInput = valueFrom(snapshot, ['loggedHours', 'logged_hours']);
+	const loggedHours = hasValue(loggedHoursInput)
+		? Math.max(0, number(loggedHoursInput))
+		: basisHours;
+	const fullGross = decimal(money(mul(rawRate, R(loggedHours))));
 	const fullOtherAllowances = decimal(
 		valueFrom(profile, ['other_allowances'], 0)
 	);
@@ -466,19 +504,8 @@ export function calculatePayroll(
 	const overtimeHours = number(
 		valueFrom(snapshot, ['totalOvertimeHours', 'overtime_hours'], 0)
 	);
-	const standardHours =
-		number(
-			valueFrom(profile, ['std_hours_per_day', 'standard_hours_per_day'], 8)
-		) || 8;
-	const otRate =
-		overtimeHours > 0
-			? toNumber(
-					add(basic, da)
-						.div(standardHours)
-						.times(overtimeHours)
-						.toDecimalPlaces(2)
-				)
-			: 0;
+	// No separate overtime premium: the logged hours already carry every hour
+	// worked at the CTC hourly rate. Attendance OT stays a snapshot figure.
 	const totalEarnings = money(
 		add(
 			basic,
@@ -488,8 +515,7 @@ export function calculatePayroll(
 			callAllowance,
 			otherAllowances,
 			bonus,
-			incentive,
-			otRate
+			incentive
 		)
 	);
 
@@ -726,17 +752,6 @@ export function calculatePayroll(
 	);
 	const employerCost = money(add(totalEarnings, totalEmployerContributions));
 
-	const standardWorkingDays = number(
-		valueFrom(
-			snapshot,
-			['standardWorkingDays', 'standard_working_days'],
-			valueFrom(
-				profile,
-				['std_working_days', 'standard_working_days'],
-				PAYROLL_CONFIG.STANDARD_WORKING_DAYS
-			)
-		)
-	);
 	const daysPresent = number(
 		valueFrom(snapshot, ['daysPresent', 'days_present'], standardWorkingDays)
 	);
@@ -766,6 +781,10 @@ export function calculatePayroll(
 		month: payrollMonth,
 		employee_id: employeeId,
 		gross: toNumber(fullGross),
+		ctc_used: toNumber(ctcUsed),
+		basis_hours: basisHours,
+		hourly_rate: hourlyRate,
+		logged_hours: loggedHours,
 		da_used: money(scheduleDA ?? da),
 		da,
 		basic,
@@ -777,7 +796,7 @@ export function calculatePayroll(
 		other_allowances: otherAllowances,
 		bonus,
 		incentive,
-		ot_rate: otRate,
+		ot_rate: 0,
 		total_earnings: totalEarnings,
 		pf_employee: pfEmployee,
 		esic_employee: esicEmployee,
@@ -815,7 +834,8 @@ export function calculatePayroll(
 			has_attendance_data: hasAttendanceData,
 		},
 		full_month: {
-			gross: toNumber(fullGross),
+			// A fully logged month pays exactly the month's CTC.
+			gross: money(mul(rawRate, R(basisHours))),
 			other_allowances: fullOtherAllowances.toNumber(),
 		},
 		lop_deduction: lopDeduction,

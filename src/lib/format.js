@@ -24,6 +24,11 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-IN', {
 	minute: '2-digit',
 });
 
+const monthFormatter = new Intl.DateTimeFormat('en-IN', {
+	month: 'long',
+	year: 'numeric',
+});
+
 export function formatCurrency(value) {
 	if (value === null || value === undefined || value === '') return '—';
 	const n = typeof value === 'string' ? parseFloat(value) : value;
@@ -50,6 +55,26 @@ export function formatDateTime(value) {
 	const d = value instanceof Date ? value : new Date(value);
 	if (Number.isNaN(d.getTime())) return '—';
 	return dateTimeFormatter.format(d);
+}
+
+const dateNumericFormatter = new Intl.DateTimeFormat('en-IN');
+
+/**
+ * dd/mm/yyyy for the payroll documents, which render dates this way on both
+ * the on-screen Payroll Slip and the generated PDF.
+ */
+export function formatDateNumeric(value) {
+	if (!value) return '—';
+	const d = value instanceof Date ? value : new Date(value);
+	if (Number.isNaN(d.getTime())) return '—';
+	return dateNumericFormatter.format(d);
+}
+
+export function formatMonth(value) {
+	if (!value) return '—';
+	const d = value instanceof Date ? value : new Date(value);
+	if (Number.isNaN(d.getTime())) return '—';
+	return monthFormatter.format(d);
 }
 
 export function formatDateInput(value) {

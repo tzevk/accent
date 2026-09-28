@@ -6,6 +6,12 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import ExcelJS from 'exceljs';
+import {
+	FEBRUARY_PT,
+	isFebruaryMonth,
+	resolveScheduledDA,
+	slipFigures,
+} from '@/lib/payroll';
 
 /** Convert any value to a finite number; returns 0 for NaN/Infinity/null/undefined/strings */
 const safeNum = (v) => {
@@ -61,24 +67,9 @@ export async function GET(request) {
         e.position,
         e.uan,
         e.pf_no,
-        e.esi_no,
-        ss_inner.basic_salary as structure_basic_salary,
-        ss_inner.gross_salary as structure_gross_salary,
-        sp_inner.gross_salary as profile_gross,
-        sp_inner.employer_cost as profile_ctc,
-        sp_inner.total_earnings as profile_total_earnings,
-        sp_inner.basic_plus_da as profile_basic_plus_da,
-        sp_inner.basic as profile_basic,
-        sp_inner.da as profile_da,
-        sp_inner.hra as profile_hra,
-        sp_inner.conveyance as profile_conveyance,
-        sp_inner.call_allowance as profile_call_allowance,
-        sp_inner.other_allowances as profile_other_allowances,
-        sp_inner.incentive as profile_incentive
+        e.esi_no
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
-      LEFT JOIN salary_structures ss_inner ON ss_inner.employee_id = e.id AND ss_inner.is_active = 1
-      LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
       WHERE ps.month = ?`;
 		const params = [month];
 
@@ -169,20 +160,7 @@ export async function GET(request) {
 		// Fetch DA using the same active schedule logic as the Manage Schedule flow
 		let scheduledDA = 0;
 		try {
-			const monthDate = `${yr}-${mn}-01`;
-			const [daRows] = await db.execute(
-				`SELECT value_type, value FROM payroll_schedules 
-         WHERE component_type = 'da' AND is_active = 1 
-           AND effective_from <= ?
-           AND (effective_to IS NULL OR effective_to >= ?)
-         ORDER BY effective_from DESC LIMIT 1`,
-				[monthDate, monthDate]
-			);
-			if (daRows.length > 0) {
-				const daRow = daRows[0];
-				scheduledDA =
-					daRow.value_type === 'percentage' ? 0 : parseFloat(daRow.value) || 0;
-			}
+			scheduledDA = await resolveScheduledDA(db, `${yr}-${mn}-01`);
 		} catch (daErr) {
 			console.log('DA schedule fetch for export skipped:', daErr.message);
 		}
@@ -535,8 +513,6 @@ export async function GET(request) {
 				// All numeric values use safeNum() to guarantee finite numbers (never NaN/Infinity/strings)
 				const tds = safeNum(slip.tds);
 				const totalDays = daysInMonth;
-				const standardWorkingDays =
-					safeNum(slip.standard_working_days) || totalDays;
 				const lopDays =
 					lwpMap[slip.employee_id] != null
 						? safeNum(lwpMap[slip.employee_id])
@@ -546,34 +522,18 @@ export async function GET(request) {
 				const weeklyOff = weeklyOffDaysInMonth;
 				const daysPresent = Math.max(0, totalDays - weeklyOff - absentDays);
 				const payableDays = Math.max(0, totalDays - lopDays);
-				// Only apply pro-rata when there are actual absent/LOP days
-				const isAbsent = absentDays > 0;
-				const prorataFactor =
-					isAbsent && standardWorkingDays > 0
-						? Math.min(
-								1,
-								(standardWorkingDays - absentDays) / standardWorkingDays
-							)
-						: 1;
+				// Pay is settled at the hours logged: the slip's Gross already
+				// carries the only absence effect there is, so this sheet never
+				// re-prorates money for absent days (ADR-0009, ADR-0010).
 
-				const structureBasicPlusDa = safeNum(slip.structure_basic_salary);
-				const profileBasic = safeNum(slip.profile_basic);
-				const profileBasicPlusDa = safeNum(slip.profile_basic_plus_da);
-				const basicPlusDaFull = Math.max(
-					0,
-					structureBasicPlusDa > 0
-						? structureBasicPlusDa
-						: profileBasic > 0
-							? profileBasic
-							: profileBasicPlusDa > 0
-								? profileBasicPlusDa
-								: safeNum(slip.basic) ||
-									safeNum(slip.profile_basic) + safeNum(slip.profile_da)
-				);
-				const daFull =
-					scheduledDA > 0 ? scheduledDA : safeNum(slip.da_used || slip.da);
-				const basicFull = Math.max(0, basicPlusDaFull - daFull);
-				const basicPlusDa = basicFull + daFull;
+				// Basic/DA come from the shared slip figures (src/lib/payroll.js) —
+				// the same numbers the Payroll Slip document and both PDFs print, so
+				// this sheet cannot split one slip two ways. The rest of the money
+				// rows are the slip's own stored columns for that same reason.
+				const slipMoney = slipFigures(slip, { scheduledDA });
+				const basicFull = slipMoney.basic;
+				const daFull = slipMoney.da;
+				const basicPlusDa = slipMoney.basicPlusDa;
 				const hraFull = safeNum(slip.hra);
 				const conveyanceFull = safeNum(slip.conveyance);
 				const callAllowanceFull = safeNum(slip.call_allowance);
@@ -586,13 +546,14 @@ export async function GET(request) {
 				// Basic/DA split should match salary structure + Manage Schedule exactly
 				const basic = basicFull;
 				const da = daFull;
-				const hra = hraFull * prorataFactor;
-				const conveyance = conveyanceFull * prorataFactor;
-				const callAllowance = callAllowanceFull * prorataFactor;
-				const otherAllowances = otherAllowancesFull * prorataFactor;
-				const bonus = bonusFull * prorataFactor;
-				const otRate = otRateFull * prorataFactor;
-				// Gross = total earnings using fetched Basic + DA from salary structure/profile
+				const hra = hraFull;
+				const conveyance = conveyanceFull;
+				const callAllowance = callAllowanceFull;
+				const otherAllowances = otherAllowancesFull;
+				const bonus = bonusFull;
+				const otRate = otRateFull;
+				// Gross = the slip's own earnings: Basic+DA plus the allowance
+				// columns, exactly as the Payroll Slip stores them.
 				const gross =
 					basicPlusDa +
 					hra +
@@ -604,31 +565,19 @@ export async function GET(request) {
 					otRate +
 					incentive;
 
-				// Pro-rate percentage-based deductions only if person is absent
-				const pfEmployee = isAbsent
-					? safeNum(slip.pf_employee) * prorataFactor
-					: safeNum(slip.pf_employee);
-				const esicEmployee = isAbsent
-					? safeNum(slip.esic_employee) * prorataFactor
-					: safeNum(slip.esic_employee);
-				// PT is always 300 in February, but also pro-rate if absent
-				const originalPt = safeNum(slip.pt);
-				const pt = isAbsent
-					? monthNum === 2
-						? 300 * prorataFactor
-						: originalPt * prorataFactor
-					: monthNum === 2
-						? 300
-						: originalPt;
+				// Deductions read the slip's snapshot for the same reason.
+				const pfEmployee = safeNum(slip.pf_employee);
+				const esicEmployee = safeNum(slip.esic_employee);
+				// PT is a flat FEBRUARY_PT in February (src/lib/payroll.js).
+				const isFebruary = isFebruaryMonth(month);
+				const pt = isFebruary ? FEBRUARY_PT : safeNum(slip.pt);
 				const empLoanAdvance = loanAdvanceMap[slip.employee_id] || {
 					loan: 0,
 					advance: 0,
 				};
 				const loan = empLoanAdvance.loan || safeNum(slip.loan);
 				const advance = empLoanAdvance.advance || safeNum(slip.advance);
-				const retention = isAbsent
-					? safeNum(slip.retention) * prorataFactor
-					: safeNum(slip.retention);
+				const retention = safeNum(slip.retention);
 				// MLWF: deduct only in June and December, but keep configured value in profile.
 				const mlwf = monthNum === 6 || monthNum === 12 ? safeNum(slip.mlwf) : 0;
 				// Recalculate total_deductions from pro-rated components

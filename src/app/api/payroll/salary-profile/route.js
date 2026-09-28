@@ -5,6 +5,12 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	PAYROLL_AUDIT_ACTION,
+	PAYROLL_AUDIT_ENTITY,
+	auditSnapshot,
+	recordPayrollAudit,
+} from '@/app/api/payroll/_lib/payroll-audit';
 
 const numberOrNull = (value) => {
 	if (value === undefined || value === null || value === '') return null;
@@ -14,33 +20,23 @@ const numberOrNull = (value) => {
 
 const numberOrZero = (value) => numberOrNull(value) ?? 0;
 
-const ensureSalaryPermission = async (request, permission) => {
-	const employeePermission = await ensurePermission(
-		request,
-		RESOURCES.EMPLOYEES,
-		permission
-	);
-	if (employeePermission?.authorized) return employeePermission;
-
-	const payrollPermission = await ensurePermission(
-		request,
-		RESOURCES.PAYROLL,
-		permission
-	);
-	return payrollPermission?.authorized ? payrollPermission : employeePermission;
-};
-
 // POST /api/payroll/salary-profile - Create/Update employee salary profile
 // If `id` is provided, it updates that specific profile
 // If `id` is not provided, it creates a new profile
 export async function POST(request) {
 	let db;
 	try {
-		const permission = await ensureSalaryPermission(
+		// Salary profiles are payroll data: every verb here authorizes with
+		// RESOURCES.PAYROLL and nothing else (issue #239). There is deliberately
+		// no EMPLOYEES fallback — a grant that can read employee records must not
+		// also rewrite what people are paid.
+		const authResult = await ensurePermission(
 			request,
+			RESOURCES.PAYROLL,
 			PERMISSIONS.UPDATE
 		);
-		if (!permission?.authorized) return permission;
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const body = await request.json();
 		console.log('Received salary profile data:', JSON.stringify(body, null, 2));
@@ -151,6 +147,9 @@ export async function POST(request) {
 
 		let result;
 		let isUpdate = false;
+		// The profile as it stood before this write, for the audit trail. A create
+		// has none.
+		let before = null;
 
 		// Prepare common values array
 		const values = [
@@ -220,6 +219,13 @@ export async function POST(request) {
 		if (id) {
 			// UPDATE existing salary profile by ID
 			console.log('Updating existing salary profile with ID:', id);
+			// Read the prior row first: the audit trail has to record the gross,
+			// allowances, and flags this edit displaced.
+			const [priorRows] = await db.query(
+				`SELECT * FROM employee_salary_profile WHERE id = ? AND employee_id = ? LIMIT 1`,
+				[id, employee_id]
+			);
+			before = priorRows[0] || null;
 			[result] = await db.query(
 				`UPDATE employee_salary_profile SET
           gross = ?, gross_salary = ?, other_allowances = ?, effective_from = ?, effective_to = ?, da_year = ?,
@@ -240,12 +246,15 @@ export async function POST(request) {
 			isUpdate = result.affectedRows > 0;
 		} else {
 			// Check if a profile already exists for this employee and effective_from date
+			// SELECT * — not just the id — so this one read also supplies the audit
+			// trail's old_values when it turns out to be an update.
 			const [existing] = await db.query(
-				`SELECT id FROM employee_salary_profile WHERE employee_id = ? AND effective_from = ? LIMIT 1`,
+				`SELECT * FROM employee_salary_profile WHERE employee_id = ? AND effective_from = ? LIMIT 1`,
 				[employee_id, effective_from]
 			);
 
 			if (existing && existing.length > 0) {
+				before = existing[0];
 				// UPDATE existing profile for this date
 				console.log(
 					'Updating existing salary profile for employee:',
@@ -296,6 +305,26 @@ export async function POST(request) {
 
 		console.log('Insert/Update result:', result);
 
+		// `isUpdate` is true only when an existing row was written: for the
+		// explicit-id branch that means the UPDATE matched a row, and for the
+		// employee+effective_from branch it means that row was found. Anything
+		// else inserted a new profile.
+		const auditedId = isUpdate ? (before ? before.id : id) : result.insertId;
+		if (auditedId) {
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.SALARY_PROFILE,
+				entityId: auditedId,
+				action: isUpdate
+					? PAYROLL_AUDIT_ACTION.UPDATE
+					: PAYROLL_AUDIT_ACTION.CREATE,
+				employeeId: employee_id,
+				performedBy: authResult.user?.id,
+				// The displaced row, and the fields the caller submitted.
+				oldValues: isUpdate ? auditSnapshot(before) : null,
+				newValues: auditSnapshot(body),
+			});
+		}
+
 		if (db) db.release();
 
 		return NextResponse.json({
@@ -333,8 +362,13 @@ export async function POST(request) {
 export async function GET(request) {
 	let db;
 	try {
-		const permission = await ensureSalaryPermission(request, PERMISSIONS.READ);
-		if (!permission?.authorized) return permission;
+		const authResult = await ensurePermission(
+			request,
+			RESOURCES.PAYROLL,
+			PERMISSIONS.READ
+		);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { searchParams } = new URL(request.url);
 		const employee_id = searchParams.get('employee_id');
@@ -392,11 +426,13 @@ export async function GET(request) {
 export async function DELETE(request) {
 	let db;
 	try {
-		const permission = await ensureSalaryPermission(
+		const authResult = await ensurePermission(
 			request,
+			RESOURCES.PAYROLL,
 			PERMISSIONS.DELETE
 		);
-		if (!permission?.authorized) return permission;
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { searchParams } = new URL(request.url);
 		const id = searchParams.get('id');
@@ -411,6 +447,14 @@ export async function DELETE(request) {
 		db = await dbConnect();
 
 		try {
+			// Read before deleting: once the row is gone there is no record of what
+			// was removed, or whose pay it was.
+			const [priorRows] = await db.query(
+				'SELECT * FROM employee_salary_profile WHERE id = ? LIMIT 1',
+				[id]
+			);
+			const profile = priorRows[0] || null;
+
 			const [result] = await db.query(
 				'DELETE FROM employee_salary_profile WHERE id = ?',
 				[id]
@@ -422,6 +466,15 @@ export async function DELETE(request) {
 					{ status: 404 }
 				);
 			}
+
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.SALARY_PROFILE,
+				entityId: profile ? profile.id : id,
+				action: PAYROLL_AUDIT_ACTION.DELETE,
+				employeeId: profile ? profile.employee_id : null,
+				performedBy: authResult.user?.id,
+				oldValues: auditSnapshot(profile),
+			});
 
 			return NextResponse.json({
 				success: true,

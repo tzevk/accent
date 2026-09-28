@@ -21,6 +21,7 @@ import {
 	ArrowRightStartOnRectangleIcon,
 	CalendarDaysIcon,
 	CalendarIcon,
+	BanknotesIcon,
 	ArrowRightIcon,
 	FireIcon,
 	ExclamationTriangleIcon,
@@ -863,7 +864,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										Today&apos;s Attendance
 									</h2>
 								</div>
-								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-7">
+								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-8">
 									{/* Punch In */}
 									<div className="group relative rounded-xl border border-green-200 bg-gradient-to-br from-green-50 via-white to-emerald-50 p-3 hover:shadow-lg hover:border-green-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
 										<div className="absolute top-0 right-0 w-20 h-20 bg-green-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
@@ -1077,6 +1078,37 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											</p>
 											<p className="mt-1.5 pt-1.5 border-t border-amber-200/60 -mx-px flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#64126D] transition-colors duration-150 group-hover:text-[#4a0d52]">
 												View &amp; apply
+												<ArrowRightIcon className="h-2.5 w-2.5 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
+											</p>
+										</div>
+									</button>
+									{/* Payroll Slips — click to open My Payroll Slips */}
+									<button
+										type="button"
+										onClick={() => router.push('/user/payslips')}
+										aria-label="Open My Payroll Slips — view and download your monthly slips"
+										title="View and download your monthly slips"
+										className="group relative rounded-xl text-left border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-purple-50 p-3 cursor-pointer hover:shadow-lg hover:border-violet-400 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]/50 focus-visible:ring-offset-1"
+									>
+										<div className="absolute top-0 right-0 w-20 h-20 bg-violet-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
+										<div className="relative">
+											<div className="flex items-center justify-between mb-2">
+												<div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-violet-200 group-hover:shadow-violet-300 group-hover:shadow-md">
+													<BanknotesIcon className="h-4 w-4" />
+												</div>
+											</div>
+											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+												Payroll Slips
+											</p>
+											<p className="text-base font-extrabold leading-tight tracking-tight text-gray-900">
+												Monthly
+											</p>
+											<p className="text-[11px] text-violet-700 font-semibold mt-1.5 flex items-center gap-1">
+												<span className="w-1.5 h-1.5 rounded-full bg-violet-500 inline-block" />{' '}
+												net pay &amp; PDF
+											</p>
+											<p className="mt-1.5 pt-1.5 border-t border-violet-200/60 -mx-px flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#64126D] transition-colors duration-150 group-hover:text-[#4a0d52]">
+												View &amp; download
 												<ArrowRightIcon className="h-2.5 w-2.5 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
 											</p>
 										</div>

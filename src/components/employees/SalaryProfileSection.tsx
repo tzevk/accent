@@ -852,12 +852,12 @@ export default function SalaryProfileSection({
 						)}
 					</div>
 					<a
-						href="/admin/payroll-schedules"
+						href="/admin/payroll/rates"
 						target="_blank"
 						rel="noreferrer"
 						className="flex items-center gap-1 text-xs text-purple-600 underline hover:text-purple-700"
 					>
-						Manage Schedules
+						Manage Component Rates
 					</a>
 				</div>
 

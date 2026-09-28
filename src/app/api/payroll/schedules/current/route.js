@@ -9,7 +9,16 @@ import {
 // GET /api/payroll/schedules/current - Get current active values for all payroll components
 export async function GET(request) {
 	try {
-		await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+		// Component rates are payroll data: RESOURCES.PAYROLL is the only grant
+		// that reads them (issue #239 — the old check discarded the gate result
+		// entirely, so denials never applied).
+		const authResult = await ensurePermission(
+			request,
+			RESOURCES.PAYROLL,
+			PERMISSIONS.READ
+		);
+		if (authResult instanceof Response) return authResult;
+		if (!authResult.authorized) return authResult.response;
 
 		const { searchParams } = new URL(request.url);
 		const date =
