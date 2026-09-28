@@ -10,15 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
-      mysql:
-        image: mysql:8
+      mariadb:
+        image: mariadb:10.11
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: accent
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: accent
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -proot"
+          --health-cmd="mariadb-admin ping -proot --silent"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=20
