@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { dbConnect } from '@/utils/database';
+import { escapeHtml } from '@/lib/escape-html';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Outgoing Purchase Order - ${po.po_number || 'Draft'}</title>
+  <title>Outgoing Purchase Order - ${escapeHtml(po.po_number || 'Draft')}</title>
   <style>
     @page {
       size: A4 portrait;
@@ -242,25 +243,25 @@ export async function GET(request: Request) {
       <div class="details-col">
         <div class="details-row">
           <span class="details-label">PO Number:</span>
-          <span class="details-value" style="font-weight: bold; color: #7F2487;">${po.po_number}</span>
+          <span class="details-value" style="font-weight: bold; color: #7F2487;">${escapeHtml(po.po_number)}</span>
         </div>
         <div class="details-row">
           <span class="details-label">PO Date:</span>
-          <span class="details-value">${formatDate(po.po_date)}</span>
+          <span class="details-value">${escapeHtml(formatDate(po.po_date))}</span>
         </div>
         <div class="details-row">
           <span class="details-label">Project Number:</span>
-          <span class="details-value">${po.project_number || '-'}</span>
+          <span class="details-value">${escapeHtml(po.project_number || '-')}</span>
         </div>
       </div>
       <div class="details-col">
         <div class="details-row">
           <span class="details-label">Company Name:</span>
-          <span class="details-value" style="font-weight: bold;">${po.company_name}</span>
+          <span class="details-value" style="font-weight: bold;">${escapeHtml(po.company_name)}</span>
         </div>
         <div class="details-row">
           <span class="details-label">City:</span>
-          <span class="details-value">${po.city || '-'}</span>
+          <span class="details-value">${escapeHtml(po.city || '-')}</span>
         </div>
       </div>
     </div>
@@ -274,7 +275,7 @@ export async function GET(request: Request) {
     <!-- Remarks -->
     <div class="remarks-section">
       <div class="remarks-title">Remarks / Instructions:</div>
-      <div class="remarks-content">${po.remarks || 'No additional remarks.'}</div>
+      <div class="remarks-content">${escapeHtml(po.remarks || 'No additional remarks.')}</div>
     </div>
 
     <!-- Signatures -->

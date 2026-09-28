@@ -5,6 +5,10 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	sanitizeJsonStrings,
+	sanitizeOptionalRichText,
+} from '@/lib/sanitize-fields';
 
 export async function GET(request) {
 	let pool;
@@ -224,7 +228,7 @@ export async function POST(request) {
 		const values = [
 			proposal_id,
 			proposal_title || title || 'Untitled Proposal',
-			description || project_description || null,
+			sanitizeOptionalRichText(description || project_description || null),
 			company_id || null,
 			client_name || client || null,
 			industry || null,
@@ -241,7 +245,9 @@ export async function POST(request) {
 			list_of_deliverables || null,
 			disciplines ? JSON.stringify(disciplines) : null,
 			activities ? JSON.stringify(activities) : null,
-			discipline_descriptions ? JSON.stringify(discipline_descriptions) : null,
+			discipline_descriptions
+				? JSON.stringify(sanitizeJsonStrings(discipline_descriptions))
+				: null,
 			planning_activities_list
 				? JSON.stringify(planning_activities_list)
 				: null,
@@ -343,7 +349,7 @@ ATS is allowed to use the contract as a customer reference. However, no data or 
 			contact_name,
 			contact_email,
 			phone,
-			description: description || project_description,
+			description: sanitizeOptionalRichText(description || project_description),
 			city,
 			priority: priority || 'MEDIUM',
 			proposal_value: proposal_value || value,

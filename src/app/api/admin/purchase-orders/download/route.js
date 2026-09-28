@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import { escapeHtml } from '@/lib/escape-html';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -136,7 +137,7 @@ function generatePurchaseOrderHTML(data) {
 			itemsHTML += `
         <tr>
           <td style="border: 1px solid #000; padding: 8px; text-align: center;">${index + 1}</td>
-          <td style="border: 1px solid #000; padding: 8px;">${item.description || item.name || '-'}</td>
+          <td style="border: 1px solid #000; padding: 8px;">${escapeHtml(item.description || item.name || '-')}</td>
           <td style="border: 1px solid #000; padding: 8px; text-align: center;">${qty}</td>
           <td style="border: 1px solid #000; padding: 8px; text-align: right;">${formatCurrency(rate).replace('₹', '')}</td>
           <td style="border: 1px solid #000; padding: 8px; text-align: right; font-weight: 500;">${formatCurrency(amount).replace('₹', '')}</td>
@@ -148,7 +149,7 @@ function generatePurchaseOrderHTML(data) {
 		itemsHTML = `
       <tr>
         <td style="border: 1px solid #000; padding: 8px; text-align: center;">1</td>
-        <td style="border: 1px solid #000; padding: 8px;">${data.description || '-'}</td>
+        <td style="border: 1px solid #000; padding: 8px;">${escapeHtml(data.description || '-')}</td>
         <td style="border: 1px solid #000; padding: 8px; text-align: center;">1</td>
         <td style="border: 1px solid #000; padding: 8px; text-align: right;">${formatCurrency(subtotal).replace('₹', '')}</td>
         <td style="border: 1px solid #000; padding: 8px; text-align: right; font-weight: 500;">${formatCurrency(subtotal).replace('₹', '')}</td>
@@ -177,7 +178,7 @@ function generatePurchaseOrderHTML(data) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Purchase Order - ${data.po_number || 'Draft'}</title>
+  <title>Purchase Order - ${escapeHtml(data.po_number || 'Draft')}</title>
   <style>
     @media print {
       body { margin: 0; padding: 0; }
@@ -245,22 +246,22 @@ function generatePurchaseOrderHTML(data) {
             </tr>
             <tr>
               <td style="border-bottom: 1px solid #000; padding: 8px;">
-                <div style="font-weight: bold;">${data.vendor_name || ''}</div>
+                <div style="font-weight: bold;">${escapeHtml(data.vendor_name || '')}</div>
               </td>
             </tr>
             <tr>
               <td style="border-bottom: 1px solid #000; padding: 8px;">
-                <strong>Kind Attn:</strong> ${data.kind_attn || data.vendor_name || ''}
+                <strong>Kind Attn:</strong> ${escapeHtml(data.kind_attn || data.vendor_name || '')}
               </td>
             </tr>
             <tr>
               <td style="border-bottom: 1px solid #000; padding: 8px;">
-                <strong>GSTIN:</strong> ${data.vendor_gstin || ''}
+                <strong>GSTIN:</strong> ${escapeHtml(data.vendor_gstin || '')}
               </td>
             </tr>
             <tr>
               <td style="padding: 8px;">
-                <strong>State:</strong> ${vendorState} &nbsp;&nbsp;&nbsp;&nbsp; <strong>State code:</strong> ${vendorStateCode}
+                <strong>State:</strong> ${escapeHtml(vendorState)} &nbsp;&nbsp;&nbsp;&nbsp; <strong>State code:</strong> ${escapeHtml(vendorStateCode)}
               </td>
             </tr>
           </table>
@@ -269,19 +270,19 @@ function generatePurchaseOrderHTML(data) {
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="border-bottom: 1px solid #000; padding: 8px; width: 120px;"><strong>P. Order No.</strong></td>
-              <td style="border-bottom: 1px solid #000; padding: 8px;">: ${data.po_number || ''}</td>
+              <td style="border-bottom: 1px solid #000; padding: 8px;">: ${escapeHtml(data.po_number || '')}</td>
             </tr>
             <tr>
               <td style="border-bottom: 1px solid #000; padding: 8px;"><strong>Date</strong></td>
-              <td style="border-bottom: 1px solid #000; padding: 8px;">: ${formatDate(data.created_at)}</td>
+              <td style="border-bottom: 1px solid #000; padding: 8px;">: ${escapeHtml(formatDate(data.created_at))}</td>
             </tr>
             <tr>
               <td style="border-bottom: 1px solid #000; padding: 8px;"><strong>Quotation No.</strong></td>
-              <td style="border-bottom: 1px solid #000; padding: 8px;">: ${data.quotation_no || ''}</td>
+              <td style="border-bottom: 1px solid #000; padding: 8px;">: ${escapeHtml(data.quotation_no || '')}</td>
             </tr>
             <tr>
               <td style="padding: 8px;"><strong>Date</strong></td>
-              <td style="padding: 8px;">: ${formatDate(data.quotation_date) || ''}</td>
+              <td style="padding: 8px;">: ${escapeHtml(formatDate(data.quotation_date) || '')}</td>
             </tr>
           </table>
         </td>

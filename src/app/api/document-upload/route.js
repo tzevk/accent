@@ -9,6 +9,10 @@ import {
 } from '@/utils/document-helpers';
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
+import {
+	hasMarkupSignature,
+	MARKUP_REJECTION_ERROR,
+} from '@/lib/upload-validation';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '@/utils/database';
@@ -72,10 +76,11 @@ export async function POST(request) {
 			);
 		}
 
-		// Check file type & extension
+		// Check file type & extension — both must be allowed (own-property
+		// lookup so prototype keys cannot pose as MIME types)
 		const fileName = file.name || '';
 		const fileExt = fileName.toLowerCase().split('.').pop() || '';
-		const isMimeAllowed = ALLOWED_TYPES[file.type];
+		const isMimeAllowed = Object.hasOwn(ALLOWED_TYPES, file.type);
 		const isExtAllowed = ALLOWED_EXTENSIONS.includes(fileExt);
 		if (!isMimeAllowed || !isExtAllowed) {
 			return NextResponse.json(
@@ -99,8 +104,19 @@ export async function POST(request) {
 			);
 		}
 
+		// C1: validate the payload itself — a renamed HTML/SVG/script file must
+		// not be stored in private/documents, whatever MIME it declares.
+		const bytes = await file.arrayBuffer();
+		const buffer = Buffer.from(bytes);
+		if (hasMarkupSignature(buffer)) {
+			return NextResponse.json(
+				{ success: false, error: MARKUP_REJECTION_ERROR },
+				{ status: 400 }
+			);
+		}
+
 		// Generate secure unique filename with UUID only — never embed entityId (SEC-10 Path Traversal)
-		const extension = ALLOWED_TYPES[file.type] || `.${fileExt}`;
+		const extension = ALLOWED_TYPES[file.type];
 		const docId = uuidv4();
 		const uniqueFilename = `${docId}${extension}`;
 
@@ -112,8 +128,6 @@ export async function POST(request) {
 
 		// Save file to disk
 		const filePath = path.join(uploadDir, uniqueFilename);
-		const bytes = await file.arrayBuffer();
-		const buffer = Buffer.from(bytes);
 		await writeFile(filePath, buffer);
 
 		const downloadUrl = `/api/document-upload/download?id=${docId}`;

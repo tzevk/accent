@@ -1,20 +1,11 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import { escapeHtml } from '@/lib/escape-html';
 import {
 	ensurePermission,
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-
-function escapeHtml(str) {
-	if (str === null || str === undefined) return '';
-	return String(str)
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/\"/g, '&quot;')
-		.replace(/'/g, '&#039;');
-}
 
 export async function GET(request) {
 	// RBAC check

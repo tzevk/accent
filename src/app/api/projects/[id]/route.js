@@ -16,6 +16,10 @@ import {
 	hasUserProjectAssignment,
 	isUserInProjectTeam,
 } from '@/utils/project-access';
+import {
+	sanitizeJsonStrings,
+	sanitizeOptionalRichText,
+} from '@/lib/sanitize-fields';
 
 // GET specific project
 export async function GET(request, { params }) {
@@ -810,8 +814,8 @@ export async function PUT(request, context) {
 				['status', status],
 				['priority', priority],
 				['assigned_to', assigned_to],
-				['description', description],
-				['additional_scope', additional_scope],
+				['description', sanitizeOptionalRichText(description)],
+				['additional_scope', sanitizeOptionalRichText(additional_scope)],
 				['notes', notes],
 				[
 					'proposal_id',
@@ -864,7 +868,7 @@ export async function PUT(request, context) {
 				],
 				['estimated_manhours', normalizeDecimal(estimated_manhours)],
 				['unit_qty', normalizeDecimal(unit_qty)],
-				['scope_of_work', scope_of_work === undefined ? null : scope_of_work],
+				['scope_of_work', sanitizeOptionalRichText(scope_of_work ?? null)],
 				['deliverables', deliverables === undefined ? null : deliverables],
 				[
 					'software_included',
@@ -899,7 +903,7 @@ export async function PUT(request, context) {
 				? JSON.stringify(data.activities)
 				: undefined;
 			const disciplineDescriptions = data.discipline_descriptions
-				? JSON.stringify(data.discipline_descriptions)
+				? JSON.stringify(sanitizeJsonStrings(data.discipline_descriptions))
 				: undefined;
 			const assignments = data.assignments
 				? JSON.stringify(data.assignments)

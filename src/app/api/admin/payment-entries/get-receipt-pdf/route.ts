@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import puppeteer from 'puppeteer-core';
+import puppeteer from 'puppeteer';
 import chromium from '@sparticuz/chromium';
 import { buildReceiptHTML, ReceiptData } from '@/utils/buildReceiptHTML';
+import { blockNonLocalRequests } from '@/lib/pdf-request-guard';
 import { NextRequest } from 'next/server';
 import {
 	ensurePermission,
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
 	const html = buildReceiptHTML(data);
 
+	await blockNonLocalRequests(page);
 	await page.setContent(html, {
 		waitUntil: 'domcontentloaded',
 	});

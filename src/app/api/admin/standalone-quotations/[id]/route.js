@@ -5,6 +5,15 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	sanitizeJsonStrings,
+	sanitizeOptionalRichText,
+} from '@/lib/sanitize-fields';
+
+/** mysql2 duplicate-key error (unique index violation). */
+function isDuplicateKeyError(error) {
+	return error?.errno === 1062 || error?.code === 'ER_DUP_ENTRY';
+}
 
 const parseFloatOrZero = (val) => {
 	const parsed = parseFloat(val);
@@ -85,6 +94,51 @@ export async function PUT(request, { params }) {
 					.split('T')[0]
 			: null;
 
+		// HTML-bound columns are sanitized at the write boundary (ADR-0012):
+		// subject/scope_items carry rich text, as do terms_and_conditions and
+		// every annexure_* column.
+		const sanitizedScopeItems = JSON.stringify(
+			sanitizeJsonStrings(body.scope_items || [])
+		);
+		const sanitizedFirstItemDescription =
+			sanitizeOptionalRichText(body.scope_items?.[0]?.description) || null;
+		const sanitizedTerms =
+			sanitizeOptionalRichText(body.terms_and_conditions) || null;
+		const annexure = {
+			annexure_scope_of_work:
+				sanitizeOptionalRichText(body.annexure_scope_of_work) || null,
+			annexure_input_document:
+				sanitizeOptionalRichText(body.annexure_input_document) || null,
+			annexure_deliverables:
+				sanitizeOptionalRichText(body.annexure_deliverables) || null,
+			annexure_software:
+				sanitizeOptionalRichText(body.annexure_software) || null,
+			annexure_duration:
+				sanitizeOptionalRichText(body.annexure_duration) || null,
+			annexure_site_visit:
+				sanitizeOptionalRichText(body.annexure_site_visit) || null,
+			annexure_quotation_validity:
+				sanitizeOptionalRichText(body.annexure_quotation_validity) || null,
+			annexure_mode_of_delivery:
+				sanitizeOptionalRichText(body.annexure_mode_of_delivery) || null,
+			annexure_revision:
+				sanitizeOptionalRichText(body.annexure_revision) || null,
+			annexure_exclusions:
+				sanitizeOptionalRichText(body.annexure_exclusions) || null,
+			annexure_billing_payment_terms:
+				sanitizeOptionalRichText(body.annexure_billing_payment_terms) || null,
+			annexure_taxation:
+				sanitizeOptionalRichText(body.annexure_taxation) || null,
+			annexure_payment_milestone:
+				sanitizeOptionalRichText(body.annexure_payment_milestone) || null,
+			annexure_confidentiality:
+				sanitizeOptionalRichText(body.annexure_confidentiality) || null,
+			annexure_codes_standards:
+				sanitizeOptionalRichText(body.annexure_codes_standards) || null,
+			annexure_dispute_resolution:
+				sanitizeOptionalRichText(body.annexure_dispute_resolution) || null,
+		};
+
 		const [result] = await connection.execute(
 			`UPDATE quotations SET
         quotation_number = ?,
@@ -135,9 +189,9 @@ export async function PUT(request, { params }) {
 				body.kind_attn || null,
 				body.enquiry_number || null,
 				formatDateOrNull(body.enquiry_date),
-				JSON.stringify(body.scope_items || []),
-				JSON.stringify(body.scope_items || []),
-				body.scope_items?.[0]?.description || null,
+				sanitizedScopeItems,
+				sanitizedScopeItems,
+				sanitizedFirstItemDescription,
 				parseFloatOrZero(body.gross_amount),
 				parseFloatOrZero(body.gst_percentage),
 				parseFloatOrZero(body.gst_amount),
@@ -147,23 +201,23 @@ export async function PUT(request, { params }) {
 				body.gst_number || null,
 				body.pan_number || null,
 				body.tan_number || null,
-				body.terms_and_conditions || null,
-				body.annexure_scope_of_work || null,
-				body.annexure_input_document || null,
-				body.annexure_deliverables || null,
-				body.annexure_software || null,
-				body.annexure_duration || null,
-				body.annexure_site_visit || null,
-				body.annexure_quotation_validity || null,
-				body.annexure_mode_of_delivery || null,
-				body.annexure_revision || null,
-				body.annexure_exclusions || null,
-				body.annexure_billing_payment_terms || null,
-				body.annexure_taxation || null,
-				body.annexure_payment_milestone || null,
-				body.annexure_confidentiality || null,
-				body.annexure_codes_standards || null,
-				body.annexure_dispute_resolution || null,
+				sanitizedTerms,
+				annexure.annexure_scope_of_work,
+				annexure.annexure_input_document,
+				annexure.annexure_deliverables,
+				annexure.annexure_software,
+				annexure.annexure_duration,
+				annexure.annexure_site_visit,
+				annexure.annexure_quotation_validity,
+				annexure.annexure_mode_of_delivery,
+				annexure.annexure_revision,
+				annexure.annexure_exclusions,
+				annexure.annexure_billing_payment_terms,
+				annexure.annexure_taxation,
+				annexure.annexure_payment_milestone,
+				annexure.annexure_confidentiality,
+				annexure.annexure_codes_standards,
+				annexure.annexure_dispute_resolution,
 				validUntil,
 				body.project_id || null,
 				id,
@@ -183,6 +237,18 @@ export async function PUT(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error updating standalone quotation:', error);
+		// Active-number unique index (migration
+		// 20260928120000_add_unique_active_document_numbers): a collision on an
+		// edited number is a constraint error, not a silent duplicate.
+		if (isDuplicateKeyError(error)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'A quotation with this number already exists',
+				},
+				{ status: 409 }
+			);
+		}
 		return NextResponse.json(
 			{ success: false, error: error.message || 'Failed to update quotation' },
 			{ status: 500 }

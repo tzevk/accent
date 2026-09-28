@@ -18,6 +18,7 @@
 import { NextResponse } from 'next/server';
 import puppeteer, { type Browser } from 'puppeteer';
 import chromium from '@sparticuz/chromium';
+import { blockNonLocalRequests } from '@/lib/pdf-request-guard';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
@@ -185,6 +186,7 @@ export async function GET(request: Request) {
 
 		const page = await browser.newPage();
 		await page.emulateMediaType('print');
+		await blockNonLocalRequests(page);
 		await page.setContent(html, { waitUntil: 'load' });
 
 		const pdf = await page.pdf({

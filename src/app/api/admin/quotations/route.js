@@ -5,6 +5,46 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	sanitizeJsonStrings,
+	sanitizeOptionalRichText,
+} from '@/lib/sanitize-fields';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
+
+// Quotation numbers are ATSPL/Q/<MM>/<YY-YY>/<NNN>. The read runs inside the
+// caller's transaction with a row lock (FOR UPDATE) on the newest row of the
+// month/FY so concurrent POSTs serialize behind it; the unique active
+// quotation-number index is the backstop and a collision retries.
+async function nextQuotationNumber(db) {
+	const now = new Date();
+	const month = String(now.getMonth() + 1).padStart(2, '0');
+
+	// Financial year (April start)
+	const currentYear = now.getFullYear();
+	const currentMonthNumber = now.getMonth() + 1;
+	const fyStart = currentMonthNumber >= 4 ? currentYear : currentYear - 1;
+	const fyString = `${String(fyStart).slice(-2)}-${String(fyStart + 1).slice(-2)}`;
+	const pattern = `ATSPL/Q/${month}/${fyString}/%`;
+
+	const [rows] = await db.execute(
+		`SELECT quotation_number FROM quotations
+		 WHERE quotation_number LIKE ?
+		 AND (isDelete = 0 OR isDelete IS NULL)
+		 ORDER BY id DESC LIMIT 1
+		 FOR UPDATE`,
+		[pattern]
+	);
+
+	let sequence = 1;
+	if (rows.length > 0 && rows[0].quotation_number) {
+		const match = rows[0].quotation_number.match(
+			new RegExp(`ATSPL/Q/${month}/${fyString}/(\\d+)`)
+		);
+		if (match) sequence = parseInt(match[1], 10) + 1;
+	}
+
+	return `ATSPL/Q/${month}/${fyString}/${String(sequence).padStart(3, '0')}`;
+}
 
 // GET - Fetch quotations (from both quotations and project_quotations tables)
 export async function GET(request) {
@@ -189,7 +229,7 @@ export async function POST(request) {
 	try {
 		const body = await request.json();
 		const {
-			quotation_number,
+			quotation_number: providedQuotationNumber,
 			client_name,
 			client_email,
 			client_phone,
@@ -209,22 +249,49 @@ export async function POST(request) {
 			gst_type,
 		} = body;
 
-		if (!quotation_number || !client_name) {
+		if (!client_name) {
 			return NextResponse.json(
 				{
 					success: false,
-					error: 'Quotation number and client name are required',
+					error: 'Client name is required',
 				},
 				{ status: 400 }
 			);
 		}
 
+		// HTML-bound columns are sanitized at the write boundary (ADR-0012):
+		// subject/notes/terms are rich text, items is JSON with rich-text leaves.
+		const sanitizedSubject = sanitizeOptionalRichText(subject) || null;
+		const sanitizedNotes = sanitizeOptionalRichText(notes) || null;
+		const sanitizedTerms = sanitizeOptionalRichText(terms) || null;
+		const sanitizedItems = JSON.stringify(sanitizeJsonStrings(items || []));
+
+		const INSERT_SQL = `INSERT INTO quotations 
+       (quotation_number, client_name, client_email, client_phone, client_address, subject, items, subtotal, tax_rate, tax_amount, discount, total, notes, terms, valid_until, status, project_id, gst_type, created_by, isDelete)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`;
+
 		connection = await dbConnect();
 
-		const [result] = await connection.execute(
-			`INSERT INTO quotations 
-       (quotation_number, client_name, client_email, client_phone, client_address, subject, items, subtotal, tax_rate, tax_amount, discount, total, notes, terms, valid_until, status, project_id, gst_type, created_by, isDelete)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		// Number generation and the INSERT are one transaction so concurrent
+		// POSTs cannot mint the same quotation number. A client-supplied number
+		// keeps the historical upsert (idempotent save); a generated number uses
+		// a plain INSERT so a lost race surfaces as ER_DUP_ENTRY and retries.
+		let quotationNumber = providedQuotationNumber || null;
+		let insertedId = null;
+		for (let attempt = 1; ; attempt++) {
+			await connection.beginTransaction();
+			try {
+				// Reset per attempt so a generated number that collided is
+				// regenerated from a fresh read instead of retried as-is.
+				quotationNumber = providedQuotationNumber || null;
+
+				if (!quotationNumber) {
+					quotationNumber = await nextQuotationNumber(connection);
+				}
+
+				const [result] = await connection.execute(
+					providedQuotationNumber
+						? `${INSERT_SQL}
        ON DUPLICATE KEY UPDATE
          isDelete = 0,
          client_name = VALUES(client_name),
@@ -245,36 +312,53 @@ export async function POST(request) {
          project_id = VALUES(project_id),
          gst_type = VALUES(gst_type),
          created_by = VALUES(created_by),
-         updated_at = NOW()`,
-			[
-				quotation_number,
-				client_name,
-				client_email || null,
-				client_phone || null,
-				client_address || null,
-				subject || null,
-				JSON.stringify(items || []),
-				subtotal || 0,
-				tax_rate || 18,
-				tax_amount || 0,
-				discount || 0,
-				total || 0,
-				notes || null,
-				terms || null,
-				valid_until || null,
-				status || 'draft',
-				project_id || null,
-				gst_type || 'cgst_sgst',
-				authResult.user?.id || null,
-			]
-		);
+         updated_at = NOW()`
+						: INSERT_SQL,
+					[
+						quotationNumber,
+						client_name,
+						client_email || null,
+						client_phone || null,
+						client_address || null,
+						sanitizedSubject,
+						sanitizedItems,
+						subtotal || 0,
+						tax_rate || 18,
+						tax_amount || 0,
+						discount || 0,
+						total || 0,
+						sanitizedNotes,
+						sanitizedTerms,
+						valid_until || null,
+						status || 'draft',
+						project_id || null,
+						gst_type || 'cgst_sgst',
+						authResult.user?.id || null,
+					]
+				);
 
-		// On duplicate key, insertId is 0; fetch the actual id
-		let insertedId = result.insertId;
+				insertedId = result.insertId || null;
+				await connection.commit();
+				break;
+			} catch (error) {
+				await connection.rollback();
+				if (
+					!providedQuotationNumber &&
+					isRetryableNumberError(error) &&
+					attempt < 5
+				) {
+					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+					continue;
+				}
+				throw error;
+			}
+		}
+
+		// On the upsert path, insertId is 0; fetch the actual id
 		if (!insertedId) {
 			const [rows] = await connection.execute(
 				'SELECT id FROM quotations WHERE quotation_number = ?',
-				[quotation_number]
+				[quotationNumber]
 			);
 			insertedId = rows[0]?.id;
 		}
@@ -347,6 +431,12 @@ export async function PUT(request) {
 			);
 		}
 
+		// HTML-bound columns are sanitized at the write boundary (ADR-0012).
+		const sanitizedSubject = sanitizeOptionalRichText(subject) || null;
+		const sanitizedNotes = sanitizeOptionalRichText(notes) || null;
+		const sanitizedTerms = sanitizeOptionalRichText(terms) || null;
+		const sanitizedItems = JSON.stringify(sanitizeJsonStrings(items || []));
+
 		connection = await dbConnect();
 
 		const [result] = await connection.execute(
@@ -376,15 +466,15 @@ export async function PUT(request) {
 				client_email || null,
 				client_phone || null,
 				client_address || null,
-				subject || null,
-				JSON.stringify(items || []),
+				sanitizedSubject,
+				sanitizedItems,
 				subtotal || 0,
 				tax_rate || 18,
 				tax_amount || 0,
 				discount || 0,
 				total || 0,
-				notes || null,
-				terms || null,
+				sanitizedNotes,
+				sanitizedTerms,
 				valid_until || null,
 				status || 'draft',
 				project_id || null,

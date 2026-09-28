@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
 import { useSessionRBAC } from '@/utils/client-rbac';
+import { escapeHtml } from '@/lib/escape-html';
 import {
 	RESOURCES as RBAC_RESOURCES,
 	PERMISSIONS as RBAC_PERMISSIONS,
@@ -462,17 +463,17 @@ export default function ProposalPage() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
           <div>
             <h3 style="color: #64126D; margin-bottom: 10px;">Client Information</h3>
-            <p><strong>Name:</strong> ${quotationData.client.name}</p>
-            <p><strong>Address:</strong> ${quotationData.client.address}</p>
-            <p><strong>Contact Person:</strong> ${quotationData.client.contactPerson}</p>
-            <p><strong>Designation:</strong> ${quotationData.client.designation}</p>
+            <p><strong>Name:</strong> ${escapeHtml(quotationData.client.name)}</p>
+            <p><strong>Address:</strong> ${escapeHtml(quotationData.client.address)}</p>
+            <p><strong>Contact Person:</strong> ${escapeHtml(quotationData.client.contactPerson)}</p>
+            <p><strong>Designation:</strong> ${escapeHtml(quotationData.client.designation)}</p>
           </div>
           <div>
             <h3 style="color: #64126D; margin-bottom: 10px;">Quotation Details</h3>
-            <p><strong>Quotation No:</strong> ${quotationData.quotation.number}</p>
-            <p><strong>Date:</strong> ${quotationData.quotation.date}</p>
-            <p><strong>Enquiry No:</strong> ${quotationData.quotation.enquiryNo}</p>
-            <p><strong>Enquiry Date:</strong> ${quotationData.quotation.enquiryDate}</p>
+            <p><strong>Quotation No:</strong> ${escapeHtml(quotationData.quotation.number)}</p>
+            <p><strong>Date:</strong> ${escapeHtml(quotationData.quotation.date)}</p>
+            <p><strong>Enquiry No:</strong> ${escapeHtml(quotationData.quotation.enquiryNo)}</p>
+            <p><strong>Enquiry Date:</strong> ${escapeHtml(quotationData.quotation.enquiryDate)}</p>
           </div>
         </div>
         
@@ -491,9 +492,9 @@ export default function ProposalPage() {
 							.map(
 								(item) => `
               <tr>
-                <td style="border: 1px solid #ddd; padding: 8px;">${item.scope}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.qty}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${item.rate}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">${escapeHtml(item.scope)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${escapeHtml(item.qty)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${escapeHtml(item.rate)}</td>
                 <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${item.amount.toFixed(2)}</td>
               </tr>
             `
@@ -506,33 +507,33 @@ export default function ProposalPage() {
           </tbody>
         </table>
         
-        <p><strong>Amount in Words:</strong> ${quotationData.amount.inWords}</p>
+        <p><strong>Amount in Words:</strong> ${escapeHtml(quotationData.amount.inWords)}</p>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
           <div>
             <h3 style="color: #64126D;">Registration Details</h3>
-            <p><strong>GST:</strong> ${quotationData.registration.gst}</p>
-            <p><strong>PAN:</strong> ${quotationData.registration.pan}</p>
-            <p><strong>TAN:</strong> ${quotationData.registration.tan}</p>
+            <p><strong>GST:</strong> ${escapeHtml(quotationData.registration.gst)}</p>
+            <p><strong>PAN:</strong> ${escapeHtml(quotationData.registration.pan)}</p>
+            <p><strong>TAN:</strong> ${escapeHtml(quotationData.registration.tan)}</p>
           </div>
           <div>
             <h3 style="color: #64126D;">Payment Details</h3>
-            <p><strong>Advance:</strong> ${quotationData.payment.advance}</p>
-            <p><strong>Balance:</strong> ${quotationData.payment.balance}</p>
-            <p><strong>Bank Details:</strong> ${quotationData.payment.bankDetails}</p>
+            <p><strong>Advance:</strong> ${escapeHtml(quotationData.payment.advance)}</p>
+            <p><strong>Balance:</strong> ${escapeHtml(quotationData.payment.balance)}</p>
+            <p><strong>Bank Details:</strong> ${escapeHtml(quotationData.payment.bankDetails)}</p>
           </div>
         </div>
         
         <div style="margin: 20px 0;">
           <h3 style="color: #64126D;">Terms & Conditions</h3>
-          <p style="white-space: pre-wrap;">${quotationData.terms}</p>
+          <p style="white-space: pre-wrap;">${escapeHtml(quotationData.terms)}</p>
         </div>
         
         <div style="text-align: right; margin-top: 40px;">
           <p><strong>Signature</strong></p>
-          <p>${quotationData.signature.name}</p>
-          <p>${quotationData.signature.designation}</p>
-          <p>Date: ${quotationData.signature.date}</p>
+          <p>${escapeHtml(quotationData.signature.name)}</p>
+          <p>${escapeHtml(quotationData.signature.designation)}</p>
+          <p>Date: ${escapeHtml(quotationData.signature.date)}</p>
         </div>
       </div>
     `;
@@ -544,40 +545,40 @@ export default function ProposalPage() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
           <div>
             <h3 style="color: #64126D;">Project Information</h3>
-            <p><strong>Project Name:</strong> ${annexureData.projectName}</p>
-            <p><strong>Client Name:</strong> ${annexureData.clientName}</p>
-            <p><strong>Project Type:</strong> ${annexureData.projectType}</p>
+            <p><strong>Project Name:</strong> ${escapeHtml(annexureData.projectName)}</p>
+            <p><strong>Client Name:</strong> ${escapeHtml(annexureData.clientName)}</p>
+            <p><strong>Project Type:</strong> ${escapeHtml(annexureData.projectType)}</p>
           </div>
           <div>
             <h3 style="color: #64126D;">Timeline & Budget</h3>
-            <p><strong>Timeline:</strong> ${annexureData.timeline}</p>
-            <p><strong>Budget:</strong> ${annexureData.budget}</p>
+            <p><strong>Timeline:</strong> ${escapeHtml(annexureData.timeline)}</p>
+            <p><strong>Budget:</strong> ${escapeHtml(annexureData.budget)}</p>
           </div>
         </div>
         
         <div style="margin: 20px 0;">
           <h3 style="color: #64126D;">Scope of Work</h3>
-          <p style="white-space: pre-wrap;">${annexureData.scope}</p>
+          <p style="white-space: pre-wrap;">${escapeHtml(annexureData.scope)}</p>
         </div>
         
         <div style="margin: 20px 0;">
           <h3 style="color: #64126D;">Deliverables</h3>
-          <p style="white-space: pre-wrap;">${annexureData.deliverables}</p>
+          <p style="white-space: pre-wrap;">${escapeHtml(annexureData.deliverables)}</p>
         </div>
         
         <div style="margin: 20px 0;">
           <h3 style="color: #64126D;">Milestones</h3>
-          <p style="white-space: pre-wrap;">${annexureData.milestones}</p>
+          <p style="white-space: pre-wrap;">${escapeHtml(annexureData.milestones)}</p>
         </div>
         
         <div style="margin: 20px 0;">
           <h3 style="color: #64126D;">Risk Factors</h3>
-          <p style="white-space: pre-wrap;">${annexureData.riskFactors}</p>
+          <p style="white-space: pre-wrap;">${escapeHtml(annexureData.riskFactors)}</p>
         </div>
         
         <div style="margin: 20px 0;">
           <h3 style="color: #64126D;">Assumptions</h3>
-          <p style="white-space: pre-wrap;">${annexureData.assumptions}</p>
+          <p style="white-space: pre-wrap;">${escapeHtml(annexureData.assumptions)}</p>
         </div>
         
         ${
@@ -585,7 +586,7 @@ export default function ProposalPage() {
 						? `
           <div style="margin: 20px 0;">
             <h3 style="color: #64126D;">Additional Notes</h3>
-            <p style="white-space: pre-wrap;">${annexureData.additionalNotes}</p>
+            <p style="white-space: pre-wrap;">${escapeHtml(annexureData.additionalNotes)}</p>
           </div>
         `
 						: ''

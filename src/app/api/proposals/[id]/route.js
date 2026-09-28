@@ -4,6 +4,10 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	sanitizeJsonStrings,
+	sanitizeOptionalRichText,
+} from '@/lib/sanitize-fields';
 
 export async function GET(request, { params }) {
 	let pool;
@@ -94,7 +98,10 @@ export async function POST(request, { params }) {
 				proposal.proposal_title ||
 				proposal.title ||
 				`Project from ${proposal.proposal_title || proposal.title || id}`,
-			description: proposal.description || proposal.project_description || null,
+			description:
+				sanitizeOptionalRichText(
+					proposal.description || proposal.project_description
+				) || null,
 			company_id: proposal.company_id || null,
 			// intentionally do not set project_manager here; user will assign it on the Project page
 			start_date: body.start_date || proposal.planned_start_date || null,
@@ -114,8 +121,9 @@ export async function POST(request, { params }) {
 			// copy collaborative fields
 			activities: proposal.activities || body.activities || [],
 			disciplines: proposal.disciplines || body.disciplines || [],
-			discipline_descriptions:
-				proposal.discipline_descriptions || body.discipline_descriptions || {},
+			discipline_descriptions: sanitizeJsonStrings(
+				proposal.discipline_descriptions || body.discipline_descriptions || {}
+			),
 			planning_activities_list:
 				proposal.planning_activities_list ||
 				body.planning_activities_list ||
@@ -736,9 +744,16 @@ export async function PUT(request, { params }) {
 		pushIf('phone', body.phone ?? null);
 		pushIf(
 			'project_description',
-			body.project_description ?? body.description ?? null
+			sanitizeOptionalRichText(
+				body.project_description ?? body.description ?? null
+			)
 		);
-		pushIf('description', body.description ?? body.project_description ?? null);
+		pushIf(
+			'description',
+			sanitizeOptionalRichText(
+				body.description ?? body.project_description ?? null
+			)
+		);
 		pushIf('value', body.value ?? body.proposal_value ?? null);
 		pushIf('proposal_value', body.proposal_value ?? body.value ?? null);
 		pushIf('status', body.status ?? null);
@@ -880,7 +895,10 @@ export async function PUT(request, { params }) {
 		pushIf('commercial_items', body.commercial_items ?? null);
 		pushIf('disciplines', body.disciplines ?? null);
 		pushIf('activities', body.activities ?? null);
-		pushIf('discipline_descriptions', body.discipline_descriptions ?? null);
+		pushIf(
+			'discipline_descriptions',
+			sanitizeJsonStrings(body.discipline_descriptions ?? null)
+		);
 		pushIf('planning_activities_list', body.planning_activities_list ?? null);
 		pushIf('documents_list', body.documents_list ?? null);
 		pushIf(

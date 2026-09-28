@@ -1,6 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
+import { sanitizeOptionalRichText } from '@/lib/sanitize-fields';
 
 /**
  * GET /api/messages
@@ -211,6 +212,9 @@ export async function POST(request) {
 
 		// Note: No longer blocking self-send for group chats (sender is also a member)
 
+		// Sanitize the rich-text body at the write boundary (ADR-0012)
+		const sanitizedMessageBody = sanitizeOptionalRichText(messageBody);
+
 		db = await dbConnect();
 
 		let finalConversationId;
@@ -274,7 +278,7 @@ export async function POST(request) {
 					currentUser.id,
 					receiver_id,
 					subject,
-					messageBody,
+					sanitizedMessageBody,
 					related_module,
 					related_id,
 					finalConversationId,
@@ -282,7 +286,7 @@ export async function POST(request) {
 			: [
 					currentUser.id,
 					subject,
-					messageBody,
+					sanitizedMessageBody,
 					related_module,
 					related_id,
 					finalConversationId,

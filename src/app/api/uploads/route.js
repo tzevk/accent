@@ -2,6 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import {
+	MAX_FILE_SIZE,
+	MAX_REQUEST_BYTES,
+	estimateBase64DecodedBytes,
+} from '@/lib/upload-validation';
+import {
 	ensurePermission,
 	RESOURCES,
 	PERMISSIONS,
@@ -21,6 +26,17 @@ export async function POST(request) {
 	);
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
+
+	// C2: reject oversized requests on the declared length — before the JSON
+	// body is parsed, let alone decoded. A 20MB file is ~27MB of base64, so
+	// anything above that ceiling cannot decode to an accepted file.
+	const declaredLength = Number(request.headers.get('content-length'));
+	if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+		return Response.json(
+			{ success: false, error: 'File size exceeds 20MB limit' },
+			{ status: 413 }
+		);
+	}
 
 	try {
 		const data = await request.json();
@@ -42,6 +58,16 @@ export async function POST(request) {
 
 		// decode base64 (strip data: prefix if present)
 		const cleaned = b64.replace(/^data:.*;base64,/, '');
+
+		// C2: cap the decoded size from the string length before Buffer.from
+		// allocates the buffer (incl. chunked bodies without Content-Length).
+		if (estimateBase64DecodedBytes(cleaned) > MAX_FILE_SIZE) {
+			return Response.json(
+				{ success: false, error: 'File size exceeds 20MB limit' },
+				{ status: 413 }
+			);
+		}
+
 		const buf = Buffer.from(cleaned, 'base64');
 
 		// SEC-02: never persist raw upload bytes. Every upload is rasterized to

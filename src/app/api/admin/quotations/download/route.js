@@ -4,6 +4,9 @@ import { NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
 import chromium from '@sparticuz/chromium';
 import { dbConnect } from '@/utils/database';
+import { escapeHtml } from '@/lib/escape-html';
+import { sanitizeRichText } from '@/lib/sanitize';
+import { blockNonLocalRequests } from '@/lib/pdf-request-guard';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -331,6 +334,7 @@ export async function GET(request) {
 
 		const page = await browser.newPage();
 		await page.emulateMediaType('print');
+		await blockNonLocalRequests(page);
 		await page.setContent(html, {
 			waitUntil: 'networkidle0',
 		});
@@ -539,11 +543,16 @@ function generateQuotationHTML(data, source) {
 	);
 	const displayGrossAmount = grossAmount || itemsTotal;
 
+	// Rich-text columns are HTML-authored (ADR-0012) and the write path already
+	// entity-encodes them. Markup goes through the server sanitizer; anything
+	// that is not markup is plain text — sanitize it too (never double-escape,
+	// a stored `&amp;` must stay `&amp;`), then rebuild list/newline syntax.
 	const formatRichTextContent = (content) => {
 		if (!content) return '';
-		if (/<[a-z][\s\S]*>/i.test(content)) return content;
+		const raw = String(content);
+		if (/<[a-z][\s\S]*>/i.test(raw)) return sanitizeRichText(raw);
 
-		let text = content.replace(/\r\n/g, '\n');
+		let text = sanitizeRichText(raw.replace(/\r\n/g, '\n'));
 		text = text.replace(/•\s*\n\s*/g, '• ');
 
 		if (/^\d+\.\s+/m.test(text)) {
@@ -601,9 +610,9 @@ function generateQuotationHTML(data, source) {
 					.map(
 						(item) => `
         <tr>
-          <td style="border: 1px solid #000; padding: 6px; text-align: center; vertical-align: top;">${item.sr_no || ''}</td>
+          <td style="border: 1px solid #000; padding: 6px; text-align: center; vertical-align: top;">${escapeHtml(item.sr_no || '')}</td>
           <td style="border: 1px solid #000; padding: 6px; vertical-align: top;"><div class="rt-content">${formatRichTextContent(item.description)}</div></td>
-          <td style="border: 1px solid #000; padding: 6px; text-align: center; vertical-align: top;">${item.qty || ''}</td>
+          <td style="border: 1px solid #000; padding: 6px; text-align: center; vertical-align: top;">${escapeHtml(item.qty || '')}</td>
           <td style="border: 1px solid #000; padding: 6px; text-align: right; vertical-align: top;">${item.rate ? formatCurrency(item.rate) : ''}</td>
           <td style="border: 1px solid #000; padding: 6px; text-align: right; vertical-align: top;">${item.amount ? formatCurrency(item.amount) : ''}</td>
         </tr>
@@ -613,7 +622,7 @@ function generateQuotationHTML(data, source) {
 			: `<tr>
         <td style="border: 1px solid #000; padding: 6px; text-align: center;">1</td>
         <td style="border: 1px solid #000; padding: 6px;"><div class="rt-content">${formatRichTextContent(data.scope_of_work || data.subject || '-')}</div></td>
-        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${data.enquiry_quantity || '1'}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${escapeHtml(data.enquiry_quantity || '1')}</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCurrency(displayGrossAmount)}</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCurrency(displayGrossAmount)}</td>
       </tr>`;
@@ -624,7 +633,7 @@ function generateQuotationHTML(data, source) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quotation - ${data.quotation_number || 'Draft'}</title>
+  <title>Quotation - ${escapeHtml(data.quotation_number || 'Draft')}</title>
   <style>
     @media print {
       body { margin: 0; padding: 0; }
@@ -707,26 +716,26 @@ function generateQuotationHTML(data, source) {
             <tr>
               <td style="width: 60%; border-right: 1px solid #000; padding: 6px; vertical-align: top;">
                 <strong>To,</strong><br><br>
-                <strong>${data.client_name || ''}</strong><br>
-                ${data.client_address ? data.client_address.replace(/\n/g, '<br>') : ''}
+                <strong>${escapeHtml(data.client_name || '')}</strong><br>
+                ${data.client_address ? escapeHtml(data.client_address).replace(/\n/g, '<br>') : ''}
               </td>
               <td style="width: 40%; padding: 0; vertical-align: top;">
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
                     <td style="border-bottom: 1px solid #000; padding: 4px 6px; font-weight: bold;">Quotation No.</td>
-                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 6px;">${data.quotation_number || ''}</td>
+                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 6px;">${escapeHtml(data.quotation_number || '')}</td>
                   </tr>
                   <tr>
                     <td style="border-bottom: 1px solid #000; padding: 4px 6px; font-weight: bold;">Date of Quotation</td>
-                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 6px;">${formatDate(data.quotation_date || data.created_at)}</td>
+                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 6px;">${escapeHtml(formatDate(data.quotation_date || data.created_at))}</td>
                   </tr>
                   <tr>
                     <td style="border-bottom: 1px solid #000; padding: 4px 6px; font-weight: bold;">Enquiry No.</td>
-                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 6px;">${data.enquiry_number || ''}</td>
+                    <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 4px 6px;">${escapeHtml(data.enquiry_number || '')}</td>
                   </tr>
                   <tr>
                     <td style="padding: 4px 6px; font-weight: bold;">Date of Enquiry</td>
-                    <td style="border-left: 1px solid #000; padding: 4px 6px;">${formatDate(data.enquiry_date)}</td>
+                    <td style="border-left: 1px solid #000; padding: 4px 6px;">${escapeHtml(formatDate(data.enquiry_date))}</td>
                   </tr>
                 </table>
               </td>
@@ -740,7 +749,7 @@ function generateQuotationHTML(data, source) {
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="width: 80px; padding: 5px 6px; font-weight: bold; border-right: 1px solid #000;">Kind Attn:</td>
-              <td style="padding: 5px 6px;">${data.kind_attn || ''}</td>
+              <td style="padding: 5px 6px;">${escapeHtml(data.kind_attn || '')}</td>
             </tr>
           </table>
         </td>
@@ -782,7 +791,7 @@ function generateQuotationHTML(data, source) {
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
               <td style="width: 100px; padding: 5px 6px; font-weight: bold; border-right: 1px solid #000;">Amount in words:</td>
-              <td style="padding: 5px 6px; font-style: italic;">${amountInWords}</td>
+              <td style="padding: 5px 6px; font-style: italic;">${escapeHtml(amountInWords)}</td>
             </tr>
           </table>
         </td>
@@ -794,15 +803,15 @@ function generateQuotationHTML(data, source) {
             <tr>
               <td style="width: 33.33%; border-right: 1px solid #000; padding: 0;">
                 <div style="padding: 4px; font-weight: bold; border-bottom: 1px solid #000; text-align: center;">GST Number</div>
-                <div style="padding: 4px; text-align: center; min-height: 18px;">${data.gst_number || ''}</div>
+                <div style="padding: 4px; text-align: center; min-height: 18px;">${escapeHtml(data.gst_number || '')}</div>
               </td>
               <td style="width: 33.33%; border-right: 1px solid #000; padding: 0;">
                 <div style="padding: 4px; font-weight: bold; border-bottom: 1px solid #000; text-align: center;">Pan Number</div>
-                <div style="padding: 4px; text-align: center; min-height: 18px;">${data.pan_number || ''}</div>
+                <div style="padding: 4px; text-align: center; min-height: 18px;">${escapeHtml(data.pan_number || '')}</div>
               </td>
               <td style="width: 33.33%; padding: 0;">
                 <div style="padding: 4px; font-weight: bold; border-bottom: 1px solid #000; text-align: center;">Tan Number</div>
-                <div style="padding: 4px; text-align: center; min-height: 18px;">${data.tan_number || ''}</div>
+                <div style="padding: 4px; text-align: center; min-height: 18px;">${escapeHtml(data.tan_number || '')}</div>
               </td>
             </tr>
           </table>

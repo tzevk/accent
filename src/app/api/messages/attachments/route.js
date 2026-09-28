@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
+import {
+	hasMarkupSignature,
+	MARKUP_REJECTION_ERROR,
+} from '@/lib/upload-validation';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
@@ -25,7 +29,7 @@ const ALLOWED_TYPES = {
 	'image/vnd.dwg': '.dwg',
 	'application/dwg': '.dwg',
 	'application/x-dwg': '.dwg',
-	'application/octet-stream': '.nwd', // Generic binary, will check extension
+	'application/octet-stream': '.nwd', // Generic binary; the extension allowlist still applies
 	// Archive files
 	'application/zip': '.zip',
 	'application/x-zip-compressed': '.zip',
@@ -59,7 +63,10 @@ export async function POST(request) {
 			);
 		}
 
-		// Check file type - also check by extension for binary types
+		// Check file type — C1: AND-logic. Both the declared MIME type and the
+		// extension must be allowed, so neither alone can smuggle a file in
+		// (`payload.html` declaring text/plain, or `payload.txt` declaring
+		// text/html, are both rejected).
 		const fileName = file.name || '';
 		const fileExt = fileName.toLowerCase().split('.').pop();
 		const allowedExtensions = [
@@ -80,7 +87,10 @@ export async function POST(request) {
 			'zip',
 		];
 
-		if (!ALLOWED_TYPES[file.type] && !allowedExtensions.includes(fileExt)) {
+		if (
+			!Object.hasOwn(ALLOWED_TYPES, file.type) ||
+			!allowedExtensions.includes(fileExt)
+		) {
 			return NextResponse.json(
 				{
 					success: false,
@@ -101,8 +111,20 @@ export async function POST(request) {
 			);
 		}
 
-		// Generate unique filename - use original extension if mime type not recognized
-		const extension = ALLOWED_TYPES[file.type] || `.${fileExt}`;
+		// C1: validate the payload itself — a renamed HTML/SVG/script file must
+		// never reach private/message-attachments, whatever MIME it declares.
+		const bytes = await file.arrayBuffer();
+		const buffer = Buffer.from(bytes);
+		if (hasMarkupSignature(buffer)) {
+			return NextResponse.json(
+				{ success: false, error: MARKUP_REJECTION_ERROR },
+				{ status: 400 }
+			);
+		}
+
+		// Generate unique filename — the stored extension comes from the
+		// allowlist entry for the declared MIME, never from the original name
+		const extension = ALLOWED_TYPES[file.type];
 		const uniqueFilename = `${uuidv4()}${extension}`;
 
 		// Create upload directory if it doesn't exist
@@ -117,8 +139,6 @@ export async function POST(request) {
 
 		// Save file
 		const filePath = path.join(uploadDir, uniqueFilename);
-		const bytes = await file.arrayBuffer();
-		const buffer = Buffer.from(bytes);
 		await writeFile(filePath, buffer);
 
 		return NextResponse.json({
