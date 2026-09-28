@@ -46,11 +46,13 @@ Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before 
 
 ## Architecture Gotchas
 
-- **Auth split**: `proxy.ts` (Next 16 renamed `middleware`; runs on Node.js runtime) only checks `session` cookie presence + rate-limits. Real validation is `getCurrentUser(request)` / `getServerAuth()` in `src/utils/api-permissions.js` — hashes token with SHA-256 and queries `sessions JOIN users LEFT JOIN roles_master LEFT JOIN employees` where `expires_at > NOW()` and `u.isDelete = 0`. Cached 5 min (`userCache` + `pendingUserFetches` dedup); invalidate via `invalidateUserCache(userId)`.
+- **Auth split**: `src/proxy.ts` (Next 16 renamed `middleware`; runs on Node.js runtime) validates the `session` cookie against MySQL before routing (SHA-256 token hash → `sessions JOIN users`, active + `isDelete = 0`, via `src/utils/session-probe.js`; own proxy-local pool, 60 s per-instance cache, DB error → cached-if-fresh else deny) and rate-limits. Handlers still authorize every request via `getCurrentUser(request)` / `getServerAuth()` / `ensurePermission()` in `src/utils/api-permissions.js` — hashes token with SHA-256 and queries `sessions JOIN users LEFT JOIN roles_master LEFT JOIN employees` where `expires_at > NOW()` and `u.isDelete = 0`. Cached 60 s (`userCache` + `pendingUserFetches` dedup); invalidate via `invalidateUserCache(userId)`.
   - Login (`/api/login`) creates 256-bit token (`crypto.randomBytes(32)`), stores `token_hash`, 30-day expiry, HttpOnly `SameSite=Lax` cookie. Logout calls `revokeSession`; password change calls `revokeAllUserSessions`.
-  - Public paths in `proxy.ts:4` include `/signin`, `/api/login`, `/api/session`, `/api/attendance/webhook` (Bearer auth inside handler), `/_next`, `/uploads`.
+  - Public endpoints are an exact-match allowlist (ADR-0014): `/signin`, `/api/login`, `/api/logout`, `/api/session`, `/api/attendance/webhook` (Bearer auth inside handler), `/api/health` (`{status:'ok'}` only) + static assets. Prefix matching applies to assets only; adding an endpoint requires an ADR-0014 line + the CI route guard's allowlist.
 
-- **Rate limits** (`proxy.ts:41`): `auth` 10/15m, `session` 120/m, `dashboard` 60/m, `api` 120/m, `heavy` (export/report/bulk) 10/m — in-memory `rateLimitStore`, per-IP+session key.
+- **Rate limits** (`src/proxy.ts`): `auth` 10/15m and `heavy` (export/report/bulk) 10/m count in MySQL fixed windows (`rate_limit_buckets`, shared across instances, `Retry-After` = window end); `session` 120/m, `dashboard` 60/m, `api` 120/m stay in-memory. Identity is the platform-set IP header (`x-vercel-forwarded-for`; never client `x-forwarded-for`) + validated-session token hash, per category.
+
+- **Route auth invariant**: `npm run check:route-auth` (CI `checks.yml`) fails any exported handler in `src/app/api/**/route.{js,ts}` without `getCurrentUser|getServerAuth|ensurePermission` or a reasoned allowlist entry (public-by-design, delegating forwarders).
 
 - **RBAC** (`src/utils/permissions.js`, `src/utils/rbac.js`): two structures merged via `mergePermissions` (set union).
   - Flat `resource:action` strings in `roles_master.permissions` + `users.permissions` → `user.merged_permissions`.

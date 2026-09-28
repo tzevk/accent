@@ -70,6 +70,8 @@ Second-order risks: stored XSS in messaging and HTML download endpoints (no HTML
 
 ### Status corrections (2026-09-28 re-verification)
 
+> **Remediation outcome (branch `security/remediation-254`):** the workstreams that closed these rows are implemented and verified — see the status block at the top of `docs/todo/SECURITY_REMEDIATION_PLAN.md` and the artifacts under `e2e/artifacts/security-*.json`. Three further findings surfaced while implementing them (SEC-30 the proxy was never compiled, SEC-31 project creation 500'd, SEC-32 activity-log pool deadlock) and are recorded below.
+
 Verified read-only against HEAD `ff7440a`. The table above predates this pass; this section is authoritative where they differ. SEC-01…SEC-07, SEC-10, SEC-12, SEC-14, SEC-19 keep their recorded Fixed/Resolved status.
 
 | ID     | Verified status                         | Evidence / note                                                                                                                                                                                                                                                                            |
@@ -472,6 +474,38 @@ Verified read-only against HEAD `ff7440a`. The table above predates this pass; t
 **Location:** `employees/[id]/attendance`, `employees/[id]/salary-structure`, `employees/available-for-users` (zero callers, no auth, salary/PII surfaces); `api/health` returns DB pool stats to any caller.
 
 **Fix:** plan workstream A (delete the three routes; minimize the health payload; ADR-0014).
+
+## 🆕 Findings discovered during remediation (2026-09-28)
+
+### SEC-30 — The proxy never executed in a production build: `proxy.ts` sat outside `src/`
+
+**Severity:** 🔴 Critical (root-cause amplifier of SEC-26) · **CWE-1059**
+
+**Location:** `proxy.ts` (repository root) with the App Router at `src/app`.
+
+**Description:** Next only loads the proxy next to `app` ("in the project root, or inside `src` if applicable, so that it is located at the same level as `pages` or `app`"). The production `middleware-manifest.json` contained zero middleware entries (`middleware: {}`, `sortedMiddleware: []`), so the cookie-presence gate and the rate limiter were **dead code in every build** — and the audits' claim that "a forged cookie buys nothing because the presence check blocks it" was false. Proven live before the fix: anonymous `/dashboard`, `/projects/1` and `/masters/users` returned 200, and 12 bad logins were never throttled.
+
+**Fix:** moved to `src/proxy.ts` (imports adjusted); `npm run build:e2e` now prints `ƒ Proxy (Middleware)`; the security E2E specs assert anonymous pages redirect (307 → `/signin`) and anonymous APIs 401 on routed and unrouted paths. Recorded in ADR-0011.
+
+### SEC-31 — `POST /api/projects` had 30 columns and 29 placeholders: every project create returned 500
+
+**Severity:** 🟠 High (functional) · **CWE-1059**
+
+**Location:** `src/app/api/projects/route.js` INSERT (30-column list, 29 `?`).
+
+**Description:** MySQL rejects the statement with "Column count doesn't match value count at row 1"; the stored-XSS E2E path that creates a project surfaced it. Pre-existing at HEAD, unrelated to the sanitizer change (which only made the bind undefined-error visible first).
+
+**Fix:** added the missing placeholder; the stored-XSS spec now creates projects through the real route and asserts the sanitized write.
+
+### SEC-32 — Activity logging deadlocks the pool under concurrent writes
+
+**Severity:** 🟡 Medium (availability) · **CWE-833**
+
+**Location:** `admin/purchase-invoices`, `admin/expenses`, `admin/outgoing-quotations` POST — `await logActivity(...)` runs while the handler still holds its pooled connection; `logActivity` checks out a second connection.
+
+**Description:** with the 5-connection app pool, 6 concurrent creates exhaust the pool: five handlers hold a connection and each waits for a second one for the logger — a permanent deadlock (reproduced live: six concurrent `POST /api/admin/purchase-invoices` all timed out; three concurrent succeeded). Found by the new concurrency E2E spec.
+
+**Fix:** release the connection before calling `logActivity` in the three routes (error paths still release in `finally`). Six concurrent creates now all succeed (verified live, distinct `PI-` numbers).
 
 ## Surfaces checked and found clean
 
