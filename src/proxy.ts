@@ -27,6 +27,9 @@ const PUBLIC_PATHS: Record<string, true> = {
 	// Uptime probe; answers { status: 'ok' } and carries no data.
 	'/api/health': true,
 	'/favicon.ico': true,
+	// Next serves src/app/icon.png at this root path for every page (both
+	// public and protected), so it must not be gated.
+	'/icon.png': true,
 	'/robots.txt': true,
 	'/sitemap.xml': true,
 	'/manifest.webmanifest': true,
@@ -137,7 +140,9 @@ function getRateLimitCategory(pathname: string): RateLimitCategory {
 	}
 	if (
 		pathname.includes('export') ||
-		pathname.includes('report') ||
+		// Downloads are the expensive report/document operations; plain report
+		// reads stay in `api` (120/min) so browsing a report page cannot 429.
+		pathname.includes('download') ||
 		pathname.includes('bulk')
 	) {
 		return 'heavy';

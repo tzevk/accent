@@ -50,7 +50,7 @@ Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before 
   - Login (`/api/login`) creates 256-bit token (`crypto.randomBytes(32)`), stores `token_hash`, 30-day expiry, HttpOnly `SameSite=Lax` cookie. Logout calls `revokeSession`; password change calls `revokeAllUserSessions`.
   - Public endpoints are an exact-match allowlist (ADR-0014): `/signin`, `/api/login`, `/api/logout`, `/api/session`, `/api/attendance/webhook` (Bearer auth inside handler), `/api/health` (`{status:'ok'}` only) + static assets. Prefix matching applies to assets only; adding an endpoint requires an ADR-0014 line + the CI route guard's allowlist.
 
-- **Rate limits** (`src/proxy.ts`): `auth` 10/15m and `heavy` (export/report/bulk) 10/m count in MySQL fixed windows (`rate_limit_buckets`, shared across instances, `Retry-After` = window end); `session` 120/m, `dashboard` 60/m, `api` 120/m stay in-memory. Identity is the platform-set IP header (`x-vercel-forwarded-for`; never client `x-forwarded-for`) + validated-session token hash, per category.
+- **Rate limits** (`src/proxy.ts`): `auth` 10/15m and `heavy` (download/export/bulk) 10/m count in MySQL fixed windows (`rate_limit_buckets`, shared across instances, `Retry-After` = window end); `session` 120/m, `dashboard` 60/m, `api` 120/m stay in-memory. Identity is the platform-set IP header (`x-vercel-forwarded-for`; never client `x-forwarded-for`) + validated-session token hash, per category.
 
 - **Route auth invariant**: `npm run check:route-auth` (CI `checks.yml`) fails any exported handler in `src/app/api/**/route.{js,ts}` without `getCurrentUser|getServerAuth|ensurePermission` or a reasoned allowlist entry (public-by-design, delegating forwarders).
 

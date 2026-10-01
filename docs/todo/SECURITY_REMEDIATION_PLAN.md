@@ -153,6 +153,48 @@ Every server-generated HTML/PDF/print document escapes interpolated DB text; ric
 - **Test-first (only for the sanitizer)**: enumerate bypass payloads (slash-delimited handlers, `srcdoc`, `data:text/html`, `javascript:` variants, mXSS cases) **before** implementing B1–B3; assert both engines (server `sanitize-html`, browser DOMPurify) strip them and that the allowlist passes legitimate TipTap output.
 - No new unit suites elsewhere (repo rule); route/page behavior is E2E-only.
 
+## Deploy preflight & rollout (workstream G)
+
+Merging the branch is safe for the tests; deploying it activates behaviour that
+had never run in a build (the proxy had never compiled, so the session gate and
+the limiter were dormant). Run this before the first production deploy:
+
+1. **Data preflight (read-only)** — `npm run security:preflight -- --target=prod`
+   (needs `PROD_DB_*`; writes nothing). It reports:
+   - duplicate active values in the six number columns — **blockers** for the
+     unique-index migration; deduplicate before migrating;
+   - every active role's missing grants for the new guards, plus per-key
+     coverage (role and user level), so the grant list below is concrete;
+   - row counts / table sizes for the migration window.
+2. **Role grants first (data only, no deploy)** — give every role that works in
+   a feature the keys its guards map to: `settings:*` (categories,
+   descriptions, activity master), `accounts:*` (accounts, banks, account
+   heads), `material_requisition:*`, `invoices:*`, `purchase_orders:*`,
+   `quotations:*`, `admin:read` (payee list), `employees:*` (import template,
+   attendance-monthly writes). Otherwise only users with the super-admin flag
+   keep access. The E2E suite proves the finance-role side with its own fixture.
+3. **Migration** — `npm run migrate:prod` in a low-traffic window: the six
+   `ADD COLUMN … STORED` statements rebuild their tables. Additive and safe for
+   the old code, so it may run before or after the deploy.
+4. **Deploy** — watch the function logs for `[RateLimit] … over` lines and for
+   403 spikes. Limits enforce for the first time: `auth` 10/15 min per
+   platform IP (a shared office NAT can exhaust this — review the value for
+   your traffic) and `heavy` (downloads/exports/bulk) 10/min; plain report
+   reads use `api` (120/min) so browsing a report page cannot 429.
+5. **Post-deploy** — confirm the purged `public/` dumps 404, run the scrub
+   dry-run then `--apply --backup`, and check the browser console for CSP
+   violations.
+6. **Rollback** — the migration is additive and the previous code ignores the
+   new columns; reverting the deployment restores the previous behaviour
+   without a DB rollback. The only one-way action is the rich-text scrub
+   (`--backup` first).
+
+Behavioural deltas users will notice: rich text is normalised to the editor
+allowlist on write (paste-tables/images inside annexures are stripped; bare
+`&`/`<` are stored entity-encoded), document/PDF outputs escape plain-text
+fields, and uploads reject HTML/SVG bytes. All three are the point of the
+workstreams, but finance/HR should get a heads-up.
+
 ## Risk register
 
 | Risk                                                                                               | Status                                                                                                       |

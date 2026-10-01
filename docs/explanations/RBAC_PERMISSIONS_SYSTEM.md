@@ -238,7 +238,7 @@ The Next 16 proxy (renamed from `middleware.ts`, Node.js runtime) handles **auth
 
 - **Public endpoints** are an exact-match allowlist (ADR-0014): `/signin`, `/api/login`, `/api/logout`, `/api/session`, `/api/attendance/webhook`, `/api/health`, plus static assets (`/_next`, `/public`, `/uploads`, `favicon.ico`, …). No prefix matching except those asset trees.
 - **Auth check:** SHA-256 the `session` cookie and verify it against `sessions JOIN users` (unexpired, active, not soft-deleted). Invalid → redirect to `/signin` (pages) or `401` JSON (API). A forged cookie value is worthless.
-- **Rate limiting:** identity is the platform-set IP header (`x-vercel-forwarded-for`) plus the validated session token hash, tiered by endpoint category — `auth` (10/15 min) and `heavy` export/report/bulk (10/min) count in MySQL fixed windows shared across instances; `session` (120/min), `dashboard` (60/min) and default `api` (120/min) stay in-process. Returns `429` with `Retry-After` / `X-RateLimit-*` headers.
+- **Rate limiting:** identity is the platform-set IP header (`x-vercel-forwarded-for`) plus the validated session token hash, tiered by endpoint category — `auth` (10/15 min) and `heavy` download/export/bulk (10/min) count in MySQL fixed windows shared across instances; `session` (120/min), `dashboard` (60/min) and default `api` (120/min) stay in-process. Returns `429` with `Retry-After` / `X-RateLimit-*` headers.
 
 The proxy does **not** check resource-level permissions — every API route authorizes through `ensurePermission()`, and `npm run check:route-auth` fails CI when a handler lacks an auth reference.
 
