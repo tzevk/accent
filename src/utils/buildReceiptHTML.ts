@@ -1,4 +1,5 @@
 import { numberToWords } from './numberToWords';
+import { escapeHtml } from '@/lib/escape-html';
 
 // Trigger rebuild 1
 // Trigger rebuild 2
@@ -48,21 +49,21 @@ export const buildReceiptHTML = (data: ReceiptData): string => {
 <body>
 	<div class="receipt">
 		<div class="header">
-			<div class="ref-no">Ref. No.: ${data.receipt_no}</div>
-			<div class="date">${data.receipt_date}</div>
+			<div class="ref-no">Ref. No.: ${escapeHtml(data.receipt_no)}</div>
+			<div class="date">${escapeHtml(data.receipt_date)}</div>
 		</div>
 
 		<div class="title">RECEIPT</div>
 
 		<div class="text">
 			We gratefully acknowledge the receipt of the sum of 
-			<span>Rupees ${amountWords} Only</span> as a 
+			<span>Rupees ${escapeHtml(amountWords)} Only</span> as a 
 			<span>${data.payment_type === 'full' ? 'Full' : data.payment_type === 'partial' ? 'Part' : ''} Payment</span> from 
-			<span>${data.company_name}</span>. 
+			<span>${escapeHtml(data.company_name)}</span>. 
 			This payment is applied toward Invoice No. 
-			<span>${data.invoice_no ?? '-'}</span> (Dated <span>${data.invoice_date ?? '-'}</span>). 
-			The transaction was successfully processed on <span>${data.payment_date ?? '-'}</span> 
-			under Transaction ID <span>${data.transaction_id ?? '-'}</span>.
+			<span>${escapeHtml(data.invoice_no ?? '-')}</span> (Dated <span>${escapeHtml(data.invoice_date ?? '-')}</span>). 
+			The transaction was successfully processed on <span>${escapeHtml(data.payment_date ?? '-')}</span> 
+			under Transaction ID <span>${escapeHtml(data.transaction_id ?? '-')}</span>.
 		</div>
 
 		<div class="amount">

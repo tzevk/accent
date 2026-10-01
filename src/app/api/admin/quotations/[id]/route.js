@@ -5,6 +5,11 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	sanitizeJsonStrings,
+	sanitizeOptionalRichText,
+} from '@/lib/sanitize-fields';
+import { isDuplicateKeyError } from '@/utils/db-number-retry';
 
 // GET - Fetch single quotation by ID
 export async function GET(request, { params }) {
@@ -347,6 +352,51 @@ export async function PUT(request, { params }) {
 		const source = searchParams.get('source') || 'project';
 		const body = await request.json();
 
+		// HTML-bound columns are sanitized at the write boundary (ADR-0012):
+		// scope_items/subject/scope_of_work carry rich text, as do
+		// terms_and_conditions and every annexure_* column.
+		const sanitizedScopeItems = JSON.stringify(
+			sanitizeJsonStrings(body.scope_items || [])
+		);
+		const sanitizedFirstItemDescription =
+			sanitizeOptionalRichText(body.scope_items?.[0]?.description) || null;
+		const sanitizedTerms =
+			sanitizeOptionalRichText(body.terms_and_conditions) || null;
+		const annexure = {
+			annexure_scope_of_work:
+				sanitizeOptionalRichText(body.annexure_scope_of_work) || null,
+			annexure_input_document:
+				sanitizeOptionalRichText(body.annexure_input_document) || null,
+			annexure_deliverables:
+				sanitizeOptionalRichText(body.annexure_deliverables) || null,
+			annexure_software:
+				sanitizeOptionalRichText(body.annexure_software) || null,
+			annexure_duration:
+				sanitizeOptionalRichText(body.annexure_duration) || null,
+			annexure_site_visit:
+				sanitizeOptionalRichText(body.annexure_site_visit) || null,
+			annexure_quotation_validity:
+				sanitizeOptionalRichText(body.annexure_quotation_validity) || null,
+			annexure_mode_of_delivery:
+				sanitizeOptionalRichText(body.annexure_mode_of_delivery) || null,
+			annexure_revision:
+				sanitizeOptionalRichText(body.annexure_revision) || null,
+			annexure_exclusions:
+				sanitizeOptionalRichText(body.annexure_exclusions) || null,
+			annexure_billing_payment_terms:
+				sanitizeOptionalRichText(body.annexure_billing_payment_terms) || null,
+			annexure_taxation:
+				sanitizeOptionalRichText(body.annexure_taxation) || null,
+			annexure_payment_milestone:
+				sanitizeOptionalRichText(body.annexure_payment_milestone) || null,
+			annexure_confidentiality:
+				sanitizeOptionalRichText(body.annexure_confidentiality) || null,
+			annexure_codes_standards:
+				sanitizeOptionalRichText(body.annexure_codes_standards) || null,
+			annexure_dispute_resolution:
+				sanitizeOptionalRichText(body.annexure_dispute_resolution) || null,
+		};
+
 		connection = await dbConnect();
 
 		if (source === 'proposal') {
@@ -396,7 +446,7 @@ export async function PUT(request, { params }) {
 					body.kind_attn || null,
 					body.enquiry_number || null,
 					body.enquiry_date || null,
-					JSON.stringify(body.scope_items || []),
+					sanitizedScopeItems,
 					body.gross_amount || 0,
 					body.gst_percentage || 18,
 					body.gst_amount || 0,
@@ -406,23 +456,23 @@ export async function PUT(request, { params }) {
 					body.gst_number || null,
 					body.pan_number || null,
 					body.tan_number || null,
-					body.terms_and_conditions || null,
-					body.annexure_scope_of_work || null,
-					body.annexure_input_document || null,
-					body.annexure_deliverables || null,
-					body.annexure_software || null,
-					body.annexure_duration || null,
-					body.annexure_site_visit || null,
-					body.annexure_quotation_validity || null,
-					body.annexure_mode_of_delivery || null,
-					body.annexure_revision || null,
-					body.annexure_exclusions || null,
-					body.annexure_billing_payment_terms || null,
-					body.annexure_taxation || null,
-					body.annexure_payment_milestone || null,
-					body.annexure_confidentiality || null,
-					body.annexure_codes_standards || null,
-					body.annexure_dispute_resolution || null,
+					sanitizedTerms,
+					annexure.annexure_scope_of_work,
+					annexure.annexure_input_document,
+					annexure.annexure_deliverables,
+					annexure.annexure_software,
+					annexure.annexure_duration,
+					annexure.annexure_site_visit,
+					annexure.annexure_quotation_validity,
+					annexure.annexure_mode_of_delivery,
+					annexure.annexure_revision,
+					annexure.annexure_exclusions,
+					annexure.annexure_billing_payment_terms,
+					annexure.annexure_taxation,
+					annexure.annexure_payment_milestone,
+					annexure.annexure_confidentiality,
+					annexure.annexure_codes_standards,
+					annexure.annexure_dispute_resolution,
 					id,
 				]
 			);
@@ -475,8 +525,8 @@ export async function PUT(request, { params }) {
 					body.kind_attn || null,
 					body.enquiry_number || null,
 					body.enquiry_date || null,
-					body.scope_items?.[0]?.description || null, // First item description as scope_of_work
-					JSON.stringify(body.scope_items || []),
+					sanitizedFirstItemDescription, // First item description as scope_of_work
+					sanitizedScopeItems,
 					body.gross_amount || 0,
 					body.gst_percentage || 18,
 					body.gst_amount || 0,
@@ -486,23 +536,23 @@ export async function PUT(request, { params }) {
 					body.gst_number || null,
 					body.pan_number || null,
 					body.tan_number || null,
-					body.terms_and_conditions || null,
-					body.annexure_scope_of_work || null,
-					body.annexure_input_document || null,
-					body.annexure_deliverables || null,
-					body.annexure_software || null,
-					body.annexure_duration || null,
-					body.annexure_site_visit || null,
-					body.annexure_quotation_validity || null,
-					body.annexure_mode_of_delivery || null,
-					body.annexure_revision || null,
-					body.annexure_exclusions || null,
-					body.annexure_billing_payment_terms || null,
-					body.annexure_taxation || null,
-					body.annexure_payment_milestone || null,
-					body.annexure_confidentiality || null,
-					body.annexure_codes_standards || null,
-					body.annexure_dispute_resolution || null,
+					sanitizedTerms,
+					annexure.annexure_scope_of_work,
+					annexure.annexure_input_document,
+					annexure.annexure_deliverables,
+					annexure.annexure_software,
+					annexure.annexure_duration,
+					annexure.annexure_site_visit,
+					annexure.annexure_quotation_validity,
+					annexure.annexure_mode_of_delivery,
+					annexure.annexure_revision,
+					annexure.annexure_exclusions,
+					annexure.annexure_billing_payment_terms,
+					annexure.annexure_taxation,
+					annexure.annexure_payment_milestone,
+					annexure.annexure_confidentiality,
+					annexure.annexure_codes_standards,
+					annexure.annexure_dispute_resolution,
 					id,
 				]
 			);
@@ -556,8 +606,8 @@ export async function PUT(request, { params }) {
 					body.kind_attn || null,
 					body.enquiry_number || null,
 					body.enquiry_date || null,
-					JSON.stringify(body.scope_items || []),
-					body.scope_items?.[0]?.description || null,
+					sanitizedScopeItems,
+					sanitizedFirstItemDescription,
 					body.gross_amount || 0,
 					body.gst_percentage || 18,
 					body.gst_amount || 0,
@@ -568,23 +618,23 @@ export async function PUT(request, { params }) {
 					body.gst_number || null,
 					body.pan_number || null,
 					body.tan_number || null,
-					body.terms_and_conditions || null,
-					body.annexure_scope_of_work || null,
-					body.annexure_input_document || null,
-					body.annexure_deliverables || null,
-					body.annexure_software || null,
-					body.annexure_duration || null,
-					body.annexure_site_visit || null,
-					body.annexure_quotation_validity || null,
-					body.annexure_mode_of_delivery || null,
-					body.annexure_revision || null,
-					body.annexure_exclusions || null,
-					body.annexure_billing_payment_terms || null,
-					body.annexure_taxation || null,
-					body.annexure_payment_milestone || null,
-					body.annexure_confidentiality || null,
-					body.annexure_codes_standards || null,
-					body.annexure_dispute_resolution || null,
+					sanitizedTerms,
+					annexure.annexure_scope_of_work,
+					annexure.annexure_input_document,
+					annexure.annexure_deliverables,
+					annexure.annexure_software,
+					annexure.annexure_duration,
+					annexure.annexure_site_visit,
+					annexure.annexure_quotation_validity,
+					annexure.annexure_mode_of_delivery,
+					annexure.annexure_revision,
+					annexure.annexure_exclusions,
+					annexure.annexure_billing_payment_terms,
+					annexure.annexure_taxation,
+					annexure.annexure_payment_milestone,
+					annexure.annexure_confidentiality,
+					annexure.annexure_codes_standards,
+					annexure.annexure_dispute_resolution,
 					body.quotation_date
 						? new Date(
 								new Date(body.quotation_date).getTime() +
@@ -605,6 +655,18 @@ export async function PUT(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error updating quotation:', error);
+		// The active-number unique indexes (migration
+		// 20260928120000_add_unique_active_document_numbers) make a collision on
+		// an edited number a constraint error rather than a silent duplicate.
+		if (isDuplicateKeyError(error)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'A quotation with this number already exists',
+				},
+				{ status: 409 }
+			);
+		}
 		return NextResponse.json(
 			{ success: false, error: error.message || 'Failed to update quotation' },
 			{ status: 500 }

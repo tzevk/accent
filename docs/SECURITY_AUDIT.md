@@ -14,6 +14,10 @@
 
 ---
 
+> **Remediation status (2026-09-28):** every open/partial finding re-verified against HEAD `ff7440a`, cross-referenced with the piolium deep audit (`piolium/final-audit-report.md`, 2026-09-02, commit `f00d6ad`; C1 → SEC-26, C2 already fixed in code, H1 → SEC-08). Corrections are consolidated in [Status corrections](#status-corrections-2026-09-28-re-verification); four new findings SEC-26…SEC-29 are recorded below; the remediation plan is `docs/todo/SECURITY_REMEDIATION_PLAN.md` (ADRs 0011–0014).
+
+---
+
 ## Executive Summary
 
 **25 findings: 2 Critical, 8 High, 11 Medium, 3 Low, 1 Informational.**
@@ -63,6 +67,29 @@ Second-order risks: stored XSS in messaging and HTML download endpoints (no HTML
 | SEC-25 | ⚪ Info     | `package.json:30-75`, `package-lock.json`                                                                                                                                                      | No confirmed active CVEs at installed versions; unused `jsonwebtoken`; puppeteer-core version skew                                   | Open                    |
 
 ---
+
+### Status corrections (2026-09-28 re-verification)
+
+> **Remediation outcome (branch `security/remediation-254`):** the workstreams that closed these rows are implemented and verified — see the status block at the top of `docs/todo/SECURITY_REMEDIATION_PLAN.md` and the artifacts under `e2e/artifacts/security-*.json`. Three further findings surfaced while implementing them (SEC-30 the proxy was never compiled, SEC-31 project creation 500'd, SEC-32 activity-log pool deadlock) and are recorded below.
+
+Verified read-only against HEAD `ff7440a`. The table above predates this pass; this section is authoritative where they differ. SEC-01…SEC-07, SEC-10, SEC-12, SEC-14, SEC-19 keep their recorded Fixed/Resolved status.
+
+| ID     | Verified status                         | Evidence / note                                                                                                                                                                                                                                                                            |
+| ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| SEC-08 | **Open**                                | Sinks now call `sanitizeHtml` (`messages/page.jsx:1488`), but `messages/route.js:174,266-291` still stores raw and `src/lib/sanitize.js:12-40` is a regex denylist — `<svg/onload=…>` bypasses it. Plan workstream B.                                                                      |
+| SEC-09 | **Open — wider than recorded**          | material-requisitions/download raw at `:67,249-340`, plus four sibling sinks: `purchase-orders/download`, `outgoing-purchase-orders/download`, `quotations/download` and `invoices/download` (Puppeteer PDFs). Plan workstream D.                                                          |
+| SEC-11 | **Open**                                | `proxy.ts:65-90` still trusts `x-forwarded-for` first; counter store still per-instance. Superseded by ADR-0013 (DB buckets for auth/heavy + platform-verified IP). Plan workstream F.                                                                                                     |
+| SEC-13 | **Open**                                | invoice-list, payee-list, masters/accounts, masters/banks still `getCurrentUser`-only; plus 14 handlers with no auth at all (SEC-26). Plan workstream A.                                                                                                                                   |
+| SEC-15 | **Fixed 2026-09-28**                    | All four `dangerouslySetInnerHTML` sinks call `sanitizeHtml` (projects `page.jsx:54`, `ScopeTab.jsx:17`, proposals edit `page.jsx:2705`, messages `page.jsx:1488`). Parser-based replacement pending (workstream B).                                                                       |
+| SEC-16 | **Refuted for .xlsx; Open for one CSV** | Installed ExcelJS 4.4.0 maps string cells to shared strings, never formulas (`node_modules/exceljs/lib/doc/cell.js:1066-1083`, `cell-xform.js:230-245`); the other three CSV producers are static templates. The only live dynamic CSV is `src/app/employees/attendance/page.jsx:698-701`. |
+| SEC-17 | **Partial**                             | document-upload now AND-logic + entity check + UUID names (`route.js:78-88`), still no magic bytes; messages/attachments still OR-logic (`:80`). Plan workstream C.                                                                                                                        |
+| SEC-18 | **Partial**                             | `limitInputPixels: 40_000_000` set (`uploads/route.js:17,55-56`), no size cap before `Buffer.from(cleaned,'base64')` (`:45-46`). Plan workstream C.                                                                                                                                        |
+| SEC-20 | **Open**                                | `src/utils/database.js:47-62` pool has no `ssl` key; credentials still on the public IP `94.103.163.250`. Plan workstream G.                                                                                                                                                               |
+| SEC-21 | **Open**                                | `src/utils/buildReceiptHTML.ts:38-65` raw interpolation; `get-receipt-pdf/route.ts:57` sets content with no request interception. Plan workstream D.                                                                                                                                       |
+| SEC-22 | **Open**                                | `login/route.js:88-90` verifies only when a row exists; `api/auth/login/route.js` still public. Plan workstream A.                                                                                                                                                                         |
+| SEC-23 | **Open**                                | `reports/page.jsx:464-576` writes raw fields via `document.write`. Plan workstream D.                                                                                                                                                                                                      |
+| SEC-24 | **Partial**                             | `next.config.ts:74-83` covers only `/uploads/:path*`. Static CSP + HSTS + X-Frame-Options + nosniff + Referrer-Policy planned (workstream B6, ADR-0012).                                                                                                                                   |
+| SEC-25 | **Open**                                | unused `jsonwebtoken`; `puppeteer-core` 24.x vs `puppeteer` 25.x skew. Plan workstream G.                                                                                                                                                                                                  |
 
 ## 🔴 Critical
 
@@ -412,6 +439,74 @@ Second-order risks: stored XSS in messaging and HTML download endpoints (no HTML
 
 ---
 
+## 🆕 New findings (2026-09-28)
+
+### SEC-26 — Fourteen API handlers have no server-side authentication at all
+
+**Severity:** 🔴 Critical · **CWE-306, CWE-862** · piolium C1, PoC-executed 2026-09-02
+
+**Location:** `masters/categories`, `masters/descriptions`, `masters/account-heads`, `activity-master/activities`, `activity-master/subactivities`, `admin/material-requisitions` (+`next-number`), `employees/[id]/attendance`, `employees/[id]/salary-structure`, `employees/available-for-users`, `projects/[id]/invoice`, `projects/[id]/purchase-order`, `projects/[id]/quotation`; plus per-handler gaps in `activity-master` PUT/DELETE (GET/POST are guarded).
+
+**Description:** the Edge presence check (`proxy.ts:247`, satisfied by any `session` cookie value) is the only gate — the handlers never call `getCurrentUser`/`ensurePermission`. piolium proved anonymous GET/POST/DELETE on the three master tables and forged-cookie access on `active-users` (C2, since fixed). `created_by` is taken from the request body on `masters/categories`.
+
+**Fix:** `docs/todo/SECURITY_REMEDIATION_PLAN.md` workstream A (guard mapping A2, dead-route deletion A3, CI guard A6).
+
+### SEC-27 — RBAC vocabulary defects grant/deny the wrong callers
+
+**Severity:** 🟠 High · **CWE-863**
+
+**Location:** `PERMISSIONS.WRITE` is undefined (`src/utils/rbac.js:55-66`) yet required by `admin/invoices` POST (`:151-155`) and `admin/purchase-orders` POST/PUT (`:141-146,340-346`) → permanent 403 for every non-super-admin; `admin/invoices` GET guards `PROPOSALS:READ` (`:18-22`) and `admin/purchase-orders` DELETE guards `PROPOSALS:DELETE` (`:478-484`); `admin/purchase-invoices` and `admin/expenses` also guard `PROPOSALS`.
+
+**Fix:** plan workstream A5.
+
+### SEC-28 — Financial TOCTOU: PO balance and sequential numbers
+
+**Severity:** 🟠 High · **CWE-362, CWE-367** · piolium p10-021
+
+**Location:** `admin/invoices/route.js:298-325` un-transactioned read-modify-write of `purchase_orders.remaining_balance`; `admin/invoices/[id]/route.js:243-311` transactional but non-locking read followed by an absolute write (lost updates). Every number generator is a non-atomic `SELECT MAX/COUNT` → `INSERT`; six columns have no unique guard: `quotations.quotation_number`, `payment_entries.receipt_no`, `project_invoices`, `project_quotations`, `outgoing_purchase_orders.sr_no`, `leads.lead_id`.
+
+**Fix:** plan workstream E.
+
+### SEC-29 — Dead unguarded routes and an over-sharing health probe
+
+**Severity:** 🔵 Low · **CWE-1059** (resolved by deletion)
+
+**Location:** `employees/[id]/attendance`, `employees/[id]/salary-structure`, `employees/available-for-users` (zero callers, no auth, salary/PII surfaces); `api/health` returns DB pool stats to any caller.
+
+**Fix:** plan workstream A (delete the three routes; minimize the health payload; ADR-0014).
+
+## 🆕 Findings discovered during remediation (2026-09-28)
+
+### SEC-30 — The proxy never executed in a production build: `proxy.ts` sat outside `src/`
+
+**Severity:** 🔴 Critical (root-cause amplifier of SEC-26) · **CWE-1059**
+
+**Location:** `proxy.ts` (repository root) with the App Router at `src/app`.
+
+**Description:** Next only loads the proxy next to `app` ("in the project root, or inside `src` if applicable, so that it is located at the same level as `pages` or `app`"). The production `middleware-manifest.json` contained zero middleware entries (`middleware: {}`, `sortedMiddleware: []`), so the cookie-presence gate and the rate limiter were **dead code in every build** — and the audits' claim that "a forged cookie buys nothing because the presence check blocks it" was false. Proven live before the fix: anonymous `/dashboard`, `/projects/1` and `/masters/users` returned 200, and 12 bad logins were never throttled.
+
+**Fix:** moved to `src/proxy.ts` (imports adjusted); `npm run build:e2e` now prints `ƒ Proxy (Middleware)`; the security E2E specs assert anonymous pages redirect (307 → `/signin`) and anonymous APIs 401 on routed and unrouted paths. Recorded in ADR-0011.
+
+### SEC-31 — `POST /api/projects` had 30 columns and 29 placeholders: every project create returned 500
+
+**Severity:** 🟠 High (functional) · **CWE-1059**
+
+**Location:** `src/app/api/projects/route.js` INSERT (30-column list, 29 `?`).
+
+**Description:** MySQL rejects the statement with "Column count doesn't match value count at row 1"; the stored-XSS E2E path that creates a project surfaced it. Pre-existing at HEAD, unrelated to the sanitizer change (which only made the bind undefined-error visible first).
+
+**Fix:** added the missing placeholder; the stored-XSS spec now creates projects through the real route and asserts the sanitized write.
+
+### SEC-32 — Activity logging deadlocks the pool under concurrent writes
+
+**Severity:** 🟡 Medium (availability) · **CWE-833**
+
+**Location:** `admin/purchase-invoices`, `admin/expenses`, `admin/outgoing-quotations` POST — `await logActivity(...)` runs while the handler still holds its pooled connection; `logActivity` checks out a second connection.
+
+**Description:** with the 5-connection app pool, 6 concurrent creates exhaust the pool: five handlers hold a connection and each waits for a second one for the logger — a permanent deadlock (reproduced live: six concurrent `POST /api/admin/purchase-invoices` all timed out; three concurrent succeeded). Found by the new concurrency E2E spec.
+
+**Fix:** release the connection before calling `logActivity` in the three routes (error paths still release in `finally`). Six concurrent creates now all succeed (verified live, distinct `PI-` numbers).
+
 ## Surfaces checked and found clean
 
 | Surface           | Result                                                                                                                                                                                                           |
@@ -421,6 +516,8 @@ Second-order risks: stored XSS in messaging and HTML download endpoints (no HTML
 | SSRF              | No findings. No server-side `fetch`/`axios`/`http` usage in API routes or utils (`http.js`/`api-client.js` are client-side); the only server-side network primitive is the receipt-PDF headless browser (SEC-21) |
 
 ## Remediation order
+
+> **2026-09-28: superseded.** The live plan is `docs/todo/SECURITY_REMEDIATION_PLAN.md` (workstreams A–G with acceptance and E2E proof); the list below is kept as history.
 
 1. ~~**SEC-01 + SEC-03 + SEC-14 (session model)**~~ — **DONE 2026-08-11.** Opaque server-side session tokens; `session_permissions` cookie fast path dropped; password change/reset revoke all sessions; SEC-12's `Secure` flag fixed with the same cookie rewrite; admin page gating moved server-side. SEC-05's `|| authenticated` clause and SEC-11's cookie identity were also removed as part of this work (findings remain open for their remaining scope).
 2. **SEC-02 + SEC-06 + SEC-10 (upload/storage model)** — ~~SEC-02 done 2026-08-13~~ (uploads rasterized to PNG, non-raster rejected, `/uploads/*` served with nosniff + attachment). ~~SEC-06 and SEC-10 done 2026-08-17~~ (documents moved to `private/documents/`, RBAC + IDOR entity verification, pure UUID filenames, authenticated `/api/document-upload/download` route).

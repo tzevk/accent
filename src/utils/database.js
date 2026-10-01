@@ -1,8 +1,44 @@
+import fs from 'node:fs';
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
 
 // Load env from .env.local for server-side tools/scripts that may not automatically load it
 dotenv.config();
+
+/**
+ * Resolve the mysql2 TLS options from the environment (SEC-20).
+ *
+ * DB_SSL_MODE: 'off' (default) | 'require' | 'verify'
+ *   off     — no TLS. Local dev and E2E only.
+ *   require — TLS, certificate NOT verified (encrypted but unauthenticated).
+ *   verify  — TLS with full certificate verification. Production must use this;
+ *             set DB_SSL_CA_PATH for a private CA, otherwise the system trust
+ *             store is used.
+ *
+ * Default is 'off' so local dev/E2E keep working until the server requires TLS.
+ * An unknown mode throws rather than silently downgrading to plaintext.
+ *
+ * Single source of truth: `knexfile.js` imports this. `src/utils/proxy-db.ts`
+ * deliberately keeps its own copy — the proxy must not share modules with the
+ * route handlers (ADR-0011).
+ */
+export function getDbSslConfig() {
+	const mode = String(process.env.DB_SSL_MODE || 'off').toLowerCase();
+	if (mode === 'off') return undefined;
+	if (mode !== 'require' && mode !== 'verify') {
+		throw new Error(
+			`Invalid DB_SSL_MODE "${process.env.DB_SSL_MODE}" — expected verify, require or off`
+		);
+	}
+	const caPath = process.env.DB_SSL_CA_PATH;
+	const ca = caPath ? fs.readFileSync(caPath) : undefined;
+	return {
+		// A configured CA always enables verification; 'verify' also verifies
+		// against the system trust store when no CA is given.
+		rejectUnauthorized: mode === 'verify' || Boolean(ca),
+		...(ca ? { ca } : {}),
+	};
+}
 
 // Use globalThis to persist across HMR reloads in dev
 let pool = globalThis.__dbPool || null;
@@ -36,6 +72,13 @@ export async function dbConnect() {
 
 	// Initialize pool once
 	if (!pool) {
+		// Resolved once per pool init (reads the CA file) — not per acquisition.
+		const ssl = getDbSslConfig();
+		if (!ssl && env === 'production') {
+			console.warn(
+				'[DB] DB_SSL_MODE is off in production — SEC-20 requires DB_SSL_MODE=verify once the server requires TLS.'
+			);
+		}
 		let attempt = 0;
 		let lastError;
 		const tryHosts = [host, host === 'localhost' ? '127.0.0.1' : null].filter(
@@ -59,6 +102,7 @@ export async function dbConnect() {
 					idleTimeout: 30000, // 30s idle before teardown (was 120s)
 					enableKeepAlive: true,
 					keepAliveInitialDelay: 10000,
+					ssl,
 				});
 				// Warm a connection to validate database existence
 				const test = await pool.getConnection();
@@ -85,6 +129,7 @@ export async function dbConnect() {
 						user,
 						password,
 						connectTimeout,
+						ssl,
 					});
 					try {
 						await admin.query(

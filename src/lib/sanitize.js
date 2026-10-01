@@ -1,40 +1,35 @@
 /**
- * Lightweight HTML sanitizer for safe `dangerouslySetInnerHTML`.
- * Server-safe (no jsdom / filesystem) — avoids isomorphic-dompurify
- * `browser/default-stylesheet.css` ENOENT during Next.js prerender.
+ * Rich-text sanitizer with two engines over one allowlist (ADR-0012).
  *
- * On client we could use DOMPurify, but regex is sufficient for the
- * threat model (stored XSS from proposal scope / message bodies) and
- * keeps the server bundle lean. If you need richer sanitization later,
- * switch to `dompurify` behind a `typeof window !== 'undefined'` guard.
+ *  - `sanitizeHtml` — isomorphic render-time safety net for
+ *    `dangerouslySetInnerHTML`. Uses DOMPurify in the browser (where a DOM
+ *    exists) and `sanitize-html` during server prerender. Server bundle uses
+ *    the Node engine only; no jsdom.
+ *  - `sanitizeRichText` — server-side write-path sanitizer. Always
+ *    `sanitize-html`; call this before INSERT/UPDATE of any HTML-bound column.
+ *
+ * The regex denylist this replaced let `<svg/onload=…>` through; the bypass
+ * corpus lives in `sanitize.test.ts` and covers both engines.
  */
+import sanitizeHtmlServer from 'sanitize-html';
+import createDOMPurify from 'dompurify';
+import {
+	CLIENT_SANITIZE_CONFIG,
+	SERVER_SANITIZE_OPTIONS,
+} from './html-allowlist.js';
+
+let purifier = null;
 
 export function sanitizeHtml(dirty) {
 	if (!dirty || typeof dirty !== 'string') return '';
-	let out = dirty;
+	if (typeof window !== 'undefined' && window.document) {
+		if (!purifier) purifier = createDOMPurify(window);
+		return purifier.sanitize(dirty, CLIENT_SANITIZE_CONFIG);
+	}
+	return sanitizeHtmlServer(dirty, SERVER_SANITIZE_OPTIONS);
+}
 
-	// Strip <script>…</script> and <style>…</style> entirely
-	out = out.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-	out = out.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
-
-	// Strip event handlers: onload=, onerror=, onclick=, etc. (quoted or unquoted)
-	out = out.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/gi, '');
-
-	// Neutralize javascript: URLs in href/src/xlink:href/action/formaction
-	out = out.replace(
-		/\s(href|src|xlink:href|action|formaction)\s*=\s*("|')\s*javascript:[^"']*\2/gi,
-		' $1="#"'
-	);
-	out = out.replace(
-		/\s(href|src|xlink:href|action|formaction)\s*=\s*javascript:[^\s"'<>`]+/gi,
-		' $1="#"'
-	);
-
-	// Strip data:text/html and vbscript: as well
-	out = out.replace(
-		/\s(href|src)\s*=\s*("|')\s*data:text\/html[^"']*\2/gi,
-		' $1="#"'
-	);
-
-	return out;
+export function sanitizeRichText(value) {
+	if (!value || typeof value !== 'string') return '';
+	return sanitizeHtmlServer(value, SERVER_SANITIZE_OPTIONS);
 }

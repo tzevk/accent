@@ -7,6 +7,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { updateInvoicePaymentStatus } from '@/utils/payment-utils';
+import { isDuplicateKeyError } from '@/utils/db-number-retry';
 
 export async function PUT(
 	request: Request,
@@ -69,6 +70,13 @@ export async function PUT(
 		});
 	} catch (error: any) {
 		console.error('Update payment entry error:', error?.message);
+		// Active receipt-number unique index: surface a collision as 409.
+		if (isDuplicateKeyError(error)) {
+			return NextResponse.json(
+				{ success: false, error: 'This receipt number already exists' },
+				{ status: 409 }
+			);
+		}
 		return NextResponse.json(
 			{
 				success: false,

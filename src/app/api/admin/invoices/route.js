@@ -11,12 +11,14 @@ import {
 } from '@/utils/invoice-validation';
 
 import { R, sub, toNumber } from '@/lib/money';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
+
 // GET - Fetch invoices
 export async function GET(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
+		RESOURCES.INVOICES,
 		PERMISSIONS.READ
 	);
 	if (authResult instanceof Response) return authResult;
@@ -137,12 +139,37 @@ const MONTHS = [
 	'DEC',
 ];
 
-function generateInvoiceNumber(count) {
+// Invoice numbers are ATS/I/<MON>-<YY>/<NNN>. The sequence is read from the
+// newest active invoice of the current month inside the caller's transaction
+// with a row lock (FOR UPDATE), so concurrent POSTs serialize behind the last
+// row instead of minting the same number. The unique index on
+// active_invoice_number is the backstop (caller retries on ER_DUP_ENTRY).
+async function generateInvoiceNumber(db) {
 	const date = new Date();
 	const year = date.getFullYear().toString().slice(-2);
 	const month = MONTHS[date.getMonth()];
-	const num = (count + 1).toString().padStart(3, '0');
-	return `ATS/I/${month}-${year}/${num}`;
+	const prefix = `${month}-${year}/`;
+
+	// Check both old (ATS-I/) and new (ATS/I/) formats.
+	const [rows] = await db.execute(
+		`SELECT invoice_number FROM invoices
+		 WHERE (invoice_number LIKE CONCAT('ATS/I/', ?, '%')
+		    OR invoice_number LIKE CONCAT('ATS-I/', ?, '%'))
+		   AND isDelete = 0
+		 ORDER BY id DESC LIMIT 1
+		 FOR UPDATE`,
+		[prefix, prefix]
+	);
+
+	let sequence = 1;
+	if (rows.length > 0 && rows[0].invoice_number) {
+		const match = rows[0].invoice_number.match(
+			new RegExp(`ATS[/-]I/${month}-${year}/(\\d+)`)
+		);
+		if (match) sequence = parseInt(match[1], 10) + 1;
+	}
+
+	return `ATS/I/${month}-${year}/${String(sequence).padStart(3, '0')}`;
 }
 
 // POST - Create new invoice
@@ -150,8 +177,8 @@ export async function POST(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
-		PERMISSIONS.WRITE
+		RESOURCES.INVOICES,
+		PERMISSIONS.CREATE
 	);
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
@@ -258,86 +285,106 @@ export async function POST(request) {
 
 		connection = await dbConnect();
 
-		// Use pre-generated invoice number from client, or generate one
-		let invoiceNumber = bodyInvoiceNumber;
-		if (!invoiceNumber) {
-			const [countResult] = await connection.execute(
-				'SELECT COUNT(*) as count FROM invoices WHERE isDelete = 0'
-			);
-			const count = countResult?.[0]?.count || 0;
-			invoiceNumber = generateInvoiceNumber(count);
-		}
+		// The PO balance update and the invoice INSERT must be atomic, and the
+		// PO balance must never be written from a stale read: the PO row is
+		// locked (FOR UPDATE) and its balance is decremented relatively, so
+		// concurrent invoice POSTs cannot lose updates. Number generation runs
+		// inside the same transaction behind the same lock; the unique
+		// active_invoice_number index is the backstop and a collision retries
+		// with a fresh read.
+		let invoiceNumber;
+		let result;
+		for (let attempt = 1; ; attempt++) {
+			await connection.beginTransaction();
+			try {
+				// Use pre-generated invoice number from client, or generate one
+				invoiceNumber = bodyInvoiceNumber;
 
-		// Check for duplicate invoice_number before INSERT to give a friendly 409
-		const [existingInvoice] = await connection.execute(
-			'SELECT id FROM invoices WHERE invoice_number = ? AND isDelete = 0 LIMIT 1',
-			[invoiceNumber]
-		);
-		if (existingInvoice.length > 0) {
-			return NextResponse.json(
-				{
-					success: false,
-					message: `Invoice number "${invoiceNumber}" already exists`,
-					errors: [
-						{
-							field: 'invoice_number',
-							message: `Invoice number "${invoiceNumber}" already exists`,
-						},
-					],
-				},
-				{ status: 409 }
-			);
-		}
+				if (invoiceNumber) {
+					// Check for duplicate invoice_number before INSERT to give a friendly 409
+					const [existingInvoice] = await connection.execute(
+						'SELECT id FROM invoices WHERE invoice_number = ? AND isDelete = 0 LIMIT 1',
+						[invoiceNumber]
+					);
+					if (existingInvoice.length > 0) {
+						await connection.rollback();
+						return NextResponse.json(
+							{
+								success: false,
+								message: `Invoice number "${invoiceNumber}" already exists`,
+								errors: [
+									{
+										field: 'invoice_number',
+										message: `Invoice number "${invoiceNumber}" already exists`,
+									},
+								],
+							},
+							{ status: 409 }
+						);
+					}
+				} else {
+					invoiceNumber = await generateInvoiceNumber(connection);
+				}
 
-		// Upsert purchase order and calculate balance_po_value.
-		// purchase_orders.po_number is globally unique (single-column index from
-		// purchase-orders/route.js:37), so we look it up by po_number alone.
-		let poId = null;
-		let calculatedBalance = balance_po_value;
-		if (po_number && client_name) {
-			const [existingPO] = await connection.execute(
-				'SELECT id, original_value, remaining_balance FROM purchase_orders WHERE po_number = ?',
-				[po_number]
-			);
+				// Upsert purchase order and calculate balance_po_value.
+				// purchase_orders.po_number is globally unique (single-column index from
+				// purchase-orders/route.js:37), so we look it up by po_number alone.
+				let poId = null;
+				let calculatedBalance = balance_po_value;
+				if (po_number && client_name) {
+					const [existingPO] = await connection.execute(
+						'SELECT id, original_value, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
+						[po_number]
+					);
 
-			if (existingPO.length > 0) {
-				poId = existingPO[0].id;
-				const oldRemaining = R(existingPO[0].remaining_balance);
-				const invoiceTotal = R(total);
-				calculatedBalance = toNumber(sub(oldRemaining, invoiceTotal));
+					if (existingPO.length > 0) {
+						poId = existingPO[0].id;
+						const oldRemaining = R(existingPO[0].remaining_balance);
+						const invoiceTotal = R(total);
+						calculatedBalance = toNumber(sub(oldRemaining, invoiceTotal));
 
-				await connection.execute(
-					'UPDATE purchase_orders SET remaining_balance = ? WHERE id = ?',
-					[calculatedBalance, poId]
-				);
-			} else {
-				const poValue = R(original_po_value);
-				const invoiceTotal = R(total);
-				calculatedBalance = toNumber(sub(poValue, invoiceTotal));
+						await connection.execute(
+							'UPDATE purchase_orders SET remaining_balance = remaining_balance - ? WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
+							[toNumber(invoiceTotal), poId]
+						);
+					} else {
+						const poValue = R(original_po_value);
+						const invoiceTotal = R(total);
+						calculatedBalance = toNumber(sub(poValue, invoiceTotal));
 
-				await connection.execute(
-					`INSERT INTO purchase_orders (po_number, client_name, original_value, remaining_balance, po_date)
-           VALUES (?, ?, ?, ?, ?)
+						await connection.execute(
+							`INSERT INTO purchase_orders (po_number, original_value, remaining_balance, po_date)
+           VALUES (?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE
-             remaining_balance = VALUES(remaining_balance),
+             remaining_balance = remaining_balance - ?,
              original_value = VALUES(original_value),
-             client_name = VALUES(client_name),
              po_date = VALUES(po_date)`,
-					[po_number, client_name, poValue, calculatedBalance, po_date || null]
-				);
+							[
+								po_number,
+								toNumber(poValue),
+								calculatedBalance,
+								po_date || null,
+								toNumber(invoiceTotal),
+							]
+						);
 
-				// Re-fetch id: on UPDATE path, insertId is 0 and we need the real id.
-				const [poRow] = await connection.execute(
-					'SELECT id FROM purchase_orders WHERE po_number = ?',
-					[po_number]
-				);
-				poId = poRow?.[0]?.id ?? null;
-			}
-		}
+						// Re-read under lock: the insert may have lost the race with a
+						// concurrent creator, in which case the stored balance (already
+						// decremented above) is the true one.
+						const [poRow] = await connection.execute(
+							'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
+							[po_number]
+						);
+						poId = poRow?.[0]?.id ?? null;
+						if (poRow?.[0]) {
+							calculatedBalance = toNumber(R(poRow[0].remaining_balance));
+						}
+					}
+				}
 
-		// Insert invoice
-		const [result] = await connection.execute(
-			`INSERT INTO invoices (
+				// Insert invoice
+				[result] = await connection.execute(
+					`INSERT INTO invoices (
         invoice_number, invoice_date, client_name, client_email, client_phone, client_address,
         client_pan, client_gstin, client_state, client_state_code, kind_attn,
         po_number, po_date, po_value, original_po_value, balance_po_value, po_id,
@@ -346,52 +393,70 @@ export async function POST(request) {
         gst_number, pan_number, tan_number, service_category, bank_address,
         amount_paid, balance_due, notes, terms, due_date, status
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				invoiceNumber,
-				invoice_date || null,
-				client_name,
-				client_email || null,
-				client_phone || null,
-				client_address || null,
-				client_pan || null,
-				client_gstin || null,
-				client_state || null,
-				client_state_code || null,
-				kind_attn || null,
-				po_number || null,
-				po_date || null,
-				po_value || null,
-				original_po_value || null,
-				calculatedBalance || null,
-				poId,
-				description || null,
-				JSON.stringify(items || []),
-				line_items ? JSON.stringify(line_items) : null,
-				subtotal || 0,
-				gross_amount || 0,
-				tax_rate || 18,
-				tax_amount || 0,
-				gst_type || 'cgst_sgst',
-				cgst_rate || 9,
-				sgst_rate || 9,
-				igst_rate || 18,
-				discount || 0,
-				total || 0,
-				net_amount || 0,
-				amount_in_words || null,
-				gst_number || null,
-				pan_number || null,
-				tan_number || null,
-				service_category || null,
-				bank_address || null,
-				amount_paid || 0,
-				balance_due || total || 0,
-				notes || null,
-				terms || null,
-				due_date || null,
-				status || 'draft',
-			]
-		);
+					[
+						invoiceNumber,
+						invoice_date || null,
+						client_name,
+						client_email || null,
+						client_phone || null,
+						client_address || null,
+						client_pan || null,
+						client_gstin || null,
+						client_state || null,
+						client_state_code || null,
+						kind_attn || null,
+						po_number || null,
+						po_date || null,
+						po_value || null,
+						original_po_value || null,
+						calculatedBalance || null,
+						poId,
+						description || null,
+						JSON.stringify(items || []),
+						line_items ? JSON.stringify(line_items) : null,
+						subtotal || 0,
+						gross_amount || 0,
+						tax_rate || 18,
+						tax_amount || 0,
+						gst_type || 'cgst_sgst',
+						cgst_rate || 9,
+						sgst_rate || 9,
+						igst_rate || 18,
+						discount || 0,
+						total || 0,
+						net_amount || 0,
+						amount_in_words || null,
+						gst_number || null,
+						pan_number || null,
+						tan_number || null,
+						service_category || null,
+						bank_address || null,
+						amount_paid || 0,
+						balance_due || total || 0,
+						notes || null,
+						terms || null,
+						due_date || null,
+						status || 'draft',
+					]
+				);
+
+				await connection.commit();
+				break;
+			} catch (error) {
+				await connection.rollback();
+				// A freshly generated number collided with a concurrent insert
+				// (unique active_invoice_number index): retry from a fresh read.
+				if (
+					!bodyInvoiceNumber &&
+					isRetryableNumberError(error) &&
+					attempt < 5
+				) {
+					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+					continue;
+				}
+				throw error;
+			}
+		}
 
 		return NextResponse.json({
 			success: true,

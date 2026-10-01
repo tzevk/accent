@@ -19,7 +19,7 @@ function safeParse(json, fallback = []) {
 // In-memory user cache to reduce DB queries (short TTL for freshness)
 // ═══════════════════════════════════════════════════════════════════════════
 const userCache = new Map();
-const USER_CACHE_TTL = 5 * 60 * 1000; // 5 min — reduces DB hits from high-frequency polling
+const USER_CACHE_TTL = 60 * 1000; // 60 s (ADR-0013) — bounds cross-instance revocation/deactivation
 const MAX_CACHE_SIZE = 500;
 // In-flight dedup: if two requests arrive for the same cold-cache user simultaneously,
 // share the single pending DB promise instead of both creating a connection.

@@ -1,0 +1,42 @@
+[
+	{
+		"path": "src/app/api/health/route.js",
+		"methods": ["*"],
+		"reason": "Public liveness probe by design (ADR-0014); payload is limited to { status: 'ok' }."
+	},
+	{
+		"path": "src/app/api/login/route.js",
+		"methods": ["*"],
+		"reason": "Public entry point by design (ADR-0014): validates credentials and mints the session cookie."
+	},
+	{
+		"path": "src/app/api/logout/route.js",
+		"methods": ["*"],
+		"reason": "Public by design (ADR-0014): revokes the caller's session token; idempotent when unauthenticated."
+	},
+	{
+		"path": "src/app/api/session/route.js",
+		"methods": ["*"],
+		"reason": "Public by design (ADR-0014): resolves the session cookie for the client and returns 401 when absent."
+	},
+	{
+		"path": "src/app/api/attendance/webhook/route.ts",
+		"methods": ["POST"],
+		"reason": "Machine-to-machine ingestion endpoint authenticated by a Bearer SMARTOFFICE_WEBHOOK_SECRET header, not a session cookie."
+	},
+	{
+		"path": "src/app/api/documents/route.js",
+		"methods": ["*"],
+		"reason": "Thin forwarder: every handler delegates to src/app/api/document-master/route.js, which guards each handler with ensurePermission."
+	},
+	{
+		"path": "src/app/api/document-upload/download/route.js",
+		"methods": ["GET"],
+		"reason": "Thin forwarder: delegates to handleDocumentDownload in src/utils/document-helpers.js, which calls ensurePermission."
+	},
+	{
+		"path": "src/app/api/document-upload/download/[id]/route.js",
+		"methods": ["GET"],
+		"reason": "Thin forwarder: delegates to handleDocumentDownload in src/utils/document-helpers.js, which calls ensurePermission."
+	}
+]

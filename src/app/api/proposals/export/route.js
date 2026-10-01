@@ -1,20 +1,11 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import { escapeHtml } from '@/lib/escape-html';
 import {
 	ensurePermission,
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-
-function escapeHtml(str) {
-	if (str === null || str === undefined) return '';
-	return String(str)
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/\"/g, '&quot;')
-		.replace(/'/g, '&#039;');
-}
 
 export async function GET(request) {
 	// RBAC check
@@ -243,16 +234,8 @@ export async function GET(request) {
 					const docXmlPath = 'word/document.xml';
 					let docXml = zip2.file(docXmlPath).asText();
 
-					const escapeXml = (str) =>
-						String(str)
-							.replace(/&/g, '&amp;')
-							.replace(/</g, '&lt;')
-							.replace(/>/g, '&gt;')
-							.replace(/"/g, '&quot;')
-							.replace(/'/g, '&#039;');
-
 					const insertParagraph = (text) =>
-						`</w:p><w:p><w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
+						`</w:p><w:p><w:r><w:t xml:space="preserve">${escapeHtml(text)}</w:t></w:r></w:p>`;
 
 					const headingMap = {
 						Proposal: 'proposal_title',

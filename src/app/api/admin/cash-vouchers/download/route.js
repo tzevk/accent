@@ -1,4 +1,5 @@
 import { dbConnect } from '@/utils/database';
+import { escapeHtml } from '@/lib/escape-html';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -54,16 +55,6 @@ export async function GET(request) {
 				month: 'short',
 				year: 'numeric',
 			});
-		};
-
-		const escapeHtml = (str) => {
-			if (!str) return '';
-			return String(str)
-				.replace(/&/g, '&amp;')
-				.replace(/</g, '&lt;')
-				.replace(/>/g, '&gt;')
-				.replace(/"/g, '&quot;')
-				.replace(/'/g, '&#039;');
 		};
 
 		const formatDecimalAmount = (val) => {

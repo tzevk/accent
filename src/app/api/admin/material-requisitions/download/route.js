@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import { escapeHtml } from '@/lib/escape-html';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -64,7 +65,7 @@ export async function GET(request) {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Material Requisition - ${requisition.requisition_number}</title>
+      <title>Material Requisition - ${escapeHtml(requisition.requisition_number)}</title>
       <style>
         * {
           margin: 0;
@@ -246,16 +247,16 @@ export async function GET(request) {
         
         <div class="info-row">
           <div class="info-cell info-label">Requisition No.</div>
-          <div class="info-cell info-value" style="flex: 1;">${requisition.requisition_number}</div>
+          <div class="info-cell info-value" style="flex: 1;">${escapeHtml(requisition.requisition_number)}</div>
           <div class="info-cell info-label" style="width: 100px;">Date of Req.</div>
-          <div class="info-cell info-value" style="width: 100px;">${formatDate(requisition.requisition_date)}</div>
+          <div class="info-cell info-value" style="width: 100px;">${escapeHtml(formatDate(requisition.requisition_date))}</div>
         </div>
         
         <div class="info-row">
           <div class="info-cell info-label">Requested By</div>
-          <div class="info-cell info-value" style="flex: 1;">${requisition.requested_by || ''}</div>
+          <div class="info-cell info-value" style="flex: 1;">${escapeHtml(requisition.requested_by || '')}</div>
           <div class="info-cell info-label" style="width: 100px;">Department</div>
-          <div class="info-cell info-value" style="width: 100px;">${requisition.department || ''}</div>
+          <div class="info-cell info-value" style="width: 100px;">${escapeHtml(requisition.department || '')}</div>
         </div>
         
         <table>
@@ -272,10 +273,10 @@ export async function GET(request) {
 							.map(
 								(item, index) => `
               <tr>
-                <td class="center">${item.sr_no || index + 1}</td>
-                <td>${item.description || ''}</td>
-                <td class="center">${item.unit_qty || ''}</td>
-                <td>${item.purpose || ''}</td>
+                <td class="center">${escapeHtml(item.sr_no || index + 1)}</td>
+                <td>${escapeHtml(item.description || '')}</td>
+                <td class="center">${escapeHtml(item.unit_qty || '')}</td>
+                <td>${escapeHtml(item.purpose || '')}</td>
               </tr>
             `
 							)
@@ -302,15 +303,15 @@ export async function GET(request) {
         
         <div class="signatures">
           <div class="signature-box">
-            <div class="signature-line">${requisition.prepared_by || ''}</div>
+            <div class="signature-line">${escapeHtml(requisition.prepared_by || '')}</div>
             <div class="signature-label">Prepared By</div>
           </div>
           <div class="signature-box">
-            <div class="signature-line">${requisition.checked_by || ''}</div>
+            <div class="signature-line">${escapeHtml(requisition.checked_by || '')}</div>
             <div class="signature-label">Checked By</div>
           </div>
           <div class="signature-box">
-            <div class="signature-line">${requisition.approved_by || ''}</div>
+            <div class="signature-line">${escapeHtml(requisition.approved_by || '')}</div>
             <div class="signature-label">Approved By</div>
           </div>
         </div>
@@ -318,11 +319,11 @@ export async function GET(request) {
         <div class="receipt-section">
           <div class="receipt-row">
             <span class="receipt-label">Material Received / Collected By:</span>
-            <span class="receipt-value">${requisition.received_by || ''}</span>
+            <span class="receipt-value">${escapeHtml(requisition.received_by || '')}</span>
           </div>
           <div class="receipt-row">
             <span class="receipt-label">Date of Receipt of Material:</span>
-            <span class="receipt-value" style="width: 150px;">${formatDate(requisition.receipt_date)}</span>
+            <span class="receipt-value" style="width: 150px;">${escapeHtml(formatDate(requisition.receipt_date))}</span>
           </div>
         </div>
         

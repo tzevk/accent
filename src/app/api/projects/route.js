@@ -13,6 +13,10 @@ import {
 	getTableColumns,
 	getPrimaryKeyColumn,
 } from '@/utils/schema-cache';
+import {
+	sanitizeJsonStrings,
+	sanitizeOptionalRichText,
+} from '@/lib/sanitize-fields';
 
 // Helper to check if user is in project team
 function isUserInProjectTeam(projectTeam, userId, userEmail) {
@@ -241,19 +245,20 @@ export async function POST(request) {
 			}
 		}
 
-		// Auto-generate system project_id (always auto-generated for uniqueness)
-		let projectId;
+		// `projects.project_id` is an AUTO_INCREMENT integer primary key in this
+		// schema, so the route inserts NULL for it and MySQL assigns the PK. The
+		// human-readable `SSS_MM_YYYY` serial belongs to `project_code`.
+		let generatedCode;
 		{
 			const now = new Date();
 			const month = String(now.getMonth() + 1).padStart(2, '0');
 			const year = now.getFullYear();
-			const currentPattern = `_${month}_${year}`;
 
-			// Find highest serial number globally from project_id (continues across months)
+			// Find highest serial number globally from project_code (continues across months)
 			const [projects] = await db.execute(
-				`SELECT project_id,
-					CAST(SUBSTRING_INDEX(project_id, '_', 1) AS UNSIGNED) as serial_num
-				FROM projects WHERE project_id LIKE '%\\_%\\_%'
+				`SELECT project_code,
+					CAST(SUBSTRING_INDEX(project_code, '_', 1) AS UNSIGNED) as serial_num
+				FROM projects WHERE project_code LIKE '%\\_%\\_%'
 				ORDER BY serial_num DESC
 				LIMIT 1`
 			);
@@ -264,11 +269,11 @@ export async function POST(request) {
 			}
 
 			const nextSerial = String(maxSerial + 1).padStart(3, '0');
-			projectId = `${nextSerial}_${month}_${year}`;
+			generatedCode = `${nextSerial}_${month}_${year}`;
 		}
 
 		// Use user-provided project_code, or fall back to auto-generated value
-		const projectCode = (project_code && project_code.trim()) || projectId;
+		const projectCode = (project_code && project_code.trim()) || generatedCode;
 
 		// Insert the new project (include activities/disciplines JSON and new fields)
 		const [result] = await db.execute(
@@ -278,12 +283,12 @@ export async function POST(request) {
         activities, disciplines, discipline_descriptions, assignments,
         project_schedule, input_document, list_of_deliverables, kickoff_meeting, in_house_meeting,
         project_assumption_list, project_lessons_learnt_list, project_team
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
-				projectId,
+				null, // project_id — AUTO_INCREMENT
 				projectCode,
 				name,
-				description,
+				sanitizeOptionalRichText(description) ?? null,
 				effectiveCompanyId || null,
 				client_name,
 				project_manager || null,
@@ -300,7 +305,7 @@ export async function POST(request) {
 				notes || null,
 				JSON.stringify(data.activities || []),
 				JSON.stringify(data.disciplines || []),
-				JSON.stringify(data.discipline_descriptions || {}),
+				JSON.stringify(sanitizeJsonStrings(data.discipline_descriptions || {})),
 				JSON.stringify(data.assignments || []),
 				project_schedule || null,
 				input_document || null,
@@ -374,6 +379,14 @@ export async function POST(request) {
 export async function PUT(request) {
 	let db;
 	try {
+		// RBAC: update projects
+		const auth = await ensurePermission(
+			request,
+			RESOURCES.PROJECTS,
+			PERMISSIONS.UPDATE
+		);
+		if (auth instanceof Response) return auth;
+
 		const data = await request.json();
 		const {
 			id,
@@ -496,7 +509,7 @@ export async function PUT(request) {
       WHERE project_id = ?`,
 			[
 				name,
-				description || null,
+				sanitizeOptionalRichText(description || null),
 				effectiveCompanyId || null,
 				client_name || null,
 				project_manager || null,
@@ -509,7 +522,7 @@ export async function PUT(request) {
 				proposal_id || null,
 				JSON.stringify(data.disciplines || data.assigned_disciplines || []),
 				JSON.stringify(data.activities || data.assigned_activities || []),
-				JSON.stringify(data.discipline_descriptions || {}),
+				JSON.stringify(sanitizeJsonStrings(data.discipline_descriptions || {})),
 				JSON.stringify(data.assignments || []),
 				project_schedule || null,
 				input_document || null,
@@ -585,6 +598,14 @@ export async function PUT(request) {
 export async function DELETE(request) {
 	let db;
 	try {
+		// RBAC: delete projects
+		const auth = await ensurePermission(
+			request,
+			RESOURCES.PROJECTS,
+			PERMISSIONS.DELETE
+		);
+		if (auth instanceof Response) return auth;
+
 		const { searchParams } = new URL(request.url);
 		const id = searchParams.get('id');
 

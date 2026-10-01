@@ -29,8 +29,9 @@ jobs:
       DEV_DB_USER: root
       DEV_DB_PASSWORD: root
       DEV_DB_NAME: accent
-      AUTH_SECRET: ci-e2e-secret
-      JWT_SECRET: ci-e2e-secret
+      # The MariaDB service has no TLS certificate; keep the client gate off.
+      # (AUTH_SECRET/JWT_SECRET were removed — nothing reads them; SEC-25.)
+      DB_SSL_MODE: 'off'
       SMARTOFFICE_WEBHOOK_SECRET: ci-e2e-secret
     steps:
       - uses: actions/checkout@v4

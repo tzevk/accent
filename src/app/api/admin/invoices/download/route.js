@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
 import chromium from '@sparticuz/chromium';
 import { dbConnect } from '@/utils/database';
+import { escapeHtml } from '@/lib/escape-html';
+import { blockNonLocalRequests } from '@/lib/pdf-request-guard';
+import { localPdfBrowserArgs } from '@/lib/pdf-browser-args';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -153,10 +156,10 @@ function generateInvoiceHTML(data) {
 		.map(
 			(item) => `
     <tr>
-      <td style="border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 4px;text-align:center;vertical-align:top;">${item.sr_no || ''}</td>
-      <td style="border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 8px;vertical-align:top;white-space:pre-wrap;">${item.description || ''}</td>
-      <td style="border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 4px;text-align:center;vertical-align:top;">${item.unit || '-'}</td>
-      <td style="border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 4px;text-align:center;vertical-align:top;">${item.charges || '-'}</td>
+      <td style="border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 4px;text-align:center;vertical-align:top;">${escapeHtml(item.sr_no || '')}</td>
+      <td style="border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 8px;vertical-align:top;white-space:pre-wrap;">${escapeHtml(item.description || '')}</td>
+      <td style="border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 4px;text-align:center;vertical-align:top;">${escapeHtml(item.unit || '-')}</td>
+      <td style="border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 4px;text-align:center;vertical-align:top;">${escapeHtml(item.charges || '-')}</td>
       <td style="border-bottom:1px solid #000;padding:6px 8px;text-align:right;vertical-align:top;">${item.amount ? formatCurrency(item.amount) : ''}</td>
     </tr>
   `
@@ -168,7 +171,7 @@ function generateInvoiceHTML(data) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Tax Invoice - ${data.invoice_number || 'Draft'}</title>
+  <title>Tax Invoice - ${escapeHtml(data.invoice_number || 'Draft')}</title>
   <style>
     @page { size: A4; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -198,31 +201,31 @@ function generateInvoiceHTML(data) {
       <td style="width:50%;border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 8px;vertical-align:top;">
         <div>To,</div>
         <br>
-        <div>${data.client_name || ''}</div>
+        <div>${escapeHtml(data.client_name || '')}</div>
         <br>
-        <div>${data.client_address ? data.client_address.replace(/\n/g, '<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;') : ''}</div>
+        <div>${data.client_address ? escapeHtml(data.client_address).replace(/\n/g, '<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;') : ''}</div>
       </td>
      <td style="width:50%; border-bottom:1px solid #000; padding:0; vertical-align:top; height:120px;">   <!-- match the left cell's height -->
   <div style="display:flex; flex-direction:column; height:100%;">
     <!-- Row 1 -->
     <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
       <span style="width:45%;">Invoice No.</span>
-      <span style="width:55%; font-weight:bold; text-align:right;">${data.invoice_number || ''}</span>
+      <span style="width:55%; font-weight:bold; text-align:right;">${escapeHtml(data.invoice_number || '')}</span>
     </div>
     <!-- Row 2 -->
     <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
       <span style="width:45%;">Date of Invoice</span>
-      <span style="width:55%; text-align:right;">${formatDate(data.invoice_date)}</span>
+      <span style="width:55%; text-align:right;">${escapeHtml(formatDate(data.invoice_date))}</span>
     </div>
     <!-- Row 3 -->
     <div style="flex:1; display:flex; align-items:center; border-bottom:1px solid #000; padding:0 12px;">
       <span style="width:45%;">PO Number</span>
-      <span style="width:55%; text-align:right;">${data.po_number || 'Agreement'}</span>
+      <span style="width:55%; text-align:right;">${escapeHtml(data.po_number || 'Agreement')}</span>
     </div>
     <!-- Row 4 -->
     <div style="flex:1; display:flex; align-items:center; padding:0 12px;">
       <span style="width:45%;">PO Date</span>
-      <span style="width:55%; text-align:right;">${formatDate(data.po_date)}</span>
+      <span style="width:55%; text-align:right;">${escapeHtml(formatDate(data.po_date))}</span>
     </div>
   </div>
 </td>
@@ -232,10 +235,10 @@ function generateInvoiceHTML(data) {
 <tr style="height:70px;">   <!-- match your pixel budget for this section -->
   <td style="width:50%; border-right:1px solid #000; border-bottom:1px solid #000; padding:0; vertical-align:top; height:70px;">
   <div style="display:flex; flex-direction:column; height:100%; padding:6px 8px;">
-    <div style="flex:1; display:flex; align-items:center;">PAN No. : ${data.client_pan || ''}</div>
-    <div style="flex:1; display:flex; align-items:center;">GSTIN : ${data.client_gstin || ''}</div>
+    <div style="flex:1; display:flex; align-items:center;">PAN No. : ${escapeHtml(data.client_pan || '')}</div>
+    <div style="flex:1; display:flex; align-items:center;">GSTIN : ${escapeHtml(data.client_gstin || '')}</div>
     <div style="flex:1; display:flex; align-items:center;">
-      State : ${data.client_state || 'Maharashtra'} &nbsp;&nbsp; State Code : ${data.client_state_code || '27'}
+      State : ${escapeHtml(data.client_state || 'Maharashtra')} &nbsp;&nbsp; State Code : ${escapeHtml(data.client_state_code || '27')}
     </div>
   </div>
 </td>
@@ -259,7 +262,7 @@ function generateInvoiceHTML(data) {
     <!-- Kind Attn -->
     <tr>
       <td colspan="2" style="border-bottom:1px solid #000;padding:4px 8px;">
-        Kind Attn. &nbsp; : ${data.kind_attn || ''}
+        Kind Attn. &nbsp; : ${escapeHtml(data.kind_attn || '')}
       </td>
     </tr>
 
@@ -289,12 +292,12 @@ function generateInvoiceHTML(data) {
   <!-- LEFT cell: 4 items → each gets flex:1 -->
   <td style="width:50%; border-right:1px solid #000; border-bottom:1px solid #000; padding:0; vertical-align:top; height:110px;">
     <div style="display:flex; flex-direction:column; height:100%; padding:6px 8px;">
-      <div style="flex:1; display:flex; align-items:center;">GSTIN : ${data.gst_number || ''}</div>
-      <div style="flex:1; display:flex; align-items:center;">PAN NO : ${data.pan_number || ''}</div>
+      <div style="flex:1; display:flex; align-items:center;">GSTIN : ${escapeHtml(data.gst_number || '')}</div>
+      <div style="flex:1; display:flex; align-items:center;">PAN NO : ${escapeHtml(data.pan_number || '')}</div>
       <div style="flex:1; display:flex; align-items:center;">
-        Service Category : ${data.service_category || 'Consulting & Advisory Engineering Services (Service Code : 998331)'}
+        Service Category : ${escapeHtml(data.service_category || 'Consulting & Advisory Engineering Services (Service Code : 998331)')}
       </div>
-      <div style="flex:1; display:flex; align-items:center;">Tan No : ${data.tan_number || ''}</div>
+      <div style="flex:1; display:flex; align-items:center;">Tan No : ${escapeHtml(data.tan_number || '')}</div>
     </div>
   </td>
 
@@ -334,7 +337,7 @@ function generateInvoiceHTML(data) {
     <!-- Amount in words | Total Amount After Tax -->
     <tr>
       <td style="border-right:1px solid #000;border-bottom:1px solid #000;padding:6px 8px;vertical-align:middle;">
-        <strong>${amountInWords}</strong>
+        <strong>${escapeHtml(amountInWords)}</strong>
       </td>
       <td style="border-bottom:1px solid #000;padding:0;vertical-align:middle;">
         <table style="width:100%;border-collapse:collapse;">
@@ -392,7 +395,7 @@ function generateInvoiceHTML(data) {
       </div>
       <!-- Row 3: Address -->
       <div style="flex:1; display:flex; align-items:center; justify-content:center; text-align:center">
-        Add. - ${data.bank_address || ''}
+        Add. - ${escapeHtml(data.bank_address || '')}
       </div>
     </div>
   </td>
@@ -526,6 +529,7 @@ export async function GET(request) {
 			});
 		} else {
 			browser = await puppeteer.launch({
+				args: localPdfBrowserArgs(),
 				headless: true,
 				defaultViewport: viewport,
 			});
@@ -533,6 +537,7 @@ export async function GET(request) {
 
 		const page = await browser.newPage();
 		await page.emulateMediaType('print');
+		await blockNonLocalRequests(page);
 		await page.setContent(html, { waitUntil: 'networkidle0' });
 
 		const pdf = await page.pdf({

@@ -18,6 +18,210 @@ import {
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
 
+// Salary-slip print skeleton (SEC-23). Both strings are constants: no slip
+// data is interpolated into them. Every dynamic cell carries a `data-field`
+// key that handlePrint fills with textContent in the popup document, so DB
+// values can never be parsed as markup.
+const SLIP_PRINT_STYLES = `
+	@page { size: A5 portrait; margin: 4mm; }
+	* { margin: 0; padding: 0; box-sizing: border-box; }
+	body { font-family: Arial, sans-serif; padding: 0; font-size: 6px; color: #1a1a2e; }
+	.slip-container { width: 100%; max-height: 50vh; border: 0.25px solid #64126D; border-radius: 3px; overflow: hidden; }
+
+	/* Header with Logo */
+	.header { display: flex; align-items: center; padding: 4px 8px; background: linear-gradient(135deg, #64126D 0%, #86288F 50%, #86288F 100%); border-bottom: 0.25px solid #64126D; }
+	.logo { width: 35px; margin-right: 8px; background: #fff; border-radius: 3px; padding: 2px; }
+	.logo img { width: 100%; height: auto; }
+	.company-info { flex: 1; text-align: center; }
+	.company-info h1 { font-size: 9px; font-weight: 800; color: #fff; margin-bottom: 1px; letter-spacing: 0.4px; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); }
+	.company-info p { font-size: 5.5px; color: #e8d5f5; font-weight: 500; line-height: 1.3; }
+
+	/* Month Title */
+	.slip-title { text-align: center; padding: 2px; background: linear-gradient(90deg, #f3e5f5, #e1bee7, #f3e5f5); border-bottom: 0.25px solid #64126D; font-weight: 700; font-size: 6px; color: #64126D; letter-spacing: 0.3px; }
+
+	/* Tables */
+	.main-table { width: 100%; border-collapse: collapse; border-spacing: 0; table-layout: fixed; }
+	.main-table th, .main-table td { padding: 1.5px 3px; font-size: 5.5px; vertical-align: middle; border: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.main-table tr > * { border-right: 0.1px solid #e8d0f0; border-bottom: 0.1px solid #e8d0f0; }
+	.main-table tr > *:last-child { border-right: 0; }
+	.main-table tr:last-child > * { border-bottom: 0; }
+	.main-table th { background: linear-gradient(135deg, #64126D, #86288F); font-weight: 700; text-align: center; color: #fff; font-size: 5.5px; letter-spacing: 0.2px; }
+	.label { font-weight: 700; background: #f3e5f5; color: #64126D; font-size: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.value { background: #fff; color: #1a1a2e; }
+	td.amount { text-align: right; font-family: 'Arial', sans-serif; }
+	.total-row { background: linear-gradient(90deg, #e8f5e9, #f3e5f5, #fce4ec); font-weight: 700; }
+	.total-row td { border-top: 0.25px solid #64126D; }
+	.net-salary-row { background: linear-gradient(135deg, #64126D, #86288F) !important; }
+	.net-salary-cell { color: #fff !important; font-weight: 800; vertical-align: middle; font-size: 6px; letter-spacing: 0.2px; }
+	.net-salary-cell.amount { font-size: 7px; }
+
+	/* Footer */
+	.footer { padding: 3px; text-align: center; font-size: 5px; border-top: 0.25px solid #64126D; background: #f3e5f5; color: #64126D; font-weight: 500; }
+
+	@media print {
+		body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+	}
+`;
+
+const SLIP_PRINT_BODY = `
+	<div class="slip-container">
+		<!-- Header with Logo -->
+		<div class="header">
+			<div class="logo">
+				<img src="/accent-logo.png" alt="Accent Logo" />
+			</div>
+			<div class="company-info">
+				<h1>ACCENT TECHNO SOLUTIONS PVT LTD</h1>
+				<p>17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),</p>
+				<p>MUMBAI,MAHARASHTRA - 400055</p>
+				<p>Mobile: 9324670725</p>
+			</div>
+		</div>
+
+		<!-- Month Title -->
+		<div class="slip-title">SALARY SLIP FOR THE MONTH OF <span data-field="month"></span></div>
+
+		<!-- Employee Info + Content in Single Table -->
+		<table class="main-table">
+			<colgroup>
+				<col style="width:10%">
+				<col style="width:15%">
+				<col style="width:11%">
+				<col style="width:13%">
+				<col style="width:12%">
+				<col style="width:12%">
+				<col style="width:13%">
+				<col style="width:14%">
+			</colgroup>
+			<tr>
+				<td class="label">NAME :</td>
+				<td class="value" data-field="employee_name"></td>
+				<td class="label">DESIGNATION :</td>
+				<td class="value" data-field="designation"></td>
+				<td class="label">TOTAL DAYS :</td>
+				<td class="value" data-field="total_days"></td>
+				<td class="label">PAID LEAVES :</td>
+				<td class="value" data-field="paid_leaves"></td>
+			</tr>
+			<tr>
+				<td class="label">DEPARTMENT :</td>
+				<td class="value" data-field="department"></td>
+				<td class="label">DOJ :</td>
+				<td class="value" data-field="doj"></td>
+				<td class="label">PRESENT DAYS :</td>
+				<td class="value" data-field="present_days"></td>
+				<td class="label">PL USED :</td>
+				<td class="value" data-field="pl_used"></td>
+			</tr>
+			<tr>
+				<td class="label">PF  NUMBER:</td>
+				<td class="value" data-field="pf_number"></td>
+				<td class="label">ESIC NUMBER:</td>
+				<td class="value" data-field="esic_number"></td>
+				<td class="label">ABSENT DAYS :</td>
+				<td class="value" data-field="absent_days"></td>
+				<td class="label">BALANCE :</td>
+				<td class="value" data-field="balance"></td>
+			</tr>
+			<tr>
+				<td class="label">UAN  NUMBER :</td>
+				<td class="value" data-field="uan_number"></td>
+				<td class="label">PAN NO :</td>
+				<td class="value" data-field="pan_number"></td>
+				<td class="label">PAYMENT MODE :</td>
+				<td class="value" colspan="3" data-field="payment_mode"></td>
+			</tr>
+			<tr>
+				<th colspan="2">DESCRIPTION</th>
+				<th>Gross</th>
+				<th>EARNING</th>
+				<th colspan="2">DESCRIPTION</th>
+				<th colspan="2">AMOUNT</th>
+			</tr>
+			<tr class="earn-row">
+				<td colspan="2">BASIC</td>
+				<td class="amount" data-field="basic"></td>
+				<td class="amount" data-field="basic"></td>
+				<td colspan="2">PROVIDENT FUND</td>
+				<td class="amount" colspan="2" data-field="pf_employee"></td>
+			</tr>
+			<tr class="earn-row">
+				<td colspan="2">DA</td>
+				<td class="amount" data-field="da"></td>
+				<td class="amount" data-field="da"></td>
+				<td colspan="2">ESIC</td>
+				<td class="amount" colspan="2" data-field="esic_employee"></td>
+			</tr>
+			<tr class="earn-row">
+				<td colspan="2">HRA</td>
+				<td class="amount" data-field="hra"></td>
+				<td class="amount" data-field="hra"></td>
+				<td colspan="2">PROFESSIONAL TAX</td>
+				<td class="amount" colspan="2" data-field="pt"></td>
+			</tr>
+			<tr class="earn-row">
+				<td colspan="2">CONVEYANCE ALLOWANCE</td>
+				<td class="amount" data-field="conveyance"></td>
+				<td class="amount" data-field="conveyance"></td>
+				<td colspan="2">LOAN</td>
+				<td class="amount" colspan="2" data-field="loan"></td>
+			</tr>
+			<tr class="earn-row">
+				<td colspan="2">CALL  ALLOWANCE</td>
+				<td class="amount" data-field="call_allowance"></td>
+				<td class="amount" data-field="call_allowance"></td>
+				<td colspan="2">ADVANCE</td>
+				<td class="amount" colspan="2" data-field="advance"></td>
+			</tr>
+			<tr class="earn-row">
+				<td colspan="2">OTHER  ALLOWANCE</td>
+				<td class="amount" data-field="other_allowances"></td>
+				<td class="amount" data-field="other_allowances"></td>
+				<td colspan="2">TAX DEDUCTED AT SOURCE</td>
+				<td class="amount" colspan="2" data-field="tds"></td>
+			</tr>
+			<tr class="earn-row">
+				<td colspan="2">BONUS</td>
+				<td class="amount" data-field="bonus"></td>
+				<td class="amount" data-field="bonus"></td>
+				<td colspan="2">RETENTION AMOUNT</td>
+				<td class="amount" colspan="2" data-field="retention"></td>
+			</tr>
+			<tr class="earn-row">
+				<td colspan="2">OT AMOUNT</td>
+				<td class="amount" data-field="ot_rate"></td>
+				<td class="amount" data-field="ot_rate"></td>
+				<td colspan="2">MLWF</td>
+				<td class="amount" colspan="2" data-field="mlwf"></td>
+			</tr>
+			<tr class="earn-row">
+				<td colspan="2">INCENTIVE</td>
+				<td class="amount" data-field="incentive"></td>
+				<td class="amount" data-field="incentive"></td>
+				<td colspan="2"></td>
+				<td colspan="2"></td>
+			</tr>
+			<tr class="total-row">
+				<td colspan="2">GROSS EARNING</td>
+				<td class="amount"></td>
+				<td class="amount" data-field="gross_earning"></td>
+				<td colspan="2">TOTAL DEDUCTION</td>
+				<td class="amount" colspan="2" data-field="total_deductions"></td>
+			</tr>
+			<tr class="net-salary-row">
+				<td class="net-salary-cell" colspan="4"></td>
+				<td class="net-salary-cell" colspan="2">NET SALARY PAYABLE</td>
+				<td class="net-salary-cell amount" colspan="2" data-field="net_salary"></td>
+			</tr>
+		</table>
+
+		<!-- Footer -->
+		<div class="footer">
+			<p>NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE DOESN'T REQUIRE SIGNATURE</p>
+		</div>
+	</div>
+`;
+
 export default function ReportsPage() {
 	const { user, loading: authLoading } = useSessionRBAC();
 
@@ -451,223 +655,89 @@ export default function ReportsPage() {
 	const handleDownload = (slip) => {
 		setSelectedSlip(slip);
 		setShowSlip(true);
-		// Auto print after modal opens
+		// Auto print after modal opens. The slip is passed explicitly: the
+		// timer callback closes over the pre-update render's state.
 		setTimeout(() => {
-			handlePrint();
+			handlePrint(slip);
 		}, 500);
 	};
 
-	const handlePrint = () => {
+	const handlePrint = (slipOverride) => {
 		const printContent = slipRef.current;
 		if (!printContent) return;
 
 		const printWindow = window.open('', '_blank');
-		printWindow.document.write(`
-      <html>
-        <head>
-          <title>Salary Slip - ${selectedSlip?.employee_name} - ${formatMonth(selectedSlip?.month)}</title>
-          <style>
-            @page { size: A5 portrait; margin: 4mm; }
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; padding: 0; font-size: 6px; color: #1a1a2e; }
-            .slip-container { width: 100%; max-height: 50vh; border: 0.25px solid #64126D; border-radius: 3px; overflow: hidden; }
-            
-            /* Header with Logo */
-            .header { display: flex; align-items: center; padding: 4px 8px; background: linear-gradient(135deg, #64126D 0%, #86288F 50%, #86288F 100%); border-bottom: 0.25px solid #64126D; }
-            .logo { width: 35px; margin-right: 8px; background: #fff; border-radius: 3px; padding: 2px; }
-            .logo img { width: 100%; height: auto; }
-            .company-info { flex: 1; text-align: center; }
-            .company-info h1 { font-size: 9px; font-weight: 800; color: #fff; margin-bottom: 1px; letter-spacing: 0.4px; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); }
-            .company-info p { font-size: 5.5px; color: #e8d5f5; font-weight: 500; line-height: 1.3; }
-            
-            /* Month Title */
-            .slip-title { text-align: center; padding: 2px; background: linear-gradient(90deg, #f3e5f5, #e1bee7, #f3e5f5); border-bottom: 0.25px solid #64126D; font-weight: 700; font-size: 6px; color: #64126D; letter-spacing: 0.3px; }
-            
-            /* Tables */
-            .main-table { width: 100%; border-collapse: collapse; border-spacing: 0; table-layout: fixed; }
-            .main-table th, .main-table td { padding: 1.5px 3px; font-size: 5.5px; vertical-align: middle; border: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            .main-table tr > * { border-right: 0.1px solid #e8d0f0; border-bottom: 0.1px solid #e8d0f0; }
-            .main-table tr > *:last-child { border-right: 0; }
-            .main-table tr:last-child > * { border-bottom: 0; }
-            .main-table th { background: linear-gradient(135deg, #64126D, #86288F); font-weight: 700; text-align: center; color: #fff; font-size: 5.5px; letter-spacing: 0.2px; }
-            .label { font-weight: 700; background: #f3e5f5; color: #64126D; font-size: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-            .value { background: #fff; color: #1a1a2e; }
-            td.amount { text-align: right; font-family: 'Arial', sans-serif; }
-            .total-row { background: linear-gradient(90deg, #e8f5e9, #f3e5f5, #fce4ec); font-weight: 700; }
-            .total-row td { border-top: 0.25px solid #64126D; }
-            .net-salary-row { background: linear-gradient(135deg, #64126D, #86288F) !important; }
-            .net-salary-cell { color: #fff !important; font-weight: 800; vertical-align: middle; font-size: 6px; letter-spacing: 0.2px; }
-            .net-salary-cell.amount { font-size: 7px; }
-            
-            /* Footer */
-            .footer { padding: 3px; text-align: center; font-size: 5px; border-top: 0.25px solid #64126D; background: #f3e5f5; color: #64126D; font-weight: 500; }
-            
-            @media print { 
-              body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="slip-container">
-            <!-- Header with Logo -->
-            <div class="header">
-              <div class="logo">
-                <img src="/accent-logo.png" alt="Accent Logo" />
-              </div>
-              <div class="company-info">
-                <h1>ACCENT TECHNO SOLUTIONS PVT LTD</h1>
-                <p>17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),</p>
-                <p>MUMBAI,MAHARASHTRA - 400055</p>
-                <p>Mobile: 9324670725</p>
-              </div>
-            </div>
-            
-            <!-- Month Title -->
-            <div class="slip-title">SALARY SLIP FOR THE MONTH OF ${formatMonth(selectedSlip?.month).toUpperCase()}</div>
-            
-            <!-- Employee Info + Content in Single Table -->
-            <table class="main-table">
-              <colgroup>
-                <col style="width:10%">
-                <col style="width:15%">
-                <col style="width:11%">
-                <col style="width:13%">
-                <col style="width:12%">
-                <col style="width:12%">
-                <col style="width:13%">
-                <col style="width:14%">
-              </colgroup>
-              <tr>
-                <td class="label">NAME :</td>
-                <td class="value">${selectedSlip?.employee_name || ''}</td>
-                <td class="label">DESIGNATION :</td>
-                <td class="value">${selectedSlip?.position || selectedSlip?.designation || ''}</td>
-                <td class="label">TOTAL DAYS :</td>
-                <td class="value">${selectedSlip?.standard_working_days || ''}</td>
-                <td class="label">PAID LEAVES :</td>
-                <td class="value">${selectedSlip?.pl_total || 21}</td>
-              </tr>
-              <tr>
-                <td class="label">DEPARTMENT :</td>
-                <td class="value">${selectedSlip?.department || ''}</td>
-                <td class="label">DOJ :</td>
-                <td class="value">${selectedSlip?.joining_date ? new Date(selectedSlip.joining_date).toLocaleDateString('en-IN') : ''}</td>
-                <td class="label">PRESENT DAYS :</td>
-                <td class="value">${selectedSlip?.payable_days || ''}</td>
-                <td class="label">PL USED :</td>
-                <td class="value">${selectedSlip?.pl_used || 0}</td>
-              </tr>
-              <tr>
-                <td class="label">PF  NUMBER:</td>
-                <td class="value">${selectedSlip?.pf_number || ''}</td>
-                <td class="label">ESIC NUMBER:</td>
-                <td class="value">${selectedSlip?.esic_number || ''}</td>
-                <td class="label">ABSENT DAYS :</td>
-                <td class="value">${selectedSlip?.standard_working_days && selectedSlip?.payable_days ? (parseFloat(selectedSlip.standard_working_days) - parseFloat(selectedSlip.payable_days)).toFixed(1) : selectedSlip?.lop_days || '0.0'}</td>
-                <td class="label">BALANCE :</td>
-                <td class="value">${selectedSlip?.pl_balance ?? 21 - (selectedSlip?.pl_used || 0)}</td>
-              </tr>
-              <tr>
-                <td class="label">UAN  NUMBER :</td>
-                <td class="value">${selectedSlip?.uan_number || ''}</td>
-                <td class="label">PAN NO :</td>
-                <td class="value">${selectedSlip?.pan_number || ''}</td>
-                <td class="label">PAYMENT MODE :</td>
-                <td class="value" colspan="3">${selectedSlip?.payment_mode || 'NEFT'}</td>
-              </tr>
-              <tr>
-                <th colspan="2">DESCRIPTION</th>
-                <th>Gross</th>
-                <th>EARNING</th>
-                <th colspan="2">DESCRIPTION</th>
-                <th colspan="2">AMOUNT</th>
-              </tr>
-              <tr class="earn-row">
-                <td colspan="2">BASIC</td>
-                <td class="amount">${selectedSlip?.basic || '0.00'}</td>
-                <td class="amount">${selectedSlip?.basic || '0.00'}</td>
-                <td colspan="2">PROVIDENT FUND</td>
-                <td class="amount" colspan="2">${selectedSlip?.pf_employee || '0.00'}</td>
-              </tr>
-              <tr class="earn-row">
-                <td colspan="2">DA</td>
-                <td class="amount">${selectedSlip?.da || '0.00'}</td>
-                <td class="amount">${selectedSlip?.da || '0.00'}</td>
-                <td colspan="2">ESIC</td>
-                <td class="amount" colspan="2">${selectedSlip?.esic_employee || '0.00'}</td>
-              </tr>
-              <tr class="earn-row">
-                <td colspan="2">HRA</td>
-                <td class="amount">${selectedSlip?.hra || '0.00'}</td>
-                <td class="amount">${selectedSlip?.hra || '0.00'}</td>
-                <td colspan="2">PROFESSIONAL TAX</td>
-                <td class="amount" colspan="2">${selectedSlip?.pt || '0.00'}</td>
-              </tr>
-              <tr class="earn-row">
-                <td colspan="2">CONVEYANCE ALLOWANCE</td>
-                <td class="amount">${selectedSlip?.conveyance || '0.00'}</td>
-                <td class="amount">${selectedSlip?.conveyance || '0.00'}</td>
-                <td colspan="2">LOAN</td>
-                <td class="amount" colspan="2">${selectedSlip?.loan || '0.00'}</td>
-              </tr>
-              <tr class="earn-row">
-                <td colspan="2">CALL  ALLOWANCE</td>
-                <td class="amount">${selectedSlip?.call_allowance || '0.00'}</td>
-                <td class="amount">${selectedSlip?.call_allowance || '0.00'}</td>
-                <td colspan="2">ADVANCE</td>
-                <td class="amount" colspan="2">${selectedSlip?.advance || '0.00'}</td>
-              </tr>
-              <tr class="earn-row">
-                <td colspan="2">OTHER  ALLOWANCE</td>
-                <td class="amount">${selectedSlip?.other_allowances || '0.00'}</td>
-                <td class="amount">${selectedSlip?.other_allowances || '0.00'}</td>
-                <td colspan="2">TAX DEDUCTED AT SOURCE</td>
-                <td class="amount" colspan="2">${selectedSlip?.tds || '0.00'}</td>
-              </tr>
-              <tr class="earn-row">
-                <td colspan="2">BONUS</td>
-                <td class="amount">${selectedSlip?.bonus || '0.00'}</td>
-                <td class="amount">${selectedSlip?.bonus || '0.00'}</td>
-                <td colspan="2">RETENTION AMOUNT</td>
-                <td class="amount" colspan="2">${selectedSlip?.retention || '0.00'}</td>
-              </tr>
-              <tr class="earn-row">
-                <td colspan="2">OT AMOUNT</td>
-                <td class="amount">${selectedSlip?.ot_rate || '0.00'}</td>
-                <td class="amount">${selectedSlip?.ot_rate || '0.00'}</td>
-                <td colspan="2">MLWF</td>
-                <td class="amount" colspan="2">${selectedSlip?.mlwf || '0.00'}</td>
-              </tr>
-              <tr class="earn-row">
-                <td colspan="2">INCENTIVE</td>
-                <td class="amount">${selectedSlip?.incentive || '0.00'}</td>
-                <td class="amount">${selectedSlip?.incentive || '0.00'}</td>
-                <td colspan="2"></td>
-                <td colspan="2"></td>
-              </tr>
-              <tr class="total-row">
-                <td colspan="2">GROSS EARNING</td>
-                <td class="amount"></td>
-                <td class="amount">${selectedSlip?.total_earnings || selectedSlip?.gross_salary || '0.00'}</td>
-                <td colspan="2">TOTAL DEDUCTION</td>
-                <td class="amount" colspan="2">${selectedSlip?.total_deductions || '0.00'}</td>
-              </tr>
-              <tr class="net-salary-row">
-                <td class="net-salary-cell" colspan="4"></td>
-                <td class="net-salary-cell" colspan="2">NET SALARY PAYABLE</td>
-                <td class="net-salary-cell amount" colspan="2">${selectedSlip?.net_salary || selectedSlip?.net_pay || '0.00'}</td>
-              </tr>
-            </table>
-            
-            <!-- Footer -->
-            <div class="footer">
-              <p>NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE DOESN'T REQUIRE SIGNATURE</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-		printWindow.document.close();
+		if (!printWindow) return;
+
+		const doc = printWindow.document;
+		const slip = slipOverride || selectedSlip || {};
+		const monthLabel = formatMonth(slip.month);
+
+		doc.title = `Salary Slip - ${slip.employee_name || ''} - ${monthLabel}`;
+
+		const styleEl = doc.createElement('style');
+		styleEl.textContent = SLIP_PRINT_STYLES;
+		doc.head.appendChild(styleEl);
+
+		// Skeleton is a constant; every value below is a text node.
+		doc.body.innerHTML = SLIP_PRINT_BODY;
+
+		const setText = (field, value) => {
+			const text = value === null || value === undefined ? '' : String(value);
+			doc.querySelectorAll(`[data-field="${field}"]`).forEach((el) => {
+				el.textContent = text;
+			});
+		};
+
+		const values = {
+			month: monthLabel.toUpperCase(),
+			employee_name: slip.employee_name || '',
+			designation: slip.position || slip.designation || '',
+			total_days: slip.standard_working_days || '',
+			paid_leaves: slip.pl_total || 21,
+			department: slip.department || '',
+			doj: slip.joining_date
+				? new Date(slip.joining_date).toLocaleDateString('en-IN')
+				: '',
+			present_days: slip.payable_days || '',
+			pl_used: slip.pl_used || 0,
+			pf_number: slip.pf_number || '',
+			esic_number: slip.esic_number || '',
+			absent_days:
+				slip.standard_working_days && slip.payable_days
+					? (
+							parseFloat(slip.standard_working_days) -
+							parseFloat(slip.payable_days)
+						).toFixed(1)
+					: slip.lop_days || '0.0',
+			balance: slip.pl_balance ?? 21 - (slip.pl_used || 0),
+			uan_number: slip.uan_number || '',
+			pan_number: slip.pan_number || '',
+			payment_mode: slip.payment_mode || 'NEFT',
+			basic: slip.basic || '0.00',
+			da: slip.da || '0.00',
+			hra: slip.hra || '0.00',
+			conveyance: slip.conveyance || '0.00',
+			call_allowance: slip.call_allowance || '0.00',
+			other_allowances: slip.other_allowances || '0.00',
+			bonus: slip.bonus || '0.00',
+			ot_rate: slip.ot_rate || '0.00',
+			incentive: slip.incentive || '0.00',
+			pf_employee: slip.pf_employee || '0.00',
+			esic_employee: slip.esic_employee || '0.00',
+			pt: slip.pt || '0.00',
+			loan: slip.loan || '0.00',
+			advance: slip.advance || '0.00',
+			tds: slip.tds || '0.00',
+			retention: slip.retention || '0.00',
+			mlwf: slip.mlwf || '0.00',
+			gross_earning: slip.total_earnings || slip.gross_salary || '0.00',
+			total_deductions: slip.total_deductions || '0.00',
+			net_salary: slip.net_salary || slip.net_pay || '0.00',
+		};
+
+		Object.entries(values).forEach(([field, value]) => setText(field, value));
+
 		printWindow.focus();
 		setTimeout(() => {
 			printWindow.print();
@@ -1068,7 +1138,7 @@ export default function ReportsPage() {
 							</h3>
 							<div className="flex items-center gap-2">
 								<button
-									onClick={handlePrint}
+									onClick={() => handlePrint()}
 									className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 transition-colors"
 								>
 									<PrinterIcon className="h-4 w-4" />

@@ -69,7 +69,7 @@ export async function POST(request) {
 	const authResult = await ensurePermission(
 		request,
 		RESOURCES.EMPLOYEES,
-		PERMISSIONS.WRITE
+		PERMISSIONS.CREATE
 	);
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
@@ -168,7 +168,7 @@ export async function PUT(request) {
 	const authResult = await ensurePermission(
 		request,
 		RESOURCES.EMPLOYEES,
-		PERMISSIONS.WRITE
+		PERMISSIONS.UPDATE
 	);
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
@@ -272,7 +272,7 @@ export async function DELETE(request) {
 	const authResult = await ensurePermission(
 		request,
 		RESOURCES.EMPLOYEES,
-		PERMISSIONS.WRITE
+		PERMISSIONS.DELETE
 	);
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;

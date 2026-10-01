@@ -11,6 +11,7 @@
 
 import type { Project, Kpis } from './report-utils';
 import { fmtNum } from './report-utils';
+import { escapeHtml } from '@/lib/escape-html';
 
 export interface PdfTemplateOptions {
 	startDate?: string;
@@ -29,16 +30,6 @@ const STATUS_HEX: Record<string, { bg: string; fg: string }> = {
 function statusStyle(s: string): string {
 	const v = STATUS_HEX[s] || STATUS_HEX['Not Started'];
 	return `background:${v.bg};color:${v.fg};`;
-}
-
-function escapeHtml(v: string | number | null | undefined): string {
-	if (v == null) return '';
-	return String(v)
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;');
 }
 
 function progressBar(pct: number): string {

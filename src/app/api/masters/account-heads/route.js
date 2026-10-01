@@ -1,8 +1,21 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - List all account heads
-export async function GET() {
+export async function GET(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.ACCOUNTS,
+		PERMISSIONS.READ
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		db = await dbConnect();
@@ -26,10 +39,18 @@ export async function GET() {
 
 // POST - Create new account head
 export async function POST(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.ACCOUNTS,
+		PERMISSIONS.CREATE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const body = await request.json();
-		const { account_head_name, is_active = true, created_by } = body;
+		const { account_head_name, is_active = true } = body;
 
 		if (!account_head_name?.trim()) {
 			return NextResponse.json(
@@ -42,7 +63,7 @@ export async function POST(request) {
 
 		const [result] = await db.execute(
 			`INSERT INTO account_head_master (account_head_name, is_active, created_by) VALUES (?, ?, ?)`,
-			[account_head_name.trim(), is_active ? 1 : 0, created_by || null]
+			[account_head_name.trim(), is_active ? 1 : 0, auth.user.id]
 		);
 
 		return NextResponse.json({
@@ -62,6 +83,14 @@ export async function POST(request) {
 
 // PUT - Update account head
 export async function PUT(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.ACCOUNTS,
+		PERMISSIONS.UPDATE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const { searchParams } = new URL(request.url);
@@ -105,6 +134,14 @@ export async function PUT(request) {
 
 // DELETE - Delete account head
 export async function DELETE(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.ACCOUNTS,
+		PERMISSIONS.DELETE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const { searchParams } = new URL(request.url);

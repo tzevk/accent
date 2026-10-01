@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { getCurrentUser } from '@/utils/api-permissions';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 /**
  * GET /api/admin/invoice-list
@@ -9,13 +13,13 @@ import { getCurrentUser } from '@/utils/api-permissions';
 export async function GET(request: Request) {
 	let db;
 	try {
-		const user = await getCurrentUser(request);
-		if (!user) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
+		// RBAC check
+		const auth = await ensurePermission(
+			request,
+			RESOURCES.INVOICES,
+			PERMISSIONS.READ
+		);
+		if (auth instanceof Response) return auth;
 
 		const { searchParams } = new URL(request.url);
 		const search = (searchParams.get('search') || '').trim().toLowerCase();

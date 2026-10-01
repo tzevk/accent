@@ -25,6 +25,14 @@ const nextConfig: NextConfig = {
 	// Enable compression
 	compress: true,
 
+	// Next buffers every request body when a proxy runs, and silently truncates
+	// it past this limit (default 10 MB). The upload route's own cap is 20 MB of
+	// image bytes — ~28 MB once base64-encoded — so buffer the whole envelope and
+	// let the route's 413 check be the gate instead of a silent truncation.
+	experimental: {
+		proxyClientMaxBodySize: '28mb',
+	},
+
 	// Optimize for production
 	poweredByHeader: false,
 
@@ -67,12 +75,38 @@ const nextConfig: NextConfig = {
 		];
 	},
 
-	// SEC-02: user content under /uploads is always a server-rasterized PNG
-	// (see src/app/api/uploads/route.js); never let a browser sniff or render
-	// it inline. Content-Disposition: attachment makes direct navigation
-	// download instead of display; <img> subresource loads are unaffected.
+	// B6 / SEC-24: static security headers on every route (ADR-0012 § CSP).
+	// `script-src 'unsafe-inline'` is unavoidable — Next inlines its bootstrap
+	// script — and is contained by `connect-src 'self'` + `img-src 'self'`
+	// (a nonce-CSP would force every page to render dynamically; ADR-0012
+	// rejected it). HSTS is safe from day one because the app is HTTPS-only on
+	// Vercel; `upgrade-insecure-requests` is a no-op on localhost (potentially
+	// trustworthy origin).
 	async headers() {
 		return [
+			{
+				source: '/(.*)',
+				headers: [
+					{
+						key: 'Content-Security-Policy',
+						value:
+							"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests",
+					},
+					{
+						key: 'Strict-Transport-Security',
+						value: 'max-age=63072000; includeSubDomains',
+					},
+					{ key: 'X-Frame-Options', value: 'DENY' },
+					{ key: 'X-Content-Type-Options', value: 'nosniff' },
+					{ key: 'Referrer-Policy', value: 'no-referrer' },
+				],
+			},
+			// SEC-02: user content under /uploads is always a server-rasterized PNG
+			// (see src/app/api/uploads/route.js); never let a browser sniff or render
+			// it inline. Content-Disposition: attachment makes direct navigation
+			// download instead of display; <img> subresource loads are unaffected.
+			// Last matching rule wins per key, so the attachment handling survives
+			// the catch-all CSP rule above.
 			{
 				source: '/uploads/:path*',
 				headers: [

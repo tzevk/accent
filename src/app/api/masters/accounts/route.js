@@ -1,6 +1,10 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/utils/api-permissions';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
 /**
  * GET /api/masters/accounts
@@ -10,22 +14,13 @@ export async function GET(request) {
 	let db;
 
 	try {
-		let user;
-		try {
-			user = await getCurrentUser(request);
-		} catch (authErr) {
-			return NextResponse.json(
-				{ success: false, error: 'Authentication failed' },
-				{ status: 500 }
-			);
-		}
-
-		if (!user) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
+		// RBAC check
+		const auth = await ensurePermission(
+			request,
+			RESOURCES.ACCOUNTS,
+			PERMISSIONS.READ
+		);
+		if (auth instanceof Response) return auth;
 
 		db = await dbConnect();
 
@@ -69,22 +64,13 @@ export async function POST(request) {
 	let db;
 
 	try {
-		let user;
-		try {
-			user = await getCurrentUser(request);
-		} catch (authErr) {
-			return NextResponse.json(
-				{ success: false, error: 'Authentication failed' },
-				{ status: 500 }
-			);
-		}
-
-		if (!user) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
+		// RBAC check
+		const auth = await ensurePermission(
+			request,
+			RESOURCES.ACCOUNTS,
+			PERMISSIONS.CREATE
+		);
+		if (auth instanceof Response) return auth;
 
 		const data = await request.json();
 		const { account_code, account_name, account_type, description, is_active } =
@@ -108,7 +94,7 @@ export async function POST(request) {
 				account_type || 'expense',
 				description || '',
 				is_active !== false,
-				user.id,
+				auth.user.id,
 			]
 		);
 
@@ -148,22 +134,13 @@ export async function PUT(request) {
 	let db;
 
 	try {
-		let user;
-		try {
-			user = await getCurrentUser(request);
-		} catch (authErr) {
-			return NextResponse.json(
-				{ success: false, error: 'Authentication failed' },
-				{ status: 500 }
-			);
-		}
-
-		if (!user) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
+		// RBAC check
+		const auth = await ensurePermission(
+			request,
+			RESOURCES.ACCOUNTS,
+			PERMISSIONS.UPDATE
+		);
+		if (auth instanceof Response) return auth;
 
 		const { searchParams } = new URL(request.url);
 		const id = searchParams.get('id');
@@ -237,22 +214,13 @@ export async function DELETE(request) {
 	let db;
 
 	try {
-		let user;
-		try {
-			user = await getCurrentUser(request);
-		} catch (authErr) {
-			return NextResponse.json(
-				{ success: false, error: 'Authentication failed' },
-				{ status: 500 }
-			);
-		}
-
-		if (!user) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
+		// RBAC check
+		const auth = await ensurePermission(
+			request,
+			RESOURCES.ACCOUNTS,
+			PERMISSIONS.DELETE
+		);
+		if (auth instanceof Response) return auth;
 
 		const { searchParams } = new URL(request.url);
 		const id = searchParams.get('id');

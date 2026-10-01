@@ -6,6 +6,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { updateInvoicePaymentStatus } from '@/utils/payment-utils';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
 
 export async function GET(request) {
 	let db;
@@ -153,48 +154,69 @@ export async function POST(request) {
 		const currentYear = date.getFullYear();
 		const prefix = `R-${currentMonth}-`;
 
-		const [rows] = await db.execute(
-			`SELECT receipt_no FROM payment_entries 
+		// Receipt-number generation and the INSERT are one transaction: the read
+		// locks the newest matching row (FOR UPDATE) so concurrent POSTs
+		// serialize, and the unique active_receipt_no index makes a lost race a
+		// duplicate-key error, which retries from a fresh read.
+		let autogenReceiptNo = '';
+		for (let attempt = 1; ; attempt++) {
+			await db.beginTransaction();
+			try {
+				const [rows] = await db.execute(
+					`SELECT receipt_no FROM payment_entries 
              WHERE receipt_no LIKE ? AND YEAR(created_at) = ? AND isDelete = 0
-             ORDER BY CAST(SUBSTRING_INDEX(receipt_no, '-', -1) AS UNSIGNED) DESC LIMIT 1`,
-			[`${prefix}%`, currentYear]
-		);
+             ORDER BY CAST(SUBSTRING_INDEX(receipt_no, '-', -1) AS UNSIGNED) DESC LIMIT 1
+             FOR UPDATE`,
+					[`${prefix}%`, currentYear]
+				);
 
-		let nextNum = 1;
-		if (rows.length > 0 && rows[0].receipt_no) {
-			const lastReceipt = rows[0].receipt_no;
-			const lastNum = parseInt(lastReceipt.split('-').pop(), 10);
-			if (!isNaN(lastNum)) {
-				nextNum = lastNum + 1;
-			}
-		}
+				let nextNum = 1;
+				if (rows.length > 0 && rows[0].receipt_no) {
+					const lastReceipt = rows[0].receipt_no;
+					const lastNum = parseInt(lastReceipt.split('-').pop(), 10);
+					if (!isNaN(lastNum)) {
+						nextNum = lastNum + 1;
+					}
+				}
 
-		const autogenReceiptNo = `${prefix}${String(nextNum).padStart(3, '0')}`;
+				autogenReceiptNo = `${prefix}${String(nextNum).padStart(3, '0')}`;
 
-		await db.execute(
-			`INSERT INTO payment_entries (
+				await db.execute(
+					`INSERT INTO payment_entries (
         id, company_name, city, receipt_no, receipt_date, amount, payment_date, transaction_id, bank_name, remark, invoice_no, invoice_date, payment_type, tds_amount, gst_amount, net_amount, created_by
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				id,
-				data.company_name || '',
-				data.city || '',
-				autogenReceiptNo,
-				data.receipt_date || null,
-				data.amount || 0,
-				data.payment_date || null,
-				data.transaction_id || '',
-				data.bank_name || '',
-				data.remark || '',
-				data.invoice_no || '',
-				data.invoice_date || null,
-				data.payment_type || null,
-				data.tds_amount || 0,
-				data.gst_amount || 0,
-				data.net_amount || 0,
-				user.id || null,
-			]
-		);
+					[
+						id,
+						data.company_name || '',
+						data.city || '',
+						autogenReceiptNo,
+						data.receipt_date || null,
+						data.amount || 0,
+						data.payment_date || null,
+						data.transaction_id || '',
+						data.bank_name || '',
+						data.remark || '',
+						data.invoice_no || '',
+						data.invoice_date || null,
+						data.payment_type || null,
+						data.tds_amount || 0,
+						data.gst_amount || 0,
+						data.net_amount || 0,
+						user.id || null,
+					]
+				);
+
+				await db.commit();
+				break;
+			} catch (error) {
+				await db.rollback();
+				if (isRetryableNumberError(error) && attempt < 5) {
+					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+					continue;
+				}
+				throw error;
+			}
+		}
 
 		if (data.invoice_no) {
 			await updateInvoicePaymentStatus(db, data.invoice_no);

@@ -1,8 +1,21 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
+import {
+	ensurePermission,
+	RESOURCES,
+	PERMISSIONS,
+} from '@/utils/api-permissions';
 
-export async function GET() {
+export async function GET(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.READ
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		db = await dbConnect();
@@ -27,6 +40,14 @@ export async function GET() {
 }
 
 export async function POST(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.UPDATE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const body = await request.json();
@@ -69,6 +90,14 @@ export async function POST(request) {
 }
 
 export async function PUT(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.UPDATE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const body = await request.json();
@@ -136,6 +165,14 @@ export async function PUT(request) {
 }
 
 export async function DELETE(request) {
+	// RBAC check
+	const auth = await ensurePermission(
+		request,
+		RESOURCES.SETTINGS,
+		PERMISSIONS.DELETE
+	);
+	if (auth instanceof Response) return auth;
+
 	let db;
 	try {
 		const { searchParams } = new URL(request.url);
