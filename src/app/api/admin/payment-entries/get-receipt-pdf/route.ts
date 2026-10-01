@@ -4,6 +4,7 @@ import puppeteer from 'puppeteer';
 import chromium from '@sparticuz/chromium';
 import { buildReceiptHTML, ReceiptData } from '@/utils/buildReceiptHTML';
 import { blockNonLocalRequests } from '@/lib/pdf-request-guard';
+import { localPdfBrowserArgs } from '@/lib/pdf-browser-args';
 import { NextRequest } from 'next/server';
 import {
 	ensurePermission,
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 					headless: true,
 				}
 			: {
+					args: localPdfBrowserArgs(),
 					headless: true,
 					defaultViewport: viewport,
 					...(localChromePath ? { executablePath: localChromePath } : {}),

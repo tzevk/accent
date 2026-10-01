@@ -7,6 +7,7 @@ import { dbConnect } from '@/utils/database';
 import { escapeHtml } from '@/lib/escape-html';
 import { sanitizeRichText } from '@/lib/sanitize';
 import { blockNonLocalRequests } from '@/lib/pdf-request-guard';
+import { localPdfBrowserArgs } from '@/lib/pdf-browser-args';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -327,6 +328,7 @@ export async function GET(request) {
 		} else {
 			// Use puppeteer's bundled Chromium – no executablePath needed
 			browser = await puppeteer.launch({
+				args: localPdfBrowserArgs(),
 				headless: true,
 				defaultViewport: viewport,
 			});
