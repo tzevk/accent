@@ -1,3 +1,23 @@
+// React's development build reconstructs server error stacks in the browser
+// with `eval()`, so the dev-only CSP has to allow it; production React and
+// Next never eval. `headers()` is evaluated once per build/start, so this
+// bakes into the production routes manifest only when NODE_ENV=production
+// (build:e2e and CI both set it explicitly).
+const isDev = process.env.NODE_ENV === 'development';
+
+const CSP = [
+	"default-src 'self'",
+	`script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
+	"style-src 'self' 'unsafe-inline'",
+	"img-src 'self' data: blob:",
+	"connect-src 'self'",
+	"object-src 'none'",
+	"base-uri 'self'",
+	"frame-ancestors 'none'",
+	"form-action 'self'",
+	'upgrade-insecure-requests',
+].join('; ');
+
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
@@ -81,7 +101,8 @@ const nextConfig: NextConfig = {
 	// (a nonce-CSP would force every page to render dynamically; ADR-0012
 	// rejected it). HSTS is safe from day one because the app is HTTPS-only on
 	// Vercel; `upgrade-insecure-requests` is a no-op on localhost (potentially
-	// trustworthy origin).
+	// trustworthy origin). `'unsafe-eval'` is added in development only (see
+	// CSP above) — production React and Next never eval.
 	async headers() {
 		return [
 			{
@@ -89,8 +110,7 @@ const nextConfig: NextConfig = {
 				headers: [
 					{
 						key: 'Content-Security-Policy',
-						value:
-							"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests",
+						value: CSP,
 					},
 					{
 						key: 'Strict-Transport-Security',

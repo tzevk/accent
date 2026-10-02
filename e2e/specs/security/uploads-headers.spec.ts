@@ -233,6 +233,13 @@ test.describe.serial('security: headers and upload gates', () => {
 						`Content-Security-Policy ${directive} on ${target}`
 					).toContain(source);
 				}
+				// Production React/Next never eval, so the dev-only allowance for
+				// React's browser-side error-stack reconstruction (ADR-0012 § CSP)
+				// must not reach a built app.
+				expect(
+					directives['script-src'] ?? '',
+					`script-src must stay eval-free on ${target}`
+				).not.toContain('unsafe-eval');
 				expect(
 					headers['strict-transport-security'] ?? '',
 					`HSTS on ${target}`

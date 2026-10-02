@@ -2,6 +2,8 @@
 
 > Generated 2026-08-24 after the Next.js **15.5.18 → 16.3.2** upgrade (`middleware.ts` → `proxy.ts`, Turbopack default, native ESLint flat configs).
 > Complements `APP_HEALTH_ROADMAP.md` and `POOR_PRACTICES_AUDIT.md` — covers only the debt deliberately deferred during the upgrade to keep that diff reviewable. Nothing below blocks shipping; all gates were green at hand-off.
+>
+> **2026-10-02 patch bump:** `next` + `eslint-config-next` **16.3.2 → 16.3.8** (latest stable). 16.3.8 carries the High SSRF fix in image optimization plus four cache-poisoning/disclosure advisories; no API or config changes were needed. The same pass fixed the dev-console `eval() is not supported` error — `next.config.ts` now appends `'unsafe-eval'` to `script-src` only when `NODE_ENV=development` (ADR-0012 § CSP), asserted eval-free in production by `e2e/specs/security/uploads-headers.spec.ts`.
 
 ## Upgrade state at hand-off
 
