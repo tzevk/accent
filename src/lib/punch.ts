@@ -29,11 +29,62 @@ export function resolveDirection(
 	return 'unknown';
 }
 
-interface DirectionSource {
+/** The minimum a Punch row needs to be bucketed into an employee-day. */
+export interface PunchBucketSource {
 	employee_code: string;
 	/** 'YYYY-MM-DD HH:mm:ss' */
 	log_date: string;
+}
+
+interface DirectionSource extends PunchBucketSource {
 	direction?: string | null;
+}
+
+/** 'YYYY-MM-DD HH:mm:ss' — the wall-clock shape a device row carries. */
+const LOG_DATE_SHAPE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+/**
+ * Does `logDate` look like the device's `YYYY-MM-DD HH:mm:ss` wall clock?
+ * A value that fails this has no chronological position; the bucketing
+ * below sorts it last inside its day.
+ */
+export function isLogDateFormat(logDate: unknown): logDate is string {
+	return typeof logDate === 'string' && LOG_DATE_SHAPE.test(logDate);
+}
+
+/**
+ * Indices per `${employee_code}|${YYYY-MM-DD}`, sorted by punch time so the
+ * alternating direction assignment follows the day's real sequence.
+ *
+ * Extracted so the direction-gated day-times path (ADR-0007) and the
+ * direction-agnostic Time Present calculator bucket identically and cannot
+ * drift apart.
+ *
+ * Ordering is the original inline sort — `a < b ? -1 : 1`, which returns 1
+ * (never 0) for equal timestamps — so V8's stable sort keeps its existing
+ * tie behaviour. A malformed `log_date` has no chronological position and
+ * sorts last in its bucket, which keeps it from ever becoming the day's
+ * first punch.
+ */
+export function bucketPunchIndicesByEmployeeDay<P extends PunchBucketSource>(
+	punches: P[]
+): Map<string, number[]> {
+	const buckets = new Map<string, number[]>();
+	punches.forEach((punch, index) => {
+		const date = punch.log_date.slice(0, 10);
+		const key = `${punch.employee_code}|${date}`;
+		const bucket = buckets.get(key);
+		if (bucket) bucket.push(index);
+		else buckets.set(key, [index]);
+	});
+	const wellFormed = punches.map((punch) => isLogDateFormat(punch.log_date));
+	for (const bucket of buckets.values()) {
+		bucket.sort((a, b) => {
+			if (wellFormed[a] !== wellFormed[b]) return wellFormed[a] ? -1 : 1;
+			return punches[a].log_date < punches[b].log_date ? -1 : 1;
+		});
+	}
+	return buckets;
 }
 
 /** Blank retry within this long after a kept punch inherits its direction. */
@@ -62,18 +113,9 @@ export function applyInferredDirections<P extends DirectionSource>(
 	punches: P[]
 ): (P & { direction: PunchDirection })[] {
 	// Indices per (employee_code, date), sorted by punch time so the
-	// alternating assignment follows the day's real sequence.
-	const buckets = new Map<string, number[]>();
-	punches.forEach((punch, index) => {
-		const date = punch.log_date.slice(0, 10);
-		const key = `${punch.employee_code}|${date}`;
-		const bucket = buckets.get(key);
-		if (bucket) bucket.push(index);
-		else buckets.set(key, [index]);
-	});
-	for (const bucket of buckets.values()) {
-		bucket.sort((a, b) => (punches[a].log_date < punches[b].log_date ? -1 : 1));
-	}
+	// alternating assignment follows the day's real sequence — the same
+	// bucketing Time Present consumes, so the two paths cannot drift.
+	const buckets = bucketPunchIndicesByEmployeeDay(punches);
 
 	const result: (P & { direction: PunchDirection })[] = punches.map(
 		(punch) => ({ ...punch, direction: 'unknown' })

@@ -1,12 +1,14 @@
 'use client';
 
 import React, {
+	Suspense,
 	useState,
 	useEffect,
 	useRef,
 	useCallback,
 	useMemo,
 } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -119,7 +121,18 @@ const STATUS_OPTIONS = [
 const getStatusInfo = (code) =>
 	STATUS_OPTIONS.find((s) => s.value === code) || STATUS_OPTIONS[0];
 
-export default function AttendancePage() {
+/** The only `?month=` shape the deep link accepts. */
+const MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+function AttendancePageInner() {
+	const searchParams = useSearchParams();
+	// Deep link from the Attendance report's Time Present note
+	// (`/employees/attendance?employee_id=<employees.id>&month=YYYY-MM`).
+	// Both values are only seeds; the pickers stay authoritative afterwards.
+	// Read defensively: the hook yields no query object when the page renders
+	// outside an App Router context, and the grid must still open.
+	const linkMonth = MONTH_PATTERN.exec(searchParams?.get('month') ?? '');
+	const deepLinkEmployeeId = searchParams?.get('employee_id') ?? null;
 	const { user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
 	// A primitive, not the hook's own values: this is a dependency of a
 	// useCallback below, and the hook's object identities are not guaranteed
@@ -130,8 +143,13 @@ export default function AttendancePage() {
 
 	// Month/Year selector
 	const now = new Date();
-	const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1); // 1-12
-	const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+	// Seeded from ?month= when the deep link carries one; 1-12.
+	const [selectedMonth, setSelectedMonth] = useState(() =>
+		linkMonth ? Number(linkMonth[2]) : now.getMonth() + 1
+	);
+	const [selectedYear, setSelectedYear] = useState(() =>
+		linkMonth ? Number(linkMonth[1]) : now.getFullYear()
+	);
 	const [searchQuery, setSearchQuery] = useState('');
 	const [departmentFilter, setDepartmentFilter] = useState('');
 
@@ -195,6 +213,12 @@ export default function AttendancePage() {
 	// Filtered employees
 	const filteredEmployees = useMemo(() => {
 		let list = employees;
+		// A deep link pins the grid to one employee. Matched on the primary
+		// key: the grid's own search box matches names, employee codes and
+		// departments, so a numeric row id would never match it.
+		if (deepLinkEmployeeId) {
+			list = list.filter((e) => String(e.id) === deepLinkEmployeeId);
+		}
 		if (searchQuery) {
 			const q = searchQuery.toLowerCase();
 			list = list.filter(
@@ -208,7 +232,7 @@ export default function AttendancePage() {
 			list = list.filter((e) => e.department === departmentFilter);
 		}
 		return list;
-	}, [employees, searchQuery, departmentFilter]);
+	}, [employees, searchQuery, departmentFilter, deepLinkEmployeeId]);
 
 	// Holiday date set for quick lookup
 	const holidayDateSet = useMemo(() => {
@@ -1212,5 +1236,13 @@ export default function AttendancePage() {
 				</div>
 			</div>
 		</AccessGuard>
+	);
+}
+
+export default function AttendancePage() {
+	return (
+		<Suspense fallback={null}>
+			<AttendancePageInner />
+		</Suspense>
 	);
 }

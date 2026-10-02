@@ -24,6 +24,11 @@
 import type Decimal from 'decimal.js';
 import { query } from '@/utils/database';
 import { R, mul, sub, add, pctOf, toNumber, gt } from '@/lib/money';
+import {
+	parseDailyEntries,
+	parseDailyEntryRecords,
+	sumLoggedHoursForMonth,
+} from '@/lib/logged-hours';
 
 // ─── Public types ───────────────────────────────────────────────────
 
@@ -344,29 +349,6 @@ export function collectManhoursTabMonths(
 
 // ─── Pure helpers (unit-tested) ─────────────────────────────────────
 
-interface DailyEntryShape {
-	date?: string;
-	hours?: number;
-	qty_done?: number;
-	remarks?: string;
-}
-
-export function parseDailyEntries(raw: unknown): DailyEntryShape[] {
-	if (!raw) return [];
-	try {
-		const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-		if (!Array.isArray(parsed)) return [];
-		return parsed.filter(
-			(entry) =>
-				entry &&
-				typeof entry === 'object' &&
-				typeof (entry as DailyEntryShape).date === 'string'
-		);
-	} catch {
-		return [];
-	}
-}
-
 /**
  * Sum the hours logged by one assignment during `month` (YYYY-MM).
  * Entries outside the month are dropped; hours ≤ 0 are ignored.
@@ -375,19 +357,16 @@ export function sumMonthlyHours(
 	raw: unknown,
 	month: string
 ): { total_hours: number; has_entries: boolean } {
-	const entries = parseDailyEntries(raw);
-	let total = 0;
-	let hasEntries = false;
-	for (const entry of entries) {
-		if (typeof entry.date === 'string' && entry.date.startsWith(month)) {
-			const h = toNum(entry.hours);
-			if (h > 0) {
-				total += h;
-				hasEntries = true;
-			}
-		}
-	}
-	return { total_hours: round2(total), has_entries: hasEntries };
+	return {
+		total_hours: sumLoggedHoursForMonth([raw], month),
+		// Deliberately not `total_hours > 0`: sub-cent hours round the total to
+		// 0 and are still a logged entry. The canonical parser has already
+		// dropped the month-mismatched and non-positive-hours entries, so any
+		// survivor in the month means hours were logged.
+		has_entries: parseDailyEntries(raw).some((entry) =>
+			entry.date.startsWith(month)
+		),
+	};
 }
 
 export function monthLabel(month: string): string {
@@ -964,16 +943,14 @@ export async function fetchBillingMeta(): Promise<BillingMeta> {
 			 WHERE daily_entries IS NOT NULL AND daily_entries NOT IN ('', '[]')`
 		)) as [DbRow[], unknown];
 		for (const row of asgRows) {
-			for (const entry of parseDailyEntries(row.daily_entries)) {
-				const date = typeof entry.date === 'string' ? entry.date : '';
-				if (date.length >= 7) {
-					const m = date.slice(0, 7);
-					monthSet.add(m);
-					const y = Number(m.slice(0, 4));
-					if (y) {
-						yearsSet.add(y);
-						yearsSet.add(y - 1);
-					}
+			for (const { date } of parseDailyEntryRecords(row.daily_entries)) {
+				if (date.length < 7) continue;
+				const m = date.slice(0, 7);
+				monthSet.add(m);
+				const y = Number(m.slice(0, 4));
+				if (y) {
+					yearsSet.add(y);
+					yearsSet.add(y - 1);
 				}
 			}
 		}

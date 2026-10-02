@@ -10,6 +10,7 @@
  */
 
 import { query } from '@/utils/database';
+import { parseDailyEntryRecords } from '@/lib/logged-hours';
 import type { ApiProject, ApiMember, ApiActivity } from './report-utils';
 
 export interface FetchOptions {
@@ -34,10 +35,6 @@ function n(row: DbRow, key: string, fallback = 0): number {
 	if (v == null || v === '') return fallback;
 	const num = typeof v === 'number' ? v : parseFloat(String(v));
 	return Number.isFinite(num) ? num : fallback;
-}
-
-function arr<T = unknown>(v: unknown): T[] {
-	return Array.isArray(v) ? (v as T[]) : [];
 }
 
 export async function fetchProjectActivitiesData(
@@ -149,25 +146,12 @@ export async function fetchProjectActivitiesData(
 				});
 			}
 			const activityEntry = activityMap.get(actId)!;
-
-			// Parse daily_entries JSON
-			let dailyEntries: ApiMember['daily_entries'] = [];
-			const rawDE = row.daily_entries;
-			if (rawDE != null) {
-				try {
-					dailyEntries = Array.isArray(rawDE)
-						? (rawDE as ApiMember['daily_entries'])
-						: typeof rawDE === 'string'
-							? (JSON.parse(rawDE) as ApiMember['daily_entries'])
-							: [];
-				} catch {
-					dailyEntries = [];
-				}
-			}
-			dailyEntries = arr(dailyEntries).filter(
-				(e): e is NonNullable<ApiMember['daily_entries']>[number] =>
-					!!e && typeof e === 'object' && 'date' in e
-			);
+			// Parse daily_entries JSON. The full member is kept (the client
+			// filters and re-aggregates it); the fallbacks below stay as they
+			// were for rows whose stored totals are zero.
+			const dailyEntries = parseDailyEntryRecords(row.daily_entries).map(
+				(record) => record.entry
+			) as Exclude<ApiMember['daily_entries'], undefined>;
 
 			const totalQtyDone = dailyEntries.reduce(
 				(sum, e) => sum + (parseFloat(String(e.qty_done ?? '')) || 0),

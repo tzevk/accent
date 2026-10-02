@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-	parseDailyEntries,
 	sumMonthlyHours,
 	monthLabel,
 	monthToKey,
@@ -20,6 +19,7 @@ import {
 	type BillingEmployeeRow,
 	type ProjectManhourTabRow,
 } from '@/app/reports/manhours-billing/data-source';
+import { parseDailyEntries } from '@/lib/logged-hours';
 
 function profile(overrides: Partial<SalaryProfile> = {}): SalaryProfile {
 	return {

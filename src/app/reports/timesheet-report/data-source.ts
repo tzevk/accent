@@ -16,6 +16,11 @@
 
 import { query } from '@/utils/database';
 import { isWeeklyOff } from '@/utils/weekly-off';
+import {
+	hoursByDateForMonth,
+	parseDailyEntryRecords,
+	sumLoggedHoursForMonth,
+} from '@/lib/logged-hours';
 
 // ─── Public types ───────────────────────────────────────────────────
 
@@ -191,12 +196,6 @@ function n(row: DbRow, key: string, fallback = 0): number {
 	return Number.isFinite(num) ? num : fallback;
 }
 
-function toNumber(v: unknown, fallback = 0): number {
-	if (v == null || v === '') return fallback;
-	const num = typeof v === 'number' ? v : parseFloat(String(v));
-	return Number.isFinite(num) ? num : fallback;
-}
-
 // ─── Pure helpers (unit-tested) ─────────────────────────────────────
 
 /** Classify an attendance status into a display kind. */
@@ -361,24 +360,6 @@ export function monthLabel(month: string): string {
 
 // ─── Project hours (daily_entries) ──────────────────────────────────
 
-interface DailyEntryShape {
-	date?: string | null;
-	hours?: number | string | null;
-}
-
-function parseDailyEntries(raw: unknown): DailyEntryShape[] {
-	if (!raw) return [];
-	try {
-		const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-		if (!Array.isArray(parsed)) return [];
-		return parsed.filter(
-			(e): e is DailyEntryShape => !!e && typeof e === 'object' && 'date' in e
-		);
-	} catch {
-		return [];
-	}
-}
-
 /**
  * Build the per-day project-hour rows for a month from raw assignment rows.
  *
@@ -391,16 +372,6 @@ function parseDailyEntries(raw: unknown): DailyEntryShape[] {
 export function buildProjectRows(rawRows: DbRow[], month: string): TsProject[] {
 	const rows: TsProject[] = [];
 	for (const r of rawRows) {
-		const days: Record<string, number> = {};
-		let totalHours = 0;
-		for (const entry of parseDailyEntries(r.daily_entries)) {
-			const date = typeof entry.date === 'string' ? entry.date : '';
-			if (!date || date < `${month}-01` || date > `${month}-31`) continue;
-			const hours = toNumber(entry.hours);
-			if (hours <= 0) continue;
-			days[date] = round2((days[date] || 0) + hours);
-			totalHours += hours;
-		}
 		rows.push({
 			project_id: n(r, 'project_id') || null,
 			project_code: s(r, 'project_code'),
@@ -414,8 +385,8 @@ export function buildProjectRows(rawRows: DbRow[], month: string): TsProject[] {
 			qty_completed: n(r, 'qty_completed'),
 			start_date: s(r, 'start_date', '') || null,
 			due_date: s(r, 'due_date', '') || null,
-			days,
-			total_hours: round2(totalHours),
+			days: hoursByDateForMonth([r.daily_entries], month),
+			total_hours: sumLoggedHoursForMonth([r.daily_entries], month),
 		});
 	}
 	return rows;
@@ -521,8 +492,7 @@ export async function fetchTimesheetMeta(): Promise<TimesheetMeta> {
 		)) as [DbRow[], unknown];
 		const monthSet = new Set(months);
 		for (const row of asgRows) {
-			for (const entry of parseDailyEntries(row.daily_entries)) {
-				const date = typeof entry.date === 'string' ? entry.date : '';
+			for (const { date } of parseDailyEntryRecords(row.daily_entries)) {
 				if (date.length >= 7) monthSet.add(date.slice(0, 7));
 			}
 		}
