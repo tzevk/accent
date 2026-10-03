@@ -1,83 +1,49 @@
 'use client';
 
-import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-	ArrowDownLeftIcon,
 	ArrowPathIcon,
-	ArrowUpRightIcon,
 	CalendarDaysIcon,
-	CheckBadgeIcon,
-	CircleStackIcon,
-	DevicePhoneMobileIcon,
 	ExclamationTriangleIcon,
 	FingerPrintIcon,
-	InformationCircleIcon,
 	InboxArrowDownIcon,
+	InformationCircleIcon,
 	QuestionMarkCircleIcon,
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
-import SearchableSelect from '@/components/ui/searchable-select';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
+import { formatMonth, formatNumber } from '@/lib/format';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
+import type {
+	ArCell,
+	ArData,
+	ArMatrixRow,
+	ArMeta,
+	ArMonthPunch,
+	ArStats,
+} from './data-source';
+import {
+	CELL_TONE_CLASSES,
+	resolveAttendanceCell,
+	type AttendanceCell,
+} from './cell-status';
+import { aggregateUnmappedCodes } from './unmapped-codes';
+import RosterDisclosureCard from './RosterDisclosure';
+import UnmappedCodesStrip from './UnmappedCodesStrip';
+import TimePresentNote from './TimePresentNote';
+import CellPunchModal, { CellPunchTrigger } from './CellPunchModal';
 
 // ─── Client-safe API types ──────────────────────────────────────────
 
-type PunchDirection = 'in' | 'out' | 'unknown';
-
-interface ArEmployee {
-	id: number;
-	employee_id: string;
-	name: string;
-	department: string | null;
-	smartoffice_code: string | null;
-}
-
-interface ArPunch {
-	id: number;
-	employee_code: string;
-	log_date: string;
-	date: string;
-	time: string;
-	serial_number: string;
-	raw_direction: string;
-	direction: PunchDirection;
-	employee_id: number | null;
-	employee_name: string | null;
-	acc_employee_code: string | null;
-}
-
-interface ArStats {
-	total_punches: number;
-	mapped_punches: number;
-	unmapped_punches: number;
-	distinct_days: number;
-	distinct_employees: number;
-	distinct_devices: number;
-}
-
-interface ArDevice {
-	serial_number: string;
-	punch_count: number;
-}
-
-interface ArMeta {
-	employees: ArEmployee[];
-	months: string[];
-	latest_month: string | null;
-	devices: ArDevice[];
-	has_data: boolean;
-}
-
-interface ArData {
-	from: string;
-	to: string;
-	punches: ArPunch[];
-	stats: ArStats;
-}
-
+/**
+ * The route's envelope for both requests a viewer makes: the meta probe and a
+ * month's payload. The matrix, stats and Punch shapes themselves live in
+ * `./data-source` and are imported type-only, so the page and the server
+ * transforms cannot drift apart and no server module reaches the bundle.
+ */
 interface ApiResponse {
 	success: boolean;
 	data?: ArData | null;
@@ -85,79 +51,45 @@ interface ApiResponse {
 	error?: string;
 }
 
-// ─── Date helpers ───────────────────────────────────────────────────
+// ─── Month constants ────────────────────────────────────────────────
 
-function isoDate(date: Date): string {
-	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
-		date.getDate()
-	).padStart(2, '0')}`;
+const MONTH_RE = /^\d{4}-(?:0[1-9]|1[0-2])$/;
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Uncomputable Time Present: shown as an em dash, never as 0. */
+const EM_DASH = '—';
+
+/**
+ * The two figures, deliberately far apart in weight and hue: Logged Hours is
+ * the credited, canonical number (emerald, lighter), Time Present is the
+ * measurement (purple, bold). Nothing in the grid lets the reader take one for
+ * the other.
+ */
+const LOGGED_HOURS_CLASS =
+	'text-[12px] font-medium tabular-nums text-emerald-700';
+const TIME_PRESENT_CLASS = 'text-[12px] font-bold tabular-nums text-purple-800';
+const NO_FIGURE_CLASS = 'text-[12px] tabular-nums text-gray-500';
+
+/**
+ * A matrix column: the day-of-month number and its weekday, both read off
+ * the ISO date the route sent. Built once per month instead of per cell.
+ */
+interface DayColumn {
+	date: string;
+	day: string;
+	weekday: string;
 }
 
-/** Default range: first day of the current month through today. */
-function defaultRange(): { from: string; to: string } {
-	const now = new Date();
-	return {
-		from: isoDate(new Date(now.getFullYear(), now.getMonth(), 1)),
-		to: isoDate(now),
-	};
+/** One Employee's row, with the day → cell lookup the grid reads. */
+interface RosterRow {
+	employee: ArMatrixRow;
+	cellsByDate: Map<string, ArCell>;
 }
 
-interface RangePreset {
-	key: string;
-	label: string;
-	from: string;
-	to: string;
-}
-
-function rangePresets(): RangePreset[] {
-	const now = new Date();
-	const year = now.getFullYear();
-	const month = now.getMonth();
-	const today = isoDate(now);
-
-	const last7 = new Date(now);
-	last7.setDate(now.getDate() - 6);
-	const lastMonthStart = new Date(year, month - 1, 1);
-	const lastMonthEnd = new Date(year, month, 0);
-
-	return [
-		{
-			key: 'last-7-days',
-			label: 'Last 7 days',
-			from: isoDate(last7),
-			to: today,
-		},
-		{
-			key: 'this-month',
-			label: 'This month',
-			from: isoDate(new Date(year, month, 1)),
-			to: today,
-		},
-		{
-			key: 'last-month',
-			label: 'Last month',
-			from: isoDate(lastMonthStart),
-			to: isoDate(lastMonthEnd),
-		},
-		{
-			key: 'this-year',
-			label: 'This year',
-			from: isoDate(new Date(year, 0, 1)),
-			to: today,
-		},
-	];
-}
-
-/** 2026-08-13 → "Thu, 13 Aug 2026"; falls back to the raw ISO string. */
-function formatPunchDate(iso: string): string {
-	const date = new Date(`${iso}T00:00:00`);
-	if (Number.isNaN(date.getTime())) return iso;
-	return date.toLocaleDateString('en-IN', {
-		weekday: 'short',
-		day: '2-digit',
-		month: 'short',
-		year: 'numeric',
-	});
+interface Drilldown {
+	employee: { id: number; code: string; name: string };
+	date: string;
 }
 
 function employeeInitials(name: string | null): string {
@@ -172,72 +104,86 @@ function employeeInitials(name: string | null): string {
 
 // ─── Small presentational pieces ────────────────────────────────────
 
-function DirectionBadge({ direction }: { direction: PunchDirection }) {
-	if (direction === 'in') {
-		return (
-			<span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-				<ArrowDownLeftIcon className="h-3 w-3" aria-hidden="true" />
-				IN
-			</span>
-		);
-	}
-	if (direction === 'out') {
-		return (
-			<span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-700">
-				<ArrowUpRightIcon className="h-3 w-3" aria-hidden="true" />
-				OUT
-			</span>
-		);
-	}
+/**
+ * One matrix cell: the authored Attendance Record badge — or, on a muted
+ * Weekly Off / holiday, the words for it — then Logged Hours and Time Present
+ * side by side. Presentation only — `cell` is already resolved by
+ * `resolveAttendanceCell`, so no rule is re-derived here.
+ *
+ * The compact visual is restated once as sr-only prose: both measures are
+ * named, an uncomputable span is said to be uncomputable, and a muted day is
+ * never left to the grey background alone.
+ */
+function CellContent({ cell }: { cell: AttendanceCell }) {
+	// Blank, not zero: a day with neither figure says nothing at all.
+	const showFigures = cell.hasLoggedHours || cell.hasPunches;
+	// Muted = a Weekly Off or holiday with no logged hours and no punches.
+	const mutedLabel = cell.holiday ? 'Holiday' : 'Weekly Off';
+
+	const description = [
+		`${cell.date}.`,
+		cell.hasLoggedHours
+			? `Logged Hours ${formatNumber(cell.loggedHours)}.`
+			: 'Logged Hours: none.',
+		cell.mergeRefused
+			? 'Time Present uncomputable: the cross-midnight merge was refused.'
+			: cell.timePresentComputable
+				? `Time Present ${formatNumber(cell.timePresentHours)} hours.`
+				: 'Time Present uncomputable.',
+		cell.statusLabel ? `Authored status: ${cell.statusLabel}.` : '',
+		`${cell.punchCount} ${cell.punchCount === 1 ? 'punch' : 'punches'}.`,
+		cell.muted ? `${mutedLabel} with no hours and no punches.` : '',
+	]
+		.filter(Boolean)
+		.join(' ');
+
 	return (
 		<span
-			className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-500"
-			title="Device did not report a direction"
+			title={description}
+			className={`flex flex-col items-center gap-0.5 px-0.5 py-1${
+				cell.muted ? ' text-gray-500' : ''
+			}`}
 		>
-			—
-		</span>
-	);
-}
-
-function StatCard({
-	value,
-	label,
-	icon: Icon,
-	tileClassName,
-	valueClassName,
-	footer,
-	delay = 0,
-}: {
-	value: number | string;
-	label: string;
-	icon: ComponentType<{ className?: string }>;
-	tileClassName: string;
-	valueClassName: string;
-	footer?: ReactNode;
-	delay?: number;
-}) {
-	return (
-		<div
-			className="anim-slide-up flex min-w-0 items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm"
-			style={{ animationDelay: `${delay}ms` }}
-		>
-			<div
-				className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tileClassName}`}
-			>
-				<Icon className="h-5 w-5" aria-hidden="true" />
-			</div>
-			<div className="min-w-0">
-				<div
-					className={`text-xl font-bold leading-tight tabular-nums ${valueClassName}`}
+			<span className="sr-only">{description}</span>
+			{cell.statusLabel ? (
+				<span
+					data-status-code={cell.statusCode ?? undefined}
+					aria-hidden="true"
+					className={`max-w-full rounded px-1 py-px text-[10px] font-semibold leading-[1.2] ${CELL_TONE_CLASSES[cell.statusTone ?? 'slate']}`}
 				>
-					{value}
-				</div>
-				<div className="mt-0.5 truncate text-[11px] font-medium uppercase tracking-wide text-gray-500">
-					{label}
-				</div>
-				{footer}
-			</div>
-		</div>
+					{cell.statusLabel}
+				</span>
+			) : cell.muted ? (
+				<span
+					aria-hidden="true"
+					className="text-[10px] font-medium leading-tight text-gray-500"
+				>
+					{mutedLabel}
+				</span>
+			) : null}
+			{showFigures ? (
+				<span className="flex items-baseline gap-1" aria-hidden="true">
+					<span
+						data-testid="cell-logged-hours"
+						className={
+							cell.hasLoggedHours ? LOGGED_HOURS_CLASS : NO_FIGURE_CLASS
+						}
+					>
+						{cell.hasLoggedHours ? formatNumber(cell.loggedHours) : ' '}
+					</span>
+					<span
+						data-testid="cell-time-present"
+						className={
+							cell.timePresentComputable ? TIME_PRESENT_CLASS : NO_FIGURE_CLASS
+						}
+					>
+						{cell.timePresentComputable
+							? formatNumber(cell.timePresentHours)
+							: EM_DASH}
+					</span>
+				</span>
+			) : null}
+		</span>
 	);
 }
 
@@ -264,84 +210,124 @@ export default function AttendanceReportPage() {
 		PERMISSIONS: { READ: string };
 	};
 
-	const [from, setFrom] = useState(() => defaultRange().from);
-	const [to, setTo] = useState(() => defaultRange().to);
-	const [employeeId, setEmployeeId] = useState('');
-	const [device, setDevice] = useState('');
+	// Empty until the viewer picks a month; the latest month with logs is
+	// then the default. Deriving rather than syncing through an effect keeps
+	// the picker honest — it always shows the month actually rendered.
+	const [pickedMonth, setPickedMonth] = useState('');
+	const [drilldown, setDrilldown] = useState<Drilldown | null>(null);
 
+	// The gate for everything below it: no month is known until this settles.
+	// A failed probe is surfaced at once with its own Retry rather than sitting
+	// behind the query client's retry ladder, so the page never looks alive
+	// while the report is unreachable.
 	const metaQuery = useQuery<ApiResponse>({
 		queryKey: ['reports', 'attendance-report', 'meta'],
 		queryFn: () => apiGet('/api/reports/attendance-report'),
 		refetchOnWindowFocus: false,
 		staleTime: 5 * 60_000,
+		retry: false,
 	});
 
-	const meta = metaQuery.data?.meta;
-	const employees = useMemo(() => meta?.employees ?? [], [meta]);
-	const devices = useMemo(() => meta?.devices ?? [], [meta]);
+	const meta = metaQuery.data?.meta ?? null;
+	const month = pickedMonth || meta?.latest_month || '';
 
-	const employeeOptions = useMemo(
-		() => [
-			{ value: '', label: 'All employees' },
-			...employees.map((employee) => ({
-				value: String(employee.id),
-				label: `${employee.name}${
-					employee.employee_id ? ` (${employee.employee_id})` : ''
-				}`,
-			})),
-		],
-		[employees]
-	);
-
-	const deviceOptions = useMemo(
-		() => [
-			{ value: '', label: 'All devices' },
-			...devices.map((d) => ({
-				value: d.serial_number,
-				label: `${d.serial_number} (${d.punch_count} punches)`,
-			})),
-		],
-		[devices]
-	);
-
-	const rangeValid = from && to && from <= to;
+	const monthValid = MONTH_RE.test(month);
 
 	const dataQuery = useQuery<ApiResponse>({
-		queryKey: [
-			'reports',
-			'attendance-report',
-			'data',
-			from,
-			to,
-			employeeId,
-			device,
-		],
-		queryFn: () => {
-			const params = new URLSearchParams({ from, to });
-			if (employeeId) params.append('employee_id', employeeId);
-			if (device) params.append('device', device);
-			return apiGet(`/api/reports/attendance-report?${params.toString()}`);
-		},
-		enabled: !!rangeValid,
+		queryKey: ['reports', 'attendance-report', 'data', month],
+		queryFn: () =>
+			apiGet(
+				`/api/reports/attendance-report?month=${encodeURIComponent(month)}`
+			),
+		enabled: monthValid,
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
+		// Same failure contract as the meta probe: the error card is the surface,
+		// and its Retry (or the hero's Refresh) is the only retry.
+		retry: false,
 	});
 
 	const data = dataQuery.data?.data ?? null;
-	const punches = useMemo(() => data?.punches ?? [], [data]);
-	const stats = data?.stats ?? null;
+	const stats: ArStats | null = data?.stats ?? null;
 
-	const unmappedCodes = useMemo(() => {
-		const codes = new Set<string>();
-		for (const punch of punches) {
-			if (!punch.employee_id) codes.add(punch.employee_code);
+	// The month arrives already split into cells; a date → cell lookup per row
+	// keeps a cell a single map read.
+	const rows = useMemo<RosterRow[]>(
+		() =>
+			(data?.employees ?? []).map((employee) => {
+				const cellsByDate = new Map<string, ArCell>();
+				for (const cell of employee.cells) {
+					cellsByDate.set(cell.date, cell);
+				}
+				return { employee, cellsByDate };
+			}),
+		[data]
+	);
+
+	// The month's raw punches, keyed by the Employee they are attributed to and
+	// the date they carry — the server buckets cells the same way, so a cell and
+	// its drill-down can never disagree. Unmapped punches carry no employee id
+	// and so key nothing; they reach the page only for the amber strip.
+	const punchesByCell = useMemo(() => {
+		const map = new Map<string, ArMonthPunch[]>();
+		for (const punch of data?.punches ?? []) {
+			if (punch.employee_id == null) continue;
+			const key = `${punch.employee_id}|${punch.date}`;
+			const bucket = map.get(key);
+			if (bucket) bucket.push(punch);
+			else map.set(key, [punch]);
 		}
-		return Array.from(codes);
-	}, [punches]);
+		return map;
+	}, [data]);
 
-	const mappedPercent = stats?.total_punches
-		? Math.round((stats.mapped_punches / stats.total_punches) * 100)
-		: 0;
+	const unmapped = useMemo(
+		() => aggregateUnmappedCodes(data?.punches ?? [], { month }),
+		[data, month]
+	);
+
+	const nonOptionalHolidays = useMemo(
+		() => new Set(data?.holidays.non_optional ?? []),
+		[data]
+	);
+	const optionalHolidays = useMemo(
+		() => new Set(data?.holidays.optional ?? []),
+		[data]
+	);
+
+	// UTC parse keeps the weekday off the server's timezone; a malformed date
+	// indexes WEEKDAYS with NaN and falls back to a blank header.
+	const columns = useMemo<DayColumn[]>(
+		() =>
+			(data?.days ?? []).map((date) => ({
+				date,
+				day: date.slice(8, 10),
+				weekday: WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()] ?? '',
+			})),
+		[data]
+	);
+
+	// The open cell's punches: the whole employee-day bucket, every device. The
+	// modal owns its own device filter; the page never narrows what it hands over.
+	const drilldownPunches = useMemo(() => {
+		if (!drilldown) return [];
+		return (
+			punchesByCell.get(`${drilldown.employee.id}|${drilldown.date}`) ?? []
+		);
+	}, [punchesByCell, drilldown]);
+
+	// 'August 2026' for the hero, caption and empty states; '' when unset.
+	// Anchored to day 1 in local time — parsing a bare 'YYYY-MM' would read as
+	// UTC midnight and slip a month in any timezone west of Greenwich.
+	const monthHeading = MONTH_RE.test(month)
+		? formatMonth(`${month}-01T00:00:00`)
+		: '';
+
+	const totalPunches = stats?.total_punches ?? 0;
+	const mappedPunches = stats?.mapped_punches ?? 0;
+	const unmappedPunches = stats?.unmapped_punches ?? 0;
+	const deviceCount = stats?.distinct_devices ?? 0;
+	const mappedPercent =
+		totalPunches > 0 ? Math.round((mappedPunches / totalPunches) * 100) : 0;
 
 	const isSuperAdmin =
 		user?.is_super_admin === true || user?.is_super_admin === 1;
@@ -353,11 +339,16 @@ export default function AttendanceReportPage() {
 	const hasFieldPermission = hasProjectActivitiesFieldPermission(user);
 	const hasAccess = isSuperAdmin || hasReportsPermission || hasFieldPermission;
 
-	const error =
-		dataQuery.error?.message ||
-		dataQuery.data?.error ||
+	// Contract of the gate: `meta-error` the moment the probe fails (an error
+	// or a 200 that reports success: false); the webhook card only after a
+	// successful probe that says there are no logs yet.
+	const metaFailed = metaQuery.isError || metaQuery.data?.success === false;
+	const metaErrorText =
+		metaQuery.error?.message ||
 		metaQuery.data?.error ||
-		(!rangeValid ? 'From date must be on or before To date.' : '');
+		'The report metadata request failed.';
+
+	const error = dataQuery.error?.message || dataQuery.data?.error || '';
 	const isRefreshing = dataQuery.isFetching;
 	const isLoading =
 		dataQuery.isLoading || (dataQuery.isFetching && !dataQuery.data);
@@ -415,125 +406,56 @@ export default function AttendanceReportPage() {
 										Attendance Report
 									</h1>
 									<p className="text-sm text-purple-200">
-										Smart Office biometric punches
+										Logged hours and time present per employee
+										{monthHeading ? ` · ${monthHeading}` : ''}
 									</p>
 								</div>
 							</div>
-							<div
-								className="anim-fade-in flex flex-wrap items-center gap-1.5"
-								style={{ animationDelay: '80ms' }}
-							>
-								{rangePresets().map((preset) => {
-									const isActive = preset.from === from && preset.to === to;
-									return (
-										<button
-											key={preset.key}
-											type="button"
-											onClick={() => {
-												setFrom(preset.from);
-												setTo(preset.to);
-											}}
-											className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-[scale,background-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 active:scale-[0.96] ${
-												isActive
-													? 'bg-white text-[#64126D] shadow-sm'
-													: 'bg-white/10 text-white hover:bg-white/20'
-											}`}
-										>
-											{preset.label}
-										</button>
-									);
-								})}
+							<div className="anim-fade-in" style={{ animationDelay: '80ms' }}>
+								<button
+									type="button"
+									onClick={() => dataQuery.refetch()}
+									disabled={isRefreshing || !monthValid}
+									className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-[#64126D] shadow-sm transition-[scale,background-color,box-shadow] hover:bg-purple-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									<ArrowPathIcon
+										className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`}
+										aria-hidden="true"
+									/>
+									Refresh
+								</button>
 							</div>
 						</div>
 					</div>
 
-					{/* Filter bar */}
-					<div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-						<div className="flex flex-wrap items-end gap-3">
-							<label className="flex flex-col gap-1">
-								<span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-									From
-								</span>
-								<div className="relative">
-									<CalendarDaysIcon
-										className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-										aria-hidden="true"
-									/>
-									<input
-										type="date"
-										value={from}
-										onChange={(e) => setFrom(e.target.value)}
-										aria-label="From date"
-										className={`${controlClass} w-[152px] pl-8`}
-									/>
-								</div>
-							</label>
-							<label className="flex flex-col gap-1">
-								<span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-									To
-								</span>
-								<div className="relative">
-									<CalendarDaysIcon
-										className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-										aria-hidden="true"
-									/>
-									<input
-										type="date"
-										value={to}
-										onChange={(e) => setTo(e.target.value)}
-										aria-label="To date"
-										className={`${controlClass} w-[152px] pl-8`}
-									/>
-								</div>
-							</label>
-							<label className="flex flex-col gap-1">
-								<span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-									Employee
-								</span>
-								<SearchableSelect
-									options={employeeOptions}
-									value={employeeId}
-									onChange={(val) => setEmployeeId(String(val))}
-									placeholder="All employees"
-									className="w-[240px]"
-									buttonClassName="h-9 border-gray-300"
-									aria-label="Employee"
-								/>
-							</label>
-							<label className="flex flex-col gap-1">
-								<span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-									Device
-								</span>
-								<select
-									value={device}
-									onChange={(e) => setDevice(e.target.value)}
-									aria-label="Device"
-									className={`${controlClass} w-[220px]`}
-								>
-									{deviceOptions.map((option) => (
-										<option key={option.value || 'all'} value={option.value}>
-											{option.label}
-										</option>
-									))}
-								</select>
-							</label>
-							<button
-								type="button"
-								onClick={() => dataQuery.refetch()}
-								disabled={isRefreshing}
-								className="inline-flex h-9 items-center gap-2 rounded-lg bg-purple-600 px-4 text-sm font-semibold text-white shadow-sm transition-[scale,background-color,box-shadow] hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								<ArrowPathIcon
-									className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`}
+					{/* Month filter — the report's one control */}
+					<div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+						<label className="block min-w-[200px]">
+							<span className="mb-1 block text-[11px] font-semibold text-gray-700">
+								Month
+							</span>
+							<div className="relative">
+								<CalendarDaysIcon
+									className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
 									aria-hidden="true"
 								/>
-								Refresh
-							</button>
-						</div>
+								<input
+									type="month"
+									value={month}
+									onChange={(e) => setPickedMonth(e.target.value)}
+									aria-label="Month"
+									className={`${controlClass} w-[168px] pl-8`}
+								/>
+							</div>
+						</label>
 					</div>
 
-					{error ? (
-						<div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm">
+					{metaFailed ? (
+						<div
+							data-testid="meta-error"
+							role="alert"
+							className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm"
+						>
 							<ExclamationTriangleIcon
 								className="mx-auto mb-2 h-7 w-7 text-red-500"
 								aria-hidden="true"
@@ -541,26 +463,34 @@ export default function AttendanceReportPage() {
 							<p className="font-semibold text-red-800">
 								Couldn&apos;t load the report
 							</p>
-							<p className="mt-1 text-sm text-red-700">{error}</p>
+							<p className="mt-1 text-sm text-red-700">{metaErrorText}</p>
 							<button
+								data-testid="meta-retry"
 								type="button"
-								onClick={() => dataQuery.refetch()}
-								className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-[scale,background-color] hover:bg-red-700 active:scale-[0.96]"
+								onClick={() => metaQuery.refetch()}
+								className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-[scale,background-color] hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2 active:scale-[0.96]"
 							>
 								<ArrowPathIcon className="h-3.5 w-3.5" aria-hidden="true" />
 								Retry
 							</button>
 						</div>
-					) : isLoading ? (
-						<div className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-gray-500">
+					) : !metaQuery.data ? (
+						<div
+							data-testid="report-loading"
+							role="status"
+							className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-gray-500"
+						>
 							<ArrowPathIcon
 								className="h-4 w-4 animate-spin"
 								aria-hidden="true"
 							/>
 							Loading attendance…
 						</div>
-					) : !meta?.has_data ? (
-						<div className="rounded-2xl bg-blue-50 p-5 shadow-sm ring-1 ring-blue-200">
+					) : meta?.has_data === false ? (
+						<div
+							data-testid="no-logs"
+							className="rounded-2xl bg-blue-50 p-5 shadow-sm ring-1 ring-blue-200"
+						>
 							<h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-blue-900">
 								<InformationCircleIcon
 									className="h-4 w-4 text-blue-600"
@@ -576,7 +506,7 @@ export default function AttendanceReportPage() {
 								still pending.
 							</p>
 						</div>
-					) : !data ? (
+					) : !monthValid ? (
 						<div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-gray-300 bg-white/60 px-6 text-center">
 							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
 								<CalendarDaysIcon
@@ -585,206 +515,307 @@ export default function AttendanceReportPage() {
 								/>
 							</div>
 							<p className="text-sm font-medium text-gray-700">
-								Pick a date range to view attendance punches
+								Pick a month to view attendance
 							</p>
 						</div>
-					) : stats && stats.total_punches === 0 ? (
-						<div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-gray-300 bg-white/60 px-6 text-center">
-							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
-								<InboxArrowDownIcon
-									className="h-6 w-6 text-gray-400"
-									aria-hidden="true"
-								/>
-							</div>
-							<p className="text-sm font-medium text-gray-700">
-								No punches in this date range
+					) : error ? (
+						<div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm">
+							<ExclamationTriangleIcon
+								className="mx-auto mb-2 h-7 w-7 text-red-500"
+								aria-hidden="true"
+							/>
+							<p className="font-semibold text-red-800">
+								Couldn&apos;t load the report
 							</p>
-							<p className="text-xs text-gray-500">
-								Try widening the range or clearing the filters.
-							</p>
+							<p className="mt-1 text-sm text-red-700">{error}</p>
+							<button
+								type="button"
+								onClick={() => dataQuery.refetch()}
+								className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-[scale,background-color] hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2 active:scale-[0.96]"
+							>
+								<ArrowPathIcon className="h-3.5 w-3.5" aria-hidden="true" />
+								Retry
+							</button>
+						</div>
+					) : isLoading ? (
+						<div
+							role="status"
+							className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-gray-500"
+						>
+							<ArrowPathIcon
+								className="h-4 w-4 animate-spin"
+								aria-hidden="true"
+							/>
+							Loading attendance…
 						</div>
 					) : (
 						<div>
-							{/* Stats strip */}
-							<div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-								<StatCard
-									value={stats?.total_punches ?? 0}
-									label="Total punches"
-									icon={CircleStackIcon}
-									tileClassName="bg-purple-100 text-purple-700"
-									valueClassName="text-purple-600"
-									delay={0}
-								/>
-								<StatCard
-									value={stats?.mapped_punches ?? 0}
-									label="Mapped to employee"
-									icon={CheckBadgeIcon}
-									tileClassName="bg-green-100 text-green-700"
-									valueClassName="text-green-600"
-									delay={60}
-									footer={
-										<div
-											className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-green-100"
-											title={`${mappedPercent}% of punches mapped to an employee`}
-										>
-											<div
-												className="h-full rounded-full bg-green-500 transition-[width] duration-500 ease-out"
-												style={{ width: `${mappedPercent}%` }}
-											/>
-										</div>
-									}
-								/>
-								<StatCard
-									value={stats?.unmapped_punches ?? 0}
-									label="Unmapped"
-									icon={QuestionMarkCircleIcon}
-									tileClassName="bg-amber-100 text-amber-700"
-									valueClassName="text-amber-600"
-									delay={120}
-								/>
-								<StatCard
-									value={stats?.distinct_days ?? 0}
-									label="Days"
-									icon={CalendarDaysIcon}
-									tileClassName="bg-blue-100 text-blue-700"
-									valueClassName="text-blue-600"
-									delay={180}
-								/>
-								<StatCard
-									value={stats?.distinct_devices ?? 0}
-									label="Devices"
-									icon={DevicePhoneMobileIcon}
-									tileClassName="bg-gray-100 text-gray-600"
-									valueClassName="text-gray-600"
-									delay={240}
-								/>
-							</div>
+							{/* Punches that reached no employee */}
+							<UnmappedCodesStrip
+								codes={unmapped.codes}
+								totalPunches={unmapped.total_punches}
+								className="mb-3"
+							/>
 
-							{unmappedCodes.length > 0 && (
-								<div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-									<ExclamationTriangleIcon
-										className="mt-0.5 h-4 w-4 shrink-0 text-amber-600"
-										aria-hidden="true"
-									/>
-									<p className="text-sm text-amber-800">
-										<span className="font-semibold">
-											{stats?.unmapped_punches} punches from{' '}
-											{unmappedCodes.length} code
-											{unmappedCodes.length === 1 ? '' : 's'} not linked to an
-											employee:{' '}
-										</span>
-										<span className="font-medium">
-											{unmappedCodes.slice(0, 10).join(', ')}
-											{unmappedCodes.length > 10
-												? `, … (${unmappedCodes.length - 10} more)`
-												: ''}
-										</span>
+							{!data || totalPunches === 0 ? (
+								<div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-gray-300 bg-white/60 px-6 text-center">
+									<div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+										<InboxArrowDownIcon
+											className="h-6 w-6 text-gray-400"
+											aria-hidden="true"
+										/>
+									</div>
+									<p className="text-sm font-medium text-gray-700">
+										No punches in this month
 									</p>
+									<p className="text-xs text-gray-500">
+										{monthHeading
+											? `Nothing was recorded in ${monthHeading}.`
+											: null}
+									</p>
+								</div>
+							) : rows.length === 0 ? (
+								<div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-gray-300 bg-white/60 px-6 text-center">
+									<div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+										<QuestionMarkCircleIcon
+											className="h-6 w-6 text-amber-500"
+											aria-hidden="true"
+										/>
+									</div>
+									<p className="text-sm font-medium text-gray-700">
+										No payroll employees on the roster
+									</p>
+									<p className="text-xs text-gray-500">
+										{unmapped.total_punches}{' '}
+										{unmapped.total_punches === 1 ? 'punch' : 'punches'} in this
+										month could not be matched to an employee, and no active
+										payroll employee is on the roster.
+									</p>
+								</div>
+							) : (
+								<div>
+									{/* What the month holds, and how to read it, in two lines */}
+									<div className="mb-3 flex flex-col gap-1.5">
+										<p
+											data-testid="month-summary"
+											data-total={totalPunches}
+											data-mapped={mappedPunches}
+											data-unmapped={unmappedPunches}
+											data-devices={deviceCount}
+											className="text-xs tabular-nums text-gray-600"
+										>
+											{`${totalPunches} punches · ${mappedPunches} mapped (${mappedPercent}%) · ${unmappedPunches} unmapped · ${deviceCount} devices`}
+										</p>
+										<div
+											data-testid="figures-legend"
+											className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-600"
+										>
+											<span className="inline-flex items-center gap-1.5">
+												<span
+													className="h-2.5 w-2.5 rounded-sm bg-emerald-500"
+													aria-hidden="true"
+												/>
+												<span className={LOGGED_HOURS_CLASS}>Logged Hours</span>
+												<span>
+													— billed effort: the canonical numerator payroll
+													prices
+												</span>
+											</span>
+											<span className="inline-flex items-center gap-1.5">
+												<span
+													className="h-2.5 w-2.5 rounded-sm bg-purple-700"
+													aria-hidden="true"
+												/>
+												<span className={TIME_PRESENT_CLASS}>Time Present</span>
+												<span>
+													— the measured first-to-last span of the day&apos;s
+													punches; never credited
+												</span>
+											</span>
+											<span>
+												{`An em dash (${EM_DASH}) marks an uncomputable span — never 0. Click a cell for its punches.`}
+											</span>
+										</div>
+									</div>
+
+									{/* Month matrix: employees down, days across */}
+									<div className="anim-fade-in overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+										<p className="border-b border-gray-100 bg-gray-50/60 px-4 py-2 text-[11px] text-gray-600 sm:hidden">
+											Scroll sideways for the rest of the month →
+										</p>
+										<div
+											role="region"
+											aria-label={`Attendance matrix for ${monthHeading || month}`}
+											tabIndex={0}
+											className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500"
+										>
+											<table className="w-full text-[12px]">
+												<caption className="sr-only">
+													Logged hours and time present hours per employee for{' '}
+													{monthHeading}
+												</caption>
+												<thead>
+													<tr className="border-b border-gray-200 bg-gray-50/80 text-[10px] uppercase tracking-wider text-gray-600">
+														<th
+															scope="col"
+															className="sticky left-0 z-10 bg-gray-50/95 px-4 py-2 text-left font-semibold"
+														>
+															Employee
+														</th>
+														{columns.map((column) => (
+															<th
+																key={column.date}
+																scope="col"
+																title={column.date}
+																className="min-w-[56px] px-1 py-1.5 text-center font-semibold"
+															>
+																<span className="block text-[11px] leading-tight text-gray-700">
+																	{column.day}
+																</span>
+																<span className="block text-[9px] font-medium leading-tight text-gray-500">
+																	{column.weekday}
+																</span>
+															</th>
+														))}
+													</tr>
+												</thead>
+												<tbody>
+													{rows.map(({ employee, cellsByDate }) => (
+														<tr
+															key={employee.id}
+															className="border-b border-gray-100 last:border-0 hover:bg-purple-50/40"
+														>
+															<th
+																scope="row"
+																className="sticky left-0 z-10 max-w-[240px] bg-white px-4 py-2 text-left font-normal"
+															>
+																<span className="flex items-center gap-2.5">
+																	<span
+																		className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#64126D] to-[#86288F] text-[10px] font-bold text-white"
+																		aria-hidden="true"
+																	>
+																		{employeeInitials(employee.name)}
+																	</span>
+																	<span className="min-w-0">
+																		<span className="block truncate font-medium text-gray-900">
+																			{employee.name}
+																		</span>
+																		<span className="block text-[10px] text-gray-500">
+																			{employee.employee_id
+																				? `${employee.employee_id} · `
+																				: ''}
+																			{employee.punch_count} punches
+																			{employee.smartoffice_code
+																				? ''
+																				: ' · no device code'}
+																		</span>
+																	</span>
+																</span>
+															</th>
+															{columns.map((column) => {
+																const cell = cellsByDate.get(column.date);
+																const resolved = resolveAttendanceCell({
+																	date: column.date,
+																	status: cell?.status ?? null,
+																	loggedHours: cell?.logged_hours ?? null,
+																	punchCount: cell?.punch_count ?? 0,
+																	timePresentHours: cell?.hours ?? null,
+																	mergeRefused: cell?.merge_refused ?? false,
+																	nonOptionalHolidays,
+																	optionalHolidays,
+																});
+																// Every punch this employee-day carries, whatever
+																// device sent it — the same bucket the server counted.
+																const bucket =
+																	punchesByCell.get(
+																		`${employee.id}|${column.date}`
+																	) ?? [];
+																return (
+																	<td
+																		key={column.date}
+																		data-testid="attendance-cell"
+																		data-date={column.date}
+																		data-muted={
+																			resolved.muted ? 'true' : 'false'
+																		}
+																		data-time-present-state={
+																			resolved.timePresentComputable
+																				? 'computable'
+																				: 'uncomputable'
+																		}
+																		data-logged-hours-state={
+																			resolved.hasLoggedHours
+																				? 'present'
+																				: 'none'
+																		}
+																		data-punch-count={resolved.punchCount}
+																		className={`px-1 py-1 text-center align-top${
+																			resolved.muted ? ' bg-gray-50' : ''
+																		}`}
+																	>
+																		<CellPunchTrigger
+																			employee={{
+																				code: employee.employee_id,
+																				name: employee.name,
+																			}}
+																			date={column.date}
+																			punchCount={bucket.length}
+																			onOpen={() =>
+																				setDrilldown({
+																					employee: {
+																						id: employee.id,
+																						code: employee.employee_id,
+																						name: employee.name,
+																					},
+																					date: column.date,
+																				})
+																			}
+																		>
+																			<CellContent cell={resolved} />
+																		</CellPunchTrigger>
+																	</td>
+																);
+															})}
+														</tr>
+													))}
+												</tbody>
+											</table>
+										</div>
+									</div>
+
+									{/* The two facts the grid cannot show: the merge rule, and
+									    what a half day does to Time Present */}
+									<TimePresentNote className="mt-3" />
 								</div>
 							)}
 
-							{/* Punch table */}
-							<div className="anim-fade-in overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-								<div className="overflow-x-auto">
-									<table className="w-full text-left text-[13px]">
-										<caption className="sr-only">
-											Attendance punches from {data.from} to {data.to}
-										</caption>
-										<thead>
-											<tr className="border-b border-gray-200 bg-gray-50/80 text-[11px] uppercase tracking-wider text-gray-500">
-												<th className="px-4 py-2.5 font-semibold">Date</th>
-												<th className="px-4 py-2.5 font-semibold">Time</th>
-												<th className="px-4 py-2.5 font-semibold">Employee</th>
-												<th className="px-4 py-2.5 font-semibold">
-													Smart Office Code
-												</th>
-												<th className="px-4 py-2.5 font-semibold">Device</th>
-												<th className="px-4 py-2.5 font-semibold">Direction</th>
-											</tr>
-										</thead>
-										<tbody>
-											{punches.map((punch) => (
-												<tr
-													key={punch.id}
-													className="border-b border-gray-100 transition-colors last:border-0 even:bg-gray-50/50 hover:bg-purple-50/40"
-												>
-													<td
-														className="whitespace-nowrap px-4 py-2.5 text-gray-800"
-														title={punch.date}
-													>
-														{formatPunchDate(punch.date)}
-													</td>
-													<td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-gray-800">
-														{punch.time}
-													</td>
-													<td className="px-4 py-2.5">
-														{punch.employee_id ? (
-															<div className="flex items-center gap-2.5">
-																<span
-																	className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#64126D] to-[#86288F] text-[10px] font-bold text-white"
-																	aria-hidden="true"
-																>
-																	{employeeInitials(punch.employee_name)}
-																</span>
-																<div className="min-w-0">
-																	<span className="block truncate font-medium text-gray-900">
-																		{punch.employee_name}
-																	</span>
-																	{punch.acc_employee_code ? (
-																		<span className="block text-[11px] text-gray-500">
-																			{punch.acc_employee_code}
-																		</span>
-																	) : null}
-																</div>
-															</div>
-														) : (
-															<span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-																<QuestionMarkCircleIcon
-																	className="h-3 w-3"
-																	aria-hidden="true"
-																/>
-																Unmapped
-															</span>
-														)}
-													</td>
-													<td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-gray-700">
-														{punch.employee_code}
-													</td>
-													<td
-														className="whitespace-nowrap px-4 py-2.5 tabular-nums text-gray-700"
-														title="Biometric device serial number"
-													>
-														<span className="inline-flex items-center gap-1.5">
-															<DevicePhoneMobileIcon
-																className="h-3.5 w-3.5 text-gray-400"
-																aria-hidden="true"
-															/>
-															{punch.serial_number}
-														</span>
-													</td>
-													<td className="px-4 py-2.5">
-														<DirectionBadge direction={punch.direction} />
-													</td>
-												</tr>
-											))}
-										</tbody>
-									</table>
-								</div>
-							</div>
-
-							<p className="mt-3 flex items-start gap-1.5 text-[11px] text-gray-500">
-								<InformationCircleIcon
-									className="mt-px h-3.5 w-3.5 shrink-0"
-									aria-hidden="true"
-								/>
-								Showing up to 5,000 most recent punches. Direction is inferred
-								(first punch of the day = in, next = out) when the device
-								doesn&apos;t report one.
-							</p>
+							{/* Reference, not headline: what the roster filter dropped,
+							    and why — kept at the foot of the page */}
+							<RosterDisclosureCard
+								disclosure={data?.disclosure ?? null}
+								className="mt-4"
+							/>
 						</div>
 					)}
 				</div>
 			</main>
+
+			{drilldown ? (
+				<CellPunchModal
+					open
+					onClose={() => setDrilldown(null)}
+					employee={drilldown.employee}
+					date={drilldown.date}
+					month={month}
+					punches={drilldownPunches.map((punch) => ({
+						id: punch.id,
+						time: punch.time,
+						serialNumber: punch.serial_number,
+						employeeCode: punch.employee_code,
+						direction: punch.direction,
+					}))}
+				/>
+			) : null}
 		</div>
 	);
 }

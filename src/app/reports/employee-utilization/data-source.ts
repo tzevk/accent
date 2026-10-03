@@ -37,10 +37,13 @@ import {
 } from '@/app/reports/timesheet-report/data-source';
 import { isWeeklyOff } from '@/utils/weekly-off';
 import {
-	parseDailyEntries,
 	pickActiveProfile,
 	type SalaryProfile,
 } from '@/app/reports/manhours-billing/data-source';
+import {
+	parseDailyEntryRecords,
+	sumLoggedHoursForMonth,
+} from '@/lib/logged-hours';
 import { R, add, sub, mul, div, toNumber } from '@/lib/money';
 import { query } from '@/utils/database';
 
@@ -133,11 +136,6 @@ export interface UtilizationTotals {
 
 function round2(v: number): number {
 	return toNumber(R(v).toDecimalPlaces(2));
-}
-
-function toNum(v: unknown): number {
-	const num = Number(v);
-	return Number.isFinite(num) ? num : 0;
 }
 
 function daysInMonth(month: string): number {
@@ -248,31 +246,6 @@ export function buildCapacity(
 	};
 }
 
-// ─── Logged hours ─────────────────────────────────────────────────────
-
-/**
- * Uncapped project hours logged in the month across assignment payloads.
- * Entries outside the month and hours ≤ 0 are ignored. Equals the
- * timesheet `computeMonthlyHours` normal + overtime total: the daily cap is
- * a display split, never a clip, so overtime stays in the numerator.
- */
-export function sumLoggedHours(
-	dailyEntriesList: unknown[],
-	month: string
-): number {
-	let total = 0;
-	for (const raw of dailyEntriesList) {
-		for (const entry of parseDailyEntries(raw)) {
-			if (typeof entry.date !== 'string' || !entry.date.startsWith(month)) {
-				continue;
-			}
-			const hours = toNum(entry.hours);
-			if (hours > 0) total += hours;
-		}
-	}
-	return round2(total);
-}
-
 // ─── Utilization ──────────────────────────────────────────────────────
 
 /** Logged-over-capacity percentage, or null when capacity is zero. */
@@ -353,7 +326,7 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 		input.attendance ?? [],
 		input.holidays ?? new Set()
 	);
-	const loggedHours = sumLoggedHours(input.daily_entries ?? [], month);
+	const loggedHours = sumLoggedHoursForMonth(input.daily_entries ?? [], month);
 	const percent = utilizationPercent(loggedHours, capacity.capacity_hours);
 	const profile = pickActiveProfile(input.profiles ?? [], month);
 
@@ -556,8 +529,7 @@ async function collectUtilizationMonths(): Promise<string[]> {
 			 WHERE daily_entries IS NOT NULL AND daily_entries NOT IN ('', '[]')`
 		)) as [DbRow[], unknown];
 		for (const row of asgRows) {
-			for (const entry of parseDailyEntries(row.daily_entries)) {
-				const date = typeof entry.date === 'string' ? entry.date : '';
+			for (const { date } of parseDailyEntryRecords(row.daily_entries)) {
 				if (date.length >= 7) monthSet.add(date.slice(0, 7));
 			}
 		}

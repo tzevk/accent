@@ -61,9 +61,13 @@ shape so both can coexist.
 - `AttDirection` (device-reported direction) is **blank** on all current
   "U Series" units.
 - Therefore the poller forwards only `AttDirection` (trimmed, effectively
-  always empty) → webhook stores NULL → the Attendance Report **infers**
-  in/out from punch order (1st of day = IN, next = OUT). See
-  `applyInferredDirections` in `src/app/reports/attendance-report/data-source.ts`.
+  always empty) → webhook stores NULL. The Attendance Report's Time Present
+  is **direction-agnostic**: it measures each employee's first punch of the
+  day to their last, pooled across devices (`computeTimePresent` in
+  `src/lib/time-present.ts`), so a blank direction costs nothing. Direction
+  inference still exists for the employee attendance grid's in/out columns —
+  `applyInferredDirections` in `src/lib/punch.ts` — and the webhook's
+  `resolveDirection` normalizes what it stores.
 - If a future device starts reporting real directions, `AttDirection` flows
   through automatically (`resolveDirection` accepts `in`/`out`).
 
@@ -124,8 +128,17 @@ direction}`; Bearer auth (`SMARTOFFICE_WEBHOOK_SECRET`); upsert into
    (Task Scheduler _Last Result_), so a silent scheduler is diagnosable from
    the log alone. See its README for setup.
 3. **Report** — `src/app/reports/attendance-report/` (page + data-source).
-   Sanity view over `attendance_logs` with direction inference and an
-   unmapped-codes strip.
+   A month matrix: employees down the left, days of the selected month across
+   the top, one cell per employee-day carrying that day's Time Present hours
+   (`—` where the day is uncomputable, never `0`). `GET /api/reports/attendance-report?month=YYYY-MM`
+   returns the day list, the cells and month-wide punch stats; no `month`
+   returns filter-bar meta. Punches are attributed to the employee stamped at
+   ingest (`attendance_logs.employee_id`), never re-derived from the device
+   code. The punch fetch pads one day either side of the month so a shift
+   crossing a month boundary still merges on the day it began — the padded
+   days feed the merge/consumption walk only, while cells, stats and the
+   drill-down stay month-scoped. The fetch is bounded by that padded window,
+   never by a row cap.
 
 ## Local development access (smartoffice-db MCP)
 

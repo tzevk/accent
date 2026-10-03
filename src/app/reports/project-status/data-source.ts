@@ -13,6 +13,7 @@
 
 import { query } from '@/utils/database';
 import { div } from '@/lib/money';
+import { parseDailyEntryRecords } from '@/lib/logged-hours';
 
 // ── Shared row shape ────────────────────────────────────────────────
 
@@ -253,25 +254,6 @@ interface FetchReportOptions {
 	userIds?: string[]; // restrict the matrix to these users (employee filter)
 }
 
-interface DailyEntryShape {
-	date?: string | null;
-	hours?: number | string | null;
-	qty_done?: number | string | null;
-}
-
-function parseDailyEntries(raw: unknown): DailyEntryShape[] {
-	if (!raw) return [];
-	try {
-		const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-		if (!Array.isArray(parsed)) return [];
-		return parsed.filter(
-			(e): e is DailyEntryShape => !!e && typeof e === 'object' && 'date' in e
-		);
-	} catch {
-		return [];
-	}
-}
-
 /** Inclusive list of YYYY-MM-DD dates between [from, to]. */
 export function expandDateRange(from: string, to: string): string[] {
 	const start = new Date(`${from}T00:00:00Z`);
@@ -390,9 +372,9 @@ export async function fetchActivityStatusReport(
 				roster.set(id, { user_id: id, user_name: `User ${id}` });
 			}
 
-			const entries = parseDailyEntries(row.daily_entries);
-			for (const entry of entries) {
-				const entryDate = typeof entry.date === 'string' ? entry.date : '';
+			for (const { date: entryDate, entry } of parseDailyEntryRecords(
+				row.daily_entries
+			)) {
 				if (!entryDate) continue;
 				if (entryDate < from || entryDate > to) continue;
 
@@ -409,12 +391,17 @@ export async function fetchActivityStatusReport(
 					rowsByUser.set(id, reportRow);
 				}
 
+				// Negative / unparsable hours and quantities floor at 0, and
+				// every dated entry still opens a day cell, so a logged
+				// quantity with no hours is not lost.
+				const hours = toNumberOrZero(entry.hours);
+				const qty = toNumberOrZero(entry.qty_done);
 				const cell = reportRow.days[entryDate] || { hours: 0, qty_done: 0 };
-				cell.hours += toNumberOrZero(entry.hours);
-				cell.qty_done += toNumberOrZero(entry.qty_done);
+				cell.hours += hours;
+				cell.qty_done += qty;
 				reportRow.days[entryDate] = cell;
-				reportRow.total_hours += toNumberOrZero(entry.hours);
-				reportRow.total_qty += toNumberOrZero(entry.qty_done);
+				reportRow.total_hours += hours;
+				reportRow.total_qty += qty;
 			}
 		}
 	} catch {

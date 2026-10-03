@@ -7,7 +7,6 @@ import {
 	resolveMonthlyCost,
 	computeCtcHourlyRate,
 	resolveCtcHourlyRate,
-	sumLoggedHours,
 	buildCapacity,
 	utilizationPercent,
 	bandForUtilization,
@@ -16,6 +15,7 @@ import {
 	monthLabel,
 } from '@/app/reports/employee-utilization/data-source';
 import type { SalaryProfile } from '@/app/reports/manhours-billing/data-source';
+import { sumLoggedHoursForMonth as sumLoggedHours } from '@/lib/logged-hours';
 
 // May 2026: 31 days. Sundays 3/10/17/24/31, Saturdays 2/9/16/23/30.
 // Scheduled weekly offs: 5 Sundays + 2nd Sat (9th) + 4th Sat (23rd) = 7.

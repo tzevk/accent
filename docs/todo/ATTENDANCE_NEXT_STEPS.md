@@ -5,7 +5,7 @@
 ## Item 1 — Late-3-days → absent rule
 
 - **Ask:** mark an employee absent after 3 late arrivals. Consumer undecided — report badge vs payroll input.
-- **Where:** new logic over `attendance_logs`, likely next to `applyInferredDirections` in `src/app/reports/attendance-report/data-source.ts` (pure, tested) or a shared helper if payroll also needs it.
+- **Where:** new logic over `attendance_logs`, as a pure module next to the report's existing transforms — `src/lib/punch.ts` already holds the direction-agnostic per-employee-per-day bucketing (`bucketPunchIndicesByEmployeeDay`) that this would reuse — or a shared helper if payroll also needs it.
 - **Open before coding:** late threshold (first punch after HH:MM? grace minutes?); per-employee shifts (does `employees` carry shift start, or one company-wide cutoff?); 3 = consecutive days or any 3 in a rolling window/month; what "absent" drives (display flag vs leave-balance vs payroll deduction — money path must use `src/lib/money.ts`, never floats).
 - **Fix sketch:** group punches per employee per day → first-punch time vs threshold → late-day set → rolling 3-flag → surface as an exception strip/badge in the report first, wire to payroll only once HR signs off the counting rule.
 - **Effort:** ~half day once the rule is pinned. **Risk:** medium — wrong cutoff silently mislabels people; needs HR-confirmed fixtures in `data-source.test.ts` before shipping.

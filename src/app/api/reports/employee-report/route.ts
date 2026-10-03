@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
+import { parseDailyEntryRecords } from '@/lib/logged-hours';
 
 /**
  * GET /api/reports/employee-report
@@ -223,24 +224,9 @@ export async function GET(request: Request) {
 				const plannedHours =
 					parseFloat(String(row.estimated_hours || '0')) || 0;
 				const qtyCompleted = parseFloat(String(row.qty_completed || '0')) || 0;
-
-				// Parse daily_entries
-				let dailyEntries: DailyEntry[] = [];
-				if (row.daily_entries) {
-					try {
-						dailyEntries =
-							typeof row.daily_entries === 'string'
-								? JSON.parse(row.daily_entries)
-								: row.daily_entries;
-					} catch {
-						dailyEntries = [];
-					}
-				}
-				dailyEntries = Array.isArray(dailyEntries)
-					? dailyEntries.filter(
-							(e: DailyEntry) => e != null && typeof e === 'object'
-						)
-					: [];
+				// One output row per dated daily entry (a malformed blob yields
+				// none, and the skeleton row below stands in for the assignment).
+				const dailyEntries = parseDailyEntryRecords(row.daily_entries);
 
 				if (dailyEntries.length === 0) {
 					const rows = rowsByUser.get(userId) || [];
@@ -263,9 +249,9 @@ export async function GET(request: Request) {
 				}
 
 				const rows = rowsByUser.get(userId) || [];
-				for (const entry of dailyEntries) {
+				for (const { date, entry } of dailyEntries) {
 					rows.push({
-						date: entry.date || null,
+						date: date || null,
 						project_id: row.project_id,
 						project_code: projInfo.project_code,
 						project_name: projInfo.project_name,
@@ -275,8 +261,8 @@ export async function GET(request: Request) {
 						default_manhours: defaultManhours,
 						planned_hours: plannedHours,
 						qty_completed: qtyCompleted,
-						hours: parseFloat(String(entry.hours || '0')) || 0,
-						qty_done: parseFloat(String(entry.qty_done || '0')) || 0,
+						hours: parseFloat(String(entry.hours ?? '')) || 0,
+						qty_done: parseFloat(String(entry.qty_done ?? '')) || 0,
 					});
 				}
 				rowsByUser.set(userId, rows);

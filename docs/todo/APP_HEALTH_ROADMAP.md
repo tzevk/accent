@@ -68,6 +68,7 @@ Verification: `npm run lint` on touched files clean, `npx tsc --noEmit` pre-exis
 - **Where:** `src/app/api/users/[id]/activity-assignments/route.js:175` parses `daily_entries` JSON + `reduce` in 6 places (also noted in `POOR_PRACTICES_AUDIT.md:3.7`).
 - **Impact:** Cannot query `hours WHERE date BETWEEN` without loading all rows.
 - **Fix:** When touching reports next, normalize `user_activity_daily_entries` table per audit plan. No need to block other work.
+- **Partial fix 2026-10-02:** the reader-side duplication is gone — every report that reads `daily_entries` now decodes it through the canonical `src/lib/logged-hours.ts` (#276), so there is one parser, not six. What remains is the structural debt above: the blob itself, and the write paths that still do full-array read-modify-write.
 
 ### P1.4 Env mismatch
 

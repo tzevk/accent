@@ -244,7 +244,7 @@ Already documented in `DDL_AND_SOFT_DELETE_AUDIT.md` §2. Many master/utility ta
 
 The `user_activity_assignments.daily_entries` column (`LONGTEXT`) stores a JSON array of `{date, qty_done, hours, remarks}` objects. Every consumer parses, iterates, computes derived sums, and re-stringifies — the same read-parse-mutate-write anti-pattern that was eliminated from `project_activities_list` in the 2026-07-28 normalization migration.
 
-**The `reduce` pattern is copy-pasted into 6+ locations:**
+**The `reduce` pattern was copy-pasted into 6+ locations:**
 
 | File                                                         | Lines                   | What It Does                                                    |
 | ------------------------------------------------------------ | ----------------------- | --------------------------------------------------------------- |
@@ -255,12 +255,14 @@ The `user_activity_assignments.daily_entries` column (`LONGTEXT`) stores a JSON 
 | `src/components/projects/[id]/edit/EditProjectForm.jsx`      | 3820–3892               | Read entire array, mutate one entry, write back entire array    |
 | `src/app/reports/project-activities/page.jsx`                | 236–337                 | Read-parse-mutate-write cycle for add/edit/delete of entries    |
 
+Since #276 every **reader** of `daily_entries` decodes the blob through the one canonical parser `src/lib/logged-hours.ts`: `parseDailyEntries` for logged hours, `parseDailyEntryRecords` where the reader also needs `qty_done` / `remarks`, and `sumLoggedHoursForMonth` / `hoursByDateForMonth` for the aggregates. The copies listed above that remain are **write and render** paths, which legitimately need the whole member. What remains true below is the _structural_ cost of the blob, not duplicated reader logic.
+
 **What this costs:**
 
 1. **No date-range queries.** Can't ask "hours per user in March" without loading every assignment row and parsing every JSON array in application code.
 2. **Full-array read-modify-write.** To add or lock one daily entry, the entire array is read, mutated, and written back — a race condition on concurrent edits from different tabs or users.
 3. **No aggregation via SQL.** `SUM(hours) GROUP BY user_id, MONTH(date)` is a one-liner with a proper table; currently it's a nested loop over every row.
-4. **The `daily_entries` JSON is re-parsed on every render.** `MyActivitiesTab.jsx` runs `reduce` on the same data in three separate places; nothing is memoized.
+4. **The `daily_entries` JSON is re-parsed on every render.** `MyActivitiesTab.jsx` runs `reduce` on the same data in three separate places; nothing is memoized. (Render-side only — the report readers parse once per request since #276.)
 
 **Fix:** Normalize into a `user_activity_daily_entries` table:
 
@@ -497,7 +499,7 @@ Already documented in `RESPONSIVE_AUDIT.md` §1.1: `.content-with-sidebar` has n
 | **P3 — Backlog** | TypeScript migration (§7) | Type safety | Ongoing |
 | **P3 — Backlog** | Sequential → parallel queries (§6.1) | Marginal perf gain | ~2 hours |
 | **P3 — Backlog** | Rate limiter external store (§1.6) | Multi-instance safety | ~1 day |
-| **P3 — Backlog** | JSON daily_entries blob (§3.7) | Race condition risk, no SQL aggregation, duplicated reduce patterns | ~1 sprint (normalize to table, rewrite 5+ frontend components) |
+| **P3 — Backlog** | JSON daily_entries blob (§3.7) | Race condition risk, no SQL aggregation; reader-side duplication retired by `src/lib/logged-hours.ts` (#276) | ~1 sprint (normalize to table, rewrite 5+ frontend components) |
 
 ## What's Already Well-Done
 

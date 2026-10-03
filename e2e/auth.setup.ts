@@ -24,6 +24,19 @@ setup('authenticate admin', async ({ page }) => {
 	await page.context().storageState({ path: 'e2e/.auth/admin.json' });
 });
 
+/**
+ * A second admin session for the report specs. The proxy's `api` bucket is
+ * 120 requests/min per (IP, session token) and the whole suite runs in one
+ * such window against one worker, so a page-load-heavy report spec shares the
+ * budget with the security specs and 429s them (and itself). A separate
+ * session gives the report specs their own budget; the login flow is the real
+ * one, so this also exercises concurrent sessions for one user.
+ */
+setup('authenticate report admin', async ({ page }) => {
+	await signIn(page, ADMIN_USER, '/admin/dashboard');
+	await page.context().storageState({ path: 'e2e/.auth/admin-report.json' });
+});
+
 setup('authenticate employee', async ({ page }) => {
 	await signIn(page, EMPLOYEE_USER, '/user/dashboard');
 	await page.context().storageState({ path: 'e2e/.auth/employee.json' });

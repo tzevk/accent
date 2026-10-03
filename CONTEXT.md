@@ -9,8 +9,12 @@ A person employed by the company, stored in `employees`. Linked to a `users` acc
 _Avoid_: User, Staff, Resource
 
 **Employee Type**:
-The employment category: `Payroll` (monthly gross-based salary) or `Contract` (contract/hourly/daily/lumpsum). Determines which payroll path and tabs apply.
-_Avoid_: Employment status, Worker type
+The employment category on the Employee record, `employees.employee_type`: `Payroll`, `Contract`, `Deputation`, `Permanent`, `Intern`, or NULL (never set). A directory grouping — how the person is filed in the company — and not a pay instruction: the pay stream an Employee is paid through is their Salary Type, which lives on the Salary Profile, and payroll decides stream membership there (ADR-0015). The Attendance report is the one reader that filters on this field (`employee_type = 'Payroll'`), which is why a `Deputation` or unset employee never appears in it.
+_Avoid_: Employment status, Worker type, Salary Type
+
+**Salary Type**:
+Which pay stream an Employee is paid through, held on the pay agreement: `employee_salary_profile.salary_type` — `monthly`, `hourly`, `daily`, `contract`, `lumpsum`, `custom` (`payroll` is the query selector for everything that is not `contract`; legacy `salary_structures.pay_type` is its read-only predecessor). Payroll decides stream membership on this field, never on the Employee record: `salary_type = 'contract'` EXISTS for the contract stream, NOT EXISTS for the payroll stream. So a `Payroll`-typed Employee with no Salary Profile belongs to neither stream and silently vanishes from a payroll run while still appearing on the Attendance report's roster (ADR-0015).
+_Avoid_: Employee Type, Employment status, Pay type
 
 **Salary Profile**:
 The employee's current pay agreement — gross, derived allowances (basic/da/hra/conveyance/call allowance), applicability flags (PF/ESIC/PT/MLWF/retention/bonus/incentive/insurance), and PL/loan/advance. The input to payroll. Canonical table is `employee_salary_profile`.
@@ -97,8 +101,16 @@ A Weekly Off or Holiday run bracketed by leave on both sides inside one continuo
 _Avoid_: Sandwich holiday, Bridge leave
 
 **Punch**:
-A single biometric check-in/out event captured by a Smart Office device, stored in `attendance_logs` under the device's employee code. Direction may be inferred when the device doesn't report one.
+A single biometric check-in/out event captured by a Smart Office device, stored in `attendance_logs` under the device's employee code and attributed to an Employee at ingest (see Device Code). Direction may be inferred when the device doesn't report one.
 _Avoid_: Attendance log (ambiguous), Log entry, Scan
+
+**Device Code**:
+The code a Punch arrives under (`attendance_logs.employee_code`) and the code an Employee is enrolled under (`employees.smartoffice_code`) — the same namespace, matched at ingest, which stamps the Punch's employee (`attendance_logs.employee_id`). Attribution is fixed when the Punch is stored: re-enrolment changes future matches only, and every reader counts a Punch by its stamped employee, never by the code written on it.
+_Avoid_: Employee Code (unqualified — `employees.employee_id` also carries that name), Smart Office code (names the column, not the concept)
+
+**Time Present**:
+The measured office-presence duration for one Employee on one day — the day's last Punch minus its first, ignoring the Punches in between. Direction-agnostic (real devices report no direction, so direction is not evidence) and pooled across devices, so one accidental middle Punch can neither shorten nor lengthen the day. A shift crossing midnight counts on the day it began: a next-day Punch joins the day only when it is chronologically after that day's last Punch and within 12 hours of the day's first, and a merged Punch is consumed, so no Punch is ever counted for two days. A day with a single Punch is uncomputable and shows an em dash, never 0 — zero would read as "was there and left instantly". A would-be merge past 12 hours is refused rather than believed, leaving the day uncomputable instead of inventing an implausible presence. It is explicitly **not** Logged Hours (the billed effort and the payroll numerator, ADR-0010), **not** Capacity, **not** Payable Day and **not** Payable OT — each is a different quantity, and reading Time Present as Logged Hours would silently re-price payroll. Deliberately uncapped on a half day: a day authored as `HD` measures its true span here while the attendance grid credits 4 hours, because a half day is HR intent, not a measurement (ADR-0007, ADR-0015).
+_Avoid_: Logged Hours (the two are not interchangeable — one bills, one measures), Attendance %, Presence hours, Span, Hours present
 
 **Attendance Record**:
 The human-authored daily attendance cell for one Employee — status (`P`/`HD`/leave codes/`WO`/`H`), in/out times, and OT — stored in `employee_attendance`. Status is authoritative over Punch evidence; times on a punch day follow the device (ADR-0007).

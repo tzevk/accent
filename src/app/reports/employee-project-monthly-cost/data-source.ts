@@ -37,12 +37,12 @@ import {
 	fyKeyToCalendarMonthMap,
 	getFinancialYear,
 	formatFyLabel,
-	parseDailyEntries,
 	computeRawHourlyRate,
 	resolveHourlyRate,
 	pickActiveProfile,
 	type SalaryProfile,
 } from '@/app/reports/manhours-billing/data-source';
+import { parseDailyEntries, parseDailyEntryRecords } from '@/lib/logged-hours';
 
 export { FY_MONTHS, FY_MONTH_KEYS, getFinancialYear, formatFyLabel };
 
@@ -266,26 +266,14 @@ function round2(v: number): number {
 
 // ─── Pure helpers (unit-tested) ─────────────────────────────────────
 
-function entryHours(v: unknown): number {
-	if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
-	if (typeof v === 'string') {
-		const parsed = Number(v);
-		return Number.isFinite(parsed) ? parsed : 0;
-	}
-	return 0;
-}
-
 /**
- * Sum daily-entry hours per calendar month (YYYY-MM → hours).
- * Entries with no date or hours ≤ 0 are ignored.
+ * Sum daily-entry hours per calendar month (YYYY-MM → hours) across every
+ * month in the blob. The canonical parser has already dropped the entries
+ * with no day or hours ≤ 0, so each remaining `date` is a `YYYY-MM-DD`.
  */
 export function sumHoursByMonth(raw: unknown): Record<string, number> {
 	const byMonth: Record<string, number> = {};
-	for (const entry of parseDailyEntries(raw)) {
-		const date = typeof entry.date === 'string' ? entry.date : '';
-		if (date.length < 7) continue;
-		const hours = entryHours(entry.hours);
-		if (hours <= 0) continue;
+	for (const { date, hours } of parseDailyEntries(raw)) {
 		const month = date.slice(0, 7);
 		byMonth[month] = round2((byMonth[month] || 0) + hours);
 	}
@@ -832,14 +820,13 @@ export function buildMonthlyCompanyRows(
 			projectId != null ? String(projectId) : code || name || 'unknown';
 		const key = `${empId}::${projectKey}`;
 
-		// Sum hours for this specific month from daily_entries
+		// Sum hours for this specific month from daily_entries. The canonical
+		// parser has already dropped the non-positive-hours entries, and each
+		// addend is still rounded on the way in so the 2dp total is unchanged.
 		let hoursForMonth = 0;
-		for (const entry of parseDailyEntries(row.daily_entries)) {
-			const date = typeof entry.date === 'string' ? entry.date : '';
+		for (const { date, hours } of parseDailyEntries(row.daily_entries)) {
 			if (!date.startsWith(month)) continue;
-			const h = entryHours(entry.hours);
-			if (h <= 0) continue;
-			hoursForMonth = round2(hoursForMonth + h);
+			hoursForMonth = round2(hoursForMonth + hours);
 		}
 		if (hoursForMonth <= 0) continue;
 
@@ -931,10 +918,9 @@ export async function fetchEmployeeCostMeta(): Promise<CostMeta> {
 			 WHERE daily_entries IS NOT NULL AND daily_entries NOT IN ('', '[]')`
 		)) as [DbRow[], unknown];
 		for (const row of asgRows) {
-			for (const entry of parseDailyEntries(row.daily_entries)) {
-				const dateStr = typeof entry.date === 'string' ? entry.date : '';
-				const y = Number(dateStr.slice(0, 4));
-				const m = Number(dateStr.slice(5, 7));
+			for (const { date } of parseDailyEntryRecords(row.daily_entries)) {
+				const y = Number(date.slice(0, 4));
+				const m = Number(date.slice(5, 7));
 				if (y) yearsSet.add(m >= 4 ? y : y - 1);
 			}
 		}
@@ -1191,15 +1177,13 @@ export async function fetchCompanyCostMeta(): Promise<CompanyCostMeta> {
 			 WHERE daily_entries IS NOT NULL AND daily_entries NOT IN ('', '[]')`
 		)) as [DbRow[], unknown];
 		for (const row of asgRows) {
-			for (const entry of parseDailyEntries(row.daily_entries)) {
-				const dateStr = typeof entry.date === 'string' ? entry.date : '';
-				if (dateStr.length >= 7) {
-					const m = dateStr.slice(0, 7);
-					monthSet.add(m);
-					const y = Number(m.slice(0, 4));
-					const mon = Number(m.slice(5, 7));
-					if (y) yearsSet.add(mon >= 4 ? y : y - 1);
-				}
+			for (const { date } of parseDailyEntryRecords(row.daily_entries)) {
+				if (date.length < 7) continue;
+				const m = date.slice(0, 7);
+				monthSet.add(m);
+				const y = Number(m.slice(0, 4));
+				const mon = Number(m.slice(5, 7));
+				if (y) yearsSet.add(mon >= 4 ? y : y - 1);
 			}
 		}
 	} catch {

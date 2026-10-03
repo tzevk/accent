@@ -11,15 +11,24 @@ import {
 /**
  * GET /api/reports/attendance-report
  *
- * Raw Smart Office biometric punches from `attendance_logs` joined to the
- * Accent employee each punch mapped to — the sanity-check view for the
- * webhook pipeline.
+ * The Attendance report is a month matrix: Smart Office biometric Punches
+ * from `attendance_logs`, attributed to the Employee stamped on the row at
+ * ingest and bucketed per Employee per day. Each cell carries the day's Time
+ * Present hours (first Punch of the day → last, with the bounded
+ * cross-midnight merge) and the canonical Logged Hours, alongside the
+ * Attendance Record status and the day's Punch count.
  *
- * Without params            → meta (employees + months/devices with logs)
- *                             for the filter bar.
- * ?from=&to=&employee_id=&device=
- *                           → punches in the inclusive date range, with
- *                             stats (mapped/unmapped counts etc.).
+ * Without params    → meta: the latest month with logs, for the month picker.
+ * ?month=YYYY-MM    → the month matrix: the month's day list, one row per
+ *                     Payroll employee with a cell per day (Time Present +
+ *                     Logged Hours + Attendance Record status + Punch
+ *                     count), the month's stats, the roster disclosure,
+ *                     holidays, the distinct device serials, and the
+ *                     month-scoped Punch list the drill-down reads.
+ *
+ * Computation pads the Punch fetch one day either side of the month so a
+ * shift crossing midnight merges across the boundary; the padded days are
+ * never rendered and never reach the response.
  *
  * Access: super admins, users with reports:read, or users with the
  * `project_activities` report field permission (view/edit) — the same gate
@@ -29,7 +38,7 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH_RE = /^\d{4}-(?:0[1-9]|1[0-2])$/;
 
 export async function GET(request: Request) {
 	try {
@@ -61,43 +70,22 @@ export async function GET(request: Request) {
 		}
 
 		const url = new URL(request.url);
-		const from = url.searchParams.get('from');
-		const to = url.searchParams.get('to');
+		const month = url.searchParams.get('month');
 
-		// Meta-only request: fill the filter bar.
-		if (!from || !to) {
+		// Meta-only request: fill the month picker.
+		if (!month) {
 			const meta = await fetchAttendanceMeta();
 			return NextResponse.json({ success: true, meta, data: null });
 		}
 
-		if (!ISO_DATE_RE.test(from) || !ISO_DATE_RE.test(to)) {
+		if (!MONTH_RE.test(month)) {
 			return NextResponse.json(
-				{ success: false, error: 'Invalid dates (expected YYYY-MM-DD)' },
-				{ status: 400 }
-			);
-		}
-		if (from > to) {
-			return NextResponse.json(
-				{ success: false, error: 'from must be on or before to' },
+				{ success: false, error: 'Invalid month (expected YYYY-MM)' },
 				{ status: 400 }
 			);
 		}
 
-		const employeeIdParam = url.searchParams.get('employee_id');
-		const employeeId = employeeIdParam ? Number(employeeIdParam) : null;
-		if (
-			employeeId != null &&
-			(!Number.isInteger(employeeId) || employeeId <= 0)
-		) {
-			return NextResponse.json(
-				{ success: false, error: 'Invalid employee_id' },
-				{ status: 400 }
-			);
-		}
-
-		const device = url.searchParams.get('device');
-
-		const data = await fetchAttendanceData({ from, to, employeeId, device });
+		const data = await fetchAttendanceData({ month });
 		return NextResponse.json({ success: true, data });
 	} catch (error: unknown) {
 		console.error('Attendance report error:', error);

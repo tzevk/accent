@@ -16,6 +16,11 @@ import {
 	calculatePayroll,
 	normalizeSalaryProfile,
 } from './payroll-calculation';
+import { sumLoggedHoursForMonth } from '@/lib/logged-hours';
+import {
+	buildLoggedHoursIdentifierMap,
+	resolveLoggedHoursEmployeeId,
+} from '@/lib/logged-hours-source';
 
 export { calculatePayroll, normalizeSalaryProfile };
 
@@ -879,43 +884,6 @@ async function batchGetAttendance(db, employeeIds, month) {
 }
 
 /**
- * Parse one assignment's `daily_entries` payload into an array. Tolerates the
- * column arriving as a JSON string (mysql2 longtext) or an already-parsed
- * array, and drops malformed payloads — the tolerance the timesheet,
- * utilization and project-cost reports already use.
- */
-function parseDailyEntries(raw) {
-	if (!raw) return [];
-	if (typeof raw === 'string') {
-		try {
-			const parsed = JSON.parse(raw);
-			return Array.isArray(parsed) ? parsed : [];
-		} catch {
-			return [];
-		}
-	}
-	return Array.isArray(raw) ? raw : [];
-}
-
-/**
- * Hours logged in one month across `daily_entries` payloads. Entries with no
- * date, another month, or hours ≤ 0 are ignored; overtime counts (CONTEXT.md:
- * Logged Hours).
- */
-function sumLoggedHours(dailyEntriesList, month) {
-	let total = 0;
-	for (const raw of dailyEntriesList) {
-		for (const entry of parseDailyEntries(raw)) {
-			if (!entry || typeof entry.date !== 'string') continue;
-			if (!entry.date.startsWith(month)) continue;
-			const hours = parseFloat(entry.hours);
-			if (hours > 0) total += hours;
-		}
-	}
-	return Math.round(total * 100) / 100;
-}
-
-/**
  * Logged project hours per employee for a payroll month, from
  * `user_activity_assignments.daily_entries` — the same source as the
  * timesheet, utilization and project-cost reports, and the one the Project
@@ -952,33 +920,12 @@ async function batchGetLoggedHours(db, employeeIds, month) {
      WHERE isDelete = 0 AND employee_id IS NOT NULL`
 	);
 
-	const byIdentifier = new Map();
-	const addIdentifier = (value, employeeId) => {
-		const key = String(value || '')
-			.trim()
-			.toLowerCase();
-		if (key && !byIdentifier.has(key)) {
-			byIdentifier.set(key, Number(employeeId));
-		}
-	};
-	for (const row of employees) {
-		addIdentifier(row.email, row.id);
-		addIdentifier(row.username, row.id);
-	}
-	for (const row of users) {
-		addIdentifier(row.email, row.employee_id);
-		addIdentifier(row.username, row.employee_id);
-	}
+	const identifiers = buildLoggedHoursIdentifierMap(employees, users);
 
 	for (const row of assignments) {
-		const employeeId =
-			Number(row.employee_id) ||
-			Number(row.user_employee_id) ||
-			byIdentifier.get(String(row.user_email || '').toLowerCase()) ||
-			byIdentifier.get(String(row.user_username || '').toLowerCase()) ||
-			0;
+		const employeeId = resolveLoggedHoursEmployeeId(row, identifiers);
 		if (!employeeId || !wanted.has(employeeId)) continue;
-		const hours = sumLoggedHours([row.daily_entries], monthPrefix);
+		const hours = sumLoggedHoursForMonth([row.daily_entries], monthPrefix);
 		if (hours > 0)
 			totals.set(employeeId, (totals.get(employeeId) || 0) + hours);
 	}

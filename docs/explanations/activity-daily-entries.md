@@ -87,6 +87,8 @@ Copies `daily_entries` from the `project_activities_list` JSON blob into `user_a
 | **Project activities report API** | `src/app/api/reports/project-activities/route.js:176-202`      | Parses entries, computes per-user totals                                                 |
 | **Activity assignments GET**      | `src/app/api/users/[id]/activity-assignments/route.js:175-196` | Parses entries, computes derived `qty_completed`/`actual_hours`, returns as array        |
 
+All **server-side readers** decode the blob through one canonical module, `src/lib/logged-hours.ts` (ADR-0010): `parseDailyEntries` for logged hours, `parseDailyEntryRecords` where the reader also needs `qty_done` / `remarks`, and `sumLoggedHoursForMonth` / `hoursByDateForMonth` for the aggregates. Add a new reader there rather than parsing the JSON again.
+
 ---
 
 ## Known issue: `isLocked` is ephemeral

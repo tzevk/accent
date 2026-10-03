@@ -1,3 +1,7 @@
+import {
+	cleanupAttendanceFixtures,
+	seedAttendanceFixtures,
+} from './lib/attendance-fixtures';
 import { closeDb, exec, rows } from './lib/db';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 
@@ -8,6 +12,7 @@ import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 export default async function globalSetup(): Promise<void> {
 	try {
 		await cleanupFixtures();
+		await cleanupAttendanceFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
 		// trusted IP header; browser sign-ins carry no such header, so they land
@@ -34,6 +39,15 @@ export default async function globalSetup(): Promise<void> {
 		console.log(
 			`[e2e] fixtures seeded for ${E2E_MONTH} (admin #${seeded.adminUserId}, ` +
 				`worker employee #${seeded.workerEmployeeId}, zero-hours employee #${seeded.zeroHoursEmployeeId})`
+		);
+
+		const attendance = await seedAttendanceFixtures();
+		console.log(
+			`[e2e] attendance fixtures seeded for ${attendance.month} ` +
+				`(${attendance.employees} employees, ${attendance.punches} punches, ` +
+				`${attendance.attendance} attendance rows, ` +
+				`${attendance.assignments} assignments, ` +
+				`${attendance.profiles} salary profiles)`
 		);
 	} finally {
 		await closeDb();

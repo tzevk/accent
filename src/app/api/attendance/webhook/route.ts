@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { withDb } from '@/utils/database';
-import { resolveDirection } from '@/app/reports/attendance-report/data-source';
+import { resolveDirection } from '@/lib/punch';
 
 /**
  * POST /api/attendance/webhook
@@ -22,9 +22,9 @@ import { resolveDirection } from '@/app/reports/attendance-report/data-source';
  * punches are stored with employee_id = NULL — never dropped — so the
  * Attendance Report's "unmapped codes" strip can surface them.
  *
- * Direction: the raw device value is normalized via the report module's
- * `resolveDirection` ('in'/'out', blank → NULL) and stored; the report
- * infers in/out at read time when the column is NULL.
+ * Direction: the raw device value is normalized via `resolveDirection`
+ * ('in'/'out', blank → NULL) and stored; the report infers in/out at read
+ * time when the column is NULL.
  *
  * Idempotency: re-pushed punches hit the unique constraint and become a
  * no-op (except backfilling employee_id when a previously-unmapped punch is
