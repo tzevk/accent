@@ -2,6 +2,7 @@ import {
 	cleanupAttendanceFixtures,
 	seedAttendanceFixtures,
 } from './lib/attendance-fixtures';
+import { deleteArtifact } from './lib/artifacts';
 import { closeDb, exec, rows } from './lib/db';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 
@@ -23,6 +24,13 @@ export default async function globalSetup(): Promise<void> {
 		await exec(`DELETE FROM rate_limit_buckets WHERE bucket_key LIKE ?`, [
 			'%:anon:auth',
 		]);
+
+		// The stored-xss spec persists its coverage into its own artifact as it
+		// runs (Playwright restarts the worker after a failure, which wipes
+		// module state) and reads it back to assert every write path was
+		// covered. The file must start empty each run, or a previous run's
+		// coverage would mask a path this run never exercised.
+		deleteArtifact('security-stored-xss');
 
 		const existingRun = await rows<{ status: string }>(
 			`SELECT status FROM payroll_runs
