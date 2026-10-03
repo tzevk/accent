@@ -35,6 +35,11 @@ import {
  * state is read from the cells' data attributes, never from utility classes.
  */
 
+// This spec opens the report page ~20 times; running it on its own session
+// keeps that page-load volume off the shared admin `api` budget (120/min per
+// session token) that the rest of the suite draws from in one window.
+test.use({ storageState: 'e2e/.auth/admin-report.json' });
+
 /* ── The month under test ─────────────────────────────────────────── */
 
 const MONTH = ATTENDANCE_MONTH;
