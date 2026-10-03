@@ -75,6 +75,7 @@ const UPLOADS_DIR = path.join(process.cwd(), 'public', 'uploads');
 /** CSP directives the remediation contract requires (ADR-0012 § CSP). */
 const REQUIRED_CSP: ReadonlyArray<readonly [string, string]> = [
 	['default-src', "'self'"],
+	['script-src', "'self'"],
 	['object-src', "'none'"],
 	['frame-ancestors', "'none'"],
 	['connect-src', "'self'"],
@@ -233,6 +234,12 @@ test.describe.serial('security: headers and upload gates', () => {
 						`Content-Security-Policy ${directive} on ${target}`
 					).toContain(source);
 				}
+				// 'unsafe-eval' is a development-only addition (next.config.ts);
+				// a production build must never ship it.
+				expect(
+					directives['script-src'] ?? '',
+					`script-src must be eval-free in production on ${target}`
+				).not.toContain("'unsafe-eval'");
 				expect(
 					headers['strict-transport-security'] ?? '',
 					`HSTS on ${target}`

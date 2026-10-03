@@ -79,9 +79,13 @@ const nextConfig: NextConfig = {
 	// `script-src 'unsafe-inline'` is unavoidable — Next inlines its bootstrap
 	// script — and is contained by `connect-src 'self'` + `img-src 'self'`
 	// (a nonce-CSP would force every page to render dynamically; ADR-0012
-	// rejected it). HSTS is safe from day one because the app is HTTPS-only on
-	// Vercel; `upgrade-insecure-requests` is a no-op on localhost (potentially
-	// trustworthy origin).
+	// rejected it). Development adds `'unsafe-eval'` on top: React/Turbopack
+	// evaluate source URLs to reconstruct callstacks, and without it every dev
+	// session logs a CSP EvalError. Production never gets it — the
+	// security-uploads-headers E2E asserts the eval-free header against a real
+	// production build. HSTS is safe from day one because the app is HTTPS-only
+	// on Vercel; `upgrade-insecure-requests` is a no-op on localhost
+	// (potentially trustworthy origin).
 	async headers() {
 		return [
 			{
@@ -89,8 +93,7 @@ const nextConfig: NextConfig = {
 				headers: [
 					{
 						key: 'Content-Security-Policy',
-						value:
-							"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests",
+						value: `default-src 'self'; script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests`,
 					},
 					{
 						key: 'Strict-Transport-Security',
