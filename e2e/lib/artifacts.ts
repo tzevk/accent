@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -30,4 +30,13 @@ export function readArtifact(name: string): Record<string, unknown> {
 	return JSON.parse(
 		readFileSync(path.join(ARTIFACTS_DIR, `${name}.json`), 'utf8')
 	) as Record<string, unknown>;
+}
+
+/**
+ * Remove one artifact. For a spec that persists its progress into its own
+ * artifact and reads it back later in the run, this gives every run a clean
+ * slate instead of inheriting the previous run's recorded progress.
+ */
+export function deleteArtifact(name: string): void {
+	rmSync(path.join(ARTIFACTS_DIR, `${name}.json`), { force: true });
 }

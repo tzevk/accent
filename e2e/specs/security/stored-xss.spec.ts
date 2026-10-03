@@ -237,8 +237,48 @@ interface Probe {
 	note?: string;
 }
 
-const pathResults: Array<Record<string, unknown>> = [];
-const renderChecks: Array<Record<string, unknown>> = [];
+/**
+ * Coverage recorded so far, seeded from this spec's artifact file. The arrays
+ * are module state, and Playwright restarts the worker process after a
+ * failure — so an in-memory-only accumulator loses every earlier path when a
+ * later test is retried (the retry runs in a fresh module). Each result is
+ * persisted as it is recorded, which keeps the final coverage check honest
+ * across the restart; global setup deletes the file at the start of the run,
+ * so nothing leaks between runs.
+ */
+function readRecorded<T>(key: string): T[] {
+	try {
+		const recorded = readArtifact(ARTIFACT)[key];
+		return Array.isArray(recorded) ? (recorded as T[]) : [];
+	} catch {
+		return [];
+	}
+}
+
+const pathResults: Array<Record<string, unknown>> = readRecorded('paths');
+const renderChecks: Array<Record<string, unknown>> =
+	readRecorded('renderChecks');
+
+/** Persist the accumulated coverage so a worker restart cannot erase it. */
+function persistCoverage(): void {
+	let existing: Record<string, unknown> = {};
+	try {
+		existing = readArtifact(ARTIFACT);
+	} catch {
+		/* first record of the run */
+	}
+	writeArtifact(ARTIFACT, { ...existing, paths: pathResults, renderChecks });
+}
+
+function recordPath(entry: Record<string, unknown>): void {
+	pathResults.push(entry);
+	persistCoverage();
+}
+
+function recordRender(check: Record<string, unknown>): void {
+	renderChecks.push(check);
+	persistCoverage();
+}
 
 function finish(probe: Probe): void {
 	const label = (channel: string, field: string) =>
@@ -267,7 +307,7 @@ function finish(probe: Probe): void {
 		observed[`get:${field}`] = textOf(value);
 	}
 
-	pathResults.push({
+	recordPath({
 		path: probe.path,
 		statuses: probe.responses.map((response) => response.status),
 		responseChecked: probe.responses.length > 0,
@@ -924,9 +964,23 @@ test('messages page renders a stored payload inert', async ({
 		trackConversation(written);
 	}
 
-	await page.goto('/messages');
-	await page.getByRole('listitem', { name: 'Sent Items' }).first().click();
-	await page.getByRole('option', { name: new RegExp(subject) }).click();
+	// The Sent Items list can paint without the just-written messages (seen on
+	// CI: the old conversation showed, the reload that followed showed the new
+	// one), so open the conversation with a few bounded attempts instead of a
+	// single 60-second wait.
+	let openedConversation = false;
+	for (let attempt = 1; attempt <= 3 && !openedConversation; attempt += 1) {
+		await page.goto('/messages');
+		await page.getByRole('listitem', { name: 'Sent Items' }).first().click();
+		try {
+			await page
+				.getByRole('option', { name: new RegExp(subject) })
+				.click({ timeout: 12_000 });
+			openedConversation = true;
+		} catch (error) {
+			if (attempt === 3) throw error;
+		}
+	}
 
 	// The message list can render more than one article carrying the control
 	// text (older runs' conversations stay in the DOM), so pin the first.
@@ -942,13 +996,13 @@ test('messages page renders a stored payload inert', async ({
 		LEGIT_MARKUP
 	);
 
-	renderChecks.push({
+	recordRender({
 		page: '/messages',
 		conversation: subject,
 		documentClean: true,
 		controlRendered: controlHtml.includes(LEGIT_MARKUP),
 	});
-	pathResults.push({
+	recordPath({
 		path: 'render /messages',
 		statuses: [200],
 		responseChecked: false,
@@ -1007,13 +1061,13 @@ test('project scope page renders a stored payload inert', async ({
 	);
 	await assertRenderInert(page, 'project scope page (payload)');
 
-	renderChecks.push({
+	recordRender({
 		page: `/projects/${projectId}`,
 		tab: 'scope',
 		documentClean: true,
 		controlRendered: true,
 	});
-	pathResults.push({
+	recordPath({
 		path: 'render /projects/[id]',
 		statuses: [200],
 		responseChecked: false,
