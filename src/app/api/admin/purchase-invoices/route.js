@@ -11,10 +11,31 @@ import { isRetryableNumberError } from '@/utils/db-number-retry';
 
 const TABLE = 'purchase_invoices';
 
+// Minting is serialized app-wide with a named lock (GET_LOCK, MariaDB/MySQL):
+// under six-way concurrency the previous mint+insert section deadlocked (errno
+// 1213) no matter which read strategy the generator used, and the bounded retry
+// could exhaust into a 500. The lock is held for the whole
+// read+insert section and MUST be released before the pooled connection is
+// handed back; the unique active invoice-number index stays as the backstop.
+const NUMBER_LOCK = 'accent:purchase_invoices:number';
+
+async function acquireNumberLock(db) {
+	const [rows] = await db.execute('SELECT GET_LOCK(?, 10) AS acquired', [
+		NUMBER_LOCK,
+	]);
+	if (Number(rows[0]?.acquired) !== 1) {
+		throw new Error('Timed out waiting for the purchase-invoice number lock');
+	}
+}
+
+async function releaseNumberLock(db) {
+	await db.execute('SELECT RELEASE_LOCK(?)', [NUMBER_LOCK]);
+}
+
 // Purchase-invoice numbers are PI-#####. The read runs inside the caller's
-// transaction with a row lock (FOR UPDATE) on the newest row so concurrent
-// POSTs serialize behind it; the unique active invoice-number index is the
-// backstop and a collision retries with a fresh read.
+// transaction with a row lock (FOR UPDATE) on the newest row; concurrent POSTs
+// serialize on the named lock above, and the unique active invoice-number
+// index is the backstop and a collision retries with a fresh read.
 async function nextNumber(db) {
 	const [rows] = await db.execute(
 		`SELECT invoice_number FROM ${TABLE} WHERE invoice_number LIKE 'PI-%' AND isDelete = 0 ORDER BY id DESC LIMIT 1 FOR UPDATE`
@@ -144,73 +165,84 @@ export async function POST(request) {
 					? 'partial'
 					: 'unpaid');
 
-		// Number generation and INSERT are one transaction so concurrent POSTs
-		// cannot mint the same PI number; the unique active-number index makes a
-		// lost race a duplicate-key error, which retries from a fresh read.
+		// The mint + insert section is serialized app-wide by the named lock; a
+		// lock timeout surfaces as a 500. Every path releases it in the finally
+		// below, before the connection returns to the pool.
+		let numberLocked = false;
 		let invoiceNumber;
 		let result;
-		for (let attempt = 1; ; attempt++) {
-			await db.beginTransaction();
-			try {
-				invoiceNumber = body.invoice_number || (await nextNumber(db));
+		try {
+			await acquireNumberLock(db);
+			numberLocked = true;
 
-				[result] = await db.execute(
-					`INSERT INTO ${TABLE}
+			// Number generation and INSERT are one transaction so concurrent POSTs
+			// cannot mint the same PI number; the unique active-number index makes a
+			// lost race a duplicate-key error, which retries from a fresh read.
+			for (let attempt = 1; ; attempt++) {
+				await db.beginTransaction();
+				try {
+					invoiceNumber = body.invoice_number || (await nextNumber(db));
+
+					[result] = await db.execute(
+						`INSERT INTO ${TABLE}
 				(invoice_number, invoice_date, due_date, vendor_name, vendor_email, vendor_phone, vendor_address,
 				 vendor_gstin, vendor_pan, po_number, po_date, po_id, description, items,
 				 subtotal, tax_rate, tax_amount, cgst_amount, sgst_amount, igst_amount,
 				 discount, total, amount_paid, balance_due, payment_status,
 				 notes, terms, attachment_url, status, project_id, created_by)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					[
-						invoiceNumber,
-						body.invoice_date || null,
-						body.due_date || null,
-						body.vendor_name,
-						body.vendor_email || null,
-						body.vendor_phone || null,
-						body.vendor_address || null,
-						body.vendor_gstin || null,
-						body.vendor_pan || null,
-						body.po_number || null,
-						body.po_date || null,
-						body.po_id || null,
-						body.description || null,
-						body.items ? JSON.stringify(body.items) : null,
-						body.subtotal ?? 0,
-						body.tax_rate ?? 18,
-						body.tax_amount ?? 0,
-						body.cgst_amount ?? 0,
-						body.sgst_amount ?? 0,
-						body.igst_amount ?? 0,
-						body.discount ?? 0,
-						toNumber(total),
-						toNumber(amountPaid),
-						balanceDue,
-						paymentStatus,
-						body.notes || null,
-						body.terms || null,
-						body.attachment_url || null,
-						body.status || 'draft',
-						body.project_id || null,
-						user?.id || null,
-					]
-				);
+						[
+							invoiceNumber,
+							body.invoice_date || null,
+							body.due_date || null,
+							body.vendor_name,
+							body.vendor_email || null,
+							body.vendor_phone || null,
+							body.vendor_address || null,
+							body.vendor_gstin || null,
+							body.vendor_pan || null,
+							body.po_number || null,
+							body.po_date || null,
+							body.po_id || null,
+							body.description || null,
+							body.items ? JSON.stringify(body.items) : null,
+							body.subtotal ?? 0,
+							body.tax_rate ?? 18,
+							body.tax_amount ?? 0,
+							body.cgst_amount ?? 0,
+							body.sgst_amount ?? 0,
+							body.igst_amount ?? 0,
+							body.discount ?? 0,
+							toNumber(total),
+							toNumber(amountPaid),
+							balanceDue,
+							paymentStatus,
+							body.notes || null,
+							body.terms || null,
+							body.attachment_url || null,
+							body.status || 'draft',
+							body.project_id || null,
+							user?.id || null,
+						]
+					);
 
-				await db.commit();
-				break;
-			} catch (error) {
-				await db.rollback();
-				if (
-					!body.invoice_number &&
-					isRetryableNumberError(error) &&
-					attempt < 5
-				) {
-					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
-					continue;
+					await db.commit();
+					break;
+				} catch (error) {
+					await db.rollback();
+					if (
+						!body.invoice_number &&
+						isRetryableNumberError(error) &&
+						attempt < 5
+					) {
+						await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
+						continue;
+					}
+					throw error;
 				}
-				throw error;
 			}
+		} finally {
+			if (numberLocked) await releaseNumberLock(db);
 		}
 
 		// The logger checks out its own pooled connection; holding this one while

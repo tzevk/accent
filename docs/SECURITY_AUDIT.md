@@ -507,6 +507,18 @@ Verified read-only against HEAD `ff7440a`. The table above predates this pass; t
 
 **Fix:** release the connection before calling `logActivity` in the three routes (error paths still release in `finally`). Six concurrent creates now all succeed (verified live, distinct `PI-` numbers).
 
+### SEC-33 — Purchase-invoice number minting deadlocks into 500s under six-way concurrency
+
+**Severity:** 🟡 Medium (availability) · **CWE-833**
+
+**Location:** `src/app/api/admin/purchase-invoices/route.js` — `nextNumber`'s `SELECT … LIKE 'PI-%' … FOR UPDATE` plus the unique `active_invoice_number` INSERT.
+
+**Description:** the committed `financial-races` E2E (six concurrent `POST /api/admin/purchase-invoices`) flaked: `ER_LOCK_DEADLOCK` (1213) in the mint+insert section, and the bounded 5-attempt retry can exhaust into a 500 — reproduced 1 in 10 `--repeat-each` runs, and in a six-connection burst harness at 1474 deadlocks / 91 final 500s per 600 inserts. Read-side variants (range scan on the generated index, `FORCE INDEX (PRIMARY)`, a newest-row barrier) all deadlock at similar rates, so the read strategy is not the lever; serializing the whole section removes the deadlock class entirely.
+
+**Fix:** serialize the mint+insert section app-wide with a connection-scoped named lock — `GET_LOCK('accent:purchase_invoices:number', 10)` acquired after `dbConnect()` and released in a `finally` before the connection returns to the pool. The unique index and the 1062/1213/1205 retry stay as backstops. Burst harness after the fix: 600/600 inserts, zero deadlocks/retries; `financial-races` at `--repeat-each=10 --retries=0` green twice (33/33 each).
+
+Same-class exposure remains in the other SEC-28 generators; measured on the invoices auto-number path (six-way burst: 1195 deadlocks / 15 final 500s per 600 inserts — the E2E spec sends explicit numbers there, so it is not exercised). Tracked as follow-up work.
+
 ## Surfaces checked and found clean
 
 | Surface           | Result                                                                                                                                                                                                           |
