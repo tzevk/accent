@@ -550,12 +550,6 @@ export default function AttendanceReportPage() {
 						</div>
 					) : (
 						<div>
-							{/* What the roster filter dropped, and why */}
-							<RosterDisclosureCard
-								disclosure={data?.disclosure ?? null}
-								className="mb-3"
-							/>
-
 							{/* Punches that reached no employee */}
 							<UnmappedCodesStrip
 								codes={unmapped.codes}
@@ -794,6 +788,13 @@ export default function AttendanceReportPage() {
 									<TimePresentNote className="mt-3" />
 								</div>
 							)}
+
+							{/* Reference, not headline: what the roster filter dropped,
+							    and why — kept at the foot of the page */}
+							<RosterDisclosureCard
+								disclosure={data?.disclosure ?? null}
+								className="mt-4"
+							/>
 						</div>
 					)}
 				</div>
