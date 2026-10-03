@@ -130,10 +130,15 @@ direction}`; Bearer auth (`SMARTOFFICE_WEBHOOK_SECRET`); upsert into
 3. **Report** — `src/app/reports/attendance-report/` (page + data-source).
    A month matrix: employees down the left, days of the selected month across
    the top, one cell per employee-day carrying that day's Time Present hours
-   (`—` where the day is uncomputable, never `0`). `GET
-/api/reports/attendance-report?month=YYYY-MM` returns the day list, the
-   cells and month-wide punch stats; no `month` returns filter-bar meta. The
-   punch query is bounded by the month, never by a row cap.
+   (`—` where the day is uncomputable, never `0`). `GET /api/reports/attendance-report?month=YYYY-MM`
+   returns the day list, the cells and month-wide punch stats; no `month`
+   returns filter-bar meta. Punches are attributed to the employee stamped at
+   ingest (`attendance_logs.employee_id`), never re-derived from the device
+   code. The punch fetch pads one day either side of the month so a shift
+   crossing a month boundary still merges on the day it began — the padded
+   days feed the merge/consumption walk only, while cells, stats and the
+   drill-down stay month-scoped. The fetch is bounded by that padded window,
+   never by a row cap.
 
 ## Local development access (smartoffice-db MCP)
 

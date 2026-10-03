@@ -101,8 +101,12 @@ A Weekly Off or Holiday run bracketed by leave on both sides inside one continuo
 _Avoid_: Sandwich holiday, Bridge leave
 
 **Punch**:
-A single biometric check-in/out event captured by a Smart Office device, stored in `attendance_logs` under the device's employee code. Direction may be inferred when the device doesn't report one.
+A single biometric check-in/out event captured by a Smart Office device, stored in `attendance_logs` under the device's employee code and attributed to an Employee at ingest (see Device Code). Direction may be inferred when the device doesn't report one.
 _Avoid_: Attendance log (ambiguous), Log entry, Scan
+
+**Device Code**:
+The code a Punch arrives under (`attendance_logs.employee_code`) and the code an Employee is enrolled under (`employees.smartoffice_code`) — the same namespace, matched at ingest, which stamps the Punch's employee (`attendance_logs.employee_id`). Attribution is fixed when the Punch is stored: re-enrolment changes future matches only, and every reader counts a Punch by its stamped employee, never by the code written on it.
+_Avoid_: Employee Code (unqualified — `employees.employee_id` also carries that name), Smart Office code (names the column, not the concept)
 
 **Time Present**:
 The measured office-presence duration for one Employee on one day — the day's last Punch minus its first, ignoring the Punches in between. Direction-agnostic (real devices report no direction, so direction is not evidence) and pooled across devices, so one accidental middle Punch can neither shorten nor lengthen the day. A shift crossing midnight counts on the day it began: a next-day Punch joins the day only when it is chronologically after that day's last Punch and within 12 hours of the day's first, and a merged Punch is consumed, so no Punch is ever counted for two days. A day with a single Punch is uncomputable and shows an em dash, never 0 — zero would read as "was there and left instantly". A would-be merge past 12 hours is refused rather than believed, leaving the day uncomputable instead of inventing an implausible presence. It is explicitly **not** Logged Hours (the billed effort and the payroll numerator, ADR-0010), **not** Capacity, **not** Payable Day and **not** Payable OT — each is a different quantity, and reading Time Present as Logged Hours would silently re-price payroll. Deliberately uncapped on a half day: a day authored as `HD` measures its true span here while the attendance grid credits 4 hours, because a half day is HR intent, not a measurement (ADR-0007, ADR-0015).

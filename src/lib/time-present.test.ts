@@ -285,9 +285,9 @@ describe('devices and redundant taps', () => {
 		expect(computeTimePresent(rows)).toEqual([
 			{ date: DAY_1, hours: 9.6, merged: false, mergeRefused: false },
 		]);
-		expect(bucketPunchesByEmployeeDay(rows).get(`106|${DAY_1}`)).toHaveLength(
-			3
-		);
+		expect(
+			bucketPunchesByEmployeeDay(rows).get(`code:106|${DAY_1}`)
+		).toHaveLength(3);
 	});
 
 	it('is unmoved by retry taps inside and outside the collapse window', () => {
@@ -318,11 +318,13 @@ describe('bucketing and independence', () => {
 			punch('102', `${DAY_1} 18:41:00`),
 			punch('102', `${DAY_1} 09:02:00`),
 		]);
-		expect([...buckets.keys()]).toEqual([`114|${DAY_2}`, `102|${DAY_1}`]);
-		expect(buckets.get(`102|${DAY_1}`)?.map((row) => row.log_date)).toEqual([
-			`${DAY_1} 09:02:00`,
-			`${DAY_1} 18:41:00`,
+		expect([...buckets.keys()]).toEqual([
+			`code:114|${DAY_2}`,
+			`code:102|${DAY_1}`,
 		]);
+		expect(
+			buckets.get(`code:102|${DAY_1}`)?.map((row) => row.log_date)
+		).toEqual([`${DAY_1} 09:02:00`, `${DAY_1} 18:41:00`]);
 	});
 
 	it('sorts an unsorted input into employee-day order', () => {
@@ -388,7 +390,7 @@ describe('malformed timestamps', () => {
 		];
 		expect(
 			bucketPunchesByEmployeeDay(rows)
-				.get(`999|${DAY_1}`)
+				.get(`code:999|${DAY_1}`)
 				?.map((row) => row.log_date)
 		).toEqual([`${DAY_1} 09:00:00`, `${DAY_1} nope`]);
 	});
@@ -413,7 +415,7 @@ describe('purity', () => {
 			punch('104', `${DAY_2} 06:30:00`),
 		]);
 		computeTimePresentForDays(buckets);
-		expect(buckets.get(`104|${DAY_2}`)).toHaveLength(1);
+		expect(buckets.get(`code:104|${DAY_2}`)).toHaveLength(1);
 	});
 
 	it('is repeatable for the same input', () => {

@@ -17,6 +17,10 @@ import {
 	normalizeSalaryProfile,
 } from './payroll-calculation';
 import { sumLoggedHoursForMonth } from '@/lib/logged-hours';
+import {
+	buildLoggedHoursIdentifierMap,
+	resolveLoggedHoursEmployeeId,
+} from '@/lib/logged-hours-source';
 
 export { calculatePayroll, normalizeSalaryProfile };
 
@@ -916,31 +920,10 @@ async function batchGetLoggedHours(db, employeeIds, month) {
      WHERE isDelete = 0 AND employee_id IS NOT NULL`
 	);
 
-	const byIdentifier = new Map();
-	const addIdentifier = (value, employeeId) => {
-		const key = String(value || '')
-			.trim()
-			.toLowerCase();
-		if (key && !byIdentifier.has(key)) {
-			byIdentifier.set(key, Number(employeeId));
-		}
-	};
-	for (const row of employees) {
-		addIdentifier(row.email, row.id);
-		addIdentifier(row.username, row.id);
-	}
-	for (const row of users) {
-		addIdentifier(row.email, row.employee_id);
-		addIdentifier(row.username, row.employee_id);
-	}
+	const identifiers = buildLoggedHoursIdentifierMap(employees, users);
 
 	for (const row of assignments) {
-		const employeeId =
-			Number(row.employee_id) ||
-			Number(row.user_employee_id) ||
-			byIdentifier.get(String(row.user_email || '').toLowerCase()) ||
-			byIdentifier.get(String(row.user_username || '').toLowerCase()) ||
-			0;
+		const employeeId = resolveLoggedHoursEmployeeId(row, identifiers);
 		if (!employeeId || !wanted.has(employeeId)) continue;
 		const hours = sumLoggedHoursForMonth([row.daily_entries], monthPrefix);
 		if (hours > 0)

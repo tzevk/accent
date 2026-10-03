@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test';
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Page, Route } from '@playwright/test';
 import { readArtifact, writeArtifact } from '../lib/artifacts';
 import { rows } from '../lib/db';
 import {
 	ATTENDANCE_HOLIDAY,
 	ATTENDANCE_MONTH,
+	ATTENDANCE_REENROL_OLD_CODE,
 	ATTENDANCE_ROSTER,
 	ATTENDANCE_UNMAPPED_CODE_PREFIX,
 	cleanupAttendanceFixtures,
@@ -12,21 +13,26 @@ import {
 } from '../lib/attendance-fixtures';
 
 /**
- * The Attendance report grid (issue #285), proven end to end: the real page in
- * a real browser against the real database.
+ * The Attendance report grid (issues #285, #288), proven end to end: the real
+ * page in a real browser against the real database.
  *
  * Every expected figure below is derived HERE, from the raw rows the attendance
  * fixtures wrote plus the calendar. The Time Present rule is re-implemented
  * from its written form — the day's first punch to its last, direction
- * agnostic, pooled across devices, a next-day punch merging in only inside a
- * 12-hour window and then being consumed, a lone punch uncomputable — and the
- * roster and week-off rules are re-derived from `employees` and the calendar
- * too. Nothing in this file imports `@/lib/time-present`, `@/lib/logged-hours`,
- * `@/utils/weekly-off`, the report's `data-source`, `cell-status` or `roster`,
- * so the report cannot mark its own homework.
+ * agnostic, pooled across devices and pooled by the Employee the punch was
+ * attributed to at ingest (a device-code change never splits a day), a next-day
+ * punch merging in only inside a 12-hour window and then being consumed, a lone
+ * punch uncomputable — over the same padded window the report fetches
+ * (one calendar day either side of the month), because the month's last day may
+ * merge a punch recorded in the next month. The roster and week-off rules are
+ * re-derived from `employees` and the calendar too. Nothing in this file
+ * imports `@/lib/time-present`, `@/lib/logged-hours`, `@/utils/weekly-off`, the
+ * report's `data-source`, `cell-status` or `roster`, so the report cannot mark
+ * its own homework.
  *
  * Each test asserts both halves: what the API returned and what the browser
- * rendered, against rows read back with this harness's own mysql2 client.
+ * rendered, against rows read back with this harness's own mysql2 client. Cell
+ * state is read from the cells' data attributes, never from utility classes.
  */
 
 /* ── The month under test ─────────────────────────────────────────── */
@@ -43,6 +49,18 @@ const MONTH_DATES: string[] = Array.from(
 );
 const NEXT_MONTH = `${MONTH_YEAR}-${String(MONTH_NUMBER + 1).padStart(2, '0')}`;
 const MONTH_DAY = (n: number) => `${MONTH_PREFIX}${String(n).padStart(2, '0')}`;
+
+/** The month's own half-open bounds, and the ±1-day padded window the report
+ *  and this derivation both fetch: the month's first day may consume the
+ *  previous month's last-day continuation Punch, and vice versa at the end. */
+const MONTH_FROM = `${MONTH_PREFIX}01 00:00:00`;
+const MONTH_TO = `${NEXT_MONTH}-01 00:00:00`;
+const DAY_MS = 86_400_000;
+const MONTH_START_MS = Date.UTC(MONTH_YEAR, MONTH_NUMBER - 1, 1);
+const NEXT_MONTH_START_MS = Date.UTC(MONTH_YEAR, MONTH_NUMBER, 1);
+const isoDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+const PADDED_FROM = `${isoDay(MONTH_START_MS - DAY_MS)} 00:00:00`;
+const PADDED_TO = `${isoDay(NEXT_MONTH_START_MS + DAY_MS)} 00:00:00`;
 
 /** Week off re-derived from the calendar: Sundays, plus 2nd and 4th Saturdays. */
 function isWeeklyOff(date: string): boolean {
@@ -87,40 +105,55 @@ function punchMs(logDate: string): number {
 }
 
 /**
- * Time Present for one device code's punches, in the order they were punched.
+ * Time Present for one Employee's punches — whatever device code they carry.
  *
- * Days are walked in date order, so the day that owns a tail is measured
- * before the day the tail landed on: the tail is credited once and dropped
- * from the following day, which is what makes a night shift read as 8.5 hours
- * on the day it began rather than 6 hours and a half on each of two days.
+ * A Punch is attributed to the Employee stamped on its row (the device code is
+ * display metadata), so every bucket is keyed by that Employee, falling back to
+ * the device code only for a punch with no employee id. Days are walked in date
+ * order, so the day that owns a tail is measured before the day the tail landed
+ * on: the tail is credited once and dropped from the following day, which is
+ * what makes a night shift read as 8.5 hours on the day it began rather than
+ * 6 hours and a half on each of two days.
+ *
+ * The returned map is keyed by `'YYYY-MM-DD'`, including padded days around the
+ * month the report fetched — the caller renders month days only.
  */
 function deriveTimePresent(punches: RawPunch[]): Map<string, DerivedDay> {
 	const buckets = new Map<string, RawPunch[]>();
 	for (const punch of punches) {
-		const key = `${punch.employee_code}|${punch.log_date.slice(0, 10)}`;
+		// The Employee stamped at ingest is the attribution key; the device code
+		// is only the fallback for a punch nobody owns — so a re-enrolment
+		// mid-month cannot split one person into two buckets.
+		const owner =
+			punch.employee_id == null
+				? `code:${punch.employee_code}`
+				: `id:${punch.employee_id}`;
+		const key = `${owner}|${punch.log_date.slice(0, 10)}`;
 		const bucket = buckets.get(key);
 		if (bucket) bucket.push(punch);
 		else buckets.set(key, [punch]);
 	}
 	for (const bucket of buckets.values()) {
-		bucket.sort((a, b) => (a.log_date < b.log_date ? -1 : 1));
+		bucket.sort((a, b) =>
+			a.log_date === b.log_date ? a.id - b.id : a.log_date < b.log_date ? -1 : 1
+		);
 	}
 
-	const datesByCode = new Map<string, string[]>();
+	const datesByAttribution = new Map<string, string[]>();
 	for (const key of buckets.keys()) {
 		const separator = key.lastIndexOf('|');
-		const code = key.slice(0, separator);
-		const dates = datesByCode.get(code) ?? [];
+		const owner = key.slice(0, separator);
+		const dates = datesByAttribution.get(owner) ?? [];
 		dates.push(key.slice(separator + 1));
-		datesByCode.set(code, dates);
+		datesByAttribution.set(owner, dates);
 	}
-	for (const dates of datesByCode.values()) dates.sort();
+	for (const dates of datesByAttribution.values()) dates.sort();
 
 	const consumed = new Set<number>();
 	const derived = new Map<string, DerivedDay>();
-	for (const [code, dates] of datesByCode) {
+	for (const [owner, dates] of datesByAttribution) {
 		for (const date of dates) {
-			const own = (buckets.get(`${code}|${date}`) ?? []).filter(
+			const own = (buckets.get(`${owner}|${date}`) ?? []).filter(
 				(punch) => !consumed.has(punch.id)
 			);
 			// A day emptied by the previous day's merge has no presence of its own.
@@ -132,15 +165,10 @@ function deriveTimePresent(punches: RawPunch[]): Map<string, DerivedDay> {
 			let refused = false;
 			let tailPunchId: number | null = null;
 
-			const followingMs = Date.parse(`${date}T00:00:00Z`) + 86_400_000;
-			const following = Number.isFinite(followingMs)
-				? new Date(followingMs).toISOString().slice(0, 10)
-				: null;
-			const tail = following
-				? (buckets.get(`${code}|${following}`) ?? []).find(
-						(punch) => !consumed.has(punch.id)
-					)
-				: undefined;
+			const following = isoDay(Date.parse(`${date}T00:00:00Z`) + DAY_MS);
+			const tail = (buckets.get(`${owner}|${following}`) ?? []).find(
+				(punch) => !consumed.has(punch.id)
+			);
 
 			if (tail && Number.isFinite(firstMs) && Number.isFinite(lastMs)) {
 				const tailMs = punchMs(tail.log_date);
@@ -167,7 +195,7 @@ function deriveTimePresent(punches: RawPunch[]): Map<string, DerivedDay> {
 					? Math.round(((lastMs - firstMs) / MS_PER_HOUR) * 100) / 100
 					: null;
 
-			derived.set(`${code}|${date}`, { hours, merged, refused, tailPunchId });
+			derived.set(date, { hours, merged, refused, tailPunchId });
 		}
 	}
 	return derived;
@@ -211,6 +239,7 @@ function deriveLoggedHours(
 interface EmployeeRow {
 	id: number;
 	employee_id: string;
+	name: string;
 	employee_type: string | null;
 	status: string;
 	isDelete: number;
@@ -220,15 +249,21 @@ interface EmployeeRow {
 interface FixtureExpectation {
 	member: AttendanceMember;
 	employeeId: number;
-	/** `${deviceCode}|${date}` → the day's expected Time Present. */
+	/**
+	 * `'YYYY-MM-DD'` → the day's expected Time Present, over every punch the
+	 * employee is stamped on, including padded days either side of the month.
+	 */
 	timePresent: Map<string, DerivedDay>;
 	/** `${YYYY-MM-DD}` → expected Logged Hours. */
 	logged: Record<string, number>;
 	/** `${YYYY-MM-DD}` → the authored `employee_attendance.status`. */
 	status: Record<string, string>;
-	/** `${YYYY-MM-DD}` → punch rows for this employee on that day. */
+	/** `${YYYY-MM-DD}` → month-dated punch rows for this employee on that day. */
 	punchCount: Record<string, number>;
+	/** Every padded-window punch attributed to this employee id. */
 	punches: RawPunch[];
+	/** The month-dated subset of `punches` — the shipped, cell-scoped set. */
+	monthPunches: RawPunch[];
 }
 
 interface Model {
@@ -245,13 +280,29 @@ interface Model {
 	nonOptionalHolidays: string[];
 	optionalHolidays: string[];
 	unmapped: { employee_code: string; punch_count: number }[];
+	/**
+	 * Month-dated punch totals and device serials, derived independently — the
+	 * month summary line and the stats payloads must both match them.
+	 */
+	monthStats: {
+		total: number;
+		mapped: number;
+		unmapped: number;
+		/** Distinct non-empty `serial_number`s among the month's punches. */
+		devices: string[];
+	};
 	/** Row counts of every table the attendance fixtures own, while seeded. */
 	rowCounts: Record<string, number>;
 }
 
-const FIXTURE_CODE_LIST = ATTENDANCE_ROSTER.map(
-	(member) => member.smartofficeCode
-);
+/**
+ * Every device code the fixture writes punches under: the roster's current
+ * codes plus the re-enrolment member's pre-re-enrolment code.
+ */
+const FIXTURE_CODE_LIST = [
+	...ATTENDANCE_ROSTER.map((member) => member.smartofficeCode),
+	ATTENDANCE_REENROL_OLD_CODE,
+];
 const DEVICE_CODE_PLACEHOLDERS = FIXTURE_CODE_LIST.map(() => '?').join(', ');
 
 async function count(sql: string, params: unknown[] = []): Promise<number> {
@@ -261,16 +312,21 @@ async function count(sql: string, params: unknown[] = []): Promise<number> {
 
 async function buildModel(): Promise<Model> {
 	const directory = await rows<EmployeeRow>(
-		`SELECT id, employee_id, employee_type, status, isDelete, smartoffice_code
+		`SELECT id, employee_id,
+		        CONCAT_WS(' ', first_name, last_name) AS name,
+		        employee_type, status, isDelete, smartoffice_code
      FROM employees`
 	);
 
+	// The padded window the report itself fetches: the merge walk needs the
+	// neighbouring days, and the month's last day's continuation Punch lands in
+	// the next month. Only month-dated rows become cells.
 	const punches = await rows<RawPunch>(
 		`SELECT id, employee_code, log_date, serial_number, employee_id
      FROM attendance_logs
      WHERE log_date >= ? AND log_date < ?
      ORDER BY log_date, id`,
-		[`${MONTH_PREFIX}01 00:00:00`, `${NEXT_MONTH}-01 00:00:00`]
+		[PADDED_FROM, PADDED_TO]
 	);
 
 	const statusRows = await rows<{
@@ -320,17 +376,17 @@ async function buildModel(): Promise<Model> {
 		if (!employee)
 			throw new Error(`Fixture employee ${member.code} is missing`);
 
-		// A punch is this employee's only when the resolved row id AND the
-		// enrolled device code both match, so an unmapped code can never be
-		// read as somebody's presence.
-		const own = punches.filter(
-			(punch) =>
-				punch.employee_id === employee.id &&
-				punch.employee_code === member.smartofficeCode
+		// A punch is this employee's purely by the employee id stamped on the
+		// row — the device code it arrived under is display metadata. A punch
+		// with no attributed employee has no id, so an unmapped code can never
+		// be read as somebody's presence.
+		const own = punches.filter((punch) => punch.employee_id === employee.id);
+		const monthPunches = own.filter((punch) =>
+			punch.log_date.startsWith(MONTH_PREFIX)
 		);
 
 		const punchCount: Record<string, number> = {};
-		for (const punch of own) {
+		for (const punch of monthPunches) {
 			const date = punch.log_date.slice(0, 10);
 			punchCount[date] = (punchCount[date] ?? 0) + 1;
 		}
@@ -354,12 +410,15 @@ async function buildModel(): Promise<Model> {
 			status,
 			punchCount,
 			punches: own,
+			monthPunches,
 		});
 	}
 
 	const unmappedCounts = new Map<string, number>();
 	for (const punch of punches) {
 		if (punch.employee_id) continue;
+		// The strip is month-scoped, so the padded neighbours are not counted.
+		if (!punch.log_date.startsWith(MONTH_PREFIX)) continue;
 		if (!punch.employee_code.startsWith(ATTENDANCE_UNMAPPED_CODE_PREFIX))
 			continue;
 		unmappedCounts.set(
@@ -375,6 +434,22 @@ async function buildModel(): Promise<Model> {
 				: b.punch_count - a.punch_count
 		);
 
+	// The month's own figures, over month-dated rows only — the values the
+	// summary line shows and the stats payload must agree with.
+	const monthPunches = punches.filter((punch) =>
+		punch.log_date.startsWith(MONTH_PREFIX)
+	);
+	const monthStats = {
+		total: monthPunches.length,
+		mapped: monthPunches.filter((punch) => punch.employee_id != null).length,
+		unmapped: monthPunches.filter((punch) => punch.employee_id == null).length,
+		devices: [
+			...new Set(
+				monthPunches.map((punch) => punch.serial_number).filter(Boolean)
+			),
+		].sort(),
+	};
+
 	const rowCounts: Record<string, number> = {
 		employees: await count(
 			`SELECT COUNT(*) AS c FROM employees WHERE employee_id LIKE 'E2E-ATT-%'`
@@ -389,6 +464,15 @@ async function buildModel(): Promise<Model> {
 		attendance_logs_unmapped: await count(
 			`SELECT COUNT(*) AS c FROM attendance_logs WHERE employee_code LIKE ?`,
 			[`${ATTENDANCE_UNMAPPED_CODE_PREFIX}%`]
+		),
+		// Fixture-owned rows outside the month: the night shift's, and the
+		// month-boundary case's, continuations. They must be seeded, counted,
+		// and purged with everything else.
+		attendance_logs_outside_month: await count(
+			`SELECT COUNT(*) AS c FROM attendance_logs
+       WHERE employee_code IN (${DEVICE_CODE_PLACEHOLDERS})
+         AND (log_date < ? OR log_date >= ?)`,
+			[...FIXTURE_CODE_LIST, MONTH_FROM, MONTH_TO]
 		),
 		employee_attendance: await count(
 			`SELECT COUNT(*) AS c FROM employee_attendance ea
@@ -430,6 +514,7 @@ async function buildModel(): Promise<Model> {
 			.filter((row) => Number(row.is_optional) === 1)
 			.map((row) => row.date),
 		unmapped,
+		monthStats,
 		rowCounts,
 	};
 }
@@ -462,9 +547,19 @@ interface ArData {
 		total_punches: number;
 		mapped_punches: number;
 		unmapped_punches: number;
+		distinct_devices: number;
 	};
 	holidays: { non_optional: string[]; optional: string[] };
 	devices: string[];
+	/** The month-scoped raw punches the drill-down reads (never padded days). */
+	punches: {
+		id: number;
+		employee_code: string;
+		employee_id: number | null;
+		date: string;
+		time: string;
+		serial_number: string;
+	}[];
 }
 
 let model: Model;
@@ -475,9 +570,14 @@ test.beforeAll(async () => {
 	model = await buildModel();
 });
 
-async function fetchReport(request: APIRequestContext): Promise<ArData> {
+/** Fetch a month's payload. `month` defaults to the fixture month so callers
+ *  that only need the month under test stay one-liners. */
+async function fetchReport(
+	request: APIRequestContext,
+	month: string = MONTH
+): Promise<ArData> {
 	const response = await request.get(
-		`/api/reports/attendance-report?month=${encodeURIComponent(MONTH)}`
+		`/api/reports/attendance-report?month=${encodeURIComponent(month)}`
 	);
 	expect(response.status(), await response.text()).toBe(200);
 	const body = await response.json();
@@ -525,12 +625,21 @@ interface RenderedCell {
 	logged: string | null;
 	timePresent: string | null;
 	status: string | null;
+	/** `data-muted` — a non-working day with no evidence is muted. */
 	muted: boolean;
+	/** `data-time-present-state` — `'computable'` only when hours exist. */
+	timePresentState: string | null;
+	/** `data-logged-hours-state` — `'present'` only when Logged Hours exist. */
+	loggedHoursState: string | null;
+	/** `data-punch-count` — the cell's month-dated Punch count. */
+	punchCount: number | null;
 }
 
 /**
  * The whole grid as the browser painted it: one entry per employee per day,
- * read from the DOM of the page under test.
+ * read from the DOM of the page under test. Every state comes from the cell's
+ * data attributes, never from a utility class, so a restyle cannot move the
+ * proof.
  */
 async function readRenderedGrid(
 	page: Page
@@ -548,6 +657,7 @@ async function readRenderedGrid(
 						const value = td.querySelector(selector)?.textContent?.trim();
 						return value ? value : null;
 					};
+					const punchCount = td.getAttribute('data-punch-count');
 					cells[td.getAttribute('data-date') ?? ''] = {
 						logged: text('[data-testid="cell-logged-hours"]'),
 						timePresent: text('[data-testid="cell-time-present"]'),
@@ -555,7 +665,10 @@ async function readRenderedGrid(
 							td
 								.querySelector('[data-status-code]')
 								?.getAttribute('data-status-code') ?? null,
-						muted: td.className.includes('bg-gray-50'),
+						muted: td.getAttribute('data-muted') === 'true',
+						timePresentState: td.getAttribute('data-time-present-state'),
+						loggedHoursState: td.getAttribute('data-logged-hours-state'),
+						punchCount: punchCount === null ? null : Number(punchCount),
 					};
 				}
 				return {
@@ -582,9 +695,7 @@ function expectedRendered(
 	nonOptionalHolidays: string[],
 	optionalHolidays: string[]
 ): RenderedCell {
-	const hours =
-		fixture.timePresent.get(`${fixture.member.smartofficeCode}|${date}`)
-			?.hours ?? null;
+	const hours = fixture.timePresent.get(date)?.hours ?? null;
 	const logged = fixture.logged[date] ?? null;
 	const punchCount = fixture.punchCount[date] ?? 0;
 	const hasLoggedHours = logged !== null && logged > 0;
@@ -604,6 +715,11 @@ function expectedRendered(
 			: null,
 		status: fixture.status[date] ?? null,
 		muted: nonWorking && !hasLoggedHours && !hasPunches,
+		// The cell's own state, independent of what it paints: computable only
+		// when the derived span exists.
+		timePresentState: hours === null ? 'uncomputable' : 'computable',
+		loggedHoursState: hasLoggedHours ? 'present' : 'none',
+		punchCount,
 	};
 }
 
@@ -627,8 +743,9 @@ test.describe('attendance report grid', () => {
 		);
 
 		// Every Payroll fixture member is a full row of the month, whether or not
-		// it has a salary profile — the filter reads the employee record.
-		expect(model.onRoster).toHaveLength(11);
+		// it has a salary profile — the filter reads the employee record. The
+		// count includes the re-enrolment member and the month-boundary member.
+		expect(model.onRoster).toHaveLength(13);
 		for (const member of model.onRoster) {
 			const fixture = fixtureFor(member.code);
 			const apiRow = api.employees.find(
@@ -637,7 +754,9 @@ test.describe('attendance report grid', () => {
 			expect(apiRow, `${member.code} missing from the API roster`).toBeTruthy();
 			expect(apiRow?.cells).toHaveLength(DAYS_IN_MONTH);
 			expect(apiRow?.smartoffice_code).toBe(member.smartofficeCode);
-			expect(apiRow?.punch_count).toBe(fixture.punches.length);
+			// The row total is the month's own punches — a continuation Punch
+			// recorded in the next month never inflates it.
+			expect(apiRow?.punch_count).toBe(fixture.monthPunches.length);
 		}
 		expect(fixtureFor('E2E-ATT-0009').member.profile).toBeNull();
 		expect(fixtureFor('E2E-ATT-0010').member.profile).toBe('contract');
@@ -734,15 +853,13 @@ test.describe('attendance report grid', () => {
 				mismatches.push(`${fixture.member.code}: absent from the API roster`);
 				continue;
 			}
-			if (apiRow.punch_count !== fixture.punches.length) {
+			if (apiRow.punch_count !== fixture.monthPunches.length) {
 				mismatches.push(
-					`${fixture.member.code}: ${apiRow.punch_count} punches on the row vs ${fixture.punches.length} on disk`
+					`${fixture.member.code}: ${apiRow.punch_count} punches on the row vs ${fixture.monthPunches.length} month-dated on disk`
 				);
 			}
 			for (const cell of apiRow.cells) {
-				const derived = fixture.timePresent.get(
-					`${fixture.member.smartofficeCode}|${cell.date}`
-				);
+				const derived = fixture.timePresent.get(cell.date);
 				const hours = derived?.hours ?? null;
 				const logged = fixture.logged[cell.date] ?? null;
 				const status = fixture.status[cell.date] ?? null;
@@ -787,6 +904,13 @@ test.describe('attendance report grid', () => {
 			api.stats.mapped_punches
 		);
 
+		// The month-scoped totals and the device list are what the padded rows
+		// were reduced to: every month-dated Punch, and only those.
+		expect(api.stats.total_punches).toBe(model.monthStats.total);
+		expect(api.stats.mapped_punches).toBe(model.monthStats.mapped);
+		expect(api.stats.unmapped_punches).toBe(model.monthStats.unmapped);
+		expect(api.devices).toEqual(model.monthStats.devices);
+
 		observed.apiCells = {
 			cellsChecked: model.onRoster.length * DAYS_IN_MONTH,
 			mismatches: mismatches.length,
@@ -794,6 +918,9 @@ test.describe('attendance report grid', () => {
 				'attendance_logs + user_activity_assignments + employee_attendance rows read back with the harness client',
 			unmappedPunches: api.stats.unmapped_punches,
 			totalPunches: api.stats.total_punches,
+			mappedPunches: api.stats.mapped_punches,
+			devices: api.devices,
+			paddedWindow: { from: PADDED_FROM, to: PADDED_TO },
 		};
 	});
 
@@ -858,9 +985,7 @@ test.describe('attendance report grid', () => {
 		// 09:02 → 18:41 is 9h39m; reading the alternation instead would stop at
 		// the second punch and report 3.13 hours of a nine-and-a-half-hour day.
 		const accidentalDerived =
-			accidental.timePresent.get(
-				`${accidental.member.smartofficeCode}|${accidentalDay}`
-			)?.hours ?? null;
+			accidental.timePresent.get(accidentalDay)?.hours ?? null;
 		expect(accidentalDerived).toBeCloseTo(9.65, 2);
 		expect(accidentalDerived).not.toBeCloseTo(3.13, 2);
 		expect(apiCell(accidentalCode, accidentalDay).hours).toBeCloseTo(9.65, 2);
@@ -873,9 +998,7 @@ test.describe('attendance report grid', () => {
 		const nightDay = MONTH_DAY(1);
 		const nightNextDay = MONTH_DAY(2);
 		const night = fixtureFor(nightCode);
-		const nightDerived = night.timePresent.get(
-			`${night.member.smartofficeCode}|${nightDay}`
-		);
+		const nightDerived = night.timePresent.get(nightDay);
 		expect(nightDerived?.merged).toBe(true);
 		expect(nightDerived?.hours).toBeCloseTo(8.5, 2);
 		expect(apiCell(nightCode, nightDay).hours).toBeCloseTo(8.5, 2);
@@ -885,10 +1008,7 @@ test.describe('attendance report grid', () => {
 		expect(tailPunch?.log_date).toBe(`${nightNextDay} 06:30:00`);
 		// The tail is consumed, so it cannot also open the next day's span: that
 		// day still reads 8.5 hours from its own 22:00 → 06:30 shift.
-		expect(
-			night.timePresent.get(`${night.member.smartofficeCode}|${nightNextDay}`)
-				?.hours
-		).toBeCloseTo(8.5, 2);
+		expect(night.timePresent.get(nightNextDay)?.hours).toBeCloseTo(8.5, 2);
 		expect(apiCell(nightCode, nightNextDay).hours).toBeCloseTo(8.5, 2);
 		await expect(
 			cell(page, nightCode, nightDay).getByTestId('cell-time-present')
@@ -906,17 +1026,16 @@ test.describe('attendance report grid', () => {
 		);
 		const buckets = new Map<string, RawPunch[]>();
 		for (const punch of night.punches) {
-			const key = `${punch.employee_code}|${punch.log_date.slice(0, 10)}`;
-			const bucket = buckets.get(key) ?? [];
+			const date = punch.log_date.slice(0, 10);
+			const bucket = buckets.get(date) ?? [];
 			bucket.push(punch);
-			buckets.set(key, bucket);
+			buckets.set(date, bucket);
 		}
 		const creditedDays = new Map<number, Set<string>>();
 		let mergedDays = 0;
-		for (const [key, bucket] of buckets) {
-			const derived = night.timePresent.get(key);
+		for (const [date, bucket] of buckets) {
+			const derived = night.timePresent.get(date);
 			if (!derived) continue;
-			const date = key.slice(key.lastIndexOf('|') + 1);
 			const own = bucket.filter((punch) => !mergedTailIds.has(punch.id));
 			const credited = new Set<number>([own[0].id, own[own.length - 1].id]);
 			if (derived.tailPunchId !== null) {
@@ -950,12 +1069,19 @@ test.describe('attendance report grid', () => {
 		expect(creditedDays.size).toBe(night.punches.length);
 		expect(mergedTailIds.size).toBe(mergedDays);
 		// Each night-shift working day wrote two punches of its own plus one 06:30
-		// tail on the following calendar day; only the very last working day's
-		// tail lands in October, outside this month's query window.
+		// tail on the following calendar day. The padded fetch window now takes
+		// the whole set: the last working day's tail lands on the next month's
+		// first day and is what that day's 8.5-hour merge consumes.
 		const nightWorkingDays = MONTH_DATES.filter(
 			(date) => !isWeeklyOff(date) && !model.nonOptionalHolidays.includes(date)
 		).length;
-		expect(night.punches).toHaveLength(nightWorkingDays * 3 - 1);
+		expect(night.punches).toHaveLength(nightWorkingDays * 3);
+		const nightTailOutsideMonth = night.punches.filter(
+			(punch) => !punch.log_date.startsWith(MONTH_PREFIX)
+		);
+		expect(nightTailOutsideMonth.map((punch) => punch.log_date)).toEqual([
+			`${NEXT_MONTH}-01 06:30:00`,
+		]);
 
 		// ── Half day: measured hours uncapped, beside the authored badge ──
 		const halfCode = 'E2E-ATT-0008';
@@ -963,9 +1089,7 @@ test.describe('attendance report grid', () => {
 		const half = fixtureFor(halfCode);
 		expect(half.status[halfDay]).toBe('HD');
 		expect(half.logged[halfDay]).toBe(4);
-		const halfMeasured =
-			half.timePresent.get(`${half.member.smartofficeCode}|${halfDay}`)
-				?.hours ?? null;
+		const halfMeasured = half.timePresent.get(halfDay)?.hours ?? null;
 		expect(halfMeasured).toBeCloseTo(10, 2);
 		expect(halfMeasured).toBeGreaterThan(8);
 		expect(apiCell(halfCode, halfDay).hours).toBeCloseTo(10, 2);
@@ -981,10 +1105,7 @@ test.describe('attendance report grid', () => {
 		const singleDay = MONTH_DAY(4);
 		const forgot = fixtureFor(singleCode);
 		expect(forgot.punchCount[singleDay]).toBe(1);
-		expect(
-			forgot.timePresent.get(`${forgot.member.smartofficeCode}|${singleDay}`)
-				?.hours
-		).toBeNull();
+		expect(forgot.timePresent.get(singleDay)?.hours ?? null).toBeNull();
 		expect(apiCell(singleCode, singleDay).hours).toBeNull();
 		const singleTimePresent = cell(page, singleCode, singleDay).getByTestId(
 			'cell-time-present'
@@ -1037,17 +1158,25 @@ test.describe('attendance report grid', () => {
 		};
 	});
 
-	test('the drill-down lists the raw punches, and the Device filter scopes only the drill-down', async ({
+	test('the drill-down lists the raw punches, filters by device inside the modal, and restores focus', async ({
 		page,
 	}) => {
 		await openGrid(page);
 
+		// The page itself carries no device control: the only Device filter is
+		// inside the drill-down modal, and no month request was scoped by one.
+		await expect(page.getByTestId('cell-punch-device-filter')).toHaveCount(0);
+		await expect(page.getByLabel(/device/i)).toHaveCount(0);
+
 		// ── Drill-down: the accidental middle tap is listed, in time order ──
 		const accidentalCode = 'E2E-ATT-0002';
 		const accidentalDay = MONTH_DAY(1);
-		await cell(page, accidentalCode, accidentalDay)
-			.getByTestId('cell-punch-trigger')
-			.click();
+		const accidentalTrigger = cell(
+			page,
+			accidentalCode,
+			accidentalDay
+		).getByTestId('cell-punch-trigger');
+		await accidentalTrigger.click();
 		const modal = page.getByTestId('cell-punch-modal');
 		await expect(modal).toBeVisible();
 		await expect(modal).toHaveAttribute('data-date', accidentalDay);
@@ -1070,16 +1199,41 @@ test.describe('attendance report grid', () => {
 				punch.employee_code
 			);
 		}
-		await page.getByTestId('cell-punch-close').click();
+		// The list reconciles with the cell that opened it: same count, and the
+		// cell's own attribute carries it.
+		await expect(modal).toHaveAttribute(
+			'data-count',
+			String(accidentalOnDisk.length)
+		);
+		await expect(cell(page, accidentalCode, accidentalDay)).toHaveAttribute(
+			'data-punch-count',
+			String(accidentalOnDisk.length)
+		);
+
+		// ── The credited-hours link carries the Employee and the month ──
+		const gridLink = page.getByTestId('cell-punch-grid-link');
+		await expect(gridLink).toBeVisible();
+		const href = await gridLink.getAttribute('href');
+		const link = new URL(href ?? '', 'http://localhost');
+		expect(link.pathname).toBe('/employees/attendance');
+		expect(link.searchParams.get('employee_id')).toBe(
+			String(fixtureFor(accidentalCode).employeeId)
+		);
+		expect(link.searchParams.get('month')).toBe(MONTH);
+
+		// Escape closes it and focus returns to the trigger the reader came from.
+		await page.keyboard.press('Escape');
 		await expect(modal).toHaveCount(0);
+		await expect(accidentalTrigger).toBeFocused();
 
 		// ── A consumed tail punch is still a real punch: it is listed under the
 		//    calendar day it was recorded on ──
 		const nightCode = 'E2E-ATT-0004';
 		const nightNextDay = MONTH_DAY(2);
-		await cell(page, nightCode, nightNextDay)
-			.getByTestId('cell-punch-trigger')
-			.click();
+		const nightTrigger = cell(page, nightCode, nightNextDay).getByTestId(
+			'cell-punch-trigger'
+		);
+		await nightTrigger.click();
 		const nightOnDisk = fixtureFor(nightCode)
 			.punches.filter((punch) => punch.log_date.startsWith(nightNextDay))
 			.sort((a, b) => (a.log_date < b.log_date ? -1 : 1));
@@ -1089,51 +1243,70 @@ test.describe('attendance report grid', () => {
 			'data-time',
 			'06:30:00'
 		);
+		await expect(page.getByTestId('cell-punch-device-caption')).toHaveText(
+			'Showing all 3 punches from all devices'
+		);
+		// Close is the other dismissal path, and it restores focus too.
 		await page.getByTestId('cell-punch-close').click();
+		await expect(page.getByTestId('cell-punch-modal')).toHaveCount(0);
+		await expect(nightTrigger).toBeFocused();
 
-		// ── Device filter: the grid figures never move, the drill-down does ──
+		// ── Device filter: inside the modal, and it never moves the grid ──
 		const twoDeviceCode = 'E2E-ATT-0006';
 		const twoDeviceDay = MONTH_DAY(1);
 		const twoDeviceCell = cell(page, twoDeviceCode, twoDeviceDay);
-		const loggedBefore = (
-			await twoDeviceCell.getByTestId('cell-logged-hours').innerText()
-		).trim();
-		const presentBefore = (
-			await twoDeviceCell.getByTestId('cell-time-present').innerText()
-		).trim();
-		expect(loggedBefore).toBe('8.00');
-		expect(presentBefore).toBe('9.60');
-		const gridBefore = await readRenderedGrid(page);
-
-		const deviceSelect = page.getByLabel('Device');
-		await expect(deviceSelect.locator('option')).toHaveCount(
-			api.devices.length + 1
-		);
-		await deviceSelect.selectOption('2');
-
 		await expect(twoDeviceCell.getByTestId('cell-logged-hours')).toHaveText(
-			loggedBefore
+			'8.00'
 		);
 		await expect(twoDeviceCell.getByTestId('cell-time-present')).toHaveText(
-			presentBefore
+			'9.60'
 		);
-		expect(await readRenderedGrid(page)).toEqual(gridBefore);
+		await expect(twoDeviceCell).toHaveAttribute('data-punch-count', '3');
+		const gridBefore = await readRenderedGrid(page);
 
 		await twoDeviceCell.getByTestId('cell-punch-trigger').click();
+		const deviceSelect = page.getByTestId('cell-punch-device-filter');
+		// Only the devices this cell's own 3 punches arrived on: '1' and '2',
+		// plus the "All devices" option — never the month's third device.
+		await expect(deviceSelect.locator('option')).toHaveCount(3);
+		await expect(deviceSelect.locator('option').first()).toHaveText(
+			'All devices'
+		);
+		await expect(page.getByTestId('cell-punch-row')).toHaveCount(3);
+
+		await deviceSelect.selectOption('2');
 		const filteredRows = page.getByTestId('cell-punch-row');
 		await expect(filteredRows).toHaveCount(1);
 		await expect(filteredRows.first()).toHaveAttribute('data-time', '18:40:00');
 		await expect(filteredRows.first()).toHaveAttribute('data-serial', '2');
-		await page.getByTestId('cell-punch-close').click();
+		await expect(page.getByTestId('cell-punch-device-caption')).toHaveText(
+			'Showing 1 of 3 punches from device 2'
+		);
+		// Filtering the list is the modal's business: the cell keeps its count,
+		// and the trigger keeps announcing every punch on the day.
+		await expect(twoDeviceCell).toHaveAttribute('data-punch-count', '3');
+		await expect(
+			twoDeviceCell.getByTestId('cell-punch-trigger')
+		).toHaveAccessibleName(/Show 3 punches for/);
 
-		await deviceSelect.selectOption('');
-		await expect(twoDeviceCell.getByTestId('cell-logged-hours')).toHaveText(
-			loggedBefore
-		);
-		await expect(twoDeviceCell.getByTestId('cell-time-present')).toHaveText(
-			presentBefore
-		);
+		await deviceSelect.selectOption('All devices');
+		await expect(page.getByTestId('cell-punch-row')).toHaveCount(3);
+		await page.getByTestId('cell-punch-close').click();
 		expect(await readRenderedGrid(page)).toEqual(gridBefore);
+
+		// ── A cell with no punches opens an explicit empty state ──
+		const quietCode = 'E2E-ATT-0001';
+		const quietDay = WEEKLY_OFF_DATES[0];
+		const quietTrigger = cell(page, quietCode, quietDay).getByTestId(
+			'cell-punch-trigger'
+		);
+		await quietTrigger.click();
+		await expect(page.getByTestId('cell-punch-empty')).toBeVisible();
+		await expect(page.getByTestId('cell-punch-device-caption')).toHaveText(
+			'No punches recorded'
+		);
+		await expect(page.getByTestId('cell-punch-device-filter')).toBeDisabled();
+		await page.getByTestId('cell-punch-close').click();
 
 		observed.drilldown = {
 			accidentalPunchDay: {
@@ -1143,6 +1316,8 @@ test.describe('attendance report grid', () => {
 					time: punch.log_date.slice(11),
 					serial: punch.serial_number,
 				})),
+				modalCount: accidentalOnDisk.length,
+				cellPunchCount: accidentalOnDisk.length,
 			},
 			nightShiftNextDay: {
 				employee: nightCode,
@@ -1150,15 +1325,28 @@ test.describe('attendance report grid', () => {
 				onDisk: nightOnDisk.map((punch) => punch.log_date.slice(11)),
 				firstRowIsTheConsumedTail: '06:30:00',
 			},
+			creditedHoursLink: {
+				href,
+				employeeId: fixtureFor(accidentalCode).employeeId,
+				month: MONTH,
+			},
+			focusRestoredAfter: ['Escape', 'Close'],
+			emptyCell: {
+				employee: quietCode,
+				date: quietDay,
+				selectDisabled: true,
+			},
 		};
 		observed.deviceFilter = {
-			devices: api.devices,
+			pageLevelDeviceControl: 0,
 			cell: `${twoDeviceCode} ${twoDeviceDay}`,
-			loggedHours: loggedBefore,
-			timePresent: presentBefore,
-			gridIdenticalWithDeviceSetAndCleared: true,
+			cellOptions: ['All devices', '1', '2'],
+			captionAllDevices: 'Showing all 3 punches from all devices',
+			captionDevice2: 'Showing 1 of 3 punches from device 2',
 			drilldownRowsAllDevices: 3,
 			drilldownRowsDevice2: 1,
+			cellPunchCountWhileFiltering: '3',
+			gridIdenticalAfterFiltering: true,
 		};
 	});
 
@@ -1180,9 +1368,17 @@ test.describe('attendance report grid', () => {
 		// Quiet week off and quiet holiday: muted, and nothing painted at all.
 		for (const date of [sunday, holiday]) {
 			const quiet = cell(page, cleanCode, date);
-			await expect(quiet).toHaveClass(/bg-gray-50/);
+			await expect(quiet).toHaveAttribute('data-muted', 'true');
+			await expect(quiet).toHaveAttribute('data-punch-count', '0');
+			await expect(quiet).toHaveAttribute(
+				'data-time-present-state',
+				'uncomputable'
+			);
+			await expect(quiet).toHaveAttribute('data-logged-hours-state', 'none');
 			await expect(quiet.getByTestId('cell-time-present')).toHaveCount(0);
 			await expect(quiet.getByTestId('cell-logged-hours')).toHaveCount(0);
+			// The muted state is stated in words, never left to the grey alone.
+			await expect(quiet).toContainText(/Weekly Off|Holiday/);
 		}
 
 		// The night shift's 06:30 tail lands on the Sunday that follows its last
@@ -1191,13 +1387,22 @@ test.describe('attendance report grid', () => {
 		const sundayPunches = fixtureFor(nightCode).punchCount[sunday] ?? 0;
 		expect(sundayPunches).toBeGreaterThan(0);
 		const sundayCell = cell(page, nightCode, sunday);
-		await expect(sundayCell).not.toHaveClass(/bg-gray-50/);
+		await expect(sundayCell).toHaveAttribute('data-muted', 'false');
+		await expect(sundayCell).toHaveAttribute(
+			'data-punch-count',
+			String(sundayPunches)
+		);
 		await expect(sundayCell.getByTestId('cell-time-present')).toHaveText('—');
 		await expect(sundayCell.getByTestId('cell-time-present')).toHaveCount(1);
+		await expect(sundayCell).toHaveAttribute(
+			'data-time-present-state',
+			'uncomputable'
+		);
 
 		// Working days are never muted.
-		await expect(cell(page, cleanCode, MONTH_DAY(1))).not.toHaveClass(
-			/bg-gray-50/
+		await expect(cell(page, cleanCode, MONTH_DAY(1))).toHaveAttribute(
+			'data-muted',
+			'false'
 		);
 
 		observed.muting = {
@@ -1226,16 +1431,25 @@ test.describe('attendance report grid', () => {
 			{ employee_code: 'E2E9002', punch_count: 2 },
 		]);
 
+		const unmappedTotal = model.unmapped.reduce(
+			(sum, code) => sum + code.punch_count,
+			0
+		);
+		const unmappedPunchNoun = unmappedTotal === 1 ? 'Punch' : 'Punches';
+		const unmappedCodeNoun = model.unmapped.length === 1 ? 'code' : 'codes';
+
 		await expect(page.getByTestId('unmapped-codes-strip')).toBeVisible();
-		await expect(page.getByTestId('unmapped-codes-summary')).toContainText(
-			'4 Punches from 2 codes not linked to an employee'
+		const unmappedSummary = page.getByTestId('unmapped-codes-summary');
+		await expect(unmappedSummary).toContainText(
+			`${unmappedTotal} ${unmappedPunchNoun} from ${model.unmapped.length} ${unmappedCodeNoun} not linked to an employee`
 		);
-		// The summary names them in one sentence; the chips below carry counts.
-		await expect(page.getByTestId('unmapped-codes-summary')).toContainText(
-			'E2E9001, E2E9002'
+		// Every code is named — no cap, no "more" collapse — and the names sit
+		// inside the same summary line, each chip carrying its own count.
+		await expect(page.getByTestId('unmapped-codes-item')).toHaveCount(
+			model.unmapped.length
 		);
-		await expect(page.getByTestId('unmapped-codes-item')).toHaveCount(2);
 		for (const code of model.unmapped) {
+			await expect(unmappedSummary).toContainText(code.employee_code);
 			await expect(
 				page.locator(
 					`[data-testid="unmapped-codes-item"][data-code="${code.employee_code}"]`
@@ -1268,6 +1482,18 @@ test.describe('attendance report grid', () => {
 			{ employee_code: 'E2E9001', c: 2 },
 			{ employee_code: 'E2E9002', c: 2 },
 		]);
+		// They travel only to the strip: a punch with no attributed employee
+		// keys no cell, so it can never enter a row or anybody's Time Present.
+		expect(
+			api.punches
+				.filter(
+					(punch) =>
+						punch.employee_id == null &&
+						punch.employee_code.startsWith(ATTENDANCE_UNMAPPED_CODE_PREFIX)
+				)
+				.map((punch) => punch.employee_code)
+				.sort()
+		).toEqual(['E2E9001', 'E2E9001', 'E2E9002', 'E2E9002']);
 
 		observed.unmappedCodes = {
 			codes: model.unmapped,
@@ -1277,6 +1503,651 @@ test.describe('attendance report grid', () => {
 		};
 	});
 
+	test('the re-enrolment member keeps every punch, whichever device code carries it', async ({
+		request,
+		page,
+	}) => {
+		api = await fetchReport(request);
+		await openGrid(page);
+
+		const member = ATTENDANCE_ROSTER.find((m) => m.plan === 'reenrol');
+		if (!member) throw new Error('No re-enrolment fixture member');
+		const fixture = fixtureFor(member.code);
+		const oldDay = MONTH_DAY(2);
+		const switchDay = MONTH_DAY(16);
+		const laterDay = MONTH_DAY(17);
+
+		// The month really has both codes on the one employee id...
+		const oldCodePunches = fixture.monthPunches.filter(
+			(punch) => punch.employee_code === ATTENDANCE_REENROL_OLD_CODE
+		);
+		const currentCodePunches = fixture.monthPunches.filter(
+			(punch) => punch.employee_code === member.smartofficeCode
+		);
+		expect(oldCodePunches.length).toBeGreaterThan(0);
+		expect(currentCodePunches.length).toBeGreaterThan(0);
+		expect(oldCodePunches.length + currentCodePunches.length).toBe(
+			fixture.monthPunches.length
+		);
+		for (const punch of oldCodePunches) {
+			expect(punch.employee_id).toBe(fixture.employeeId);
+		}
+		// ...and on disk, where the API read it from.
+		const oldCodeOnDisk = await count(
+			`SELECT COUNT(*) AS c FROM attendance_logs
+       WHERE employee_id = ? AND employee_code = ?`,
+			[fixture.employeeId, ATTENDANCE_REENROL_OLD_CODE]
+		);
+		expect(oldCodeOnDisk).toBe(oldCodePunches.length);
+		// The old code belongs to no employee any more: it is stale metadata.
+		const staleEnrolments = await count(
+			`SELECT COUNT(*) AS c FROM employees WHERE smartoffice_code = ?`,
+			[ATTENDANCE_REENROL_OLD_CODE]
+		);
+		expect(staleEnrolments).toBe(0);
+
+		// The row total is the whole month, both codes counted once.
+		const apiRow = api.employees.find((row) => row.employee_id === member.code);
+		expect(apiRow?.punch_count).toBe(fixture.monthPunches.length);
+		expect(apiRow?.smartoffice_code).toBe(member.smartofficeCode);
+
+		// An early day arrived on the old code only, and still reads its span.
+		expect(fixture.punchCount[oldDay]).toBe(2);
+		expect(
+			fixture.punches
+				.filter((punch) => punch.log_date.startsWith(oldDay))
+				.map((punch) => punch.employee_code)
+		).toEqual([ATTENDANCE_REENROL_OLD_CODE, ATTENDANCE_REENROL_OLD_CODE]);
+		const oldCell = cell(page, member.code, oldDay);
+		await expect(oldCell).toHaveAttribute('data-punch-count', '2');
+		await expect(oldCell.getByTestId('cell-time-present')).toHaveText('9.50');
+		expect(apiCell(member.code, oldDay).punch_count).toBe(2);
+		expect(apiCell(member.code, oldDay).hours).toBeCloseTo(9.5, 2);
+
+		// The switch day pools the old code's badge-in and the new code's
+		// badge-out into one 9-hour span — attribution is by employee, not code.
+		const switchDerived = fixture.timePresent.get(switchDay);
+		expect(switchDerived?.hours).toBeCloseTo(9, 2);
+		expect(apiCell(member.code, switchDay).punch_count).toBe(2);
+		expect(apiCell(member.code, switchDay).hours).toBeCloseTo(9, 2);
+		const switchCell = cell(page, member.code, switchDay);
+		await expect(switchCell).toHaveAttribute('data-punch-count', '2');
+		await expect(switchCell.getByTestId('cell-time-present')).toHaveText(
+			'9.00'
+		);
+
+		// A later day arrived on the current code, and reads the same as the
+		// old-code days: nothing about the code changes the figure.
+		const laterCell = cell(page, member.code, laterDay);
+		await expect(laterCell).toHaveAttribute('data-punch-count', '2');
+		await expect(laterCell.getByTestId('cell-time-present')).toHaveText('9.50');
+
+		// The drill-down reconciles with the cell: both codes listed, in time
+		// order, each naming the code it arrived under.
+		await switchCell.getByTestId('cell-punch-trigger').click();
+		await expect(page.getByTestId('cell-punch-modal')).toHaveAttribute(
+			'data-count',
+			'2'
+		);
+		const switchRows = page.getByTestId('cell-punch-row');
+		await expect(switchRows).toHaveCount(2);
+		await expect(switchRows.nth(0)).toHaveAttribute('data-time', '09:00:00');
+		await expect(switchRows.nth(0)).toHaveAttribute(
+			'data-employee-code',
+			ATTENDANCE_REENROL_OLD_CODE
+		);
+		await expect(switchRows.nth(1)).toHaveAttribute('data-time', '18:00:00');
+		await expect(switchRows.nth(1)).toHaveAttribute(
+			'data-employee-code',
+			member.smartofficeCode
+		);
+		await page.getByTestId('cell-punch-close').click();
+
+		observed.reenrolment = {
+			employee: member.code,
+			oldDeviceCode: ATTENDANCE_REENROL_OLD_CODE,
+			currentDeviceCode: member.smartofficeCode,
+			monthPunches: fixture.monthPunches.length,
+			oldCodePunches: oldCodePunches.length,
+			currentCodePunches: currentCodePunches.length,
+			oldCodeDay: {
+				date: oldDay,
+				timePresent: apiCell(member.code, oldDay).hours,
+				punchCount: 2,
+			},
+			switchDay: {
+				date: switchDay,
+				punches: ['09:00:00 (old code)', '18:00:00 (current code)'],
+				timePresent: apiCell(member.code, switchDay).hours,
+				punchCount: 2,
+				rendered: '9.00',
+			},
+			drilldownMatchesCell: true,
+		};
+	});
+
+	test('a month-boundary night shift merges into the padded window, and the next month reads uncomputable', async ({
+		request,
+		page,
+	}) => {
+		api = await fetchReport(request);
+		await openGrid(page);
+
+		const member = ATTENDANCE_ROSTER.find((m) => m.plan === 'monthBoundary');
+		if (!member) throw new Error('No month-boundary fixture member');
+		const fixture = fixtureFor(member.code);
+		const lastDay = MONTH_DAY(DAYS_IN_MONTH);
+		const nextMonthFirstDay = `${NEXT_MONTH}-01`;
+
+		// The three seeded punches: 22:00 on the month's last day, then 06:30
+		// and 18:00 on the next month's first day.
+		expect(
+			fixture.punches
+				.filter(
+					(punch) =>
+						punch.log_date.startsWith(lastDay) ||
+						punch.log_date.startsWith(nextMonthFirstDay)
+				)
+				.map((punch) => punch.log_date)
+		).toEqual([
+			`${lastDay} 22:00:00`,
+			`${nextMonthFirstDay} 06:30:00`,
+			`${nextMonthFirstDay} 18:00:00`,
+		]);
+
+		// The last day merges the next month's 06:30 (padded window) and reads
+		// 8.5 hours; the consumed tail is never rendered in this month.
+		const derived = fixture.timePresent.get(lastDay);
+		expect(derived?.merged).toBe(true);
+		expect(derived?.hours).toBeCloseTo(8.5, 2);
+		const tail = fixture.punches.find(
+			(punch) => punch.id === derived?.tailPunchId
+		);
+		expect(tail?.log_date).toBe(`${nextMonthFirstDay} 06:30:00`);
+		expect(apiCell(member.code, lastDay).hours).toBeCloseTo(8.5, 2);
+		expect(apiCell(member.code, lastDay).punch_count).toBe(1);
+		// The shipped punch payload stays month-scoped: September carries only
+		// the 22:00 row, October's two rows never ride along.
+		expect(
+			api.punches
+				.filter((punch) => punch.employee_id === fixture.employeeId)
+				.map((punch) => `${punch.date} ${punch.time}`)
+		).toEqual([`${lastDay} 22:00:00`]);
+
+		const lastCell = cell(page, member.code, lastDay);
+		await expect(lastCell.getByTestId('cell-time-present')).toHaveText('8.50');
+		await expect(lastCell).toHaveAttribute('data-punch-count', '1');
+		await expect(lastCell).toHaveAttribute(
+			'data-time-present-state',
+			'computable'
+		);
+
+		// October, fetched separately: the 06:30 continuation is consumed by
+		// September's merge, so the first day's remaining 18:00 single punch is
+		// uncomputable — never the naive 06:30 → 18:00 reading of 11.5 hours.
+		const october = await fetchReport(request, NEXT_MONTH);
+		expect(october.month).toBe(NEXT_MONTH);
+		expect(october.days[0]).toBe(nextMonthFirstDay);
+		const octoberRow = october.employees.find(
+			(row) => row.employee_id === member.code
+		);
+		const octoberFirst = octoberRow?.cells.find(
+			(cell) => cell.date === nextMonthFirstDay
+		);
+		expect(octoberFirst?.hours).toBeNull();
+		expect(octoberFirst?.punch_count).toBe(2);
+		expect(octoberFirst?.merge_refused).toBe(false);
+		expect(
+			october.punches
+				.filter((punch) => punch.employee_id === fixture.employeeId)
+				.map((punch) => `${punch.date} ${punch.time}`)
+		).toEqual([
+			`${nextMonthFirstDay} 06:30:00`,
+			`${nextMonthFirstDay} 18:00:00`,
+		]);
+
+		// The consumed continuation still counts on its own date for the night
+		// shift, and is never the start of a second span.
+		const nightRow = october.employees.find(
+			(row) => row.employee_id === 'E2E-ATT-0004'
+		);
+		const nightFirst = nightRow?.cells.find(
+			(cell) => cell.date === nextMonthFirstDay
+		);
+		expect(nightFirst?.hours).toBeNull();
+		expect(nightFirst?.punch_count).toBe(1);
+
+		// The browser shows October's first day the same way: em dash, count 2.
+		await page.goto('/reports/attendance-report');
+		await page.getByLabel('Month').fill(NEXT_MONTH);
+		await expect(
+			page.locator(
+				`td[data-testid="attendance-cell"][data-date="${nextMonthFirstDay}"]`
+			)
+		).toHaveCount(model.roster.length);
+		const octoberCell = cell(page, member.code, nextMonthFirstDay);
+		await expect(octoberCell.getByTestId('cell-time-present')).toHaveText('—');
+		await expect(octoberCell).toHaveAttribute('data-punch-count', '2');
+		await expect(octoberCell).toHaveAttribute(
+			'data-time-present-state',
+			'uncomputable'
+		);
+		await expect(octoberCell).toHaveAttribute(
+			'data-logged-hours-state',
+			'none'
+		);
+
+		observed.monthBoundary = {
+			employee: member.code,
+			seeded: [
+				`${lastDay} 22:00:00`,
+				`${nextMonthFirstDay} 06:30:00`,
+				`${nextMonthFirstDay} 18:00:00`,
+			],
+			september: {
+				lastDay,
+				timePresent: apiCell(member.code, lastDay).hours,
+				mergedTail: tail?.log_date,
+				punchCount: 1,
+				rendered: '8.50',
+			},
+			october: {
+				firstDay: nextMonthFirstDay,
+				hours: octoberFirst?.hours,
+				punchCount: octoberFirst?.punch_count,
+				rejectedNaiveReading: 11.5,
+				rendered: '—',
+			},
+			paddedWindow: { from: PADDED_FROM, to: PADDED_TO },
+			shippedPayloadMonthScoped: true,
+		};
+	});
+
+	test("the month summary, legend and notes state the month's facts", async ({
+		request,
+		page,
+	}) => {
+		api = await fetchReport(request);
+		await openGrid(page);
+
+		// The summary line's attributes are the month-scoped totals, derived
+		// here from the raw rows and equal to the stats the API shipped.
+		const summary = page.getByTestId('month-summary');
+		await expect(summary).toBeVisible();
+		await expect(summary).toHaveAttribute(
+			'data-total',
+			String(model.monthStats.total)
+		);
+		await expect(summary).toHaveAttribute(
+			'data-mapped',
+			String(model.monthStats.mapped)
+		);
+		await expect(summary).toHaveAttribute(
+			'data-unmapped',
+			String(model.monthStats.unmapped)
+		);
+		await expect(summary).toHaveAttribute(
+			'data-devices',
+			String(model.monthStats.devices.length)
+		);
+		expect(api.stats.total_punches).toBe(model.monthStats.total);
+		expect(api.stats.mapped_punches).toBe(model.monthStats.mapped);
+		expect(api.stats.unmapped_punches).toBe(model.monthStats.unmapped);
+		expect(api.stats.distinct_devices).toBe(model.monthStats.devices.length);
+		// The counts are on the line itself, not only in the attributes.
+		await expect(summary).toContainText(`${model.monthStats.total} punches`);
+		await expect(summary).toContainText(`${model.monthStats.mapped} mapped`);
+		await expect(summary).toContainText(
+			`${model.monthStats.unmapped} unmapped`
+		);
+		await expect(summary).toContainText(
+			`${model.monthStats.devices.length} devices`
+		);
+
+		// House chrome: the hero holds the title and Refresh, the Month picker is
+		// the page's only control, and no device control sits on the page.
+		await expect(
+			page.getByRole('heading', { name: 'Attendance Report', exact: true })
+		).toBeVisible();
+		await expect(
+			page.getByRole('button', { name: 'Refresh', exact: true })
+		).toBeVisible();
+		await expect(page.getByLabel('Month')).toBeVisible();
+		await expect(page.getByLabel(/device/i)).toHaveCount(0);
+
+		// The legend names both measures and what the em dash means.
+		const legend = page.getByTestId('figures-legend');
+		await expect(legend).toBeVisible();
+		await expect(legend).toContainText('Logged Hours');
+		await expect(legend).toContainText('Time Present');
+		await expect(legend).toContainText('em dash');
+
+		// The merge rule and the half-day fact, visible under the table.
+		await expect(page.getByTestId('time-present-notes')).toBeVisible();
+		const mergeRule = page.getByTestId('time-present-merge-rule');
+		await expect(mergeRule).toContainText('12 hours');
+		await expect(mergeRule).toContainText('em dash');
+		await expect(page.getByTestId('time-present-half-day')).toContainText(
+			'half day'
+		);
+		// The old direction footnote is gone: direction belongs to the drill-down.
+		await expect(
+			page.getByText('ignores punch direction entirely')
+		).toHaveCount(0);
+
+		observed.monthSummary = {
+			attributes: {
+				total: model.monthStats.total,
+				mapped: model.monthStats.mapped,
+				unmapped: model.monthStats.unmapped,
+				devices: model.monthStats.devices.length,
+			},
+			apiStats: api.stats,
+			legend: ['Logged Hours', 'Time Present', 'em dash'],
+			mergeRule:
+				'12 hours and em dash, interpolated from MAX_MERGED_SPAN_HOURS',
+			halfDay: 'half day, uncapped measured span',
+			directionFooterRemoved: true,
+		};
+	});
+
+	test('the roster disclosure keeps the counts visible and the names behind a details', async ({
+		page,
+	}) => {
+		await openGrid(page);
+
+		const disclosure = page.getByTestId('roster-disclosure');
+		await expect(disclosure).toBeVisible();
+		await expect(page.getByTestId('roster-disclosure-filter')).toContainText(
+			'Payroll'
+		);
+		await expect(page.getByTestId('roster-disclosure-filter')).toContainText(
+			'Active'
+		);
+
+		// Counts derived from the directory: everyone live the filter dropped,
+		// and how many of them the roster kept.
+		const liveRows = model.directory.filter(
+			(row) => Number(row.isDelete) === 0
+		);
+		const excludedCount = liveRows.filter(
+			(row) => !(row.status === 'active' && row.employee_type === 'Payroll')
+		).length;
+		const excludedNoun = excludedCount === 1 ? 'employee' : 'employees';
+		const summary = page.getByTestId('roster-disclosure-summary');
+		await expect(summary).toContainText(
+			`${excludedCount} ${excludedNoun} excluded`
+		);
+		await expect(summary).toContainText(
+			`of ${liveRows.length} on the employee list`
+		);
+		await expect(summary).toContainText(
+			`leaving ${model.roster.length} on the roster`
+		);
+
+		// Every reason our excluded members were dropped for is stated in words.
+		const breakdown = page.getByTestId('roster-disclosure-breakdown');
+		for (const member of model.offRoster) {
+			await expect(breakdown).toContainText(
+				member.type !== 'Payroll'
+					? `with Employee Type ${member.type}`
+					: `not Active (Status ${member.status})`
+			);
+		}
+		await expect(page.getByTestId('roster-disclosure-note')).toContainText(
+			'salary profile'
+		);
+
+		// The names are inside the collapsed <details>: invisible until opened,
+		// and every dropped employee is named once it is — no cap, no overflow.
+		const list = page.getByTestId('roster-disclosure-list');
+		await expect(list.locator('summary')).toContainText(
+			`Show excluded employees (${excludedCount})`
+		);
+		const visibleItems = page.locator(
+			'[data-testid="roster-disclosure-item"]:visible'
+		);
+		await expect(visibleItems).toHaveCount(0);
+		await list.locator('summary').click();
+		await expect(visibleItems).toHaveCount(excludedCount);
+
+		const named: string[] = [];
+		for (const member of model.offRoster) {
+			const item = page.locator(
+				`[data-testid="roster-disclosure-item"][data-code="${member.code}"]`
+			);
+			await expect(item).toBeVisible();
+			const directoryRow = model.directory.find(
+				(row) => row.employee_id === member.code
+			);
+			if (!directoryRow) throw new Error(`No directory row for ${member.code}`);
+			await expect(item).toContainText(directoryRow.name);
+			await expect(item).toContainText(
+				member.type !== 'Payroll'
+					? `Employee Type ${member.type}`
+					: `Status ${member.status}`
+			);
+			named.push(member.code);
+		}
+
+		observed.rosterDisclosure = {
+			excludedCount,
+			consideredCount: liveRows.length,
+			rosterCount: model.roster.length,
+			reasonsVisible: true,
+			detailsOpenedBeforeNames: true,
+			names: named,
+			visibleItems: excludedCount,
+		};
+	});
+
+	test('the first paint waits for metadata, and a failed probe offers a working Retry', async ({
+		page,
+	}) => {
+		// Scoped to the metadata request alone: `?month=` requests pass through.
+		const metaRequest = /\/api\/reports\/attendance-report$/;
+		let delayMeta = true;
+		const delayHandler = async (route: Route) => {
+			if (delayMeta) {
+				const { promise, resolve } = Promise.withResolvers<void>();
+				setTimeout(resolve, 1_500);
+				await promise;
+			}
+			await route.continue();
+		};
+		await page.route(metaRequest, delayHandler);
+
+		await page.goto('/reports/attendance-report');
+		// While the probe is in flight: loading, and never the webhook card.
+		await expect(page.getByTestId('report-loading')).toBeVisible();
+		await expect(page.getByTestId('no-logs')).toHaveCount(0);
+		await expect(page.getByTestId('meta-error')).toHaveCount(0);
+		await expect(page.getByTestId('cell-punch-trigger')).toHaveCount(0);
+		// The gate lifts once the probe settles.
+		await expect(page.getByTestId('report-loading')).toHaveCount(0);
+
+		// A 500 on the metadata request renders the error state, not the card.
+		delayMeta = false;
+		await page.unroute(metaRequest, delayHandler);
+		const failHandler = (route: Route) =>
+			route.fulfill({
+				status: 500,
+				contentType: 'application/json',
+				body: JSON.stringify({ success: false, error: 'meta probe failed' }),
+			});
+		await page.route(metaRequest, failHandler);
+		await page.goto('/reports/attendance-report');
+		await expect(page.getByTestId('meta-error')).toBeVisible({
+			timeout: 20_000,
+		});
+		await expect(page.getByTestId('no-logs')).toHaveCount(0);
+		await expect(page.getByTestId('report-loading')).toHaveCount(0);
+		await expect(page.getByTestId('cell-punch-trigger')).toHaveCount(0);
+
+		// Retry, with the failure removed, refetches and renders the report.
+		await page.unroute(metaRequest, failHandler);
+		await page.getByTestId('meta-retry').click();
+		await expect(page.getByTestId('meta-error')).toHaveCount(0);
+		await page.getByLabel('Month').fill(MONTH);
+		await expect(page.getByTestId('cell-punch-trigger').first()).toBeVisible();
+		await expect(
+			page.locator(`td[data-testid="attendance-cell"][data-date="${MONTH}-01"]`)
+		).toHaveCount(model.roster.length);
+
+		observed.metaStates = {
+			loadingWhilePending: true,
+			noLogsWhilePending: false,
+			matrixWhilePending: false,
+			failedProbeRenders: 'meta-error',
+			retryRefetchedAndLiftedGate: true,
+		};
+	});
+
+	test('the webhook card renders only on a successful probe that reports no data', async ({
+		page,
+	}) => {
+		await page.route(/\/api\/reports\/attendance-report$/, (route) =>
+			route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					success: true,
+					meta: { latest_month: null, has_data: false },
+				}),
+			})
+		);
+		await page.goto('/reports/attendance-report');
+
+		const card = page.getByTestId('no-logs');
+		await expect(card).toBeVisible();
+		await expect(card).toContainText('webhook');
+		await expect(page.getByTestId('report-loading')).toHaveCount(0);
+		await expect(page.getByTestId('meta-error')).toHaveCount(0);
+		await expect(page.getByTestId('cell-punch-trigger')).toHaveCount(0);
+
+		observed.webhookGate = {
+			stubbedMeta: { success: true, has_data: false },
+			renders: 'no-logs',
+			loading: false,
+			metaError: false,
+		};
+	});
+
+	test('cell triggers and the two measures are named for screen readers', async ({
+		page,
+	}) => {
+		await openGrid(page);
+
+		// The trigger's accessible name carries the all-device punch sentence.
+		const accidentalCell = cell(page, 'E2E-ATT-0002', MONTH_DAY(1));
+		await expect(
+			accidentalCell.getByTestId('cell-punch-trigger')
+		).toHaveAccessibleName(/Show 3 punches for/);
+		const singleCell = cell(page, 'E2E-ATT-0003', MONTH_DAY(4));
+		await expect(
+			singleCell.getByTestId('cell-punch-trigger')
+		).toHaveAccessibleName(/Show 1 punch for/);
+		// A day with no punches says so, rather than going silent.
+		const quietCell = cell(page, 'E2E-ATT-0001', WEEKLY_OFF_DATES[0]);
+		await expect(
+			quietCell.getByTestId('cell-punch-trigger')
+		).toHaveAccessibleName(/Show 0 punches for/);
+
+		// Both measures are named in sr-only prose inside the cell, so the
+		// figure a reader hears is never anonymous.
+		await expect(accidentalCell).toContainText('Logged Hours');
+		await expect(accidentalCell).toContainText('Time Present');
+		await expect(accidentalCell).toContainText('3 punches');
+		await expect(singleCell).toContainText('Time Present uncomputable');
+
+		// The visible values still render: the names never swallow the figures.
+		await expect(accidentalCell.getByTestId('cell-time-present')).toHaveText(
+			'9.65'
+		);
+		await expect(singleCell.getByTestId('cell-time-present')).toHaveText('—');
+
+		observed.accessibility = {
+			triggerNames: {
+				accidental: 'Show 3 punches for',
+				singlePunch: 'Show 1 punch for',
+				noPunches: 'Show 0 punches for',
+			},
+			measureNames: ['Logged Hours', 'Time Present'],
+			uncomputableNamed: true,
+			focusRestoredAfterModalClose: true,
+		};
+	});
+
+	test('a narrow screen pins the Employee column while the days scroll', async ({
+		page,
+	}) => {
+		// 480px stands in for a phone and the reflow pressure of 200% zoom: the
+		// matrix may scroll in two dimensions, but its name column must not
+		// leave the reader.
+		await page.setViewportSize({ width: 480, height: 800 });
+		await openGrid(page);
+
+		await expect(
+			page.getByText('Scroll sideways for the rest of the month →')
+		).toBeVisible();
+
+		const scroller = page.locator(
+			'[role="region"][aria-label^="Attendance matrix"]'
+		);
+		const employeeHeader = page.locator('thead th').first();
+		await expect(employeeHeader).toHaveText('Employee');
+		// At 480px the header row can sit below the fold; frame it before
+		// measuring, or the pinning check measures an off-screen element.
+		await employeeHeader.scrollIntoViewIfNeeded();
+		const before = await employeeHeader.boundingBox();
+		expect(before).not.toBeNull();
+
+		const scrolled = await scroller.evaluate((el) => {
+			el.scrollLeft = el.scrollWidth;
+			const header = el.querySelector('thead th');
+			return {
+				overflowX: getComputedStyle(el).overflowX,
+				position: header ? getComputedStyle(header).position : '',
+				scrollLeft: el.scrollLeft,
+			};
+		});
+		expect(scrolled.overflowX).toBe('auto');
+		expect(scrolled.position).toBe('sticky');
+		expect(scrolled.scrollLeft).toBeGreaterThan(0);
+
+		// The pinned column held its place while the days moved underneath it.
+		const after = await employeeHeader.boundingBox();
+		expect(after).not.toBeNull();
+		expect(Math.abs((after?.x ?? 0) - (before?.x ?? 0))).toBeLessThan(2);
+		await expect(page.locator('thead th').last()).toBeInViewport();
+
+		observed.narrowScreen = {
+			viewport: '480x800',
+			scrollable: scrolled.scrollLeft > 0,
+			overflowX: scrolled.overflowX,
+			employeeColumnPosition: scrolled.position,
+			employeeColumnPinnedWhileScrolled: true,
+		};
+	});
+
+	test('the drill-down names the punch column Device Code, not Employee Code', async ({
+		page,
+	}) => {
+		await openGrid(page);
+		await cell(page, 'E2E-ATT-0002', MONTH_DAY(1))
+			.getByTestId('cell-punch-trigger')
+			.click();
+		const modal = page.getByTestId('cell-punch-modal');
+		await expect(modal).toBeVisible();
+		await expect(
+			modal.locator('thead th').filter({ hasText: 'Device Code' })
+		).toHaveCount(1);
+		await expect(
+			modal.locator('thead th').filter({ hasText: 'Employee Code' })
+		).toHaveCount(0);
+		await page.getByTestId('cell-punch-close').click();
+	});
+
 	test('the attendance fixtures leave no rows behind once cleaned up', async () => {
 		// Captured while the rows still exist, so the artifact proves the run
 		// really read them.
@@ -1284,6 +2155,20 @@ test.describe('attendance report grid', () => {
 		expect(model.rowCounts.attendance_logs_unmapped).toBe(4);
 		expect(model.rowCounts.employee_attendance).toBe(
 			ATTENDANCE_ROSTER.length * DAYS_IN_MONTH
+		);
+		// Every fixture punch is counted under a fixture code — the old
+		// re-enrolment code and the padded-window continuations included.
+		expect(model.rowCounts.attendance_logs_mapped).toBe(
+			model.fixtures.reduce((sum, fixture) => sum + fixture.punches.length, 0)
+		);
+		const paddedOutsideMonth = model.fixtures.reduce(
+			(sum, fixture) =>
+				sum + (fixture.punches.length - fixture.monthPunches.length),
+			0
+		);
+		expect(paddedOutsideMonth).toBeGreaterThan(0);
+		expect(model.rowCounts.attendance_logs_outside_month).toBe(
+			paddedOutsideMonth
 		);
 
 		// The child tables are counted by the employee ids the fixtures owned,
@@ -1307,6 +2192,14 @@ test.describe('attendance report grid', () => {
 			attendance_logs_unmapped: await count(
 				`SELECT COUNT(*) AS c FROM attendance_logs WHERE employee_code LIKE ?`,
 				[`${ATTENDANCE_UNMAPPED_CODE_PREFIX}%`]
+			),
+			// The rows the padded window added — the night shift's and the
+			// month-boundary case's continuations — must be gone too.
+			attendance_logs_outside_month: await count(
+				`SELECT COUNT(*) AS c FROM attendance_logs
+       WHERE employee_id IN (${ownedIdPlaceholders})
+         AND (log_date < ? OR log_date >= ?)`,
+				[...ownedIds, MONTH_FROM, MONTH_TO]
 			),
 			employee_attendance: await count(
 				`SELECT COUNT(*) AS c FROM employee_attendance WHERE employee_id IN (${ownedIdPlaceholders})`,
@@ -1334,15 +2227,18 @@ test.describe('attendance report grid', () => {
 			page: '/reports/attendance-report',
 			derivation: {
 				timePresent:
-					"Re-implemented in this spec from the raw attendance_logs rows: the day's first punch to its last, direction-agnostic and pooled across devices; the next day's first punch joins it only when it lands after this day's last punch and within 12 hours of this day's first, and a joined punch is consumed; a lone punch or a refused join is uncomputable (null), never 0.",
+					"Re-implemented in this spec from the raw attendance_logs rows over the same padded fetch window the report uses ([month start − 1 day, next month start + 1 day)): a day's punches are pooled by the employee stamped at ingest (falling back to the device code only when no employee id exists), measured first-to-last and direction-agnostic; the next day's first punch joins it only when it lands after this day's last punch and within 12 hours of this day's first, and a joined punch is consumed; a lone punch or a refused join is uncomputable (null), never 0. Padded days feed the merge walk but are never rendered.",
 				loggedHours:
 					"Summed per day from the assignment's raw daily_entries JSON, uncapped (ADR-0010).",
 				roster:
 					'Read straight off employees: isDelete = 0, status = active, employee_type = Payroll. No salary profile is consulted.',
 				muting:
 					'Week off (Sundays, 2nd and 4th Saturdays) or an active non-optional holiday, with no Logged Hours and no punches on it.',
+				cellState:
+					'Read from the cells’ data attributes (data-muted / data-time-present-state / data-logged-hours-state / data-punch-count), never from utility classes.',
 				applicationHelpersImported: [],
 			},
+			paddedWindow: { from: PADDED_FROM, to: PADDED_TO },
 			calendar: {
 				daysInMonth: DAYS_IN_MONTH,
 				weeklyOffDates: WEEKLY_OFF_DATES,

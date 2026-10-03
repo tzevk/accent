@@ -9,7 +9,10 @@
  *   punch can neither shorten nor lengthen the day.
  * - Direction-agnostic: real devices report none, so direction is not
  *   evidence and filtering on it would silently drop real punches.
- * - Pooled across devices: bucketing is by Employee + day only.
+ * - Pooled across devices and device codes: bucketing is by the attributed
+ *   Employee's `employee_id` (stamped at ingest) when the Punch carries one,
+ *   falling back to the device code — attribution, not the code, defines a
+ *   day.
  * - Cross-midnight merge: the next day's chronologically-first punch joins
  *   this day when it is strictly after this day's last punch and within
  *   MAX_MERGED_SPAN_HOURS of this day's first. A merged punch is consumed,
@@ -34,6 +37,11 @@ export const MAX_MERGED_SPAN_HOURS = 12;
 /** The subset of an `attendance_logs` row Time Present reads. */
 export interface PunchLike {
 	employee_code: string;
+	/**
+	 * The Employee stamped at ingest — the attribution Time Present pools a
+	 * day's Punches by. `null`/absent falls back to `employee_code`.
+	 */
+	employee_id?: number | string | null;
 	/** 'YYYY-MM-DD HH:mm:ss' device wall clock, no timezone. */
 	log_date: string;
 }
@@ -88,16 +96,31 @@ function roundHours(ms: number): number {
 }
 
 /**
- * Punches grouped per `${employee_code}|${YYYY-MM-DD}`, each bucket sorted
- * ascending by `log_date`, using the same key format and ordering as
- * `@/lib/punch` so the direction-gated day-times path and Time Present
- * cannot drift.
+ * What a day's Punches pool by: the attributed Employee, else the device code.
+ * The two namespaces are prefixed so a numeric device code can never collide
+ * with an Employee id when a caller mixes attributed and raw Punches.
+ */
+function attributionKey(punch: PunchLike): string {
+	const employeeId = punch.employee_id;
+	return employeeId == null || employeeId === ''
+		? `code:${punch.employee_code}`
+		: `id:${String(employeeId)}`;
+}
+
+/**
+ * Punches grouped per `${attribution key}|${YYYY-MM-DD}` — the ingest-stamped
+ * Employee when present, else the device code — each bucket sorted ascending
+ * by `log_date` through the shared bucketing, so the direction-gated
+ * day-times path and Time Present cannot drift on ordering.
  */
 export function bucketPunchesByEmployeeDay(
 	punches: PunchLike[]
 ): Map<string, PunchLike[]> {
 	const buckets = new Map<string, PunchLike[]>();
-	for (const [key, indices] of bucketPunchIndicesByEmployeeDay(punches)) {
+	for (const [key, indices] of bucketPunchIndicesByEmployeeDay(
+		punches,
+		attributionKey
+	)) {
 		buckets.set(
 			key,
 			indices.map((index) => punches[index])

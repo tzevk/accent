@@ -18,15 +18,30 @@
  * the accepted divergence is reported on `ArData.disclosure` rather than
  * hidden.
  *
+ * A Punch belongs to the Employee stamped on `attendance_logs.employee_id` at
+ * ingest — the Device Code a row carries is display metadata, so a
+ * re-enrolment or code correction changes future matches only and never
+ * re-attributes a Punch already recorded.
+ *
+ * The Punch fetch is padded one calendar day either side of the month for
+ * computation: the merge walk can then consume a continuation Punch from the
+ * neighbouring month instead of losing it to an artificial boundary. The
+ * padded days are never rendered — cells, stats, the device list and the
+ * shipped Punch list stay month-scoped.
+ *
  * Hours are never re-derived here — a second hours parser would drift from the
- * canonical one. Punch direction normalization lives in `@/lib/punch`;
- * `resolveDirection` is re-exported here for the webhook route that imports it
- * through this module.
+ * canonical one. Punch direction utilities live in `@/lib/punch`, where the
+ * attendance webhook imports `resolveDirection` directly.
  */
 
 import { query } from '@/utils/database';
 import { computeTimePresent } from '@/lib/time-present';
 import { hoursByDateForMonth } from '@/lib/logged-hours';
+import {
+	buildLoggedHoursIdentifierMap,
+	resolveLoggedHoursEmployeeId,
+	type UserIdentifierRow,
+} from '@/lib/logged-hours-source';
 import { applyInferredDirections, type PunchDirection } from '@/lib/punch';
 import {
 	selectPayrollRoster,
@@ -34,8 +49,6 @@ import {
 	type RosterEmployeeInput,
 	type RosterMember,
 } from './roster';
-
-export { resolveDirection } from '@/lib/punch';
 
 // ─── Public types ───────────────────────────────────────────────────
 
@@ -49,7 +62,7 @@ export interface ArPunch {
 	date: string;
 	/** Biometric device serial number */
 	serial_number: string;
-	/** Accent employee the punch mapped to, null when unmapped */
+	/** Accent employee the Punch was attributed to at ingest; null when unmapped */
 	employee_id: number | null;
 }
 
@@ -63,8 +76,9 @@ export interface ArStats {
 }
 
 /**
- * One raw Punch of the month, as the drill-down needs it. Carried once on
- * `ArData` (not per cell) so the modal never needs a second round-trip.
+ * One raw Punch, as the drill-down and the merge walk need it. The month's
+ * rows are carried once on `ArData` (not per cell) so the modal never needs a
+ * second round-trip.
  */
 export interface ArMonthPunch extends ArPunch {
 	/** `attendance_logs.id` — a stable React key for the drill-down row. */
@@ -157,20 +171,8 @@ export interface ArData {
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const MONTH_NAMES = [
-	'January',
-	'February',
-	'March',
-	'April',
-	'May',
-	'June',
-	'July',
-	'August',
-	'September',
-	'October',
-	'November',
-	'December',
-];
+/** One calendar day in milliseconds — the padded fetch bounds' unit. */
+const MS_PER_DAY = 86_400_000;
 
 // mysql2 rows are plain objects keyed by column name; read them through
 // narrow accessors so we never reach for `any`.
@@ -220,12 +222,6 @@ export function buildStats(punches: ArPunch[]): ArStats {
 	};
 }
 
-export function monthLabel(month: string): string {
-	const [y, m] = month.split('-').map(Number);
-	if (!y || !m || m < 1 || m > 12) return month;
-	return `${MONTH_NAMES[m - 1]} ${y}`;
-}
-
 interface CalendarMonth {
 	/** Inclusive lower bound of the month, device wall clock. */
 	from: string;
@@ -235,6 +231,14 @@ interface CalendarMonth {
 	 * which MariaDB rejects with string params in prepared statements.
 	 */
 	to: string;
+	/**
+	 * Device-timestamp bounds the Punch fetch runs over: one day of padding
+	 * on either side of the month (`from` − 1 day to `to` + 1 day, the upper
+	 * bound exclusive), so the merge walk can reach across the boundary.
+	 * Padded days feed computation only, never rendering.
+	 */
+	paddedFrom: string;
+	paddedTo: string;
 	days: string[];
 }
 
@@ -251,9 +255,23 @@ function calendarMonth(month: string): CalendarMonth | null {
 		number === 12
 			? `${year + 1}-01`
 			: `${month.slice(0, 4)}-${String(number + 1).padStart(2, '0')}`;
+
+	// UTC date arithmetic on the month's first day, so the padding never
+	// depends on the server's local timezone.
+	const monthStart = Date.UTC(year, number - 1, 1);
+	const nextMonthStart = Date.UTC(year, number, 1);
+	const paddedFrom = new Date(monthStart - MS_PER_DAY)
+		.toISOString()
+		.slice(0, 10);
+	const paddedTo = new Date(nextMonthStart + MS_PER_DAY)
+		.toISOString()
+		.slice(0, 10);
+
 	return {
 		from: `${month}-01 00:00:00`,
 		to: `${nextMonth}-01 00:00:00`,
+		paddedFrom: `${paddedFrom} 00:00:00`,
+		paddedTo: `${paddedTo} 00:00:00`,
 		days,
 	};
 }
@@ -277,11 +295,22 @@ export async function fetchAttendanceMeta(): Promise<ArMeta> {
 			 LIMIT 1`
 		)) as [DbRow[], unknown];
 		latestMonth = monthRows[0] ? s(monthRows[0], 'month') || null : null;
-	} catch {
-		/* attendance_logs may be missing — treat as no data yet */
+	} catch (error) {
+		// A database that has not run the migrations yet has no
+		// `attendance_logs` table and honestly has no data; every other
+		// failure must surface so the page offers a retry instead of the
+		// webhook-setup card.
+		if (!isMissingTableError(error)) throw error;
 	}
 
 	return { latest_month: latestMonth, has_data: !!latestMonth };
+}
+
+/** MySQL's "table does not exist" — ER_NO_SUCH_TABLE / errno 1146. */
+function isMissingTableError(error: unknown): boolean {
+	if (typeof error !== 'object' || error === null) return false;
+	const { code, errno } = error as { code?: unknown; errno?: unknown };
+	return code === 'ER_NO_SUCH_TABLE' || errno === 1146;
 }
 
 /** The `ArData` for a month the calendar cannot describe. */
@@ -354,19 +383,29 @@ function toRosterInput(row: DirectoryRow): RosterEmployeeInput {
 	};
 }
 
-/** Every Punch of the month, with directions resolved once, device or inferred. */
+/**
+ * Every Punch of the padded fetch window — one day before the month to one
+ * day past it — with directions resolved once, device or inferred.
+ *
+ * The padding is what lets a night shift that crosses the month boundary
+ * merge into the day it began, and what lets the previous month's last day
+ * consume this month's first-day continuation Punch. Padded days are
+ * computation fuel only: callers scope rendering, stats and the shipped
+ * Punch list to month-dated rows.
+ */
 async function fetchMonthPunches(
 	calendar: CalendarMonth
 ): Promise<ArMonthPunch[]> {
-	// Bounded by the month, never by a row cap: the stats strip, the drill-down
-	// and the unmapped-code aggregation are all computed from every punch the
-	// month holds, so a cap would silently drop punches (and employees).
+	// Bounded by the padded window, never by a row cap: the stats strip, the
+	// drill-down and the unmapped-code aggregation are all computed from every
+	// Punch the month holds, so a cap would silently drop punches (and
+	// employees).
 	const [rows] = (await query(
 		`SELECT al.id, al.employee_code, al.log_date, al.serial_number,
 		        al.direction, al.employee_id
 		 FROM attendance_logs al
 		 WHERE al.log_date >= ? AND al.log_date < ?`,
-		[calendar.from, calendar.to]
+		[calendar.paddedFrom, calendar.paddedTo]
 	)) as [DbRow[], unknown];
 
 	const punches = rows.map((row) => {
@@ -456,15 +495,14 @@ async function fetchMonthHolidays(
  * Canonical Logged Hours per roster employee, keyed `${employee_id}` → date →
  * hours (ADR-0010, uncapped).
  *
- * The employee an assignment belongs to is resolved in the order
- * `batchGetLoggedHours` in `src/utils/payroll-calculator.js` established —
- * the assignment's own `employee_id`, else the linked user's `employee_id`,
- * else a case-insensitive match on the user's email, then username — so this
- * report reads payroll's own numerator. The order is replicated here rather
- * than imported: that module owns money, and pulling the calculator into a
- * report is a coupling the report does not need. The identifier map is built
- * from the roster's employees and their linked users only, which resolves
- * identically for every employee this report reports on.
+ * Assignment rows are resolved to employees with the shared pure rule in
+ * `@/lib/logged-hours-source` — the assignment's own `employee_id`, else the
+ * linked user's `employee_id`, else a case-folded email match, then username —
+ * the same function `batchGetLoggedHours` in `src/utils/payroll-calculator.js`
+ * consumes, so this report reads payroll's own numerator and the two readers
+ * cannot drift. The identifier map is built from the roster's employee records
+ * first and their linked user records second, which resolves identically for
+ * every employee this report reports on.
  */
 async function fetchLoggedHoursByEmployee(
 	members: readonly RosterMember[],
@@ -474,18 +512,11 @@ async function fetchLoggedHoursByEmployee(
 	const byEmployee = new Map<number, Record<string, number>>();
 	if (members.length === 0) return byEmployee;
 
-	const directoryById = new Map(directory.map((row) => [row.id, row]));
-	const identifiers = new Map<string, number>();
-	const addIdentifier = (value: string | null, employeeId: number) => {
-		const key = (value ?? '').trim().toLowerCase();
-		if (key && !identifiers.has(key)) identifiers.set(key, employeeId);
-	};
 	const memberIds = members.map((member) => member.id);
-	for (const member of members) {
-		const row = directoryById.get(member.id);
-		addIdentifier(row?.email ?? null, member.id);
-		addIdentifier(row?.username ?? null, member.id);
-	}
+	const directoryById = new Map(directory.map((row) => [row.id, row]));
+	const memberRows = members
+		.map((member) => directoryById.get(member.id))
+		.filter((row): row is DirectoryRow => row != null);
 
 	const [userRows] = (await query(
 		`SELECT employee_id, email, username FROM users
@@ -493,12 +524,21 @@ async function fetchLoggedHoursByEmployee(
 		   AND employee_id IN (${placeholders(memberIds.length)})`,
 		memberIds
 	)) as [DbRow[], unknown];
+	const users: UserIdentifierRow[] = [];
 	for (const row of userRows) {
 		const employeeId = n(row, 'employee_id');
 		if (!employeeId) continue;
-		addIdentifier(s(row, 'email'), employeeId);
-		addIdentifier(s(row, 'username'), employeeId);
+		users.push({
+			employee_id: employeeId,
+			email: s(row, 'email') || null,
+			username: s(row, 'username') || null,
+		});
 	}
+
+	// Employee records claim identifiers before their linked User records, so
+	// an Employee's own email/username always outranks the same value on a
+	// User row — the shared map's first-claim-wins order.
+	const identifiers = buildLoggedHoursIdentifierMap(memberRows, users);
 
 	const [assignmentRows] = (await query(
 		`SELECT uaa.employee_id, uaa.daily_entries,
@@ -513,12 +553,15 @@ async function fetchLoggedHoursByEmployee(
 	const wanted = new Set(memberIds);
 	const payloads = new Map<number, unknown[]>();
 	for (const row of assignmentRows) {
-		const employeeId =
-			n(row, 'employee_id') ||
-			n(row, 'user_employee_id') ||
-			identifiers.get(s(row, 'user_email').toLowerCase()) ||
-			identifiers.get(s(row, 'user_username').toLowerCase()) ||
-			0;
+		const employeeId = resolveLoggedHoursEmployeeId(
+			{
+				employee_id: n(row, 'employee_id') || null,
+				user_employee_id: n(row, 'user_employee_id') || null,
+				user_email: s(row, 'user_email') || null,
+				user_username: s(row, 'user_username') || null,
+			},
+			identifiers
+		);
 		if (!employeeId || !wanted.has(employeeId)) continue;
 		const bucket = payloads.get(employeeId);
 		if (bucket) bucket.push(row['daily_entries']);
@@ -539,15 +582,18 @@ async function fetchLoggedHoursByEmployee(
 }
 
 /**
- * Punches grouped per `${employee_id}|${employee_code}`, the one lookup the
- * matrix makes per roster member.
+ * Punches grouped per `employee_id`, the one lookup the matrix makes per
+ * roster member.
  *
- * This is where an unmapped Punch is proven harmless: a row is only ever read
- * under a key built from the roster member's own id AND their enrolled device
- * code, and `attendance_logs.employee_id` is exactly what the webhook set from
- * that same `employees.smartoffice_code` lookup. An unmapped Punch has no
- * employee id, so it can never be read as anybody's presence and never reaches
- * Time Present — while still travelling to the page for `aggregateUnmappedCodes`.
+ * Attribution is the employee stamped at ingest — `attendance_logs.employee_id`,
+ * set by the webhook from the Punch's Device Code — and nothing else: the
+ * device code on the row is display metadata, so a re-enrolment or code
+ * correction changes future matches only and never drops a Punch the employee
+ * already owns.
+ *
+ * This is where an unmapped Punch is proven harmless: a row without an
+ * employee id can never be read as anybody's presence and never reaches Time
+ * Present — while still travelling to the page for `aggregateUnmappedCodes`.
  */
 function punchBucketsByEmployee(
 	punches: readonly ArMonthPunch[]
@@ -555,7 +601,7 @@ function punchBucketsByEmployee(
 	const buckets = new Map<string, ArMonthPunch[]>();
 	for (const punch of punches) {
 		if (punch.employee_id == null) continue;
-		const key = `${punch.employee_id}|${punch.employee_code}`;
+		const key = String(punch.employee_id);
 		const bucket = buckets.get(key);
 		if (bucket) bucket.push(punch);
 		else buckets.set(key, [punch]);
@@ -566,6 +612,11 @@ function punchBucketsByEmployee(
 /**
  * The month matrix: the whole Payroll roster down, every day of `month` across,
  * and both figures on every cell.
+ *
+ * Punches are fetched over the padded window, but only month-dated rows reach
+ * the response: `stats`, `devices` and `punches` stay month-scoped, while Time
+ * Present walks the padded set so a cross-midnight merge works across the
+ * boundary.
  */
 export async function fetchAttendanceData(options: {
 	month: string;
@@ -574,10 +625,16 @@ export async function fetchAttendanceData(options: {
 	const calendar = calendarMonth(month);
 	if (!calendar) return emptyMonth(month);
 
-	const [punches, directory] = await Promise.all([
+	const [paddedPunches, directory] = await Promise.all([
 		fetchMonthPunches(calendar),
 		fetchEmployeeDirectory(),
 	]);
+
+	// Everything the reader sees is month-dated; the padded days exist only
+	// for the merge walk below.
+	const punches = paddedPunches.filter(
+		(punch) => punch.date.slice(0, 7) === month
+	);
 
 	const { roster, disclosure } = selectPayrollRoster(
 		directory.map(toRosterInput)
@@ -590,18 +647,19 @@ export async function fetchAttendanceData(options: {
 		fetchLoggedHoursByEmployee(roster, directory, month),
 	]);
 
-	const buckets = punchBucketsByEmployee(punches);
+	// Time Present buckets over the padded set: the padded head lets the
+	// previous month's last day consume this month's first-day continuation
+	// Punch, and the padded tail does the same for the month's last day.
+	const buckets = punchBucketsByEmployee(paddedPunches);
 	const devices = [
 		...new Set(punches.map((punch) => punch.serial_number).filter(Boolean)),
 	].sort();
 
 	const employees: ArMatrixRow[] = roster.map((member) => {
-		// Both halves must match: the id the webhook resolved the Punch to and
-		// the code this member is enrolled under.
-		const ownPunches =
-			member.smartoffice_code == null
-				? []
-				: (buckets.get(`${member.id}|${member.smartoffice_code}`) ?? []);
+		// The employee id stamped at ingest is the whole key: the Punch's
+		// device code is display metadata, so a re-enrolment never drops a
+		// Punch this employee already owns.
+		const ownPunches = buckets.get(String(member.id)) ?? [];
 
 		const hoursByDate = new Map<string, number | null>();
 		const refusedDates = new Set<string>();
@@ -610,9 +668,15 @@ export async function fetchAttendanceData(options: {
 			if (day.mergeRefused) refusedDates.add(day.date);
 		}
 
+		// Month-dated own Punches only: a continuation Punch consumed by the
+		// previous day's merge still counts on its own date, and the padded
+		// days never reach a cell or the row total.
 		const punchesByDate = new Map<string, number>();
+		let punchCount = 0;
 		for (const punch of ownPunches) {
+			if (punch.date.slice(0, 7) !== month) continue;
 			punchesByDate.set(punch.date, (punchesByDate.get(punch.date) ?? 0) + 1);
+			punchCount += 1;
 		}
 
 		const logged = loggedByEmployee.get(member.id) ?? {};
@@ -623,7 +687,7 @@ export async function fetchAttendanceData(options: {
 			name: member.name,
 			department: member.department,
 			smartoffice_code: member.smartoffice_code,
-			punch_count: ownPunches.length,
+			punch_count: punchCount,
 			// Every day of the month, so an employee who never punched is a full
 			// row of blanks rather than a silently absent person.
 			cells: calendar.days.map((date) => ({

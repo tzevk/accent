@@ -1,19 +1,15 @@
 'use client';
 
-import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
 	ArrowPathIcon,
 	CalendarDaysIcon,
-	CheckBadgeIcon,
-	CircleStackIcon,
-	DevicePhoneMobileIcon,
 	ExclamationTriangleIcon,
 	FingerPrintIcon,
 	InboxArrowDownIcon,
 	InformationCircleIcon,
 	QuestionMarkCircleIcon,
-	UserGroupIcon,
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
@@ -21,8 +17,14 @@ import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { formatMonth, formatNumber } from '@/lib/format';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
-import type { PunchDirection } from '@/lib/punch';
-import type { RosterDisclosure } from './roster';
+import type {
+	ArCell,
+	ArData,
+	ArMatrixRow,
+	ArMeta,
+	ArMonthPunch,
+	ArStats,
+} from './data-source';
 import {
 	CELL_TONE_CLASSES,
 	resolveAttendanceCell,
@@ -31,68 +33,17 @@ import {
 import { aggregateUnmappedCodes } from './unmapped-codes';
 import RosterDisclosureCard from './RosterDisclosure';
 import UnmappedCodesStrip from './UnmappedCodesStrip';
-import TimePresentNote, { TimePresentFooterNote } from './TimePresentNote';
+import TimePresentNote from './TimePresentNote';
 import CellPunchModal, { CellPunchTrigger } from './CellPunchModal';
 
 // ─── Client-safe API types ──────────────────────────────────────────
 
-interface ArCell {
-	date: string;
-	/** Time Present hours, or null when the day cannot be computed. */
-	hours: number | null;
-	/** Canonical Logged Hours for the day, uncapped (ADR-0010). */
-	logged_hours: number | null;
-	status: string | null;
-	punch_count: number;
-	merge_refused: boolean;
-}
-
-interface ArMatrixRow {
-	id: number;
-	employee_id: string;
-	name: string;
-	department: string | null;
-	smartoffice_code: string | null;
-	punch_count: number;
-	cells: ArCell[];
-}
-
-interface ArMonthPunch {
-	id: number;
-	employee_code: string;
-	employee_id: number | null;
-	date: string;
-	/** 'HH:MM:SS' */
-	time: string;
-	serial_number: string;
-	direction: PunchDirection;
-}
-
-interface ArStats {
-	total_punches: number;
-	mapped_punches: number;
-	unmapped_punches: number;
-	distinct_days: number;
-	distinct_employees: number;
-	distinct_devices: number;
-}
-
-interface ArMeta {
-	latest_month: string | null;
-	has_data: boolean;
-}
-
-interface ArData {
-	month: string;
-	days: string[];
-	employees: ArMatrixRow[];
-	stats: ArStats;
-	disclosure: RosterDisclosure | null;
-	holidays: { non_optional: string[]; optional: string[] };
-	devices: string[];
-	punches: ArMonthPunch[];
-}
-
+/**
+ * The route's envelope for both requests a viewer makes: the meta probe and a
+ * month's payload. The matrix, stats and Punch shapes themselves live in
+ * `./data-source` and are imported type-only, so the page and the server
+ * transforms cannot drift apart and no server module reaches the bundle.
+ */
 interface ApiResponse {
 	success: boolean;
 	data?: ArData | null;
@@ -116,9 +67,9 @@ const EM_DASH = '—';
  * the other.
  */
 const LOGGED_HOURS_CLASS =
-	'text-[11px] font-medium tabular-nums text-emerald-700';
-const TIME_PRESENT_CLASS = 'text-[11px] font-bold tabular-nums text-purple-800';
-const NO_FIGURE_CLASS = 'text-[11px] tabular-nums text-gray-300';
+	'text-[12px] font-medium tabular-nums text-emerald-700';
+const TIME_PRESENT_CLASS = 'text-[12px] font-bold tabular-nums text-purple-800';
+const NO_FIGURE_CLASS = 'text-[12px] tabular-nums text-gray-500';
 
 /**
  * A matrix column: the day-of-month number and its weekday, both read off
@@ -128,6 +79,12 @@ interface DayColumn {
 	date: string;
 	day: string;
 	weekday: string;
+}
+
+/** One Employee's row, with the day → cell lookup the grid reads. */
+interface RosterRow {
+	employee: ArMatrixRow;
+	cellsByDate: Map<string, ArCell>;
 }
 
 interface Drilldown {
@@ -147,86 +104,65 @@ function employeeInitials(name: string | null): string {
 
 // ─── Small presentational pieces ────────────────────────────────────
 
-function StatCard({
-	value,
-	label,
-	icon: Icon,
-	tileClassName,
-	valueClassName,
-	footer,
-	delay = 0,
-}: {
-	value: number | string;
-	label: string;
-	icon: ComponentType<{ className?: string }>;
-	tileClassName: string;
-	valueClassName: string;
-	footer?: ReactNode;
-	delay?: number;
-}) {
-	return (
-		<div
-			className="anim-slide-up flex min-w-0 items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm"
-			style={{ animationDelay: `${delay}ms` }}
-		>
-			<div
-				className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tileClassName}`}
-			>
-				<Icon className="h-5 w-5" aria-hidden="true" />
-			</div>
-			<div className="min-w-0">
-				<div
-					className={`text-xl font-bold leading-tight tabular-nums ${valueClassName}`}
-				>
-					{value}
-				</div>
-				<div className="mt-0.5 truncate text-[11px] font-medium uppercase tracking-wide text-gray-500">
-					{label}
-				</div>
-				{footer}
-			</div>
-		</div>
-	);
-}
-
 /**
- * One matrix cell: the authored Attendance Record badge, then Logged Hours and
- * Time Present side by side. Presentation only — `cell` is already resolved by
+ * One matrix cell: the authored Attendance Record badge — or, on a muted
+ * Weekly Off / holiday, the words for it — then Logged Hours and Time Present
+ * side by side. Presentation only — `cell` is already resolved by
  * `resolveAttendanceCell`, so no rule is re-derived here.
+ *
+ * The compact visual is restated once as sr-only prose: both measures are
+ * named, an uncomputable span is said to be uncomputable, and a muted day is
+ * never left to the grey background alone.
  */
 function CellContent({ cell }: { cell: AttendanceCell }) {
-	const mutedText = cell.muted ? 'text-gray-400' : '';
 	// Blank, not zero: a day with neither figure says nothing at all.
 	const showFigures = cell.hasLoggedHours || cell.hasPunches;
+	// Muted = a Weekly Off or holiday with no logged hours and no punches.
+	const mutedLabel = cell.holiday ? 'Holiday' : 'Weekly Off';
 
-	const title = [
-		cell.date,
-		`Logged Hours: ${cell.hasLoggedHours ? formatNumber(cell.loggedHours) : 'none logged'}`,
+	const description = [
+		`${cell.date}.`,
+		cell.hasLoggedHours
+			? `Logged Hours ${formatNumber(cell.loggedHours)}.`
+			: 'Logged Hours: none.',
 		cell.mergeRefused
-			? 'Time Present: uncomputable (cross-midnight merge refused)'
-			: `Time Present: ${cell.timePresentComputable ? formatNumber(cell.timePresentHours) : 'uncomputable'}`,
-		cell.statusLabel ?? 'no authored status',
-		`${cell.punchCount} ${cell.punchCount === 1 ? 'punch' : 'punches'}`,
-		cell.muted ? 'Weekly Off or holiday with no hours and no punches' : '',
+			? 'Time Present uncomputable: the cross-midnight merge was refused.'
+			: cell.timePresentComputable
+				? `Time Present ${formatNumber(cell.timePresentHours)} hours.`
+				: 'Time Present uncomputable.',
+		cell.statusLabel ? `Authored status: ${cell.statusLabel}.` : '',
+		`${cell.punchCount} ${cell.punchCount === 1 ? 'punch' : 'punches'}.`,
+		cell.muted ? `${mutedLabel} with no hours and no punches.` : '',
 	]
 		.filter(Boolean)
-		.join(' · ');
+		.join(' ');
 
 	return (
 		<span
-			className={`flex flex-col items-center gap-0.5 px-0.5 py-1 ${mutedText}`}
-			title={title}
+			title={description}
+			className={`flex flex-col items-center gap-0.5 px-0.5 py-1${
+				cell.muted ? ' text-gray-500' : ''
+			}`}
 		>
+			<span className="sr-only">{description}</span>
 			{cell.statusLabel ? (
 				<span
 					data-status-code={cell.statusCode ?? undefined}
-					className={`max-w-full rounded px-1 py-px text-[8px] font-semibold leading-[1.1] ${CELL_TONE_CLASSES[cell.statusTone ?? 'slate']}`}
+					aria-hidden="true"
+					className={`max-w-full rounded px-1 py-px text-[10px] font-semibold leading-[1.2] ${CELL_TONE_CLASSES[cell.statusTone ?? 'slate']}`}
 				>
 					{cell.statusLabel}
 				</span>
+			) : cell.muted ? (
+				<span
+					aria-hidden="true"
+					className="text-[10px] font-medium leading-tight text-gray-500"
+				>
+					{mutedLabel}
+				</span>
 			) : null}
 			{showFigures ? (
-				<span className="flex items-baseline gap-1">
+				<span className="flex items-baseline gap-1" aria-hidden="true">
 					<span
 						data-testid="cell-logged-hours"
 						className={
@@ -278,19 +214,21 @@ export default function AttendanceReportPage() {
 	// then the default. Deriving rather than syncing through an effect keeps
 	// the picker honest — it always shows the month actually rendered.
 	const [pickedMonth, setPickedMonth] = useState('');
-	// Device narrows the drill-down and nothing else: the grid figures are the
-	// month's figures, whatever device is selected here.
-	const [device, setDevice] = useState('');
 	const [drilldown, setDrilldown] = useState<Drilldown | null>(null);
 
+	// The gate for everything below it: no month is known until this settles.
+	// A failed probe is surfaced at once with its own Retry rather than sitting
+	// behind the query client's retry ladder, so the page never looks alive
+	// while the report is unreachable.
 	const metaQuery = useQuery<ApiResponse>({
 		queryKey: ['reports', 'attendance-report', 'meta'],
 		queryFn: () => apiGet('/api/reports/attendance-report'),
 		refetchOnWindowFocus: false,
 		staleTime: 5 * 60_000,
+		retry: false,
 	});
 
-	const meta = metaQuery.data?.meta;
+	const meta = metaQuery.data?.meta ?? null;
 	const month = pickedMonth || meta?.latest_month || '';
 
 	const monthValid = MONTH_RE.test(month);
@@ -304,14 +242,17 @@ export default function AttendanceReportPage() {
 		enabled: monthValid,
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
+		// Same failure contract as the meta probe: the error card is the surface,
+		// and its Retry (or the hero's Refresh) is the only retry.
+		retry: false,
 	});
 
 	const data = dataQuery.data?.data ?? null;
-	const stats = data?.stats ?? null;
+	const stats: ArStats | null = data?.stats ?? null;
 
 	// The month arrives already split into cells; a date → cell lookup per row
 	// keeps a cell a single map read.
-	const rows = useMemo(
+	const rows = useMemo<RosterRow[]>(
 		() =>
 			(data?.employees ?? []).map((employee) => {
 				const cellsByDate = new Map<string, ArCell>();
@@ -323,9 +264,10 @@ export default function AttendanceReportPage() {
 		[data]
 	);
 
-	// The month's raw punches, keyed by the employee-day they belong to, so the
-	// drill-down never needs a second round-trip. Unmapped punches carry no
-	// employee id and so key nothing — they reach the page only for the strip.
+	// The month's raw punches, keyed by the Employee they are attributed to and
+	// the date they carry — the server buckets cells the same way, so a cell and
+	// its drill-down can never disagree. Unmapped punches carry no employee id
+	// and so key nothing; they reach the page only for the amber strip.
 	const punchesByCell = useMemo(() => {
 		const map = new Map<string, ArMonthPunch[]>();
 		for (const punch of data?.punches ?? []) {
@@ -352,11 +294,6 @@ export default function AttendanceReportPage() {
 		[data]
 	);
 
-	// A device picked in another month can be absent from this one; fall back
-	// to all devices rather than showing a filter that matches nothing.
-	const activeDevice =
-		device && (data?.devices ?? []).includes(device) ? device : '';
-
 	// UTC parse keeps the weekday off the server's timezone; a malformed date
 	// indexes WEEKDAYS with NaN and falls back to a blank header.
 	const columns = useMemo<DayColumn[]>(
@@ -369,17 +306,14 @@ export default function AttendanceReportPage() {
 		[data]
 	);
 
-	// The open cell's punches, narrowed by the device filter and nothing else.
+	// The open cell's punches: the whole employee-day bucket, every device. The
+	// modal owns its own device filter; the page never narrows what it hands over.
 	const drilldownPunches = useMemo(() => {
 		if (!drilldown) return [];
-		const bucket = punchesByCell.get(
-			`${drilldown.employee.id}|${drilldown.date}`
+		return (
+			punchesByCell.get(`${drilldown.employee.id}|${drilldown.date}`) ?? []
 		);
-		if (!bucket) return [];
-		return activeDevice
-			? bucket.filter((punch) => punch.serial_number === activeDevice)
-			: bucket;
-	}, [punchesByCell, drilldown, activeDevice]);
+	}, [punchesByCell, drilldown]);
 
 	// 'August 2026' for the hero, caption and empty states; '' when unset.
 	// Anchored to day 1 in local time — parsing a bare 'YYYY-MM' would read as
@@ -388,9 +322,12 @@ export default function AttendanceReportPage() {
 		? formatMonth(`${month}-01T00:00:00`)
 		: '';
 
-	const mappedPercent = stats?.total_punches
-		? Math.round((stats.mapped_punches / stats.total_punches) * 100)
-		: 0;
+	const totalPunches = stats?.total_punches ?? 0;
+	const mappedPunches = stats?.mapped_punches ?? 0;
+	const unmappedPunches = stats?.unmapped_punches ?? 0;
+	const deviceCount = stats?.distinct_devices ?? 0;
+	const mappedPercent =
+		totalPunches > 0 ? Math.round((mappedPunches / totalPunches) * 100) : 0;
 
 	const isSuperAdmin =
 		user?.is_super_admin === true || user?.is_super_admin === 1;
@@ -401,6 +338,15 @@ export default function AttendanceReportPage() {
 		can(RESOURCES.REPORTS, PERMISSIONS.READ);
 	const hasFieldPermission = hasProjectActivitiesFieldPermission(user);
 	const hasAccess = isSuperAdmin || hasReportsPermission || hasFieldPermission;
+
+	// Contract of the gate: `meta-error` the moment the probe fails (an error
+	// or a 200 that reports success: false); the webhook card only after a
+	// successful probe that says there are no logs yet.
+	const metaFailed = metaQuery.isError || metaQuery.data?.success === false;
+	const metaErrorText =
+		metaQuery.error?.message ||
+		metaQuery.data?.error ||
+		'The report metadata request failed.';
 
 	const error = dataQuery.error?.message || dataQuery.data?.error || '';
 	const isRefreshing = dataQuery.isFetching;
@@ -465,51 +411,12 @@ export default function AttendanceReportPage() {
 									</p>
 								</div>
 							</div>
-							<div
-								className="anim-fade-in flex flex-wrap items-center gap-2"
-								style={{ animationDelay: '80ms' }}
-							>
-								<label className="flex flex-col gap-1">
-									<span className="text-[11px] font-semibold uppercase tracking-wide text-purple-100">
-										Month
-									</span>
-									<div className="relative">
-										<CalendarDaysIcon
-											className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-											aria-hidden="true"
-										/>
-										<input
-											type="month"
-											value={month}
-											onChange={(e) => setPickedMonth(e.target.value)}
-											aria-label="Month"
-											className={`${controlClass} w-[168px] pl-8`}
-										/>
-									</div>
-								</label>
-								<label className="flex flex-col gap-1">
-									<span className="text-[11px] font-semibold uppercase tracking-wide text-purple-100">
-										Device (drill-down only)
-									</span>
-									<select
-										value={activeDevice}
-										onChange={(e) => setDevice(e.target.value)}
-										aria-label="Device"
-										className={`${controlClass} w-[200px]`}
-									>
-										<option value="">All devices</option>
-										{(data?.devices ?? []).map((serial) => (
-											<option key={serial} value={serial}>
-												{serial}
-											</option>
-										))}
-									</select>
-								</label>
+							<div className="anim-fade-in" style={{ animationDelay: '80ms' }}>
 								<button
 									type="button"
 									onClick={() => dataQuery.refetch()}
 									disabled={isRefreshing || !monthValid}
-									className="mt-5 inline-flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-[#64126D] shadow-sm transition-[scale,background-color,box-shadow] hover:bg-purple-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
+									className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-[#64126D] shadow-sm transition-[scale,background-color,box-shadow] hover:bg-purple-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<ArrowPathIcon
 										className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`}
@@ -521,8 +428,34 @@ export default function AttendanceReportPage() {
 						</div>
 					</div>
 
-					{error ? (
-						<div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm">
+					{/* Month filter — the report's one control */}
+					<div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm">
+						<label className="block min-w-[200px]">
+							<span className="mb-1 block text-[11px] font-semibold text-gray-700">
+								Month
+							</span>
+							<div className="relative">
+								<CalendarDaysIcon
+									className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+									aria-hidden="true"
+								/>
+								<input
+									type="month"
+									value={month}
+									onChange={(e) => setPickedMonth(e.target.value)}
+									aria-label="Month"
+									className={`${controlClass} w-[168px] pl-8`}
+								/>
+							</div>
+						</label>
+					</div>
+
+					{metaFailed ? (
+						<div
+							data-testid="meta-error"
+							role="alert"
+							className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm"
+						>
 							<ExclamationTriangleIcon
 								className="mx-auto mb-2 h-7 w-7 text-red-500"
 								aria-hidden="true"
@@ -530,26 +463,34 @@ export default function AttendanceReportPage() {
 							<p className="font-semibold text-red-800">
 								Couldn&apos;t load the report
 							</p>
-							<p className="mt-1 text-sm text-red-700">{error}</p>
+							<p className="mt-1 text-sm text-red-700">{metaErrorText}</p>
 							<button
+								data-testid="meta-retry"
 								type="button"
-								onClick={() => dataQuery.refetch()}
-								className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-[scale,background-color] hover:bg-red-700 active:scale-[0.96]"
+								onClick={() => metaQuery.refetch()}
+								className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-[scale,background-color] hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2 active:scale-[0.96]"
 							>
 								<ArrowPathIcon className="h-3.5 w-3.5" aria-hidden="true" />
 								Retry
 							</button>
 						</div>
-					) : isLoading ? (
-						<div className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-gray-500">
+					) : !metaQuery.data ? (
+						<div
+							data-testid="report-loading"
+							role="status"
+							className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-gray-500"
+						>
 							<ArrowPathIcon
 								className="h-4 w-4 animate-spin"
 								aria-hidden="true"
 							/>
 							Loading attendance…
 						</div>
-					) : !meta?.has_data ? (
-						<div className="rounded-2xl bg-blue-50 p-5 shadow-sm ring-1 ring-blue-200">
+					) : meta?.has_data === false ? (
+						<div
+							data-testid="no-logs"
+							className="rounded-2xl bg-blue-50 p-5 shadow-sm ring-1 ring-blue-200"
+						>
 							<h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-blue-900">
 								<InformationCircleIcon
 									className="h-4 w-4 text-blue-600"
@@ -577,6 +518,36 @@ export default function AttendanceReportPage() {
 								Pick a month to view attendance
 							</p>
 						</div>
+					) : error ? (
+						<div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm">
+							<ExclamationTriangleIcon
+								className="mx-auto mb-2 h-7 w-7 text-red-500"
+								aria-hidden="true"
+							/>
+							<p className="font-semibold text-red-800">
+								Couldn&apos;t load the report
+							</p>
+							<p className="mt-1 text-sm text-red-700">{error}</p>
+							<button
+								type="button"
+								onClick={() => dataQuery.refetch()}
+								className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-[scale,background-color] hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2 active:scale-[0.96]"
+							>
+								<ArrowPathIcon className="h-3.5 w-3.5" aria-hidden="true" />
+								Retry
+							</button>
+						</div>
+					) : isLoading ? (
+						<div
+							role="status"
+							className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-gray-500"
+						>
+							<ArrowPathIcon
+								className="h-4 w-4 animate-spin"
+								aria-hidden="true"
+							/>
+							Loading attendance…
+						</div>
 					) : (
 						<div>
 							{/* What the roster filter dropped, and why */}
@@ -592,7 +563,7 @@ export default function AttendanceReportPage() {
 								className="mb-3"
 							/>
 
-							{!data || stats?.total_punches === 0 ? (
+							{!data || totalPunches === 0 ? (
 								<div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-gray-300 bg-white/60 px-6 text-center">
 									<div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
 										<InboxArrowDownIcon
@@ -629,72 +600,22 @@ export default function AttendanceReportPage() {
 								</div>
 							) : (
 								<div>
-									{/* Stats strip */}
-									<div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-										<StatCard
-											value={stats?.total_punches ?? 0}
-											label="Total punches"
-											icon={CircleStackIcon}
-											tileClassName="bg-purple-100 text-purple-700"
-											valueClassName="text-purple-600"
-											delay={0}
-										/>
-										<StatCard
-											value={stats?.mapped_punches ?? 0}
-											label="Mapped to employee"
-											icon={CheckBadgeIcon}
-											tileClassName="bg-green-100 text-green-700"
-											valueClassName="text-green-600"
-											delay={60}
-											footer={
-												<div
-													className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-green-100"
-													title={`${mappedPercent}% of punches mapped to an employee`}
-												>
-													<div
-														className="h-full rounded-full bg-green-500 transition-[width] duration-500 ease-out"
-														style={{ width: `${mappedPercent}%` }}
-													/>
-												</div>
-											}
-										/>
-										<StatCard
-											value={stats?.unmapped_punches ?? 0}
-											label="Unmapped"
-											icon={QuestionMarkCircleIcon}
-											tileClassName="bg-amber-100 text-amber-700"
-											valueClassName="text-amber-600"
-											delay={120}
-										/>
-										<StatCard
-											value={stats?.distinct_days ?? 0}
-											label="Days with punches"
-											icon={CalendarDaysIcon}
-											tileClassName="bg-blue-100 text-blue-700"
-											valueClassName="text-blue-600"
-											delay={180}
-										/>
-										<StatCard
-											value={stats?.distinct_employees ?? 0}
-											label="Device codes punched"
-											icon={UserGroupIcon}
-											tileClassName="bg-indigo-100 text-indigo-700"
-											valueClassName="text-indigo-600"
-											delay={240}
-										/>
-										<StatCard
-											value={stats?.distinct_devices ?? 0}
-											label="Devices"
-											icon={DevicePhoneMobileIcon}
-											tileClassName="bg-gray-100 text-gray-600"
-											valueClassName="text-gray-600"
-											delay={300}
-										/>
-									</div>
-
-									{/* What each figure in the matrix is */}
-									<div className="mb-3 flex flex-col gap-2">
-										<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-600">
+									{/* What the month holds, and how to read it, in two lines */}
+									<div className="mb-3 flex flex-col gap-1.5">
+										<p
+											data-testid="month-summary"
+											data-total={totalPunches}
+											data-mapped={mappedPunches}
+											data-unmapped={unmappedPunches}
+											data-devices={deviceCount}
+											className="text-xs tabular-nums text-gray-600"
+										>
+											{`${totalPunches} punches · ${mappedPunches} mapped (${mappedPercent}%) · ${unmappedPunches} unmapped · ${deviceCount} devices`}
+										</p>
+										<div
+											data-testid="figures-legend"
+											className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-600"
+										>
 											<span className="inline-flex items-center gap-1.5">
 												<span
 													className="h-2.5 w-2.5 rounded-sm bg-emerald-500"
@@ -702,8 +623,8 @@ export default function AttendanceReportPage() {
 												/>
 												<span className={LOGGED_HOURS_CLASS}>Logged Hours</span>
 												<span>
-													— hours logged against assignments, uncapped; the
-													figure payroll prices
+													— billed effort: the canonical numerator payroll
+													prices
 												</span>
 											</span>
 											<span className="inline-flex items-center gap-1.5">
@@ -713,26 +634,27 @@ export default function AttendanceReportPage() {
 												/>
 												<span className={TIME_PRESENT_CLASS}>Time Present</span>
 												<span>
-													— measured span from the first punch to the last;
-													never credited to pay
+													— the measured first-to-last span of the day&apos;s
+													punches; never credited
 												</span>
 											</span>
 											<span>
-												A day with neither figure stays blank; an uncomputable
-												span shows {EM_DASH}, never 0. Click any cell for its
-												raw punches.
+												{`An em dash (${EM_DASH}) marks an uncomputable span — never 0. Click a cell for its punches.`}
 											</span>
 										</div>
-										<TimePresentNote
-											employeeId={drilldown?.employee.id ?? null}
-											month={month || null}
-											employeeName={drilldown?.employee.name ?? null}
-										/>
 									</div>
 
 									{/* Month matrix: employees down, days across */}
 									<div className="anim-fade-in overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-										<div className="overflow-x-auto">
+										<p className="border-b border-gray-100 bg-gray-50/60 px-4 py-2 text-[11px] text-gray-600 sm:hidden">
+											Scroll sideways for the rest of the month →
+										</p>
+										<div
+											role="region"
+											aria-label={`Attendance matrix for ${monthHeading || month}`}
+											tabIndex={0}
+											className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500"
+										>
 											<table className="w-full text-[12px]">
 												<caption className="sr-only">
 													Logged hours and time present hours per employee for{' '}
@@ -808,21 +730,31 @@ export default function AttendanceReportPage() {
 																	nonOptionalHolidays,
 																	optionalHolidays,
 																});
+																// Every punch this employee-day carries, whatever
+																// device sent it — the same bucket the server counted.
 																const bucket =
 																	punchesByCell.get(
 																		`${employee.id}|${column.date}`
 																	) ?? [];
-																const visiblePunches = activeDevice
-																	? bucket.filter(
-																			(punch) =>
-																				punch.serial_number === activeDevice
-																		)
-																	: bucket;
 																return (
 																	<td
 																		key={column.date}
 																		data-testid="attendance-cell"
 																		data-date={column.date}
+																		data-muted={
+																			resolved.muted ? 'true' : 'false'
+																		}
+																		data-time-present-state={
+																			resolved.timePresentComputable
+																				? 'computable'
+																				: 'uncomputable'
+																		}
+																		data-logged-hours-state={
+																			resolved.hasLoggedHours
+																				? 'present'
+																				: 'none'
+																		}
+																		data-punch-count={resolved.punchCount}
 																		className={`px-1 py-1 text-center align-top${
 																			resolved.muted ? ' bg-gray-50' : ''
 																		}`}
@@ -833,7 +765,7 @@ export default function AttendanceReportPage() {
 																				name: employee.name,
 																			}}
 																			date={column.date}
-																			punchCount={visiblePunches.length}
+																			punchCount={bucket.length}
 																			onOpen={() =>
 																				setDrilldown({
 																					employee: {
@@ -857,7 +789,9 @@ export default function AttendanceReportPage() {
 										</div>
 									</div>
 
-									<TimePresentFooterNote />
+									{/* The two facts the grid cannot show: the merge rule, and
+									    what a half day does to Time Present */}
+									<TimePresentNote className="mt-3" />
 								</div>
 							)}
 						</div>
@@ -869,11 +803,9 @@ export default function AttendanceReportPage() {
 				<CellPunchModal
 					open
 					onClose={() => setDrilldown(null)}
-					employee={{
-						code: drilldown.employee.code,
-						name: drilldown.employee.name,
-					}}
+					employee={drilldown.employee}
 					date={drilldown.date}
+					month={month}
 					punches={drilldownPunches.map((punch) => ({
 						id: punch.id,
 						time: punch.time,
@@ -881,7 +813,6 @@ export default function AttendanceReportPage() {
 						employeeCode: punch.employee_code,
 						direction: punch.direction,
 					}))}
-					activeDevice={activeDevice || null}
 				/>
 			) : null}
 		</div>

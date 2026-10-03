@@ -53,12 +53,14 @@ export function isLogDateFormat(logDate: unknown): logDate is string {
 }
 
 /**
- * Indices per `${employee_code}|${YYYY-MM-DD}`, sorted by punch time so the
+ * Indices per `${key}|${YYYY-MM-DD}`, sorted by punch time so the
  * alternating direction assignment follows the day's real sequence.
  *
  * Extracted so the direction-gated day-times path (ADR-0007) and the
  * direction-agnostic Time Present calculator bucket identically and cannot
- * drift apart.
+ * drift apart. `keyOf` chooses what a day is pooled by: the device code by
+ * default (the grid's per-enrolment assembly), or the ingest-stamped employee
+ * for Time Present's attribution pooling across device codes.
  *
  * Ordering is the original inline sort — `a < b ? -1 : 1`, which returns 1
  * (never 0) for equal timestamps — so V8's stable sort keeps its existing
@@ -67,12 +69,13 @@ export function isLogDateFormat(logDate: unknown): logDate is string {
  * first punch.
  */
 export function bucketPunchIndicesByEmployeeDay<P extends PunchBucketSource>(
-	punches: P[]
+	punches: P[],
+	keyOf: (punch: P) => string = (punch) => punch.employee_code
 ): Map<string, number[]> {
 	const buckets = new Map<string, number[]>();
 	punches.forEach((punch, index) => {
 		const date = punch.log_date.slice(0, 10);
-		const key = `${punch.employee_code}|${date}`;
+		const key = `${keyOf(punch)}|${date}`;
 		const bucket = buckets.get(key);
 		if (bucket) bucket.push(index);
 		else buckets.set(key, [index]);

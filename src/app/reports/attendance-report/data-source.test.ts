@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import {
-	buildStats,
-	monthLabel,
-} from '@/app/reports/attendance-report/data-source';
+import { buildStats } from '@/app/reports/attendance-report/data-source';
 
-// resolveDirection / applyInferredDirections now live in @/lib/punch —
-// covered by src/lib/punch.test.ts; data-source re-exports them.
+// Punch direction utilities live in @/lib/punch — covered by
+// src/lib/punch.test.ts; the attendance webhook imports resolveDirection
+// from there directly.
 
 describe('buildStats', () => {
 	const punchRow = (
@@ -53,17 +51,5 @@ describe('buildStats', () => {
 			distinct_employees: 0,
 			distinct_devices: 0,
 		});
-	});
-});
-
-describe('monthLabel', () => {
-	it('formats YYYY-MM', () => {
-		expect(monthLabel('2026-08')).toBe('August 2026');
-		expect(monthLabel('2026-01')).toBe('January 2026');
-	});
-
-	it('passes through invalid input', () => {
-		expect(monthLabel('bogus')).toBe('bogus');
-		expect(monthLabel('2026-13')).toBe('2026-13');
 	});
 });

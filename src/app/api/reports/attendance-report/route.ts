@@ -11,12 +11,24 @@ import {
 /**
  * GET /api/reports/attendance-report
  *
- * The Attendance report is a month matrix: Smart Office biometric punches
- * from `attendance_logs`, bucketed per Employee per day and measured into
- * Time Present hours (first punch of the day → last, per employee/day).
+ * The Attendance report is a month matrix: Smart Office biometric Punches
+ * from `attendance_logs`, attributed to the Employee stamped on the row at
+ * ingest and bucketed per Employee per day. Each cell carries the day's Time
+ * Present hours (first Punch of the day → last, with the bounded
+ * cross-midnight merge) and the canonical Logged Hours, alongside the
+ * Attendance Record status and the day's Punch count.
  *
- * Without params    → meta (latest month with logs) for the month picker.
- * ?month=YYYY-MM    → the month's day list and its per-employee-day cells.
+ * Without params    → meta: the latest month with logs, for the month picker.
+ * ?month=YYYY-MM    → the month matrix: the month's day list, one row per
+ *                     Payroll employee with a cell per day (Time Present +
+ *                     Logged Hours + Attendance Record status + Punch
+ *                     count), the month's stats, the roster disclosure,
+ *                     holidays, the distinct device serials, and the
+ *                     month-scoped Punch list the drill-down reads.
+ *
+ * Computation pads the Punch fetch one day either side of the month so a
+ * shift crossing midnight merges across the boundary; the padded days are
+ * never rendered and never reach the response.
  *
  * Access: super admins, users with reports:read, or users with the
  * `project_activities` report field permission (view/edit) — the same gate

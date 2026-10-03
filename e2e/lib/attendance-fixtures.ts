@@ -9,14 +9,17 @@ import { exec, rows } from './db';
  * report and the Time Present calculator must survive: clean and odd-punch
  * days, a forgot-to-check-out day, a night shift crossing midnight, a refused
  * cross-midnight merge, two-device and duplicate-tap days, authored statuses,
+ * a mid-month re-enrolment whose earlier Punches still carry the employee's
+ * old device code, a night shift whose continuation lands in the next month,
  * missing/contract salary profiles, hidden employee types, a terminated
  * employee with punches, an intermittent employee and unmapped device codes.
  *
  * Namespace (everything this module owns; nothing else is touched):
  *   users                      `e2e_att_user`
  *   employees                  `E2E-ATT-*` (smart-office code `E2E<n>`)
- *   attendance_logs            employee_id of those employees, plus unmapped
- *                              employee_code `E2E9*`
+ *   attendance_logs            employee_id of those employees — including the
+ *                              re-enrolment member's old-code rows — plus
+ *                              unmapped employee_code `E2E9*`
  *   employee_attendance        employee_id of those employees
  *   employee_salary_profile    employee_id of those employees
  *   user_activity_assignments  `e2e-att-*`
@@ -46,6 +49,12 @@ export const ATTENDANCE_USERNAME = 'e2e_att_user';
 export const ATTENDANCE_UNMAPPED_CODE_PREFIX = 'E2E9';
 /** Smart-office code prefix; the full code is this plus the roster number. */
 export const ATTENDANCE_SMARTOFFICE_PREFIX = 'E2E';
+/**
+ * Device code the re-enrolment member punched under before re-enrolment.
+ * Its rows still carry the member's employee id, so they belong to the member
+ * whichever column the report reads.
+ */
+export const ATTENDANCE_REENROL_OLD_CODE = 'E2E-OLD-0017';
 
 export const ATTENDANCE_HOLIDAY = {
 	name: 'E2E Attendance Holiday',
@@ -103,7 +112,9 @@ export type AttendancePlan =
 	| 'twoDevices'
 	| 'dupTaps'
 	| 'statuses'
-	| 'sparse';
+	| 'sparse'
+	| 'reenrol'
+	| 'monthBoundary';
 
 export type AttendanceEmployeeType =
 	| 'Payroll'
@@ -257,6 +268,20 @@ const ROSTER_DEF: ReadonlyArray<{
 		profile: 'payroll',
 		plan: 'sparse',
 	},
+	{
+		n: '0017',
+		type: 'Payroll',
+		status: 'active',
+		profile: 'payroll',
+		plan: 'reenrol',
+	},
+	{
+		n: '0018',
+		type: 'Payroll',
+		status: 'active',
+		profile: 'payroll',
+		plan: 'monthBoundary',
+	},
 ];
 
 export const ATTENDANCE_ROSTER: readonly AttendanceMember[] = ROSTER_DEF.map(
@@ -301,6 +326,11 @@ interface PlannedPunch {
 	serial: string;
 	/** 1 when the punch belongs to the next calendar day (night shift). */
 	dayOffset?: number;
+	/**
+	 * `employee_code` the punch arrived under when it is not the member's
+	 * current `smartoffice_code` (the re-enrolment member's early days).
+	 */
+	code?: string;
 }
 
 interface PlannedDay {
@@ -474,6 +504,51 @@ function planDay(plan: AttendancePlan, day: number): PlannedDay {
 				punches: [
 					{ time: '08:50:00', serial: '1' },
 					{ time: '17:40:00', serial: '2' },
+				],
+				logged: 8,
+			};
+
+		// Re-enrolment: the employee's device code changed mid-month. The early
+		// days still carry the old device code, the switch day's badge-in
+		// arrives on the old device while its badge-out lands on the new one,
+		// and the rest of the month uses the current code. Attribution is by
+		// employee id, so all of it is one person's month.
+		case 'reenrol': {
+			const current = attendanceSmartofficeCode('0017');
+			const dayShift = (code: string): PlannedPunch[] => [
+				{ time: '09:00:00', serial: '1', code },
+				{ time: '18:30:00', serial: '2', code },
+			];
+			if (day < 16)
+				return { punches: dayShift(ATTENDANCE_REENROL_OLD_CODE), logged: 8 };
+			if (day === 16)
+				return {
+					punches: [
+						{
+							time: '09:00:00',
+							serial: '1',
+							code: ATTENDANCE_REENROL_OLD_CODE,
+						},
+						{ time: '18:00:00', serial: '2', code: current },
+					],
+					logged: 8,
+				};
+			return { punches: dayShift(current), logged: 8 };
+		}
+
+		// Month boundary: the month's last day opens at 22:00 and the shift
+		// continues on the next month's first day at 06:30 — the padded fetch
+		// merge that must credit 8.5h to the last day — beside an 18:00 punch
+		// on that first day which must stay uncomputable once the 06:30
+		// continuation has been consumed, never an 11.5h "span".
+		case 'monthBoundary':
+			if (day !== ATTENDANCE_DAYS_IN_MONTH)
+				return { punches: [], logged: null };
+			return {
+				punches: [
+					{ time: '22:00:00', serial: '1' },
+					{ time: '06:30:00', serial: '2', dayOffset: 1 },
+					{ time: '18:00:00', serial: '3', dayOffset: 1 },
 				],
 				logged: 8,
 			};
@@ -704,13 +779,17 @@ export async function seedAttendanceFixtures(): Promise<AttendanceSeeded> {
 			}
 
 			for (const punch of planned.punches) {
+				// The device code a Punch arrived under is display metadata; the
+				// employee id stamped on the row is what attribution reads. The
+				// re-enrolment plan's early days carry the old code this way.
+				const code = punch.code ?? member.smartofficeCode;
 				const when = `${monthDate(day + (punch.dayOffset ?? 0))} ${punch.time}`;
 				punchRows.push([
-					member.smartofficeCode,
+					code,
 					when,
 					punch.serial,
 					null, // direction: real devices report none
-					JSON.stringify({ UserId: member.smartofficeCode, LogDate: when }),
+					JSON.stringify({ UserId: code, LogDate: when }),
 					employeeId,
 				]);
 			}
