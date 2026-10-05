@@ -33,10 +33,20 @@
  * the employment window (joining/exit dates, with recorded attendance and
  * Logged Hours as the fallback evidence) must cover the month. The payload
  * carries the selector's exclusion disclosure, and every row carries its
- * resolved window for the pro-rating tickets.
+ * resolved window.
  *
- * No mid-month pro-rating yet: a joiner/leaver inside the window is measured
- * against full-month capacity in v1.
+ * Partial months: Capacity counts only the working days inside the resolved
+ * employment window (weekly-off and leave rules inside it unchanged; days
+ * outside it land in no bucket), and Monthly Cost is pro-rated by employed
+ * working days ÷ the month's working days on the same capacity calendar — so
+ * a full-month window reproduces the full CTC. Rows whose window does not
+ * cover the whole month carry `is_partial_window` so the page can name the
+ * dates; a window with no working days costs 0 with capacity 0.
+ *
+ * Holidays: the caller injects active NON-optional holidays only. An optional
+ * holiday is a full working day for Capacity — matching the attendance and
+ * payroll paths — regardless of the attendance status recorded on it (an `H`
+ * row falls through to the standard 8h credit).
  */
 
 import {
@@ -90,8 +100,18 @@ export interface UtilizationAttendance {
 	is_weekly_off?: number | boolean | null;
 }
 
+/**
+ * The resolved employment window capacity is scoped to. `start`/`end` are
+ * `YYYY-MM-DD` days; `null` (or omitted) = open on that side.
+ */
+export interface CapacityWindow {
+	start?: string | null;
+	end?: string | null;
+}
+
 export interface UtilizationCapacity {
 	month: string;
+	/** Working days inside the window; days outside it land in no bucket. */
 	working_days: number;
 	weekly_off_days: number;
 	holiday_days: number;
@@ -99,6 +119,10 @@ export interface UtilizationCapacity {
 	half_days: number;
 	gross_capacity_hours: number;
 	capacity_hours: number;
+	/** `working_days` again, named for the pro-rating formula (they are equal). */
+	employed_working_days: number;
+	/** The full month's working days on the same calendar — the pro-rating denominator. */
+	month_working_days: number;
 }
 
 export interface TeamRowInput {
@@ -110,7 +134,7 @@ export interface TeamRowInput {
 	/** Raw `daily_entries` payloads (JSON string or parsed array) per assignment. */
 	daily_entries?: unknown[];
 	attendance?: UtilizationAttendance[];
-	/** Injected active-holiday dates (YYYY-MM-DD). */
+	/** Injected active NON-optional holiday dates (YYYY-MM-DD). */
 	holidays?: ReadonlySet<string>;
 	profiles?: SalaryProfile[];
 	/** Resolved employment window from the shared roster selector. */
@@ -130,6 +154,8 @@ export interface UtilizationRow {
 	/** Resolved employment window; null = open bound (or no month scope). */
 	employment_start: string | null;
 	employment_end: string | null;
+	/** The window does not cover the whole month (a chip names the dates). */
+	is_partial_window: boolean;
 	/** Null when no profile covers the month — blank, never zero. */
 	monthly_cost: number | null;
 	/** Utilized portion: CTC hourly rate × logged hours (footing support). */
@@ -192,11 +218,18 @@ export function monthLabel(month: string): string {
  * day and half-day leave halves it. Leave on a non-working day is ignored
  * (nothing to net out). The attendance weekly-off flag wins when a record
  * exists; days without records follow the scheduled rule.
+ *
+ * Only days inside `window` are counted, in any bucket (`working_days`,
+ * `weekly_off_days`, `holiday_days`, `leave_days`, `half_days`,
+ * `gross_capacity_hours`, `capacity_hours`); `month_working_days` always
+ * counts the full month so costs can be pro-rated against it. `holidays` is
+ * the active NON-optional set — an optional holiday is a full working day.
  */
 export function buildCapacity(
 	month: string,
 	attendance: UtilizationAttendance[],
-	holidays: ReadonlySet<string>
+	holidays: ReadonlySet<string>,
+	window: CapacityWindow = {}
 ): UtilizationCapacity {
 	const total = daysInMonth(month);
 	const empty: UtilizationCapacity = {
@@ -208,9 +241,13 @@ export function buildCapacity(
 		half_days: 0,
 		gross_capacity_hours: 0,
 		capacity_hours: 0,
+		employed_working_days: 0,
+		month_working_days: 0,
 	};
 	if (total <= 0) return empty;
 
+	const start = window.start ?? null;
+	const end = window.end ?? null;
 	const byDate = new Map<string, UtilizationAttendance>();
 	for (const row of attendance) {
 		if (row && typeof row.date === 'string') byDate.set(row.date, row);
@@ -223,6 +260,7 @@ export function buildCapacity(
 	let leaveDays = 0;
 	let halfDays = 0;
 	let capacityHours = 0;
+	let monthWorkingDays = 0;
 
 	for (let day = 1; day <= total; day++) {
 		const date = `${month}-${String(day).padStart(2, '0')}`;
@@ -233,6 +271,11 @@ export function buildCapacity(
 				? isWeeklyOff(date)
 				: flag === true || flag === 1;
 		const dayType = dayTypeFor(date, holidaySet, weeklyOff);
+		if (dayType === 'working') monthWorkingDays++;
+		// Days outside the employment window land in no bucket at all.
+		if ((start !== null && date < start) || (end !== null && date > end)) {
+			continue;
+		}
 		if (dayType === 'weekly_off') {
 			weeklyOffDays++;
 			continue;
@@ -249,6 +292,8 @@ export function buildCapacity(
 			halfDays++;
 			capacityHours += HALF_DAY_HOURS;
 		} else {
+			// Includes 'H' rows: on an optional holiday (never in the injected
+			// set) the standard credit stands, not a holiday zero.
 			capacityHours += STANDARD_WORKING_HOURS;
 		}
 	}
@@ -262,6 +307,8 @@ export function buildCapacity(
 		half_days: halfDays,
 		gross_capacity_hours: workingDays * STANDARD_WORKING_HOURS,
 		capacity_hours: capacityHours,
+		employed_working_days: workingDays,
+		month_working_days: monthWorkingDays,
 	};
 }
 
@@ -335,19 +382,48 @@ export function resolveCtcHourlyRate(profile: SalaryProfile): number {
 	return toNumber(R(computeCtcHourlyRate(profile)).toDecimalPlaces(2));
 }
 
+/**
+ * Monthly Cost pro-rated by employed working days ÷ the month's working days
+ * on the capacity calendar: `round2(monthly × employed / monthWorking)`.
+ * Decimal math, never floats. A full-month window (the two counts equal)
+ * reproduces the full monthly cost exactly; a window with no working days
+ * costs 0 — its capacity is 0, so utilization reads null, not 0%.
+ */
+export function proratedMonthlyCost(
+	monthlyCost: number,
+	employedWorkingDays: number,
+	monthWorkingDays: number
+): number {
+	if (!(employedWorkingDays > 0) || !(monthWorkingDays > 0)) return 0;
+	return round2(
+		toNumber(div(mul(R(monthlyCost), employedWorkingDays), monthWorkingDays))
+	);
+}
+
 // ─── Team row + totals ────────────────────────────────────────────────
 
 /** One priced team row; hours and utilization always shown. */
 export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 	const month = input.month;
+	const employmentStart = input.employment_start ?? null;
+	const employmentEnd = input.employment_end ?? null;
 	const capacity = buildCapacity(
 		month,
 		input.attendance ?? [],
-		input.holidays ?? new Set()
+		input.holidays ?? new Set(),
+		{ start: employmentStart, end: employmentEnd }
 	);
 	const loggedHours = sumLoggedHoursForMonth(input.daily_entries ?? [], month);
 	const percent = utilizationPercent(loggedHours, capacity.capacity_hours);
 	const profile = pickActiveProfile(input.profiles ?? [], month);
+	// The window leaves days of the month outside it: start after the 1st, or
+	// end before the month's last day (a null bound is open, never partial).
+	const lastDay = daysInMonth(month);
+	const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`;
+	const isPartialWindow =
+		lastDay > 0 &&
+		((employmentStart !== null && employmentStart > `${month}-01`) ||
+			(employmentEnd !== null && employmentEnd < monthEnd));
 
 	if (!profile) {
 		return {
@@ -359,8 +435,9 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 			logged_hours: loggedHours,
 			utilization_percent: percent,
 			utilization_band: bandForUtilization(percent),
-			employment_start: input.employment_start ?? null,
-			employment_end: input.employment_end ?? null,
+			employment_start: employmentStart,
+			employment_end: employmentEnd,
+			is_partial_window: isPartialWindow,
 			monthly_cost: null,
 			fractional_cost: null,
 			bench_cost: null,
@@ -368,7 +445,11 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 		};
 	}
 
-	const monthlyCost = round2(resolveMonthlyCost(profile));
+	const monthlyCost = proratedMonthlyCost(
+		resolveMonthlyCost(profile),
+		capacity.employed_working_days,
+		capacity.month_working_days
+	);
 	const rawRate = computeCtcHourlyRate(profile);
 	const fractionalCost =
 		loggedHours > 0 && rawRate > 0
@@ -389,8 +470,9 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 		logged_hours: loggedHours,
 		utilization_percent: percent,
 		utilization_band: bandForUtilization(percent),
-		employment_start: input.employment_start ?? null,
-		employment_end: input.employment_end ?? null,
+		employment_start: employmentStart,
+		employment_end: employmentEnd,
+		is_partial_window: isPartialWindow,
 		monthly_cost: monthlyCost,
 		fractional_cost: fractionalCost,
 		bench_cost: benchCost,
@@ -765,9 +847,9 @@ async function loadSalaryProfilesGrouped(): Promise<
 
 /**
  * Full team payload for one month: one row per employee on the month-scoped
- * Payroll roster, against full-month capacity (no mid-month pro-rating in
- * v1), sorted by flag band then bench cost descending, plus the roster's
- * exclusion disclosure. Optional flag narrows to one band.
+ * Payroll roster, with capacity and Monthly Cost pro-rated to each row's
+ * resolved employment window, sorted by flag band then bench cost descending,
+ * plus the roster's exclusion disclosure. Optional flag narrows to one band.
  * Returns null for an invalid month.
  */
 export async function fetchUtilizationData(
@@ -784,17 +866,25 @@ export async function fetchUtilizationData(
 			loadSalaryProfilesGrouped(),
 		]);
 
+	// Capacity consumes the active NON-optional holidays only: an optional
+	// holiday is a full working day for this report, exactly as it is for the
+	// attendance and payroll paths. `is_optional` is the switch; the `type`
+	// enum is ignored by every consumer.
 	let holidaySet = new Set<string>();
 	try {
 		const [holidayRows] = (await query(
-			`SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date
+			`SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date,
+			        COALESCE(is_optional, 0) AS is_optional
 			 FROM holiday_master
 			 WHERE is_active = 1 AND date BETWEEN ? AND ?
 			 ORDER BY date`,
 			[`${month}-01`, `${month}-31`]
 		)) as [DbRow[], unknown];
 		holidaySet = new Set(
-			holidayRows.map((r) => dbStr(r, 'date')).filter(Boolean)
+			holidayRows
+				.filter((r) => dbNum(r, 'is_optional', 0) !== 1)
+				.map((r) => dbStr(r, 'date'))
+				.filter(Boolean)
 		);
 	} catch {
 		/* holiday_master unavailable — capacity falls back to weekly offs only */

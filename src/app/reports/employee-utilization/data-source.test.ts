@@ -7,6 +7,7 @@ import {
 	resolveMonthlyCost,
 	computeCtcHourlyRate,
 	resolveCtcHourlyRate,
+	proratedMonthlyCost,
 	buildCapacity,
 	utilizationPercent,
 	bandForUtilization,
@@ -62,6 +63,66 @@ describe('buildCapacity', () => {
 		expect(capacity.weekly_off_days).toBe(7);
 		expect(capacity.holiday_days).toBe(0);
 		expect(capacity.gross_capacity_hours).toBe(192);
+		expect(capacity.capacity_hours).toBe(192);
+		// An open window is the whole month: the two pro-rating counts agree.
+		expect(capacity.employed_working_days).toBe(24);
+		expect(capacity.month_working_days).toBe(24);
+	});
+
+	it('scopes every bucket to the employment window', () => {
+		// 11–20 May 2026: 9 working days, Sunday 17th the only weekly off.
+		const capacity = buildCapacity(MAY, [], new Set(), {
+			start: '2026-05-11',
+			end: '2026-05-20',
+		});
+		expect(capacity.working_days).toBe(9);
+		expect(capacity.weekly_off_days).toBe(1);
+		expect(capacity.holiday_days).toBe(0);
+		expect(capacity.gross_capacity_hours).toBe(72);
+		expect(capacity.capacity_hours).toBe(72);
+		expect(capacity.employed_working_days).toBe(9);
+		// The denominator stays the full month, holiday and all.
+		expect(capacity.month_working_days).toBe(24);
+	});
+
+	it('counts the month denominator outside the window but no bucket', () => {
+		const capacity = buildCapacity(MAY, [], new Set(['2026-05-01']), {
+			start: '2026-05-11',
+			end: '2026-05-20',
+		});
+		// The 1 May holiday is outside the window: no bucket, but it still
+		// shortens the month's own working days (24 → 23).
+		expect(capacity.holiday_days).toBe(0);
+		expect(capacity.working_days).toBe(9);
+		expect(capacity.month_working_days).toBe(23);
+	});
+
+	it('keeps the leave rules inside the window', () => {
+		const capacity = buildCapacity(
+			MAY,
+			[
+				{ date: '2026-05-12', status: 'PL' },
+				{ date: '2026-05-13', status: 'HD' },
+			],
+			new Set(),
+			{ start: '2026-05-11', end: '2026-05-20' }
+		);
+		expect(capacity.leave_days).toBe(1);
+		expect(capacity.half_days).toBe(1);
+		// 9 × 8 = 72, minus a full day and half a day.
+		expect(capacity.capacity_hours).toBe(60);
+	});
+
+	it('credits the standard day for an H-status row (optional holiday)', () => {
+		// An optional holiday is never injected; recorded 'H' attendance must
+		// not zero the day either — it falls through to the 8h credit.
+		const capacity = buildCapacity(
+			MAY,
+			[{ date: '2026-05-04', status: 'H' }],
+			new Set()
+		);
+		expect(capacity.holiday_days).toBe(0);
+		expect(capacity.leave_days).toBe(0);
 		expect(capacity.capacity_hours).toBe(192);
 	});
 
@@ -129,6 +190,8 @@ describe('buildCapacity', () => {
 		const capacity = buildCapacity('garbage', [], new Set());
 		expect(capacity.working_days).toBe(0);
 		expect(capacity.capacity_hours).toBe(0);
+		expect(capacity.employed_working_days).toBe(0);
+		expect(capacity.month_working_days).toBe(0);
 	});
 });
 
@@ -261,6 +324,26 @@ describe('computeCtcHourlyRate and resolveCtcHourlyRate', () => {
 	});
 });
 
+describe('proratedMonthlyCost', () => {
+	it('pro-rates by employed over month working days at 2dp', () => {
+		expect(proratedMonthlyCost(22000, 12, 24)).toBe(11000);
+		expect(proratedMonthlyCost(22000, 9, 24)).toBe(8250);
+		// 22000 × 11 ÷ 24 = 10083.333… → 10083.33.
+		expect(proratedMonthlyCost(22000, 11, 24)).toBe(10083.33);
+	});
+
+	it('reproduces the monthly cost exactly for a full-month window', () => {
+		expect(proratedMonthlyCost(22000, 24, 24)).toBe(22000);
+		expect(proratedMonthlyCost(22000.567, 24, 24)).toBe(22000.57);
+	});
+
+	it('costs nothing when the window has no working days', () => {
+		// A window covering only weekly offs/holidays: capacity 0, cost 0.
+		expect(proratedMonthlyCost(22000, 0, 24)).toBe(0);
+		expect(proratedMonthlyCost(22000, 0, 0)).toBe(0);
+	});
+});
+
 describe('buildTeamRow', () => {
 	it('builds a team row with footing costs', () => {
 		const row = buildTeamRow({
@@ -279,6 +362,7 @@ describe('buildTeamRow', () => {
 		// No month scope in this input: both window bounds read as open.
 		expect(row.employment_start).toBeNull();
 		expect(row.employment_end).toBeNull();
+		expect(row.is_partial_window).toBe(false);
 		expect(row.monthly_cost).toBe(22000);
 		expect(row.cost_status).toBe('priced');
 		// 16h × 105.769… = 1692.31; fractional + bench foots to monthly.
@@ -370,11 +454,11 @@ describe('buildTeamRow', () => {
 		}
 	});
 
-	it('carries an explicit employment window through the row', () => {
+	it('carries the window and pro-rates capacity and Monthly Cost to it', () => {
 		const row = buildTeamRow({
 			employee_id: 7,
 			month: MAY,
-			daily_entries: [],
+			daily_entries: [entries({ '2026-05-12': 8 })],
 			attendance: [],
 			holidays: new Set(),
 			profiles: [profile()],
@@ -383,6 +467,54 @@ describe('buildTeamRow', () => {
 		});
 		expect(row.employment_start).toBe('2026-05-11');
 		expect(row.employment_end).toBe('2026-05-20');
+		expect(row.is_partial_window).toBe(true);
+		// 9 working days inside the window × 8h.
+		expect(row.capacity_hours).toBe(72);
+		// 22000 × 9 ÷ 24 = 8250; 8h × 105.769… = 846.15, footing preserved.
+		expect(row.monthly_cost).toBe(8250);
+		expect(row.fractional_cost).toBe(846.15);
+		expect(row.fractional_cost! + row.bench_cost!).toBeCloseTo(
+			row.monthly_cost!,
+			2
+		);
+	});
+
+	it('marks a window covering the whole month as not partial', () => {
+		const row = buildTeamRow({
+			employee_id: 7,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			employment_start: '2026-05-01',
+			employment_end: '2026-05-31',
+		});
+		expect(row.is_partial_window).toBe(false);
+		expect(row.capacity_hours).toBe(192);
+		expect(row.monthly_cost).toBe(22000);
+	});
+
+	it('costs a window with no working days at zero with null utilization', () => {
+		const row = buildTeamRow({
+			employee_id: 7,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			// 23 May = 4th Saturday (weekly off), 24 May = Sunday.
+			employment_start: '2026-05-23',
+			employment_end: '2026-05-24',
+		});
+		expect(row.is_partial_window).toBe(true);
+		expect(row.capacity_hours).toBe(0);
+		expect(row.utilization_percent).toBeNull();
+		expect(row.utilization_band).toBeNull();
+		expect(row.monthly_cost).toBe(0);
+		expect(row.fractional_cost).toBe(0);
+		expect(row.bench_cost).toBe(0);
+		expect(row.cost_status).toBe('priced');
 	});
 
 	it('shows hours and utilization with blank cost for a missing profile', () => {
