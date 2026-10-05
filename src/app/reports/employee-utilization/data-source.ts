@@ -11,16 +11,18 @@
  * - Monthly Cost on a CTC basis (stored `employer_cost` first — a deliberate
  *   divergence from the billing Gross-first convention, so bench
  *   prioritization reflects true burn), Bench Cost = monthly − fractional,
- *   where fractional = CTC hourly rate × logged hours. Fractional + bench
- *   always foots to monthly. Rows with no covering salary profile show blank
- *   (null, never zero) costs with an explicit `no-profile` flag.
+ *   where fractional = the Payroll Slip's rate × logged hours. Fractional +
+ *   bench always foots to monthly. Rows with no covering salary profile show
+ *   blank (null, never zero) costs with an explicit `no-profile` flag.
  *
- * Cost basis note: the CTC hourly rate mirrors `computeRawHourlyRate` but is
- * denominated in CTC, with direct rates for hourly/daily/custom types and
- * monthly apportionment over `std_working_days` (default 26) ×
- * `std_hours_per_day` (default 8) otherwise. That standard-days denominator
- * is intentionally distinct from the actual-working-days capacity denominator
- * above; the gap is documented, not hidden.
+ * Rate (payroll-aligned, ADR-0010): CTC ÷ Basis Hours, where Basis Hours =
+ * the month's basis days (every non-Sunday day minus the injected active
+ * NON-optional holidays — 2nd/4th Saturdays stay in) × the profile's
+ * `std_hours_per_day` (default 8). Direct stored hourly/daily/custom rates
+ * and the profile's `std_working_days` never price a row, exactly as they
+ * never price a slip, so a fully logged month reconciles with the slip. The
+ * rate's calendar and the Capacity calendar above differ by design — the
+ * page says so.
  *
  * Calendar logic is reused verbatim from the timesheet report (`statusKind`,
  * `dayTypeFor`); the weekly-off rule comes from the shared predicate.
@@ -80,9 +82,7 @@ export const HALF_DAY_HOURS = 4;
 export const UNDER_UTILIZATION_THRESHOLD = 80;
 /** Utilization above this percent reads as over-loaded. */
 export const OVER_UTILIZATION_THRESHOLD = 100;
-/** Rate-apportionment fallback when a profile omits standard working days. */
-export const STD_WORKING_DAYS_DEFAULT = 26;
-/** Rate-apportionment fallback when a profile omits standard hours per day. */
+/** Basis Hours fallback when a profile omits standard hours per day. */
 export const STD_HOURS_PER_DAY_DEFAULT = 8;
 
 // ─── Public types ─────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ export interface TeamRowInput {
 	/** Raw `daily_entries` payloads (JSON string or parsed array) per assignment. */
 	daily_entries?: unknown[];
 	attendance?: UtilizationAttendance[];
-	/** Injected active NON-optional holiday dates (YYYY-MM-DD). */
+	/** Injected active NON-optional holiday dates (YYYY-MM-DD); they shorten Capacity and the rate's Basis Hours alike — an optional holiday is a working day for both. */
 	holidays?: ReadonlySet<string>;
 	profiles?: SalaryProfile[];
 	/** Resolved employment window from the shared roster selector. */
@@ -335,6 +335,37 @@ export function bandForUtilization(
 	return 'over';
 }
 
+// ─── Basis hours (the payroll-aligned rate denominator) ──────────────
+
+/**
+ * The month's Basis Days under the Payroll Slip's rule (ADR-0010): every
+ * non-Sunday day of the month, minus the injected active NON-optional
+ * holidays. 2nd/4th Saturdays are NOT excluded — that is the Capacity
+ * calendar, not this one. Mirrors `getWorkingDaysForMonth` day-for-day,
+ * deliberately without importing it: that module pulls DB access into unit
+ * tests. E2E proves the two agree against the shipped slip.
+ */
+export function basisDaysInMonth(
+	month: string,
+	holidays: ReadonlySet<string>
+): number {
+	const total = daysInMonth(month);
+	if (total <= 0) return 0;
+	const [year, monthNumber] = month.split('-').map(Number);
+	let sundays = 0;
+	let holidaysNotOnSunday = 0;
+	for (let day = 1; day <= total; day++) {
+		const isSunday =
+			new Date(Date.UTC(year, monthNumber - 1, day)).getUTCDay() === 0;
+		if (isSunday) {
+			sundays++;
+		} else if (holidays.has(`${month}-${String(day).padStart(2, '0')}`)) {
+			holidaysNotOnSunday++;
+		}
+	}
+	return total - sundays - holidaysNotOnSunday;
+}
+
 // ─── Cost (CTC basis) ─────────────────────────────────────────────────
 
 /**
@@ -349,37 +380,34 @@ export function resolveMonthlyCost(profile: SalaryProfile): number {
 }
 
 /**
- * Unrounded CTC hourly rate — mirrors `computeRawHourlyRate` but denominated
- * in CTC. Direct stored rate for hourly/daily/custom types; otherwise the
- * monthly CTC apportioned over standard days × hours per day. Money math
- * uses this unrounded value; the display rounds via `resolveCtcHourlyRate`.
+ * Unrounded payroll-aligned CTC hourly rate: CTC ÷ Basis Hours, where
+ * Basis Hours = the month's basis days × the profile's `std_hours_per_day`
+ * (8 when unset). Mirrors the Payroll Slip (ADR-0010); the profile's own
+ * `std_working_days` and its direct hourly/daily/custom rates never price a
+ * row, exactly as they never price a slip. Money math uses this unrounded
+ * value; the display rounds via `resolveCtcHourlyRate`.
  */
-export function computeCtcHourlyRate(profile: SalaryProfile): number {
-	if (profile.salary_type === 'hourly' && profile.hourly_rate > 0) {
-		return profile.hourly_rate;
-	}
-	if (profile.salary_type === 'daily' && profile.daily_rate > 0) {
-		return profile.daily_rate;
-	}
-	if (profile.salary_type === 'custom' && profile.hourly_rate > 0) {
-		return profile.hourly_rate;
-	}
+export function computeCtcHourlyRate(
+	profile: SalaryProfile,
+	basisDays: number
+): number {
 	const monthly = resolveMonthlyCost(profile);
-	const days =
-		profile.std_working_days > 0
-			? profile.std_working_days
-			: STD_WORKING_DAYS_DEFAULT;
 	const hoursPerDay =
 		profile.std_hours_per_day > 0
 			? profile.std_hours_per_day
 			: STD_HOURS_PER_DAY_DEFAULT;
-	const divisor = toNumber(mul(R(days), R(hoursPerDay)));
-	return divisor > 0 ? toNumber(div(R(monthly), R(divisor))) : 0;
+	const basisHours = toNumber(mul(R(basisDays), R(hoursPerDay)));
+	return basisHours > 0 ? toNumber(div(R(monthly), R(basisHours))) : 0;
 }
 
 /** Display CTC rate: the raw rate rounded to 2dp. */
-export function resolveCtcHourlyRate(profile: SalaryProfile): number {
-	return toNumber(R(computeCtcHourlyRate(profile)).toDecimalPlaces(2));
+export function resolveCtcHourlyRate(
+	profile: SalaryProfile,
+	basisDays: number
+): number {
+	return toNumber(
+		R(computeCtcHourlyRate(profile, basisDays)).toDecimalPlaces(2)
+	);
 }
 
 /**
@@ -407,14 +435,16 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 	const month = input.month;
 	const employmentStart = input.employment_start ?? null;
 	const employmentEnd = input.employment_end ?? null;
-	const capacity = buildCapacity(
-		month,
-		input.attendance ?? [],
-		input.holidays ?? new Set(),
-		{ start: employmentStart, end: employmentEnd }
-	);
+	const holidaySet = input.holidays ?? new Set<string>();
+	const capacity = buildCapacity(month, input.attendance ?? [], holidaySet, {
+		start: employmentStart,
+		end: employmentEnd,
+	});
 	const loggedHours = sumLoggedHoursForMonth(input.daily_entries ?? [], month);
 	const percent = utilizationPercent(loggedHours, capacity.capacity_hours);
+	// The rate and Capacity share this holiday set but not the calendar:
+	// Basis Days keep 2nd/4th Saturdays, unlike the Capacity weekly-off rule.
+	const basisDays = basisDaysInMonth(month, holidaySet);
 	const profile = pickActiveProfile(input.profiles ?? [], month);
 	// The window leaves days of the month outside it: start after the 1st, or
 	// end before the month's last day (a null bound is open, never partial).
@@ -450,7 +480,7 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 		capacity.employed_working_days,
 		capacity.month_working_days
 	);
-	const rawRate = computeCtcHourlyRate(profile);
+	const rawRate = computeCtcHourlyRate(profile, basisDays);
 	const fractionalCost =
 		loggedHours > 0 && rawRate > 0
 			? toNumber(mul(R(rawRate), loggedHours).toDecimalPlaces(2))
@@ -866,10 +896,11 @@ export async function fetchUtilizationData(
 			loadSalaryProfilesGrouped(),
 		]);
 
-	// Capacity consumes the active NON-optional holidays only: an optional
-	// holiday is a full working day for this report, exactly as it is for the
-	// attendance and payroll paths. `is_optional` is the switch; the `type`
-	// enum is ignored by every consumer.
+	// Capacity and the rate's Basis Hours consume the active NON-optional
+	// holidays only: an optional holiday is a full working day for this
+	// report, exactly as it is for the attendance and payroll paths.
+	// `is_optional` is the switch; the `type` enum is ignored by every
+	// consumer.
 	let holidaySet = new Set<string>();
 	try {
 		const [holidayRows] = (await query(

@@ -483,7 +483,13 @@ export default function EmployeeUtilizationPage() {
 							<span className="inline-block h-3 w-3 rounded-sm bg-red-100 ring-1 ring-red-200" />{' '}
 							Over (&gt; 100%, overtime counts)
 						</span>
-						<span>Costs are CTC-based; unpriced rows show —.</span>
+						<span data-testid="payroll-rate-note">
+							Costs use Payroll&apos;s rate — CTC ÷ Basis Hours (the
+							month&apos;s non-Sunday days minus non-optional holidays, × the
+							profile&apos;s hours/day). Capacity counts its own calendar
+							(Sundays, 2nd/4th Saturdays, holidays), so the two differ by
+							design. Unpriced rows show —.
+						</span>
 					</div>
 
 					{totals && totals.unpriced_count > 0 && (
