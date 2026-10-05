@@ -16,6 +16,7 @@ import {
 	UTILIZATION_OPTIONAL_HOLIDAY,
 	UTILIZATION_PROJECTS,
 	UTILIZATION_ROSTER,
+	UTILIZATION_USERNAME,
 	cleanupUtilizationFixtures,
 	utilizationMemberForPlan,
 	type UtilizationMember,
@@ -29,15 +30,17 @@ import {
  *
  * Every expected figure is re-derived in this file from the raw `employees`
  * rows, `employee_attendance` evidence, `user_activity_assignments` payloads,
- * `employee_salary_profile` rows, `holiday_master` and the calendar. Nothing
+ * `user_screen_time` rows, `user_activity_logs` rows, `employee_salary_profile`
+ * rows, `holiday_master` and the calendar. Nothing
  * here imports the report's `data-source`, the shared roster selector,
  * `@/lib/logged-hours` or `@/utils/weekly-off`, so the report cannot mark its
  * own homework; the expected rules are the documented ones:
  *
- *   window start = joining_date → hire_date → first attendance → first Logged
- *                  Hours → open if active, unresolved otherwise
- *   window end   = exit_date → last attendance → last Logged Hours
- *                  → open if active, unresolved otherwise
+ *   window start = joining_date → hire_date → earliest evidence across
+ *                  attendance, Logged Hours, screen time and activity logs →
+ *                  open if active, unresolved otherwise
+ *   window end   = exit_date → latest evidence across the same four sources →
+ *                  open if active, unresolved otherwise
  *   capacity     = working days inside the window × 8h, where a working day is
  *                  neither a weekly off (Sundays + 2nd/4th Saturdays, or the
  *                  attendance `is_weekly_off` flag when a record exists) nor
@@ -275,21 +278,54 @@ interface RawEmployee {
 	last_attendance: string | null;
 	first_logged: string | null;
 	last_logged: string | null;
+	first_screen_time: string | null;
+	last_screen_time: string | null;
+	first_activity_log: string | null;
+	last_activity_log: string | null;
 }
 
-/** The documented fallback order, re-implemented for the assertion side. */
+/** The earliest or latest non-null day among the evidence candidates. */
+function evidenceExtremum(
+	days: (string | null)[],
+	edge: 'earliest' | 'latest'
+): string | null {
+	let best: string | null = null;
+	for (const day of days) {
+		if (day === null) continue;
+		if (best === null || (edge === 'earliest' ? day < best : day > best)) {
+			best = day;
+		}
+	}
+	return best;
+}
+
+/** The documented rule, re-implemented for the assertion side. */
 function deriveWindow(employee: RawEmployee): EmploymentWindow {
 	const isActive = employee.status === 'active';
 	const start =
 		employee.joining_date ??
 		employee.hire_date ??
-		employee.first_attendance ??
-		employee.first_logged ??
+		evidenceExtremum(
+			[
+				employee.first_attendance,
+				employee.first_logged,
+				employee.first_screen_time,
+				employee.first_activity_log,
+			],
+			'earliest'
+		) ??
 		null;
 	const end =
 		employee.exit_date ??
-		employee.last_attendance ??
-		employee.last_logged ??
+		evidenceExtremum(
+			[
+				employee.last_attendance,
+				employee.last_logged,
+				employee.last_screen_time,
+				employee.last_activity_log,
+			],
+			'latest'
+		) ??
 		null;
 	const unresolved = (!start && !isActive) || (!end && !isActive);
 	return { start: start ?? null, end: end ?? null, unresolved };
@@ -1430,6 +1466,56 @@ test.beforeAll(async () => {
 		if (username && empId) userKeyToEmployee.set(username, empId);
 	}
 
+	// The app's own dated activity, keyed by user and mapped to the employee
+	// through `users.employee_id` — the same join the report reads evidence
+	// through. A soft-deleted user is not in `userToEmployee` and drops out.
+	const screenTimeBounds = new Map<
+		number,
+		{ first: string | null; last: string | null }
+	>();
+	const screenTimeRows = await rows<{
+		user_id: number;
+		first_date: string | null;
+		last_date: string | null;
+	}>(
+		`SELECT user_id,
+		        DATE_FORMAT(MIN(date), '%Y-%m-%d') AS first_date,
+		        DATE_FORMAT(MAX(date), '%Y-%m-%d') AS last_date
+		 FROM user_screen_time
+		 GROUP BY user_id`
+	);
+	for (const row of screenTimeRows) {
+		const empId = userToEmployee.get(Number(row.user_id));
+		if (!empId) continue;
+		screenTimeBounds.set(empId, {
+			first: row.first_date,
+			last: row.last_date,
+		});
+	}
+	const activityLogBounds = new Map<
+		number,
+		{ first: string | null; last: string | null }
+	>();
+	const activityLogRows = await rows<{
+		user_id: number;
+		first_date: string | null;
+		last_date: string | null;
+	}>(
+		`SELECT user_id,
+		        DATE_FORMAT(MIN(created_at), '%Y-%m-%d') AS first_date,
+		        DATE_FORMAT(MAX(created_at), '%Y-%m-%d') AS last_date
+		 FROM user_activity_logs
+		 GROUP BY user_id`
+	);
+	for (const row of activityLogRows) {
+		const empId = userToEmployee.get(Number(row.user_id));
+		if (!empId) continue;
+		activityLogBounds.set(empId, {
+			first: row.first_date,
+			last: row.last_date,
+		});
+	}
+
 	const loggedBounds = new Map<
 		number,
 		{ first: string | null; last: string | null }
@@ -1503,12 +1589,18 @@ test.beforeAll(async () => {
 	const employees: RawEmployee[] = directory.map((row) => {
 		const attendance = boundsById.get(Number(row.id));
 		const logged = loggedBounds.get(Number(row.id));
+		const screenTime = screenTimeBounds.get(Number(row.id));
+		const activityLog = activityLogBounds.get(Number(row.id));
 		return {
 			...row,
 			first_attendance: attendance?.first_date ?? null,
 			last_attendance: attendance?.last_date ?? null,
 			first_logged: logged?.first ?? null,
 			last_logged: logged?.last ?? null,
+			first_screen_time: screenTime?.first ?? null,
+			last_screen_time: screenTime?.last ?? null,
+			first_activity_log: activityLog?.first ?? null,
+			last_activity_log: activityLog?.last ?? null,
 		};
 	});
 	const windows = new Map(employees.map((row) => [row.id, deriveWindow(row)]));
@@ -1768,6 +1860,11 @@ test.describe('employee utilization roster', () => {
 			utilizationMemberForPlan('leaverInViewedMonth'),
 			utilizationMemberForPlan('evidenceOnly'),
 			utilizationMemberForPlan('evidenceLeaver'),
+			utilizationMemberForPlan('olderAttendanceNewerLog'),
+			utilizationMemberForPlan('activityLogOnly'),
+			utilizationMemberForPlan('screenTimeOnly'),
+			utilizationMemberForPlan('leaverExitAfterEvidence'),
+			utilizationMemberForPlan('leaverNoExitEvidence'),
 		];
 		for (const member of mustBeRows) {
 			expect(
@@ -1933,6 +2030,58 @@ test.describe('employee utilization roster', () => {
 		expect(januaryCodes.has(midLeaver.code)).toBe(true);
 		expect(marchCodes.has(midJoiner.code)).toBe(true);
 		expect(marchCodes.has(midLeaver.code)).toBe(false);
+
+		// Window evidence is the min/max across attendance, Logged Hours,
+		// screen time and activity logs. The EMP-002 class: the newer Logged
+		// Hours day (2019-03-04) carries the window past January, so March
+		// still holds the employee; a source-priority chain would have closed
+		// it on the January attendance day.
+		const windowOf = (member: UtilizationMember) =>
+			model.windows.get(
+				model.employees.find((row) => row.employee_id === member.code)!.id
+			)!;
+		const newerLog = utilizationMemberForPlan('olderAttendanceNewerLog');
+		expect(windowOf(newerLog)).toEqual({
+			start: '2019-01-02',
+			end: '2019-03-04',
+			unresolved: false,
+		});
+		expect(januaryCodes.has(newerLog.code)).toBe(true);
+		expect(marchCodes.has(newerLog.code)).toBe(true);
+
+		// Activity-log-only and screen-time-only members are placed in the
+		// month their evidence occurs — and in no other month.
+		const activityOnly = utilizationMemberForPlan('activityLogOnly');
+		const screenOnly = utilizationMemberForPlan('screenTimeOnly');
+		expect(windowOf(activityOnly)).toEqual({
+			start: '2019-01-10',
+			end: '2019-01-10',
+			unresolved: false,
+		});
+		expect(windowOf(screenOnly)).toEqual({
+			start: '2019-01-17',
+			end: '2019-01-17',
+			unresolved: false,
+		});
+		expect(januaryCodes.has(activityOnly.code)).toBe(true);
+		expect(januaryCodes.has(screenOnly.code)).toBe(true);
+		expect(marchCodes.has(activityOnly.code)).toBe(false);
+		expect(marchCodes.has(screenOnly.code)).toBe(false);
+
+		// Leavers keep their behaviour: an exit_date caps newer evidence, and
+		// no exit_date closes the window on the latest evidence day.
+		const exitLeaver = utilizationMemberForPlan('leaverExitAfterEvidence');
+		const evidenceLeaver = utilizationMemberForPlan('leaverNoExitEvidence');
+		expect(windowOf(exitLeaver).end).toBe('2019-01-18');
+		expect(windowOf(evidenceLeaver)).toEqual({
+			start: '2019-01-02',
+			end: '2019-01-04',
+			unresolved: false,
+		});
+		expect(januaryCodes.has(exitLeaver.code)).toBe(true);
+		expect(januaryCodes.has(evidenceLeaver.code)).toBe(true);
+		expect(marchCodes.has(exitLeaver.code)).toBe(false);
+		expect(marchCodes.has(evidenceLeaver.code)).toBe(false);
 
 		// The March disclosure is derived from the same raw directory.
 		const marchDisclosure = march.disclosure;
@@ -4320,6 +4469,20 @@ test.describe('employee utilization roster', () => {
 		const ownedIds = owned.map((row) => row.id);
 		expect(ownedIds.length).toBe(UTILIZATION_ROSTER.length);
 		const placeholders = ownedIds.map(() => '?').join(', ');
+		const ownedUsers = await rows<{ id: number }>(
+			`SELECT id FROM users WHERE LEFT(username, ?) = ?`,
+			[UTILIZATION_USERNAME.length, UTILIZATION_USERNAME]
+		);
+		const ownedUserIds = ownedUsers.map((row) => row.id);
+		const userPlaceholders = ownedUserIds.map(() => '?').join(', ');
+		// The shared assignment account plus one linked account per member
+		// carrying dated app activity.
+		expect(ownedUserIds.length).toBe(
+			UTILIZATION_ROSTER.filter(
+				(member) =>
+					member.activityLogDates?.length || member.screenTimeDates?.length
+			).length + 1
+		);
 
 		const removed = await cleanupUtilizationFixtures();
 		expect(removed).toBe(ownedIds.length);
@@ -4347,9 +4510,24 @@ test.describe('employee utilization roster', () => {
 						ownedIds
 					)
 				: 0,
-			users: await count(`SELECT COUNT(*) AS n FROM users WHERE username = ?`, [
-				'e2e_util_user',
-			]),
+			users: ownedUserIds.length
+				? await count(
+						`SELECT COUNT(*) AS n FROM users WHERE id IN (${userPlaceholders})`,
+						ownedUserIds
+					)
+				: 0,
+			activityLogs: ownedUserIds.length
+				? await count(
+						`SELECT COUNT(*) AS n FROM user_activity_logs WHERE user_id IN (${userPlaceholders})`,
+						ownedUserIds
+					)
+				: 0,
+			screenTime: ownedUserIds.length
+				? await count(
+						`SELECT COUNT(*) AS n FROM user_screen_time WHERE user_id IN (${userPlaceholders})`,
+						ownedUserIds
+					)
+				: 0,
 			holidays: await count(
 				`SELECT COUNT(*) AS n FROM holiday_master WHERE name = ?`,
 				[UTILIZATION_OPTIONAL_HOLIDAY.name]
@@ -4364,6 +4542,8 @@ test.describe('employee utilization roster', () => {
 			assignments: 0,
 			profiles: 0,
 			users: 0,
+			activityLogs: 0,
+			screenTime: 0,
 			holidays: 0,
 			projects: 0,
 		});
@@ -4373,9 +4553,9 @@ test.describe('employee utilization roster', () => {
 			laterMonth: LATER_MONTH,
 			derivation: {
 				windowStart:
-					'joining_date → hire_date → first attendance → first Logged Hours → open if active, unresolved otherwise',
+					'joining_date → hire_date → earliest evidence across attendance, Logged Hours, screen time and activity logs → open if active, unresolved otherwise',
 				windowEnd:
-					'exit_date → last attendance → last Logged Hours → open if active, unresolved otherwise',
+					'exit_date → latest evidence across attendance, Logged Hours, screen time and activity logs → open if active, unresolved otherwise',
 				intersects:
 					'(start == null || start <= monthEnd) && (end == null || end >= monthStart)',
 				disclosure:

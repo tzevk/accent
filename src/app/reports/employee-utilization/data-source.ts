@@ -974,17 +974,24 @@ interface UtilizationEmployee {
 	last_attendance_date: string | null;
 	first_logged_date: string | null;
 	last_logged_date: string | null;
+	first_screen_time_date: string | null;
+	last_screen_time_date: string | null;
+	first_activity_log_date: string | null;
+	last_activity_log_date: string | null;
 }
 
 /**
  * The live employee directory (`isDelete = 0`) — never pre-filtered by type or
  * status: the shared roster selector owns the rule and reports what it drops.
- * The employment-window fallbacks need recorded evidence, so the loader asks
- * for first/last attendance days, in one grouped query, for just the employees
- * whose start bound lacks `joining_date`/`hire_date` or whose end bound lacks
- * `exit_date` — the only ones `resolveEmploymentWindow` reads attendance for.
- * The Logged Hours bounds are filled from the assignment payloads the month
- * fetch already reads.
+ * The employment-window evidence needs recorded days, so the loader asks for
+ * first/last days from attendance, screen time and activity logs — one grouped
+ * query each, scoped to the employees whose start bound lacks
+ * `joining_date`/`hire_date` or whose end bound lacks `exit_date`, the only
+ * ones `resolveEmploymentWindow` reads evidence for. Screen time and activity
+ * logs are keyed by user, mapped to the employee through `users.employee_id`
+ * (the same directory join the Logged Hours payloads resolve by). The Logged
+ * Hours bounds are filled from the assignment payloads the month fetch
+ * already reads.
  */
 async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 	const [rows] = (await query(
@@ -1012,28 +1019,78 @@ async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 		number,
 		{ first: string | null; last: string | null }
 	>();
+	const screenTimeBounds = new Map<
+		number,
+		{ first: string | null; last: string | null }
+	>();
+	const activityLogBounds = new Map<
+		number,
+		{ first: string | null; last: string | null }
+	>();
 	if (evidenceIds.length > 0) {
+		const placeholders = evidenceIds.map(() => '?').join(', ');
+		/** One grouped `employee_id → first/last day` query's rows, keyed. */
+		const collectBounds = async (
+			sql: string
+		): Promise<Map<number, { first: string | null; last: string | null }>> => {
+			const bounds = new Map<
+				number,
+				{ first: string | null; last: string | null }
+			>();
+			const [boundRows] = (await query(sql, evidenceIds)) as [DbRow[], unknown];
+			for (const r of boundRows) {
+				const empId = dbNum(r, 'employee_id');
+				if (!empId) continue;
+				bounds.set(empId, {
+					first: dbStr(r, 'first_date') || null,
+					last: dbStr(r, 'last_date') || null,
+				});
+			}
+			return bounds;
+		};
 		try {
-			const placeholders = evidenceIds.map(() => '?').join(', ');
-			const [boundRows] = (await query(
+			const collected = await collectBounds(
 				`SELECT employee_id,
 				        DATE_FORMAT(MIN(attendance_date), '%Y-%m-%d') AS first_date,
 				        DATE_FORMAT(MAX(attendance_date), '%Y-%m-%d') AS last_date
 				 FROM employee_attendance
 				 WHERE employee_id IN (${placeholders})
-				 GROUP BY employee_id`,
-				evidenceIds
-			)) as [DbRow[], unknown];
-			for (const r of boundRows) {
-				const empId = dbNum(r, 'employee_id');
-				if (!empId) continue;
-				attendanceBounds.set(empId, {
-					first: dbStr(r, 'first_date') || null,
-					last: dbStr(r, 'last_date') || null,
-				});
-			}
+				 GROUP BY employee_id`
+			);
+			for (const [empId, bounds] of collected)
+				attendanceBounds.set(empId, bounds);
 		} catch {
 			/* employee_attendance may not exist */
+		}
+		try {
+			const collected = await collectBounds(
+				`SELECT u.employee_id,
+				        DATE_FORMAT(MIN(st.date), '%Y-%m-%d') AS first_date,
+				        DATE_FORMAT(MAX(st.date), '%Y-%m-%d') AS last_date
+				 FROM user_screen_time st
+				 JOIN users u ON u.id = st.user_id AND u.isDelete = 0
+				 WHERE u.employee_id IN (${placeholders})
+				 GROUP BY u.employee_id`
+			);
+			for (const [empId, bounds] of collected)
+				screenTimeBounds.set(empId, bounds);
+		} catch {
+			/* user_screen_time may not exist */
+		}
+		try {
+			const collected = await collectBounds(
+				`SELECT u.employee_id,
+				        DATE_FORMAT(MIN(l.created_at), '%Y-%m-%d') AS first_date,
+				        DATE_FORMAT(MAX(l.created_at), '%Y-%m-%d') AS last_date
+				 FROM user_activity_logs l
+				 JOIN users u ON u.id = l.user_id AND u.isDelete = 0
+				 WHERE u.employee_id IN (${placeholders})
+				 GROUP BY u.employee_id`
+			);
+			for (const [empId, bounds] of collected)
+				activityLogBounds.set(empId, bounds);
+		} catch {
+			/* user_activity_logs may not exist */
 		}
 	}
 
@@ -1042,6 +1099,8 @@ async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 		const id = dbNum(r, 'id');
 		if (!id) continue;
 		const bounds = attendanceBounds.get(id);
+		const screenTime = screenTimeBounds.get(id);
+		const activityLogs = activityLogBounds.get(id);
 		employees.push({
 			id,
 			code: dbStr(r, 'employee_id'),
@@ -1058,6 +1117,10 @@ async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 			last_attendance_date: bounds?.last ?? null,
 			first_logged_date: null,
 			last_logged_date: null,
+			first_screen_time_date: screenTime?.first ?? null,
+			last_screen_time_date: screenTime?.last ?? null,
+			first_activity_log_date: activityLogs?.first ?? null,
+			last_activity_log_date: activityLogs?.last ?? null,
 		});
 	}
 	return employees;
@@ -1080,6 +1143,10 @@ function toRosterInput(row: UtilizationEmployee): RosterEmployeeInput {
 		last_attendance_date: row.last_attendance_date,
 		first_logged_date: row.first_logged_date,
 		last_logged_date: row.last_logged_date,
+		first_screen_time_date: row.first_screen_time_date,
+		last_screen_time_date: row.last_screen_time_date,
+		first_activity_log_date: row.first_activity_log_date,
+		last_activity_log_date: row.last_activity_log_date,
 	};
 }
 
