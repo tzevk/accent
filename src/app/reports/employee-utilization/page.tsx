@@ -10,6 +10,17 @@ import {
 	MagnifyingGlassIcon,
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
+import {
+	Bar,
+	CartesianGrid,
+	ComposedChart,
+	Legend,
+	Line,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
+} from 'recharts';
 import Navbar from '@/components/Navbar';
 import RosterDisclosureCard from '@/components/RosterDisclosure';
 import SearchableSelect from '@/components/ui/searchable-select';
@@ -29,6 +40,24 @@ type CostStatus = 'priced' | 'no-profile';
 /** Missing timesheet evidence for the month — the Logged Hours are 0. */
 type UtilizationState = 'no_time_logged';
 
+/**
+ * One trailing-month cell: the month, whether the employment window covered
+ * it, and that month's utilization (`null` when the month had no capacity).
+ * A cell whose month is not employed is blank, never an em dash.
+ */
+interface TrailingMonth {
+	month: string;
+	employed: boolean;
+	utilization_percent: number | null;
+}
+
+/** One team-trend point: capacity-weighted utilization and priced Bench Cost. */
+interface TrendPoint {
+	month: string;
+	utilization_percent: number | null;
+	bench_cost: number | null;
+}
+
 interface UtilizationRow {
 	employee_id: number;
 	employee_code: string;
@@ -45,6 +74,10 @@ interface UtilizationRow {
 	employment_end: string | null;
 	/** The window does not cover the whole month — a chip names the dates. */
 	is_partial_window: boolean;
+	/** The viewed month and the two before it, oldest first. */
+	trailing: TrailingMonth[];
+	/** Every employed month of the trailing window is under 80 (min two). */
+	chronic_under: boolean;
 	/** Null when no salary profile covers the month — blank, never zero. */
 	monthly_cost: number | null;
 	fractional_cost: number | null;
@@ -79,6 +112,8 @@ interface UtilizationData {
 	flag: UtilizationBand | null;
 	rows: UtilizationRow[];
 	totals: UtilizationTotals;
+	/** The six months ending at the viewed month, oldest first. */
+	trend: TrendPoint[];
 	/** What the month's roster filter dropped; null when it dropped nobody. */
 	disclosure: RosterDisclosure | null;
 }
@@ -194,6 +229,96 @@ function timesheetHref(row: UtilizationRow): string {
 	return `/reports/timesheet-report?employee_id=${row.employee_id}&month=${encodeURIComponent(row.month)}`;
 }
 
+/**
+ * Team trend for the six months ending at the viewed month: capacity-weighted
+ * Utilization (line, left axis) and the priced rows' Bench Cost (bars, right
+ * axis). Both series run over each month's whole roster, so neither changes
+ * with the band or search filters.
+ *
+ * `data-points` is the E2E hook: the series as `month:utilization:bench`
+ * triples, oldest first, comma-separated, empty between the colons for a null
+ * (`2018-11:72.5:12000,2018-12::9800`). Read it, don't scrape SVG paths.
+ */
+function TeamTrendChart({ trend }: { trend: TrendPoint[] }) {
+	const dataPoints = trend
+		.map(
+			(point) =>
+				`${point.month}:${point.utilization_percent ?? ''}:${point.bench_cost ?? ''}`
+		)
+		.join(',');
+
+	return (
+		<div
+			data-testid="team-trend-chart"
+			data-points={dataPoints}
+			className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+		>
+			<div className="mb-3">
+				<h2 className="text-sm font-semibold text-gray-800">
+					Team trend — last 6 months
+				</h2>
+				<p className="text-xs text-gray-500">
+					Capacity-weighted Utilization and the priced rows&apos; total Bench
+					Cost per month.
+				</p>
+			</div>
+			<div className="h-72">
+				<ResponsiveContainer width="100%" height="100%">
+					<ComposedChart
+						data={trend}
+						margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+					>
+						<CartesianGrid strokeDasharray="3 3" vertical={false} />
+						<XAxis dataKey="month" tick={{ fontSize: 12 }} />
+						<YAxis
+							yAxisId="percent"
+							width={48}
+							tick={{ fontSize: 12 }}
+							tickFormatter={(value: number) => `${value}%`}
+						/>
+						<YAxis
+							yAxisId="money"
+							orientation="right"
+							width={72}
+							tick={{ fontSize: 12 }}
+							tickFormatter={(value: number) => formatNumber(value)}
+						/>
+						<Tooltip
+							labelFormatter={(label) => monthLabel(String(label))}
+							formatter={(value, name) => {
+								const numeric =
+									typeof value === 'number' ? value : Number(value);
+								if (!Number.isFinite(numeric)) return '—';
+								return name === 'Bench Cost'
+									? formatCurrency(numeric)
+									: formatPercent(numeric);
+							}}
+						/>
+						<Legend />
+						<Bar
+							yAxisId="money"
+							dataKey="bench_cost"
+							name="Bench Cost"
+							fill="#7F2487"
+							radius={[3, 3, 0, 0]}
+						/>
+						<Line
+							yAxisId="percent"
+							type="monotone"
+							dataKey="utilization_percent"
+							name="Utilization"
+							stroke="#64126D"
+							strokeWidth={2}
+							dot={{ r: 3 }}
+							connectNulls
+						/>
+					</ComposedChart>
+				</ResponsiveContainer>
+			</div>
+		</div>
+	);
+}
+
 export default function EmployeeUtilizationPage() {
 	const {
 		loading: authLoading,
@@ -267,6 +392,15 @@ export default function EmployeeUtilizationPage() {
 	// bench cost descending) — the search filter preserves that order.
 	const rows = useMemo(() => data?.rows ?? [], [data]);
 	const totals = data?.totals ?? null;
+	// The team trend: server-computed over each month's whole roster, so the
+	// chart ignores the band/search filters by design.
+	const trend = useMemo(() => data?.trend ?? [], [data]);
+	// The two trailing columns' months, read off the cells they label so the
+	// header can never drift from the body.
+	const trailingMonths = useMemo(
+		() => rows[0]?.trailing.slice(0, 2) ?? [],
+		[rows]
+	);
 
 	const filteredRows = useMemo(() => {
 		const q = search.trim().toLowerCase();
@@ -508,6 +642,8 @@ export default function EmployeeUtilizationPage() {
 						</p>
 					)}
 
+					{trend.length > 0 && <TeamTrendChart trend={trend} />}
+
 					{error ? (
 						<div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-center text-sm text-red-700">
 							<p className="font-semibold">Couldn&apos;t load the report</p>
@@ -582,7 +718,7 @@ export default function EmployeeUtilizationPage() {
 									: ''}
 							</p>
 							<div className="overflow-x-auto">
-								<table className="w-full min-w-[960px] border-collapse text-sm">
+								<table className="w-full min-w-[1200px] border-collapse text-sm">
 									<caption className="sr-only">
 										Team utilization for {data.month_label}, sorted by flag band
 										then bench cost descending
@@ -598,6 +734,17 @@ export default function EmployeeUtilizationPage() {
 											<th scope="col" className="px-4 py-2.5 text-right">
 												Logged (h)
 											</th>
+											{trailingMonths.map((cell) => (
+												<th
+													key={cell.month}
+													scope="col"
+													data-testid="trailing-header"
+													data-month={cell.month}
+													className="px-4 py-2.5 text-right"
+												>
+													{monthLabel(cell.month)}
+												</th>
+											))}
 											<th scope="col" className="px-4 py-2.5 text-right">
 												Utilization
 											</th>
@@ -659,33 +806,61 @@ export default function EmployeeUtilizationPage() {
 												>
 													{formatNumber(row.logged_hours)}
 												</td>
+												{row.trailing.slice(0, 2).map((cell) => (
+													<td
+														key={cell.month}
+														data-testid="cell-trailing-utilization"
+														data-month={cell.month}
+														data-employed={cell.employed ? 'true' : 'false'}
+														className="px-4 py-2.5 text-right tabular-nums"
+													>
+														{/* Not employed: blank. Employed with no capacity
+														    (percent null): an em dash. */}
+														{cell.employed
+															? formatPercent(cell.utilization_percent)
+															: ''}
+													</td>
+												))}
 												<td
 													data-testid="cell-utilization"
 													className="px-4 py-2.5 text-right tabular-nums"
 												>
 													{formatPercent(row.utilization_percent)}
 												</td>
-												<td data-testid="cell-band" className="px-4 py-2.5">
-													{row.state === 'no_time_logged' ? (
-														/* Missing timesheet data: the state replaces the
-														   band reading; the % column stays factual. */
+												<td className="px-4 py-2.5">
+													<div className="flex flex-wrap items-center gap-1.5">
 														<span
-															data-testid="no-time-logged"
-															data-state="no_time_logged"
-															className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-300"
-														>
-															No time logged
-														</span>
-													) : (
-														<span
+															data-testid="cell-band"
 															className={cn(
 																'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1',
-																bandBadge(row.utilization_band)
+																row.state === 'no_time_logged'
+																	? 'bg-slate-200 text-slate-700 ring-slate-300'
+																	: bandBadge(row.utilization_band)
 															)}
 														>
-															{bandText(row.utilization_band)}
+															{row.state === 'no_time_logged' ? (
+																/* Missing timesheet data: the state replaces
+																   the band reading; the % column stays factual. */
+																<span
+																	data-testid="no-time-logged"
+																	data-state="no_time_logged"
+																>
+																	No time logged
+																</span>
+															) : (
+																bandText(row.utilization_band)
+															)}
 														</span>
-													)}
+														{row.chronic_under && (
+															<span
+																data-testid="chronic-marker"
+																title="Every employed month of the trailing window reads below 80%"
+																className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 ring-1 ring-red-200"
+															>
+																Chronic under
+															</span>
+														)}
+													</div>
 												</td>
 												<td
 													data-testid="cell-monthly-cost"
@@ -737,6 +912,8 @@ export default function EmployeeUtilizationPage() {
 												>
 													{formatNumber(totals.logged_hours)}
 												</td>
+												<td className="px-4 py-2.5" />
+												<td className="px-4 py-2.5" />
 												<td
 													data-testid="cell-total-utilization"
 													className="px-4 py-2.5 text-right tabular-nums"

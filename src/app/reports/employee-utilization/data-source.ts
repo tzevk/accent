@@ -57,6 +57,17 @@
  * holiday is a full working day for Capacity — matching the attendance and
  * payroll paths — regardless of the attendance status recorded on it (an `H`
  * row falls through to the standard 8h credit).
+ *
+ * Lenses: every row carries its trailing window — the viewed month and the
+ * two before it, oldest first — where each month runs the same per-month
+ * pipeline (month-scoped roster, window-pro-rated Capacity, the month's own
+ * Basis Hours rate); a cell is blank where the window does not cover the
+ * month. `chronic_under` marks a row whose every employed month of the window
+ * reads below 80 with a real percent, with at least two months of history.
+ * The payload's `trend` carries the six months ending at the viewed month,
+ * oldest first: capacity-weighted utilization and the Bench Cost of the
+ * month's priced rows. The fetch loads attendance, holidays and Logged Hours
+ * for that span once and derives all six months from that single load.
  */
 
 import {
@@ -69,8 +80,10 @@ import {
 	type SalaryProfile,
 } from '@/app/reports/manhours-billing/data-source';
 import {
+	parseDailyEntries,
 	parseDailyEntryRecords,
 	sumLoggedHoursForMonth,
+	type LoggedEntry,
 } from '@/lib/logged-hours';
 import { R, add, sub, mul, div, toNumber } from '@/lib/money';
 import {
@@ -141,6 +154,31 @@ export interface UtilizationCapacity {
 	month_working_days: number;
 }
 
+/**
+ * One trailing-month cell: the month, whether the employment window covers it,
+ * and the utilization that month's pipeline reads (`null` when the month has no
+ * capacity). A cell whose month is not employed has no reading at all — it
+ * renders blank, unlike a `null` percent, which renders as an em dash.
+ */
+export interface TrailingMonth {
+	month: string;
+	employed: boolean;
+	utilization_percent: number | null;
+}
+
+/** An employee's trailing window: the three cells (oldest first) plus the chronic verdict. */
+export interface TrailingWindow {
+	trailing: TrailingMonth[];
+	chronic_under: boolean;
+}
+
+/** One team-trend point: the month, its capacity-weighted utilization and priced Bench Cost. */
+export interface TrendPoint {
+	month: string;
+	utilization_percent: number | null;
+	bench_cost: number | null;
+}
+
 export interface TeamRowInput {
 	employee_id: number;
 	employee_code?: string;
@@ -156,6 +194,8 @@ export interface TeamRowInput {
 	/** Resolved employment window from the shared roster selector. */
 	employment_start?: string | null;
 	employment_end?: string | null;
+	/** The cross-month trailing window; omitted (single-month use) yields an empty one. */
+	trailing?: TrailingWindow;
 }
 
 export interface UtilizationRow {
@@ -174,6 +214,10 @@ export interface UtilizationRow {
 	employment_end: string | null;
 	/** The window does not cover the whole month (a chip names the dates). */
 	is_partial_window: boolean;
+	/** The trailing lens: three month cells (oldest first) — see `TrailingWindow`. */
+	trailing: TrailingMonth[];
+	/** Every employed month of the trailing window is under 80 (min two months). */
+	chronic_under: boolean;
 	/** Null when no profile covers the month — blank, never zero. */
 	monthly_cost: number | null;
 	/** Utilized portion: CTC hourly rate × logged hours (footing support). */
@@ -228,6 +272,31 @@ export function monthLabel(month: string): string {
 	const [y, m] = month.split('-').map(Number);
 	if (!y || !m || m < 1 || m > 12) return month;
 	return `${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+/** Shift a `YYYY-MM` month by whole months; invalid input is returned as-is. */
+function shiftMonth(month: string, delta: number): string {
+	const [year, monthNumber] = month.split('-').map(Number);
+	if (!year || !monthNumber || monthNumber < 1 || monthNumber > 12) {
+		return month;
+	}
+	const absolute = year * 12 + (monthNumber - 1) + delta;
+	const y = Math.floor(absolute / 12);
+	const m = ((absolute % 12) + 12) % 12;
+	return `${String(y).padStart(4, '0')}-${String(m + 1).padStart(2, '0')}`;
+}
+
+/**
+ * The six months ending at `month`, oldest first — the trend lens' span. The
+ * row trailing window is its last three months (fixed by the spec).
+ */
+export function trendMonths(month: string): string[] {
+	if (!isValidUtilizationMonth(month)) return [];
+	const months: string[] = [];
+	for (let delta = -5; delta <= 0; delta++) {
+		months.push(shiftMonth(month, delta));
+	}
+	return months;
 }
 
 // ─── Capacity ─────────────────────────────────────────────────────────
@@ -478,6 +547,11 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 		lastDay > 0 &&
 		((employmentStart !== null && employmentStart > `${month}-01`) ||
 			(employmentEnd !== null && employmentEnd < monthEnd));
+	// The trailing window is derived across months by the fetch; a single-month
+	// row (unit use) has no history to show.
+	const trailingWindow = input.trailing;
+	const trailing = trailingWindow?.trailing ?? [];
+	const chronicUnder = trailingWindow?.chronic_under ?? false;
 
 	if (!profile) {
 		return {
@@ -493,6 +567,8 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 			employment_start: employmentStart,
 			employment_end: employmentEnd,
 			is_partial_window: isPartialWindow,
+			trailing,
+			chronic_under: chronicUnder,
 			monthly_cost: null,
 			fractional_cost: null,
 			bench_cost: null,
@@ -529,6 +605,8 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 		employment_start: employmentStart,
 		employment_end: employmentEnd,
 		is_partial_window: isPartialWindow,
+		trailing,
+		chronic_under: chronicUnder,
 		monthly_cost: monthlyCost,
 		fractional_cost: fractionalCost,
 		bench_cost: benchCost,
@@ -578,6 +656,59 @@ export function buildUtilizationTotals(
 	};
 }
 
+/**
+ * Summarize one employee's per-month figures into the trailing window — the
+ * months in the order the caller passes them (oldest first, exactly three) —
+ * and the chronic verdict: at least two employed months, every employed month
+ * below the under threshold with a real percent. A `null` percent never counts
+ * as below (no capacity is not a low reading), so it blocks the marker.
+ */
+export function summarizeTrailing(months: TrailingMonth[]): TrailingWindow {
+	const employed = months.filter((entry) => entry.employed);
+	const chronicUnder =
+		employed.length >= 2 &&
+		employed.every(
+			(entry) =>
+				entry.utilization_percent !== null &&
+				entry.utilization_percent < UNDER_UTILIZATION_THRESHOLD
+		);
+	return {
+		trailing: months.map((entry) => ({ ...entry })),
+		chronic_under: chronicUnder,
+	};
+}
+
+/**
+ * One team-trend point over a month's roster rows: capacity-weighted
+ * utilization = `round2(Σ logged ÷ Σ capacity × 100)` (`null` when the roster
+ * credits no capacity) and the Bench Cost summed over the month's priced rows
+ * (`null` when none is priced). Money and percent math via `src/lib/money.ts`.
+ */
+export function buildTrendPoint(
+	month: string,
+	rows: UtilizationRow[]
+): TrendPoint {
+	let capacity = R(0);
+	let logged = R(0);
+	let bench = R(0);
+	let priced = 0;
+	for (const row of rows) {
+		capacity = add(capacity, row.capacity_hours);
+		logged = add(logged, row.logged_hours);
+		if (row.cost_status === 'priced') {
+			priced++;
+			bench = add(bench, row.bench_cost ?? 0);
+		}
+	}
+	const capacityHours = round2(toNumber(capacity));
+	const loggedHours = round2(toNumber(logged));
+	return {
+		month,
+		utilization_percent: utilizationPercent(loggedHours, capacityHours),
+		bench_cost: priced > 0 ? round2(toNumber(bench)) : null,
+	};
+}
+
 // ─── Server data fetch ──────────────────────────────────────────────
 
 /** Filter-bar metadata for the team utilization report. */
@@ -595,6 +726,11 @@ export interface UtilizationData {
 	flag: UtilizationBand | null;
 	rows: UtilizationRow[];
 	totals: UtilizationTotals;
+	/**
+	 * The team trend: the six months ending at the viewed month, oldest first,
+	 * each with capacity-weighted utilization and the priced Bench Cost total.
+	 */
+	trend: TrendPoint[];
 	/** What the month's roster filter dropped, and why; null when it dropped nobody. */
 	disclosure: RosterDisclosure | null;
 }
@@ -904,12 +1040,74 @@ async function loadSalaryProfilesGrouped(): Promise<
 	return grouped;
 }
 
+/** What one month of the lens needs beyond the shared directory/profile load. */
+interface UtilizationMonthScope {
+	holidays: ReadonlySet<string>;
+	attendanceByEmployee: Map<number, UtilizationAttendance[]>;
+	loggedEntriesByEmployee: Map<number, LoggedEntry[]>;
+}
+
+/** One month's roster and rows — the per-month view every lens reads. */
+interface UtilizationMonthView {
+	rows: UtilizationRow[];
+	rowByEmployee: Map<number, UtilizationRow>;
+	disclosure: RosterDisclosure | null;
+}
+
+/**
+ * Build one month's view: the month-scoped Payroll roster (the shared selector
+ * resolves each employee's window against the month), one row per member with
+ * that month's attendance, holidays, Logged Hours and effective-dated profile
+ * — the same pipeline the viewed month always ran, so a trailing or trend
+ * month reads exactly as it would if it were viewed.
+ */
+function buildMonthView(
+	month: string,
+	employees: UtilizationEmployee[],
+	salaryGrouped: Map<number, SalaryProfile[]>,
+	scope: UtilizationMonthScope
+): UtilizationMonthView {
+	const { roster, disclosure } = selectPayrollRoster(
+		employees.map(toRosterInput),
+		{ month }
+	);
+	const rows = roster.map((member) => {
+		// Logged Hours arrive pre-parsed (one already-parsed payload) and
+		// already scoped to the month, so six months cost one parse per
+		// assignment instead of one per month.
+		const entries = scope.loggedEntriesByEmployee.get(member.id) ?? [];
+		return buildTeamRow({
+			employee_id: member.id,
+			employee_code: member.employee_id,
+			employee_name: member.name,
+			month,
+			employment_start: member.employment_start ?? null,
+			employment_end: member.employment_end ?? null,
+			daily_entries: [entries],
+			attendance: scope.attendanceByEmployee.get(member.id) ?? [],
+			holidays: scope.holidays,
+			profiles: salaryGrouped.get(member.id) ?? [],
+		});
+	});
+	return {
+		rows,
+		rowByEmployee: new Map(rows.map((row) => [row.employee_id, row])),
+		disclosure,
+	};
+}
+
 /**
  * Full team payload for one month: one row per employee on the month-scoped
  * Payroll roster, with capacity and Monthly Cost pro-rated to each row's
  * resolved employment window, sorted by flag band then bench cost descending,
  * plus the roster's exclusion disclosure. Optional flag narrows to one band.
  * Returns null for an invalid month.
+ *
+ * The same call also drives the lenses: every row carries its trailing window
+ * (the viewed month and the two before it) and the chronic verdict, and the
+ * payload carries the six-month team trend. Attendance, holidays and Logged
+ * Hours are loaded once for the six-month span and every month is derived
+ * from that single load.
  */
 export async function fetchUtilizationData(
 	month: string,
@@ -917,6 +1115,11 @@ export async function fetchUtilizationData(
 ): Promise<UtilizationData | null> {
 	if (!isValidUtilizationMonth(month)) return null;
 	if (flag !== null && !isValidUtilizationFlag(flag)) return null;
+
+	const span = trendMonths(month);
+	const spanSet = new Set(span);
+	const spanStart = `${span[0]}-01`;
+	const spanEnd = `${month}-${String(daysInMonth(month)).padStart(2, '0')}`;
 
 	const employees = await loadUtilizationEmployees();
 	const [{ userToEmployee, userKeyToEmployee }, salaryGrouped] =
@@ -929,8 +1132,8 @@ export async function fetchUtilizationData(
 	// holidays only: an optional holiday is a full working day for this
 	// report, exactly as it is for the attendance and payroll paths.
 	// `is_optional` is the switch; the `type` enum is ignored by every
-	// consumer.
-	let holidaySet = new Set<string>();
+	// consumer. One span query, split back per month.
+	const holidaysByMonth = new Map<string, Set<string>>();
 	try {
 		const [holidayRows] = (await query(
 			`SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date,
@@ -938,40 +1141,52 @@ export async function fetchUtilizationData(
 			 FROM holiday_master
 			 WHERE is_active = 1 AND date BETWEEN ? AND ?
 			 ORDER BY date`,
-			[`${month}-01`, `${month}-31`]
+			[spanStart, spanEnd]
 		)) as [DbRow[], unknown];
-		holidaySet = new Set(
-			holidayRows
-				.filter((r) => dbNum(r, 'is_optional', 0) !== 1)
-				.map((r) => dbStr(r, 'date'))
-				.filter(Boolean)
-		);
+		for (const r of holidayRows) {
+			if (dbNum(r, 'is_optional', 0) === 1) continue;
+			const date = dbStr(r, 'date');
+			const dateMonth = date.slice(0, 7);
+			if (!spanSet.has(dateMonth)) continue;
+			const set = holidaysByMonth.get(dateMonth) ?? new Set<string>();
+			set.add(date);
+			holidaysByMonth.set(dateMonth, set);
+		}
 	} catch {
 		/* holiday_master unavailable — capacity falls back to weekly offs only */
 	}
 
-	const attendanceByEmployee = new Map<number, UtilizationAttendance[]>();
+	const attendanceByMonth = new Map<
+		string,
+		Map<number, UtilizationAttendance[]>
+	>();
 	try {
 		const [attendanceRows] = (await query(
 			`SELECT employee_id,
 			        DATE_FORMAT(attendance_date, '%Y-%m-%d') AS date,
 			        status, is_weekly_off
 			 FROM employee_attendance
-			 WHERE DATE_FORMAT(attendance_date, '%Y-%m') = ?
+			 WHERE attendance_date BETWEEN ? AND ?
 			 ORDER BY attendance_date`,
-			[month]
+			[spanStart, spanEnd]
 		)) as [DbRow[], unknown];
 		for (const r of attendanceRows) {
 			const empId = dbNum(r, 'employee_id');
 			const date = dbStr(r, 'date');
 			if (!empId || !date) continue;
-			const arr = attendanceByEmployee.get(empId) || [];
+			const dateMonth = date.slice(0, 7);
+			if (!spanSet.has(dateMonth)) continue;
+			const byEmployee =
+				attendanceByMonth.get(dateMonth) ??
+				new Map<number, UtilizationAttendance[]>();
+			const arr = byEmployee.get(empId) || [];
 			arr.push({
 				date,
 				status: dbStr(r, 'status', '') || null,
 				is_weekly_off: dbNum(r, 'is_weekly_off', 0),
 			});
-			attendanceByEmployee.set(empId, arr);
+			byEmployee.set(empId, arr);
+			attendanceByMonth.set(dateMonth, byEmployee);
 		}
 	} catch {
 		/* employee_attendance may not exist */
@@ -1015,7 +1230,10 @@ export async function fetchUtilizationData(
 	// The Logged Hours evidence bounds come from the payloads already in hand:
 	// the earliest and latest day an employee logged anything, which the
 	// employment window falls back to when the record has no joining/exit date.
+	// The same pass buckets the parsed entries by month for the span, so six
+	// months of per-row sums cost one parse per payload, not one per month.
 	const employeeById = new Map(employees.map((emp) => [emp.id, emp]));
+	const loggedEntriesByMonth = new Map<string, Map<number, LoggedEntry[]>>();
 	for (const [empId, payloads] of entriesByEmployee) {
 		const employee = employeeById.get(empId);
 		if (!employee) continue;
@@ -1036,29 +1254,60 @@ export async function fetchUtilizationData(
 					employee.last_logged_date = day;
 				}
 			}
+			for (const entry of parseDailyEntries(payload)) {
+				const entryMonth = entry.date.slice(0, 7);
+				if (!spanSet.has(entryMonth)) continue;
+				const byEmployee =
+					loggedEntriesByMonth.get(entryMonth) ??
+					new Map<number, LoggedEntry[]>();
+				const arr = byEmployee.get(empId) || [];
+				arr.push(entry);
+				byEmployee.set(empId, arr);
+				loggedEntriesByMonth.set(entryMonth, byEmployee);
+			}
 		}
 	}
 
-	// The shared selector owns the month's roster rule and the disclosure of
-	// the non-Payroll candidates it drops.
-	const { roster, disclosure } = selectPayrollRoster(
-		employees.map(toRosterInput),
-		{ month }
-	);
+	// One view per span month — the same pipeline the viewed month runs, so a
+	// trailing cell is exactly the value the row would show if that month were
+	// viewed, and the trend reads each month's roster the same way.
+	const views = new Map<string, UtilizationMonthView>();
+	for (const spanMonth of span) {
+		views.set(
+			spanMonth,
+			buildMonthView(spanMonth, employees, salaryGrouped, {
+				holidays: holidaysByMonth.get(spanMonth) ?? new Set<string>(),
+				attendanceByEmployee: attendanceByMonth.get(spanMonth) ?? new Map(),
+				loggedEntriesByEmployee:
+					loggedEntriesByMonth.get(spanMonth) ?? new Map(),
+			})
+		);
+	}
 
-	const rows: UtilizationRow[] = roster.map((member) =>
-		buildTeamRow({
-			employee_id: member.id,
-			employee_code: member.employee_id,
-			employee_name: member.name,
-			month,
-			employment_start: member.employment_start ?? null,
-			employment_end: member.employment_end ?? null,
-			daily_entries: entriesByEmployee.get(member.id) ?? [],
-			attendance: attendanceByEmployee.get(member.id) ?? [],
-			holidays: holidaySet,
-			profiles: salaryGrouped.get(member.id) ?? [],
-		})
+	// The trailing window is the last three span months, oldest first; a month
+	// the roster does not hold is a month the window did not cover (blank).
+	const trailingSpan = span.slice(-3);
+	const viewed = views.get(month)!;
+	const rows: UtilizationRow[] = viewed.rows.map((row) => ({
+		...row,
+		...summarizeTrailing(
+			trailingSpan.map((spanMonth) => {
+				const monthRow = views
+					.get(spanMonth)!
+					.rowByEmployee.get(row.employee_id);
+				return {
+					month: spanMonth,
+					employed: monthRow !== undefined,
+					utilization_percent: monthRow ? monthRow.utilization_percent : null,
+				};
+			})
+		),
+	}));
+
+	// The trend is the team lens over each month's whole roster, unfiltered by
+	// the flag: the chart must not change shape with the band filter.
+	const trend = span.map((spanMonth) =>
+		buildTrendPoint(spanMonth, views.get(spanMonth)!.rows)
 	);
 
 	const sorted = sortUtilizationRows(rows);
@@ -1071,6 +1320,7 @@ export async function fetchUtilizationData(
 		flag,
 		rows: filtered,
 		totals: buildUtilizationTotals(filtered),
-		disclosure,
+		trend,
+		disclosure: viewed.disclosure,
 	};
 }

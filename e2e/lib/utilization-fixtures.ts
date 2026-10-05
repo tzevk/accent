@@ -95,7 +95,11 @@ export type UtilizationPlan =
 	| 'basisDaysOverride'
 	| 'directRateIgnored'
 	| 'basisRateFullMonth'
-	| 'payrollNoProfile';
+	| 'payrollNoProfile'
+	/** Trend cases (#297): multi-month history for the trailing lens and chart. */
+	| 'chronicUnder'
+	| 'healthyHistory'
+	| 'trailingGap';
 
 export type UtilizationEmployeeType =
 	| 'Payroll'
@@ -380,6 +384,67 @@ const ROSTER_DEF: ReadonlyArray<
 		attendanceDays: [],
 		loggedDays: [2, 3],
 		noProfile: true,
+	},
+	{
+		// #297: employed since August and logging a sliver every month, so all
+		// three trailing months (Nov, Dec, Jan) are employed and far below 80%
+		// — the chronic marker's positive case. The August–October logs also
+		// keep the team trend non-zero before the trailing window.
+		n: '0020',
+		type: 'Payroll',
+		status: 'active',
+		joining: '2018-08-01',
+		hire: null,
+		exit: null,
+		plan: 'chronicUnder',
+		attendanceDays: [],
+		loggedDays: [2, 3],
+		loggedMonths: [
+			{ month: '2018-08', days: [1, 2] },
+			{ month: '2018-09', days: [3, 4] },
+			{ month: '2018-10', days: [1, 2] },
+			{ month: '2018-11', days: [5, 6] },
+			{ month: '2018-12', days: [3, 4] },
+		],
+	},
+	{
+		// #297: a fully logged December (every 2018-12 working day, so 100%)
+		// inside the trailing window breaks the chronic marker even though
+		// November and January read low — the marker's negative case.
+		n: '0021',
+		type: 'Payroll',
+		status: 'active',
+		joining: '2018-08-01',
+		hire: null,
+		exit: null,
+		plan: 'healthyHistory',
+		attendanceDays: [],
+		loggedDays: [2, 3],
+		loggedMonths: [
+			{ month: '2018-11', days: [5, 6] },
+			{
+				month: '2018-12',
+				days: [
+					1, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20, 21, 24, 25,
+					26, 27, 28, 29, 31,
+				],
+			},
+		],
+	},
+	{
+		// #297: joins mid-December, so November's trailing cell is blank (not
+		// employed) while December's reads the pro-rated 15–31 Dec window and
+		// January logs every windowed working day.
+		n: '0022',
+		type: 'Payroll',
+		status: 'active',
+		joining: '2018-12-15',
+		hire: null,
+		exit: null,
+		plan: 'trailingGap',
+		attendanceDays: [],
+		loggedDays: [1, 2, 3],
+		loggedMonths: [{ month: '2018-12', days: [17, 18, 19] }],
 	},
 ];
 
