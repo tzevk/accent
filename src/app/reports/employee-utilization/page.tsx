@@ -35,6 +35,11 @@ interface UtilizationRow {
 	logged_hours: number;
 	utilization_percent: number | null;
 	utilization_band: UtilizationBand | null;
+	/** Resolved employment window; null = open bound. */
+	employment_start: string | null;
+	employment_end: string | null;
+	/** The window does not cover the whole month — a chip names the dates. */
+	is_partial_window: boolean;
 	/** Null when no salary profile covers the month — blank, never zero. */
 	monthly_cost: number | null;
 	fractional_cost: number | null;
@@ -135,6 +140,48 @@ function formatPercent(value: number | null): string {
 	if (value === null || value === undefined) return '—';
 	return `${formatNumber(value)}%`;
 }
+
+const MONTH_SHORT = [
+	'Jan',
+	'Feb',
+	'Mar',
+	'Apr',
+	'May',
+	'Jun',
+	'Jul',
+	'Aug',
+	'Sep',
+	'Oct',
+	'Nov',
+	'Dec',
+];
+
+/**
+ * The "Partial (window)" chip label, clamped to the viewed month so an open
+ * bound reads as the month's own edge (`15 Jan – 31 Jan`). Parsed from the
+ * ISO day by hand — no Date construction, so timezone can never shift it.
+ */
+function partialWindowLabel(row: UtilizationRow): string {
+	const [year, month] = row.month.split('-').map(Number);
+	const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+	const monthStart = `${row.month}-01`;
+	const monthEnd = `${row.month}-${String(lastDay).padStart(2, '0')}`;
+	const start =
+		row.employment_start && row.employment_start > monthStart
+			? row.employment_start
+			: monthStart;
+	const end =
+		row.employment_end && row.employment_end < monthEnd
+			? row.employment_end
+			: monthEnd;
+	const dayLabel = (iso: string) => {
+		const day = Number(iso.slice(8, 10));
+		const monthNumber = Number(iso.slice(5, 7));
+		return `${day} ${MONTH_SHORT[monthNumber - 1] ?? ''}`;
+	};
+	return `Partial (${dayLabel(start)} – ${dayLabel(end)})`;
+}
+
 /** Deep link to the per-employee timesheet detail for the row's month. */
 function timesheetHref(row: UtilizationRow): string {
 	return `/reports/timesheet-report?employee_id=${row.employee_id}&month=${encodeURIComponent(row.month)}`;
@@ -572,6 +619,14 @@ export default function EmployeeUtilizationPage() {
 													<span className="block text-xs text-gray-500">
 														{row.employee_code}
 													</span>
+													{row.is_partial_window && (
+														<span
+															data-testid="partial-window-chip"
+															className="mt-1 inline-flex items-center rounded-full bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 ring-1 ring-purple-200"
+														>
+															{partialWindowLabel(row)}
+														</span>
+													)}
 												</td>
 												<td
 													data-testid="cell-capacity"

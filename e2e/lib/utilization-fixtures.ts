@@ -28,15 +28,20 @@ import { E2E_MONTH } from './fixtures';
  *   0011 evidenceLeaver          no dates; trades 2019-01-02…04 only
  *   0012 hireDateJoiner          no joining_date; hire_date 2019-03-01
  *   0013 unplacedPayroll         terminated, no dates, no evidence — unplaced
+ *   0014 midMonthJoiner          active, joins 2019-01-15 — partial month
+ *   0015 midMonthLeaver          terminated, exits 2019-01-18 — partial month,
+ *                                with a leave day and an 'H' day inside it
  *
  * The viewed month is the harness's `E2E_MONTH` (2019-01), so the base
- * fixtures' employees and holiday participate in the same calendar. Namespace
- * (everything this module owns; nothing else is touched):
+ * fixtures' employees and holiday participate in the same calendar, and the
+ * month gets one active *optional* holiday (2019-01-15) that must not shorten
+ * Capacity. Namespace (everything this module owns; nothing else is touched):
  *   users                      `e2e_util_user`
  *   employees                  `E2E-UTIL-*`
  *   employee_attendance        employee_id of those employees
  *   employee_salary_profile    employee_id of those employees
  *   user_activity_assignments  `e2e-util-*`
+ *   holiday_master             `E2E Utilization Optional Holiday`
  *
  * Intended call order:
  *   1. `await seedUtilizationFixtures()` once before the utilization specs —
@@ -59,6 +64,17 @@ export const UTILIZATION_CTC = 26000;
 /** Hours logged on each seeded Logged Hours day. */
 export const UTILIZATION_LOGGED_HOURS_PER_DAY = 8;
 
+/**
+ * An active OPTIONAL holiday inside the viewed month. Optional holidays are
+ * working days for the utilization calendar, so this one must not shorten any
+ * row's Capacity; `is_optional` is the switch (every consumer ignores the
+ * `type` enum). It lands on a Tuesday, i.e. a working day either way.
+ */
+export const UTILIZATION_OPTIONAL_HOLIDAY = {
+	name: 'E2E Utilization Optional Holiday',
+	date: '2019-01-15',
+} as const;
+
 export type UtilizationPlan =
 	| 'payrollWithHours'
 	| 'payrollIdle'
@@ -72,7 +88,9 @@ export type UtilizationPlan =
 	| 'evidenceOnly'
 	| 'evidenceLeaver'
 	| 'hireDateJoiner'
-	| 'unplacedPayroll';
+	| 'unplacedPayroll'
+	| 'midMonthJoiner'
+	| 'midMonthLeaver';
 
 export type UtilizationEmployeeType =
 	| 'Payroll'
@@ -94,6 +112,8 @@ export interface UtilizationMember {
 	plan: UtilizationPlan;
 	/** Viewed-month day numbers with an attendance record. */
 	attendanceDays: number[];
+	/** Per-day attendance status overrides (default 'P'), e.g. 'PL' or 'H'. */
+	attendanceStatusByDay?: Record<number, string>;
 	/** Viewed-month day numbers carrying Logged Hours. */
 	loggedDays: number[];
 }
@@ -248,6 +268,34 @@ const ROSTER_DEF: ReadonlyArray<
 		attendanceDays: [],
 		loggedDays: [],
 	},
+	{
+		// Partial month: the window opens on the 15th and stays open, so
+		// Capacity (and the pro-rated Monthly Cost) covers only 15–31 Jan.
+		n: '0014',
+		type: 'Payroll',
+		status: 'active',
+		joining: '2019-01-15',
+		hire: null,
+		exit: null,
+		plan: 'midMonthJoiner',
+		attendanceDays: [],
+		loggedDays: [],
+	},
+	{
+		// Partial month: the window closes on the 18th. Day 14 is a leave day
+		// (netted inside the window) and day 15 carries 'H' attendance on the
+		// optional holiday — it must still credit the standard day.
+		n: '0015',
+		type: 'Payroll',
+		status: 'terminated',
+		joining: '2017-01-01',
+		hire: null,
+		exit: '2019-01-18',
+		plan: 'midMonthLeaver',
+		attendanceDays: [2, 3, 4, 5, 7, 8, 9, 10, 11, 14, 15, 16, 17, 18],
+		attendanceStatusByDay: { 14: 'PL', 15: 'H' },
+		loggedDays: [2, 3, 4, 5, 7, 8, 9, 10, 11, 16, 17, 18],
+	},
 ];
 
 export const UTILIZATION_ROSTER: readonly UtilizationMember[] = ROSTER_DEF.map(
@@ -349,6 +397,9 @@ export async function cleanupUtilizationFixtures(): Promise<number> {
 	await exec(`DELETE FROM employees WHERE employee_id LIKE ?`, [
 		`${UTILIZATION_EMPLOYEE_PREFIX}%`,
 	]);
+	await exec(`DELETE FROM holiday_master WHERE name = ?`, [
+		UTILIZATION_OPTIONAL_HOLIDAY.name,
+	]);
 
 	return employeeIds.length;
 }
@@ -362,6 +413,8 @@ export interface UtilizationSeeded {
 	assignments: number;
 	profiles: number;
 	loggedDays: number;
+	/** Active optional holidays seeded in the viewed month. */
+	holidays: number;
 }
 
 /** Purge leftovers, then seed the roster, its evidence and its profiles. */
@@ -376,6 +429,7 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 		assignments: 0,
 		profiles: 0,
 		loggedDays: 0,
+		holidays: 0,
 	};
 
 	const user = await exec(
@@ -428,7 +482,7 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 				member.attendanceDays.map((day) => [
 					employeeId,
 					utilizationDate(day),
-					'P',
+					member.attendanceStatusByDay?.[day] ?? 'P',
 					0,
 					0,
 					'0.00',
@@ -462,6 +516,14 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 			summary.loggedDays += dailyEntries.length;
 		}
 	}
+
+	// One active optional holiday inside the viewed month: a working day.
+	await exec(
+		`INSERT INTO holiday_master (name, date, type, is_optional, is_active)
+     VALUES (?, ?, 'optional', 1, 1)`,
+		[UTILIZATION_OPTIONAL_HOLIDAY.name, UTILIZATION_OPTIONAL_HOLIDAY.date]
+	);
+	summary.holidays = 1;
 
 	return summary;
 }

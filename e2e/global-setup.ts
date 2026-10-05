@@ -69,6 +69,7 @@ export default async function globalSetup(): Promise<void> {
 				`(${utilization.employees} employees, ${utilization.attendance} attendance rows, ` +
 				`${utilization.assignments} assignments, ` +
 				`${utilization.loggedDays} logged days, ` +
+				`${utilization.holidays} optional holiday, ` +
 				`${utilization.profiles} salary profiles)`
 		);
 	} finally {
