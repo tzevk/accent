@@ -9,8 +9,12 @@ A person employed by the company, stored in `employees`. Linked to a `users` acc
 _Avoid_: User, Staff, Resource
 
 **Employee Type**:
-The employment category on the Employee record, `employees.employee_type`: `Payroll`, `Contract`, `Deputation`, `Permanent`, `Intern`, or NULL (never set). A directory grouping — how the person is filed in the company — and not a pay instruction: the pay stream an Employee is paid through is their Salary Type, which lives on the Salary Profile, and payroll decides stream membership there (ADR-0015). The Attendance report is the one reader that filters on this field (`employee_type = 'Payroll'`), which is why a `Deputation` or unset employee never appears in it.
+The employment category on the Employee record, `employees.employee_type`: `Payroll`, `Contract`, `Deputation`, `Permanent`, `Intern`, or NULL (never set). A directory grouping — how the person is filed in the company — and not a pay instruction: the pay stream an Employee is paid through is their Salary Type, which lives on the Salary Profile, and payroll decides stream membership there (ADR-0015). The Attendance report and the Employee Utilization report are the readers that filter on this field (`employee_type = 'Payroll'`), which is why a `Deputation` or unset employee never appears on their rosters: Attendance uses the as-of-today roster, Utilization the Payroll Roster scoped to the viewed month by the employment window. The field is read as of today — never time-traveled — so a retyped employee is not re-filed in past months.
 _Avoid_: Employment status, Worker type, Salary Type
+
+**Payroll Roster**:
+The set of Employees a workforce report covers — live Employee records (`isDelete = 0`) with `employee_type = 'Payroll'`. The Employee Utilization report scopes it to the viewed month: the employment window must intersect that month, so a leaver stays visible in the months they worked and a joiner is absent before they joined; `status` never disqualifies there, and the non-Payroll/unset employees considered for the month are counted in an exclusion disclosure (bucketed by Employee Type value, absent when nothing was dropped) rather than silently hidden. The Attendance report keeps the as-of-today variant — `status = 'active'` on top of the live Payroll type (ADR-0015). Neither roster reads Salary Type: an Employee with no Salary Profile is still on it.
+_Avoid_: Active employees, Payroll staff (when meaning this roster), Headcount
 
 **Salary Type**:
 Which pay stream an Employee is paid through, held on the pay agreement: `employee_salary_profile.salary_type` — `monthly`, `hourly`, `daily`, `contract`, `lumpsum`, `custom` (`payroll` is the query selector for everything that is not `contract`; legacy `salary_structures.pay_type` is its read-only predecessor). Payroll decides stream membership on this field, never on the Employee record: `salary_type = 'contract'` EXISTS for the contract stream, NOT EXISTS for the payroll stream. So a `Payroll`-typed Employee with no Salary Profile belongs to neither stream and silently vanishes from a payroll run while still appearing on the Attendance report's roster (ADR-0015).
@@ -62,7 +66,7 @@ _Avoid_: Standard hours, Capacity (that is net of leave)
 **Hourly Rate**:
 CTC ÷ Basis Hours. Gross is Hourly Rate × Logged Hours; the slip stores the
 two-decimal rate it printed while the money math uses the unrounded value.
-_Avoid_: Rate (unqualified), ctc_rate (the utilization report's 26×8 denominator)
+_Avoid_: Rate (unqualified)
 
 **Leave Application**:
 An employee's request for time off with a start date, end date, type, reason, and status (`pending`, `approved`, or `rejected`). One employee can never hold two intersecting `pending`/`approved` applications — the server rejects that as its own overlap.
@@ -73,7 +77,7 @@ Two or more _different_ employees whose `pending` or `approved` applications int
 _Avoid_: Concurrent Leave
 
 **Capacity**:
-Net available working hours for an Employee in a period — 8h per working day (excluding Sundays, 2nd/4th Saturdays, and active `holiday_master` dates), minus approved leave (8h per full day, 4h per half-day).
+Net available working hours for an Employee in a period — 8h per working day (excluding Sundays, 2nd/4th Saturdays, and active non-optional `holiday_master` dates — an optional holiday is a working day), minus approved leave (8h per full day, 4h per half-day).
 _Avoid_: Expected hours, Standard hours (ambiguous), Bandwidth
 
 **Logged Hours**:
@@ -85,11 +89,11 @@ _Avoid_: Manhours (ambiguous), Planned hours, Assigned hours
 _Avoid_: Attendance %, Allocation %, Productivity
 
 **Monthly Cost**:
-CTC-based monthly price of an Employee — `employee_salary_profile.employer_cost` (stored CTC), falling back to `gross_salary` then `gross`. Profile picked by `pickActiveProfile` (effective-range cover, else latest active).
+CTC-based monthly price of an Employee — `employee_salary_profile.employer_cost` (stored CTC), falling back to `gross_salary` then `gross`. Profile picked by `pickActiveProfile` (effective-range cover, else latest active). In the Employee Utilization report a month the employment window only partly covers is pro-rated by employed working days ÷ the month's working days, 2dp — a full-month window reproduces the full CTC, and the row is marked partial ("Partial (window)") with the covered dates.
 _Avoid_: Gross, Salary (ambiguous), Hourly rate
 
 **Bench Cost**:
-`monthly_cost − ctc_rate × logged_hours`, where `ctc_rate` is Monthly Cost apportioned over `std_working_days` (default 26) × `std_hours_per_day` (default 8); hourly/daily/custom types use their direct rate. That denominator is the utilization report's own — payroll's Hourly Rate apportions over the month's working days instead (ADR-0010). Rows without a covering profile show blank cost, never zero.
+`monthly_cost − Hourly Rate × logged_hours` — Monthly Cost (pro-rated for a partial window, see above) minus the utilized figure, priced with the same CTC ÷ Basis Hours rate a Payroll Slip pays with (ADR-0010), so the report reconciles with the slips. The utilized figure plus Bench Cost foots to Monthly Cost per row and in totals (overload may read negative); a row without a covering Salary Profile shows blank cost, never zero.
 _Avoid_: Fractional cost, Loss, Waste
 
 **Weekly Off**:
