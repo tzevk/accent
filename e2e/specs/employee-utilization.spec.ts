@@ -4,6 +4,7 @@ import {
 	type APIRequestContext,
 	type Page,
 } from '@playwright/test';
+import ExcelJS from 'exceljs';
 import { readArtifact, writeArtifact } from '../lib/artifacts';
 import { rows } from '../lib/db';
 import {
@@ -1641,6 +1642,103 @@ test.beforeAll(async () => {
 		])
 	);
 });
+
+// ─── Excel workbook (#300) ───────────────────────────────────────────
+
+/** Plain text of a cell, whatever shape exceljs hands back. */
+function cellText(value: ExcelJS.CellValue): string {
+	if (value === null || value === undefined) return '';
+	if (typeof value === 'string') return value;
+	if (typeof value === 'number' || typeof value === 'boolean') {
+		return String(value);
+	}
+	if (value instanceof Date) return value.toISOString();
+	if ('richText' in value) {
+		return value.richText.map((part) => part.text).join('');
+	}
+	if ('result' in value) return String(value.result ?? '');
+	return '';
+}
+
+interface SheetTable {
+	/** The header row's sheet row number. */
+	headerRow: number;
+	/** Header label → column index. */
+	columns: Map<string, number>;
+}
+
+/**
+ * Locate a sheet table by its first header label and map its labels to
+ * columns, so the assertions read cells by header, never by fixed index.
+ */
+function findTable(ws: ExcelJS.Worksheet, firstLabel: string): SheetTable {
+	for (let rowNumber = 1; rowNumber <= ws.rowCount; rowNumber++) {
+		const row = ws.getRow(rowNumber);
+		if (cellText(row.getCell(1).value) !== firstLabel) continue;
+		const columns = new Map<string, number>();
+		row.eachCell({ includeEmpty: false }, (cell, col) => {
+			const label = cellText(cell.value);
+			if (label) columns.set(label, col);
+		});
+		return { headerRow: rowNumber, columns };
+	}
+	throw new Error(`sheet header '${firstLabel}' not found`);
+}
+
+/** The cell of a sheet row under one of the table's header labels. */
+function cellUnder(
+	ws: ExcelJS.Worksheet,
+	table: SheetTable,
+	rowNumber: number,
+	label: string
+): ExcelJS.Cell {
+	const column = table.columns.get(label);
+	if (!column) throw new Error(`sheet column '${label}' not found`);
+	return ws.getRow(rowNumber).getCell(column);
+}
+
+/** A cell reads as its expected figure; a null expectation must stay blank. */
+function expectFigure(cell: ExcelJS.Cell, expected: number | null): void {
+	const value = typeof cell.value === 'number' ? cell.value : null;
+	if (expected === null) {
+		expect(value).toBeNull();
+		return;
+	}
+	expect(value).not.toBeNull();
+	expect(value as number).toBeCloseTo(expected, 2);
+}
+
+/** Every non-empty cell's text, joined — for the below-table sections. */
+function sheetText(ws: ExcelJS.Worksheet): string {
+	const parts: string[] = [];
+	ws.eachRow((row) =>
+		row.eachCell({ includeEmpty: false }, (cell) => {
+			parts.push(cellText(cell.value));
+		})
+	);
+	return parts.join('\n');
+}
+
+const BAND_TEXT: Record<string, string> = {
+	under: 'Under',
+	healthy: 'Healthy',
+	over: 'Over',
+};
+
+/** The Flag cell's reading: state or band, plus the chronic chip. */
+function expectedFlagText(
+	state: string | null,
+	band: string | null,
+	chronic: boolean
+): string {
+	const base =
+		state === 'no_time_logged'
+			? 'No time logged'
+			: band === null
+				? 'No capacity'
+				: (BAND_TEXT[band] ?? band);
+	return chronic ? `${base} · Chronic under` : base;
+}
 
 // ─── Tests ───────────────────────────────────────────────────────────
 
@@ -3804,6 +3902,393 @@ test.describe('employee utilization roster', () => {
 				projects: idleRendered.projects.length,
 				noProject: idleRendered.noProject,
 			},
+		};
+	});
+
+	test('the Excel download mirrors the month view, its disclosure and the department summary', async ({
+		request,
+	}) => {
+		const api = await fetchMonth(request, MONTH);
+		const response = await request.get(
+			`/api/reports/employee-utilization/download?month=${MONTH}`
+		);
+		expect(response.status(), await response.text()).toBe(200);
+		expect(response.headers()['content-type']).toContain('spreadsheetml.sheet');
+		expect(response.headers()['content-disposition']).toContain(
+			`Utilization_${MONTH}.xlsx`
+		);
+
+		const wb = new ExcelJS.Workbook();
+		// exceljs types `load` with its own ArrayBuffer-shaped Buffer; the
+		// response body is a Node Buffer, which is one at runtime.
+		await wb.xlsx.load(
+			(await response.body()) as unknown as Parameters<typeof wb.xlsx.load>[0]
+		);
+		const ws = wb.getWorksheet('Utilization');
+		expect(ws).toBeTruthy();
+		if (!ws) throw new Error('the workbook must carry the Utilization sheet');
+
+		// Every on-screen column is present, alongside the workbook's own
+		// Sr. / Utilized Cost / Note columns.
+		const table = findTable(ws, 'Sr.');
+		for (const label of [
+			'Employee',
+			'Department',
+			'Partial window',
+			'Capacity (h)',
+			'Logged (h)',
+			monthLabel(TRAILING_MONTHS[0]),
+			monthLabel(TRAILING_MONTHS[1]),
+			'Utilization %',
+			'Flag',
+			'Monthly Cost (₹)',
+			'Bench Cost (₹)',
+			'Utilized Cost (₹)',
+			'Note',
+		]) {
+			expect(table.columns.has(label)).toBe(true);
+		}
+
+		// One sheet row per payload row, in the payload's order, matched by
+		// the employee code in the Employee cell.
+		const sheetRows = new Map<string, number>();
+		for (
+			let rowNumber = table.headerRow + 1;
+			rowNumber <= ws.rowCount;
+			rowNumber++
+		) {
+			const sr = cellUnder(ws, table, rowNumber, 'Sr.').value;
+			if (typeof sr !== 'number') continue;
+			const employee = cellText(
+				cellUnder(ws, table, rowNumber, 'Employee').value
+			);
+			const open = employee.lastIndexOf('(');
+			if (open < 0) continue;
+			sheetRows.set(employee.slice(open + 1, -1), rowNumber);
+		}
+		expect([...sheetRows.keys()]).toEqual(
+			api.rows.map((row) => row.employee_code)
+		);
+
+		let pricedRows = 0;
+		let blankRows = 0;
+		for (const apiRow of api.rows) {
+			const rowNumber = sheetRows.get(apiRow.employee_code);
+			expect(rowNumber).toBeDefined();
+			if (rowNumber === undefined) continue;
+			const derived = model.rows.get(apiRow.employee_id);
+			expect(derived).toBeTruthy();
+			if (!derived) continue;
+
+			expect(cellText(cellUnder(ws, table, rowNumber, 'Employee').value)).toBe(
+				`${apiRow.employee_name} (${apiRow.employee_code})`
+			);
+			expect(
+				cellText(cellUnder(ws, table, rowNumber, 'Department').value)
+			).toBe(apiRow.department ?? 'Unassigned');
+			expect(
+				cellText(cellUnder(ws, table, rowNumber, 'Partial window').value)
+			).toBe(derived.chip ?? '');
+			expectFigure(
+				cellUnder(ws, table, rowNumber, 'Capacity (h)'),
+				apiRow.capacity_hours
+			);
+			expectFigure(
+				cellUnder(ws, table, rowNumber, 'Logged (h)'),
+				apiRow.logged_hours
+			);
+			// The two trailing columns: a not-employed month stays blank.
+			for (const cell of apiRow.trailing.slice(0, 2)) {
+				expectFigure(
+					cellUnder(ws, table, rowNumber, monthLabel(cell.month)),
+					cell.employed ? cell.utilization_percent : null
+				);
+			}
+			expectFigure(
+				cellUnder(ws, table, rowNumber, 'Utilization %'),
+				apiRow.utilization_percent
+			);
+			expect(cellText(cellUnder(ws, table, rowNumber, 'Flag').value)).toBe(
+				expectedFlagText(
+					apiRow.state,
+					apiRow.utilization_band,
+					apiRow.chronic_under
+				)
+			);
+			expectFigure(
+				cellUnder(ws, table, rowNumber, 'Monthly Cost (₹)'),
+				apiRow.monthly_cost
+			);
+			expectFigure(
+				cellUnder(ws, table, rowNumber, 'Utilized Cost (₹)'),
+				apiRow.fractional_cost
+			);
+			expectFigure(
+				cellUnder(ws, table, rowNumber, 'Bench Cost (₹)'),
+				apiRow.bench_cost
+			);
+			expect(cellText(cellUnder(ws, table, rowNumber, 'Note').value)).toBe(
+				apiRow.cost_status === 'no-profile' ? 'No profile' : ''
+			);
+
+			const monthly = cellUnder(ws, table, rowNumber, 'Monthly Cost (₹)').value;
+			const used = cellUnder(ws, table, rowNumber, 'Utilized Cost (₹)').value;
+			const bench = cellUnder(ws, table, rowNumber, 'Bench Cost (₹)').value;
+			if (apiRow.cost_status === 'no-profile') {
+				// Blank, never zero.
+				expect([monthly, used, bench]).toEqual([null, null, null]);
+				blankRows++;
+			} else {
+				expect(typeof monthly).toBe('number');
+				expect(typeof used).toBe('number');
+				expect(typeof bench).toBe('number');
+				expect((used as number) + (bench as number)).toBeCloseTo(
+					monthly as number,
+					2
+				);
+				pricedRows++;
+			}
+		}
+		expect(pricedRows).toBe(
+			[...model.rows.values()].filter((row) => row.costStatus === 'priced')
+				.length
+		);
+		expect(blankRows).toBe(
+			[...model.rows.values()].filter((row) => row.costStatus === 'no-profile')
+				.length
+		);
+
+		// The totals footer equals the payload's totals and foots the same way.
+		let totalsRow = 0;
+		for (
+			let rowNumber = table.headerRow + 1;
+			rowNumber <= ws.rowCount;
+			rowNumber++
+		) {
+			if (
+				cellText(ws.getRow(rowNumber).getCell(1).value).startsWith('Total (')
+			) {
+				totalsRow = rowNumber;
+				break;
+			}
+		}
+		expect(totalsRow).toBeGreaterThan(0);
+		expectFigure(
+			cellUnder(ws, table, totalsRow, 'Capacity (h)'),
+			api.totals.capacity_hours
+		);
+		expectFigure(
+			cellUnder(ws, table, totalsRow, 'Logged (h)'),
+			api.totals.logged_hours
+		);
+		expectFigure(
+			cellUnder(ws, table, totalsRow, 'Monthly Cost (₹)'),
+			api.totals.monthly_cost
+		);
+		expectFigure(
+			cellUnder(ws, table, totalsRow, 'Utilized Cost (₹)'),
+			api.totals.fractional_cost
+		);
+		expectFigure(
+			cellUnder(ws, table, totalsRow, 'Bench Cost (₹)'),
+			api.totals.bench_cost
+		);
+		const totalsMonthly = cellUnder(
+			ws,
+			table,
+			totalsRow,
+			'Monthly Cost (₹)'
+		).value;
+		const totalsUsed = cellUnder(
+			ws,
+			table,
+			totalsRow,
+			'Utilized Cost (₹)'
+		).value;
+		const totalsBench = cellUnder(ws, table, totalsRow, 'Bench Cost (₹)').value;
+		expect(typeof totalsMonthly).toBe('number');
+		expect(typeof totalsUsed).toBe('number');
+		expect(typeof totalsBench).toBe('number');
+		expect((totalsUsed as number) + (totalsBench as number)).toBeCloseTo(
+			totalsMonthly as number,
+			2
+		);
+
+		// The disclosure section: the payload's counts-by-Employee-Type wording.
+		const text = sheetText(ws);
+		const disclosure = api.disclosure;
+		expect(disclosure).not.toBeNull();
+		if (disclosure) {
+			expect(disclosure.excluded_count).toBeGreaterThan(0);
+			const noun = disclosure.excluded_count === 1 ? 'employee' : 'employees';
+			expect(text).toContain('Excluded from the report');
+			expect(text).toContain(
+				`${disclosure.excluded_count} ${noun} excluded of ${disclosure.considered_count} considered for the month, leaving ${disclosure.roster_count} on the roster.`
+			);
+			for (const bucket of disclosure.buckets) {
+				expect(text).toContain(
+					`${bucket.count} ${bucket.value === null ? 'unset' : bucket.value}`
+				);
+			}
+		}
+		if (api.totals.no_logged_count > 0) {
+			expect(text).toContain(
+				`${api.totals.no_logged_count} ${
+					api.totals.no_logged_count === 1 ? 'employee' : 'employees'
+				} with no time logged in ${api.month_label}.`
+			);
+		}
+
+		// The department summary table: one row per payload department, in
+		// payload order, carrying the rollup's figures.
+		const deptTable = findTable(ws, 'Department');
+		const sheetDepartments = new Map<string, number>();
+		for (
+			let rowNumber = deptTable.headerRow + 1;
+			rowNumber <= ws.rowCount;
+			rowNumber++
+		) {
+			const headcount = cellUnder(ws, deptTable, rowNumber, 'Headcount').value;
+			if (typeof headcount !== 'number') continue;
+			sheetDepartments.set(
+				cellText(cellUnder(ws, deptTable, rowNumber, 'Department').value),
+				rowNumber
+			);
+		}
+		expect([...sheetDepartments.keys()]).toEqual(
+			api.departments.map((summary) => summary.department ?? 'Unassigned')
+		);
+		for (const summary of api.departments) {
+			const rowNumber = sheetDepartments.get(
+				summary.department ?? 'Unassigned'
+			);
+			expect(rowNumber).toBeDefined();
+			if (rowNumber === undefined) continue;
+			expect(cellUnder(ws, deptTable, rowNumber, 'Headcount').value).toBe(
+				summary.headcount
+			);
+			expectFigure(
+				cellUnder(ws, deptTable, rowNumber, 'Utilization %'),
+				summary.capacity_weighted_utilization
+			);
+			expectFigure(
+				cellUnder(ws, deptTable, rowNumber, 'Logged (h)'),
+				summary.logged_hours
+			);
+			expectFigure(
+				cellUnder(ws, deptTable, rowNumber, 'Capacity (h)'),
+				summary.capacity_hours
+			);
+			expectFigure(
+				cellUnder(ws, deptTable, rowNumber, 'Bench Cost (₹)'),
+				summary.bench_cost
+			);
+			expect(cellUnder(ws, deptTable, rowNumber, 'No time logged').value).toBe(
+				summary.no_logged_count
+			);
+		}
+
+		observed.excel = {
+			month: MONTH,
+			headers: [...table.columns.keys()],
+			rows: sheetRows.size,
+			pricedRows,
+			blankRows,
+			disclosure: disclosure
+				? {
+						excluded: disclosure.excluded_count,
+						considered: disclosure.considered_count,
+						roster: disclosure.roster_count,
+						buckets: disclosure.buckets.map((bucket) => ({
+							value: bucket.value,
+							count: bucket.count,
+						})),
+					}
+				: null,
+			departments: api.departments.map((summary) => ({
+				department: summary.department,
+				headcount: summary.headcount,
+				utilizationPercent: summary.capacity_weighted_utilization,
+				loggedHours: summary.logged_hours,
+				capacityHours: summary.capacity_hours,
+				benchCost: summary.bench_cost,
+				noLoggedCount: summary.no_logged_count,
+			})),
+			totals: {
+				capacityHours: api.totals.capacity_hours,
+				loggedHours: api.totals.logged_hours,
+				monthlyCost: api.totals.monthly_cost,
+				fractionalCost: api.totals.fractional_cost,
+				benchCost: api.totals.bench_cost,
+			},
+		};
+	});
+
+	test('the export button enables with a month roster and disables on an empty payload', async ({
+		page,
+	}) => {
+		await openMonth(page, MONTH_LABEL);
+		const exportButton = page.getByRole('button', { name: /Export Excel/ });
+		await expect(exportButton).toBeEnabled();
+		// The button's real wiring: the click downloads the route's workbook.
+		const [download] = await Promise.all([
+			page.waitForEvent('download'),
+			exportButton.click(),
+		]);
+		expect(download.suggestedFilename()).toBe(`Utilization_${MONTH}.xlsx`);
+
+		// A month with no roster rows disables the export — the unchanged rule.
+		await page.route(/\/api\/reports\/employee-utilization\?/, (route) => {
+			const month =
+				new URL(route.request().url()).searchParams.get('month') ?? '';
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					success: true,
+					data: {
+						month,
+						month_label: monthLabel(month),
+						flag: null,
+						rows: [],
+						totals: {
+							employee_count: 0,
+							no_logged_count: 0,
+							capacity_hours: 0,
+							logged_hours: 0,
+							monthly_cost: null,
+							fractional_cost: null,
+							bench_cost: null,
+						},
+						trend: [],
+						disclosure: null,
+						departments: [],
+					},
+				}),
+			});
+		});
+		const dataRequest = page.waitForRequest(
+			/\/api\/reports\/employee-utilization\?month=\d{4}-\d{2}/
+		);
+		await page.goto('/reports/employee-utilization');
+		const requestedMonth = new URL((await dataRequest).url()).searchParams.get(
+			'month'
+		);
+		expect(requestedMonth).toMatch(/^\d{4}-\d{2}$/);
+		await expect(
+			page.getByText(
+				`No employees found for ${monthLabel(String(requestedMonth))}.`
+			)
+		).toBeVisible();
+		await expect(
+			page.getByRole('button', { name: /Export Excel/ })
+		).toBeDisabled();
+
+		observed.excelExportState = {
+			withRows: 'enabled',
+			downloadName: `Utilization_${MONTH}.xlsx`,
+			emptyPayloadMonth: requestedMonth,
+			emptyPayload: 'disabled',
 		};
 	});
 
