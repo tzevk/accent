@@ -85,6 +85,14 @@ export interface RosterEmployeeInput {
 	first_logged_date?: string | null;
 	/** Latest Logged Hours day (`user_activity_assignments.daily_entries`). */
 	last_logged_date?: string | null;
+	/** Earliest `user_screen_time.date`, when recorded. */
+	first_screen_time_date?: string | null;
+	/** Latest `user_screen_time.date`, when recorded. */
+	last_screen_time_date?: string | null;
+	/** Earliest `user_activity_logs.created_at` day, when recorded. */
+	first_activity_log_date?: string | null;
+	/** Latest `user_activity_logs.created_at` day, when recorded. */
+	last_activity_log_date?: string | null;
 }
 
 /** An employee the report covers, in stable report order. */
@@ -197,15 +205,21 @@ export interface EmploymentWindowInput {
 	last_attendance_date?: string | null;
 	first_logged_date?: string | null;
 	last_logged_date?: string | null;
+	first_screen_time_date?: string | null;
+	last_screen_time_date?: string | null;
+	first_activity_log_date?: string | null;
+	last_activity_log_date?: string | null;
 }
 
-/** Where one bound of the window came from — the fallback order, recorded. */
+/** Where one bound of the window came from, recorded. */
 export type EmploymentWindowSource =
 	| 'joining_date'
 	| 'hire_date'
 	| 'exit_date'
 	| 'attendance'
 	| 'logged_hours'
+	| 'screen_time'
+	| 'activity_logs'
 	| 'active_status'
 	| 'unresolved';
 
@@ -245,19 +259,57 @@ function monthBounds(month: string): { start: string; end: string } | null {
 	};
 }
 
+/** One evidence source's earliest or latest recorded day. */
+interface EvidenceDay {
+	date: string;
+	source: EmploymentWindowSource;
+}
+
 /**
- * Resolve an employee's employment window. The fallback order is the one
- * recorded for the ADR (#301):
+ * The earliest or latest recorded day across the evidence candidates. Ties
+ * resolve in candidate order — the sources are listed in precedence order
+ * (attendance, Logged Hours, screen time, activity logs), so the first source
+ * that holds the extremum owns it.
+ */
+function evidenceExtremum(
+	candidates: ReadonlyArray<{
+		date: string | null;
+		source: EmploymentWindowSource;
+	}>,
+	edge: 'earliest' | 'latest'
+): EvidenceDay | null {
+	let best: EvidenceDay | null = null;
+	for (const candidate of candidates) {
+		if (candidate.date === null) continue;
+		if (
+			best === null ||
+			(edge === 'earliest'
+				? candidate.date < best.date
+				: candidate.date > best.date)
+		) {
+			best = { date: candidate.date, source: candidate.source };
+		}
+	}
+	return best;
+}
+
+/**
+ * Resolve an employee's employment window:
  *
- * - start: `joining_date` → `hire_date` → earliest recorded evidence (first
- *   attendance, else first Logged Hours day) → open when the status is
- *   active, unresolved otherwise.
- * - end: `exit_date` → latest recorded evidence (last attendance, else last
- *   Logged Hours day) → open when the status is active, unresolved otherwise.
+ * - start: `joining_date` → `hire_date` → the earliest recorded evidence day
+ *   (the minimum across attendance, Logged Hours, screen time and activity
+ *   logs) → open when the status is active, unresolved otherwise.
+ * - end: `exit_date` → the latest recorded evidence day (the maximum across
+ *   the same four sources) → open when the status is active, unresolved
+ *   otherwise.
  *
- * Evidence is preferred in source order (attendance before Logged Hours), not
- * by earliest date: attendance is the attendance/payroll signal, logged hours
- * the project signal.
+ * The bounds are the extrema across **all** evidence sources, never a
+ * source-priority chain: a newer Logged Hours, screen-time or activity-log
+ * day moves the bound even when attendance is older, so an employee who
+ * worked in a month is not excluded by an older attendance record (and the
+ * app's own dated activity counts as evidence). Equal days keep source order:
+ * attendance, Logged Hours, screen time, activity logs. `joining_date` /
+ * `hire_date` (start) and `exit_date` (end) still win over any evidence.
  */
 export function resolveEmploymentWindow(
 	input: EmploymentWindowInput
@@ -266,11 +318,26 @@ export function resolveEmploymentWindow(
 
 	const joining = dayOf(input.joining_date);
 	const hire = dayOf(input.hire_date);
-	const firstAttendance = dayOf(input.first_attendance_date);
-	const firstLogged = dayOf(input.first_logged_date);
 	const exit = dayOf(input.exit_date);
-	const lastAttendance = dayOf(input.last_attendance_date);
-	const lastLogged = dayOf(input.last_logged_date);
+
+	const earliest = evidenceExtremum(
+		[
+			{ date: dayOf(input.first_attendance_date), source: 'attendance' },
+			{ date: dayOf(input.first_logged_date), source: 'logged_hours' },
+			{ date: dayOf(input.first_screen_time_date), source: 'screen_time' },
+			{ date: dayOf(input.first_activity_log_date), source: 'activity_logs' },
+		],
+		'earliest'
+	);
+	const latest = evidenceExtremum(
+		[
+			{ date: dayOf(input.last_attendance_date), source: 'attendance' },
+			{ date: dayOf(input.last_logged_date), source: 'logged_hours' },
+			{ date: dayOf(input.last_screen_time_date), source: 'screen_time' },
+			{ date: dayOf(input.last_activity_log_date), source: 'activity_logs' },
+		],
+		'latest'
+	);
 
 	let start: string | null = null;
 	let startSource: EmploymentWindowSource = 'unresolved';
@@ -280,12 +347,9 @@ export function resolveEmploymentWindow(
 	} else if (hire) {
 		start = hire;
 		startSource = 'hire_date';
-	} else if (firstAttendance) {
-		start = firstAttendance;
-		startSource = 'attendance';
-	} else if (firstLogged) {
-		start = firstLogged;
-		startSource = 'logged_hours';
+	} else if (earliest) {
+		start = earliest.date;
+		startSource = earliest.source;
 	} else if (isActive) {
 		start = null;
 		startSource = 'active_status';
@@ -296,12 +360,9 @@ export function resolveEmploymentWindow(
 	if (exit) {
 		end = exit;
 		endSource = 'exit_date';
-	} else if (lastAttendance) {
-		end = lastAttendance;
-		endSource = 'attendance';
-	} else if (lastLogged) {
-		end = lastLogged;
-		endSource = 'logged_hours';
+	} else if (latest) {
+		end = latest.date;
+		endSource = latest.source;
 	} else if (isActive) {
 		end = null;
 		endSource = 'active_status';

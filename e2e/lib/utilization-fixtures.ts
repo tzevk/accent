@@ -9,10 +9,11 @@ import { E2E_MONTH } from './fixtures';
  * recorded evidence, so this module seeds one employee per branch of the
  * documented rule:
  *
- *   start = joining_date → hire_date → first attendance → first Logged Hours
- *           → open if active, unresolved otherwise
- *   end   = exit_date → last attendance → last Logged Hours
- *           → open if active, unresolved otherwise
+ *   start = joining_date → hire_date → earliest evidence across attendance,
+ *           Logged Hours, screen time and activity logs (min), else open if
+ *           active, unresolved otherwise
+ *   end   = exit_date → latest evidence across the same four sources (max),
+ *           else open if active, unresolved otherwise
  *
  * Members seeded (all `E2E-UTIL-*`):
  *   0001 payrollWithHours        active, joins 2019-01-01, logs + attendance
@@ -31,6 +32,12 @@ import { E2E_MONTH } from './fixtures';
  *   0014 midMonthJoiner          active, joins 2019-01-15 — partial month
  *   0015 midMonthLeaver          terminated, exits 2019-01-18 — partial month,
  *                                with a leave day and an 'H' day inside it
+ *   0024 olderAttendanceNewerLog attendance 2019-01-02, Logged Hours 2019-03-04
+ *                                — the newer month must still hold him
+ *   0025 activityLogOnly         only a `user_activity_logs` day (2019-01-10)
+ *   0026 screenTimeOnly          only a `user_screen_time` day (2019-01-17)
+ *   0027 leaverExitAfterEvidence exit 2019-01-18 caps activity on 2019-03-07
+ *   0028 leaverNoExitEvidence    no dates; closes on the latest evidence day
  *
  * The viewed month is the harness's `E2E_MONTH` (2019-01), so the base
  * fixtures' employees and holiday participate in the same calendar, and the
@@ -43,11 +50,15 @@ import { E2E_MONTH } from './fixtures';
  * page labels them; the payload keeps the raw value.
  *
  * Namespace (everything this module owns; nothing else is touched):
- *   users                      `e2e_util_user`
+ *   users                      `e2e_util_user` plus one linked
+ *                              `e2e_util_user_<n>` account per member that
+ *                              carries screen-time/activity-log evidence
  *   employees                  `E2E-UTIL-*`
  *   employee_attendance        employee_id of those employees
  *   employee_salary_profile    employee_id of those employees
  *   user_activity_assignments  `e2e-util-*`
+ *   user_activity_logs         user_id of the accounts above
+ *   user_screen_time           user_id of the accounts above
  *   holiday_master             `E2E Utilization Optional Holiday`
  *
  * Intended call order:
@@ -189,7 +200,13 @@ export type UtilizationPlan =
 	| 'healthyHistory'
 	| 'trailingGap'
 	/** Breakdown case (#299): projects + a project-less assignment in the month. */
-	| 'projectSplit';
+	| 'projectSplit'
+	/** Window-evidence cases: the min/max rule across the four dated sources. */
+	| 'olderAttendanceNewerLog'
+	| 'activityLogOnly'
+	| 'screenTimeOnly'
+	| 'leaverExitAfterEvidence'
+	| 'leaverNoExitEvidence';
 
 export type UtilizationEmployeeType =
 	| 'Payroll'
@@ -225,6 +242,18 @@ export interface UtilizationMember {
 	attendanceStatusByDay?: Record<number, string>;
 	/** Viewed-month day numbers carrying Logged Hours. */
 	loggedDays: number[];
+	/**
+	 * Dated `user_activity_logs` evidence (`YYYY-MM-DD` days, any month) — the
+	 * app's own activity feed. Seeds this member a linked `users` account
+	 * (`users.employee_id`) and one log row per day.
+	 */
+	activityLogDates?: string[];
+	/**
+	 * Dated `user_screen_time` evidence (`YYYY-MM-DD` days, any month) — seeds
+	 * this member a linked `users` account (`users.employee_id`) and one
+	 * screen-time row per day.
+	 */
+	screenTimeDates?: string[];
 	/** Other months (`YYYY-MM`) with their logged day numbers — the rate must
 	 * move with each month's Basis Hours. */
 	loggedMonths?: { month: string; days: number[] }[];
@@ -620,6 +649,77 @@ const ROSTER_DEF: ReadonlyArray<
 			},
 		],
 	},
+	{
+		// The EMP-002 class: attendance earlier in the viewed month, a Logged
+		// Hours day in a later month. The window is 2019-01-02…2019-03-04, so
+		// March still holds him — a source-priority chain would close on the
+		// attendance day and drop him.
+		n: '0024',
+		type: 'Payroll',
+		status: 'active',
+		joining: null,
+		hire: null,
+		exit: null,
+		plan: 'olderAttendanceNewerLog',
+		attendanceDays: [2],
+		loggedDays: [],
+		loggedMonths: [{ month: '2019-03', days: [4] }],
+	},
+	{
+		// Activity-log-only: the only evidence anywhere is a
+		// `user_activity_logs` day in the viewed month, so the window is that
+		// one day — the row exists and pro-rates to it.
+		n: '0025',
+		type: 'Payroll',
+		status: 'active',
+		joining: null,
+		hire: null,
+		exit: null,
+		plan: 'activityLogOnly',
+		attendanceDays: [],
+		loggedDays: [],
+		activityLogDates: ['2019-01-10'],
+	},
+	{
+		// Screen-time-only: same rule off `user_screen_time.date`.
+		n: '0026',
+		type: 'Payroll',
+		status: 'active',
+		joining: null,
+		hire: null,
+		exit: null,
+		plan: 'screenTimeOnly',
+		attendanceDays: [],
+		loggedDays: [],
+		screenTimeDates: ['2019-01-17'],
+	},
+	{
+		// A leaver with an exit_date: the activity log after the exit day must
+		// not move the window end — exit_date caps all evidence.
+		n: '0027',
+		type: 'Payroll',
+		status: 'terminated',
+		joining: '2018-12-01',
+		hire: null,
+		exit: '2019-01-18',
+		plan: 'leaverExitAfterEvidence',
+		attendanceDays: [],
+		loggedDays: [],
+		activityLogDates: ['2019-03-07'],
+	},
+	{
+		// A leaver without an exit_date: the window closes on the latest
+		// evidence day — the Logged Hours day, newer than the attendance day.
+		n: '0028',
+		type: 'Payroll',
+		status: 'terminated',
+		joining: null,
+		hire: null,
+		exit: null,
+		plan: 'leaverNoExitEvidence',
+		attendanceDays: [2],
+		loggedDays: [4],
+	},
 ];
 
 export const UTILIZATION_ROSTER: readonly UtilizationMember[] = ROSTER_DEF.map(
@@ -727,7 +827,30 @@ export async function cleanupUtilizationFixtures(): Promise<number> {
 	await exec(`DELETE FROM projects WHERE project_code LIKE ?`, [
 		`${UTILIZATION_PROJECT_CODE_PREFIX}%`,
 	]);
-	await exec(`DELETE FROM users WHERE username = ?`, [UTILIZATION_USERNAME]);
+	// The app-activity rows are keyed by user; the accounts cascade from the
+	// delete below, but the explicit purge keeps the order obvious (and works
+	// on schemas without the cascade). `LEFT(...)=` rather than `LIKE` so the
+	// underscore in the username is not a wildcard.
+	const ownedUsers = await rows<{ id: number }>(
+		`SELECT id FROM users WHERE LEFT(username, ?) = ?`,
+		[UTILIZATION_USERNAME.length, UTILIZATION_USERNAME]
+	);
+	const ownedUserIds = ownedUsers.map((user) => user.id);
+	if (ownedUserIds.length) {
+		const userPlaceholders = ownedUserIds.map(() => '?').join(', ');
+		await exec(
+			`DELETE FROM user_activity_logs WHERE user_id IN (${userPlaceholders})`,
+			ownedUserIds
+		);
+		await exec(
+			`DELETE FROM user_screen_time WHERE user_id IN (${userPlaceholders})`,
+			ownedUserIds
+		);
+		await exec(
+			`DELETE FROM users WHERE id IN (${userPlaceholders})`,
+			ownedUserIds
+		);
+	}
 	await exec(`DELETE FROM employees WHERE employee_id LIKE ?`, [
 		`${UTILIZATION_EMPLOYEE_PREFIX}%`,
 	]);
@@ -742,11 +865,17 @@ export interface UtilizationSeeded {
 	month: string;
 	/** `users.id` of the seeded `e2e_util_user`. */
 	userId: number;
+	/** Linked accounts seeded for the app-activity members. */
+	linkedUsers: number;
 	employees: number;
 	attendance: number;
 	assignments: number;
 	profiles: number;
 	loggedDays: number;
+	/** `user_activity_logs` rows seeded. */
+	activityLogs: number;
+	/** `user_screen_time` rows seeded. */
+	screenTimeDays: number;
 	/** Active optional holidays seeded in the viewed month. */
 	holidays: number;
 	/** Namespaced `projects` rows seeded for the #299 breakdown. */
@@ -760,11 +889,14 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 	const summary: UtilizationSeeded = {
 		month: UTILIZATION_MONTH,
 		userId: 0,
+		linkedUsers: 0,
 		employees: 0,
 		attendance: 0,
 		assignments: 0,
 		profiles: 0,
 		loggedDays: 0,
+		activityLogs: 0,
+		screenTimeDays: 0,
 		holidays: 0,
 		projects: 0,
 	};
@@ -858,6 +990,55 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 				])
 			);
 			summary.attendance += member.attendanceDays.length;
+		}
+
+		// The app's own dated activity is keyed by user, so a member carrying
+		// screen time or activity logs gets its own linked account first —
+		// `users.employee_id` is the join the report maps through.
+		let memberUserId = summary.userId;
+		if (member.activityLogDates?.length || member.screenTimeDates?.length) {
+			const account = await exec(
+				`INSERT INTO users
+           (username, password_hash, email, full_name, status, is_active,
+            is_super_admin, account_type, employee_id, isDelete)
+         VALUES (?, '', ?, 'E2E Utilization Fixture', 'active', 1, 0, 'employee', ?, 0)`,
+				[
+					`${UTILIZATION_USERNAME}_${member.n}`,
+					`${UTILIZATION_USERNAME}_${member.n}@accent.test`,
+					employeeId,
+				]
+			);
+			memberUserId = account.insertId;
+			summary.linkedUsers++;
+		}
+
+		if (member.activityLogDates?.length) {
+			await insertRows(
+				'user_activity_logs',
+				['user_id', 'action_type', 'description', 'created_at'],
+				member.activityLogDates.map((date) => [
+					memberUserId,
+					'view_page',
+					'E2E utilization fixture activity',
+					`${date} 10:00:00`,
+				])
+			);
+			summary.activityLogs += member.activityLogDates.length;
+		}
+
+		if (member.screenTimeDates?.length) {
+			await insertRows(
+				'user_screen_time',
+				[
+					'user_id',
+					'date',
+					'total_screen_time_minutes',
+					'active_time_minutes',
+					'session_count',
+				],
+				member.screenTimeDates.map((date) => [memberUserId, date, 60, 60, 1])
+			);
+			summary.screenTimeDays += member.screenTimeDates.length;
 		}
 
 		// One assignment per logged month: the viewed month seeds `member.n`,

@@ -31,6 +31,10 @@ import {
 	type BreakdownAssignment,
 } from '@/app/reports/employee-utilization/project-breakdown';
 import { sumLoggedHoursForMonth as sumLoggedHours } from '@/lib/logged-hours';
+import {
+	intersectsEmploymentWindow,
+	resolveEmploymentWindow,
+} from '@/lib/payroll-roster';
 
 // May 2026: 31 days. Sundays 3/10/17/24/31, Saturdays 2/9/16/23/30.
 // Scheduled weekly offs: 5 Sundays + 2nd Sat (9th) + 4th Sat (23rd) = 7.
@@ -1453,5 +1457,141 @@ describe('project breakdown', () => {
 				project_code: null,
 			})
 		).toBe('Project #4');
+	});
+});
+
+describe('resolveEmploymentWindow evidence extrema', () => {
+	it('closes an active window on the latest evidence, not by source order', () => {
+		// The EMP-002 class: attendance 2026-08-26 but a newer Logged Hours day
+		// 2026-09-01 — September must stay inside the window.
+		const window = resolveEmploymentWindow({
+			status: 'active',
+			joining_date: '2023-04-10',
+			first_attendance_date: '2026-08-26',
+			last_attendance_date: '2026-08-26',
+			first_logged_date: '2026-09-01',
+			last_logged_date: '2026-09-01',
+		});
+		expect(window).toEqual({
+			start: '2023-04-10',
+			end: '2026-09-01',
+			unresolved: false,
+			start_source: 'joining_date',
+			end_source: 'logged_hours',
+		});
+		expect(intersectsEmploymentWindow(window, '2026-09')).toBe(true);
+	});
+
+	it('opens the start on the earliest evidence across sources', () => {
+		const attendanceFirst = resolveEmploymentWindow({
+			status: 'active',
+			first_attendance_date: '2026-03-02',
+			last_attendance_date: '2026-03-02',
+			first_logged_date: '2026-03-04',
+			last_logged_date: '2026-03-04',
+		});
+		expect(attendanceFirst.start).toBe('2026-03-02');
+		expect(attendanceFirst.start_source).toBe('attendance');
+
+		const loggedFirst = resolveEmploymentWindow({
+			status: 'active',
+			first_attendance_date: '2026-03-07',
+			last_attendance_date: '2026-03-07',
+			first_logged_date: '2026-03-04',
+			last_logged_date: '2026-03-04',
+		});
+		expect(loggedFirst.start).toBe('2026-03-04');
+		expect(loggedFirst.start_source).toBe('logged_hours');
+	});
+
+	it('counts screen time and activity logs as evidence on both bounds', () => {
+		const window = resolveEmploymentWindow({
+			status: 'active',
+			first_screen_time_date: '2026-09-20',
+			last_screen_time_date: '2026-09-24',
+			first_activity_log_date: '2026-09-18',
+			last_activity_log_date: '2026-09-30',
+		});
+		expect(window.start).toBe('2026-09-18');
+		expect(window.start_source).toBe('activity_logs');
+		expect(window.end).toBe('2026-09-30');
+		expect(window.end_source).toBe('activity_logs');
+
+		// A single screen-time day is the whole window: the employee is placed
+		// in that month and in no other.
+		const screenOnly = resolveEmploymentWindow({
+			status: 'active',
+			first_screen_time_date: '2026-10-05',
+			last_screen_time_date: '2026-10-05',
+		});
+		expect(screenOnly.start).toBe('2026-10-05');
+		expect(screenOnly.start_source).toBe('screen_time');
+		expect(screenOnly.end).toBe('2026-10-05');
+		expect(screenOnly.end_source).toBe('screen_time');
+		expect(intersectsEmploymentWindow(screenOnly, '2026-10')).toBe(true);
+		expect(intersectsEmploymentWindow(screenOnly, '2026-11')).toBe(false);
+	});
+
+	it('keeps joining/hire/exit above any newer evidence', () => {
+		const joined = resolveEmploymentWindow({
+			status: 'active',
+			joining_date: '2023-04-10',
+			first_activity_log_date: '2020-01-02',
+			last_activity_log_date: '2026-10-05',
+		});
+		expect(joined.start).toBe('2023-04-10');
+		expect(joined.start_source).toBe('joining_date');
+		expect(joined.end).toBe('2026-10-05');
+		expect(joined.end_source).toBe('activity_logs');
+
+		const hired = resolveEmploymentWindow({
+			status: 'active',
+			hire_date: '2026-05-01',
+			first_attendance_date: '2026-04-01',
+			last_attendance_date: '2026-04-01',
+		});
+		expect(hired.start).toBe('2026-05-01');
+		expect(hired.start_source).toBe('hire_date');
+
+		// A leaver's exit_date caps newer evidence: activity after they left
+		// does not reopen the window.
+		const leaver = resolveEmploymentWindow({
+			status: 'terminated',
+			exit_date: '2019-01-18',
+			last_activity_log_date: '2019-03-07',
+		});
+		expect(leaver.end).toBe('2019-01-18');
+		expect(leaver.end_source).toBe('exit_date');
+	});
+
+	it('keeps open/unresolved semantics when no evidence exists', () => {
+		const active = resolveEmploymentWindow({ status: 'active' });
+		expect(active).toEqual({
+			start: null,
+			end: null,
+			unresolved: false,
+			start_source: 'active_status',
+			end_source: 'active_status',
+		});
+
+		const leaver = resolveEmploymentWindow({ status: 'terminated' });
+		expect(leaver).toEqual({
+			start: null,
+			end: null,
+			unresolved: true,
+			start_source: 'unresolved',
+			end_source: 'unresolved',
+		});
+	});
+
+	it('prefers attendance on an equal evidence day (source-order tie-break)', () => {
+		const window = resolveEmploymentWindow({
+			status: 'active',
+			first_attendance_date: '2026-09-01',
+			first_logged_date: '2026-09-01',
+			last_activity_log_date: '2026-09-30',
+		});
+		expect(window.start).toBe('2026-09-01');
+		expect(window.start_source).toBe('attendance');
 	});
 });
