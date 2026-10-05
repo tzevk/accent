@@ -45,7 +45,7 @@ export const safeNum = (v) => {
 /**
  * The six money figures of one Payroll Slip, derived in exactly one place.
  *
- * A Payroll Slip is a snapshot (CONTEXT.md): the Basic, DA and the three totals
+ * A Payroll Slip is a snapshot (GLOSSARY.md): the Basic, DA and the three totals
  * below are what payroll computed and paid for that month, so the slip's own
  * columns win. A reader that re-prices them from today's Salary Profile is how
  * one slip reports two amounts at once — and how the printed slip stops adding

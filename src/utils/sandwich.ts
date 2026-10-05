@@ -2,7 +2,7 @@
  * Sandwich detector — pure date-key scan for bracketed Weekly Off / Holiday days.
  *
  * A Weekly Off (`WO`) or Holiday (`H`) run bracketed by leave on both sides
- * inside one continuous absence is a Sandwich (see ADR-0005, CONTEXT glossary).
+ * inside one continuous absence is a Sandwich (see ADR-0005, GLOSSARY.md).
  * Canonical: Sat leave + Sun WO + Mon leave → Sun deducted. Single-sided
  * adjacency never counts; Present / Absent / Half Day / OT / gaps break the run.
  *

@@ -1,6 +1,6 @@
 # Engineering Challenges — Accent CRM
 
-> Captured 2026-09-09. Load-bearing work only — each item fixes a live weakness and teaches one hard skill. Sources: `docs/SECURITY_AUDIT.md`, `proxy.ts`, `src/utils/database.js`, `CONTEXT.md`, `docs/todo/`.
+> Captured 2026-09-09. Load-bearing work only — each item fixes a live weakness and teaches one hard skill. Sources: `docs/SECURITY_AUDIT.md`, `proxy.ts`, `src/utils/database.js`, `GLOSSARY.md`, `docs/todo/`.
 >
 > **2026-09-28: security scope moved.** Items 1, 2, 3 and 6 are covered and superseded by `docs/todo/SECURITY_REMEDIATION_PLAN.md` (workstreams F, B/D, C, A/E respectively) with decisions in ADR-0011…ADR-0014; their acceptance criteria are folded into that plan. Items 4 (payroll correctness) and 5 (connection pool) remain here.
 
@@ -27,7 +27,7 @@
 
 ## 4. Payroll correctness — `src/utils/payroll-calculator.js`, `src/lib/money.ts`
 
-- Problem: dual truth per `CONTEXT.md`: `employee_salary_profile` vs legacy `salary_structures` (+ components), `payroll_schedules` vs `da_schedule`. Money must use `R` / `add` / `sub` / `mul` / `div` (Decimal 20, `ROUND_HALF_UP`), never `parseFloat`. `SELECT *` ×87 risks re-leaking `bank_account_no` / `pan` / `aadhar`.
+- Problem: dual truth per `GLOSSARY.md`: `employee_salary_profile` vs legacy `salary_structures` (+ components), `payroll_schedules` vs `da_schedule`. Money must use `R` / `add` / `sub` / `mul` / `div` (Decimal 20, `ROUND_HALF_UP`), never `parseFloat`. `SELECT *` ×87 risks re-leaking `bank_account_no` / `pan` / `aadhar`.
 - Work: unify one calc path via `computePayroll` / `generatePayrollSlip`, `withTransaction()` for slip insert, explicit column lists, invariant `total_earnings - total_deductions === net_pay`, idempotent `(employee_id, month)` with unique generated column `IF(isDelete = 0, ...)`.
 - Skills: financial domain modeling, fixed-point math, idempotency under retry.
 - Verify: `money.test.ts`-style boundary tests + slip regression; `EXPLAIN` on covering indexes via Knex migration.

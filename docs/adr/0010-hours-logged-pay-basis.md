@@ -18,7 +18,7 @@ We decided the month's Gross is **Hourly Rate × Logged Hours**:
   `holiday_master` dates excluded, `getWorkingDaysForMonth`) × the profile's
   `std_hours_per_day` (default 8). It is stored on the slip.
 - **Logged Hours** = the month's `daily_entries.hours` summed per employee
-  (overtime counts, uncapped — CONTEXT.md: Logged Hours). Assignment rows
+  (overtime counts, uncapped — GLOSSARY.md: Logged Hours). Assignment rows
   resolve by `employee_id`, else the linked user's `employee_id`, else an
   email/username match, the resolution the company-wide cost report
   established. A month with no logged rows pays 0.

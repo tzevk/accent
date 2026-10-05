@@ -81,4 +81,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Issue tracker: GitHub issues via the `gh` CLI → `docs/agents/issue-tracker.md`.
 - Triage labels: five canonical roles mapped 1:1 → `docs/agents/triage-labels.md`.
-- Domain docs: single-context (`CONTEXT.md` + `docs/adr/` at root) → `docs/agents/domain.md`.
+- Domain docs: single-context (`GLOSSARY.md` + `docs/adr/` at root) → `docs/agents/domain.md`.

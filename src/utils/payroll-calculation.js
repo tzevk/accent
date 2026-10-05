@@ -328,7 +328,7 @@ export function calculatePayroll(
 	// hourly rate, and the month's earnings are the hours logged in Project
 	// Activity Assignments at that rate. Without a logged-hours figure — the
 	// Salary Profile preview has no timesheet — the full month is weighted.
-	// See CONTEXT.md (CTC, Logged Hours) and docs/adr/0010.
+	// See GLOSSARY.md (CTC, Logged Hours) and docs/adr/0010.
 	const ctcUsed = decimal(
 		firstPositive(profile, ['employer_cost']) ||
 			firstPositive(profile, ['gross_salary', 'gross']) ||

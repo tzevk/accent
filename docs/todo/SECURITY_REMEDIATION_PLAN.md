@@ -16,7 +16,7 @@
 
 > Created 2026-09-28. Inputs: `docs/SECURITY_AUDIT.md` (SEC-01…SEC-25, re-verified against HEAD `ff7440a`) and the piolium deep audit (`piolium/final-audit-report.md`, 2026-09-02, commit `f00d6ad`): **C1** forged-session master-data access, **C2** active-users cookie forgery (already fixed in code — `active-users/route.js` now uses `getCurrentUser` + `r.role_name`), **H1** regex-sanitizer stored XSS.
 >
-> Scope: every open item from both audits, the same-class sweeps they imply, the unguarded-handler inventory, the RBAC defects that surfaced during mapping, and the two concurrency defects that touch money. Decisions live in ADR-0011…ADR-0014; `CONTEXT.md` gains Session / Public endpoint vocabulary. **No code changes in this document** — it is the plan the implementation and the ticket split follow.
+> Scope: every open item from both audits, the same-class sweeps they imply, the unguarded-handler inventory, the RBAC defects that surfaced during mapping, and the two concurrency defects that touch money. Decisions live in ADR-0011…ADR-0014; `GLOSSARY.md` gains Session / Public endpoint vocabulary. **No code changes in this document** — it is the plan the implementation and the ticket split follow.
 >
 > Standing assumptions (confirmed in review): HTML print documents stay inline (escaping, not `Content-Disposition: attachment`); messages keep the rich-text pipeline even though today's composer is a plain `textarea`; Vercel's ephemeral filesystem for `private/` is a known product risk and **out of scope** (risk register).
 
