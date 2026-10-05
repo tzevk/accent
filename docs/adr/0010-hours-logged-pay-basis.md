@@ -47,8 +47,10 @@ previous glossary rule; hourly/daily/custom profiles' direct
 `hourly_rate`/`daily_rate` no longer price payroll; a month whose timesheet was
 not maintained now pays 0, which Generate shows before Finalize locks it; the
 utilization report's Bench Cost keeps its own 26 × 8 CTC rate — the two rates
-diverge by month and are a follow-up unification, not a hidden constant; the
-Payroll Slip document, both PDFs and the run dashboard print CTC / Month Hours /
-Hours Logged / Rate; the Excel salary sheet reports the slip's own figures.
+diverge by month and are a follow-up unification, not a hidden constant (note,
+2026-10-05: ADR-0003's utilization-v2 amendment closes this — the utilization
+report now prices at CTC ÷ Basis Hours); the Payroll Slip document, both PDFs
+and the run dashboard print CTC / Month Hours / Hours Logged / Rate; the Excel
+salary sheet reports the slip's own figures.
 
 Operator-facing walkthrough of this decision: `docs/app/payroll/operator-guide.md`.

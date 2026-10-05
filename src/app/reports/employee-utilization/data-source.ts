@@ -33,7 +33,7 @@
  * Roster: each month is scoped to the shared payroll roster
  * (`@/lib/payroll-roster`): live (isDelete = 0), Employee Type = Payroll, and
  * the employment window (joining/exit dates, with recorded attendance and
- * Logged Hours as the fallback evidence) must cover the month. The payload
+ * Logged Hours as the fallback evidence) must intersect the month. The payload
  * carries the selector's exclusion disclosure, and every row carries its
  * resolved window.
  *
@@ -50,8 +50,9 @@
  * the percent nor the band nor the sort position (the row keeps its Under
  * band and its band-then-bench slot, so the most expensive idle rows stay
  * visible), and it is independent of `cost_status`: a no-log row with no
- * covering profile keeps its blank costs. Totals count such rows
- * (`no_logged_count`) over the same flag-filtered scope as `employee_count`.
+ * covering profile keeps its blank costs. The totals' `no_logged_count` is
+ * the viewed month's count (pre-band-filter, the same set the department
+ * rollup counts); the other totals narrow with the grid.
  *
  * Holidays: the caller injects active NON-optional holidays only. An optional
  * holiday is a full working day for Capacity — matching the attendance and
@@ -101,6 +102,7 @@ import {
 	type RosterEmployeeInput,
 } from '@/lib/payroll-roster';
 import { query } from '@/utils/database';
+import { dbNum, dbStr, type DbRow } from './db-values';
 
 // ─── Constants ────────────────────────────────────────────────────────
 
@@ -243,7 +245,10 @@ export interface UtilizationTotals {
 	employee_count: number;
 	priced_count: number;
 	unpriced_count: number;
-	/** Rows with zero Logged Hours for the month — same scope as the counts. */
+	/**
+	 * The viewed month's rows with zero Logged Hours — month-wide by design
+	 * (pre-band-filter, like the department rollup), unlike the counts above.
+	 */
 	no_logged_count: number;
 	capacity_hours: number;
 	logged_hours: number;
@@ -644,9 +649,18 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 	};
 }
 
-/** Team totals; cost sums cover priced rows only, footing preserved. */
+/**
+ * Team totals; cost sums cover priced rows only, footing preserved.
+ *
+ * `rows` are the totalled grid (the payload's band-filtered rows when a flag
+ * is set). `monthRows` is the viewed month's unfiltered roster and only
+ * feeds `no_logged_count`: that count describes the month, like the
+ * department rollup, so the summary line can never disagree with the rollup.
+ * It defaults to `rows` for the unfiltered call.
+ */
 export function buildUtilizationTotals(
-	rows: UtilizationRow[]
+	rows: UtilizationRow[],
+	monthRows: UtilizationRow[] = rows
 ): UtilizationTotals {
 	let capacity = R(0);
 	let logged = R(0);
@@ -654,18 +668,21 @@ export function buildUtilizationTotals(
 	let fractional = R(0);
 	let bench = R(0);
 	let priced = 0;
-	let noLogged = 0;
 
 	for (const row of rows) {
 		capacity = add(capacity, row.capacity_hours);
 		logged = add(logged, row.logged_hours);
-		if (row.state === 'no_time_logged') noLogged++;
 		if (row.cost_status === 'priced') {
 			priced++;
 			monthly = add(monthly, row.monthly_cost ?? 0);
 			fractional = add(fractional, row.fractional_cost ?? 0);
 			bench = add(bench, row.bench_cost ?? 0);
 		}
+	}
+
+	let noLogged = 0;
+	for (const row of monthRows) {
+		if (row.state === 'no_time_logged') noLogged++;
 	}
 
 	const capacityNum = round2(toNumber(capacity));
@@ -886,25 +903,6 @@ export function sortUtilizationRows(rows: UtilizationRow[]): UtilizationRow[] {
 	});
 }
 
-type DbRow = Record<string, unknown>;
-
-function dbStr(row: DbRow, key: string, fallback = ''): string {
-	const v = row[key];
-	if (typeof v === 'string') return v;
-	if (typeof v === 'number' || typeof v === 'bigint') return String(v);
-	return fallback;
-}
-
-function dbNum(row: DbRow, key: string, fallback = 0): number {
-	const v = row[key];
-	if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
-	if (typeof v === 'string') {
-		const parsed = Number(v);
-		return Number.isFinite(parsed) ? parsed : fallback;
-	}
-	return fallback;
-}
-
 function currentMonth(): string {
 	const now = new Date();
 	return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -981,10 +979,12 @@ interface UtilizationEmployee {
 /**
  * The live employee directory (`isDelete = 0`) — never pre-filtered by type or
  * status: the shared roster selector owns the rule and reports what it drops.
- * The employment-window fallbacks need recorded evidence, so the loader also
- * asks for each employee's first/last attendance day in one grouped query; the
- * Logged Hours bounds are filled from the assignment payloads the month fetch
- * already reads.
+ * The employment-window fallbacks need recorded evidence, so the loader asks
+ * for first/last attendance days, in one grouped query, for just the employees
+ * whose start bound lacks `joining_date`/`hire_date` or whose end bound lacks
+ * `exit_date` — the only ones `resolveEmploymentWindow` reads attendance for.
+ * The Logged Hours bounds are filled from the assignment payloads the month
+ * fetch already reads.
  */
 async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 	const [rows] = (await query(
@@ -999,28 +999,42 @@ async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 		 ORDER BY first_name, last_name`
 	)) as [DbRow[], unknown];
 
+	const evidenceIds: number[] = [];
+	for (const r of rows) {
+		const id = dbNum(r, 'id');
+		if (!id) continue;
+		const hasStart = Boolean(dbStr(r, 'joining_date') || dbStr(r, 'hire_date'));
+		const hasEnd = Boolean(dbStr(r, 'exit_date'));
+		if (!hasStart || !hasEnd) evidenceIds.push(id);
+	}
+
 	const attendanceBounds = new Map<
 		number,
 		{ first: string | null; last: string | null }
 	>();
-	try {
-		const [boundRows] = (await query(
-			`SELECT employee_id,
-			        DATE_FORMAT(MIN(attendance_date), '%Y-%m-%d') AS first_date,
-			        DATE_FORMAT(MAX(attendance_date), '%Y-%m-%d') AS last_date
-			 FROM employee_attendance
-			 GROUP BY employee_id`
-		)) as [DbRow[], unknown];
-		for (const r of boundRows) {
-			const empId = dbNum(r, 'employee_id');
-			if (!empId) continue;
-			attendanceBounds.set(empId, {
-				first: dbStr(r, 'first_date') || null,
-				last: dbStr(r, 'last_date') || null,
-			});
+	if (evidenceIds.length > 0) {
+		try {
+			const placeholders = evidenceIds.map(() => '?').join(', ');
+			const [boundRows] = (await query(
+				`SELECT employee_id,
+				        DATE_FORMAT(MIN(attendance_date), '%Y-%m-%d') AS first_date,
+				        DATE_FORMAT(MAX(attendance_date), '%Y-%m-%d') AS last_date
+				 FROM employee_attendance
+				 WHERE employee_id IN (${placeholders})
+				 GROUP BY employee_id`,
+				evidenceIds
+			)) as [DbRow[], unknown];
+			for (const r of boundRows) {
+				const empId = dbNum(r, 'employee_id');
+				if (!empId) continue;
+				attendanceBounds.set(empId, {
+					first: dbStr(r, 'first_date') || null,
+					last: dbStr(r, 'last_date') || null,
+				});
+			}
+		} catch {
+			/* employee_attendance may not exist */
 		}
-	} catch {
-		/* employee_attendance may not exist */
 	}
 
 	const employees: UtilizationEmployee[] = [];
@@ -1421,7 +1435,10 @@ export async function fetchUtilizationData(
 		month_label: monthLabel(month),
 		flag,
 		rows: filtered,
-		totals: buildUtilizationTotals(filtered),
+		// The grid's totals follow the band filter, except the no-log count:
+		// it counts the viewed month (the rollup's scope) so the summary line
+		// and the department table can never disagree.
+		totals: buildUtilizationTotals(filtered, rows),
 		trend,
 		disclosure: viewed.disclosure,
 		// The month's rollup reads the roster BEFORE the band filter.

@@ -31,6 +31,7 @@ import { formatCurrency, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import type { RosterDisclosure } from '@/lib/payroll-roster';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
+import { bandText, NO_TIME_LOGGED_LABEL, partialWindowLabel } from './labels';
 
 // ─── Client-safe API types (mirror the server payload, no server import) ──
 
@@ -92,7 +93,10 @@ interface UtilizationTotals {
 	employee_count: number;
 	priced_count: number;
 	unpriced_count: number;
-	/** Rows with zero Logged Hours for the month — same scope as the counts. */
+	/**
+	 * The viewed month's rows with zero Logged Hours — month-wide even when a
+	 * band filter narrows the other counts (the rollup's scope).
+	 */
 	no_logged_count: number;
 	capacity_hours: number;
 	logged_hours: number;
@@ -252,57 +256,9 @@ function bandBadge(band: UtilizationBand | null): string {
 	return 'bg-slate-100 text-slate-600 ring-slate-200';
 }
 
-function bandText(band: UtilizationBand | null): string {
-	if (band === 'under') return 'Under';
-	if (band === 'healthy') return 'Healthy';
-	if (band === 'over') return 'Over';
-	return 'No capacity';
-}
-
 function formatPercent(value: number | null): string {
 	if (value === null || value === undefined) return '—';
 	return `${formatNumber(value)}%`;
-}
-
-const MONTH_SHORT = [
-	'Jan',
-	'Feb',
-	'Mar',
-	'Apr',
-	'May',
-	'Jun',
-	'Jul',
-	'Aug',
-	'Sep',
-	'Oct',
-	'Nov',
-	'Dec',
-];
-
-/**
- * The "Partial (window)" chip label, clamped to the viewed month so an open
- * bound reads as the month's own edge (`15 Jan – 31 Jan`). Parsed from the
- * ISO day by hand — no Date construction, so timezone can never shift it.
- */
-function partialWindowLabel(row: UtilizationRow): string {
-	const [year, month] = row.month.split('-').map(Number);
-	const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-	const monthStart = `${row.month}-01`;
-	const monthEnd = `${row.month}-${String(lastDay).padStart(2, '0')}`;
-	const start =
-		row.employment_start && row.employment_start > monthStart
-			? row.employment_start
-			: monthStart;
-	const end =
-		row.employment_end && row.employment_end < monthEnd
-			? row.employment_end
-			: monthEnd;
-	const dayLabel = (iso: string) => {
-		const day = Number(iso.slice(8, 10));
-		const monthNumber = Number(iso.slice(5, 7));
-		return `${day} ${MONTH_SHORT[monthNumber - 1] ?? ''}`;
-	};
-	return `Partial (${dayLabel(start)} – ${dayLabel(end)})`;
 }
 
 /** Deep link to the per-employee timesheet detail for the row's month. */
@@ -1200,7 +1156,7 @@ export default function EmployeeUtilizationPage() {
 									: ''}
 								{totals && totals.no_logged_count > 0 ? (
 									<span data-testid="no-time-logged-count">
-										{` · ${totals.no_logged_count} no time logged`}
+										{` · ${totals.no_logged_count} no time logged in the month`}
 									</span>
 								) : null}
 								{searchActive
@@ -1367,7 +1323,7 @@ export default function EmployeeUtilizationPage() {
 																			data-testid="no-time-logged"
 																			data-state="no_time_logged"
 																		>
-																			No time logged
+																			{NO_TIME_LOGGED_LABEL}
 																		</span>
 																	) : (
 																		bandText(row.utilization_band)

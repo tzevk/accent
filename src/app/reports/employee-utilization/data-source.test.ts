@@ -824,6 +824,15 @@ describe('buildUtilizationTotals', () => {
 		expect(totals.employee_count).toBe(2);
 		expect(totals.logged_hours).toBe(8);
 		expect(buildUtilizationTotals([]).no_logged_count).toBe(0);
+
+		// The no-log count is the viewed month's, not the totalled grid's:
+		// a band-filtered call still counts the month rows it is handed.
+		expect(buildUtilizationTotals([busy], [idle, busy]).no_logged_count).toBe(
+			1
+		);
+		expect(buildUtilizationTotals([idle], [idle, busy]).no_logged_count).toBe(
+			1
+		);
 	});
 });
 
