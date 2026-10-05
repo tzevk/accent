@@ -35,6 +35,7 @@ import {
 } from '@/lib/logged-hours-source';
 import { isValidUtilizationMonth } from '@/app/reports/employee-utilization/data-source';
 import { query } from '@/utils/database';
+import { dbNum, dbStr, type DbRow } from './db-values';
 
 /** How many project groups the breakdown shows before the "Other" bucket. */
 export const PROJECT_BREAKDOWN_TOP_N = 5;
@@ -257,27 +258,6 @@ export function buildProjectBreakdown(input: {
 }
 
 // ─── Server fetch (route-backed) ─────────────────────────────────────
-
-type DbRow = Record<string, unknown>;
-
-function dbStr(row: DbRow, key: string, fallback = ''): string {
-	const value = row[key];
-	if (typeof value === 'string') return value;
-	if (typeof value === 'number' || typeof value === 'bigint')
-		return String(value);
-	return fallback;
-}
-
-function dbNum(row: DbRow, key: string, fallback = 0): number {
-	const value = row[key];
-	if (typeof value === 'number')
-		return Number.isFinite(value) ? value : fallback;
-	if (typeof value === 'string' && value.trim() !== '') {
-		const parsed = Number(value);
-		return Number.isFinite(parsed) ? parsed : fallback;
-	}
-	return fallback;
-}
 
 /**
  * One month's breakdown for one employee, queried for itself: the employee

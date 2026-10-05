@@ -28,6 +28,7 @@ import {
 	type UtilizationData,
 	type UtilizationRow,
 } from './data-source';
+import { bandText, flagText, partialWindowLabel } from './labels';
 
 const TINT_YELLOW = 'FFFFE598'; // Sr.
 const TINT_EMP = 'FFFEF3C7'; // Employee
@@ -36,21 +37,6 @@ const TINT_BLUE = 'FFDCE2F2'; // Utilization / Flag
 const TINT_GREEN = 'FFC6DFB4'; // Money columns
 
 const GRAY_BORDER = 'FFD1D5DB';
-
-const MONTH_SHORT = [
-	'Jan',
-	'Feb',
-	'Mar',
-	'Apr',
-	'May',
-	'Jun',
-	'Jul',
-	'Aug',
-	'Sep',
-	'Oct',
-	'Nov',
-	'Dec',
-];
 
 function setFill(cell: ExcelJS.Cell, argb: string): void {
 	cell.fill = {
@@ -80,53 +66,11 @@ function sanitizeName(name: string): string {
 	return name.replace(/[^A-Za-z0-9_-]/g, '_').replace(/_+/g, '_');
 }
 
-function bandText(band: string | null): string {
-	if (band === 'under') return 'Under';
-	if (band === 'healthy') return 'Healthy';
-	if (band === 'over') return 'Over';
-	return 'No capacity';
-}
-
 function flagSuffix(data: UtilizationData): string {
 	if (data.flag === 'under') return '_under';
 	if (data.flag === 'healthy') return '_healthy';
 	if (data.flag === 'over') return '_over';
 	return '';
-}
-
-/**
- * The page's "Partial (window)" chip label, clamped to the viewed month so an
- * open bound reads as the month's own edge (`15 Jan – 31 Jan`). Parsed from
- * the ISO day by hand — no Date construction, so timezone can never shift it.
- */
-function partialWindowLabel(row: UtilizationRow): string {
-	const [year, month] = row.month.split('-').map(Number);
-	const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-	const monthStart = `${row.month}-01`;
-	const monthEnd = `${row.month}-${String(lastDay).padStart(2, '0')}`;
-	const start =
-		row.employment_start && row.employment_start > monthStart
-			? row.employment_start
-			: monthStart;
-	const end =
-		row.employment_end && row.employment_end < monthEnd
-			? row.employment_end
-			: monthEnd;
-	const dayLabel = (iso: string) =>
-		`${Number(iso.slice(8, 10))} ${MONTH_SHORT[Number(iso.slice(5, 7)) - 1] ?? ''}`;
-	return `Partial (${dayLabel(start)} – ${dayLabel(end)})`;
-}
-
-/**
- * The Flag cell as the screen reads it: "No time logged" replaces the band
- * for a zero-Logged-Hours month, and the chronic chip rides beside it.
- */
-function flagText(row: UtilizationRow): string {
-	const base =
-		row.state === 'no_time_logged'
-			? 'No time logged'
-			: bandText(row.utilization_band);
-	return row.chronic_under ? `${base} · Chronic under` : base;
 }
 
 /**
@@ -272,6 +216,9 @@ export function buildWorkbook(data: UtilizationData): ExcelJS.Workbook {
 		const employeeLabel = r.employee_code
 			? `${r.employee_name} (${r.employee_code})`
 			: r.employee_name;
+		// The Flag reading the screen shows: the state/band text, and the
+		// chronic chip riding beside it.
+		const flagLabel = flagText(r);
 
 		const cells: Array<{
 			val: string | number | null;
@@ -319,7 +266,11 @@ export function buildWorkbook(data: UtilizationData): ExcelJS.Workbook {
 				align: 'right',
 				numFmt: '#,##0.00"%"',
 			},
-			{ val: flagText(r), tint: TINT_BLUE, align: 'left' },
+			{
+				val: r.chronic_under ? `${flagLabel} · Chronic under` : flagLabel,
+				tint: TINT_BLUE,
+				align: 'left',
+			},
 			// Unpriced rows stay blank — never zero, never a dash string.
 			{
 				val: r.monthly_cost,

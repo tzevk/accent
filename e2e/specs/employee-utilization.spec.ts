@@ -5,6 +5,7 @@ import {
 	type Page,
 } from '@playwright/test';
 import ExcelJS from 'exceljs';
+import { R } from '@/lib/money';
 import { readArtifact, writeArtifact } from '../lib/artifacts';
 import { rows } from '../lib/db';
 import {
@@ -57,8 +58,9 @@ import {
  *   state        = `no_time_logged` when the month's Logged Hours are 0 —
  *                  missing timesheet evidence, not a 0% verdict. The percent,
  *                  the band and the band-then-bench position are unchanged,
- *                  and `totals.no_logged_count` counts those rows over the
- *                  same flag-filtered set as `employee_count` (ticket #296).
+ *                  and `totals.no_logged_count` counts the viewed month's
+ *                  such rows — month-wide, pre-band-filter like the
+ *                  department rollup (ticket #296).
  *   trailing     = the viewed month and the two before it, oldest first. A
  *                  cell's `employed` is the employment window intersecting
  *                  that month; its percent is the value `deriveRow` gives that
@@ -336,8 +338,9 @@ const MONTH_SHORT = [
 	'Dec',
 ];
 
+/** The report's 2dp rounding: Decimal HALF_UP (src/lib/money), never float. */
 function round2(value: number): number {
-	return Math.round(value * 100) / 100;
+	return R(value).toDecimalPlaces(2).toNumber();
 }
 
 interface AttendanceDay {
@@ -2647,15 +2650,15 @@ test.describe('employee utilization roster', () => {
 		expect(api.totals.no_logged_count).toBe(noLogIds.size);
 		expect(api.totals.employee_count).toBe(model.rows.size);
 
-		// ...and it follows the flag filter exactly like `employee_count`.
+		// ...and unlike the other totals it stays month-wide under the band
+		// filter (the department rollup's scope): the filtered grid narrows,
+		// the count does not.
 		const underPayload = await fetchMonth(request, MONTH, 'under');
 		const derivedUnder = [...model.rows.values()].filter(
 			(derived) => derived.utilizationBand === 'under'
 		);
 		expect(underPayload.totals.employee_count).toBe(derivedUnder.length);
-		expect(underPayload.totals.no_logged_count).toBe(
-			derivedUnder.filter((derived) => derived.loggedHours === 0).length
-		);
+		expect(underPayload.totals.no_logged_count).toBe(noLogIds.size);
 
 		// The row keeps its band-then-bench position: the Under group runs by
 		// Bench Cost descending (unpriced nulls last), and every no-log row
@@ -2695,7 +2698,8 @@ test.describe('employee utilization roster', () => {
 			month: MONTH,
 			derivedCount: noLogIds.size,
 			apiCount: api.totals.no_logged_count,
-			underScopedCount: underPayload.totals.no_logged_count,
+			// Month-wide under the band filter, like the rollup.
+			underFlaggedCount: underPayload.totals.no_logged_count,
 			underRows: under.length,
 			idle: {
 				code: idleMember.code,
@@ -2802,12 +2806,28 @@ test.describe('employee utilization roster', () => {
 			renderedRows.filter((row) => row.state === 'no_time_logged').length
 		).toBe(noLogCount);
 
-		// The summary line counts them; the count scope is the month view.
+		// The summary line counts them month-wide — the viewed month's count,
+		// not the band-filtered grid's — and labels that scope.
 		const countLine = page.getByTestId('no-time-logged-count');
-		await expect(countLine).toContainText(`${noLogCount} no time logged`);
-		expect((await countLine.textContent())?.trim()).toBe(
-			`· ${noLogCount} no time logged`
+		const summaryText = `· ${noLogCount} no time logged in the month`;
+		await expect(countLine).toContainText(summaryText);
+		expect((await countLine.textContent())?.trim()).toBe(summaryText);
+
+		// Narrowing the grid to the Healthy band — which holds no idle row —
+		// leaves the count month-wide and the line standing: the filtered
+		// count would read 0 here and hide the segment.
+		const derivedHealthyCount = [...model.rows.values()].filter(
+			(derived) => derived.utilizationBand === 'healthy'
+		).length;
+		expect(derivedHealthyCount).toBeGreaterThan(0);
+		await page
+			.getByRole('button', { name: 'Healthy (80–100%)', exact: true })
+			.click();
+		await expect(page.getByTestId('utilization-row')).toHaveCount(
+			derivedHealthyCount
 		);
+		await expect(countLine).toContainText(summaryText);
+		expect((await countLine.textContent())?.trim()).toBe(summaryText);
 
 		observed.noTimeLoggedPage = {
 			month: MONTH,
@@ -2822,6 +2842,7 @@ test.describe('employee utilization roster', () => {
 				underRows: renderedUnder.length,
 			},
 			summaryCount: (await countLine.textContent())?.trim(),
+			healthyFilteredRows: derivedHealthyCount,
 		};
 	});
 

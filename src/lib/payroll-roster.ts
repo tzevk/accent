@@ -175,7 +175,7 @@ export const ROSTER_FILTER_DESCRIPTION =
 
 /** The month-scoped filter, worded for the screen. */
 export const ROSTER_MONTH_FILTER_DESCRIPTION =
-	'isDelete = 0, Employee Type = Payroll, and the employment window covers the viewed month';
+	'isDelete = 0, Employee Type = Payroll, and the employment window intersects the viewed month';
 
 /** Why the roster and the payroll run can disagree. */
 export const ROSTER_MEMBERSHIP_NOTE =
@@ -183,7 +183,7 @@ export const ROSTER_MEMBERSHIP_NOTE =
 
 /** The month-scoped version of the note above. */
 export const ROSTER_MONTH_MEMBERSHIP_NOTE =
-	'This report reads the employee record, not the salary profile: an employee with no salary profile is still on the roster, and each month lists only the employees whose employment window covers it.';
+	'This report reads the employee record, not the salary profile: an employee with no salary profile is still on the roster, and each month lists only the employees whose employment window intersects it.';
 
 // ─── Employment window ────────────────────────────────────────────────
 
