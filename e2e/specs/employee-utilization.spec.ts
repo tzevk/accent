@@ -51,6 +51,11 @@ import {
  *                  No covering profile → null costs, never zero.
  *   partial flag = the window does not cover the whole month; the chip names
  *                  the window clamped to the month (`15 Jan – 31 Jan`).
+ *   state        = `no_time_logged` when the month's Logged Hours are 0 —
+ *                  missing timesheet evidence, not a 0% verdict. The percent,
+ *                  the band and the band-then-bench position are unchanged,
+ *                  and `totals.no_logged_count` counts those rows over the
+ *                  same flag-filtered set as `employee_count` (ticket #296).
  *
  * The page's own API payload is asserted against that derivation; the DOM is
  * read through the page's `data-testid`/`data-*` attributes, never classes.
@@ -288,6 +293,8 @@ interface DerivedRow {
 	loggedHours: number;
 	utilizationPercent: number | null;
 	utilizationBand: string | null;
+	/** `no_time_logged` when the month's Logged Hours are 0. */
+	state: string | null;
 	/** The month's Basis Days the rate divided CTC by (payroll's calendar). */
 	basisDays: number;
 	/** Unrounded CTC ÷ Basis Hours; null when no profile covers the month. */
@@ -351,6 +358,9 @@ function deriveRow(
 				: utilizationPercent <= 100
 					? 'healthy'
 					: 'over';
+	// Zero Logged Hours is missing timesheet evidence, not a band: the state
+	// rides alongside the Under band without moving percent or order.
+	const state = loggedHours === 0 ? 'no_time_logged' : null;
 	// The rate's own calendar: the same holidays, but 2nd/4th Saturdays stay.
 	const basisDays = basisDaysIn(month, calendar.nonOptionalHolidays);
 	const rate = profile ? profile.ctc / (basisDays * profile.hoursPerDay) : null;
@@ -383,6 +393,7 @@ function deriveRow(
 		loggedHours,
 		utilizationPercent,
 		utilizationBand,
+		state,
 		basisDays,
 		rate,
 		costStatus: profile ? 'priced' : 'no-profile',
@@ -447,6 +458,7 @@ interface ApiRow {
 	logged_hours: number;
 	utilization_percent: number | null;
 	utilization_band: string | null;
+	state: string | null;
 	employment_start: string | null;
 	employment_end: string | null;
 	is_partial_window: boolean;
@@ -473,6 +485,7 @@ interface ApiPayload {
 	rows: ApiRow[];
 	totals: {
 		employee_count: number;
+		no_logged_count: number;
 		capacity_hours: number;
 		logged_hours: number;
 		monthly_cost: number | null;
@@ -484,10 +497,13 @@ interface ApiPayload {
 
 async function fetchMonth(
 	request: APIRequestContext,
-	month: string
+	month: string,
+	flag?: string
 ): Promise<ApiPayload> {
+	const params = new URLSearchParams({ month });
+	if (flag) params.set('flag', flag);
 	const response = await request.get(
-		`/api/reports/employee-utilization?month=${encodeURIComponent(month)}`
+		`/api/reports/employee-utilization?${params.toString()}`
 	);
 	expect(response.status(), await response.text()).toBe(200);
 	const body = await response.json();
@@ -515,6 +531,9 @@ async function openMonth(page: Page, label: string): Promise<void> {
 interface RenderedRow {
 	code: string;
 	band: string;
+	state: string;
+	/** The Flag cell's reading: the band badge text, or "No time logged". */
+	flagCell: string;
 	capacity: string;
 	logged: string;
 	utilization: string;
@@ -532,6 +551,8 @@ function readRows(page: Page): Promise<RenderedRow[]> {
 			return {
 				code: row.getAttribute('data-employee-code') ?? '',
 				band: row.getAttribute('data-band') ?? '',
+				state: row.getAttribute('data-state') ?? '',
+				flagCell: cell('cell-band'),
 				capacity: cell('cell-capacity'),
 				logged: cell('cell-logged'),
 				utilization: cell('cell-utilization'),
@@ -1707,6 +1728,234 @@ test.describe('employee utilization roster', () => {
 		observed.emptyDisclosure = { rowsRendered: true, stripRendered: false };
 	});
 
+	// ─── #296: "No time logged" state and count ─────────────────────────
+
+	test('zero-Logged-Hours rows carry the no-time-logged state and keep their Under slot', async ({
+		request,
+	}) => {
+		const api = await fetchMonth(request, MONTH);
+
+		// Every row's state is the derivation's: roster ∩ month with zero
+		// Logged Hours. Nothing else about such a row moves — the percent and
+		// the band stay the factual 0% Under.
+		const noLogIds = new Set<number>();
+		for (const row of api.rows) {
+			const employee = model.employees.find(
+				(candidate) => candidate.employee_id === row.employee_code
+			)!;
+			const derived = model.rows.get(employee.id)!;
+			expect(row.state, row.employee_code).toBe(derived.state);
+			if (derived.loggedHours === 0) noLogIds.add(employee.id);
+			if (derived.state === null) {
+				expect(row.logged_hours, row.employee_code).toBeGreaterThan(0);
+				continue;
+			}
+			expect(row.logged_hours, row.employee_code).toBe(0);
+			if (derived.capacityHours > 0) {
+				expect(row.utilization_percent, row.employee_code).toBe(0);
+				expect(row.utilization_band, row.employee_code).toBe('under');
+			}
+		}
+		expect(noLogIds.size).toBeGreaterThan(0);
+
+		// The idle fixture: active, full month, no evidence — the state marks
+		// missing timesheet data while the row keeps the whole month's bench.
+		const idleMember = utilizationMemberForPlan('payrollIdle');
+		const idleRow = api.rows.find(
+			(row) => row.employee_code === idleMember.code
+		)!;
+		expect(idleRow.logged_hours).toBe(0);
+		expect(idleRow.utilization_percent).toBe(0);
+		expect(idleRow.utilization_band).toBe('under');
+		expect(idleRow.state).toBe('no_time_logged');
+		const idleDerived = model.rows.get(
+			model.employees.find((row) => row.employee_id === idleMember.code)!.id
+		)!;
+		expect(idleRow.bench_cost).toBe(idleDerived.benchCost);
+		expect(idleRow.bench_cost).toBeGreaterThan(0);
+
+		// The summary count is the derived count over the month's roster...
+		expect(api.totals.no_logged_count).toBe(noLogIds.size);
+		expect(api.totals.employee_count).toBe(model.rows.size);
+
+		// ...and it follows the flag filter exactly like `employee_count`.
+		const underPayload = await fetchMonth(request, MONTH, 'under');
+		const derivedUnder = [...model.rows.values()].filter(
+			(derived) => derived.utilizationBand === 'under'
+		);
+		expect(underPayload.totals.employee_count).toBe(derivedUnder.length);
+		expect(underPayload.totals.no_logged_count).toBe(
+			derivedUnder.filter((derived) => derived.loggedHours === 0).length
+		);
+
+		// The row keeps its band-then-bench position: the Under group runs by
+		// Bench Cost descending (unpriced nulls last), and every no-log row
+		// sits exactly where its derived bench puts it — neighbours included.
+		const benchOf = (value: number | null) =>
+			value === null ? Number.NEGATIVE_INFINITY : value;
+		const under = api.rows.filter((row) => row.utilization_band === 'under');
+		const underCodes = under.map((row) => row.employee_code);
+		for (let i = 1; i < under.length; i++) {
+			expect(
+				benchOf(under[i].bench_cost),
+				`${under[i].employee_code} must not out-rank ${under[i - 1].employee_code}`
+			).toBeLessThanOrEqual(benchOf(under[i - 1].bench_cost));
+		}
+		for (const [employeeId, derived] of model.rows) {
+			if (derived.utilizationBand !== 'under') continue;
+			const employee = model.employees.find((row) => row.id === employeeId)!;
+			const index = underCodes.indexOf(employee.employee_id);
+			expect(index, employee.employee_id).toBeGreaterThanOrEqual(0);
+			const bench = benchOf(derived.benchCost);
+			for (const before of under.slice(0, index)) {
+				expect(
+					benchOf(before.bench_cost),
+					`${before.employee_code} precedes ${employee.employee_id}`
+				).toBeGreaterThanOrEqual(bench);
+			}
+			for (const after of under.slice(index + 1)) {
+				expect(
+					benchOf(after.bench_cost),
+					`${after.employee_code} follows ${employee.employee_id}`
+				).toBeLessThanOrEqual(bench);
+			}
+		}
+		expect(underCodes).toContain(idleMember.code);
+
+		observed.noTimeLogged = {
+			month: MONTH,
+			derivedCount: noLogIds.size,
+			apiCount: api.totals.no_logged_count,
+			underScopedCount: underPayload.totals.no_logged_count,
+			underRows: under.length,
+			idle: {
+				code: idleMember.code,
+				logged: idleRow.logged_hours,
+				percent: idleRow.utilization_percent,
+				band: idleRow.utilization_band,
+				state: idleRow.state,
+				bench: idleRow.bench_cost,
+			},
+		};
+	});
+
+	test('the page reads "No time logged" for those rows and counts them in the summary', async ({
+		page,
+	}) => {
+		await openMonth(page, MONTH_LABEL);
+		const renderedRows = await readRows(page);
+
+		const derivedStateByCode = new Map<string, string>();
+		const derivedBenchByCode = new Map<string, number | null>();
+		let noLogCount = 0;
+		for (const [employeeId, derived] of model.rows) {
+			const employee = model.employees.find((row) => row.id === employeeId)!;
+			derivedStateByCode.set(employee.employee_id, derived.state ?? '');
+			derivedBenchByCode.set(employee.employee_id, derived.benchCost);
+			if (derived.loggedHours === 0) noLogCount++;
+		}
+		expect(noLogCount).toBeGreaterThan(0);
+
+		// `data-state` mirrors the derivation on every row, and the Flag cell
+		// replaces the band reading for exactly those rows.
+		const bandText: Record<string, string> = {
+			under: 'Under',
+			healthy: 'Healthy',
+			over: 'Over',
+		};
+		for (const rendered of renderedRows) {
+			expect(rendered.state, rendered.code).toBe(
+				derivedStateByCode.get(rendered.code)
+			);
+			expect(rendered.flagCell, rendered.code).toBe(
+				rendered.state === 'no_time_logged'
+					? 'No time logged'
+					: (bandText[rendered.band] ?? 'No capacity')
+			);
+		}
+
+		// The idle fixture's row: badge, state attribute, factual % column and
+		// its Under band intact.
+		const idleMember = utilizationMemberForPlan('payrollIdle');
+		const idleRendered = renderedRows.find(
+			(row) => row.code === idleMember.code
+		)!;
+		expect(idleRendered.state).toBe('no_time_logged');
+		expect(idleRendered.band).toBe('under');
+		expect(idleRendered.flagCell).toBe('No time logged');
+		expect(idleRendered.logged).toBe('0.00');
+		expect(idleRendered.utilization).toBe('0.00%');
+		const idleRowLocator = page.locator(
+			`[data-testid="utilization-row"][data-employee-code="${idleMember.code}"]`
+		);
+		await expect(idleRowLocator).toHaveAttribute(
+			'data-state',
+			'no_time_logged'
+		);
+		await expect(idleRowLocator.getByTestId('no-time-logged')).toHaveText(
+			'No time logged'
+		);
+		await expect(idleRowLocator.getByTestId('no-time-logged')).toHaveAttribute(
+			'data-state',
+			'no_time_logged'
+		);
+
+		// Position within the rendered Under group: Bench Cost descending,
+		// the idle row's neighbours bracketing its own derived bench.
+		const benchOf = (code: string) => {
+			const bench = derivedBenchByCode.get(code);
+			return bench === null || bench === undefined
+				? Number.NEGATIVE_INFINITY
+				: bench;
+		};
+		const renderedUnder = renderedRows.filter((row) => row.band === 'under');
+		for (let i = 1; i < renderedUnder.length; i++) {
+			expect(
+				benchOf(renderedUnder[i].code),
+				`${renderedUnder[i].code} must not out-rank ${renderedUnder[i - 1].code}`
+			).toBeLessThanOrEqual(benchOf(renderedUnder[i - 1].code));
+		}
+		const idleIndex = renderedUnder.findIndex(
+			(row) => row.code === idleMember.code
+		);
+		expect(idleIndex).toBeGreaterThanOrEqual(0);
+		for (const before of renderedUnder.slice(0, idleIndex)) {
+			expect(benchOf(before.code), before.code).toBeGreaterThanOrEqual(
+				benchOf(idleMember.code)
+			);
+		}
+		for (const after of renderedUnder.slice(idleIndex + 1)) {
+			expect(benchOf(after.code), after.code).toBeLessThanOrEqual(
+				benchOf(idleMember.code)
+			);
+		}
+		expect(
+			renderedRows.filter((row) => row.state === 'no_time_logged').length
+		).toBe(noLogCount);
+
+		// The summary line counts them; the count scope is the month view.
+		const countLine = page.getByTestId('no-time-logged-count');
+		await expect(countLine).toContainText(`${noLogCount} no time logged`);
+		expect((await countLine.textContent())?.trim()).toBe(
+			`· ${noLogCount} no time logged`
+		);
+
+		observed.noTimeLoggedPage = {
+			month: MONTH,
+			renderedNoLogRows: noLogCount,
+			idleRow: {
+				code: idleMember.code,
+				state: idleRendered.state,
+				band: idleRendered.band,
+				flagCell: idleRendered.flagCell,
+				utilization: idleRendered.utilization,
+				underIndex: idleIndex,
+				underRows: renderedUnder.length,
+			},
+			summaryCount: (await countLine.textContent())?.trim(),
+		};
+	});
+
 	test('the fixtures leave no residue and the run writes its artifact', async () => {
 		const owned = await rows<{ id: number }>(
 			`SELECT id FROM employees WHERE employee_id LIKE 'E2E-UTIL-%'`
@@ -1779,6 +2028,8 @@ test.describe('employee utilization roster', () => {
 					'fractional = round2(rate × logged); bench = round2(monthly − fractional); sum foots per row and in totals; no covering profile → null costs, never zero',
 				partialChip:
 					'is_partial_window when the window does not cover the month; the chip names the window clamped to the month',
+				noTimeLogged:
+					'state = no_time_logged when the month’s Logged Hours are 0; percent, band and the band-then-bench position are unchanged; totals.no_logged_count counts them over the same flag-filtered row set as employee_count',
 			},
 			calendar: {
 				month: MONTH,
@@ -1799,6 +2050,9 @@ test.describe('employee utilization roster', () => {
 			derived: {
 				rosterCount: model.month.rosterCodes.length,
 				laterRosterCount: model.laterMonth.rosterCodes.length,
+				noLoggedCount: [...model.rows.values()].filter(
+					(derived) => derived.loggedHours === 0
+				).length,
 				disclosureBuckets: model.month.buckets,
 				rows: model.employees
 					.filter((employee) => model.rows.has(employee.id))
@@ -1812,6 +2066,7 @@ test.describe('employee utilization roster', () => {
 							capacityHours: derived.capacityHours,
 							loggedHours: derived.loggedHours,
 							utilizationPercent: derived.utilizationPercent,
+							state: derived.state,
 							basisDays: derived.basisDays,
 							rate: derived.rate === null ? null : round2(derived.rate),
 							costStatus: derived.costStatus,

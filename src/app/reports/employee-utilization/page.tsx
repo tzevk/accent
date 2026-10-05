@@ -26,6 +26,9 @@ type UtilizationBand = 'under' | 'healthy' | 'over';
 
 type CostStatus = 'priced' | 'no-profile';
 
+/** Missing timesheet evidence for the month — the Logged Hours are 0. */
+type UtilizationState = 'no_time_logged';
+
 interface UtilizationRow {
 	employee_id: number;
 	employee_code: string;
@@ -35,6 +38,8 @@ interface UtilizationRow {
 	logged_hours: number;
 	utilization_percent: number | null;
 	utilization_band: UtilizationBand | null;
+	/** Set when the month's Logged Hours are 0; never changes band or order. */
+	state: UtilizationState | null;
 	/** Resolved employment window; null = open bound. */
 	employment_start: string | null;
 	employment_end: string | null;
@@ -51,6 +56,8 @@ interface UtilizationTotals {
 	employee_count: number;
 	priced_count: number;
 	unpriced_count: number;
+	/** Rows with zero Logged Hours for the month — same scope as the counts. */
+	no_logged_count: number;
 	capacity_hours: number;
 	logged_hours: number;
 	utilization_percent: number | null;
@@ -565,6 +572,11 @@ export default function EmployeeUtilizationPage() {
 								{totals
 									? ` · ${totals.priced_count} priced · ${totals.unpriced_count} unpriced`
 									: ''}
+								{totals && totals.no_logged_count > 0 ? (
+									<span data-testid="no-time-logged-count">
+										{` · ${totals.no_logged_count} no time logged`}
+									</span>
+								) : null}
 								{searchActive
 									? ' · totals below cover the full month view, not just the search'
 									: ''}
@@ -610,6 +622,7 @@ export default function EmployeeUtilizationPage() {
 												data-testid="utilization-row"
 												data-employee-code={row.employee_code}
 												data-band={row.utilization_band ?? ''}
+												data-state={row.state ?? ''}
 												className={cn(
 													'border-b border-gray-100',
 													index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
@@ -653,14 +666,26 @@ export default function EmployeeUtilizationPage() {
 													{formatPercent(row.utilization_percent)}
 												</td>
 												<td data-testid="cell-band" className="px-4 py-2.5">
-													<span
-														className={cn(
-															'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1',
-															bandBadge(row.utilization_band)
-														)}
-													>
-														{bandText(row.utilization_band)}
-													</span>
+													{row.state === 'no_time_logged' ? (
+														/* Missing timesheet data: the state replaces the
+														   band reading; the % column stays factual. */
+														<span
+															data-testid="no-time-logged"
+															data-state="no_time_logged"
+															className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-300"
+														>
+															No time logged
+														</span>
+													) : (
+														<span
+															className={cn(
+																'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1',
+																bandBadge(row.utilization_band)
+															)}
+														>
+															{bandText(row.utilization_band)}
+														</span>
+													)}
 												</td>
 												<td
 													data-testid="cell-monthly-cost"

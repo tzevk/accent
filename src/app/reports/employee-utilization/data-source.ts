@@ -45,6 +45,14 @@
  * cover the whole month carry `is_partial_window` so the page can name the
  * dates; a window with no working days costs 0 with capacity 0.
  *
+ * Zero Logged Hours: such a row carries the `no_time_logged` state — missing
+ * timesheet evidence, not a 0% underuse verdict. The state changes neither
+ * the percent nor the band nor the sort position (the row keeps its Under
+ * band and its band-then-bench slot, so the most expensive idle rows stay
+ * visible), and it is independent of `cost_status`: a no-log row with no
+ * covering profile keeps its blank costs. Totals count such rows
+ * (`no_logged_count`) over the same flag-filtered scope as `employee_count`.
+ *
  * Holidays: the caller injects active NON-optional holidays only. An optional
  * holiday is a full working day for Capacity — matching the attendance and
  * payroll paths — regardless of the attendance status recorded on it (an `H`
@@ -88,6 +96,14 @@ export const STD_HOURS_PER_DAY_DEFAULT = 8;
 // ─── Public types ─────────────────────────────────────────────────────
 
 export type UtilizationBand = 'under' | 'healthy' | 'over';
+
+/**
+ * `no_time_logged` when the viewed month's Logged Hours are 0 — missing
+ * timesheet evidence, not a 0% underuse verdict. The state changes neither
+ * the percent, the band nor the sort position (the row keeps its Under band
+ * and its band-then-bench slot).
+ */
+export type UtilizationState = 'no_time_logged';
 
 /** `priced` rows carry costs; `no-profile` rows show blank (null) costs. */
 export type CostStatus = 'priced' | 'no-profile';
@@ -151,6 +167,8 @@ export interface UtilizationRow {
 	logged_hours: number;
 	utilization_percent: number | null;
 	utilization_band: UtilizationBand | null;
+	/** Missing timesheet evidence: the month's Logged Hours are 0. */
+	state: UtilizationState | null;
 	/** Resolved employment window; null = open bound (or no month scope). */
 	employment_start: string | null;
 	employment_end: string | null;
@@ -168,6 +186,8 @@ export interface UtilizationTotals {
 	employee_count: number;
 	priced_count: number;
 	unpriced_count: number;
+	/** Rows with zero Logged Hours for the month — same scope as the counts. */
+	no_logged_count: number;
 	capacity_hours: number;
 	logged_hours: number;
 	utilization_percent: number | null;
@@ -442,6 +462,10 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 	});
 	const loggedHours = sumLoggedHoursForMonth(input.daily_entries ?? [], month);
 	const percent = utilizationPercent(loggedHours, capacity.capacity_hours);
+	// Zero Logged Hours is missing evidence, not a verdict: the state rides
+	// along without touching the percent, the band or the row's sort slot.
+	const state: UtilizationState | null =
+		loggedHours === 0 ? 'no_time_logged' : null;
 	// The rate and Capacity share this holiday set but not the calendar:
 	// Basis Days keep 2nd/4th Saturdays, unlike the Capacity weekly-off rule.
 	const basisDays = basisDaysInMonth(month, holidaySet);
@@ -465,6 +489,7 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 			logged_hours: loggedHours,
 			utilization_percent: percent,
 			utilization_band: bandForUtilization(percent),
+			state,
 			employment_start: employmentStart,
 			employment_end: employmentEnd,
 			is_partial_window: isPartialWindow,
@@ -500,6 +525,7 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 		logged_hours: loggedHours,
 		utilization_percent: percent,
 		utilization_band: bandForUtilization(percent),
+		state,
 		employment_start: employmentStart,
 		employment_end: employmentEnd,
 		is_partial_window: isPartialWindow,
@@ -520,10 +546,12 @@ export function buildUtilizationTotals(
 	let fractional = R(0);
 	let bench = R(0);
 	let priced = 0;
+	let noLogged = 0;
 
 	for (const row of rows) {
 		capacity = add(capacity, row.capacity_hours);
 		logged = add(logged, row.logged_hours);
+		if (row.state === 'no_time_logged') noLogged++;
 		if (row.cost_status === 'priced') {
 			priced++;
 			monthly = add(monthly, row.monthly_cost ?? 0);
@@ -540,6 +568,7 @@ export function buildUtilizationTotals(
 		employee_count: rows.length,
 		priced_count: priced,
 		unpriced_count: rows.length - priced,
+		no_logged_count: noLogged,
 		capacity_hours: capacityNum,
 		logged_hours: loggedNum,
 		utilization_percent: utilizationPercent(loggedNum, capacityNum),
