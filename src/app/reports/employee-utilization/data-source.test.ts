@@ -15,6 +15,7 @@ import {
 	bandForUtilization,
 	buildTeamRow,
 	buildUtilizationTotals,
+	sortUtilizationRows,
 	monthLabel,
 } from '@/app/reports/employee-utilization/data-source';
 import type { SalaryProfile } from '@/app/reports/manhours-billing/data-source';
@@ -401,6 +402,7 @@ describe('buildTeamRow', () => {
 		expect(row.logged_hours).toBe(16);
 		expect(row.utilization_percent).toBe(8.33);
 		expect(row.utilization_band).toBe('under');
+		expect(row.state).toBeNull();
 		// No month scope in this input: both window bounds read as open.
 		expect(row.employment_start).toBeNull();
 		expect(row.employment_end).toBeNull();
@@ -599,6 +601,57 @@ describe('buildTeamRow', () => {
 		expect(row.cost_status).toBe('priced');
 	});
 
+	it('flags a zero-Logged-Hours month as no time logged without moving the band', () => {
+		const row = buildTeamRow({
+			employee_id: 2,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		// The 0% Under reading stays factual — the state rides alongside it.
+		expect(row.logged_hours).toBe(0);
+		expect(row.utilization_percent).toBe(0);
+		expect(row.utilization_band).toBe('under');
+		expect(row.state).toBe('no_time_logged');
+		// A full-month idle row keeps the whole CTC as bench: 22000 − 0.
+		expect(row.capacity_hours).toBe(192);
+		expect(row.bench_cost).toBe(22000);
+	});
+
+	it('applies the no-time-logged state independently of cost and capacity', () => {
+		// No covering profile: the blank costs stay blank, the state still applies.
+		const noProfileRow = buildTeamRow({
+			employee_id: 9,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [],
+		});
+		expect(noProfileRow.state).toBe('no_time_logged');
+		expect(noProfileRow.cost_status).toBe('no-profile');
+		expect(noProfileRow.monthly_cost).toBeNull();
+		expect(noProfileRow.bench_cost).toBeNull();
+
+		// A window covering no working days reads percent/band null — and the
+		// state still stands, because it is about the Logged Hours alone.
+		const noCapacityRow = buildTeamRow({
+			employee_id: 7,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			employment_start: '2026-05-23',
+			employment_end: '2026-05-24',
+		});
+		expect(noCapacityRow.utilization_percent).toBeNull();
+		expect(noCapacityRow.utilization_band).toBeNull();
+		expect(noCapacityRow.state).toBe('no_time_logged');
+	});
+
 	it('shows hours and utilization with blank cost for a missing profile', () => {
 		const row = buildTeamRow({
 			employee_id: 9,
@@ -695,6 +748,7 @@ describe('buildUtilizationTotals', () => {
 		expect(totals.employee_count).toBe(2);
 		expect(totals.priced_count).toBe(1);
 		expect(totals.unpriced_count).toBe(1);
+		expect(totals.no_logged_count).toBe(0);
 		expect(totals.capacity_hours).toBe(384);
 		expect(totals.logged_hours).toBe(16);
 		expect(totals.monthly_cost).toBe(22000);
@@ -702,6 +756,61 @@ describe('buildUtilizationTotals', () => {
 			totals.monthly_cost!,
 			2
 		);
+	});
+
+	it('counts the rows that logged nothing in the month', () => {
+		const idle = buildTeamRow({
+			employee_id: 3,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		const busy = buildTeamRow({
+			employee_id: 4,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [],
+		});
+		const totals = buildUtilizationTotals([idle, busy]);
+		expect(idle.state).toBe('no_time_logged');
+		expect(busy.state).toBeNull();
+		expect(totals.no_logged_count).toBe(1);
+		expect(totals.employee_count).toBe(2);
+		expect(totals.logged_hours).toBe(8);
+		expect(buildUtilizationTotals([]).no_logged_count).toBe(0);
+	});
+});
+
+describe('sortUtilizationRows', () => {
+	it('keeps a no-time-logged row in its band-then-bench slot', () => {
+		// The idle row's 22000 bench (0 logged) out-ranks the busy row's
+		// 21153.85 even though the busy row logged hours: the state is not a
+		// sort key, the Under band plus bench cost is.
+		const idle = buildTeamRow({
+			employee_id: 1,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		const busy = buildTeamRow({
+			employee_id: 2,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		const sorted = sortUtilizationRows([busy, idle]);
+		expect(sorted.map((row) => row.employee_id)).toEqual([1, 2]);
+		expect(sorted[0].state).toBe('no_time_logged');
+		expect(sorted[0].utilization_band).toBe('under');
+		expect(sorted[1].state).toBeNull();
 	});
 });
 
