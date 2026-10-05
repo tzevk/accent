@@ -56,7 +56,15 @@ import {
  * read through the page's `data-testid`/`data-*` attributes, never classes.
  */
 
-test.use({ storageState: 'e2e/.auth/admin-report.json' });
+test.use({
+	storageState: 'e2e/.auth/admin-report.json',
+	// This spec's own rate-limit identity, set through the proxy's trusted
+	// header the way `security-fixtures` does for isolation (ADR-0013): in a
+	// combined run the attendance suite's grid traffic otherwise exhausts the
+	// in-memory `api` budget (120/min per identity) and 429s this file's later
+	// tests. TEST-NET-style address that never routes anywhere.
+	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.11' },
+});
 test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
 const MONTH = UTILIZATION_MONTH;
