@@ -23,6 +23,13 @@ import {
 	trendMonths,
 } from '@/app/reports/employee-utilization/data-source';
 import type { SalaryProfile } from '@/app/reports/manhours-billing/data-source';
+import {
+	PROJECT_BREAKDOWN_TOP_N,
+	buildProjectBreakdown,
+	buildProjectBuckets,
+	projectDisplayName,
+	type BreakdownAssignment,
+} from '@/app/reports/employee-utilization/project-breakdown';
 import { sumLoggedHoursForMonth as sumLoggedHours } from '@/lib/logged-hours';
 
 // May 2026: 31 days. Sundays 3/10/17/24/31, Saturdays 2/9/16/23/30.
@@ -1221,5 +1228,221 @@ describe('monthLabel', () => {
 
 	it('returns the input for invalid months', () => {
 		expect(monthLabel('garbage')).toBe('garbage');
+	});
+});
+
+describe('project breakdown', () => {
+	function assignment(
+		overrides: Partial<BreakdownAssignment> = {}
+	): BreakdownAssignment {
+		return {
+			project_id: 1,
+			resolved_project_id: 1,
+			project_code: 'P-1',
+			project_title: 'Project One',
+			project_name: null,
+			client_name: 'Client One',
+			activity_name: 'Design',
+			discipline_name: null,
+			hours: 8,
+			...overrides,
+		};
+	}
+
+	it('pins the top-N constant from the brief', () => {
+		expect(PROJECT_BREAKDOWN_TOP_N).toBe(5);
+	});
+
+	it('groups one project’s assignments, summing hours and activity detail', () => {
+		const result = buildProjectBuckets([
+			assignment({ activity_name: 'Modeling', hours: 8 }),
+			assignment({
+				activity_name: 'Design',
+				discipline_name: 'Piping',
+				hours: 16,
+			}),
+			assignment({ activity_name: 'Modeling', hours: 4 }),
+			assignment({
+				project_id: 2,
+				resolved_project_id: 2,
+				project_code: 'P-2',
+				project_title: 'Project Two',
+				client_name: 'Client Two',
+				activity_name: 'Review',
+				hours: 12,
+			}),
+		]);
+
+		expect(result.projects.map((bucket) => bucket.project_id)).toEqual([1, 2]);
+		expect(result.projects[0].hours).toBe(28);
+		expect(result.projects[0].activities).toEqual([
+			{ activity_name: 'Design', discipline_name: 'Piping', hours: 16 },
+			{ activity_name: 'Modeling', discipline_name: null, hours: 12 },
+		]);
+		expect(result.projects[0].project_code).toBe('P-1');
+		expect(result.projects[0].project_name).toBe('Project One');
+		expect(result.projects[0].client_name).toBe('Client One');
+		expect(result.noProject).toBeNull();
+		expect(result.loggedHours).toBe(40);
+	});
+
+	it('sorts project groups hours descending with the project id as tie-break', () => {
+		const result = buildProjectBuckets([
+			assignment({ project_id: 9, resolved_project_id: 9, hours: 8 }),
+			assignment({ project_id: 4, resolved_project_id: 4, hours: 8 }),
+			assignment({ project_id: 7, resolved_project_id: 7, hours: 16 }),
+		]);
+		expect(result.projects.map((bucket) => bucket.project_id)).toEqual([
+			7, 4, 9,
+		]);
+		expect(result.projects.map((bucket) => bucket.hours)).toEqual([16, 8, 8]);
+	});
+
+	it('keeps the top N and folds the rest into Other with its project count', () => {
+		const assignments: BreakdownAssignment[] = [];
+		for (let projectId = 1; projectId <= 7; projectId += 1) {
+			assignments.push(
+				assignment({
+					project_id: projectId,
+					resolved_project_id: projectId,
+					project_code: `P-${projectId}`,
+					project_title: `Project ${projectId}`,
+					hours: projectId * 8,
+				})
+			);
+		}
+		const breakdown = buildProjectBreakdown({
+			month: '2026-05',
+			employee: { id: 3, code: 'E-3', name: 'Three' },
+			assignments,
+		});
+
+		expect(breakdown.projects.map((bucket) => bucket.project_id)).toEqual([
+			7, 6, 5, 4, 3,
+		]);
+		expect(breakdown.other).toEqual({ hours: 24, project_count: 2 });
+		expect(breakdown.no_project).toBeNull();
+		expect(breakdown.logged_hours).toBe(224);
+		// Footing: top N + Other + (No project) is the whole month.
+		expect(
+			[
+				...breakdown.projects,
+				...(breakdown.no_project ? [breakdown.no_project] : []),
+			].reduce((sum, bucket) => sum + bucket.hours, 0) + breakdown.other.hours
+		).toBe(breakdown.logged_hours);
+		expect(breakdown.top_n).toBe(PROJECT_BREAKDOWN_TOP_N);
+	});
+
+	it('keeps No project explicit and never merges it into Other', () => {
+		const assignments: BreakdownAssignment[] = [];
+		for (let projectId = 1; projectId <= 6; projectId += 1) {
+			assignments.push(
+				assignment({ project_id: projectId, resolved_project_id: projectId })
+			);
+		}
+		assignments.push(
+			assignment({
+				project_id: null,
+				resolved_project_id: null,
+				project_code: null,
+				project_title: null,
+				client_name: null,
+				activity_name: 'Internal',
+				hours: 8,
+			})
+		);
+		// A project id the `projects` rows do not resolve is project-less too.
+		assignments.push(
+			assignment({
+				project_id: 99,
+				resolved_project_id: null,
+				project_code: null,
+				project_title: null,
+				client_name: null,
+				activity_name: 'Unresolved',
+				hours: 8,
+			})
+		);
+
+		const breakdown = buildProjectBreakdown({
+			month: '2026-05',
+			employee: { id: 4, code: 'E-4', name: 'Four' },
+			assignments,
+		});
+
+		expect(breakdown.projects.length).toBe(PROJECT_BREAKDOWN_TOP_N);
+		expect(breakdown.other).toEqual({ hours: 8, project_count: 1 });
+		expect(breakdown.no_project).toMatchObject({
+			project_id: null,
+			project_code: null,
+			project_name: null,
+			client_name: null,
+			hours: 16,
+		});
+		expect(
+			breakdown.no_project!.activities.map((activity) => activity.activity_name)
+		).toEqual(['Internal', 'Unresolved']);
+		expect(breakdown.logged_hours).toBe(64);
+	});
+
+	it('ignores zero and negative hours and returns an empty payload for nothing', () => {
+		const breakdown = buildProjectBreakdown({
+			month: '2026-05',
+			employee: { id: 5, code: 'E-5', name: 'Five' },
+			assignments: [
+				assignment({ hours: 0 }),
+				assignment({ project_id: 2, resolved_project_id: 2, hours: -4 }),
+			],
+		});
+		expect(breakdown.projects).toEqual([]);
+		expect(breakdown.other).toEqual({ hours: 0, project_count: 0 });
+		expect(breakdown.no_project).toBeNull();
+		expect(breakdown.logged_hours).toBe(0);
+
+		const empty = buildProjectBreakdown({
+			month: '2026-05',
+			employee: { id: 6, code: 'E-6', name: 'Six' },
+			assignments: [],
+		});
+		expect(empty.projects).toEqual([]);
+		expect(empty.other).toEqual({ hours: 0, project_count: 0 });
+		expect(empty.no_project).toBeNull();
+		expect(empty.logged_hours).toBe(0);
+		expect(empty.top_n).toBe(PROJECT_BREAKDOWN_TOP_N);
+	});
+
+	it('falls back title → name → code → Project #<id> for the display name', () => {
+		expect(
+			projectDisplayName({
+				project_id: 1,
+				project_title: 'Title',
+				project_name: 'Name',
+				project_code: 'C-1',
+			})
+		).toBe('Title');
+		expect(
+			projectDisplayName({
+				project_id: 2,
+				project_title: '  ',
+				project_name: 'Name',
+				project_code: 'C-2',
+			})
+		).toBe('Name');
+		expect(
+			projectDisplayName({
+				project_id: 3,
+				project_title: null,
+				project_name: null,
+				project_code: 'C-3',
+			})
+		).toBe('C-3');
+		expect(
+			projectDisplayName({
+				project_id: 4,
+				project_title: null,
+				project_name: null,
+				project_code: null,
+			})
+		).toBe('Project #4');
 	});
 });

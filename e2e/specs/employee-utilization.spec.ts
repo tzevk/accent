@@ -12,6 +12,7 @@ import {
 	UTILIZATION_LATER_MONTH,
 	UTILIZATION_MONTH,
 	UTILIZATION_OPTIONAL_HOLIDAY,
+	UTILIZATION_PROJECTS,
 	UTILIZATION_ROSTER,
 	cleanupUtilizationFixtures,
 	utilizationMemberForPlan,
@@ -79,6 +80,25 @@ import {
  *                  narrows only. The page labels null "Unassigned" and filters
  *                  the grid client-side from the summary table or the
  *                  Department control (both compose with month/band/search).
+ *   breakdown    = the lazily fetched `/api/reports/employee-utilization/
+ *                  projects?month&employee_id` payload: every non-cancelled
+ *                  assignment resolved to the employee and summed for the
+ *                  month with the canonical reader, bucketed by its project
+ *                  (activity/discipline pairs as detail, each summed and
+ *                  hours descending); project groups sorted hours descending
+ *                  (ties by project id ascending), the top N = 5 shown and
+ *                  the rest in `other` (hours + spilled project count); hours
+ *                  whose assignment carries no project — or a project row the
+ *                  fixture/DB does not resolve — stay in `no_project`, never
+ *                  merged into `other`. `logged_hours` is the buckets' sum,
+ *                  which must equal the row's Logged Hours. The display name
+ *                  is `project_title` → `projects.name` → `project_code` →
+ *                  `Project #<id>`. The page fetches it on row expansion and
+ *                  renders it under `project-breakdown` (bucket rows
+ *                  `project-row`/`no-project-row` with `data-project`,
+ *                  `data-hours`; activity rows `activity-row`; an Other row
+ *                  only when something spilled) with the month's timesheet
+ *                  link (`breakdown-timesheet-link`).
  *
  * The page's own API payload is asserted against that derivation; the DOM is
  * read through the page's `data-testid`/`data-*` attributes, never classes.
@@ -643,6 +663,175 @@ function deriveDepartmentSummaries(
 	});
 }
 
+// ─── Project breakdown (ticket #299) ─────────────────────────────────
+
+/** The breakdown's pinned top N, re-implemented from the report's rule. */
+const PROJECT_TOP_N = 5;
+
+/** One raw `projects` row, straight from the database. */
+interface RawProject {
+	project_id: number;
+	project_code: string | null;
+	project_title: string | null;
+	name: string | null;
+	client_name: string | null;
+}
+
+/** One raw assignment row the breakdown derivation groups. */
+interface RawBreakdownAssignment {
+	project_id: number | null;
+	activity_name: string | null;
+	discipline_name: string | null;
+	/** The assignment's viewed-month Logged Hours. */
+	hours: number;
+}
+
+/** The display-name rule: title → name → code → `Project #<id>`. */
+function projectDisplayName(
+	project: RawProject | undefined,
+	projectId: number
+): string {
+	if (!project) return `Project #${projectId}`;
+	const title = (project.project_title ?? '').trim();
+	const name = (project.name ?? '').trim();
+	const code = (project.project_code ?? '').trim();
+	return title || name || code || `Project #${projectId}`;
+}
+
+interface DerivedBucketActivity {
+	activity: string;
+	discipline: string | null;
+	hours: number;
+}
+
+interface DerivedProjectBucket {
+	projectId: number | null;
+	projectCode: string | null;
+	projectName: string | null;
+	clientName: string | null;
+	hours: number;
+	activities: DerivedBucketActivity[];
+}
+
+interface DerivedBreakdown {
+	/** The top-N project groups, hours descending (ties by id ascending). */
+	projects: DerivedProjectBucket[];
+	other: { hours: number; project_count: number };
+	noProject: DerivedProjectBucket | null;
+	loggedHours: number;
+}
+
+/**
+ * The breakdown rule, re-implemented from the raw assignments: group by the
+ * assignment's project (a project id the `projects` rows do not resolve — or
+ * none at all — lands in No project), accumulate activity/discipline detail,
+ * sort hours descending, then split the top N from Other. No project is never
+ * merged into Other, and the bucket sum is the month's Logged Hours.
+ */
+function deriveBreakdown(
+	assignments: RawBreakdownAssignment[],
+	projectById: Map<number, RawProject>
+): DerivedBreakdown {
+	const buckets = new Map<
+		number | null,
+		{
+			projectId: number | null;
+			projectCode: string | null;
+			projectName: string | null;
+			clientName: string | null;
+			hours: number;
+			activities: DerivedBucketActivity[];
+		}
+	>();
+	let total = 0;
+
+	for (const assignment of assignments) {
+		if (!(assignment.hours > 0)) continue;
+		total += assignment.hours;
+		const resolved =
+			assignment.project_id !== null && projectById.has(assignment.project_id);
+		const key = resolved ? assignment.project_id : null;
+		let bucket = buckets.get(key);
+		if (!bucket) {
+			const project = resolved
+				? projectById.get(assignment.project_id as number)
+				: undefined;
+			bucket = {
+				projectId: resolved ? (assignment.project_id as number) : null,
+				projectCode: resolved ? (project?.project_code ?? null) : null,
+				projectName: resolved
+					? projectDisplayName(project, assignment.project_id as number)
+					: null,
+				clientName: resolved ? (project?.client_name ?? null) : null,
+				hours: 0,
+				activities: [],
+			};
+			buckets.set(key, bucket);
+		}
+		bucket.hours += assignment.hours;
+		const activityName =
+			(assignment.activity_name ?? '').trim() || 'Unspecified activity';
+		const discipline = assignment.discipline_name ?? null;
+		let activity = bucket.activities.find(
+			(candidate) =>
+				candidate.activity === activityName &&
+				candidate.discipline === discipline
+		);
+		if (!activity) {
+			activity = { activity: activityName, discipline, hours: 0 };
+			bucket.activities.push(activity);
+		}
+		activity.hours += assignment.hours;
+	}
+
+	const projects: DerivedProjectBucket[] = [];
+	let noProject: DerivedProjectBucket | null = null;
+	for (const bucket of buckets.values()) {
+		bucket.activities = bucket.activities
+			.map((activity) => ({ ...activity, hours: round2(activity.hours) }))
+			.sort(
+				(a, b) =>
+					b.hours - a.hours ||
+					a.activity.localeCompare(b.activity) ||
+					(a.discipline ?? '').localeCompare(b.discipline ?? '')
+			);
+		bucket.hours = round2(bucket.hours);
+		if (bucket.projectId === null) noProject = bucket;
+		else projects.push(bucket);
+	}
+	projects.sort(
+		(a, b) => b.hours - a.hours || Number(a.projectId) - Number(b.projectId)
+	);
+
+	const top = projects.slice(0, PROJECT_TOP_N);
+	const rest = projects.slice(PROJECT_TOP_N);
+	return {
+		projects: top,
+		other: {
+			hours: round2(rest.reduce((sum, bucket) => sum + bucket.hours, 0)),
+			project_count: rest.length,
+		},
+		noProject,
+		loggedHours: round2(total),
+	};
+}
+
+/** One derived bucket in the API's payload shape, for direct comparison. */
+function bucketPayload(bucket: DerivedProjectBucket) {
+	return {
+		project_id: bucket.projectId,
+		project_code: bucket.projectCode,
+		project_name: bucket.projectName,
+		client_name: bucket.clientName,
+		hours: bucket.hours,
+		activities: bucket.activities.map((activity) => ({
+			activity_name: activity.activity,
+			discipline_name: activity.discipline,
+			hours: activity.hours,
+		})),
+	};
+}
+
 interface DerivedMonth {
 	/** The employees the month's report must hold, by code. */
 	rosterCodes: string[];
@@ -737,6 +926,33 @@ interface ApiDepartmentSummary {
 	capacity_hours: number;
 	bench_cost: number | null;
 	no_logged_count: number;
+}
+
+/** One bucket of the projects route's payload. */
+interface ApiBreakdownBucket {
+	project_id: number | null;
+	project_code: string | null;
+	project_name: string | null;
+	client_name: string | null;
+	hours: number;
+	activities: {
+		activity_name: string;
+		discipline_name: string | null;
+		hours: number;
+	}[];
+}
+
+/** The projects route's `data` payload. */
+interface ApiBreakdown {
+	month: string;
+	employee_id: number;
+	employee_code: string;
+	employee_name: string;
+	logged_hours: number;
+	top_n: number;
+	projects: ApiBreakdownBucket[];
+	other: { hours: number; project_count: number };
+	no_project: ApiBreakdownBucket | null;
 }
 
 interface ApiPayload {
@@ -891,6 +1107,95 @@ function readDepartmentSummary(
 	);
 }
 
+/** One rendered breakdown bucket row plus the activity rows under it. */
+interface RenderedBreakdownBucket {
+	/** 'project' for a project row, 'no-project' for the explicit bucket. */
+	kind: string;
+	/** `data-project`: the project id, '' for the No-project bucket. */
+	project: string;
+	name: string;
+	code: string;
+	client: string;
+	/** `data-hours`: the bucket's hour total as the payload carries it. */
+	rawHours: string;
+	/** The rendered Hours cell (`formatNumber`). */
+	hours: string;
+	activities: {
+		activity: string;
+		discipline: string;
+		rawHours: string;
+		hours: string;
+	}[];
+}
+
+interface RenderedBreakdown {
+	employeeCode: string;
+	/** `data-logged-hours`: the payload's footing total. */
+	loggedHours: string;
+	linkHref: string;
+	projects: RenderedBreakdownBucket[];
+	other: { rawHours: string; count: string; hours: string } | null;
+	noProject: RenderedBreakdownBucket | null;
+}
+
+/**
+ * Read the expanded row's breakdown panel: the bucket rows in DOM order (with
+ * their activity rows attached to the bucket above them), the Other row when
+ * it spilled, and the No-project bucket. `data-*` carries the payload's own
+ * numbers; the cell text is the rendered `formatNumber` value.
+ */
+function readBreakdown(page: Page): Promise<RenderedBreakdown> {
+	return page.locator('[data-testid="project-breakdown"]').evaluate((panel) => {
+		const text = (root: Element, testId: string) =>
+			root.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ??
+			'';
+		const buckets: RenderedBreakdownBucket[] = [];
+		let current: RenderedBreakdownBucket | null = null;
+		let other: { rawHours: string; count: string; hours: string } | null = null;
+		for (const row of Array.from(panel.querySelectorAll('tbody > tr'))) {
+			const testId = row.getAttribute('data-testid') ?? '';
+			if (testId === 'project-row' || testId === 'no-project-row') {
+				current = {
+					kind: testId === 'project-row' ? 'project' : 'no-project',
+					project: row.getAttribute('data-project') ?? '',
+					name: text(row, 'breakdown-row-name'),
+					code: text(row, 'breakdown-row-code'),
+					client: text(row, 'breakdown-row-client'),
+					rawHours: row.getAttribute('data-hours') ?? '',
+					hours: text(row, 'breakdown-row-hours'),
+					activities: [],
+				};
+				buckets.push(current);
+			} else if (testId === 'activity-row') {
+				current?.activities.push({
+					activity: row.getAttribute('data-activity') ?? '',
+					discipline: row.getAttribute('data-discipline') ?? '',
+					rawHours: row.getAttribute('data-hours') ?? '',
+					hours: text(row, 'activity-hours'),
+				});
+			} else if (testId === 'other-projects-row') {
+				other = {
+					rawHours: row.getAttribute('data-hours') ?? '',
+					count: row.getAttribute('data-project-count') ?? '',
+					hours: text(row, 'other-hours'),
+				};
+				current = null;
+			}
+		}
+		return {
+			employeeCode: panel.getAttribute('data-employee-code') ?? '',
+			loggedHours: panel.getAttribute('data-logged-hours') ?? '',
+			linkHref:
+				panel
+					.querySelector('[data-testid="breakdown-timesheet-link"]')
+					?.getAttribute('href') ?? '',
+			projects: buckets.filter((bucket) => bucket.kind === 'project'),
+			other,
+			noProject: buckets.find((bucket) => bucket.kind === 'no-project') ?? null,
+		};
+	});
+}
+
 /** The Department filter control's trigger button. */
 function departmentControl(page: Page) {
 	return page.getByLabel('Department', { exact: true });
@@ -1023,6 +1328,10 @@ interface Model {
 	trend: DerivedTrendPoint[];
 	/** #298: the viewed month's derived department rollup, in payload order. */
 	departments: DerivedDepartment[];
+	/** #299: per viewed-roster employee, the derived project breakdown. */
+	breakdowns: Map<number, DerivedBreakdown>;
+	/** #299: `projects.project_code` → id, for asserting the payload's ids. */
+	projectIdByCode: Map<string, number>;
 }
 
 const model = {} as Model;
@@ -1067,15 +1376,21 @@ test.beforeAll(async () => {
 
 	// Logged Hours evidence, resolved exactly like the report resolves an
 	// assignment to an employee: stamped `employee_id` first, then the linked
-	// user, then the user's email/username.
+	// user, then the user's email/username. The project/activity columns ride
+	// along for the #299 breakdown derivation — the same raw rows feed both.
 	const assignments = await rows<{
 		user_id: number | null;
 		employee_id: number | null;
 		email: string | null;
 		username: string | null;
 		daily_entries: string | null;
+		project_id: number | null;
+		activity_name: string | null;
+		discipline_name: string | null;
 	}>(
-		`SELECT uaa.user_id, uaa.employee_id, u.email, u.username, uaa.daily_entries
+		`SELECT uaa.user_id, uaa.employee_id, u.email, u.username,
+		        uaa.daily_entries, uaa.project_id, uaa.activity_name,
+		        uaa.discipline_name
 		 FROM user_activity_assignments uaa
 		 LEFT JOIN users u ON u.id = uaa.user_id AND u.isDelete = 0
 		 WHERE uaa.status <> 'Cancelled'
@@ -1116,6 +1431,9 @@ test.beforeAll(async () => {
 		{ first: string | null; last: string | null }
 	>();
 	const loggedHoursByMonth = new Map<string, Map<number, number>>();
+	// #299: the viewed month's raw assignment rows, by employee — the
+	// breakdown derivation's input (grouping is derived from these below).
+	const breakdownAssignments = new Map<number, RawBreakdownAssignment[]>();
 	for (const assignment of assignments) {
 		let empId = Number(assignment.employee_id ?? 0);
 		if (!empId) {
@@ -1143,6 +1461,22 @@ test.beforeAll(async () => {
 			loggedHoursByMonth.set(spanMonth, byEmployee);
 		}
 
+		// The breakdown's raw row: the assignment's viewed-month hours plus
+		// its project/activity columns (project resolution happens below,
+		// against the raw `projects` rows).
+		const monthHours = loggedHoursInMonth(assignment.daily_entries, MONTH);
+		if (monthHours > 0) {
+			const owned = breakdownAssignments.get(empId) ?? [];
+			owned.push({
+				project_id:
+					assignment.project_id === null ? null : Number(assignment.project_id),
+				activity_name: assignment.activity_name,
+				discipline_name: assignment.discipline_name,
+				hours: monthHours,
+			});
+			breakdownAssignments.set(empId, owned);
+		}
+
 		for (const day of loggedDays(assignment.daily_entries)) {
 			const bound = loggedBounds.get(empId) ?? { first: null, last: null };
 			if (bound.first === null || day < bound.first) bound.first = day;
@@ -1150,6 +1484,17 @@ test.beforeAll(async () => {
 			loggedBounds.set(empId, bound);
 		}
 	}
+
+	// The raw `projects` rows the breakdown resolves assignment project ids
+	// against; a soft-deleted (or missing) row is the No-project bucket's
+	// other path.
+	const projectRows = await rows<RawProject>(
+		`SELECT project_id, project_code, project_title, name, client_name
+		 FROM projects WHERE isDelete = 0`
+	);
+	const projectById = new Map(
+		projectRows.map((project) => [Number(project.project_id), project])
+	);
 
 	const employees: RawEmployee[] = directory.map((row) => {
 		const attendance = boundsById.get(Number(row.id));
@@ -1266,6 +1611,16 @@ test.beforeAll(async () => {
 	}
 	const trend = deriveTrendSeries(SPAN_MONTHS, spanRows);
 
+	// #299: every viewed-roster member's breakdown, derived from the raw
+	// assignment rows plus the raw `projects` rows (never the report's code).
+	const breakdowns = new Map<number, DerivedBreakdown>();
+	for (const [employeeId] of derivedRows) {
+		breakdowns.set(
+			employeeId,
+			deriveBreakdown(breakdownAssignments.get(employeeId) ?? [], projectById)
+		);
+	}
+
 	model.employees = employees;
 	model.windows = windows;
 	model.month = deriveMonth(employees, MONTH);
@@ -1278,6 +1633,13 @@ test.beforeAll(async () => {
 	model.trailing = trailing;
 	model.trend = trend;
 	model.departments = deriveDepartmentSummaries(employees, derivedRows);
+	model.breakdowns = breakdowns;
+	model.projectIdByCode = new Map(
+		projectRows.map((project) => [
+			project.project_code ?? '',
+			Number(project.project_id),
+		])
+	);
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────
@@ -3090,6 +3452,361 @@ test.describe('employee utilization roster', () => {
 		};
 	});
 
+	test('the projects route groups the month’s Logged Hours by project with top N, Other and No project', async ({
+		request,
+	}) => {
+		const api = await fetchMonth(request, MONTH);
+
+		// Every roster row's breakdown equals the raw-row derivation and foots
+		// to the row's Logged Hours — top N + Other + No project are the whole
+		// month, with No project never merged into Other.
+		const breakdownByCode = new Map<string, ApiBreakdown>();
+		for (const row of api.rows) {
+			const employee = model.employees.find(
+				(candidate) => candidate.employee_id === row.employee_code
+			)!;
+			const derived = model.breakdowns.get(employee.id)!;
+			const response = await request.get(
+				`/api/reports/employee-utilization/projects?month=${MONTH}&employee_id=${employee.id}`
+			);
+			expect(response.status(), row.employee_code).toBe(200);
+			const body = await response.json();
+			expect(body.success, row.employee_code).toBe(true);
+			const breakdown = body.data as ApiBreakdown;
+			breakdownByCode.set(row.employee_code, breakdown);
+
+			expect(breakdown.month).toBe(MONTH);
+			expect(breakdown.employee_id).toBe(employee.id);
+			expect(breakdown.employee_code).toBe(row.employee_code);
+			expect(breakdown.employee_name).toBe(row.employee_name);
+			expect(breakdown.top_n).toBe(PROJECT_TOP_N);
+			expect(breakdown.projects).toEqual(derived.projects.map(bucketPayload));
+			expect(breakdown.other).toEqual(derived.other);
+			expect(breakdown.no_project).toEqual(
+				derived.noProject ? bucketPayload(derived.noProject) : null
+			);
+
+			// Footing: the buckets sum to the row's Logged Hours.
+			expect(breakdown.logged_hours, row.employee_code).toBe(row.logged_hours);
+			const summed = round2(
+				[
+					...breakdown.projects,
+					...(breakdown.no_project ? [breakdown.no_project] : []),
+				].reduce((sum, bucket) => sum + bucket.hours, 0) + breakdown.other.hours
+			);
+			expect(summed, row.employee_code).toBe(row.logged_hours);
+		}
+
+		// The split fixture: six projects in the month (alpha under two
+		// activities) plus the project-less day. Hours 64/40/32/24/16/8 put
+		// zeta beyond the top five and its 8h in Other; the project-less 8h
+		// stays in No project.
+		const split = utilizationMemberForPlan('projectSplit');
+		const splitId = model.employees.find(
+			(row) => row.employee_id === split.code
+		)!.id;
+		const splitDerived = model.breakdowns.get(splitId)!;
+		const splitPayload = breakdownByCode.get(split.code)!;
+		const splitRow = api.rows.find((row) => row.employee_code === split.code)!;
+		expect(splitRow.logged_hours).toBe(192);
+		expect(splitDerived.projects.map((bucket) => bucket.hours)).toEqual([
+			64, 40, 32, 24, 16,
+		]);
+		expect(splitDerived.other).toEqual({ hours: 8, project_count: 1 });
+		expect(splitDerived.noProject!.hours).toBe(8);
+		expect(splitPayload.projects.length).toBe(PROJECT_TOP_N);
+		expect(splitPayload.projects.map((bucket) => bucket.project_id)).toEqual(
+			(['alpha', 'beta', 'gamma', 'delta', 'epsilon'] as const).map((key) =>
+				model.projectIdByCode.get(UTILIZATION_PROJECTS[key].code)
+			)
+		);
+		expect(splitPayload.other).toEqual({ hours: 8, project_count: 1 });
+		expect(splitPayload.logged_hours).toBe(192);
+
+		const alpha = splitPayload.projects[0];
+		expect(alpha.project_code).toBe(UTILIZATION_PROJECTS.alpha.code);
+		expect(alpha.project_name).toBe(UTILIZATION_PROJECTS.alpha.title);
+		expect(alpha.client_name).toBe(UTILIZATION_PROJECTS.alpha.client);
+		expect(alpha.activities).toEqual([
+			{
+				activity_name: 'E2E Piping Analysis',
+				discipline_name: 'Piping',
+				hours: 48,
+			},
+			{
+				activity_name: 'E2E 3D Modeling',
+				discipline_name: 'Piping',
+				hours: 16,
+			},
+		]);
+		// Beta carries no `project_title`: the display name falls back to the
+		// project's `name`.
+		expect(splitPayload.projects[1].project_name).toBe(
+			UTILIZATION_PROJECTS.beta.name
+		);
+		expect(splitPayload.projects[1].activities).toEqual([
+			{
+				activity_name: 'E2E Stress Review',
+				discipline_name: 'Stress',
+				hours: 40,
+			},
+		]);
+		// A missing discipline stays null — never an invented label.
+		expect(splitPayload.projects[3].activities).toEqual([
+			{ activity_name: 'E2E QA Review', discipline_name: null, hours: 24 },
+		]);
+		expect(splitPayload.no_project).toMatchObject({
+			project_id: null,
+			project_code: null,
+			project_name: null,
+			client_name: null,
+			hours: 8,
+		});
+		expect(splitPayload.no_project!.activities).toEqual([
+			{ activity_name: 'E2E Internal Work', discipline_name: null, hours: 8 },
+		]);
+
+		// A member whose month is project-less only: no project groups, an
+		// empty Other, and the whole total in the explicit No-project bucket.
+		const projectless = utilizationMemberForPlan('payrollWithHours');
+		const projectlessRow = api.rows.find(
+			(row) => row.employee_code === projectless.code
+		)!;
+		const projectlessPayload = breakdownByCode.get(projectless.code)!;
+		expect(projectlessPayload.projects).toEqual([]);
+		expect(projectlessPayload.other).toEqual({ hours: 0, project_count: 0 });
+		expect(projectlessPayload.no_project!.hours).toBe(
+			projectlessRow.logged_hours
+		);
+		expect(projectlessPayload.no_project!.project_id).toBeNull();
+		expect(projectlessPayload.no_project!.activities.length).toBeGreaterThan(0);
+
+		// A zero-Logged-Hours member: an empty breakdown, never a 404 — the
+		// route answers for the employee, the month is just empty.
+		const idle = utilizationMemberForPlan('payrollIdle');
+		const idlePayload = breakdownByCode.get(idle.code)!;
+		expect(idlePayload.logged_hours).toBe(0);
+		expect(idlePayload.projects).toEqual([]);
+		expect(idlePayload.other).toEqual({ hours: 0, project_count: 0 });
+		expect(idlePayload.no_project).toBeNull();
+
+		// Param validation: a malformed month/employee is a 400, an unknown
+		// employee a 404.
+		const badMonth = await request.get(
+			`/api/reports/employee-utilization/projects?month=2019-13&employee_id=${splitId}`
+		);
+		expect(badMonth.status()).toBe(400);
+		const missingEmployee = await request.get(
+			`/api/reports/employee-utilization/projects?month=${MONTH}`
+		);
+		expect(missingEmployee.status()).toBe(400);
+		const badEmployee = await request.get(
+			`/api/reports/employee-utilization/projects?month=${MONTH}&employee_id=abc`
+		);
+		expect(badEmployee.status()).toBe(400);
+		const unknownEmployee = await request.get(
+			`/api/reports/employee-utilization/projects?month=${MONTH}&employee_id=2147483646`
+		);
+		expect(unknownEmployee.status()).toBe(404);
+
+		observed.breakdown = {
+			month: MONTH,
+			rowsChecked: api.rows.length,
+			split: {
+				projects: splitPayload.projects.map((bucket) => ({
+					project: bucket.project_id,
+					name: bucket.project_name,
+					hours: bucket.hours,
+					activities: bucket.activities.length,
+				})),
+				other: splitPayload.other,
+				noProject: splitPayload.no_project?.hours ?? null,
+				loggedHours: splitPayload.logged_hours,
+			},
+			projectlessOnly: {
+				code: projectless.code,
+				noProjectHours: projectlessPayload.no_project?.hours ?? null,
+				rowLoggedHours: projectlessRow.logged_hours,
+			},
+			validation: {
+				badMonth: badMonth.status(),
+				missingEmployee: missingEmployee.status(),
+				badEmployee: badEmployee.status(),
+				unknownEmployee: unknownEmployee.status(),
+			},
+		};
+	});
+
+	test('expanding a row shows the derived breakdown, the No project bucket and the month’s timesheet link', async ({
+		page,
+	}) => {
+		await openMonth(page, MONTH_LABEL);
+		const split = utilizationMemberForPlan('projectSplit');
+		const splitId = model.employees.find(
+			(row) => row.employee_id === split.code
+		)!.id;
+		const splitDerived = model.breakdowns.get(splitId)!;
+		const splitRow = page.locator(
+			`[data-testid="utilization-row"][data-employee-code="${split.code}"]`
+		);
+		const splitExpand = splitRow.getByTestId('row-expand');
+		const splitPanel = page.locator(
+			`[data-testid="project-breakdown"][data-employee-code="${split.code}"]`
+		);
+
+		// Collapsed by default: no control state, no panel, no request made.
+		await expect(splitExpand).toHaveAttribute('aria-expanded', 'false');
+		await expect(splitPanel).toHaveCount(0);
+
+		await splitExpand.click();
+		await expect(splitExpand).toHaveAttribute('aria-expanded', 'true');
+		await expect(splitPanel.getByTestId('project-row')).toHaveCount(
+			splitDerived.projects.length
+		);
+		const rendered = await readBreakdown(page);
+		expect(rendered.employeeCode).toBe(split.code);
+		expect(Number(rendered.loggedHours)).toBe(splitDerived.loggedHours);
+		// The panel's footing total is the row's rendered Logged Hours.
+		const splitGridRow = (await readRows(page)).find(
+			(row) => row.code === split.code
+		)!;
+		expect(splitGridRow.logged).toBe(number2.format(splitDerived.loggedHours));
+
+		expect(rendered.projects.map((bucket) => Number(bucket.project))).toEqual(
+			splitDerived.projects.map((bucket) => bucket.projectId)
+		);
+		expect(rendered.projects.map((bucket) => bucket.name)).toEqual(
+			splitDerived.projects.map((bucket) => bucket.projectName)
+		);
+		expect(rendered.projects.map((bucket) => Number(bucket.rawHours))).toEqual(
+			splitDerived.projects.map((bucket) => bucket.hours)
+		);
+		expect(rendered.projects.map((bucket) => bucket.hours)).toEqual(
+			splitDerived.projects.map((bucket) => number2.format(bucket.hours))
+		);
+		splitDerived.projects.forEach((bucket, index) => {
+			expect(
+				rendered.projects[index].activities.map((activity) => ({
+					activity: activity.activity,
+					discipline: activity.discipline,
+					hours: activity.hours,
+				})),
+				bucket.projectCode ?? ''
+			).toEqual(
+				bucket.activities.map((activity) => ({
+					activity: activity.activity,
+					discipline: activity.discipline ?? '',
+					hours: number2.format(activity.hours),
+				}))
+			);
+		});
+
+		// Other: the spilled project's hours and count; No project is separate
+		// and explicit, with its own detail.
+		expect(rendered.other).not.toBeNull();
+		expect(Number(rendered.other!.rawHours)).toBe(splitDerived.other.hours);
+		expect(rendered.other!.hours).toBe(
+			number2.format(splitDerived.other.hours)
+		);
+		expect(rendered.other!.count).toBe(
+			String(splitDerived.other.project_count)
+		);
+		expect(rendered.other!.count).toBe('1');
+		expect(rendered.noProject).not.toBeNull();
+		expect(rendered.noProject!.name).toBe('No project');
+		expect(rendered.noProject!.project).toBe('');
+		expect(Number(rendered.noProject!.rawHours)).toBe(
+			splitDerived.noProject!.hours
+		);
+		expect(
+			rendered.noProject!.activities.map((activity) => activity.activity)
+		).toEqual(
+			splitDerived.noProject!.activities.map((activity) => activity.activity)
+		);
+		expect(rendered.linkHref).toBe(
+			`/reports/timesheet-report?employee_id=${splitId}&month=${MONTH}`
+		);
+
+		// Collapsing hides the panel again; the control reads collapsed.
+		await splitExpand.click();
+		await expect(splitExpand).toHaveAttribute('aria-expanded', 'false');
+		await expect(splitPanel).toHaveCount(0);
+
+		// A member whose month is project-less only: no project rows, no Other
+		// row, the whole total in the explicit No-project bucket.
+		const projectless = utilizationMemberForPlan('payrollWithHours');
+		const projectlessId = model.employees.find(
+			(row) => row.employee_id === projectless.code
+		)!.id;
+		const projectlessDerived = model.breakdowns.get(projectlessId)!;
+		const projectlessRow = page.locator(
+			`[data-testid="utilization-row"][data-employee-code="${projectless.code}"]`
+		);
+		await projectlessRow.getByTestId('row-expand').click();
+		await expect(projectlessRow.getByTestId('row-expand')).toHaveAttribute(
+			'aria-expanded',
+			'true'
+		);
+		const projectlessPanel = page.locator(
+			`[data-testid="project-breakdown"][data-employee-code="${projectless.code}"]`
+		);
+		await expect(projectlessPanel).toHaveAttribute(
+			'data-logged-hours',
+			String(projectlessDerived.loggedHours)
+		);
+		const projectlessRendered = await readBreakdown(page);
+		expect(projectlessRendered.projects).toEqual([]);
+		expect(projectlessRendered.other).toBeNull();
+		expect(Number(projectlessRendered.noProject!.rawHours)).toBe(
+			projectlessDerived.noProject!.hours
+		);
+		await projectlessRow.getByTestId('row-expand').click();
+
+		// A member who logged nothing: the panel still answers, with an empty
+		// zeroed breakdown — missing time is shown, not hidden.
+		const idle = utilizationMemberForPlan('payrollIdle');
+		const idleRow = page.locator(
+			`[data-testid="utilization-row"][data-employee-code="${idle.code}"]`
+		);
+		await idleRow.getByTestId('row-expand').click();
+		const idlePanel = page.locator(
+			`[data-testid="project-breakdown"][data-employee-code="${idle.code}"]`
+		);
+		await expect(idlePanel).toHaveAttribute('data-logged-hours', '0');
+		const idleRendered = await readBreakdown(page);
+		expect(idleRendered.projects).toEqual([]);
+		expect(idleRendered.other).toBeNull();
+		expect(idleRendered.noProject).toBeNull();
+		expect(Number(idleRendered.loggedHours)).toBe(0);
+		expect(idleRendered.linkHref).toBe(
+			`/reports/timesheet-report?employee_id=${
+				model.employees.find((row) => row.employee_id === idle.code)!.id
+			}&month=${MONTH}`
+		);
+		await idleRow.getByTestId('row-expand').click();
+
+		observed.breakdownPage = {
+			month: MONTH,
+			split: {
+				topProjects: splitDerived.projects.length,
+				otherCount: rendered.other?.count ?? null,
+				noProject: Number(rendered.noProject?.rawHours ?? ''),
+				loggedHours: Number(rendered.loggedHours),
+				link: rendered.linkHref,
+			},
+			projectless: {
+				projects: projectlessRendered.projects.length,
+				other: projectlessRendered.other,
+				noProject: Number(projectlessRendered.noProject?.rawHours ?? ''),
+			},
+			idle: {
+				loggedHours: Number(idleRendered.loggedHours),
+				projects: idleRendered.projects.length,
+				noProject: idleRendered.noProject,
+			},
+		};
+	});
+
 	test('the fixtures leave no residue and the run writes its artifact', async () => {
 		const owned = await rows<{ id: number }>(
 			`SELECT id FROM employees WHERE employee_id LIKE 'E2E-UTIL-%'`
@@ -3131,6 +3848,9 @@ test.describe('employee utilization roster', () => {
 				`SELECT COUNT(*) AS n FROM holiday_master WHERE name = ?`,
 				[UTILIZATION_OPTIONAL_HOLIDAY.name]
 			),
+			projects: await count(
+				`SELECT COUNT(*) AS n FROM projects WHERE project_code LIKE 'E2E-UTIL-P%'`
+			),
 		};
 		expect(residue).toEqual({
 			employees: 0,
@@ -3139,6 +3859,7 @@ test.describe('employee utilization roster', () => {
 			profiles: 0,
 			users: 0,
 			holidays: 0,
+			projects: 0,
 		});
 
 		writeArtifact('employee-utilization', {
@@ -3172,6 +3893,8 @@ test.describe('employee utilization roster', () => {
 					'six months ending at the viewed month, oldest first: capacity-weighted utilization round2(Σ logged ÷ Σ capacity × 100) over each month’s roster rows (null when no capacity) and the priced rows’ Bench Cost total (null when none is priced) — unfiltered by the flag band',
 				department:
 					'employees.department (free text; "" normalizes to null) rides on every row and never carries the page’s "Unassigned" label; the payload’s departments rollup has one entry per department present in the month’s roster rows (unset null, sorted last, names ascending) with headcount, capacity-weighted utilization round2(Σ logged ÷ Σ capacity × 100), logged/capacity hours, priced Bench Cost sum (null when none priced) and the zero-Logged-Hours count — computed before the flag filter; the page labels null "Unassigned" and filters the grid client-side from the summary rows or the Department control (composing with month/band/search)',
+				projectBreakdown:
+					'the lazily fetched projects route: every non-cancelled assignment resolved through the shared Logged Hours rule and summed for the month with the canonical reader, bucketed by project (activity/discipline pairs summed, hours descending); project groups sorted hours descending (ties by project id ascending), top N = 5 plus other (hours + spilled project count); project-less hours — or a project id the projects rows do not resolve — stay in no_project, never merged into other; logged_hours is the buckets’ sum and must equal the row’s Logged Hours; the display name is project_title → projects.name → project_code → Project #<id>',
 			},
 			calendar: {
 				month: MONTH,
@@ -3249,6 +3972,30 @@ test.describe('employee utilization roster', () => {
 					benchCost: summary.benchCost,
 					noLoggedCount: summary.noLoggedCount,
 				})),
+			},
+			projects: {
+				seeded: UTILIZATION_PROJECTS,
+				splitMember: (() => {
+					const split = utilizationMemberForPlan('projectSplit');
+					const derived = model.breakdowns.get(
+						model.employees.find((row) => row.employee_id === split.code)!.id
+					)!;
+					return {
+						code: split.code,
+						topN: PROJECT_TOP_N,
+						projects: derived.projects.map((bucket) => ({
+							projectId: bucket.projectId,
+							projectCode: bucket.projectCode,
+							projectName: bucket.projectName,
+							clientName: bucket.clientName,
+							hours: bucket.hours,
+							activities: bucket.activities,
+						})),
+						other: derived.other,
+						noProject: derived.noProject,
+						loggedHours: derived.loggedHours,
+					};
+				})(),
 			},
 			observed,
 			residue,
