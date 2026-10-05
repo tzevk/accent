@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
 	ArrowPathIcon,
 	ChartBarIcon,
+	ChevronRightIcon,
 	DocumentArrowDownIcon,
 	MagnifyingGlassIcon,
 	XMarkIcon,
@@ -134,6 +135,44 @@ interface UtilizationData {
 	disclosure: RosterDisclosure | null;
 	/** The month's department rollup, computed before the band filter. */
 	departments: DepartmentSummary[];
+}
+
+/** One activity/discipline pair inside a bucket: the hours logged under it. */
+interface ProjectBreakdownActivity {
+	activity_name: string;
+	discipline_name: string | null;
+	hours: number;
+}
+
+/** One bucket: a project, or the No-project bucket whose project fields are null. */
+interface ProjectBreakdownBucket {
+	project_id: number | null;
+	project_code: string | null;
+	/** `project_title` → `projects.name` → `project_code` → `Project #<id>`. */
+	project_name: string | null;
+	client_name: string | null;
+	hours: number;
+	activities: ProjectBreakdownActivity[];
+}
+
+/** One employee's month breakdown — the lazily fetched projects payload. */
+interface ProjectBreakdown {
+	month: string;
+	employee_id: number;
+	employee_code: string;
+	employee_name: string;
+	/** Σ of every bucket — equals the row's Logged Hours for the month. */
+	logged_hours: number;
+	top_n: number;
+	projects: ProjectBreakdownBucket[];
+	other: { hours: number; project_count: number };
+	no_project: ProjectBreakdownBucket | null;
+}
+
+interface BreakdownResponse {
+	success: boolean;
+	data?: ProjectBreakdown;
+	error?: string;
 }
 
 interface MetaResponse {
@@ -269,6 +308,212 @@ function partialWindowLabel(row: UtilizationRow): string {
 /** Deep link to the per-employee timesheet detail for the row's month. */
 function timesheetHref(row: UtilizationRow): string {
 	return `/reports/timesheet-report?employee_id=${row.employee_id}&month=${encodeURIComponent(row.month)}`;
+}
+
+/**
+ * One bucket's detail rows: the bucket line (its project or "No project")
+ * followed by the activity/discipline pairs the hours were logged under.
+ * `project-row` carries `data-project` (the project id); `no-project-row` is
+ * the explicit project-less bucket and never merges into "Other".
+ */
+function BreakdownBucketRows({
+	bucket,
+	testId,
+}: {
+	bucket: ProjectBreakdownBucket;
+	testId: 'project-row' | 'no-project-row';
+}) {
+	return (
+		<>
+			<tr
+				data-testid={testId}
+				data-project={bucket.project_id ?? ''}
+				data-hours={bucket.hours}
+				className="border-b border-gray-100"
+			>
+				<td
+					data-testid="breakdown-row-name"
+					className="px-3 py-2 font-medium text-gray-800"
+				>
+					{bucket.project_name ?? 'No project'}
+				</td>
+				<td
+					data-testid="breakdown-row-code"
+					className="px-3 py-2 text-xs text-gray-500"
+				>
+					{bucket.project_code ?? '—'}
+				</td>
+				<td
+					data-testid="breakdown-row-client"
+					className="px-3 py-2 text-gray-600"
+				>
+					{bucket.client_name ?? '—'}
+				</td>
+				<td
+					data-testid="breakdown-row-hours"
+					className="px-3 py-2 text-right font-medium tabular-nums"
+				>
+					{formatNumber(bucket.hours)}
+				</td>
+			</tr>
+			{bucket.activities.map((activity) => (
+				<tr
+					key={`${activity.activity_name}\u0000${activity.discipline_name ?? ''}`}
+					data-testid="activity-row"
+					data-activity={activity.activity_name}
+					data-discipline={activity.discipline_name ?? ''}
+					data-hours={activity.hours}
+					className="border-b border-gray-50 text-xs text-gray-600"
+				>
+					<td className="px-3 py-1.5 pl-8">{activity.activity_name}</td>
+					<td className="px-3 py-1.5">{activity.discipline_name ?? '—'}</td>
+					<td className="px-3 py-1.5" />
+					<td
+						data-testid="activity-hours"
+						className="px-3 py-1.5 text-right tabular-nums"
+					>
+						{formatNumber(activity.hours)}
+					</td>
+				</tr>
+			))}
+		</>
+	);
+}
+
+/**
+ * The lazily fetched per-employee project breakdown, rendered under an
+ * expanded grid row: the month's Logged Hours grouped by project with
+ * activity/discipline as detail, the top N plus "Other", the explicit
+ * "No project" bucket, and the drill-down link to the month's per-employee
+ * timesheet. The query runs only while the row is expanded — the base month
+ * payload never carries this lens.
+ */
+function ProjectBreakdownPanel({ row }: { row: UtilizationRow }) {
+	const breakdownQuery = useQuery<BreakdownResponse>({
+		queryKey: [
+			'reports',
+			'employee-utilization',
+			'projects',
+			row.month,
+			row.employee_id,
+		],
+		queryFn: () =>
+			apiGet('/api/reports/employee-utilization/projects', {
+				month: row.month,
+				employee_id: row.employee_id,
+			}),
+		staleTime: 30_000,
+	});
+	const breakdown = breakdownQuery.data?.data;
+
+	return (
+		<div
+			data-testid="project-breakdown"
+			data-employee-code={row.employee_code}
+			data-logged-hours={breakdown ? String(breakdown.logged_hours) : ''}
+			className="space-y-2"
+		>
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+					Logged Hours by project — {monthLabel(row.month)}
+				</p>
+				<Link
+					data-testid="breakdown-timesheet-link"
+					href={timesheetHref(row)}
+					className="text-xs font-medium text-[#64126D] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+				>
+					Open {monthLabel(row.month)} timesheet →
+				</Link>
+			</div>
+			{breakdownQuery.isLoading ? (
+				<p data-testid="breakdown-loading" className="text-sm text-gray-500">
+					Loading project breakdown…
+				</p>
+			) : breakdownQuery.isError ? (
+				<div
+					data-testid="breakdown-error"
+					className="flex flex-wrap items-center gap-2 text-sm text-red-700"
+				>
+					<span>
+						{breakdownQuery.error instanceof Error
+							? breakdownQuery.error.message
+							: 'Failed to load the project breakdown.'}
+					</span>
+					<button
+						type="button"
+						onClick={() => breakdownQuery.refetch()}
+						className="rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+					>
+						Retry
+					</button>
+				</div>
+			) : breakdown ? (
+				<div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+					<table className="w-full min-w-[560px] border-collapse text-sm">
+						<caption className="sr-only">
+							Logged Hours by project for {row.employee_name},{' '}
+							{monthLabel(row.month)}
+						</caption>
+						<thead>
+							<tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+								<th scope="col" className="px-3 py-2">
+									Project
+								</th>
+								<th scope="col" className="px-3 py-2">
+									Code
+								</th>
+								<th scope="col" className="px-3 py-2">
+									Client
+								</th>
+								<th scope="col" className="px-3 py-2 text-right">
+									Hours
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							{breakdown.projects.map((group) => (
+								<BreakdownBucketRows
+									key={`project-${group.project_id}`}
+									bucket={group}
+									testId="project-row"
+								/>
+							))}
+							{breakdown.other.project_count > 0 && (
+								<tr
+									data-testid="other-projects-row"
+									data-hours={breakdown.other.hours}
+									data-project-count={breakdown.other.project_count}
+									className="border-b border-gray-100"
+								>
+									<td className="px-3 py-2 font-medium text-gray-800">
+										Other ({breakdown.other.project_count}{' '}
+										{breakdown.other.project_count === 1
+											? 'project'
+											: 'projects'}
+										)
+									</td>
+									<td className="px-3 py-2 text-xs text-gray-500">—</td>
+									<td className="px-3 py-2 text-gray-600">—</td>
+									<td
+										data-testid="other-hours"
+										className="px-3 py-2 text-right font-medium tabular-nums"
+									>
+										{formatNumber(breakdown.other.hours)}
+									</td>
+								</tr>
+							)}
+							{breakdown.no_project && (
+								<BreakdownBucketRows
+									bucket={breakdown.no_project}
+									testId="no-project-row"
+								/>
+							)}
+						</tbody>
+					</table>
+				</div>
+			) : null}
+		</div>
+	);
 }
 
 /**
@@ -527,6 +772,11 @@ export default function EmployeeUtilizationPage() {
 	const [department, setDepartment] = useState('');
 	const [search, setSearch] = useState('');
 	const [exporting, setExporting] = useState(false);
+	// The project breakdown is fetched lazily: only the expanded row's panel
+	// is mounted, and only one row expands at a time.
+	const [expandedEmployeeId, setExpandedEmployeeId] = useState<number | null>(
+		null
+	);
 
 	const isSuperAdmin =
 		user?.is_super_admin === true || user?.is_super_admin === 1;
@@ -1006,139 +1256,174 @@ export default function EmployeeUtilizationPage() {
 										</tr>
 									</thead>
 									<tbody>
-										{filteredRows.map((row, index) => (
-											<tr
-												key={row.employee_id}
-												data-testid="utilization-row"
-												data-employee-code={row.employee_code}
-												data-band={row.utilization_band ?? ''}
-												data-state={row.state ?? ''}
-												className={cn(
-													'border-b border-gray-100',
-													index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-												)}
-											>
-												<td className="px-4 py-2.5">
-													<Link
-														href={timesheetHref(row)}
-														className="font-medium text-[#64126D] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
-													>
-														{row.employee_name}
-													</Link>
-													<span className="block text-xs text-gray-500">
-														{row.employee_code}
-													</span>
-													{row.is_partial_window && (
-														<span
-															data-testid="partial-window-chip"
-															className="mt-1 inline-flex items-center rounded-full bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 ring-1 ring-purple-200"
-														>
-															{partialWindowLabel(row)}
-														</span>
-													)}
-												</td>
-												<td
-													data-testid="cell-department"
-													className="px-4 py-2.5"
-												>
-													{departmentLabel(row.department)}
-												</td>
-												<td
-													data-testid="cell-capacity"
-													className="px-4 py-2.5 text-right tabular-nums"
-												>
-													{formatNumber(row.capacity_hours)}
-												</td>
-												<td
-													data-testid="cell-logged"
-													className="px-4 py-2.5 text-right tabular-nums"
-												>
-													{formatNumber(row.logged_hours)}
-												</td>
-												{row.trailing.slice(0, 2).map((cell) => (
-													<td
-														key={cell.month}
-														data-testid="cell-trailing-utilization"
-														data-month={cell.month}
-														data-employed={cell.employed ? 'true' : 'false'}
-														className="px-4 py-2.5 text-right tabular-nums"
-													>
-														{/* Not employed: blank. Employed with no capacity
-														    (percent null): an em dash. */}
-														{cell.employed
-															? formatPercent(cell.utilization_percent)
-															: ''}
-													</td>
-												))}
-												<td
-													data-testid="cell-utilization"
-													className="px-4 py-2.5 text-right tabular-nums"
-												>
-													{formatPercent(row.utilization_percent)}
-												</td>
-												<td className="px-4 py-2.5">
-													<div className="flex flex-wrap items-center gap-1.5">
-														<span
-															data-testid="cell-band"
-															className={cn(
-																'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1',
-																row.state === 'no_time_logged'
-																	? 'bg-slate-200 text-slate-700 ring-slate-300'
-																	: bandBadge(row.utilization_band)
-															)}
-														>
-															{row.state === 'no_time_logged' ? (
-																/* Missing timesheet data: the state replaces
-																   the band reading; the % column stays factual. */
-																<span
-																	data-testid="no-time-logged"
-																	data-state="no_time_logged"
-																>
-																	No time logged
-																</span>
-															) : (
-																bandText(row.utilization_band)
-															)}
-														</span>
-														{row.chronic_under && (
-															<span
-																data-testid="chronic-marker"
-																title="Every employed month of the trailing window reads below 80%"
-																className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 ring-1 ring-red-200"
-															>
-																Chronic under
-															</span>
+										{filteredRows.map((row, index) => {
+											const expanded = expandedEmployeeId === row.employee_id;
+											return (
+												<Fragment key={row.employee_id}>
+													<tr
+														data-testid="utilization-row"
+														data-employee-code={row.employee_code}
+														data-band={row.utilization_band ?? ''}
+														data-state={row.state ?? ''}
+														className={cn(
+															'border-b border-gray-100',
+															index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
 														)}
-													</div>
-												</td>
-												<td
-													data-testid="cell-monthly-cost"
-													className="px-4 py-2.5 text-right tabular-nums"
-												>
-													{formatCurrency(row.monthly_cost)}
-													{row.cost_status === 'no-profile' && (
-														<span className="ml-1.5 inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200">
-															No profile
-														</span>
-													)}
-												</td>
-												<td
-													data-testid="cell-bench-cost"
-													className="px-4 py-2.5 text-right tabular-nums"
-												>
-													{formatCurrency(row.bench_cost)}
-												</td>
-												<td className="px-4 py-2.5">
-													<Link
-														href={timesheetHref(row)}
-														aria-label={`View timesheet for ${row.employee_name}`}
-														className="text-xs font-medium text-[#64126D] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 													>
-														Timesheet →
-													</Link>
-												</td>
-											</tr>
-										))}
+														<td className="px-4 py-2.5">
+															<button
+																type="button"
+																data-testid="row-expand"
+																data-employee-code={row.employee_code}
+																aria-expanded={expanded}
+																aria-label={`${expanded ? 'Collapse' : 'Expand'} project breakdown for ${row.employee_name}`}
+																onClick={() =>
+																	setExpandedEmployeeId(
+																		expanded ? null : row.employee_id
+																	)
+																}
+																className="mr-1.5 inline-flex align-middle text-gray-400 hover:text-[#64126D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+															>
+																<ChevronRightIcon
+																	className={cn(
+																		'h-3.5 w-3.5 transition-transform',
+																		expanded && 'rotate-90'
+																	)}
+																	aria-hidden="true"
+																/>
+															</button>
+															<Link
+																href={timesheetHref(row)}
+																className="font-medium text-[#64126D] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+															>
+																{row.employee_name}
+															</Link>
+															<span className="block text-xs text-gray-500">
+																{row.employee_code}
+															</span>
+															{row.is_partial_window && (
+																<span
+																	data-testid="partial-window-chip"
+																	className="mt-1 inline-flex items-center rounded-full bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 ring-1 ring-purple-200"
+																>
+																	{partialWindowLabel(row)}
+																</span>
+															)}
+														</td>
+														<td
+															data-testid="cell-department"
+															className="px-4 py-2.5"
+														>
+															{departmentLabel(row.department)}
+														</td>
+														<td
+															data-testid="cell-capacity"
+															className="px-4 py-2.5 text-right tabular-nums"
+														>
+															{formatNumber(row.capacity_hours)}
+														</td>
+														<td
+															data-testid="cell-logged"
+															className="px-4 py-2.5 text-right tabular-nums"
+														>
+															{formatNumber(row.logged_hours)}
+														</td>
+														{row.trailing.slice(0, 2).map((cell) => (
+															<td
+																key={cell.month}
+																data-testid="cell-trailing-utilization"
+																data-month={cell.month}
+																data-employed={cell.employed ? 'true' : 'false'}
+																className="px-4 py-2.5 text-right tabular-nums"
+															>
+																{/* Not employed: blank. Employed with no capacity
+														    (percent null): an em dash. */}
+																{cell.employed
+																	? formatPercent(cell.utilization_percent)
+																	: ''}
+															</td>
+														))}
+														<td
+															data-testid="cell-utilization"
+															className="px-4 py-2.5 text-right tabular-nums"
+														>
+															{formatPercent(row.utilization_percent)}
+														</td>
+														<td className="px-4 py-2.5">
+															<div className="flex flex-wrap items-center gap-1.5">
+																<span
+																	data-testid="cell-band"
+																	className={cn(
+																		'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1',
+																		row.state === 'no_time_logged'
+																			? 'bg-slate-200 text-slate-700 ring-slate-300'
+																			: bandBadge(row.utilization_band)
+																	)}
+																>
+																	{row.state === 'no_time_logged' ? (
+																		/* Missing timesheet data: the state replaces
+																   the band reading; the % column stays factual. */
+																		<span
+																			data-testid="no-time-logged"
+																			data-state="no_time_logged"
+																		>
+																			No time logged
+																		</span>
+																	) : (
+																		bandText(row.utilization_band)
+																	)}
+																</span>
+																{row.chronic_under && (
+																	<span
+																		data-testid="chronic-marker"
+																		title="Every employed month of the trailing window reads below 80%"
+																		className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 ring-1 ring-red-200"
+																	>
+																		Chronic under
+																	</span>
+																)}
+															</div>
+														</td>
+														<td
+															data-testid="cell-monthly-cost"
+															className="px-4 py-2.5 text-right tabular-nums"
+														>
+															{formatCurrency(row.monthly_cost)}
+															{row.cost_status === 'no-profile' && (
+																<span className="ml-1.5 inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200">
+																	No profile
+																</span>
+															)}
+														</td>
+														<td
+															data-testid="cell-bench-cost"
+															className="px-4 py-2.5 text-right tabular-nums"
+														>
+															{formatCurrency(row.bench_cost)}
+														</td>
+														<td className="px-4 py-2.5">
+															<Link
+																href={timesheetHref(row)}
+																aria-label={`View timesheet for ${row.employee_name}`}
+																className="text-xs font-medium text-[#64126D] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+															>
+																Timesheet →
+															</Link>
+														</td>
+													</tr>
+													{expanded && (
+														<tr
+															data-testid="project-breakdown-row"
+															className="border-b border-gray-100 bg-gray-50/70"
+														>
+															<td colSpan={11} className="px-4 py-3">
+																<ProjectBreakdownPanel row={row} />
+															</td>
+														</tr>
+													)}
+												</Fragment>
+											);
+										})}
 									</tbody>
 									{totals && (
 										<tfoot>

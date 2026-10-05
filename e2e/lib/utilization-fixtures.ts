@@ -65,6 +65,8 @@ export const UTILIZATION_MONTH = E2E_MONTH.slice(0, 7);
 export const UTILIZATION_LATER_MONTH = '2019-03';
 export const UTILIZATION_EMPLOYEE_PREFIX = 'E2E-UTIL-';
 export const UTILIZATION_ASSIGNMENT_PREFIX = 'e2e-util-';
+/** `projects.project_code` namespace of the #299 breakdown fixtures. */
+export const UTILIZATION_PROJECT_CODE_PREFIX = 'E2E-UTIL-P';
 export const UTILIZATION_USERNAME = 'e2e_util_user';
 /** CTC every seeded salary profile carries; the rows must price from it. */
 export const UTILIZATION_CTC = 26000;
@@ -96,6 +98,71 @@ export const UTILIZATION_OPTIONAL_HOLIDAY = {
 	date: '2019-01-15',
 } as const;
 
+/**
+ * The namespaced `projects` rows the #299 breakdown fixtures log against —
+ * seeded with the roster and purged by code prefix. `beta` deliberately has
+ * no `project_title` (only `name`), so the display fallback
+ * (`project_title` → `projects.name` → `project_code`) is exercised by real
+ * data; every project has a distinct client so the payload's client column is
+ * derivable too.
+ */
+export const UTILIZATION_PROJECTS = {
+	alpha: {
+		code: 'E2E-UTIL-P1',
+		title: 'E2E Utilization Alpha',
+		name: null,
+		client: 'E2E Client Alpha',
+	},
+	beta: {
+		code: 'E2E-UTIL-P2',
+		title: null,
+		name: 'E2E Utilization Beta',
+		client: 'E2E Client Beta',
+	},
+	gamma: {
+		code: 'E2E-UTIL-P3',
+		title: 'E2E Utilization Gamma',
+		name: null,
+		client: 'E2E Client Gamma',
+	},
+	delta: {
+		code: 'E2E-UTIL-P4',
+		title: 'E2E Utilization Delta',
+		name: null,
+		client: 'E2E Client Delta',
+	},
+	epsilon: {
+		code: 'E2E-UTIL-P5',
+		title: 'E2E Utilization Epsilon',
+		name: null,
+		client: 'E2E Client Epsilon',
+	},
+	zeta: {
+		code: 'E2E-UTIL-P6',
+		title: 'E2E Utilization Zeta',
+		name: null,
+		client: 'E2E Client Zeta',
+	},
+} as const;
+
+export type UtilizationProjectKey = keyof typeof UTILIZATION_PROJECTS;
+
+/**
+ * One project allocation of the viewed month (#299): an assignment row under
+ * `project` with Logged Hours on `days`, `activity`/`discipline` as its
+ * detail. `project: null` seeds the assignment with `project_id` NULL — the
+ * "No project" bucket's evidence. Two allocations may share a project: they
+ * become two assignments whose hours and activity pairs the breakdown merges.
+ */
+export interface UtilizationProjectAllocation {
+	project: UtilizationProjectKey | null;
+	days: number[];
+	activity: string;
+	discipline?: string | null;
+	/** Hours per day; defaults to `UTILIZATION_LOGGED_HOURS_PER_DAY`. */
+	hoursPerDay?: number;
+}
+
 export type UtilizationPlan =
 	| 'payrollWithHours'
 	| 'payrollIdle'
@@ -120,7 +187,9 @@ export type UtilizationPlan =
 	/** Trend cases (#297): multi-month history for the trailing lens and chart. */
 	| 'chronicUnder'
 	| 'healthyHistory'
-	| 'trailingGap';
+	| 'trailingGap'
+	/** Breakdown case (#299): projects + a project-less assignment in the month. */
+	| 'projectSplit';
 
 export type UtilizationEmployeeType =
 	| 'Payroll'
@@ -159,6 +228,12 @@ export interface UtilizationMember {
 	/** Other months (`YYYY-MM`) with their logged day numbers — the rate must
 	 * move with each month's Basis Hours. */
 	loggedMonths?: { month: string; days: number[] }[];
+	/**
+	 * #299: viewed-month Logged Hours seeded one assignment per entry, so the
+	 * project breakdown has raw project/activity/discipline rows to derive
+	 * from. A `project: null` allocation is the "No project" bucket's evidence.
+	 */
+	projectAllocations?: UtilizationProjectAllocation[];
 	/** Salary-profile overrides; omitted fields take the module defaults. */
 	profileOverrides?: UtilizationProfileOverrides;
 	/** Seed no salary profile at all: the row's cost columns must stay blank. */
@@ -477,6 +552,74 @@ const ROSTER_DEF: ReadonlyArray<
 		loggedDays: [1, 2, 3],
 		loggedMonths: [{ month: '2018-12', days: [17, 18, 19] }],
 	},
+	{
+		// #299: six projects in the viewed month (one of them logged under two
+		// different activities) plus one assignment with `project_id` NULL —
+		// the top-N/Other split, the activity/discipline detail and the
+		// "No project" bucket all have raw fixture evidence on this row.
+		// Hours descend 64 → 8 across the six projects (6,5,4,3,2,1 days), so
+		// the top-N boundary is unambiguous; the project-less day stays out of
+		// the split. Default department (unset).
+		n: '0023',
+		type: 'Payroll',
+		status: 'active',
+		joining: '2019-01-01',
+		hire: null,
+		exit: null,
+		plan: 'projectSplit',
+		attendanceDays: [],
+		loggedDays: [],
+		projectAllocations: [
+			{
+				project: 'alpha',
+				days: [2, 3, 4, 5, 7, 8],
+				activity: 'E2E Piping Analysis',
+				discipline: 'Piping',
+			},
+			{
+				project: 'alpha',
+				days: [9, 10],
+				activity: 'E2E 3D Modeling',
+				discipline: 'Piping',
+			},
+			{
+				project: 'beta',
+				days: [11, 14, 15, 16, 17],
+				activity: 'E2E Stress Review',
+				discipline: 'Stress',
+			},
+			{
+				project: 'gamma',
+				days: [18, 19, 21, 22],
+				activity: 'E2E Detailing',
+				discipline: 'Piping',
+			},
+			{
+				project: 'delta',
+				days: [23, 24, 25],
+				activity: 'E2E QA Review',
+				discipline: null,
+			},
+			{
+				project: 'epsilon',
+				days: [28, 29],
+				activity: 'E2E Internal Reporting',
+				discipline: null,
+			},
+			{
+				project: 'zeta',
+				days: [30],
+				activity: 'E2E Handover',
+				discipline: 'Piping',
+			},
+			{
+				project: null,
+				days: [31],
+				activity: 'E2E Internal Work',
+				discipline: null,
+			},
+		],
+	},
 ];
 
 export const UTILIZATION_ROSTER: readonly UtilizationMember[] = ROSTER_DEF.map(
@@ -579,6 +722,11 @@ export async function cleanupUtilizationFixtures(): Promise<number> {
 	await exec(`DELETE FROM user_activity_assignments WHERE id LIKE ?`, [
 		`${UTILIZATION_ASSIGNMENT_PREFIX}%`,
 	]);
+	// Projects are purged by their code namespace; any assignment that still
+	// references one cascades away with it.
+	await exec(`DELETE FROM projects WHERE project_code LIKE ?`, [
+		`${UTILIZATION_PROJECT_CODE_PREFIX}%`,
+	]);
 	await exec(`DELETE FROM users WHERE username = ?`, [UTILIZATION_USERNAME]);
 	await exec(`DELETE FROM employees WHERE employee_id LIKE ?`, [
 		`${UTILIZATION_EMPLOYEE_PREFIX}%`,
@@ -601,6 +749,8 @@ export interface UtilizationSeeded {
 	loggedDays: number;
 	/** Active optional holidays seeded in the viewed month. */
 	holidays: number;
+	/** Namespaced `projects` rows seeded for the #299 breakdown. */
+	projects: number;
 }
 
 /** Purge leftovers, then seed the roster, its evidence and its profiles. */
@@ -616,6 +766,7 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 		profiles: 0,
 		loggedDays: 0,
 		holidays: 0,
+		projects: 0,
 	};
 
 	const user = await exec(
@@ -624,6 +775,22 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 		[UTILIZATION_USERNAME, `${UTILIZATION_USERNAME}@accent.test`]
 	);
 	summary.userId = user.insertId;
+
+	// The #299 breakdown projects, one row each; the allocation rows below
+	// reference them by id (or NULL project_id).
+	const projectIds = new Map<UtilizationProjectKey, number>();
+	for (const [key, project] of Object.entries(UTILIZATION_PROJECTS) as [
+		UtilizationProjectKey,
+		(typeof UTILIZATION_PROJECTS)[UtilizationProjectKey],
+	][]) {
+		const inserted = await exec(
+			`INSERT INTO projects (project_code, project_title, name, client_name, status, isDelete)
+       VALUES (?, ?, ?, ?, 'ONGOING', 0)`,
+			[project.code, project.title, project.name, project.client]
+		);
+		projectIds.set(key, inserted.insertId);
+		summary.projects++;
+	}
 
 	for (const member of UTILIZATION_ROSTER) {
 		const employee = await exec(
@@ -723,6 +890,40 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 					JSON.stringify(dailyEntries),
 					`${logged.month}-01 09:00:00`,
 					`${logged.month}-28`,
+				]
+			);
+			summary.assignments++;
+			summary.loggedDays += dailyEntries.length;
+		}
+
+		// #299: one viewed-month assignment per project allocation, carrying
+		// its project/activity/discipline so the breakdown has raw rows to
+		// derive from. `project: null` stamps `project_id` NULL — the
+		// "No project" bucket's evidence.
+		for (const [index, allocation] of (
+			member.projectAllocations ?? []
+		).entries()) {
+			if (!allocation.days.length) continue;
+			const dailyEntries = allocation.days.map((day) => ({
+				date: monthDate(UTILIZATION_MONTH, day),
+				hours: allocation.hoursPerDay ?? UTILIZATION_LOGGED_HOURS_PER_DAY,
+			}));
+			await exec(
+				`INSERT INTO user_activity_assignments
+           (id, user_id, employee_id, project_id, activity_id, activity_name,
+            discipline_name, status, daily_entries, assigned_date, due_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'In Progress', ?, ?, ?)`,
+				[
+					`${UTILIZATION_ASSIGNMENT_PREFIX}${member.n}-p${index + 1}`,
+					summary.userId,
+					employeeId,
+					allocation.project ? projectIds.get(allocation.project) : null,
+					`${UTILIZATION_ASSIGNMENT_PREFIX}act-${member.n}-p${index + 1}`,
+					allocation.activity,
+					allocation.discipline ?? null,
+					JSON.stringify(dailyEntries),
+					`${UTILIZATION_MONTH}-01 09:00:00`,
+					`${UTILIZATION_MONTH}-28`,
 				]
 			);
 			summary.assignments++;
