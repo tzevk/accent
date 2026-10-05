@@ -56,9 +56,22 @@ import {
  *                  the band and the band-then-bench position are unchanged,
  *                  and `totals.no_logged_count` counts those rows over the
  *                  same flag-filtered set as `employee_count` (ticket #296).
+ *   trailing     = the viewed month and the two before it, oldest first. A
+ *                  cell's `employed` is the employment window intersecting
+ *                  that month; its percent is the value `deriveRow` gives that
+ *                  employee in that month (null when the month has no
+ *                  capacity). `chronic_under` = at least two employed months
+ *                  and every employed month below 80 with a real percent.
+ *   trend        = the six months ending at the viewed month, oldest first:
+ *                  capacity-weighted utilization (round2(Σ logged ÷ Σ capacity
+ *                  × 100) over each month's roster rows, null when no
+ *                  capacity) and the priced rows' Bench Cost total (null when
+ *                  none is priced) — unfiltered by the flag band.
  *
  * The page's own API payload is asserted against that derivation; the DOM is
  * read through the page's `data-testid`/`data-*` attributes, never classes.
+ * The chart is asserted through its `data-points` hook (`month:utilization:
+ * bench` triples, oldest first, empty between the colons for a null).
  */
 
 test.use({
@@ -78,6 +91,67 @@ const MONTH_LABEL = 'January 2019';
 const LATER_MONTH_LABEL = 'March 2019';
 const DAYS_IN_MONTH = 31;
 const STANDARD_DAY_HOURS = 8;
+
+/**
+ * The report's fixed span rule, re-implemented: the six months ending at the
+ * viewed month, oldest first (2018-08 … 2019-01). The trailing window is its
+ * last three months.
+ */
+function spanMonths(month: string): string[] {
+	const [year, monthNumber] = month.split('-').map(Number);
+	const months: string[] = [];
+	for (let delta = 5; delta >= 0; delta--) {
+		const absolute = year * 12 + (monthNumber - 1) - delta;
+		months.push(
+			`${Math.floor(absolute / 12)}-${String((absolute % 12) + 1).padStart(2, '0')}`
+		);
+	}
+	return months;
+}
+
+const SPAN_MONTHS = spanMonths(MONTH);
+const TRAILING_MONTHS = SPAN_MONTHS.slice(-3);
+
+const MONTH_NAMES = [
+	'January',
+	'February',
+	'March',
+	'April',
+	'May',
+	'June',
+	'July',
+	'August',
+	'September',
+	'October',
+	'November',
+	'December',
+];
+
+/** The display rule the page's `monthLabel` applies, re-implemented. */
+function monthLabel(month: string): string {
+	const [year, monthNumber] = month.split('-').map(Number);
+	return `${MONTH_NAMES[monthNumber - 1]} ${year}`;
+}
+
+/**
+ * Parse the chart's `data-points` hook: `month:utilization:bench` triples,
+ * oldest first, comma-separated, an empty field for a null.
+ */
+function parseChartPoints(raw: string): Array<{
+	month: string;
+	utilizationPercent: number | null;
+	benchCost: number | null;
+}> {
+	if (!raw) return [];
+	return raw.split(',').map((triple) => {
+		const [month, utilization, bench] = triple.split(':');
+		return {
+			month,
+			utilizationPercent: utilization === '' ? null : Number(utilization),
+			benchCost: bench === '' ? null : Number(bench),
+		};
+	});
+}
 
 // ─── Independent derivations ─────────────────────────────────────────
 
@@ -407,6 +481,91 @@ function deriveRow(
 	};
 }
 
+/** One trailing-month cell as the report promises it. */
+interface DerivedTrailingCell {
+	month: string;
+	employed: boolean;
+	utilizationPercent: number | null;
+}
+
+/** One employee's trailing window plus the chronic verdict. */
+interface DerivedTrailing {
+	trailing: DerivedTrailingCell[];
+	chronicUnder: boolean;
+}
+
+/** One team-trend point as the report promises it. */
+interface DerivedTrendPoint {
+	month: string;
+	utilizationPercent: number | null;
+	benchCost: number | null;
+}
+
+/**
+ * The trailing lens, re-derived: for each month (oldest first) `employed` is
+ * the resolved window intersecting it and the percent is the month's own
+ * derived row — the value the row would show if that month were viewed. The
+ * chronic marker needs at least two employed months and every employed month
+ * below 80 with a real percent (a null percent never counts as below).
+ */
+function deriveTrailing(
+	window: EmploymentWindow,
+	months: string[],
+	rowFor: (month: string) => DerivedRow | undefined
+): DerivedTrailing {
+	const trailing = months.map((month) => {
+		const employed = intersects(window, month);
+		const row = employed ? rowFor(month) : undefined;
+		return {
+			month,
+			employed,
+			utilizationPercent: row ? row.utilizationPercent : null,
+		};
+	});
+	const employedCells = trailing.filter((cell) => cell.employed);
+	return {
+		trailing,
+		chronicUnder:
+			employedCells.length >= 2 &&
+			employedCells.every(
+				(cell) =>
+					cell.utilizationPercent !== null && cell.utilizationPercent < 80
+			),
+	};
+}
+
+/**
+ * The team trend, re-derived: per month, the capacity-weighted utilization of
+ * the month's roster rows (`null` when they credit no capacity) and the Bench
+ * Cost of its priced rows (`null` when none is priced).
+ */
+function deriveTrendSeries(
+	months: string[],
+	rowsByMonth: Map<string, Map<number, DerivedRow>>
+): DerivedTrendPoint[] {
+	return months.map((month) => {
+		let capacity = 0;
+		let logged = 0;
+		let bench = 0;
+		let priced = 0;
+		for (const row of rowsByMonth.get(month)?.values() ?? []) {
+			capacity += row.capacityHours;
+			logged += row.loggedHours;
+			if (row.costStatus !== 'priced') continue;
+			priced++;
+			bench += row.benchCost ?? 0;
+		}
+		const capacityHours = round2(capacity);
+		const loggedHours = round2(logged);
+		return {
+			month,
+			utilizationPercent:
+				capacityHours > 0 ? round2((loggedHours / capacityHours) * 100) : null,
+			benchCost: priced > 0 ? round2(bench) : null,
+		};
+	});
+}
+
 interface DerivedMonth {
 	/** The employees the month's report must hold, by code. */
 	rosterCodes: string[];
@@ -462,10 +621,22 @@ interface ApiRow {
 	employment_start: string | null;
 	employment_end: string | null;
 	is_partial_window: boolean;
+	trailing: {
+		month: string;
+		employed: boolean;
+		utilization_percent: number | null;
+	}[];
+	chronic_under: boolean;
 	monthly_cost: number | null;
 	fractional_cost: number | null;
 	bench_cost: number | null;
 	cost_status: string;
+}
+
+interface ApiTrendPoint {
+	month: string;
+	utilization_percent: number | null;
+	bench_cost: number | null;
 }
 
 interface ApiDisclosure {
@@ -492,6 +663,7 @@ interface ApiPayload {
 		fractional_cost: number | null;
 		bench_cost: number | null;
 	};
+	trend: ApiTrendPoint[];
 	disclosure: ApiDisclosure | null;
 }
 
@@ -514,7 +686,10 @@ async function fetchMonth(
 // ─── Page helpers ────────────────────────────────────────────────────
 
 async function selectMonth(page: Page, label: string): Promise<void> {
-	await page.getByLabel('Month').click();
+	// `exact` keeps the selector safe from employee names that contain "Month"
+	// (midMonthJoiner): their timesheet links' aria-labels would otherwise
+	// substring-match and trip strict mode once the grid has rendered.
+	await page.getByLabel('Month', { exact: true }).click();
 	await page.getByPlaceholder('Search...').fill(label);
 	await page.getByRole('button', { name: label, exact: true }).click();
 	await expect(page.getByTestId('utilization-summary')).toContainText(label);
@@ -540,6 +715,10 @@ interface RenderedRow {
 	monthly: string;
 	bench: string;
 	partial: string;
+	/** The two trailing-month cells, oldest first. */
+	trailing: { month: string; employed: string; text: string }[];
+	/** The chronic marker chip is present on the row. */
+	chronic: boolean;
 }
 
 function readRows(page: Page): Promise<RenderedRow[]> {
@@ -559,6 +738,14 @@ function readRows(page: Page): Promise<RenderedRow[]> {
 				monthly: cell('cell-monthly-cost'),
 				bench: cell('cell-bench-cost'),
 				partial: cell('partial-window-chip'),
+				trailing: Array.from(
+					row.querySelectorAll('[data-testid="cell-trailing-utilization"]')
+				).map((trailingCell) => ({
+					month: trailingCell.getAttribute('data-month') ?? '',
+					employed: trailingCell.getAttribute('data-employed') ?? '',
+					text: trailingCell.textContent?.trim() ?? '',
+				})),
+				chronic: row.querySelector('[data-testid="chronic-marker"]') !== null,
 			};
 		})
 	);
@@ -653,8 +840,15 @@ interface Model {
 	calendar: MonthCalendar;
 	/** Derived capacity/cost per viewed-month roster member, by employee id. */
 	rows: Map<number, DerivedRow>;
-	loggedHoursByEmployee: Map<number, number>;
 	monthLabel: string;
+	/** #297: the six months ending at the viewed month, oldest first. */
+	span: string[];
+	/** #297: per span month, the derived roster rows by employee id. */
+	spanRows: Map<string, Map<number, DerivedRow>>;
+	/** #297: per viewed-roster employee, the derived trailing window. */
+	trailing: Map<number, DerivedTrailing>;
+	/** #297: the derived team trend, oldest first. */
+	trend: DerivedTrendPoint[];
 }
 
 const model = {} as Model;
@@ -745,7 +939,7 @@ test.beforeAll(async () => {
 		number,
 		{ first: string | null; last: string | null }
 	>();
-	const loggedHoursByEmployee = new Map<number, number>();
+	const loggedHoursByMonth = new Map<string, Map<number, number>>();
 	for (const assignment of assignments) {
 		let empId = Number(assignment.employee_id ?? 0);
 		if (!empId) {
@@ -763,12 +957,14 @@ test.beforeAll(async () => {
 		}
 		if (!empId) continue;
 
-		const hours = loggedHoursInMonth(assignment.daily_entries, MONTH);
-		if (hours > 0) {
-			loggedHoursByEmployee.set(
-				empId,
-				(loggedHoursByEmployee.get(empId) ?? 0) + hours
-			);
+		// Every span month's Logged Hours, summed from the raw payloads.
+		for (const spanMonth of SPAN_MONTHS) {
+			const hours = loggedHoursInMonth(assignment.daily_entries, spanMonth);
+			if (hours <= 0) continue;
+			const byEmployee =
+				loggedHoursByMonth.get(spanMonth) ?? new Map<number, number>();
+			byEmployee.set(empId, (byEmployee.get(empId) ?? 0) + hours);
+			loggedHoursByMonth.set(spanMonth, byEmployee);
 		}
 
 		for (const day of loggedDays(assignment.daily_entries)) {
@@ -792,12 +988,15 @@ test.beforeAll(async () => {
 	});
 	const windows = new Map(employees.map((row) => [row.id, deriveWindow(row)]));
 
-	// The viewed month's calendars: Capacity and the rate share the active
+	// One calendar per span month: Capacity and the rate share the active
 	// NON-optional holiday set but not the weekly-off rule (see `deriveRow`).
-	const calendar = await monthCalendar(MONTH);
+	const calendars = new Map<string, MonthCalendar>();
+	for (const spanMonth of SPAN_MONTHS) {
+		calendars.set(spanMonth, await monthCalendar(spanMonth));
+	}
 
-	// The viewed month's attendance, by employee: the recorded status and the
-	// `is_weekly_off` flag that wins over the schedule when a record exists.
+	// The whole span's attendance, by month then employee: the recorded status
+	// and the `is_weekly_off` flag that wins over the schedule.
 	const attendanceRows = await rows<{
 		employee_id: number;
 		date: string;
@@ -809,19 +1008,27 @@ test.beforeAll(async () => {
 		 FROM employee_attendance
 		 WHERE attendance_date BETWEEN ? AND ?
 		 ORDER BY attendance_date`,
-		[`${MONTH}-01`, `${MONTH}-${DAYS_IN_MONTH}`]
+		[`${SPAN_MONTHS[0]}-01`, lastDayOf(MONTH)]
 	);
-	const attendanceByEmployee = new Map<number, Map<string, AttendanceDay>>();
+	const attendanceByMonth = new Map<
+		string,
+		Map<number, Map<string, AttendanceDay>>
+	>();
 	for (const row of attendanceRows) {
 		const employeeId = Number(row.employee_id);
 		if (!employeeId) continue;
+		const date = String(row.date).slice(0, 10);
+		const byEmployee =
+			attendanceByMonth.get(date.slice(0, 7)) ??
+			new Map<number, Map<string, AttendanceDay>>();
 		const byDate =
-			attendanceByEmployee.get(employeeId) ?? new Map<string, AttendanceDay>();
-		byDate.set(String(row.date).slice(0, 10), {
+			byEmployee.get(employeeId) ?? new Map<string, AttendanceDay>();
+		byDate.set(date, {
 			status: row.status === null ? null : String(row.status),
 			isWeeklyOff: Number(row.is_weekly_off) === 1 ? 1 : 0,
 		});
-		attendanceByEmployee.set(employeeId, byDate);
+		byEmployee.set(employeeId, byDate);
+		attendanceByMonth.set(date.slice(0, 7), byEmployee);
 	}
 
 	// Active salary profiles: the rate's CTC chain (employer_cost → gross
@@ -842,33 +1049,58 @@ test.beforeAll(async () => {
 		profilesByEmployee.set(employeeId, profiles);
 	}
 
-	// One derived capacity/cost row per viewed-month roster member.
-	const derivedRows = new Map<number, DerivedRow>();
-	for (const employee of employees) {
-		const window = windows.get(employee.id);
-		if (!window || !intersects(window, MONTH)) continue;
-		if (employee.employee_type !== 'Payroll') continue;
-		derivedRows.set(
-			employee.id,
-			deriveRow(
-				window,
-				MONTH,
-				calendar,
-				attendanceByEmployee.get(employee.id) ?? new Map(),
-				loggedHoursByEmployee.get(employee.id) ?? 0,
-				rateFor(employee.id, MONTH)
+	// One derived capacity/cost row per roster member per span month — the
+	// viewed month's rows are just the last of these views.
+	const spanRows = new Map<string, Map<number, DerivedRow>>();
+	for (const spanMonth of SPAN_MONTHS) {
+		const calendar = calendars.get(spanMonth)!;
+		const attendanceByEmployee =
+			attendanceByMonth.get(spanMonth) ??
+			new Map<number, Map<string, AttendanceDay>>();
+		const rowsForMonth = new Map<number, DerivedRow>();
+		for (const employee of employees) {
+			const window = windows.get(employee.id);
+			if (!window || !intersects(window, spanMonth)) continue;
+			if (employee.employee_type !== 'Payroll') continue;
+			rowsForMonth.set(
+				employee.id,
+				deriveRow(
+					window,
+					spanMonth,
+					calendar,
+					attendanceByEmployee.get(employee.id) ?? new Map(),
+					loggedHoursByMonth.get(spanMonth)?.get(employee.id) ?? 0,
+					rateFor(employee.id, spanMonth)
+				)
+			);
+		}
+		spanRows.set(spanMonth, rowsForMonth);
+	}
+	const derivedRows = spanRows.get(MONTH)!;
+
+	// The trailing window and the team trend, off the same span views.
+	const trailing = new Map<number, DerivedTrailing>();
+	for (const [employeeId, row] of derivedRows) {
+		trailing.set(
+			employeeId,
+			deriveTrailing(windows.get(employeeId)!, TRAILING_MONTHS, (month) =>
+				spanRows.get(month)!.get(employeeId)
 			)
 		);
 	}
+	const trend = deriveTrendSeries(SPAN_MONTHS, spanRows);
 
 	model.employees = employees;
 	model.windows = windows;
 	model.month = deriveMonth(employees, MONTH);
 	model.laterMonth = deriveMonth(employees, LATER_MONTH);
-	model.calendar = calendar;
+	model.calendar = calendars.get(MONTH)!;
 	model.rows = derivedRows;
-	model.loggedHoursByEmployee = loggedHoursByEmployee;
 	model.monthLabel = MONTH_LABEL;
+	model.span = SPAN_MONTHS;
+	model.spanRows = spanRows;
+	model.trailing = trailing;
+	model.trend = trend;
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────
@@ -1956,6 +2188,366 @@ test.describe('employee utilization roster', () => {
 		};
 	});
 
+	// ─── #297: trailing months, chronic marker and team trend ───────────
+
+	test('every row carries the derived three trailing months and its chronic verdict', async ({
+		request,
+	}) => {
+		const api = await fetchMonth(request, MONTH);
+
+		let chronicRows = 0;
+		for (const row of api.rows) {
+			const employee = model.employees.find(
+				(candidate) => candidate.employee_id === row.employee_code
+			)!;
+			const derived = model.trailing.get(employee.id)!;
+			expect(derived, row.employee_code).toBeTruthy();
+
+			expect(
+				row.trailing.map((cell) => cell.month),
+				row.employee_code
+			).toEqual(model.span.slice(-3));
+			expect(row.trailing, row.employee_code).toEqual(
+				derived.trailing.map((cell) => ({
+					month: cell.month,
+					employed: cell.employed,
+					utilization_percent: cell.utilizationPercent,
+				}))
+			);
+			// The viewed month's cell is the row's own utilization.
+			expect(row.trailing[2].employed, row.employee_code).toBe(true);
+			expect(row.trailing[2].utilization_percent, row.employee_code).toBe(
+				row.utilization_percent
+			);
+			expect(row.chronic_under, row.employee_code).toBe(derived.chronicUnder);
+			if (derived.chronicUnder) chronicRows++;
+		}
+		expect(chronicRows).toBeGreaterThan(0);
+		// The marker covers exactly the derived set: the chronic fixture is in
+		// it, the one healthy month's member and the blank-cell member are not.
+		const chronicCodes = api.rows
+			.filter((row) => row.chronic_under)
+			.map((row) => row.employee_code);
+		expect(chronicCodes).toContain(
+			utilizationMemberForPlan('chronicUnder').code
+		);
+		expect(chronicCodes).not.toContain(
+			utilizationMemberForPlan('healthyHistory').code
+		);
+		expect(chronicCodes).not.toContain(
+			utilizationMemberForPlan('trailingGap').code
+		);
+
+		const rowFor = (plan: UtilizationPlan) => {
+			const member = utilizationMemberForPlan(plan);
+			const employee = model.employees.find(
+				(candidate) => candidate.employee_id === member.code
+			)!;
+			return {
+				derived: model.trailing.get(employee.id)!,
+				row: api.rows.find(
+					(candidate) => candidate.employee_code === member.code
+				)!,
+			};
+		};
+
+		// Employed every month of the window and low every month: chronic.
+		// 16h logged against 192h (Nov), 192h (Dec) and the windowed 24h of
+		// January (1–3 Jan) — 8.33 / 8.33 / 66.67, all below 80.
+		const chronic = rowFor('chronicUnder');
+		expect(chronic.derived.chronicUnder).toBe(true);
+		expect(chronic.row.trailing).toEqual([
+			{ month: TRAILING_MONTHS[0], employed: true, utilization_percent: 8.33 },
+			{ month: TRAILING_MONTHS[1], employed: true, utilization_percent: 8.33 },
+			{ month: TRAILING_MONTHS[2], employed: true, utilization_percent: 66.67 },
+		]);
+		expect(chronic.row.chronic_under).toBe(true);
+
+		// One fully logged December (every 2018-12 working day = 100%) breaks
+		// the marker although November and January read low.
+		const healthy = rowFor('healthyHistory');
+		expect(healthy.derived.chronicUnder).toBe(false);
+		expect(healthy.row.trailing).toEqual([
+			{ month: TRAILING_MONTHS[0], employed: true, utilization_percent: 8.33 },
+			{ month: TRAILING_MONTHS[1], employed: true, utilization_percent: 100 },
+			{ month: TRAILING_MONTHS[2], employed: true, utilization_percent: 66.67 },
+		]);
+		expect(healthy.row.chronic_under).toBe(false);
+
+		// Joins 15 Dec: November is a month the window never covers (blank),
+		// December reads the pro-rated 15–31 Dec pipeline (13 working days =
+		// 104h against 24h logged) and January logs every windowed day (100%).
+		const gap = rowFor('trailingGap');
+		expect(gap.derived.chronicUnder).toBe(false);
+		expect(gap.row.trailing).toEqual([
+			{
+				month: TRAILING_MONTHS[0],
+				employed: false,
+				utilization_percent: null,
+			},
+			{ month: TRAILING_MONTHS[1], employed: true, utilization_percent: 23.08 },
+			{ month: TRAILING_MONTHS[2], employed: true, utilization_percent: 100 },
+		]);
+
+		// Joined 15 Jan: one employed month is a one-off, never chronic.
+		const oneOff = rowFor('midMonthJoiner');
+		expect(oneOff.derived.trailing.map((cell) => cell.employed)).toEqual([
+			false,
+			false,
+			true,
+		]);
+		expect(oneOff.row.chronic_under).toBe(false);
+
+		observed.trailing = {
+			month: MONTH,
+			months: model.span.slice(-3),
+			derivedChronicRows: chronicRows,
+			apiChronicRows: api.rows.filter((row) => row.chronic_under).length,
+			chronicUnder: chronic.row.trailing,
+			healthyHistory: healthy.row.trailing,
+			trailingGap: gap.row.trailing,
+		};
+	});
+
+	test('the page renders the two trailing columns and marks exactly the chronic rows', async ({
+		page,
+	}) => {
+		await openMonth(page, MONTH_LABEL);
+		const renderedRows = await readRows(page);
+
+		// The headers name the two preceding months, oldest first, right before
+		// the viewed month's Utilization column.
+		const headers = await page.$$eval(
+			'[data-testid="trailing-header"]',
+			(cells) =>
+				cells.map((cell) => ({
+					month: cell.getAttribute('data-month') ?? '',
+					text: cell.textContent?.trim() ?? '',
+				}))
+		);
+		expect(headers.map((header) => header.month)).toEqual(
+			TRAILING_MONTHS.slice(0, 2)
+		);
+		expect(headers.map((header) => header.text)).toEqual(
+			TRAILING_MONTHS.slice(0, 2).map((month) => monthLabel(month))
+		);
+
+		let chronicRows = 0;
+		let blankCells = 0;
+		for (const rendered of renderedRows) {
+			const employee = model.employees.find(
+				(row) => row.employee_id === rendered.code
+			)!;
+			const derived = model.trailing.get(employee.id)!;
+			expect(rendered.trailing, rendered.code).toHaveLength(2);
+			derived.trailing.slice(0, 2).forEach((cell, index) => {
+				const trailingCell = rendered.trailing[index];
+				expect(trailingCell.month, rendered.code).toBe(cell.month);
+				expect(trailingCell.employed, rendered.code).toBe(
+					cell.employed ? 'true' : 'false'
+				);
+				expect(trailingCell.text, rendered.code).toBe(
+					cell.employed
+						? cell.utilizationPercent === null
+							? '—'
+							: `${number2.format(cell.utilizationPercent)}%`
+						: ''
+				);
+				if (!cell.employed) blankCells++;
+			});
+			expect(rendered.chronic, rendered.code).toBe(derived.chronicUnder);
+			if (derived.chronicUnder) chronicRows++;
+		}
+		expect(chronicRows).toBeGreaterThan(0);
+		expect(blankCells).toBeGreaterThan(0);
+		expect(renderedRows.filter((row) => row.chronic)).toHaveLength(chronicRows);
+
+		// The marker's text on the chronic fixture, and no marker at all on the
+		// member whose December saved them.
+		const chronicMember = utilizationMemberForPlan('chronicUnder');
+		await expect(
+			page
+				.locator(
+					`[data-testid="utilization-row"][data-employee-code="${chronicMember.code}"]`
+				)
+				.getByTestId('chronic-marker')
+		).toHaveText('Chronic under');
+		const healthyMember = utilizationMemberForPlan('healthyHistory');
+		await expect(
+			page
+				.locator(
+					`[data-testid="utilization-row"][data-employee-code="${healthyMember.code}"]`
+				)
+				.getByTestId('chronic-marker')
+		).toHaveCount(0);
+
+		// A month the window does not cover renders blank, not an em dash.
+		const gapMember = utilizationMemberForPlan('trailingGap');
+		const gapRendered = renderedRows.find(
+			(row) => row.code === gapMember.code
+		)!;
+		expect(gapRendered.trailing[0].employed).toBe('false');
+		expect(gapRendered.trailing[0].text).toBe('');
+
+		observed.trailingPage = {
+			month: MONTH,
+			headers,
+			renderedChronicRows: chronicRows,
+			blankCells,
+			trailingGap: gapRendered.trailing,
+			chronicUnder: renderedRows.find((row) => row.code === chronicMember.code)
+				?.trailing,
+		};
+	});
+
+	test('a not-employed trailing month renders blank and no capacity an em dash', async ({
+		page,
+		request,
+	}) => {
+		const payload = await fetchMonth(request, MONTH);
+		// Rewrite the first row's two preceding cells into the two shapes a
+		// fixture cannot force (a month the window covers but that holds no
+		// working day): employed with a null percent, then not employed.
+		const target = payload.rows[0];
+		const rewritten = {
+			...target,
+			trailing: target.trailing.map((cell, index) =>
+				index === 0
+					? { ...cell, employed: true, utilization_percent: null }
+					: index === 1
+						? { ...cell, employed: false, utilization_percent: null }
+						: cell
+			),
+		};
+		const rows = [rewritten, ...payload.rows.slice(1)];
+
+		await page.route(
+			/\/api\/reports\/employee-utilization\?/,
+			async (route) => {
+				if (!route.request().url().includes('month=')) {
+					await route.continue();
+					return;
+				}
+				await route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify({ success: true, data: { ...payload, rows } }),
+				});
+			}
+		);
+
+		await openMonth(page, MONTH_LABEL);
+		const cells = page
+			.locator('[data-testid="utilization-row"]')
+			.first()
+			.locator('[data-testid="cell-trailing-utilization"]');
+		await expect(cells).toHaveCount(2);
+		await expect(cells.nth(0)).toHaveAttribute('data-employed', 'true');
+		await expect(cells.nth(0)).toHaveText('—');
+		await expect(cells.nth(1)).toHaveAttribute('data-employed', 'false');
+		expect(await cells.nth(1).textContent()).toBe('');
+
+		observed.trailingCellKinds = {
+			row: rewritten.employee_code,
+			employedNoCapacity: '—',
+			notEmployed: 'blank',
+		};
+	});
+
+	test('the six-month trend is the derived capacity-weighted utilization and priced bench', async ({
+		request,
+	}) => {
+		const api = await fetchMonth(request, MONTH);
+
+		expect(api.trend.map((point) => point.month)).toEqual(model.span);
+		expect(api.trend).toEqual(
+			model.trend.map((point) => ({
+				month: point.month,
+				utilization_percent: point.utilizationPercent,
+				bench_cost: point.benchCost,
+			}))
+		);
+
+		// The series is non-trivial and carries bench money in every month.
+		expect(
+			new Set(api.trend.map((point) => point.utilization_percent)).size
+		).toBeGreaterThan(1);
+		for (const point of api.trend) {
+			expect(point.bench_cost, point.month).not.toBeNull();
+			expect(point.bench_cost, point.month).toBeGreaterThan(0);
+		}
+
+		// January's point is the viewed month's team figure: Σ logged ÷ Σ
+		// capacity over every derived roster row, and the priced bench sum.
+		const january = api.trend[api.trend.length - 1];
+		const derivedRows = [...model.rows.values()];
+		const capacityHours = round2(
+			derivedRows.reduce((sum, row) => sum + row.capacityHours, 0)
+		);
+		const loggedHours = round2(
+			derivedRows.reduce((sum, row) => sum + row.loggedHours, 0)
+		);
+		const benchCost = round2(
+			derivedRows
+				.filter((row) => row.costStatus === 'priced')
+				.reduce((sum, row) => sum + (row.benchCost ?? 0), 0)
+		);
+		expect(january.month).toBe(MONTH);
+		expect(january.utilization_percent).toBe(
+			round2((loggedHours / capacityHours) * 100)
+		);
+		expect(january.bench_cost).toBe(benchCost);
+
+		// The chart is a team lens: the band filter must not reshape it.
+		const under = await fetchMonth(request, MONTH, 'under');
+		expect(under.rows.length).toBeLessThan(api.rows.length);
+		expect(under.trend).toEqual(api.trend);
+
+		observed.trend = {
+			months: api.trend.map((point) => point.month),
+			series: api.trend,
+			januaryTeam: { capacityHours, loggedHours, benchCost },
+		};
+	});
+
+	test('the page charts the trend and exposes the derived series through its hook', async ({
+		page,
+	}) => {
+		await openMonth(page, MONTH_LABEL);
+		const chart = page.getByTestId('team-trend-chart');
+		await expect(chart).toBeVisible();
+
+		const raw = (await chart.getAttribute('data-points')) ?? '';
+		expect(raw).toBe(
+			model.trend
+				.map(
+					(point) =>
+						`${point.month}:${point.utilizationPercent ?? ''}:${point.benchCost ?? ''}`
+				)
+				.join(',')
+		);
+		expect(parseChartPoints(raw)).toEqual(
+			model.trend.map((point) => ({
+				month: point.month,
+				utilizationPercent: point.utilizationPercent,
+				benchCost: point.benchCost,
+			}))
+		);
+
+		// The series actually renders — bars for the bench, one utilization line.
+		await expect(chart).toContainText('Bench Cost');
+		await expect(chart).toContainText('Utilization');
+		await expect(chart.locator('.recharts-line-curve')).toHaveCount(1);
+		const bars = await chart.locator('.recharts-bar-rectangle').count();
+		expect(bars).toBeGreaterThan(0);
+
+		observed.trendPage = {
+			months: model.trend.map((point) => point.month),
+			dataPoints: raw,
+			bars,
+		};
+	});
+
 	test('the fixtures leave no residue and the run writes its artifact', async () => {
 		const owned = await rows<{ id: number }>(
 			`SELECT id FROM employees WHERE employee_id LIKE 'E2E-UTIL-%'`
@@ -2030,6 +2622,12 @@ test.describe('employee utilization roster', () => {
 					'is_partial_window when the window does not cover the month; the chip names the window clamped to the month',
 				noTimeLogged:
 					'state = no_time_logged when the month’s Logged Hours are 0; percent, band and the band-then-bench position are unchanged; totals.no_logged_count counts them over the same flag-filtered row set as employee_count',
+				trailing:
+					'three cells (viewed month and the two before it, oldest first): employed = the resolved window intersects that month, utilization_percent = the same per-month pipeline’s value (null when the month credits no capacity); blank cells are not-employed months',
+				chronicUnder:
+					'at least two employed months in the window and every employed month below 80 with a real percent (a null percent never counts)',
+				trend:
+					'six months ending at the viewed month, oldest first: capacity-weighted utilization round2(Σ logged ÷ Σ capacity × 100) over each month’s roster rows (null when no capacity) and the priced rows’ Bench Cost total (null when none is priced) — unfiltered by the flag band',
 			},
 			calendar: {
 				month: MONTH,
@@ -2075,8 +2673,25 @@ test.describe('employee utilization roster', () => {
 							benchCost: derived.benchCost,
 							partial: derived.isPartialWindow,
 							chip: derived.chip,
+							trailing: (model.trailing.get(employee.id)?.trailing ?? []).map(
+								(cell) => ({
+									month: cell.month,
+									employed: cell.employed,
+									utilizationPercent: cell.utilizationPercent,
+								})
+							),
+							chronicUnder:
+								model.trailing.get(employee.id)?.chronicUnder ?? false,
 						};
 					}),
+			},
+			trend: {
+				months: model.trend.map((point) => point.month),
+				series: model.trend.map((point) => ({
+					month: point.month,
+					utilizationPercent: point.utilizationPercent,
+					benchCost: point.benchCost,
+				})),
 			},
 			observed,
 			residue,

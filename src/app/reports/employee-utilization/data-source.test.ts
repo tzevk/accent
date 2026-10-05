@@ -15,8 +15,11 @@ import {
 	bandForUtilization,
 	buildTeamRow,
 	buildUtilizationTotals,
+	summarizeTrailing,
+	buildTrendPoint,
 	sortUtilizationRows,
 	monthLabel,
+	trendMonths,
 } from '@/app/reports/employee-utilization/data-source';
 import type { SalaryProfile } from '@/app/reports/manhours-billing/data-source';
 import { sumLoggedHoursForMonth as sumLoggedHours } from '@/lib/logged-hours';
@@ -724,6 +727,37 @@ describe('buildTeamRow', () => {
 		});
 		expect(row.monthly_cost).toBe(26000);
 	});
+
+	it('carries the trailing window it is given, and an empty one otherwise', () => {
+		const trailing = summarizeTrailing([
+			{ month: '2026-03', employed: true, utilization_percent: 50 },
+			{ month: '2026-04', employed: true, utilization_percent: 40 },
+			{ month: '2026-05', employed: true, utilization_percent: 8.33 },
+		]);
+		const withHistory = buildTeamRow({
+			employee_id: 7,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			trailing,
+		});
+		expect(withHistory.trailing).toEqual(trailing.trailing);
+		expect(withHistory.chronic_under).toBe(true);
+
+		// A single-month row carries no history, so no marker can stand.
+		const single = buildTeamRow({
+			employee_id: 8,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		expect(single.trailing).toEqual([]);
+		expect(single.chronic_under).toBe(false);
+	});
 });
 
 describe('buildUtilizationTotals', () => {
@@ -782,6 +816,165 @@ describe('buildUtilizationTotals', () => {
 		expect(totals.employee_count).toBe(2);
 		expect(totals.logged_hours).toBe(8);
 		expect(buildUtilizationTotals([]).no_logged_count).toBe(0);
+	});
+});
+
+describe('trendMonths', () => {
+	it('reads the six months ending at the viewed month, oldest first', () => {
+		expect(trendMonths('2019-01')).toEqual([
+			'2018-08',
+			'2018-09',
+			'2018-10',
+			'2018-11',
+			'2018-12',
+			'2019-01',
+		]);
+		// The span crosses the year boundary backwards; the trailing window is
+		// its last three months.
+		expect(trendMonths('2026-05')).toEqual([
+			'2025-12',
+			'2026-01',
+			'2026-02',
+			'2026-03',
+			'2026-04',
+			'2026-05',
+		]);
+		expect(trendMonths('2026-05').slice(-3)).toEqual([
+			'2026-03',
+			'2026-04',
+			'2026-05',
+		]);
+	});
+
+	it('returns no span for an invalid month', () => {
+		expect(trendMonths('garbage')).toEqual([]);
+		expect(trendMonths('2026-13')).toEqual([]);
+	});
+});
+
+describe('summarizeTrailing', () => {
+	const cell = (
+		month: string,
+		employed: boolean,
+		utilization_percent: number | null
+	) => ({ month, employed, utilization_percent });
+
+	it('keeps the three months oldest first and marks an all-under window chronic', () => {
+		const window = summarizeTrailing([
+			cell('2026-03', true, 50),
+			cell('2026-04', true, 79.99),
+			cell('2026-05', true, 0),
+		]);
+		expect(window.trailing).toEqual([
+			{ month: '2026-03', employed: true, utilization_percent: 50 },
+			{ month: '2026-04', employed: true, utilization_percent: 79.99 },
+			{ month: '2026-05', employed: true, utilization_percent: 0 },
+		]);
+		expect(window.chronic_under).toBe(true);
+	});
+
+	it('needs at least two employed months of history', () => {
+		// Two employed months, both under: chronic even with a blank earlier cell.
+		expect(
+			summarizeTrailing([
+				cell('2026-03', false, null),
+				cell('2026-04', true, 40),
+				cell('2026-05', true, 60),
+			]).chronic_under
+		).toBe(true);
+		// One employed month is a one-off, never chronic.
+		expect(
+			summarizeTrailing([
+				cell('2026-03', false, null),
+				cell('2026-04', false, null),
+				cell('2026-05', true, 40),
+			]).chronic_under
+		).toBe(false);
+	});
+
+	it('breaks the marker on any employed month at or above 80', () => {
+		expect(
+			summarizeTrailing([
+				cell('2026-03', true, 50),
+				cell('2026-04', true, 80),
+				cell('2026-05', true, 30),
+			]).chronic_under
+		).toBe(false);
+	});
+
+	it('never counts a null percent (no capacity) as below', () => {
+		expect(
+			summarizeTrailing([
+				cell('2026-03', true, null),
+				cell('2026-04', true, 30),
+				cell('2026-05', true, 30),
+			]).chronic_under
+		).toBe(false);
+	});
+
+	it('does not mark a window with no employed month', () => {
+		expect(
+			summarizeTrailing([
+				cell('2026-03', false, null),
+				cell('2026-04', false, null),
+				cell('2026-05', false, null),
+			]).chronic_under
+		).toBe(false);
+	});
+});
+
+describe('buildTrendPoint', () => {
+	const pricedRow = buildTeamRow({
+		employee_id: 1,
+		month: MAY,
+		daily_entries: [entries({ '2026-05-04': 8, '2026-05-05': 8 })],
+		attendance: [],
+		holidays: new Set(),
+		profiles: [profile()],
+	});
+	const unpricedRow = buildTeamRow({
+		employee_id: 2,
+		month: MAY,
+		daily_entries: [entries({ '2026-05-04': 8, '2026-05-05': 8 })],
+		attendance: [],
+		holidays: new Set(),
+		profiles: [],
+	});
+
+	it('weights utilization by capacity and sums bench over priced rows', () => {
+		const point = buildTrendPoint(MAY, [pricedRow, unpricedRow]);
+		expect(point.month).toBe(MAY);
+		// 32h logged over 384h of capacity; the unpriced row still counts for hours.
+		expect(point.utilization_percent).toBe(8.33);
+		// Bench covers the priced row only: 22000 − 1692.31.
+		expect(point.bench_cost).toBe(20307.69);
+	});
+
+	it('leaves the percent null when the month credits no capacity', () => {
+		const empty = buildTeamRow({
+			employee_id: 3,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			// 23 May = 4th Saturday, 24 May = Sunday: no working days.
+			employment_start: '2026-05-23',
+			employment_end: '2026-05-24',
+		});
+		const point = buildTrendPoint(MAY, [empty]);
+		expect(point.utilization_percent).toBeNull();
+		// The window still costs (a priced zero-capacity row keeps its bench).
+		expect(point.bench_cost).toBe(0);
+	});
+
+	it('leaves bench null when no row is priced, and for an empty roster', () => {
+		expect(buildTrendPoint(MAY, [unpricedRow]).bench_cost).toBeNull();
+		expect(buildTrendPoint(MAY, [])).toEqual({
+			month: MAY,
+			utilization_percent: null,
+			bench_cost: null,
+		});
 	});
 });
 
