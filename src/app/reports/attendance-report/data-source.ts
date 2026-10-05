@@ -48,7 +48,7 @@ import {
 	type RosterDisclosure,
 	type RosterEmployeeInput,
 	type RosterMember,
-} from './roster';
+} from '@/lib/payroll-roster';
 
 // ─── Public types ───────────────────────────────────────────────────
 

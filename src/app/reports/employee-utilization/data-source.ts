@@ -27,8 +27,16 @@
  * Profile selection reuses `pickActiveProfile` (effective-range cover, else
  * latest active). Holiday
  * sets are injected by the caller, so this module has no DB dependency.
- * No mid-month pro-rating: joiners/leavers are measured against full-month
- * capacity in v1.
+ *
+ * Roster: each month is scoped to the shared payroll roster
+ * (`@/lib/payroll-roster`): live (isDelete = 0), Employee Type = Payroll, and
+ * the employment window (joining/exit dates, with recorded attendance and
+ * Logged Hours as the fallback evidence) must cover the month. The payload
+ * carries the selector's exclusion disclosure, and every row carries its
+ * resolved window for the pro-rating tickets.
+ *
+ * No mid-month pro-rating yet: a joiner/leaver inside the window is measured
+ * against full-month capacity in v1.
  */
 
 import {
@@ -45,6 +53,11 @@ import {
 	sumLoggedHoursForMonth,
 } from '@/lib/logged-hours';
 import { R, add, sub, mul, div, toNumber } from '@/lib/money';
+import {
+	selectPayrollRoster,
+	type RosterDisclosure,
+	type RosterEmployeeInput,
+} from '@/lib/payroll-roster';
 import { query } from '@/utils/database';
 
 // ─── Constants ────────────────────────────────────────────────────────
@@ -100,6 +113,9 @@ export interface TeamRowInput {
 	/** Injected active-holiday dates (YYYY-MM-DD). */
 	holidays?: ReadonlySet<string>;
 	profiles?: SalaryProfile[];
+	/** Resolved employment window from the shared roster selector. */
+	employment_start?: string | null;
+	employment_end?: string | null;
 }
 
 export interface UtilizationRow {
@@ -111,6 +127,9 @@ export interface UtilizationRow {
 	logged_hours: number;
 	utilization_percent: number | null;
 	utilization_band: UtilizationBand | null;
+	/** Resolved employment window; null = open bound (or no month scope). */
+	employment_start: string | null;
+	employment_end: string | null;
 	/** Null when no profile covers the month — blank, never zero. */
 	monthly_cost: number | null;
 	/** Utilized portion: CTC hourly rate × logged hours (footing support). */
@@ -340,6 +359,8 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 			logged_hours: loggedHours,
 			utilization_percent: percent,
 			utilization_band: bandForUtilization(percent),
+			employment_start: input.employment_start ?? null,
+			employment_end: input.employment_end ?? null,
 			monthly_cost: null,
 			fractional_cost: null,
 			bench_cost: null,
@@ -368,6 +389,8 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 		logged_hours: loggedHours,
 		utilization_percent: percent,
 		utilization_band: bandForUtilization(percent),
+		employment_start: input.employment_start ?? null,
+		employment_end: input.employment_end ?? null,
 		monthly_cost: monthlyCost,
 		fractional_cost: fractionalCost,
 		bench_cost: benchCost,
@@ -431,6 +454,8 @@ export interface UtilizationData {
 	flag: UtilizationBand | null;
 	rows: UtilizationRow[];
 	totals: UtilizationTotals;
+	/** What the month's roster filter dropped, and why; null when it dropped nobody. */
+	disclosure: RosterDisclosure | null;
 }
 
 /** Flag filter options for the filter bar (band labels match the 80/100 bands). */
@@ -556,36 +581,114 @@ export async function fetchUtilizationMeta(): Promise<UtilizationMeta> {
 	};
 }
 
+/** One live `employees` row plus the evidence its employment window falls back to. */
 interface UtilizationEmployee {
 	id: number;
 	code: string;
 	name: string;
 	email: string;
 	username: string;
+	department: string | null;
+	employee_type: string | null;
+	status: string;
+	joining_date: string | null;
+	hire_date: string | null;
+	exit_date: string | null;
+	first_attendance_date: string | null;
+	last_attendance_date: string | null;
+	first_logged_date: string | null;
+	last_logged_date: string | null;
 }
 
+/**
+ * The live employee directory (`isDelete = 0`) — never pre-filtered by type or
+ * status: the shared roster selector owns the rule and reports what it drops.
+ * The employment-window fallbacks need recorded evidence, so the loader also
+ * asks for each employee's first/last attendance day in one grouped query; the
+ * Logged Hours bounds are filled from the assignment payloads the month fetch
+ * already reads.
+ */
 async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 	const [rows] = (await query(
 		`SELECT id, employee_id,
 		        CONCAT_WS(' ', first_name, last_name) AS name,
-		        email, username
+		        email, username, department, employee_type, status,
+		        DATE_FORMAT(joining_date, '%Y-%m-%d') AS joining_date,
+		        DATE_FORMAT(hire_date, '%Y-%m-%d') AS hire_date,
+		        DATE_FORMAT(exit_date, '%Y-%m-%d') AS exit_date
 		 FROM employees
-		 WHERE isDelete = 0 AND status = 'active'
+		 WHERE isDelete = 0
 		 ORDER BY first_name, last_name`
 	)) as [DbRow[], unknown];
+
+	const attendanceBounds = new Map<
+		number,
+		{ first: string | null; last: string | null }
+	>();
+	try {
+		const [boundRows] = (await query(
+			`SELECT employee_id,
+			        DATE_FORMAT(MIN(attendance_date), '%Y-%m-%d') AS first_date,
+			        DATE_FORMAT(MAX(attendance_date), '%Y-%m-%d') AS last_date
+			 FROM employee_attendance
+			 GROUP BY employee_id`
+		)) as [DbRow[], unknown];
+		for (const r of boundRows) {
+			const empId = dbNum(r, 'employee_id');
+			if (!empId) continue;
+			attendanceBounds.set(empId, {
+				first: dbStr(r, 'first_date') || null,
+				last: dbStr(r, 'last_date') || null,
+			});
+		}
+	} catch {
+		/* employee_attendance may not exist */
+	}
+
 	const employees: UtilizationEmployee[] = [];
 	for (const r of rows) {
 		const id = dbNum(r, 'id');
 		if (!id) continue;
+		const bounds = attendanceBounds.get(id);
 		employees.push({
 			id,
 			code: dbStr(r, 'employee_id'),
 			name: dbStr(r, 'name') || `Employee ${id}`,
 			email: dbStr(r, 'email'),
 			username: dbStr(r, 'username'),
+			department: dbStr(r, 'department') || null,
+			employee_type: dbStr(r, 'employee_type') || null,
+			status: dbStr(r, 'status'),
+			joining_date: dbStr(r, 'joining_date') || null,
+			hire_date: dbStr(r, 'hire_date') || null,
+			exit_date: dbStr(r, 'exit_date') || null,
+			first_attendance_date: bounds?.first ?? null,
+			last_attendance_date: bounds?.last ?? null,
+			first_logged_date: null,
+			last_logged_date: null,
 		});
 	}
 	return employees;
+}
+
+/** The shared roster selector's input for one directory row. */
+function toRosterInput(row: UtilizationEmployee): RosterEmployeeInput {
+	return {
+		id: row.id,
+		employee_id: row.code,
+		name: row.name,
+		department: row.department,
+		employee_type: row.employee_type,
+		status: row.status,
+		isDelete: 0,
+		joining_date: row.joining_date,
+		hire_date: row.hire_date,
+		exit_date: row.exit_date,
+		first_attendance_date: row.first_attendance_date,
+		last_attendance_date: row.last_attendance_date,
+		first_logged_date: row.first_logged_date,
+		last_logged_date: row.last_logged_date,
+	};
 }
 
 async function loadUtilizationUserMaps(
@@ -661,9 +764,10 @@ async function loadSalaryProfilesGrouped(): Promise<
 }
 
 /**
- * Full team payload for one month: one row per active employee against
- * full-month capacity (no mid-month pro-rating in v1), sorted by flag band
- * then bench cost descending. Optional flag narrows to one band.
+ * Full team payload for one month: one row per employee on the month-scoped
+ * Payroll roster, against full-month capacity (no mid-month pro-rating in
+ * v1), sorted by flag band then bench cost descending, plus the roster's
+ * exclusion disclosure. Optional flag narrows to one band.
  * Returns null for an invalid month.
  */
 export async function fetchUtilizationData(
@@ -758,16 +862,52 @@ export async function fetchUtilizationData(
 		/* user_activity_assignments may not exist */
 	}
 
-	const rows: UtilizationRow[] = employees.map((emp) =>
+	// The Logged Hours evidence bounds come from the payloads already in hand:
+	// the earliest and latest day an employee logged anything, which the
+	// employment window falls back to when the record has no joining/exit date.
+	const employeeById = new Map(employees.map((emp) => [emp.id, emp]));
+	for (const [empId, payloads] of entriesByEmployee) {
+		const employee = employeeById.get(empId);
+		if (!employee) continue;
+		for (const payload of payloads) {
+			for (const { date } of parseDailyEntryRecords(payload)) {
+				const day = date.slice(0, 10);
+				if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+				if (
+					employee.first_logged_date === null ||
+					day < employee.first_logged_date
+				) {
+					employee.first_logged_date = day;
+				}
+				if (
+					employee.last_logged_date === null ||
+					day > employee.last_logged_date
+				) {
+					employee.last_logged_date = day;
+				}
+			}
+		}
+	}
+
+	// The shared selector owns the month's roster rule and the disclosure of
+	// the non-Payroll candidates it drops.
+	const { roster, disclosure } = selectPayrollRoster(
+		employees.map(toRosterInput),
+		{ month }
+	);
+
+	const rows: UtilizationRow[] = roster.map((member) =>
 		buildTeamRow({
-			employee_id: emp.id,
-			employee_code: emp.code,
-			employee_name: emp.name,
+			employee_id: member.id,
+			employee_code: member.employee_id,
+			employee_name: member.name,
 			month,
-			daily_entries: entriesByEmployee.get(emp.id) ?? [],
-			attendance: attendanceByEmployee.get(emp.id) ?? [],
+			employment_start: member.employment_start ?? null,
+			employment_end: member.employment_end ?? null,
+			daily_entries: entriesByEmployee.get(member.id) ?? [],
+			attendance: attendanceByEmployee.get(member.id) ?? [],
 			holidays: holidaySet,
-			profiles: salaryGrouped.get(emp.id) ?? [],
+			profiles: salaryGrouped.get(member.id) ?? [],
 		})
 	);
 
@@ -781,5 +921,6 @@ export async function fetchUtilizationData(
 		flag,
 		rows: filtered,
 		totals: buildUtilizationTotals(filtered),
+		disclosure,
 	};
 }

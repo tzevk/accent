@@ -276,6 +276,9 @@ describe('buildTeamRow', () => {
 		expect(row.logged_hours).toBe(16);
 		expect(row.utilization_percent).toBe(8.33);
 		expect(row.utilization_band).toBe('under');
+		// No month scope in this input: both window bounds read as open.
+		expect(row.employment_start).toBeNull();
+		expect(row.employment_end).toBeNull();
 		expect(row.monthly_cost).toBe(22000);
 		expect(row.cost_status).toBe('priced');
 		// 16h × 105.769… = 1692.31; fractional + bench foots to monthly.
@@ -365,6 +368,21 @@ describe('buildTeamRow', () => {
 				2
 			);
 		}
+	});
+
+	it('carries an explicit employment window through the row', () => {
+		const row = buildTeamRow({
+			employee_id: 7,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			employment_start: '2026-05-11',
+			employment_end: '2026-05-20',
+		});
+		expect(row.employment_start).toBe('2026-05-11');
+		expect(row.employment_end).toBe('2026-05-20');
 	});
 
 	it('shows hours and utilization with blank cost for a missing profile', () => {

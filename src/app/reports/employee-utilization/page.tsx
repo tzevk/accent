@@ -11,11 +11,13 @@ import {
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
+import RosterDisclosureCard from '@/components/RosterDisclosure';
 import SearchableSelect from '@/components/ui/searchable-select';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { formatCurrency, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
+import type { RosterDisclosure } from '@/lib/payroll-roster';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 
 // ─── Client-safe API types (mirror the server payload, no server import) ──
@@ -65,6 +67,8 @@ interface UtilizationData {
 	flag: UtilizationBand | null;
 	rows: UtilizationRow[];
 	totals: UtilizationTotals;
+	/** What the month's roster filter dropped; null when it dropped nobody. */
+	disclosure: RosterDisclosure | null;
 }
 
 interface MetaResponse {
@@ -474,7 +478,7 @@ export default function EmployeeUtilizationPage() {
 							<p className="mt-1 text-xs text-gray-500">
 								{flag
 									? 'Try a different flag filter or month.'
-									: 'There are no active employees to report on for this month.'}
+									: 'No Payroll employee is on this month’s roster.'}
 							</p>
 						</div>
 					) : filteredRows.length === 0 ? (
@@ -498,7 +502,10 @@ export default function EmployeeUtilizationPage() {
 						</div>
 					) : (
 						<div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-							<p className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs text-gray-600">
+							<p
+								data-testid="utilization-summary"
+								className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs text-gray-600"
+							>
 								Showing {filteredRows.length} of {rows.length} employees
 								{flag ? ` in the ${FLAG_LABEL[flag]} band` : ''} ·{' '}
 								{data.month_label}
@@ -547,6 +554,9 @@ export default function EmployeeUtilizationPage() {
 										{filteredRows.map((row, index) => (
 											<tr
 												key={row.employee_id}
+												data-testid="utilization-row"
+												data-employee-code={row.employee_code}
+												data-band={row.utilization_band ?? ''}
 												className={cn(
 													'border-b border-gray-100',
 													index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
@@ -563,16 +573,25 @@ export default function EmployeeUtilizationPage() {
 														{row.employee_code}
 													</span>
 												</td>
-												<td className="px-4 py-2.5 text-right tabular-nums">
+												<td
+													data-testid="cell-capacity"
+													className="px-4 py-2.5 text-right tabular-nums"
+												>
 													{formatNumber(row.capacity_hours)}
 												</td>
-												<td className="px-4 py-2.5 text-right tabular-nums">
+												<td
+													data-testid="cell-logged"
+													className="px-4 py-2.5 text-right tabular-nums"
+												>
 													{formatNumber(row.logged_hours)}
 												</td>
-												<td className="px-4 py-2.5 text-right tabular-nums">
+												<td
+													data-testid="cell-utilization"
+													className="px-4 py-2.5 text-right tabular-nums"
+												>
 													{formatPercent(row.utilization_percent)}
 												</td>
-												<td className="px-4 py-2.5">
+												<td data-testid="cell-band" className="px-4 py-2.5">
 													<span
 														className={cn(
 															'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1',
@@ -582,7 +601,10 @@ export default function EmployeeUtilizationPage() {
 														{bandText(row.utilization_band)}
 													</span>
 												</td>
-												<td className="px-4 py-2.5 text-right tabular-nums">
+												<td
+													data-testid="cell-monthly-cost"
+													className="px-4 py-2.5 text-right tabular-nums"
+												>
 													{formatCurrency(row.monthly_cost)}
 													{row.cost_status === 'no-profile' && (
 														<span className="ml-1.5 inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200">
@@ -590,7 +612,10 @@ export default function EmployeeUtilizationPage() {
 														</span>
 													)}
 												</td>
-												<td className="px-4 py-2.5 text-right tabular-nums">
+												<td
+													data-testid="cell-bench-cost"
+													className="px-4 py-2.5 text-right tabular-nums"
+												>
 													{formatCurrency(row.bench_cost)}
 												</td>
 												<td className="px-4 py-2.5">
@@ -607,24 +632,42 @@ export default function EmployeeUtilizationPage() {
 									</tbody>
 									{totals && (
 										<tfoot>
-											<tr className="border-t-2 border-gray-200 bg-gray-50 text-sm font-semibold">
+											<tr
+												data-testid="utilization-total-row"
+												className="border-t-2 border-gray-200 bg-gray-50 text-sm font-semibold"
+											>
 												<td className="px-4 py-2.5">
 													Total ({totals.employee_count} employees)
 												</td>
-												<td className="px-4 py-2.5 text-right tabular-nums">
+												<td
+													data-testid="cell-total-capacity"
+													className="px-4 py-2.5 text-right tabular-nums"
+												>
 													{formatNumber(totals.capacity_hours)}
 												</td>
-												<td className="px-4 py-2.5 text-right tabular-nums">
+												<td
+													data-testid="cell-total-logged"
+													className="px-4 py-2.5 text-right tabular-nums"
+												>
 													{formatNumber(totals.logged_hours)}
 												</td>
-												<td className="px-4 py-2.5 text-right tabular-nums">
+												<td
+													data-testid="cell-total-utilization"
+													className="px-4 py-2.5 text-right tabular-nums"
+												>
 													{formatPercent(totals.utilization_percent)}
 												</td>
 												<td className="px-4 py-2.5" />
-												<td className="px-4 py-2.5 text-right tabular-nums">
+												<td
+													data-testid="cell-total-monthly-cost"
+													className="px-4 py-2.5 text-right tabular-nums"
+												>
 													{formatCurrency(totals.monthly_cost)}
 												</td>
-												<td className="px-4 py-2.5 text-right tabular-nums">
+												<td
+													data-testid="cell-total-bench-cost"
+													className="px-4 py-2.5 text-right tabular-nums"
+												>
 													{formatCurrency(totals.bench_cost)}
 												</td>
 												<td className="px-4 py-2.5" />
@@ -635,6 +678,14 @@ export default function EmployeeUtilizationPage() {
 							</div>
 						</div>
 					)}
+
+					{/* Reference, not headline: what the month's roster filter
+					    dropped, and why — kept beneath the grid */}
+					<RosterDisclosureCard
+						disclosure={data?.disclosure ?? null}
+						scope="month"
+						className="mt-4"
+					/>
 				</div>
 			</main>
 		</div>

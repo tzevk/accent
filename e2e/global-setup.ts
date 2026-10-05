@@ -5,6 +5,10 @@ import {
 import { deleteArtifact } from './lib/artifacts';
 import { closeDb, exec, rows } from './lib/db';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
+import {
+	cleanupUtilizationFixtures,
+	seedUtilizationFixtures,
+} from './lib/utilization-fixtures';
 
 /**
  * Global setup: purge leftovers from the previous run, refuse to touch a month
@@ -14,6 +18,7 @@ export default async function globalSetup(): Promise<void> {
 	try {
 		await cleanupFixtures();
 		await cleanupAttendanceFixtures();
+		await cleanupUtilizationFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
 		// trusted IP header; browser sign-ins carry no such header, so they land
@@ -56,6 +61,15 @@ export default async function globalSetup(): Promise<void> {
 				`${attendance.attendance} attendance rows, ` +
 				`${attendance.assignments} assignments, ` +
 				`${attendance.profiles} salary profiles)`
+		);
+
+		const utilization = await seedUtilizationFixtures();
+		console.log(
+			`[e2e] utilization fixtures seeded for ${utilization.month} ` +
+				`(${utilization.employees} employees, ${utilization.attendance} attendance rows, ` +
+				`${utilization.assignments} assignments, ` +
+				`${utilization.loggedDays} logged days, ` +
+				`${utilization.profiles} salary profiles)`
 		);
 	} finally {
 		await closeDb();

@@ -31,7 +31,7 @@ import {
 	type AttendanceCell,
 } from './cell-status';
 import { aggregateUnmappedCodes } from './unmapped-codes';
-import RosterDisclosureCard from './RosterDisclosure';
+import RosterDisclosureCard from '@/components/RosterDisclosure';
 import UnmappedCodesStrip from './UnmappedCodesStrip';
 import TimePresentNote from './TimePresentNote';
 import CellPunchModal, { CellPunchTrigger } from './CellPunchModal';
