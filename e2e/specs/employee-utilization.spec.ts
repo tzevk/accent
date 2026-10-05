@@ -19,15 +19,16 @@ import {
 } from '../lib/utilization-fixtures';
 
 /**
- * Employee Utilization: month-scoped payroll roster (ticket #293) and
- * window-pro-rated Capacity / Monthly Cost (ticket #294).
+ * Employee Utilization: month-scoped payroll roster (ticket #293),
+ * window-pro-rated Capacity / Monthly Cost (ticket #294) and the
+ * payroll-aligned CTC ÷ Basis Hours rate (ticket #295).
  *
  * Every expected figure is re-derived in this file from the raw `employees`
  * rows, `employee_attendance` evidence, `user_activity_assignments` payloads,
- * `holiday_master` and the calendar. Nothing here imports the report's
- * `data-source`, the shared roster selector, `@/lib/logged-hours` or
- * `@/utils/weekly-off`, so the report cannot mark its own homework; the
- * expected rules are the documented ones:
+ * `employee_salary_profile` rows, `holiday_master` and the calendar. Nothing
+ * here imports the report's `data-source`, the shared roster selector,
+ * `@/lib/logged-hours` or `@/utils/weekly-off`, so the report cannot mark its
+ * own homework; the expected rules are the documented ones:
  *
  *   window start = joining_date → hire_date → first attendance → first Logged
  *                  Hours → open if active, unresolved otherwise
@@ -40,8 +41,14 @@ import {
  *                  a half day credits 4h. An active optional holiday is a
  *                  working day — an 'H'-status row on it still credits 8h.
  *   monthly cost = round2(CTC × employed working days ÷ the month's working
- *                  days), fractional = round2(CTC ÷ (26 × 8) × logged hours),
- *                  bench = monthly − fractional (footing must hold).
+ *                  days) over the Capacity calendar.
+ *   rate         = CTC ÷ Basis Hours, Basis Hours = the month's basis days
+ *                  (every non-Sunday day minus the active non-optional
+ *                  holidays — 2nd/4th Saturdays STAY IN, unlike Capacity) ×
+ *                  the profile's std_hours_per_day (default 8). Fractional =
+ *                  round2(rate × logged hours), bench = monthly − fractional
+ *                  (footing must hold); a fully logged month pays the CTC.
+ *                  No covering profile → null costs, never zero.
  *   partial flag = the window does not cover the whole month; the chip names
  *                  the window clamped to the month (`15 Jan – 31 Jan`).
  *
@@ -49,7 +56,15 @@ import {
  * read through the page's `data-testid`/`data-*` attributes, never classes.
  */
 
-test.use({ storageState: 'e2e/.auth/admin-report.json' });
+test.use({
+	storageState: 'e2e/.auth/admin-report.json',
+	// This spec's own rate-limit identity, set through the proxy's trusted
+	// header the way `security-fixtures` does for isolation (ADR-0013): in a
+	// combined run the attendance suite's grid traffic otherwise exhausts the
+	// in-memory `api` budget (120/min per identity) and 429s this file's later
+	// tests. TEST-NET-style address that never routes anywhere.
+	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.11' },
+});
 test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
 const MONTH = UTILIZATION_MONTH;
@@ -238,6 +253,34 @@ function deriveHolidaySets(
 	return { optionalHolidays, nonOptionalHolidays };
 }
 
+/**
+ * The Payroll Slip's Basis Days (ADR-0010), re-implemented: every non-Sunday
+ * day of the month minus the active non-optional holidays. 2nd/4th Saturdays
+ * stay in — that is exactly where this calendar parts ways with Capacity.
+ */
+function basisDaysIn(
+	month: string,
+	nonOptionalHolidays: ReadonlySet<string>
+): number {
+	const daysInMonth = Number(lastDayOf(month).slice(8, 10));
+	const [year, monthNumber] = month.split('-').map(Number);
+	let basisDays = 0;
+	for (let day = 1; day <= daysInMonth; day++) {
+		const date = `${month}-${String(day).padStart(2, '0')}`;
+		const isSunday =
+			new Date(Date.UTC(year, monthNumber - 1, day)).getUTCDay() === 0;
+		if (isSunday || nonOptionalHolidays.has(date)) continue;
+		basisDays++;
+	}
+	return basisDays;
+}
+
+/** The row's salary-profile inputs: CTC and hours per day, or none. */
+interface DerivedRate {
+	ctc: number;
+	hoursPerDay: number;
+}
+
 interface DerivedRow {
 	capacityHours: number;
 	employedWorkingDays: number;
@@ -245,26 +288,34 @@ interface DerivedRow {
 	loggedHours: number;
 	utilizationPercent: number | null;
 	utilizationBand: string | null;
-	monthlyCost: number;
-	fractionalCost: number;
-	benchCost: number;
+	/** The month's Basis Days the rate divided CTC by (payroll's calendar). */
+	basisDays: number;
+	/** Unrounded CTC ÷ Basis Hours; null when no profile covers the month. */
+	rate: number | null;
+	costStatus: 'priced' | 'no-profile';
+	monthlyCost: number | null;
+	fractionalCost: number | null;
+	benchCost: number | null;
 	isPartialWindow: boolean;
 	chip: string | null;
 }
 
 /**
- * The report's capacity and cost rules, re-derived from raw rows: only the
- * working days inside the window credit hours (the attendance weekly-off flag
- * wins over the schedule; leave zeroes its day, HD credits 4h, everything
- * else — including 'H' on an optional holiday — credits 8h), and Monthly Cost
- * is `CTC × employed ÷ month working days` at 2dp with bench footing.
+ * The report's capacity, rate and cost rules, re-derived from raw rows: only
+ * the working days inside the window credit hours (the attendance weekly-off
+ * flag wins over the schedule; leave zeroes its day, HD credits 4h, everything
+ * else — including 'H' on an optional holiday — credits 8h); the rate is
+ * CTC ÷ (the month's Basis Days × the profile's hours per day); Monthly Cost
+ * is `CTC × employed ÷ month working days` at 2dp with bench footing. No
+ * covering profile → blank (null) costs, never zero.
  */
 function deriveRow(
 	window: EmploymentWindow,
 	month: string,
 	calendar: MonthCalendar,
 	attendanceByDate: Map<string, AttendanceDay>,
-	loggedHours: number
+	loggedHours: number,
+	profile: DerivedRate | null
 ): DerivedRow {
 	const daysInMonth = Number(lastDayOf(month).slice(8, 10));
 	const monthStart = `${month}-01`;
@@ -300,13 +351,19 @@ function deriveRow(
 				: utilizationPercent <= 100
 					? 'healthy'
 					: 'over';
-	const monthlyCost =
-		employedWorkingDays > 0 && monthWorkingDays > 0
-			? round2((UTILIZATION_CTC * employedWorkingDays) / monthWorkingDays)
-			: 0;
-	// The seeded profiles carry CTC ÷ (26 std days × 8 h).
-	const fractionalCost = round2((UTILIZATION_CTC / (26 * 8)) * loggedHours);
-	const benchCost = round2(monthlyCost - fractionalCost);
+	// The rate's own calendar: the same holidays, but 2nd/4th Saturdays stay.
+	const basisDays = basisDaysIn(month, calendar.nonOptionalHolidays);
+	const rate = profile ? profile.ctc / (basisDays * profile.hoursPerDay) : null;
+	const monthlyCost = profile
+		? employedWorkingDays > 0 && monthWorkingDays > 0
+			? round2((profile.ctc * employedWorkingDays) / monthWorkingDays)
+			: 0
+		: null;
+	const fractionalCost = rate === null ? null : round2(rate * loggedHours);
+	const benchCost =
+		monthlyCost === null || fractionalCost === null
+			? null
+			: round2(monthlyCost - fractionalCost);
 	const isPartialWindow =
 		(window.start !== null && window.start > monthStart) ||
 		(window.end !== null && window.end < monthEnd);
@@ -326,6 +383,9 @@ function deriveRow(
 		loggedHours,
 		utilizationPercent,
 		utilizationBand,
+		basisDays,
+		rate,
+		costStatus: profile ? 'priced' : 'no-profile',
 		monthlyCost,
 		fractionalCost,
 		benchCost,
@@ -459,6 +519,7 @@ interface RenderedRow {
 	logged: string;
 	utilization: string;
 	monthly: string;
+	bench: string;
 	partial: string;
 }
 
@@ -475,6 +536,7 @@ function readRows(page: Page): Promise<RenderedRow[]> {
 				logged: cell('cell-logged'),
 				utilization: cell('cell-utilization'),
 				monthly: cell('cell-monthly-cost'),
+				bench: cell('cell-bench-cost'),
 				partial: cell('partial-window-chip'),
 			};
 		})
@@ -486,6 +548,79 @@ const number2 = new Intl.NumberFormat('en-IN', {
 	minimumFractionDigits: 2,
 	maximumFractionDigits: 2,
 });
+
+/** One `employee_salary_profile` row as the database hands it over. */
+interface RawProfile {
+	employee_id: number;
+	gross: string | number | null;
+	gross_salary: string | number | null;
+	employer_cost: string | number | null;
+	hourly_rate: string | number | null;
+	std_hours_per_day: string | number | null;
+	std_working_days: string | number | null;
+	salary_type: string;
+	effective_from: string | null;
+	effective_to: string | null;
+}
+
+const profilesByEmployee = new Map<number, RawProfile[]>();
+
+/** One month's holiday split, straight from `holiday_master`. */
+async function monthCalendar(month: string): Promise<MonthCalendar> {
+	const holidayRows = await rows<{
+		date: string;
+		is_optional: number;
+		is_active: number;
+	}>(
+		`SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date,
+		        COALESCE(is_optional, 0) AS is_optional,
+		        COALESCE(is_active, 1) AS is_active
+		 FROM holiday_master
+		 WHERE date BETWEEN ? AND ?`,
+		[`${month}-01`, lastDayOf(month)]
+	);
+	return deriveHolidaySets(holidayRows);
+}
+
+/**
+ * The profile in force for `month`, mirroring the report's documented pick:
+ * first active profile whose effective range covers the month, else the
+ * latest active one by `effective_from`.
+ */
+function coveringProfile(employeeId: number, month: string): RawProfile | null {
+	const profiles = profilesByEmployee.get(employeeId) ?? [];
+	if (!profiles.length) return null;
+	const monthStart = `${month}-01`;
+	const monthEnd = lastDayOf(month);
+	const covering = profiles.find((profile) => {
+		const from = profile.effective_from || '1970-01-01';
+		const to = profile.effective_to || '9999-12-31';
+		return from <= monthEnd && to >= monthStart;
+	});
+	return (
+		covering ??
+		[...profiles].sort((a, b) =>
+			(b.effective_from || '').localeCompare(a.effective_from || '')
+		)[0] ??
+		null
+	);
+}
+
+/** The row's CTC chain (employer_cost → gross_salary → gross) and hours/day. */
+function rateFor(employeeId: number, month: string): DerivedRate | null {
+	const profile = coveringProfile(employeeId, month);
+	if (!profile) return null;
+	return {
+		ctc:
+			Number(profile.employer_cost) ||
+			Number(profile.gross_salary) ||
+			Number(profile.gross),
+		hoursPerDay:
+			Number(profile.std_hours_per_day) > 0
+				? Number(profile.std_hours_per_day)
+				: 8,
+	};
+}
 
 // ─── Model ───────────────────────────────────────────────────────────
 
@@ -636,22 +771,9 @@ test.beforeAll(async () => {
 	});
 	const windows = new Map(employees.map((row) => [row.id, deriveWindow(row)]));
 
-	// The viewed month's capacity calendar: weekly offs + active NON-optional
-	// holidays (optional holidays stay working days, as attendance and
-	// payroll treat them).
-	const holidays = await rows<{
-		date: string;
-		is_optional: number;
-		is_active: number;
-	}>(
-		`SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date,
-		        COALESCE(is_optional, 0) AS is_optional,
-		        COALESCE(is_active, 1) AS is_active
-		 FROM holiday_master
-		 WHERE date BETWEEN ? AND ?`,
-		[`${MONTH}-01`, `${MONTH}-${DAYS_IN_MONTH}`]
-	);
-	const calendar = deriveHolidaySets(holidays);
+	// The viewed month's calendars: Capacity and the rate share the active
+	// NON-optional holiday set but not the weekly-off rule (see `deriveRow`).
+	const calendar = await monthCalendar(MONTH);
 
 	// The viewed month's attendance, by employee: the recorded status and the
 	// `is_weekly_off` flag that wins over the schedule when a record exists.
@@ -681,6 +803,24 @@ test.beforeAll(async () => {
 		attendanceByEmployee.set(employeeId, byDate);
 	}
 
+	// Active salary profiles: the rate's CTC chain (employer_cost → gross
+	// salary → gross) and the profile's hours per day, read raw.
+	const profileRows = await rows<RawProfile>(
+		`SELECT employee_id, gross, gross_salary, employer_cost, hourly_rate,
+		        std_hours_per_day, std_working_days, salary_type,
+		        DATE_FORMAT(effective_from, '%Y-%m-%d') AS effective_from,
+		        DATE_FORMAT(effective_to, '%Y-%m-%d') AS effective_to
+		 FROM employee_salary_profile
+		 WHERE is_active = 1`
+	);
+	for (const profile of profileRows) {
+		const employeeId = Number(profile.employee_id);
+		if (!employeeId) continue;
+		const profiles = profilesByEmployee.get(employeeId) ?? [];
+		profiles.push(profile);
+		profilesByEmployee.set(employeeId, profiles);
+	}
+
 	// One derived capacity/cost row per viewed-month roster member.
 	const derivedRows = new Map<number, DerivedRow>();
 	for (const employee of employees) {
@@ -694,7 +834,8 @@ test.beforeAll(async () => {
 				MONTH,
 				calendar,
 				attendanceByEmployee.get(employee.id) ?? new Map(),
-				loggedHoursByEmployee.get(employee.id) ?? 0
+				loggedHoursByEmployee.get(employee.id) ?? 0,
+				rateFor(employee.id, MONTH)
 			)
 		);
 	}
@@ -942,6 +1083,7 @@ test.describe('employee utilization roster', () => {
 		// Every rendered row carries the derived, window-scoped figures and
 		// the chip exactly when (and as) the derivation promises one.
 		let chipsSeen = 0;
+		let blankCostRows = 0;
 		for (const [employeeId, derived] of model.rows) {
 			const employee = model.employees.find((row) => row.id === employeeId)!;
 			const rendered = renderedRows.find(
@@ -961,13 +1103,29 @@ test.describe('employee utilization roster', () => {
 			expect(rendered.band, employee.employee_id).toBe(
 				derived.utilizationBand ?? ''
 			);
-			expect(rendered.monthly, employee.employee_id).toContain(
-				number2.format(derived.monthlyCost)
-			);
 			expect(rendered.partial, employee.employee_id).toBe(derived.chip ?? '');
 			if (derived.chip) chipsSeen++;
+			if (derived.costStatus === 'no-profile') {
+				// Blank, never zero: the em dash plus the "No profile" tag.
+				expect(rendered.monthly, employee.employee_id).toContain('—');
+				expect(rendered.monthly, employee.employee_id).toContain('No profile');
+				expect(rendered.monthly, employee.employee_id).not.toContain('0');
+				expect(rendered.bench, employee.employee_id).toBe('—');
+				blankCostRows++;
+				continue;
+			}
+			expect(rendered.monthly, employee.employee_id).toContain(
+				number2.format(derived.monthlyCost!)
+			);
+			// The bench cell pins the payroll rate in the DOM: it is monthly −
+			// round2(CTC ÷ Basis Hours × logged). Negative currency carries its
+			// sign ahead of the symbol, so compare the magnitude.
+			expect(rendered.bench, employee.employee_id).toContain(
+				number2.format(Math.abs(derived.benchCost!))
+			);
 		}
 		expect(chipsSeen).toBeGreaterThan(0);
+		expect(blankCostRows).toBeGreaterThan(0);
 
 		// Misfiled types never render as rows.
 		for (const member of UTILIZATION_ROSTER) {
@@ -1046,7 +1204,7 @@ test.describe('employee utilization roster', () => {
 		const api = await fetchMonth(request, MONTH);
 
 		// Every row carries the derived window-scoped figures, its window and
-		// the partial flag; fractional + bench foots to monthly at 2dp.
+		// the partial flag; priced rows foot fractional + bench = monthly.
 		for (const row of api.rows) {
 			const employee = model.employees.find(
 				(candidate) => candidate.employee_id === row.employee_code
@@ -1054,16 +1212,24 @@ test.describe('employee utilization roster', () => {
 			const derived = model.rows.get(employee.id)!;
 			const window = model.windows.get(employee.id)!;
 			expect(row.capacity_hours, row.employee_code).toBe(derived.capacityHours);
-			expect(row.monthly_cost, row.employee_code).toBe(derived.monthlyCost);
-			expect(row.fractional_cost, row.employee_code).toBe(
-				derived.fractionalCost
-			);
-			expect(row.bench_cost, row.employee_code).toBe(derived.benchCost);
 			expect(row.is_partial_window, row.employee_code).toBe(
 				derived.isPartialWindow
 			);
 			expect(row.employment_start).toBe(window.start);
 			expect(row.employment_end).toBe(window.end);
+			if (derived.costStatus === 'no-profile') {
+				expect(row.cost_status, row.employee_code).toBe('no-profile');
+				expect(row.monthly_cost, row.employee_code).toBeNull();
+				expect(row.fractional_cost, row.employee_code).toBeNull();
+				expect(row.bench_cost, row.employee_code).toBeNull();
+				continue;
+			}
+			expect(row.cost_status, row.employee_code).toBe('priced');
+			expect(row.monthly_cost, row.employee_code).toBe(derived.monthlyCost);
+			expect(row.fractional_cost, row.employee_code).toBe(
+				derived.fractionalCost
+			);
+			expect(row.bench_cost, row.employee_code).toBe(derived.benchCost);
 			expect(
 				round2((row.fractional_cost ?? 0) + (row.bench_cost ?? 0)),
 				row.employee_code
@@ -1113,7 +1279,8 @@ test.describe('employee utilization roster', () => {
 		expect(monthLeaver.derived.isPartialWindow).toBe(false);
 		expect(monthLeaver.row.monthly_cost).toBe(UTILIZATION_CTC);
 
-		// The totals are the derived sums over the same row set, footing too.
+		// The totals are the derived sums over the same row set (priced rows
+		// only for money, exactly like the server), footing too.
 		let capacity = 0;
 		let logged = 0;
 		let monthly = 0;
@@ -1122,9 +1289,10 @@ test.describe('employee utilization roster', () => {
 		for (const derived of model.rows.values()) {
 			capacity += derived.capacityHours;
 			logged += derived.loggedHours;
-			monthly += derived.monthlyCost;
-			fractional += derived.fractionalCost;
-			bench += derived.benchCost;
+			if (derived.costStatus !== 'priced') continue;
+			monthly += derived.monthlyCost!;
+			fractional += derived.fractionalCost!;
+			bench += derived.benchCost!;
 		}
 		expect(api.totals.employee_count).toBe(model.rows.size);
 		expect(api.totals.capacity_hours).toBe(round2(capacity));
@@ -1226,6 +1394,286 @@ test.describe('employee utilization roster', () => {
 		};
 	});
 
+	// ─── #295: payroll-aligned Bench Cost rate ──────────────────────────
+
+	test('the rate divides CTC by the month’s Basis Hours, not the profile’s own denominator', async ({
+		request,
+	}) => {
+		const api = await fetchMonth(request, MONTH);
+		const basisDays = basisDaysIn(MONTH, model.calendar.nonOptionalHolidays);
+		// January 2019: 31 days − 4 Sundays (6/13/20/27) − the E2E Holiday
+		// (26 Jan, a Saturday) = 26; the 2nd/4th Saturdays (12/19) stay in.
+		expect(basisDays).toBe(26);
+		const januaryRate = UTILIZATION_CTC / (basisDays * STANDARD_DAY_HOURS);
+		expect(round2(januaryRate)).toBe(125);
+
+		// `std_working_days` = 22 would apportion the CTC over 176h (147.73/h);
+		// the month's Basis Hours (26 × 8 = 208h) give 125/h.
+		const overrideMember = utilizationMemberForPlan('basisDaysOverride');
+		const overrideEmployee = model.employees.find(
+			(row) => row.employee_id === overrideMember.code
+		)!;
+		const overrideProfile = coveringProfile(overrideEmployee.id, MONTH)!;
+		expect(Number(overrideProfile.std_working_days)).toBe(22);
+		expect(
+			Number(overrideProfile.std_hours_per_day) || STANDARD_DAY_HOURS
+		).toBe(8);
+		const overrideRow = api.rows.find(
+			(row) => row.employee_code === overrideMember.code
+		)!;
+		const overrideDerived = model.rows.get(overrideEmployee.id)!;
+		expect(overrideDerived.basisDays).toBe(basisDays);
+		expect(overrideDerived.rate).toBe(januaryRate);
+		expect(overrideRow.logged_hours).toBe(32);
+		const profileDenominator =
+			Number(overrideProfile.std_working_days) *
+			(Number(overrideProfile.std_hours_per_day) || STANDARD_DAY_HOURS);
+		expect(profileDenominator).toBe(176);
+		expect(overrideRow.fractional_cost).toBe(round2(januaryRate * 32));
+		expect(overrideRow.fractional_cost).toBe(4000);
+		expect(
+			round2((UTILIZATION_CTC / profileDenominator) * 32),
+			'the profile denominator would read 4727.27'
+		).toBe(4727.27);
+		expect(overrideRow.fractional_cost).not.toBe(4727.27);
+
+		// An hourly profile's stored rate (999) must not price the row either:
+		// CTC ÷ Basis Hours does, exactly as on the slip.
+		const directMember = utilizationMemberForPlan('directRateIgnored');
+		const directEmployee = model.employees.find(
+			(row) => row.employee_id === directMember.code
+		)!;
+		const directProfile = coveringProfile(directEmployee.id, MONTH)!;
+		expect(directProfile.salary_type).toBe('hourly');
+		expect(Number(directProfile.hourly_rate)).toBe(999);
+		const directRow = api.rows.find(
+			(row) => row.employee_code === directMember.code
+		)!;
+		expect(directRow.logged_hours).toBe(24);
+		expect(directRow.fractional_cost).toBe(round2(januaryRate * 24));
+		expect(directRow.fractional_cost).toBe(3000);
+		expect(directRow.fractional_cost).not.toBe(round2(999 * 24));
+		expect(
+			Math.abs(
+				directRow.fractional_cost! / directRow.logged_hours - januaryRate
+			)
+		).toBeLessThan(0.0001);
+
+		// Utilization still comes from the Capacity calendar: this member's
+		// evidence window (1–5 Jan, its last Logged Hours day) reads 5 employed
+		// working days, and the month itself has 25 working days — while the
+		// rate's calendar has 26 basis days (the 2nd/4th Saturdays stay in).
+		expect(overrideRow.capacity_hours).toBe(5 * STANDARD_DAY_HOURS);
+		expect(overrideDerived.monthWorkingDays).toBe(25);
+		expect(overrideDerived.basisDays).toBe(basisDays);
+		expect(overrideDerived.basisDays).not.toBe(
+			overrideDerived.monthWorkingDays
+		);
+		expect(overrideRow.monthly_cost).toBe(round2((UTILIZATION_CTC * 5) / 25));
+
+		observed.rateBasis = {
+			month: MONTH,
+			basisDays,
+			basisHours: basisDays * STANDARD_DAY_HOURS,
+			rate: round2(januaryRate),
+			capacityWorkingDays: overrideDerived.monthWorkingDays,
+			profileDenominator,
+			override: {
+				code: overrideMember.code,
+				logged: overrideRow.logged_hours,
+				fractional: overrideRow.fractional_cost,
+				bench: overrideRow.bench_cost,
+			},
+			direct: {
+				code: directMember.code,
+				storedHourlyRate: Number(directProfile.hourly_rate),
+				logged: directRow.logged_hours,
+				fractional: directRow.fractional_cost,
+			},
+		};
+	});
+
+	test('a fully logged month reconciles and the rate moves with the month’s Basis Hours', async ({
+		request,
+	}) => {
+		const fullMember = utilizationMemberForPlan('basisRateFullMonth');
+		const fullEmployee = model.employees.find(
+			(row) => row.employee_id === fullMember.code
+		)!;
+
+		// January: Logged Hours == the month's Basis Hours (26 × 8 = 208h), so
+		// the whole CTC pays out — fractional = monthly, bench = 0.
+		const januaryBasisDays = basisDaysIn(
+			MONTH,
+			model.calendar.nonOptionalHolidays
+		);
+		const januaryRate =
+			UTILIZATION_CTC / (januaryBasisDays * STANDARD_DAY_HOURS);
+		expect(januaryBasisDays * STANDARD_DAY_HOURS).toBe(208);
+		expect(round2(januaryRate)).toBe(125);
+		const january = await fetchMonth(request, MONTH);
+		const januaryRow = january.rows.find(
+			(row) => row.employee_code === fullMember.code
+		)!;
+		expect(januaryRow.logged_hours).toBe(208);
+		expect(januaryRow.monthly_cost).toBe(UTILIZATION_CTC);
+		expect(januaryRow.fractional_cost).toBe(UTILIZATION_CTC);
+		expect(januaryRow.bench_cost).toBe(0);
+
+		// February: 28 days − 4 Sundays = 24 basis days for the same employee,
+		// so the same CTC buys a different hourly rate. The evidence window
+		// closes on the last Logged Hours day (19 Feb), so Monthly Cost is
+		// pro-rated to the employed working days while the rate is not.
+		const februaryCalendar = await monthCalendar('2019-02');
+		const februaryBasisDays = basisDaysIn(
+			'2019-02',
+			februaryCalendar.nonOptionalHolidays
+		);
+		expect(februaryBasisDays).toBe(24);
+		const februaryRate =
+			UTILIZATION_CTC / (februaryBasisDays * STANDARD_DAY_HOURS);
+		expect(round2(februaryRate)).toBe(135.42);
+		expect(januaryRate).not.toBe(februaryRate);
+
+		// February's Logged Hours, summed from the raw assignment payloads.
+		const februaryAssignments = await rows<{ daily_entries: string | null }>(
+			`SELECT daily_entries FROM user_activity_assignments
+			 WHERE employee_id = ? AND status <> 'Cancelled'`,
+			[fullEmployee.id]
+		);
+		const februaryLogged = februaryAssignments.reduce(
+			(sum, assignment) =>
+				sum + loggedHoursInMonth(assignment.daily_entries, '2019-02'),
+			0
+		);
+		expect(februaryLogged).toBe(96);
+		const february = await fetchMonth(request, '2019-02');
+		const februaryRow = february.rows.find(
+			(row) => row.employee_code === fullMember.code
+		)!;
+		const februaryDerived = deriveRow(
+			model.windows.get(fullEmployee.id)!,
+			'2019-02',
+			februaryCalendar,
+			new Map(),
+			februaryLogged,
+			rateFor(fullEmployee.id, '2019-02')
+		);
+		expect(februaryDerived.basisDays).toBe(februaryBasisDays);
+		expect(februaryRow.logged_hours).toBe(februaryDerived.loggedHours);
+		expect(februaryRow.capacity_hours).toBe(februaryDerived.capacityHours);
+		expect(februaryRow.monthly_cost).toBe(februaryDerived.monthlyCost);
+		expect(februaryRow.fractional_cost).toBe(februaryDerived.fractionalCost);
+		expect(februaryRow.bench_cost).toBe(februaryDerived.benchCost);
+		expect(februaryRow.logged_hours).toBe(februaryLogged);
+		expect(februaryRow.fractional_cost).toBe(
+			round2(februaryRate * februaryLogged)
+		);
+		expect(februaryRow.fractional_cost).toBe(13000);
+		expect(februaryRow.is_partial_window).toBe(true);
+
+		// A fixed 26 × 8 denominator (the old rule) would price February's 96h
+		// at 12000; the month's own Basis Hours pay 13000.
+		expect(
+			round2((UTILIZATION_CTC / (26 * STANDARD_DAY_HOURS)) * februaryLogged)
+		).toBe(12000);
+		expect(februaryRow.fractional_cost).not.toBe(12000);
+
+		// fractional ÷ logged recovers CTC ÷ Basis Hours in each month.
+		expect(
+			Math.abs(
+				januaryRow.fractional_cost! / januaryRow.logged_hours - januaryRate
+			)
+		).toBeLessThan(0.0001);
+		expect(
+			Math.abs(
+				februaryRow.fractional_cost! / februaryRow.logged_hours - februaryRate
+			)
+		).toBeLessThan(0.0001);
+
+		observed.rateMoves = {
+			january: {
+				basisDays: januaryBasisDays,
+				rate: round2(januaryRate),
+				logged: januaryRow.logged_hours,
+				fractional: januaryRow.fractional_cost,
+				bench: januaryRow.bench_cost,
+			},
+			february: {
+				basisDays: februaryBasisDays,
+				rate: round2(februaryRate),
+				logged: februaryRow.logged_hours,
+				monthly: februaryRow.monthly_cost,
+				fractional: februaryRow.fractional_cost,
+				bench: februaryRow.bench_cost,
+				partial: februaryRow.is_partial_window,
+			},
+		};
+	});
+
+	test('employees without a covering Salary Profile keep blank cost columns', async ({
+		request,
+		page,
+	}) => {
+		const member = utilizationMemberForPlan('payrollNoProfile');
+		const employee = model.employees.find(
+			(row) => row.employee_id === member.code
+		)!;
+		const profiles = await rows<{ n: number | string }>(
+			`SELECT COUNT(*) AS n FROM employee_salary_profile
+			 WHERE employee_id = ? AND is_active = 1`,
+			[employee.id]
+		);
+		expect(Number(profiles[0].n)).toBe(0);
+
+		const api = await fetchMonth(request, MONTH);
+		const row = api.rows.find(
+			(candidate) => candidate.employee_code === member.code
+		)!;
+		expect(row.cost_status).toBe('no-profile');
+		expect(row.monthly_cost).toBeNull();
+		expect(row.fractional_cost).toBeNull();
+		expect(row.bench_cost).toBeNull();
+		// Hours and utilization still read; a blank is not a zero.
+		expect(row.capacity_hours).toBeGreaterThan(0);
+		expect(row.logged_hours).toBeGreaterThan(0);
+		expect(row.utilization_percent).toBeGreaterThan(0);
+
+		await openMonth(page, MONTH_LABEL);
+		const rendered = (await readRows(page)).find(
+			(candidate) => candidate.code === member.code
+		)!;
+		expect(rendered.monthly).toContain('—');
+		expect(rendered.monthly).toContain('No profile');
+		expect(rendered.monthly).not.toContain('0');
+		expect(rendered.bench).toBe('—');
+		await expect(page.getByTestId('utilization-summary')).toContainText(
+			'unpriced'
+		);
+
+		observed.noProfile = {
+			code: member.code,
+			costStatus: row.cost_status,
+			logged: row.logged_hours,
+			utilization: row.utilization_percent,
+			monthlyCell: rendered.monthly,
+			benchCell: rendered.bench,
+		};
+	});
+
+	test('the page states that the rate’s and Capacity’s calendars differ by design', async ({
+		page,
+	}) => {
+		await openMonth(page, MONTH_LABEL);
+		const note = page.getByTestId('payroll-rate-note');
+		await expect(note).toBeVisible();
+		await expect(note).toContainText('CTC ÷ Basis Hours');
+		await expect(note).toContainText('non-optional holidays');
+		await expect(note).toContainText('Sundays, 2nd/4th Saturdays');
+		await expect(note).toContainText('differ by design');
+		observed.rateNote = (await note.textContent())?.trim();
+	});
+
 	test('the page keeps the disclosure absent when the month has no exclusions', async ({
 		page,
 		request,
@@ -1325,9 +1773,10 @@ test.describe('employee utilization roster', () => {
 				capacity:
 					'working days inside the window × 8h; a working day is not a weekly off (Sundays + 2nd/4th Saturdays, else the attendance is_weekly_off flag) and not an active non-optional holiday; leave 0h, HD 4h, everything else (incl. H on an optional holiday) 8h',
 				monthlyCost:
-					'round2(CTC × employed working days ÷ the month’s working days); full-month windows reproduce the full CTC',
+					'round2(CTC × employed working days ÷ the month’s working days) over the Capacity calendar; full-month windows reproduce the full CTC',
+				rate: 'CTC ÷ Basis Hours, Basis Hours = the month’s basis days (non-Sunday days minus active non-optional holidays; 2nd/4th Saturdays stay in) × the profile’s std_hours_per_day (default 8) — a fully logged month pays the CTC',
 				footing:
-					'fractional = round2(CTC ÷ (26×8) × logged); bench = monthly − fractional; sum foots per row and in totals',
+					'fractional = round2(rate × logged); bench = round2(monthly − fractional); sum foots per row and in totals; no covering profile → null costs, never zero',
 				partialChip:
 					'is_partial_window when the window does not cover the month; the chip names the window clamped to the month',
 			},
@@ -1363,6 +1812,9 @@ test.describe('employee utilization roster', () => {
 							capacityHours: derived.capacityHours,
 							loggedHours: derived.loggedHours,
 							utilizationPercent: derived.utilizationPercent,
+							basisDays: derived.basisDays,
+							rate: derived.rate === null ? null : round2(derived.rate),
+							costStatus: derived.costStatus,
 							monthlyCost: derived.monthlyCost,
 							fractionalCost: derived.fractionalCost,
 							benchCost: derived.benchCost,

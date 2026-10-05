@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
 	STANDARD_WORKING_HOURS,
 	HALF_DAY_HOURS,
+	STD_HOURS_PER_DAY_DEFAULT,
 	UNDER_UTILIZATION_THRESHOLD,
 	OVER_UTILIZATION_THRESHOLD,
 	resolveMonthlyCost,
+	basisDaysInMonth,
 	computeCtcHourlyRate,
 	resolveCtcHourlyRate,
 	proratedMonthlyCost,
@@ -276,51 +278,91 @@ describe('resolveMonthlyCost', () => {
 	});
 });
 
+describe('basisDaysInMonth (payroll Basis Hours calendar)', () => {
+	it('counts every non-Sunday day, 2nd/4th Saturdays included', () => {
+		// May 2026: 31 days, 5 Sundays; Saturdays 9 and 23 stay in — the
+		// capacity calendar's 24 working days would be wrong here.
+		expect(basisDaysInMonth(MAY, new Set())).toBe(26);
+	});
+
+	it('subtracts injected holidays that are not Sundays', () => {
+		expect(basisDaysInMonth(MAY, new Set(['2026-05-01']))).toBe(25);
+		// A holiday landing on a Sunday is already excluded: no double count.
+		expect(basisDaysInMonth(MAY, new Set(['2026-05-03']))).toBe(26);
+	});
+
+	it('moves with the calendar month', () => {
+		// July 2026: 31 days, 4 Sundays (5/12/19/26) → 27 basis days.
+		expect(basisDaysInMonth('2026-07', new Set())).toBe(27);
+		expect(basisDaysInMonth('garbage', new Set())).toBe(0);
+	});
+});
+
 describe('computeCtcHourlyRate and resolveCtcHourlyRate', () => {
-	it('apportions monthly CTC over standard days times hours per day', () => {
-		// 22000 / (26 × 8) = 105.769… unrounded for money math.
-		expect(computeCtcHourlyRate(profile())).toBeCloseTo(105.7692, 4);
-		expect(resolveCtcHourlyRate(profile())).toBe(105.77);
+	it('apportions CTC over the month’s Basis Hours', () => {
+		// 26 basis days × 8h = 208h; 22000 / 208 = 105.769… for money math.
+		expect(computeCtcHourlyRate(profile(), 26)).toBeCloseTo(105.7692, 4);
+		expect(resolveCtcHourlyRate(profile(), 26)).toBe(105.77);
 	});
 
-	it('uses the direct rate for hourly, daily, and custom types', () => {
-		expect(
-			computeCtcHourlyRate(profile({ salary_type: 'hourly', hourly_rate: 250 }))
-		).toBe(250);
-		expect(
-			computeCtcHourlyRate(profile({ salary_type: 'daily', daily_rate: 800 }))
-		).toBe(800);
-		expect(
-			computeCtcHourlyRate(profile({ salary_type: 'custom', hourly_rate: 300 }))
-		).toBe(300);
+	it('moves with the month’s basis days (the payroll rule)', () => {
+		// July 2026: 27 basis days × 8 = 216h; 22000 / 216 = 101.8518…
+		expect(computeCtcHourlyRate(profile(), 27)).toBeCloseTo(101.8519, 4);
+		expect(resolveCtcHourlyRate(profile(), 27)).toBe(101.85);
+		// One holiday on a working day lowers the denominator, raising the rate.
+		expect(resolveCtcHourlyRate(profile(), 25)).toBe(110);
 	});
 
-	it('falls back to 26 days and 8 hours when the profile omits them', () => {
+	it('falls back to 8 hours per day when the profile omits them', () => {
+		expect(STD_HOURS_PER_DAY_DEFAULT).toBe(8);
 		expect(
-			computeCtcHourlyRate(
-				profile({ std_working_days: 0, std_hours_per_day: 0 })
-			)
+			computeCtcHourlyRate(profile({ std_hours_per_day: 0 }), 26)
 		).toBeCloseTo(22000 / 208, 4);
 	});
 
-	it('respects profile-level working days and hours per day', () => {
+	it('ignores std_working_days and direct stored rates', () => {
+		// Payroll prices CTC over the month's basis hours: the profile's own
+		// denominator and the direct hourly/daily/custom rates are all decoys.
 		expect(
 			resolveCtcHourlyRate(
-				profile({
-					employer_cost: 22000,
-					std_working_days: 22,
-					std_hours_per_day: 8,
-				})
+				profile({ std_working_days: 22, employer_cost: 26000 }),
+				26
 			)
 		).toBe(125);
+		for (const salary_type of ['hourly', 'daily', 'custom']) {
+			expect(
+				resolveCtcHourlyRate(
+					profile({
+						salary_type,
+						hourly_rate: 999,
+						daily_rate: 999,
+						employer_cost: 26000,
+					}),
+					26
+				),
+				salary_type
+			).toBe(125);
+		}
 	});
 
-	it('returns 0 when there is no monthly cost', () => {
+	it('keeps the profile’s hours per day in the denominator', () => {
+		// 26 basis days × 4h = 104h; 20000 / 104 = 192.307…
+		expect(
+			resolveCtcHourlyRate(
+				profile({ employer_cost: 20000, std_hours_per_day: 4 }),
+				26
+			)
+		).toBe(192.31);
+	});
+
+	it('returns 0 with no CTC or no basis days', () => {
 		expect(
 			computeCtcHourlyRate(
-				profile({ employer_cost: 0, gross_salary: 0, gross: 0 })
+				profile({ employer_cost: 0, gross_salary: 0, gross: 0 }),
+				26
 			)
 		).toBe(0);
+		expect(computeCtcHourlyRate(profile(), 0)).toBe(0);
 	});
 });
 
@@ -392,17 +434,19 @@ describe('buildTeamRow', () => {
 				rate: 144.23,
 			},
 			{
+				// The stored hourly rate (250) is a decoy: CTC ÷ 208h wins.
 				salary_type: 'hourly',
 				overrides: {
 					salary_type: 'hourly',
 					hourly_rate: 250,
-					employer_cost: 52000,
-					gross_salary: 52000,
+					employer_cost: 40000,
+					gross_salary: 40000,
 				},
-				monthly: 52000,
-				rate: 250,
+				monthly: 40000,
+				rate: 192.31,
 			},
 			{
+				// Likewise the stored daily rate (800): 20800 ÷ 208 = 100.
 				salary_type: 'daily',
 				overrides: {
 					salary_type: 'daily',
@@ -411,7 +455,7 @@ describe('buildTeamRow', () => {
 					gross_salary: 20800,
 				},
 				monthly: 20800,
-				rate: 800,
+				rate: 100,
 			},
 			{
 				salary_type: 'lumpsum',
@@ -432,7 +476,7 @@ describe('buildTeamRow', () => {
 					gross_salary: 30000,
 				},
 				monthly: 30000,
-				rate: 300,
+				rate: 144.23,
 			},
 		];
 		for (const c of cases) {
@@ -446,12 +490,50 @@ describe('buildTeamRow', () => {
 			});
 			expect(row.monthly_cost).toBe(c.monthly);
 			expect(row.cost_status).toBe('priced');
-			expect(resolveCtcHourlyRate(profile(c.overrides))).toBe(c.rate);
+			// May 2026 has 26 basis days × 8h = 208h.
+			expect(resolveCtcHourlyRate(profile(c.overrides), 26)).toBe(c.rate);
 			expect(row.fractional_cost! + row.bench_cost!).toBeCloseTo(
 				row.monthly_cost!,
 				2
 			);
 		}
+	});
+
+	it('prices with the month’s basis days, not the profile denominator', () => {
+		const row = buildTeamRow({
+			employee_id: 1,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8, '2026-05-05': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [
+				profile({
+					salary_type: 'hourly',
+					hourly_rate: 999,
+					std_working_days: 22,
+					employer_cost: 26000,
+					gross_salary: 26000,
+				}),
+			],
+		});
+		// 26000 / (26 × 8) = 125 — never 26000 / (22 × 8) = 147.73, never 999.
+		expect(row.monthly_cost).toBe(26000);
+		expect(row.fractional_cost).toBe(2000);
+		expect(row.bench_cost).toBe(24000);
+	});
+
+	it('folds the month’s holidays into the rate denominator', () => {
+		const row = buildTeamRow({
+			employee_id: 1,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(['2026-05-01']),
+			profiles: [profile({ employer_cost: 22000, gross_salary: 22000 })],
+		});
+		// 25 basis days × 8h = 200h → 110/h; Capacity nets the same holiday.
+		expect(row.fractional_cost).toBe(880);
+		expect(row.capacity_hours).toBe(184);
 	});
 
 	it('carries the window and pro-rates capacity and Monthly Cost to it', () => {

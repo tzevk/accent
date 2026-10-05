@@ -90,7 +90,12 @@ export type UtilizationPlan =
 	| 'hireDateJoiner'
 	| 'unplacedPayroll'
 	| 'midMonthJoiner'
-	| 'midMonthLeaver';
+	| 'midMonthLeaver'
+	/** Rate cases (#295): the month's Basis Hours must price these. */
+	| 'basisDaysOverride'
+	| 'directRateIgnored'
+	| 'basisRateFullMonth'
+	| 'payrollNoProfile';
 
 export type UtilizationEmployeeType =
 	| 'Payroll'
@@ -98,6 +103,14 @@ export type UtilizationEmployeeType =
 	| 'Deputation'
 	| 'Permanent'
 	| 'Intern';
+
+/** Salary-profile overrides for the distinguishing rate cases (#295). */
+export interface UtilizationProfileOverrides {
+	salary_type?: string;
+	hourly_rate?: number;
+	std_hours_per_day?: number;
+	std_working_days?: number;
+}
 
 export interface UtilizationMember {
 	/** Zero-padded roster number, e.g. '0001'. */
@@ -116,6 +129,13 @@ export interface UtilizationMember {
 	attendanceStatusByDay?: Record<number, string>;
 	/** Viewed-month day numbers carrying Logged Hours. */
 	loggedDays: number[];
+	/** Other months (`YYYY-MM`) with their logged day numbers — the rate must
+	 * move with each month's Basis Hours. */
+	loggedMonths?: { month: string; days: number[] }[];
+	/** Salary-profile overrides; omitted fields take the module defaults. */
+	profileOverrides?: UtilizationProfileOverrides;
+	/** Seed no salary profile at all: the row's cost columns must stay blank. */
+	noProfile?: boolean;
 }
 
 export function utilizationCode(n: string): string {
@@ -296,6 +316,71 @@ const ROSTER_DEF: ReadonlyArray<
 		attendanceStatusByDay: { 14: 'PL', 15: 'H' },
 		loggedDays: [2, 3, 4, 5, 7, 8, 9, 10, 11, 16, 17, 18],
 	},
+	{
+		// #295: the profile's own denomination (22 × 8 = 176h) is a decoy —
+		// the rate must divide CTC by January's 26 basis days × 8 = 208h.
+		n: '0016',
+		type: 'Payroll',
+		status: 'active',
+		joining: '2019-01-01',
+		hire: null,
+		exit: null,
+		plan: 'basisDaysOverride',
+		attendanceDays: [],
+		loggedDays: [2, 3, 4, 5],
+		profileOverrides: { std_working_days: 22 },
+	},
+	{
+		// #295: an hourly profile's stored rate (999) must not price a row —
+		// CTC ÷ Basis Hours does, exactly as on the slip.
+		n: '0017',
+		type: 'Payroll',
+		status: 'active',
+		joining: '2019-01-01',
+		hire: null,
+		exit: null,
+		plan: 'directRateIgnored',
+		attendanceDays: [],
+		loggedDays: [7, 8, 9],
+		profileOverrides: { salary_type: 'hourly', hourly_rate: 999 },
+	},
+	{
+		// #295: Logged Hours == the month's Basis Hours (26 × 8 = 208h), so a
+		// full month must pay the whole CTC: fractional = monthly, bench 0.
+		// February (24 basis days) re-proves the rate moves with the month.
+		n: '0018',
+		type: 'Payroll',
+		status: 'active',
+		joining: '2019-01-01',
+		hire: null,
+		exit: null,
+		plan: 'basisRateFullMonth',
+		attendanceDays: [],
+		loggedDays: [
+			1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 21, 22, 23,
+			24, 25, 28, 29, 30, 31,
+		],
+		loggedMonths: [
+			{
+				month: '2019-02',
+				days: [4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 18, 19],
+			},
+		],
+	},
+	{
+		// #295 AC3: no salary profile covers the month — cost columns stay
+		// blank (never zero) while hours and utilization still show.
+		n: '0019',
+		type: 'Payroll',
+		status: 'active',
+		joining: '2019-01-01',
+		hire: null,
+		exit: null,
+		plan: 'payrollNoProfile',
+		attendanceDays: [],
+		loggedDays: [2, 3],
+		noProfile: true,
+	},
 ];
 
 export const UTILIZATION_ROSTER: readonly UtilizationMember[] = ROSTER_DEF.map(
@@ -321,7 +406,12 @@ export function utilizationMemberForPlan(
 
 /** `YYYY-MM-DD` for a 1-based day of the viewed month. */
 export function utilizationDate(day: number): string {
-	return `${UTILIZATION_MONTH}-${String(day).padStart(2, '0')}`;
+	return monthDate(UTILIZATION_MONTH, day);
+}
+
+/** `YYYY-MM-DD` for a 1-based day of any month. */
+function monthDate(month: string, day: number): string {
+	return `${month}-${String(day).padStart(2, '0')}`;
 }
 
 /**
@@ -460,17 +550,31 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 		summary.employees++;
 
 		// Every Payroll-type member gets a monthly profile so the grid prices
-		// its row; the Contract member's stream is irrelevant to this report.
-		if (member.type === 'Payroll' || member.type === null) {
+		// its row — unless the plan deliberately omits one (the blank-cost
+		// case); the Contract member's stream is irrelevant to this report.
+		if (
+			!member.noProfile &&
+			(member.type === 'Payroll' || member.type === null)
+		) {
+			const profile = member.profileOverrides ?? {};
 			await exec(
 				`INSERT INTO employee_salary_profile
            (employee_id, gross, gross_salary, employer_cost, other_allowances,
             effective_from, is_active, pf_applicable, esic_applicable, pt_applicable,
-            mlwf_applicable, salary_type, std_hours_per_day, std_working_days,
+            mlwf_applicable, salary_type, hourly_rate, std_hours_per_day, std_working_days,
             tds_percentage, loan_amount, loan_amount_per_month, loan_active,
             advance_amount, advance_active)
-         VALUES (?, ?, ?, ?, 0, '2019-01-01', 1, 0, 0, 0, 0, 'monthly', 8, 26, 0, 0, 0, 0, 0, 0)`,
-				[employeeId, UTILIZATION_CTC, UTILIZATION_CTC, UTILIZATION_CTC]
+         VALUES (?, ?, ?, ?, 0, '2019-01-01', 1, 0, 0, 0, 0, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0)`,
+				[
+					employeeId,
+					UTILIZATION_CTC,
+					UTILIZATION_CTC,
+					UTILIZATION_CTC,
+					profile.salary_type ?? 'monthly',
+					profile.hourly_rate ?? null,
+					profile.std_hours_per_day ?? 8,
+					profile.std_working_days ?? 26,
+				]
 			);
 			summary.profiles++;
 		}
@@ -492,9 +596,21 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 			summary.attendance += member.attendanceDays.length;
 		}
 
-		if (member.loggedDays.length) {
-			const dailyEntries = member.loggedDays.map((day) => ({
-				date: utilizationDate(day),
+		// One assignment per logged month: the viewed month seeds `member.n`,
+		// extra months append their own suffix (both inside the purged
+		// `e2e-util-` id namespace).
+		const loggedMonths = [
+			{ month: UTILIZATION_MONTH, days: member.loggedDays, suffix: '' },
+			...(member.loggedMonths ?? []).map((extra) => ({
+				month: extra.month,
+				days: extra.days,
+				suffix: `-${extra.month}`,
+			})),
+		];
+		for (const logged of loggedMonths) {
+			if (!logged.days.length) continue;
+			const dailyEntries = logged.days.map((day) => ({
+				date: monthDate(logged.month, day),
 				hours: UTILIZATION_LOGGED_HOURS_PER_DAY,
 			}));
 			await exec(
@@ -503,13 +619,13 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
             daily_entries, assigned_date, due_date)
          VALUES (?, ?, ?, ?, 'E2E utilization fixture work', 'In Progress', ?, ?, ?)`,
 				[
-					`${UTILIZATION_ASSIGNMENT_PREFIX}${member.n}`,
+					`${UTILIZATION_ASSIGNMENT_PREFIX}${member.n}${logged.suffix}`,
 					summary.userId,
 					employeeId,
-					`${UTILIZATION_ASSIGNMENT_PREFIX}act-${member.n}`,
+					`${UTILIZATION_ASSIGNMENT_PREFIX}act-${member.n}${logged.suffix}`,
 					JSON.stringify(dailyEntries),
-					`${UTILIZATION_MONTH}-01 09:00:00`,
-					`${UTILIZATION_MONTH}-28`,
+					`${logged.month}-01 09:00:00`,
+					`${logged.month}-28`,
 				]
 			);
 			summary.assignments++;
