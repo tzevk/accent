@@ -4,13 +4,25 @@ import { cn } from '@/lib/cn.js';
 import {
 	ROSTER_FILTER_DESCRIPTION,
 	ROSTER_MEMBERSHIP_NOTE,
+	ROSTER_MONTH_FILTER_DESCRIPTION,
+	ROSTER_MONTH_MEMBERSHIP_NOTE,
 	type RosterDisclosure as RosterDisclosureData,
-} from './roster';
+} from '@/lib/payroll-roster';
 
 export interface RosterDisclosureProps {
 	/** `selectPayrollRoster(...).disclosure` — null renders nothing at all. */
 	disclosure: RosterDisclosureData | null;
 	className?: string;
+	/**
+	 * Which roster rule the strip describes:
+	 * - `directory` (default) — the Attendance report's as-of-today filter and
+	 *   wording, unchanged;
+	 * - `month` — the Utilization report's month-scoped filter: the Status
+	 *   clause goes away, the counted population is the month's candidates,
+	 *   and each chip names the Employee Type value alone ("2 Contract",
+	 *   "1 unset") because that is what the month's exclusion is about.
+	 */
+	scope?: 'directory' | 'month';
 }
 
 /**
@@ -33,11 +45,16 @@ function groupedCount(value: number): string {
 export default function RosterDisclosure({
 	disclosure,
 	className,
+	scope = 'directory',
 }: RosterDisclosureProps) {
 	if (!disclosure || disclosure.excluded_count === 0) return null;
 
+	const monthScope = scope === 'month';
 	const employeeNoun =
 		disclosure.excluded_count === 1 ? 'employee' : 'employees';
+	const consideredPhrase = monthScope
+		? 'considered for the month'
+		: 'on the employee list';
 
 	return (
 		<div
@@ -56,7 +73,11 @@ export default function RosterDisclosure({
 					aria-hidden="true"
 				/>
 				<span>
-					This report covers every employee where {ROSTER_FILTER_DESCRIPTION}.
+					This report covers every employee where{' '}
+					{monthScope
+						? ROSTER_MONTH_FILTER_DESCRIPTION
+						: ROSTER_FILTER_DESCRIPTION}
+					.
 				</span>
 			</p>
 
@@ -64,7 +85,7 @@ export default function RosterDisclosure({
 				<span className="font-semibold">
 					{groupedCount(disclosure.excluded_count)} {employeeNoun} excluded
 				</span>{' '}
-				of {groupedCount(disclosure.considered_count)} on the employee list,
+				of {groupedCount(disclosure.considered_count)} {consideredPhrase},
 				leaving{' '}
 				<span className="font-semibold">
 					{groupedCount(disclosure.roster_count)} on the roster.
@@ -83,12 +104,22 @@ export default function RosterDisclosure({
 						data-value={bucket.value ?? ''}
 						className="rounded-full border border-blue-200 bg-white/80 px-2 py-0.5 text-[11px] font-medium text-blue-800"
 					>
-						{groupedCount(bucket.count)}{' '}
-						{bucket.reason === 'not_payroll_type'
-							? bucket.value === null
-								? 'with no Employee Type set'
-								: `with Employee Type ${bucket.value}`
-							: `not Active (Status ${bucket.value})`}
+						{monthScope || bucket.reason === 'not_payroll_type' ? (
+							<>
+								{groupedCount(bucket.count)}{' '}
+								{bucket.value === null
+									? monthScope
+										? 'unset'
+										: 'with no Employee Type set'
+									: monthScope
+										? bucket.value
+										: `with Employee Type ${bucket.value}`}
+							</>
+						) : (
+							<>
+								{groupedCount(bucket.count)} not Active (Status {bucket.value})
+							</>
+						)}
 					</li>
 				))}
 			</ul>
@@ -136,7 +167,7 @@ export default function RosterDisclosure({
 				data-testid="roster-disclosure-note"
 				className="mt-1 text-[11px] text-blue-800"
 			>
-				{ROSTER_MEMBERSHIP_NOTE}
+				{monthScope ? ROSTER_MONTH_MEMBERSHIP_NOTE : ROSTER_MEMBERSHIP_NOTE}
 			</p>
 		</div>
 	);
