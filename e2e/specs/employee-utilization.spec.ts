@@ -8,6 +8,7 @@ import { readArtifact, writeArtifact } from '../lib/artifacts';
 import { rows } from '../lib/db';
 import {
 	UTILIZATION_CTC,
+	UTILIZATION_DEPARTMENTS,
 	UTILIZATION_LATER_MONTH,
 	UTILIZATION_MONTH,
 	UTILIZATION_OPTIONAL_HOLIDAY,
@@ -67,6 +68,17 @@ import {
  *                  × 100) over each month's roster rows, null when no
  *                  capacity) and the priced rows' Bench Cost total (null when
  *                  none is priced) — unfiltered by the flag band.
+ *   department   = the raw `employees.department` (free text, '' = unset) on
+ *                  every row, and the payload's `departments` rollup: one
+ *                  entry per department present in the month's roster rows
+ *                  (unset as null, sorted last by name ascending), each with
+ *                  headcount, capacity-weighted utilization, logged/capacity
+ *                  hours, the priced rows' Bench Cost sum (null when none is
+ *                  priced) and the zero-Logged-Hours count. Computed before
+ *                  the flag filter — the rollup describes the month, the grid
+ *                  narrows only. The page labels null "Unassigned" and filters
+ *                  the grid client-side from the summary table or the
+ *                  Department control (both compose with month/band/search).
  *
  * The page's own API payload is asserted against that derivation; the DOM is
  * read through the page's `data-testid`/`data-*` attributes, never classes.
@@ -234,6 +246,8 @@ interface RawEmployee {
 	joining_date: string | null;
 	hire_date: string | null;
 	exit_date: string | null;
+	/** Raw `employees.department`; '' = unset, exactly as the report reads it. */
+	department: string | null;
 	first_attendance: string | null;
 	last_attendance: string | null;
 	first_logged: string | null;
@@ -566,6 +580,69 @@ function deriveTrendSeries(
 	});
 }
 
+/** One department's rollup as the report promises it. */
+interface DerivedDepartment {
+	department: string | null;
+	headcount: number;
+	utilizationPercent: number | null;
+	loggedHours: number;
+	capacityHours: number;
+	benchCost: number | null;
+	noLoggedCount: number;
+}
+
+/**
+ * The month's department rollup, re-derived from the raw directory plus the
+ * month's derived rows: one entry per department present on the roster (unset
+ * last, names ascending), utilization weighted by Σ logged ÷ Σ capacity, Bench
+ * Cost summed over the department's priced rows only (null when none is
+ * priced) and the zero-Logged-Hours rows counted. Computed from the month's
+ * whole roster — the flag filter must not move it.
+ */
+function deriveDepartmentSummaries(
+	employees: RawEmployee[],
+	rows: Map<number, DerivedRow>
+): DerivedDepartment[] {
+	const groups = new Map<string | null, DerivedRow[]>();
+	for (const employee of employees) {
+		const derived = rows.get(employee.id);
+		if (!derived) continue;
+		const key = employee.department || null;
+		const group = groups.get(key) ?? [];
+		group.push(derived);
+		groups.set(key, group);
+	}
+
+	const summaries = [...groups.entries()].map(([department, members]) => {
+		const capacityHours = round2(
+			members.reduce((sum, row) => sum + row.capacityHours, 0)
+		);
+		const loggedHours = round2(
+			members.reduce((sum, row) => sum + row.loggedHours, 0)
+		);
+		const priced = members.filter((row) => row.costStatus === 'priced');
+		return {
+			department,
+			headcount: members.length,
+			utilizationPercent:
+				capacityHours > 0 ? round2((loggedHours / capacityHours) * 100) : null,
+			loggedHours,
+			capacityHours,
+			benchCost: priced.length
+				? round2(priced.reduce((sum, row) => sum + (row.benchCost ?? 0), 0))
+				: null,
+			noLoggedCount: members.filter((row) => row.loggedHours === 0).length,
+		};
+	});
+
+	return summaries.sort((a, b) => {
+		if (a.department === b.department) return 0;
+		if (a.department === null) return 1;
+		if (b.department === null) return -1;
+		return a.department.localeCompare(b.department);
+	});
+}
+
 interface DerivedMonth {
 	/** The employees the month's report must hold, by code. */
 	rosterCodes: string[];
@@ -613,6 +690,8 @@ interface ApiRow {
 	employee_id: number;
 	employee_code: string;
 	employee_name: string;
+	/** Raw `employees.department`; null = unset (never the "Unassigned" label). */
+	department: string | null;
 	capacity_hours: number;
 	logged_hours: number;
 	utilization_percent: number | null;
@@ -649,6 +728,17 @@ interface ApiDisclosure {
 	excluded: { employee_id: string; reason: string }[];
 }
 
+/** One department rollup as the payload promises it. */
+interface ApiDepartmentSummary {
+	department: string | null;
+	headcount: number;
+	capacity_weighted_utilization: number | null;
+	logged_hours: number;
+	capacity_hours: number;
+	bench_cost: number | null;
+	no_logged_count: number;
+}
+
 interface ApiPayload {
 	month: string;
 	month_label: string;
@@ -665,6 +755,8 @@ interface ApiPayload {
 	};
 	trend: ApiTrendPoint[];
 	disclosure: ApiDisclosure | null;
+	/** The month's department rollup, computed before the flag filter. */
+	departments: ApiDepartmentSummary[];
 }
 
 async function fetchMonth(
@@ -709,6 +801,8 @@ interface RenderedRow {
 	state: string;
 	/** The Flag cell's reading: the band badge text, or "No time logged". */
 	flagCell: string;
+	/** The Department cell's reading ("Unassigned" for the unset bucket). */
+	department: string;
 	capacity: string;
 	logged: string;
 	utilization: string;
@@ -732,6 +826,7 @@ function readRows(page: Page): Promise<RenderedRow[]> {
 				band: row.getAttribute('data-band') ?? '',
 				state: row.getAttribute('data-state') ?? '',
 				flagCell: cell('cell-band'),
+				department: cell('cell-department'),
 				capacity: cell('cell-capacity'),
 				logged: cell('cell-logged'),
 				utilization: cell('cell-utilization'),
@@ -756,6 +851,83 @@ const number2 = new Intl.NumberFormat('en-IN', {
 	minimumFractionDigits: 2,
 	maximumFractionDigits: 2,
 });
+
+/** One rendered `department-summary-row`, as the page exposes it. */
+interface RenderedDepartmentSummary {
+	/** `data-department`: the raw payload value, '' for the unset bucket. */
+	department: string;
+	/** The first cell's reading: the name, or "Unassigned". */
+	label: string;
+	/** `data-selected`: 'true' while the row drives the grid's filter. */
+	selected: string;
+	headcount: string;
+	utilization: string;
+	logged: string;
+	capacity: string;
+	bench: string;
+	noLogged: string;
+}
+
+function readDepartmentSummary(
+	page: Page
+): Promise<RenderedDepartmentSummary[]> {
+	return page.$$eval('[data-testid="department-summary-row"]', (elements) =>
+		elements.map((row) => {
+			const cell = (testId: string) =>
+				row.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ??
+				'';
+			return {
+				department: row.getAttribute('data-department') ?? '',
+				label: row.querySelector('th')?.textContent?.trim() ?? '',
+				selected: row.getAttribute('data-selected') ?? '',
+				headcount: cell('cell-dept-headcount'),
+				utilization: cell('cell-dept-utilization'),
+				logged: cell('cell-dept-logged'),
+				capacity: cell('cell-dept-capacity'),
+				bench: cell('cell-dept-bench'),
+				noLogged: cell('cell-dept-no-logged'),
+			};
+		})
+	);
+}
+
+/** The Department filter control's trigger button. */
+function departmentControl(page: Page) {
+	return page.getByLabel('Department', { exact: true });
+}
+
+/**
+ * Open the Department control and return its dropdown (portalled to `body`,
+ * so the search box's grandparent is the option list's container).
+ */
+async function openDepartmentOptions(page: Page) {
+	await departmentControl(page).click();
+	const dropdown = page.getByPlaceholder('Search...').locator('xpath=../..');
+	await expect(dropdown).toBeVisible();
+	return dropdown;
+}
+
+/** The employee codes of one derived row map, sorted. */
+function codesOfRows(rows: Map<number, DerivedRow>): string[] {
+	return model.employees
+		.filter((employee) => rows.has(employee.id))
+		.map((employee) => employee.employee_id)
+		.sort();
+}
+
+/** The codes of `codes` whose raw department is `department` (null = unset). */
+function codesWithDepartment(
+	department: string | null,
+	codes: string[]
+): string[] {
+	return codes
+		.filter(
+			(code) =>
+				(model.employees.find((employee) => employee.employee_id === code)
+					?.department || null) === department
+		)
+		.sort();
+}
 
 /** One `employee_salary_profile` row as the database hands it over. */
 interface RawProfile {
@@ -849,6 +1021,8 @@ interface Model {
 	trailing: Map<number, DerivedTrailing>;
 	/** #297: the derived team trend, oldest first. */
 	trend: DerivedTrendPoint[];
+	/** #298: the viewed month's derived department rollup, in payload order. */
+	departments: DerivedDepartment[];
 }
 
 const model = {} as Model;
@@ -865,11 +1039,13 @@ test.beforeAll(async () => {
 		joining_date: string | null;
 		hire_date: string | null;
 		exit_date: string | null;
+		department: string | null;
 	}>(
 		`SELECT id, employee_id, employee_type, status,
 		        DATE_FORMAT(joining_date, '%Y-%m-%d') AS joining_date,
 		        DATE_FORMAT(hire_date, '%Y-%m-%d') AS hire_date,
-		        DATE_FORMAT(exit_date, '%Y-%m-%d') AS exit_date
+		        DATE_FORMAT(exit_date, '%Y-%m-%d') AS exit_date,
+		        department
 		 FROM employees
 		 WHERE isDelete = 0`
 	);
@@ -1101,6 +1277,7 @@ test.beforeAll(async () => {
 	model.spanRows = spanRows;
 	model.trailing = trailing;
 	model.trend = trend;
+	model.departments = deriveDepartmentSummaries(employees, derivedRows);
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────
@@ -2548,6 +2725,371 @@ test.describe('employee utilization roster', () => {
 		};
 	});
 
+	// ─── #298: department column, filter and summary table ──────────────
+
+	test('the payload carries each row’s raw department and the month’s derived rollup', async ({
+		request,
+	}) => {
+		const api = await fetchMonth(request, MONTH);
+
+		// Every row carries its raw directory value — the payload never holds
+		// the page's "Unassigned" label, only null for an unset department.
+		for (const row of api.rows) {
+			const employee = model.employees.find(
+				(candidate) => candidate.employee_id === row.employee_code
+			)!;
+			expect(row.department, row.employee_code).toBe(
+				employee.department || null
+			);
+		}
+
+		// The rollup equals the independent derivation, order included: names
+		// ascending, the unset bucket last.
+		expect(api.departments).toEqual(
+			model.departments.map((summary) => ({
+				department: summary.department,
+				headcount: summary.headcount,
+				capacity_weighted_utilization: summary.utilizationPercent,
+				logged_hours: summary.loggedHours,
+				capacity_hours: summary.capacityHours,
+				bench_cost: summary.benchCost,
+				no_logged_count: summary.noLoggedCount,
+			}))
+		);
+		expect(api.departments.length).toBeGreaterThan(2);
+		expect(api.departments[api.departments.length - 1].department).toBeNull();
+
+		// The buckets partition the month's roster: headcounts and hours sum to
+		// the derived team figures, cost to the priced rows' bench.
+		expect(
+			api.departments.reduce((sum, summary) => sum + summary.headcount, 0)
+		).toBe(model.rows.size);
+		expect(
+			round2(
+				api.departments.reduce(
+					(sum, summary) => sum + summary.capacity_hours,
+					0
+				)
+			)
+		).toBe(
+			round2(
+				[...model.rows.values()].reduce(
+					(sum, row) => sum + row.capacityHours,
+					0
+				)
+			)
+		);
+		expect(
+			round2(
+				api.departments.reduce(
+					(sum, summary) => sum + (summary.bench_cost ?? 0),
+					0
+				)
+			)
+		).toBe(
+			round2(
+				[...model.rows.values()]
+					.filter((row) => row.costStatus === 'priced')
+					.reduce((sum, row) => sum + (row.benchCost ?? 0), 0)
+			)
+		);
+
+		// The fixtures' two departments carry the shapes they were seeded for:
+		// Engineering is all under-band with nothing unlogged; Operations holds
+		// the no-log members and reaches the over band.
+		const januaryCodes = codesOfRows(model.rows);
+		const engineering = api.departments.find(
+			(summary) => summary.department === UTILIZATION_DEPARTMENTS.engineering
+		)!;
+		const operations = api.departments.find(
+			(summary) => summary.department === UTILIZATION_DEPARTMENTS.operations
+		)!;
+		const engineeringCodes = codesWithDepartment(
+			UTILIZATION_DEPARTMENTS.engineering,
+			januaryCodes
+		);
+		const operationsCodes = codesWithDepartment(
+			UTILIZATION_DEPARTMENTS.operations,
+			januaryCodes
+		);
+		expect(engineering.headcount).toBe(engineeringCodes.length);
+		expect(engineeringCodes.length).toBeGreaterThan(1);
+		expect(engineering.no_logged_count).toBe(0);
+		expect(operations.headcount).toBe(operationsCodes.length);
+		expect(operationsCodes.length).toBeGreaterThan(1);
+		expect(operations.no_logged_count).toBeGreaterThan(0);
+		const bandsOfOperations = operationsCodes.map(
+			(code) =>
+				model.rows.get(
+					model.employees.find((row) => row.employee_id === code)!.id
+				)!.utilizationBand
+		);
+		expect(bandsOfOperations).toContain('under');
+		expect(bandsOfOperations).toContain('healthy');
+		expect(bandsOfOperations).toContain('over');
+
+		// The rollup describes the month: the band filter narrows the grid only.
+		const under = await fetchMonth(request, MONTH, 'under');
+		expect(under.rows.length).toBeLessThan(api.rows.length);
+		expect(under.departments).toEqual(api.departments);
+
+		observed.departments = {
+			month: MONTH,
+			departments: api.departments.map((summary) => ({
+				department: summary.department,
+				headcount: summary.headcount,
+				utilization: summary.capacity_weighted_utilization,
+				logged: summary.logged_hours,
+				capacity: summary.capacity_hours,
+				bench: summary.bench_cost,
+				noLogged: summary.no_logged_count,
+			})),
+			engineering: engineeringCodes,
+			operations: operationsCodes,
+		};
+	});
+
+	test('the page shows the department column and the summary table drives the grid filter', async ({
+		page,
+	}) => {
+		await openMonth(page, MONTH_LABEL);
+		const januaryCodes = codesOfRows(model.rows);
+		await expect(page.getByTestId('utilization-row')).toHaveCount(
+			januaryCodes.length
+		);
+
+		// The column: both the summary table and the grid carry it. (The scoped
+		// assertion keeps the two name-identical headers apart.)
+		expect(
+			await page
+				.getByRole('columnheader', { name: 'Department', exact: true })
+				.count()
+		).toBe(2);
+		await expect(
+			page
+				.getByTestId('department-summary')
+				.getByRole('columnheader', { name: 'Department', exact: true })
+		).toBeVisible();
+		const renderedRows = await readRows(page);
+		for (const rendered of renderedRows) {
+			const employee = model.employees.find(
+				(row) => row.employee_id === rendered.code
+			)!;
+			expect(rendered.department, rendered.code).toBe(
+				employee.department || 'Unassigned'
+			);
+		}
+		expect(renderedRows.some((row) => row.department === 'Unassigned')).toBe(
+			true
+		);
+		expect(
+			renderedRows.some(
+				(row) => row.department === UTILIZATION_DEPARTMENTS.operations
+			)
+		).toBe(true);
+
+		// The summary table: one row per derived department, in the derived
+		// order, with the derived figures and the same label rule.
+		const summaries = await readDepartmentSummary(page);
+		expect(summaries.map((summary) => summary.department)).toEqual(
+			model.departments.map((summary) => summary.department ?? '')
+		);
+		expect(summaries.map((summary) => summary.selected)).toEqual(
+			model.departments.map(() => 'false')
+		);
+		model.departments.forEach((derived, index) => {
+			const rendered = summaries[index];
+			expect(rendered.label).toBe(derived.department ?? 'Unassigned');
+			expect(rendered.headcount).toBe(String(derived.headcount));
+			expect(rendered.utilization).toBe(
+				derived.utilizationPercent === null
+					? '—'
+					: `${number2.format(derived.utilizationPercent)}%`
+			);
+			expect(rendered.logged).toBe(number2.format(derived.loggedHours));
+			expect(rendered.capacity).toBe(number2.format(derived.capacityHours));
+			expect(rendered.noLogged).toBe(String(derived.noLoggedCount));
+			// Currency carries the sign ahead of the ₹; compare the magnitude,
+			// like the grid's bench assertions.
+			if (derived.benchCost === null) {
+				expect(rendered.bench).toBe('—');
+			} else {
+				expect(rendered.bench).toContain(
+					number2.format(Math.abs(derived.benchCost))
+				);
+			}
+		});
+
+		// The control lists All + the month's departments (unset as
+		// "Unassigned"); picking one narrows the grid, picking All clears it.
+		const operationsCodes = codesWithDepartment(
+			UTILIZATION_DEPARTMENTS.operations,
+			januaryCodes
+		);
+		const options = await openDepartmentOptions(page);
+		expect(await options.getByRole('button').allTextContents()).toEqual([
+			'All departments',
+			...model.departments.map((summary) => summary.department ?? 'Unassigned'),
+		]);
+		await options
+			.getByRole('button', {
+				name: UTILIZATION_DEPARTMENTS.operations,
+				exact: true,
+			})
+			.click();
+		await expect(page.getByTestId('utilization-row')).toHaveCount(
+			operationsCodes.length
+		);
+		expect((await readRows(page)).map((row) => row.code).sort()).toEqual(
+			operationsCodes
+		);
+		await expect(departmentControl(page)).toContainText(
+			UTILIZATION_DEPARTMENTS.operations
+		);
+		await openDepartmentOptions(page);
+		await options
+			.getByRole('button', { name: 'All departments', exact: true })
+			.click();
+		await expect(page.getByTestId('utilization-row')).toHaveCount(
+			januaryCodes.length
+		);
+
+		// Clicking a summary row applies its department; clicking the selected
+		// row again clears it.
+		const operationsRow = page.locator(
+			`[data-testid="department-summary-row"][data-department="${UTILIZATION_DEPARTMENTS.operations}"]`
+		);
+		await operationsRow.click();
+		await expect(operationsRow).toHaveAttribute('data-selected', 'true');
+		await expect(page.getByTestId('utilization-row')).toHaveCount(
+			operationsCodes.length
+		);
+		expect((await readRows(page)).map((row) => row.code).sort()).toEqual(
+			operationsCodes
+		);
+		await operationsRow.click();
+		await expect(operationsRow).toHaveAttribute('data-selected', 'false');
+		await expect(page.getByTestId('utilization-row')).toHaveCount(
+			januaryCodes.length
+		);
+
+		// It composes with the band and the search: Operations, the Under flag
+		// and the search box all narrow the same grid, and the summary block —
+		// the month's rollup — does not move.
+		const operationsUnderCodes = operationsCodes.filter((code) => {
+			const employee = model.employees.find((row) => row.employee_id === code)!;
+			return model.rows.get(employee.id)!.utilizationBand === 'under';
+		});
+		expect(operationsUnderCodes.length).toBeGreaterThan(0);
+		expect(operationsUnderCodes.length).toBeLessThan(operationsCodes.length);
+		await operationsRow.click();
+		await page
+			.getByRole('button', { name: 'Under (< 80%)', exact: true })
+			.click();
+		await expect(page.getByTestId('utilization-row')).toHaveCount(
+			operationsUnderCodes.length
+		);
+		expect((await readRows(page)).map((row) => row.code).sort()).toEqual(
+			operationsUnderCodes
+		);
+		// The rollup is the month's, not the filter's: the band filter leaves
+		// the summary block's figures untouched (the selected row keeps its
+		// state).
+		const afterBand = await readDepartmentSummary(page);
+		expect(afterBand.length).toBe(summaries.length);
+		afterBand.forEach((row, index) => {
+			expect({ ...row, selected: '' }).toEqual({
+				...summaries[index],
+				selected: '',
+			});
+		});
+		expect(
+			afterBand.find(
+				(row) => row.department === UTILIZATION_DEPARTMENTS.operations
+			)?.selected
+		).toBe('true');
+
+		// The search narrows within the composed set; a code outside it (in the
+		// department but over the band) empties the grid, and the reset clears
+		// department, band and search alike.
+		await page
+			.getByLabel('Search by employee name or code')
+			.fill(operationsUnderCodes[0]);
+		await expect(page.getByTestId('utilization-row')).toHaveCount(1);
+		expect((await readRows(page))[0].code).toBe(operationsUnderCodes[0]);
+		await page
+			.getByLabel('Search by employee name or code')
+			.fill(utilizationMemberForPlan('basisRateFullMonth').code);
+		await expect(page.getByTestId('utilization-row')).toHaveCount(0);
+		await expect(
+			page.getByRole('button', { name: 'Clear filters', exact: true })
+		).toBeVisible();
+		await page
+			.getByRole('button', { name: 'Clear filters', exact: true })
+			.click();
+		await expect(page.getByTestId('utilization-row')).toHaveCount(
+			januaryCodes.length
+		);
+		await expect(operationsRow).toHaveAttribute('data-selected', 'false');
+
+		// The month owns the rollup: switching re-derives the summary from the
+		// new month's roster and the department filter narrows the new grid.
+		// February is seeded with evidence (so it is a selectable month) and
+		// its roster is a strict subset of January's Operations members.
+		await operationsRow.click();
+		const februaryRoster = deriveMonth(model.employees, '2019-02').rosterCodes;
+		await selectMonth(page, monthLabel('2019-02'));
+		await expect(departmentControl(page)).toContainText(
+			UTILIZATION_DEPARTMENTS.operations
+		);
+		const februaryOperations = codesWithDepartment(
+			UTILIZATION_DEPARTMENTS.operations,
+			februaryRoster
+		);
+		expect(februaryOperations.length).toBeGreaterThan(0);
+		expect(februaryOperations.length).toBeLessThan(operationsCodes.length);
+		await expect(page.getByTestId('utilization-row')).toHaveCount(
+			februaryOperations.length
+		);
+		expect((await readRows(page)).map((row) => row.code).sort()).toEqual(
+			februaryOperations
+		);
+		// The new month's rollup's headcounts partition its derived roster.
+		const februaryHeadcounts = new Map<string, number>();
+		for (const code of februaryRoster) {
+			const employee = model.employees.find((row) => row.employee_id === code)!;
+			const label = employee.department || 'Unassigned';
+			februaryHeadcounts.set(label, (februaryHeadcounts.get(label) ?? 0) + 1);
+		}
+		const februarySummaries = await readDepartmentSummary(page);
+		expect(februarySummaries.map((row) => row.label).sort()).toEqual(
+			[...februaryHeadcounts.keys()].sort()
+		);
+		for (const row of februarySummaries) {
+			expect(row.headcount, row.label).toBe(
+				String(februaryHeadcounts.get(row.label))
+			);
+		}
+		expect(
+			februarySummaries.reduce((sum, row) => sum + Number(row.headcount), 0)
+		).toBe(februaryRoster.length);
+
+		observed.departmentsPage = {
+			month: MONTH,
+			summaryRows: summaries.length,
+			unsetRows: renderedRows.filter((row) => row.department === 'Unassigned')
+				.length,
+			operations: {
+				all: operationsCodes.length,
+				under: operationsUnderCodes.length,
+			},
+			operationsSummary: summaries.find(
+				(row) => row.label === UTILIZATION_DEPARTMENTS.operations
+			),
+			februarySummaryRows: februarySummaries.length,
+		};
+	});
+
 	test('the fixtures leave no residue and the run writes its artifact', async () => {
 		const owned = await rows<{ id: number }>(
 			`SELECT id FROM employees WHERE employee_id LIKE 'E2E-UTIL-%'`
@@ -2628,6 +3170,8 @@ test.describe('employee utilization roster', () => {
 					'at least two employed months in the window and every employed month below 80 with a real percent (a null percent never counts)',
 				trend:
 					'six months ending at the viewed month, oldest first: capacity-weighted utilization round2(Σ logged ÷ Σ capacity × 100) over each month’s roster rows (null when no capacity) and the priced rows’ Bench Cost total (null when none is priced) — unfiltered by the flag band',
+				department:
+					'employees.department (free text; "" normalizes to null) rides on every row and never carries the page’s "Unassigned" label; the payload’s departments rollup has one entry per department present in the month’s roster rows (unset null, sorted last, names ascending) with headcount, capacity-weighted utilization round2(Σ logged ÷ Σ capacity × 100), logged/capacity hours, priced Bench Cost sum (null when none priced) and the zero-Logged-Hours count — computed before the flag filter; the page labels null "Unassigned" and filters the grid client-side from the summary rows or the Department control (composing with month/band/search)',
 			},
 			calendar: {
 				month: MONTH,
@@ -2661,6 +3205,7 @@ test.describe('employee utilization roster', () => {
 							code: employee.employee_id,
 							windowStart: window.start,
 							windowEnd: window.end,
+							department: employee.department || null,
 							capacityHours: derived.capacityHours,
 							loggedHours: derived.loggedHours,
 							utilizationPercent: derived.utilizationPercent,
@@ -2691,6 +3236,18 @@ test.describe('employee utilization roster', () => {
 					month: point.month,
 					utilizationPercent: point.utilizationPercent,
 					benchCost: point.benchCost,
+				})),
+			},
+			departments: {
+				seeded: UTILIZATION_DEPARTMENTS,
+				rollup: model.departments.map((summary) => ({
+					department: summary.department,
+					headcount: summary.headcount,
+					utilizationPercent: summary.utilizationPercent,
+					loggedHours: summary.loggedHours,
+					capacityHours: summary.capacityHours,
+					benchCost: summary.benchCost,
+					noLoggedCount: summary.noLoggedCount,
 				})),
 			},
 			observed,

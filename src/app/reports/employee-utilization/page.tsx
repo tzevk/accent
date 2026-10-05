@@ -62,6 +62,8 @@ interface UtilizationRow {
 	employee_id: number;
 	employee_code: string;
 	employee_name: string;
+	/** Raw `employees.department`; null = unset (rendered as "Unassigned"). */
+	department: string | null;
 	month: string;
 	capacity_hours: number;
 	logged_hours: number;
@@ -106,6 +108,20 @@ interface UtilizationMeta {
 	flags: { value: UtilizationBand; label: string }[];
 }
 
+/** One department's rollup over the viewed month's roster — the summary table. */
+interface DepartmentSummary {
+	/** Raw `employees.department`; null = the unset bucket ("Unassigned"). */
+	department: string | null;
+	headcount: number;
+	/** Σ logged ÷ Σ capacity × 100; null when the department credits no capacity. */
+	capacity_weighted_utilization: number | null;
+	logged_hours: number;
+	capacity_hours: number;
+	/** Sums the department's priced rows; null when none is priced. */
+	bench_cost: number | null;
+	no_logged_count: number;
+}
+
 interface UtilizationData {
 	month: string;
 	month_label: string;
@@ -116,6 +132,8 @@ interface UtilizationData {
 	trend: TrendPoint[];
 	/** What the month's roster filter dropped; null when it dropped nobody. */
 	disclosure: RosterDisclosure | null;
+	/** The month's department rollup, computed before the band filter. */
+	departments: DepartmentSummary[];
 }
 
 interface MetaResponse {
@@ -142,6 +160,30 @@ const FLAG_LABEL: Record<UtilizationBand, string> = {
 	healthy: 'Healthy (80–100%)',
 	over: 'Over (> 100%)',
 };
+
+/**
+ * How an unset `employees.department` is labelled everywhere on screen (the
+ * column, the filter options and the summary). The API payload keeps the raw
+ * null so callers can tell the bucket from a department actually named this.
+ */
+const UNASSIGNED_DEPARTMENT = 'Unassigned';
+
+/**
+ * The DOM value the department control uses for that unset bucket — a string
+ * is required by the select, so the filter state is a string too ('' = all).
+ * Real department names never collide with it.
+ */
+const UNASSIGNED_DEPARTMENT_VALUE = '__unassigned__';
+
+/** The department key one row/summary belongs to, as the filter state holds it. */
+function departmentKey(department: string | null): string {
+	return department ?? UNASSIGNED_DEPARTMENT_VALUE;
+}
+
+/** The on-screen label for a row's or summary's department. */
+function departmentLabel(department: string | null): string {
+	return department ?? UNASSIGNED_DEPARTMENT;
+}
 
 function monthLabel(month: string): string {
 	if (!month || !month.includes('-')) return month;
@@ -319,6 +361,148 @@ function TeamTrendChart({ trend }: { trend: TrendPoint[] }) {
 	);
 }
 
+/**
+ * The month's department rollup, above the grid: one row per department
+ * present in the month (unset as "Unassigned") with the figures the server
+ * computed over the whole roster — the grid's filters never move them.
+ *
+ * A row click applies the department filter to the grid; clicking the
+ * selected row again clears it. The department button carries the same
+ * toggle for keyboard users (its click bubbles to the row, so it fires once).
+ *
+ * `data-department` carries the raw payload value (`''` for unset) so a test
+ * can tell the bucket from a department literally named "Unassigned".
+ */
+function DepartmentSummaryTable({
+	summaries,
+	label,
+	selected,
+	onToggle,
+}: {
+	summaries: DepartmentSummary[];
+	label: string;
+	selected: string;
+	onToggle: (department: string) => void;
+}) {
+	return (
+		<div
+			data-testid="department-summary"
+			className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
+		>
+			<div className="border-b border-gray-200 bg-gray-50 px-4 py-2">
+				<h2 className="text-sm font-semibold text-gray-800">
+					Department summary — {label}
+				</h2>
+				<p className="text-xs text-gray-500">
+					The month&apos;s roster by department, unset reads Unassigned. Click a
+					row to filter the grid; click it again to clear.
+				</p>
+			</div>
+			<div className="overflow-x-auto">
+				<table className="w-full min-w-[880px] border-collapse text-sm">
+					<caption className="sr-only">
+						Headcount, capacity-weighted utilization, logged and capacity hours,
+						Bench Cost and no-log count per department for {label}
+					</caption>
+					<thead>
+						<tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+							<th scope="col" className="px-4 py-2.5">
+								Department
+							</th>
+							<th scope="col" className="px-4 py-2.5 text-right">
+								Headcount
+							</th>
+							<th scope="col" className="px-4 py-2.5 text-right">
+								Utilization
+							</th>
+							<th scope="col" className="px-4 py-2.5 text-right">
+								Logged (h)
+							</th>
+							<th scope="col" className="px-4 py-2.5 text-right">
+								Capacity (h)
+							</th>
+							<th scope="col" className="px-4 py-2.5 text-right">
+								Bench Cost
+							</th>
+							<th scope="col" className="px-4 py-2.5 text-right">
+								No time logged
+							</th>
+						</tr>
+					</thead>
+					<tbody>
+						{summaries.map((summary) => {
+							const key = departmentKey(summary.department);
+							const isSelected = selected === key;
+							return (
+								<tr
+									key={key}
+									data-testid="department-summary-row"
+									data-department={summary.department ?? ''}
+									data-selected={isSelected ? 'true' : 'false'}
+									onClick={() => onToggle(key)}
+									className={cn(
+										'cursor-pointer border-b border-gray-100 transition-colors',
+										isSelected ? 'bg-purple-50' : 'hover:bg-gray-50'
+									)}
+								>
+									<th
+										scope="row"
+										className="px-4 py-2.5 text-left font-medium text-gray-800"
+									>
+										<button
+											type="button"
+											aria-pressed={isSelected}
+											className="text-left font-medium text-[#64126D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+										>
+											{departmentLabel(summary.department)}
+										</button>
+									</th>
+									<td
+										data-testid="cell-dept-headcount"
+										className="px-4 py-2.5 text-right tabular-nums"
+									>
+										{summary.headcount}
+									</td>
+									<td
+										data-testid="cell-dept-utilization"
+										className="px-4 py-2.5 text-right tabular-nums"
+									>
+										{formatPercent(summary.capacity_weighted_utilization)}
+									</td>
+									<td
+										data-testid="cell-dept-logged"
+										className="px-4 py-2.5 text-right tabular-nums"
+									>
+										{formatNumber(summary.logged_hours)}
+									</td>
+									<td
+										data-testid="cell-dept-capacity"
+										className="px-4 py-2.5 text-right tabular-nums"
+									>
+										{formatNumber(summary.capacity_hours)}
+									</td>
+									<td
+										data-testid="cell-dept-bench"
+										className="px-4 py-2.5 text-right tabular-nums"
+									>
+										{formatCurrency(summary.bench_cost)}
+									</td>
+									<td
+										data-testid="cell-dept-no-logged"
+										className="px-4 py-2.5 text-right tabular-nums"
+									>
+										{summary.no_logged_count}
+									</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	);
+}
+
 export default function EmployeeUtilizationPage() {
 	const {
 		loading: authLoading,
@@ -339,6 +523,8 @@ export default function EmployeeUtilizationPage() {
 
 	const [month, setMonth] = useState('');
 	const [flag, setFlag] = useState<'' | UtilizationBand>('');
+	// The department filter is client-side, like the search box: '' = all.
+	const [department, setDepartment] = useState('');
 	const [search, setSearch] = useState('');
 	const [exporting, setExporting] = useState(false);
 
@@ -401,16 +587,45 @@ export default function EmployeeUtilizationPage() {
 		() => rows[0]?.trailing.slice(0, 2) ?? [],
 		[rows]
 	);
+	// The month's department rollup, computed server-side before the band
+	// filter — it describes the month, so neither the band nor the search nor
+	// the department narrowing below changes it.
+	const departments = useMemo(() => data?.departments ?? [], [data]);
+	// A department the viewed month does not hold (the month changed under the
+	// filter) stops narrowing the grid instead of hiding every row.
+	const departmentValues = useMemo(
+		() =>
+			new Set(departments.map((summary) => departmentKey(summary.department))),
+		[departments]
+	);
+	const activeDepartment = departmentValues.has(department) ? department : '';
+	const departmentOptions = useMemo(
+		() => [
+			{ value: '', label: 'All departments' },
+			...departments.map((summary) => ({
+				value: departmentKey(summary.department),
+				label: departmentLabel(summary.department),
+			})),
+		],
+		[departments]
+	);
 
 	const filteredRows = useMemo(() => {
 		const q = search.trim().toLowerCase();
-		if (!q) return rows;
-		return rows.filter(
-			(row) =>
+		return rows.filter((row) => {
+			if (
+				activeDepartment !== '' &&
+				departmentKey(row.department) !== activeDepartment
+			) {
+				return false;
+			}
+			if (!q) return true;
+			return (
 				row.employee_name.toLowerCase().includes(q) ||
 				row.employee_code.toLowerCase().includes(q)
-		);
-	}, [rows, search]);
+			);
+		});
+	}, [rows, search, activeDepartment]);
 
 	const error =
 		dataQuery.error?.message || dataQuery.data?.error || metaQuery.data?.error;
@@ -550,6 +765,19 @@ export default function EmployeeUtilizationPage() {
 								aria-label="Month"
 							/>
 						</label>
+						<label className="block min-w-[180px]">
+							<span className="mb-1 block text-[11px] font-semibold text-gray-700">
+								Department
+							</span>
+							<SearchableSelect
+								options={departmentOptions}
+								value={activeDepartment}
+								onChange={(val) => setDepartment(String(val))}
+								placeholder="All departments"
+								disabled={!data}
+								aria-label="Department"
+							/>
+						</label>
 						<fieldset>
 							<legend className="mb-1 text-[11px] font-semibold text-gray-700">
 								Flag
@@ -644,6 +872,17 @@ export default function EmployeeUtilizationPage() {
 
 					{trend.length > 0 && <TeamTrendChart trend={trend} />}
 
+					{departments.length > 0 && (
+						<DepartmentSummaryTable
+							summaries={departments}
+							label={data?.month_label ?? monthLabel(month)}
+							selected={activeDepartment}
+							onToggle={(value) =>
+								setDepartment((previous) => (previous === value ? '' : value))
+							}
+						/>
+					)}
+
 					{error ? (
 						<div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-center text-sm text-red-700">
 							<p className="font-semibold">Couldn&apos;t load the report</p>
@@ -680,7 +919,7 @@ export default function EmployeeUtilizationPage() {
 					) : filteredRows.length === 0 ? (
 						<div className="rounded-2xl border border-gray-200 bg-white px-4 py-10 text-center">
 							<p className="text-sm font-semibold text-gray-800">
-								No employees match the current search.
+								No employees match the current filters.
 							</p>
 							<p className="mt-1 text-xs text-gray-500">
 								Showing 0 of {rows.length} employees for {data.month_label}.
@@ -690,10 +929,11 @@ export default function EmployeeUtilizationPage() {
 								onClick={() => {
 									setSearch('');
 									setFlag('');
+									setDepartment('');
 								}}
 								className="mt-3 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
 							>
-								Clear search and flag filter
+								Clear filters
 							</button>
 						</div>
 					) : (
@@ -718,7 +958,7 @@ export default function EmployeeUtilizationPage() {
 									: ''}
 							</p>
 							<div className="overflow-x-auto">
-								<table className="w-full min-w-[1200px] border-collapse text-sm">
+								<table className="w-full min-w-[1320px] border-collapse text-sm">
 									<caption className="sr-only">
 										Team utilization for {data.month_label}, sorted by flag band
 										then bench cost descending
@@ -727,6 +967,9 @@ export default function EmployeeUtilizationPage() {
 										<tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
 											<th scope="col" className="px-4 py-2.5">
 												Employee
+											</th>
+											<th scope="col" className="px-4 py-2.5">
+												Department
 											</th>
 											<th scope="col" className="px-4 py-2.5 text-right">
 												Capacity (h)
@@ -793,6 +1036,12 @@ export default function EmployeeUtilizationPage() {
 															{partialWindowLabel(row)}
 														</span>
 													)}
+												</td>
+												<td
+													data-testid="cell-department"
+													className="px-4 py-2.5"
+												>
+													{departmentLabel(row.department)}
 												</td>
 												<td
 													data-testid="cell-capacity"
@@ -900,6 +1149,7 @@ export default function EmployeeUtilizationPage() {
 												<td className="px-4 py-2.5">
 													Total ({totals.employee_count} employees)
 												</td>
+												<td className="px-4 py-2.5" />
 												<td
 													data-testid="cell-total-capacity"
 													className="px-4 py-2.5 text-right tabular-nums"

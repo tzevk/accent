@@ -35,7 +35,14 @@ import { E2E_MONTH } from './fixtures';
  * The viewed month is the harness's `E2E_MONTH` (2019-01), so the base
  * fixtures' employees and holiday participate in the same calendar, and the
  * month gets one active *optional* holiday (2019-01-15) that must not shorten
- * Capacity. Namespace (everything this module owns; nothing else is touched):
+ * Capacity. Two departments (`UTILIZATION_DEPARTMENTS`, ticket #298) are
+ * seeded among the members — Engineering (all under-band) and Operations (an
+ * idle no-log member, a mid-month joiner who never logged, a mid-month leaver
+ * and a fully logged over-band member) — while the rest stay unset to feed
+ * the summary's "Unassigned" bucket. Departments are free text and only the
+ * page labels them; the payload keeps the raw value.
+ *
+ * Namespace (everything this module owns; nothing else is touched):
  *   users                      `e2e_util_user`
  *   employees                  `E2E-UTIL-*`
  *   employee_attendance        employee_id of those employees
@@ -63,6 +70,20 @@ export const UTILIZATION_USERNAME = 'e2e_util_user';
 export const UTILIZATION_CTC = 26000;
 /** Hours logged on each seeded Logged Hours day. */
 export const UTILIZATION_LOGGED_HOURS_PER_DAY = 8;
+
+/**
+ * The two departments seeded among the fixtures (ticket #298). Free text on
+ * `employees.department`, namespaced so the summary's fixture rows are
+ * distinguishable from real directory values; members without one exercise
+ * the unset/"Unassigned" bucket. `Operations` deliberately holds an idle
+ * priced member, a mid-month joiner who never logged, a mid-month leaver and
+ * a fully logged (over-band) member, so the rollup's no-log count, weighting
+ * and band interaction all have fixture evidence.
+ */
+export const UTILIZATION_DEPARTMENTS = {
+	engineering: 'E2E Engineering',
+	operations: 'E2E Operations',
+};
 
 /**
  * An active OPTIONAL holiday inside the viewed month. Optional holidays are
@@ -127,6 +148,8 @@ export interface UtilizationMember {
 	hire: string | null;
 	exit: string | null;
 	plan: UtilizationPlan;
+	/** `employees.department` (free text); omitted = unset, the "Unassigned" bucket. */
+	department?: string;
 	/** Viewed-month day numbers with an attendance record. */
 	attendanceDays: number[];
 	/** Per-day attendance status overrides (default 'P'), e.g. 'PL' or 'H'. */
@@ -156,6 +179,7 @@ const ROSTER_DEF: ReadonlyArray<
 		joining: '2019-01-01',
 		hire: null,
 		exit: null,
+		department: UTILIZATION_DEPARTMENTS.engineering,
 		plan: 'payrollWithHours',
 		attendanceDays: [2, 3, 4, 5, 7, 8, 9, 10, 11, 14, 15, 16, 17],
 		loggedDays: [2, 3, 4, 5, 7, 8, 9, 10, 11, 14, 15, 16, 17],
@@ -167,6 +191,7 @@ const ROSTER_DEF: ReadonlyArray<
 		joining: '2019-01-01',
 		hire: null,
 		exit: null,
+		department: UTILIZATION_DEPARTMENTS.operations,
 		plan: 'payrollIdle',
 		attendanceDays: [],
 		loggedDays: [],
@@ -178,6 +203,7 @@ const ROSTER_DEF: ReadonlyArray<
 		joining: '2018-01-01',
 		hire: null,
 		exit: '2019-01-31',
+		department: UTILIZATION_DEPARTMENTS.engineering,
 		plan: 'leaverInViewedMonth',
 		attendanceDays: [2, 3, 4, 5, 7],
 		loggedDays: [2, 3, 4, 5, 7],
@@ -301,6 +327,7 @@ const ROSTER_DEF: ReadonlyArray<
 		joining: '2019-01-15',
 		hire: null,
 		exit: null,
+		department: UTILIZATION_DEPARTMENTS.operations,
 		plan: 'midMonthJoiner',
 		attendanceDays: [],
 		loggedDays: [],
@@ -315,6 +342,7 @@ const ROSTER_DEF: ReadonlyArray<
 		joining: '2017-01-01',
 		hire: null,
 		exit: '2019-01-18',
+		department: UTILIZATION_DEPARTMENTS.operations,
 		plan: 'midMonthLeaver',
 		attendanceDays: [2, 3, 4, 5, 7, 8, 9, 10, 11, 14, 15, 16, 17, 18],
 		attendanceStatusByDay: { 14: 'PL', 15: 'H' },
@@ -329,6 +357,7 @@ const ROSTER_DEF: ReadonlyArray<
 		joining: '2019-01-01',
 		hire: null,
 		exit: null,
+		department: UTILIZATION_DEPARTMENTS.engineering,
 		plan: 'basisDaysOverride',
 		attendanceDays: [],
 		loggedDays: [2, 3, 4, 5],
@@ -358,6 +387,7 @@ const ROSTER_DEF: ReadonlyArray<
 		joining: '2019-01-01',
 		hire: null,
 		exit: null,
+		department: UTILIZATION_DEPARTMENTS.operations,
 		plan: 'basisRateFullMonth',
 		attendanceDays: [],
 		loggedDays: [
@@ -396,6 +426,7 @@ const ROSTER_DEF: ReadonlyArray<
 		joining: '2018-08-01',
 		hire: null,
 		exit: null,
+		department: UTILIZATION_DEPARTMENTS.engineering,
 		plan: 'chronicUnder',
 		attendanceDays: [],
 		loggedDays: [2, 3],
@@ -598,8 +629,8 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 		const employee = await exec(
 			`INSERT INTO employees
          (employee_id, first_name, last_name, email, status, employee_type,
-          joining_date, hire_date, exit_date, isDelete)
-       VALUES (?, 'E2E', ?, ?, ?, ?, ?, ?, ?, 0)`,
+          joining_date, hire_date, exit_date, department, isDelete)
+       VALUES (?, 'E2E', ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
 			[
 				member.code,
 				member.plan,
@@ -609,6 +640,7 @@ export async function seedUtilizationFixtures(): Promise<UtilizationSeeded> {
 				member.joining,
 				member.hire,
 				member.exit,
+				member.department ?? null,
 			]
 		);
 		const employeeId = employee.insertId;
