@@ -68,6 +68,15 @@
  * oldest first: capacity-weighted utilization and the Bench Cost of the
  * month's priced rows. The fetch loads attendance, holidays and Logged Hours
  * for that span once and derives all six months from that single load.
+ *
+ * Departments: `employees.department` is free text whose empty string
+ * normalizes to null (the repo-wide `s(row,'department') || null` idiom), and
+ * that raw value rides on every row. The payload also carries the month's
+ * department rollup (`departments`) — one entry per department present in the
+ * month's roster rows, unset grouped as `null` and sorted last, each with its
+ * headcount, capacity-weighted utilization, logged/capacity hours, Bench Cost
+ * and no-log count. It is computed BEFORE the band filter: the rollup
+ * describes the month, the grid's filters narrow only the detail.
  */
 
 import {
@@ -183,6 +192,8 @@ export interface TeamRowInput {
 	employee_id: number;
 	employee_code?: string;
 	employee_name?: string;
+	/** Raw `employees.department`; null = unset (`''` normalizes to null). */
+	department?: string | null;
 	/** YYYY-MM */
 	month: string;
 	/** Raw `daily_entries` payloads (JSON string or parsed array) per assignment. */
@@ -202,6 +213,8 @@ export interface UtilizationRow {
 	employee_id: number;
 	employee_code: string;
 	employee_name: string;
+	/** Raw `employees.department`; null = unset (the page labels it "Unassigned"). */
+	department: string | null;
 	month: string;
 	capacity_hours: number;
 	logged_hours: number;
@@ -239,6 +252,21 @@ export interface UtilizationTotals {
 	monthly_cost: number | null;
 	fractional_cost: number | null;
 	bench_cost: number | null;
+}
+
+/** One department's rollup over a month's roster rows — the summary table's row. */
+export interface DepartmentSummary {
+	/** Raw `employees.department`; null = the unset bucket ("Unassigned" on screen). */
+	department: string | null;
+	headcount: number;
+	/** Σ logged ÷ Σ capacity × 100, 2dp; null when the department credits no capacity. */
+	capacity_weighted_utilization: number | null;
+	logged_hours: number;
+	capacity_hours: number;
+	/** Σ over the department's priced rows; null when none of them is priced. */
+	bench_cost: number | null;
+	/** Rows in the department with zero Logged Hours for the month. */
+	no_logged_count: number;
 }
 
 // ─── Small helpers ────────────────────────────────────────────────────
@@ -558,6 +586,7 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 			employee_id: input.employee_id,
 			employee_code: input.employee_code ?? '',
 			employee_name: input.employee_name ?? '',
+			department: input.department || null,
 			month,
 			capacity_hours: capacity.capacity_hours,
 			logged_hours: loggedHours,
@@ -596,6 +625,7 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 		employee_id: input.employee_id,
 		employee_code: input.employee_code ?? '',
 		employee_name: input.employee_name ?? '',
+		department: input.department || null,
 		month,
 		capacity_hours: capacity.capacity_hours,
 		logged_hours: loggedHours,
@@ -709,6 +739,70 @@ export function buildTrendPoint(
 	};
 }
 
+/**
+ * One entry per department present in `rows` — the team summary table. The
+ * department is the raw `Employees.department` value (`null` = unset, sorted
+ * last; the page labels that bucket "Unassigned"); the name order ascending.
+ *
+ * Utilization is capacity-weighted exactly like the team trend (`round2(Σ
+ * logged ÷ Σ capacity × 100)`, `null` when the bucket credits no capacity)
+ * and Bench Cost sums the bucket's priced rows (`null` when none is priced),
+ * so a department reads as its own team. Callers pass the month's roster rows
+ * BEFORE the band filter: the rollup describes the month, and only the grid
+ * narrows with the filters.
+ */
+export function buildDepartmentSummary(
+	rows: UtilizationRow[]
+): DepartmentSummary[] {
+	const buckets = new Map<string | null, UtilizationRow[]>();
+	for (const row of rows) {
+		// `''` never reaches a row (the loader and `buildTeamRow` normalize it),
+		// but the bucket rule is the same either way: unset is unset.
+		const key = row.department || null;
+		const bucket = buckets.get(key);
+		if (bucket) bucket.push(row);
+		else buckets.set(key, [row]);
+	}
+
+	const summaries = [...buckets.entries()].map(([department, members]) => {
+		let capacity = R(0);
+		let logged = R(0);
+		let bench = R(0);
+		let priced = 0;
+		let noLogged = 0;
+		for (const row of members) {
+			capacity = add(capacity, row.capacity_hours);
+			logged = add(logged, row.logged_hours);
+			if (row.state === 'no_time_logged') noLogged++;
+			if (row.cost_status === 'priced') {
+				priced++;
+				bench = add(bench, row.bench_cost ?? 0);
+			}
+		}
+		const capacityHours = round2(toNumber(capacity));
+		const loggedHours = round2(toNumber(logged));
+		return {
+			department,
+			headcount: members.length,
+			capacity_weighted_utilization: utilizationPercent(
+				loggedHours,
+				capacityHours
+			),
+			logged_hours: loggedHours,
+			capacity_hours: capacityHours,
+			bench_cost: priced > 0 ? round2(toNumber(bench)) : null,
+			no_logged_count: noLogged,
+		};
+	});
+
+	return summaries.sort((a, b) => {
+		if (a.department === b.department) return 0;
+		if (a.department === null) return 1;
+		if (b.department === null) return -1;
+		return a.department.localeCompare(b.department);
+	});
+}
+
 // ─── Server data fetch ──────────────────────────────────────────────
 
 /** Filter-bar metadata for the team utilization report. */
@@ -733,6 +827,13 @@ export interface UtilizationData {
 	trend: TrendPoint[];
 	/** What the month's roster filter dropped, and why; null when it dropped nobody. */
 	disclosure: RosterDisclosure | null;
+	/**
+	 * The month's department rollup: one entry per department present in the
+	 * month's roster rows (unset grouped as `null`), computed before the band
+	 * filter — it describes the month, and the grid's filters narrow the
+	 * detail only.
+	 */
+	departments: DepartmentSummary[];
 }
 
 /** Flag filter options for the filter bar (band labels match the 80/100 bands). */
@@ -1080,6 +1181,7 @@ function buildMonthView(
 			employee_id: member.id,
 			employee_code: member.employee_id,
 			employee_name: member.name,
+			department: member.department ?? null,
 			month,
 			employment_start: member.employment_start ?? null,
 			employment_end: member.employment_end ?? null,
@@ -1322,5 +1424,7 @@ export async function fetchUtilizationData(
 		totals: buildUtilizationTotals(filtered),
 		trend,
 		disclosure: viewed.disclosure,
+		// The month's rollup reads the roster BEFORE the band filter.
+		departments: buildDepartmentSummary(rows),
 	};
 }

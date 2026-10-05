@@ -17,6 +17,7 @@ import {
 	buildUtilizationTotals,
 	summarizeTrailing,
 	buildTrendPoint,
+	buildDepartmentSummary,
 	sortUtilizationRows,
 	monthLabel,
 	trendMonths,
@@ -975,6 +976,212 @@ describe('buildTrendPoint', () => {
 			utilization_percent: null,
 			bench_cost: null,
 		});
+	});
+});
+
+describe('buildDepartmentSummary', () => {
+	/** 12 working days × 8h — half of May 2026's 192h capacity. */
+	const HALF_MONTH_ENTRIES = [
+		entries({
+			'2026-05-04': 8,
+			'2026-05-05': 8,
+			'2026-05-06': 8,
+			'2026-05-07': 8,
+			'2026-05-08': 8,
+			'2026-05-11': 8,
+			'2026-05-12': 8,
+			'2026-05-13': 8,
+			'2026-05-14': 8,
+			'2026-05-18': 8,
+			'2026-05-19': 8,
+			'2026-05-20': 8,
+		}),
+	];
+
+	const engineeringPriced = buildTeamRow({
+		employee_id: 1,
+		department: 'Engineering',
+		month: MAY,
+		daily_entries: [entries({ '2026-05-04': 8, '2026-05-05': 8 })],
+		attendance: [],
+		holidays: new Set(),
+		profiles: [profile()],
+	});
+	const engineeringIdleUnpriced = buildTeamRow({
+		employee_id: 2,
+		department: 'Engineering',
+		month: MAY,
+		daily_entries: [],
+		attendance: [],
+		holidays: new Set(),
+		profiles: [],
+	});
+	const operationsIdle = buildTeamRow({
+		employee_id: 3,
+		department: 'Operations',
+		month: MAY,
+		daily_entries: [],
+		attendance: [],
+		holidays: new Set(),
+		profiles: [profile()],
+	});
+	const unsetHalfMonth = buildTeamRow({
+		employee_id: 4,
+		month: MAY,
+		daily_entries: HALF_MONTH_ENTRIES,
+		attendance: [],
+		holidays: new Set(),
+		profiles: [profile()],
+	});
+
+	it('rolls the month up per department, weighted by capacity, unset last', () => {
+		const summaries = buildDepartmentSummary([
+			operationsIdle,
+			unsetHalfMonth,
+			engineeringIdleUnpriced,
+			engineeringPriced,
+		]);
+
+		// Name ascending, the unset bucket last.
+		expect(summaries.map((summary) => summary.department)).toEqual([
+			'Engineering',
+			'Operations',
+			null,
+		]);
+
+		// Two members, one priced and one not: the unpriced row still counts
+		// for hours (16h over 384h = 4.17%) but contributes no money, and it
+		// is the department's one no-log row.
+		const engineering = summaries[0];
+		expect(engineering).toEqual({
+			department: 'Engineering',
+			headcount: 2,
+			capacity_weighted_utilization: 4.17,
+			logged_hours: 16,
+			capacity_hours: 384,
+			bench_cost: 20307.69,
+			no_logged_count: 1,
+		});
+
+		// An idle priced member: 0h logged of 192h, the whole CTC benched.
+		expect(summaries[1]).toEqual({
+			department: 'Operations',
+			headcount: 1,
+			capacity_weighted_utilization: 0,
+			logged_hours: 0,
+			capacity_hours: 192,
+			bench_cost: 22000,
+			no_logged_count: 1,
+		});
+
+		// The unset bucket: 96h of 192h = 50%, bench 22000 − round2(96 ×
+		// 105.769…) = 11846.15, nothing unlogged.
+		expect(summaries[2]).toEqual({
+			department: null,
+			headcount: 1,
+			capacity_weighted_utilization: 50,
+			logged_hours: 96,
+			capacity_hours: 192,
+			bench_cost: 11846.15,
+			no_logged_count: 0,
+		});
+	});
+
+	it('weights utilization by capacity, not by the mean of the rows’ percents', () => {
+		// A half-utilized partial window (72h capacity, 36h logged) beside a
+		// full idle month (192h): Σ logged ÷ Σ capacity = 36/264 = 13.64%,
+		// where the two rows' own percents average 25%.
+		const partial = buildTeamRow({
+			employee_id: 5,
+			department: 'Field',
+			month: MAY,
+			daily_entries: [
+				entries({
+					'2026-05-11': 8,
+					'2026-05-12': 8,
+					'2026-05-13': 8,
+					'2026-05-14': 8,
+					'2026-05-15': 4,
+				}),
+			],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			employment_start: '2026-05-11',
+			employment_end: '2026-05-20',
+		});
+		const full = buildTeamRow({
+			employee_id: 6,
+			department: 'Field',
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		expect(partial.utilization_percent).toBe(50);
+		expect(full.utilization_percent).toBe(0);
+
+		const [summary] = buildDepartmentSummary([partial, full]);
+		expect(summary.capacity_weighted_utilization).toBe(13.64);
+		expect(summary.logged_hours).toBe(36);
+		expect(summary.capacity_hours).toBe(264);
+	});
+
+	it('normalizes an empty-string department to the unset bucket', () => {
+		const blank = buildTeamRow({
+			employee_id: 7,
+			department: '',
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		expect(blank.department).toBeNull();
+		expect(buildDepartmentSummary([blank]).map((s) => s.department)).toEqual([
+			null,
+		]);
+		// A raw named department rides on the row untouched.
+		const named = buildTeamRow({
+			employee_id: 8,
+			department: 'Engineering',
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		expect(named.department).toBe('Engineering');
+	});
+
+	it('leaves bench null for a wholly unpriced department and percent null without capacity', () => {
+		const [unpriced] = buildDepartmentSummary([engineeringIdleUnpriced]);
+		expect(unpriced.department).toBe('Engineering');
+		expect(unpriced.capacity_weighted_utilization).toBe(0);
+		expect(unpriced.bench_cost).toBeNull();
+
+		// 23 May = 4th Saturday, 24 May = Sunday: a priced window with no
+		// working day credits no capacity and benches its zero monthly cost.
+		const noCapacity = buildTeamRow({
+			employee_id: 9,
+			department: 'Bench',
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			employment_start: '2026-05-23',
+			employment_end: '2026-05-24',
+		});
+		const [empty] = buildDepartmentSummary([noCapacity]);
+		expect(empty.capacity_weighted_utilization).toBeNull();
+		expect(empty.capacity_hours).toBe(0);
+		expect(empty.bench_cost).toBe(0);
+	});
+
+	it('returns nothing for an empty roster', () => {
+		expect(buildDepartmentSummary([])).toEqual([]);
 	});
 });
 
