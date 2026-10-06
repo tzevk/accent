@@ -556,7 +556,7 @@ export function projectEvidence(records: CostRecord[]): ProjectEvidenceState {
 		unresolved_tax_records: unresolvedTax.length,
 		bill_date_fallback_records: billDate.length,
 		reconstructed_records: reconstructed.length,
-	});
+	};
 }
 
 function rankingEntry(row: ReconciliationProjectRow): RankingEntry {
