@@ -67,6 +67,13 @@ export async function GET(request: Request) {
 		const hasExpenseSourceRead =
 			isSuperAdmin ||
 			hasPermission(user, RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ);
+		// Since #307 the reconciliation also carries recorded Payroll Slip
+		// employer cost, so the payroll source privilege is part of the same
+		// gate. The employee-cost views keep their existing reports:read
+		// contract; only the financial reconciliation and its drilldowns are
+		// source-gated.
+		const hasPayrollSourceRead =
+			isSuperAdmin || hasPermission(user, RESOURCES.PAYROLL, PERMISSIONS.READ);
 
 		// Financial access: a reporting privilege, never Project Activity access
 		// alone. The expenditure reconciliation names suppliers, amounts, and
@@ -91,7 +98,7 @@ export async function GET(request: Request) {
 
 		// Company expenditure reconciliation (direct cost), leading view.
 		if ((viewParam || '').toLowerCase() === 'expenditure') {
-			if (!hasExpenseSourceRead) {
+			if (!hasExpenseSourceRead || !hasPayrollSourceRead) {
 				return NextResponse.json(
 					{
 						success: false,
@@ -151,9 +158,10 @@ export async function GET(request: Request) {
 			const [companyMeta, legacyMeta, expenditureMonths] = await Promise.all([
 				fetchCompanyCostMeta(),
 				fetchEmployeeCostMeta(),
-				// The months that carry direct cost are themselves source data:
-				// only a caller with the ledger's read privilege sees them.
-				hasExpenseSourceRead
+				// The months that carry direct cost or recorded employee cost
+				// are themselves source data: only a caller holding both source
+				// read privileges sees them.
+				hasExpenseSourceRead && hasPayrollSourceRead
 					? fetchExpenditureMonths()
 					: Promise.resolve<string[]>([]),
 			]);

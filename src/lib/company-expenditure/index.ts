@@ -93,6 +93,12 @@ import {
 	type ProjectOption,
 	type SqlConnection,
 } from './records';
+import {
+	loadMonthAllocatedProjectCost,
+	loadPayrollAllocationMonths,
+	loadPayrollDrilldown,
+	loadPayrollMonth,
+} from './payroll';
 import { buildReconciliation, projectIdsIn } from './reconciliation';
 import { registerCostSource } from './sources';
 import {
@@ -107,6 +113,7 @@ import type {
 	CostDrilldown,
 	CostDrilldownQuery,
 	CostJournalEntry,
+	PayrollDrilldown,
 } from './types';
 
 export { recordCost, executeCommand, loadCost, CostError } from './commands';
@@ -199,6 +206,20 @@ export {
 export { monthLabel } from './reconciliation';
 export { COST_BUDGET_SCOPES, isCostBudgetScope } from './types';
 export {
+	allocateEmployerCost,
+	freezeMonthAllocations,
+	loadMonthAllocatedProjectCost,
+	loadPayrollMonth,
+	PAYROLL_CURRENCY,
+	summarizePayroll,
+} from './payroll';
+export type {
+	AllocationLine,
+	AllocationOutcome,
+	FreezeSummary,
+	PayrollMonthInterpretation,
+} from './payroll';
+export {
 	CHARGE_BASIS_LABELS,
 	COST_NATURES,
 	NATURE_LABELS,
@@ -265,6 +286,14 @@ export type {
 	EvidenceSummary,
 	NonOperatingItemJson,
 	NonOperatingSection,
+	PayrollCostStatus,
+	PayrollDrilldown,
+	PayrollEmployeeCost,
+	PayrollExpenditure,
+	PayrollHourLine,
+	PayrollPayStream,
+	PayrollProjectShare,
+	PayrollShareBasis,
 	PeriodBasis,
 	PeriodChargeJson,
 	PeriodChargeBasis,
@@ -311,11 +340,14 @@ export function currentMonth(): string {
 /** Months with cost recorded, newest first, including the current one. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
 	const current = currentMonth();
-	const [direct, supplier] = await Promise.all([
+	const [direct, supplier, payroll] = await Promise.all([
 		loadExpenditureMonths(pool, current),
 		loadSupplierInvoiceMonths(pool, current),
+		loadPayrollAllocationMonths(pool),
 	]);
-	return [...new Set([...direct, ...supplier])].sort().reverse();
+	const months = new Set([...direct, ...supplier, ...payroll]);
+	months.add(current);
+	return [...months].sort().reverse();
 }
 
 export interface ReconciliationRequest {
@@ -358,6 +390,9 @@ export async function fetchCompanyReconciliation(
 		projectOptions,
 		directMonths,
 		supplierMonths,
+		payrollMonths,
+		payroll,
+		previousPayrollCost,
 	] = await Promise.all([
 		loadMonthRecords(db, month),
 		loadSupplierMonthRecords(db, month),
@@ -369,6 +404,11 @@ export async function fetchCompanyReconciliation(
 		loadProjectOptions(db),
 		loadExpenditureMonths(db, currentMonth()),
 		loadSupplierInvoiceMonths(db, currentMonth()),
+		loadPayrollAllocationMonths(db),
+		loadPayrollMonth(db, month),
+		previousMonth
+			? loadMonthAllocatedProjectCost(db, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
 	]);
 	const records = [...directRecords, ...supplierRecords];
 
@@ -395,6 +435,24 @@ export async function fetchCompanyReconciliation(
 			.map((record) => record.costUid)
 			.filter((uid): uid is string => !!uid)
 	);
+
+	// The prior-month comparison is like-for-like: recorded employee cost is
+	// part of the month it was frozen in.
+	for (const [projectId, perCurrency] of previousPayrollCost) {
+		const target =
+			previousProjectCost.get(projectId) ?? new Map<string, number | null>();
+		for (const [currency, amount] of perCurrency) {
+			const existing = target.get(currency);
+			if (existing === undefined) {
+				target.set(currency, amount);
+			} else if (existing !== null && amount !== null) {
+				target.set(currency, existing + amount);
+			} else {
+				target.set(currency, null);
+			}
+		}
+		previousProjectCost.set(projectId, target);
+	}
 	// A budget is read when it covers the month or belongs to a Project the
 	// month has a row for, so an approved budget for another period is stated
 	// as such instead of the Project reading as unbudgeted.
@@ -413,12 +471,36 @@ export async function fetchCompanyReconciliation(
 		budgets,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
-		availableMonths: [...new Set([...directMonths, ...supplierMonths])]
+		availableMonths: [
+			...new Set([...directMonths, ...supplierMonths, ...payrollMonths]),
+		]
 			.sort()
 			.reverse(),
 		coverageDeclarations: SOURCE_COVERAGE,
+		payroll,
 		reportingCurrency: request.reportingCurrency ?? null,
 	});
+}
+
+/** Read the employee-cost drilldown behind one month's reconciliation. */
+export async function fetchPayrollDrilldown(
+	month: string,
+	employeeId: number | null = null,
+	options?: CommandOptions
+): Promise<PayrollDrilldown> {
+	const { interpretation, employees, totals } = await loadPayrollDrilldown(
+		options?.connection ?? pool,
+		month,
+		employeeId
+	);
+	return {
+		month,
+		month_label: interpretation.monthLabel,
+		currency: interpretation.currency,
+		totals,
+		employees,
+		coverage: interpretation.coverage,
+	};
 }
 
 /** One Project's cost budgets, every state, newest first. */

@@ -89,6 +89,74 @@ interface ProjectRow {
 	previous_month_cost: number | null;
 	change_amount: number | null;
 	change_state: string;
+	/** Recorded employee cost allocated to this Project (#307, ADR-0016). */
+	employee_cost: number;
+	estimated_employee_cost: number;
+	logged_hours: number;
+	employee_count: number;
+}
+
+interface PayrollShareRow {
+	project_id: number | null;
+	project_code: string | null;
+	project_name: string | null;
+	client_name: string | null;
+	hours: number;
+	amount: number;
+	rounding_adjustment: number;
+	basis: string;
+}
+
+interface PayrollEmployeeRow {
+	employee_id: number;
+	employee_code: string;
+	employee_name: string;
+	pay_stream: string;
+	status: string;
+	recorded_amount: number | null;
+	estimated_amount: number | null;
+	logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	no_logged_hours: boolean;
+	missing_slip: boolean;
+	missing_pricing: boolean;
+	allocation_missing: boolean;
+	source: {
+		payroll_slip_id: number | null;
+		allocation_id: number | null;
+		allocation_version: number | null;
+		allocation_kind: string | null;
+		month: string;
+	};
+	shares: PayrollShareRow[];
+}
+
+interface PayrollSummaryRow {
+	currency: string;
+	recorded_total: number;
+	estimated_total: number;
+	allocated_total: number;
+	unallocated_total: number;
+	total_logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	rounding_adjustment: number;
+	recorded_count: number;
+	known_zero_count: number;
+	estimated_count: number;
+	missing_slip_count: number;
+	missing_pricing_count: number;
+	allocation_missing_count: number;
+}
+
+interface PayrollDrilldownPayload {
+	month: string;
+	month_label: string;
+	currency: string;
+	totals: PayrollSummaryRow;
+	employees: PayrollEmployeeRow[];
+	coverage: CoverageNoticeRow[];
 }
 
 interface EvidenceRow {
@@ -189,6 +257,7 @@ interface ReconciliationPayload {
 		known_zero: { count: number };
 	};
 	coverage: CoverageNoticeRow[];
+	payroll: PayrollSummaryRow;
 	budgets: BudgetSectionPayload;
 	project_options: Array<{
 		project_id: number;
@@ -288,6 +357,14 @@ const CHANGE_LABELS: Record<string, string> = {
 	unchanged: 'No change',
 };
 
+/** How an employee's cost is known (#307). */
+const PAYROLL_STATUS_LABELS: Record<string, string> = {
+	recorded: 'Recorded',
+	estimated: 'Estimated',
+	known_zero: 'Known zero',
+	unknown: 'Unknown pricing',
+};
+
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : 'Something went wrong';
 }
@@ -321,6 +398,7 @@ export default function ExpenditureView({
 		record: CostRecordJson;
 		command: 'recognize' | 'reject' | 'cancel';
 	} | null>(null);
+	const [expandedEmployee, setExpandedEmployee] = useState<number | null>(null);
 	const [chargeTarget, setChargeTarget] = useState<NonOperatingItemRow | null>(
 		null
 	);
@@ -372,6 +450,19 @@ export default function ExpenditureView({
 		refetchOnWindowFocus: false,
 		staleTime: 15_000,
 	});
+
+	// The employee-cost drilldown loads with the payroll section; the summary
+	// itself already rides the reconciliation payload.
+	const payrollQuery = useQuery<{ data: PayrollDrilldownPayload }>({
+		queryKey: ['expenditure-payroll', month],
+		queryFn: () =>
+			apiGet('/api/reports/employee-project-monthly-cost/payroll', {
+				month,
+			}),
+		refetchOnWindowFocus: false,
+		staleTime: 15_000,
+	});
+	const payrollEmployees = payrollQuery.data?.data.employees ?? [];
 
 	const data = reconciliationQuery.data?.data ?? null;
 	const queue = queueQuery.data?.data?.records ?? [];
@@ -1065,6 +1156,12 @@ export default function ExpenditureView({
 								Client
 							</th>
 							<th scope="col" className="px-3 py-2 text-right">
+								Employee cost
+							</th>
+							<th scope="col" className="px-3 py-2 text-right">
+								Logged Hours
+							</th>
+							<th scope="col" className="px-3 py-2 text-right">
 								Incurred cost
 							</th>
 							<th scope="col" className="px-3 py-2 text-right">
@@ -1084,7 +1181,7 @@ export default function ExpenditureView({
 					<tbody>
 						{data.projects.length === 0 && (
 							<tr>
-								<td colSpan={7} className="px-3 py-4 text-center text-gray-500">
+								<td colSpan={9} className="px-3 py-4 text-center text-gray-500">
 									No Project-attributed cost in this month. Company Overhead and
 									Unallocated Cost stay in the reconciliation above.
 								</td>
@@ -1098,6 +1195,8 @@ export default function ExpenditureView({
 										data-testid="expenditure-project-row"
 										data-project-code={project.project_code}
 										data-project-cost={project.incurred_cost}
+										data-employee-cost={String(project.employee_cost)}
+										data-logged-hours={String(project.logged_hours)}
 										className="border-t border-gray-100"
 									>
 										<td className="px-3 py-2">
@@ -1138,6 +1237,29 @@ export default function ExpenditureView({
 										</td>
 										<td className="px-3 py-2 text-gray-600">
 											{project.client_name ?? '—'}
+										</td>
+										<td className="px-3 py-2 text-right text-gray-700">
+											{project.employee_cost === 0
+												? '—'
+												: formatCurrencyIn(
+														project.employee_cost,
+														project.currency
+													)}
+											{project.estimated_employee_cost > 0 && (
+												<span className="ml-1 text-[10px] text-amber-700">
+													+
+													{formatCurrencyIn(
+														project.estimated_employee_cost,
+														project.currency
+													)}{' '}
+													est.
+												</span>
+											)}
+										</td>
+										<td className="px-3 py-2 text-right tabular-nums text-gray-600">
+											{project.logged_hours === 0
+												? '—'
+												: formatNumber(project.logged_hours)}
 										</td>
 										<td className="px-3 py-2 text-right font-semibold text-gray-900">
 											{formatCurrencyIn(
@@ -1182,7 +1304,7 @@ export default function ExpenditureView({
 									</tr>
 									{expanded && (
 										<tr key={`${project.project_id}-drilldown`}>
-											<td colSpan={7} className="bg-gray-50/70 px-3 py-2">
+											<td colSpan={9} className="bg-gray-50/70 px-3 py-2">
 												<div data-testid="project-drilldown">
 													<p className="mb-1 text-xs font-semibold text-gray-700">
 														Source records recognized against{' '}
@@ -1316,6 +1438,295 @@ export default function ExpenditureView({
 						})}
 					</tbody>
 				</table>
+			</div>
+
+			{/* Recorded employee cost (#307, ADR-0016) */}
+			<div
+				data-testid="payroll-summary"
+				data-recorded-total={String(data.payroll.recorded_total)}
+				data-estimated-total={String(data.payroll.estimated_total)}
+				data-unallocated-total={String(data.payroll.unallocated_total)}
+				className="mt-3 rounded-xl border border-gray-200 bg-white"
+			>
+				<div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-3 py-2">
+					<p className="text-xs font-semibold text-gray-700">
+						Employee cost — recorded Payroll Slip allocation
+					</p>
+					<p className="text-[11px] text-gray-500">
+						Recorded{' '}
+						{formatCurrencyIn(
+							data.payroll.recorded_total,
+							data.payroll.currency
+						)}{' '}
+						· Estimated{' '}
+						{formatCurrencyIn(
+							data.payroll.estimated_total,
+							data.payroll.currency
+						)}{' '}
+						· Unallocated{' '}
+						{formatCurrencyIn(
+							data.payroll.unallocated_total,
+							data.payroll.currency
+						)}{' '}
+						(No project + No logged hours)
+					</p>
+				</div>
+				<div className="grid gap-x-4 gap-y-1 px-3 py-2 text-[11px] text-gray-600 sm:grid-cols-4">
+					<span>
+						Logged Hours: {formatNumber(data.payroll.total_logged_hours)}
+					</span>
+					<span>Project Hours: {formatNumber(data.payroll.project_hours)}</span>
+					<span>
+						No project Hours: {formatNumber(data.payroll.no_project_hours)}
+					</span>
+					<span>
+						Rounding adjustment:{' '}
+						{formatCurrencyIn(
+							data.payroll.rounding_adjustment,
+							data.payroll.currency
+						)}
+					</span>
+				</div>
+				<div className="overflow-x-auto border-t border-gray-100">
+					<table className="w-full min-w-[900px] text-sm">
+						<thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+							<tr>
+								<th scope="col" className="px-3 py-2">
+									Employee
+								</th>
+								<th scope="col" className="px-3 py-2">
+									Stream
+								</th>
+								<th scope="col" className="px-3 py-2">
+									Status
+								</th>
+								<th scope="col" className="px-3 py-2 text-right">
+									Logged Hours
+								</th>
+								<th scope="col" className="px-3 py-2 text-right">
+									Recorded
+								</th>
+								<th scope="col" className="px-3 py-2 text-right">
+									Estimated
+								</th>
+								<th scope="col" className="px-3 py-2">
+									Source Payroll Slip
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							{payrollQuery.isLoading && (
+								<tr>
+									<td
+										colSpan={7}
+										className="px-3 py-4 text-center text-xs text-gray-500"
+									>
+										Loading employee cost…
+									</td>
+								</tr>
+							)}
+							{payrollQuery.isError && (
+								<tr>
+									<td
+										colSpan={7}
+										className="px-3 py-4 text-center text-xs text-rose-600"
+									>
+										{errorMessage(payrollQuery.error)}
+									</td>
+								</tr>
+							)}
+							{!payrollQuery.isLoading &&
+								!payrollQuery.isError &&
+								payrollEmployees.length === 0 && (
+									<tr>
+										<td
+											colSpan={7}
+											className="px-3 py-4 text-center text-xs text-gray-500"
+										>
+											No employee cost for {data.month_label}.
+										</td>
+									</tr>
+								)}
+							{payrollEmployees.map((employee) => {
+								const expanded = expandedEmployee === employee.employee_id;
+								return (
+									<Fragment key={employee.employee_id}>
+										<tr
+											data-testid="payroll-employee-row"
+											data-employee-code={employee.employee_code}
+											data-status={employee.status}
+											data-recorded={employee.recorded_amount ?? ''}
+											data-estimated={employee.estimated_amount ?? ''}
+											data-hours={String(employee.logged_hours)}
+											className="border-t border-gray-100"
+										>
+											<td className="px-3 py-2">
+												<div className="flex items-center gap-1.5">
+													<button
+														type="button"
+														data-testid="payroll-employee-expand"
+														aria-expanded={expanded}
+														onClick={() =>
+															setExpandedEmployee(
+																expanded ? null : employee.employee_id
+															)
+														}
+														className="rounded p-0.5 text-gray-500 hover:bg-gray-100"
+														aria-label={`${expanded ? 'Hide' : 'Show'} Project shares for ${employee.employee_code}`}
+													>
+														{expanded ? (
+															<ChevronDownIcon className="h-4 w-4" />
+														) : (
+															<ChevronRightIcon className="h-4 w-4" />
+														)}
+													</button>
+													<div>
+														<div className="font-medium text-gray-900">
+															{employee.employee_name}
+														</div>
+														<div className="text-[10px] text-gray-500">
+															{employee.employee_code}
+															{employee.no_logged_hours && ' · No logged hours'}
+															{employee.missing_slip && ' · Missing slip'}
+															{employee.missing_pricing && ' · Missing pricing'}
+															{employee.allocation_missing &&
+																' · Allocation missing'}
+														</div>
+													</div>
+												</div>
+											</td>
+											<td className="px-3 py-2 text-xs capitalize text-gray-600">
+												{employee.pay_stream}
+											</td>
+											<td className="px-3 py-2 text-xs">
+												<span
+													className={
+														employee.status === 'recorded'
+															? 'rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-900'
+															: employee.status === 'estimated'
+																? 'rounded bg-amber-100 px-1.5 py-0.5 text-amber-900'
+																: 'rounded bg-gray-100 px-1.5 py-0.5 text-gray-700'
+													}
+												>
+													{PAYROLL_STATUS_LABELS[employee.status] ??
+														employee.status}
+												</span>
+											</td>
+											<td className="px-3 py-2 text-right tabular-nums text-gray-700">
+												{formatNumber(employee.logged_hours)}
+											</td>
+											<td className="px-3 py-2 text-right font-semibold text-gray-900">
+												{employee.recorded_amount === null
+													? '—'
+													: formatCurrencyIn(
+															employee.recorded_amount,
+															data.payroll.currency
+														)}
+											</td>
+											<td className="px-3 py-2 text-right text-gray-600">
+												{employee.estimated_amount === null
+													? '—'
+													: formatCurrencyIn(
+															employee.estimated_amount,
+															data.payroll.currency
+														)}
+											</td>
+											<td className="px-3 py-2 text-xs text-gray-600">
+												{employee.source.payroll_slip_id === null
+													? 'No Payroll Slip'
+													: `Slip #${employee.source.payroll_slip_id}${
+															employee.source.allocation_version
+																? ` · allocation v${employee.source.allocation_version}`
+																: ''
+														}${
+															employee.source.allocation_kind ===
+															'reconstruction'
+																? ' · reconstructed'
+																: ''
+														}`}
+											</td>
+										</tr>
+										{expanded && (
+											<tr key={`${employee.employee_id}-shares`}>
+												<td colSpan={7} className="bg-gray-50/70 px-3 py-2">
+													<p className="mb-1 text-xs font-semibold text-gray-700">
+														Project shares for {employee.employee_code}
+													</p>
+													<table className="w-full text-xs">
+														<thead>
+															<tr className="text-left text-gray-500">
+																<th className="py-1 pr-3 font-medium">
+																	Destination
+																</th>
+																<th className="py-1 pr-3 text-right font-medium">
+																	Hours
+																</th>
+																<th className="py-1 pr-3 text-right font-medium">
+																	Amount
+																</th>
+																<th className="py-1 pr-3 text-right font-medium">
+																	Rounding
+																</th>
+																<th className="py-1 font-medium">Basis</th>
+															</tr>
+														</thead>
+														<tbody>
+															{employee.shares.map((share, index) => (
+																<tr
+																	key={`${share.project_id ?? share.basis}-${index}`}
+																	data-testid="payroll-share-row"
+																	data-project-code={share.project_code ?? ''}
+																	data-hours={String(share.hours)}
+																	data-amount={String(share.amount)}
+																	data-adjustment={String(
+																		share.rounding_adjustment
+																	)}
+																	data-basis={share.basis}
+																>
+																	<td className="py-1 pr-3 text-gray-800">
+																		{share.project_id === null
+																			? share.basis === 'no_project'
+																				? 'No project'
+																				: 'No logged hours'
+																			: `${share.project_code} — ${share.project_name ?? ''}`}
+																	</td>
+																	<td className="py-1 pr-3 text-right tabular-nums">
+																		{formatNumber(share.hours)}
+																	</td>
+																	<td className="py-1 pr-3 text-right tabular-nums font-medium">
+																		{formatCurrencyIn(
+																			share.amount,
+																			data.payroll.currency
+																		)}
+																	</td>
+																	<td className="py-1 pr-3 text-right tabular-nums text-gray-500">
+																		{share.rounding_adjustment === 0
+																			? '—'
+																			: formatCurrencyIn(
+																					share.rounding_adjustment,
+																					data.payroll.currency
+																				)}
+																	</td>
+																	<td className="py-1 text-gray-500">
+																		{share.basis === 'project'
+																			? 'Logged Hours'
+																			: share.basis === 'no_project'
+																				? 'Unallocated · No project'
+																				: 'Unallocated · No logged hours'}
+																	</td>
+																</tr>
+															))}
+														</tbody>
+													</table>
+												</td>
+											</tr>
+										)}
+									</Fragment>
+								);
+							})}
+						</tbody>
+					</table>
+				</div>
 			</div>
 
 			{/* Recognition queue */}

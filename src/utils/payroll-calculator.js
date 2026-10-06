@@ -91,10 +91,17 @@ export async function getEffectivePayrollSchedule(
  * Get holidays from holiday_master for a given month
  * @param {string} month - Month in YYYY-MM format
  * @param {boolean} includeOptional - Whether to include optional holidays (default: false)
+ * @param {object|null} existingDb - Caller's connection; when given, this call
+ *   joins the caller's transaction instead of opening (and releasing) its own.
  * @returns {Promise<Array>} Array of holiday objects with date, name, type
  */
-export async function getHolidaysForMonth(month, includeOptional = false) {
-	const db = await dbConnect();
+export async function getHolidaysForMonth(
+	month,
+	includeOptional = false,
+	existingDb = null
+) {
+	const db = existingDb || (await dbConnect());
+	const ownsConnection = !existingDb;
 
 	try {
 		const monthStr = month.substring(0, 7); // Extract YYYY-MM
@@ -131,10 +138,12 @@ export async function getHolidaysForMonth(month, includeOptional = false) {
 		console.error('Error getting holidays for month:', error);
 		return [];
 	} finally {
-		try {
-			db.release();
-		} catch (_) {
-			/* ignore */
+		if (ownsConnection) {
+			try {
+				db.release();
+			} catch (_) {
+				/* ignore */
+			}
 		}
 	}
 }
@@ -142,9 +151,11 @@ export async function getHolidaysForMonth(month, includeOptional = false) {
 /**
  * Calculate actual working days for a month (excluding Sundays and official holidays)
  * @param {string} month - Month in YYYY-MM format
+ * @param {object|null} existingDb - Caller's connection, passed through to the
+ *   holiday lookup so a caller inside a transaction reads one snapshot.
  * @returns {Promise<object>} Working days info
  */
-export async function getWorkingDaysForMonth(month) {
+export async function getWorkingDaysForMonth(month, existingDb = null) {
 	const monthStr = month.substring(0, 7);
 	const [year, monthNum] = monthStr.split('-');
 	const totalDaysInMonth = new Date(
@@ -154,7 +165,7 @@ export async function getWorkingDaysForMonth(month) {
 	).getDate();
 
 	// Get official holidays from holiday_master
-	const holidays = await getHolidaysForMonth(month, false);
+	const holidays = await getHolidaysForMonth(month, false, existingDb);
 	const holidayDates = new Set(
 		holidays.map((h) => {
 			const d = new Date(h.date);

@@ -5,13 +5,22 @@
 The report at `/reports/employee-project-monthly-cost` now leads with **Company
 Incurred Cost** for a month, reconciled to **Incurred Project Cost**, **Company
 Overhead**, and **Unallocated Cost**. Each underlying direct cost is counted
-once. The employee-cost Monthly and Financial Year views stay available beside
-it until recorded payroll replaces their estimate (#307).
+once. The employee-cost Monthly and Financial Year views read the same shared
+interpretation: recorded employer-cost allocation where the month was
+finalized, the corrected payroll calculation's estimate otherwise.
 
 Ticket #306 delivers the first complete slice: capture a direct expense with a
 durable identity, recognize it into a month, reconcile it, and drill from a
 Project into its source records. Everything else the parent specification
 describes is named as coverage, not faked.
+
+Ticket #307 adds **recorded employer cost** (ADR-0016): each Payroll Slip's
+employer cost is allocated across the Employee's monthly Logged Hours into
+deterministic cent shares that reconcile exactly to the slip, hours without a
+Project stay in the denominator as Unallocated Employee Cost, and Payroll
+Finalize freezes the shares with the run lock in one transaction. The
+expenditure view, its employee drilldown, and the employee-cost views all read
+that one interpretation.
 
 Ticket #321 adds the **approved Project cost budget** beside that
 reconciliation: an authorized workflow records, submits, approves, supersedes,
@@ -26,20 +35,23 @@ Cost, the Project breakdown, or the evidence summary.
 Expenditure view (page.tsx → expenditure-view.tsx → budget-section.tsx)
   ├─ GET  /api/reports/employee-project-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=]
   ├─ GET  /api/reports/employee-project-monthly-cost/expenses?month=&state=&classification=&project_id=
+  ├─ GET  /api/reports/employee-project-monthly-cost/payroll?month=[&employee_id=]
   ├─ POST /api/admin/expenses                        (record a cost)
   ├─ POST /api/admin/expenses/{id}/commands          (submit | recognize | reject | cancel | update)
   ├─ GET  /api/admin/cost-budgets?project_id=        (budget versions of one Project)
   ├─ GET  /api/admin/cost-budgets/{id}               (one budget + its approval journal)
   ├─ POST /api/admin/cost-budgets                    (record a draft budget)
-  └─ POST /api/admin/cost-budgets/{id}/commands      (update | submit | approve | withdraw)
+  ├─ POST /api/admin/cost-budgets/{id}/commands      (update | submit | approve | withdraw)
+  └─ POST /api/payroll/runs/finalize                 (locks the month and freezes allocations)
             │
             ▼
   src/lib/company-expenditure  (the shared financial module)
     index.ts             public interface
     recognition.ts       pure rules: period, tax, recognition blockers, transitions
-    reconciliation.ts    pure builder: groups, currencies, projects, evidence, coverage
+    reconciliation.ts    pure builder: groups, currencies, projects, evidence, coverage, payroll
     records.ts           reads: month records, project cost, options, months, journal, drilldown
     commands.ts          the single write path: recordCost, executeCommand, journal
+    payroll.ts           recorded employer-cost allocation: shares, freeze, estimates, drilldown
     budget-records.ts    reads: budget rows, covering budgets, journal
     budget-commands.ts   the budget write path: recordCostBudget, executeBudgetCommand
     budget-comparison.ts pure builder: the isolated budget section
@@ -48,6 +60,7 @@ Expenditure view (page.tsx → expenditure-view.tsx → budget-section.tsx)
             ▼
   expenses (+ cost_uid, recognition_*, financial_version)
   financial_cost_events (append-only command journal)
+  payroll_employee_allocations (+ shares, payroll_allocation_events)
   project_cost_budgets (+ scope, period, state, approval evidence, financial_version)
   project_cost_budget_events (append-only approval journal)
 ```
@@ -261,15 +274,81 @@ Both tables follow the same rules as the cost tables: no deletes through the
 API, one journal row per accepted command, and commands join the caller's
 transaction when a connection is supplied.
 
+## Recorded employee cost allocation (#307)
+
+Implemented in `payroll.ts` (ADR-0016); the consumer contract for the later
+allocation slices (#308/#309) is published outside the repo at
+`C:/Files/OCDSE/Work/expenditure-payroll-allocation-contract.md`.
+
+**The rule.** Each Payroll Slip's recorded `employer_cost` is allocated across
+the Employee's eligible monthly Logged Hours — the same
+`user_activity_assignments.daily_entries` source and the same canonical parser
+the payroll calculator prices slips from, so the denominator cannot drift from
+the hours the slip was paid at. Every destination's exact share is floored to
+the cent and the remaining cents (fewer than the number of destinations) go one
+each to the largest fractional remainders — ties broken by larger hours, then by
+the canonical destination order. The result sums exactly to the slip; each share
+persists the cent it received (`rounding_adjustment`) so the adjustment is
+attributable, and the allocation records the slip id, Employee, month, and
+version as its source identity.
+
+**No project / No logged hours.** Hours without a reliable Project (no
+`project_id`, or one whose Project row is gone) stay in the denominator and
+their share is Unallocated Employee Cost, labelled `no_project`. With no Logged
+Hours the whole recorded cost stays unallocated as `no_logged_hours` — it is
+never spread over known Projects, and it is never Bench Cost.
+
+**Freeze at Payroll Finalize.** `POST /api/payroll/runs/finalize` runs one
+transaction: the `draft → finalized` transition (guarded by
+`WHERE status = 'draft'`), its audit entry, and `freezeMonthAllocations` for
+every Payroll Slip of the month. A concurrent finalize loses on the guard and
+writes nothing; a repeated finalize is refused `409`; a later timesheet or
+Salary Profile edit cannot move a frozen share. A re-finalization after an
+authorized reopen appends the next version (`unique_slip_allocation_version`),
+so history stays readable and duplicates are impossible.
+
+| Table                                | Meaning                                                                                                                                                                                                          |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `payroll_employee_allocations`       | One frozen allocation per Payroll Slip and version: recorded employer cost, denominator hours, project/no-project hours, the total rounding cent, the snapshotted Employee identity and pay stream, who froze it |
+| `payroll_employee_allocation_shares` | One row per destination: Project (with snapshotted code/name/client), `no_project`, or `no_logged_hours`, with hours, amount, and the applied cent                                                               |
+| `payroll_allocation_events`          | Append-only freeze journal keyed `(allocation_uid, version)`, snapshot included                                                                                                                                  |
+
+**Report contract.** The reconciliation payload gains
+`payroll: { currency, recorded_total, estimated_total, allocated_total,
+unallocated_total, total_logged_hours, project_hours, no_project_hours,
+rounding_adjustment, recorded_count, known_zero_count, estimated_count,
+missing_slip_count, missing_pricing_count, allocation_missing_count }`;
+Project rows gain `employee_cost`, `estimated_employee_cost`, `logged_hours`,
+and `employee_count`. Recorded employee cost joins the payroll-currency slice
+(Project shares into Incurred Project Cost, unallocated shares into Unallocated
+Cost) and the prior-month comparison, while estimates never enter a confirmed
+total. `GET …/payroll?month=[&employee_id=]` is the employee drilldown: per
+Employee status (`recorded` / `estimated` / `known_zero` / `unknown`), recorded
+and estimated amounts, Logged Hours by Project, the source Payroll Slip and
+allocation version, and shares with basis and rounding. The employee-cost
+Monthly and Financial Year views read the same module, so the obsolete
+Gross-first billing-derived rate × hours path is no longer a consumer path.
+
+**Gaps are stated, not hidden.** Estimates are labelled and separate; a missing
+Payroll Slip (`payroll_slip_missing`), missing pricing (`payroll_pricing_missing`
+— hours with no covering Salary Profile, whose cost is unknown, not zero), a
+finalized month without a frozen allocation (`payroll_allocation_missing`), and
+an unfinalized or ungenerated month (`payroll_not_finalized` /
+`payroll_not_generated`) are coverage notices; No project and No logged hours
+amounts are disclosed as info notices. A finalized zero stays a known zero.
+
 ## Coverage: what the total does not include
 
 `SOURCE_COVERAGE` declares each source and its state; the not-incorporated
 entries become coverage notices on every reconciliation:
 
-- recorded payroll employer cost — a later slice (#307);
 - supplier invoices, orders, and Outstanding Supplier Commitment;
 - evidenced Cost Accruals;
 - dated settlements and petty cash.
+
+Recorded payroll employer cost is `wired` since #307 and no longer appears as a
+not-incorporated notice; its own coverage notices (above) state the month's
+payroll completeness.
 
 Month-specific notices add: no recognized cost, mixed currencies without
 conversion, records awaiting recognition, missing amounts, unresolved
@@ -279,25 +358,28 @@ a coverage warning, never a zero company cost.
 
 ## Authorization
 
-| Surface                                            | Privilege                                                     |
-| -------------------------------------------------- | ------------------------------------------------------------- |
-| Reconciliation, drilldown, expenditure months      | `reports:read` **and** `other_expenses:read` (or super admin) |
-| Employee-cost views and their export               | `reports:read`                                                |
-| Record a cost (report control and admin route)     | `other_expenses:create`                                       |
-| Submit / update a cost                             | `other_expenses:update`                                       |
-| Recognize, reject, cancel                          | `other_expenses:approve`                                      |
-| Read cost budgets and their journals               | `other_expenses:read`                                         |
-| Record, edit, submit, withdraw a cost budget       | `other_expenses:update`                                       |
-| Approve a cost budget, or withdraw an approved one | `other_expenses:approve`                                      |
+| Surface                                            | Privilege                                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Reconciliation, drilldown, expenditure months      | `reports:read` **and** `other_expenses:read` **and** `payroll:read` (or super admin) |
+| Employee-cost views and their export               | `reports:read`                                                                       |
+| Employee-cost drilldown (`…/payroll`)              | `reports:read` **and** `other_expenses:read` **and** `payroll:read` (or super admin) |
+| Record a cost (report control and admin route)     | `other_expenses:create`                                                              |
+| Submit / update a cost                             | `other_expenses:update`                                                              |
+| Recognize, reject, cancel                          | `other_expenses:approve`                                                             |
+| Read cost budgets and their journals               | `other_expenses:read`                                                                |
+| Record, edit, submit, withdraw a cost budget       | `other_expenses:update`                                                              |
+| Approve a cost budget, or withdraw an approved one | `other_expenses:approve`                                                             |
+| Finalize a Payroll Run (freezes allocations)       | `payroll:update`                                                                     |
 
 The direct-expense ledger is the source of the expenditure reconciliation, so
-report access alone does not open it: the expenditure view, the drilldown, and
+report access alone does not open it: the expenditure view, its drilldowns, and
 the `expenditure_months` list in the meta payload require the ledger's read
-privilege as well (parent spec §149 — existing source authorization and
-financial privileges). A `reports:read` reader without it keeps the
-employee-cost views and is refused `403` with no source rows or aggregates. The
-Project Activity field grant opens none of this, and Employee Utilization is
-untouched.
+privilege and — since the reconciliation carries recorded Payroll Slip employer
+cost (#307) — the payroll source's read privilege as well (parent spec §149 —
+existing source authorization and financial privileges). A `reports:read`
+reader without them keeps the employee-cost views and is refused `403` with no
+source rows or aggregates. The Project Activity field grant opens none of this,
+and Employee Utilization is untouched.
 
 ## End-to-end evidence
 
@@ -372,6 +454,48 @@ charge-only month owned by #317) and asserts, from the fixture literals:
   row or version changes;
 - January still reconciles to the expense fixtures' own arithmetic after every
   budget mutation: a budget never moves Company Incurred Cost.
+
+`e2e/specs/expenditure-payroll-allocation.spec.ts` (#307) drives the same real
+app and writes `e2e/artifacts/expenditure-payroll-allocation.json`. It owns the
+months **2026-02** (finalized) and **2026-03** (estimates), Projects
+`E2E-ALLOC-P1/P2`, Employees `E2E-ALLOC-01..06`, a fixture Bonus Component Rate,
+and two reader identities (fixtures in
+`e2e/lib/expenditure-allocation-fixtures.ts`, wired into `e2e/global-setup.ts`),
+and asserts, from hand-computed fixture literals:
+
+- Generate through the authenticated route writes the stated slip amounts
+  (₹26,000 monthly, ₹10,000 contract, ₹500 bonus-only, and known zeros), and the
+  month holds exactly three nonzero slips;
+- before finalization the month states estimates only: no recorded total, no
+  company incurred cost, `payroll_not_finalized` coverage, and the drilldown
+  marks the Employee `estimated` with the slip as source;
+- deleting one slip discloses `payroll_slip_missing` with the estimate intact,
+  regenerating clears it, and a finalize attempt with a missing slip is refused
+  `409` with no allocation written and the run still `draft`;
+- finalization freezes one allocation per slip in the same transaction: every
+  frozen allocation sums exactly to its slip's `employer_cost`, one journal row
+  per slip, version 1 only, and a repeated finalize changes nothing;
+- the reconciliation states recorded ₹36,500.00 (P1 ₹14,635.41, P2 ₹13,447.92,
+  unallocated ₹8,416.67, rounding ₹0.02, 384 Logged Hours) with the two
+  Projects' employee cost and hours, no payroll coverage warnings, and the
+  drilldown shows both pay streams, the largest-remainder cent on the
+  no-project/P2 shares, and No logged hours fully unallocated;
+- 2026-03 states the payroll-based estimate (₹5,250 = 42h at the corrected
+  calculation) separately, with `payroll_not_generated` and
+  `payroll_pricing_missing` for the Employee who logged hours with no profile;
+- the browser's expenditure view shows the payroll summary, the employee row,
+  and the No project share from the real controls;
+- reopen returns the month to estimates while the version-1 allocations remain
+  readable, two concurrent finalizes yield exactly one `200` and one `409`, and
+  version 2 is written once per slip and reconciles again;
+- later timesheet and Salary Profile edits (through the fixture row and the real
+  profile route) leave the frozen shares and the Payroll Slip unchanged, and a
+  renamed Project keeps its frozen identity in the report;
+- paid payroll cannot reopen (`409`) and the frozen allocation stays recorded;
+- a `reports:read` reader and a `reports:read` + `other_expenses:read` reader
+  are both refused `403` on the reconciliation and the payroll drilldown (the
+  payroll source privilege is the missing one), while the employee-cost views
+  keep their existing contract; malformed and unknown requests are `400`/`404`.
 
 Use an isolated database for repeatable verification:
 
@@ -493,9 +617,11 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
 
 `src/lib/company-expenditure/index.ts` is the contract later tickets extend:
 
-- **#307 recorded payroll**: add `payroll_slips` + allocation as a source
-  adapter that produces `CostRecord`s into the same `buildReconciliation`; the
-  employee-cost views then become consumers of recorded cost.
+- **#307 recorded payroll**: implemented (`payroll.ts`): recorded employer-cost
+  allocation frozen with Payroll Finalize, estimates from the corrected payroll
+  calculation, the payroll drilldown, and the employee-cost views as consumers
+  of the same interpretation. The later allocation slices (#308/#309) extend it
+  through `C:/Files/OCDSE/Work/expenditure-payroll-allocation-contract.md`.
 - **Supplier cost and commitments** (#311): the invoice source adapter and the
   shared `financial_cost_links` registry are in place; #312 adds supplier-order
   classification/consumption on top of `cost_uid` and publishes Outstanding
@@ -520,10 +646,14 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
 - `migrations/20261008091900_expense_cost_currency_conversion.js`
   (reporting target + conversion evidence + converted snapshot, #319)
 - `migrations/20261008092100_project_cost_budgets.js` (#321: budgets + approval journal)
-- `src/lib/company-expenditure/{index,types,currency,recognition,reconciliation,records,commands,coverage,budget-records,budget-commands,budget-comparison}.ts`
+- `migrations/20261008090700_payroll_employee_cost_allocation.js`
+  (#307: allocations, shares, allocation journal)
+- `src/lib/company-expenditure/{index,types,currency,recognition,reconciliation,records,commands,payroll,coverage,budget-records,budget-commands,budget-comparison}.ts`
 - `src/app/api/reports/employee-project-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)
 - `src/app/api/reports/employee-project-monthly-cost/expenses/route.ts`
+- `src/app/api/reports/employee-project-monthly-cost/payroll/route.ts` (#307 drilldown)
 - `src/app/api/reports/employee-project-monthly-cost/download/route.ts` (tightened gate)
+- `src/app/api/payroll/runs/finalize/route.js` (one transaction: lock, audit, allocation freeze)
 - `src/app/api/admin/expenses/route.js` (entry through the module)
 - `src/app/api/admin/expenses/[id]/commands/route.ts`
 - `src/app/api/admin/expenses/[id]/route.js` (recognized cost frozen; versioned financial fields refused)
@@ -548,6 +678,7 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
 - `docs/adr/0019-approved-cost-budgets.md` (#321)
 - `e2e/specs/project-cost-budgets.spec.ts` (#321)
 - `e2e/lib/expenditure-currency-fixtures.ts`, `e2e/specs/expenditure-currency.spec.ts` (#319)
+- `e2e/lib/expenditure-allocation-fixtures.ts`, `e2e/specs/expenditure-payroll-allocation.spec.ts` (#307)
 
 ## Ticket #317 — non-operating items and approved period consumption
 
