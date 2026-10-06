@@ -124,6 +124,7 @@ export type {
 	CostNature,
 	CostPatch,
 	CostRecord,
+	CostRecordJson,
 	CoverageNotice,
 	CurrencyTotal,
 	EvidenceSummary,

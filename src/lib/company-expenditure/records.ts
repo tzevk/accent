@@ -333,7 +333,7 @@ export async function loadChargeByUid(
 	chargeUid: string
 ): Promise<PeriodCharge | null> {
 	const [rows] = await db.execute(
-		`${CHARGE_SELECT} WHERE c.charge_uid = ?`,
+		`${CHARGE_SELECT} WHERE c.charge_uid = ? AND e.isDelete = 0`,
 		[chargeUid]
 	);
 	const row = (rows as DbRow[])[0];
@@ -343,7 +343,7 @@ export async function loadChargeByUid(
 /**
  * Every charge already recorded against one source, in any state and period:
  * the balance and duplicate rules need the full history, cancelled rows
- * included.
+ * included. A soft-deleted source has no history to read.
  */
 export async function loadSourceCharges(
 	db: SqlConnection,
@@ -351,7 +351,7 @@ export async function loadSourceCharges(
 ): Promise<PeriodCharge[]> {
 	const [rows] = await db.execute(
 		`${CHARGE_SELECT}
-      WHERE c.source_cost_uid = ?
+      WHERE c.source_cost_uid = ? AND e.isDelete = 0
       ORDER BY c.charge_period, c.basis, c.sequence`,
 		[sourceCostUid]
 	);
@@ -375,7 +375,7 @@ export async function loadMonthCharges(
 	query: MonthChargeQuery
 ): Promise<PeriodCharge[]> {
 	const { start, end } = monthBounds(query.month);
-	const where = ['c.charge_period BETWEEN ? AND ?'];
+	const where = ['c.charge_period BETWEEN ? AND ?', 'e.isDelete = 0'];
 	const params: Array<string | number> = [start, end];
 	if (query.classification && query.classification !== 'all') {
 		if (query.classification === 'unresolved') {
@@ -420,10 +420,12 @@ export async function loadChargeTotals(
 	if (costUids.length === 0) return totals;
 	const placeholders = costUids.map(() => '?').join(', ');
 	const [rows] = await db.execute(
-		`SELECT source_cost_uid, SUM(amount) AS amount
-       FROM expense_period_charges
-      WHERE state = 'approved' AND source_cost_uid IN (${placeholders})
-      GROUP BY source_cost_uid`,
+		`SELECT c.source_cost_uid, SUM(c.amount) AS amount
+       FROM expense_period_charges c
+       JOIN expenses e ON e.id = c.source_id
+      WHERE c.state = 'approved' AND e.isDelete = 0
+        AND c.source_cost_uid IN (${placeholders})
+      GROUP BY c.source_cost_uid`,
 		costUids
 	);
 	for (const row of rows as DbRow[]) {
