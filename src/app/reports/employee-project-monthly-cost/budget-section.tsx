@@ -49,6 +49,8 @@ interface BudgetComparisonRow {
 	incurred_cost: number | null;
 	confirmed_records: number;
 	pending_records: number;
+	/** Supported approved period charges (#317) inside this month's cost. */
+	period_charges: number;
 	outcome: string;
 	budget: BudgetCandidateRow | null;
 	candidates: BudgetCandidateRow[];
@@ -635,6 +637,12 @@ export default function BudgetSection({
 									>
 										{row.detail}
 									</span>
+									{row.period_charges > 0 && (
+										<span className="mt-1 block text-xs text-gray-500">
+											{row.period_charges} supported period charge(s) are
+											part of this month&apos;s incurred cost.
+										</span>
+									)}
 									{row.candidates.length > 0 && (
 										<ul className="mt-1 space-y-0.5">
 											{row.candidates.map((candidate) => (

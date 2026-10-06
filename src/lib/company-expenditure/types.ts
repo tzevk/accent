@@ -619,9 +619,9 @@ export interface CostBudgetCandidate {
  *
  * `compared` is the only state that publishes a variance. Everything else is
  * explicit: a missing or unapproved budget, a budget whose currency, scope, or
- * period does not match, several matching budgets (so no single one can be
- * picked), an approved budget whose cost is not recognized yet, and an approved
- * budget with no Incurred Project Cost recorded beside it.
+ * period does not match the month exactly, several matching budgets (so no
+ * single one can be picked), an approved budget whose cost is not confirmed
+ * yet, and an approved budget with no Incurred Project Cost recorded beside it.
  */
 export type BudgetOutcome =
 	| 'compared'
@@ -647,9 +647,16 @@ export interface ProjectBudgetComparison {
 	 * no such row exists for the month (`no_incurred_cost`).
 	 */
 	incurred_cost: number | null;
+	/** Confirmed operating direct records of this Project and currency. */
 	confirmed_records: number;
-	/** Draft or pending-evidence records that are not confirmed cost. */
+	/** Draft or pending-evidence operating records that are not confirmed cost. */
 	pending_records: number;
+	/**
+	 * Supported approved period charges the row counts (#317). They are part of
+	 * Incurred Project Cost, so a Project whose month is charge-only still
+	 * supports a budget comparison.
+	 */
+	period_charges: number;
 	outcome: BudgetOutcome;
 	/**
 	 * The comparison basis: the approved budget the variance is stated from

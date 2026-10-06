@@ -28,6 +28,12 @@ import {
  * Budgets live in their own store, so nothing here may move a cost total:
  * every test that reads the reconciliation re-derives the company figures from
  * `EXPENDITURE_COSTS` and asserts they are unchanged.
+ *
+ * One case depends on another slice's fixtures: the charge-only August month
+ * (#317) seeds alpha's supported approved period charges in 2019-08 and no
+ * operating expense, so that row exists only when the charge source is
+ * integrated. `e2e-budget-0011` is the exact August budget it is measured
+ * against.
  */
 
 test.use({
@@ -42,6 +48,9 @@ const MONTH = EXPENDITURE_MONTH;
 const NEXT_MONTH = EXPENDITURE_NEXT_MONTH;
 const BUDGET = BUDGET_MONTH;
 const BUDGET_LABEL = 'June 2019';
+/** #317's charge-only month: no operating direct cost, real period charges. */
+const CHARGE_MONTH = '2019-08';
+const CHARGE_MONTH_LABEL = 'August 2019';
 
 /**
  * Recognized fixture cost for one Project in one currency and month, summed
@@ -82,6 +91,9 @@ const PERIOD_BUDGET = seededBudget('gammaPeriod');
 const SCOPE_BUDGET = seededBudget('gammaScope');
 const PENDING_BUDGET = seededBudget('gammaPending');
 const CURRENCY_BUDGET = seededBudget('betaJuneUsd');
+const ANNUAL_BUDGET = seededBudget('deltaAnnual');
+const PARTIAL_BUDGET = seededBudget('deltaPartialUsd');
+const AUGUST_BUDGET = seededBudget('alphaAugust');
 
 /** What the browser workflow records and approves. */
 const UI_BUDGET = {
@@ -92,13 +104,13 @@ const UI_BUDGET = {
 	periodEnd: `${BUDGET}-30`,
 	evidence: 'E2E-BUDGET-EVID-UI',
 } as const;
-/** The API-created superseding budget. */
+/** The API-created superseding budget: an exact June period, like the first. */
 const API_BUDGET = {
 	currency: 'INR',
 	scope: 'project_incurred_cost',
 	amount: 6000,
 	periodStart: `${BUDGET}-01`,
-	periodEnd: '2019-12-31',
+	periodEnd: `${BUDGET}-30`,
 	evidence: 'E2E-BUDGET-EVID-SUPERSEDE',
 } as const;
 
@@ -125,6 +137,7 @@ interface BudgetComparison {
 	incurred_cost: number | null;
 	confirmed_records: number;
 	pending_records: number;
+	period_charges: number;
 	outcome: string;
 	budget: BudgetCandidate | null;
 	candidates: BudgetCandidate[];
@@ -232,6 +245,10 @@ function publish(): void {
 				'gammaPending',
 				'gammaAmbiguousA',
 				'gammaAmbiguousB',
+				'betaJuneUsd',
+				'deltaAnnual',
+				'deltaPartialUsd',
+				'alphaAugust',
 			].map((key) => seededBudget(key).budgetUid),
 		},
 		createdThroughApp: created,
@@ -447,29 +464,30 @@ test('states currency, scope, period, ambiguity, and unsupported cost explicitly
 	const febInr = comparison(february, EXPENDITURE_PROJECTS.alpha.code, 'INR');
 	const febUsd = comparison(february, EXPENDITURE_PROJECTS.alpha.code, 'USD');
 	const usdBudget = Number(FEB_BUDGET.amount);
-	// The USD row compares with the USD budget: same Project, same currency.
+	// The USD row compares with the USD budget: same Project, same currency, and
+	// the budget's period is exactly February.
 	expect(febUsd.incurred_cost).toBe(fixtureCost('alpha', NEXT_MONTH, 'USD'));
 	expect(febUsd.outcome).toBe('compared');
 	expect(febUsd.budget?.budget_uid).toBe(FEB_BUDGET.budgetUid);
 	expect(febUsd.variance).toBe(usdBudget - fixtureCost('alpha', NEXT_MONTH, 'USD'));
 	expect(febUsd.variance).toBe(170);
-	// The INR row does not borrow the USD budget: the annual INR budget covers
-	// February in INR, so that is what it compares with, and the USD budget
-	// stays a candidate it never compares against.
+	// The INR row has no February INR budget: January's budget states January's
+	// cost, and it is disclosed rather than stretched over another month.
 	expect(febInr.incurred_cost).toBe(fixtureCost('alpha', NEXT_MONTH, 'INR'));
-	expect(febInr.outcome).toBe('compared');
-	expect(febInr.budget?.budget_uid).toBe(APPROVED.budgetUid);
-	expect(febInr.budget?.currency).toBe('INR');
-	expect(febInr.variance).toBe(
-		Number(APPROVED.amount) - fixtureCost('alpha', NEXT_MONTH, 'INR')
+	expect(febInr.outcome).toBe('incompatible_period');
+	expect(febInr.budget).toBeNull();
+	expect(febInr.variance).toBeNull();
+	expect(febInr.over_budget).toBeNull();
+	expect(febInr.detail).toContain(APPROVED.periodEnd);
+	const febCandidateUids = febInr.candidates.map(
+		(candidate) => candidate.budget_uid
 	);
-	expect(febInr.variance).toBe(4900);
-	expect(
-		febInr.candidates.map((candidate) => candidate.budget_uid).sort()
-	).toEqual([APPROVED.budgetUid, FEB_BUDGET.budgetUid].sort());
-	expect(febInr.detail).toContain(APPROVED.budgetUid);
-	// Both rows are comparable, so the month carries no incompatibility notice.
+	expect(febCandidateUids).toContain(APPROVED.budgetUid);
+	expect(febCandidateUids).toContain(FEB_BUDGET.budgetUid);
+	// Both rows are stated, and neither invents a conversion or a proportional
+	// share of a budget that covers other months.
 	expect(noticeCodes(february)).not.toContain('budget_incompatible_currency');
+	expect(noticeCodes(february)).toContain('budget_incompatible_period');
 	expect(noticeCodes(february)).toContain('budget_variance_not_profit');
 
 	const budgetMonth = await reconciliation(request, BUDGET);
@@ -533,6 +551,45 @@ test('states currency, scope, period, ambiguity, and unsupported cost explicitly
 	// is the statement — with no converted comparison invented.
 	expect(betaInr.candidates).toHaveLength(1);
 
+	// delta INR: the only approved INR budget is annual. It stays visible with
+	// its period, and June's cost is never treated as a share of it.
+	const deltaInr = comparison(budgetMonth, EXPENDITURE_PROJECTS.delta.code, 'INR');
+	expect(deltaInr.incurred_cost).toBe(fixtureCost('delta', BUDGET, 'INR'));
+	expect(deltaInr.outcome).toBe('incompatible_period');
+	expect(deltaInr.budget).toBeNull();
+	expect(deltaInr.variance).toBeNull();
+	expect(deltaInr.over_budget).toBeNull();
+	expect(deltaInr.detail).toContain(ANNUAL_BUDGET.periodEnd);
+	expect(deltaInr.detail).toContain('no proportional allocation');
+	expect(deltaInr.candidates.map((c) => c.budget_uid)).toContain(
+		ANNUAL_BUDGET.budgetUid
+	);
+
+	// delta USD: the only approved USD budget runs from mid-May to mid-June, so
+	// it states two months' cost and is disclosed the same way.
+	const deltaUsd = comparison(budgetMonth, EXPENDITURE_PROJECTS.delta.code, 'USD');
+	expect(deltaUsd.incurred_cost).toBe(fixtureCost('delta', BUDGET, 'USD'));
+	expect(deltaUsd.outcome).toBe('incompatible_period');
+	expect(deltaUsd.budget).toBeNull();
+	expect(deltaUsd.variance).toBeNull();
+	expect(deltaUsd.detail).toContain(PARTIAL_BUDGET.periodStart);
+	expect(deltaUsd.detail).toContain(PARTIAL_BUDGET.periodEnd);
+	expect(deltaUsd.detail).toContain('no proportional allocation');
+	expect(deltaUsd.candidates.map((c) => c.budget_uid)).toContain(
+		PARTIAL_BUDGET.budgetUid
+	);
+
+	// The rule the whole section rests on: a variance exists exactly where a
+	// budget's period is this month; everything else states null.
+	for (const row of budgetMonth.budgets.comparisons) {
+		if (row.outcome === 'compared') {
+			expect(row.variance, `${row.project_code}/${row.currency}`).not.toBeNull();
+		} else {
+			expect(row.variance, `${row.project_code}/${row.currency}`).toBeNull();
+			expect(row.over_budget, `${row.project_code}/${row.currency}`).toBeNull();
+		}
+	}
+
 	const codes = noticeCodes(budgetMonth);
 	expect(codes).toContain('budget_incompatible_period');
 	expect(codes).toContain('budget_incompatible_scope');
@@ -553,6 +610,74 @@ test('states currency, scope, period, ambiguity, and unsupported cost explicitly
 			notices: budgetMonth.budgets.notices,
 		},
 	};
+});
+
+test('compares an approved budget with a charge-only month', async ({
+	page,
+	request,
+}) => {
+	// alpha's August cost comes entirely from supported period charges (#317):
+	// this spec seeds no operating expense in August, so the row exists only
+	// because approved period charges are part of Incurred Project Cost. The
+	// comparison must therefore be supported, not withheld as an unconfirmed
+	// zero, and the budget is an exact August period.
+	const august = await reconciliation(request, CHARGE_MONTH);
+	const alphaInr = comparison(august, EXPENDITURE_PROJECTS.alpha.code, 'INR');
+	expect(alphaInr.period_charges).toBeGreaterThan(0);
+	expect(alphaInr.incurred_cost).not.toBeNull();
+	expect(alphaInr.incurred_cost!).toBeGreaterThan(0);
+	expect(alphaInr.outcome).toBe('compared');
+	expect(alphaInr.budget?.budget_uid).toBe(AUGUST_BUDGET.budgetUid);
+	expect(alphaInr.budget?.period_start).toBe(AUGUST_BUDGET.periodStart);
+	expect(alphaInr.budget?.period_end).toBe(AUGUST_BUDGET.periodEnd);
+	const augustBudget = Number(AUGUST_BUDGET.amount);
+	const augustIncurred = alphaInr.incurred_cost!;
+	expect(alphaInr.variance).toBe(augustBudget - augustIncurred);
+	expect(alphaInr.over_budget).toBe(augustIncurred > augustBudget);
+	expect(alphaInr.over_budget).toBe(true);
+
+	// Charges are real cost, so the over-budget figure is published (not
+	// suppressed) and names the approved August budget it is measured against.
+	expect(alphaInr.detail).toContain(AUGUST_BUDGET.approvalEvidence as string);
+	expect(noticeCodes(august)).toContain('budget_variance_not_profit');
+
+	// Nothing in the August section claims a share of an annual budget: every
+	// published variance belongs to a row whose budget is that month exactly.
+	const comparedRows = august.budgets.comparisons.filter(
+		(row) => row.outcome === 'compared'
+	);
+	expect(comparedRows.length).toBeGreaterThan(0);
+	expect(comparedRows.every((row) => row.variance !== null)).toBe(true);
+	expect(
+		august.budgets.comparisons
+			.filter((row) => row.outcome !== 'compared')
+			.every((row) => row.variance === null)
+	).toBe(true);
+
+	evidence.chargeOnly = {
+		month: CHARGE_MONTH,
+		project: EXPENDITURE_PROJECTS.alpha.code,
+		budget: AUGUST_BUDGET.budgetUid,
+		period: [AUGUST_BUDGET.periodStart, AUGUST_BUDGET.periodEnd],
+		periodCharges: alphaInr.period_charges,
+		confirmedRecords: alphaInr.confirmed_records,
+		incurred: augustIncurred,
+		variance: alphaInr.variance,
+		overBudget: alphaInr.over_budget,
+		outcome: alphaInr.outcome,
+	};
+
+	// The browser serves the same comparison for the same month.
+	await openExpenditure(page, CHARGE_MONTH_LABEL);
+	const augustRow = page.locator(
+		`[data-testid="budget-comparison-row"]` +
+			`[data-project-code="${EXPENDITURE_PROJECTS.alpha.code}"][data-currency="INR"]`
+	);
+	await expect(augustRow).toHaveAttribute('data-outcome', 'compared');
+	expect(String(await augustRow.getAttribute('data-variance'))).toBe(
+		String(alphaInr.variance)
+	);
+	await expect(augustRow).toContainText(AUGUST_BUDGET.budgetUid);
 });
 
 test('records, submits, and approves a budget through the report controls', async ({
@@ -914,6 +1039,7 @@ test('regenerates the JSON evidence artifact', async () => {
 	expect(artifact).toMatchObject({ ok: true, month: MONTH });
 	expect(artifact.january).toBeTruthy();
 	expect(artifact.outcomes).toBeTruthy();
+	expect(artifact.chargeOnly).toBeTruthy();
 	expect(artifact.browserWorkflow).toBeTruthy();
 	expect(artifact.supersede).toBeTruthy();
 	expect(artifact.authorization).toBeTruthy();

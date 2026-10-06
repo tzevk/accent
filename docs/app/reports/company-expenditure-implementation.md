@@ -208,27 +208,34 @@ a guessed figure.
 **Comparison rules.** `budget-comparison.ts` builds `budgets` inside the
 reconciliation payload. A row is `compared` (with `variance` = approved budget
 − confirmed Incurred Project Cost) only when one approved budget matches the
-Project, the row's currency, the `project_incurred_cost` scope, and the month
-inside its period. Everything else is stated explicitly, never guessed:
+Project, the row's currency, the `project_incurred_cost` scope, and the period —
+**exactly the selected month**. A budget whose period is a year, a quarter, or a
+mid-month span states another period's cost too, so it is disclosed as an
+incompatible period and never allocated proportionally; a single month is the
+only period whose whole approved amount is that month's cost. The month's cost
+must also be supported: a confirmed operating record, a supported approved
+period charge (`period_charge_count`, #317), or any other integrated source.
+An unconfirmed month is never treated as a supported zero. Everything else is
+stated explicitly, never guessed:
 
 | Outcome                     | The reader is told                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------- |
 | `missing`                   | No budget recorded for this Project and currency                                    |
-| `unapproved`                | A covering budget exists but is not approved yet                                    |
+| `unapproved`                | A same-currency, same-scope budget for this month exists but is not approved yet     |
 | `incompatible_currency`     | Only an approved budget in another currency exists — no conversion is invented       |
 | `incompatible_scope`        | The approved record declares a commercial value, not a cost budget                   |
-| `incompatible_period`       | The approved budget covers another period                                            |
-| `ambiguous`                 | More than one approved matching budget — none is picked                              |
-| `unsupported_incurred_cost` | An approved budget matches but no confirmed cost is recorded yet                     |
-| `no_incurred_cost`          | An approved covering budget exists with no Project cost row in the month             |
+| `incompatible_period`       | The approved budget's period is not this month (annual or partial: no allocation)    |
+| `ambiguous`                 | More than one approved budget matches — none is picked                              |
+| `unsupported_incurred_cost` | An approved budget matches but no cost is confirmed yet (no direct cost, no charge)  |
+| `no_incurred_cost`          | An approved budget exists with no Project cost row in the month                      |
 
 The candidate closest to comparable is chosen inside the row's own currency
 first — a comparison exists only in one currency — and then by a fixed
-precedence (covers the month, then scope, then approval). A covering draft in
-the row's currency is therefore stated as `unapproved` rather than hidden behind
-an approved budget for another period, a same-currency record with a commercial
-scope is stated as `incompatible_scope`, and a foreign-currency budget is stated
-as `incompatible_currency` only when nothing of the row's currency exists.
+precedence (exactly this month, then scope, then approval). A draft of this
+month is therefore stated as `unapproved` rather than hidden behind an approved
+budget for another period, a same-currency record with a commercial scope is
+stated as `incompatible_scope`, and a foreign-currency budget is stated as
+`incompatible_currency` only when nothing of the row's currency exists.
 `budgets.notices` summarises every outcome, and the
 `budget_variance_not_profit` notice states that remaining budget is not profit,
 recognized revenue, or a forecast of uncommitted work.
@@ -326,18 +333,26 @@ fixture amounts:
 
 `e2e/specs/project-cost-budgets.spec.ts` (#321) drives the same real app and
 writes `e2e/artifacts/project-cost-budgets.json`. It extends the same fixture
-module (budget namespace `e2e-budget-*`, a third Project `E2E-EXP-P3`, four
-May-2019 costs, seven seeded budgets) and asserts, from the fixture literals:
+module (budget namespace `e2e-budget-*`, a third and fourth Project
+`E2E-EXP-P3`/`P4`, June-2019 costs, eleven seeded budgets, and the August
+charge-only month owned by #317) and asserts, from the fixture literals:
 
-- an approved budget covering January compares with alpha's 3,500 INR as
-  `compared` (5,000 − 3,500 = 1,500 remaining), while a Project with no budget
-  is `missing`;
-- currency, scope, period, ambiguity, and un-supported-cost outcomes are each
+- an approved budget whose period is exactly January compares with alpha's
+  3,500 INR as `compared` (5,000 − 3,500 = 1,500 remaining), while a Project with
+  no budget is `missing` and February's INR row states the January budget's
+  period as `incompatible_period` instead of stretching it over another month;
+- currency, scope, period, ambiguity, and unsupported-cost outcomes are each
   stated explicitly — a February USD budget compares only with the USD row, a
-  commercial-value record never becomes a cost budget, an approved budget for an
-  earlier period does not compare with May, a pending-only cost states
-  `unsupported_incurred_cost` instead of comparing with a guessed zero, and two
-  matching approved budgets state `ambiguous`;
+  commercial-value record never becomes a cost budget, an annual budget and a
+  mid-May-to-mid-June budget stay visible as `incompatible_period` with a null
+  variance and no proportional allocation, a pending-only cost states
+  `unsupported_incurred_cost` instead of comparing with a guessed zero, a
+  Project whose only approved budget is in another currency states
+  `incompatible_currency`, and two matching approved budgets state `ambiguous`;
+- an August month whose Project cost comes entirely from supported approved
+  period charges (#317) compares with an exact August budget and publishes the
+  over-budget variance — charge-only cost is confirmed cost, not an unconfirmed
+  zero, and no annual budget is allocated to that month;
 - the browser records, submits, and approves a budget through the report's own
   controls, with the approval evidence the control requires, and the report then
   compares it (5,000 − 1,200 = 3,800) with version 3 and three journal entries in

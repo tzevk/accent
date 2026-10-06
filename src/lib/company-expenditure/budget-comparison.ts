@@ -5,10 +5,16 @@
  * Rules it enforces, straight from the ticket and the parent specification:
  *  - A variance is published only when an *approved* budget matches the
  *    Project, the currency, the scope (a cost budget for Incurred Project
- *    Cost), and the period of the month being read.
+ *    Cost), and the period — exactly the selected month. An annual or partial
+ *    budget states other periods as well, so it is disclosed as an
+ *    incompatible period and never allocated proportionally.
  *  - A missing, unapproved, incompatible, or ambiguous budget is stated
  *    explicitly and never guessed: no Project commercial field, quotation, or
  *    order value is ever read as a budget.
+ *  - The month's cost must be supported by a confirmed cost-bearing item of an
+ *    integrated source — a confirmed operating record, a supported approved
+ *    period charge, or whatever else the reconciliation counted into the row.
+ *    An unconfirmed month is never treated as a supported zero.
  *  - A budget never enters Company Incurred Cost, the Project breakdown, or
  *    the evidence summary. It is its own section beside them.
  *  - Remaining or overspent budget is the difference between the approved cost
@@ -40,6 +46,16 @@ export interface BudgetComparisonRow {
 	client_name: string | null;
 	currency: string;
 	incurred_cost: number;
+	/**
+	 * Confirmed cost-bearing items the reconciliation counted for this row
+	 * across every integrated source — operating direct records, supported
+	 * approved period charges, and anything else that feeds `incurred_cost`.
+	 * When the row states it, it supports the figure; otherwise the comparison
+	 * counts the operating records it was handed.
+	 */
+	record_count?: number | null;
+	/** Supported approved period charges among those items (#317). */
+	period_charge_count?: number | null;
 }
 
 export interface BudgetComparisonInput {
@@ -70,7 +86,10 @@ function money(value: number, currency: string): string {
 }
 
 interface CandidateFlags {
-	covers: boolean;
+	/** The budget's period is exactly the selected month. */
+	matchesMonth: boolean;
+	/** The budget's period touches the selected month at all. */
+	overlapsMonth: boolean;
 	scope: boolean;
 	currency: boolean;
 	approved: boolean;
@@ -78,14 +97,16 @@ interface CandidateFlags {
 
 /**
  * How closely one budget matches this month's row, among the candidates that
- * can be compared with it at all. Covering the month counts most: that is what
- * the reader asked about, so a covering draft is the more relevant fact than an
- * approved budget for a different period. Scope comes next (never compare a
- * non-cost budget), and approval last, because an unapproved budget is not yet
- * a budget.
+ * can be compared with it at all. Matching the month exactly counts most: that
+ * is what the reader asked about, so a covering draft of the selected month is
+ * the more relevant fact than an approved budget for another period. Scope
+ * comes next (never compare a non-cost budget), and approval last, because an
+ * unapproved budget is not yet a budget.
  */
 function matchScore(flags: CandidateFlags): number {
-	return (flags.covers ? 4 : 0) + (flags.scope ? 2 : 0) + (flags.approved ? 1 : 0);
+	return (
+		(flags.matchesMonth ? 4 : 0) + (flags.scope ? 2 : 0) + (flags.approved ? 1 : 0)
+	);
 }
 
 function flagsOf(
@@ -95,7 +116,14 @@ function flagsOf(
 	currency: string
 ): CandidateFlags {
 	return {
-		covers: budget.period_start <= monthEnd && budget.period_end >= monthStart,
+		// Only a budget whose approved period is exactly this month states this
+		// month's cost: an annual or partial budget covers other periods too,
+		// and its amount is not this month's amount. No proportional
+		// allocation is applied, so anything else is disclosed, not compared.
+		matchesMonth:
+			budget.period_start === monthStart && budget.period_end === monthEnd,
+		overlapsMonth:
+			budget.period_start <= monthEnd && budget.period_end >= monthStart,
 		scope: budget.scope === 'project_incurred_cost',
 		currency: budget.currency === currency,
 		approved: budget.state === 'approved',
@@ -141,6 +169,15 @@ function evaluateRow(
 	);
 	const confirmedRecords = key.filter((record) => isConfirmed(record.state)).length;
 	const pendingRecords = key.filter((record) => isOpenState(record.state)).length;
+	// A Project's month is supported by any confirmed cost-bearing item of any
+	// integrated source: operating direct records, supported approved period
+	// charges (#317), or whatever else the reconciliation counted into the row.
+	// Charging a budget comparison against an unconfirmed month would state a
+	// variance over a zero that is not confirmed, so that stays explicit.
+	const periodCharges = Number(row.period_charge_count ?? 0);
+	const statedConfirmed = Number(row.record_count ?? 0);
+	const supportsIncurred =
+		confirmedRecords > 0 || statedConfirmed > 0 || periodCharges > 0;
 
 	const flagged = candidates.map((budget) => ({
 		budget,
@@ -161,7 +198,7 @@ function evaluateRow(
 	const compatible = ranked.filter(
 		(item) =>
 			item.flags.approved &&
-			item.flags.covers &&
+			item.flags.matchesMonth &&
 			item.flags.scope &&
 			item.flags.currency
 	);
@@ -176,6 +213,7 @@ function evaluateRow(
 		incurred_cost: row.incurred_cost,
 		confirmed_records: confirmedRecords,
 		pending_records: pendingRecords,
+		period_charges: periodCharges,
 		candidates: candidateList,
 	};
 
@@ -195,10 +233,10 @@ function evaluateRow(
 		detail,
 	});
 
-	if (compatible.length > 1 && confirmedRecords === 0) {
+	if (compatible.length > 1 && !supportsIncurred) {
 		return incompatible(
 			'unsupported_incurred_cost',
-			`No confirmed Incurred Project Cost is recorded for ${row.project_code} in ${row.currency} for ${month}, and ${compatible.length} approved budgets cover it (${compatible
+			`No confirmed Incurred Project Cost is recorded for ${row.project_code} in ${row.currency} for ${month} — neither a confirmed direct cost nor a supported approved period charge — and ${compatible.length} approved budgets cover it (${compatible
 				.map((item) => item.budget.budget_uid)
 				.join(', ')}), so no variance is stated.${pendingNote(pendingRecords)}`
 		);
@@ -215,10 +253,10 @@ function evaluateRow(
 
 	if (compatible.length === 1) {
 		const budget = compatible[0].budget;
-		if (confirmedRecords === 0) {
+		if (!supportsIncurred) {
 			return incompatible(
 				'unsupported_incurred_cost',
-				`${describe(toBudgetCandidate(budget))} covers ${row.project_code} in ${row.currency} for ${month}, but no confirmed Incurred Project Cost is recorded, so no variance is stated against a zero that is not confirmed.${pendingNote(pendingRecords)}`,
+				`${describe(toBudgetCandidate(budget))} covers ${row.project_code} in ${row.currency} for ${month}, but no confirmed Incurred Project Cost is recorded — neither a confirmed direct cost nor a supported approved period charge — so no variance is stated against a zero that is not confirmed.${pendingNote(pendingRecords)}`,
 				toBudgetCandidate(budget)
 			);
 		}
@@ -257,10 +295,13 @@ function evaluateRow(
 			`${describe(candidate)} is stated in ${candidate.currency} and this Project's cost for ${month} is ${row.currency}; currencies are never converted to force a comparison.`
 		);
 	}
-	if (!chosen.flags.covers) {
+	if (!chosen.flags.matchesMonth) {
+		const partial = chosen.flags.overlapsMonth;
 		return incompatible(
 			'incompatible_period',
-			`${describe(candidate)} does not cover ${month}, so it is not compared with ${row.project_code}'s incurred cost for ${month}.`
+			partial
+				? `${describe(candidate)} covers ${candidate.period_start} to ${candidate.period_end}, which is not ${month} (${monthStart} to ${monthEnd}) alone: this month's Incurred Project Cost is not the whole approved period, and no proportional allocation is applied.`
+				: `${describe(candidate)} does not cover ${month}, so it is not compared with ${row.project_code}'s incurred cost for ${month}.`
 		);
 	}
 	if (!chosen.flags.scope) {
@@ -341,6 +382,7 @@ export function buildBudgetSection(input: BudgetComparisonInput): BudgetSection 
 			incurred_cost: null,
 			confirmed_records: 0,
 			pending_records: 0,
+			period_charges: 0,
 			outcome: 'no_incurred_cost',
 			budget: approved.length > 0 ? toBudgetCandidate(approved[0]) : null,
 			candidates: projectBudgets.map(toBudgetCandidate),
@@ -401,9 +443,9 @@ export function buildBudgetSection(input: BudgetComparisonInput): BudgetSection 
 		{
 			outcome: 'incompatible_period',
 			code: 'budget_incompatible_period',
-			label: 'Cost budget covers another period',
+			label: 'Cost budget is not for this month',
 			detail: (count) =>
-				`${count} Project row(s) have an approved cost budget that does not cover this month.`,
+				`${count} Project row(s) have an approved cost budget whose period is not this month exactly. An annual or partial budget states another period's cost, so it is not compared and no proportional allocation is applied.`,
 			severity: 'warning',
 		},
 		{

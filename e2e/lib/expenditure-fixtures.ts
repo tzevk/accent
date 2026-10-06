@@ -94,6 +94,12 @@ export const EXPENDITURE_PROJECTS = {
 		title: 'E2E Expenditure Gamma',
 		client: 'E2E Client Gamma',
 	},
+	/** Carries the annual and partial budget periods (#321). */
+	delta: {
+		code: 'E2E-EXP-P4',
+		title: 'E2E Expenditure Delta',
+		client: 'E2E Client Delta',
+	},
 } as const;
 
 export type ExpenditureProjectKey = keyof typeof EXPENDITURE_PROJECTS;
@@ -656,6 +662,54 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		evidenceReference: 'E2E-GRN-0021',
 		description: 'E2E June INR cost whose only approved budget is stated in USD',
 	},
+	{
+		key: 'deltaInr',
+		expenseNumber: 'E2E-EXP-0022',
+		costUid: 'e2e-cost-0022',
+		classification: 'project',
+		project: 'delta',
+		state: 'recognized',
+		recognitionMonth: BUDGET_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-06-03',
+		serviceEnd: '2019-06-03',
+		billDate: '2019-06-04',
+		expenseDate: '2019-06-04',
+		currency: 'INR',
+		amount: '250.00',
+		taxAmount: '0.00',
+		grossAmount: '250.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '250.00',
+		sourceReference: 'E2E-INV-0022',
+		evidenceReference: 'E2E-GRN-0022',
+		description: 'E2E June INR cost under an annual cost budget only',
+	},
+	{
+		key: 'deltaUsd',
+		expenseNumber: 'E2E-EXP-0023',
+		costUid: 'e2e-cost-0023',
+		classification: 'project',
+		project: 'delta',
+		state: 'recognized',
+		recognitionMonth: BUDGET_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-06-05',
+		serviceEnd: '2019-06-05',
+		billDate: '2019-06-06',
+		expenseDate: '2019-06-06',
+		currency: 'USD',
+		amount: '120.00',
+		taxAmount: '0.00',
+		grossAmount: '120.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '120.00',
+		sourceReference: 'E2E-INV-0023',
+		evidenceReference: 'E2E-GRN-0023',
+		description: 'E2E June USD cost under a mid-month partial cost budget only',
+	},
 ];
 
 /**
@@ -665,17 +719,22 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
  * reconciliation total: January, February, and the empty month 2019-05 keep
  * exactly the expenses the reconciliation spec already asserts. The budget
  * workflow month is 2019-06 (2019-10..12 belong to #319), and the rows cover
- * every comparison outcome the module must state explicitly:
+ * every comparison outcome the module must state explicitly. A variance is
+ * published only when the budget's period is exactly the selected month, so
+ * annual and partial budgets show as incompatible periods:
  *
- *   alpha / 2019-01 / INR  approved covering budget            → compared
- *   alpha / 2019-02 / INR  the annual INR budget covers it      → compared
- *   alpha / 2019-02 / USD  the February USD budget             → compared
- *   beta  / 2019-01 / INR  no budget at all                    → missing
- *   beta  / 2019-06 / INR  an approved USD budget only         → incompatible currency
- *   gamma / 2019-06 / INR  approved, but for an earlier period  → incompatible period
- *   gamma / 2019-06 / USD  approved commercial-value scope     → incompatible scope
- *   gamma / 2019-06 / EUR  approved, cost not recognized yet   → unsupported cost
- *   gamma / 2019-06 / GBP  two approved covering budgets       → ambiguous
+ *   alpha / 2019-01 / INR  approved for January exactly            → compared
+ *   alpha / 2019-02 / INR  the January budget, not February        → incompatible period
+ *   alpha / 2019-02 / USD  the February USD budget                 → compared
+ *   beta  / 2019-01 / INR  no budget at all                        → missing
+ *   beta  / 2019-06 / INR  an approved USD budget only             → incompatible currency
+ *   gamma / 2019-06 / INR  approved, but for an earlier period     → incompatible period
+ *   gamma / 2019-06 / USD  approved commercial-value scope         → incompatible scope
+ *   gamma / 2019-06 / EUR  approved, cost not recognized yet       → unsupported cost
+ *   gamma / 2019-06 / GBP  two approved covering budgets           → ambiguous
+ *   delta / 2019-06 / INR  an annual budget only                   → incompatible period
+ *   delta / 2019-06 / USD  a mid-month budget spanning two months  → incompatible period
+ *   alpha / 2019-08 / INR  charge-only month, August budget        → compared (#317 charges)
  */
 export const EXPENDITURE_BUDGET_UID_PREFIX = 'e2e-budget-';
 /**
@@ -723,10 +782,10 @@ export const EXPENDITURE_BUDGETS: SeedBudget[] = [
 		amount: '5000.00',
 		scope: 'project_incurred_cost',
 		periodStart: '2019-01-01',
-		periodEnd: '2019-12-31',
+		periodEnd: '2019-01-31',
 		state: 'approved',
 		approvalEvidence: 'E2E-BUDGET-EVID-0001',
-		basisNote: 'E2E approved annual cost budget for Alpha',
+		basisNote: 'E2E approved January cost budget for Alpha',
 		financialVersion: 2,
 		journal: ['recorded', 'approved'],
 	},
@@ -832,6 +891,51 @@ export const EXPENDITURE_BUDGETS: SeedBudget[] = [
 		state: 'approved',
 		approvalEvidence: 'E2E-BUDGET-EVID-0008',
 		basisNote: 'E2E approved June cost budget stated in USD',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'deltaAnnual',
+		budgetUid: 'e2e-budget-0009',
+		project: 'delta',
+		currency: 'INR',
+		amount: '40000.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-01-01',
+		periodEnd: '2019-12-31',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0009',
+		basisNote: 'E2E approved annual cost budget, never allocated to one month',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'deltaPartialUsd',
+		budgetUid: 'e2e-budget-0010',
+		project: 'delta',
+		currency: 'USD',
+		amount: '500.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-05-15',
+		periodEnd: '2019-06-15',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0010',
+		basisNote: 'E2E approved mid-month cost budget spanning two months',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'alphaAugust',
+		budgetUid: 'e2e-budget-0011',
+		project: 'alpha',
+		currency: 'INR',
+		amount: '20000.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-08-01',
+		periodEnd: '2019-08-31',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0011',
+		basisNote: 'E2E approved August cost budget for a charge-only month',
 		financialVersion: 1,
 		journal: ['recorded', 'approved'],
 	},
