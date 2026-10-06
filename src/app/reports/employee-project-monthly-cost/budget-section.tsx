@@ -215,13 +215,15 @@ function BudgetForm({
 					</button>
 				</div>
 				<p className="mb-3 text-xs text-gray-600">
-					A recorded budget is a draft. It becomes an approved cost budget
-					only through Submit and Approve, and it is compared with Incurred
-					Project Cost only when Project, currency, scope, and period match.
+					A recorded budget is a draft. It becomes an approved cost budget only
+					through Submit and Approve, and it is compared with Incurred Project
+					Cost only when Project, currency, scope, and period match.
 				</p>
 				<div className="grid gap-3 md:grid-cols-2">
 					<label className="text-sm">
-						<span className="mb-1 block font-medium text-gray-700">Currency</span>
+						<span className="mb-1 block font-medium text-gray-700">
+							Currency
+						</span>
 						<select
 							aria-label="Currency"
 							value={currency}
@@ -380,8 +382,8 @@ function CommandDialog({
 							placeholder="Board minute, signed approval, mail reference"
 						/>
 						<span className="mt-1 block text-xs text-gray-500">
-							An approval without evidence is refused: the comparison cites
-							this reference.
+							An approval without evidence is refused: the comparison cites this
+							reference.
 						</span>
 					</label>
 				)}
@@ -518,7 +520,9 @@ export default function BudgetSection({
 						<BanknotesIcon className="h-5 w-5 text-[#64126D]" />
 						Approved cost budget
 					</h2>
-					<p className="mt-1 max-w-3xl text-xs text-gray-600">{section.basis}</p>
+					<p className="mt-1 max-w-3xl text-xs text-gray-600">
+						{section.basis}
+					</p>
 					<p className="mt-1 max-w-3xl text-xs text-gray-500">
 						{section.variance_note}
 					</p>
@@ -579,7 +583,9 @@ export default function BudgetSection({
 									row.incurred_cost === null ? '' : String(row.incurred_cost)
 								}
 								data-budget={row.budget ? String(row.budget.amount) : ''}
-								data-variance={row.variance === null ? '' : String(row.variance)}
+								data-variance={
+									row.variance === null ? '' : String(row.variance)
+								}
 								className="border-t border-gray-100 align-top"
 							>
 								<td className="px-2 py-2">
@@ -616,7 +622,7 @@ export default function BudgetSection({
 											row.outcome === 'compared'
 												? 'bg-emerald-50 text-emerald-700'
 												: row.outcome === 'missing' ||
-														row.outcome === 'no_incurred_cost'
+													  row.outcome === 'no_incurred_cost'
 													? 'bg-gray-100 text-gray-600'
 													: 'bg-amber-50 text-amber-700'
 										}`}
@@ -686,8 +692,8 @@ export default function BudgetSection({
 					</div>
 					{selectedProject && (
 						<span className="text-xs text-gray-500">
-							Every version of this Project's cost budget, with its approval
-							evidence and state.
+							Every version of this Project&apos;s cost budget, with its
+							approval evidence and state.
 						</span>
 					)}
 				</div>
@@ -731,9 +737,7 @@ export default function BudgetSection({
 										data-testid="budget-history"
 										onClick={() =>
 											setExpandedBudget(
-												expandedBudget === budget.id
-													? null
-													: budget.id
+												expandedBudget === budget.id ? null : budget.id
 											)
 										}
 										className="flex items-center gap-1 rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
