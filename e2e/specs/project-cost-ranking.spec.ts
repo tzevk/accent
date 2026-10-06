@@ -323,6 +323,18 @@ async function renderedOrder(page: Page): Promise<string[]> {
 	return codes.filter((code) => mine.includes(code));
 }
 
+function betaRow(page: Page) {
+	return page.locator(
+		`[data-testid="expenditure-project-row"][data-project-code="${BETA}"]`
+	);
+}
+
+function gammaRow(page: Page) {
+	return page.locator(
+		`[data-testid="expenditure-project-row"][data-project-code="${GAMMA}"]`
+	);
+}
+
 test.beforeAll(async () => {
 	// Rerun safety: an interrupted earlier run may have left the cost this spec
 	// records through the browser form behind. Remove it (and its journal)
@@ -1158,15 +1170,3 @@ test('records, recognizes, and re-ranks a cost through the report controls', asy
 		journal: journal.map((entry) => `${entry.version}:${entry.command}`),
 	};
 });
-
-function betaRow(page: Page) {
-	return page.locator(
-		`[data-testid="expenditure-project-row"][data-project-code="${BETA}"]`
-	);
-}
-
-function gammaRow(page: Page) {
-	return page.locator(
-		`[data-testid="expenditure-project-row"][data-project-code="${GAMMA}"]`
-	);
-}
