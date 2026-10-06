@@ -1093,6 +1093,53 @@ export async function executeOtherExpenseCommand(
 		}
 
 		const patch = input.patch ?? {};
+		// A rate is evidence for ONE currency pair: changing either side never
+		// inherits the stored triple, and a new convertible pair needs fresh
+		// evidence in the same command (#319).
+		const storedPair = {
+			currency: current.currency,
+			reportingCurrency: reportingCurrencyOf({
+				reportingCurrency: current.reporting_currency
+			})
+		};
+		const requestedPair = {
+			currency:
+				patch.currency !== undefined
+					? currencyCodeOf(patch.currency)
+					: storedPair.currency,
+			reportingCurrency:
+				patch.reporting_currency !== undefined
+					? reportingCurrencyOf({
+							reportingCurrency: currencyCodeOf(patch.reporting_currency)
+						})
+					: storedPair.reportingCurrency
+		};
+		const pairChanged =
+			requestedPair.currency !== storedPair.currency ||
+			requestedPair.reportingCurrency !== storedPair.reportingCurrency;
+		const suppliesConversionEvidence =
+			patch.conversion_rate !== undefined ||
+			patch.conversion_date !== undefined ||
+			patch.conversion_evidence_reference !== undefined;
+		if (
+			pairChanged &&
+			!suppliesConversionEvidence &&
+			requestedPair.currency !== null &&
+			requestedPair.currency !== requestedPair.reportingCurrency
+		) {
+			throw new CostError(
+				'conversion_evidence_required',
+				'Changing the original/reporting currency pair requires fresh conversion evidence for the new pair',
+				422,
+				{
+					fields: [
+						'conversion_rate',
+						'conversion_date',
+						'conversion_evidence_reference'
+					]
+				}
+			);
+		}
 		const mergedRaw = {
 			classification:
 				patch.classification !== undefined
@@ -1125,17 +1172,23 @@ export async function executeOtherExpenseCommand(
 					? patch.reporting_currency
 					: current.reporting_currency,
 			conversionRate:
-				patch.conversion_rate !== undefined
-					? patch.conversion_rate
-					: current.conversion_rate,
+				pairChanged
+					? (patch.conversion_rate ?? null)
+					: patch.conversion_rate !== undefined
+						? patch.conversion_rate
+						: current.conversion_rate,
 			conversionDate:
-				patch.conversion_date !== undefined
-					? patch.conversion_date
-					: current.conversion_date,
+				pairChanged
+					? (patch.conversion_date ?? null)
+					: patch.conversion_date !== undefined
+						? patch.conversion_date
+						: current.conversion_date,
 			conversionEvidenceReference:
-				patch.conversion_evidence_reference !== undefined
-					? patch.conversion_evidence_reference
-					: current.conversion_evidence_reference,
+				pairChanged
+					? (patch.conversion_evidence_reference ?? null)
+					: patch.conversion_evidence_reference !== undefined
+						? patch.conversion_evidence_reference
+						: current.conversion_evidence_reference,
 			grossAmount:
 				patch.gross_amount !== undefined
 					? amountOrNull(patch.gross_amount)

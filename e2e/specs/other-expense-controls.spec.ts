@@ -1340,6 +1340,51 @@ test('carries conversion evidence from capture to the reporting figure', async (
 		'conversion_not_applicable'
 	);
 
+	// A rate belongs to one currency pair: changing the original currency
+	// without fresh evidence for the new pair is refused, not inherited.
+	const pairChange = await command(request, captured.id, {
+		command: 'update',
+		expected_version: 1,
+		patch: { currency: 'EUR' }
+	});
+	expect(pairChange.status).toBe(422);
+	expect(pairChange.body.code).toBe('conversion_evidence_required');
+	expect((await storedOtherExpense(captured.id)).currency).toBe('USD');
+
+	// Moving an entry onto its reporting currency clears the triple instead.
+	const cleared = await captureStandalone(request, {
+		voucher_number: `${OTHER_EXPENSE_PREFIX}FX-CLEAR`,
+		voucher_date: `${MONTH}-19`,
+		expense_category: 'Subscription',
+		payee_type: 'vendor',
+		vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}fx-clear`,
+		bill_amount: 10,
+		gst_amount: 0,
+		description: `${OTHER_EXPENSE_PREFIX}USD cost moved to the reporting currency`,
+		cost_classification: 'company_overhead',
+		service_period_start: `${MONTH}-19`,
+		service_period_end: `${MONTH}-19`,
+		currency: 'USD',
+		reporting_currency: 'INR',
+		conversion_rate: '84.5000000000',
+		conversion_date: `${MONTH}-19`,
+		conversion_evidence_reference: `${OTHER_EXPENSE_PREFIX}RATE-CLEAR`,
+		submit: true
+	});
+	created.push({ where: 'api-conversion-clear', id: cleared.id });
+	const clearedUpdate = await command(request, cleared.id, {
+		command: 'update',
+		expected_version: 1,
+		patch: { currency: 'INR' }
+	});
+	expect(clearedUpdate.status, JSON.stringify(clearedUpdate.body)).toBe(200);
+	const clearedRow = await storedOtherExpense(cleared.id);
+	expect(clearedRow.currency).toBe('INR');
+	expect(clearedRow.reporting_currency).toBe('INR');
+	expect(clearedRow.conversion_rate).toBeNull();
+	expect(clearedRow.conversion_date).toBeNull();
+	expect(clearedRow.conversion_evidence_reference).toBeNull();
+
 	const recognized = await command(request, captured.id, {
 		command: 'recognize',
 		expected_version: 1,
@@ -1431,13 +1476,13 @@ test('agrees with the browser report and the independently persisted rows', asyn
 		state: 'all',
 		limit: '200',
 	});
-	expect(source.total).toBe(10);
+	expect(source.total).toBe(11);
 	expect(source.totals.confirmed_amount).toBe(total);
-	expect(source.totals.records).toBe(10);
+	expect(source.totals.records).toBe(11);
 	const otherExpenseRows = source.records.filter(
 		(entry) => entry.source === 'other_expense'
 	);
-	expect(otherExpenseRows.length).toBe(9);
+	expect(otherExpenseRows.length).toBe(10);
 	expect(
 		otherExpenseRows.some((entry) => entry.recognition_state === 'cancelled')
 	).toBe(true);

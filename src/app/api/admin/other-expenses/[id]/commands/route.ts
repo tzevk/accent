@@ -14,8 +14,10 @@ import {
 const COMMANDS = ['update', 'submit', 'recognize', 'reject', 'cancel'] as const;
 type CommandName = (typeof COMMANDS)[number];
 
-/** Conversion evidence is module-owned (#319): changing it is an approval. */
+/** Conversion evidence is module-owned (#319): changing it — or either side of
+ * the currency pair it belongs to — is an approval. */
 const CONVERSION_PATCH_FIELDS = [
+	'currency',
 	'reporting_currency',
 	'conversion_rate',
 	'conversion_date',

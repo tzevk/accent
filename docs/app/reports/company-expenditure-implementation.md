@@ -439,9 +439,13 @@ source of the same module, not a second store:
   `conversion_not_applicable`). `converted_amount` is recomputed by the module
   from the recognized amount at the stored rate; no inverse or cross-rate is
   ever derived, and a foreign amount without evidence stays in its own currency
-  and is disclosed as unconverted. Afterwards only a versioned `update`
-  carrying the whole evidence may change it, and that patch needs
-  `other_expenses:approve` (the register PUT refuses the fields).
+  and is disclosed as unconverted. A rate is evidence for one currency pair:
+  changing `currency` or `reporting_currency` never inherits the stored triple
+  (a new convertible pair without fresh evidence is refused with
+  `conversion_evidence_required`, a pair moved onto its reporting currency
+  clears the triple). Afterwards only a versioned `update` carrying the whole
+  evidence may change it, and that patch — like either side of the pair —
+  needs `other_expenses:approve` (the register PUT refuses the fields).
 - **Coverage**: `SOURCE_COVERAGE` declares `other_expense_source` as wired.
 
 End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
