@@ -14,7 +14,13 @@ export const ENTITY_RESOURCE_MAP = {
 	project: RESOURCES.PROJECTS,
 	purchase_order: RESOURCES.PURCHASE_ORDERS,
 	invoice: RESOURCES.INVOICES,
+	// Canonical orders (#310) are the same purchase-order source privilege as
+	// the legacy purchase-order copies they replace.
+	order: RESOURCES.PURCHASE_ORDERS,
 };
+
+/** Every entity type a document may attach to. */
+export const DOCUMENT_ENTITY_TYPES = Object.keys(ENTITY_RESOURCE_MAP);
 
 export const ALLOWED_TYPES = {
 	'application/pdf': '.pdf',
@@ -73,6 +79,12 @@ export async function verifyEntityExists(entityType, entityId) {
 	} else if (entityType === 'invoice') {
 		const [rows] = await query(
 			'SELECT id FROM invoices WHERE id = ? AND isDelete = 0',
+			[id]
+		);
+		return Array.isArray(rows) && rows.length > 0;
+	} else if (entityType === 'order') {
+		const [rows] = await query(
+			'SELECT id FROM orders WHERE id = ? AND isDelete = 0',
 			[id]
 		);
 		return Array.isArray(rows) && rows.length > 0;

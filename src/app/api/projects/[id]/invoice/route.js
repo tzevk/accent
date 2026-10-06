@@ -102,6 +102,21 @@ export async function POST(request, { params }) {
 			);
 		}
 
+		// `tab_type = 'purchase_order'` used to store an order copy inside this
+		// invoice table (ticket #310). Orders now have one canonical store with
+		// an explicit direction, so this route no longer writes them.
+		if (data.tab_type === 'purchase_order') {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'Orders are recorded through the canonical order API (/api/admin/orders)',
+					code: 'orders_are_canonical',
+				},
+				{ status: 400 }
+			);
+		}
+
 		connection = await dbConnect();
 
 		const {

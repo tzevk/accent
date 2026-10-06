@@ -102,14 +102,48 @@ import type {
 
 export { recordCost, executeCommand, loadCost, CostError } from './commands';
 export type { CostActor, CommandOptions } from './commands';
-export {
-	capturePeriodCharge,
-	cancelPeriodCharge,
-} from './charges';
+export { capturePeriodCharge, cancelPeriodCharge } from './charges';
 export type {
 	CapturePeriodChargeInput,
 	PeriodChargeCommandInput,
 } from './charges';
+
+export {
+	createOrder,
+	fetchOrder,
+	fetchOrders,
+	fetchOrderReviewQueue,
+	linkClientInvoice,
+	resolveLegacyOrder,
+	statedOrderValue,
+	updateOrder,
+	OrderError,
+} from './orders';
+export type {
+	ClientInvoiceLinkInput,
+	ClientInvoiceLinkResult,
+	CreateOrderInput,
+	LegacyOrderDecision,
+	LegacyOrderMapping,
+	LegacyOrderResolution,
+	LegacyOrderResolutionInput,
+	LegacyOrderStore,
+	LegacyReviewState,
+	OrderActor,
+	OrderAmountBasis,
+	OrderDirection,
+	OrderEventRecord,
+	OrderFirmness,
+	OrderList,
+	OrderOptions,
+	OrderPatch,
+	OrderQuery,
+	OrderRecord,
+	OrderReviewQueue,
+	OrderStatus,
+	OrderValueTotal,
+	UpdateOrderInput,
+} from './orders';
 export { recordCostBudget, executeBudgetCommand } from './budget-commands';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
