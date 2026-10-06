@@ -12,14 +12,25 @@ type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
 
 /**
  * Direct-expense fixtures for the company expenditure reconciliation
- * (ticket #306).
+ * (tickets #306, #317, #320, #321).
  *
- * The module owns one namespace and nothing else:
- *   projects            `E2E-EXP-P*`
- *   expenses            `expense_number` LIKE `E2E-EXP-%`
- *   financial_cost_events  the `e2e-cost-*` cost UIDs above
+ * Ownership is the declared fixture arrays plus this module's own category and
+ * vendor namespace — never a bare `E2E-EXP-` prefix:
+ *   projects            `EXPENDITURE_PROJECTS` (base, budget, and ranking codes)
+ *   expenses            `EXPENDITURE_COSTS` numbers, or the app-recorded
+ *                       namespace (`EXPENDITURE_CATEGORY` / vendor prefix)
+ *   financial_cost_events  the declared cost UIDs above, or a cost whose source
+ *                       row is one of this module's expenses
+ *   period charges      `EXPENDITURE_CHARGES` UIDs, or a charge whose source is
+ *                       one of this module's expenses
+ *   budgets             `EXPENDITURE_BUDGETS` UIDs, or a budget of a declared Project
  *   users/roles         `e2e_cost_reports_only` / `e2e_cost_reports_reader`
  *                       (a `reports:read` reader with no expense-source read)
+ *
+ * `EXPENDITURE_EXPENSE_PREFIX`, `EXPENDITURE_PROJECT_CODE_PREFIX`, and the
+ * cost-UID prefixes are shared namespace markers only: #316, #319, and #320
+ * declare their own rows under `E2E-EXP-`/`e2e-cost-`, so no cleanup predicate
+ * may match on those prefixes.
  *
  * Every row states its own recognition inputs (service period or bill date,
  * classification, currency, tax treatment, evidence) and the recognizable
@@ -1164,112 +1175,148 @@ async function cleanupExpenditureReportOnlyReader(): Promise<void> {
 	]);
 }
 
+/** The identities this helper declares: nothing outside them is its to delete. */
+interface OwnedFixtureIdentities {
+	expenseNumbers: string[];
+	costUids: string[];
+	chargeUids: string[];
+	budgetUids: string[];
+	projectCodes: string[];
+}
+
+/**
+ * Every identity the declared fixture arrays own. Cleanup works from these
+ * arrays and from this module's own category/vendor namespace — never from the
+ * shared `E2E-EXP-` prefixes: #316, #319, and #320 declare their own rows
+ * under those prefixes, so deleting by prefix would wipe a sibling's fixtures.
+ */
+function ownedFixtureIdentities(): OwnedFixtureIdentities {
+	return {
+		expenseNumbers: EXPENDITURE_COSTS.map((cost) => cost.expenseNumber),
+		costUids: EXPENDITURE_COSTS.map((cost) => cost.costUid),
+		chargeUids: EXPENDITURE_CHARGES.map((charge) => charge.chargeUid),
+		budgetUids: EXPENDITURE_BUDGETS.map((budget) => budget.budgetUid),
+		projectCodes: Object.values(EXPENDITURE_PROJECTS).map(
+			(project) => project.code
+		),
+	};
+}
+
+function placeholders(count: number): string {
+	return Array.from({ length: count }, () => '?').join(', ');
+}
+
+/**
+ * This helper's own expense rows: the declared fixture numbers plus the
+ * namespace every row a spec records through the app carries (this module's
+ * own category and vendor prefix). Sibling families declare their own category
+ * and vendor constants, so neither clause reaches their rows.
+ */
+function ownedExpenseFilter(): { sql: string; params: Array<string | number> } {
+	const { expenseNumbers } = ownedFixtureIdentities();
+	return {
+		sql: `(expense_number IN (${placeholders(expenseNumbers.length)}) OR category = ? OR vendor_name LIKE ?)`,
+		params: [
+			...expenseNumbers,
+			EXPENDITURE_CATEGORY,
+			`${EXPENDITURE_VENDOR_PREFIX}%`,
+		],
+	};
+}
+
 /** Remove every row this module owns. Safe to run repeatedly. */
 export async function cleanupExpenditureFixtures(): Promise<number> {
 	await cleanupExpenditureReportOnlyReader();
 	let removed = 0;
-	// Period-charge history is keyed by the owning cost's identity, so it
-	// survives its expense row and must be purged first — in both its own
-	// tables: the append-only events, then the charge rows. A database that has
-	// not run the #317 migration yet has neither table, and cleanup must still
-	// succeed (the seed that follows is the loud failure in that case).
-	for (const table of [
-		'expense_period_charge_events',
-		'expense_period_charges',
-	]) {
-		try {
-			removed += (
-				await exec(
-					`DELETE FROM ${table}
-          WHERE charge_uid LIKE ?
-             OR source_cost_uid LIKE ?
-             OR source_id IN (
-                  SELECT id FROM expenses
-                   WHERE expense_number LIKE ?
-                      OR category = ?
-                      OR vendor_name LIKE ?
+	const owned = ownedFixtureIdentities();
+	const expenseFilter = ownedExpenseFilter();
+	const ownedExpenseIds = `SELECT id FROM expenses WHERE ${expenseFilter.sql}`;
+
+	// Period charges and their append-only events are keyed by the owning
+	// cost's identity, so they are purged before the expenses they belong to.
+	// A database without the #317 migration has neither table; cleanup still
+	// has to succeed there (the seed that follows fails loudly instead).
+	const chargeOwnership = [
+		`charge_uid IN (${placeholders(owned.chargeUids.length)})`,
+		`source_cost_uid IN (${placeholders(owned.costUids.length)})`,
+		`source_id IN (${ownedExpenseIds})`,
+	].join(' OR ');
+	const chargeParams = [
+		...owned.chargeUids,
+		...owned.costUids,
+		...expenseFilter.params,
+	];
+	try {
+		removed += (
+			await exec(
+				`DELETE FROM expense_period_charge_events
+          WHERE charge_uid IN (${placeholders(owned.chargeUids.length)})
+             OR charge_uid IN (
+                  SELECT charge_uid FROM expense_period_charges
+                   WHERE ${chargeOwnership}
                 )`,
-					[
-						`${EXPENDITURE_CHARGE_UID_PREFIX}%`,
-						`${EXPENDITURE_COST_UID_PREFIX}%`,
-						`${EXPENDITURE_EXPENSE_PREFIX}%`,
-						EXPENDITURE_CATEGORY,
-						`${EXPENDITURE_VENDOR_PREFIX}%`,
-					]
-				)
-			).affectedRows;
-		} catch {
-			// Pre-migration schema — nothing to purge yet.
-		}
+				[...owned.chargeUids, ...chargeParams]
+			)
+		).affectedRows;
+		removed += (
+			await exec(
+				`DELETE FROM expense_period_charges WHERE ${chargeOwnership}`,
+				chargeParams
+			)
+		).affectedRows;
+	} catch {
+		// Pre-migration schema — nothing to purge yet.
 	}
-	// Events are keyed by the namespaced cost UID, so they survive their
-	// expense row and must be purged in their own right. The predicate also
-	// catches costs the spec records through the app: those get a minted
-	// `EXP-#####` number, so they are namespaced by the fixture category and
-	// vendor prefix instead.
+
+	// The cost journal is keyed by the cost's identity: the declared cost UIDs
+	// and any cost whose source row is one of this helper's expenses — which
+	// covers the rows a spec records through the app, with minted identities.
 	removed += (
 		await exec(
 			`DELETE FROM financial_cost_events
-        WHERE cost_uid LIKE ?
-           OR cost_uid LIKE ?
-           OR source_id IN (
-                SELECT id FROM expenses
-                 WHERE expense_number LIKE ?
-                    OR category = ?
-                    OR vendor_name LIKE ?
-              )`,
-			[
-				`${EXPENDITURE_COST_UID_PREFIX}%`,
-				`${EXPENDITURE_RUN_COST_UID_PREFIX}%`,
-				`${EXPENDITURE_EXPENSE_PREFIX}%`,
-				EXPENDITURE_CATEGORY,
-				`${EXPENDITURE_VENDOR_PREFIX}%`,
-			]
+        WHERE cost_uid IN (${placeholders(owned.costUids.length)})
+           OR source_id IN (${ownedExpenseIds})`,
+			[...owned.costUids, ...expenseFilter.params]
 		)
 	).affectedRows;
+
 	removed += (
 		await exec(
-			`DELETE FROM expenses
-        WHERE expense_number LIKE ?
-           OR category = ?
-           OR vendor_name LIKE ?`,
-			[
-				`${EXPENDITURE_EXPENSE_PREFIX}%`,
-				EXPENDITURE_CATEGORY,
-				`${EXPENDITURE_VENDOR_PREFIX}%`,
-			]
+			`DELETE FROM expenses WHERE ${expenseFilter.sql}`,
+			expenseFilter.params
 		)
 	).affectedRows;
-	// Budgets (#321) are owned by this module through their Project: the spec
-	// also records budgets through the app, and every one of those targets an
-	// E2E-EXP-P* Project.
+
+	// Budgets (#321) are owned through their declared UIDs and their Project:
+	// the spec also records budgets through the app, and every one of those
+	// targets a declared Project.
+	const budgetOwnership = [
+		`budget_uid IN (${placeholders(owned.budgetUids.length)})`,
+		`project_id IN (SELECT project_id FROM projects WHERE project_code IN (${placeholders(owned.projectCodes.length)}))`,
+	].join(' OR ');
+	const budgetParams = [...owned.budgetUids, ...owned.projectCodes];
 	removed += (
 		await exec(
 			`DELETE FROM project_cost_budget_events
-        WHERE budget_uid LIKE ?
-           OR source_id IN (
-                SELECT id FROM project_cost_budgets
-                 WHERE project_id IN (
-                      SELECT project_id FROM projects WHERE project_code LIKE ?
-                 )
+        WHERE budget_uid IN (${placeholders(owned.budgetUids.length)})
+           OR budget_uid IN (
+                SELECT budget_uid FROM project_cost_budgets
+                 WHERE ${budgetOwnership}
               )`,
-			[`${EXPENDITURE_BUDGET_UID_PREFIX}%`, `${EXPENDITURE_PROJECT_CODE_PREFIX}%`]
+			[...owned.budgetUids, ...budgetParams]
 		)
 	).affectedRows;
 	removed += (
 		await exec(
-			`DELETE FROM project_cost_budgets
-        WHERE budget_uid LIKE ?
-           OR project_id IN (
-                SELECT project_id FROM projects WHERE project_code LIKE ?
-              )`,
-			[`${EXPENDITURE_BUDGET_UID_PREFIX}%`, `${EXPENDITURE_PROJECT_CODE_PREFIX}%`]
+			`DELETE FROM project_cost_budgets WHERE ${budgetOwnership}`,
+			budgetParams
 		)
 	).affectedRows;
 	removed += (
-		await exec(`DELETE FROM projects WHERE project_code LIKE ?`, [
-			`${EXPENDITURE_PROJECT_CODE_PREFIX}%`,
-		])
+		await exec(
+			`DELETE FROM projects WHERE project_code IN (${placeholders(owned.projectCodes.length)})`,
+			owned.projectCodes
+		)
 	).affectedRows;
 	return removed;
 }
