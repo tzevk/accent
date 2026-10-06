@@ -252,6 +252,34 @@ The payroll snapshot evidence includes the stored month and money columns.
 Namespaced fixtures identify test records; names alone do not exclude them from
 the current report. Keep this verification database separate from business data.
 
+## Currency conversion (ticket #319)
+
+Implemented in `currency.ts`; the full consumer contract is published outside
+the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
+
+- The report read states its basis: `reporting_currency` on the HTTP request
+  (default INR), echoed as `company.reporting_currency`. Only matching stored
+  evidence is used — the original currency equals the requested basis, or the
+  stored target equals it and the full rate triple exists; no inverse or
+  cross-rate is derived.
+- `expenses.reporting_currency`, `conversion_rate`, `conversion_date`,
+  `conversion_evidence_reference`, and `converted_amount` come from
+  `migrations/20261008091900_expense_cost_currency_conversion.js`. The rate is
+  kept as its decimal string (DECIMAL(20,10) exceeds a JS number); conversion
+  runs per record, round-half-up to cents, in a high-precision Decimal clone.
+- A NULL `expenses.currency` is unknown — never INR — and is excluded from
+  every currency subtotal as `original_currency_missing`. Missing or partial
+  evidence is `conversion_evidence_missing` / `conversion_rate_invalid`.
+- `company.currency` / `incurred_cost` / `groups` state one complete total
+  (reporting currency once every confirmed record is supported; the single
+  original currency when it has no conversion evidence), and `null` when
+  currencies cannot be combined. Slice, project, and journal figures carry the
+  same interpretation; `converted_amount` and the journal snapshot preserve the
+  rate and converted figure for a later close snapshot.
+- Entry captures the triple through the report's Record cost form; afterwards
+  only the versioned `update` command may change it, and that patch requires
+  `other_expenses:approve`. The register PUT refuses the fields.
+
 ## Public interface for later slices
 
 `src/lib/company-expenditure/index.ts` is the contract later tickets extend:
@@ -266,8 +294,9 @@ the current report. Keep this verification database separate from business data.
 - **Financial close and revisions**: period state hangs off `recognition_period`
   and `financial_version`; commands already accept the caller's transaction, so
   a close check commits with the change.
-- **Currency**: conversion evidence extends `CurrencyTotal`, replacing the
-  `currency_conversion_missing` notice before any combined total appears.
+- **Currency**: implemented by #319 (`currency.ts`, `reporting_currency` +
+  `conversion_rate`/`conversion_date`/`conversion_evidence_reference`, per-record
+  rounding, requested-basis report input).
 - **Export**: consume `fetchCompanyReconciliation` and `fetchCostDrilldown`, so
   the download cannot disagree with the screen.
 
@@ -276,7 +305,9 @@ the current report. Keep this verification database separate from business data.
 - `migrations/20261006120000_expense_cost_recognition.js`
 - `migrations/20261007120000_expense_cost_period_basis_service_period_end.js`
   (extends `period_basis` for the disclosed partial service period)
-- `src/lib/company-expenditure/{index,types,recognition,reconciliation,records,commands,coverage}.ts`
+- `migrations/20261008091900_expense_cost_currency_conversion.js`
+  (reporting target + conversion evidence + converted snapshot, #319)
+- `src/lib/company-expenditure/{index,types,currency,recognition,reconciliation,records,commands,coverage}.ts`
 - `src/app/api/reports/employee-project-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)
 - `src/app/api/reports/employee-project-monthly-cost/expenses/route.ts`
 - `src/app/api/reports/employee-project-monthly-cost/download/route.ts` (tightened gate)
@@ -288,3 +319,4 @@ the current report. Keep this verification database separate from business data.
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
 - `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/global-setup.ts`
+- `e2e/lib/expenditure-currency-fixtures.ts`, `e2e/specs/expenditure-currency.spec.ts` (#319)
