@@ -86,7 +86,8 @@ const NON_OPERATING = {
 	deposit: 30000,
 	prepayment: 12000,
 	capitalGross: 118000,
-	capitalRecognized: 82000,
+	/** Gross 118000 less the 18000 evidenced recoverable tax, once. */
+	capitalRecognized: 100000,
 	draftAdvance: 4000,
 	unresolvedNature: 7000,
 } as const;
@@ -105,7 +106,8 @@ const AUGUST_CHARGES =
 /** The cancelled 10000 deposit charge must not appear in these figures. */
 const AUGUST_OPERATING = 5000;
 const AUGUST = {
-	project: 20000 + 5000,
+	/** Every project-classified charge: alpha 20000 + 5000, beta 4000. */
+	project: 20000 + 5000 + 4000,
 	projectAlpha: 25000,
 	projectBeta: 4000,
 	overhead: AUGUST_OPERATING,
@@ -184,6 +186,20 @@ interface NonOperatingItemData {
 	charges: PeriodChargeData[];
 }
 
+interface BudgetComparisonData {
+	project_code: string;
+	currency: string;
+	incurred_cost: number | null;
+	confirmed_records: number;
+	period_charges: number;
+	pending_records: number;
+	outcome: string;
+	budget: { budget_uid: string; amount: number } | null;
+	variance: number | null;
+	over_budget: boolean | null;
+	detail: string;
+}
+
 interface ReconciliationData {
 	month: string;
 	company: {
@@ -238,6 +254,11 @@ interface ReconciliationData {
 		charges_from_prior_items: PeriodChargeData[];
 	};
 	coverage: Array<{ code: string; label: string; detail: string }>;
+	/** #321's section: a budget never enters the cost totals above. */
+	budgets: {
+		comparisons: BudgetComparisonData[];
+		notices: Array<{ code: string; label: string; detail: string }>;
+	};
 }
 
 interface DrilldownData {
@@ -575,6 +596,19 @@ test('counts approved period consumption in its own month, never the balance mon
 	expect(beta.incurred_cost).toBe(AUGUST.projectBeta);
 	expect(beta.period_charge_count).toBe(1);
 
+	// A charge-only Project row is confirmed cost for the budget comparison
+	// (#317): alpha's August cost of 25000 — two approved period charges and no
+	// operating record — is compared rather than reported as unsupported cost,
+	// and the comparison publishes the charges it counted.
+	const alphaBudget = august.budgets.comparisons.find(
+		(row) => row.project_code === 'E2E-EXP-P1' && row.currency === 'INR'
+	)!;
+	expect(alphaBudget).toBeTruthy();
+	expect(alphaBudget.period_charges).toBe(2);
+	expect(alphaBudget.incurred_cost).toBe(AUGUST.projectAlpha);
+	expect(alphaBudget.outcome).not.toBe('unsupported_incurred_cost');
+	expect(codes(august)).not.toContain('budget_unsupported_incurred_cost');
+
 	// Each item states its own consumption for the month and what remains.
 	const advance = item(august, seededCost('advancePractice').costUid)!;
 	expect(advance.consumed_this_month).toBe(20000);
@@ -598,7 +632,9 @@ test('counts approved period consumption in its own month, never the balance mon
 	const capital = item(august, seededCost('capitalPractice').costUid)!;
 	expect(capital.charges[0].basis).toBe('depreciation');
 	expect(capital.consumed_this_month).toBe(5000);
-	expect(capital.remaining_amount).toBe(77000);
+	expect(capital.remaining_amount).toBe(
+		NON_OPERATING.capitalRecognized - 5000
+	);
 
 	// The items in this month are the July sources carrying a charge here plus
 	// the unresolved-nature record; no July balance is recognised in August.
@@ -673,6 +709,15 @@ test('counts approved period consumption in its own month, never the balance mon
 		september: {
 			incurredCost: september.company.incurred_cost,
 			project: group(september, 'incurred_project_cost'),
+		},
+		budgetSupport: {
+			project: alphaBudget.project_code,
+			outcome: alphaBudget.outcome,
+			incurredCost: alphaBudget.incurred_cost,
+			periodCharges: alphaBudget.period_charges,
+			unsupportedNotice: codes(august).includes(
+				'budget_unsupported_incurred_cost'
+			),
 		},
 		items: august.non_operating.items.map((entry) => ({
 			uid: entry.cost_uid,

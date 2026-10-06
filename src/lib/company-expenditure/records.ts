@@ -10,6 +10,7 @@
  */
 
 import { add, R, toNumber } from '@/lib/money';
+import { conversionStatusOf, currencyCodeOf, evidenceOf } from './currency';
 import { toPeriodChargeJson } from './non-operating';
 import { evaluateCost } from './recognition';
 import type {
@@ -58,6 +59,17 @@ export function num(row: DbRow, key: string): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * A DECIMAL kept as its exact string: a DECIMAL(20,10) rate holds more digits
+ * than a JS number can state, so it is never routed through `Number()`.
+ */
+function dec(row: DbRow, key: string): string | null {
+	const value = row[key];
+	if (value === null || value === undefined) return null;
+	const text = String(value).trim();
+	return text.length === 0 ? null : text;
+}
+
 /** The projection the module maps into `CostRecord`. */
 const COST_SELECT = `
   SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.cost_classification,
@@ -66,7 +78,9 @@ const COST_SELECT = `
          e.service_period_start, e.service_period_end, e.tax_treatment,
          e.tax_evidence_reference, e.recognized_amount, e.source_reference,
          e.evidence_reference, e.financial_version, e.recognized_by, e.recognized_at,
-         e.currency, e.amount, e.tax_amount, e.total_amount,
+         e.currency, e.reporting_currency, e.conversion_rate, e.conversion_date,
+         e.conversion_evidence_reference, e.converted_amount,
+         e.amount, e.tax_amount, e.total_amount,
          e.vendor_name, e.description, e.status,
          e.project_id, p.project_code,
          COALESCE(p.project_title, p.name) AS project_name, p.client_name
@@ -101,7 +115,13 @@ export function mapCostRow(row: DbRow): CostRecord {
 		nature: (s(row, 'cost_nature', 'operating') as CostNature) ?? 'operating',
 		state:
 			(s(row, 'recognition_state', 'draft') as RecognitionState) ?? 'draft',
-		currency: s(row, 'currency', 'INR'),
+		// A missing original currency stays missing: it is never read as INR.
+		currency: currencyCodeOf(s(row, 'currency')),
+		reportingCurrency: currencyCodeOf(s(row, 'reporting_currency')),
+		conversionRate: dec(row, 'conversion_rate'),
+		conversionDate: s(row, 'conversion_date'),
+		conversionEvidenceReference: s(row, 'conversion_evidence_reference'),
+		convertedAmount: num(row, 'converted_amount'),
 		grossAmount: num(row, 'total_amount'),
 		taxAmount: num(row, 'tax_amount'),
 		taxTreatment:
@@ -153,6 +173,12 @@ function toCostRecordJson(record: CostRecord): CostRecordJson {
 		service_period_end: record.servicePeriodEnd,
 		expense_date: record.expenseDate,
 		currency: record.currency,
+		reporting_currency: record.reportingCurrency,
+		conversion_rate: record.conversionRate,
+		conversion_date: record.conversionDate,
+		conversion_evidence_reference: record.conversionEvidenceReference,
+		converted_amount: record.convertedAmount,
+		conversion_status: conversionStatusOf(evidenceOf(record)),
 		gross_amount: record.grossAmount,
 		tax_amount: record.taxAmount,
 		tax_treatment: record.taxTreatment,
@@ -289,6 +315,10 @@ const CHARGE_SELECT = `
          e.expense_number, e.cost_nature, e.recognition_state AS source_state,
          e.cost_classification, e.project_id,
          e.recognized_amount AS source_recognized_amount,
+         e.reporting_currency AS source_reporting_currency,
+         e.conversion_rate AS source_conversion_rate,
+         e.conversion_date AS source_conversion_date,
+         e.conversion_evidence_reference AS source_conversion_evidence_reference,
          p.project_code, COALESCE(p.project_title, p.name) AS project_name,
          p.client_name
     FROM expense_period_charges c
@@ -325,6 +355,15 @@ export function mapChargeRow(row: DbRow): PeriodCharge {
 		approvedAt: s(row, 'approved_at'),
 		cancelReason: s(row, 'cancel_reason'),
 		sourceRecognizedAmount: num(row, 'source_recognized_amount'),
+		// The source's conversion evidence (#319): a charge never converts
+		// independently, it is stated through what its cost carries.
+		reportingCurrency: currencyCodeOf(s(row, 'source_reporting_currency')),
+		conversionRate: s(row, 'source_conversion_rate'),
+		conversionDate: s(row, 'source_conversion_date'),
+		conversionEvidenceReference: s(
+			row,
+			'source_conversion_evidence_reference'
+		),
 	};
 }
 
@@ -454,7 +493,7 @@ export async function loadMonthProjectCost(
               SUM(amount) AS amount,
               SUM(unknown_amounts) AS unknown_amounts
          FROM (
-           SELECT e.project_id, COALESCE(e.currency, 'INR') AS currency,
+           SELECT e.project_id, e.currency AS currency,
                   e.recognized_amount AS amount,
                   CASE WHEN e.recognized_amount IS NULL THEN 1 ELSE 0 END AS unknown_amounts
              FROM expenses e
@@ -463,9 +502,10 @@ export async function loadMonthProjectCost(
               AND e.cost_nature = 'operating'
               AND e.cost_classification = 'project'
               AND e.project_id IS NOT NULL
+              AND e.currency IS NOT NULL
               AND e.recognition_period BETWEEN ? AND ?
            UNION ALL
-           SELECT e.project_id, COALESCE(e.currency, 'INR') AS currency,
+           SELECT e.project_id, e.currency AS currency,
                   c.amount AS amount, 0 AS unknown_amounts
              FROM expense_period_charges c
              JOIN expenses e ON e.id = c.source_id
@@ -474,6 +514,7 @@ export async function loadMonthProjectCost(
               AND e.recognition_state = 'recognized'
               AND e.cost_classification = 'project'
               AND e.project_id IS NOT NULL
+              AND e.currency IS NOT NULL
               AND c.charge_period BETWEEN ? AND ?
          ) cost
         GROUP BY project_id, currency`,
@@ -483,7 +524,8 @@ export async function loadMonthProjectCost(
 	for (const row of rows as DbRow[]) {
 		const id = num(row, 'project_id');
 		if (id === null) continue;
-		const currency = s(row, 'currency', 'INR') ?? 'INR';
+		const currency = s(row, 'currency');
+		if (!currency) continue;
 		const unknownAmounts = num(row, 'unknown_amounts') ?? 0;
 		const perCurrency = costs.get(id) ?? new Map<string, number | null>();
 		// A missing recognized amount is unknown, never zero.
@@ -676,19 +718,19 @@ export async function loadDrilldown(
 	const [countRows] = await db.execute(
 		`SELECT COUNT(*) AS total,
               SUM(CASE WHEN ${operating} THEN 1 ELSE 0 END) AS cost_records,
-              SUM(CASE WHEN ${operating} AND e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS cost_unknown,
-              COUNT(DISTINCT CASE WHEN ${operating} THEN COALESCE(e.currency, 'INR') END) AS cost_currencies,
-              MIN(CASE WHEN ${operating} THEN COALESCE(e.currency, 'INR') END) AS cost_currency,
+              SUM(CASE WHEN ${operating} AND (e.recognized_amount IS NULL OR e.currency IS NULL) THEN 1 ELSE 0 END) AS cost_unknown,
+              COUNT(DISTINCT CASE WHEN ${operating} THEN e.currency END) AS cost_currencies,
+              MIN(CASE WHEN ${operating} THEN e.currency END) AS cost_currency,
               SUM(CASE WHEN ${operating} THEN e.recognized_amount ELSE 0 END) AS cost_amount,
               SUM(CASE WHEN ${nonOperating} THEN 1 ELSE 0 END) AS non_operating_records,
-              SUM(CASE WHEN ${nonOperating} AND e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS non_operating_unknown,
-              COUNT(DISTINCT CASE WHEN ${nonOperating} THEN COALESCE(e.currency, 'INR') END) AS non_operating_currencies,
-              MIN(CASE WHEN ${nonOperating} THEN COALESCE(e.currency, 'INR') END) AS non_operating_currency,
+              SUM(CASE WHEN ${nonOperating} AND (e.recognized_amount IS NULL OR e.currency IS NULL) THEN 1 ELSE 0 END) AS non_operating_unknown,
+              COUNT(DISTINCT CASE WHEN ${nonOperating} THEN e.currency END) AS non_operating_currencies,
+              MIN(CASE WHEN ${nonOperating} THEN e.currency END) AS non_operating_currency,
               SUM(CASE WHEN ${nonOperating} THEN e.recognized_amount ELSE 0 END) AS non_operating_amount,
               SUM(CASE WHEN ${unresolved} THEN 1 ELSE 0 END) AS unresolved_records,
-              SUM(CASE WHEN ${unresolved} AND e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unresolved_unknown,
-              COUNT(DISTINCT CASE WHEN ${unresolved} THEN COALESCE(e.currency, 'INR') END) AS unresolved_currencies,
-              MIN(CASE WHEN ${unresolved} THEN COALESCE(e.currency, 'INR') END) AS unresolved_currency,
+              SUM(CASE WHEN ${unresolved} AND (e.recognized_amount IS NULL OR e.currency IS NULL) THEN 1 ELSE 0 END) AS unresolved_unknown,
+              COUNT(DISTINCT CASE WHEN ${unresolved} THEN e.currency END) AS unresolved_currencies,
+              MIN(CASE WHEN ${unresolved} THEN e.currency END) AS unresolved_currency,
               SUM(CASE WHEN ${unresolved} THEN e.recognized_amount ELSE 0 END) AS unresolved_amount
          FROM expenses e
         WHERE ${whereSql}`,

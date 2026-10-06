@@ -40,6 +40,12 @@ export interface BudgetComparisonRow {
 	client_name: string | null;
 	currency: string;
 	incurred_cost: number;
+	/**
+	 * Approved period charges included in `incurred_cost` (#317). A row whose
+	 * cost comes only from supported consumption of a non-operating balance is
+	 * confirmed cost, so it is compared rather than reported as unsupported.
+	 */
+	period_charge_count: number;
 }
 
 export interface BudgetComparisonInput {
@@ -139,10 +145,17 @@ function evaluateRow(
 		(record) =>
 			record.classification === 'project' &&
 			record.projectId === row.project_id &&
-			(record.currency ?? 'INR') === row.currency
+			// An unknown original currency (#319) is never attributed to a
+			// currency row, so it is not counted against one either.
+			record.currency === row.currency
 	);
 	const confirmedRecords = key.filter((record) => isConfirmed(record.state)).length;
 	const pendingRecords = key.filter((record) => isOpenState(record.state)).length;
+	// A row's cost is supported when it has confirmed records or approved
+	// period charges (#317): a month whose Project cost is entirely approved
+	// consumption is Incurred Project Cost and must be compared, while a month
+	// with neither still states `unsupported_incurred_cost`.
+	const supportedRecords = confirmedRecords + row.period_charge_count;
 
 	const flagged = candidates
 		.map((budget) => ({
@@ -172,6 +185,7 @@ function evaluateRow(
 		currency: row.currency,
 		incurred_cost: row.incurred_cost,
 		confirmed_records: confirmedRecords,
+		period_charges: row.period_charge_count,
 		pending_records: pendingRecords,
 		candidates: candidateList,
 	};
@@ -192,7 +206,7 @@ function evaluateRow(
 		detail,
 	});
 
-	if (compatible.length > 1 && confirmedRecords === 0) {
+	if (compatible.length > 1 && supportedRecords === 0) {
 		return incompatible(
 			'unsupported_incurred_cost',
 			`No confirmed Incurred Project Cost is recorded for ${row.project_code} in ${row.currency} for ${month}, and ${compatible.length} approved budgets cover it (${compatible
@@ -212,7 +226,7 @@ function evaluateRow(
 
 	if (compatible.length === 1) {
 		const budget = compatible[0].budget;
-		if (confirmedRecords === 0) {
+		if (supportedRecords === 0) {
 			return incompatible(
 				'unsupported_incurred_cost',
 				`${describe(toBudgetCandidate(budget))} covers ${row.project_code} in ${row.currency} for ${month}, but no confirmed Incurred Project Cost is recorded, so no variance is stated against a zero that is not confirmed.${pendingNote(pendingRecords)}`,
@@ -334,6 +348,7 @@ export function buildBudgetSection(input: BudgetComparisonInput): BudgetSection 
 			currency,
 			incurred_cost: null,
 			confirmed_records: 0,
+			period_charges: 0,
 			pending_records: 0,
 			outcome: 'no_incurred_cost',
 			budget: approved.length > 0 ? toBudgetCandidate(approved[0]) : null,

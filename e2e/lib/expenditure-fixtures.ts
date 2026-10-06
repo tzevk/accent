@@ -766,7 +766,9 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		grossAmount: '118000.00',
 		taxTreatment: 'recoverable',
 		taxEvidence: 'E2E-GST-317-D',
-		recognizedAmount: '82000.00',
+		// Gross 118000 less the evidenced recoverable 18000: the supported
+		// balance is the net cost once, never net minus tax again.
+		recognizedAmount: '100000.00',
 		sourceReference: 'E2E-INV-317-D',
 		evidenceReference: 'E2E-GRN-317-D',
 		description: 'E2E capital equipment with evidenced recoverable tax',

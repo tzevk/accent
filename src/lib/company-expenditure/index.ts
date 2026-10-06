@@ -8,11 +8,14 @@
  * exports and nothing else:
  *
  *   reads
- *     fetchCompanyReconciliation({ month, projectId? })
+ *     fetchCompanyReconciliation({ month, projectId?, reportingCurrency? })
  *       Company Incurred Cost for a month, split into Incurred Project Cost,
  *       Company Overhead, and Unallocated Cost per currency, plus the Project
  *       breakdown, evidence states, and the coverage notices that say what the
- *       total does and does not include.
+ *       total does and does not include. The figures are stated in the
+ *       requested reporting currency (INR by default) using only matching
+ *       stored conversion evidence; an unconverted amount stays in its own
+ *       currency subtotal with an explicit exception.
  *     fetchCostDrilldown(query)
  *       The source records behind the figures, with identity, evidence, and
  *       the expense state they were counted from.
@@ -44,7 +47,8 @@
  *  - a missing amount is NULL, never zero, and never silently recognized;
  *  - the Recognition Period comes from the received-work period, or the bill
  *    date as a disclosed fallback;
- *  - currencies are not added together without a supported conversion;
+ *  - currencies are not added together without a supported conversion, and a
+ *    missing original currency is unknown — never read as INR;
  *  - every accepted command increments `financial_version` and appends one
  *    journal row, so a repeated or stale command changes nothing;
  *  - an advance, deposit, prepayment, or capital item is never expensed by its
@@ -109,6 +113,16 @@ export type {
 export { recordCostBudget, executeBudgetCommand } from './budget-commands';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
+export {
+	REPORTING_CURRENCY,
+	convertToReporting,
+	conversionException,
+	conversionStatusOf,
+	currencyCodeOf,
+	evidenceOf,
+	parseConversionRate,
+	reportingCurrencyOf,
+} from './currency';
 export { monthLabel } from './reconciliation';
 export { COST_BUDGET_SCOPES, isCostBudgetScope } from './types';
 export {
@@ -141,7 +155,12 @@ export {
 export type {
 	BudgetOutcome,
 	BudgetSection,
+	CompanyConversion,
 	CompanyReconciliation,
+	ConversionEvidence,
+	ConversionExceptionCode,
+	ConversionOutcome,
+	ConversionStatus,
 	CostBudgetCandidate,
 	CostBudgetCommandInput,
 	CostBudgetCommandName,
@@ -166,6 +185,7 @@ export type {
 	CostRecord,
 	CostRecordJson,
 	CoverageNotice,
+	CurrencyReporting,
 	CurrencyTotal,
 	EvidenceSummary,
 	NonOperatingItemJson,
@@ -218,6 +238,8 @@ export interface ReconciliationRequest {
 	month: string;
 	/** Narrow the Project detail; never the company reconciliation. */
 	projectId?: number | null;
+	/** Requested reporting basis; absent means the company reporting currency. */
+	reportingCurrency?: string | null;
 }
 
 /** Covering budgets plus the row Projects' budgets, without duplicates. */
@@ -303,6 +325,7 @@ export async function fetchCompanyReconciliation(
 		projectOptions,
 		availableMonths,
 		coverageDeclarations: SOURCE_COVERAGE,
+		reportingCurrency: request.reportingCurrency ?? null,
 	});
 }
 

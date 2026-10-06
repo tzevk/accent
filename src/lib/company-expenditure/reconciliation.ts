@@ -9,9 +9,10 @@
  *    rejected, cancelled, and unclassified records are separated out and
  *    disclosed, never folded into the total.
  *  - A missing amount is unknown, not zero; a known zero is a recorded zero.
- *  - Currencies are never added together: without a supported conversion the
- *    month is reported as currency subtotals with a coverage exception and no
- *    company total.
+ *  - Currencies are never added together. Amounts are stated in the requested
+ *    reporting currency only from matching stored conversion evidence
+ *    (`currency.ts`); anything else stays in its own currency subtotal with an
+ *    explicit exception, and a mixed grand total is never presented.
  *  - A Project filter narrows the Project detail, never the company
  *    reconciliation.
  */
@@ -21,16 +22,25 @@ import { add, R, toNumber } from '@/lib/money';
 import { buildBudgetSection } from './budget-comparison';
 import type { SourceCoverageDeclaration } from './coverage';
 import {
+	convertToReporting,
+	conversionStatusOf,
+	currencyCodeOf,
+	evidenceOf,
+	reportingCurrencyOf,
+} from './currency';
+import {
 	isNonOperatingNature,
 	remainingBalance,
 	toPeriodChargeJson,
 } from './non-operating';
 import { effectiveTaxTreatment, isConfirmed, isOpenState } from './recognition';
 import type {
+	CompanyConversion,
 	CompanyReconciliation,
 	CostBudgetRecord,
 	CostRecord,
 	CoverageNotice,
+	CurrencyReporting,
 	CurrencyTotal,
 	EvidenceStateSummary,
 	EvidenceSummary,
@@ -89,16 +99,21 @@ function sumMoney(values: Array<number | null>): number {
 	);
 }
 
-/** The single currency the records share, or null for none or more than one. */
+/**
+ * The single currency the records share, or null for none, more than one, or
+ * any unknown original currency — an unknown currency can never be stated.
+ */
 function currencyOf(records: CostRecord[]): string | null {
-	const codes = new Set(records.map((record) => record.currency ?? 'INR'));
-	return codes.size === 1 ? [...codes][0] : null;
+	const codes = new Set(records.map((record) => currencyCodeOf(record.currency)));
+	if (codes.has(null)) return null;
+	return codes.size === 1 ? ([...codes][0] as string) : null;
 }
 
 /**
  * A subtotal that may only be stated in one currency. Zero records contribute
- * a known zero; a single unknown amount or a second currency makes the figure
- * null, because an unknown amount is not zero and currencies are never added.
+ * a known zero; a single unknown amount, an unknown currency, or a second
+ * currency makes the figure null, because an unknown amount is not zero and
+ * currencies are never added.
  */
 function subtotal(
 	records: CostRecord[],
@@ -109,6 +124,16 @@ function subtotal(
 	if (amounts.some((amount) => amount === null)) return null;
 	if (currencyOf(records) === null) return null;
 	return sumMoney(amounts);
+}
+
+/** The same amount in the requested reporting basis, or null when unsupported. */
+function convertedAmountOf(
+	record: CostRecord,
+	value: number | null,
+	reporting: string
+): number | null {
+	if (value === null) return null;
+	return convertToReporting(value, evidenceOf(record), reporting).amount;
 }
 
 function countByState(
@@ -128,7 +153,8 @@ function countByState(
 function currencySlice(
 	records: CostRecord[],
 	charges: PeriodCharge[],
-	currency: string
+	currency: string,
+	reporting: string
 ): CurrencyTotal {
 	let project = R(0);
 	let overhead = R(0);
@@ -181,6 +207,107 @@ function currencySlice(
 		period_charge_count: charges.length,
 		record_count: records.filter((record) => confirmedAmount(record) !== null)
 			.length,
+		reporting: reportingSlice(records, charges, currency, reporting),
+	};
+}
+
+/**
+ * The same slice in the requested reporting currency. Every confirmed record
+ * and every counted period charge must be supported; a slice with even one
+ * unsupported amount is stated as null rather than as a partial total.
+ */
+function reportingSlice(
+	records: CostRecord[],
+	charges: PeriodCharge[],
+	currency: string,
+	reporting: string
+): CurrencyReporting {
+	const confirmed = records.filter(
+		(record) => confirmedAmount(record) !== null
+	);
+	const unsupported =
+		confirmed.filter(
+			(record) =>
+				conversionStatusOf(evidenceOf(record), reporting) === 'unsupported'
+		).length +
+		charges.filter(
+			(charge) =>
+				conversionStatusOf(evidenceOf(charge), reporting) === 'unsupported'
+		).length;
+	if (unsupported > 0) {
+		return {
+			currency: reporting,
+			status: 'unsupported',
+			unsupported_count: unsupported,
+			incurred_project_cost: null,
+			company_overhead: null,
+			unallocated_cost: null,
+			incurred_cost: null,
+			gross_liability: null,
+			recoverable_tax: null,
+			unresolved_tax_gross: null,
+		};
+	}
+	let project = R(0);
+	let overhead = R(0);
+	let unallocated = R(0);
+	let gross = R(0);
+	let recoverable = R(0);
+	let unresolvedGross = R(0);
+	for (const record of confirmed) {
+		const amount = convertedAmountOf(record, confirmedAmount(record), reporting);
+		if (amount === null) continue;
+		if (record.classification === 'project') project = add(project, amount);
+		else if (record.classification === 'company_overhead') {
+			overhead = add(overhead, amount);
+		} else if (record.classification === 'unallocated') {
+			unallocated = add(unallocated, amount);
+		}
+		const grossLiability =
+			convertedAmountOf(
+				record,
+				record.grossAmount ?? confirmedAmount(record),
+				reporting
+			) ?? 0;
+		gross = add(gross, grossLiability);
+		const treatment = effectiveTaxTreatment(record);
+		if (treatment === 'recoverable') {
+			recoverable = add(
+				recoverable,
+				convertedAmountOf(record, record.taxAmount ?? 0, reporting) ?? 0
+			);
+		} else if (treatment === 'unresolved') {
+			unresolvedGross = add(unresolvedGross, grossLiability);
+		}
+	}
+	// A period charge is stated in the reporting basis through its source's
+	// conversion evidence, in the source's destination. It carries no tax
+	// figure of its own: its amount is already net of recoverable tax.
+	for (const charge of charges) {
+		const amount = convertToReporting(
+			charge.amount,
+			evidenceOf(charge),
+			reporting
+		).amount;
+		if (amount === null) continue;
+		if (charge.classification === 'project') project = add(project, amount);
+		else if (charge.classification === 'company_overhead') {
+			overhead = add(overhead, amount);
+		} else if (charge.classification === 'unallocated') {
+			unallocated = add(unallocated, amount);
+		}
+	}
+	return {
+		currency: reporting,
+		status: currency === reporting ? 'reporting' : 'converted',
+		unsupported_count: 0,
+		incurred_project_cost: rounded(project),
+		company_overhead: rounded(overhead),
+		unallocated_cost: rounded(unallocated),
+		incurred_cost: rounded(add(add(project, overhead), unallocated)),
+		gross_liability: rounded(gross),
+		recoverable_tax: rounded(recoverable),
+		unresolved_tax_gross: rounded(unresolvedGross),
 	};
 }
 
@@ -216,32 +343,34 @@ function projectRows(
 	open: CostRecord[],
 	charges: PeriodCharge[],
 	previousMonth: Map<number, Map<string, number | null>>,
-	projectFilter: number | null
+	projectFilter: number | null,
+	reporting: string
 ): ReconciliationProjectRow[] {
 	// One row per Project and currency. Amounts in different currencies are
-	// never added, and the prior-month comparison is same-currency only; a
-	// Project costing in two currencies therefore shows two rows.
-	const ids = new Set<number>(
-		projectIdsIn([...confirmed, ...open], charges)
+	// Project costing in two currencies therefore shows two rows. A record
+	// whose currency is unknown cannot be stated and stays out of the rows; a
+	// period charge always carries its source's currency.
+	const stated = [...confirmed, ...open].filter(
+		(record) => currencyCodeOf(record.currency) !== null
 	);
+	const ids = new Set<number>(projectIdsIn(stated, charges));
 	const rows: ReconciliationProjectRow[] = [];
 	for (const id of ids) {
 		if (projectFilter !== null && projectFilter !== id) continue;
-		const projectRecords = [...confirmed, ...open].filter(
-			(record) => record.projectId === id
-		);
+		const projectRecords = stated.filter((record) => record.projectId === id);
 		const projectCharges = charges.filter((charge) => charge.projectId === id);
 		const sample = projectRecords[0] ?? projectCharges[0];
 		const currencies = [
-			...new Set(
-				[...projectRecords, ...projectCharges].map(
-					(record) => record.currency ?? 'INR'
-				)
-			),
+			...new Set([
+				...projectRecords.map(
+					(record) => currencyCodeOf(record.currency) as string
+				),
+				...projectCharges.map((charge) => charge.currency),
+			]),
 		].sort();
 		for (const currency of currencies) {
 			const currencyRecords = projectRecords.filter(
-				(record) => (record.currency ?? 'INR') === currency
+				(record) => currencyCodeOf(record.currency) === currency
 			);
 			const currencyCharges = projectCharges.filter(
 				(charge) => charge.currency === currency
@@ -256,6 +385,23 @@ function projectRows(
 				...confirmedRows.map(confirmedAmount),
 				...currencyCharges.map((charge) => charge.amount),
 			]);
+			// A charge inherits its source's conversion evidence, so the
+			// reporting basis of a charge-only row is the source's basis.
+			const reportingOutcomes = [
+				...confirmedRows.map((record) =>
+					convertToReporting(
+						confirmedAmount(record),
+						evidenceOf(record),
+						reporting
+					)
+				),
+				...currencyCharges.map((charge) =>
+					convertToReporting(charge.amount, evidenceOf(charge), reporting)
+				),
+			];
+			const unsupported = reportingOutcomes.some(
+				(outcome) => outcome.status === 'unsupported'
+			);
 			const previous = previousMonth.get(id)?.get(currency) ?? null;
 			const change = previous === null ? null : rounded(incurred - previous);
 			rows.push({
@@ -265,6 +411,14 @@ function projectRows(
 					sample.projectName ?? sample.projectCode ?? `Project #${id}`,
 				client_name: sample.clientName,
 				currency,
+				conversion_status: unsupported
+					? 'unsupported'
+					: currency === reporting
+						? 'reporting'
+						: 'converted',
+				converted_incurred_cost: unsupported
+					? null
+					: sumMoney(reportingOutcomes.map((outcome) => outcome.amount)),
 				incurred_cost: incurred,
 				record_count: confirmedRows.length,
 				period_charge_count: currencyCharges.length,
@@ -304,10 +458,12 @@ interface MonthNoticeInput {
 	countedCharges: PeriodCharge[];
 	/** This month's non-operating records, in any state. */
 	nonOperatingSources: CostRecord[];
+	/** The requested reporting basis the conversion notices speak about. */
+	reporting: string;
 }
 
 function monthNotices(input: MonthNoticeInput): CoverageNotice[] {
-	const { records, confirmed, currencyTotals, grossMissing } = input;
+	const { records, confirmed, currencyTotals, grossMissing, reporting } = input;
 	const notices: CoverageNotice[] = [];
 	const openCount = records.filter((record) =>
 		isOpenState(record.state)
@@ -327,6 +483,12 @@ function monthNotices(input: MonthNoticeInput): CoverageNotice[] {
 	const startMissingRecords = records.filter((record) =>
 		record.evaluation.exceptions.includes('service_period_start_missing')
 	);
+	const unsupported = confirmed.filter(
+		(record) => conversionStatusOf(evidenceOf(record), reporting) === 'unsupported'
+	);
+	const unknownCurrency = confirmed.filter(
+		(record) => currencyCodeOf(record.currency) === null
+	);
 
 	if (confirmed.length === 0) {
 		notices.push({
@@ -337,12 +499,26 @@ function monthNotices(input: MonthNoticeInput): CoverageNotice[] {
 			severity: 'warning',
 		});
 	}
-	if (currencyTotals.length > 1) {
+	if (unsupported.length > 0) {
+		const unsupportedCurrencies = currencyTotals
+			.filter((row) => row.reporting.status === 'unsupported')
+			.map((row) => row.currency);
 		notices.push({
 			code: 'currency_conversion_missing',
-			label: 'More than one currency in this month',
-			detail:
-				'Amounts are shown per currency because no supported conversion exists; there is no combined company total.',
+			label: 'Some cost is not stated in the reporting currency',
+			detail: `${unsupported.length} recognized record(s) carry no supported conversion evidence for ${reporting}${
+				unsupportedCurrencies.length > 0
+					? ` (${unsupportedCurrencies.join(', ')})`
+					: ''
+			}; those amounts stay in their own currency subtotals with no combined total.`,
+			severity: 'warning',
+		});
+	}
+	if (unknownCurrency.length > 0) {
+		notices.push({
+			code: 'original_currency_missing',
+			label: 'Original currency not recorded',
+			detail: `${unknownCurrency.length} recognized record(s) have no original currency. It is unknown, never assumed INR, so they are excluded from every currency subtotal.`,
 			severity: 'warning',
 		});
 	}
@@ -654,6 +830,8 @@ export interface ReconciliationInput {
 	}>;
 	availableMonths: string[];
 	coverageDeclarations: readonly SourceCoverageDeclaration[];
+	/** Requested reporting basis; absent means the company reporting currency. */
+	reportingCurrency?: string | null;
 }
 
 /** Build the reconciliation payload. Pure: all data arrives as arguments. */
@@ -664,69 +842,162 @@ export function buildReconciliation(
 	// Only operating records carry cost. Non-operating balances and records
 	// whose treatment is unresolved are reported separately, never expensed;
 	// approved period charges are cost of their own month instead.
+	const reporting = reportingCurrencyOf({
+		reportingCurrency: input.reportingCurrency ?? null,
+	});
 	const costRecords = records.filter((record) => record.nature === 'operating');
 	const confirmed = costRecords.filter(
 		(record) => confirmedAmount(record) !== null
 	);
 	const open = records.filter((record) => isOpenState(record.state));
 	const countedCharges = countedChargesOf(input.charges);
+	const knownConfirmed = confirmed.filter(
+		(record) => currencyCodeOf(record.currency) !== null
+	);
+	const unknownCurrency = records.filter(
+		(record) => currencyCodeOf(record.currency) === null
+	);
 	const currencies = [
 		...new Set([
-			...confirmed.map((record) => record.currency ?? 'INR'),
+			...knownConfirmed.map(
+				(record) => currencyCodeOf(record.currency) as string
+			),
 			...countedCharges.map((charge) => charge.currency),
 		]),
 	].sort();
 	const currencyTotals = currencies.map((currency) =>
 		currencySlice(
-			confirmed.filter((record) => (record.currency ?? 'INR') === currency),
+			knownConfirmed.filter(
+				(record) => currencyCodeOf(record.currency) === currency
+			),
 			countedCharges.filter((charge) => charge.currency === currency),
-			currency
+			currency,
+			reporting
 		)
 	);
 
+	// A month can be stated in the reporting currency only when every
+	// confirmed record is supported (and there is at least one). Otherwise a
+	// single known currency keeps its own total and everything else has none.
+	const convertedRecords = confirmed.filter(
+		(record) => conversionStatusOf(evidenceOf(record), reporting) === 'converted'
+	).length;
+	const unsupportedRecords = confirmed.filter(
+		(record) => conversionStatusOf(evidenceOf(record), reporting) === 'unsupported'
+	).length;
+	// A period charge is cost of its own month, so its source's conversion
+	// evidence decides whether the charge can be stated in the reporting basis.
+	const convertedCharges = countedCharges.filter(
+		(charge) => conversionStatusOf(evidenceOf(charge), reporting) === 'converted'
+	).length;
+	const unsupportedCharges = countedCharges.filter(
+		(charge) => conversionStatusOf(evidenceOf(charge), reporting) === 'unsupported'
+	).length;
+	const unsupportedCost = unsupportedRecords + unsupportedCharges;
+	const singleCurrency = currencies.length === 1;
+	const complete = unsupportedCost === 0 && currencies.length > 0;
+	// One known currency that cannot be stated in the reporting basis keeps its
+	// own total; a complete month states every figure in the reporting basis.
+	const singleUnsupportedCurrency =
+		!complete && singleCurrency && unknownCurrency.length === 0;
+
+	const CLASSIFICATION_OF_GROUP: Record<
+		ReconciliationGroup['key'],
+		CostRecord['classification']
+	> = {
+		incurred_project_cost: 'project',
+		company_overhead: 'company_overhead',
+		unallocated_cost: 'unallocated',
+	};
+	const groupOf = (key: ReconciliationGroup['key']): ReconciliationGroup => {
+		const reportingAmount = (row: CurrencyTotal): number | null => {
+			if (key === 'incurred_project_cost') {
+				return row.reporting.incurred_project_cost;
+			}
+			if (key === 'company_overhead') return row.reporting.company_overhead;
+			return row.reporting.unallocated_cost;
+		};
+		return {
+			key,
+			label: GROUP_LABELS[key],
+			amount: complete
+				? sumMoney(currencyTotals.map(reportingAmount))
+				: singleUnsupportedCurrency
+					? (currencyTotals[0][key] as number)
+					: 0,
+			record_count: knownConfirmed.filter(
+				(record) => record.classification === CLASSIFICATION_OF_GROUP[key]
+			).length,
+		};
+	};
+
 	const groups: ReconciliationGroup[] =
-		currencyTotals.length === 1
+		complete || singleUnsupportedCurrency
 			? [
-					{
-						key: 'incurred_project_cost',
-						label: GROUP_LABELS.incurred_project_cost,
-						amount: currencyTotals[0].incurred_project_cost,
-						record_count: confirmed.filter(
-							(record) => record.classification === 'project'
-						).length,
-					},
-					{
-						key: 'company_overhead',
-						label: GROUP_LABELS.company_overhead,
-						amount: currencyTotals[0].company_overhead,
-						record_count: confirmed.filter(
-							(record) => record.classification === 'company_overhead'
-						).length,
-					},
-					{
-						key: 'unallocated_cost',
-						label: GROUP_LABELS.unallocated_cost,
-						amount: currencyTotals[0].unallocated_cost,
-						record_count: confirmed.filter(
-							(record) => record.classification === 'unallocated'
-						).length,
-					},
+					groupOf('incurred_project_cost'),
+					groupOf('company_overhead'),
+					groupOf('unallocated_cost'),
 				]
 			: [];
 
-	const unresolvedTax = confirmed.filter(
+	// The unresolved-tax subset follows the same statement rule as the rest.
+	const unresolvedTax = knownConfirmed.filter(
 		(record) => effectiveTaxTreatment(record) === 'unresolved'
+	);
+	const unresolvedTaxGross = (): number | null => {
+		if (complete) {
+			return sumMoney(
+				unresolvedTax.map((record) =>
+					convertedAmountOf(
+						record,
+						record.grossAmount ?? confirmedAmount(record),
+						reporting
+					)
+				)
+			);
+		}
+		if (singleUnsupportedCurrency) {
+			return subtotal(
+				unresolvedTax,
+				(record) => record.grossAmount ?? confirmedAmount(record)
+			);
+		}
+		return null;
+	};
+
+	const companyIncurredCost = complete
+		? sumMoney(currencyTotals.map((row) => row.reporting.incurred_cost))
+		: singleUnsupportedCurrency
+			? currencyTotals[0].incurred_cost
+			: null;
+
+	const conversion: CompanyConversion = {
+		// Nothing unconverted means nothing is withheld: a month with no
+		// confirmed record is not "unsupported", it has nothing to state.
+		status:
+			unsupportedCost === 0
+				? currencyTotals.some((row) => row.reporting.status === 'converted')
+					? 'converted'
+					: 'reporting'
+				: 'unsupported',
+		converted_records: convertedRecords,
+		unsupported_records: unsupportedRecords,
+		converted_charges: convertedCharges,
+		unsupported_charges: unsupportedCharges,
+		unsupported_currencies: currencyTotals
+			.filter((row) => row.reporting.status === 'unsupported')
+			.map((row) => row.currency),
+		unknown_currency_records: confirmed.filter(
+			(record) => currencyCodeOf(record.currency) === null
+		).length,
+	};
+
+	const missingAmounts = records.filter(
+		(record) => record.grossAmount === null
 	);
 	const unclassified = records.filter(
 		(record) => record.classification === null
 	);
-	const missingAmounts = records.filter(
-		(record) => record.grossAmount === null
-	);
-	// A month holding more than one currency has no combined company figure:
-	// the per-currency slices carry each currency's own total instead.
-	const singleCurrency = currencies.length === 1;
-
 	// Recognized non-operating sources and unresolved-treatment records are
 	// stated apart from operating cost: these are the amounts Company Incurred
 	// Cost deliberately excludes.
@@ -755,6 +1026,7 @@ export function buildReconciliation(
 			gross_amount: subtotal(unclassified, (record) => record.grossAmount),
 		},
 		missing_amount: { count: missingAmounts.length },
+		missing_currency: { count: unknownCurrency.length },
 		known_zero: {
 			count: records.filter((record) => record.grossAmount === 0).length,
 		},
@@ -777,6 +1049,7 @@ export function buildReconciliation(
 			charges: input.charges,
 			countedCharges,
 			nonOperatingSources: input.nonOperatingSources,
+			reporting,
 		}),
 	];
 
@@ -785,7 +1058,8 @@ export function buildReconciliation(
 		open,
 		countedCharges,
 		input.previousMonthProjectCost,
-		input.projectFilter
+		input.projectFilter,
+		reporting
 	);
 
 	return {
@@ -793,28 +1067,41 @@ export function buildReconciliation(
 		month_label: monthLabel(input.month),
 		project_id: input.projectFilter,
 		company: {
-			currency: singleCurrency ? currencies[0] : null,
-			incurred_cost: singleCurrency ? currencyTotals[0].incurred_cost : null,
+			reporting_currency: reporting,
+			conversion,
+			// Complete: the reporting currency. One known currency without
+			// matching evidence: that currency. Otherwise no combined total.
+			currency: complete
+				? reporting
+				: singleUnsupportedCurrency
+					? currencies[0]
+					: null,
+			incurred_cost: companyIncurredCost,
 			currency_totals: currencyTotals,
 			groups,
 			// Gross liability and recoverable tax are stated only for a single
 			// currency; a multi-currency month keeps them per currency in
 			// `currency_totals` rather than publishing a combined rupee figure.
-			// They cover confirmed operating records: a non-operating balance
-			// is not cost and carries no tax figure of its own here.
-			gross_liability: singleCurrency
-				? currencyTotals[0].gross_liability
-				: null,
-			recoverable_tax: singleCurrency
-				? currencyTotals[0].recoverable_tax
-				: null,
+			// They cover confirmed operating records and period charges: a
+			// non-operating balance is not cost and carries no tax figure here.
+			gross_liability: complete
+				? sumMoney(currencyTotals.map((row) => row.reporting.gross_liability))
+				: singleUnsupportedCurrency
+					? currencyTotals[0].gross_liability
+					: null,
+			recoverable_tax: complete
+				? sumMoney(currencyTotals.map((row) => row.reporting.recoverable_tax))
+				: singleUnsupportedCurrency
+					? currencyTotals[0].recoverable_tax
+					: null,
 			unresolved_tax: {
 				count: unresolvedTax.length,
-				currency: currencyOf(unresolvedTax),
-				gross_amount: subtotal(
-					unresolvedTax,
-					(record) => record.grossAmount ?? confirmedAmount(record)
-				),
+				currency: complete
+					? reporting
+					: singleUnsupportedCurrency
+						? currencyOf(unresolvedTax)
+						: null,
+				gross_amount: unresolvedTaxGross(),
 			},
 			known_zero_count: records.filter((record) => record.grossAmount === 0)
 				.length,

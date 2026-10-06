@@ -224,5 +224,9 @@ export function toPeriodChargeJson(charge: PeriodCharge): PeriodChargeJson {
 		approved_at: charge.approvedAt,
 		cancel_reason: charge.cancelReason,
 		source_recognized_amount: charge.sourceRecognizedAmount,
+		source_reporting_currency: charge.reportingCurrency,
+		source_conversion_rate: charge.conversionRate,
+		source_conversion_date: charge.conversionDate,
+		source_conversion_evidence_reference: charge.conversionEvidenceReference,
 	};
 }

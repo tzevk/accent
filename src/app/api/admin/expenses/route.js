@@ -24,6 +24,11 @@ function toRecordInput(body) {
 		taxAmount: body.tax_amount ?? null,
 		grossAmount: body.total_amount ?? body.gross_amount,
 		currency: body.currency ?? null,
+		// Currency conversion evidence (#319).
+		reportingCurrency: body.reporting_currency ?? null,
+		conversionRate: body.conversion_rate ?? null,
+		conversionDate: body.conversion_date ?? null,
+		conversionEvidenceReference: body.conversion_evidence_reference ?? null,
 		paymentMode: body.payment_mode ?? null,
 		paymentReference: body.payment_reference ?? null,
 		paidTo: body.paid_to ?? null,

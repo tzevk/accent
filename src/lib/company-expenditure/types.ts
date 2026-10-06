@@ -6,6 +6,8 @@
  * Recognition Period, Recognition State.
  */
 
+import type Decimal from 'decimal.js';
+
 /** Where a recognized cost belongs. `null` is the explicit unresolved state. */
 export type CostClassification = 'project' | 'company_overhead' | 'unallocated';
 
@@ -86,6 +88,9 @@ export type CostJournalCommand =
 /** Reasons a cost is not a clean confirmed amount. Disclosed, never hidden. */
 export type CostExceptionCode =
 	| 'missing_amount'
+	| 'original_currency_missing'
+	| 'conversion_evidence_missing'
+	| 'conversion_rate_invalid'
 	| 'tax_evidence_missing'
 	| 'tax_treatment_missing'
 	| 'tax_treatment_unresolved'
@@ -101,11 +106,95 @@ export type CostExceptionCode =
 	 */
 	| 'nature_unresolved';
 
+/** How a cost's amount can be stated in the requested reporting currency. */
+export type ConversionStatus = 'reporting' | 'converted' | 'unsupported';
+
+/** Why a cost cannot be stated in the requested reporting currency. */
+export type ConversionExceptionCode =
+	| 'original_currency_missing'
+	| 'conversion_evidence_missing'
+	| 'conversion_rate_invalid';
+
+/**
+ * The evidence behind a reporting-currency figure: the original currency, the
+ * reporting target, and the effective rate/date/reference. The rate stays a
+ * decimal string (or Decimal): DECIMAL(20,10) holds more digits than a JS
+ * number can state exactly.
+ */
+export interface ConversionEvidence {
+	currency: string | null;
+	reportingCurrency?: string | null;
+	conversionRate: Decimal.Value | null;
+	conversionDate?: string | null;
+	conversionEvidenceReference?: string | null;
+}
+
+/**
+ * The reporting-currency statement of one amount. `reporting` means the
+ * amount is already in the requested basis; `converted` means stored evidence
+ * supports it; `unsupported` means no amount may be stated in that basis.
+ */
+export interface ConversionOutcome {
+	status: ConversionStatus;
+	reportingCurrency: string;
+	amount: number | null;
+	exception: ConversionExceptionCode | null;
+}
+
+/** One currency's report in the requested reporting currency. */
+export interface CurrencyReporting {
+	currency: string;
+	/**
+	 * `unsupported` when any confirmed record in the slice lacks matching
+	 * evidence; the figures are then null rather than a partial total.
+	 */
+	status: ConversionStatus;
+	unsupported_count: number;
+	incurred_project_cost: number | null;
+	company_overhead: number | null;
+	unallocated_cost: number | null;
+	incurred_cost: number | null;
+	gross_liability: number | null;
+	recoverable_tax: number | null;
+	unresolved_tax_gross: number | null;
+}
+
+/** Whether the month as a whole can be stated in the requested basis. */
+export interface CompanyConversion {
+	status: ConversionStatus;
+	converted_records: number;
+	unsupported_records: number;
+	/** Approved period charges (#317) stated through their source's evidence. */
+	converted_charges: number;
+	unsupported_charges: number;
+	/** Currencies with at least one confirmed record lacking matching evidence. */
+	unsupported_currencies: string[];
+	/** Confirmed records whose original currency is unknown. */
+	unknown_currency_records: number;
+}
+
 export interface CostFinancialInput {
 	classification: CostClassification | null;
 	nature: CostNature;
 	state: RecognitionState;
+	/**
+	 * Original/transaction currency. Null is unknown: it is never guessed from
+	 * a Project default or read as INR, and it blocks recognition until
+	 * captured.
+	 */
 	currency: string | null;
+	/**
+	 * The currency this cost is reported in. Null means the company reporting
+	 * currency — a reporting-target default, not a statement about the
+	 * original transaction currency.
+	 */
+	reportingCurrency: string | null;
+	/** Effective original → reporting rate. Kept as the recorded string. */
+	conversionRate: string | null;
+	conversionDate: string | null;
+	conversionEvidenceReference: string | null;
+	/** Reporting-currency value of `recognizedAmount` at the recorded rate. */
+	convertedAmount: number | null;
 	/** Gross liability (`expenses.total_amount`). */
 	grossAmount: number | null;
 	/** Tax amount (`expenses.tax_amount`). */
@@ -176,6 +265,8 @@ export interface CurrencyTotal {
 	/** How many approved period charges that amount is made of. */
 	period_charge_count: number;
 	record_count: number;
+	/** The same slice in the requested reporting currency. */
+	reporting: CurrencyReporting;
 }
 
 export interface ReconciliationGroup {
@@ -195,6 +286,10 @@ export interface ReconciliationProjectRow {
 	 * than one currency gets one row per currency; amounts are never combined.
 	 */
 	currency: string;
+	/** Whether this row can be stated in the requested reporting currency. */
+	conversion_status: ConversionStatus;
+	/** Reporting-currency cost; null unless every confirmed record is supported. */
+	converted_incurred_cost: number | null;
 	incurred_cost: number;
 	record_count: number;
 	/** Approved period charges included in `incurred_cost` for this row. */
@@ -243,6 +338,7 @@ export interface EvidenceSummary {
 		gross_amount: number | null;
 	};
 	missing_amount: { count: number };
+	missing_currency: { count: number };
 	known_zero: { count: number };
 }
 
@@ -279,6 +375,15 @@ export interface PeriodCharge {
 	cancelReason: string | null;
 	/** The source's confirmed balance, when it has one. */
 	sourceRecognizedAmount: number | null;
+	/**
+	 * The source's conversion evidence (#319), inherited: a period charge is
+	 * never converted independently, it is stated in the reporting basis
+	 * through the evidence the cost it consumes carries.
+	 */
+	reportingCurrency: string | null;
+	conversionRate: string | null;
+	conversionDate: string | null;
+	conversionEvidenceReference: string | null;
 }
 
 /** A period charge at the JSON boundary (routes, drilldown, report section). */
@@ -305,6 +410,11 @@ export interface PeriodChargeJson {
 	approved_at: string | null;
 	cancel_reason: string | null;
 	source_recognized_amount: number | null;
+	/** The source's conversion evidence (#319), which the charge inherits. */
+	source_reporting_currency: string | null;
+	source_conversion_rate: string | null;
+	source_conversion_date: string | null;
+	source_conversion_evidence_reference: string | null;
 }
 
 /**
@@ -374,7 +484,16 @@ export interface CompanyReconciliation {
 	month_label: string;
 	project_id: number | null;
 	company: {
-		/** Reporting currency when one currency covers the month, else null. */
+		/** The reporting currency this read was stated in (default INR). */
+		reporting_currency: string;
+		/** Whether every confirmed record could be stated in that basis. */
+		conversion: CompanyConversion;
+		/**
+		 * The currency of `incurred_cost`, when one complete total is stated:
+		 * the reporting currency once every confirmed record is supported, or
+		 * the single original currency when those records share one but lack
+		 * conversion evidence. Null when currencies cannot be combined.
+		 */
 		currency: string | null;
 		/** Company Incurred Cost; null when currencies cannot be combined. */
 		incurred_cost: number | null;
@@ -433,6 +552,12 @@ export interface CostPatch {
 	servicePeriodEnd?: string | null;
 	billDate?: string | null;
 	currency?: string | null;
+	/** Reporting target; null means the company reporting currency. */
+	reportingCurrency?: string | null;
+	/** The full conversion triple must move together. */
+	conversionRate?: Decimal.Value | null;
+	conversionDate?: string | null;
+	conversionEvidenceReference?: string | null;
 	grossAmount?: number | null;
 	taxAmount?: number | null;
 	taxTreatment?: TaxTreatment;
@@ -539,6 +664,12 @@ export interface CostRecordJson {
 	service_period_end: string | null;
 	expense_date: string | null;
 	currency: string | null;
+	reporting_currency: string | null;
+	conversion_rate: string | null;
+	conversion_date: string | null;
+	conversion_evidence_reference: string | null;
+	converted_amount: number | null;
+	conversion_status: ConversionStatus;
 	gross_amount: number | null;
 	tax_amount: number | null;
 	tax_treatment: TaxTreatment;
@@ -724,6 +855,11 @@ export interface ProjectBudgetComparison {
 	 */
 	incurred_cost: number | null;
 	confirmed_records: number;
+	/**
+	 * Approved period charges included in `incurred_cost` (#317): a row whose
+	 * cost is entirely approved consumption is still confirmed cost.
+	 */
+	period_charges: number;
 	/** Draft or pending-evidence records that are not confirmed cost. */
 	pending_records: number;
 	outcome: BudgetOutcome;
