@@ -4,7 +4,8 @@ import type {
 	Cookie,
 	PlaywrightWorkerArgs,
 } from '@playwright/test';
-import { exec } from './db';
+import { exec, rows } from './db';
+import { ADMIN_USER } from './fixtures';
 
 /** The Playwright fixture object handed to specs (`({ playwright })`). */
 type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
@@ -37,6 +38,11 @@ type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
 export const EXPENDITURE_MONTH = '2019-01';
 /** A second reconciled month, used for currency separation and comparison. */
 export const EXPENDITURE_NEXT_MONTH = '2019-02';
+/**
+ * The month the budget workflow fixtures live in (#321). 2019-05 is taken: the
+ * reconciliation spec asserts it is an empty month.
+ */
+export const BUDGET_MONTH = '2019-06';
 export const EXPENDITURE_EXPENSE_PREFIX = 'E2E-EXP-';
 export const EXPENDITURE_PROJECT_CODE_PREFIX = 'E2E-EXP-P';
 export const EXPENDITURE_COST_UID_PREFIX = 'e2e-cost-';
@@ -51,15 +57,15 @@ export const EXPENDITURE_CATEGORY = 'E2E Expenditure';
  * Non-operating fixture months (ticket #317). The source balances are
  * recognized in July 2019 and their approved period charges fall in August and
  * September 2019, so no other spec's expected monthly totals change: #306 owns
- * 2019-01/02 (and records through 2019-03/04), and the months from 2019-10 are
- * reserved by the currency slice. Ad-hoc charges created through the app use
- * 2019-06.
+ * 2019-01/02 (and records through 2019-03/04), #321 owns the 2019-06 budget
+ * fixtures, and the months from 2019-10 are reserved by the currency slice.
+ * Ad-hoc charges created through the app use a month no other fixture reads.
  */
 export const EXPENDITURE_SOURCE_MONTH = '2019-07';
 export const EXPENDITURE_CHARGE_MONTH = '2019-08';
 export const EXPENDITURE_CHARGE_LATER_MONTH = '2019-09';
 /** The month ad-hoc (created, then cancelled) period charges are dated in. */
-export const EXPENDITURE_AD_HOC_CHARGE_MONTH = '2019-06';
+export const EXPENDITURE_AD_HOC_CHARGE_MONTH = '2020-01';
 
 /**
  * A real report reader with `reports:read` and **no** `other_expenses:read`.
@@ -97,6 +103,12 @@ export const EXPENDITURE_PROJECTS = {
 		code: 'E2E-EXP-P2',
 		title: 'E2E Expenditure Beta',
 		client: 'E2E Client Beta',
+	},
+	/** Budget-only project (#321): cost rows exist only in the budget months. */
+	gamma: {
+		code: 'E2E-EXP-P3',
+		title: 'E2E Expenditure Gamma',
+		client: 'E2E Client Gamma',
 	},
 } as const;
 
@@ -559,6 +571,103 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		evidenceReference: 'E2E-GRN-0016',
 		description: 'E2E February USD project cost',
 	},
+	{
+		key: 'mayInr',
+		expenseNumber: 'E2E-EXP-0017',
+		costUid: 'e2e-cost-0017',
+		classification: 'project',
+		project: 'gamma',
+		state: 'recognized',
+		recognitionMonth: BUDGET_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-06-06',
+		serviceEnd: '2019-06-06',
+		billDate: '2019-06-07',
+		expenseDate: '2019-06-07',
+		currency: 'INR',
+		amount: '1200.00',
+		taxAmount: '0.00',
+		grossAmount: '1200.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '1200.00',
+		sourceReference: 'E2E-INV-0017',
+		evidenceReference: 'E2E-GRN-0017',
+		description: 'E2E June INR project cost awaiting an approved budget',
+	},
+	{
+		key: 'mayUsd',
+		expenseNumber: 'E2E-EXP-0018',
+		costUid: 'e2e-cost-0018',
+		classification: 'project',
+		project: 'gamma',
+		state: 'recognized',
+		recognitionMonth: BUDGET_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-06-11',
+		serviceEnd: '2019-06-11',
+		billDate: '2019-06-12',
+		expenseDate: '2019-06-12',
+		currency: 'USD',
+		amount: '400.00',
+		taxAmount: '0.00',
+		grossAmount: '400.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '400.00',
+		sourceReference: 'E2E-INV-0018',
+		evidenceReference: 'E2E-GRN-0018',
+		description: 'E2E June USD cost whose only budget has a commercial scope',
+	},
+	{
+		key: 'mayEurPending',
+		expenseNumber: 'E2E-EXP-0019',
+		costUid: 'e2e-cost-0019',
+		classification: 'project',
+		project: 'gamma',
+		state: 'pending_evidence',
+		recognitionMonth: BUDGET_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-06-16',
+		serviceEnd: '2019-06-16',
+		billDate: '2019-06-17',
+		expenseDate: '2019-06-17',
+		currency: 'EUR',
+		amount: '700.00',
+		taxAmount: '0.00',
+		grossAmount: '700.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: null,
+		sourceReference: 'E2E-INV-0019',
+		evidenceReference: 'E2E-GRN-0019',
+		description: 'E2E June EUR cost awaiting recognition under an approved budget',
+	},
+	{
+		key: 'mayGbp',
+		expenseNumber: 'E2E-EXP-0020',
+		costUid: 'e2e-cost-0020',
+		classification: 'project',
+		project: 'gamma',
+		state: 'recognized',
+		recognitionMonth: BUDGET_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-06-21',
+		serviceEnd: '2019-06-21',
+		billDate: '2019-06-22',
+		expenseDate: '2019-06-22',
+		currency: 'GBP',
+		amount: '800.00',
+		taxAmount: '0.00',
+		grossAmount: '800.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '800.00',
+		sourceReference: 'E2E-INV-0020',
+		evidenceReference: 'E2E-GRN-0020',
+		description: 'E2E June GBP cost with two approved budgets',
+	},
+];
 	// ── Non-operating sources (#317) ──────────────────────────────────────
 	// Recognized balances, excluded from Company Incurred Cost; only approved
 	// period charges (EXPENDITURE_CHARGES below) become cost.
@@ -818,16 +927,182 @@ export const EXPENDITURE_CHARGES: SeedCharge[] = [
 		description: 'E2E prepaid service consumed in the second period',
 	},
 ];
+/**
+ * Approved Project cost budgets (#321).
+ *
+ * Budgets are their own store, so these rows change no expense and no
+ * reconciliation total: January, February, and the empty month 2019-05 keep
+ * exactly the expenses the reconciliation spec already asserts. The budget
+ * workflow month is 2019-06 (2019-10..12 belong to #319), and the rows cover
+ * every comparison outcome the module must state explicitly:
+ *
+ *   alpha / 2019-01 / INR  approved covering budget            → compared
+ *   alpha / 2019-02 / INR  approved USD budget only            → incompatible currency
+ *   alpha / 2019-02 / USD  the same USD budget                 → compared
+ *   beta  / 2019-01 / INR  no budget at all                    → missing
+ *   gamma / 2019-06 / INR  approved, but for an earlier period  → incompatible period
+ *   gamma / 2019-06 / USD  approved commercial-value scope     → incompatible scope
+ *   gamma / 2019-06 / EUR  approved, cost not recognized yet   → unsupported cost
+ *   gamma / 2019-06 / GBP  two approved covering budgets       → ambiguous
+ */
+export const EXPENDITURE_BUDGET_UID_PREFIX = 'e2e-budget-';
+/**
+ * A commercial figure seeded on the budget-only Project. The report must never
+ * read a Project sales value as a cost budget, so the spec asserts this number
+ * appears nowhere in the budget section.
+ */
+export const EXPENDITURE_PROJECT_VALUE = 999999.0;
+
+export type BudgetScope = 'project_incurred_cost' | 'commercial_value';
+export type BudgetState =
+	| 'draft'
+	| 'submitted'
+	| 'approved'
+	| 'superseded'
+	| 'withdrawn';
+
+export interface SeedBudget {
+	/** Stable key the spec addresses the row by. */
+	key: string;
+	budgetUid: string;
+	project: ExpenditureProjectKey;
+	currency: string;
+	/** Approved amount as a literal, so the spec can assert its own arithmetic. */
+	amount: string;
+	scope: BudgetScope;
+	periodStart: string;
+	periodEnd: string;
+	state: BudgetState;
+	/** Approval evidence; every approved fixture row carries one. */
+	approvalEvidence: string | null;
+	basisNote: string | null;
+	/** The version the next command must present. */
+	financialVersion: number;
+	/** Which journal commands the fixture history holds, oldest first. */
+	journal: Array<'recorded' | 'updated' | 'submitted' | 'approved' | 'superseded' | 'withdrawn'>;
+}
+
+export const EXPENDITURE_BUDGETS: SeedBudget[] = [
+	{
+		key: 'alphaApproved',
+		budgetUid: 'e2e-budget-0001',
+		project: 'alpha',
+		currency: 'INR',
+		amount: '5000.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-01-01',
+		periodEnd: '2019-12-31',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0001',
+		basisNote: 'E2E approved annual cost budget for Alpha',
+		financialVersion: 2,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'alphaFebUsd',
+		budgetUid: 'e2e-budget-0002',
+		project: 'alpha',
+		currency: 'USD',
+		amount: '200.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-02-01',
+		periodEnd: '2019-02-28',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0002',
+		basisNote: 'E2E approved February cost budget, stated in USD',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'gammaPeriod',
+		budgetUid: 'e2e-budget-0003',
+		project: 'gamma',
+		currency: 'INR',
+		amount: '1100.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-01-01',
+		periodEnd: '2019-05-31',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0003',
+		basisNote: 'E2E approved cost budget for January to May',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'gammaScope',
+		budgetUid: 'e2e-budget-0004',
+		project: 'gamma',
+		currency: 'USD',
+		amount: '900.00',
+		scope: 'commercial_value',
+		periodStart: '2019-06-01',
+		periodEnd: '2019-06-30',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0004',
+		basisNote: 'E2E approved commercial value, not a cost budget',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'gammaPending',
+		budgetUid: 'e2e-budget-0005',
+		project: 'gamma',
+		currency: 'EUR',
+		amount: '3000.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-06-01',
+		periodEnd: '2019-06-30',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0005',
+		basisNote: 'E2E approved June cost budget whose cost is not recognized yet',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'gammaAmbiguousA',
+		budgetUid: 'e2e-budget-0006',
+		project: 'gamma',
+		currency: 'GBP',
+		amount: '3000.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-06-01',
+		periodEnd: '2019-06-30',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0006',
+		basisNote: 'E2E approved June cost budget (first of two)',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'gammaAmbiguousB',
+		budgetUid: 'e2e-budget-0007',
+		project: 'gamma',
+		currency: 'GBP',
+		amount: '3500.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-06-01',
+		periodEnd: '2019-06-30',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0007',
+		basisNote: 'E2E approved June cost budget (second of two)',
+		financialVersion: 3,
+		journal: ['recorded', 'updated', 'approved'],
+	},
+];
 
 export interface SeededExpenditure {
 	month: string;
 	nextMonth: string;
+	budgetMonth: string;
 	projects: Record<ExpenditureProjectKey, number>;
 	costs: number;
+	budgets: number;
 	/** `expenses.id` per `SeedCost.key`, for direct database assertions. */
 	expenseIds: Record<string, number>;
 	/** `expense_period_charges.id` per `SeedCharge.key`. */
 	chargeIds: Record<string, number>;
+	/** `project_cost_budgets.id` per `SeedBudget.key`. */
+	budgetIds: Record<string, number>;
 }
 
 /** Create the report-only reader's role and user rows from scratch. */
@@ -963,6 +1238,32 @@ export async function cleanupExpenditureFixtures(): Promise<number> {
 			]
 		)
 	).affectedRows;
+	// Budgets (#321) are owned by this module through their Project: the spec
+	// also records budgets through the app, and every one of those targets an
+	// E2E-EXP-P* Project.
+	removed += (
+		await exec(
+			`DELETE FROM project_cost_budget_events
+        WHERE budget_uid LIKE ?
+           OR source_id IN (
+                SELECT id FROM project_cost_budgets
+                 WHERE project_id IN (
+                      SELECT project_id FROM projects WHERE project_code LIKE ?
+                 )
+              )`,
+			[`${EXPENDITURE_BUDGET_UID_PREFIX}%`, `${EXPENDITURE_PROJECT_CODE_PREFIX}%`]
+		)
+	).affectedRows;
+	removed += (
+		await exec(
+			`DELETE FROM project_cost_budgets
+        WHERE budget_uid LIKE ?
+           OR project_id IN (
+                SELECT project_id FROM projects WHERE project_code LIKE ?
+              )`,
+			[`${EXPENDITURE_BUDGET_UID_PREFIX}%`, `${EXPENDITURE_PROJECT_CODE_PREFIX}%`]
+		)
+	).affectedRows;
 	removed += (
 		await exec(`DELETE FROM projects WHERE project_code LIKE ?`, [
 			`${EXPENDITURE_PROJECT_CODE_PREFIX}%`,
@@ -990,9 +1291,15 @@ export async function seedExpenditureFixtures(): Promise<SeededExpenditure> {
 	for (const key of projectKeys) {
 		const project = EXPENDITURE_PROJECTS[key];
 		const inserted = await exec(
-			`INSERT INTO projects (project_code, project_title, name, client_name, status, isDelete)
-       VALUES (?, ?, NULL, ?, 'ONGOING', 0)`,
-			[project.code, project.title, project.client]
+			`INSERT INTO projects (project_code, project_title, name, client_name, project_value, status, isDelete)
+       VALUES (?, ?, NULL, ?, ?, 'ONGOING', 0)`,
+			[
+				project.code,
+				project.title,
+				project.client,
+				// A commercial Project value: cost budgets must never read it.
+				key === 'gamma' ? EXPENDITURE_PROJECT_VALUE : null,
+			]
 		);
 		projects[key] = inserted.insertId;
 	}
@@ -1151,13 +1458,81 @@ export async function seedExpenditureFixtures(): Promise<SeededExpenditure> {
 		}
 	}
 
+	// Budgets (#321): each fixture row carries the state, approval evidence,
+	// version, and journal history the module must read back.
+	const admin = await rows<{ id: number }>(
+		`SELECT id FROM users WHERE username = ? LIMIT 1`,
+		[ADMIN_USER.username]
+	);
+	const adminId = admin.length > 0 ? admin[0].id : null;
+	const budgetIds: Record<string, number> = {};
+	for (const budget of EXPENDITURE_BUDGETS) {
+		const approved = budget.state === 'approved';
+		const inserted = await exec(
+			`INSERT INTO project_cost_budgets
+         (budget_uid, project_id, currency, amount, scope, period_start, period_end,
+          basis_note, state, approval_evidence_reference, approved_by, approved_at,
+          financial_version, created_by, isDelete)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+			[
+				budget.budgetUid,
+				projects[budget.project],
+				budget.currency,
+				budget.amount,
+				budget.scope,
+				budget.periodStart,
+				budget.periodEnd,
+				budget.basisNote,
+				budget.state,
+				budget.approvalEvidence,
+				approved ? adminId : null,
+				approved ? '2019-01-02 10:00:00' : null,
+				budget.financialVersion,
+				adminId,
+			]
+		);
+		budgetIds[budget.key] = inserted.insertId;
+
+		let version = 0;
+		for (const command of budget.journal) {
+			version += 1;
+			await exec(
+				`INSERT INTO project_cost_budget_events
+           (budget_uid, source_table, source_id, version, command, actor_user_id, reason,
+            evidence_reference, snapshot)
+         VALUES (?, 'project_cost_budgets', ?, ?, ?, ?, ?, ?, ?)`,
+				[
+					budget.budgetUid,
+					inserted.insertId,
+					version,
+					command,
+					adminId,
+					`E2E fixture ${budget.key}`,
+					command === 'approved' ? budget.approvalEvidence : null,
+					JSON.stringify({
+						state: command === 'approved' ? 'approved' : 'draft',
+						currency: budget.currency,
+						amount: budget.amount,
+						scope: budget.scope,
+						period_start: budget.periodStart,
+						period_end: budget.periodEnd,
+						financial_version: version,
+					}),
+				]
+			);
+		}
+	}
+
 	return {
 		month: EXPENDITURE_MONTH,
 		nextMonth: EXPENDITURE_NEXT_MONTH,
+		budgetMonth: BUDGET_MONTH,
 		projects,
 		costs: EXPENDITURE_COSTS.length,
+		budgets: EXPENDITURE_BUDGETS.length,
 		expenseIds,
 		chargeIds,
+		budgetIds,
 	};
 }
 
@@ -1166,6 +1541,13 @@ export function seededCharge(key: string): SeedCharge {
 	const charge = EXPENDITURE_CHARGES.find((entry) => entry.key === key);
 	if (!charge) throw new Error(`Unknown expenditure charge fixture key: ${key}`);
 	return charge;
+}
+
+/** The seeded budget for a key, or a thrown error when it is missing. */
+export function seededBudget(key: string): SeedBudget {
+	const budget = EXPENDITURE_BUDGETS.find((entry) => entry.key === key);
+	if (!budget) throw new Error(`Unknown expenditure budget fixture key: ${key}`);
+	return budget;
 }
 
 /** The seeded row for a key, or a thrown error when the fixture is missing. */

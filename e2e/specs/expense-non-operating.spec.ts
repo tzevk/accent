@@ -36,7 +36,7 @@ import {
  *   2019-08  the first period charges fall (advance consumption, prepayment
  *            consumption, capital depreciation) beside one operating cost;
  *   2019-09  the prepayment's second period charge falls;
- *   2019-06  only ad-hoc charges this spec creates and cancels.
+ *   2020-01  only ad-hoc charges this spec creates and cancels.
  */
 
 test.use({

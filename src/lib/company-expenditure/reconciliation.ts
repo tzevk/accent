@@ -18,6 +18,7 @@
 
 import type Decimal from 'decimal.js';
 import { add, R, toNumber } from '@/lib/money';
+import { buildBudgetSection } from './budget-comparison';
 import type { SourceCoverageDeclaration } from './coverage';
 import {
 	isNonOperatingNature,
@@ -27,6 +28,7 @@ import {
 import { effectiveTaxTreatment, isConfirmed, isOpenState } from './recognition';
 import type {
 	CompanyReconciliation,
+	CostBudgetRecord,
 	CostRecord,
 	CoverageNotice,
 	CurrencyTotal,
@@ -182,6 +184,33 @@ function currencySlice(
 	};
 }
 
+/**
+ * The Project ids a month's cost places rows for: the confirmed and open
+ * records plus the approved period charges that are counted as cost.
+ */
+export function projectIdsIn(
+	records: CostRecord[],
+	charges: PeriodCharge[] = []
+): number[] {
+	const ids = new Set<number>();
+	for (const record of records) {
+		if (record.classification === 'project' && record.projectId !== null) {
+			ids.add(record.projectId);
+		}
+	}
+	for (const charge of charges) {
+		if (
+			charge.state === 'approved' &&
+			charge.sourceState === 'recognized' &&
+			charge.classification === 'project' &&
+			charge.projectId !== null
+		) {
+			ids.add(charge.projectId);
+		}
+	}
+	return [...ids];
+}
+
 function projectRows(
 	confirmed: CostRecord[],
 	open: CostRecord[],
@@ -192,17 +221,9 @@ function projectRows(
 	// One row per Project and currency. Amounts in different currencies are
 	// never added, and the prior-month comparison is same-currency only; a
 	// Project costing in two currencies therefore shows two rows.
-	const ids = new Set<number>();
-	for (const record of [...confirmed, ...open]) {
-		if (record.classification === 'project' && record.projectId !== null) {
-			ids.add(record.projectId);
-		}
-	}
-	for (const charge of charges) {
-		if (charge.classification === 'project' && charge.projectId !== null) {
-			ids.add(charge.projectId);
-		}
-	}
+	const ids = new Set<number>(
+		projectIdsIn([...confirmed, ...open], charges)
+	);
 	const rows: ReconciliationProjectRow[] = [];
 	for (const id of ids) {
 		if (projectFilter !== null && projectFilter !== id) continue;
@@ -619,6 +640,11 @@ export interface ReconciliationInput {
 	 * then currency. `null` means that currency's prior amount is unknown.
 	 */
 	previousMonthProjectCost: Map<number, Map<string, number | null>>;
+	/**
+	 * The cost budgets the budget section reads: every covering budget of the
+	 * month plus every budget of the Projects above.
+	 */
+	budgets: CostBudgetRecord[];
 	projectFilter: number | null;
 	projectOptions: Array<{
 		project_id: number;
@@ -754,6 +780,14 @@ export function buildReconciliation(
 		}),
 	];
 
+	const projects = projectRows(
+		confirmed,
+		open,
+		countedCharges,
+		input.previousMonthProjectCost,
+		input.projectFilter
+	);
+
 	return {
 		month: input.month,
 		month_label: monthLabel(input.month),
@@ -786,13 +820,7 @@ export function buildReconciliation(
 				.length,
 			record_count: confirmed.length,
 		},
-		projects: projectRows(
-			confirmed,
-			open,
-			countedCharges,
-			input.previousMonthProjectCost,
-			input.projectFilter
-		),
+		projects,
 		non_operating: nonOperatingSection({
 			sources: input.nonOperatingSources,
 			charges: input.charges,
@@ -801,6 +829,15 @@ export function buildReconciliation(
 		}),
 		evidence,
 		coverage: notices,
+		// The budget section is its own interpretation: a budget never enters
+		// `company`, `projects`, or `evidence`.
+		budgets: buildBudgetSection({
+			month: input.month,
+			rows: projects,
+			records,
+			budgets: input.budgets,
+			projectFilter: input.projectFilter,
+		}),
 		project_options: input.projectOptions,
 		available_months: input.availableMonths,
 	};

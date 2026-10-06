@@ -34,6 +34,7 @@ import SearchableSelect from '@/components/ui/searchable-select';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { formatCurrencyIn, formatDate } from '@/lib/format';
 import type { CostRecordJson, PeriodChargeJson } from '@/lib/company-expenditure';
+import BudgetSection, { type BudgetSectionPayload } from './budget-section';
 
 interface GroupRow {
 	key: string;
@@ -160,6 +161,7 @@ interface ReconciliationPayload {
 		known_zero: { count: number };
 	};
 	coverage: CoverageNoticeRow[];
+	budgets: BudgetSectionPayload;
 	project_options: Array<{
 		project_id: number;
 		project_code: string;
@@ -1297,6 +1299,17 @@ export default function ExpenditureView({
 					</table>
 				)}
 			</div>
+
+			{/* Approved cost budget (#321). Its own section: a budget never
+			    enters the cost totals above, and the comparison states its own
+			    basis, exclusions, and version history. */}
+			<BudgetSection
+				month={month}
+				section={data.budgets}
+				projectOptions={data.project_options}
+				canManage={canEditCost}
+				canApprove={canRecognize}
+			/>
 
 			<p className="mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed text-gray-500">
 				<BanknotesIcon className="h-3 w-3" />
