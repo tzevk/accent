@@ -89,11 +89,18 @@ export async function loadCombinedDrilldown(
 	query: CostDrilldownQuery
 ): Promise<CostDrilldown> {
 	const source = query.source ?? 'all';
+	// Supplier invoices are operating cost: a non-operating or unresolved
+	// nature filter must never surface them.
+	const supplierIsOperating =
+		!query.nature || query.nature === 'all' || query.nature === 'operating';
 	const results: CostRecord[] = [];
 	if (source === 'all' || source === 'direct_expense') {
 		results.push(...(await loadFilteredExpenseRecords(db, query)));
 	}
-	if (source === 'all' || source === 'supplier_invoice') {
+	if (
+		(source === 'all' || source === 'supplier_invoice') &&
+		supplierIsOperating
+	) {
 		results.push(...(await loadFilteredSupplierRecords(db, query)));
 	}
 	const merged = sortRecords(results);

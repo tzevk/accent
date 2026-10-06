@@ -946,6 +946,7 @@ export async function executeSupplierCommand(
 			patch.splits !== undefined ? normalizeSplits(patch.splits) : null;
 		const financial = {
 			...merged,
+			nature: 'operating' as const,
 			reportingCurrency: conversion.reportingCurrency,
 			conversionRate: conversion.conversionRate,
 			conversionDate: conversion.conversionDate,
