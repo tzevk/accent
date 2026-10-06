@@ -23,6 +23,14 @@ import { add, sub, R, toNumber } from '@/lib/money';
 import { withTransaction } from '@/utils/database';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
 import {
+	convertToReporting,
+	currencyCodeOf,
+	evidenceOf,
+	isCurrencyCode,
+	parseConversionRate,
+	reportingCurrencyOf,
+} from './currency';
+import {
 	evaluateCost,
 	nextState,
 	recognitionBlockers,
@@ -183,6 +191,111 @@ function pickEnum<T extends string>(
 		: null;
 }
 
+interface ResolvedConversion {
+	currency: string | null;
+	reportingCurrency: string;
+	conversionRate: string | null;
+	conversionDate: string | null;
+	conversionEvidenceReference: string | null;
+}
+
+/**
+ * Validate the original currency, the reporting target, and the optional
+ * conversion triple. Evidence moves as a whole or not at all; a rate for a
+ * cost already in its reporting currency, or for a cost whose original
+ * currency is unknown, is contradictory and refused rather than dropped.
+ */
+function resolveConversion(input: {
+	currency: unknown;
+	reportingCurrency: unknown;
+	conversionRate: unknown;
+	conversionDate: unknown;
+	conversionEvidenceReference: unknown;
+}): ResolvedConversion {
+	if (!isCurrencyCode(input.currency)) {
+		throw new CostError(
+			'invalid_currency',
+			'Currency must be a three-letter code',
+			422,
+			{ field: 'currency' }
+		);
+	}
+	if (!isCurrencyCode(input.reportingCurrency)) {
+		throw new CostError(
+			'invalid_currency',
+			'Reporting currency must be a three-letter code',
+			422,
+			{ field: 'reporting_currency' }
+		);
+	}
+	const currency = currencyCodeOf(input.currency);
+	const reportingCurrency = reportingCurrencyOf({
+		reportingCurrency: currencyCodeOf(input.reportingCurrency),
+	});
+	const rawRate = input.conversionRate;
+	const rateText =
+		rawRate === null || rawRate === undefined ? null : String(rawRate).trim();
+	const hasRate = rateText !== null && rateText.length > 0;
+	const conversionDate = dateOrNull(input.conversionDate);
+	const conversionEvidenceReference = text(input.conversionEvidenceReference, 500);
+	const hasAny =
+		hasRate || conversionDate !== null || conversionEvidenceReference !== null;
+	if (!hasAny) {
+		return {
+			currency,
+			reportingCurrency,
+			conversionRate: null,
+			conversionDate: null,
+			conversionEvidenceReference: null,
+		};
+	}
+	if (currency === null) {
+		throw new CostError(
+			'conversion_requires_currency',
+			'Conversion evidence needs the original currency first',
+			422,
+			{ field: 'conversion_rate' }
+		);
+	}
+	if (currency === reportingCurrency) {
+		throw new CostError(
+			'conversion_not_applicable',
+			'A cost already in its reporting currency carries no conversion evidence',
+			422,
+			{ field: 'conversion_rate' }
+		);
+	}
+	if (hasRate && parseConversionRate(rateText) === null) {
+		throw new CostError(
+			'invalid_conversion_rate',
+			'Conversion rate must be positive with at most 10 decimal places',
+			422,
+			{ field: 'conversion_rate' }
+		);
+	}
+	const missing: string[] = [];
+	if (!hasRate) missing.push('conversion_rate');
+	if (conversionDate === null) missing.push('conversion_date');
+	if (conversionEvidenceReference === null) {
+		missing.push('conversion_evidence_reference');
+	}
+	if (missing.length > 0) {
+		throw new CostError(
+			'conversion_evidence_incomplete',
+			'Conversion evidence needs the rate, its effective date, and its evidence reference together',
+			422,
+			{ missing }
+		);
+	}
+	return {
+		currency,
+		reportingCurrency,
+		conversionRate: rateText,
+		conversionDate,
+		conversionEvidenceReference,
+	};
+}
+
 function enumOrThrow<T extends string>(
 	value: unknown,
 	allowed: readonly T[],
@@ -213,7 +326,9 @@ async function loadCostForUpdate(
             service_period_start, service_period_end, tax_treatment,
             tax_evidence_reference, recognized_amount, source_reference,
             evidence_reference, financial_version, recognized_by, recognized_at,
-            currency, amount, tax_amount, total_amount, vendor_name, description,
+            currency, reporting_currency, conversion_rate, conversion_date,
+            conversion_evidence_reference, converted_amount,
+            amount, tax_amount, total_amount, vendor_name, description,
             project_id
        FROM expenses
       WHERE id = ? AND isDelete = 0
@@ -262,7 +377,14 @@ export async function recordCost(
 	actor: CostActor,
 	options?: CommandOptions
 ): Promise<RecordedCost> {
-	const currency = (text(input.currency, 3) ?? 'INR').toUpperCase();
+	const conversion = resolveConversion({
+		currency: input.currency,
+		reportingCurrency: input.reportingCurrency,
+		conversionRate: input.conversionRate,
+		conversionDate: input.conversionDate,
+		conversionEvidenceReference: input.conversionEvidenceReference,
+	});
+	const currency = conversion.currency;
 	const taxAmount = amountOrNull(input.taxAmount);
 	// A caller that speaks the register's own shape gives the net amount; the
 	// gross liability is then net + tax. A caller that states the gross keeps it.
@@ -333,6 +455,11 @@ export async function recordCost(
 		classification,
 		state,
 		currency,
+		reportingCurrency: conversion.reportingCurrency,
+		conversionRate: conversion.conversionRate,
+		conversionDate: conversion.conversionDate,
+		conversionEvidenceReference: conversion.conversionEvidenceReference,
+		convertedAmount: null,
 		grossAmount,
 		taxAmount,
 		taxTreatment,
@@ -375,8 +502,11 @@ export async function recordCost(
               cost_uid, cost_classification, recognition_state, recognition_period,
               period_basis, service_period_start, service_period_end, tax_treatment,
               tax_evidence_reference, recognized_amount, source_reference,
-              evidence_reference, financial_version)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+              evidence_reference, financial_version,
+              reporting_currency, conversion_rate, conversion_date,
+              conversion_evidence_reference, converted_amount)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
+                   ?, ?, ?, ?, ?)`,
 					[
 						expenseNumber,
 						expenseDate,
@@ -412,6 +542,11 @@ export async function recordCost(
 						null,
 						financial.sourceReference,
 						financial.evidenceReference,
+						financial.reportingCurrency,
+						financial.conversionRate,
+						financial.conversionDate,
+						financial.conversionEvidenceReference,
+						null,
 					]
 				)) as [Record<string, unknown>, unknown];
 				const insertId = Number(result.insertId);
@@ -430,9 +565,15 @@ export async function recordCost(
 						recognition_period: period,
 						period_basis: basis,
 						currency,
+						reporting_currency: conversion.reportingCurrency,
+						conversion_rate: conversion.conversionRate,
+						conversion_date: conversion.conversionDate,
+						conversion_evidence_reference:
+							conversion.conversionEvidenceReference,
 						gross_amount: grossAmount,
 						tax_amount: taxAmount,
 						recognized_amount: null,
+						converted_amount: null,
 						state,
 						exceptions: evaluation.exceptions,
 					},
@@ -480,7 +621,9 @@ export async function loadCost(
             e.service_period_start, e.service_period_end, e.tax_treatment,
             e.tax_evidence_reference, e.recognized_amount, e.source_reference,
             e.evidence_reference, e.financial_version, e.recognized_by, e.recognized_at,
-            e.currency, e.amount, e.tax_amount, e.total_amount,
+            e.currency, e.reporting_currency, e.conversion_rate, e.conversion_date,
+            e.conversion_evidence_reference, e.converted_amount,
+            e.amount, e.tax_amount, e.total_amount,
             e.vendor_name, e.description,
             e.project_id, p.project_code,
             COALESCE(p.project_title, p.name) AS project_name, p.client_name
@@ -538,7 +681,7 @@ export async function executeCommand(
 		}
 
 		const patch = input.patch ?? {};
-		const merged = {
+		const mergedRaw = {
 			classification:
 				patch.classification !== undefined
 					? enumOrThrow(
@@ -566,10 +709,25 @@ export async function executeCommand(
 				patch.billDate !== undefined
 					? dateOrNull(patch.billDate)
 					: dateOrNull(row.expense_date),
-			currency:
-				patch.currency !== undefined
-					? (text(patch.currency, 3) ?? 'INR').toUpperCase()
-					: (text(row.currency, 3) ?? 'INR'),
+			currency: patch.currency !== undefined ? patch.currency : row.currency,
+			reportingCurrency:
+				patch.reportingCurrency !== undefined
+					? patch.reportingCurrency
+					: row.reporting_currency,
+			conversionRate:
+				patch.conversionRate !== undefined
+					? patch.conversionRate
+					: row.conversion_rate === null || row.conversion_rate === undefined
+						? null
+						: String(row.conversion_rate),
+			conversionDate:
+				patch.conversionDate !== undefined
+					? patch.conversionDate
+					: row.conversion_date,
+			conversionEvidenceReference:
+				patch.conversionEvidenceReference !== undefined
+					? patch.conversionEvidenceReference
+					: row.conversion_evidence_reference,
 			grossAmount:
 				patch.grossAmount !== undefined
 					? amountOrNull(patch.grossAmount)
@@ -602,6 +760,10 @@ export async function executeCommand(
 						? text(input.evidenceReference, 500)
 						: text(row.evidence_reference, 500),
 		};
+		// The currency and its conversion evidence are one validated unit: a
+		// rate without a known original currency, or a rate on a cost already
+		// in its reporting currency, is refused rather than dropped.
+		const merged = { ...mergedRaw, ...resolveConversion(mergedRaw) };
 
 		if (merged.classification === 'project' && !merged.projectId) {
 			throw new CostError(
@@ -642,6 +804,7 @@ export async function executeCommand(
 			recognitionPeriod: resolved.period,
 			periodBasis: resolved.basis,
 			recognizedAmount: null,
+			convertedAmount: null,
 		};
 
 		let recognizedAmount: number | null =
@@ -679,6 +842,17 @@ export async function executeCommand(
 		// filter does that) without erasing the recorded amount: the row and its
 		// journal stay as the evidence of what was recognized before.
 
+		// The durable reporting-currency figure at the stored rate; null while
+		// there is no confirmed amount or the evidence does not support one.
+		const convertedAmount =
+			recognizedAmount === null
+				? null
+				: convertToReporting(
+						recognizedAmount,
+						evidenceOf(merged),
+						reportingCurrencyOf(merged)
+					).amount;
+
 		const nextVersion = version + 1;
 		const netAmount =
 			merged.grossAmount === null
@@ -689,7 +863,10 @@ export async function executeCommand(
           SET cost_classification = ?, recognition_state = ?, recognition_period = ?,
               period_basis = ?, service_period_start = ?, service_period_end = ?,
               expense_date = ?, tax_treatment = ?, tax_evidence_reference = ?,
-              currency = ?, amount = ?, total_amount = ?, tax_amount = ?,
+              currency = ?, reporting_currency = ?, conversion_rate = ?,
+              conversion_date = ?, conversion_evidence_reference = ?,
+              amount = ?, total_amount = ?, tax_amount = ?,
+              converted_amount = ?,
               source_reference = ?, evidence_reference = ?, recognized_amount = ?,
               recognized_by = ?,
               recognized_at = IF(?, NOW(), ?),
@@ -706,9 +883,14 @@ export async function executeCommand(
 				merged.taxTreatment,
 				merged.taxEvidenceReference,
 				merged.currency,
+				merged.reportingCurrency,
+				merged.conversionRate,
+				merged.conversionDate,
+				merged.conversionEvidenceReference,
 				netAmount,
 				merged.grossAmount,
 				merged.taxAmount,
+				convertedAmount,
 				merged.sourceReference,
 				merged.evidenceReference,
 				recognizedAmount,
@@ -741,10 +923,15 @@ export async function executeCommand(
 				recognition_period: resolved.period,
 				period_basis: resolved.basis,
 				currency: merged.currency,
+				reporting_currency: merged.reportingCurrency,
+				conversion_rate: merged.conversionRate,
+				conversion_date: merged.conversionDate,
+				conversion_evidence_reference: merged.conversionEvidenceReference,
 				gross_amount: merged.grossAmount,
 				tax_amount: merged.taxAmount,
 				tax_treatment: merged.taxTreatment,
 				recognized_amount: recognizedAmount,
+				converted_amount: convertedAmount,
 				state: target,
 			},
 		});

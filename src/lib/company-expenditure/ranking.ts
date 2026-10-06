@@ -20,6 +20,7 @@
  */
 
 import { div, mul, sub } from '@/lib/money';
+import { currencyCodeOf } from './currency';
 import { isConfirmed, isOpenState } from './recognition';
 import {
 	confirmedAmount,
@@ -282,7 +283,7 @@ function currencyComparison(
 	window: ComparisonWindow
 ): ComparisonCurrency {
 	const sameCurrency = (record: CostRecord) =>
-		(record.currency ?? 'INR') === currency;
+		currencyCodeOf(record.currency) === currency;
 	const current = windowRecords(records, window, 'current').filter(
 		sameCurrency
 	);
@@ -351,14 +352,18 @@ export function buildPeriodComparison(
 	input: ComparisonInput
 ): PeriodComparison {
 	const window = comparisonWindow(input.month, input.asOf);
+	// A record whose original currency is unknown cannot be stated, so it never
+	// opens a currency slice; the month notices disclose how many those are.
 	const codes = [
 		...new Set(
 			[
 				...windowRecords(input.records, window, 'current'),
 				...windowRecords(input.priorMonthRecords, window, 'prior'),
-			].map((record) => record.currency ?? 'INR')
+			].map((record) => currencyCodeOf(record.currency))
 		),
-	].sort();
+	]
+		.filter((code): code is string => code !== null)
+		.sort();
 	const currencyTotals = codes.map((currency) =>
 		currencyComparison(input.records, input.priorMonthRecords, currency, window)
 	);

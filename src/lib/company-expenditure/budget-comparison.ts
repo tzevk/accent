@@ -139,7 +139,9 @@ function evaluateRow(
 		(record) =>
 			record.classification === 'project' &&
 			record.projectId === row.project_id &&
-			(record.currency ?? 'INR') === row.currency
+			// An unknown original currency (#319) is never attributed to a
+			// currency row, so it is not counted against one either.
+			record.currency === row.currency
 	);
 	const confirmedRecords = key.filter((record) => isConfirmed(record.state)).length;
 	const pendingRecords = key.filter((record) => isOpenState(record.state)).length;

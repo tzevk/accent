@@ -13,6 +13,7 @@
 
 import type Decimal from 'decimal.js';
 import { add, R, toNumber } from '@/lib/money';
+import { currencyCodeOf } from './currency';
 import { isConfirmed } from './recognition';
 import type {
 	CostClassification,
@@ -64,10 +65,15 @@ export function confirmedAmount(record: CostRecord): number | null {
 	return record.evaluation.recognizedAmount;
 }
 
-/** The single currency the records share, or null for none or more than one. */
+/**
+ * The single currency the records share, or null for none, more than one, or
+ * any unknown original currency — an unknown currency can never be stated.
+ */
 export function currencyOf(records: CostRecord[]): string | null {
-	const codes = new Set(records.map((record) => record.currency ?? 'INR'));
-	return codes.size === 1 ? [...codes][0] : null;
+	const codes = new Set(records.map((record) => currencyCodeOf(record.currency)));
+	if (codes.has(null)) return null;
+	const stated = [...codes].filter((code): code is string => code !== null);
+	return stated.length === 1 ? stated[0] : null;
 }
 
 /**

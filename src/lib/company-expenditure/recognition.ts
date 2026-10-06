@@ -14,6 +14,7 @@
  */
 
 import { R, sub, toNumber } from '@/lib/money';
+import { conversionException, evidenceOf } from './currency';
 import type {
 	CostClassification,
 	CostCommandName,
@@ -108,6 +109,11 @@ export function evaluateCost(input: CostFinancialInput): CostEvaluation {
 		// recorded, and the cost sits in the end month (disclosed basis).
 		exceptions.push('service_period_start_missing');
 	}
+	// Conversion evidence is an evidence-quality exception, not a recognition
+	// blocker: an unconverted foreign cost is recognized and reported in its
+	// own currency subtotal with this exception.
+	const conversion = conversionException(evidenceOf(input));
+	if (conversion) exceptions.push(conversion);
 
 	if (gross === null) {
 		exceptions.push('missing_amount');
