@@ -766,7 +766,8 @@ export async function executeSupplierCommand(
 					: dateOrNull(s(row, 'invoice_date')),
 			currency:
 				patch.currency !== undefined
-					? (text(patch.currency, 3) ?? 'INR').toUpperCase()
+					? (currencyCodeOf(patch.currency) ??
+						(s(row, 'currency', 'INR') ?? 'INR'))
 					: (s(row, 'currency', 'INR') ?? 'INR'),
 			grossAmount:
 				patch.grossAmount !== undefined
