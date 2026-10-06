@@ -792,24 +792,31 @@ export default function BudgetSection({
 											Approve
 										</button>
 									)}
-									{canManage &&
+									{((canManage &&
 										(budget.state === 'draft' ||
-											budget.state === 'submitted' ||
-											budget.state === 'approved') && (
-											<button
-												type="button"
-												data-testid="budget-withdraw"
-												onClick={() => {
-													setCommandError(null);
-													setCommandTarget({
-														budget,
-														command: 'withdraw',
-													});
-												}}
-												className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-											>
-												Withdraw
-											</button>
+											budget.state === 'submitted')) ||
+										(canApprove && budget.state === 'approved')) && (
+										<button
+											type="button"
+											data-testid="budget-withdraw"
+											onClick={() => {
+												setCommandError(null);
+												setCommandTarget({
+													budget,
+													command: 'withdraw',
+												});
+											}}
+											className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+										>
+											Withdraw
+										</button>
+									)}
+									{!canApprove &&
+										canManage &&
+										budget.state === 'approved' && (
+											<span className="text-xs text-gray-500">
+												Withdrawing an approved budget needs approval access
+											</span>
 										)}
 								</div>
 							</div>

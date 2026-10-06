@@ -1015,7 +1015,11 @@ async function seedExpenditureEditor(): Promise<void> {
 		[
 			EXPENDITURE_EDITOR_ROLE.roleCode,
 			EXPENDITURE_EDITOR_ROLE.roleName,
-			JSON.stringify(['other_expenses:read', 'other_expenses:update']),
+			JSON.stringify([
+				'reports:read',
+				'other_expenses:read',
+				'other_expenses:update',
+			]),
 			'E2E expenditure fixture editor (e2e/lib/expenditure-fixtures.ts)',
 		]
 	);
@@ -1342,18 +1346,18 @@ export function seededCost(key: string): SeedCost {
 }
 
 /**
- * Sign one fixture identity in through the real API and return a context
- * carrying that session. Mirrors the security harness's login so the identity
- * is exercised exactly as a browser would be, without sharing its fixtures:
- * the `auth` bucket for this identity is cleared first (rerun safety) and its
- * own trusted-header identity isolates the following API calls.
+ * Sign one fixture identity in through the real API and return its cookie jar.
+ * Mirrors the security harness's login so the identity is exercised exactly as
+ * a browser would be, without sharing its fixtures: the `auth` bucket for this
+ * identity is cleared first (rerun safety), and its own trusted-header identity
+ * isolates its API calls. The jar can drive a browser context as well.
  */
-async function loginExpenditureUser(
+async function expenditureStorageState(
 	playwright: PlaywrightApi,
 	baseURL: string,
 	user: { username: string; password: string },
 	ip: string
-): Promise<APIRequestContext> {
+): Promise<{ cookies: Cookie[]; origins: [] }> {
 	const probe = await playwright.request.newContext({ baseURL });
 	try {
 		try {
@@ -1382,7 +1386,7 @@ async function loginExpenditureUser(
 				`[e2e] login for ${user.username} succeeded but no session cookie was set`
 			);
 		}
-		const storageState: { cookies: Cookie[]; origins: [] } = {
+		return {
 			cookies: [
 				{
 					name: 'session',
@@ -1397,15 +1401,48 @@ async function loginExpenditureUser(
 			],
 			origins: [],
 		};
-		return await playwright.request.newContext({
-			baseURL,
-			extraHTTPHeaders: { 'x-vercel-forwarded-for': ip },
-			storageState,
-		});
 	} finally {
 		await probe.dispose();
 	}
 }
+
+/** One fixture identity's authenticated request context, with its own IP. */
+async function loginExpenditureUser(
+	playwright: PlaywrightApi,
+	baseURL: string,
+	user: { username: string; password: string },
+	ip: string
+): Promise<APIRequestContext> {
+	const storageState = await expenditureStorageState(
+		playwright,
+		baseURL,
+		user,
+		ip
+	);
+	return playwright.request.newContext({
+		baseURL,
+		extraHTTPHeaders: { 'x-vercel-forwarded-for': ip },
+		storageState,
+	});
+}
+
+/** The editor's cookie jar, so a browser context can act as that identity. */
+export async function expenditureEditorStorageState(
+	playwright: PlaywrightApi,
+	baseURL: string
+): Promise<{ cookies: Cookie[]; origins: [] }> {
+	return expenditureStorageState(
+		playwright,
+		baseURL,
+		EXPENDITURE_EDITOR_USER,
+		EXPENDITURE_EDITOR_IP
+	);
+}
+
+/** Headers carrying the editor's own rate-limit identity. */
+export const EXPENDITURE_EDITOR_HEADERS = {
+	'x-vercel-forwarded-for': EXPENDITURE_EDITOR_IP,
+} as const;
 
 /** The report-only reader's context (`reports:read` and nothing else). */
 export async function loginExpenditureReportOnlyReader(

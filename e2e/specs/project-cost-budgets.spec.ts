@@ -7,10 +7,12 @@ import {
 	BUDGET_MONTH,
 	EXPENDITURE_BUDGET_UID_PREFIX,
 	EXPENDITURE_COSTS,
+	EXPENDITURE_EDITOR_HEADERS,
 	EXPENDITURE_MONTH,
 	EXPENDITURE_NEXT_MONTH,
 	EXPENDITURE_PROJECTS,
 	cleanupExpenditureFixtures,
+	expenditureEditorStorageState,
 	loginExpenditureEditor,
 	loginExpenditureReportOnlyReader,
 	seedExpenditureFixtures,
@@ -1021,10 +1023,16 @@ test('refuses unauthorized budget reads and writes without changing data', async
 });
 
 test('splits drafting from approval for an editor without the approval privilege', async ({
+	browser,
 	playwright,
 }) => {
 	// A real `other_expenses:update` identity with no `other_expenses:approve`.
 	const editor = await loginExpenditureEditor(playwright, E2E_ENV.baseURL);
+	const editorBrowser = await browser.newContext({
+		storageState: await expenditureEditorStorageState(playwright, E2E_ENV.baseURL),
+		extraHTTPHeaders: { ...EXPENDITURE_EDITOR_HEADERS },
+	});
+	const editorPage = await editorBrowser.newPage();
 	try {
 		const createdResponse = await editor.post('/api/admin/cost-budgets', {
 			data: {
@@ -1041,6 +1049,23 @@ test('splits drafting from approval for an editor without the approval privilege
 		const editorDraft = (await createdResponse.json()).data as BudgetRow;
 		created.push(editorDraft.id);
 		expect(editorDraft.state).toBe('draft');
+
+		// The controls must not offer an action the server refuses: this editor
+		// sees Withdraw on its own draft, and a disabled-by-absence action on the
+		// approved budget, with the reason stated.
+		await openExpenditure(editorPage, BUDGET_LABEL);
+		await selectBudgetProject(editorPage, EXPENDITURE_PROJECTS.gamma.code);
+		const approvedRow = editorPage.locator(
+			`[data-testid="budget-row"][data-budget-id="${apiBudgetId}"]`
+		);
+		await expect(approvedRow).toHaveAttribute('data-state', 'approved');
+		await expect(approvedRow.getByTestId('budget-withdraw')).toHaveCount(0);
+		await expect(approvedRow).toContainText('needs approval access');
+		const draftRow = editorPage.locator(
+			`[data-testid="budget-row"][data-budget-id="${editorDraft.id}"]`
+		);
+		await expect(draftRow.getByTestId('budget-withdraw')).toHaveCount(1);
+		await expect(draftRow.getByTestId('budget-approve')).toHaveCount(0);
 
 		// The ledger's update privilege drafts, submits, and withdraws a draft.
 		const submit = await editor.post(
@@ -1109,6 +1134,7 @@ test('splits drafting from approval for an editor without the approval privilege
 		};
 	} finally {
 		await editor.dispose();
+		await editorBrowser.close();
 	}
 });
 
