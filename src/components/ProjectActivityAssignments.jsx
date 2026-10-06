@@ -116,7 +116,7 @@ function SortHeader({ label, sortKey, sort, onSort }) {
 	const arrow = !isActive ? '' : sort.dir === 'asc' ? '▲' : '▼';
 	return (
 		<th
-			className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight select-none"
+			className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-xs leading-tight select-none"
 			aria-sort={
 				isActive ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
 			}
@@ -761,8 +761,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 					</p>
 				</div>
 			) : (
-				<div>
-					<table className="w-full text-sm border-collapse table-fixed">
+				<div className="overflow-x-auto">
+					<table className="w-full min-w-[900px] text-sm border-collapse table-fixed">
 						<colgroup>
 							<col className="w-[10%]" />
 							<col className="w-[8%]" />
@@ -832,10 +832,10 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									sort={sort}
 									onSort={toggleSort}
 								/>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight select-none">
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-xs leading-tight select-none">
 									Remark
 								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-[10px] leading-tight select-none">
+								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-xs leading-tight select-none">
 									Actions
 								</th>
 							</tr>

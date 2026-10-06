@@ -728,6 +728,10 @@ textarea::placeholder {
 	.animate-bounce-gentle {
 		animation: none !important;
 	}
+
+	[class*='blobFloat'] {
+		animation: none !important;
+	}
 }
 
 /* Rich text content styles for TipTap editor output */
