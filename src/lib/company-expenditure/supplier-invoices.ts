@@ -597,6 +597,7 @@ export async function initializeSupplierCost(
 			: toNumber(sub(R(grossAmount), R(taxAmount ?? 0)));
 	const financial = {
 		classification,
+		nature: 'operating' as const,
 		state,
 		currency,
 		reportingCurrency: conversion.reportingCurrency,
@@ -940,6 +941,7 @@ export async function executeSupplierCommand(
 				: null;
 		const financial = {
 			...merged,
+			nature: 'operating' as const,
 			reportingCurrency: conversion.reportingCurrency,
 			conversionRate: conversion.conversionRate,
 			conversionDate: conversion.conversionDate,
@@ -1228,6 +1230,7 @@ export function mapSupplierRecordRow(row: DbRow): CostRecord {
 		: ((s(row, 'period_basis', 'unresolved') ?? 'unresolved') as PeriodBasis);
 	const financial = {
 		classification,
+		nature: 'operating' as const,
 		state,
 		currency: currencyCodeOf(s(row, 'currency', 'INR')),
 		reportingCurrency: currencyCodeOf(s(row, 'reporting_currency')),

@@ -41,6 +41,9 @@ function toRecordInput(body) {
 		projectId: body.project_id ?? null,
 		// Financial recognition fields (#306).
 		classification: body.cost_classification ?? null,
+		// What the spend is (#317): operating cost by default, or an advance,
+		// deposit, prepayment, capital item, or explicitly unresolved treatment.
+		nature: body.cost_nature ?? undefined,
 		servicePeriodStart: body.service_period_start ?? null,
 		servicePeriodEnd: body.service_period_end ?? null,
 		billDate: body.bill_date ?? null,

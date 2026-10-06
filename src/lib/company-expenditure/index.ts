@@ -32,6 +32,10 @@
  *   writes (one path, versioned)
  *     recordCost(input, actor, { connection? })
  *     executeCommand({ id, command, expectedVersion, reason?, patch? }, actor)
+ *     capturePeriodCharge({ sourceId, period, basis, amount, evidenceReference }, actor)
+ *       Approve period consumption, depreciation, or amortization against a
+ *       non-operating item's supported balance (#317).
+ *     cancelPeriodCharge({ chargeUid, command: 'cancel', expectedVersion, reason }, actor)
  *     recordCostBudget(input, actor, { connection? })
  *     executeBudgetCommand(
  *       { id, command, expectedVersion, reason?, evidenceReference?, patch? },
@@ -47,9 +51,14 @@
  *    missing original currency is unknown — never read as INR;
  *  - every accepted command increments `financial_version` and appends one
  *    journal row, so a repeated or stale command changes nothing;
+ *  - an advance, deposit, prepayment, or capital item is never expensed by its
+ *    payment: only approved, evidenced period charges become cost, in the
+ *    charge's own month, and they never exceed the source's confirmed balance;
  *  - an approved cost budget is compared with Incurred Project Cost only when
- *    Project, currency, scope, and period match, and a budget never enters a
- *    cost total — `budgets` is its own section of the reconciliation.
+ *    Project, currency, scope, and a period exactly equal to the month all
+ *    match, the month's cost is supported by a confirmed source, and no
+ *    proportional allocation is applied — `budgets` is its own section of the
+ *    reconciliation and never enters a cost total.
  *
  * Later slices extend this module: a source adapter per cost source feeds the
  * same `buildReconciliation`, `command`/`revision` controls hang off the same
@@ -72,10 +81,14 @@ import type { CommandOptions } from './commands';
 import { SOURCE_COVERAGE } from './coverage';
 import { loadCombinedDrilldown } from './drilldown';
 import {
+	loadChargeTotals,
 	loadCostEvents,
+	loadCostRecordsByIds,
 	loadExpenditureMonths,
+	loadMonthCharges,
 	loadMonthProjectCost,
 	loadMonthRecords,
+	loadNonOperatingSources,
 	loadProjectOptions,
 	type ProjectOption,
 	type SqlConnection,
@@ -129,6 +142,48 @@ export type {
 	SupplierSplitRow,
 } from './supplier-invoices';
 export { isDrilldownSource } from './drilldown';
+export { capturePeriodCharge, cancelPeriodCharge } from './charges';
+export type {
+	CapturePeriodChargeInput,
+	PeriodChargeCommandInput,
+} from './charges';
+
+export {
+	createOrder,
+	fetchOrder,
+	fetchOrders,
+	fetchOrderReviewQueue,
+	linkClientInvoice,
+	resolveLegacyOrder,
+	statedOrderValue,
+	updateOrder,
+	OrderError,
+} from './orders';
+export type {
+	ClientInvoiceLinkInput,
+	ClientInvoiceLinkResult,
+	CreateOrderInput,
+	LegacyOrderDecision,
+	LegacyOrderMapping,
+	LegacyOrderResolution,
+	LegacyOrderResolutionInput,
+	LegacyOrderStore,
+	LegacyReviewState,
+	OrderActor,
+	OrderAmountBasis,
+	OrderDirection,
+	OrderEventRecord,
+	OrderFirmness,
+	OrderList,
+	OrderOptions,
+	OrderPatch,
+	OrderQuery,
+	OrderRecord,
+	OrderReviewQueue,
+	OrderStatus,
+	OrderValueTotal,
+	UpdateOrderInput,
+} from './orders';
 export { recordCostBudget, executeBudgetCommand } from './budget-commands';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
@@ -143,6 +198,24 @@ export {
 } from './currency';
 export { monthLabel } from './reconciliation';
 export { COST_BUDGET_SCOPES, isCostBudgetScope } from './types';
+export {
+	CHARGE_BASIS_LABELS,
+	COST_NATURES,
+	NATURE_LABELS,
+	NON_OPERATING_NATURES,
+	PERIOD_CHARGE_BASES,
+	chargePeriodDate,
+	consumedToDate,
+	isChargePeriod,
+	isNonOperatingNature,
+	periodChargeBlockers,
+	remainingBalance,
+} from './non-operating';
+export type {
+	PeriodChargeBlocker,
+	PeriodChargeBlockerInput,
+	PeriodChargeCandidate,
+} from './non-operating';
 export {
 	effectiveTaxTreatment,
 	evaluateCost,
@@ -180,15 +253,22 @@ export type {
 	CostEvaluation,
 	CostExceptionCode,
 	CostJournalEntry,
+	CostNature,
 	CostPatch,
 	CostRecord,
+	CostRecordJson,
 	CostSource,
 	CostSplitInfo,
 	CoverageNotice,
 	CurrencyReporting,
 	CurrencyTotal,
 	EvidenceSummary,
+	NonOperatingItemJson,
+	NonOperatingSection,
 	PeriodBasis,
+	PeriodChargeJson,
+	PeriodChargeBasis,
+	PeriodChargeState,
 	ProjectBudgetComparison,
 	RecognitionState,
 	RecordCostBudgetInput,
@@ -272,6 +352,8 @@ export async function fetchCompanyReconciliation(
 	const [
 		directRecords,
 		supplierRecords,
+		charges,
+		monthNonOperating,
 		previousProjectCost,
 		projectOptions,
 		directMonths,
@@ -279,6 +361,8 @@ export async function fetchCompanyReconciliation(
 	] = await Promise.all([
 		loadMonthRecords(db, month),
 		loadSupplierMonthRecords(db, month),
+		loadMonthCharges(db, { month }),
+		loadNonOperatingSources(db, month),
 		previousMonth
 			? loadMonthProjectCost(db, previousMonth)
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
@@ -287,17 +371,45 @@ export async function fetchCompanyReconciliation(
 		loadSupplierInvoiceMonths(db, currentMonth()),
 	]);
 	const records = [...directRecords, ...supplierRecords];
+
+	// A charge can draw down a balance recognized in an earlier month, so the
+	// section needs those sources too; every other source of the month is
+	// already loaded, and duplicates collapse by expense id.
+	const sourcesById = new Map(
+		monthNonOperating.map((record) => [record.id, record])
+	);
+	const chargeSourceIds = [
+		...new Set(
+			charges
+				.map((charge) => charge.sourceId)
+				.filter((id) => !sourcesById.has(id))
+		),
+	];
+	for (const record of await loadCostRecordsByIds(db, chargeSourceIds)) {
+		sourcesById.set(record.id, record);
+	}
+	const nonOperatingSources = [...sourcesById.values()];
+	const chargeTotals = await loadChargeTotals(
+		db,
+		nonOperatingSources
+			.map((record) => record.costUid)
+			.filter((uid): uid is string => !!uid)
+	);
+
 	// A budget is read when it covers the month or belongs to a Project the
 	// month has a row for, so an approved budget for another period is stated
 	// as such instead of the Project reading as unbudgeted.
 	const budgets = mergeBudgets(
 		await loadBudgetsCoveringMonth(db, month),
-		await loadBudgetsForProjects(db, projectIdsIn(records))
+		await loadBudgetsForProjects(db, projectIdsIn(records, charges))
 	);
 
 	return buildReconciliation({
 		month,
 		records,
+		charges,
+		nonOperatingSources,
+		chargeTotals,
 		previousMonthProjectCost: previousProjectCost,
 		budgets,
 		projectFilter: request.projectId ?? null,

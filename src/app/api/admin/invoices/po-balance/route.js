@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/utils/database';
 import {
 	ensurePermission,
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import { fetchOrder, OrderError } from '@/lib/company-expenditure';
 
+/**
+ * The remaining value of a client order for the invoice screen (#310).
+ * Answers from the canonical order store by its durable `order_uid` — the
+ * previous free-text `po_number` lookup read a legacy row that may be a
+ * supplier order or an unreviewed copy, which is exactly the ambiguity the
+ * canonical identity replaces. A legacy invoice keeps its own stored balance
+ * fields; this endpoint never guesses one from a number.
+ */
 export async function GET(request) {
 	const authResult = await ensurePermission(
 		request,
@@ -15,53 +23,79 @@ export async function GET(request) {
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
 
-	let connection;
 	try {
 		const { searchParams } = new URL(request.url);
-		const poNumber = searchParams.get('po_number');
-		// client_name is accepted for backwards compatibility with the create-page
-		// caller, but no longer required: purchase_orders.po_number is globally unique.
-		searchParams.get('client_name');
+		const orderUid = searchParams.get('order_uid')?.trim();
 
-		if (!poNumber) {
+		if (!orderUid) {
 			return NextResponse.json(
-				{ success: false, message: 'po_number is required' },
+				{
+					success: false,
+					message: 'order_uid is required',
+					code: 'order_uid_required',
+				},
 				{ status: 400 }
 			);
 		}
 
-		connection = await dbConnect();
-
-		// purchase_orders.po_number is globally unique; look it up by po_number alone.
-		// client_name is accepted for backwards compatibility but no longer required.
-		const [poRows] = await connection.execute(
-			'SELECT id, original_value, remaining_balance FROM purchase_orders WHERE po_number = ?',
-			[poNumber]
-		);
-
-		if (poRows.length === 0) {
-			return NextResponse.json({
-				success: true,
-				data: { exists: false, remaining_balance: 0, original_value: 0 },
-			});
+		// One order by its durable identity; the module keeps the currency/basis
+		// interpretation (and the client-only remaining value) in one place.
+		let order;
+		try {
+			const found = await fetchOrder(orderUid);
+			order = found.order;
+		} catch (error) {
+			if (error instanceof OrderError && error.code === 'order_not_found') {
+				return NextResponse.json({
+					success: true,
+					data: {
+						exists: false,
+						remaining_balance: null,
+						original_value: null,
+					},
+				});
+			}
+			throw error;
 		}
+
+		const originalValue =
+			order.amountBasis === 'gross'
+				? order.grossAmount
+				: order.amountBasis === 'net'
+					? order.netAmount
+					: null;
 
 		return NextResponse.json({
 			success: true,
 			data: {
 				exists: true,
-				id: poRows[0].id,
-				original_value: poRows[0].original_value,
-				remaining_balance: poRows[0].remaining_balance,
+				order_uid: order.orderUid,
+				order_number: order.orderNumber,
+				direction: order.direction,
+				currency: order.currency,
+				amount_basis: order.amountBasis,
+				original_value: originalValue,
+				invoiced_value: order.clientInvoicedValue,
+				remaining_balance: order.clientRemainingValue,
 			},
 		});
 	} catch (error) {
-		console.error('Error fetching PO balance:', error);
+		if (error instanceof OrderError) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: error.message,
+					error: error.message,
+					code: error.code,
+					...error.detail,
+				},
+				{ status: error.status }
+			);
+		}
+		console.error('Error fetching the client order balance:', error);
 		return NextResponse.json(
 			{ success: false, message: error.message },
 			{ status: 500 }
 		);
-	} finally {
-		if (connection) await connection.end();
 	}
 }

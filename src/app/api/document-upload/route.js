@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ensurePermission, PERMISSIONS } from '@/utils/api-permissions';
 import {
 	ENTITY_RESOURCE_MAP,
+	DOCUMENT_ENTITY_TYPES,
 	ALLOWED_TYPES,
 	ALLOWED_EXTENSIONS,
 	MAX_FILE_SIZE,
@@ -26,7 +27,7 @@ export async function POST(request) {
 	try {
 		const formData = await request.formData();
 		const file = formData.get('file');
-		const entityType = formData.get('entity_type'); // project | purchase_order | invoice
+		const entityType = formData.get('entity_type'); // see DOCUMENT_ENTITY_TYPES
 		const entityId = formData.get('entity_id');
 
 		if (!file || typeof file !== 'object') {
@@ -41,7 +42,7 @@ export async function POST(request) {
 				{ status: 400 }
 			);
 		}
-		if (!['project', 'purchase_order', 'invoice'].includes(entityType)) {
+		if (!DOCUMENT_ENTITY_TYPES.includes(entityType)) {
 			return NextResponse.json(
 				{ success: false, error: 'Invalid entity_type' },
 				{ status: 400 }
@@ -187,7 +188,7 @@ export async function GET(request) {
 			);
 		}
 
-		if (!['project', 'purchase_order', 'invoice'].includes(entityType)) {
+		if (!DOCUMENT_ENTITY_TYPES.includes(entityType)) {
 			return NextResponse.json(
 				{ success: false, error: 'Invalid entity_type' },
 				{ status: 400 }

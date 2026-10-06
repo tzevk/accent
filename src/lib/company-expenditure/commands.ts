@@ -61,7 +61,12 @@ export interface CommandOptions {
 	connection?: SqlConnection;
 }
 
-async function inTransaction<T>(
+/**
+ * Run `work` in a transaction: the caller's when one is supplied (so a
+ * financial-close or revision check commits with this change), otherwise a
+ * transaction this module owns. Shared with the period-charge write path.
+ */
+export async function inTransaction<T>(
 	options: CommandOptions | undefined,
 	work: (db: SqlConnection) => Promise<T>
 ): Promise<T> {
@@ -140,6 +145,14 @@ const JOURNAL_COMMAND: Record<CostCommandName, CostJournalCommand> = {
 };
 
 const CLASSIFICATIONS = ['project', 'company_overhead', 'unallocated'] as const;
+const NATURES = [
+	'operating',
+	'advance',
+	'deposit',
+	'prepayment',
+	'capital',
+	'unresolved',
+] as const;
 const TAX_TREATMENTS = [
 	'none',
 	'recoverable',
@@ -200,6 +213,7 @@ async function loadCostForUpdate(
 ): Promise<Record<string, unknown> | null> {
 	const [rows] = (await db.execute(
 		`SELECT id, cost_uid, expense_number, expense_date, cost_classification,
+            cost_nature,
             recognition_state, recognition_period, period_basis,
             service_period_start, service_period_end, tax_treatment,
             tax_evidence_reference, recognized_amount, source_reference,
@@ -283,6 +297,11 @@ export async function recordCost(
 		'invalid_classification',
 		'cost_classification'
 	);
+	// A caller that states no nature records operating cost, the register's
+	// original meaning; nothing is ever auto-classified as advance or capital.
+	const nature =
+		enumOrThrow(input.nature, NATURES, 'invalid_nature', 'cost_nature') ??
+		'operating';
 	const taxTreatment =
 		enumOrThrow(
 			input.taxTreatment,
@@ -331,6 +350,7 @@ export async function recordCost(
 
 	const financial = {
 		classification,
+		nature,
 		state,
 		currency,
 		reportingCurrency: conversion.reportingCurrency,
@@ -377,13 +397,14 @@ export async function recordCost(
               amount, tax_amount, total_amount, currency, payment_mode, payment_reference,
               paid_to, paid_by, receipt_url, is_billable, is_reimbursable,
               project_id, department, notes, status, created_by, isDelete,
-              cost_uid, cost_classification, recognition_state, recognition_period,
+              cost_uid, cost_classification, cost_nature, recognition_state, recognition_period,
               period_basis, service_period_start, service_period_end, tax_treatment,
               tax_evidence_reference, recognized_amount, source_reference,
               evidence_reference, financial_version,
               reporting_currency, conversion_rate, conversion_date,
               conversion_evidence_reference, converted_amount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
+                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
                    ?, ?, ?, ?, ?)`,
 					[
 						expenseNumber,
@@ -410,6 +431,7 @@ export async function recordCost(
 						actor.id,
 						costUid,
 						classification,
+						nature,
 						state,
 						period,
 						basis,
@@ -450,6 +472,7 @@ export async function recordCost(
 					evidenceReference: financial.evidenceReference,
 					snapshot: {
 						classification,
+						nature,
 						recognition_period: period,
 						period_basis: basis,
 						currency,
@@ -477,6 +500,7 @@ export async function recordCost(
 					period_basis: basis,
 					recognized_amount: null,
 					cost_classification: classification,
+					cost_nature: nature,
 				};
 			});
 		} catch (error) {
@@ -505,6 +529,7 @@ export async function loadCost(
 ): Promise<CostRecord | null> {
 	const [rows] = (await db.execute(
 		`SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.cost_classification,
+            e.cost_nature,
             e.recognition_state, e.recognition_period, e.period_basis,
             e.service_period_start, e.service_period_end, e.tax_treatment,
             e.tax_evidence_reference, e.recognized_amount, e.source_reference,
@@ -579,6 +604,16 @@ export async function executeCommand(
 							'cost_classification'
 						)
 					: ((row.cost_classification ?? null) as CostRecord['classification']),
+			nature:
+				patch.nature !== undefined
+					? ((enumOrThrow(
+							patch.nature,
+							NATURES,
+							'invalid_nature',
+							'cost_nature'
+						) ?? 'operating') as CostRecord['nature'])
+					: (((row.cost_nature ?? 'operating') as CostRecord['nature']) ??
+						'operating'),
 			projectId:
 				patch.projectId !== undefined
 					? patch.projectId
@@ -748,7 +783,8 @@ export async function executeCommand(
 				: toNumber(sub(R(merged.grossAmount), R(merged.taxAmount ?? 0)));
 		const [updated] = (await db.execute(
 			`UPDATE expenses
-          SET cost_classification = ?, recognition_state = ?, recognition_period = ?,
+          SET cost_classification = ?, cost_nature = ?, recognition_state = ?,
+              recognition_period = ?,
               period_basis = ?, service_period_start = ?, service_period_end = ?,
               expense_date = ?, tax_treatment = ?, tax_evidence_reference = ?,
               currency = ?, reporting_currency = ?, conversion_rate = ?,
@@ -762,6 +798,7 @@ export async function executeCommand(
         WHERE id = ? AND isDelete = 0 AND financial_version = ?`,
 			[
 				merged.classification,
+				merged.nature,
 				target,
 				resolved.period,
 				resolved.basis,
@@ -808,6 +845,7 @@ export async function executeCommand(
 			evidenceReference: merged.evidenceReference,
 			snapshot: {
 				classification: merged.classification,
+				nature: merged.nature,
 				recognition_period: resolved.period,
 				period_basis: resolved.basis,
 				currency: merged.currency,
