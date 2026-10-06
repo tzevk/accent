@@ -92,6 +92,30 @@ _Avoid_: Attendance %, Allocation %, Productivity
 CTC-based monthly price of an Employee — `employee_salary_profile.employer_cost` (stored CTC), falling back to `gross_salary` then `gross`. Profile picked by `pickActiveProfile` (effective-range cover, else latest active). In the Employee Utilization report a month the employment window only partly covers is pro-rated by employed working days ÷ the month's working days, 2dp — a full-month window reproduces the full CTC, and the row is marked partial ("Partial (window)") with the covered dates.
 _Avoid_: Gross, Salary (ambiguous), Hourly rate
 
+**Company Incurred Cost**:
+Operating cost recognized for the company in a period, whether paid or unpaid. Includes direct Project costs, Company Overhead, and Unallocated Cost, each counted once.
+_Avoid_: Cash paid, Sum of Project totals, PO value
+
+**Company Overhead**:
+Shared operating cost deliberately classified as not directly attributable to one Project. Distinct from a cost whose Project is unknown.
+_Avoid_: Unallocated Cost, Bench Cost, Missing project
+
+**Unallocated Cost**:
+Recognized cost awaiting reliable classification as a direct Project cost or Company Overhead. Includes Unallocated Employee Cost and non-employee cost awaiting classification.
+_Avoid_: Company Overhead, Bench Cost, Zero cost
+
+**Cost Accrual**:
+Estimated cost for goods or services already received but not yet invoiced. The related invoice replaces the estimate rather than creating a second cost.
+_Avoid_: Supplier commitment, Advance, Forecast cost
+
+**Incurred Project Cost**:
+Employee cost and non-employee expenses recognized for a Project in a period, whether paid or unpaid. Excludes unfulfilled supplier commitments and client order value.
+_Avoid_: Cash paid, PO value, Total committed exposure
+
+**Outstanding Supplier Commitment**:
+The portion of a supplier order not yet recognized as incurred cost. Paying a supplier invoice does not itself create another incurred cost.
+_Avoid_: Unpaid invoice balance, Client PO balance, Cash paid
+
 **Project Employee Cost**:
 The share of an Employee's recorded monthly payroll employer cost, including earnings and employer contributions, attributed to a Project by its share of the Employee's Logged Hours. Excludes project expenses and supplier costs; it is not a measure of cash paid.
 _Avoid_: Total project expenditure, Total project cost, Project payments
