@@ -9,6 +9,37 @@ import { logActivity } from '@/utils/activity-logger';
 
 const TABLE = 'expenses';
 
+/**
+ * Confirmed cost is frozen here: an edit or a soft delete through the register
+ * would change recognized cost with no version and no journal entry. The
+ * recognition workflow is the way to change it (cancel it, then record the
+ * correction), so these paths refuse instead of mutating it silently.
+ */
+async function refuseRecognizedCostEdit(db, id) {
+	const [rows] = await db.execute(
+		`SELECT recognition_state FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
+		[id]
+	);
+	if (rows.length === 0) {
+		return NextResponse.json(
+			{ success: false, error: 'Expense not found' },
+			{ status: 404 }
+		);
+	}
+	if (rows[0].recognition_state === 'recognized') {
+		return NextResponse.json(
+			{
+				success: false,
+				error:
+					'This expense is recognized cost. Cancel it with a versioned command before changing or removing it.',
+				code: 'cost_recognized',
+			},
+			{ status: 409 }
+		);
+	}
+	return null;
+}
+
 export async function GET(request, { params }) {
 	const authResult = await ensurePermission(
 		request,
@@ -59,6 +90,9 @@ export async function PUT(request, { params }) {
 		const user = authResult.user;
 
 		db = await dbConnect();
+
+		const refusal = await refuseRecognizedCostEdit(db, id);
+		if (refusal) return refusal;
 
 		const fields = [
 			'expense_date',
@@ -146,6 +180,10 @@ export async function DELETE(request, { params }) {
 		const { id } = await params;
 		const user = authResult.user;
 		db = await dbConnect();
+
+		const refusal = await refuseRecognizedCostEdit(db, id);
+		if (refusal) return refusal;
+
 		const [result] = await db.execute(
 			`UPDATE ${TABLE} SET isDelete = 1, deleted_at = NOW(), deleted_by = ? WHERE id = ? AND isDelete = 0`,
 			[user?.id ?? null, id]

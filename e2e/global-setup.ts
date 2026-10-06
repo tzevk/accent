@@ -4,6 +4,10 @@ import {
 } from './lib/attendance-fixtures';
 import { deleteArtifact } from './lib/artifacts';
 import { closeDb, exec, rows } from './lib/db';
+import {
+	cleanupExpenditureFixtures,
+	seedExpenditureFixtures,
+} from './lib/expenditure-fixtures';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 import {
 	cleanupUtilizationFixtures,
@@ -19,6 +23,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupFixtures();
 		await cleanupAttendanceFixtures();
 		await cleanupUtilizationFixtures();
+		await cleanupExpenditureFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
 		// trusted IP header; browser sign-ins carry no such header, so they land
@@ -66,7 +71,7 @@ export default async function globalSetup(): Promise<void> {
 		const utilization = await seedUtilizationFixtures();
 		console.log(
 			`[e2e] utilization fixtures seeded for ${utilization.month} ` +
-				`(${utilization.employees} employees, ${utilization.attendance} attendance rows, ` +
+			`(${utilization.employees} employees, ${utilization.attendance} attendance rows, ` +
 				`${utilization.assignments} assignments, ` +
 				`${utilization.loggedDays} logged days, ` +
 				`${utilization.linkedUsers} linked user accounts, ` +
@@ -74,6 +79,13 @@ export default async function globalSetup(): Promise<void> {
 				`${utilization.screenTimeDays} screen-time days, ` +
 				`${utilization.holidays} optional holiday, ` +
 				`${utilization.profiles} salary profiles)`
+		);
+
+		const expenditure = await seedExpenditureFixtures();
+		console.log(
+			`[e2e] expenditure fixtures seeded for ${expenditure.month} and ${expenditure.nextMonth} ` +
+				`(${expenditure.costs} direct costs, ` +
+				`${Object.keys(expenditure.projects).length} projects)`
 		);
 	} finally {
 		await closeDb();
