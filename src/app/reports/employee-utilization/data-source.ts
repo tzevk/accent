@@ -937,6 +937,43 @@ async function collectUtilizationMonths(): Promise<string[]> {
 	} catch {
 		/* user_activity_assignments may not exist */
 	}
+	// App-activity months: the same two sources the employment window falls
+	// back to. Restricted to live Payroll employees so the picker matches the
+	// roster the grid shows — an admin-only month would render an empty grid.
+	try {
+		const [screenRows] = (await query(
+			`SELECT DATE_FORMAT(st.date, '%Y-%m') AS month
+			 FROM user_screen_time st
+			 JOIN users u ON u.id = st.user_id AND u.isDelete = 0
+			 JOIN employees e ON e.id = u.employee_id AND e.isDelete = 0
+			      AND e.employee_type = 'Payroll'
+			 GROUP BY month
+			 ORDER BY month DESC`
+		)) as [DbRow[], unknown];
+		for (const r of screenRows) {
+			const m = dbStr(r, 'month');
+			if (m) monthSet.add(m);
+		}
+	} catch {
+		/* user_screen_time may not exist */
+	}
+	try {
+		const [logRows] = (await query(
+			`SELECT DATE_FORMAT(al.created_at, '%Y-%m') AS month
+			 FROM user_activity_logs al
+			 JOIN users u ON u.id = al.user_id AND u.isDelete = 0
+			 JOIN employees e ON e.id = u.employee_id AND e.isDelete = 0
+			      AND e.employee_type = 'Payroll'
+			 GROUP BY month
+			 ORDER BY month DESC`
+		)) as [DbRow[], unknown];
+		for (const r of logRows) {
+			const m = dbStr(r, 'month');
+			if (m) monthSet.add(m);
+		}
+	} catch {
+		/* user_activity_logs may not exist */
+	}
 	// Always offer the current month so the grid can be viewed even when
 	// no attendance has been entered yet. Added before sorting so the
 	// newest-first order holds.

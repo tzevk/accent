@@ -206,7 +206,10 @@ export type UtilizationPlan =
 	| 'activityLogOnly'
 	| 'screenTimeOnly'
 	| 'leaverExitAfterEvidence'
-	| 'leaverNoExitEvidence';
+	| 'leaverNoExitEvidence'
+	/** Month-picker cases: app activity in months with no other data. */
+	| 'monthPickerActivityLog'
+	| 'monthPickerScreenTime';
 
 export type UtilizationEmployeeType =
 	| 'Payroll'
@@ -719,6 +722,34 @@ const ROSTER_DEF: ReadonlyArray<
 		plan: 'leaverNoExitEvidence',
 		attendanceDays: [2],
 		loggedDays: [4],
+	},
+	{
+		// Month-picker case: the only evidence anywhere is one activity-feed
+		// day in April 2019 — a month with no attendance and no Logged Hours
+		// for anyone. The picker must still offer it.
+		n: '0029',
+		type: 'Payroll',
+		status: 'active',
+		joining: null,
+		hire: null,
+		exit: null,
+		plan: 'monthPickerActivityLog',
+		attendanceDays: [],
+		loggedDays: [],
+		activityLogDates: ['2019-04-15'],
+	},
+	{
+		// Same case off `user_screen_time.date`, in May 2019.
+		n: '0030',
+		type: 'Payroll',
+		status: 'active',
+		joining: null,
+		hire: null,
+		exit: null,
+		plan: 'monthPickerScreenTime',
+		attendanceDays: [],
+		loggedDays: [],
+		screenTimeDates: ['2019-05-20'],
 	},
 ];
 

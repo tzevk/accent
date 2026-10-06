@@ -2112,6 +2112,32 @@ test.describe('employee utilization roster', () => {
 		};
 	});
 
+	test('the month picker offers months whose only evidence is app activity', async ({
+		page,
+	}) => {
+		// Screen time and the activity feed feed the picker, restricted to live
+		// Payroll employees: a month with no attendance and no Logged Hours
+		// anywhere must still be offered, openable and show its member. The
+		// picker's option list is the meta payload, so selecting the month is
+		// the assertion (a month outside the list cannot be selected).
+		const activityOnly = utilizationMemberForPlan('monthPickerActivityLog');
+		const screenOnly = utilizationMemberForPlan('monthPickerScreenTime');
+
+		// April opens and shows its member; May is reachable from the same page.
+		await openMonth(page, 'April 2019');
+		await expect(
+			page.locator(
+				`[data-testid="utilization-row"][data-employee-code="${activityOnly.code}"]`
+			)
+		).toBeVisible();
+		await selectMonth(page, 'May 2019');
+		await expect(
+			page.locator(
+				`[data-testid="utilization-row"][data-employee-code="${screenOnly.code}"]`
+			)
+		).toBeVisible();
+	});
+
 	test('the page renders the month roster and names the excluded types', async ({
 		page,
 	}) => {
@@ -4558,6 +4584,8 @@ test.describe('employee utilization roster', () => {
 					'exit_date → latest evidence across attendance, Logged Hours, screen time and activity logs → open if active, unresolved otherwise',
 				intersects:
 					'(start == null || start <= monthEnd) && (end == null || end >= monthStart)',
+				monthPicker:
+					'offered months = attendance months ∪ Logged Hours months ∪ app-activity months (screen time, activity feed; live Payroll employees only) ∪ the current month',
 				disclosure:
 					'live employees whose resolved window intersects the month, excluding Employee Type ≠ Payroll, bucketed by Employee Type value',
 				capacity:
