@@ -607,7 +607,9 @@ test('counts approved period consumption in its own month, never the balance mon
 	expect(alphaBudget.period_charges).toBe(2);
 	expect(alphaBudget.incurred_cost).toBe(AUGUST.projectAlpha);
 	expect(alphaBudget.outcome).not.toBe('unsupported_incurred_cost');
-	expect(codes(august)).not.toContain('budget_unsupported_incurred_cost');
+	expect(august.budgets.notices.map((notice) => notice.code)).not.toContain(
+		'budget_unsupported_incurred_cost'
+	);
 
 	// Each item states its own consumption for the month and what remains.
 	const advance = item(august, seededCost('advancePractice').costUid)!;
@@ -715,8 +717,8 @@ test('counts approved period consumption in its own month, never the balance mon
 			outcome: alphaBudget.outcome,
 			incurredCost: alphaBudget.incurred_cost,
 			periodCharges: alphaBudget.period_charges,
-			unsupportedNotice: codes(august).includes(
-				'budget_unsupported_incurred_cost'
+			unsupportedNotice: august.budgets.notices.some(
+				(notice) => notice.code === 'budget_unsupported_incurred_cost'
 			),
 		},
 		items: august.non_operating.items.map((entry) => ({
