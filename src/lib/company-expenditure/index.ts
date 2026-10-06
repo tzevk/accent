@@ -140,9 +140,7 @@ export {
 	conversionStatusOf,
 	isCurrencyCode,
 	reportingCurrencyOf,
-	resolveConversion,
 } from './currency';
-export type { ResolvedConversion } from './currency';
 export { monthLabel } from './reconciliation';
 export { COST_BUDGET_SCOPES, isCostBudgetScope } from './types';
 export {
