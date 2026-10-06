@@ -1,4 +1,4 @@
-# Company Project Expenditure — Implementation (ticket #306)
+# Company Project Expenditure — Implementation (tickets #306, #317, #321)
 
 ## Overview
 
@@ -475,7 +475,8 @@ npx cross-env E2E_DB_NAME=accent_crm_dev_muse_e2e_expenditure npm run e2e
 ```
 
 For the two initial slices, select `expense-reconciliation.spec.ts` and
-`payroll-bonus.spec.ts` after the production build. Fixture cleanup derives SQL
+`payroll-bonus.spec.ts` after the production build; `expense-non-operating.spec.ts`
+adds the non-operating balances and their approved consumption (#317). Fixture cleanup derives SQL
 placeholders from its owned Employee codes, so added Employees remain rerun-safe.
 The payroll snapshot evidence includes the stored month and money columns.
 Namespaced fixtures identify test records; names alone do not exclude them from
@@ -559,3 +560,157 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
 - `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/specs/project-cost-budgets.spec.ts`, `e2e/global-setup.ts`
 - `e2e/lib/expenditure-currency-fixtures.ts`, `e2e/specs/expenditure-currency.spec.ts` (#319)
 - `e2e/lib/expenditure-allocation-fixtures.ts`, `e2e/specs/expenditure-payroll-allocation.spec.ts` (#307)
+
+## Ticket #317 — non-operating items and approved period consumption
+
+An advance, deposit, prepayment, or capital purchase is a **balance**, not an
+expense: its payment or invoice must never enter Company Incurred Cost as the
+full amount of the month it was paid. The spend is classified by its nature
+(`expenses.cost_nature`), recorded with its own identity, amount,
+currency/tax basis, and evidence, and only **approved period consumption,
+depreciation, or amortization** becomes cost — in the charge's own month, with
+the source's destination and currency. There is no fixed-asset register, no
+statutory depreciation engine, and no automatic capitalization: an operator (or
+an import) states each charge with evidence, and the module only accepts or
+refuses it.
+
+### Data model
+
+| Object                                   | Meaning                                                                                                                                                              |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `expenses.cost_nature`                   | `operating` (default, and what every pre-#317 row was), `advance`, `deposit`, `prepayment`, `capital`, or `unresolved`. Independent of `cost_classification`.         |
+| `expense_period_charges`                 | One approved (or cancelled) charge: `charge_uid`, `(source_table, source_id, source_cost_uid)`, `charge_period`, `basis`, `amount`, `currency`, `evidence_reference`, `state`, `financial_version`, `sequence`, approver/time, cancel reason/time. |
+| `expense_period_charge_events`           | Append-only approval journal, one row per accepted command, keyed `(charge_uid, version)`; `approved` then `cancelled`.                                              |
+
+`(source_cost_uid, charge_period, basis, sequence)` is unique: a month and basis
+for one source holds one approved charge, and re-entry after a cancellation
+takes the next sequence while both rows stay as history. Because a capture locks
+its source row (`SELECT … FOR UPDATE`), two concurrent captures serialize and
+the second is refused as a duplicate rather than double-writing.
+
+### Rules (`non-operating.ts`, pure)
+
+- A charge needs a supported balance: its source must already be **confirmed
+  cost** (that act establishes the balance) and its nature must be
+  `advance`/`deposit`/`prepayment`/`capital`.
+- Amount, evidence reference, and the source's currency are required; a month
+  that is not `YYYY-MM` is refused.
+- One approved charge per source/month/basis (`duplicate_period_charge`), and
+  the approved charges may never exceed the source's confirmed balance
+  (`exceeds_source_balance`, with the remaining amount in the response).
+- Cancelling is reasoned, versioned, and restores the balance; a cancelled
+  charge is never counted and never reduces the remaining amount.
+- A missing balance is unknown, not zero: an unconfirmed item states
+  `remaining_amount: null`.
+
+### Report and source detail
+
+`CompanyReconciliation.non_operating` carries the section: per item its identity
+(`cost_uid`, expense number, source/evidence reference), nature, destination,
+state, currency, gross amount, supported balance, consumption this month and to
+date, remaining amount, and its charges; plus `excluded_source_amount`,
+`consumed_this_month`, `consumed_to_date`, `remaining_amount`,
+`unapproved_count`, `unresolved_count`, `unresolved_source_amount`, and
+`charges_from_prior_items` (charges of the month whose balance was recognized in
+an earlier month). Only `operating` records are cost: a recognized non-operating
+item is excluded from `company.incurred_cost` and appears in
+`evidence.non_operating_recognized`; an `unresolved`-nature record is excluded
+and appears in `evidence.unresolved_nature` with the
+`nature_unresolved_treatment` notice. Approved charges are counted in
+`currency_totals[].period_charge_amount` / `period_charge_count`, in
+`projects[].period_charge_count`, and in `evidence.period_charges`. Coverage
+notices add `non_operating_items_separate`, `period_charges_counted`,
+`nature_unresolved_treatment`, `non_operating_item_not_approved`, and
+`period_charge_source_not_recognized`.
+
+`GET …/expenses` gains `nature=all|operating|non_operating|advance|deposit|prepayment|capital|unresolved`,
+returns each expense with `cost_nature`, returns the month's
+`period_charges` (approved and cancelled, so history stays visible), and
+splits `totals` into `confirmed_amount` (operating cost only),
+`non_operating_amount`, `nature_unresolved_amount`,
+`period_charge_amount`, and `period_charge_records`.
+
+A Project row's cost is confirmed cost for the budget comparison even when it
+comes entirely from approved period charges: the comparison counts
+`record_count + period_charge_count` (publishing `period_charges` per row), so
+a charge-only month states a variance against a matching-month approved budget
+instead of `unsupported_incurred_cost`; a month with neither still states
+`unsupported_incurred_cost`, and an annual/partial budget stays
+`incompatible_period`. A charge is stated in the reporting basis through its
+source's conversion evidence (`source_reporting_currency`,
+`source_conversion_rate`, `source_conversion_date`,
+`source_conversion_evidence_reference` on the charge), never by converting
+independently; `company.conversion` counts `converted_charges` /
+`unsupported_charges` beside the record figures.
+
+### Command contract
+
+```
+POST /api/admin/expenses/{id}/charges
+{ "period": "2019-08", "basis": "consumption|depreciation|amortization",
+  "amount": 20000, "evidence_reference": "…", "currency": "INR", "reason": "…" }
+
+POST /api/admin/expenses/{id}/charges/{chargeUid}
+{ "command": "cancel", "expected_version": 1, "reason": "…" }
+```
+
+| Outcome                          | Status | Code                                                  |
+| -------------------------------- | ------ | ----------------------------------------------------- |
+| Approved / cancelled             | 200    | `{ data: PeriodChargeJson }`                           |
+| Source not confirmed cost        | 409    | `source_not_recognized`                                |
+| Same month and basis approved    | 409    | `duplicate_period_charge`                              |
+| Stale charge version             | 409    | `version_conflict` (with `current_version`)             |
+| Operating nature                 | 422    | `nature_not_non_operating`                             |
+| Charge over the remaining amount | 422    | `exceeds_source_balance` (with `remaining_amount`)      |
+| Missing amount / evidence        | 422    | `invalid_charge_amount` / `charge_evidence_required`   |
+| Currency not the source's        | 422    | `charge_currency_mismatch`                             |
+| Bad month / basis                | 422    | `invalid_charge_period` / `invalid_charge_basis`        |
+| Missing privilege                | 403    | —                                                      |
+
+Both routes need `other_expenses:approve`: a period charge is an approval.
+`cost_nature` is a versioned financial field, so the register `PUT` refuses it
+with `422 financial_fields_versioned` and it changes only through the `update`
+command (`patch.nature`). The report's non-operating section carries the
+controls: **Capture period charge** on each confirmed item (month, basis,
+amount, evidence, note) and **Cancel charge** on each approved charge, with the
+dialog surfacing the module's refusal verbatim.
+
+### End-to-end evidence (#317)
+
+`e2e/specs/expense-non-operating.spec.ts` drives the real app and writes
+`e2e/artifacts/expense-non-operating.json`. Its fixtures extend
+`e2e/lib/expenditure-fixtures.ts` in the same namespace — an advance, a deposit,
+a prepayment (consumed across two periods), a capital item with evidenced
+recoverable tax, an operating cost, an unresolved-treatment record, and an
+unapproved advance, recognized in 2019-07 with charges in 2019-08/2019-09 and
+ad-hoc charges in 2019-06 (never another spec's months). It asserts, from
+hand-computed fixture amounts:
+
+- the July balances are excluded from Company Incurred Cost and shown
+  separately with identity, evidence, consumed, and remaining amounts;
+- the August charges are cost in August alone (advance consumption, prepayment
+  consumption, capital depreciation) and the July month stays at zero cost;
+- the prepayment's second period charge lands in September and reduces its
+  remaining balance to zero; a cancelled deposit charge counts nowhere;
+- a duplicate month/basis, an oversized charge, an operating source, an
+  unapproved source, missing evidence/amount, a foreign currency, and a bad
+  month are all refused with their exact codes and change nothing; a cancelled
+  charge's period can be re-entered, and both rows keep their journal;
+- the browser captures a charge (balance falls, its own month gains the cost)
+  and cancels it (balance returns, version 2, journal `approved` → `cancelled`),
+  and a duplicate attempt through the same control surfaces the refusal;
+- recording an advance through the report form and recognizing it leaves the
+  incurred-cost KPI unchanged until its charge is captured; the register refuses
+  to reclassify its nature;
+- an unresolved treatment stays visible and excluded, an unapproved item has no
+  balance to consume, and an employee session or a `reports:read`-only reader
+  gets 403 on the charge routes and the reconciliation with no sensitive payload.
+
+### Files (#317)
+
+- `migrations/20261008091700_expense_non_operating_charges.js`
+- `src/lib/company-expenditure/non-operating.ts` (rules + charge JSON mapper)
+- `src/lib/company-expenditure/charges.ts` (`capturePeriodCharge`, `cancelPeriodCharge`)
+- `src/app/api/admin/expenses/[id]/charges/route.ts`,
+  `src/app/api/admin/expenses/[id]/charges/[chargeUid]/route.ts`
+- `e2e/specs/expense-non-operating.spec.ts`

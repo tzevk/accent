@@ -48,6 +48,8 @@ interface BudgetComparisonRow {
 	currency: string;
 	incurred_cost: number | null;
 	confirmed_records: number;
+	/** Approved period charges (#317) included in `incurred_cost`. */
+	period_charges: number;
 	pending_records: number;
 	outcome: string;
 	budget: BudgetCandidateRow | null;
@@ -582,6 +584,7 @@ export default function BudgetSection({
 								data-incurred={
 									row.incurred_cost === null ? '' : String(row.incurred_cost)
 								}
+								data-charges={String(row.period_charges)}
 								data-budget={row.budget ? String(row.budget.amount) : ''}
 								data-variance={
 									row.variance === null ? '' : String(row.variance)
