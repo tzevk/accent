@@ -216,30 +216,62 @@ export function windowEndDate(
 }
 
 /**
- * Is the cost inside the elapsed part of its month? A cost is attributed to
- * the day its received-work evidence starts (start, then end when only the end
- * is known, then the disclosed bill date). A confirmed cost with no day at all
- * is only covered by a full month; the window discloses how many such records
- * it counted instead of silently spreading them.
+ * Whether a cost's own day-level evidence proves it inside the elapsed window.
+ *
+ * A partial window states only cost whose received-work period is fully dated
+ * and wholly inside it. A span crossing the cutoff, a period whose start is not
+ * recorded, and a bill-date-only period are `unproven`: they are never prorated
+ * to days and never counted in full by their first day, and the comparison
+ * discloses them and withholds the change figures they would distort. A month
+ * that has fully elapsed counts every recognized cost of that month.
  */
+export type WindowSupport = 'in' | 'out' | 'unproven';
+
+export function windowSupport(
+	record: CostRecord,
+	days: number,
+	monthDays: number
+): WindowSupport {
+	if (days >= monthDays) return 'in';
+	const start = dayOfDate(record.servicePeriodStart);
+	const end = dayOfDate(record.servicePeriodEnd);
+	if (start === null || end === null) return 'unproven';
+	if (start > days) return 'out';
+	return end <= days ? 'in' : 'unproven';
+}
+
+/** Is the cost provably inside the elapsed part of its month? */
 export function withinWindow(
 	record: CostRecord,
 	days: number,
 	monthDays: number
 ): boolean {
-	const anchor =
-		dayOfDate(record.servicePeriodStart) ??
-		dayOfDate(record.servicePeriodEnd) ??
-		dayOfDate(record.billDate);
-	if (anchor === null) return days > 0 && days >= monthDays;
-	return anchor <= days;
+	return windowSupport(record, days, monthDays) === 'in';
 }
 
-/** Confirmed records one period's window covers. */
+/** Confirmed records the window covers. */
 export function windowRecords(
 	records: CostRecord[],
 	window: ComparisonWindow,
 	period: 'current' | 'prior'
+): CostRecord[] {
+	return confirmedWindowRecords(records, window, period, 'in');
+}
+
+/** Confirmed records whose dated evidence cannot prove the window covers them. */
+export function unprovenWindowRecords(
+	records: CostRecord[],
+	window: ComparisonWindow,
+	period: 'current' | 'prior'
+): CostRecord[] {
+	return confirmedWindowRecords(records, window, period, 'unproven');
+}
+
+function confirmedWindowRecords(
+	records: CostRecord[],
+	window: ComparisonWindow,
+	period: 'current' | 'prior',
+	support: WindowSupport
 ): CostRecord[] {
 	const days = period === 'current' ? window.currentDays : window.priorDays;
 	const monthDays =
@@ -247,7 +279,8 @@ export function windowRecords(
 	if (days === 0) return [];
 	return records.filter(
 		(record) =>
-			isConfirmed(record.state) && withinWindow(record, days, monthDays)
+			isConfirmed(record.state) &&
+			windowSupport(record, days, monthDays) === support
 	);
 }
 
@@ -298,11 +331,25 @@ function currencyComparison(
 	const prior = windowRecords(priorRecords, window, 'prior').filter(
 		sameCurrency
 	);
+	const currentUnproven = unprovenWindowRecords(
+		records,
+		window,
+		'current'
+	).filter(sameCurrency);
+	const priorUnproven = unprovenWindowRecords(
+		priorRecords,
+		window,
+		'prior'
+	).filter(sameCurrency);
 	const currentCost = sumMoney(current.map(confirmedAmount));
 	// No prior-window record for this currency is an unknown prior amount, not
 	// a zero: the report cannot tell "no cost" from "not captured".
 	const priorCost =
 		prior.length === 0 ? null : sumMoney(prior.map(confirmedAmount));
+	// A window that cannot prove where its cost sits cannot state a change: the
+	// figures below are the provable part, and the disclosure carries the
+	// unproven part with its own amounts.
+	const unproven = currentUnproven.length > 0 || priorUnproven.length > 0;
 	const currentEnd = windowEndDate(window, 'current');
 	const priorEnd = windowEndDate(window, 'prior');
 	const lateCurrent = current.filter((record) =>
@@ -314,9 +361,22 @@ function currencyComparison(
 		current_cost: currentCost,
 		prior_cost: priorCost,
 		change_amount:
-			priorCost === null ? null : rounded(sub(currentCost, priorCost)),
-		change_percent: percentChange(currentCost, priorCost),
-		change_state: changeStateFor(currentCost, priorCost),
+			unproven || priorCost === null
+				? null
+				: rounded(sub(currentCost, priorCost)),
+		change_percent: unproven ? null : percentChange(currentCost, priorCost),
+		change_state: unproven
+			? 'unproven'
+			: changeStateFor(currentCost, priorCost),
+		unproven_records: currentUnproven.length + priorUnproven.length,
+		unproven_cost:
+			[...currentUnproven, ...priorUnproven].some(
+				(record) => confirmedAmount(record) === null
+			)
+				? null
+				: sumMoney(
+						[...currentUnproven, ...priorUnproven].map(confirmedAmount)
+					),
 		// The window's own categorization, from the same records, so a reader can
 		// see which direct-cost category moved the comparison.
 		groups: GROUP_KEYS.map((key) => {
@@ -390,6 +450,10 @@ export function buildPeriodComparison(
 	);
 	const undated = currencyTotals.reduce(
 		(total, row) => total + row.undated_records,
+		0
+	);
+	const unproven = currencyTotals.reduce(
+		(total, row) => total + row.unproven_records,
 		0
 	);
 	const reportedEnd = monthEndDate(input.month);
@@ -469,11 +533,23 @@ export function buildPeriodComparison(
 			amount: null,
 		});
 	}
-	if (undated > 0) {
+	if (unproven > 0) {
+		disclosures.push({
+			code: 'window_evidence_unproven',
+			label: 'Cost whose window membership is unproven',
+			detail: `${unproven} record(s) in the compared periods carry no day-level evidence that places them wholly inside the elapsed window (a period crossing the cutoff, a period with no recorded start, or a bill-date-only period). They are left out of the window figures above and the change is withheld rather than prorated or counted in full.`,
+			severity: 'warning',
+			period: null,
+			currency: only?.currency ?? null,
+			count: unproven,
+			amount: only?.unproven_cost ?? null,
+		});
+	}
+	if (undated > 0 && window.basis === 'full_month') {
 		disclosures.push({
 			code: 'undated_period_evidence',
 			label: 'Cost without day-level service evidence',
-			detail: `${undated} record(s) counted in the reported window rest on a bill date or a period end only, so they are attributed to the window by disclosed fallback rather than a known service day.`,
+			detail: `${undated} record(s) counted in the reported window rest on a bill date or a period end only; a whole month states them, and a partial window would leave them unproven.`,
 			severity: 'info',
 			period: 'current',
 			currency: only?.currency ?? null,
@@ -562,9 +638,10 @@ export function buildPeriodComparison(
 		currency: only?.currency ?? null,
 		current_cost: current,
 		prior_cost: prior,
-		change_amount: prior === null ? null : rounded(sub(current ?? 0, prior)),
-		change_percent: current === null ? null : percentChange(current, prior),
-		change_state: changeStateFor(current ?? 0, prior),
+		change_amount:
+			only === null || only.change_amount === null ? null : only.change_amount,
+		change_percent: only === null ? null : only.change_percent,
+		change_state: only?.change_state ?? 'no_prior',
 		currency_totals: currencyTotals,
 		cost_to_date_through: window.throughDate ?? `${input.month}-01`,
 		disclosures,
@@ -690,8 +767,14 @@ export function rankProjects(rows: ReconciliationProjectRow[]): ProjectRanking {
 			unranked.push({
 				project_id: row.project_id,
 				currency: row.currency,
-				reason: 'unknown_prior',
-				detail: `${row.project_code} has no comparable prior-period cost, so it cannot be placed in the increase ordering.`,
+				reason:
+					row.change_state === 'unproven'
+						? 'unproven_partial_window'
+						: 'unknown_prior',
+				detail:
+					row.change_state === 'unproven'
+						? `${row.project_code} has cost in a compared period whose place inside the elapsed window is unproven, so its change is not stated and it cannot be ranked by increase.`
+						: `${row.project_code} has no comparable prior-period cost, so it cannot be placed in the increase ordering.`,
 			});
 		}
 	}

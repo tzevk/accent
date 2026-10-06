@@ -61,7 +61,7 @@ const BETA = EXPENDITURE_PROJECTS.p320b.code;
 const GAMMA = EXPENDITURE_PROJECTS.p320c.code;
 const DELTA = EXPENDITURE_PROJECTS.p320d.code;
 const ENTERED = EXPENDITURE_PROJECTS.p320e.code;
-/** The Project whose comparison spans currencies (2021-08/2021-09). */
+/** The Project whose comparison spans currencies (2022-08/2022-09). */
 const MULTI = EXPENDITURE_PROJECTS.p320f.code;
 /** The cost this spec records through the browser form. */
 const UI_ENTRY = {
@@ -299,7 +299,7 @@ function publish(): void {
 		fixtureScope: {
 			projects: [ALPHA, BETA, GAMMA, DELTA, ENTERED, MULTI],
 			months: [MONTH, PRIOR_MONTH],
-			boundaryMonths: ['2021-08', '2021-09', '2026-01'],
+			boundaryMonths: ['2022-08', '2022-09', '2026-01'],
 			asOf: AS_OF,
 			expensePrefix: 'E2E-EXP-320-',
 		},
@@ -420,7 +420,7 @@ test.beforeAll(async () => {
        FROM expenses
       WHERE isDelete = 0
         AND (expense_number LIKE 'E2E-EXP-320-%'
-             OR recognition_period BETWEEN '2021-08-01' AND '2021-09-30'
+             OR recognition_period BETWEEN '2022-08-01' AND '2022-09-30'
              OR recognition_period BETWEEN '2022-05-01' AND '2022-06-30'
              OR recognition_period BETWEEN '2026-01-01' AND '2026-01-31')`
 	);
@@ -639,7 +639,7 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
 	expect(latePrior.count).toBe(1);
 	expect(latePrior.amount).toBe(7000);
 	expect(disclosureOf(data, 'backdated_recognition').count).toBe(1);
-	expect(disclosureOf(data, 'undated_period_evidence').count).toBe(2);
+	expect(disclosureOf(data, 'window_evidence_unproven').count).toBe(2);
 	const unequal = disclosureOf(data, 'unequal_evidence_coverage');
 	expect(unequal.count).toBe(1);
 	expect(unequal.amount).toBe(7000);
@@ -1407,7 +1407,7 @@ test('states a currency-split comparison per currency, not as unknown', async ({
 	// September 2021's comparison spans currencies: INR this month, USD in the
 	// prior month. No single prior or change figure exists, yet each currency's
 	// own amount is known and stated.
-	const data = await reconciliation(request, { month: '2021-09' });
+	const data = await reconciliation(request, { month: '2022-09' });
 	expect(data.comparison.currency).toBeNull();
 	expect(data.comparison.prior_cost).toBeNull();
 	expect(data.comparison.change_amount).toBeNull();
@@ -1428,7 +1428,7 @@ test('states a currency-split comparison per currency, not as unknown', async ({
 
 	await openExpenditure(page, 'September 2021');
 	const view = page.getByTestId('expenditure-view');
-	await expect(view).toHaveAttribute('data-month', '2021-09');
+	await expect(view).toHaveAttribute('data-month', '2022-09');
 	await expect(page.getByTestId('comparison-prior')).toContainText(
 		'See currencies'
 	);
@@ -1453,7 +1453,7 @@ test('states a currency-split comparison per currency, not as unknown', async ({
 	await expect(inrRow).toContainText('Unknown');
 
 	evidence.currencySplit = {
-		month: '2021-09',
+		month: '2022-09',
 		currencies: split,
 		inr: { current: inr.current_cost, prior: inr.prior_cost },
 		usd: {

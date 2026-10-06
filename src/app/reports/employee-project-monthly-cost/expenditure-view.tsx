@@ -392,6 +392,7 @@ const CHANGE_LABELS: Record<string, string> = {
 	increase: 'Increase',
 	decrease: 'Decrease',
 	unchanged: 'No change',
+	unproven: 'Window membership unproven',
 };
 
 /** What the row's figures rest on, in the reader's words. */

@@ -367,7 +367,12 @@ export type ChangeState =
 	| 'new'
 	| 'increase'
 	| 'decrease'
-	| 'unchanged';
+	| 'unchanged'
+	/**
+	 * A partial window whose evidence cannot prove where its cost sits: the
+	 * change is withheld rather than stated from an unproven part.
+	 */
+	| 'unproven';
 
 /** How the reported window was bounded. */
 export type ComparisonBasis = 'equal_period' | 'full_month';
@@ -382,6 +387,12 @@ export interface ComparisonCurrency {
 	change_amount: number | null;
 	change_percent: number | null;
 	change_state: ChangeState;
+	/**
+	 * Records in either compared period whose day-level evidence cannot prove
+	 * the elapsed window covers them, with their own known amounts.
+	 */
+	unproven_records: number;
+	unproven_cost: number | null;
 	/** The window's own direct-cost categories, each counted once. */
 	groups: ReconciliationGroup[];
 	/** Window records counted without day-level service evidence. */
@@ -403,6 +414,7 @@ export interface ComparisonDisclosure {
 		| 'late_recorded_cost'
 		| 'backdated_recognition'
 		| 'undated_period_evidence'
+		| 'window_evidence_unproven'
 		| 'unequal_evidence_coverage'
 		| 'unknown_prior_cost'
 		| 'zero_prior_cost'
@@ -502,7 +514,7 @@ export interface ProjectRanking {
 	increase_unranked: Array<{
 		project_id: number;
 		currency: string;
-		reason: 'unknown_prior';
+		reason: 'unknown_prior' | 'unproven_partial_window';
 		detail: string;
 	}>;
 	currencies: string[];

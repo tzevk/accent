@@ -43,6 +43,7 @@ import {
 	percentChange,
 	projectEvidence,
 	rankProjects,
+	unprovenWindowRecords,
 	windowRecords,
 	withinWindow,
 	type ComparisonWindow,
@@ -368,6 +369,27 @@ function projectRows(
 			const lateRows = inWindow.filter((record) =>
 				isLateEntry(record, currentEnd)
 			);
+			const priorUnproven = unprovenWindowRecords(
+				priorMonthRecords,
+				window,
+				'prior'
+			).filter(
+				(record) =>
+					record.projectId === id && currencyCodeOf(record.currency) === currency
+			);
+			const currentUnproven = unprovenWindowRecords(
+				records,
+				window,
+				'current'
+			).filter(
+				(record) =>
+					record.projectId === id && currencyCodeOf(record.currency) === currency
+			);
+			// A partial window that cannot prove where its cost sits cannot state
+			// this row's change either; the row keeps its unproven records visible
+			// through the evidence column and is left out of the increase order.
+			const unproven =
+				priorUnproven.length > 0 || currentUnproven.length > 0;
 			rows.push({
 				project_id: id,
 				project_code: sample.projectCode ?? `#${id}`,
@@ -390,9 +412,15 @@ function projectRows(
 				comparison_cost: comparison,
 				previous_period_cost: previous,
 				change_amount:
-					previous === null ? null : rounded(comparison - previous),
-				change_percent: percentChange(comparison, previous),
-				change_state: changeStateFor(comparison, previous),
+					unproven || previous === null
+						? null
+						: rounded(comparison - previous),
+				change_percent: unproven
+					? null
+					: percentChange(comparison, previous),
+				change_state: unproven
+					? 'unproven'
+					: changeStateFor(comparison, previous),
 				cost_to_date:
 					beforeAmount === null ? null : rounded(add(beforeAmount, comparison)),
 				late_entry:
