@@ -10,6 +10,7 @@ import {
 	EXPENDITURE_PROJECTS,
 	EXPENDITURE_VENDOR_PREFIX,
 	cleanupExpenditureFixtures,
+	loginExpenditureReportOnlyReader,
 	seedExpenditureFixtures,
 	seededCost,
 	type SeededExpenditure,
@@ -94,8 +95,22 @@ const JANUARY = {
 	recognizedRecords: 8,
 } as const;
 
-/** February: one INR project cost and one USD overhead cost. */
-const FEBRUARY = { inr: 100, usd: 50 } as const;
+/**
+ * February: an INR project cost, a USD overhead cost, and a USD project cost.
+ * The month holds two currencies on the same Project (alpha) as well as across
+ * destinations — exactly the figures that must never be combined.
+ */
+const FEBRUARY = { inr: 100, usdOverhead: 50, usdProject: 30 } as const;
+
+/** The cost the browser edit test completes through the versioned update. */
+const UI_EDITED = { gross: 321 } as const;
+
+/** The partial service period (end only) the API test records. */
+const PARTIAL_PERIOD = {
+	end: `${API_MONTH}-18`,
+	billDate: `${API_MONTH}-25`,
+	gross: 400,
+} as const;
 
 /** The cost the API test records and recognizes (gross − evidenced tax). */
 const API_CREATED = { gross: 1180, tax: 180, recognized: 1000 } as const;
@@ -115,12 +130,19 @@ interface ReconciliationData {
 			company_overhead: number;
 			unallocated_cost: number;
 			incurred_cost: number;
+			gross_liability: number;
+			recoverable_tax: number;
+			unresolved_tax_gross: number;
 			record_count: number;
 		}>;
 		groups: Array<{ key: string; label: string; amount: number; record_count: number }>;
 		gross_liability: number | null;
 		recoverable_tax: number | null;
-		unresolved_tax: { count: number; gross_amount: number };
+		unresolved_tax: {
+			count: number;
+			currency: string | null;
+			gross_amount: number | null;
+		};
 		known_zero_count: number;
 		record_count: number;
 	};
@@ -129,19 +151,24 @@ interface ReconciliationData {
 		project_code: string;
 		project_name: string;
 		client_name: string | null;
+		currency: string;
 		incurred_cost: number;
 		record_count: number;
-		not_confirmed_cost: number;
+		not_confirmed_cost: number | null;
 		previous_month_cost: number | null;
 		change_amount: number | null;
 		change_state: string;
 	}>;
-	evidence: Record<'recognized' | 'pending_evidence' | 'draft' | 'rejected' | 'cancelled', {
-		count: number;
-		amount: number | null;
-	}> & {
+	evidence: Record<
+		'recognized' | 'pending_evidence' | 'draft' | 'rejected' | 'cancelled',
+		{ count: number; currency: string | null; amount: number | null }
+	> & {
 		missing_amount: { count: number };
-		unresolved_classification: { count: number };
+		unresolved_classification: {
+			count: number;
+			currency: string | null;
+			gross_amount: number | null;
+		};
 		known_zero: { count: number };
 	};
 	coverage: Array<{ code: string; label: string; detail: string; severity: string }>;
@@ -176,7 +203,11 @@ interface DrilldownData {
 	limit: number;
 	offset: number;
 	records: DrilldownRecord[];
-	totals: { confirmed_amount: number; records: number };
+	totals: {
+		confirmed_amount: number | null;
+		currency: string | null;
+		records: number;
+	};
 }
 
 let seeded: SeededExpenditure;
@@ -356,9 +387,17 @@ test('keeps drafts, pending, rejected, cancelled, unresolved and missing out of 
 
 	expect(data.evidence.recognized.count).toBe(JANUARY.recognizedRecords);
 	expect(data.evidence.recognized.amount).toBe(JANUARY.total);
+	expect(data.evidence.recognized.currency).toBe('INR');
 	expect(data.evidence.pending_evidence.count).toBe(2);
-	expect(data.evidence.pending_evidence.amount).toBe(900);
+	// One pending record is 900 and one has no amount: the subtotal is not
+	// stated at all rather than treating the unknown amount as zero, while the
+	// separate missing_amount count still discloses it.
+	expect(data.evidence.pending_evidence.currency).toBe('INR');
+	expect(data.evidence.pending_evidence.amount).toBeNull();
 	expect(data.evidence.draft.count).toBe(1);
+	expect(data.evidence.draft.amount).toBe(750);
+	expect(data.evidence.rejected.amount).toBe(500);
+	expect(data.evidence.cancelled.amount).toBe(800);
 	expect(data.evidence.rejected.count).toBe(1);
 	expect(data.evidence.cancelled.count).toBe(1);
 	expect(data.evidence.missing_amount.count).toBe(1);
@@ -490,25 +529,74 @@ test('keeps currencies separate until a supported conversion exists', async ({
 	const usd = data.company.currency_totals.find((row) => row.currency === 'USD')!;
 	expect(inr.incurred_project_cost).toBe(FEBRUARY.inr);
 	expect(inr.incurred_cost).toBe(FEBRUARY.inr);
-	expect(usd.company_overhead).toBe(FEBRUARY.usd);
-	expect(usd.incurred_cost).toBe(FEBRUARY.usd);
-	// No mixed-currency aggregate is presented as a company total.
+	expect(usd.incurred_project_cost).toBe(FEBRUARY.usdProject);
+	expect(usd.company_overhead).toBe(FEBRUARY.usdOverhead);
+	expect(usd.incurred_cost).toBe(FEBRUARY.usdOverhead + FEBRUARY.usdProject);
+
+	// No mixed-currency aggregate is presented as a company total — not the
+	// incurred cost, not gross liability, not recoverable or unresolved tax.
 	expect(data.company.incurred_cost).toBeNull();
 	expect(data.company.currency).toBeNull();
+	expect(data.company.gross_liability).toBeNull();
+	expect(data.company.recoverable_tax).toBeNull();
+	expect(data.company.unresolved_tax.count).toBe(0);
+	expect(data.company.unresolved_tax.currency).toBeNull();
+	expect(inr.gross_liability).toBe(FEBRUARY.inr);
+	expect(usd.gross_liability).toBe(FEBRUARY.usdOverhead + FEBRUARY.usdProject);
+	expect(inr.recoverable_tax).toBe(0);
+	expect(usd.recoverable_tax).toBe(0);
+	// The evidence subtotal spans two currencies and is therefore not stated.
+	expect(data.evidence.recognized.count).toBe(3);
+	expect(data.evidence.recognized.currency).toBeNull();
+	expect(data.evidence.recognized.amount).toBeNull();
 	expect(coverageCodes(data)).toContain('currency_conversion_missing');
-	// The prior month's project cost is stated for comparison.
-	const alpha = data.projects.find(
+
+	// The Project breakdown keeps one row per currency: alpha's INR cost is
+	// compared with its INR prior month, and its USD cost has no USD prior.
+	const alphaRows = data.projects.filter(
 		(row) => row.project_code === EXPENDITURE_PROJECTS.alpha.code
-	)!;
-	expect(alpha.incurred_cost).toBe(FEBRUARY.inr);
-	expect(alpha.previous_month_cost).toBe(JANUARY.alpha);
-	expect(alpha.change_amount).toBe(FEBRUARY.inr - JANUARY.alpha);
-	expect(alpha.change_state).toBe('decrease');
+	);
+	expect(alphaRows.map((row) => row.currency).sort()).toEqual(['INR', 'USD']);
+	const alphaInr = alphaRows.find((row) => row.currency === 'INR')!;
+	const alphaUsd = alphaRows.find((row) => row.currency === 'USD')!;
+	expect(alphaInr.incurred_cost).toBe(FEBRUARY.inr);
+	expect(alphaInr.previous_month_cost).toBe(JANUARY.alpha);
+	expect(alphaInr.change_amount).toBe(FEBRUARY.inr - JANUARY.alpha);
+	expect(alphaInr.change_state).toBe('decrease');
+	expect(alphaUsd.incurred_cost).toBe(FEBRUARY.usdProject);
+	expect(alphaUsd.previous_month_cost).toBeNull();
+	expect(alphaUsd.change_amount).toBeNull();
+	expect(alphaUsd.change_state).toBe('no_prior');
+
+	// The database rows agree: one USD Project cost, one INR Project cost.
+	const persisted = await rows<{ currency: string; total: string; records: number }>(
+		`SELECT currency, SUM(recognized_amount) AS total, COUNT(*) AS records
+       FROM expenses
+      WHERE isDelete = 0 AND recognition_state = 'recognized'
+        AND cost_classification = 'project'
+        AND recognition_period BETWEEN ? AND ?
+      GROUP BY currency
+      ORDER BY currency`,
+		[`${NEXT_MONTH}-01`, `${NEXT_MONTH}-28`]
+	);
+	expect(
+		persisted.map((row) => [row.currency, Number(row.total)])
+	).toEqual([
+		['INR', FEBRUARY.inr],
+		['USD', FEBRUARY.usdProject],
+	]);
 
 	evidence.currency = {
 		expected: FEBRUARY,
 		observed: data.company.currency_totals,
 		incurredCost: data.company.incurred_cost,
+		grossLiability: data.company.gross_liability,
+		projectRows: alphaRows.map((row) => ({
+			code: row.project_code,
+			currency: row.currency,
+			cost: row.incurred_cost,
+			previous: row.previous_month_cost,
+		})),
 		coverage: coverageCodes(data),
 	};
 });
@@ -684,6 +772,85 @@ test('records and recognizes a cost through authenticated requests, once', async
 	};
 });
 
+test('uses a service period end even when its start is not recorded', async ({
+	request,
+}, testInfo) => {
+	const sourceReference = `E2E-INV-PARTIAL-${testInfo.retry}`;
+	const response = await request.post('/api/admin/expenses', {
+		data: {
+			category: EXPENDITURE_CATEGORY,
+			description: 'E2E service period end without start',
+			vendor_name: `${EXPENDITURE_VENDOR_PREFIX}partial`,
+			expense_date: PARTIAL_PERIOD.billDate,
+			cost_classification: 'unallocated',
+			service_period_end: PARTIAL_PERIOD.end,
+			bill_date: PARTIAL_PERIOD.billDate,
+			currency: 'INR',
+			gross_amount: PARTIAL_PERIOD.gross,
+			tax_treatment: 'none',
+			source_reference: sourceReference,
+			evidence_reference: 'E2E-GRN-PARTIAL',
+			submit: true,
+		},
+	});
+	expect(response.status(), await response.text()).toBe(200);
+	const record = (await response.json()).data as {
+		id: number;
+		cost_uid: string;
+		recognition_period: string;
+		period_basis: string;
+	};
+	created.push({
+		id: record.id,
+		cost_uid: record.cost_uid,
+		where: 'partial-period',
+	});
+
+	// The end of the received-work period decides the month — not the later bill
+	// date — and the basis discloses that the start is not recorded.
+	expect(record.recognition_period).toBe(`${API_MONTH}-01`);
+	expect(record.period_basis).toBe('service_period_end');
+
+	const stored = await rows<Record<string, unknown>>(
+		`SELECT service_period_start, service_period_end, recognition_period,
+              period_basis, total_amount
+         FROM expenses WHERE id = ?`,
+		[record.id]
+	);
+	expect(stored[0].service_period_start).toBeNull();
+	expect(String(stored[0].service_period_end).slice(0, 10)).toBe(
+		PARTIAL_PERIOD.end
+	);
+	expect(String(stored[0].recognition_period).slice(0, 10)).toBe(
+		`${API_MONTH}-01`
+	);
+	expect(stored[0].period_basis).toBe('service_period_end');
+	expect(Number(stored[0].total_amount)).toBe(PARTIAL_PERIOD.gross);
+
+	// The drilldown and the coverage notice disclose the partial period; the
+	// cost is not silently attributed to the bill date's month.
+	const queue = await drilldown(request, {
+		month: API_MONTH,
+		state: 'pending_evidence',
+	});
+	const row = queue.records.find(
+		(entry) => entry.source_reference === sourceReference
+	)!;
+	expect(row.period_basis).toBe('service_period_end');
+	expect(row.exceptions).toContain('service_period_start_missing');
+	expect(coverageCodes(await reconciliation(request, API_MONTH))).toContain(
+		'service_period_start_missing'
+	);
+
+	evidence.partialPeriod = {
+		expectedEnd: PARTIAL_PERIOD.end,
+		billDate: PARTIAL_PERIOD.billDate,
+		recognitionPeriod: record.recognition_period,
+		periodBasis: record.period_basis,
+		exceptions: row.exceptions,
+	};
+});
+
 test('recognizes a cost through the real report controls', async ({ page }) => {
 	await openExpenditure(page, UI_MONTH_LABEL);
 	await expect(page.getByTestId('expenditure-view')).toContainText(
@@ -806,6 +973,149 @@ test('recognizes a cost through the real report controls', async ({ page }) => {
 	};
 });
 
+test('corrects a pending cost through the report and refuses register edits', async ({
+	page,
+	request,
+}) => {
+	// A cost with no amount, no destination, and no period: the pending-evidence
+	// state the workflow must let an operator complete in place, not cancel and
+	// re-record.
+	const createResponse = await request.post('/api/admin/expenses', {
+		data: {
+			category: EXPENDITURE_CATEGORY,
+			description: 'E2E cost completed through the report',
+			vendor_name: `${EXPENDITURE_VENDOR_PREFIX}edit`,
+			expense_date: `${UI_MONTH}-08`,
+			currency: 'INR',
+			submit: true,
+			source_reference: 'E2E-INV-UI-EDIT',
+		},
+	});
+	expect(createResponse.status(), await createResponse.text()).toBe(200);
+	const record = (await createResponse.json()).data as {
+		id: number;
+		cost_uid: string;
+		recognition_state: string;
+		financial_version: number;
+	};
+	created.push({ id: record.id, cost_uid: record.cost_uid, where: 'ui-edit' });
+	expect(record.recognition_state).toBe('pending_evidence');
+	expect(record.financial_version).toBe(1);
+
+	// The register edit path refuses the versioned financial fields and writes
+	// nothing, so an edit cannot slip behind a later command's version check;
+	// operational fields still edit there.
+	const registerEdit = await request.put(`/api/admin/expenses/${record.id}`, {
+		data: { amount: 50, total_amount: 50, status: 'approved' },
+	});
+	expect(registerEdit.status()).toBe(422);
+	const refusal = await registerEdit.json();
+	expect(refusal.code).toBe('financial_fields_versioned');
+	expect([...refusal.fields].sort()).toEqual(['amount', 'total_amount']);
+	const untouched = await rows<Record<string, unknown>>(
+		`SELECT financial_version, total_amount FROM expenses WHERE id = ?`,
+		[record.id]
+	);
+	expect(Number(untouched[0].financial_version)).toBe(1);
+	expect(untouched[0].total_amount).toBeNull();
+	const operationalEdit = await request.put(
+		`/api/admin/expenses/${record.id}`,
+		{ data: { notes: 'E2E operational edit' } }
+	);
+	expect(operationalEdit.status(), await operationalEdit.text()).toBe(200);
+
+	// The operator completes it through the report's edit control, which saves
+	// the versioned `update` command with its own journal entry.
+	await openExpenditure(page, UI_MONTH_LABEL);
+	const queueRow = page.locator(
+		'[data-testid="queue-row"][data-source-reference="E2E-INV-UI-EDIT"]'
+	);
+	await expect(queueRow).toBeVisible();
+	await queueRow.getByTestId('queue-edit').click();
+	const dialog = page.getByTestId('cost-edit-dialog');
+	await expect(dialog).toBeVisible();
+	await dialog
+		.getByLabel('Classification', { exact: true })
+		.selectOption('company_overhead');
+	await dialog
+		.getByLabel('Gross amount', { exact: true })
+		.fill(String(UI_EDITED.gross));
+	await dialog
+		.getByLabel('Service period start', { exact: true })
+		.fill(`${UI_MONTH}-06`);
+	await dialog
+		.getByLabel('Service period end', { exact: true })
+		.fill(`${UI_MONTH}-06`);
+	await dialog
+		.getByLabel('Tax treatment', { exact: true })
+		.selectOption('none');
+	await dialog
+		.getByLabel('Evidence reference', { exact: true })
+		.fill('E2E-GRN-UI-EDIT');
+	await dialog
+		.getByRole('button', { name: 'Save changes', exact: true })
+		.click();
+	await expect(dialog).toBeHidden();
+
+	const edited = await rows<Record<string, unknown>>(
+		`SELECT recognition_state, financial_version, total_amount, amount,
+              recognition_period, period_basis, cost_classification
+         FROM expenses WHERE id = ?`,
+		[record.id]
+	);
+	expect(Number(edited[0].financial_version)).toBe(2);
+	expect(Number(edited[0].total_amount)).toBe(UI_EDITED.gross);
+	expect(Number(edited[0].amount)).toBe(UI_EDITED.gross);
+	expect(edited[0].recognition_state).toBe('pending_evidence');
+	expect(String(edited[0].recognition_period).slice(0, 10)).toBe(
+		`${UI_MONTH}-01`
+	);
+	expect(edited[0].period_basis).toBe('service_period');
+	expect(edited[0].cost_classification).toBe('company_overhead');
+	const events = await rows<{ version: number; command: string }>(
+		`SELECT version, command FROM financial_cost_events
+      WHERE source_table = 'expenses' AND source_id = ? ORDER BY version`,
+		[record.id]
+	);
+	expect(events.map((event) => event.version)).toEqual([1, 2]);
+	expect(events[1].command).toBe('updated');
+
+	// The completed row now recognizes from the queue, once.
+	await queueRow.getByRole('button', { name: 'Recognize', exact: true }).click();
+	const commandDialog = page.getByTestId('command-dialog');
+	await expect(commandDialog).toBeVisible();
+	await commandDialog
+		.getByLabel('Reason', { exact: true })
+		.fill('E2E evidence completed');
+	await commandDialog
+		.getByRole('button', { name: 'Recognize expense', exact: true })
+		.click();
+	await expect(commandDialog).toBeHidden();
+	const finalized = await rows<Record<string, unknown>>(
+		`SELECT recognition_state, financial_version, recognized_amount
+       FROM expenses WHERE id = ?`,
+		[record.id]
+	);
+	expect(finalized[0].recognition_state).toBe('recognized');
+	expect(Number(finalized[0].financial_version)).toBe(3);
+	expect(Number(finalized[0].recognized_amount)).toBe(UI_EDITED.gross);
+	await expect(queueRow).toHaveCount(0);
+
+	evidence.editedCost = {
+		expected: UI_EDITED,
+		registerRefusal: {
+			status: registerEdit.status(),
+			code: refusal.code,
+			fields: refusal.fields,
+		},
+		events: events.map((event) => ({
+			version: event.version,
+			command: event.command,
+		})),
+		state: finalized[0].recognition_state,
+	};
+});
+
 test('drills from a project into its source records', async ({ page, request }) => {
 	await openExpenditure(page, MONTH_LABEL);
 	const row = page.locator(
@@ -854,6 +1164,37 @@ test('drills from a project into its source records', async ({ page, request }) 
 	};
 });
 
+test('rejects malformed pagination instead of failing in SQL', async ({
+	request,
+}) => {
+	const rejected = ['limit=abc', 'limit=0', 'limit=9999', 'offset=-1'];
+	for (const query of rejected) {
+		const response = await request.get(
+			`/api/reports/employee-project-monthly-cost/expenses?month=${MONTH}&${query}`
+		);
+		expect(response.status(), query).toBe(400);
+		expect((await response.json()).success, query).toBe(false);
+	}
+	// A valid page still reads and states the page it returned.
+	const data = await drilldown(request, {
+		month: MONTH,
+		limit: '2',
+		offset: '1',
+	});
+	expect(data.limit).toBe(2);
+	expect(data.offset).toBe(1);
+	expect(data.records.length).toBeLessThanOrEqual(2);
+
+	evidence.pagination = {
+		rejected,
+		page: {
+			limit: data.limit,
+			offset: data.offset,
+			records: data.records.length,
+		},
+	};
+});
+
 test('refuses unauthorized reads and writes without changing data', async ({
 	playwright,
 }) => {
@@ -894,13 +1235,58 @@ test('refuses unauthorized reads and writes without changing data', async ({
 		expect(untouched[0].recognition_state).toBe('pending_evidence');
 		expect(Number(untouched[0].financial_version)).toBe(1);
 
-		evidence.authorization = {
-			read: read.status(),
-			drilldown: drill.status(),
-			write: write.status(),
-			command: command.status(),
-			unchanged: untouched[0],
-		};
+		// A report reader without the expense ledger's source privilege may open
+		// the report's employee-cost views, but must receive neither the
+		// reconciliation nor the drilldown — not even the months that carry
+		// direct cost (parent spec §149: source authorization and financial
+		// privileges, not report access alone).
+		const reader = await loginExpenditureReportOnlyReader(
+			playwright,
+			E2E_ENV.baseURL
+		);
+		try {
+			const report = await reader.get(
+				`/api/reports/employee-project-monthly-cost?view=expenditure&month=${MONTH}`
+			);
+			expect(report.status()).toBe(403);
+			const reportBody = JSON.stringify(await report.json());
+			expect(reportBody).not.toContain(String(JANUARY.total));
+			expect(reportBody).not.toContain('E2E-INV');
+
+			const readerDrill = await reader.get(
+				`/api/reports/employee-project-monthly-cost/expenses?month=${MONTH}`
+			);
+			expect(readerDrill.status()).toBe(403);
+			const drillBody = JSON.stringify(await readerDrill.json());
+			expect(drillBody).not.toContain('E2E-INV');
+
+			const meta = await reader.get(
+				'/api/reports/employee-project-monthly-cost'
+			);
+			expect(meta.status()).toBe(200);
+			expect((await meta.json()).meta.expenditure_months).toEqual([]);
+
+			const monthly = await reader.get(
+				`/api/reports/employee-project-monthly-cost?view=monthly&month=${MONTH}`
+			);
+			expect(monthly.status()).toBe(200);
+
+			evidence.authorization = {
+				read: read.status(),
+				drilldown: drill.status(),
+				write: write.status(),
+				command: command.status(),
+				unchanged: untouched[0],
+				reportOnlyReader: {
+					reconciliation: report.status(),
+					drilldown: readerDrill.status(),
+					metaExpenditureMonths: [],
+					monthlyView: monthly.status(),
+				},
+			};
+		} finally {
+			await reader.dispose();
+		}
 	} finally {
 		await employee.dispose();
 	}

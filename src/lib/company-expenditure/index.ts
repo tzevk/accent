@@ -140,7 +140,7 @@ export async function fetchCompanyReconciliation(
 			loadMonthRecords(pool, month),
 			previousMonth
 				? loadMonthProjectCost(pool, previousMonth)
-				: Promise.resolve(new Map<number, number>()),
+				: Promise.resolve(new Map<number, Map<string, number | null>>()),
 			loadProjectOptions(pool),
 			loadExpenditureMonths(pool, currentMonth()),
 		]);

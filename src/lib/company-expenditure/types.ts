@@ -20,6 +20,11 @@ export type RecognitionState =
 /** How the Recognition Period was established. */
 export type PeriodBasis =
 	| 'service_period'
+	/**
+	 * The received-work period is known to end on `service_period_end` but its
+	 * start is not recorded; the cost sits in the end month, disclosed.
+	 */
+	| 'service_period_end'
 	| 'bill_date_fallback'
 	| 'unresolved';
 
@@ -43,7 +48,19 @@ export type CostCommandName =
 	| 'reject'
 	| 'cancel';
 
-export type CostJournalCommand = 'recorded' | CostCommandName;
+/**
+ * The journal's own vocabulary (`financial_cost_events.command`): the command
+ * as it happened. The API command names are imperative (`recognize`), the
+ * journal is past tense (`recognized`), and `writeJournal` is the one place
+ * that translates between the two.
+ */
+export type CostJournalCommand =
+	| 'recorded'
+	| 'updated'
+	| 'submitted'
+	| 'recognized'
+	| 'rejected'
+	| 'cancelled';
 
 /** Reasons a cost is not a clean confirmed amount. Disclosed, never hidden. */
 export type CostExceptionCode =
@@ -54,6 +71,7 @@ export type CostExceptionCode =
 	| 'classification_unresolved'
 	| 'missing_recognition_period'
 	| 'service_period_spans_months'
+	| 'service_period_start_missing'
 	| 'missing_source_reference'
 	| 'missing_evidence_reference';
 
@@ -120,6 +138,12 @@ export interface CurrencyTotal {
 	unallocated_cost: number;
 	/** Sum of the three groups, in this currency only. */
 	incurred_cost: number;
+	/** Gross liability of this currency's confirmed records (`total_amount`). */
+	gross_liability: number;
+	/** Evidenced recoverable tax this currency's cost excludes. */
+	recoverable_tax: number;
+	/** Gross liability of this currency's confirmed records with unresolved tax. */
+	unresolved_tax_gross: number;
 	record_count: number;
 }
 
@@ -135,10 +159,19 @@ export interface ReconciliationProjectRow {
 	project_code: string;
 	project_name: string;
 	client_name: string | null;
+	/**
+	 * The one currency this row is stated in. A Project whose month holds more
+	 * than one currency gets one row per currency; amounts are never combined.
+	 */
+	currency: string;
 	incurred_cost: number;
 	record_count: number;
-	/** Cost recorded against the project but not yet confirmed. */
-	not_confirmed_cost: number;
+	/**
+	 * Cost recorded against the project but not yet confirmed, in this row's
+	 * currency; null when a contributing record has no amount (unknown, not
+	 * zero).
+	 */
+	not_confirmed_cost: number | null;
 	previous_month_cost: number | null;
 	change_amount: number | null;
 	change_state: 'no_prior' | 'new' | 'increase' | 'decrease' | 'unchanged';
@@ -146,7 +179,15 @@ export interface ReconciliationProjectRow {
 
 export interface EvidenceStateSummary {
 	count: number;
-	/** Gross liability, or recognized cost for the recognized state. */
+	/**
+	 * The state's single currency, or null when its records span more than one.
+	 */
+	currency: string | null;
+	/**
+	 * Gross liability, or recognized cost for the recognized state. Null when a
+	 * contributing amount is unknown or the records span currencies: an unknown
+	 * amount is not zero, and currencies are never combined.
+	 */
 	amount: number | null;
 }
 
@@ -156,7 +197,11 @@ export interface EvidenceSummary {
 	draft: EvidenceStateSummary;
 	rejected: EvidenceStateSummary;
 	cancelled: EvidenceStateSummary;
-	unresolved_classification: { count: number; gross_amount: number };
+	unresolved_classification: {
+		count: number;
+		currency: string | null;
+		gross_amount: number | null;
+	};
 	missing_amount: { count: number };
 	known_zero: { count: number };
 }
@@ -174,7 +219,11 @@ export interface CompanyReconciliation {
 		groups: ReconciliationGroup[];
 		gross_liability: number | null;
 		recoverable_tax: number | null;
-		unresolved_tax: { count: number; gross_amount: number };
+		unresolved_tax: {
+			count: number;
+			currency: string | null;
+			gross_amount: number | null;
+		};
 		known_zero_count: number;
 		record_count: number;
 	};
@@ -336,5 +385,11 @@ export interface CostDrilldown {
 	limit: number;
 	offset: number;
 	records: CostRecordJson[];
-	totals: { confirmed_amount: number; records: number };
+	totals: {
+		/** Null when confirmed amounts are unknown or span currencies. */
+		confirmed_amount: number | null;
+		/** The confirmed currency when the filtered records share one. */
+		currency: string | null;
+		records: number;
+	};
 }

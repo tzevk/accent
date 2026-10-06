@@ -83,6 +83,28 @@ function sumMoney(values: Array<number | null>): number {
 	);
 }
 
+/** The single currency the records share, or null for none or more than one. */
+function currencyOf(records: CostRecord[]): string | null {
+	const codes = new Set(records.map((record) => record.currency ?? 'INR'));
+	return codes.size === 1 ? [...codes][0] : null;
+}
+
+/**
+ * A subtotal that may only be stated in one currency. Zero records contribute
+ * a known zero; a single unknown amount or a second currency makes the figure
+ * null, because an unknown amount is not zero and currencies are never added.
+ */
+function subtotal(
+	records: CostRecord[],
+	value: (record: CostRecord) => number | null
+): number | null {
+	if (records.length === 0) return 0;
+	const amounts = records.map(value);
+	if (amounts.some((amount) => amount === null)) return null;
+	if (currencyOf(records) === null) return null;
+	return sumMoney(amounts);
+}
+
 function countByState(
 	records: CostRecord[],
 	state: CostRecord['state']
@@ -90,12 +112,11 @@ function countByState(
 	const matching = records.filter((record) => record.state === state);
 	return {
 		count: matching.length,
-		amount: sumMoney(
-			matching.map((record) =>
-				isConfirmed(record.state)
-					? confirmedAmount(record)
-					: record.grossAmount
-			)
+		currency: currencyOf(matching),
+		amount: subtotal(matching, (record) =>
+			isConfirmed(record.state)
+				? confirmedAmount(record)
+				: record.grossAmount
 		),
 	};
 }
@@ -104,6 +125,9 @@ function currencySlice(records: CostRecord[], currency: string): CurrencyTotal {
 	let project = R(0);
 	let overhead = R(0);
 	let unallocated = R(0);
+	let gross = R(0);
+	let recoverable = R(0);
+	let unresolvedGross = R(0);
 	for (const record of records) {
 		const amount = confirmedAmount(record);
 		if (amount === null) continue;
@@ -113,6 +137,14 @@ function currencySlice(records: CostRecord[], currency: string): CurrencyTotal {
 		} else if (record.classification === 'unallocated') {
 			unallocated = add(unallocated, amount);
 		}
+		const grossLiability = record.grossAmount ?? amount;
+		gross = add(gross, grossLiability);
+		const treatment = effectiveTaxTreatment(record);
+		if (treatment === 'recoverable') {
+			recoverable = add(recoverable, record.taxAmount ?? 0);
+		} else if (treatment === 'unresolved') {
+			unresolvedGross = add(unresolvedGross, grossLiability);
+		}
 	}
 	return {
 		currency,
@@ -120,6 +152,9 @@ function currencySlice(records: CostRecord[], currency: string): CurrencyTotal {
 		company_overhead: rounded(overhead),
 		unallocated_cost: rounded(unallocated),
 		incurred_cost: rounded(add(add(project, overhead), unallocated)),
+		gross_liability: rounded(gross),
+		recoverable_tax: rounded(recoverable),
+		unresolved_tax_gross: rounded(unresolvedGross),
 		record_count: records.filter((record) => confirmedAmount(record) !== null)
 			.length,
 	};
@@ -128,9 +163,12 @@ function currencySlice(records: CostRecord[], currency: string): CurrencyTotal {
 function projectRows(
 	confirmed: CostRecord[],
 	open: CostRecord[],
-	previousMonth: Map<number, number>,
+	previousMonth: Map<number, Map<string, number | null>>,
 	projectFilter: number | null
 ): ReconciliationProjectRow[] {
+	// One row per Project and currency. Amounts in different currencies are
+	// never added, and the prior-month comparison is same-currency only; a
+	// Project costing in two currencies therefore shows two rows.
 	const ids = new Set<number>();
 	for (const record of [...confirmed, ...open]) {
 		if (record.classification === 'project' && record.projectId !== null) {
@@ -140,40 +178,55 @@ function projectRows(
 	const rows: ReconciliationProjectRow[] = [];
 	for (const id of ids) {
 		if (projectFilter !== null && projectFilter !== id) continue;
-		const confirmedRows = confirmed.filter((record) => record.projectId === id);
-		const openRows = open.filter((record) => record.projectId === id);
-		const sample = [...confirmedRows, ...openRows][0];
-		const incurred = sumMoney(confirmedRows.map(confirmedAmount));
-		const notConfirmed = sumMoney(openRows.map((record) => record.grossAmount));
-		const previous = previousMonth.has(id) ? previousMonth.get(id)! : null;
-		const change = previous === null ? null : rounded(incurred - previous);
-		rows.push({
-			project_id: id,
-			project_code: sample.projectCode ?? `#${id}`,
-			project_name: sample.projectName ?? sample.projectCode ?? `Project #${id}`,
-			client_name: sample.clientName,
-			incurred_cost: incurred,
-			record_count: confirmedRows.filter(
+		const projectRecords = [...confirmed, ...open].filter(
+			(record) => record.projectId === id
+		);
+		const sample = projectRecords[0];
+		const currencies = [
+			...new Set(projectRecords.map((record) => record.currency ?? 'INR')),
+		].sort();
+		for (const currency of currencies) {
+			const currencyRecords = projectRecords.filter(
+				(record) => (record.currency ?? 'INR') === currency
+			);
+			const confirmedRows = currencyRecords.filter(
 				(record) => confirmedAmount(record) !== null
-			).length,
-			not_confirmed_cost: notConfirmed,
-			previous_month_cost: previous,
-			change_amount: change,
-			change_state:
-				previous === null
-					? 'no_prior'
-					: change === 0
-						? 'unchanged'
+			);
+			const openRows = currencyRecords.filter((record) =>
+				isOpenState(record.state)
+			);
+			const incurred = sumMoney(confirmedRows.map(confirmedAmount));
+			const previous = previousMonth.get(id)?.get(currency) ?? null;
+			const change = previous === null ? null : rounded(incurred - previous);
+			rows.push({
+				project_id: id,
+				project_code: sample.projectCode ?? `#${id}`,
+				project_name: sample.projectName ?? sample.projectCode ?? `Project #${id}`,
+				client_name: sample.clientName,
+				currency,
+				incurred_cost: incurred,
+				record_count: confirmedRows.length,
+				not_confirmed_cost: subtotal(openRows, (record) => record.grossAmount),
+				previous_month_cost: previous,
+				change_amount: change,
+				change_state:
+					previous === null
+						? 'no_prior'
 						: incurred === previous
 							? 'unchanged'
-							: incurred > previous
-								? previous === 0
-									? 'new'
-									: 'increase'
-								: 'decrease',
-		});
+							: previous === 0
+								? 'new'
+								: incurred > previous
+									? 'increase'
+									: 'decrease',
+			});
+		}
 	}
-	rows.sort((a, b) => b.incurred_cost - a.incurred_cost || a.project_code.localeCompare(b.project_code));
+	rows.sort(
+		(a, b) =>
+			a.project_code.localeCompare(b.project_code) ||
+			a.currency.localeCompare(b.currency)
+	);
 	return rows;
 }
 
@@ -196,6 +249,9 @@ function monthNotices(
 	);
 	const spanRecords = records.filter((record) =>
 		record.evaluation.exceptions.includes('service_period_spans_months')
+	);
+	const startMissingRecords = records.filter((record) =>
+		record.evaluation.exceptions.includes('service_period_start_missing')
 	);
 
 	if (confirmed.length === 0) {
@@ -264,6 +320,14 @@ function monthNotices(
 			severity: 'info',
 		});
 	}
+	if (startMissingRecords.length > 0) {
+		notices.push({
+			code: 'service_period_start_missing',
+			label: 'Service period start not recorded',
+			detail: `${startMissingRecords.length} record(s) state only the end of the received-work period; each cost sits in that end month until the start is known.`,
+			severity: 'info',
+		});
+	}
 	return notices;
 }
 
@@ -271,8 +335,11 @@ export interface ReconciliationInput {
 	month: string;
 	/** Every direct cost belonging to the month, in any recognition state. */
 	records: CostRecord[];
-	/** Confirmed Project cost of the previous month, keyed by project id. */
-	previousMonthProjectCost: Map<number, number>;
+	/**
+	 * Confirmed Project cost of the previous month, keyed by project id and
+	 * then currency. `null` means that currency's prior amount is unknown.
+	 */
+	previousMonthProjectCost: Map<number, Map<string, number | null>>;
 	projectFilter: number | null;
 	projectOptions: Array<{
 		project_id: number;
@@ -333,13 +400,14 @@ export function buildReconciliation(
 				]
 			: [];
 
-	const recoverableTax = confirmed.filter(
-		(record) => effectiveTaxTreatment(record) === 'recoverable'
-	);
 	const unresolvedTax = confirmed.filter(
 		(record) => effectiveTaxTreatment(record) === 'unresolved'
 	);
+	const unclassified = records.filter((record) => record.classification === null);
 	const missingAmounts = records.filter((record) => record.grossAmount === null);
+	// A month holding more than one currency has no combined company figure:
+	// the per-currency slices carry each currency's own total instead.
+	const singleCurrency = currencies.length === 1;
 
 	const evidence: EvidenceSummary = {
 		recognized: countByState(records, 'recognized'),
@@ -348,12 +416,9 @@ export function buildReconciliation(
 		rejected: countByState(records, 'rejected'),
 		cancelled: countByState(records, 'cancelled'),
 		unresolved_classification: {
-			count: records.filter((record) => record.classification === null).length,
-			gross_amount: sumMoney(
-				records
-					.filter((record) => record.classification === null)
-					.map((record) => record.grossAmount)
-			),
+			count: unclassified.length,
+			currency: currencyOf(unclassified),
+			gross_amount: subtotal(unclassified, (record) => record.grossAmount),
 		},
 		missing_amount: { count: missingAmounts.length },
 		known_zero: {
@@ -378,22 +443,24 @@ export function buildReconciliation(
 		month_label: monthLabel(input.month),
 		project_id: input.projectFilter,
 		company: {
-			currency: currencyTotals.length === 1 ? currencies[0] : null,
-			incurred_cost:
-				currencyTotals.length === 1 ? currencyTotals[0].incurred_cost : null,
+			currency: singleCurrency ? currencies[0] : null,
+			incurred_cost: singleCurrency ? currencyTotals[0].incurred_cost : null,
 			currency_totals: currencyTotals,
 			groups,
-			gross_liability: sumMoney(
-				confirmed.map((record) =>
-					record.grossAmount === null ? confirmedAmount(record) : record.grossAmount
-				)
-			),
-			recoverable_tax: sumMoney(
-				recoverableTax.map((record) => record.taxAmount)
-			),
+			// Gross liability and recoverable tax are stated only for a single
+			// currency; a multi-currency month keeps them per currency in
+			// `currency_totals` rather than publishing a combined rupee figure.
+			gross_liability: singleCurrency ? currencyTotals[0].gross_liability : null,
+			recoverable_tax: singleCurrency
+				? currencyTotals[0].recoverable_tax
+				: null,
 			unresolved_tax: {
 				count: unresolvedTax.length,
-				gross_amount: sumMoney(unresolvedTax.map((record) => record.grossAmount)),
+				currency: currencyOf(unresolvedTax),
+				gross_amount: subtotal(
+					unresolvedTax,
+					(record) => record.grossAmount ?? confirmedAmount(record)
+				),
 			},
 			known_zero_count: records.filter((record) => record.grossAmount === 0).length,
 			record_count: confirmed.length,

@@ -68,11 +68,14 @@ later revision slice read.
 
 ## Recognition rules (pure, `recognition.ts`)
 
-- **Period**: service period start → its month (`service_period`); else the bill
-  date → its month (`bill_date_fallback`); else no period, and the cost cannot be
-  recognized. Order and payment dates never set the period. A service period that
-  spans months is attributed to the month it starts in and reported with a
-  `service_period_spans_months` notice until period splitting lands.
+- **Period**: service period start → its month (`service_period`); an end
+  recorded without a start → the end month (`service_period_end`, disclosed by
+  the basis, the `service_period_start_missing` exception, and a coverage
+  notice); else the bill date → its month (`bill_date_fallback`); else no
+  period, and the cost cannot be recognized. Order and payment dates never set
+  the period. A service period that spans months is attributed to the month it
+  starts in and reported with a `service_period_spans_months` notice until
+  period splitting lands.
 - **Amount**: NULL gross is missing, not zero. A missing amount blocks
   recognition; a recorded `0.00` is a known zero and does count, as zero.
 - **Tax**: recoverable tax is deducted only with a recorded evidence reference;
@@ -105,21 +108,59 @@ POST /api/admin/expenses/{id}/commands
 
 Recognize, reject, and cancel need `other_expenses:approve`; submit and update
 need `other_expenses:update`. Editing or soft-deleting a recognized row through
-the register is refused with `409 cost_recognized`.
+the register is refused with `409 cost_recognized`, and the register edit path
+refuses the versioned financial fields (`expense_date`, `amount`, `tax_amount`,
+`total_amount`, `currency`, `project_id`) with `422
+financial_fields_versioned` for every state: those fields change only through
+the `update` command, with the version and journal entry it carries. The
+register stays the place for operational fields (vendor, payment, description,
+notes, category, its own `status`).
+
+The command names are the imperative API vocabulary (`update`, `submit`,
+`recognize`, `reject`, `cancel`); `financial_cost_events.command` is an ENUM of
+the past-tense journal vocabulary (`recorded`, `updated`, `submitted`,
+`recognized`, `rejected`, `cancelled`). `writeJournal` is the one place that
+translates between them — writing the raw command name would be truncated
+under `STRICT_TRANS_TABLES` and roll the transaction back.
+
+The report's recognition queue carries the correction control for open cost:
+`Edit` opens the cost's financial fields and saves an `update` command with the
+version the queue read, so a pending-evidence record with an unknown amount can
+be completed (amount, destination, period, tax, evidence) and then recognized
+instead of being cancelled and re-recorded.
 
 ## Report contract
 
 `GET /api/reports/employee-project-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=]`
-returns `company` (currency, incurred cost, per-currency subtotals, the three
-groups, gross liability, recoverable tax, unresolved tax, known zeros), the
-Project breakdown with change against the previous month, the evidence summary,
-the coverage notices, the Project options for the entry control, and the months
-that carry cost. The Project filter narrows `projects`, never `company`.
+returns `company` (currency, incurred cost, per-currency subtotals — each with
+its own incurred cost, gross liability, recoverable tax, and unresolved-tax
+gross — the three groups, gross liability, recoverable tax, unresolved tax,
+known zeros), the Project breakdown with change against the previous month, the
+evidence summary, the coverage notices, the Project options for the entry
+control, and the months that carry cost. The Project filter narrows `projects`,
+never `company`.
+
+Currency rules are absolute, including the breakdown a reader uses to explain
+the month: a Project with cost in two currencies gets one row per currency
+(`currency` on the row), and its prior-month comparison is same-currency only.
+In a month holding more than one currency `company.incurred_cost`,
+`company.gross_liability`, `company.recoverable_tax`, and
+`company.unresolved_tax.gross_amount` are `null` — the per-currency
+`currency_totals` carry the figures — and an evidence-state subtotal
+(`evidence.*.amount`, `evidence.unresolved_classification.gross_amount`) is
+`null` when its records span currencies. A subtotal is also `null` whenever a
+contributing record's amount is unknown: `null` means "not stated", never a
+zero substituted for an unknown, and `evidence.missing_amount.count` still
+discloses how many records that is.
 
 `GET …/expenses?month=&state=&classification=&project_id=&limit=&offset=`
 returns the records behind those figures with identity, period, currency, tax
 treatment, `recognized_amount`, `financial_version`, and the exception codes
-that explain any non-clean amount.
+that explain any non-clean amount. `limit` (1–200) and `offset` (≥0) are
+validated like the other query parameters — a malformed value is a `400`, never
+a `500` from the SQL layer — and `totals.confirmed_amount` is `null` when the
+filtered confirmed records are unknown or span currencies (`totals.currency`
+names the single currency when there is one).
 
 The Excel download keeps exporting the employee-cost views; the reconciliation
 export belongs to the export slice, and the view therefore offers no download
@@ -137,43 +178,66 @@ entries become coverage notices on every reconciliation:
 
 Month-specific notices add: no recognized cost, mixed currencies without
 conversion, records awaiting recognition, missing amounts, unresolved
-classification, unresolved tax, tax evidence missing, and service periods that
-span months. An empty month is a coverage warning, never a zero company cost.
+classification, unresolved tax, tax evidence missing, service periods that
+span months, and service periods whose start is not recorded. An empty month is
+a coverage warning, never a zero company cost.
 
 ## Authorization
 
 | Surface                                        | Privilege                |
 | ---------------------------------------------- | ------------------------ |
-| Reconciliation, drilldown, meta                | `reports:read` (or super admin) |
+| Reconciliation, drilldown, expenditure months  | `reports:read` **and** `other_expenses:read` (or super admin) |
+| Employee-cost views and their export           | `reports:read`           |
 | Record a cost (report control and admin route) | `other_expenses:create`  |
 | Submit / update a cost                         | `other_expenses:update`  |
 | Recognize, reject, cancel                      | `other_expenses:approve` |
-| Excel export (employee-cost views)             | `reports:read`           |
 
-The Project Activity field grant no longer opens this report, the export, or the
-navigation entry. Employee Utilization is untouched.
+The direct-expense ledger is the source of the expenditure reconciliation, so
+report access alone does not open it: the expenditure view, the drilldown, and
+the `expenditure_months` list in the meta payload require the ledger's read
+privilege as well (parent spec §149 — existing source authorization and
+financial privileges). A `reports:read` reader without it keeps the
+employee-cost views and is refused `403` with no source rows or aggregates. The
+Project Activity field grant opens none of this, and Employee Utilization is
+untouched.
 
 ## End-to-end evidence
 
 `e2e/specs/expense-reconciliation.spec.ts` drives the real app and writes
-`e2e/artifacts/expense-reconciliation.json`. It seeds two Projects and fifteen
+`e2e/artifacts/expense-reconciliation.json`. It seeds two Projects and sixteen
 direct costs in `E2E-EXP-P*` / `E2E-EXP-*` (fixtures in
 `e2e/lib/expenditure-fixtures.ts`, purged and reseeded by `e2e/global-setup.ts`),
-then asserts, from hand-computed fixture amounts:
+plus a real `reports:read`-only reader identity, then asserts, from hand-computed
+fixture amounts:
 
 - every recognized cost appears once in its group and the groups equal the
   company total;
 - drafts, pending evidence, rejected, cancelled, unresolved, and missing amounts
-  stay out of confirmed cost, while a known zero is recorded as zero;
+  stay out of confirmed cost, while a known zero is recorded as zero; an
+  evidence-state subtotal with an unknown amount is `null`, not the known total;
 - the Project filter narrows detail but not the company reconciliation;
-- currencies stay separate with no combined total;
+- currencies stay separate with no combined total anywhere: a Project costing in
+  two currencies gets one row per currency with a same-currency prior-month
+  comparison, gross liability and recoverable tax are per-currency subtotals,
+  and the company-level figures are null;
 - coverage names the sources and evidence gaps;
 - a cost recorded and recognized through the API, and another through the
   browser form and the recognition queue, land in their service month once, with
-  version 2 in the row and two journal entries;
+  version 2 in the row and two journal entries, the second named in the journal
+  vocabulary (`recognized`);
+- a service period with only its end recorded uses that end month with
+  `service_period_end` and the `service_period_start_missing` disclosure;
+- a pending cost with no amount is corrected through the report's edit control
+  (one `updated` journal entry), then recognized (version 3), while a register
+  PUT carrying financial fields is refused `422 financial_fields_versioned` and
+  changes nothing;
+- malformed `limit`/`offset` are `400`s, not SQL failures;
 - a stale version is refused and changes nothing;
-- an unauthorized session gets 403 on reads and writes, and the browser shows
-  the access panel.
+- an unauthorized session gets 403 on reads and writes, and a `reports:read`
+  reader with no expense-source read gets 403 on the expenditure reconciliation
+  and drilldown with no sensitive payload and no `expenditure_months`, while the
+  employee-cost views still answer;
+- the browser shows the access panel to an employee session.
 
 Run it with `E2E_DB_NAME=accent_crm_dev_muse_e2e_expenditure npm run e2e`
 (dedicated database), or `npm run e2e` against the dev database, where fixture
@@ -201,13 +265,15 @@ isolation keeps every row out of business totals.
 ## Files
 
 - `migrations/20261006120000_expense_cost_recognition.js`
+- `migrations/20261007120000_expense_cost_period_basis_service_period_end.js`
+  (extends `period_basis` for the disclosed partial service period)
 - `src/lib/company-expenditure/{index,types,recognition,reconciliation,records,commands,coverage}.ts`
 - `src/app/api/reports/employee-project-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)
 - `src/app/api/reports/employee-project-monthly-cost/expenses/route.ts`
 - `src/app/api/reports/employee-project-monthly-cost/download/route.ts` (tightened gate)
 - `src/app/api/admin/expenses/route.js` (entry through the module)
 - `src/app/api/admin/expenses/[id]/commands/route.ts`
-- `src/app/api/admin/expenses/[id]/route.js` (recognized cost is frozen here)
+- `src/app/api/admin/expenses/[id]/route.js` (recognized cost frozen; versioned financial fields refused)
 - `src/app/reports/employee-project-monthly-cost/{page,expenditure-view}.tsx`
 - `src/lib/format.js` (`formatCurrencyIn`)
 - `src/components/Navbar.jsx` (financial gate)

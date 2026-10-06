@@ -1,4 +1,13 @@
+import bcrypt from 'bcrypt';
+import type {
+	APIRequestContext,
+	Cookie,
+	PlaywrightWorkerArgs,
+} from '@playwright/test';
 import { exec } from './db';
+
+/** The Playwright fixture object handed to specs (`({ playwright })`). */
+type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
 
 /**
  * Direct-expense fixtures for the company expenditure reconciliation
@@ -8,6 +17,8 @@ import { exec } from './db';
  *   projects            `E2E-EXP-P*`
  *   expenses            `expense_number` LIKE `E2E-EXP-%`
  *   financial_cost_events  the `e2e-cost-*` cost UIDs above
+ *   users/roles         `e2e_cost_reports_only` / `e2e_cost_reports_reader`
+ *                       (a `reports:read` reader with no expense-source read)
  *
  * Every row states its own recognition inputs (service period or bill date,
  * classification, currency, tax treatment, evidence) and the recognizable
@@ -33,6 +44,32 @@ export const EXPENDITURE_RUN_COST_UID_PREFIX = 'e2e-run-';
 export const EXPENDITURE_VENDOR_PREFIX = 'E2E Expenditure Vendor ';
 /** Category every fixture row carries (`expenses.category`). */
 export const EXPENDITURE_CATEGORY = 'E2E Expenditure';
+
+/**
+ * A real report reader with `reports:read` and **no** `other_expenses:read`.
+ * The expenditure reconciliation and drilldown read the expense ledger, so
+ * this identity must be refused both even though it may open the report's
+ * employee-cost views — the source-authorization half of parent spec §149.
+ */
+export const EXPENDITURE_REPORT_ONLY_USER = {
+	username: 'e2e_cost_reports_only',
+	password: 'E2e#CostReport1',
+	email: 'e2e.cost.reports.only@accent.test',
+	fullName: 'E2E Cost Report Only',
+} as const;
+
+/** Role row for the report-only reader; owns `reports:read` alone. */
+const EXPENDITURE_REPORT_ONLY_ROLE = {
+	roleCode: 'e2e_cost_reports_reader',
+	roleName: 'E2E Cost Reports Reader',
+} as const;
+
+/**
+ * The reader's own login/API rate-limit identity through the proxy's trusted
+ * header (ADR-0013), distinct from the spec's fixture requests and from the
+ * security harness, so neither can exhaust the other's budget.
+ */
+const EXPENDITURE_REPORT_ONLY_IP = '198.18.0.23';
 
 export const EXPENDITURE_PROJECTS = {
 	alpha: {
@@ -463,6 +500,30 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		evidenceReference: 'E2E-GRN-0015',
 		description: 'E2E February foreign-currency cost',
 	},
+	{
+		key: 'febUsdProject',
+		expenseNumber: 'E2E-EXP-0016',
+		costUid: 'e2e-cost-0016',
+		classification: 'project',
+		project: 'alpha',
+		state: 'recognized',
+		recognitionMonth: EXPENDITURE_NEXT_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-02-18',
+		serviceEnd: '2019-02-18',
+		billDate: '2019-02-19',
+		expenseDate: '2019-02-19',
+		currency: 'USD',
+		amount: '30.00',
+		taxAmount: '0.00',
+		grossAmount: '30.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '30.00',
+		sourceReference: 'E2E-INV-0016',
+		evidenceReference: 'E2E-GRN-0016',
+		description: 'E2E February USD project cost',
+	},
 ];
 
 export interface SeededExpenditure {
@@ -474,8 +535,66 @@ export interface SeededExpenditure {
 	expenseIds: Record<string, number>;
 }
 
+/** Create the report-only reader's role and user rows from scratch. */
+async function seedExpenditureReportOnlyReader(): Promise<void> {
+	const role = await exec(
+		`INSERT INTO roles_master
+       (role_code, role_name, role_hierarchy, department, permissions, description, status)
+     VALUES (?, ?, 40, 'E2E', ?, ?, 'active')`,
+		[
+			EXPENDITURE_REPORT_ONLY_ROLE.roleCode,
+			EXPENDITURE_REPORT_ONLY_ROLE.roleName,
+			JSON.stringify(['reports:read']),
+			'E2E expenditure fixture reader (e2e/lib/expenditure-fixtures.ts)',
+		]
+	);
+	const passwordHash = await bcrypt.hash(
+		EXPENDITURE_REPORT_ONLY_USER.password,
+		10
+	);
+	await exec(
+		`INSERT INTO users
+       (username, password_hash, email, full_name, status, is_active, is_super_admin, role_id, account_type, isDelete)
+     VALUES (?, ?, ?, ?, 'active', 1, 0, ?, 'employee', 0)`,
+		[
+			EXPENDITURE_REPORT_ONLY_USER.username,
+			passwordHash,
+			EXPENDITURE_REPORT_ONLY_USER.email,
+			EXPENDITURE_REPORT_ONLY_USER.fullName,
+			role.insertId,
+		]
+	);
+}
+
+/** Remove the report-only reader's rows; safe to run repeatedly. */
+async function cleanupExpenditureReportOnlyReader(): Promise<void> {
+	const username = EXPENDITURE_REPORT_ONLY_USER.username;
+	// Log tables have drifted across schemas (see e2e/lib/fixtures.ts); purging
+	// the fixture user must never be blocked by them.
+	for (const sql of [
+		`DELETE FROM user_activity_logs WHERE user_id IN (SELECT id FROM users WHERE username = ?)`,
+		`DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE username = ?)`,
+		`DELETE FROM payroll_audit_logs WHERE performed_by IN (SELECT id FROM users WHERE username = ?)`,
+	]) {
+		try {
+			await exec(sql, [username]);
+		} catch {
+			// Optional table — keep purging.
+		}
+	}
+	await exec(
+		`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE username = ?)`,
+		[username]
+	);
+	await exec(`DELETE FROM users WHERE username = ?`, [username]);
+	await exec(`DELETE FROM roles_master WHERE role_code = ?`, [
+		EXPENDITURE_REPORT_ONLY_ROLE.roleCode,
+	]);
+}
+
 /** Remove every row this module owns. Safe to run repeatedly. */
 export async function cleanupExpenditureFixtures(): Promise<number> {
+	await cleanupExpenditureReportOnlyReader();
 	let removed = 0;
 	// Events are keyed by the namespaced cost UID, so they survive their
 	// expense row and must be purged in their own right. The predicate also
@@ -533,6 +652,7 @@ function statusFor(state: ExpenditureState): string {
 /** Purge leftovers, then create the projects and the direct-cost rows. */
 export async function seedExpenditureFixtures(): Promise<SeededExpenditure> {
 	await cleanupExpenditureFixtures();
+	await seedExpenditureReportOnlyReader();
 
 	const projects = {} as Record<ExpenditureProjectKey, number>;
 	const projectKeys = Object.keys(
@@ -636,4 +756,70 @@ export function seededCost(key: string): SeedCost {
 	const cost = EXPENDITURE_COSTS.find((entry) => entry.key === key);
 	if (!cost) throw new Error(`Unknown expenditure fixture key: ${key}`);
 	return cost;
+}
+
+/**
+ * Sign in the report-only reader through the real API and return a context
+ * carrying that session. Mirrors the security harness's login so the identity
+ * is exercised exactly as a browser would be, without sharing its fixtures:
+ * the `auth` bucket for this identity is cleared first (rerun safety) and its
+ * own trusted-header identity isolates the following API calls.
+ */
+export async function loginExpenditureReportOnlyReader(
+	playwright: PlaywrightApi,
+	baseURL: string
+): Promise<APIRequestContext> {
+	const user = EXPENDITURE_REPORT_ONLY_USER;
+	const ip = EXPENDITURE_REPORT_ONLY_IP;
+	const probe = await playwright.request.newContext({ baseURL });
+	try {
+		try {
+			await exec(`DELETE FROM rate_limit_buckets WHERE bucket_key LIKE ?`, [
+				`${ip}:%:auth`,
+			]);
+		} catch {
+			// Pre-migration schema — the limiter is in-memory there.
+		}
+		const response = await probe.post('/api/login', {
+			headers: { 'x-vercel-forwarded-for': ip },
+			data: { username: user.username, password: user.password },
+		});
+		if (!response.ok()) {
+			const retryAfter = response.headers()['retry-after'];
+			throw new Error(
+				`[e2e] loginExpenditureReportOnlyReader failed: POST /api/login -> ` +
+					`${response.status()}${retryAfter ? ` (retry-after: ${retryAfter})` : ''}`
+			);
+		}
+		const match = /(?:^|[\n,])\s*session=([^;\s,]+)/.exec(
+			response.headers()['set-cookie'] ?? ''
+		);
+		if (!match) {
+			throw new Error(
+				'[e2e] loginExpenditureReportOnlyReader: login succeeded but no session cookie was set'
+			);
+		}
+		const storageState: { cookies: Cookie[]; origins: [] } = {
+			cookies: [
+				{
+					name: 'session',
+					value: match[1],
+					domain: new URL(baseURL).hostname,
+					path: '/',
+					expires: -1,
+					httpOnly: true,
+					secure: false,
+					sameSite: 'Lax',
+				},
+			],
+			origins: [],
+		};
+		return await playwright.request.newContext({
+			baseURL,
+			extraHTTPHeaders: { 'x-vercel-forwarded-for': ip },
+			storageState,
+		});
+	} finally {
+		await probe.dispose();
+	}
 }

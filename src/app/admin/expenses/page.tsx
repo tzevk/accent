@@ -5,7 +5,7 @@
  * Simple CRUD for expense records (category, vendor, amounts, status).
  */
 
-import { Suspense, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -152,6 +152,32 @@ const defaultValues = {
 	notes: '',
 	status: 'submitted',
 };
+
+/**
+ * Financial fields the versioned cost commands own. The register edit form
+ * shows them read-only and never posts them: the PUT route refuses them, so a
+ * register edit can no longer change cost without a version and a journal
+ * entry. Recording a new cost through this page still sends them.
+ */
+const FINANCIAL_FIELDS: Record<string, true> = {
+	expense_date: true,
+	amount: true,
+	tax_amount: true,
+	total_amount: true,
+	currency: true,
+	project_id: true,
+};
+
+/** Drop the command-owned fields from an edit payload (create keeps them). */
+function stripFinancialFields(
+	values: Record<string, unknown>
+): Record<string, unknown> {
+	const payload: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(values)) {
+		if (!FINANCIAL_FIELDS[key]) payload[key] = value;
+	}
+	return payload;
+}
 
 const formFields: FormField[] = [
 	{
@@ -314,6 +340,20 @@ function ExpensesPageInner() {
 	};
 	const stats: Record<string, number | string | null> =
 		listQuery.data?.stats ?? {};
+
+	const editFormFields = useMemo(
+		() =>
+			formFields.map((field) =>
+				FINANCIAL_FIELDS[field.name]
+					? {
+							...field,
+							disabled: true,
+							hint: 'Versioned cost field — change it through the expenditure workflow',
+						}
+					: field
+			),
+		[]
+	);
 
 	const openCreate = () => setModalState({ mode: 'create', row: null });
 	const openEdit = (row: Record<string, unknown>) =>
@@ -503,7 +543,12 @@ function ExpensesPageInner() {
 					endpoint="/api/admin/expenses"
 					defaultValues={defaultValues}
 					zodSchema={schema}
-					formFields={formFields}
+					formFields={
+						modalState.mode === 'edit' ? editFormFields : formFields
+					}
+					transformSubmit={
+						modalState.mode === 'edit' ? stripFinancialFields : undefined
+					}
 					onClose={closeModal}
 					onSaved={() => {
 						closeModal();

@@ -172,27 +172,42 @@ export async function loadMonthRecords(
 	return (rows as DbRow[]).map(mapCostRow);
 }
 
-/** Confirmed Project cost of a month, keyed by Project id. */
+/**
+ * Confirmed Project cost of a month, keyed by Project id and then currency.
+ * A Project can hold more than one currency in a month, and those figures are
+ * never combined; a group whose recognized amount is missing carries null.
+ */
 export async function loadMonthProjectCost(
 	db: SqlConnection,
 	month: string
-): Promise<Map<number, number>> {
+): Promise<Map<number, Map<string, number | null>>> {
 	const { start, end } = monthBounds(month);
 	const [rows] = await db.execute(
-		`SELECT e.project_id, SUM(COALESCE(e.recognized_amount, 0)) AS amount
+		`SELECT e.project_id, COALESCE(e.currency, 'INR') AS currency,
+              SUM(e.recognized_amount) AS amount,
+              SUM(CASE WHEN e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts
        FROM expenses e
       WHERE e.isDelete = 0
         AND e.recognition_state = 'recognized'
         AND e.cost_classification = 'project'
         AND e.project_id IS NOT NULL
         AND e.recognition_period BETWEEN ? AND ?
-      GROUP BY e.project_id`,
+      GROUP BY e.project_id, COALESCE(e.currency, 'INR')`,
 		[start, end]
 	);
-	const costs = new Map<number, number>();
+	const costs = new Map<number, Map<string, number | null>>();
 	for (const row of rows as DbRow[]) {
 		const id = num(row, 'project_id');
-		if (id !== null) costs.set(id, num(row, 'amount') ?? 0);
+		if (id === null) continue;
+		const currency = s(row, 'currency', 'INR') ?? 'INR';
+		const unknownAmounts = num(row, 'unknown_amounts') ?? 0;
+		const perCurrency = costs.get(id) ?? new Map<string, number | null>();
+		// A missing recognized amount is unknown, never zero.
+		perCurrency.set(
+			currency,
+			unknownAmounts > 0 ? null : num(row, 'amount')
+		);
+		costs.set(id, perCurrency);
 	}
 	return costs;
 }
@@ -318,13 +333,24 @@ export async function loadDrilldown(
 
 	const [countRows] = await db.execute(
 		`SELECT COUNT(*) AS total,
-              COALESCE(SUM(CASE WHEN e.recognition_state = 'recognized'
-                                THEN COALESCE(e.recognized_amount, 0) ELSE 0 END), 0) AS confirmed
+              SUM(CASE WHEN e.recognition_state = 'recognized' THEN 1 ELSE 0 END) AS confirmed_records,
+              SUM(CASE WHEN e.recognition_state = 'recognized' AND e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts,
+              COUNT(DISTINCT CASE WHEN e.recognition_state = 'recognized' THEN COALESCE(e.currency, 'INR') END) AS confirmed_currencies,
+              MIN(CASE WHEN e.recognition_state = 'recognized' THEN COALESCE(e.currency, 'INR') END) AS confirmed_currency,
+              SUM(CASE WHEN e.recognition_state = 'recognized' THEN e.recognized_amount ELSE 0 END) AS confirmed
          FROM expenses e
         WHERE ${whereSql}`,
 		params
 	);
 	const count = (countRows as DbRow[])[0] ?? {};
+	const unknownAmounts = num(count, 'unknown_amounts') ?? 0;
+	const confirmedCurrencies = num(count, 'confirmed_currencies') ?? 0;
+	// Unknown amounts and mixed currencies cannot be stated as one figure;
+	// with no confirmed record at all the subtotal is a known zero.
+	const confirmedAmount =
+		unknownAmounts > 0 || confirmedCurrencies > 1
+			? null
+			: (num(count, 'confirmed') ?? 0);
 	const [rows] = await db.execute(
 		`${COST_SELECT}
       WHERE ${whereSql}
@@ -340,7 +366,9 @@ export async function loadDrilldown(
 		offset,
 		records: (rows as DbRow[]).map(mapCostRow).map(toCostRecordJson),
 		totals: {
-			confirmed_amount: num(count, 'confirmed') ?? 0,
+			confirmed_amount: confirmedAmount,
+			currency:
+				confirmedCurrencies === 1 ? s(count, 'confirmed_currency') : null,
 			records: Number(num(count, 'total') ?? 0),
 		},
 	};
