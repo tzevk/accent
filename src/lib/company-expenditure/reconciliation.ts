@@ -71,6 +71,7 @@ import type {
 	PeriodCharge,
 	ReconciliationGroup,
 	ReconciliationProjectRow,
+	ReconciliationSourceSummary,
 } from './types';
 
 export { monthLabel };
@@ -772,6 +773,52 @@ function nonOperatingSection(input: {
 	};
 }
 
+/** Human labels for the sources the module reads today. */
+const SOURCE_LABELS: Record<string, string> = {
+	direct_expense: 'Direct expenses',
+	supplier_invoice: 'Supplier invoices',
+	other_expense: 'Other expenses',
+	petty_cash: 'Petty cash',
+	non_operating: 'Non-operating charges',
+	payroll: 'Employee cost (payroll)',
+};
+
+/**
+ * The wired sources always appear — a source with no records in the month is a
+ * known zero for that source, not an omitted one. A source that is not wired
+ * yet is declared through `SOURCE_COVERAGE`, not summarized as zero here.
+ */
+const WIRED_SOURCES: ReadonlyArray<CostRecord['source']> = [
+	'direct_expense',
+	'supplier_invoice',
+];
+
+function sourceSummaries(records: CostRecord[]): ReconciliationSourceSummary[] {
+	return WIRED_SOURCES.map((source) => {
+		const rows = records.filter((record) => record.source === source);
+		const confirmed = rows.filter((record) => confirmedAmount(record) !== null);
+		const pending = rows.filter((record) => isOpenState(record.state));
+		const unresolvedEvidence = rows.filter(
+			(record) =>
+				record.classification === null ||
+				record.grossAmount === null ||
+				(isConfirmed(record.state) &&
+					effectiveTaxTreatment(record) === 'unresolved')
+		);
+		return {
+			source,
+			label: SOURCE_LABELS[source] ?? source,
+			confirmed_count: confirmed.length,
+			confirmed_amount: subtotal(confirmed, (record) =>
+				confirmedAmount(record)
+			),
+			currency: currencyOf(confirmed),
+			pending_count: pending.length,
+			pending_amount: subtotal(pending, (record) => record.grossAmount),
+			unresolved_evidence_count: unresolvedEvidence.length,
+		};
+	});
+}
 export interface ReconciliationInput {
 	month: string;
 	/** Every direct cost belonging to the month, in any recognition state. */
@@ -1147,6 +1194,7 @@ export function buildReconciliation(
 		ranking: rankProjects(allRows),
 		filtered_subtotal: filteredSubtotal(input.projectFilter, rows),
 		evidence,
+		sources: sourceSummaries(records),
 		coverage: notices,
 		// The budget section is its own interpretation: a budget never enters
 		// `company`, `projects`, or `evidence`.

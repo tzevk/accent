@@ -20,6 +20,7 @@
 
 import Decimal from 'decimal.js';
 import { toNumber } from '@/lib/money';
+import { CostError } from './errors';
 import type {
 	ConversionEvidence,
 	ConversionExceptionCode,
@@ -191,5 +192,130 @@ export function evidenceOf(record: {
 		conversionRate: record.conversionRate,
 		conversionDate: record.conversionDate,
 		conversionEvidenceReference: record.conversionEvidenceReference,
+	};
+}
+
+function dateOrNull(value: unknown): string | null {
+	if (value === null || value === undefined) return null;
+	const trimmed = String(value).trim();
+	if (trimmed.length === 0) return null;
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+		throw new CostError('invalid_date', `Invalid date: ${trimmed}`, 422);
+	}
+	return trimmed;
+}
+
+function referenceText(value: unknown): string | null {
+	if (value === null || value === undefined) return null;
+	const trimmed = String(value).trim();
+	return trimmed.length === 0 ? null : trimmed.slice(0, 500);
+}
+
+export interface ResolvedConversion {
+	currency: string | null;
+	/** The resolved target; absent input means the company reporting currency. */
+	reportingCurrency: string;
+	conversionRate: string | null;
+	conversionDate: string | null;
+	conversionEvidenceReference: string | null;
+}
+
+/**
+ * Validate the original currency, the reporting target, and the optional
+ * conversion triple for any cost source (#306 expenses, #311 supplier
+ * invoices). Evidence moves as a whole or not at all; a rate for a cost
+ * already in its reporting currency, or for a cost whose original currency is
+ * unknown, is contradictory and refused rather than dropped.
+ */
+export function resolveConversion(input: {
+	currency: unknown;
+	reportingCurrency: unknown;
+	conversionRate: unknown;
+	conversionDate: unknown;
+	conversionEvidenceReference: unknown;
+}): ResolvedConversion {
+	if (!isCurrencyCode(input.currency)) {
+		throw new CostError(
+			'invalid_currency',
+			'Currency must be a three-letter code',
+			422,
+			{ field: 'currency' }
+		);
+	}
+	if (!isCurrencyCode(input.reportingCurrency)) {
+		throw new CostError(
+			'invalid_currency',
+			'Reporting currency must be a three-letter code',
+			422,
+			{ field: 'reporting_currency' }
+		);
+	}
+	const currency = currencyCodeOf(input.currency);
+	const reportingCurrency = reportingCurrencyOf({
+		reportingCurrency: currencyCodeOf(input.reportingCurrency),
+	});
+	const rawRate = input.conversionRate;
+	const rateText =
+		rawRate === null || rawRate === undefined ? null : String(rawRate).trim();
+	const hasRate = rateText !== null && rateText.length > 0;
+	const conversionDate = dateOrNull(input.conversionDate);
+	const conversionEvidenceReference = referenceText(
+		input.conversionEvidenceReference
+	);
+	const hasAny =
+		hasRate || conversionDate !== null || conversionEvidenceReference !== null;
+	if (!hasAny) {
+		return {
+			currency,
+			reportingCurrency,
+			conversionRate: null,
+			conversionDate: null,
+			conversionEvidenceReference: null,
+		};
+	}
+	if (currency === null) {
+		throw new CostError(
+			'conversion_requires_currency',
+			'Conversion evidence needs the original currency first',
+			422,
+			{ field: 'conversion_rate' }
+		);
+	}
+	if (currency === reportingCurrency) {
+		throw new CostError(
+			'conversion_not_applicable',
+			'A cost already in its reporting currency carries no conversion evidence',
+			422,
+			{ field: 'conversion_rate' }
+		);
+	}
+	if (hasRate && parseConversionRate(rateText) === null) {
+		throw new CostError(
+			'invalid_conversion_rate',
+			'Conversion rate must be positive with at most 10 decimal places',
+			422,
+			{ field: 'conversion_rate' }
+		);
+	}
+	const missing: string[] = [];
+	if (!hasRate) missing.push('conversion_rate');
+	if (conversionDate === null) missing.push('conversion_date');
+	if (conversionEvidenceReference === null) {
+		missing.push('conversion_evidence_reference');
+	}
+	if (missing.length > 0) {
+		throw new CostError(
+			'conversion_evidence_incomplete',
+			'Conversion evidence needs the rate, its effective date, and its evidence reference together',
+			422,
+			{ missing }
+		);
+	}
+	return {
+		currency,
+		reportingCurrency,
+		conversionRate: rateText,
+		conversionDate,
+		conversionEvidenceReference,
 	};
 }

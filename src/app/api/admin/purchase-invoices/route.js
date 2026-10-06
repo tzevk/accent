@@ -8,6 +8,7 @@ import {
 import { logActivity } from '@/utils/activity-logger';
 import { R, sub, gte, gt, toNumber } from '@/lib/money';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
+import { CostError, initializeSupplierCost } from '@/lib/company-expenditure';
 
 const TABLE = 'purchase_invoices';
 
@@ -171,6 +172,7 @@ export async function POST(request) {
 		let numberLocked = false;
 		let invoiceNumber;
 		let result;
+		let recordedCost = null;
 		try {
 			await acquireNumberLock(db);
 			numberLocked = true;
@@ -226,6 +228,47 @@ export async function POST(request) {
 						]
 					);
 
+					// The financial identity and recognition fields are the
+					// shared module's write path; the register owns the native
+					// row and its number. One transaction: either the invoice
+					// exists with its cost identity, or neither exists.
+					recordedCost = await initializeSupplierCost(
+						db,
+						result.insertId,
+						{
+							costClassification:
+								body.cost_classification === undefined
+									? undefined
+									: body.cost_classification,
+							projectId: body.project_id || null,
+							servicePeriodStart: body.service_period_start || null,
+							servicePeriodEnd: body.service_period_end || null,
+							billDate: body.invoice_date || null,
+							currency: body.currency || null,
+							grossAmount: body.gross_amount ?? toNumber(total),
+							taxAmount: body.tax_amount ?? 0,
+							taxTreatment: body.tax_treatment,
+							taxEvidenceReference: body.tax_evidence_reference || null,
+							sourceReference: body.source_reference || null,
+							evidenceReference: body.evidence_reference || null,
+							withholdingTaxAmount: body.withholding_tax_amount ?? 0,
+							reportingCurrency: body.reporting_currency || null,
+							conversionRate:
+								body.conversion_rate === undefined ||
+								body.conversion_rate === ''
+									? null
+									: body.conversion_rate,
+							conversionDate: body.conversion_date || null,
+							conversionEvidenceReference:
+								body.conversion_evidence_reference || null,
+							submit:
+								body.submit === true ||
+								body.recognition_state === 'pending_evidence',
+							splits: Array.isArray(body.splits) ? body.splits : null,
+						},
+						{ id: user?.id || null }
+					);
+
 					await db.commit();
 					break;
 				} catch (error) {
@@ -262,9 +305,24 @@ export async function POST(request) {
 
 		return NextResponse.json({
 			success: true,
-			data: { id: result.insertId, invoice_number: invoiceNumber },
+			data: {
+				id: result.insertId,
+				invoice_number: invoiceNumber,
+				...(recordedCost ?? {}),
+			},
 		});
 	} catch (error) {
+		if (error instanceof CostError) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code,
+					...error.detail,
+				},
+				{ status: error.status }
+			);
+		}
 		console.error('Error creating purchase invoice:', error);
 		return NextResponse.json(
 			{ success: false, error: error.message },
