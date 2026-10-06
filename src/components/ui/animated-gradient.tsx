@@ -290,6 +290,8 @@ void main() {
 				u_swirlIterations: gl.getUniformLocation(program, 'u_swirlIterations'),
 			};
 
+			let hasRendered = false;
+
 			const render = (time: number) => {
 				const elapsed = (time - startTimeRef.current) / 1000;
 				const speed = (params.speed / 100) * 5;
@@ -319,6 +321,11 @@ void main() {
 				);
 
 				gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+				if (!hasRendered) {
+					hasRendered = true;
+					canvas.style.opacity = '1';
+				}
 			};
 
 			const reducedMotion = window.matchMedia(
@@ -393,6 +400,7 @@ void main() {
 			>
 				<canvas
 					ref={canvasRef}
+					className="opacity-0 transition-opacity duration-500"
 					style={{
 						display: 'block',
 						width: '100%',

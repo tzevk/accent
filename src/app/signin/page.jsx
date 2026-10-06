@@ -125,9 +125,9 @@ export default function SignIn() {
 					<Image
 						src="/accent-logo.png"
 						alt="Accent Techno Solutions"
-						width={120}
-						height={120}
-						className={`object-contain ${
+						width={186}
+						height={116}
+						className={`w-auto object-contain ${
 							isWindows ? 'h-[95px] sm:h-[105px]' : 'h-[110px] sm:h-[120px]'
 						}`}
 						priority
