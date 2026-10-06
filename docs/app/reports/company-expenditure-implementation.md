@@ -613,6 +613,82 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
   actually stated in (the native single-currency total when no combined total
   exists).
 
+## Other expenses and receipt copies (ticket #315)
+
+The other-expense register (`other_expenses`, `OEX-#####`) is a cost-bearing
+source of the same module, not a second store:
+
+- **Capture** (`POST /api/admin/other-expenses`) records the register's own
+  fields plus classification (`project | company_overhead | unallocated`, or
+  deliberately unresolved), the Recognition Period inputs (service period, bill
+  date as the disclosed fallback), currency, tax treatment and its evidence
+  reference, source/evidence references, a receipt/document link, and
+  `submit` for the recognition queue. Number minting, the row, the canonical
+  `cost_uid` (registered in `financial_cost_links`, role `cost`), and the
+  version-1 journal row are one transaction.
+- **Receipt copies**: a capture carrying `linked_cost_uid` links to an already
+  recognized cost (`role='receipt'`, `basis='explicit'`, confirmed) and never
+  becomes a cost. The register read (`linked` filter) and the review read show
+  it as a copy; every command refuses it with `receipt_copy_not_cost`.
+- **Duplicate review**: a standalone capture whose normalized vendor and gross
+  amount match a recognized cost stores a **candidate** link
+  (`basis='candidate'`, `review_state='pending_review'`). It never merges
+  identity or totals, and `recognize` is refused with
+  `duplicate_review_pending` until the reviewer decides. `POST
+/api/admin/other-expenses/{id}/review` with `confirm_copy` links the entry as
+  a receipt copy (a candidate becomes `basis='document'`), `reject_copy`
+  rejects only the stored pending candidate — a different requested target is
+  refused with `link_target_mismatch` rather than written over the preserved
+  reference — and `unlink_copy` undoes a mistaken link. Each decision appends
+  exactly one journal row and bumps `financial_version`.
+- **Unresolved classification** is disclosed, never guessed: the review read
+  lists open entries with the fields they are missing, and recognition refuses
+  without a classification (existing `recognition_blockers`).
+- **Commands and authorization**: `POST
+/api/admin/other-expenses/{id}/commands` carries `update | submit |
+recognize | reject | cancel` with `expected_version`; update/submit need
+  `other_expenses:update`, recognize/reject/cancel need
+  `other_expenses:approve`. Register `PUT` refuses the versioned financial
+  fields (`financial_fields_versioned`) and a recognized row (`cost_recognized`);
+  `DELETE` refuses recognized cost and any row with recognized history
+  (`cost_history_preserved`), so ordinary deletion cannot bypass the versioned
+  cancellation. The journal's `source_id` is INT, so an other-expense command
+  journals the register's numeric `row_no`; the UUID stays the register's own
+  key, the `financial_cost_links` reference key, and the command path's id —
+  the UUID is never coerced into the journal. Unlinking a receipt copy
+  registers the row's `role='cost'` identity again (idempotently), and
+  recognition does the same, so an unlinked or backfilled row still resolves.
+- **Reads**: `OTHER_EXPENSE_COST_SOURCE` projects this register into the
+  module's canonical column vocabulary (including the conversion columns) and
+  joins `COMPANY_COST_SOURCES`, so the reconciliation, previous-month
+  comparison, month list, and drilldown count other expenses exactly once —
+  receipt copies excluded once, in the source. The report queue marks
+  non-direct-expense rows with a link to their register instead of sending the
+  direct-expense commands at another store's id.
+- **Currency and conversion**: capture states the original currency and may
+  state the conversion evidence — reporting target, rate, effective date, and
+  evidence reference — which the shared `currency.ts` helpers validate. An
+  unknown original currency stays unknown (never read as INR), and it can never
+  carry a rate: evidence with a blank currency is refused with
+  `conversion_requires_currency`, alongside `conversion_evidence_incomplete`,
+  `invalid_conversion_rate`, and `conversion_not_applicable`.
+  `converted_amount` is recomputed by the module from the recognized amount at
+  the stored rate; no inverse or cross-rate is ever derived, and a foreign
+  amount without evidence stays in its own currency and is disclosed as
+  unconverted. A rate is evidence for one currency pair: changing `currency` or
+  `reporting_currency` never inherits the stored triple (a new convertible pair
+  without fresh evidence is refused with `conversion_evidence_required`, a pair
+  moved onto its reporting currency clears the triple). Afterwards only a
+  versioned `update` carrying the whole evidence may change it, and that patch
+  — like either side of the pair — needs `other_expenses:approve` (the register
+  PUT refuses the fields, and the review dialog sends only the fields that
+  actually changed, so an ordinary save is never approval-gated).
+- **Coverage**: `SOURCE_COVERAGE` declares `other_expense_source` as wired.
+
+End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
+`e2e/specs/other-expense-controls.spec.ts` (month `2019-04`, namespace
+`E2E-EXP-315-*` / `E2E-315-*`), artifact `e2e/artifacts/other-expense-controls.json`.
+
 ## Public interface for later slices
 
 `src/lib/company-expenditure/index.ts` is the contract later tickets extend:
@@ -679,6 +755,17 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
 - `e2e/specs/project-cost-budgets.spec.ts` (#321)
 - `e2e/lib/expenditure-currency-fixtures.ts`, `e2e/specs/expenditure-currency.spec.ts` (#319)
 - `e2e/lib/expenditure-allocation-fixtures.ts`, `e2e/specs/expenditure-payroll-allocation.spec.ts` (#307)
+
+Ticket #315 adds:
+
+- `migrations/20261008091500_expense_other_expense_recognition.js`
+- `src/lib/company-expenditure/other-expenses.ts` (capture, commands, copy
+  review, review reads, source projection, source adapter)
+- `src/app/admin/other-expenses/{page,other-expense-review}.tsx`
+- `src/app/api/admin/other-expenses/route.ts`, `[id]/route.ts`,
+  `[id]/commands/route.ts`, `[id]/review/route.ts`, `review/route.ts`
+- `e2e/lib/other-expense-fixtures.ts`,
+  `e2e/specs/other-expense-controls.spec.ts`, `e2e/global-setup.ts`
 
 ## Ticket #317 — non-operating items and approved period consumption
 

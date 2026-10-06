@@ -18,6 +18,10 @@ import {
 	cleanupExpenditureAllocationFixtures,
 	seedExpenditureAllocationFixtures,
 } from './lib/expenditure-allocation-fixtures';
+import {
+	cleanupOtherExpenseFixtures,
+	seedOtherExpenseFixtures,
+} from './lib/other-expense-fixtures';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 import {
 	ORDER_PROJECT,
@@ -44,6 +48,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupUtilizationFixtures();
 		await cleanupOrderFixtures();
 		await cleanupExpenditureFixtures();
+		await cleanupOtherExpenseFixtures();
 		await cleanupSupplierInvoiceFixtures();
 		await cleanupExpenditureAllocationFixtures();
 		await cleanupExpenditureCurrencyFixtures();
@@ -112,6 +117,12 @@ export default async function globalSetup(): Promise<void> {
 				`and ${expenditure.budgetMonth} (${expenditure.costs} direct costs, ` +
 				`${expenditure.budgets} cost budgets, ` +
 				`${Object.keys(expenditure.projects).length} projects)`
+		);
+
+		const otherExpenses = await seedOtherExpenseFixtures();
+		console.log(
+			`[e2e] other-expense fixtures seeded for ${otherExpenses.month} ` +
+				`(project ${otherExpenses.projectId}, target ${otherExpenses.targetCostUid})`
 		);
 
 		const supplier = await seedSupplierInvoiceFixtures();

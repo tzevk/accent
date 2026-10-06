@@ -64,7 +64,9 @@ export interface CommandOptions {
 /**
  * Run `work` in a transaction: the caller's when one is supplied (so a
  * financial-close or revision check commits with this change), otherwise a
- * transaction this module owns. Shared with the period-charge write path.
+ * transaction this module owns. Shared with the period-charge write path and
+ * with the source modules (#315 other expenses, #316 petty cash), which join
+ * the caller's transaction and never open a second one around it.
  */
 export async function inTransaction<T>(
 	options: CommandOptions | undefined,

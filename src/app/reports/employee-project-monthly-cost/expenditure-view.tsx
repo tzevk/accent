@@ -321,6 +321,24 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
 	unallocated: 'Unallocated Cost',
 };
 
+/**
+ * Where a cost from another source register is reviewed. Its approval lives in
+ * that register's own controls (a versioned `financial_version` + journal like
+ * this one), so the report must not send its row-level commands to the direct
+ * expense path.
+ */
+const SOURCE_REGISTER_LABELS: Record<string, string> = {
+	other_expense: 'Recognized in the Other Expense register',
+	supplier_invoice: 'Recognized in the Purchase Invoice register',
+	petty_cash: 'Recognized in the Petty Cash register',
+	non_operating: 'Recognized in the period-charge workflow',
+	payroll: 'Finalized with payroll',
+};
+
+const SOURCE_REGISTER_LINKS: Record<string, string> = {
+	other_expense: '/admin/other-expenses',
+};
+
 /** What the spend is (#317), in the reader's words. */
 const NATURE_LABELS: Record<string, string> = {
 	operating: 'Operating cost',
@@ -1813,75 +1831,82 @@ export default function ExpenditureView({
 										</span>
 									</td>
 									<td className="px-3 py-2">
-										{record.source === 'direct_expense' ? (
-											<div className="flex flex-wrap items-center gap-1.5">
-												{canEditCost && (
-													<button
-														type="button"
-														data-testid="queue-edit"
-														onClick={() => {
-															commandMutation.reset();
-															setEditTarget(record);
-														}}
-														className="rounded border border-[#64126D]/40 bg-[#64126D]/5 px-2 py-1 text-xs font-medium text-[#64126D] hover:bg-[#64126D]/10"
-													>
-														Edit
-													</button>
-												)}
-												{canRecognize ? (
-													<>
+										<div className="flex flex-wrap items-center gap-1.5">
+											{record.source !== 'direct_expense' ? (
+												// IDs come from different stores: another source's
+												// row is never commanded through this register's
+												// command path. Its recognition workflow lives in
+												// its own register.
+												<a
+													href={SOURCE_REGISTER_LINKS[record.source]}
+													data-testid="queue-source-link"
+													className="text-xs font-medium text-[#64126D] underline"
+												>
+													{SOURCE_REGISTER_LABELS[record.source] ??
+														`Source: ${record.source}`}
+												</a>
+											) : (
+												<>
+													{canEditCost && (
 														<button
 															type="button"
-															onClick={() =>
-																setCommandTarget({
-																	record,
-																	command: 'recognize',
-																})
-															}
-															className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+															data-testid="queue-edit"
+															onClick={() => {
+																commandMutation.reset();
+																setEditTarget(record);
+															}}
+															className="rounded border border-[#64126D]/40 bg-[#64126D]/5 px-2 py-1 text-xs font-medium text-[#64126D] hover:bg-[#64126D]/10"
 														>
-															Recognize
+															Edit
 														</button>
-														<button
-															type="button"
-															onClick={() =>
-																setCommandTarget({ record, command: 'reject' })
-															}
-															className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
-														>
-															Reject
-														</button>
-														<button
-															type="button"
-															onClick={() =>
-																setCommandTarget({ record, command: 'cancel' })
-															}
-															className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-														>
-															Cancel cost
-														</button>
-													</>
-												) : (
-													<span className="text-xs text-gray-400">
-														Recognition needs approval access
-													</span>
-												)}
-											</div>
-										) : (
-											// IDs come from different stores: another source's
-											// row is never commanded through this register's
-											// command path. Its recognition workflow lives in
-											// its own register (supplier invoices: the admin
-											// Purchase Invoice screen).
-											<span
-												data-testid="queue-source-note"
-												className="text-xs text-gray-500"
-											>
-												{record.source === 'supplier_invoice'
-													? 'Recognized in the Purchase Invoice register'
-													: `Source: ${record.source}`}
-											</span>
-										)}
+													)}
+													{canRecognize ? (
+														<>
+															<button
+																type="button"
+																onClick={() =>
+																	setCommandTarget({
+																		record,
+																		command: 'recognize',
+																	})
+																}
+																className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+															>
+																Recognize
+															</button>
+															<button
+																type="button"
+																onClick={() =>
+																	setCommandTarget({
+																		record,
+																		command: 'reject',
+																	})
+																}
+																className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
+															>
+																Reject
+															</button>
+															<button
+																type="button"
+																onClick={() =>
+																	setCommandTarget({
+																		record,
+																		command: 'cancel',
+																	})
+																}
+																className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+															>
+																Cancel cost
+															</button>
+														</>
+													) : (
+														<span className="text-xs text-gray-400">
+															Recognition needs approval access
+														</span>
+													)}
+												</>
+											)}
+										</div>
 									</td>
 								</tr>
 							))}

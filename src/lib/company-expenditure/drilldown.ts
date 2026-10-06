@@ -19,6 +19,7 @@
 import { add, R, toNumber } from '@/lib/money';
 import { currencyCodeOf, reportingCurrencyOf } from './currency';
 import { isNonOperatingNature, toPeriodChargeJson } from './non-operating';
+import { loadFilteredOtherExpenseRecords } from './other-expenses';
 import {
 	loadFilteredExpenseRecords,
 	loadMonthCharges,
@@ -38,6 +39,7 @@ import type {
 const DRILLDOWN_SOURCES: readonly CostSource[] = [
 	'direct_expense',
 	'supplier_invoice',
+	'other_expense',
 ];
 
 function sortRecords(records: CostRecord[]): CostRecord[] {
@@ -102,6 +104,9 @@ export async function loadCombinedDrilldown(
 		supplierIsOperating
 	) {
 		results.push(...(await loadFilteredSupplierRecords(db, query)));
+	}
+	if (source === 'all' || source === 'other_expense') {
+		results.push(...(await loadFilteredOtherExpenseRecords(db, query)));
 	}
 	const merged = sortRecords(results);
 

@@ -102,6 +102,13 @@ import {
 import { buildReconciliation, projectIdsIn } from './reconciliation';
 import { registerCostSource } from './sources';
 import {
+	loadFilteredOtherExpenseRecords,
+	loadOtherExpenseMonthProjectCost,
+	loadOtherExpenseMonthRecords,
+	loadOtherExpenseMonths,
+	mergeProjectCostMaps,
+} from './other-expenses';
+import {
 	SUPPLIER_INVOICE_ADAPTER,
 	loadSupplierInvoiceMonths,
 	loadSupplierMonthRecords,
@@ -118,6 +125,28 @@ import type {
 
 export { recordCost, executeCommand, loadCost, CostError } from './commands';
 export type { CostActor, CommandOptions } from './commands';
+export {
+	captureOtherExpense,
+	executeOtherExpenseCommand,
+	loadOtherExpenseReview,
+	resolveOtherExpenseCopy,
+} from './other-expenses';
+export type {
+	CopyReviewAction,
+	CopyReviewInput,
+	CopyReviewResult,
+	DuplicateCandidate,
+	LinkedCopyReview,
+	OtherExpenseCaptureInput,
+	OtherExpenseCommandInput,
+	OtherExpenseCommandResult,
+	OtherExpensePatch,
+	OtherExpenseReviewQueue,
+	OtherExpenseRow,
+	PendingCopyReview,
+	RecordedOtherExpense,
+	UnresolvedOtherExpense,
+} from './other-expenses';
 export { capturePeriodCharge, cancelPeriodCharge } from './charges';
 export type {
 	CapturePeriodChargeInput,
@@ -340,12 +369,13 @@ export function currentMonth(): string {
 /** Months with cost recorded, newest first, including the current one. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
 	const current = currentMonth();
-	const [direct, supplier, payroll] = await Promise.all([
+	const [direct, supplier, payroll, otherExpense] = await Promise.all([
 		loadExpenditureMonths(pool, current),
 		loadSupplierInvoiceMonths(pool, current),
 		loadPayrollAllocationMonths(pool),
+		loadOtherExpenseMonths(pool, current),
 	]);
-	const months = new Set([...direct, ...supplier, ...payroll]);
+	const months = new Set([...direct, ...supplier, ...payroll, ...otherExpense]);
 	months.add(current);
 	return [...months].sort().reverse();
 }
@@ -384,22 +414,29 @@ export async function fetchCompanyReconciliation(
 	const [
 		directRecords,
 		supplierRecords,
+		otherExpenseRecords,
 		charges,
 		monthNonOperating,
 		previousProjectCost,
+		previousOtherExpenseProjectCost,
 		projectOptions,
 		directMonths,
 		supplierMonths,
 		payrollMonths,
 		payroll,
 		previousPayrollCost,
+		otherExpenseMonths,
 	] = await Promise.all([
 		loadMonthRecords(db, month),
 		loadSupplierMonthRecords(db, month),
+		loadOtherExpenseMonthRecords(db, month),
 		loadMonthCharges(db, { month }),
 		loadNonOperatingSources(db, month),
 		previousMonth
 			? loadMonthProjectCost(db, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		previousMonth
+			? loadOtherExpenseMonthProjectCost(db, previousMonth)
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
 		loadProjectOptions(db),
 		loadExpenditureMonths(db, currentMonth()),
@@ -409,8 +446,13 @@ export async function fetchCompanyReconciliation(
 		previousMonth
 			? loadMonthAllocatedProjectCost(db, previousMonth)
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		loadOtherExpenseMonths(db, currentMonth()),
 	]);
-	const records = [...directRecords, ...supplierRecords];
+	const records = [
+		...directRecords,
+		...supplierRecords,
+		...otherExpenseRecords,
+	];
 
 	// A charge can draw down a balance recognized in an earlier month, so the
 	// section needs those sources too; every other source of the month is
@@ -467,12 +509,20 @@ export async function fetchCompanyReconciliation(
 		charges,
 		nonOperatingSources,
 		chargeTotals,
-		previousMonthProjectCost: previousProjectCost,
+		previousMonthProjectCost: mergeProjectCostMaps(
+			previousProjectCost,
+			previousOtherExpenseProjectCost
+		),
 		budgets,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
 		availableMonths: [
-			...new Set([...directMonths, ...supplierMonths, ...payrollMonths]),
+			...new Set([
+				...directMonths,
+				...supplierMonths,
+				...payrollMonths,
+				...otherExpenseMonths,
+			]),
 		]
 			.sort()
 			.reverse(),
