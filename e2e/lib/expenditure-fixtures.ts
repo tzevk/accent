@@ -98,6 +98,27 @@ const EXPENDITURE_REPORT_ONLY_ROLE = {
 } as const;
 
 /**
+ * A real budget editor: `other_expenses:read` and `other_expenses:update`, with
+ * no approval privilege. It may draft, submit, and withdraw a draft cost
+ * budget, and must be refused approving one — and refused withdrawing an
+ * already approved one, which removes the basis the report compares with.
+ */
+export const EXPENDITURE_EDITOR_USER = {
+	username: 'e2e_cost_editor',
+	password: 'E2e#CostEdit1',
+	email: 'e2e.cost.editor@accent.test',
+	fullName: 'E2E Cost Editor',
+} as const;
+
+const EXPENDITURE_EDITOR_ROLE = {
+	roleCode: 'e2e_cost_editor',
+	roleName: 'E2E Cost Editor',
+} as const;
+
+/** The editor's own trusted-header identity, distinct from every other. */
+const EXPENDITURE_EDITOR_IP = '198.18.0.24';
+
+/**
  * The reader's own login/API rate-limit identity through the proxy's trusted
  * header (ADR-0013), distinct from the spec's fixture requests and from the
  * security harness, so neither can exhaust the other's budget.
@@ -120,6 +141,12 @@ export const EXPENDITURE_PROJECTS = {
 		code: 'E2E-EXP-P3',
 		title: 'E2E Expenditure Gamma',
 		client: 'E2E Client Gamma',
+	},
+	/** Carries the annual and partial budget periods (#321). */
+	delta: {
+		code: 'E2E-EXP-P4',
+		title: 'E2E Expenditure Delta',
+		client: 'E2E Client Delta',
 	},
 } as const;
 
@@ -583,7 +610,7 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		description: 'E2E February USD project cost',
 	},
 	{
-		key: 'mayInr',
+		key: 'juneInr',
 		expenseNumber: 'E2E-EXP-0017',
 		costUid: 'e2e-cost-0017',
 		classification: 'project',
@@ -607,7 +634,7 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		description: 'E2E June INR project cost awaiting an approved budget',
 	},
 	{
-		key: 'mayUsd',
+		key: 'juneUsd',
 		expenseNumber: 'E2E-EXP-0018',
 		costUid: 'e2e-cost-0018',
 		classification: 'project',
@@ -631,7 +658,7 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		description: 'E2E June USD cost whose only budget has a commercial scope',
 	},
 	{
-		key: 'mayEurPending',
+		key: 'juneEurPending',
 		expenseNumber: 'E2E-EXP-0019',
 		costUid: 'e2e-cost-0019',
 		classification: 'project',
@@ -656,7 +683,7 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 			'E2E June EUR cost awaiting recognition under an approved budget',
 	},
 	{
-		key: 'mayGbp',
+		key: 'juneGbp',
 		expenseNumber: 'E2E-EXP-0020',
 		costUid: 'e2e-cost-0020',
 		classification: 'project',
@@ -678,6 +705,79 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		sourceReference: 'E2E-INV-0020',
 		evidenceReference: 'E2E-GRN-0020',
 		description: 'E2E June GBP cost with two approved budgets',
+	},
+	{
+		key: 'juneBetaInr',
+		expenseNumber: 'E2E-EXP-0021',
+		costUid: 'e2e-cost-0021',
+		classification: 'project',
+		project: 'beta',
+		state: 'recognized',
+		recognitionMonth: BUDGET_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-06-11',
+		serviceEnd: '2019-06-11',
+		billDate: '2019-06-12',
+		expenseDate: '2019-06-12',
+		currency: 'INR',
+		amount: '300.00',
+		taxAmount: '0.00',
+		grossAmount: '300.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '300.00',
+		sourceReference: 'E2E-INV-0021',
+		evidenceReference: 'E2E-GRN-0021',
+		description:
+			'E2E June INR cost whose only approved budget is stated in USD',
+	},
+	{
+		key: 'deltaInr',
+		expenseNumber: 'E2E-EXP-0022',
+		costUid: 'e2e-cost-0022',
+		classification: 'project',
+		project: 'delta',
+		state: 'recognized',
+		recognitionMonth: BUDGET_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-06-03',
+		serviceEnd: '2019-06-03',
+		billDate: '2019-06-04',
+		expenseDate: '2019-06-04',
+		currency: 'INR',
+		amount: '250.00',
+		taxAmount: '0.00',
+		grossAmount: '250.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '250.00',
+		sourceReference: 'E2E-INV-0022',
+		evidenceReference: 'E2E-GRN-0022',
+		description: 'E2E June INR cost under an annual cost budget only',
+	},
+	{
+		key: 'deltaUsd',
+		expenseNumber: 'E2E-EXP-0023',
+		costUid: 'e2e-cost-0023',
+		classification: 'project',
+		project: 'delta',
+		state: 'recognized',
+		recognitionMonth: BUDGET_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-06-05',
+		serviceEnd: '2019-06-05',
+		billDate: '2019-06-06',
+		expenseDate: '2019-06-06',
+		currency: 'USD',
+		amount: '120.00',
+		taxAmount: '0.00',
+		grossAmount: '120.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '120.00',
+		sourceReference: 'E2E-INV-0023',
+		evidenceReference: 'E2E-GRN-0023',
+		description: 'E2E June USD cost under a mid-month partial cost budget only',
 	},
 	// ── Non-operating sources (#317) ──────────────────────────────────────
 	// Recognized balances, excluded from Company Incurred Cost; only approved
@@ -947,16 +1047,22 @@ export const EXPENDITURE_CHARGES: SeedCharge[] = [
  * reconciliation total: January, February, and the empty month 2019-05 keep
  * exactly the expenses the reconciliation spec already asserts. The budget
  * workflow month is 2019-06 (2019-10..12 belong to #319), and the rows cover
- * every comparison outcome the module must state explicitly:
+ * every comparison outcome the module must state explicitly. A variance is
+ * published only when the budget's period is exactly the selected month, so
+ * annual and partial budgets show as incompatible periods:
  *
- *   alpha / 2019-01 / INR  approved covering budget            → compared
- *   alpha / 2019-02 / INR  approved USD budget only            → incompatible currency
- *   alpha / 2019-02 / USD  the same USD budget                 → compared
- *   beta  / 2019-01 / INR  no budget at all                    → missing
- *   gamma / 2019-06 / INR  approved, but for an earlier period  → incompatible period
- *   gamma / 2019-06 / USD  approved commercial-value scope     → incompatible scope
- *   gamma / 2019-06 / EUR  approved, cost not recognized yet   → unsupported cost
- *   gamma / 2019-06 / GBP  two approved covering budgets       → ambiguous
+ *   alpha / 2019-01 / INR  approved for January exactly            → compared
+ *   alpha / 2019-02 / INR  the January budget, not February        → incompatible period
+ *   alpha / 2019-02 / USD  the February USD budget                 → compared
+ *   beta  / 2019-01 / INR  no budget at all                        → missing
+ *   beta  / 2019-06 / INR  an approved USD budget only             → incompatible currency
+ *   gamma / 2019-06 / INR  approved, but for an earlier period     → incompatible period
+ *   gamma / 2019-06 / USD  approved commercial-value scope         → incompatible scope
+ *   gamma / 2019-06 / EUR  approved, cost not recognized yet       → unsupported cost
+ *   gamma / 2019-06 / GBP  two approved covering budgets           → ambiguous
+ *   delta / 2019-06 / INR  an annual budget only                   → incompatible period
+ *   delta / 2019-06 / USD  a mid-month budget spanning two months  → incompatible period
+ *   alpha / 2019-08 / INR  charge-only month, August budget        → compared (#317 charges)
  */
 export const EXPENDITURE_BUDGET_UID_PREFIX = 'e2e-budget-';
 /**
@@ -1011,10 +1117,10 @@ export const EXPENDITURE_BUDGETS: SeedBudget[] = [
 		amount: '5000.00',
 		scope: 'project_incurred_cost',
 		periodStart: '2019-01-01',
-		periodEnd: '2019-12-31',
+		periodEnd: '2019-01-31',
 		state: 'approved',
 		approvalEvidence: 'E2E-BUDGET-EVID-0001',
-		basisNote: 'E2E approved annual cost budget for Alpha',
+		basisNote: 'E2E approved January cost budget for Alpha',
 		financialVersion: 2,
 		journal: ['recorded', 'approved'],
 	},
@@ -1108,6 +1214,66 @@ export const EXPENDITURE_BUDGETS: SeedBudget[] = [
 		financialVersion: 3,
 		journal: ['recorded', 'updated', 'approved'],
 	},
+	{
+		key: 'betaJuneUsd',
+		budgetUid: 'e2e-budget-0008',
+		project: 'beta',
+		currency: 'USD',
+		amount: '700.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-06-01',
+		periodEnd: '2019-06-30',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0008',
+		basisNote: 'E2E approved June cost budget stated in USD',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'deltaAnnual',
+		budgetUid: 'e2e-budget-0009',
+		project: 'delta',
+		currency: 'INR',
+		amount: '40000.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-01-01',
+		periodEnd: '2019-12-31',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0009',
+		basisNote: 'E2E approved annual cost budget, never allocated to one month',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'deltaPartialUsd',
+		budgetUid: 'e2e-budget-0010',
+		project: 'delta',
+		currency: 'USD',
+		amount: '500.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-05-15',
+		periodEnd: '2019-06-15',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0010',
+		basisNote: 'E2E approved mid-month cost budget spanning two months',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
+	{
+		key: 'alphaAugust',
+		budgetUid: 'e2e-budget-0011',
+		project: 'alpha',
+		currency: 'INR',
+		amount: '20000.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-08-01',
+		periodEnd: '2019-08-31',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0011',
+		basisNote: 'E2E approved August cost budget for a charge-only month',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
+	},
 ];
 
 export interface SeededExpenditure {
@@ -1156,9 +1322,43 @@ async function seedExpenditureReportOnlyReader(): Promise<void> {
 	);
 }
 
-/** Remove the report-only reader's rows; safe to run repeatedly. */
-async function cleanupExpenditureReportOnlyReader(): Promise<void> {
-	const username = EXPENDITURE_REPORT_ONLY_USER.username;
+/** Create the budget editor's role and user rows from scratch. */
+async function seedExpenditureEditor(): Promise<void> {
+	const role = await exec(
+		`INSERT INTO roles_master
+       (role_code, role_name, role_hierarchy, department, permissions, description, status)
+     VALUES (?, ?, 40, 'E2E', ?, ?, 'active')`,
+		[
+			EXPENDITURE_EDITOR_ROLE.roleCode,
+			EXPENDITURE_EDITOR_ROLE.roleName,
+			JSON.stringify([
+				'reports:read',
+				'other_expenses:read',
+				'other_expenses:update',
+			]),
+			'E2E expenditure fixture editor (e2e/lib/expenditure-fixtures.ts)',
+		]
+	);
+	const passwordHash = await bcrypt.hash(EXPENDITURE_EDITOR_USER.password, 10);
+	await exec(
+		`INSERT INTO users
+       (username, password_hash, email, full_name, status, is_active, is_super_admin, role_id, account_type, isDelete)
+     VALUES (?, ?, ?, ?, 'active', 1, 0, ?, 'employee', 0)`,
+		[
+			EXPENDITURE_EDITOR_USER.username,
+			passwordHash,
+			EXPENDITURE_EDITOR_USER.email,
+			EXPENDITURE_EDITOR_USER.fullName,
+			role.insertId,
+		]
+	);
+}
+
+/** Remove one fixture identity's rows; safe to run repeatedly. */
+async function cleanupExpenditureFixtureUser(
+	username: string,
+	roleCode: string
+): Promise<void> {
 	// Log tables have drifted across schemas (see e2e/lib/fixtures.ts); purging
 	// the fixture user must never be blocked by them.
 	for (const sql of [
@@ -1177,9 +1377,7 @@ async function cleanupExpenditureReportOnlyReader(): Promise<void> {
 		[username]
 	);
 	await exec(`DELETE FROM users WHERE username = ?`, [username]);
-	await exec(`DELETE FROM roles_master WHERE role_code = ?`, [
-		EXPENDITURE_REPORT_ONLY_ROLE.roleCode,
-	]);
+	await exec(`DELETE FROM roles_master WHERE role_code = ?`, [roleCode]);
 }
 
 /** The identities this helper declares: nothing outside them is its to delete. */
@@ -1233,7 +1431,14 @@ function ownedExpenseFilter(): { sql: string; params: Array<string | number> } {
 
 /** Remove every row this module owns. Safe to run repeatedly. */
 export async function cleanupExpenditureFixtures(): Promise<number> {
-	await cleanupExpenditureReportOnlyReader();
+	await cleanupExpenditureFixtureUser(
+		EXPENDITURE_REPORT_ONLY_USER.username,
+		EXPENDITURE_REPORT_ONLY_ROLE.roleCode
+	);
+	await cleanupExpenditureFixtureUser(
+		EXPENDITURE_EDITOR_USER.username,
+		EXPENDITURE_EDITOR_ROLE.roleCode
+	);
 	let removed = 0;
 	const owned = ownedFixtureIdentities();
 	const expenseFilter = ownedExpenseFilter();
@@ -1339,6 +1544,7 @@ function statusFor(state: ExpenditureState): string {
 export async function seedExpenditureFixtures(): Promise<SeededExpenditure> {
 	await cleanupExpenditureFixtures();
 	await seedExpenditureReportOnlyReader();
+	await seedExpenditureEditor();
 
 	const projects = {} as Record<ExpenditureProjectKey, number>;
 	const projectKeys = Object.keys(
@@ -1616,18 +1822,18 @@ export function seededCost(key: string): SeedCost {
 }
 
 /**
- * Sign in the report-only reader through the real API and return a context
- * carrying that session. Mirrors the security harness's login so the identity
- * is exercised exactly as a browser would be, without sharing its fixtures:
- * the `auth` bucket for this identity is cleared first (rerun safety) and its
- * own trusted-header identity isolates the following API calls.
+ * Sign one fixture identity in through the real API and return its cookie jar.
+ * Mirrors the security harness's login so the identity is exercised exactly as
+ * a browser would be, without sharing its fixtures: the `auth` bucket for this
+ * identity is cleared first (rerun safety), and its own trusted-header identity
+ * isolates its API calls. The jar can drive a browser context as well.
  */
-export async function loginExpenditureReportOnlyReader(
+async function expenditureStorageState(
 	playwright: PlaywrightApi,
-	baseURL: string
-): Promise<APIRequestContext> {
-	const user = EXPENDITURE_REPORT_ONLY_USER;
-	const ip = EXPENDITURE_REPORT_ONLY_IP;
+	baseURL: string,
+	user: { username: string; password: string },
+	ip: string
+): Promise<{ cookies: Cookie[]; origins: [] }> {
 	const probe = await playwright.request.newContext({ baseURL });
 	try {
 		try {
@@ -1644,7 +1850,7 @@ export async function loginExpenditureReportOnlyReader(
 		if (!response.ok()) {
 			const retryAfter = response.headers()['retry-after'];
 			throw new Error(
-				`[e2e] loginExpenditureReportOnlyReader failed: POST /api/login -> ` +
+				`[e2e] login for ${user.username} failed: POST /api/login -> ` +
 					`${response.status()}${retryAfter ? ` (retry-after: ${retryAfter})` : ''}`
 			);
 		}
@@ -1653,10 +1859,10 @@ export async function loginExpenditureReportOnlyReader(
 		);
 		if (!match) {
 			throw new Error(
-				'[e2e] loginExpenditureReportOnlyReader: login succeeded but no session cookie was set'
+				`[e2e] login for ${user.username} succeeded but no session cookie was set`
 			);
 		}
-		const storageState: { cookies: Cookie[]; origins: [] } = {
+		return {
 			cookies: [
 				{
 					name: 'session',
@@ -1671,12 +1877,71 @@ export async function loginExpenditureReportOnlyReader(
 			],
 			origins: [],
 		};
-		return await playwright.request.newContext({
-			baseURL,
-			extraHTTPHeaders: { 'x-vercel-forwarded-for': ip },
-			storageState,
-		});
 	} finally {
 		await probe.dispose();
 	}
+}
+
+/** One fixture identity's authenticated request context, with its own IP. */
+async function loginExpenditureUser(
+	playwright: PlaywrightApi,
+	baseURL: string,
+	user: { username: string; password: string },
+	ip: string
+): Promise<APIRequestContext> {
+	const storageState = await expenditureStorageState(
+		playwright,
+		baseURL,
+		user,
+		ip
+	);
+	return playwright.request.newContext({
+		baseURL,
+		extraHTTPHeaders: { 'x-vercel-forwarded-for': ip },
+		storageState,
+	});
+}
+
+/** The editor's cookie jar, so a browser context can act as that identity. */
+export async function expenditureEditorStorageState(
+	playwright: PlaywrightApi,
+	baseURL: string
+): Promise<{ cookies: Cookie[]; origins: [] }> {
+	return expenditureStorageState(
+		playwright,
+		baseURL,
+		EXPENDITURE_EDITOR_USER,
+		EXPENDITURE_EDITOR_IP
+	);
+}
+
+/** Headers carrying the editor's own rate-limit identity. */
+export const EXPENDITURE_EDITOR_HEADERS = {
+	'x-vercel-forwarded-for': EXPENDITURE_EDITOR_IP,
+} as const;
+
+/** The report-only reader's context (`reports:read` and nothing else). */
+export async function loginExpenditureReportOnlyReader(
+	playwright: PlaywrightApi,
+	baseURL: string
+): Promise<APIRequestContext> {
+	return loginExpenditureUser(
+		playwright,
+		baseURL,
+		EXPENDITURE_REPORT_ONLY_USER,
+		EXPENDITURE_REPORT_ONLY_IP
+	);
+}
+
+/** The budget editor's context (`other_expenses:read`/`:update`, no approve). */
+export async function loginExpenditureEditor(
+	playwright: PlaywrightApi,
+	baseURL: string
+): Promise<APIRequestContext> {
+	return loginExpenditureUser(
+		playwright,
+		baseURL,
+		EXPENDITURE_EDITOR_USER,
+		EXPENDITURE_EDITOR_IP
+	);
 }

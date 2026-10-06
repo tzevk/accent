@@ -55,8 +55,10 @@
  *    payment: only approved, evidenced period charges become cost, in the
  *    charge's own month, and they never exceed the source's confirmed balance;
  *  - an approved cost budget is compared with Incurred Project Cost only when
- *    Project, currency, scope, and period match, and a budget never enters a
- *    cost total — `budgets` is its own section of the reconciliation.
+ *    Project, currency, scope, and a period exactly equal to the month all
+ *    match, the month's cost is supported by a confirmed source, and no
+ *    proportional allocation is applied — `budgets` is its own section of the
+ *    reconciliation and never enters a cost total.
  *
  * Later slices extend this module: a source adapter per cost source feeds the
  * same `buildReconciliation`, `command`/`revision` controls hang off the same

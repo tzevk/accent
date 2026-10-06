@@ -826,9 +826,9 @@ export interface CostBudgetCandidate {
  *
  * `compared` is the only state that publishes a variance. Everything else is
  * explicit: a missing or unapproved budget, a budget whose currency, scope, or
- * period does not match, several matching budgets (so no single one can be
- * picked), an approved budget whose cost is not recognized yet, and an approved
- * budget with no Incurred Project Cost recorded beside it.
+ * period does not match the month exactly, several matching budgets (so no
+ * single one can be picked), an approved budget whose cost is not confirmed
+ * yet, and an approved budget with no Incurred Project Cost recorded beside it.
  */
 export type BudgetOutcome =
 	| 'compared'
@@ -854,14 +854,21 @@ export interface ProjectBudgetComparison {
 	 * no such row exists for the month (`no_incurred_cost`).
 	 */
 	incurred_cost: number | null;
+	/** Confirmed operating direct records of this Project and currency. */
 	confirmed_records: number;
 	/**
 	 * Approved period charges included in `incurred_cost` (#317): a row whose
 	 * cost is entirely approved consumption is still confirmed cost.
 	 */
 	period_charges: number;
-	/** Draft or pending-evidence records that are not confirmed cost. */
+	/** Draft or pending-evidence operating records that are not confirmed cost. */
 	pending_records: number;
+	/**
+	 * Supported approved period charges the row counts (#317). They are part of
+	 * Incurred Project Cost, so a Project whose month is charge-only still
+	 * supports a budget comparison.
+	 */
+	period_charges: number;
 	outcome: BudgetOutcome;
 	/**
 	 * The comparison basis: the approved budget the variance is stated from
@@ -910,6 +917,13 @@ export interface CostBudgetCommandInput {
 	reason?: string | null;
 	/** Required for `approve`: the evidence the approval rests on. */
 	evidenceReference?: string | null;
+	/**
+	 * Whether the caller holds the approval privilege. Withdrawing an *approved*
+	 * budget stops the report comparing it, so it needs the privilege that
+	 * approved it; the caller states the fact and the module enforces the rule
+	 * under its row lock.
+	 */
+	actorCanApprove?: boolean;
 	/** Field changes for `update`. */
 	patch?: CostBudgetPatch;
 }
