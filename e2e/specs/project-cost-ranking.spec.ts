@@ -61,6 +61,8 @@ const BETA = EXPENDITURE_PROJECTS.p320b.code;
 const GAMMA = EXPENDITURE_PROJECTS.p320c.code;
 const DELTA = EXPENDITURE_PROJECTS.p320d.code;
 const ENTERED = EXPENDITURE_PROJECTS.p320e.code;
+/** The Project whose comparison spans currencies (2021-08/2021-09). */
+const MULTI = EXPENDITURE_PROJECTS.p320f.code;
 /** The cost this spec records through the browser form. */
 const UI_ENTRY = {
 	sourceReference: 'E2E-320-INV-UI-1',
@@ -72,8 +74,9 @@ const UI_ENTRY = {
 /** June 2022 has 30 days; May 2022 has 31, so the prior window is clamped. */
 const JUNE_DAYS = 30;
 const ELAPSED_DAYS = 15;
-/** The #320 fixture block: 13 rows in June 2022 and 6 in May 2022. */
-const FIXTURE_ROWS = 19;
+/** The #320 fixture block: 13 rows in June 2022, 7 in May 2022, and three
+ * boundary rows (January 2026 and the 2021 currency pair). */
+const FIXTURE_ROWS = 23;
 
 const EXPECTED = {
 	alpha: {
@@ -98,12 +101,23 @@ const EXPECTED = {
 		priorMonth: 0,
 		toDate: 12000,
 	},
-	delta: { month: 8000, window: 8000, priorMonth: null, toDate: 8000 },
+	delta: {
+		month: 8000,
+		window: 8000,
+		/** Its only prior cost sits on 31 May: inside the whole prior month. */
+		priorMonth: 4000,
+		priorMonthChange: 8000 - 4000,
+		priorMonthPercent: 100,
+		/** The same cost is outside an elapsed 1–15 window, so the prior is unknown there. */
+		priorWindow: null,
+		toDate: 4000 + 8000,
+	},
 	company: {
 		month: 170000 + 90000 + 12000 + 8000 + 50000 + 20000,
 		window: 130000 + 90000 + 12000 + 8000 + 50000 + 20000,
 		priorWindow: 107000 + 100000 + 60000,
-		priorMonth: 162000 + 100000 + 0 + 60000,
+		/** Whole May, including its last day (`p320dPriorLastDay`, 4000). */
+		priorMonth: 162000 + 100000 + 0 + 60000 + 4000,
 	},
 } as const;
 
@@ -236,6 +250,26 @@ interface ReconciliationData {
 		missing_amount: { count: number };
 		unresolved_classification: { count: number };
 	};
+	/** #321's budget section, read here for its scope under a filter. */
+	budgets: {
+		month: string;
+		basis: string;
+		variance_note: string;
+		comparisons: Array<{
+			project_id: number;
+			project_code: string;
+			currency: string;
+			incurred_cost: number | null;
+			outcome: string;
+			variance: number | null;
+		}>;
+		notices: Array<{
+			code: string;
+			label: string;
+			detail: string;
+			severity: string;
+		}>;
+	};
 	coverage: Array<{
 		code: string;
 		label: string;
@@ -263,8 +297,9 @@ function publish(): void {
 	writeArtifact('project-cost-ranking', {
 		...evidence,
 		fixtureScope: {
-			projects: [ALPHA, BETA, GAMMA, DELTA, ENTERED],
+			projects: [ALPHA, BETA, GAMMA, DELTA, ENTERED, MULTI],
 			months: [MONTH, PRIOR_MONTH],
+			boundaryMonths: ['2021-08', '2021-09', '2026-01'],
 			asOf: AS_OF,
 			expensePrefix: 'E2E-EXP-320-',
 		},
@@ -376,16 +411,21 @@ test.beforeAll(async () => {
 		await exec(`DELETE FROM expenses WHERE id = ?`, [leftover.id]);
 	}
 	seeded = await seedExpenditureFixtures();
-	// The ranked months are this spec's own namespace: another slice's cost in
-	// June or May 2022 would move the figures below, so the run refuses to
-	// guess instead of asserting against a month it does not own.
-	const persisted = await rows<{ total: number }>(
-		`SELECT COUNT(*) AS total FROM expenses
+	// The fixture months are this spec's own namespace: another slice's cost in
+	// any of them would move the figures below, so the run refuses to guess
+	// instead of asserting against a month it does not own.
+	const persisted = await rows<{ total: number; mine: number }>(
+		`SELECT COUNT(*) AS total,
+            SUM(CASE WHEN expense_number LIKE 'E2E-EXP-320-%' THEN 1 ELSE 0 END) AS mine
+       FROM expenses
       WHERE isDelete = 0
         AND (expense_number LIKE 'E2E-EXP-320-%'
-             OR recognition_period BETWEEN '2022-05-01' AND '2022-06-30')`
+             OR recognition_period BETWEEN '2021-08-01' AND '2021-09-30'
+             OR recognition_period BETWEEN '2022-05-01' AND '2022-06-30'
+             OR recognition_period BETWEEN '2026-01-01' AND '2026-01-31')`
 	);
 	expect(persisted[0].total).toBe(FIXTURE_ROWS);
+	expect(Number(persisted[0].mine)).toBe(FIXTURE_ROWS);
 });
 
 test.afterAll(async () => {
@@ -521,9 +561,12 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
 	expect(gamma.cost_to_date).toBe(EXPECTED.gamma.toDate);
 	expect(gamma.evidence.state).toBe('recorded');
 
-	// No prior-period record at all keeps the comparison unknown: absence is
+	// No prior-window record at all keeps the comparison unknown: absence is
 	// not evidence of zero cost, and a pending record without an amount is
-	// incomplete evidence rather than a zero.
+	// incomplete evidence rather than a zero. Delta's only prior cost sits on
+	// 31 May — inside the whole prior month, outside an elapsed 1–15 window —
+	// so the window comparison is unknown here and the company prior window
+	// above (267000) excludes that 4000.
 	const delta = rowOf(data, DELTA);
 	expect(delta.incurred_cost).toBe(EXPECTED.delta.month);
 	expect(delta.comparison_cost).toBe(EXPECTED.delta.window);
@@ -538,6 +581,18 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
 	expect(delta.evidence.findings).toContain('unknown_amount');
 	expect(delta.evidence.unknown_amount_records).toBe(1);
 	expect(delta.evidence.reconstructed_records).toBe(0);
+	const lastDay = await rows<{
+		recognized_amount: string;
+		recognition_period: string;
+	}>(
+		`SELECT recognized_amount, recognition_period FROM expenses
+      WHERE isDelete = 0 AND expense_number = 'E2E-EXP-320-D11'`
+	);
+	expect(lastDay).toHaveLength(1);
+	expect(Number(lastDay[0].recognized_amount)).toBe(EXPECTED.delta.priorMonth);
+	expect(String(lastDay[0].recognition_period).slice(0, 10)).toBe(
+		`${PRIOR_MONTH}-31`
+	);
 
 	// Largest-cost ordering: Alpha 130000, Beta 90000, Gamma 12000, Delta 8000.
 	expect(data.ranking.currencies).toEqual(['INR']);
@@ -691,15 +746,18 @@ test('compares a month that has elapsed against the whole prior month', async ({
 	expect(data.comparison.unfinished).toBe(false);
 	expect(data.comparison.elapsed_days).toBeNull();
 	expect(data.comparison.current_days).toBe(JUNE_DAYS);
-	expect(data.comparison.prior_days).toBe(JUNE_DAYS);
+	// A month that has fully elapsed is compared whole: May holds 31 days and
+	// its last day counts, so the prior window is not clamped to June's 30.
+	expect(data.comparison.prior_days).toBe(31);
 	expect(data.comparison.window_mismatch).toBe(false);
 	expect(data.comparison.current_cost).toBe(EXPECTED.company.month);
 	expect(data.comparison.prior_cost).toBe(EXPECTED.company.priorMonth);
 	expect(data.comparison.change_amount).toBe(
 		EXPECTED.company.month - EXPECTED.company.priorMonth
 	);
-	// 28000 / 322000 = 8.6956…%, stated to two decimals.
-	expect(data.comparison.change_percent).toBe(8.7);
+	// 24000 / 326000 = 7.3619…%, stated to two decimals.
+	expect(data.comparison.change_percent).toBe(7.36);
+	expect(data.comparison.cost_to_date_through).toBe(`${MONTH}-${JUNE_DAYS}`);
 	expect(disclosureCodes(data)).toContain('full_month_comparison');
 	expect(disclosureCodes(data)).not.toContain('equal_period_comparison');
 
@@ -722,16 +780,30 @@ test('compares a month that has elapsed against the whole prior month', async ({
 	expect(disclosureCodes(data)).not.toContain('unequal_evidence_coverage');
 	expect(disclosureCodes(data)).not.toContain('unequal_window_length');
 
+	// Delta's prior cost is its 31 May record, which the whole prior month now
+	// includes: a known increase rather than an unknown prior, and it takes its
+	// place in the increase ordering instead of being left out.
+	const delta = rowOf(data, DELTA);
+	expect(delta.previous_period_cost).toBe(EXPECTED.delta.priorMonth);
+	expect(delta.change_amount).toBe(EXPECTED.delta.priorMonthChange);
+	expect(delta.change_percent).toBe(EXPECTED.delta.priorMonthPercent);
+	expect(delta.change_state).toBe('increase');
+	expect(delta.cost_to_date).toBe(EXPECTED.delta.toDate);
+
 	// The increase ordering follows the same figures: Gamma +12000 (new),
-	// Alpha +8000, Beta −10000, Delta unranked.
+	// Alpha +8000, Delta +4000, then Beta −10000, with no Project left
+	// unranked because every prior amount is now known.
 	expect(data.ranking.by_increase.map((entry) => entry.project_code)).toEqual([
 		GAMMA,
 		ALPHA,
+		DELTA,
 		BETA,
 	]);
 	expect(data.ranking.by_increase.map((entry) => entry.change_amount)).toEqual([
-		12000, 8000, -10000,
+		12000, 8000, 4000, -10000,
 	]);
+	expect(data.ranking.increase_unranked).toHaveLength(0);
+	expect(disclosureCodes(data)).not.toContain('unknown_prior_cost');
 
 	evidence.fullMonth = {
 		comparison: data.comparison,
@@ -741,10 +813,17 @@ test('compares a month that has elapsed against the whole prior month', async ({
 			percent: alpha.change_percent,
 			toDate: alpha.cost_to_date,
 		},
+		delta: {
+			prior: delta.previous_period_cost,
+			change: delta.change_amount,
+			percent: delta.change_percent,
+			state: delta.change_state,
+		},
 		increases: data.ranking.by_increase.map((entry) => ({
 			code: entry.project_code,
 			change: entry.change_amount,
 		})),
+		unranked: data.ranking.increase_unranked.length,
 	};
 });
 
@@ -797,6 +876,35 @@ test('keeps the company reconciliation unfiltered behind a Project filter', asyn
 		comparison: filtered.comparison.current_cost,
 		subtotal: filtered.filtered_subtotal,
 		rows: filtered.projects.length,
+	};
+
+	// The budget section reads exactly the rows the response publishes, so a
+	// Project filter cannot leave another Project's approved budget looking
+	// missing: the filtered section states the filtered Project only, and the
+	// unfiltered one still states every Project with a row.
+	const filteredSection = filtered.budgets;
+	const unfilteredSection = unfiltered.budgets;
+	expect(filteredSection.comparisons.map((row) => row.project_code)).toEqual([
+		ALPHA,
+	]);
+	expect(unfilteredSection.comparisons.map((row) => row.project_code)).toEqual([
+		ALPHA,
+		BETA,
+		GAMMA,
+		DELTA,
+	]);
+	expect(unfilteredSection.comparisons.map((row) => row.outcome)).not.toContain(
+		'missing'
+	);
+	evidence.budgets = {
+		filtered: filteredSection.comparisons.map((row) => [
+			row.project_code,
+			row.outcome,
+		]),
+		unfiltered: unfilteredSection.comparisons.map((row) => [
+			row.project_code,
+			row.outcome,
+		]),
 	};
 });
 
@@ -901,7 +1009,7 @@ test('ranks, compares, and drills down through the real report controls', async 
 		'data-value',
 		String(EXPECTED.company.month - EXPECTED.company.priorMonth)
 	);
-	await expect(page.getByTestId('comparison-percent')).toContainText('8.70%');
+	await expect(page.getByTestId('comparison-percent')).toContainText('7.36%');
 	await expect(page.getByTestId('fy-label')).toContainText(FY_LABEL);
 	// The panel states the window's direct-cost categories as well, per
 	// currency, from the same records the comparison counts.
@@ -956,25 +1064,35 @@ test('ranks, compares, and drills down through the real report controls', async 
 		alphaRow.locator('[data-testid="project-cost-to-date"]')
 	).toHaveAttribute('data-value', String(EXPECTED.alpha.toDate + 40000));
 	await expect(deltaRow).toHaveAttribute('data-evidence-state', 'incomplete');
-	await expect(deltaRow).toHaveAttribute('data-rank-increase', '');
+	await expect(deltaRow).toHaveAttribute('data-rank-increase', '4');
+	await expect(deltaRow).toHaveAttribute(
+		'data-previous-period-cost',
+		String(EXPECTED.delta.priorMonth)
+	);
+	await expect(deltaRow).toHaveAttribute(
+		'data-change-percent',
+		String(EXPECTED.delta.priorMonthPercent)
+	);
 	await expect(
 		deltaRow.locator('[data-testid="project-change"]')
-	).toContainText('Unknown');
-
-	// Largest increase first reorders the same figures: Gamma's new cost, then
-	// Alpha's increase, then Beta's fall; Delta has no comparable prior cost.
-	await page.getByTestId('ranking-select').selectOption('increase');
-	expect(await renderedOrder(page)).toEqual([GAMMA, ALPHA, BETA, DELTA]);
-	await expect(gammaRow(page), 'ranked first by increase').toHaveAttribute(
-		'data-rank',
-		'1'
-	);
-	await expect(deltaRow).toHaveAttribute('data-rank', '');
+	).toContainText('100.00%');
+	// Every prior amount is known once the whole prior month is in, so no row
+	// is left out of the increase ordering.
 	await expect(
 		page.locator(
 			'[data-testid="comparison-disclosure"][data-code="unknown_prior_cost"]'
 		)
-	).toHaveAttribute('data-count', '1');
+	).toHaveCount(0);
+
+	// Largest increase first reorders the same figures: Gamma's new cost, then
+	// Alpha's, Delta's and Beta's changes.
+	await page.getByTestId('ranking-select').selectOption('increase');
+	expect(await renderedOrder(page)).toEqual([GAMMA, ALPHA, DELTA, BETA]);
+	await expect(gammaRow(page), 'ranked first by increase').toHaveAttribute(
+		'data-rank',
+		'1'
+	);
+	await expect(deltaRow).toHaveAttribute('data-rank', '3');
 	await page.getByTestId('ranking-select').selectOption('cost');
 	expect(await renderedOrder(page)).toEqual([ALPHA, BETA, GAMMA, DELTA]);
 
@@ -1050,6 +1168,24 @@ test('ranks, compares, and drills down through the real report controls', async 
 	await page.getByRole('button', { name: 'All projects', exact: true }).click();
 	await expect(page.getByTestId('filtered-subtotal')).toBeHidden();
 
+	// A January–March month composes its financial-year candidate in the
+	// following calendar year, so the step is capped against the current month
+	// itself: no step may open a future month.
+	await page.getByLabel('Month', { exact: true }).click();
+	await page.getByPlaceholder('Search...').fill('January 2026');
+	await page.getByRole('button', { name: 'January 2026', exact: true }).click();
+	await expect(view).toHaveAttribute('data-month', '2026-01');
+	await expect(page.getByTestId('fy-label')).toHaveAttribute('data-fy', '2025');
+	await page.getByTestId('fy-next').click();
+	const stepped = (await view.getAttribute('data-month')) ?? '';
+	const currentMonthNow = new Date().toISOString().slice(0, 7);
+	expect(stepped <= currentMonthNow, `${stepped} vs ${currentMonthNow}`).toBe(
+		true
+	);
+	expect(stepped).toBe('2027-01' <= currentMonthNow ? '2027-01' : '2026-01');
+	await openExpenditure(page, MONTH_LABEL);
+	await expect(view).toHaveAttribute('data-month', MONTH);
+
 	evidence.browserReport = {
 		currentMonth,
 		financialYear: FY_LABEL,
@@ -1057,13 +1193,14 @@ test('ranks, compares, and drills down through the real report controls', async 
 			basis: 'full_month',
 			current: EXPECTED.company.month,
 			prior: EXPECTED.company.priorMonth,
-			percent: '8.70%',
+			percent: '7.36%',
 		},
 		orders: {
 			byCost: [ALPHA, BETA, GAMMA, DELTA],
-			byIncrease: [GAMMA, ALPHA, BETA, DELTA],
+			byIncrease: [GAMMA, ALPHA, DELTA, BETA],
 		},
 		steppedTo: '2023-06',
+		futureStep: { from: '2026-01', visited: stepped, currentMonthNow },
 	};
 });
 
@@ -1193,7 +1330,7 @@ test('records, recognizes, and re-ranks a cost through the report controls', asy
 		page.locator(
 			'[data-testid="comparison-disclosure"][data-code="unknown_prior_cost"]'
 		)
-	).toHaveAttribute('data-count', '2');
+	).toHaveAttribute('data-count', '1');
 	await expect(view).toHaveAttribute('data-month', MONTH);
 	await expect(
 		page
@@ -1260,5 +1397,74 @@ test('records, recognizes, and re-ranks a cost through the report controls', asy
 			toDate: entered.cost_to_date,
 		},
 		journal: journal.map((entry) => `${entry.version}:${entry.command}`),
+	};
+});
+
+test('states a currency-split comparison per currency, not as unknown', async ({
+	page,
+	request,
+}) => {
+	// September 2021's comparison spans currencies: INR this month, USD in the
+	// prior month. No single prior or change figure exists, yet each currency's
+	// own amount is known and stated.
+	const data = await reconciliation(request, { month: '2021-09' });
+	expect(data.comparison.currency).toBeNull();
+	expect(data.comparison.prior_cost).toBeNull();
+	expect(data.comparison.change_amount).toBeNull();
+	expect(data.comparison.change_percent).toBeNull();
+	const split = data.comparison.currency_totals.map((row) => row.currency);
+	expect(split).toEqual(['INR', 'USD']);
+	const inr = data.comparison.currency_totals.find(
+		(row) => row.currency === 'INR'
+	)!;
+	const usd = data.comparison.currency_totals.find(
+		(row) => row.currency === 'USD'
+	)!;
+	expect(inr.current_cost).toBe(10000);
+	expect(inr.prior_cost).toBeNull();
+	expect(usd.current_cost).toBe(0);
+	expect(usd.prior_cost).toBe(200);
+	expect(usd.change_amount).toBe(-200);
+
+	await openExpenditure(page, 'September 2021');
+	const view = page.getByTestId('expenditure-view');
+	await expect(view).toHaveAttribute('data-month', '2021-09');
+	await expect(page.getByTestId('comparison-prior')).toContainText(
+		'See currencies'
+	);
+	await expect(page.getByTestId('comparison-change')).toContainText(
+		'See currencies'
+	);
+	await expect(page.getByTestId('comparison-percent')).toContainText(
+		'See currencies'
+	);
+	const usdRow = page.locator(
+		'[data-testid="comparison-currency-row"][data-currency="USD"]'
+	);
+	await expect(usdRow).toHaveAttribute('data-current', '0');
+	await expect(usdRow).toHaveAttribute('data-prior', '200');
+	const inrRow = page.locator(
+		'[data-testid="comparison-currency-row"][data-currency="INR"]'
+	);
+	await expect(inrRow).toHaveAttribute('data-current', '10000');
+	// The INR prior is genuinely unknown — nothing in the prior month is in
+	// rupees — so that cell keeps saying so rather than borrowing the dollar.
+	await expect(inrRow).toHaveAttribute('data-prior', '');
+	await expect(inrRow).toContainText('Unknown');
+
+	evidence.currencySplit = {
+		month: '2021-09',
+		currencies: split,
+		inr: { current: inr.current_cost, prior: inr.prior_cost },
+		usd: {
+			current: usd.current_cost,
+			prior: usd.prior_cost,
+			change: usd.change_amount,
+		},
+		panel: {
+			prior: 'See currencies',
+			change: 'See currencies',
+			percent: 'See currencies',
+		},
 	};
 });

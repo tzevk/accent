@@ -754,9 +754,10 @@ export function buildReconciliation(
 		// `company`, `projects`, or `evidence`.
 		budgets: buildBudgetSection({
 			month: input.month,
-			// The budget section reads the company-wide rows, like the ranking
-			// and the comparison: a Project filter never hides a budget.
-			rows: allRows,
+			// The section reads the same rows the payload publishes, so its own
+			// `projectFilter` narrowing cannot fabricate `missing` outcomes for
+			// Projects the filtered response does not list.
+			rows,
 			records,
 			budgets: input.budgets,
 			projectFilter: input.projectFilter,

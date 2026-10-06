@@ -527,7 +527,10 @@ export default function ExpenditureView({
 
 	// Financial-year navigation: April–March, stepping a whole year at a time
 	// and never past the current month, so the picker cannot show a future
-	// month as if its cost had happened.
+	// month as if its cost had happened. The composed candidate is checked
+	// against `current_month` itself: a month in January–March composes its
+	// candidate in the following calendar year, which a financial-year-only
+	// guard would let through.
 	const financialYear = data ? financialYearOf(data.month) : null;
 	const currentFinancialYear = data
 		? financialYearOf(data.current_month)
@@ -539,7 +542,20 @@ export default function ExpenditureView({
 		if (target > currentFinancialYear) return;
 		const monthNumber = data.month.slice(5, 7);
 		const year = Number(monthNumber) >= 4 ? target : target + 1;
-		onMonthChange(`${year}-${monthNumber}`);
+		const candidate = `${year}-${monthNumber}`;
+		if (candidate > data.current_month) return;
+		// Prefer a month the picker already offers inside the target year; when
+		// the target year holds no cost at all, the candidate itself is opened
+		// (the picker lists the selected month, and an empty month reports its
+		// coverage warning rather than an invented zero).
+		const inTargetYear = data.available_months
+			.filter(
+				(month) =>
+					financialYearOf(month) === target && month <= data.current_month
+			)
+			.sort()
+			.reverse();
+		onMonthChange(inTargetYear[0] ?? candidate);
 	};
 
 	if (!month) {
@@ -574,6 +590,12 @@ export default function ExpenditureView({
 	const conversion = data.company.conversion;
 	const companyStated = conversion.status !== 'unsupported';
 	const reportingCurrencyCode = data.company.reporting_currency;
+	// A month whose cost spans currencies has no single comparison figure; the
+	// per-currency table below states each one, so the headline says so instead
+	// of calling a known, currency-split amount unknown.
+	const currencySplitScope =
+		data.comparison.currency === null &&
+		data.comparison.currency_totals.length > 1;
 	// A multi-currency month states tax figures per currency, from the same
 	// slices the report already publishes; they are never combined.
 	const currencyBreakdown = (
@@ -872,7 +894,9 @@ export default function ExpenditureView({
 							className="text-base font-bold text-gray-900"
 						>
 							{data.comparison.prior_cost === null
-								? 'Unknown'
+								? currencySplitScope
+									? 'See currencies'
+									: 'Unknown'
 								: formatCurrencyIn(
 										data.comparison.prior_cost,
 										data.comparison.currency
@@ -889,7 +913,9 @@ export default function ExpenditureView({
 							className="text-base font-bold text-gray-900"
 						>
 							{data.comparison.change_amount === null
-								? 'Unknown'
+								? currencySplitScope
+									? 'See currencies'
+									: 'Unknown'
 								: formatCurrencyIn(
 										data.comparison.change_amount,
 										data.comparison.currency
@@ -906,8 +932,7 @@ export default function ExpenditureView({
 							data-state={data.comparison.change_state}
 							className="text-base font-bold text-gray-900"
 						>
-							{data.comparison.currency === null &&
-							data.comparison.currency_totals.length > 1
+							{currencySplitScope
 								? 'See currencies'
 								: percentLabel(
 										data.comparison.change_percent,

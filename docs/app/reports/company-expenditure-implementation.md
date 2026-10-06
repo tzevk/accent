@@ -199,7 +199,9 @@ route, the drilldown, and the export must read it rather than re-deriving it.
   periods are then compared over their first `currentDays` days, the prior
   window is clamped to the prior month's own length, and a clamped window is
   disclosed as `unequal_window_length`. A month measured after its last day is
-  compared whole (`full_month_comparison`).
+  compared whole (`full_month_comparison`): the prior window is the whole prior
+  month however many days it holds, so June (30 days) against May (31 days)
+  includes 31 May.
 - **Day rule.** A cost sits in the window when the day of its received-work
   evidence starts on or before the window's last day (`service_period_start`,
   else `service_period_end`, else the disclosed bill date). A confirmed cost
@@ -232,15 +234,21 @@ route, the drilldown, and the export must read it rather than re-deriving it.
   never narrowed by `project_id`.
 
 `e2e/specs/project-cost-ranking.spec.ts` drives the real app over the `#320`
-fixture block (Projects `E2E-EXP-P320A…E`, months 2022-05/2022-06, measured to
-2022-06-15) and writes `e2e/artifacts/project-cost-ranking.json`: it asserts the
-equal-period window, both orderings, the zero-prior and unknown-prior states,
-cost to date, late/backdated/unequal-coverage disclosure, the unfiltered company
-position behind a Project filter, the 400/403 refusals, and the browser flow
-(month and financial-year navigation, ranking switch, drilldown into recognized
-and unresolved evidence, and a cost entered, submitted, and recognized through
-the real controls). The spec refuses to run against a month that holds any cost
-outside its own namespace.
+fixture block (Projects `E2E-EXP-P320A…F`, months 2022-05/2022-06 measured to
+2022-06-15, plus boundary rows: a 31 May cost, a January 2026 cost, and a
+2021-08/2021-09 pair that spans currencies) and writes
+`e2e/artifacts/project-cost-ranking.json`: it asserts the equal-period window
+and that a fully elapsed month keeps the prior month's last day in its rows,
+its change figures, and its increase ordering, both orderings, the zero-prior
+and unknown-prior states, cost to date, late/backdated/unequal-coverage
+disclosure, the unfiltered company position and the published-row scope behind
+a Project filter (including #321's budget section), the 400/403 refusals, and
+the browser flow: month and financial-year navigation (into an empty month and
+never into a future one), a currency-split comparison stated per currency
+rather than as unknown, the ranking switch, drilldown into recognized and
+unresolved evidence, and a cost entered, submitted, recognized, and re-ranked
+through the real controls. The spec refuses to run against any of its months
+holding cost outside its own namespace.
 
 ## Approved cost budget (#321)
 

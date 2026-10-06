@@ -136,7 +136,10 @@ export function financialYearLabel(startYear: number): string {
  * or an explicitly requested date that identifies the comparable period. A
  * month measured before its last day is unfinished: both periods are then
  * compared over their first `currentDays` days, with the prior window clamped
- * to the prior month's own length and any mismatch disclosed.
+ * to the prior month's own length and any mismatch disclosed. A month that has
+ * fully elapsed is compared whole: the prior window is the whole prior month
+ * however many days it holds, so June (30 days) against May (31 days) includes
+ * May 31.
  */
 export interface ComparisonWindow {
 	month: string;
@@ -178,7 +181,12 @@ export function comparisonWindow(
 		elapsed = Math.min(asOfDay, monthDays);
 	}
 	const unfinished = elapsed < monthDays;
-	const priorDays = Math.min(elapsed, priorMonthDays);
+	// Elapsed days are compared like for like only while the month is
+	// unfinished; once it has fully elapsed the prior window is the whole prior
+	// month, so a longer prior month keeps its trailing days.
+	const priorDays = unfinished
+		? Math.min(elapsed, priorMonthDays)
+		: priorMonthDays;
 	return {
 		month,
 		priorMonth,
@@ -190,7 +198,7 @@ export function comparisonWindow(
 		monthDays,
 		priorMonthDays,
 		elapsedDays: unfinished ? elapsed : null,
-		windowMismatch: priorDays < elapsed,
+		windowMismatch: unfinished && priorDays < elapsed,
 		throughDate: elapsed === 0 ? null : `${month}-${pad(elapsed)}`,
 	};
 }
