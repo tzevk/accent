@@ -14,7 +14,36 @@
 import type Decimal from 'decimal.js';
 import { add, R, toNumber } from '@/lib/money';
 import { isConfirmed } from './recognition';
-import type { CostRecord, EvidenceStateSummary } from './types';
+import type {
+	CostClassification,
+	CostRecord,
+	EvidenceStateSummary,
+	ReconciliationGroup,
+} from './types';
+
+/** The three direct-cost categories, in the order the report states them. */
+export const GROUP_LABELS = {
+	incurred_project_cost: 'Incurred Project Cost',
+	company_overhead: 'Company Overhead',
+	unallocated_cost: 'Unallocated Cost',
+} as const;
+
+/** Which stored classification each category counts. */
+export const GROUP_CLASSIFICATION: Record<
+	ReconciliationGroup['key'],
+	CostClassification
+> = {
+	incurred_project_cost: 'project',
+	company_overhead: 'company_overhead',
+	unallocated_cost: 'unallocated',
+};
+
+/** The categories in statement order, for readers that build them by loop. */
+export const GROUP_KEYS: Array<ReconciliationGroup['key']> = [
+	'incurred_project_cost',
+	'company_overhead',
+	'unallocated_cost',
+];
 
 /** Round money once, at the output boundary. */
 export function rounded(value: Decimal.Value): number {

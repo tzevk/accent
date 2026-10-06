@@ -229,15 +229,28 @@ interface ReconciliationData {
 		missing_amount: { count: number };
 		unresolved_classification: { count: number };
 	};
-	coverage: Array<{ code: string; label: string; detail: string; severity: string }>;
+	coverage: Array<{
+		code: string;
+		label: string;
+		detail: string;
+		severity: string;
+	}>;
 	project_options: Array<{ project_id: number; project_code: string }>;
 	available_months: string[];
 }
 
 let seeded: SeededExpenditure;
-const evidence: Record<string, unknown> = { ok: true, month: MONTH, asOf: AS_OF };
+const evidence: Record<string, unknown> = {
+	ok: true,
+	month: MONTH,
+	asOf: AS_OF,
+};
 /** Rows this spec records through the app, so the run leaves nothing behind. */
-const createdThroughApp: Array<{ id: number; cost_uid: string; where: string }> = [];
+const createdThroughApp: Array<{
+	id: number;
+	cost_uid: string;
+	where: string;
+}> = [];
 
 function publish(): void {
 	writeArtifact('project-cost-ranking', {
@@ -256,7 +269,10 @@ async function reconciliation(
 	request: APIRequestContext,
 	params: { month: string; asOf?: string; projectId?: number }
 ): Promise<ReconciliationData> {
-	const query = new URLSearchParams({ view: 'expenditure', month: params.month });
+	const query = new URLSearchParams({
+		view: 'expenditure',
+		month: params.month,
+	});
 	if (params.asOf) query.set('as_of', params.asOf);
 	if (params.projectId !== undefined) {
 		query.set('project_id', String(params.projectId));
@@ -286,9 +302,10 @@ function disclosureOf(
 		(entry) =>
 			entry.code === code && (period === undefined || entry.period === period)
 	);
-	expect(found.length, `${code}${period ? ` (${period})` : ''}`).toBeGreaterThan(
-		0
-	);
+	expect(
+		found.length,
+		`${code}${period ? ` (${period})` : ''}`
+	).toBeGreaterThan(0);
 	return found[0];
 }
 
@@ -517,7 +534,9 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
 		GAMMA,
 		BETA,
 	]);
-	expect(data.ranking.by_increase.map((entry) => entry.rank)).toEqual([1, 2, 3]);
+	expect(data.ranking.by_increase.map((entry) => entry.rank)).toEqual([
+		1, 2, 3,
+	]);
 	expect(data.ranking.by_increase.map((entry) => entry.change_amount)).toEqual([
 		23000, 12000, -10000,
 	]);
@@ -531,7 +550,9 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
 	// The comparison says what it covers: an equal window, late and backdated
 	// entries on both sides, day-less period evidence, and the row-level states
 	// that keep these figures from reading as complete.
-	expect(disclosureOf(data, 'equal_period_comparison').count).toBe(ELAPSED_DAYS);
+	expect(disclosureOf(data, 'equal_period_comparison').count).toBe(
+		ELAPSED_DAYS
+	);
 	const lateCurrent = disclosureOf(data, 'late_recorded_cost', 'current');
 	expect(lateCurrent.count).toBe(2);
 	expect(lateCurrent.amount).toBe(5000);
@@ -565,7 +586,11 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
 	expect(data.evidence.unresolved_classification.count).toBe(1);
 
 	// The database agrees, row by row: amounts and entry times.
-	const persisted = await rows<{ project_code: string; total: string; records: number }>(
+	const persisted = await rows<{
+		project_code: string;
+		total: string;
+		records: number;
+	}>(
 		`SELECT p.project_code, SUM(e.recognized_amount) AS total, COUNT(*) AS records
        FROM expenses e
        JOIN projects p ON p.project_id = e.project_id
@@ -577,7 +602,9 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
       ORDER BY p.project_code`,
 		[`${MONTH}-01`, `${MONTH}-${JUNE_DAYS}`, ALPHA, BETA, GAMMA, DELTA]
 	);
-	expect(persisted.map((entry) => [entry.project_code, Number(entry.total)])).toEqual([
+	expect(
+		persisted.map((entry) => [entry.project_code, Number(entry.total)])
+	).toEqual([
 		[ALPHA, EXPECTED.alpha.month],
 		[BETA, EXPECTED.beta.month],
 		[GAMMA, EXPECTED.gamma.month],
@@ -601,9 +628,9 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
 	expect(String(lateStored[2].created_at).slice(0, 10)).toBe('2022-05-20');
 
 	// No row ever claims a reconstructed label nothing produced for it.
-	expect(data.projects.every((row) => row.evidence.reconstructed_records === 0)).toBe(
-		true
-	);
+	expect(
+		data.projects.every((row) => row.evidence.reconstructed_records === 0)
+	).toBe(true);
 
 	evidence.seeded = { costs: seeded.costs, projects: seeded.projects };
 	evidence.equalPeriod = {
@@ -656,7 +683,9 @@ test('compares a month that has elapsed against the whole prior month', async ({
 	const alpha = rowOf(data, ALPHA);
 	expect(alpha.comparison_cost).toBe(EXPECTED.alpha.month);
 	expect(alpha.previous_period_cost).toBe(EXPECTED.alpha.priorMonth);
-	expect(alpha.change_amount).toBe(EXPECTED.alpha.month - EXPECTED.alpha.priorMonth);
+	expect(alpha.change_amount).toBe(
+		EXPECTED.alpha.month - EXPECTED.alpha.priorMonth
+	);
 	// 8000 / 162000 = 4.9382…%, stated to two decimals.
 	expect(alpha.change_percent).toBe(4.94);
 	expect(alpha.cost_to_date).toBe(EXPECTED.alpha.toDate + 40000);
@@ -698,7 +727,10 @@ test('compares a month that has elapsed against the whole prior month', async ({
 test('keeps the company reconciliation unfiltered behind a Project filter', async ({
 	request,
 }) => {
-	const unfiltered = await reconciliation(request, { month: MONTH, asOf: AS_OF });
+	const unfiltered = await reconciliation(request, {
+		month: MONTH,
+		asOf: AS_OF,
+	});
 	const alphaId = unfiltered.project_options.find(
 		(option) => option.project_code === ALPHA
 	)!.project_id;
@@ -934,7 +966,9 @@ test('ranks, compares, and drills down through the real report controls', async 
 	await expect(view).toHaveAttribute('data-month', '2023-06');
 	await expect(page.getByTestId('fy-label')).toContainText('FY 2023–24');
 	await expect(
-		page.locator('[data-testid="coverage-notice"][data-code="no_recognized_cost"]')
+		page.locator(
+			'[data-testid="coverage-notice"][data-code="no_recognized_cost"]'
+		)
 	).toBeVisible();
 	await expect(
 		page.locator(
@@ -999,7 +1033,9 @@ test('records, recognizes, and re-ranks a cost through the report controls', asy
 	await page.getByRole('button', { name: 'Record cost', exact: true }).click();
 	const form = page.getByTestId('cost-form');
 	await expect(form).toBeVisible();
-	await form.getByLabel('Classification', { exact: true }).selectOption('project');
+	await form
+		.getByLabel('Classification', { exact: true })
+		.selectOption('project');
 	await form.getByLabel('Project', { exact: true }).click();
 	await page.getByPlaceholder('Search...').fill(ENTERED);
 	await page.getByRole('button', { name: new RegExp(ENTERED) }).click();
@@ -1026,7 +1062,9 @@ test('records, recognizes, and re-ranks a cost through the report controls', asy
 	await form
 		.getByLabel('Evidence reference', { exact: true })
 		.fill('E2E-320-GRN-UI-1');
-	await form.getByRole('button', { name: 'Save and submit', exact: true }).click();
+	await form
+		.getByRole('button', { name: 'Save and submit', exact: true })
+		.click();
 	await expect(form).toBeHidden();
 
 	// The entry waits in the review queue and changes no confirmed figure.
@@ -1066,7 +1104,9 @@ test('records, recognizes, and re-ranks a cost through the report controls', asy
 		where: 'ui',
 	});
 
-	await queueRow.getByRole('button', { name: 'Recognize', exact: true }).click();
+	await queueRow
+		.getByRole('button', { name: 'Recognize', exact: true })
+		.click();
 	const dialog = page.getByTestId('command-dialog');
 	await expect(dialog).toBeVisible();
 	await dialog
@@ -1084,7 +1124,9 @@ test('records, recognizes, and re-ranks a cost through the report controls', asy
 		.poll(
 			async () =>
 				Number(
-					await page.getByTestId('comparison-current').getAttribute('data-value')
+					await page
+						.getByTestId('comparison-current')
+						.getAttribute('data-value')
 				),
 			{ timeout: 10_000 }
 		)
@@ -1106,9 +1148,11 @@ test('records, recognizes, and re-ranks a cost through the report controls', asy
 	).toHaveAttribute('data-count', '2');
 	await expect(view).toHaveAttribute('data-month', MONTH);
 	await expect(
-		page.getByTestId('recognition-queue').locator(
-			`[data-testid="queue-row"][data-source-reference="${UI_ENTRY.sourceReference}"]`
-		)
+		page
+			.getByTestId('recognition-queue')
+			.locator(
+				`[data-testid="queue-row"][data-source-reference="${UI_ENTRY.sourceReference}"]`
+			)
 	).toBeHidden();
 
 	// The cost is durable, versioned, and counted once.

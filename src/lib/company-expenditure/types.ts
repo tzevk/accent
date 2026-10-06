@@ -225,6 +225,8 @@ export interface ComparisonCurrency {
 	change_amount: number | null;
 	change_percent: number | null;
 	change_state: ChangeState;
+	/** The window's own direct-cost categories, each counted once. */
+	groups: ReconciliationGroup[];
 	/** Window records counted without day-level service evidence. */
 	undated_records: number;
 	/** Window records entered after the window closed. */

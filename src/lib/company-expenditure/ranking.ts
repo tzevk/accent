@@ -21,7 +21,14 @@
 
 import { div, mul, sub } from '@/lib/money';
 import { isConfirmed, isOpenState } from './recognition';
-import { confirmedAmount, rounded, sumMoney } from './totals';
+import {
+	confirmedAmount,
+	GROUP_CLASSIFICATION,
+	GROUP_KEYS,
+	GROUP_LABELS,
+	rounded,
+	sumMoney,
+} from './totals';
 import type {
 	ChangeState,
 	ComparisonBasis,
@@ -32,6 +39,7 @@ import type {
 	ProjectEvidenceState,
 	ProjectRanking,
 	RankingEntry,
+	ReconciliationGroup,
 	ReconciliationProjectRow,
 } from './types';
 
@@ -149,7 +157,10 @@ export interface ComparisonWindow {
 	throughDate: string | null;
 }
 
-export function comparisonWindow(month: string, asOf: string): ComparisonWindow {
+export function comparisonWindow(
+	month: string,
+	asOf: string
+): ComparisonWindow {
 	const monthDays = daysInMonth(month);
 	const priorMonth = previousMonthOf(month);
 	const priorMonthDays = daysInMonth(priorMonth);
@@ -232,7 +243,10 @@ export function windowRecords(
 }
 
 /** Was the record entered after a period closed? Late and backdated evidence. */
-export function isLateEntry(record: CostRecord, endDate: string | null): boolean {
+export function isLateEntry(
+	record: CostRecord,
+	endDate: string | null
+): boolean {
 	if (endDate === null || !record.createdAt) return false;
 	return record.createdAt.slice(0, 10) > endDate;
 }
@@ -269,8 +283,12 @@ function currencyComparison(
 ): ComparisonCurrency {
 	const sameCurrency = (record: CostRecord) =>
 		(record.currency ?? 'INR') === currency;
-	const current = windowRecords(records, window, 'current').filter(sameCurrency);
-	const prior = windowRecords(priorRecords, window, 'prior').filter(sameCurrency);
+	const current = windowRecords(records, window, 'current').filter(
+		sameCurrency
+	);
+	const prior = windowRecords(priorRecords, window, 'prior').filter(
+		sameCurrency
+	);
 	const currentCost = sumMoney(current.map(confirmedAmount));
 	// No prior-window record for this currency is an unknown prior amount, not
 	// a zero: the report cannot tell "no cost" from "not captured".
@@ -278,7 +296,9 @@ function currencyComparison(
 		prior.length === 0 ? null : sumMoney(prior.map(confirmedAmount));
 	const currentEnd = windowEndDate(window, 'current');
 	const priorEnd = windowEndDate(window, 'prior');
-	const lateCurrent = current.filter((record) => isLateEntry(record, currentEnd));
+	const lateCurrent = current.filter((record) =>
+		isLateEntry(record, currentEnd)
+	);
 	const latePrior = prior.filter((record) => isLateEntry(record, priorEnd));
 	return {
 		currency,
@@ -288,6 +308,19 @@ function currencyComparison(
 			priorCost === null ? null : rounded(sub(currentCost, priorCost)),
 		change_percent: percentChange(currentCost, priorCost),
 		change_state: changeStateFor(currentCost, priorCost),
+		// The window's own categorization, from the same records, so a reader can
+		// see which direct-cost category moved the comparison.
+		groups: GROUP_KEYS.map((key) => {
+			const matching = current.filter(
+				(record) => record.classification === GROUP_CLASSIFICATION[key]
+			);
+			return {
+				key,
+				label: GROUP_LABELS[key],
+				amount: sumMoney(matching.map(confirmedAmount)),
+				record_count: matching.length,
+			} satisfies ReconciliationGroup;
+		}),
 		undated_records: current.filter(
 			(record) => record.periodBasis !== 'service_period'
 		).length,
@@ -314,7 +347,9 @@ export interface ComparisonInput {
  * The comparable-period comparison, its per-currency company figures, and the
  * disclosures that say what the comparison does and does not cover.
  */
-export function buildPeriodComparison(input: ComparisonInput): PeriodComparison {
+export function buildPeriodComparison(
+	input: ComparisonInput
+): PeriodComparison {
 	const window = comparisonWindow(input.month, input.asOf);
 	const codes = [
 		...new Set(
@@ -500,8 +535,7 @@ export function buildPeriodComparison(input: ComparisonInput): PeriodComparison 
 		currency: only?.currency ?? null,
 		current_cost: current,
 		prior_cost: prior,
-		change_amount:
-			prior === null ? null : rounded(sub(current ?? 0, prior)),
+		change_amount: prior === null ? null : rounded(sub(current ?? 0, prior)),
 		change_percent: current === null ? null : percentChange(current, prior),
 		change_state: changeStateFor(current ?? 0, prior),
 		currency_totals: currencyTotals,
@@ -523,7 +557,9 @@ export function projectEvidence(records: CostRecord[]): ProjectEvidenceState {
 			record.grossAmount === null &&
 			(isConfirmed(record.state) || isOpenState(record.state))
 	);
-	const reconstructed = confirmed.filter((record) => record.reconstructed === true);
+	const reconstructed = confirmed.filter(
+		(record) => record.reconstructed === true
+	);
 	const billDate = confirmed.filter(
 		(record) => record.periodBasis === 'bill_date_fallback'
 	);
@@ -584,9 +620,7 @@ function rankingEntry(row: ReconciliationProjectRow): RankingEntry {
  * among them stays deterministic. A row whose comparison amount is unknown
  * cannot be placed by increase and is reported as unranked with its reason.
  */
-export function rankProjects(
-	rows: ReconciliationProjectRow[]
-): ProjectRanking {
+export function rankProjects(rows: ReconciliationProjectRow[]): ProjectRanking {
 	const currencies = [...new Set(rows.map((row) => row.currency))].sort();
 	const byCost: RankingEntry[] = [];
 	const byIncrease: RankingEntry[] = [];
@@ -602,7 +636,9 @@ export function rankProjects(
 		for (const row of costOrder) {
 			const entry = rankingEntry(row);
 			entry.rank =
-				1 + costOrder.filter((other) => other.incurred_cost > row.incurred_cost).length;
+				1 +
+				costOrder.filter((other) => other.incurred_cost > row.incurred_cost)
+					.length;
 			byCost.push(entry);
 		}
 		const rankable = group.filter((row) => row.change_amount !== null);
@@ -621,7 +657,9 @@ export function rankProjects(
 				).length;
 			byIncrease.push(entry);
 		}
-		for (const row of group.filter((candidate) => candidate.change_amount === null)) {
+		for (const row of group.filter(
+			(candidate) => candidate.change_amount === null
+		)) {
 			unranked.push({
 				project_id: row.project_id,
 				currency: row.currency,

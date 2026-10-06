@@ -36,6 +36,7 @@ import {
 	confirmedAmount,
 	countByState,
 	currencyOf,
+	GROUP_LABELS,
 	rounded,
 	subtotal,
 	sumMoney,
@@ -52,12 +53,6 @@ import type {
 } from './types';
 
 export { monthLabel };
-
-const GROUP_LABELS = {
-	incurred_project_cost: 'Incurred Project Cost',
-	company_overhead: 'Company Overhead',
-	unallocated_cost: 'Unallocated Cost',
-} as const;
 
 function currencySlice(records: CostRecord[], currency: string): CurrencyTotal {
 	let project = R(0);
@@ -143,8 +138,7 @@ function projectRows(
 			const comparison = sumMoney(inWindow.map(confirmedAmount));
 			const priorRows = priorWindowRecords.filter(
 				(record) =>
-					record.projectId === id &&
-					(record.currency ?? 'INR') === currency
+					record.projectId === id && (record.currency ?? 'INR') === currency
 			);
 			// No prior-window record for this Project and currency is an unknown
 			// prior amount, never a zero: absence of records is not evidence of
@@ -154,8 +148,7 @@ function projectRows(
 					? null
 					: sumMoney(priorRows.map(confirmedAmount));
 			const before = costBefore.get(id);
-			const beforeAmount =
-				before === undefined ? 0 : before.get(currency);
+			const beforeAmount = before === undefined ? 0 : before.get(currency);
 			const lateRows = inWindow.filter((record) =>
 				isLateEntry(record, currentEnd)
 			);
@@ -176,9 +169,7 @@ function projectRows(
 				change_percent: percentChange(comparison, previous),
 				change_state: changeStateFor(comparison, previous),
 				cost_to_date:
-					beforeAmount === null
-						? null
-						: rounded(add(beforeAmount, comparison)),
+					beforeAmount === null ? null : rounded(add(beforeAmount, comparison)),
 				late_entry:
 					lateRows.length === 0
 						? null

@@ -158,14 +158,19 @@ export async function fetchCompanyReconciliation(
 ): Promise<CompanyReconciliation> {
 	const month = request.month;
 	const today = currentDate();
-	const [records, priorMonthRecords, projectCostBefore, projectOptions, availableMonths] =
-		await Promise.all([
-			loadMonthRecords(pool, month),
-			loadMonthRecords(pool, previousMonthOf(month)),
-			loadProjectCostBefore(pool, month),
-			loadProjectOptions(pool),
-			loadExpenditureMonths(pool, currentMonth()),
-		]);
+	const [
+		records,
+		priorMonthRecords,
+		projectCostBefore,
+		projectOptions,
+		availableMonths,
+	] = await Promise.all([
+		loadMonthRecords(pool, month),
+		loadMonthRecords(pool, previousMonthOf(month)),
+		loadProjectCostBefore(pool, month),
+		loadProjectOptions(pool),
+		loadExpenditureMonths(pool, currentMonth()),
+	]);
 
 	return buildReconciliation({
 		month,
