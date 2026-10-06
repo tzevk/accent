@@ -24,6 +24,9 @@ const FINANCIAL_FIELDS = [
 	'total_amount',
 	'currency',
 	'project_id',
+	// #317: the spend's nature decides whether the amount is cost or a balance
+	// consumed across periods, so it is a versioned financial field too.
+	'cost_nature',
 ];
 
 /**
@@ -119,7 +122,7 @@ export async function PUT(request, { params }) {
 				{
 					success: false,
 					error:
-						'Amount, tax, total, currency, expense date, and project are versioned financial fields. Change them through POST /api/admin/expenses/{id}/commands with command "update" and the current expected_version.',
+						'Amount, tax, total, currency, expense date, project, and nature are versioned financial fields. Change them through POST /api/admin/expenses/{id}/commands with command "update" and the current expected_version.',
 					code: 'financial_fields_versioned',
 					fields: attemptedFinancialFields,
 				},

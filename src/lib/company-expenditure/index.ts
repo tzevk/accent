@@ -24,6 +24,10 @@
  *   writes (one path, versioned)
  *     recordCost(input, actor, { connection? })
  *     executeCommand({ id, command, expectedVersion, reason?, patch? }, actor)
+ *     capturePeriodCharge({ sourceId, period, basis, amount, evidenceReference }, actor)
+ *       Approve period consumption, depreciation, or amortization against a
+ *       non-operating item's supported balance (#317).
+ *     cancelPeriodCharge({ chargeUid, command: 'cancel', expectedVersion, reason }, actor)
  *
  * Invariants the module guarantees to every caller:
  *  - confirmed cost is `recognition_state = 'recognized'` and nothing else;
@@ -32,7 +36,10 @@
  *    date as a disclosed fallback;
  *  - currencies are not added together without a supported conversion;
  *  - every accepted command increments `financial_version` and appends one
- *    journal row, so a repeated or stale command changes nothing.
+ *    journal row, so a repeated or stale command changes nothing;
+ *  - an advance, deposit, prepayment, or capital item is never expensed by its
+ *    payment: only approved, evidenced period charges become cost, in the
+ *    charge's own month, and they never exceed the source's confirmed balance.
  *
  * Later slices extend this module: a source adapter per cost source feeds the
  * same `buildReconciliation`, `command`/`revision` controls hang off the same
@@ -43,11 +50,15 @@
 import { query } from '@/utils/database';
 import { SOURCE_COVERAGE } from './coverage';
 import {
+	loadChargeTotals,
 	loadCostEvents,
+	loadCostRecordsByIds,
 	loadDrilldown,
 	loadExpenditureMonths,
+	loadMonthCharges,
 	loadMonthProjectCost,
 	loadMonthRecords,
+	loadNonOperatingSources,
 	loadProjectOptions,
 	type SqlConnection,
 } from './records';
@@ -61,9 +72,35 @@ import type {
 
 export { recordCost, executeCommand, loadCost, CostError } from './commands';
 export type { CostActor, CommandOptions } from './commands';
+export {
+	capturePeriodCharge,
+	cancelPeriodCharge,
+} from './charges';
+export type {
+	CapturePeriodChargeInput,
+	PeriodChargeCommandInput,
+} from './charges';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
 export { monthLabel } from './reconciliation';
+export {
+	CHARGE_BASIS_LABELS,
+	COST_NATURES,
+	NATURE_LABELS,
+	NON_OPERATING_NATURES,
+	PERIOD_CHARGE_BASES,
+	chargePeriodDate,
+	consumedToDate,
+	isChargePeriod,
+	isNonOperatingNature,
+	periodChargeBlockers,
+	remainingBalance,
+} from './non-operating';
+export type {
+	PeriodChargeBlocker,
+	PeriodChargeBlockerInput,
+	PeriodChargeCandidate,
+} from './non-operating';
 export {
 	effectiveTaxTreatment,
 	evaluateCost,
@@ -84,12 +121,18 @@ export type {
 	CostEvaluation,
 	CostExceptionCode,
 	CostJournalEntry,
+	CostNature,
 	CostPatch,
 	CostRecord,
 	CoverageNotice,
 	CurrencyTotal,
 	EvidenceSummary,
+	NonOperatingItemJson,
+	NonOperatingSection,
 	PeriodBasis,
+	PeriodChargeJson,
+	PeriodChargeBasis,
+	PeriodChargeState,
 	RecognitionState,
 	RecordCostInput,
 	RecordedCost,
@@ -135,19 +178,54 @@ export async function fetchCompanyReconciliation(
 ): Promise<CompanyReconciliation> {
 	const month = request.month;
 	const previousMonth = previousMonthOf(month);
-	const [records, previousProjectCost, projectOptions, availableMonths] =
-		await Promise.all([
-			loadMonthRecords(pool, month),
-			previousMonth
-				? loadMonthProjectCost(pool, previousMonth)
-				: Promise.resolve(new Map<number, Map<string, number | null>>()),
-			loadProjectOptions(pool),
-			loadExpenditureMonths(pool, currentMonth()),
-		]);
+	const [
+		records,
+		charges,
+		monthNonOperating,
+		previousProjectCost,
+		projectOptions,
+		availableMonths,
+	] = await Promise.all([
+		loadMonthRecords(pool, month),
+		loadMonthCharges(pool, { month }),
+		loadNonOperatingSources(pool, month),
+		previousMonth
+			? loadMonthProjectCost(pool, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		loadProjectOptions(pool),
+		loadExpenditureMonths(pool, currentMonth()),
+	]);
+
+	// A charge can draw down a balance recognized in an earlier month, so the
+	// section needs those sources too; every other source of the month is
+	// already loaded, and duplicates collapse by expense id.
+	const sourcesById = new Map(
+		monthNonOperating.map((record) => [record.id, record])
+	);
+	const chargeSourceIds = [
+		...new Set(
+			charges
+				.map((charge) => charge.sourceId)
+				.filter((id) => !sourcesById.has(id))
+		),
+	];
+	for (const record of await loadCostRecordsByIds(pool, chargeSourceIds)) {
+		sourcesById.set(record.id, record);
+	}
+	const nonOperatingSources = [...sourcesById.values()];
+	const chargeTotals = await loadChargeTotals(
+		pool,
+		nonOperatingSources
+			.map((record) => record.costUid)
+			.filter((uid): uid is string => !!uid)
+	);
 
 	return buildReconciliation({
 		month,
 		records,
+		charges,
+		nonOperatingSources,
+		chargeTotals,
 		previousMonthProjectCost: previousProjectCost,
 		projectFilter: request.projectId ?? null,
 		projectOptions,

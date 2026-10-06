@@ -41,9 +41,25 @@ export const EXPENDITURE_EXPENSE_PREFIX = 'E2E-EXP-';
 export const EXPENDITURE_PROJECT_CODE_PREFIX = 'E2E-EXP-P';
 export const EXPENDITURE_COST_UID_PREFIX = 'e2e-cost-';
 export const EXPENDITURE_RUN_COST_UID_PREFIX = 'e2e-run-';
+/** Period-charge identities (`expense_period_charges.charge_uid`). */
+export const EXPENDITURE_CHARGE_UID_PREFIX = 'e2e-charge-';
 export const EXPENDITURE_VENDOR_PREFIX = 'E2E Expenditure Vendor ';
 /** Category every fixture row carries (`expenses.category`). */
 export const EXPENDITURE_CATEGORY = 'E2E Expenditure';
+
+/**
+ * Non-operating fixture months (ticket #317). The source balances are
+ * recognized in July 2019 and their approved period charges fall in August and
+ * September 2019, so no other spec's expected monthly totals change: #306 owns
+ * 2019-01/02 (and records through 2019-03/04), and the months from 2019-10 are
+ * reserved by the currency slice. Ad-hoc charges created through the app use
+ * 2019-06.
+ */
+export const EXPENDITURE_SOURCE_MONTH = '2019-07';
+export const EXPENDITURE_CHARGE_MONTH = '2019-08';
+export const EXPENDITURE_CHARGE_LATER_MONTH = '2019-09';
+/** The month ad-hoc (created, then cancelled) period charges are dated in. */
+export const EXPENDITURE_AD_HOC_CHARGE_MONTH = '2019-06';
 
 /**
  * A real report reader with `reports:read` and **no** `other_expenses:read`.
@@ -105,11 +121,30 @@ export type ExpenditureTaxTreatment =
 	| 'non_recoverable'
 	| 'unresolved';
 
+/** What the spend is (ticket #317); omitted means operating cost. */
+export type ExpenditureNature =
+	| 'operating'
+	| 'advance'
+	| 'deposit'
+	| 'prepayment'
+	| 'capital'
+	| 'unresolved';
+
+export type ExpenditureChargeBasis =
+	| 'consumption'
+	| 'depreciation'
+	| 'amortization';
+
 export interface SeedCost {
 	/** Stable key the spec addresses the row by. */
 	key: string;
 	expenseNumber: string;
 	costUid: string;
+	/**
+	 * What the spend is (#317). Omitted rows are operating cost, the meaning
+	 * every pre-#317 row carried.
+	 */
+	nature?: ExpenditureNature;
 	classification: ExpenditureClassification;
 	project: ExpenditureProjectKey | null;
 	state: ExpenditureState;
@@ -524,6 +559,264 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		evidenceReference: 'E2E-GRN-0016',
 		description: 'E2E February USD project cost',
 	},
+	// ── Non-operating sources (#317) ──────────────────────────────────────
+	// Recognized balances, excluded from Company Incurred Cost; only approved
+	// period charges (EXPENDITURE_CHARGES below) become cost.
+	{
+		key: 'advancePractice',
+		expenseNumber: 'E2E-EXP-317-A',
+		costUid: 'e2e-cost-317-a',
+		nature: 'advance',
+		classification: 'project',
+		project: 'alpha',
+		state: 'recognized',
+		recognitionMonth: EXPENDITURE_SOURCE_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: `${EXPENDITURE_SOURCE_MONTH}-03`,
+		serviceEnd: `${EXPENDITURE_SOURCE_MONTH}-03`,
+		billDate: `${EXPENDITURE_SOURCE_MONTH}-04`,
+		expenseDate: `${EXPENDITURE_SOURCE_MONTH}-04`,
+		currency: 'INR',
+		amount: '60000.00',
+		taxAmount: '0.00',
+		grossAmount: '60000.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '60000.00',
+		sourceReference: 'E2E-INV-317-A',
+		evidenceReference: 'E2E-GRN-317-A',
+		description: 'E2E advance paid against future project work',
+	},
+	{
+		key: 'depositPractice',
+		expenseNumber: 'E2E-EXP-317-B',
+		costUid: 'e2e-cost-317-b',
+		nature: 'deposit',
+		classification: 'company_overhead',
+		project: null,
+		state: 'recognized',
+		recognitionMonth: EXPENDITURE_SOURCE_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: `${EXPENDITURE_SOURCE_MONTH}-05`,
+		serviceEnd: `${EXPENDITURE_SOURCE_MONTH}-05`,
+		billDate: `${EXPENDITURE_SOURCE_MONTH}-06`,
+		expenseDate: `${EXPENDITURE_SOURCE_MONTH}-06`,
+		currency: 'INR',
+		amount: '30000.00',
+		taxAmount: '0.00',
+		grossAmount: '30000.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '30000.00',
+		sourceReference: 'E2E-INV-317-B',
+		evidenceReference: 'E2E-GRN-317-B',
+		description: 'E2E refundable deposit held by a supplier',
+	},
+	{
+		key: 'prepaymentPractice',
+		expenseNumber: 'E2E-EXP-317-C',
+		costUid: 'e2e-cost-317-c',
+		nature: 'prepayment',
+		classification: 'project',
+		project: 'beta',
+		state: 'recognized',
+		recognitionMonth: EXPENDITURE_SOURCE_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: `${EXPENDITURE_SOURCE_MONTH}-08`,
+		serviceEnd: `${EXPENDITURE_SOURCE_MONTH}-08`,
+		billDate: `${EXPENDITURE_SOURCE_MONTH}-09`,
+		expenseDate: `${EXPENDITURE_SOURCE_MONTH}-09`,
+		currency: 'INR',
+		amount: '12000.00',
+		taxAmount: '0.00',
+		grossAmount: '12000.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '12000.00',
+		sourceReference: 'E2E-INV-317-C',
+		evidenceReference: 'E2E-GRN-317-C',
+		description: 'E2E prepaid service consumed across two periods',
+	},
+	{
+		key: 'capitalPractice',
+		expenseNumber: 'E2E-EXP-317-D',
+		costUid: 'e2e-cost-317-d',
+		nature: 'capital',
+		classification: 'project',
+		project: 'alpha',
+		state: 'recognized',
+		recognitionMonth: EXPENDITURE_SOURCE_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: `${EXPENDITURE_SOURCE_MONTH}-11`,
+		serviceEnd: `${EXPENDITURE_SOURCE_MONTH}-11`,
+		billDate: `${EXPENDITURE_SOURCE_MONTH}-12`,
+		expenseDate: `${EXPENDITURE_SOURCE_MONTH}-12`,
+		currency: 'INR',
+		amount: '100000.00',
+		taxAmount: '18000.00',
+		grossAmount: '118000.00',
+		taxTreatment: 'recoverable',
+		taxEvidence: 'E2E-GST-317-D',
+		recognizedAmount: '82000.00',
+		sourceReference: 'E2E-INV-317-D',
+		evidenceReference: 'E2E-GRN-317-D',
+		description: 'E2E capital equipment with evidenced recoverable tax',
+	},
+	{
+		key: 'operatingChargeMonth',
+		expenseNumber: 'E2E-EXP-317-E',
+		costUid: 'e2e-cost-317-e',
+		classification: 'company_overhead',
+		project: null,
+		state: 'recognized',
+		recognitionMonth: EXPENDITURE_CHARGE_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: `${EXPENDITURE_CHARGE_MONTH}-04`,
+		serviceEnd: `${EXPENDITURE_CHARGE_MONTH}-04`,
+		billDate: `${EXPENDITURE_CHARGE_MONTH}-05`,
+		expenseDate: `${EXPENDITURE_CHARGE_MONTH}-05`,
+		currency: 'INR',
+		amount: '5000.00',
+		taxAmount: '0.00',
+		grossAmount: '5000.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '5000.00',
+		sourceReference: 'E2E-INV-317-E',
+		evidenceReference: 'E2E-GRN-317-E',
+		description: 'E2E operating overhead in the first charge month',
+	},
+	{
+		key: 'unresolvedNature',
+		expenseNumber: 'E2E-EXP-317-F',
+		costUid: 'e2e-cost-317-f',
+		nature: 'unresolved',
+		classification: 'unallocated',
+		project: null,
+		state: 'recognized',
+		recognitionMonth: EXPENDITURE_CHARGE_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: `${EXPENDITURE_CHARGE_MONTH}-06`,
+		serviceEnd: `${EXPENDITURE_CHARGE_MONTH}-06`,
+		billDate: `${EXPENDITURE_CHARGE_MONTH}-07`,
+		expenseDate: `${EXPENDITURE_CHARGE_MONTH}-07`,
+		currency: 'INR',
+		amount: '7000.00',
+		taxAmount: '0.00',
+		grossAmount: '7000.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '7000.00',
+		sourceReference: 'E2E-INV-317-F',
+		evidenceReference: 'E2E-GRN-317-F',
+		description: 'E2E treatment still unresolved: operating or advance',
+	},
+	{
+		key: 'draftAdvance',
+		expenseNumber: 'E2E-EXP-317-G',
+		costUid: 'e2e-cost-317-g',
+		nature: 'advance',
+		classification: 'project',
+		project: 'alpha',
+		state: 'draft',
+		recognitionMonth: EXPENDITURE_SOURCE_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: `${EXPENDITURE_SOURCE_MONTH}-15`,
+		serviceEnd: `${EXPENDITURE_SOURCE_MONTH}-15`,
+		billDate: `${EXPENDITURE_SOURCE_MONTH}-16`,
+		expenseDate: `${EXPENDITURE_SOURCE_MONTH}-16`,
+		currency: 'INR',
+		amount: '4000.00',
+		taxAmount: '0.00',
+		grossAmount: '4000.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: null,
+		sourceReference: 'E2E-INV-317-G',
+		evidenceReference: 'E2E-GRN-317-G',
+		description: 'E2E advance not approved yet: no supported balance',
+	},
+];
+
+/** One approved (or cancelled) period charge seeded against a source cost. */
+export interface SeedCharge {
+	/** Stable key the spec addresses the row by. */
+	key: string;
+	chargeUid: string;
+	/** `SeedCost.key` of the non-operating source it consumes. */
+	sourceKey: string;
+	/** The charge's own month (`YYYY-MM`). */
+	period: string;
+	basis: ExpenditureChargeBasis;
+	amount: string;
+	state: 'approved' | 'cancelled';
+	evidenceReference: string;
+	cancelReason?: string;
+	description: string;
+}
+
+/**
+ * Approved period consumption, depreciation, and amortization. The cancelled
+ * deposit charge proves a cancelled charge neither counts as cost nor reduces
+ * the remaining balance — and that the balance it freed can be re-entered.
+ */
+export const EXPENDITURE_CHARGES: SeedCharge[] = [
+	{
+		key: 'advanceConsumption',
+		chargeUid: 'e2e-charge-317-a1',
+		sourceKey: 'advancePractice',
+		period: EXPENDITURE_CHARGE_MONTH,
+		basis: 'consumption',
+		amount: '20000.00',
+		state: 'approved',
+		evidenceReference: 'E2E-CHG-317-A1',
+		description: 'E2E advance consumed by project work',
+	},
+	{
+		key: 'depositCancelled',
+		chargeUid: 'e2e-charge-317-b1',
+		sourceKey: 'depositPractice',
+		period: EXPENDITURE_CHARGE_MONTH,
+		basis: 'consumption',
+		amount: '10000.00',
+		state: 'cancelled',
+		evidenceReference: 'E2E-CHG-317-B1',
+		cancelReason: 'E2E cancelled consumption of a deposit',
+		description: 'E2E cancelled deposit consumption',
+	},
+	{
+		key: 'prepaymentFirst',
+		chargeUid: 'e2e-charge-317-c1',
+		sourceKey: 'prepaymentPractice',
+		period: EXPENDITURE_CHARGE_MONTH,
+		basis: 'consumption',
+		amount: '4000.00',
+		state: 'approved',
+		evidenceReference: 'E2E-CHG-317-C1',
+		description: 'E2E prepaid service consumed in the first period',
+	},
+	{
+		key: 'capitalDepreciation',
+		chargeUid: 'e2e-charge-317-d1',
+		sourceKey: 'capitalPractice',
+		period: EXPENDITURE_CHARGE_MONTH,
+		basis: 'depreciation',
+		amount: '5000.00',
+		state: 'approved',
+		evidenceReference: 'E2E-CHG-317-D1',
+		description: 'E2E approved depreciation of the capital item',
+	},
+	{
+		key: 'prepaymentSecond',
+		chargeUid: 'e2e-charge-317-c2',
+		sourceKey: 'prepaymentPractice',
+		period: EXPENDITURE_CHARGE_LATER_MONTH,
+		basis: 'consumption',
+		amount: '8000.00',
+		state: 'approved',
+		evidenceReference: 'E2E-CHG-317-C2',
+		description: 'E2E prepaid service consumed in the second period',
+	},
 ];
 
 export interface SeededExpenditure {
@@ -533,6 +826,8 @@ export interface SeededExpenditure {
 	costs: number;
 	/** `expenses.id` per `SeedCost.key`, for direct database assertions. */
 	expenseIds: Record<string, number>;
+	/** `expense_period_charges.id` per `SeedCharge.key`. */
+	chargeIds: Record<string, number>;
 }
 
 /** Create the report-only reader's role and user rows from scratch. */
@@ -596,6 +891,40 @@ async function cleanupExpenditureReportOnlyReader(): Promise<void> {
 export async function cleanupExpenditureFixtures(): Promise<number> {
 	await cleanupExpenditureReportOnlyReader();
 	let removed = 0;
+	// Period-charge history is keyed by the owning cost's identity, so it
+	// survives its expense row and must be purged first — in both its own
+	// tables: the append-only events, then the charge rows. A database that has
+	// not run the #317 migration yet has neither table, and cleanup must still
+	// succeed (the seed that follows is the loud failure in that case).
+	for (const table of [
+		'expense_period_charge_events',
+		'expense_period_charges',
+	]) {
+		try {
+			removed += (
+				await exec(
+					`DELETE FROM ${table}
+          WHERE charge_uid LIKE ?
+             OR source_cost_uid LIKE ?
+             OR source_id IN (
+                  SELECT id FROM expenses
+                   WHERE expense_number LIKE ?
+                      OR category = ?
+                      OR vendor_name LIKE ?
+                )`,
+					[
+						`${EXPENDITURE_CHARGE_UID_PREFIX}%`,
+						`${EXPENDITURE_COST_UID_PREFIX}%`,
+						`${EXPENDITURE_EXPENSE_PREFIX}%`,
+						EXPENDITURE_CATEGORY,
+						`${EXPENDITURE_VENDOR_PREFIX}%`,
+					]
+				)
+			).affectedRows;
+		} catch {
+			// Pre-migration schema — nothing to purge yet.
+		}
+	}
 	// Events are keyed by the namespaced cost UID, so they survive their
 	// expense row and must be purged in their own right. The predicate also
 	// catches costs the spec records through the app: those get a minted
@@ -677,12 +1006,12 @@ export async function seedExpenditureFixtures(): Promise<SeededExpenditure> {
           amount, tax_amount, total_amount, currency, payment_mode, paid_to, paid_by,
           is_billable, is_reimbursable, project_id, department, notes, status,
           created_by, isDelete,
-          cost_uid, cost_classification, recognition_state, recognition_period, period_basis,
+          cost_uid, cost_classification, cost_nature, recognition_state, recognition_period, period_basis,
           service_period_start, service_period_end, tax_treatment, tax_evidence_reference,
           recognized_amount, source_reference, evidence_reference, financial_version,
           recognized_by, recognized_at)
        VALUES (?, ?, ?, 'E2E Sub Category', ?, ?, ?, ?, ?, ?, 'bank', ?, NULL, 0, 0, ?, NULL, ?, ?, NULL, 0,
-               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
 			[
 				cost.expenseNumber,
 				cost.expenseDate,
@@ -699,6 +1028,7 @@ export async function seedExpenditureFixtures(): Promise<SeededExpenditure> {
 				statusFor(cost.state),
 				cost.costUid,
 				cost.classification,
+				cost.nature ?? 'operating',
 				cost.state,
 				cost.recognitionMonth ? `${cost.recognitionMonth}-01` : null,
 				cost.periodBasis,
@@ -742,13 +1072,100 @@ export async function seedExpenditureFixtures(): Promise<SeededExpenditure> {
 		);
 	}
 
+	const chargeIds: Record<string, number> = {};
+	for (const charge of EXPENDITURE_CHARGES) {
+		const sourceId = expenseIds[charge.sourceKey];
+		if (!sourceId) {
+			throw new Error(
+				`[e2e] charge fixture ${charge.key} references unknown source ${charge.sourceKey}`
+			);
+		}
+		const cost = seededCost(charge.sourceKey);
+		const cancelled = charge.state === 'cancelled';
+		const inserted = await exec(
+			`INSERT INTO expense_period_charges
+         (charge_uid, source_table, source_id, source_cost_uid, charge_period, basis,
+          amount, currency, evidence_reference, state, financial_version, sequence,
+          approved_by, approved_at, cancelled_by, cancelled_at, cancel_reason,
+          created_at, updated_at)
+       VALUES (?, 'expenses', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
+               (SELECT id FROM users WHERE is_super_admin = 1 ORDER BY id LIMIT 1),
+               '2019-07-05 10:00:00', NULL, ?, ?, NOW(), NOW())`,
+			[
+				charge.chargeUid,
+				sourceId,
+				cost.costUid,
+				`${charge.period}-01`,
+				charge.basis,
+				charge.amount,
+				cost.currency,
+				charge.evidenceReference,
+				charge.state,
+				cancelled ? 2 : 1,
+				cancelled ? '2019-07-06 10:00:00' : null,
+				cancelled ? (charge.cancelReason ?? 'E2E cancellation') : null,
+			]
+		);
+		if (cancelled) {
+			await exec(
+				`UPDATE expense_period_charges
+            SET cancelled_by = (SELECT id FROM users WHERE is_super_admin = 1 ORDER BY id LIMIT 1)
+          WHERE id = ?`,
+				[inserted.insertId]
+			);
+		}
+		chargeIds[charge.key] = inserted.insertId;
+
+		// The append-only approval history a charge created through the app
+		// would carry: `approved`, then `cancelled` when it was withdrawn.
+		await exec(
+			`INSERT INTO expense_period_charge_events
+         (charge_uid, version, command, actor_user_id, reason, evidence_reference,
+          snapshot, created_at)
+       VALUES (?, 1, 'approved', NULL, ?, ?, ?, '2019-07-05 10:00:00')`,
+			[
+				charge.chargeUid,
+				`E2E fixture ${charge.key}`,
+				charge.evidenceReference,
+				JSON.stringify({
+					period: `${charge.period}-01`,
+					basis: charge.basis,
+					amount: charge.amount,
+					currency: cost.currency,
+					state: 'approved',
+				}),
+			]
+		);
+		if (cancelled) {
+			await exec(
+				`INSERT INTO expense_period_charge_events
+           (charge_uid, version, command, actor_user_id, reason, evidence_reference,
+            snapshot, created_at)
+         VALUES (?, 2, 'cancelled', NULL, ?, NULL, ?, '2019-07-06 10:00:00')`,
+				[
+					charge.chargeUid,
+					charge.cancelReason ?? 'E2E cancellation',
+					JSON.stringify({ state: 'cancelled' }),
+				]
+			);
+		}
+	}
+
 	return {
 		month: EXPENDITURE_MONTH,
 		nextMonth: EXPENDITURE_NEXT_MONTH,
 		projects,
 		costs: EXPENDITURE_COSTS.length,
 		expenseIds,
+		chargeIds,
 	};
+}
+
+/** The seeded period charge for a key, or a thrown error when missing. */
+export function seededCharge(key: string): SeedCharge {
+	const charge = EXPENDITURE_CHARGES.find((entry) => entry.key === key);
+	if (!charge) throw new Error(`Unknown expenditure charge fixture key: ${key}`);
+	return charge;
 }
 
 /** The seeded row for a key, or a thrown error when the fixture is missing. */
