@@ -128,6 +128,26 @@ _Avoid_: Cash paid, PO value, Total committed exposure
 The portion of a supplier order not yet recognized as incurred cost. Paying a supplier invoice does not itself create another incurred cost.
 _Avoid_: Unpaid invoice balance, Client PO balance, Cash paid
 
+**Order**:
+A client or supplier commitment with one **explicit** direction — `client` or `supplier` — stored in `orders`, identified by `order_uid`, and carrying its counterparty, Project, currency, tax/amount basis, order date, source document, status, and firm/cancellable evidence. The order number is a display and search attribute, never the identity: the same number may name two different orders.
+_Avoid_: Purchase order (when direction is unknown), PO, Commitment
+
+**Client Order**:
+An Order with direction `client` — commercial context for a Project. Its value is never incurred cost, supplier commitment, or recognized revenue; a client invoice may reference one, and its invoiced value rolls up on the order.
+_Avoid_: Sales order (when meaning an Order), Client PO value, Revenue
+
+**Supplier Order**:
+An Order with direction `supplier`. Its value is an Outstanding Supplier Commitment, not incurred cost; recognized goods or services consume it.
+_Avoid_: Purchase order (when direction is unknown), Supplier cost, Expense
+
+**Order Identity**:
+The stable `order_uid` minted when one underlying order is captured; every later reference — invoices, documents, consumption — carries it. The document number stays a display and search attribute.
+_Avoid_: PO number (when meaning identity), Row id, Document number
+
+**Legacy Order Copy**:
+An order representation left in a pre-canonical store (`purchase_orders`, `outgoing_purchase_orders`, `project_purchase_orders`, or a `project_invoices` row with `tab_type = 'purchase_order'`). It carries no reliable direction, so it is queued in `order_legacy_mappings` until a document-backed, versioned review classifies, links, or marks it a duplicate representation. Table names, counterparty text, and client-invoice links are not direction evidence, and a shared document number is not proof of one order.
+_Avoid_: Duplicate order (when unresolved), Old PO, Archived order
+
 **Project Employee Cost**:
 The share of an Employee's recorded monthly payroll employer cost, including earnings and employer contributions, attributed to a Project by its share of the Employee's Logged Hours. Excludes project expenses and supplier costs; it is not a measure of cash paid.
 _Avoid_: Total project expenditure, Total project cost, Project payments

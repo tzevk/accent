@@ -40,7 +40,7 @@ export default function EditInvoicePage() {
 	const [loadingInvoice, setLoadingInvoice] = useState(true);
 	const [companies, setCompanies] = useState([]);
 	const [showSuggestions, setShowSuggestions] = useState(false);
-	const [incomingPOs, setIncomingPOs] = useState([]);
+	const [clientOrders, setClientOrders] = useState([]);
 	const [showPOSelector, setShowPOSelector] = useState(false);
 	const [poBalance, setPoBalance] = useState(null);
 	const oldTotalRef = useRef(0);
@@ -56,6 +56,7 @@ export default function EditInvoicePage() {
 		client_state: '',
 		client_state_code: '',
 		kind_attn: '',
+		order_uid: '',
 		po_number: '',
 		po_date: '',
 		original_po_value: '',
@@ -133,27 +134,26 @@ export default function EditInvoicePage() {
 		}));
 	};
 
-	// Fetch incoming POs from database
+	// Fetch canonical client orders from the order store
 	useEffect(() => {
-		fetch('/api/admin/purchase-orders?limit=200&sortBy=po_date&sortOrder=desc')
+		fetch('/api/admin/orders?direction=client&limit=200&include_cancelled=1')
 			.then((res) => res.json())
 			.then((data) => {
-				if (data.success) setIncomingPOs(data.data || []);
+				if (data.success) setClientOrders(data.data?.orders || []);
 			})
-			.catch((err) => console.error('Error fetching purchase orders:', err));
+			.catch((err) => console.error('Error fetching client orders:', err));
 	}, []);
 
-	// Fetch PO balance when po_number or client_name changes
+	// Fetch the canonical order balance when the linked order changes
 	useEffect(() => {
-		const po = formData.po_number?.trim();
-		const client = formData.client_name?.trim();
-		if (!po || !client) {
+		const orderUid = formData.order_uid?.trim();
+		if (!orderUid) {
 			setPoBalance(null);
 			return;
 		}
 		const timer = setTimeout(() => {
 			fetch(
-				`/api/admin/invoices/po-balance?po_number=${encodeURIComponent(po)}&client_name=${encodeURIComponent(client)}`
+				`/api/admin/invoices/po-balance?order_uid=${encodeURIComponent(orderUid)}`
 			)
 				.then((r) => r.json())
 				.then((data) => {
@@ -162,7 +162,7 @@ export default function EditInvoicePage() {
 				.catch(() => setPoBalance(null));
 		}, 400);
 		return () => clearTimeout(timer);
-	}, [formData.po_number, formData.client_name]);
+	}, [formData.order_uid]);
 
 	// Fetch invoice data
 	useEffect(() => {
@@ -199,6 +199,7 @@ export default function EditInvoicePage() {
 						client_state: inv.client_state || '',
 						client_state_code: inv.client_state_code || '',
 						kind_attn: inv.kind_attn || '',
+						order_uid: inv.order_uid || '',
 						po_number: inv.po_number || '',
 						po_date: inv.po_date ? inv.po_date.split('T')[0] : '',
 						original_po_value:
@@ -733,55 +734,60 @@ export default function EditInvoicePage() {
 													className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 													placeholder="PO No."
 												/>
-												{incomingPOs.length > 0 && (
+												{clientOrders.length > 0 && (
 													<div className="relative">
 														<button
 															type="button"
 															onClick={() => setShowPOSelector(!showPOSelector)}
 															className="p-1.5 text-purple-600 hover:bg-purple-50 rounded border border-gray-300"
-															title="Select from Incoming POs"
+															title="Link a client order"
 														>
 															<ClipboardDocumentListIcon className="h-4 w-4" />
 														</button>
 														{showPOSelector && (
 															<div className="absolute right-0 z-10 mt-1 w-80 bg-white border border-gray-200 rounded-md shadow-lg max-h-72 overflow-auto">
 																<div className="p-2 text-xs font-semibold text-gray-500 border-b border-gray-200">
-																	Incoming Purchase Orders
+																	Client Orders
 																</div>
-																{incomingPOs
+																{clientOrders
 																	.filter(
-																		(po) =>
+																		(order) =>
 																			!formData.po_number ||
-																			po.po_number
+																			order.orderNumber
 																				.toLowerCase()
 																				.includes(
 																					formData.po_number.toLowerCase()
 																				)
 																	)
-																	.map((po, idx) => (
+																	.map((order, idx) => (
 																		<button
-																			key={po.id || idx}
+																			key={order.orderUid || idx}
 																			type="button"
 																			onClick={() => {
 																				setFormData((prev) => ({
 																					...prev,
-																					po_number: po.po_number || '',
-																					po_date: po.po_date || '',
-																					original_po_value: po.po_amount || '',
+																					order_uid: order.orderUid || '',
+																					po_number: order.orderNumber || '',
+																					po_date: order.orderDate || '',
+																					original_po_value:
+																						(order.amountBasis === 'gross'
+																							? order.grossAmount
+																							: order.netAmount) ??
+																						'',
 																				}));
 																				setShowPOSelector(false);
 																			}}
 																			className="w-full text-left px-3 py-2 hover:bg-purple-50 border-b border-gray-100 last:border-0"
 																		>
 																			<div className="text-sm font-medium text-gray-900">
-																				{po.po_number}
+																				{order.orderNumber}
 																			</div>
 																			<div className="text-xs text-gray-500">
-																				{po.vendor_name}
-																				{po.vendor_name && po.po_date
+																				{order.counterpartyName}
+																				{order.counterpartyName && order.orderDate
 																					? ' | '
 																					: ''}
-																				{po.po_date || ''}
+																				{order.orderDate || ''}
 																			</div>
 																		</button>
 																	))}

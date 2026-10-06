@@ -842,40 +842,6 @@ export default function EditProjectForm() {
 	});
 	const [quotationSaving, setQuotationSaving] = useState(false);
 
-	// Purchase Order tab state
-	const [purchaseOrderData, setPurchaseOrderData] = useState({
-		po_number: '',
-		po_date: '',
-		client_name: '',
-		vendor_name: '',
-		vendor_id: '',
-		delivery_date: '',
-		scope_of_work: '',
-		gross_amount: '',
-		gst_percentage: 18,
-		gst_amount: '',
-		net_amount: '',
-		payment_terms: '',
-		remarks: '',
-	});
-	const [incomingPOs, setIncomingPOs] = useState([]);
-	const [incomingPOData, setIncomingPOData] = useState({
-		company_name: '',
-		city: '',
-		po_number: '',
-		po_date: '',
-		po_amount: '',
-		project_number: '',
-		expenses_head: '',
-		remarks: '',
-	});
-	const [purchaseOrderSaving, setPurchaseOrderSaving] = useState(false);
-
-	// Vendors state for PO dropdown
-	const [vendors, setVendors] = useState([]);
-	const [selectedVendor, setSelectedVendor] = useState(null);
-	const [loadingVendors, setLoadingVendors] = useState(false);
-
 	// Account Heads state for expense head dropdown
 	const [accountHeads, setAccountHeads] = useState([]);
 	const [loadingAccountHeads, setLoadingAccountHeads] = useState(false);
@@ -903,13 +869,11 @@ export default function EditProjectForm() {
 	useEffect(() => {
 		const fetchAllInitData = async () => {
 			try {
-				setLoadingVendors(true);
 				setUsersLoading(true);
 				const initData = await fetchJSON(`/api/projects/${id}/init-data`);
 				if (initData.success && initData.data) {
 					const d = initData.data;
 					// Note: companies data is no longer needed - company name is fetched from project details
-					setVendors(d.vendors || []);
 					setFunctions(d.functions || []);
 					setActivities(d.activities || []);
 					setSubActivities(d.subActivities || []);
@@ -976,7 +940,6 @@ export default function EditProjectForm() {
 					console.warn('[init-data] Fallback blocked: users:read not granted');
 				}
 			} finally {
-				setLoadingVendors(false);
 				setUsersLoading(false);
 			}
 		};
@@ -2144,186 +2107,9 @@ export default function EditProjectForm() {
 		}
 	}, [activeTab, loading, id, syncQuotationFromAdmin]);
 
-	// Purchase Order Form Handlers
-	const handlePurchaseOrderChange = (e) => {
-		if (!canEditPurchaseOrders) return; // Prevent changes if no edit permission
-		const { name, value } = e.target;
-		setPurchaseOrderData((prev) => {
-			const updated = { ...prev, [name]: value };
-
-			// Auto-calculate GST and net amount when gross amount changes
-			if (name === 'gross_amount') {
-				const gross = parseFloat(value) || 0;
-				const gstRate = parseFloat(prev.gst_percentage) || 18;
-				const gstAmount = (gross * gstRate) / 100;
-				updated.gst_amount = gstAmount.toFixed(2);
-				updated.net_amount = (gross + gstAmount).toFixed(2);
-			}
-
-			// Recalculate if GST percentage changes
-			if (name === 'gst_percentage') {
-				const gross = parseFloat(prev.gross_amount) || 0;
-				const gstRate = parseFloat(value) || 18;
-				const gstAmount = (gross * gstRate) / 100;
-				updated.gst_amount = gstAmount.toFixed(2);
-				updated.net_amount = (gross + gstAmount).toFixed(2);
-			}
-
-			return updated;
-		});
-	};
-
-	// Handle vendor selection from dropdown
-	const handleVendorSelect = (e) => {
-		if (!canEditPurchaseOrders) return;
-		const vendorId = e.target.value;
-		if (vendorId === '') {
-			setSelectedVendor(null);
-			setPurchaseOrderData((prev) => ({
-				...prev,
-				vendor_name: '',
-				vendor_id: '',
-			}));
-			return;
-		}
-		const vendor = vendors.find((v) => v.id.toString() === vendorId);
-		setSelectedVendor(vendor || null);
-		if (vendor) {
-			setPurchaseOrderData((prev) => ({
-				...prev,
-				vendor_name: vendor.vendor_name || '',
-				vendor_id: vendor.id,
-			}));
-		}
-	};
-
-	const savePurchaseOrder = async () => {
-		// Validate vendor selection
-		if (!selectedVendor && !purchaseOrderData.vendor_name) {
-			alert('Please select a vendor from the dropdown');
-			return;
-		}
-
-		setPurchaseOrderSaving(true);
-		try {
-			// Save to project-specific purchase order
-			const res = await fetch(`/api/projects/${id}/purchase-order`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(purchaseOrderData),
-			});
-			const json = await res.json();
-
-			if (json?.success) {
-				// Also save to main purchase orders table for display on Purchase Order page
-				const vendorAddress = selectedVendor
-					? [
-							selectedVendor.address_street,
-							selectedVendor.address_city,
-							selectedVendor.address_state,
-							selectedVendor.address_country,
-							selectedVendor.address_pin,
-						]
-							.filter(Boolean)
-							.join(', ')
-					: '';
-
-				const mainPORes = await fetch('/api/admin/purchase-orders', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						po_number: purchaseOrderData.po_number,
-						vendor_name:
-							purchaseOrderData.vendor_name || selectedVendor?.vendor_name,
-						vendor_email: selectedVendor?.email || '',
-						vendor_phone: selectedVendor?.phone || '',
-						vendor_address: vendorAddress,
-						description: purchaseOrderData.scope_of_work,
-						items: [],
-						subtotal: parseFloat(purchaseOrderData.gross_amount) || 0,
-						tax_rate: parseFloat(purchaseOrderData.gst_percentage) || 18,
-						tax_amount: parseFloat(purchaseOrderData.gst_amount) || 0,
-						discount: 0,
-						total: parseFloat(purchaseOrderData.net_amount) || 0,
-						notes: purchaseOrderData.remarks,
-						terms: purchaseOrderData.payment_terms,
-						delivery_date: purchaseOrderData.delivery_date || null,
-						status: 'pending',
-						project_id: id,
-					}),
-				});
-
-				const mainPOJson = await mainPORes.json();
-
-				if (mainPOJson?.success) {
-					alert('Purchase Order saved successfully!');
-				} else {
-					// Project PO saved but main PO failed - still consider partial success
-					alert(
-						'Purchase Order saved to project. Note: ' +
-							(mainPOJson?.message || 'Could not sync to main PO list')
-					);
-				}
-			} else {
-				alert(
-					'Failed to save purchase order: ' + (json?.error || 'Unknown error')
-				);
-			}
-		} catch (error) {
-			console.error('Error saving purchase order:', error);
-			alert('Error saving purchase order');
-		} finally {
-			setPurchaseOrderSaving(false);
-		}
-	};
-
-	// Sync purchase order data - only client name from project
-	const syncPurchaseOrderFromProject = useCallback(() => {
-		setPurchaseOrderData((prev) => {
-			// If vendor_id exists in previous data, find and set the selected vendor
-			if (prev.vendor_id && vendors.length > 0) {
-				const vendor = vendors.find(
-					(v) =>
-						v.id === prev.vendor_id ||
-						v.id.toString() === prev.vendor_id.toString()
-				);
-				if (vendor) {
-					setSelectedVendor(vendor);
-				}
-			}
-			return {
-				...prev,
-				po_number: prev.po_number || `PO-${String(id).padStart(5, '0')}`,
-				po_date: prev.po_date || new Date().toISOString().split('T')[0],
-				client_name: form.client_name || '',
-			};
-		});
-	}, [form.client_name, id, vendors]);
-
-	// Auto-sync when switching to purchase order tab (after project data is loaded)
+	// Sync invoice data with project details (company name and city) for the invoice tab
 	useEffect(() => {
-		if (activeTab === 'purchase_order' && !loading && id) {
-			syncPurchaseOrderFromProject();
-		}
-	}, [activeTab, loading, id, syncPurchaseOrderFromProject]);
-
-	// Sync incoming PO data with project details
-	useEffect(() => {
-		if (activeTab === 'purchase_order' && form.client_name) {
-			setIncomingPOData((prev) => ({
-				...prev,
-				company_name: form.client_name,
-				city: form.project_location_city || '',
-			}));
-		}
-	}, [activeTab, form.client_name, form.project_location_city]);
-
-	// Sync invoice data with project details (company name and city) for both invoice and purchase_order tabs
-	useEffect(() => {
-		if (
-			(activeTab === 'invoice' || activeTab === 'purchase_order') &&
-			form.client_name
-		) {
+		if (activeTab === 'invoice' && form.client_name) {
 			setInvoiceData((prev) => ({
 				...prev,
 				company_name: form.client_name,
@@ -2337,145 +2123,6 @@ export default function EditProjectForm() {
 		form.project_location_city,
 		form.project_code,
 	]);
-
-	// Incoming Purchase Order Handlers
-	const handleIncomingPOChange = (e) => {
-		if (!canEditPurchaseOrders) return;
-		const { name, value } = e.target;
-		setIncomingPOData((prev) => ({ ...prev, [name]: value }));
-	};
-
-	const handleAddIncomingPO = async () => {
-		if (!incomingPOData.company_name) {
-			alert('Please ensure company name from project details is set');
-			return;
-		}
-		if (!incomingPOData.po_number) {
-			alert('Please enter PO number');
-			return;
-		}
-
-		setPurchaseOrderSaving(true);
-		try {
-			const res = await fetch(`/api/projects/${id}/incoming-po`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					...incomingPOData,
-					project_id: id,
-				}),
-			});
-
-			// Handle 404 or other errors gracefully - API endpoint not yet implemented
-			if (!res.ok) {
-				if (res.status === 404) {
-					console.warn(
-						'Incoming PO API endpoint not yet implemented. Feature will be available once backend is updated.'
-					);
-					alert(
-						'Incoming PO feature is not yet available. Please try again later.'
-					);
-				} else {
-					alert('Failed to add incoming PO: Server error');
-				}
-				return;
-			}
-
-			const json = await res.json();
-			if (json?.success) {
-				// Refresh incoming POs list
-				await fetchIncomingPOs();
-				// Reset form but keep company_name and city from project
-				setIncomingPOData({
-					company_name: form.client_name,
-					city: form.project_location_city || '',
-					po_number: '',
-					po_date: new Date().toISOString().split('T')[0],
-					po_amount: '',
-					project_number: form.project_code || '',
-					expenses_head: '',
-					remarks: '',
-				});
-				alert('Incoming PO added successfully!');
-			} else {
-				alert('Failed to add incoming PO: ' + (json?.error || 'Unknown error'));
-			}
-		} catch (error) {
-			console.error('Error adding incoming PO:', error);
-			alert('Error adding incoming PO');
-		} finally {
-			setPurchaseOrderSaving(false);
-		}
-	};
-
-	const handleDeleteIncomingPO = async (poId) => {
-		if (!confirm('Are you sure you want to delete this incoming PO?')) return;
-
-		try {
-			const res = await fetch(`/api/projects/${id}/incoming-po/${poId}`, {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-			});
-
-			// Handle 404 or other errors gracefully
-			if (!res.ok) {
-				if (res.status === 404) {
-					console.warn('Incoming PO API endpoint not yet implemented');
-					alert('Incoming PO feature is not yet available');
-				} else {
-					alert('Failed to delete incoming PO: Server error');
-				}
-				return;
-			}
-
-			const json = await res.json();
-			if (json?.success) {
-				await fetchIncomingPOs();
-			} else {
-				alert(
-					'Failed to delete incoming PO: ' + (json?.error || 'Unknown error')
-				);
-			}
-		} catch (error) {
-			console.warn('Error deleting incoming PO:', error);
-			// Silently fail as API might not be implemented yet
-		}
-	};
-
-	const fetchIncomingPOs = useCallback(async () => {
-		try {
-			const res = await fetch(`/api/projects/${id}/incoming-po`);
-
-			// If endpoint doesn't exist (404 or other error), silently fail
-			if (!res.ok) {
-				console.warn(
-					`Incoming POs API returned ${res.status}, using empty list`
-				);
-				setIncomingPOs([]);
-				return;
-			}
-
-			const json = await res.json();
-			if (json?.success && Array.isArray(json.data)) {
-				setIncomingPOs(json.data);
-			} else {
-				setIncomingPOs([]);
-			}
-		} catch (error) {
-			console.warn(
-				'Incoming POs API not yet available, using empty list:',
-				error
-			);
-			setIncomingPOs([]);
-		}
-	}, [id]);
-
-	// Auto-fetch incoming POs when switching to purchase_order tab
-	useEffect(() => {
-		if (activeTab === 'purchase_order' && !loading && id) {
-			fetchIncomingPOs();
-		}
-	}, [activeTab, loading, id, fetchIncomingPOs]);
 
 	// Invoice Handlers
 	const handleInvoiceChange = (e) => {
@@ -5064,18 +4711,8 @@ export default function EditProjectForm() {
 								{/* Purchase Order Tab */}
 								{activeTab === 'purchase_order' && (
 									<PurchaseOrderTab
-										canEditPurchaseOrders={canEditPurchaseOrders}
-										handleAddInvoice={handleAddInvoice}
-										invoiceSaving={invoiceSaving}
-										invoiceData={invoiceData}
-										editingInvoiceId={editingInvoiceId}
-										handleInvoiceChange={handleInvoiceChange}
-										setEditingInvoiceId={setEditingInvoiceId}
-										setInvoiceData={setInvoiceData}
-										form={form}
-										invoices={invoices}
-										handleEditInvoice={handleEditInvoice}
-										handleDeleteInvoice={handleDeleteInvoice}
+										projectId={id}
+										canManageOrders={canEditPurchaseOrders}
 									/>
 								)}
 								{/* Invoice Tab */}
