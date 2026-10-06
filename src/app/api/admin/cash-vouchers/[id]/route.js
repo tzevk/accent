@@ -1,7 +1,11 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-import { ensureFundingMirror } from '@/lib/company-expenditure';
+import {
+	ensureFundingMirror,
+	loadVoucherGuard,
+	voucherRegisterRefusal,
+} from '@/lib/company-expenditure';
 
 /**
  * GET /api/admin/cash-vouchers/[id]
@@ -130,7 +134,9 @@ export async function PUT(request, { params }) {
 
 		db = await dbConnect();
 
-		// Check if voucher exists
+		// The voucher row is locked for the whole mutation (`loadVoucherGuard`),
+		// so a concurrent spending capture serializes on it: the funding floor
+		// and the mirror update cannot race a spend insert.
 		const [existing] = await db.execute(
 			'SELECT id, voucher_number, voucher_date FROM cash_vouchers WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)',
 			[id]
@@ -163,28 +169,29 @@ export async function PUT(request, { params }) {
 		// never fall below the spending already drawn from it.
 		await db.execute('START TRANSACTION');
 		try {
-			if (total_amount !== undefined) {
-				const [funded] = await db.execute(
-					`SELECT COALESCE(SUM(debit_amount), 0) AS funded
-               FROM petty_cash_expenses
-              WHERE source_voucher_id = ? AND entry_kind = 'spend' AND isDelete = 0`,
-					[id]
+			const guard = await loadVoucherGuard(db, Number(id));
+			if (!guard) {
+				await db.execute('ROLLBACK');
+				return NextResponse.json(
+					{ success: false, error: 'Voucher not found' },
+					{ status: 404 }
 				);
-				const fundedSpend = Number(funded[0]?.funded ?? 0);
-				const requestedTotal = Number(total_amount || 0);
-				if (requestedTotal < fundedSpend) {
-					await db.execute('ROLLBACK');
-					return NextResponse.json(
-						{
-							success: false,
-							error: `Spending of ${fundedSpend} is already drawn from this voucher; the total cannot be reduced below it.`,
-							code: 'funding_below_spend',
-							funded_spend: fundedSpend,
-							requested_total: requestedTotal,
-						},
-						{ status: 409 }
-					);
-				}
+			}
+			const refusal = voucherRegisterRefusal(
+				guard,
+				total_amount === undefined ? null : Number(total_amount || 0)
+			);
+			if (refusal) {
+				await db.execute('ROLLBACK');
+				return NextResponse.json(
+					{
+						success: false,
+						error: refusal.message,
+						code: refusal.code,
+						...refusal.detail,
+					},
+					{ status: refusal.status }
+				);
 			}
 
 			await db.execute(
@@ -308,43 +315,47 @@ export async function DELETE(request, { params }) {
 
 		db = await dbConnect();
 
-		// Spending must not disappear with its funding voucher: refuse while any
-		// spending draws on it, otherwise remove the voucher and its one funding
-		// mirror — the two halves of the same funding event.
-		const [spends] = await db.execute(
-			`SELECT COUNT(*) AS count FROM petty_cash_expenses
-        WHERE source_voucher_id = ? AND entry_kind = 'spend' AND isDelete = 0`,
-			[id]
-		);
-		const spendCount = Number(spends[0]?.count ?? 0);
-		if (spendCount > 0) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: `This voucher funds ${spendCount} spending record(s). Remove or reverse them first; deleting the voucher must not erase spending.`,
-					code: 'voucher_has_spending',
-					spend_count: spendCount,
-				},
-				{ status: 409 }
-			);
-		}
+		// Spending must not disappear with its funding voucher, and no capture
+		// may slip between the count and the delete: the voucher row is locked
+		// for the whole mutation, and capture locks the same row before insert.
+		await db.execute('START TRANSACTION');
+		try {
+			const guard = await loadVoucherGuard(db, Number(id));
+			if (!guard) {
+				await db.execute('ROLLBACK');
+				return NextResponse.json(
+					{ success: false, error: 'Voucher not found' },
+					{ status: 404 }
+				);
+			}
+			const refusal = voucherRegisterRefusal(guard);
+			if (refusal) {
+				await db.execute('ROLLBACK');
+				return NextResponse.json(
+					{
+						success: false,
+						error: refusal.message,
+						code: refusal.code,
+						...refusal.detail,
+					},
+					{ status: refusal.status }
+				);
+			}
 
-		const [result] = await db.execute(
-			'UPDATE cash_vouchers SET isDelete = 1 WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)',
-			[id]
-		);
-		if (result.affectedRows === 0) {
-			return NextResponse.json(
-				{ success: false, error: 'Voucher not found' },
-				{ status: 404 }
+			await db.execute(
+				'UPDATE cash_vouchers SET isDelete = 1 WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)',
+				[id]
 			);
+			await db.execute(
+				`UPDATE petty_cash_expenses SET isDelete = 1
+          WHERE source_voucher_id = ? AND entry_kind = 'funding'`,
+				[id]
+			);
+			await db.execute('COMMIT');
+		} catch (txError) {
+			await db.execute('ROLLBACK');
+			throw txError;
 		}
-
-		await db.execute(
-			`UPDATE petty_cash_expenses SET isDelete = 1
-        WHERE source_voucher_id = ? AND entry_kind = 'funding'`,
-			[id]
-		);
 
 		return NextResponse.json({
 			success: true,

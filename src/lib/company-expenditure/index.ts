@@ -104,18 +104,26 @@ export {
 	executePettyCashCommand,
 	fundingEventUid,
 	isPettyCashCommand,
+	loadPettyCashDrilldown,
+	loadPettyCashGuardRow,
+	loadVoucherGuard,
 	pettyCashCommandInputFromJson,
+	pettyCashRegisterRefusal,
 	pettyCashSpendInputFromJson,
 	recordPettyCashSpend,
+	voucherRegisterRefusal,
 } from './petty-cash';
 export type {
 	FundingMirrorInput,
 	FundingMirrorResult,
 	PettyCashCommandInput,
 	PettyCashCommandResult,
+	PettyCashGuardRow,
 	PettyCashSpendInput,
 	PettyCashSpendPatch,
 	RecordedPettyCashSpend,
+	RegisterRefusal,
+	VoucherGuard,
 } from './petty-cash';
 export {
 	linkCostReference,

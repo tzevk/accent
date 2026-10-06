@@ -1207,6 +1207,174 @@ test('captures and versions foreign-currency conversion evidence on petty cash',
 	};
 });
 
+test('reconciles cost and settlement identities and preserves recognized history', async ({
+	request,
+}) => {
+	const linksFor = async (id: string) => {
+		const found = await rows<{ role: string }>(
+			`SELECT role FROM financial_cost_links
+        WHERE source_table = 'petty_cash_expenses' AND source_id = ?
+        ORDER BY role`,
+			[id]
+		);
+		return found.map((link) => link.role);
+	};
+
+	// A confirmed petty-cash spend registers as a cost identity that the shared
+	// registry resolves: another petty-cash receipt can settle it.
+	const spendP = await recordSpend(request, {
+		transaction_date: `${MONTH}-20`,
+		debit_amount: 200,
+		currency: 'INR',
+		cost_classification: 'unallocated',
+		bill_date: `${MONTH}-20`,
+		notes: `${PETTY_CASH_PREFIX} spend P cost identity`,
+	});
+	expect(spendP.status, JSON.stringify(spendP.body)).toBe(200);
+	const spendPId = String((spendP.body.data as Record<string, unknown>).id);
+	const spendPRow = await spendRow(spendPId);
+	expect(await linksFor(spendPId)).toEqual(['cost']);
+	const recognizeP = await runCommand(request, spendPId, {
+		command: 'recognize',
+		expected_version: 1,
+	});
+	expect(recognizeP.status, JSON.stringify(recognizeP.body)).toBe(200);
+
+	const spendQ = await recordSpend(request, {
+		transaction_date: `${MONTH}-21`,
+		debit_amount: 100,
+		currency: 'INR',
+		cost_classification: 'unallocated',
+		bill_date: `${MONTH}-21`,
+		linked_cost_uid: String(spendPRow.cost_uid),
+		notes: `${PETTY_CASH_PREFIX} spend Q settles P`,
+	});
+	expect(spendQ.status, JSON.stringify(spendQ.body)).toBe(200);
+	const spendQId = String((spendQ.body.data as Record<string, unknown>).id);
+	expect(await linksFor(spendQId)).toEqual(['settlement']);
+	const recognizeQ = await runCommand(request, spendQId, {
+		command: 'recognize',
+		expected_version: 1,
+	});
+	expect(recognizeQ.status, JSON.stringify(recognizeQ.body)).toBe(200);
+	expect((await spendRow(spendQId)).recognized_amount).toBeNull();
+
+	// A versioned link transition moves the registry row with the meaning: to a
+	// settlement it drops the cost registration, and back to cost it restores
+	// it, so nothing resolves a cost the report excludes and nothing refuses a
+	// valid link to a counted cost.
+	const spendR = await recordSpend(request, {
+		transaction_date: `${MONTH}-22`,
+		debit_amount: 50,
+		currency: 'INR',
+		cost_classification: 'unallocated',
+		bill_date: `${MONTH}-22`,
+		notes: `${PETTY_CASH_PREFIX} spend R transition`,
+	});
+	expect(spendR.status, JSON.stringify(spendR.body)).toBe(200);
+	const spendRId = String((spendR.body.data as Record<string, unknown>).id);
+	const spendRRow = await spendRow(spendRId);
+	expect(await linksFor(spendRId)).toEqual(['cost']);
+
+	const toSettlement = await runCommand(request, spendRId, {
+		command: 'update',
+		expected_version: 1,
+		patch: { linkedCostUid: seeded.targetCostUid },
+	});
+	expect(toSettlement.status, JSON.stringify(toSettlement.body)).toBe(200);
+	expect(await linksFor(spendRId)).toEqual(['settlement']);
+
+	const backToCost = await runCommand(request, spendRId, {
+		command: 'update',
+		expected_version: 2,
+		patch: { linkedCostUid: null },
+	});
+	expect(backToCost.status, JSON.stringify(backToCost.body)).toBe(200);
+	expect(await linksFor(spendRId)).toEqual(['cost']);
+
+	// The restored identity resolves: a new receipt may settle R.
+	const spendT = await recordSpend(request, {
+		transaction_date: `${MONTH}-23`,
+		debit_amount: 10,
+		currency: 'INR',
+		cost_classification: 'unallocated',
+		bill_date: `${MONTH}-23`,
+		linked_cost_uid: String(spendRRow.cost_uid),
+		notes: `${PETTY_CASH_PREFIX} spend T settles R`,
+	});
+	expect(spendT.status, JSON.stringify(spendT.body)).toBe(200);
+	const spendTId = String((spendT.body.data as Record<string, unknown>).id);
+	expect(await linksFor(spendTId)).toEqual(['settlement']);
+
+	// A recognized-then-cancelled spend keeps its history: an ordinary register
+	// delete is refused, the row stays, and the journal keeps all three
+	// transitions (the #322 close/revision path reads this).
+	const spendS = await recordSpend(request, {
+		transaction_date: `${MONTH}-24`,
+		debit_amount: 300,
+		currency: 'INR',
+		cost_classification: 'unallocated',
+		bill_date: `${MONTH}-24`,
+		notes: `${PETTY_CASH_PREFIX} spend S reversed history`,
+	});
+	expect(spendS.status, JSON.stringify(spendS.body)).toBe(200);
+	const spendSId = String((spendS.body.data as Record<string, unknown>).id);
+	const recognizeS = await runCommand(request, spendSId, {
+		command: 'recognize',
+		expected_version: 1,
+	});
+	expect(recognizeS.status, JSON.stringify(recognizeS.body)).toBe(200);
+	const cancelS = await runCommand(request, spendSId, {
+		command: 'cancel',
+		expected_version: 2,
+		reason: `${PETTY_CASH_PREFIX} reversed after review`,
+	});
+	expect(cancelS.status, JSON.stringify(cancelS.body)).toBe(200);
+
+	const deleteS = await request.delete(`${REGISTER}/${spendSId}`);
+	expect(deleteS.status()).toBe(409);
+	expect((await deleteS.json()).code).toBe('cost_history_preserved');
+	const spendSRow = await spendRow(spendSId);
+	expect(Number(spendSRow.isDelete)).toBe(0);
+	expect(spendSRow.recognition_state).toBe('cancelled');
+	expect(await journalFor(String(spendSRow.cost_uid))).toEqual([
+		{ version: 1, command: 'recorded' },
+		{ version: 2, command: 'recognized' },
+		{ version: 3, command: 'cancelled' },
+	]);
+
+	// The final June reconciliation counts the two new cost identities once and
+	// nothing from the settlements or the reversed spend.
+	const june = await reconciliation(request, MONTH);
+	expect(june.company.incurred_cost).toBe(
+		EXPECTED.targetCost + EXPECTED.spendA + EXPECTED.spendB + 200
+	);
+	expect(group(june, 'unallocated_cost')).toBe(EXPECTED.spendB + 200);
+	expect(june.petty_cash.recognized_cost).toBe(
+		EXPECTED.spendA + EXPECTED.spendB + 200
+	);
+	expect(june.petty_cash.by_currency[0].settled_spend).toBe(
+		EXPECTED.spendC + 100 + 10
+	);
+	const drill = await drilldown(request, { month: MONTH, state: 'recognized' });
+	expect(drill.totals.confirmed_amount).toBe(
+		EXPECTED.targetCost + EXPECTED.spendA + EXPECTED.spendB + 200
+	);
+
+	controlEvidence.identityTransitions = {
+		costLinks: await linksFor(spendPId),
+		settlementLinks: await linksFor(spendQId),
+		reconciledLinks: await linksFor(spendRId),
+		restoredSettlementLinks: await linksFor(spendTId),
+		historyDelete: {
+			status: deleteS.status(),
+			code: 'cost_history_preserved',
+			live: Number(spendSRow.isDelete),
+			journal: 3,
+		},
+	};
+});
+
 test('regenerates the JSON evidence artifact', async () => {
 	publish();
 	const artifact = readArtifact('petty-cash-funding');

@@ -302,7 +302,26 @@ Rules:
   resolved through `resolveCostReference` (#311 contract) at capture and at
   every command; an unresolvable link is refused and a resolvable one is
   registered as `role='settlement'`, counts no new cost, and never registers
-  its own cost identity.
+  its own cost identity. Petty cash registers its own source adapter
+  (`petty_cash_expenses`), so a spending identity resolves for every consumer
+  — including another petty-cash receipt. A versioned link transition moves the
+  registry row with the meaning: becoming a settlement drops the `role='cost'`
+  row, becoming cost again restores it — atomically, so nothing resolves a cost
+  the report excludes or misses one it counts.
+- **Voucher mutations and spending capture serialize on the voucher row.**
+  Capture locks the named voucher `FOR UPDATE` before inserting, and the voucher
+  update/delete guards (`loadVoucherGuard` + `voucherRegisterRefusal`, exported)
+  lock the same row for the whole mutation. A delete can therefore never count
+  zero spending, let a capture commit, and then erase the funding event; the
+  guarded soft delete of a voucher plus its one funding mirror is one
+  transaction.
+- **Recognized history survives an ordinary delete.** Beyond confirmed cost,
+  spending that was ever recognized (even after a reasoned cancellation) refuses
+  a register delete with `409 cost_history_preserved`; the row and its
+  `recorded` → `recognized` → `cancelled` journal stay readable. The guard hooks
+  (`loadPettyCashGuardRow`, `pettyCashRegisterRefusal`, `loadVoucherGuard`,
+  `voucherRegisterRefusal`) are exported so the #322 close/revision slice hangs
+  its closed-period checks off the same decisions.
 - **Controlled lifecycle.** `POST /api/admin/petty-cash-expenses/{id}/commands`
   carries `expected_version` (`update | submit | recognize | reject | cancel`),
   increments `financial_version`, and appends one `financial_cost_events` row

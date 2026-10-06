@@ -59,11 +59,13 @@ import {
 	recognitionBlockers,
 	resolveRecognitionPeriod,
 } from './recognition';
-import { monthBounds, type SqlConnection } from './records';
+import { monthBounds, toCostRecordJson, type SqlConnection } from './records';
 import {
 	linkCostReference,
 	registerCostIdentity,
+	registerCostSource,
 	resolveCostReference,
+	type CostSourceAdapter,
 } from './sources';
 import type {
 	CostClassification,
@@ -203,7 +205,222 @@ export function mapPettyCashRow(row: DbRow): CostRecord {
 }
 
 /**
- * The spending rows of one month that contribute cost: a receipt already
+ * The petty-cash source adapter for the shared cost registry: a `cost-…`
+ * identity registered by a spend resolves to its authoritative row, so a
+ * later receipt (this register or another one) can settle a petty-cash cost
+ * and every consumer states one row. Registered once, like the direct-expense
+ * adapter (#311 contract §3); a settlement's own identity is never registered
+ * as a cost, so it resolves to nothing on purpose.
+ */
+const PETTY_CASH_SOURCE_ADAPTER: CostSourceAdapter = {
+	source: 'petty_cash',
+	table: 'petty_cash_expenses',
+	async load(db, sourceId) {
+		const [rows] = (await db.execute(
+			`SELECT id, cost_uid, transaction_number, currency, debit_amount,
+              tax_amount, recognized_amount, recognition_state,
+              cost_classification, project_id
+         FROM petty_cash_expenses
+        WHERE id = ? AND isDelete = 0 AND entry_kind = 'spend'`,
+			[sourceId]
+		)) as [DbRow[], unknown];
+		const row = rows[0];
+		if (!row) return null;
+		return {
+			cost_uid: s(row, 'cost_uid', '') ?? '',
+			source: 'petty_cash',
+			source_table: 'petty_cash_expenses',
+			source_id: String(sourceId),
+			label: s(row, 'transaction_number'),
+			currency: s(row, 'currency'),
+			gross_amount: num(row, 'debit_amount'),
+			tax_amount: num(row, 'tax_amount'),
+			recognized_amount: num(row, 'recognized_amount'),
+			recognition_state:
+				(s(row, 'recognition_state', 'draft') as RecognitionState) ?? 'draft',
+			classification:
+				(s(row, 'cost_classification') as CostClassification | null) ?? null,
+			project_id: num(row, 'project_id'),
+		};
+	},
+};
+
+registerCostSource(PETTY_CASH_SOURCE_ADAPTER);
+
+/**
+ * The register guard row: what a versioned command and a close/revision check
+ * need to decide whether an ordinary edit or delete may touch the spending.
+ */
+export interface PettyCashGuardRow {
+	id: string;
+	entry_kind: string;
+	recognition_state: RecognitionState;
+	recognized_amount: number | null;
+	cost_uid: string | null;
+	linked_cost_uid: string | null;
+	financial_version: number;
+	/** True once the journal holds a `recognized` entry (history guard). */
+	hasRecognizedHistory: boolean;
+}
+
+/** The refusal a register edit or delete returns; null means allowed. */
+export interface RegisterRefusal {
+	status: number;
+	code: string;
+	message: string;
+	detail?: Record<string, unknown>;
+}
+
+/** Read the guard row with a row lock inside the caller's transaction. */
+export async function loadPettyCashGuardRow(
+	db: SqlConnection,
+	id: string
+): Promise<PettyCashGuardRow | null> {
+	const [rows] = (await db.execute(
+		`SELECT p.id, p.entry_kind, p.recognition_state, p.recognized_amount,
+            p.cost_uid, p.linked_cost_uid, p.financial_version,
+            EXISTS (
+              SELECT 1 FROM financial_cost_events e
+               WHERE e.cost_uid = p.cost_uid AND e.command = 'recognized'
+            ) AS has_recognized_history
+       FROM petty_cash_expenses p
+      WHERE p.id = ? AND p.isDelete = 0
+      FOR UPDATE`,
+		[id]
+	)) as [DbRow[], unknown];
+	const row = rows[0];
+	if (!row) return null;
+	return {
+		id: String(row.id),
+		entry_kind: s(row, 'entry_kind', 'spend') ?? 'spend',
+		recognition_state:
+			(s(row, 'recognition_state', 'draft') as RecognitionState) ?? 'draft',
+		recognized_amount: num(row, 'recognized_amount'),
+		cost_uid: s(row, 'cost_uid'),
+		linked_cost_uid: s(row, 'linked_cost_uid'),
+		financial_version: Number(num(row, 'financial_version') ?? 1),
+		hasRecognizedHistory: Boolean(num(row, 'has_recognized_history')),
+	};
+}
+
+/**
+ * Whether an ordinary register edit/delete may touch this row. Funding rows
+ * belong to their voucher; confirmed spending and spending that was ever
+ * recognized (even if cancelled afterwards) keep their history — the versioned
+ * command path is the way to change or reverse it. Exported so the #322 close
+ * and revision slice can hang its closed-period checks off the same hook.
+ */
+export function pettyCashRegisterRefusal(
+	row: PettyCashGuardRow,
+	operation: 'update' | 'delete'
+): RegisterRefusal | null {
+	if (row.entry_kind === 'funding') {
+		return {
+			status: 409,
+			code: 'funding_event_managed_by_voucher',
+			message:
+				'A funding credit mirrors its cash voucher. Edit or delete the voucher instead; funding is cash movement, never cost.',
+		};
+	}
+	if (row.recognition_state === 'recognized') {
+		return {
+			status: 409,
+			code: 'cost_recognized',
+			message:
+				'This petty-cash spend is recognized cost. Cancel it with a versioned command before changing or removing it.',
+		};
+	}
+	if (operation === 'delete' && row.hasRecognizedHistory) {
+		return {
+			status: 409,
+			code: 'cost_history_preserved',
+			message:
+				'This petty-cash spend was recognized before and keeps its financial history. Reverse it through the versioned command path instead of deleting the row.',
+		};
+	}
+	return null;
+}
+
+/** The voucher-side guard: the locked voucher and the spending drawn from it. */
+export interface VoucherGuard {
+	id: number;
+	voucher_number: string | null;
+	voucher_date: string | null;
+	fundedSpend: number;
+	spendCount: number;
+}
+
+/**
+ * Lock the voucher row and read what depends on it, in the caller's
+ * transaction: spending capture locks the same row, so a delete cannot count
+ * zero spending while a capture commits and then erase the funding event.
+ * Exported with `voucherRegisterRefusal` as the raw guard hooks #322 extends.
+ */
+export async function loadVoucherGuard(
+	db: SqlConnection,
+	voucherId: number
+): Promise<VoucherGuard | null> {
+	const [voucherRows] = (await db.execute(
+		`SELECT id, voucher_number, voucher_date FROM cash_vouchers
+      WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)
+      LIMIT 1 FOR UPDATE`,
+		[voucherId]
+	)) as [DbRow[], unknown];
+	const voucher = voucherRows[0];
+	if (!voucher) return null;
+	const [spends] = (await db.execute(
+		`SELECT COALESCE(SUM(debit_amount), 0) AS funded_spend,
+              COUNT(*) AS spend_count
+         FROM petty_cash_expenses
+        WHERE source_voucher_id = ? AND entry_kind = 'spend' AND isDelete = 0`,
+		[voucherId]
+	)) as [DbRow[], unknown];
+	const sums = (spends as DbRow[])[0] ?? {};
+	return {
+		id: Number(voucher.id),
+		voucher_number: s(voucher, 'voucher_number'),
+		voucher_date: s(voucher, 'voucher_date'),
+		fundedSpend: Number(num(sums, 'funded_spend') ?? 0),
+		spendCount: Number(num(sums, 'spend_count') ?? 0),
+	};
+}
+
+/**
+ * The refusal a guarded voucher mutation returns; null when it may proceed.
+ * `requestedTotal` is the total an update would write (absent for a delete).
+ */
+export function voucherRegisterRefusal(
+	guard: VoucherGuard,
+	requestedTotal?: number | null
+): RegisterRefusal | null {
+	if (
+		requestedTotal !== undefined &&
+		requestedTotal !== null &&
+		requestedTotal < guard.fundedSpend
+	) {
+		return {
+			status: 409,
+			code: 'funding_below_spend',
+			message: `Spending of ${guard.fundedSpend} is already drawn from this voucher; the total cannot be reduced below it.`,
+			detail: {
+				funded_spend: guard.fundedSpend,
+				requested_total: requestedTotal,
+			},
+		};
+	}
+	if (requestedTotal === undefined && guard.spendCount > 0) {
+		return {
+			status: 409,
+			code: 'voucher_has_spending',
+			message: `This voucher funds ${guard.spendCount} spending record(s). Remove or reverse them first; deleting the voucher must not erase spending.`,
+			detail: { spend_count: guard.spendCount },
+		};
+	}
+	return null;
+}
+
+/**
+ * The petty-cash rows of one month that contribute cost: a receipt already
  * linked to another cost is a settlement of that cost, so it is not a cost row
  * here — the linked cost itself is counted by its own source exactly once.
  */
@@ -922,12 +1139,20 @@ async function nextTransactionNumber(db: SqlConnection): Promise<string> {
 	return `PCX-${String(next).padStart(5, '0')}`;
 }
 
+/**
+ * The voucher a spend names, locked `FOR UPDATE` in the same transaction as
+ * the insert: a concurrent voucher delete or funding edit serializes on this
+ * row, so it can never count zero spending and then erase the funding event
+ * behind a committed spend.
+ */
 async function resolveVoucherReference(
 	db: SqlConnection,
 	voucherId: number
 ): Promise<{ voucher_number: string | null }> {
 	const [rows] = await db.execute(
-		`SELECT voucher_number FROM cash_vouchers WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)`,
+		`SELECT voucher_number FROM cash_vouchers
+      WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)
+      LIMIT 1 FOR UPDATE`,
 		[voucherId]
 	);
 	const row = (rows as DbRow[])[0];
@@ -1606,6 +1831,39 @@ export async function executePettyCashCommand(
 				);
 			}
 			linkedCostUid = reference.cost_uid;
+		}
+
+		// A receipt that becomes a settlement must stop resolving as a cost, and
+		// a settlement that becomes cost-bearing again must register its
+		// identity: the registry row and the row's meaning move together, in
+		// this transaction, so no consumer resolves a cost the report excludes
+		// or misses one it counts. The journal snapshot records the transition.
+		const storedLinkedCostUid = text(row.linked_cost_uid, 64);
+		if (linkedCostUid !== storedLinkedCostUid) {
+			await db.execute(
+				`DELETE FROM financial_cost_links
+          WHERE source_table = 'petty_cash_expenses' AND source_id = ?
+            AND role IN ('cost','settlement')`,
+				[input.id]
+			);
+			if (linkedCostUid) {
+				await linkCostReference(db, {
+					costUid: linkedCostUid,
+					sourceTable: 'petty_cash_expenses',
+					sourceId: input.id,
+					role: 'settlement',
+					basis: 'document',
+					evidenceReference: merged.evidenceReference,
+					createdBy: actor.id,
+				});
+			} else {
+				await registerCostIdentity(db, {
+					costUid,
+					sourceTable: 'petty_cash_expenses',
+					sourceId: input.id,
+					createdBy: actor.id,
+				});
+			}
 		}
 
 		const financial = {

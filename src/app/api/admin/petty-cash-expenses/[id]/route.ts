@@ -6,6 +6,10 @@ import {
 } from '@/utils/api-permissions';
 import { dbConnect } from '@/utils/database';
 import { logActivity } from '@/utils/activity-logger';
+import {
+	loadPettyCashGuardRow,
+	pettyCashRegisterRefusal,
+} from '@/lib/company-expenditure';
 
 const TABLE = 'petty_cash_expenses';
 
@@ -42,44 +46,35 @@ const FINANCIAL_FIELDS = [
 ];
 
 /**
- * A funding credit is the mirror of its cash voucher (cash movement, never
- * cost) and confirmed spending is frozen against register edits; both are
- * changed only through their own controlled path.
+ * The register guard is the module's hook (`loadPettyCashGuardRow` +
+ * `pettyCashRegisterRefusal`), read under a row lock inside this request's
+ * transaction: a funding credit belongs to its voucher, confirmed spending is
+ * frozen, and spending that was ever recognized keeps its history even after a
+ * cancellation — only the versioned command path changes those.
  */
-async function refuseProtectedEntry(db, id: string) {
-	const [rows] = await db.execute(
-		`SELECT entry_kind, recognition_state FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
-		[id]
-	);
-	if (rows.length === 0) {
+async function refuseProtectedEntry(
+	db,
+	id: string,
+	operation: 'update' | 'delete'
+) {
+	const row = await loadPettyCashGuardRow(db, id);
+	if (!row) {
 		return NextResponse.json(
 			{ success: false, error: 'Not found' },
 			{ status: 404 }
 		);
 	}
-	if (rows[0].entry_kind === 'funding') {
-		return NextResponse.json(
-			{
-				success: false,
-				error:
-					'A funding credit mirrors its cash voucher. Edit or delete the voucher instead; funding is cash movement, never cost.',
-				code: 'funding_event_managed_by_voucher',
-			},
-			{ status: 409 }
-		);
-	}
-	if (rows[0].recognition_state === 'recognized') {
-		return NextResponse.json(
-			{
-				success: false,
-				error:
-					'This petty-cash spend is recognized cost. Cancel it with a versioned command before changing or removing it.',
-				code: 'cost_recognized',
-			},
-			{ status: 409 }
-		);
-	}
-	return null;
+	const refusal = pettyCashRegisterRefusal(row, operation);
+	if (!refusal) return null;
+	return NextResponse.json(
+		{
+			success: false,
+			error: refusal.message,
+			code: refusal.code,
+			...refusal.detail,
+		},
+		{ status: refusal.status }
+	);
 }
 
 export async function GET(
@@ -141,13 +136,20 @@ export async function PUT(
 
 		db = await dbConnect();
 
-		const refusal = await refuseProtectedEntry(db, id);
-		if (refusal) return refusal;
+		// The guard row is read under a row lock inside this transaction, so a
+		// concurrent command cannot change the state between guard and update.
+		await db.execute('START TRANSACTION');
+		const refusal = await refuseProtectedEntry(db, id, 'update');
+		if (refusal) {
+			await db.execute('ROLLBACK');
+			return refusal;
+		}
 
 		const attemptedFinancialFields = FINANCIAL_FIELDS.filter(
 			(field) => body[field] !== undefined
 		);
 		if (attemptedFinancialFields.length > 0) {
+			await db.execute('ROLLBACK');
 			return NextResponse.json(
 				{
 					success: false,
@@ -198,6 +200,7 @@ export async function PUT(
 		}
 
 		if (setClauses.length === 0) {
+			await db.execute('ROLLBACK');
 			return NextResponse.json(
 				{ success: false, error: 'No fields to update' },
 				{ status: 400 }
@@ -209,6 +212,7 @@ export async function PUT(
 			`UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE id = ? AND isDelete = 0`,
 			values
 		);
+		await db.execute('COMMIT');
 
 		await logActivity({
 			userId: user?.id,
@@ -221,6 +225,11 @@ export async function PUT(
 
 		return NextResponse.json({ success: true });
 	} catch (error) {
+		try {
+			if (db) await db.execute('ROLLBACK');
+		} catch {
+			/* the transaction may already be gone */
+		}
 		return NextResponse.json(
 			{
 				success: false,
@@ -251,19 +260,27 @@ export async function DELETE(
 		const user = authResult.user;
 		db = await dbConnect();
 
-		const refusal = await refuseProtectedEntry(db, id);
-		if (refusal) return refusal;
+		// The guard row is read under a row lock inside this transaction; the
+		// history guard refuses deleting spending that was ever recognized.
+		await db.execute('START TRANSACTION');
+		const refusal = await refuseProtectedEntry(db, id, 'delete');
+		if (refusal) {
+			await db.execute('ROLLBACK');
+			return refusal;
+		}
 
 		const [result] = await db.execute(
 			`UPDATE ${TABLE} SET isDelete = 1 WHERE id = ? AND isDelete = 0`,
 			[id]
 		);
 		if (result.affectedRows === 0) {
+			await db.execute('ROLLBACK');
 			return NextResponse.json(
 				{ success: false, error: 'Not found' },
 				{ status: 404 }
 			);
 		}
+		await db.execute('COMMIT');
 
 		await logActivity({
 			userId: user?.id,
@@ -276,6 +293,11 @@ export async function DELETE(
 
 		return NextResponse.json({ success: true });
 	} catch (error) {
+		try {
+			if (db) await db.execute('ROLLBACK');
+		} catch {
+			/* the transaction may already be gone */
+		}
 		return NextResponse.json(
 			{
 				success: false,
