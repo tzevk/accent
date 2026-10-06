@@ -8,11 +8,14 @@
  * exports and nothing else:
  *
  *   reads
- *     fetchCompanyReconciliation({ month, projectId? })
+ *     fetchCompanyReconciliation({ month, projectId?, reportingCurrency? })
  *       Company Incurred Cost for a month, split into Incurred Project Cost,
  *       Company Overhead, and Unallocated Cost per currency, plus the Project
  *       breakdown, evidence states, and the coverage notices that say what the
- *       total does and does not include.
+ *       total does and does not include. The figures are stated in the
+ *       requested reporting currency (INR by default) using only matching
+ *       stored conversion evidence; an unconverted amount stays in its own
+ *       currency subtotal with an explicit exception.
  *     fetchCostDrilldown(query)
  *       The source records behind the figures, with identity, evidence, and
  *       the expense state they were counted from.
@@ -29,6 +32,10 @@
  *   writes (one path, versioned)
  *     recordCost(input, actor, { connection? })
  *     executeCommand({ id, command, expectedVersion, reason?, patch? }, actor)
+ *     capturePeriodCharge({ sourceId, period, basis, amount, evidenceReference }, actor)
+ *       Approve period consumption, depreciation, or amortization against a
+ *       non-operating item's supported balance (#317).
+ *     cancelPeriodCharge({ chargeUid, command: 'cancel', expectedVersion, reason }, actor)
  *     recordCostBudget(input, actor, { connection? })
  *     executeBudgetCommand(
  *       { id, command, expectedVersion, reason?, evidenceReference?, patch? },
@@ -40,12 +47,18 @@
  *  - a missing amount is NULL, never zero, and never silently recognized;
  *  - the Recognition Period comes from the received-work period, or the bill
  *    date as a disclosed fallback;
- *  - currencies are not added together without a supported conversion;
+ *  - currencies are not added together without a supported conversion, and a
+ *    missing original currency is unknown — never read as INR;
  *  - every accepted command increments `financial_version` and appends one
  *    journal row, so a repeated or stale command changes nothing;
+ *  - an advance, deposit, prepayment, or capital item is never expensed by its
+ *    payment: only approved, evidenced period charges become cost, in the
+ *    charge's own month, and they never exceed the source's confirmed balance;
  *  - an approved cost budget is compared with Incurred Project Cost only when
- *    Project, currency, scope, and period match, and a budget never enters a
- *    cost total — `budgets` is its own section of the reconciliation.
+ *    Project, currency, scope, and a period exactly equal to the month all
+ *    match, the month's cost is supported by a confirmed source, and no
+ *    proportional allocation is applied — `budgets` is its own section of the
+ *    reconciliation and never enters a cost total.
  *
  * Later slices extend this module: a source adapter per cost source feeds the
  * same `buildReconciliation`, `command`/`revision` controls hang off the same
@@ -67,11 +80,15 @@ import {
 import type { CommandOptions } from './commands';
 import { SOURCE_COVERAGE } from './coverage';
 import {
+	loadChargeTotals,
 	loadCostEvents,
+	loadCostRecordsByIds,
 	loadDrilldown,
 	loadExpenditureMonths,
+	loadMonthCharges,
 	loadMonthProjectCost,
 	loadMonthRecords,
+	loadNonOperatingSources,
 	loadProjectOptions,
 	type SqlConnection,
 } from './records';
@@ -87,6 +104,12 @@ import type {
 
 export { recordCost, executeCommand, loadCost, CostError } from './commands';
 export type { CostActor, CommandOptions } from './commands';
+export { capturePeriodCharge, cancelPeriodCharge } from './charges';
+export type {
+	CapturePeriodChargeInput,
+	PeriodChargeCommandInput,
+} from './charges';
+
 export {
 	createOrder,
 	fetchOrder,
@@ -126,8 +149,34 @@ export type {
 export { recordCostBudget, executeBudgetCommand } from './budget-commands';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
+export {
+	REPORTING_CURRENCY,
+	convertToReporting,
+	conversionException,
+	conversionStatusOf,
+	isCurrencyCode,
+	reportingCurrencyOf,
+} from './currency';
 export { monthLabel } from './reconciliation';
 export { COST_BUDGET_SCOPES, isCostBudgetScope } from './types';
+export {
+	CHARGE_BASIS_LABELS,
+	COST_NATURES,
+	NATURE_LABELS,
+	NON_OPERATING_NATURES,
+	PERIOD_CHARGE_BASES,
+	chargePeriodDate,
+	consumedToDate,
+	isChargePeriod,
+	isNonOperatingNature,
+	periodChargeBlockers,
+	remainingBalance,
+} from './non-operating';
+export type {
+	PeriodChargeBlocker,
+	PeriodChargeBlockerInput,
+	PeriodChargeCandidate,
+} from './non-operating';
 export {
 	effectiveTaxTreatment,
 	evaluateCost,
@@ -140,7 +189,12 @@ export {
 export type {
 	BudgetOutcome,
 	BudgetSection,
+	CompanyConversion,
 	CompanyReconciliation,
+	ConversionEvidence,
+	ConversionExceptionCode,
+	ConversionOutcome,
+	ConversionStatus,
 	CostBudgetCandidate,
 	CostBudgetCommandInput,
 	CostBudgetCommandName,
@@ -160,12 +214,20 @@ export type {
 	CostEvaluation,
 	CostExceptionCode,
 	CostJournalEntry,
+	CostNature,
 	CostPatch,
 	CostRecord,
+	CostRecordJson,
 	CoverageNotice,
+	CurrencyReporting,
 	CurrencyTotal,
 	EvidenceSummary,
+	NonOperatingItemJson,
+	NonOperatingSection,
 	PeriodBasis,
+	PeriodChargeJson,
+	PeriodChargeBasis,
+	PeriodChargeState,
 	ProjectBudgetComparison,
 	RecognitionState,
 	RecordCostBudgetInput,
@@ -210,6 +272,8 @@ export interface ReconciliationRequest {
 	month: string;
 	/** Narrow the Project detail; never the company reconciliation. */
 	projectId?: number | null;
+	/** Requested reporting basis; absent means the company reporting currency. */
+	reportingCurrency?: string | null;
 }
 
 /** Covering budgets plus the row Projects' budgets, without duplicates. */
@@ -234,32 +298,68 @@ export async function fetchCompanyReconciliation(
 	const db = options?.connection ?? pool;
 	const month = request.month;
 	const previousMonth = previousMonthOf(month);
-	const [records, previousProjectCost, projectOptions, availableMonths] =
-		await Promise.all([
-			loadMonthRecords(db, month),
-			previousMonth
-				? loadMonthProjectCost(db, previousMonth)
-				: Promise.resolve(new Map<number, Map<string, number | null>>()),
-			loadProjectOptions(db),
-			loadExpenditureMonths(db, currentMonth()),
-		]);
+	const [
+		records,
+		charges,
+		monthNonOperating,
+		previousProjectCost,
+		projectOptions,
+		availableMonths,
+	] = await Promise.all([
+		loadMonthRecords(db, month),
+		loadMonthCharges(db, { month }),
+		loadNonOperatingSources(db, month),
+		previousMonth
+			? loadMonthProjectCost(db, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		loadProjectOptions(db),
+		loadExpenditureMonths(db, currentMonth()),
+	]);
+
+	// A charge can draw down a balance recognized in an earlier month, so the
+	// section needs those sources too; every other source of the month is
+	// already loaded, and duplicates collapse by expense id.
+	const sourcesById = new Map(
+		monthNonOperating.map((record) => [record.id, record])
+	);
+	const chargeSourceIds = [
+		...new Set(
+			charges
+				.map((charge) => charge.sourceId)
+				.filter((id) => !sourcesById.has(id))
+		),
+	];
+	for (const record of await loadCostRecordsByIds(db, chargeSourceIds)) {
+		sourcesById.set(record.id, record);
+	}
+	const nonOperatingSources = [...sourcesById.values()];
+	const chargeTotals = await loadChargeTotals(
+		db,
+		nonOperatingSources
+			.map((record) => record.costUid)
+			.filter((uid): uid is string => !!uid)
+	);
 	// A budget is read when it covers the month or belongs to a Project the
 	// month has a row for, so an approved budget for another period is stated
 	// as such instead of the Project reading as unbudgeted.
 	const budgets = mergeBudgets(
 		await loadBudgetsCoveringMonth(db, month),
-		await loadBudgetsForProjects(db, projectIdsIn(records))
+		await loadBudgetsForProjects(db, projectIdsIn(records, charges))
 	);
 
 	return buildReconciliation({
 		month,
 		records,
+		charges,
+		nonOperatingSources,
+		chargeTotals,
 		previousMonthProjectCost: previousProjectCost,
 		budgets,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
 		availableMonths,
 		coverageDeclarations: SOURCE_COVERAGE,
+		reportingCurrency: request.reportingCurrency ?? null,
 	});
 }
 

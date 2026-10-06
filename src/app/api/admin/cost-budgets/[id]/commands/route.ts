@@ -15,6 +15,7 @@
 import { NextResponse } from 'next/server';
 import { ensurePermission } from '@/utils/api-permissions';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
+import { hasPermission } from '@/utils/rbac';
 import { logActivity } from '@/utils/activity-logger';
 import {
 	CostError,
@@ -103,6 +104,15 @@ export async function POST(
 				body.evidence_reference === undefined
 					? undefined
 					: String(body.evidence_reference),
+			// The command's own gate is `other_expenses:update`; withdrawing an
+			// approved budget needs the approval privilege too, so the caller's
+			// fact travels with the command and the module enforces it under its
+			// row lock.
+			actorCanApprove: hasPermission(
+				authResult.user,
+				RESOURCES.OTHER_EXPENSES,
+				PERMISSIONS.APPROVE
+			),
 			patch: {
 				currency:
 					patchBody.currency === undefined

@@ -662,8 +662,7 @@ export default function CreateInvoicePage() {
 																					original_po_value:
 																						(order.amountBasis === 'gross'
 																							? order.grossAmount
-																							: order.netAmount) ??
-																						'',
+																							: order.netAmount) ?? '',
 																				}));
 																				setShowPOSelector(false);
 																			}}
@@ -674,7 +673,8 @@ export default function CreateInvoicePage() {
 																			</div>
 																			<div className="text-xs text-gray-500">
 																				{order.counterpartyName}
-																				{order.counterpartyName && order.orderDate
+																				{order.counterpartyName &&
+																				order.orderDate
 																					? ' | '
 																					: ''}
 																				{order.orderDate || ''}

@@ -4,12 +4,12 @@
 
 Orders are now recorded once, in one store, with an explicit direction:
 
-| Where | What |
-| --- | --- |
-| `orders` | Canonical order identity (`order_uid`), direction (`client` / `supplier`), counterparty, Project, currency, tax/amount basis, gross/tax/net amounts, order date, source document, status, firm/cancellable evidence, `financial_version`, and the client-invoice rollup |
-| `order_legacy_mappings` | One row per pre-canonical order copy, queued for document-backed review |
-| `order_review_decisions` | Append-only review journal (classify / link / duplicate / insufficient), keyed `(mapping_id, version)` |
-| `order_events` | Append-only canonical order journal (`created`, `updated`, `client_invoiced`) |
+| Where                    | What                                                                                                                                                                                                                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `orders`                 | Canonical order identity (`order_uid`), direction (`client` / `supplier`), counterparty, Project, currency, tax/amount basis, gross/tax/net amounts, order date, source document, status, firm/cancellable evidence, `financial_version`, and the client-invoice rollup |
+| `order_legacy_mappings`  | One row per pre-canonical order copy, queued for document-backed review                                                                                                                                                                                                 |
+| `order_review_decisions` | Append-only review journal (classify / link / duplicate / insufficient), keyed `(mapping_id, version)`                                                                                                                                                                  |
+| `order_events`           | Append-only canonical order journal (`created`, `updated`, `client_invoiced`)                                                                                                                                                                                           |
 
 A supplier order value is an **Outstanding Supplier Commitment**, never incurred
 cost. Client order value is **commercial context**: not income, not cost, and not
@@ -51,12 +51,12 @@ coherent snapshot across sources.
 
 ## HTTP
 
-| Route | Purpose |
-| --- | --- |
-| `GET/POST /api/admin/orders` | List (direction/Project filters, pagination) and create |
-| `GET/PUT /api/admin/orders/{uid}` | One order + journal, and a versioned update |
-| `GET/POST /api/admin/orders/review` | Legacy review queue and decisions |
-| `GET/PUT /api/projects/{id}/purchase-order` | Project-scoped canonical orders |
+| Route                                           | Purpose                                                 |
+| ----------------------------------------------- | ------------------------------------------------------- |
+| `GET/POST /api/admin/orders`                    | List (direction/Project filters, pagination) and create |
+| `GET/PUT /api/admin/orders/{uid}`               | One order + journal, and a versioned update             |
+| `GET/POST /api/admin/orders/review`             | Legacy review queue and decisions                       |
+| `GET/PUT /api/projects/{id}/purchase-order`     | Project-scoped canonical orders                         |
 | `GET /api/admin/invoices/po-balance?order_uid=` | A client order's remaining value for the invoice screen |
 
 Permissions: reads use `purchase_orders:read`; creation uses
@@ -76,7 +76,7 @@ Permissions: reads use `purchase_orders:read`; creation uses
   double-writes `project_purchase_orders` + `purchase_orders`, and the
   `project_invoices.tab_type = 'purchase_order'` write is refused.
 - **Documents** attach to a canonical order (`entity_documents.entity_type =
-  'order'`), so the source document lives beside the identity it supports.
+'order'`), so the source document lives beside the identity it supports.
 - **Invoice references** are a relational `invoices.order_uid`. The client
   invoice screens select a client order; the old free-text `po_number` match
   into `purchase_orders` (including its row fabrication and balance write) is

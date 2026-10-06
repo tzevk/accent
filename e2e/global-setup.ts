@@ -5,6 +5,10 @@ import {
 import { deleteArtifact } from './lib/artifacts';
 import { closeDb, exec, rows } from './lib/db';
 import {
+	cleanupExpenditureCurrencyFixtures,
+	seedExpenditureCurrencyFixtures,
+} from './lib/expenditure-currency-fixtures';
+import {
 	cleanupExpenditureFixtures,
 	seedExpenditureFixtures,
 } from './lib/expenditure-fixtures';
@@ -30,6 +34,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupUtilizationFixtures();
 		await cleanupOrderFixtures();
 		await cleanupExpenditureFixtures();
+		await cleanupExpenditureCurrencyFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
 		// trusted IP header; browser sign-ins carry no such header, so they land
@@ -79,7 +84,7 @@ export default async function globalSetup(): Promise<void> {
 		const utilization = await seedUtilizationFixtures();
 		console.log(
 			`[e2e] utilization fixtures seeded for ${utilization.month} ` +
-			`(${utilization.employees} employees, ${utilization.attendance} attendance rows, ` +
+				`(${utilization.employees} employees, ${utilization.attendance} attendance rows, ` +
 				`${utilization.assignments} assignments, ` +
 				`${utilization.loggedDays} logged days, ` +
 				`${utilization.linkedUsers} linked user accounts, ` +
@@ -95,6 +100,13 @@ export default async function globalSetup(): Promise<void> {
 				`and ${expenditure.budgetMonth} (${expenditure.costs} direct costs, ` +
 				`${expenditure.budgets} cost budgets, ` +
 				`${Object.keys(expenditure.projects).length} projects)`
+		);
+
+		const currency = await seedExpenditureCurrencyFixtures();
+		console.log(
+			`[e2e] expenditure currency fixtures seeded for ${currency.months.join(', ')} ` +
+				`(${currency.costs} direct costs, ` +
+				`${Object.keys(currency.projects).length} projects)`
 		);
 
 		const orders = await seedOrderFixtures();

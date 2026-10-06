@@ -4,7 +4,11 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-import { createOrder, fetchOrders, OrderError } from '@/lib/company-expenditure';
+import {
+	createOrder,
+	fetchOrders,
+	OrderError,
+} from '@/lib/company-expenditure';
 
 /**
  * The Project tab's order surface (ticket #310).
@@ -44,7 +48,11 @@ export async function GET(request, { params }) {
 
 	try {
 		const { id } = await params;
-		const data = await fetchOrders({ projectId: id, limit: 200, includeCancelled: true });
+		const data = await fetchOrders({
+			projectId: id,
+			limit: 200,
+			includeCancelled: true,
+		});
 		return NextResponse.json({ success: true, data });
 	} catch (error) {
 		if (error instanceof OrderError) return errorResponse(error);

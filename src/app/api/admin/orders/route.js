@@ -4,7 +4,11 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-import { createOrder, fetchOrders, OrderError } from '@/lib/company-expenditure';
+import {
+	createOrder,
+	fetchOrders,
+	OrderError,
+} from '@/lib/company-expenditure';
 
 /**
  * Canonical orders (ticket #310): one store with explicit client/supplier
@@ -81,7 +85,11 @@ export async function GET(request) {
 		if (error instanceof OrderError) return orderErrorResponse(error);
 		console.error('Error fetching orders:', error);
 		return NextResponse.json(
-			{ success: false, message: 'Failed to fetch orders', error: error.message },
+			{
+				success: false,
+				message: 'Failed to fetch orders',
+				error: error.message,
+			},
 			{ status: 500 }
 		);
 	}
@@ -113,7 +121,11 @@ export async function POST(request) {
 		}
 		console.error('Error creating order:', error);
 		return NextResponse.json(
-			{ success: false, message: 'Failed to create order', error: error.message },
+			{
+				success: false,
+				message: 'Failed to create order',
+				error: error.message,
+			},
 			{ status: 500 }
 		);
 	}

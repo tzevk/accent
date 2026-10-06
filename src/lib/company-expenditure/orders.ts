@@ -410,11 +410,16 @@ function num(row: DbRow, key: string): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-function s(row: DbRow, key: string, fallback: string | null = null): string | null {
+function s(
+	row: DbRow,
+	key: string,
+	fallback: string | null = null
+): string | null {
 	const value = row[key];
 	if (value === null || value === undefined) return fallback;
 	if (typeof value === 'string') return value;
-	if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+	if (typeof value === 'number' || typeof value === 'bigint')
+		return String(value);
 	return fallback;
 }
 
@@ -461,7 +466,8 @@ const ORDER_SELECT = `
     LEFT JOIN projects p ON p.project_id = o.project_id AND p.isDelete = 0`;
 
 export function mapOrderRow(row: DbRow): OrderRecord {
-	const direction = (s(row, 'direction', 'supplier') ?? 'supplier') as OrderDirection;
+	const direction = (s(row, 'direction', 'supplier') ??
+		'supplier') as OrderDirection;
 	const amountBasis = (s(row, 'amount_basis', 'unknown') ??
 		'unknown') as OrderAmountBasis;
 	const record: OrderRecord = {
@@ -514,9 +520,8 @@ function mapMappingRow(row: DbRow): LegacyOrderMapping {
 		projectId: num(row, 'project_id'),
 		reviewState: (s(row, 'review_state', 'pending') ??
 			'pending') as LegacyReviewState,
-		resolvedDirection: (s(row, 'resolved_direction') ?? null) as
-			| OrderDirection
-			| null,
+		resolvedDirection: (s(row, 'resolved_direction') ??
+			null) as OrderDirection | null,
 		canonicalOrderUid: s(row, 'canonical_order_uid'),
 		duplicateOfMappingId: num(row, 'duplicate_of_mapping_id'),
 		version: num(row, 'version') ?? 1,
@@ -609,8 +614,12 @@ function normaliseOrder(
 	}
 
 	const amountBasis =
-		enumValue<OrderAmountBasis>(input.amountBasis, BASES, 'unknown', 'amount_basis') ??
-		'unknown';
+		enumValue<OrderAmountBasis>(
+			input.amountBasis,
+			BASES,
+			'unknown',
+			'amount_basis'
+		) ?? 'unknown';
 	const grossAmount = amountOrNull(input.grossAmount, 'gross_amount');
 	const taxAmount = amountOrNull(input.taxAmount, 'tax_amount');
 	const netAmount = amountOrNull(input.netAmount, 'net_amount');
@@ -657,10 +666,7 @@ function normaliseOrder(
 	const firmness =
 		enumValue<OrderFirmness>(input.firmness, FIRMNESS, 'unknown', 'firmness') ??
 		'unknown';
-	const firmnessEvidenceReference = text(
-		input.firmnessEvidenceReference,
-		255
-	);
+	const firmnessEvidenceReference = text(input.firmnessEvidenceReference, 255);
 	if (firmness !== 'unknown' && !firmnessEvidenceReference) {
 		throw new OrderError(
 			'firmness_evidence_required',
@@ -735,29 +741,30 @@ async function insertOrder(
       evidence_reference, remarks, origin_mapping_id, created_from, financial_version, created_by
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[
-		orderUid,
-		normalised.orderNumber ?? '',
-		normalised.direction,
-		normalised.counterpartyName,
-		normalised.companyId,
-		normalised.projectId,
-		normalised.currency,
-		normalised.amountBasis,
-		normalised.grossAmount,
-		normalised.taxAmount,
-		normalised.netAmount,
-		normalised.orderDate,
-		normalised.status,
-		normalised.firmness,
-		normalised.firmnessEvidenceReference,
-		normalised.sourceDocumentReference,
-		normalised.evidenceReference,
-		normalised.remarks,
-		options.originMappingId,
-		options.createdFrom,
-		1,
-		options.actor.id,
-	]);
+			orderUid,
+			normalised.orderNumber ?? '',
+			normalised.direction,
+			normalised.counterpartyName,
+			normalised.companyId,
+			normalised.projectId,
+			normalised.currency,
+			normalised.amountBasis,
+			normalised.grossAmount,
+			normalised.taxAmount,
+			normalised.netAmount,
+			normalised.orderDate,
+			normalised.status,
+			normalised.firmness,
+			normalised.firmnessEvidenceReference,
+			normalised.sourceDocumentReference,
+			normalised.evidenceReference,
+			normalised.remarks,
+			options.originMappingId,
+			options.createdFrom,
+			1,
+			options.actor.id,
+		]
+	);
 }
 
 async function appendOrderEvent(
@@ -866,24 +873,36 @@ export async function updateOrder(
 		const merged: CreateOrderInput = {
 			direction: current.direction,
 			orderNumber:
-				patch.orderNumber !== undefined ? patch.orderNumber : current.orderNumber,
+				patch.orderNumber !== undefined
+					? patch.orderNumber
+					: current.orderNumber,
 			counterpartyName:
 				patch.counterpartyName !== undefined
 					? patch.counterpartyName
 					: current.counterpartyName,
 			companyId:
 				patch.companyId !== undefined ? patch.companyId : current.companyId,
-			projectId: patch.projectId !== undefined ? patch.projectId : current.projectId,
-			currency: patch.currency !== undefined ? patch.currency : current.currency,
+			projectId:
+				patch.projectId !== undefined ? patch.projectId : current.projectId,
+			currency:
+				patch.currency !== undefined ? patch.currency : current.currency,
 			amountBasis:
-				patch.amountBasis !== undefined ? patch.amountBasis : current.amountBasis,
+				patch.amountBasis !== undefined
+					? patch.amountBasis
+					: current.amountBasis,
 			grossAmount:
-				patch.grossAmount !== undefined ? patch.grossAmount : current.grossAmount,
-			taxAmount: patch.taxAmount !== undefined ? patch.taxAmount : current.taxAmount,
-			netAmount: patch.netAmount !== undefined ? patch.netAmount : current.netAmount,
-			orderDate: patch.orderDate !== undefined ? patch.orderDate : current.orderDate,
+				patch.grossAmount !== undefined
+					? patch.grossAmount
+					: current.grossAmount,
+			taxAmount:
+				patch.taxAmount !== undefined ? patch.taxAmount : current.taxAmount,
+			netAmount:
+				patch.netAmount !== undefined ? patch.netAmount : current.netAmount,
+			orderDate:
+				patch.orderDate !== undefined ? patch.orderDate : current.orderDate,
 			status: patch.status !== undefined ? patch.status : current.status,
-			firmness: patch.firmness !== undefined ? patch.firmness : current.firmness,
+			firmness:
+				patch.firmness !== undefined ? patch.firmness : current.firmness,
 			firmnessEvidenceReference:
 				patch.firmnessEvidenceReference !== undefined
 					? patch.firmnessEvidenceReference
@@ -1016,7 +1035,8 @@ function normaliseQuery(queryInput: OrderQuery = {}): ListFilter {
 		),
 		projectId,
 		status: enumValue<OrderStatus>(queryInput.status, STATUSES, null, 'status'),
-		includeCancelled: queryInput.includeCancelled === true ||
+		includeCancelled:
+			queryInput.includeCancelled === true ||
 			queryInput.includeCancelled === '1' ||
 			queryInput.includeCancelled === 'true',
 		limit,
@@ -1024,7 +1044,10 @@ function normaliseQuery(queryInput: OrderQuery = {}): ListFilter {
 	};
 }
 
-function filterSql(filter: ListFilter): { where: string; params: Array<string | number> } {
+function filterSql(filter: ListFilter): {
+	where: string;
+	params: Array<string | number>;
+} {
 	const clauses = ['o.isDelete = 0'];
 	const params: Array<string | number> = [];
 	if (filter.direction) {
@@ -1145,7 +1168,9 @@ export async function fetchOrder(
  * rows that existed then; this keeps the queue complete for rows written by a
  * legacy endpoint afterwards. Idempotent: the unique copy key is the backstop.
  */
-export async function syncLegacyOrderMappings(db: SqlConnection): Promise<void> {
+export async function syncLegacyOrderMappings(
+	db: SqlConnection
+): Promise<void> {
 	const statements: Array<[string, string[]]> = [
 		[
 			`purchase_orders`,
@@ -1317,7 +1342,8 @@ export async function fetchOrderReviewQueue(
 			legacyStore: s(row, 'legacy_store', '') as LegacyOrderStore,
 			legacyId: num(row, 'legacy_id') ?? 0,
 			documentNumber: s(row, 'document_number'),
-			direction: (s(row, 'resolved_direction') ?? null) as OrderDirection | null,
+			direction: (s(row, 'resolved_direction') ??
+				null) as OrderDirection | null,
 			canonicalOrderUid: s(row, 'canonical_order_uid'),
 		})),
 	};
@@ -1485,7 +1511,8 @@ export async function resolveLegacyOrder(
 			const target = mapMappingRow(targetRows[0]);
 			if (
 				!target.canonicalOrderUid ||
-				(target.reviewState !== 'resolved' && target.reviewState !== 'duplicate')
+				(target.reviewState !== 'resolved' &&
+					target.reviewState !== 'duplicate')
 			) {
 				throw new OrderError(
 					'duplicate_target_unresolved',

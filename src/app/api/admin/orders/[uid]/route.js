@@ -54,7 +54,11 @@ export async function GET(request, { params }) {
 		if (error instanceof OrderError) return errorResponse(error);
 		console.error('Error fetching order:', error);
 		return NextResponse.json(
-			{ success: false, message: 'Failed to fetch order', error: error.message },
+			{
+				success: false,
+				message: 'Failed to fetch order',
+				error: error.message,
+			},
 			{ status: 500 }
 		);
 	}
@@ -108,7 +112,11 @@ export async function PUT(request, { params }) {
 		}
 		console.error('Error updating order:', error);
 		return NextResponse.json(
-			{ success: false, message: 'Failed to update order', error: error.message },
+			{
+				success: false,
+				message: 'Failed to update order',
+				error: error.message,
+			},
 			{ status: 500 }
 		);
 	}

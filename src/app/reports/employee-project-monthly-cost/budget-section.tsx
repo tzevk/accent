@@ -48,7 +48,11 @@ interface BudgetComparisonRow {
 	currency: string;
 	incurred_cost: number | null;
 	confirmed_records: number;
+	/** Approved period charges (#317) included in `incurred_cost`. */
+	period_charges: number;
 	pending_records: number;
+	/** Supported approved period charges (#317) inside this month's cost. */
+	period_charges: number;
 	outcome: string;
 	budget: BudgetCandidateRow | null;
 	candidates: BudgetCandidateRow[];
@@ -582,7 +586,9 @@ export default function BudgetSection({
 								data-incurred={
 									row.incurred_cost === null ? '' : String(row.incurred_cost)
 								}
+								data-charges={String(row.period_charges)}
 								data-budget={row.budget ? String(row.budget.amount) : ''}
+								data-charges={String(row.period_charges)}
 								data-variance={
 									row.variance === null ? '' : String(row.variance)
 								}
@@ -635,6 +641,12 @@ export default function BudgetSection({
 									>
 										{row.detail}
 									</span>
+									{row.period_charges > 0 && (
+										<span className="mt-1 block text-xs text-gray-500">
+											{row.period_charges} supported period charge(s) are part
+											of this month&apos;s incurred cost.
+										</span>
+									)}
 									{row.candidates.length > 0 && (
 										<ul className="mt-1 space-y-0.5">
 											{row.candidates.map((candidate) => (
@@ -784,25 +796,30 @@ export default function BudgetSection({
 											Approve
 										</button>
 									)}
-									{canManage &&
+									{((canManage &&
 										(budget.state === 'draft' ||
-											budget.state === 'submitted' ||
-											budget.state === 'approved') && (
-											<button
-												type="button"
-												data-testid="budget-withdraw"
-												onClick={() => {
-													setCommandError(null);
-													setCommandTarget({
-														budget,
-														command: 'withdraw',
-													});
-												}}
-												className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-											>
-												Withdraw
-											</button>
-										)}
+											budget.state === 'submitted')) ||
+										(canApprove && budget.state === 'approved')) && (
+										<button
+											type="button"
+											data-testid="budget-withdraw"
+											onClick={() => {
+												setCommandError(null);
+												setCommandTarget({
+													budget,
+													command: 'withdraw',
+												});
+											}}
+											className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+										>
+											Withdraw
+										</button>
+									)}
+									{!canApprove && canManage && budget.state === 'approved' && (
+										<span className="text-xs text-gray-500">
+											Withdrawing an approved budget needs approval access
+										</span>
+									)}
 								</div>
 							</div>
 							{expandedBudget === budget.id && (

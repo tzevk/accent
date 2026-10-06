@@ -71,8 +71,7 @@ export default function ProjectOrdersPanel({ projectId, canManageOrders }) {
 	const unknown = data.orders.filter(
 		(order) => order.amountBasis === 'unknown'
 	).length;
-	const singleClientTotal =
-		clientTotals.length === 1 ? clientTotals[0] : null;
+	const singleClientTotal = clientTotals.length === 1 ? clientTotals[0] : null;
 
 	const money = (value) =>
 		value === null || value === undefined
@@ -93,8 +92,8 @@ export default function ProjectOrdersPanel({ projectId, canManageOrders }) {
 						Project Orders
 					</h2>
 					<p className="text-xs text-gray-500">
-						Client order value is commercial context; supplier order value is
-						a commitment, not incurred cost.
+						Client order value is commercial context; supplier order value is a
+						commitment, not incurred cost.
 					</p>
 				</div>
 				{canManageOrders && (
@@ -121,7 +120,8 @@ export default function ProjectOrdersPanel({ projectId, canManageOrders }) {
 							className="mt-1 text-sm text-gray-800"
 						>
 							{singleClientTotal.currency} {money(singleClientTotal.orderValue)}{' '}
-							({singleClientTotal.basis === 'gross'
+							(
+							{singleClientTotal.basis === 'gross'
 								? 'including tax'
 								: 'net of tax'}
 							)

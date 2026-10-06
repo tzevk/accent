@@ -38,6 +38,7 @@ import {
 import {
 	fetchCompanyReconciliation,
 	fetchExpenditureMonths,
+	isCurrencyCode,
 } from '@/lib/company-expenditure';
 
 export const runtime = 'nodejs';
@@ -103,8 +104,7 @@ export async function GET(request: Request) {
 				return NextResponse.json(
 					{
 						success: false,
-						error:
-							'Valid month (YYYY-MM) is required for the expenditure view',
+						error: 'Valid month (YYYY-MM) is required for the expenditure view',
 					},
 					{ status: 400 }
 				);
@@ -120,9 +120,28 @@ export async function GET(request: Request) {
 					);
 				}
 			}
+			// The reporting basis is part of the request; absent means the
+			// company reporting currency. Only costs with matching stored
+			// conversion evidence are stated in it. The shared validator owns
+			// the three-letter rule, so route and module cannot drift.
+			const reportingCurrencyParam = url.searchParams.get('reporting_currency');
+			const reportingCurrency = reportingCurrencyParam
+				? reportingCurrencyParam.trim().toUpperCase()
+				: null;
+			if (reportingCurrency !== null && !isCurrencyCode(reportingCurrency)) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'Valid reporting_currency (three-letter code) is required',
+						code: 'invalid_reporting_currency',
+					},
+					{ status: 400 }
+				);
+			}
 			const data = await fetchCompanyReconciliation({
 				month: monthParam,
 				projectId,
+				reportingCurrency,
 			});
 			return NextResponse.json({ success: true, data, view: 'expenditure' });
 		}

@@ -2525,7 +2525,9 @@ export default function ProjectViewPage() {
 					{/* Purchase Order Tab (read-only) */}
 					{activeTab === 'purchase_order' && (
 						<ProjectOrdersPanel
-							projectId={project.id ?? project.project_id ?? project.project_code}
+							projectId={
+								project.id ?? project.project_id ?? project.project_code
+							}
 							canManageOrders={canEditProjectContent}
 						/>
 					)}

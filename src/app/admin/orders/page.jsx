@@ -194,13 +194,13 @@ export default function OrdersPage() {
 				order_date: form.order_date || null,
 				status: form.status,
 				firmness: form.firmness,
-				firmness_evidence_reference:
-					form.firmness_evidence_reference || null,
+				firmness_evidence_reference: form.firmness_evidence_reference || null,
 				source_document_reference: form.source_document_reference || null,
 				remarks: form.remarks || null,
 			};
 			if (form.amount_basis !== 'unknown') {
-				payload.gross_amount = form.gross_amount === '' ? null : form.gross_amount;
+				payload.gross_amount =
+					form.gross_amount === '' ? null : form.gross_amount;
 				payload.tax_amount = form.tax_amount === '' ? null : form.tax_amount;
 				payload.net_amount = form.net_amount === '' ? null : form.net_amount;
 			}
@@ -230,7 +230,10 @@ export default function OrdersPage() {
 	};
 
 	return (
-		<div className="mx-auto max-w-[1400px] space-y-6 px-4 py-6" data-testid="orders-page">
+		<div
+			className="mx-auto max-w-[1400px] space-y-6 px-4 py-6"
+			data-testid="orders-page"
+		>
 			<header className="space-y-1">
 				<h1 className="text-xl font-bold text-gray-900">Orders</h1>
 				<p className="text-sm text-gray-600">
@@ -239,7 +242,10 @@ export default function OrdersPage() {
 					commitment, never incurred cost.
 				</p>
 				{projectFilter && (
-					<p className="text-sm text-gray-500" data-testid="orders-project-filter">
+					<p
+						className="text-sm text-gray-500"
+						data-testid="orders-project-filter"
+					>
 						Filtered to one Project.{' '}
 						<a className="text-purple-700 underline" href="/admin/orders">
 							Show all orders
@@ -283,7 +289,9 @@ export default function OrdersPage() {
 							</div>
 						))}
 						{totalsFor('client').length === 0 && (
-							<p className="text-sm text-gray-500">No supported client value yet.</p>
+							<p className="text-sm text-gray-500">
+								No supported client value yet.
+							</p>
 						)}
 						<p
 							data-testid="client-order-unknown"
@@ -315,7 +323,10 @@ export default function OrdersPage() {
 					<h2 className="text-sm font-semibold text-gray-900">
 						Supplier order value
 					</h2>
-					<p className="text-xs text-gray-500" data-testid="supplier-commitment-note">
+					<p
+						className="text-xs text-gray-500"
+						data-testid="supplier-commitment-note"
+					>
 						Ordered value, not incurred cost; remaining commitment needs
 						recognized consumption linked to the order.
 					</p>
@@ -338,7 +349,9 @@ export default function OrdersPage() {
 							</div>
 						))}
 						{totalsFor('supplier').length === 0 && (
-							<p className="text-sm text-gray-500">No supported supplier value yet.</p>
+							<p className="text-sm text-gray-500">
+								No supported supplier value yet.
+							</p>
 						)}
 						<p
 							data-testid="supplier-order-unknown"
@@ -777,8 +790,8 @@ export default function OrdersPage() {
 				</h2>
 				<p className="text-xs text-gray-500">
 					Pre-canonical copies stay unclassified until a document-backed
-					decision. A shared document number is a collision candidate, not
-					proof that two copies are the same order.
+					decision. A shared document number is a collision candidate, not proof
+					that two copies are the same order.
 				</p>
 				<div className="mt-3 space-y-4">
 					{(queue?.items ?? []).map((item) => (

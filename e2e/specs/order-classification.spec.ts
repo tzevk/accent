@@ -120,7 +120,8 @@ interface Reconciliation {
 let seeded: SeededOrderFixtures;
 const evidence: Record<string, unknown> = { ok: true, month: MONTH };
 /** Canonical order UIDs this spec created through the app. */
-const created: Array<{ orderUid: string; orderNumber: string; by: string }> = [];
+const created: Array<{ orderUid: string; orderNumber: string; by: string }> =
+	[];
 /** Status codes observed for the read/write authorization probes. */
 const authorizationEvidence: Record<string, number> = {};
 
@@ -142,11 +143,18 @@ function publish(): void {
 	});
 }
 
-function recordCreated(orderUid: string, orderNumber: string, by: string): void {
+function recordCreated(
+	orderUid: string,
+	orderNumber: string,
+	by: string
+): void {
 	created.push({ orderUid, orderNumber, by });
 }
 
-async function apiJson<T>(response: APIResponse, expectStatus = 200): Promise<T> {
+async function apiJson<T>(
+	response: APIResponse,
+	expectStatus = 200
+): Promise<T> {
 	const body = await response.json();
 	expect(response.status(), JSON.stringify(body)).toBe(expectStatus);
 	return body as T;
@@ -227,14 +235,17 @@ async function createOrderThroughForm(
 			.fill(order.firmnessEvidence);
 	}
 	if (order.sourceDocument) {
-		await page
-			.getByTestId('order-source-document')
-			.fill(order.sourceDocument);
+		await page.getByTestId('order-source-document').fill(order.sourceDocument);
 	}
-	if (order.remarks) await page.getByTestId('order-remarks').fill(order.remarks);
+	if (order.remarks)
+		await page.getByTestId('order-remarks').fill(order.remarks);
 	await page.getByTestId('order-create-submit').click();
 	await expect(page.getByTestId('order-form-success')).toBeVisible();
-	await expect(page.locator(`[data-testid="order-row"][data-order-number="${order.number}"]`)).toBeVisible();
+	await expect(
+		page.locator(
+			`[data-testid="order-row"][data-order-number="${order.number}"]`
+		)
+	).toBeVisible();
 }
 
 function totalsRow(
@@ -303,12 +314,8 @@ async function resolveThroughQueue(
 		await row
 			.getByTestId('review-basis')
 			.selectOption(fields.amounts.basis ?? 'net');
-		await row
-			.getByTestId('review-net')
-			.fill(String(fields.amounts.net ?? ''));
-		await row
-			.getByTestId('review-tax')
-			.fill(String(fields.amounts.tax ?? ''));
+		await row.getByTestId('review-net').fill(String(fields.amounts.net ?? ''));
+		await row.getByTestId('review-tax').fill(String(fields.amounts.tax ?? ''));
 		await row
 			.getByTestId('review-gross')
 			.fill(String(fields.amounts.gross ?? ''));
@@ -327,9 +334,12 @@ async function resolveThroughQueue(
 	await row.getByTestId('review-reason').fill(fields.reason);
 	await row.getByTestId('review-evidence').fill(fields.evidence);
 	await row.getByTestId('review-submit').click();
-	await expect(row.getByTestId('review-state')).toHaveText(/resolved|duplicate/i, {
-		timeout: 10_000,
-	});
+	await expect(row.getByTestId('review-state')).toHaveText(
+		/resolved|duplicate/i,
+		{
+			timeout: 10_000,
+		}
+	);
 }
 
 test.beforeAll(async () => {
@@ -1079,9 +1089,7 @@ test('links a client invoice to a canonical client order, never a supplier order
 		})
 	);
 	const adjusted = await dbOrder(CREATED_ORDERS.client.number);
-	expect(Number(adjusted.client_invoiced_value)).toBe(
-		INVOICE_LINK.secondTotal
-	);
+	expect(Number(adjusted.client_invoiced_value)).toBe(INVOICE_LINK.secondTotal);
 
 	// The canonical balance endpoint answers from the order, not a text match.
 	const balance = await apiJson<{
@@ -1128,9 +1136,7 @@ test('links a client invoice to a canonical client order, never a supplier order
 	expect(supplierAfter.client_invoiced_value).toBeNull();
 
 	// Deleting the invoice reverses the rollup.
-	await apiJson(
-		await request.delete(`/api/admin/invoices/${invoiceId}`)
-	);
+	await apiJson(await request.delete(`/api/admin/invoices/${invoiceId}`));
 	const reversed = await dbOrder(CREATED_ORDERS.client.number);
 	expect(Number(reversed.client_invoiced_value)).toBe(0);
 
@@ -1269,9 +1275,7 @@ test('shows canonical orders on the Project tab and keeps the legacy copies inta
 	const supplierNet = panel.getByTestId('project-supplier-order-total-net');
 	await expect(supplierNet).toHaveAttribute(
 		'data-amount',
-		String(
-			CREATED_ORDERS.supplier.net + LEGACY_AMOUNTS.purchaseOrder
-		)
+		String(CREATED_ORDERS.supplier.net + LEGACY_AMOUNTS.purchaseOrder)
 	);
 	const supplierGross = panel.getByTestId('project-supplier-order-total-gross');
 	await expect(supplierGross).toHaveAttribute(
@@ -1292,8 +1296,7 @@ test('shows canonical orders on the Project tab and keeps the legacy copies inta
 
 	evidence.projectTab = {
 		client: CREATED_ORDERS.client.net,
-		supplierNet:
-			CREATED_ORDERS.supplier.net + LEGACY_AMOUNTS.purchaseOrder,
+		supplierNet: CREATED_ORDERS.supplier.net + LEGACY_AMOUNTS.purchaseOrder,
 		supplierGross: LEGACY_AMOUNTS.projectPoGross,
 		rows: projectOrders.orders.length,
 	};
@@ -1307,15 +1310,13 @@ test('attaches a source document to a canonical order', async ({ page }) => {
 	await row.getByTestId('order-row-open').click();
 	const detail = page.getByTestId('order-detail');
 	await expect(detail).toBeVisible();
-	await detail
-		.locator('input[type="file"]')
-		.setInputFiles({
-			name: `${PREFIX}SUP-1.pdf`,
-			mimeType: 'application/pdf',
-			buffer: Buffer.from(
-				'%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< >>\n%%EOF\n'
-			),
-		});
+	await detail.locator('input[type="file"]').setInputFiles({
+		name: `${PREFIX}SUP-1.pdf`,
+		mimeType: 'application/pdf',
+		buffer: Buffer.from(
+			'%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< >>\n%%EOF\n'
+		),
+	});
 	await expect(detail.getByText(`${PREFIX}SUP-1.pdf`)).toBeVisible();
 
 	const stored = await dbOrder(CREATED_ORDERS.supplier.number);

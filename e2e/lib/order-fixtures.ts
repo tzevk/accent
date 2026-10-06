@@ -304,9 +304,10 @@ async function purgeOrderNamespaces(): Promise<number> {
 	await bestEffort(`DELETE FROM orders WHERE order_number LIKE ?`, [
 		`${ORDER_FIXTURE_PREFIX}%`,
 	]);
-	await bestEffort(`DELETE FROM order_legacy_mappings WHERE document_number LIKE ?`, [
-		`${ORDER_FIXTURE_PREFIX}%`,
-	]);
+	await bestEffort(
+		`DELETE FROM order_legacy_mappings WHERE document_number LIKE ?`,
+		[`${ORDER_FIXTURE_PREFIX}%`]
+	);
 
 	// Legacy copies in the four pre-canonical stores.
 	removed += (
@@ -343,9 +344,10 @@ async function purgeOrderNamespaces(): Promise<number> {
 export async function cleanupOrderFixtures(): Promise<number> {
 	await cleanupOrderViewer();
 	const removed = await purgeOrderNamespaces();
-	const projects = await exec(`DELETE FROM projects WHERE project_code LIKE ?`, [
-		`${ORDER_FIXTURE_PREFIX}P%`,
-	]);
+	const projects = await exec(
+		`DELETE FROM projects WHERE project_code LIKE ?`,
+		[`${ORDER_FIXTURE_PREFIX}P%`]
+	);
 	return removed + projects.affectedRows;
 }
 
