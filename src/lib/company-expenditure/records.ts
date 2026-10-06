@@ -9,20 +9,17 @@
  * transaction.
  */
 
-import { add, R, toNumber } from '@/lib/money';
 import {
+	REPORTING_CURRENCY,
 	conversionStatusOf,
 	currencyCodeOf,
 	evidenceOf,
-	reportingCurrencyOf,
 } from './currency';
-import { toPeriodChargeJson } from './non-operating';
 import { evaluateCost } from './recognition';
 import type {
 	CostClassification,
 	CostNature,
 	CostRecordJson,
-	CostDrilldown,
 	CostDrilldownQuery,
 	CostJournalEntry,
 	CostRecord,
@@ -165,13 +162,13 @@ export function mapCostRow(row: DbRow): CostRecord {
 }
 
 /**
- * The record as the report endpoints publish it, in the requested basis. The
- * billing basis of every consumer (drilldown, later export) states one
- * `conversion_status` per response.
+ * The record as the report endpoints publish it, in the requested basis: one
+ * `conversion_status` per response, so a reader never sees a record's status
+ * computed against a different currency than its figures.
  */
 export function toCostRecordJson(
 	record: CostRecord,
-	reporting: string
+	reporting: string = REPORTING_CURRENCY
 ): CostRecordJson {
 	return {
 		id: record.id,
@@ -661,9 +658,10 @@ function natureFilterClause(nature: CostDrilldownQuery['nature']): {
 /**
  * A drilldown subtotal that may only be stated in one currency: one unknown
  * amount or a second currency makes it null, because an unknown amount is not
- * zero and currencies are never added.
+ * zero and currencies are never added. Shared by the expense drilldown reader
+ * (`drilldown.ts`), which derives the counts from its merged records.
  */
-function statedSubtotal(input: {
+export function statedSubtotal(input: {
 	amount: number | null;
 	unknown: number;
 	currencies: number;
@@ -679,21 +677,17 @@ function statedSubtotal(input: {
 }
 
 /**
- * The source drilldown: the same rows the reconciliation counted, read back
- * with their identity, evidence, and journal version — plus the period charges
- * dated in the month, so consumption is traceable to the balance it draws
- * down. A cancelled charge is shown as history but never counted as cost.
+ * The direct-expense rows matching a drilldown query, unpaginated. The
+ * combined drilldown (`drilldown.ts`) merges this with the other cost sources
+ * before it sorts and pages, so one filter can never page one store's records
+ * past another's.
  */
-export async function loadDrilldown(
+export async function loadFilteredExpenseRecords(
 	db: SqlConnection,
 	query: CostDrilldownQuery
-): Promise<CostDrilldown> {
+): Promise<CostRecord[]> {
 	const { start, end } = monthBounds(query.month);
-	const reporting = reportingCurrencyOf({
-		reportingCurrency: query.reportingCurrency ?? null,
-	});
-	const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
-	const offset = Math.max(query.offset ?? 0, 0);
+
 	const state = stateFilterClause(query.state);
 	const nature = natureFilterClause(query.nature);
 	const where = [
@@ -722,110 +716,11 @@ export async function loadDrilldown(
 		where.push('e.project_id = ?');
 		params.push(query.projectId);
 	}
-	const whereSql = where.join(' AND ');
-	// Operating cost, non-operating balances, and unresolved treatment are
-	// counted apart: only operating confirmed cost is Company Incurred Cost.
-	const operating =
-		"e.recognition_state = 'recognized' AND e.cost_nature = 'operating'";
-	const nonOperating =
-		"e.recognition_state = 'recognized' AND e.cost_nature IN ('advance','deposit','prepayment','capital')";
-	const unresolved =
-		"e.recognition_state = 'recognized' AND e.cost_nature = 'unresolved'";
-
-	const [countRows] = await db.execute(
-		`SELECT COUNT(*) AS total,
-              SUM(CASE WHEN ${operating} THEN 1 ELSE 0 END) AS cost_records,
-              SUM(CASE WHEN ${operating} AND (e.recognized_amount IS NULL OR e.currency IS NULL) THEN 1 ELSE 0 END) AS cost_unknown,
-              COUNT(DISTINCT CASE WHEN ${operating} THEN e.currency END) AS cost_currencies,
-              MIN(CASE WHEN ${operating} THEN e.currency END) AS cost_currency,
-              SUM(CASE WHEN ${operating} THEN e.recognized_amount ELSE 0 END) AS cost_amount,
-              SUM(CASE WHEN ${nonOperating} THEN 1 ELSE 0 END) AS non_operating_records,
-              SUM(CASE WHEN ${nonOperating} AND (e.recognized_amount IS NULL OR e.currency IS NULL) THEN 1 ELSE 0 END) AS non_operating_unknown,
-              COUNT(DISTINCT CASE WHEN ${nonOperating} THEN e.currency END) AS non_operating_currencies,
-              MIN(CASE WHEN ${nonOperating} THEN e.currency END) AS non_operating_currency,
-              SUM(CASE WHEN ${nonOperating} THEN e.recognized_amount ELSE 0 END) AS non_operating_amount,
-              SUM(CASE WHEN ${unresolved} THEN 1 ELSE 0 END) AS unresolved_records,
-              SUM(CASE WHEN ${unresolved} AND (e.recognized_amount IS NULL OR e.currency IS NULL) THEN 1 ELSE 0 END) AS unresolved_unknown,
-              COUNT(DISTINCT CASE WHEN ${unresolved} THEN e.currency END) AS unresolved_currencies,
-              MIN(CASE WHEN ${unresolved} THEN e.currency END) AS unresolved_currency,
-              SUM(CASE WHEN ${unresolved} THEN e.recognized_amount ELSE 0 END) AS unresolved_amount
-         FROM expenses e
-        WHERE ${whereSql}`,
-		params
-	);
-	const count = (countRows as DbRow[])[0] ?? {};
-	const confirmed = statedSubtotal({
-		amount: num(count, 'cost_amount'),
-		unknown: num(count, 'cost_unknown') ?? 0,
-		currencies: num(count, 'cost_currencies') ?? 0,
-		currency: s(count, 'cost_currency'),
-	});
-	const nonOperatingTotal = statedSubtotal({
-		amount: num(count, 'non_operating_amount'),
-		unknown: num(count, 'non_operating_unknown') ?? 0,
-		currencies: num(count, 'non_operating_currencies') ?? 0,
-		currency: s(count, 'non_operating_currency'),
-	});
-	const unresolvedTotal = statedSubtotal({
-		amount: num(count, 'unresolved_amount'),
-		unknown: num(count, 'unresolved_unknown') ?? 0,
-		currencies: num(count, 'unresolved_currencies') ?? 0,
-		currency: s(count, 'unresolved_currency'),
-	});
-	const [rows] = await db.execute(
+	const [rows] = (await db.execute(
 		`${COST_SELECT}
-      WHERE ${whereSql}
-      ORDER BY e.recognition_period DESC, e.expense_date DESC, e.id DESC
-      LIMIT ? OFFSET ?`,
-		[...params, limit, offset]
-	);
-
-	// Charges are confirmed cost of their own month, so they belong to the
-	// confirmed-cost filters only; a cancelled charge is returned as history.
-	const includeCharges =
-		!query.state || query.state === 'all' || query.state === 'recognized';
-	const charges = includeCharges
-		? await loadMonthCharges(db, {
-				month: query.month,
-				classification: query.classification,
-				nature: query.nature,
-				projectId: query.projectId,
-			})
-		: [];
-	const countedCharges = charges.filter(
-		(charge) =>
-			charge.state === 'approved' && charge.sourceState === 'recognized'
-	);
-	const chargeCurrencies = new Set(
-		countedCharges.map((charge) => charge.currency)
-	);
-	const periodChargeAmount =
-		chargeCurrencies.size > 1
-			? null
-			: toNumber(
-					countedCharges
-						.reduce((total, charge) => add(total, charge.amount), R(0))
-						.toDecimalPlaces(2)
-				);
-
-	return {
-		month: query.month,
-		scope: 'month',
-		total: Number(num(count, 'total') ?? 0),
-		limit,
-		offset,
-		records: (rows as DbRow[])
-			.map(mapCostRow)
-			.map((record) => toCostRecordJson(record, reporting)),
-		period_charges: charges.map(toPeriodChargeJson),
-		totals: {
-			confirmed_amount: confirmed.amount,
-			currency: confirmed.currency,
-			records: Number(num(count, 'total') ?? 0),
-			non_operating_amount: nonOperatingTotal.amount,
-			nature_unresolved_amount: unresolvedTotal.amount,
-			period_charge_amount: periodChargeAmount,
-			period_charge_records: countedCharges.length,
-		},
-	};
+      WHERE ${where.join(' AND ')}
+      ORDER BY e.recognition_period DESC, e.expense_date DESC, e.id DESC`,
+		params
+	)) as [DbRow[], unknown];
+	return (rows as DbRow[]).map(mapCostRow);
 }

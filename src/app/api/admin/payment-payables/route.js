@@ -6,6 +6,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
+import { linkCostReference } from '@/lib/company-expenditure';
 
 const TABLE = 'payment_payables';
 
@@ -126,61 +127,119 @@ export async function POST(request) {
 
 		db = await dbConnect();
 
+		// A payable follows the invoice's cost; it never becomes a cost itself.
+		// An explicit invoice reference is a reliable mapping and is linked
+		// here (confirmed, explicit). A text-only reference stays unlinked and
+		// is surfaced as a reviewable candidate from the invoice detail.
+		let linkedCostUid = null;
+		if (body.purchase_invoice_id) {
+			const [invoiceRows] = await db.execute(
+				`SELECT id, cost_uid FROM purchase_invoices WHERE id = ? AND isDelete = 0`,
+				[body.purchase_invoice_id]
+			);
+			if (invoiceRows.length === 0) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'The referenced purchase invoice does not exist',
+						code: 'invoice_not_found',
+					},
+					{ status: 404 }
+				);
+			}
+			if (!invoiceRows[0].cost_uid) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'The referenced purchase invoice has no cost identity yet',
+						code: 'invoice_has_no_cost_identity',
+					},
+					{ status: 422 }
+				);
+			}
+			linkedCostUid = invoiceRows[0].cost_uid;
+		}
+
 		const referenceNumber = body.reference_number || (await nextNumber(db));
 		const invoiceAmount = Number(body.invoice_amount ?? 0);
 		const paidAmount = Number(body.paid_amount ?? 0);
 		const balanceDue = Number(body.balance_due ?? invoiceAmount - paidAmount);
 
-		const [result] = await db.execute(
-			`INSERT INTO ${TABLE}
+		let insertId;
+		await db.beginTransaction();
+		try {
+			const [result] = await db.execute(
+				`INSERT INTO ${TABLE}
 				(reference_number, vendor_invoice_number, purchase_invoice_id, vendor_name, vendor_email, vendor_phone,
 				 invoice_date, due_date, invoice_amount, paid_amount, balance_due, currency,
 				 project_id, po_number, payment_terms, last_follow_up_date, next_follow_up_date,
 				 notes, status, paid_date, payment_mode, transaction_reference, bank_name,
-				 tds_amount, assigned_to, created_by)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				referenceNumber,
-				body.vendor_invoice_number || null,
-				body.purchase_invoice_id || null,
-				body.vendor_name,
-				body.vendor_email || null,
-				body.vendor_phone || null,
-				body.invoice_date || null,
-				body.due_date || null,
-				invoiceAmount,
-				paidAmount,
-				balanceDue,
-				body.currency || 'INR',
-				body.project_id || null,
-				body.po_number || null,
-				body.payment_terms || null,
-				body.last_follow_up_date || null,
-				body.next_follow_up_date || null,
-				body.notes || null,
-				body.status || 'pending',
-				body.paid_date || null,
-				body.payment_mode || null,
-				body.transaction_reference || null,
-				body.bank_name || null,
-				body.tds_amount || 0,
-				body.assigned_to || null,
-				user?.id || null,
-			]
-		);
+				 tds_amount, assigned_to, created_by, cost_uid)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				[
+					referenceNumber,
+					body.vendor_invoice_number || null,
+					body.purchase_invoice_id || null,
+					body.vendor_name,
+					body.vendor_email || null,
+					body.vendor_phone || null,
+					body.invoice_date || null,
+					body.due_date || null,
+					invoiceAmount,
+					paidAmount,
+					balanceDue,
+					body.currency || 'INR',
+					body.project_id || null,
+					body.po_number || null,
+					body.payment_terms || null,
+					body.last_follow_up_date || null,
+					body.next_follow_up_date || null,
+					body.notes || null,
+					body.status || 'pending',
+					body.paid_date || null,
+					body.payment_mode || null,
+					body.transaction_reference || null,
+					body.bank_name || null,
+					body.tds_amount || 0,
+					body.assigned_to || null,
+					user?.id || null,
+					linkedCostUid,
+				]
+			);
+			insertId = result.insertId;
+			if (linkedCostUid) {
+				await linkCostReference(db, {
+					costUid: linkedCostUid,
+					sourceTable: 'payment_payables',
+					sourceId: insertId,
+					role: 'liability',
+					basis: 'explicit',
+					reviewState: 'confirmed',
+					createdBy: user?.id || null,
+				});
+			}
+			await db.commit();
+		} catch (error) {
+			await db.rollback();
+			throw error;
+		}
 
 		await logActivity({
 			userId: user?.id,
 			actionType: 'create',
 			resourceType: 'payment_payable',
-			resourceId: result.insertId,
+			resourceId: insertId,
 			description: `Created payable ${referenceNumber} for ${body.vendor_name}`,
 			request,
 		});
 
 		return NextResponse.json({
 			success: true,
-			data: { id: result.insertId, reference_number: referenceNumber },
+			data: {
+				id: insertId,
+				reference_number: referenceNumber,
+				cost_uid: linkedCostUid,
+			},
 		});
 	} catch (error) {
 		console.error('Error creating payable:', error);

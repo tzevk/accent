@@ -44,7 +44,6 @@ import {
 import { JOURNAL_COMMAND, writeCostEvent } from './journal';
 import {
 	inTransaction,
-	resolveConversion,
 	type CommandOptions,
 	type CostActor,
 } from './commands';
@@ -52,6 +51,7 @@ import {
 	convertToReporting,
 	evidenceOf,
 	reportingCurrencyOf,
+	resolveConversion,
 } from './currency';
 import {
 	evaluateCost,
@@ -486,32 +486,25 @@ export async function loadPettyCashProjectCost(
 	return costs;
 }
 
-export interface PettyCashDrilldown {
-	total: number;
-	records: CostRecordJson[];
-	confirmed_amount: number | null;
-	currency: string | null;
-}
-
 /**
- * The petty-cash rows behind the report figures, with the same month, state,
- * classification, and Project filters the direct-expense drilldown applies.
- * A receipt already linked to another cost is not a cost row here: the linked
- * cost is the one row counted, so the drilldown never shows the same spending
- * twice. `confirmed_amount` is null when a confirmed amount is unknown or the
- * confirmed rows span currencies, exactly like the direct-expense totals.
- *
- * When #319's drilldown-basis fix lands (`CostDrilldownQuery.reportingCurrency`
- * with per-record `conversion_status` in the selected basis), forward the
- * query's basis into the JSON mapping here — one basis per response.
+ * The petty-cash rows matching one drilldown query, in the module's own
+ * `CostRecord` shape: the combined drilldown (`drilldown.ts`) owns the union,
+ * sort, paging, JSON mapping, and totals, so this source only reads its own
+ * store with the same month, state, classification, nature, and Project
+ * filters. A receipt already linked to another cost is not a cost row here —
+ * the linked cost is the row counted — so the drilldown never shows the same
+ * spending twice.
  */
-export async function loadPettyCashDrilldown(
+export async function loadFilteredPettyCashRecords(
 	db: SqlConnection,
 	query: CostDrilldownQuery
-): Promise<PettyCashDrilldown> {
+): Promise<CostRecord[]> {
+	// Every petty-cash row is operating cost: a non-operating or unresolved
+	// treatment filter selects nothing here, and never silently matches.
+	if (query.nature === 'non_operating' || query.nature === 'unresolved') {
+		return [];
+	}
 	const { start, end } = monthBounds(query.month);
-	const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
-	const offset = Math.max(query.offset ?? 0, 0);
 	const where = [
 		'p.isDelete = 0',
 		"p.entry_kind = 'spend'",
@@ -519,14 +512,6 @@ export async function loadPettyCashDrilldown(
 		'(p.recognition_period BETWEEN ? AND ? OR (p.recognition_period IS NULL AND p.bill_date BETWEEN ? AND ?))',
 	];
 	const params: Array<string | number> = [start, end, start, end];
-	// Every petty-cash row is operating cost: a non-operating or unresolved
-	// treatment filter selects nothing here, and never silently matches.
-	if (
-		query.nature === 'non_operating' ||
-		query.nature === 'unresolved'
-	) {
-		return { total: 0, records: [], confirmed_amount: 0, currency: null };
-	}
 	if (query.state && query.state !== 'all') {
 		if (query.state === 'unconfirmed') {
 			where.push("p.recognition_state IN ('draft','pending_evidence')");
@@ -549,60 +534,17 @@ export async function loadPettyCashDrilldown(
 		where.push('p.project_id = ?');
 		params.push(query.projectId);
 	}
-	const whereSql = where.join(' AND ');
-
-	const [countRows] = await db.execute(
-		`SELECT COUNT(*) AS total,
-              SUM(CASE WHEN p.recognition_state = 'recognized' THEN 1 ELSE 0 END) AS confirmed_records,
-              SUM(CASE WHEN p.recognition_state = 'recognized' AND p.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts,
-              SUM(CASE WHEN p.recognition_state = 'recognized' AND p.currency IS NULL THEN 1 ELSE 0 END) AS unknown_currency_records,
-              COUNT(DISTINCT CASE WHEN p.recognition_state = 'recognized' THEN p.currency END) AS confirmed_currencies,
-              MIN(CASE WHEN p.recognition_state = 'recognized' THEN p.currency END) AS confirmed_currency,
-              SUM(CASE WHEN p.recognition_state = 'recognized' THEN p.recognized_amount ELSE 0 END) AS confirmed
-         FROM petty_cash_expenses p
-        WHERE ${whereSql}`,
-		params
-	);
-	const count = (countRows as DbRow[])[0] ?? {};
-	const unknownAmounts = num(count, 'unknown_amounts') ?? 0;
-	const unknownCurrency = num(count, 'unknown_currency_records') ?? 0;
-	const confirmedCurrencies = num(count, 'confirmed_currencies') ?? 0;
-	const confirmedAmount =
-		unknownAmounts > 0 || unknownCurrency > 0 || confirmedCurrencies > 1
-			? null
-			: (num(count, 'confirmed') ?? 0);
-	const [rows] = await db.execute(
+	const rows = await db.execute(
 		`${SPEND_SELECT}
-      WHERE ${whereSql}
+      WHERE ${where.join(' AND ')}
       ORDER BY p.recognition_period DESC,
                COALESCE(p.bill_date, p.transaction_date) DESC,
-               p.numeric_id DESC
-      LIMIT ? OFFSET ?`,
-		[...params, limit, offset]
+               p.numeric_id DESC`,
+		params
 	);
-	const basis = reportingCurrencyOf({
-		reportingCurrency: query.reportingCurrency ?? null,
-	});
-	return {
-		total: Number(num(count, 'total') ?? 0),
-		records: (rows as DbRow[])
-			.map(mapPettyCashRow)
-			.map((record) => toCostRecordJson(record, basis)),
-		confirmed_amount: confirmedAmount,
-		currency:
-			unknownCurrency > 0 || confirmedCurrencies !== 1
-				? null
-				: s(count, 'confirmed_currency'),
-	};
+	return (rows[0] as DbRow[]).map(mapPettyCashRow);
 }
 
-/**
- * The petty-cash source as the common registry reads it: the native store and
- * its keys (the UUID primary key a command addresses, the numeric key the
- * journal uses), the command endpoint, and the cost-bearing predicate. The
- * report reads (reconciliation, prior month, cost-to-date, drilldown) consume
- * this descriptor so petty-cash confirmed cost is stated once, from one place.
- */
 export interface PettyCashSourceDescriptor {
 	source: 'petty_cash';
 	table: 'petty_cash_expenses';
@@ -619,10 +561,10 @@ export interface PettyCashSourceDescriptor {
 		db: SqlConnection,
 		month: string
 	): Promise<Map<number, Map<string, number | null>>>;
-	loadDrilldown(
+	loadFilteredRecords(
 		db: SqlConnection,
 		query: CostDrilldownQuery
-	): Promise<PettyCashDrilldown>;
+	): Promise<CostRecord[]>;
 	loadMonths(db: SqlConnection): Promise<string[]>;
 }
 
@@ -635,7 +577,7 @@ export const PETTY_CASH_COST_SOURCE: PettyCashSourceDescriptor = {
 	costPredicate: "entry_kind = 'spend' AND linked_cost_uid IS NULL",
 	loadMonthRecords: loadPettyCashRecords,
 	loadProjectCost: loadPettyCashProjectCost,
-	loadDrilldown: loadPettyCashDrilldown,
+	loadFilteredRecords: loadFilteredPettyCashRecords,
 	loadMonths: loadPettyCashMonths,
 };
 

@@ -79,26 +79,32 @@ import {
 } from './budget-records';
 import type { CommandOptions } from './commands';
 import { SOURCE_COVERAGE } from './coverage';
+import { loadCombinedDrilldown } from './drilldown';
 import {
 	loadChargeTotals,
 	loadCostEvents,
 	loadCostRecordsByIds,
-	loadDrilldown,
 	loadExpenditureMonths,
 	loadMonthCharges,
 	loadMonthProjectCost,
 	loadMonthRecords,
 	loadNonOperatingSources,
 	loadProjectOptions,
+	type ProjectOption,
 	type SqlConnection,
 } from './records';
 import {
 	PETTY_CASH_COST_SOURCE,
 	loadPettyCashSummary,
-	type PettyCashDrilldown,
 	type PettyCashSourceDescriptor,
 } from './petty-cash';
 import { buildReconciliation, projectIdsIn } from './reconciliation';
+import { registerCostSource } from './sources';
+import {
+	SUPPLIER_INVOICE_ADAPTER,
+	loadSupplierInvoiceMonths,
+	loadSupplierMonthRecords,
+} from './supplier-invoices';
 import type {
 	CompanyReconciliation,
 	CostBudgetJournalEntry,
@@ -117,7 +123,6 @@ export {
 	executePettyCashCommand,
 	fundingEventUid,
 	isPettyCashCommand,
-	loadPettyCashDrilldown,
 	loadPettyCashGuardRow,
 	loadVoucherGuard,
 	pettyCashCommandInputFromJson,
@@ -193,14 +198,30 @@ export type {
 	OrderValueTotal,
 	UpdateOrderInput,
 } from './orders';
+export {
+	decideSupplierLink,
+	executeSupplierCommand,
+	initializeSupplierCost,
+	loadSupplierInvoiceDetail,
+} from './supplier-invoices';
+export type {
+	InitializeSupplierCostInput,
+	RecordedSupplierCost,
+	SupplierCommandInput,
+	SupplierInvoiceDetail,
+	SupplierInvoicePatch,
+	SupplierLinkCandidate,
+	SupplierLinkRow,
+	SupplierSplitInput,
+	SupplierSplitRow,
+} from './supplier-invoices';
+export { isDrilldownSource } from './drilldown';
 export { recordCostBudget, executeBudgetCommand } from './budget-commands';
 export { PETTY_CASH_COST_SOURCE } from './petty-cash';
-export type {
-	PettyCashDrilldown,
-	PettyCashSourceDescriptor,
-} from './petty-cash';
+export type { PettyCashSourceDescriptor } from './petty-cash';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
+export type { ProjectOption } from './records';
 export {
 	REPORTING_CURRENCY,
 	convertToReporting,
@@ -269,9 +290,9 @@ export type {
 	CostNature,
 	CostPatch,
 	CostRecord,
+	CostRecordJson,
 	CostSource,
 	CostSplitInfo,
-	CostRecordJson,
 	CoverageNotice,
 	CurrencyReporting,
 	CurrencyTotal,
@@ -290,6 +311,7 @@ export type {
 	RecordCostInput,
 	RecordedCost,
 	ReconciliationProjectRow,
+	ReconciliationSourceSummary,
 	TaxTreatment,
 } from './types';
 
@@ -302,6 +324,10 @@ export interface CostBudgetDetail {
 const pool: SqlConnection = {
 	execute: (sql, params) => query(sql, params),
 };
+
+// The supplier source registers its adapter so a `cost_uid` can resolve to a
+// purchase invoice from anywhere in the module.
+registerCostSource(SUPPLIER_INVOICE_ADAPTER);
 
 /** The month before `YYYY-MM`, or null at the calendar's start. */
 function previousMonthOf(month: string): string | null {
@@ -349,11 +375,13 @@ export function currentMonth(): string {
 
 /** Months with cost recorded in any wired source, newest first. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
-	const [direct, pettyCash] = await Promise.all([
-		loadExpenditureMonths(pool, currentMonth()),
+	const current = currentMonth();
+	const [direct, supplier, pettyCash] = await Promise.all([
+		loadExpenditureMonths(pool, current),
+		loadSupplierInvoiceMonths(pool, current),
 		PETTY_CASH_COST_SOURCE.loadMonths(pool),
 	]);
-	return [...new Set([currentMonth(), ...direct, ...pettyCash])]
+	return [...new Set([current, ...direct, ...supplier, ...pettyCash])]
 		.sort()
 		.reverse();
 }
@@ -390,7 +418,8 @@ export async function fetchCompanyReconciliation(
 	const month = request.month;
 	const previousMonth = previousMonthOf(month);
 	const [
-		records,
+		directRecords,
+		supplierRecords,
 		charges,
 		monthNonOperating,
 		pettyCashRecords,
@@ -400,8 +429,10 @@ export async function fetchCompanyReconciliation(
 		projectOptions,
 		directMonths,
 		pettyCashMonths,
+		supplierMonths,
 	] = await Promise.all([
 		loadMonthRecords(db, month),
+		loadSupplierMonthRecords(db, month),
 		loadMonthCharges(db, { month }),
 		loadNonOperatingSources(db, month),
 		PETTY_CASH_COST_SOURCE.loadMonthRecords(db, month),
@@ -414,11 +445,21 @@ export async function fetchCompanyReconciliation(
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
 		loadProjectOptions(db),
 		loadExpenditureMonths(db, currentMonth()),
+		loadSupplierInvoiceMonths(db, currentMonth()),
 		PETTY_CASH_COST_SOURCE.loadMonths(db),
 	]);
-	const sourceRecords = [...records, ...pettyCashRecords];
+	const records = [
+		...directRecords,
+		...supplierRecords,
+		...pettyCashRecords,
+	];
 	const availableMonths = [
-		...new Set([currentMonth(), ...directMonths, ...pettyCashMonths]),
+		...new Set([
+			currentMonth(),
+			...directMonths,
+			...supplierMonths,
+			...pettyCashMonths,
+		]),
 	]
 		.sort()
 		.reverse();
@@ -467,7 +508,9 @@ export async function fetchCompanyReconciliation(
 		budgets,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
-		availableMonths,
+		availableMonths: [...new Set([...directMonths, ...supplierMonths])]
+			.sort()
+			.reverse(),
 		coverageDeclarations: SOURCE_COVERAGE,
 		reportingCurrency: request.reportingCurrency ?? null,
 		pettyCash,
@@ -512,111 +555,17 @@ export async function fetchBudgetJournal(
 	return loadBudgetEvents(options?.connection ?? pool, budgetUid);
 }
 
-/** Read the records behind a month's reconciliation. */
+/** Read the records behind a month's reconciliation (every cost source). */
 export async function fetchCostDrilldown(
 	queryInput: CostDrilldownQuery,
 	options?: CommandOptions
 ): Promise<CostDrilldown> {
-	const db = options?.connection ?? pool;
-	const limit = Math.min(Math.max(queryInput.limit ?? 50, 1), 200);
-	const offset = Math.max(queryInput.offset ?? 0, 0);
-	// Reads every source over the same widened window, then states one ordered,
-	// paginated union: a confirmed petty-cash cost appears exactly once. The
-	// per-source loaders cap their own window at 200 rows, so the union page is
-	// bounded the same way (deeper offsets rely on the ordered window).
-	const window: CostDrilldownQuery = {
-		...queryInput,
-		limit: Math.min(limit + offset, 200),
-		offset: 0,
-	};
-	const [expenses, pettyCash] = await Promise.all([
-		loadDrilldown(db, window),
-		PETTY_CASH_COST_SOURCE.loadDrilldown(db, window),
-	]);
-	const records = [...expenses.records, ...pettyCash.records]
-		.sort(compareDrilldownRecords)
-		.slice(offset, offset + limit);
-	const expensesHasRows = expenses.totals.records > 0;
-	const pettyCashHasRows = pettyCash.total > 0;
-	return {
-		month: queryInput.month,
-		scope: 'month',
-		total: expenses.total + pettyCash.total,
-		limit,
-		offset,
-		records,
-		totals: {
-			confirmed_amount: mergedDrilldownAmount(
-				expenses.totals,
-				pettyCash,
-				expensesHasRows,
-				pettyCashHasRows
-			),
-			currency: mergedDrilldownCurrency(
-				expenses.totals,
-				pettyCash,
-				expensesHasRows,
-				pettyCashHasRows
-			),
-			records: expenses.totals.records + pettyCash.total,
-		},
-	};
+	return loadCombinedDrilldown(options?.connection ?? pool, queryInput);
 }
 
-/** Highest-first by Recognition Period, then expense date, then source, id. */
-function compareDrilldownRecords(a: CostRecordJson, b: CostRecordJson): number {
-	const periodA = a.recognition_period ?? '';
-	const periodB = b.recognition_period ?? '';
-	if (periodA !== periodB) return periodA < periodB ? 1 : -1;
-	const dateA = a.expense_date ?? '';
-	const dateB = b.expense_date ?? '';
-	if (dateA !== dateB) return dateA < dateB ? 1 : -1;
-	if (a.source !== b.source) return a.source === 'direct_expense' ? -1 : 1;
-	return b.id - a.id;
-}
-
-/**
- * The union totals can be stated as one figure only when every contributing
- * source states a number in the same currency; otherwise the figure is null
- * (unknown, never a wrong sum). A source with no rows states nothing.
- */
-function mergedDrilldownAmount(
-	expensesTotals: CostDrilldown['totals'],
-	pettyCash: PettyCashDrilldown,
-	expensesHasRows: boolean,
-	pettyCashHasRows: boolean
-): number | null {
-	if (!pettyCashHasRows) return expensesTotals.confirmed_amount;
-	if (!expensesHasRows) return pettyCash.confirmed_amount;
-	if (
-		expensesTotals.confirmed_amount === null ||
-		pettyCash.confirmed_amount === null ||
-		expensesTotals.currency === null ||
-		pettyCash.currency === null ||
-		expensesTotals.currency !== pettyCash.currency
-	) {
-		return null;
-	}
-	return expensesTotals.confirmed_amount + pettyCash.confirmed_amount;
-}
-
-function mergedDrilldownCurrency(
-	expensesTotals: CostDrilldown['totals'],
-	pettyCash: PettyCashDrilldown,
-	expensesHasRows: boolean,
-	pettyCashHasRows: boolean
-): string | null {
-	if (!pettyCashHasRows) return expensesTotals.currency;
-	if (!expensesHasRows) return pettyCash.currency;
-	if (
-		expensesTotals.confirmed_amount === null ||
-		pettyCash.confirmed_amount === null
-	) {
-		return null;
-	}
-	return expensesTotals.currency === pettyCash.currency
-		? expensesTotals.currency
-		: null;
+/** The active Projects a cost-destination control can choose from. */
+export async function fetchProjectOptions(): Promise<ProjectOption[]> {
+	return loadProjectOptions(pool);
 }
 
 /** Read the versioned command history of one cost. */

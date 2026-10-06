@@ -27,9 +27,8 @@ import {
 	convertToReporting,
 	currencyCodeOf,
 	evidenceOf,
-	isCurrencyCode,
-	parseConversionRate,
 	reportingCurrencyOf,
+	resolveConversion,
 } from './currency';
 import {
 	evaluateCost,
@@ -141,117 +140,6 @@ const OPERATIONAL_STATUSES = [
 	'reimbursed',
 ] as const;
 
-export interface ResolvedConversion {
-	currency: string | null;
-	reportingCurrency: string;
-	conversionRate: string | null;
-	conversionDate: string | null;
-	conversionEvidenceReference: string | null;
-}
-
-/**
- * Validate the original currency, the reporting target, and the optional
- * conversion triple. Evidence moves as a whole or not at all; a rate for a
- * cost already in its reporting currency, or for a cost whose original
- * currency is unknown, is contradictory and refused rather than dropped.
- *
- * Exported so every cost source (direct expenses, petty cash, supplier
- * invoices) validates its conversion evidence the same way — one conversion
- * site, not one per register.
- */
-export function resolveConversion(input: {
-	currency: unknown;
-	reportingCurrency: unknown;
-	conversionRate: unknown;
-	conversionDate: unknown;
-	conversionEvidenceReference: unknown;
-}): ResolvedConversion {
-	if (!isCurrencyCode(input.currency)) {
-		throw new CostError(
-			'invalid_currency',
-			'Currency must be a three-letter code',
-			422,
-			{ field: 'currency' }
-		);
-	}
-	if (!isCurrencyCode(input.reportingCurrency)) {
-		throw new CostError(
-			'invalid_currency',
-			'Reporting currency must be a three-letter code',
-			422,
-			{ field: 'reporting_currency' }
-		);
-	}
-	const currency = currencyCodeOf(input.currency);
-	const reportingCurrency = reportingCurrencyOf({
-		reportingCurrency: currencyCodeOf(input.reportingCurrency),
-	});
-	const rawRate = input.conversionRate;
-	const rateText =
-		rawRate === null || rawRate === undefined ? null : String(rawRate).trim();
-	const hasRate = rateText !== null && rateText.length > 0;
-	const conversionDate = dateOrNull(input.conversionDate);
-	const conversionEvidenceReference = text(
-		input.conversionEvidenceReference,
-		500
-	);
-	const hasAny =
-		hasRate || conversionDate !== null || conversionEvidenceReference !== null;
-	if (!hasAny) {
-		return {
-			currency,
-			reportingCurrency,
-			conversionRate: null,
-			conversionDate: null,
-			conversionEvidenceReference: null,
-		};
-	}
-	if (currency === null) {
-		throw new CostError(
-			'conversion_requires_currency',
-			'Conversion evidence needs the original currency first',
-			422,
-			{ field: 'conversion_rate' }
-		);
-	}
-	if (currency === reportingCurrency) {
-		throw new CostError(
-			'conversion_not_applicable',
-			'A cost already in its reporting currency carries no conversion evidence',
-			422,
-			{ field: 'conversion_rate' }
-		);
-	}
-	if (hasRate && parseConversionRate(rateText) === null) {
-		throw new CostError(
-			'invalid_conversion_rate',
-			'Conversion rate must be positive with at most 10 decimal places',
-			422,
-			{ field: 'conversion_rate' }
-		);
-	}
-	const missing: string[] = [];
-	if (!hasRate) missing.push('conversion_rate');
-	if (conversionDate === null) missing.push('conversion_date');
-	if (conversionEvidenceReference === null) {
-		missing.push('conversion_evidence_reference');
-	}
-	if (missing.length > 0) {
-		throw new CostError(
-			'conversion_evidence_incomplete',
-			'Conversion evidence needs the rate, its effective date, and its evidence reference together',
-			422,
-			{ missing }
-		);
-	}
-	return {
-		currency,
-		reportingCurrency,
-		conversionRate: rateText,
-		conversionDate,
-		conversionEvidenceReference,
-	};
-}
 async function loadCostForUpdate(
 	db: SqlConnection,
 	id: number
