@@ -11,6 +11,7 @@ import {
 	EXPENDITURE_NEXT_MONTH,
 	EXPENDITURE_PROJECTS,
 	cleanupExpenditureFixtures,
+	loginExpenditureEditor,
 	loginExpenditureReportOnlyReader,
 	seedExpenditureFixtures,
 	seededBudget,
@@ -93,6 +94,17 @@ const CURRENCY_BUDGET = seededBudget('betaJuneUsd');
 const ANNUAL_BUDGET = seededBudget('deltaAnnual');
 const PARTIAL_BUDGET = seededBudget('deltaPartialUsd');
 const AUGUST_BUDGET = seededBudget('alphaAugust');
+/**
+ * How many budgets the gamma fixtures hold. `candidates` publishes every budget
+ * of the Project the reading considered, not only the matching one.
+ */
+const GAMMA_BUDGET_COUNT = [
+	'gammaPeriod',
+	'gammaScope',
+	'gammaPending',
+	'gammaAmbiguousA',
+	'gammaAmbiguousB',
+].length;
 
 /** What the browser workflow records and approves. */
 const UI_BUDGET = {
@@ -523,14 +535,18 @@ test('states currency, scope, period, ambiguity, and unsupported cost explicitly
 	expect(gammaEur.budget?.budget_uid).toBe(PENDING_BUDGET.budgetUid);
 	expect(gammaEur.variance).toBeNull();
 
-	// gamma GBP: two approved budgets cover the same month and currency; the
-	// report refuses to pick one.
+	// gamma GBP: two approved budgets match this month and currency; the report
+	// refuses to pick one. `candidates` publishes every budget of the Project
+	// this reading considered, so the two matching ones are asserted by name.
 	const gammaGbp = comparison(budgetMonth, EXPENDITURE_PROJECTS.gamma.code, 'GBP');
 	expect(gammaGbp.incurred_cost).toBe(fixtureCost('gamma', BUDGET, 'GBP'));
 	expect(gammaGbp.outcome).toBe('ambiguous');
 	expect(gammaGbp.budget).toBeNull();
-	expect(gammaGbp.candidates).toHaveLength(2);
 	expect(gammaGbp.variance).toBeNull();
+	const gbpCandidateUids = gammaGbp.candidates.map((c) => c.budget_uid);
+	expect(gbpCandidateUids).toContain(seededBudget('gammaAmbiguousA').budgetUid);
+	expect(gbpCandidateUids).toContain(seededBudget('gammaAmbiguousB').budgetUid);
+	expect(gammaGbp.candidates).toHaveLength(GAMMA_BUDGET_COUNT);
 
 	// beta INR: the only budget approved for this Project is stated in USD, and
 	// the report refuses to convert one into the other to force a comparison.
@@ -1004,6 +1020,98 @@ test('refuses unauthorized budget reads and writes without changing data', async
 	expect(adminList.budgets.length).toBeGreaterThanOrEqual(2);
 });
 
+test('splits drafting from approval for an editor without the approval privilege', async ({
+	playwright,
+}) => {
+	// A real `other_expenses:update` identity with no `other_expenses:approve`.
+	const editor = await loginExpenditureEditor(playwright, E2E_ENV.baseURL);
+	try {
+		const createdResponse = await editor.post('/api/admin/cost-budgets', {
+			data: {
+				project_id: seeded.projects.gamma,
+				currency: 'INR',
+				amount: 1234,
+				scope: 'project_incurred_cost',
+				period_start: `${BUDGET}-01`,
+				period_end: `${BUDGET}-30`,
+				basis_note: 'E2E editor draft budget',
+			},
+		});
+		expect(createdResponse.status(), await createdResponse.text()).toBe(201);
+		const editorDraft = (await createdResponse.json()).data as BudgetRow;
+		created.push(editorDraft.id);
+		expect(editorDraft.state).toBe('draft');
+
+		// The ledger's update privilege drafts, submits, and withdraws a draft.
+		const submit = await editor.post(
+			`/api/admin/cost-budgets/${editorDraft.id}/commands`,
+			{ data: { command: 'submit', expected_version: 1 } }
+		);
+		expect(submit.status(), await submit.text()).toBe(200);
+		const withdrawDraft = await editor.post(
+			`/api/admin/cost-budgets/${editorDraft.id}/commands`,
+			{
+				data: {
+					command: 'withdraw',
+					expected_version: 2,
+					reason: 'E2E editor withdraws its own draft',
+				},
+			}
+		);
+		expect(withdrawDraft.status(), await withdrawDraft.text()).toBe(200);
+		expect((await withdrawDraft.json()).data.state).toBe('withdrawn');
+
+		// Approving is not this identity's to do.
+		const approve = await editor.post(
+			`/api/admin/cost-budgets/${editorDraft.id}/commands`,
+			{
+				data: {
+					command: 'approve',
+					expected_version: 3,
+					evidence_reference: 'E2E-not-privileged',
+				},
+			}
+		);
+		expect(approve.status()).toBe(403);
+
+		// Withdrawing an *approved* budget is refused as well: it would remove
+		// the basis the report compares with, so it needs the approval privilege.
+		const approvedWithdraw = await editor.post(
+			`/api/admin/cost-budgets/${apiBudgetId}/commands`,
+			{
+				data: {
+					command: 'withdraw',
+					expected_version: 3,
+					reason: 'E2E editor withdraws an approved budget',
+				},
+			}
+		);
+		expect(approvedWithdraw.status()).toBe(403);
+		expect((await approvedWithdraw.json()).code).toBe(
+			'approval_privilege_required'
+		);
+		const unchanged = await rows<Record<string, unknown>>(
+			`SELECT state, financial_version FROM project_cost_budgets WHERE id = ?`,
+			[apiBudgetId]
+		);
+		expect(unchanged[0].state).toBe('approved');
+		expect(Number(unchanged[0].financial_version)).toBe(3);
+
+		evidence.editorPrivileges = {
+			draft: editorDraft.state,
+			withdrawnDraft: 'withdrawn',
+			approve: approve.status(),
+			withdrawApproved: {
+				status: approvedWithdraw.status(),
+				code: 'approval_privilege_required',
+			},
+			unchanged: unchanged[0],
+		};
+	} finally {
+		await editor.dispose();
+	}
+});
+
 test('shows the budget section to an authorized reader only', async ({
 	browser,
 }) => {
@@ -1031,4 +1139,5 @@ test('regenerates the JSON evidence artifact', async () => {
 	expect(artifact.browserWorkflow).toBeTruthy();
 	expect(artifact.supersede).toBeTruthy();
 	expect(artifact.authorization).toBeTruthy();
+	expect(artifact.editorPrivileges).toBeTruthy();
 });

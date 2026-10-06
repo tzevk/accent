@@ -705,6 +705,13 @@ export interface CostBudgetCommandInput {
 	reason?: string | null;
 	/** Required for `approve`: the evidence the approval rests on. */
 	evidenceReference?: string | null;
+	/**
+	 * Whether the caller holds the approval privilege. Withdrawing an *approved*
+	 * budget stops the report comparing it, so it needs the privilege that
+	 * approved it; the caller states the fact and the module enforces the rule
+	 * under its row lock.
+	 */
+	actorCanApprove?: boolean;
 	/** Field changes for `update`. */
 	patch?: CostBudgetPatch;
 }

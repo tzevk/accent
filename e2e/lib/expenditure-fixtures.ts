@@ -71,6 +71,27 @@ const EXPENDITURE_REPORT_ONLY_ROLE = {
 } as const;
 
 /**
+ * A real budget editor: `other_expenses:read` and `other_expenses:update`, with
+ * no approval privilege. It may draft, submit, and withdraw a draft cost
+ * budget, and must be refused approving one — and refused withdrawing an
+ * already approved one, which removes the basis the report compares with.
+ */
+export const EXPENDITURE_EDITOR_USER = {
+	username: 'e2e_cost_editor',
+	password: 'E2e#CostEdit1',
+	email: 'e2e.cost.editor@accent.test',
+	fullName: 'E2E Cost Editor',
+} as const;
+
+const EXPENDITURE_EDITOR_ROLE = {
+	roleCode: 'e2e_cost_editor',
+	roleName: 'E2E Cost Editor',
+} as const;
+
+/** The editor's own trusted-header identity, distinct from every other. */
+const EXPENDITURE_EDITOR_IP = '198.18.0.24';
+
+/**
  * The reader's own login/API rate-limit identity through the proxy's trusted
  * header (ADR-0013), distinct from the spec's fixture requests and from the
  * security harness, so neither can exhaust the other's budget.
@@ -985,9 +1006,39 @@ async function seedExpenditureReportOnlyReader(): Promise<void> {
 	);
 }
 
-/** Remove the report-only reader's rows; safe to run repeatedly. */
-async function cleanupExpenditureReportOnlyReader(): Promise<void> {
-	const username = EXPENDITURE_REPORT_ONLY_USER.username;
+/** Create the budget editor's role and user rows from scratch. */
+async function seedExpenditureEditor(): Promise<void> {
+	const role = await exec(
+		`INSERT INTO roles_master
+       (role_code, role_name, role_hierarchy, department, permissions, description, status)
+     VALUES (?, ?, 40, 'E2E', ?, ?, 'active')`,
+		[
+			EXPENDITURE_EDITOR_ROLE.roleCode,
+			EXPENDITURE_EDITOR_ROLE.roleName,
+			JSON.stringify(['other_expenses:read', 'other_expenses:update']),
+			'E2E expenditure fixture editor (e2e/lib/expenditure-fixtures.ts)',
+		]
+	);
+	const passwordHash = await bcrypt.hash(EXPENDITURE_EDITOR_USER.password, 10);
+	await exec(
+		`INSERT INTO users
+       (username, password_hash, email, full_name, status, is_active, is_super_admin, role_id, account_type, isDelete)
+     VALUES (?, ?, ?, ?, 'active', 1, 0, ?, 'employee', 0)`,
+		[
+			EXPENDITURE_EDITOR_USER.username,
+			passwordHash,
+			EXPENDITURE_EDITOR_USER.email,
+			EXPENDITURE_EDITOR_USER.fullName,
+			role.insertId,
+		]
+	);
+}
+
+/** Remove one fixture identity's rows; safe to run repeatedly. */
+async function cleanupExpenditureFixtureUser(
+	username: string,
+	roleCode: string
+): Promise<void> {
 	// Log tables have drifted across schemas (see e2e/lib/fixtures.ts); purging
 	// the fixture user must never be blocked by them.
 	for (const sql of [
@@ -1006,14 +1057,19 @@ async function cleanupExpenditureReportOnlyReader(): Promise<void> {
 		[username]
 	);
 	await exec(`DELETE FROM users WHERE username = ?`, [username]);
-	await exec(`DELETE FROM roles_master WHERE role_code = ?`, [
-		EXPENDITURE_REPORT_ONLY_ROLE.roleCode,
-	]);
+	await exec(`DELETE FROM roles_master WHERE role_code = ?`, [roleCode]);
 }
 
 /** Remove every row this module owns. Safe to run repeatedly. */
 export async function cleanupExpenditureFixtures(): Promise<number> {
-	await cleanupExpenditureReportOnlyReader();
+	await cleanupExpenditureFixtureUser(
+		EXPENDITURE_REPORT_ONLY_USER.username,
+		EXPENDITURE_REPORT_ONLY_ROLE.roleCode
+	);
+	await cleanupExpenditureFixtureUser(
+		EXPENDITURE_EDITOR_USER.username,
+		EXPENDITURE_EDITOR_ROLE.roleCode
+	);
 	let removed = 0;
 	// Events are keyed by the namespaced cost UID, so they survive their
 	// expense row and must be purged in their own right. The predicate also
@@ -1098,6 +1154,7 @@ function statusFor(state: ExpenditureState): string {
 export async function seedExpenditureFixtures(): Promise<SeededExpenditure> {
 	await cleanupExpenditureFixtures();
 	await seedExpenditureReportOnlyReader();
+	await seedExpenditureEditor();
 
 	const projects = {} as Record<ExpenditureProjectKey, number>;
 	const projectKeys = Object.keys(
@@ -1285,18 +1342,18 @@ export function seededCost(key: string): SeedCost {
 }
 
 /**
- * Sign in the report-only reader through the real API and return a context
+ * Sign one fixture identity in through the real API and return a context
  * carrying that session. Mirrors the security harness's login so the identity
  * is exercised exactly as a browser would be, without sharing its fixtures:
  * the `auth` bucket for this identity is cleared first (rerun safety) and its
  * own trusted-header identity isolates the following API calls.
  */
-export async function loginExpenditureReportOnlyReader(
+async function loginExpenditureUser(
 	playwright: PlaywrightApi,
-	baseURL: string
+	baseURL: string,
+	user: { username: string; password: string },
+	ip: string
 ): Promise<APIRequestContext> {
-	const user = EXPENDITURE_REPORT_ONLY_USER;
-	const ip = EXPENDITURE_REPORT_ONLY_IP;
 	const probe = await playwright.request.newContext({ baseURL });
 	try {
 		try {
@@ -1313,7 +1370,7 @@ export async function loginExpenditureReportOnlyReader(
 		if (!response.ok()) {
 			const retryAfter = response.headers()['retry-after'];
 			throw new Error(
-				`[e2e] loginExpenditureReportOnlyReader failed: POST /api/login -> ` +
+				`[e2e] login for ${user.username} failed: POST /api/login -> ` +
 					`${response.status()}${retryAfter ? ` (retry-after: ${retryAfter})` : ''}`
 			);
 		}
@@ -1322,7 +1379,7 @@ export async function loginExpenditureReportOnlyReader(
 		);
 		if (!match) {
 			throw new Error(
-				'[e2e] loginExpenditureReportOnlyReader: login succeeded but no session cookie was set'
+				`[e2e] login for ${user.username} succeeded but no session cookie was set`
 			);
 		}
 		const storageState: { cookies: Cookie[]; origins: [] } = {
@@ -1348,4 +1405,30 @@ export async function loginExpenditureReportOnlyReader(
 	} finally {
 		await probe.dispose();
 	}
+}
+
+/** The report-only reader's context (`reports:read` and nothing else). */
+export async function loginExpenditureReportOnlyReader(
+	playwright: PlaywrightApi,
+	baseURL: string
+): Promise<APIRequestContext> {
+	return loginExpenditureUser(
+		playwright,
+		baseURL,
+		EXPENDITURE_REPORT_ONLY_USER,
+		EXPENDITURE_REPORT_ONLY_IP
+	);
+}
+
+/** The budget editor's context (`other_expenses:read`/`:update`, no approve). */
+export async function loginExpenditureEditor(
+	playwright: PlaywrightApi,
+	baseURL: string
+): Promise<APIRequestContext> {
+	return loginExpenditureUser(
+		playwright,
+		baseURL,
+		EXPENDITURE_EDITOR_USER,
+		EXPENDITURE_EDITOR_IP
+	);
 }

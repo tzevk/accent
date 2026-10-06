@@ -245,16 +245,21 @@ appends `recorded`. `update` (draft/submitted only), `submit`, `approve`, and
 `withdraw` are versioned commands: a stale version is refused `409
 stale_version`, a disallowed transition `409 invalid_transition`, an approval
 without evidence `422 approval_evidence_required`, and a withdrawal without a
-reason `422 reason_required`. Every command takes the Project's row lock before
-the budget row, so two approvals of overlapping periods serialize on the
-Project: the second supersedes the first instead of both staying approved, and a
-repeated or stale command still changes nothing. Approving a later budget that
-overlaps an earlier approved budget of the same Project, currency, and scope
-marks the earlier row `superseded` and appends `superseded` — its amount,
-approval evidence, version, and journal stay readable, which is what a later
-closed-period review reads. Both tables follow the same rules as the cost
-tables: no deletes through the API, one journal row per accepted command, and
-commands join the caller's transaction when a connection is supplied.
+reason `422 reason_required`. Drafting, submitting, and withdrawing a draft or
+submitted budget need `other_expenses:update`; approving needs
+`other_expenses:approve`, and so does withdrawing an *approved* budget, because
+that removes the basis the report was comparing with (`403
+approval_privilege_required`, refused inside the transaction under the row
+lock). Every command takes the Project's row lock before the budget row, so two
+approvals of overlapping periods serialize on the Project: the second supersedes
+the first instead of both staying approved, and a repeated or stale command
+still changes nothing. Approving a later budget that overlaps an earlier
+approved budget of the same Project, currency, and scope marks the earlier row
+`superseded` and appends `superseded` — its amount, approval evidence, version,
+and journal stay readable, which is what a later closed-period review reads.
+Both tables follow the same rules as the cost tables: no deletes through the
+API, one journal row per accepted command, and commands join the caller's
+transaction when a connection is supplied.
 
 ## Coverage: what the total does not include
 
@@ -283,7 +288,7 @@ a coverage warning, never a zero company cost.
 | Recognize, reject, cancel                      | `other_expenses:approve`                                      |
 | Read cost budgets and their journals           | `other_expenses:read`                                         |
 | Record, edit, submit, withdraw a cost budget   | `other_expenses:update`                                       |
-| Approve a cost budget                          | `other_expenses:approve`                                      |
+| Approve a cost budget, or withdraw an approved one | `other_expenses:approve`                                  |
 
 The direct-expense ledger is the source of the expenditure reconciliation, so
 report access alone does not open it: the expenditure view, the drilldown, and

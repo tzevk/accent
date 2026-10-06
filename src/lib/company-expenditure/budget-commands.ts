@@ -578,6 +578,15 @@ export async function executeBudgetCommand(
 					422
 				);
 			}
+			// Withdrawing an approved budget removes the basis the report was
+			// comparing with, so it carries the same privilege that approved it.
+			if (state === 'approved' && input.actorCanApprove !== true) {
+				throw new CostError(
+					'approval_privilege_required',
+					'Withdrawing an approved cost budget requires the approval privilege',
+					403
+				);
+			}
 			next.state = 'withdrawn';
 			await db.execute(
 				`UPDATE project_cost_budgets SET state = 'withdrawn', financial_version = ? WHERE id = ?`,
