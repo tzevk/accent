@@ -235,11 +235,13 @@ export default function SignIn() {
 
 				{/* Footer */}
 				<p
+					suppressHydrationWarning
 					className={`text-xs text-[#7d6295] text-center ${
 						isWindows ? 'mt-6' : 'mt-8'
 					}`}
 				>
-					© 2025 Accent Techno Solutions. All rights reserved.
+					© {new Date().getFullYear()} Accent Techno Solutions. All rights
+					reserved.
 				</p>
 			</div>
 		</div>
