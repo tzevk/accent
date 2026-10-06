@@ -932,7 +932,7 @@ export default function EmployeeUtilizationPage() {
 									type="button"
 									onClick={() => dataQuery.refetch()}
 									disabled={isLoading || !month}
-									className="inline-flex h-9 items-center gap-1.5 rounded-md bg-white/15 px-3 text-sm font-medium ring-1 ring-white/25 hover:bg-white/25 disabled:opacity-50"
+									className="inline-flex h-9 items-center gap-1.5 rounded-md bg-white/15 px-3 text-sm font-medium ring-1 ring-white/25 transition-colors transition-transform hover:bg-white/25 active:scale-[0.96] disabled:opacity-50"
 								>
 									<ArrowPathIcon
 										className={cn('h-4 w-4', isLoading && 'animate-spin')}
@@ -943,7 +943,7 @@ export default function EmployeeUtilizationPage() {
 									type="button"
 									onClick={handleExport}
 									disabled={exporting || isLoading || !month || !rows.length}
-									className="inline-flex h-9 items-center gap-1.5 rounded-md bg-white/15 px-3 text-sm font-medium ring-1 ring-white/25 hover:bg-white/25 disabled:opacity-50"
+									className="inline-flex h-9 items-center gap-1.5 rounded-md bg-white/15 px-3 text-sm font-medium ring-1 ring-white/25 transition-colors transition-transform hover:bg-white/25 active:scale-[0.96] disabled:opacity-50"
 								>
 									<DocumentArrowDownIcon
 										className={cn('h-4 w-4', exporting && 'animate-pulse')}
@@ -969,6 +969,7 @@ export default function EmployeeUtilizationPage() {
 								placeholder="Select month…"
 								disabled={metaQuery.isLoading}
 								aria-label="Month"
+								buttonClassName="h-9"
 							/>
 						</label>
 						<label className="block min-w-[180px]">
@@ -982,6 +983,7 @@ export default function EmployeeUtilizationPage() {
 								placeholder="All departments"
 								disabled={!data}
 								aria-label="Department"
+								buttonClassName="h-9"
 							/>
 						</label>
 						<fieldset>
@@ -1002,7 +1004,7 @@ export default function EmployeeUtilizationPage() {
 											onClick={() => setFlag(option.value)}
 											aria-pressed={isActive}
 											className={cn(
-												'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]',
+												'inline-flex h-9 items-center rounded-md px-3 text-xs font-semibold transition-colors transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] active:scale-[0.96]',
 												isActive
 													? 'bg-[#64126D] text-white shadow-sm'
 													: 'bg-gray-100 text-gray-700 hover:bg-gray-200'
