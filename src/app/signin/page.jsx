@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { fetchJSON } from '@/utils/http';
 import { clearSessionCache, setSessionData } from '@/context/SessionContext';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import AnimatedGradient from '@/components/ui/animated-gradient';
 import { Poppins } from 'next/font/google';
 
 // Font setup
@@ -14,6 +15,25 @@ const poppins = Poppins({
 	weight: ['400', '500', '600'],
 	display: 'swap',
 });
+
+// Module-level constant: stable identity keeps AnimatedGradient's WebGL program
+// from rebuilding on every render (keystrokes re-render this page).
+const SIGNIN_BACKGROUND = {
+	preset: 'custom',
+	color1: '#3B0A45',
+	color2: '#5F146D',
+	color3: '#A34BB5',
+	rotation: -45,
+	proportion: 55,
+	scale: 0.6,
+	speed: 12,
+	distortion: 30,
+	swirl: 70,
+	swirlIterations: 10,
+	softness: 100,
+	shape: 'Edge',
+	shapeSize: 50,
+};
 
 export default function SignIn() {
 	const router = useRouter();
@@ -24,7 +44,6 @@ export default function SignIn() {
 	const [error, setError] = useState('');
 
 	const [isWindows, setIsWindows] = useState(false);
-	const [platformStyles, setPlatformStyles] = useState({});
 
 	// Gradient background style
 	const gradientStyle = {
@@ -40,14 +59,6 @@ export default function SignIn() {
 		const platform = navigator.userAgent;
 		const windowsDetected = platform.includes('Windows');
 		setIsWindows(windowsDetected);
-
-		if (windowsDetected) {
-			// Windows-specific scaling to make form appear smaller and more comfortable
-			setPlatformStyles({
-				transform: 'scale(0.85)',
-				transformOrigin: 'center',
-			});
-		}
 	}, []);
 
 	// Handle login
@@ -93,10 +104,12 @@ export default function SignIn() {
 	return (
 		<div
 			className={`${poppins.className} fixed inset-0 flex items-center justify-center px-4 overflow-hidden`}
-			style={{ ...gradientStyle, ...platformStyles }}
+			style={gradientStyle}
 		>
-			{/* Background overlay: lighter glow on Mac, subtle darkening on Windows */}
-			{/* Soft glow (original across all platforms) */}
+			{/* Animated brand gradient; renders a static frame under prefers-reduced-motion */}
+			<AnimatedGradient config={SIGNIN_BACKGROUND} />
+
+			{/* Soft glow overlay */}
 			<div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.15)_0%,transparent_70%)]" />
 
 			{/* Card */}
@@ -106,7 +119,6 @@ export default function SignIn() {
 						? 'p-8 w-[380px] sm:w-[400px]'
 						: 'p-10 w-[420px] sm:w-[440px]'
 				}`}
-				style={platformStyles}
 			>
 				{/* Logo */}
 				<div className={`flex justify-center ${isWindows ? 'mb-5' : 'mb-6'}`}>
