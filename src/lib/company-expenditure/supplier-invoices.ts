@@ -46,6 +46,7 @@ import {
 	type CostSourceAdapter,
 	type SqlConnection,
 } from './sources';
+import { monthBounds } from './records';
 import type {
 	CostClassification,
 	CostCommandName,
@@ -276,16 +277,6 @@ const INVOICE_SELECT = `SELECT i.*,
 
 const INVOICE_FROM = `FROM purchase_invoices i
     LEFT JOIN projects p ON p.project_id = i.project_id AND p.isDelete = 0`;
-
-/** A `YYYY-MM` month's first and last day. */
-function monthBounds(month: string): { start: string; end: string } {
-	const [year, monthNumber] = month.split('-').map(Number);
-	const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
-	return {
-		start: `${month}-01`,
-		end: `${month}-${String(days).padStart(2, '0')}`,
-	};
-}
 
 /**
  * Register the supplier source's cost rows so `resolveCostReference` can read
