@@ -23,6 +23,9 @@
  *  software                 -> software_items
  *  discussion               -> not in projects (threaded comments)
  *  quotation/purchase_order/invoice -> child tables /api/projects/[id]/quotation etc
+ *  purchase_order           -> canonical orders (orders table) through
+ *                              /api/admin/orders?project_id=… (#310); the
+ *                              legacy project_purchase_orders row is a review copy
  *  upload_documents         -> entity_documents (project)
  */
 

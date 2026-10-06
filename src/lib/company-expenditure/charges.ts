@@ -71,7 +71,7 @@ interface BlockerContext {
 	basis: PeriodChargeBasis;
 	sourceNature: CostNature;
 	sourceState: RecognitionState;
-	sourceCurrency: string;
+	sourceCurrency: string | null;
 	remaining: number | null;
 }
 
@@ -111,6 +111,13 @@ function blockerError(
 				`The charge currency must match the source currency (${context.sourceCurrency})`,
 				422,
 				{ field: 'currency', source_currency: context.sourceCurrency }
+			);
+		case 'source_currency_unknown':
+			return new CostError(
+				'source_currency_unknown',
+				'This item has no original currency, so the charge cannot state the currency it consumes; record the item currency first',
+				422,
+				{ field: 'currency' }
 			);
 		case 'source_not_recognized':
 			return new CostError(
@@ -245,8 +252,7 @@ export async function capturePeriodCharge(
 			existing
 				.filter(
 					(charge) =>
-						charge.period === chargePeriodDate(period) &&
-						charge.basis === basis
+						charge.period === chargePeriodDate(period) && charge.basis === basis
 				)
 				.reduce((max, charge) => Math.max(max, charge.sequence), 0) + 1;
 		const chargeUid = `charge-${randomUUID()}`;

@@ -440,7 +440,11 @@ export interface NonOperatingItemJson {
 	project_id: number | null;
 	project_code: string | null;
 	project_name: string | null;
-	currency: string;
+	/**
+	 * The item's original currency; null is unknown — never read as INR, so
+	 * its figures are stated as unknown rather than attributed to one.
+	 */
+	currency: string | null;
 	/** Gross liability of the source document. */
 	gross_amount: number | null;
 	/** The supported balance: the source's confirmed amount. */
@@ -747,11 +751,7 @@ export interface CostJournalEntry {
 
 export interface CostDrilldownQuery {
 	month: string;
-	state?:
-		| RecognitionState
-		| 'unconfirmed'
-		| 'unresolved'
-		| 'all';
+	state?: RecognitionState | 'unconfirmed' | 'unresolved' | 'all';
 	classification?: CostClassification | 'unresolved' | 'all';
 	/**
 	 * What the spend is. `non_operating` selects the advance/deposit/
@@ -759,6 +759,12 @@ export interface CostDrilldownQuery {
 	 */
 	nature?: CostNature | 'non_operating' | 'all';
 	projectId?: number | null;
+	/**
+	 * The reporting basis the record's conversion status is stated in; absent
+	 * means the company reporting currency. Status, label, and figures then
+	 * share one basis, so a record's evidence is never mislabelled.
+	 */
+	reportingCurrency?: string | null;
 	limit?: number;
 	offset?: number;
 }
@@ -788,6 +794,14 @@ export interface CostRecordJson {
 	conversion_date: string | null;
 	conversion_evidence_reference: string | null;
 	converted_amount: number | null;
+	/**
+	 * This record's evidence stated in the reporting basis the read was made
+	 * with (`reporting_currency` on the drilldown query, INR absent):
+	 * `reporting` when the record is already in that basis, `converted` when
+	 * its stored target matches it with a full rate triple, else
+	 * `unsupported`. The stored rate and `converted_amount` are only meaningful
+	 * together with this basis — never relabel one basis's rate as another's.
+	 */
 	conversion_status: ConversionStatus;
 	gross_amount: number | null;
 	tax_amount: number | null;
@@ -945,9 +959,9 @@ export interface CostBudgetCandidate {
  *
  * `compared` is the only state that publishes a variance. Everything else is
  * explicit: a missing or unapproved budget, a budget whose currency, scope, or
- * period does not match, several matching budgets (so no single one can be
- * picked), an approved budget whose cost is not recognized yet, and an approved
- * budget with no Incurred Project Cost recorded beside it.
+ * period does not match the month exactly, several matching budgets (so no
+ * single one can be picked), an approved budget whose cost is not confirmed
+ * yet, and an approved budget with no Incurred Project Cost recorded beside it.
  */
 export type BudgetOutcome =
 	| 'compared'
@@ -973,14 +987,21 @@ export interface ProjectBudgetComparison {
 	 * no such row exists for the month (`no_incurred_cost`).
 	 */
 	incurred_cost: number | null;
+	/** Confirmed operating direct records of this Project and currency. */
 	confirmed_records: number;
 	/**
 	 * Approved period charges included in `incurred_cost` (#317): a row whose
 	 * cost is entirely approved consumption is still confirmed cost.
 	 */
 	period_charges: number;
-	/** Draft or pending-evidence records that are not confirmed cost. */
+	/** Draft or pending-evidence operating records that are not confirmed cost. */
 	pending_records: number;
+	/**
+	 * Supported approved period charges the row counts (#317). They are part of
+	 * Incurred Project Cost, so a Project whose month is charge-only still
+	 * supports a budget comparison.
+	 */
+	period_charges: number;
 	outcome: BudgetOutcome;
 	/**
 	 * The comparison basis: the approved budget the variance is stated from
@@ -1029,6 +1050,13 @@ export interface CostBudgetCommandInput {
 	reason?: string | null;
 	/** Required for `approve`: the evidence the approval rests on. */
 	evidenceReference?: string | null;
+	/**
+	 * Whether the caller holds the approval privilege. Withdrawing an *approved*
+	 * budget stops the report comparing it, so it needs the privilege that
+	 * approved it; the caller states the fact and the module enforces the rule
+	 * under its row lock.
+	 */
+	actorCanApprove?: boolean;
 	/** Field changes for `update`. */
 	patch?: CostBudgetPatch;
 }

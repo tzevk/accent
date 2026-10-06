@@ -10,8 +10,9 @@ import {
 	classifyDuplicateError,
 } from '@/utils/invoice-validation';
 
-import { R, sub, toNumber } from '@/lib/money';
+import { R, toNumber } from '@/lib/money';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
+import { linkClientInvoice, OrderError } from '@/lib/company-expenditure';
 
 // GET - Fetch invoices
 export async function GET(request) {
@@ -199,6 +200,7 @@ export async function POST(request) {
 			client_state,
 			client_state_code,
 			kind_attn,
+			order_uid,
 			po_number,
 			po_date,
 			po_value,
@@ -326,60 +328,29 @@ export async function POST(request) {
 					invoiceNumber = await generateInvoiceNumber(connection);
 				}
 
-				// Upsert purchase order and calculate balance_po_value.
-				// purchase_orders.po_number is globally unique (single-column index from
-				// purchase-orders/route.js:37), so we look it up by po_number alone.
-				let poId = null;
-				let calculatedBalance = balance_po_value;
-				if (po_number && client_name) {
-					const [existingPO] = await connection.execute(
-						'SELECT id, original_value, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
-						[po_number]
+				// Canonical order reference (#310): a client invoice links one
+				// client order by its durable `order_uid`. The order's invoiced
+				// rollup and the invoice row are written in this transaction, so
+				// a refusal (e.g. a supplier order) leaves no invoice behind.
+				// Legacy `purchase_orders` text matching and row creation are
+				// gone — an unlinked PO number is display text only.
+				const canonicalOrderUid =
+					typeof order_uid === 'string' && order_uid.trim()
+						? order_uid.trim().slice(0, 64)
+						: null;
+				let calculatedBalance = balance_po_value ?? null;
+				if (canonicalOrderUid) {
+					const link = await linkClientInvoice(
+						{
+							orderUid: canonicalOrderUid,
+							amountDelta: toNumber(R(total)),
+							invoiceId: null,
+							invoiceNumber: invoiceNumber,
+							actorId: authResult.user?.id ?? null,
+						},
+						connection
 					);
-
-					if (existingPO.length > 0) {
-						poId = existingPO[0].id;
-						const oldRemaining = R(existingPO[0].remaining_balance);
-						const invoiceTotal = R(total);
-						calculatedBalance = toNumber(sub(oldRemaining, invoiceTotal));
-
-						await connection.execute(
-							'UPDATE purchase_orders SET remaining_balance = remaining_balance - ? WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
-							[toNumber(invoiceTotal), poId]
-						);
-					} else {
-						const poValue = R(original_po_value);
-						const invoiceTotal = R(total);
-						calculatedBalance = toNumber(sub(poValue, invoiceTotal));
-
-						await connection.execute(
-							`INSERT INTO purchase_orders (po_number, original_value, remaining_balance, po_date)
-           VALUES (?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE
-             remaining_balance = remaining_balance - ?,
-             original_value = VALUES(original_value),
-             po_date = VALUES(po_date)`,
-							[
-								po_number,
-								toNumber(poValue),
-								calculatedBalance,
-								po_date || null,
-								toNumber(invoiceTotal),
-							]
-						);
-
-						// Re-read under lock: the insert may have lost the race with a
-						// concurrent creator, in which case the stored balance (already
-						// decremented above) is the true one.
-						const [poRow] = await connection.execute(
-							'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
-							[po_number]
-						);
-						poId = poRow?.[0]?.id ?? null;
-						if (poRow?.[0]) {
-							calculatedBalance = toNumber(R(poRow[0].remaining_balance));
-						}
-					}
+					calculatedBalance = link.clientRemainingValue;
 				}
 
 				// Insert invoice
@@ -388,11 +359,12 @@ export async function POST(request) {
         invoice_number, invoice_date, client_name, client_email, client_phone, client_address,
         client_pan, client_gstin, client_state, client_state_code, kind_attn,
         po_number, po_date, po_value, original_po_value, balance_po_value, po_id,
+        order_uid,
         description, items, line_items, subtotal, gross_amount, tax_rate, tax_amount, gst_type,
         cgst_rate, sgst_rate, igst_rate, discount, total, net_amount, amount_in_words,
         gst_number, pan_number, tan_number, service_category, bank_address,
         amount_paid, balance_due, notes, terms, due_date, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					[
 						invoiceNumber,
 						invoice_date || null,
@@ -410,7 +382,8 @@ export async function POST(request) {
 						po_value || null,
 						original_po_value || null,
 						calculatedBalance || null,
-						poId,
+						null,
+						canonicalOrderUid,
 						description || null,
 						JSON.stringify(items || []),
 						line_items ? JSON.stringify(line_items) : null,
@@ -468,6 +441,18 @@ export async function POST(request) {
 		});
 	} catch (error) {
 		console.error('Error creating invoice:', error);
+		if (error instanceof OrderError) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: error.message,
+					error: error.message,
+					code: error.code,
+					...error.detail,
+				},
+				{ status: error.status }
+			);
+		}
 		const dup = classifyDuplicateError(error);
 		if (dup) {
 			return NextResponse.json(

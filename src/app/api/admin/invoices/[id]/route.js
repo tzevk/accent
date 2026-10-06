@@ -7,6 +7,7 @@ import {
 	classifyDuplicateError,
 } from '@/utils/invoice-validation';
 import { R, sub, toNumber } from '@/lib/money';
+import { linkClientInvoice, OrderError } from '@/lib/company-expenditure';
 
 // GET - Fetch single invoice
 export async function GET(request, { params }) {
@@ -92,6 +93,7 @@ export async function PUT(request, { params }) {
 			client_state,
 			client_state_code,
 			kind_attn,
+			order_uid,
 			po_number,
 			po_date,
 			po_value,
@@ -185,7 +187,7 @@ export async function PUT(request, { params }) {
 
 		// Fetch and lock the old invoice data before updating
 		const [oldInvoice] = await connection.execute(
-			'SELECT total, po_number, client_name, balance_po_value, po_id FROM invoices WHERE id = ? AND isDelete = 0 FOR UPDATE',
+			'SELECT total, po_number, client_name, balance_po_value, po_id, order_uid FROM invoices WHERE id = ? AND isDelete = 0 FOR UPDATE',
 			[id]
 		);
 		if (!oldInvoice || oldInvoice.length === 0) {
@@ -223,16 +225,62 @@ export async function PUT(request, { params }) {
 		const oldTotal = R(oldInvoice[0].total);
 		const oldPoNumber = oldInvoice[0].po_number;
 		const oldPoId = oldInvoice[0].po_id;
+		const oldOrderUid = oldInvoice[0].order_uid || null;
+		const newOrderUid =
+			typeof order_uid === 'string' && order_uid.trim()
+				? order_uid.trim().slice(0, 64)
+				: null;
 		const newTotal = R(total);
 
-		// Calculate balance_po_value based on purchase_orders.
-		// purchase_orders.po_number is globally unique (single-column index from
-		// purchase-orders/route.js:37), so we look it up by po_number alone.
+		// Calculate balance_po_value.
 		let calculatedBalance = balance_po_value;
 		let newPoId = oldPoId;
 		const poChanged = po_number !== oldPoNumber;
 
-		if (poChanged) {
+		if (oldOrderUid || newOrderUid) {
+			// Canonical (#310): the invoice's order reference moves the linked
+			// client order's invoiced rollup by exactly the difference, in this
+			// transaction. A supplier order is refused by `linkClientInvoice`
+			// and the whole update rolls back.
+			let linkResult = null;
+			const linkArgs = (uid, delta) => ({
+				orderUid: uid,
+				amountDelta: delta,
+				invoiceId: Number(id),
+				invoiceNumber: invoice_number || null,
+				actorId: authResult.user?.id ?? null,
+			});
+			if (oldOrderUid && newOrderUid && oldOrderUid === newOrderUid) {
+				linkResult = await linkClientInvoice(
+					linkArgs(newOrderUid, toNumber(sub(newTotal, oldTotal))),
+					connection
+				);
+			} else {
+				if (oldOrderUid) {
+					linkResult = await linkClientInvoice(
+						linkArgs(oldOrderUid, toNumber(sub(0, oldTotal))),
+						connection
+					);
+				}
+				if (newOrderUid) {
+					linkResult = await linkClientInvoice(
+						linkArgs(newOrderUid, toNumber(newTotal)),
+						connection
+					);
+				}
+			}
+			calculatedBalance =
+				linkResult?.clientRemainingValue ?? balance_po_value ?? null;
+			newPoId = null;
+			if (oldPoId) {
+				// The row was legacy-linked before the cutover: release the legacy
+				// balance it had consumed so both stores stay truthful.
+				await connection.execute(
+					'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
+					[oldTotal.toNumber(), oldPoId]
+				);
+			}
+		} else if (poChanged) {
 			// Restore old PO balance
 			if (oldPoId) {
 				await connection.execute(
@@ -257,32 +305,10 @@ export async function PUT(request, { params }) {
 						[toNumber(newTotal), newPoId]
 					);
 				} else {
-					const poValue = R(original_po_value);
-					calculatedBalance = toNumber(sub(poValue, newTotal));
-					await connection.execute(
-						`INSERT INTO purchase_orders (po_number, original_value, remaining_balance, po_date)
-             VALUES (?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-               remaining_balance = remaining_balance - ?,
-               original_value = VALUES(original_value),
-               po_date = VALUES(po_date)`,
-						[
-							po_number,
-							toNumber(poValue),
-							calculatedBalance,
-							po_date || null,
-							toNumber(newTotal),
-						]
-					);
-
-					const [poRow] = await connection.execute(
-						'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
-						[po_number]
-					);
-					newPoId = poRow?.[0]?.id ?? null;
-					if (poRow?.[0]) {
-						calculatedBalance = toNumber(R(poRow[0].remaining_balance));
-					}
+					// No legacy row for this number: the number stays display text.
+					// Fabricating a purchase_orders row here was the duplicate
+					// write the canonical order store replaced (#310).
+					newPoId = null;
 				}
 			} else {
 				newPoId = null;
@@ -300,7 +326,9 @@ export async function PUT(request, { params }) {
 			);
 			calculatedBalance = R(poRecord?.[0]?.remaining_balance).toNumber();
 		} else if (po_number && client_name) {
-			// No old PO, but new PO info — create/upsert
+			// No old PO, but PO info on the invoice — link an existing legacy row
+			// only; a missing row is not fabricated (that duplicate write is what
+			// the canonical order store replaced).
 			const [existingPO] = await connection.execute(
 				'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
 				[po_number]
@@ -315,32 +343,7 @@ export async function PUT(request, { params }) {
 					[toNumber(newTotal), newPoId]
 				);
 			} else {
-				const poValue = R(original_po_value);
-				calculatedBalance = toNumber(sub(poValue, newTotal));
-				await connection.execute(
-					`INSERT INTO purchase_orders (po_number, original_value, remaining_balance, po_date)
-           VALUES (?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE
-             remaining_balance = remaining_balance - ?,
-             original_value = VALUES(original_value),
-             po_date = VALUES(po_date)`,
-					[
-						po_number,
-						toNumber(poValue),
-						calculatedBalance,
-						po_date || null,
-						toNumber(newTotal),
-					]
-				);
-
-				const [poRow] = await connection.execute(
-					'SELECT id, remaining_balance FROM purchase_orders WHERE po_number = ? AND (isDelete = 0 OR isDelete IS NULL) FOR UPDATE',
-					[po_number]
-				);
-				newPoId = poRow?.[0]?.id ?? null;
-				if (poRow?.[0]) {
-					calculatedBalance = toNumber(R(poRow[0].remaining_balance));
-				}
+				newPoId = null;
 			}
 		}
 
@@ -364,6 +367,7 @@ export async function PUT(request, { params }) {
         original_po_value = ?,
         balance_po_value = ?,
         po_id = ?,
+        order_uid = ?,
         description = ?,
         items = ?,
         line_items = ?,
@@ -409,6 +413,7 @@ export async function PUT(request, { params }) {
 				original_po_value || null,
 				calculatedBalance || null,
 				newPoId,
+				newOrderUid,
 				description ||
 					(items && items.length > 0
 						? items.map((i) => i.description).join(', ')
@@ -450,6 +455,18 @@ export async function PUT(request, { params }) {
 	} catch (error) {
 		if (connection) await connection.rollback();
 		console.error('Error updating invoice:', error);
+		if (error instanceof OrderError) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: error.message,
+					error: error.message,
+					code: error.code,
+					...error.detail,
+				},
+				{ status: error.status }
+			);
+		}
 		const dup = classifyDuplicateError(error);
 		if (dup) {
 			return NextResponse.json(
@@ -506,7 +523,7 @@ export async function DELETE(request, { params }) {
 			// DELETEs must not both restore the PO balance (the second sees
 			// isDelete = 1 after the lock is released and returns 404).
 			const [invoiceToDelete] = await connection.execute(
-				'SELECT total, po_id, invoice_number FROM invoices WHERE id = ? AND isDelete = 0 FOR UPDATE',
+				'SELECT total, po_id, order_uid, invoice_number FROM invoices WHERE id = ? AND isDelete = 0 FOR UPDATE',
 				[id]
 			);
 			if (!invoiceToDelete || invoiceToDelete.length === 0) {
@@ -518,10 +535,24 @@ export async function DELETE(request, { params }) {
 			}
 			deletedInvoiceNumber = invoiceToDelete[0].invoice_number;
 
-			// Restore PO remaining balance
+			// Release the balance this invoice consumed: the linked canonical
+			// client order (#310) when there is one, else the legacy row the
+			// pre-cutover flow had decremented.
 			const deleteTotal = R(invoiceToDelete[0].total).toNumber();
 			const deletePoId = invoiceToDelete[0].po_id;
-			if (deletePoId) {
+			const deleteOrderUid = invoiceToDelete[0].order_uid || null;
+			if (deleteOrderUid) {
+				await linkClientInvoice(
+					{
+						orderUid: deleteOrderUid,
+						amountDelta: -deleteTotal,
+						invoiceId: Number(id),
+						invoiceNumber: deletedInvoiceNumber,
+						actorId: authResult.user?.id ?? null,
+					},
+					connection
+				);
+			} else if (deletePoId) {
 				await connection.execute(
 					'UPDATE purchase_orders SET remaining_balance = remaining_balance + ? WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)',
 					[deleteTotal, deletePoId]
@@ -555,6 +586,18 @@ export async function DELETE(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error deleting invoice:', error);
+		if (error instanceof OrderError) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: error.message,
+					error: error.message,
+					code: error.code,
+					...error.detail,
+				},
+				{ status: error.status }
+			);
+		}
 		return NextResponse.json(
 			{ success: false, message: error.message },
 			{ status: 500 }

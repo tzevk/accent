@@ -122,7 +122,11 @@ export interface PeriodChargeBlockerInput extends PeriodChargeCandidate {
 	sourceState: RecognitionState;
 	sourceNature: CostNature;
 	sourceRecognizedAmount: number | null;
-	sourceCurrency: string;
+	/**
+	 * The source's original currency; null is unknown, and a charge cannot
+	 * state the currency it consumes until it is recorded.
+	 */
+	sourceCurrency: string | null;
 	/** Every charge already recorded for this source, in any state. */
 	existing: ReadonlyArray<{
 		period: string;
@@ -138,6 +142,7 @@ export type PeriodChargeBlocker =
 	| 'invalid_charge_amount'
 	| 'charge_evidence_required'
 	| 'charge_currency_mismatch'
+	| 'source_currency_unknown'
 	| 'source_not_recognized'
 	| 'nature_not_non_operating'
 	| 'duplicate_period_charge'
@@ -158,7 +163,11 @@ export function periodChargeBlockers(
 		blockers.push('invalid_charge_amount');
 	}
 	if (!input.evidenceReference) blockers.push('charge_evidence_required');
-	if (
+	// A charge cannot state a currency the source does not have: an unknown
+	// original currency is never filled in as INR.
+	if (input.sourceCurrency === null) {
+		blockers.push('source_currency_unknown');
+	} else if (
 		input.currency !== null &&
 		input.currency.toUpperCase() !== input.sourceCurrency.toUpperCase()
 	) {
@@ -166,7 +175,8 @@ export function periodChargeBlockers(
 	}
 	// The source must be confirmed cost first: that act establishes the
 	// balance the charge draws down.
-	if (input.sourceState !== 'recognized') blockers.push('source_not_recognized');
+	if (input.sourceState !== 'recognized')
+		blockers.push('source_not_recognized');
 	if (!isNonOperatingNature(input.sourceNature)) {
 		blockers.push('nature_not_non_operating');
 	}
@@ -182,10 +192,7 @@ export function periodChargeBlockers(
 	}
 	if (input.amount !== null && input.amount > 0) {
 		const consumed = consumedToDate(input.existing);
-		const remaining = remainingBalance(
-			input.sourceRecognizedAmount,
-			consumed
-		);
+		const remaining = remainingBalance(input.sourceRecognizedAmount, consumed);
 		if (remaining === null) {
 			// No supported balance: the source is not confirmed cost, which the
 			// blocker above already stated; nothing can be measured here.

@@ -10,7 +10,12 @@
  */
 
 import { add, R, toNumber } from '@/lib/money';
-import { conversionStatusOf, currencyCodeOf, evidenceOf } from './currency';
+import {
+	conversionStatusOf,
+	currencyCodeOf,
+	evidenceOf,
+	reportingCurrencyOf,
+} from './currency';
 import { toPeriodChargeJson } from './non-operating';
 import { evaluateCost } from './recognition';
 import type {
@@ -157,8 +162,11 @@ export function mapCostRow(row: DbRow): CostRecord {
 	};
 }
 
-/** The record as the report endpoints publish it. */
-function toCostRecordJson(record: CostRecord): CostRecordJson {
+/** The record as the report endpoints publish it, in the requested basis. */
+function toCostRecordJson(
+	record: CostRecord,
+	reporting: string
+): CostRecordJson {
 	return {
 		id: record.id,
 		cost_uid: record.costUid,
@@ -178,7 +186,7 @@ function toCostRecordJson(record: CostRecord): CostRecordJson {
 		conversion_date: record.conversionDate,
 		conversion_evidence_reference: record.conversionEvidenceReference,
 		converted_amount: record.convertedAmount,
-		conversion_status: conversionStatusOf(evidenceOf(record)),
+		conversion_status: conversionStatusOf(evidenceOf(record), reporting),
 		gross_amount: record.grossAmount,
 		tax_amount: record.taxAmount,
 		tax_treatment: record.taxTreatment,
@@ -266,7 +274,8 @@ export interface ChargeSource {
 	classification: CostClassification | null;
 	projectId: number | null;
 	recognizedAmount: number | null;
-	currency: string;
+	/** The source's original currency; null is unknown, never read as INR. */
+	currency: string | null;
 }
 
 /**
@@ -299,7 +308,7 @@ export async function loadChargeSourceForUpdate(
 			(s(row, 'cost_classification') as CostClassification | null) ?? null,
 		projectId: num(row, 'project_id'),
 		recognizedAmount: num(row, 'recognized_amount'),
-		currency: s(row, 'currency', 'INR') ?? 'INR',
+		currency: s(row, 'currency'),
 	};
 }
 
@@ -344,11 +353,11 @@ export function mapChargeRow(row: DbRow): PeriodCharge {
 		clientName: s(row, 'client_name'),
 		currency: s(row, 'currency', 'INR') ?? 'INR',
 		period: (s(row, 'charge_period', '') ?? '').slice(0, 10),
-		basis: (s(row, 'basis', 'consumption') as PeriodChargeBasis) ?? 'consumption',
+		basis:
+			(s(row, 'basis', 'consumption') as PeriodChargeBasis) ?? 'consumption',
 		amount: num(row, 'amount') ?? 0,
 		evidenceReference: s(row, 'evidence_reference', '') ?? '',
-		state:
-			(s(row, 'state', 'approved') as PeriodChargeState) ?? 'approved',
+		state: (s(row, 'state', 'approved') as PeriodChargeState) ?? 'approved',
 		financialVersion: Number(num(row, 'financial_version') ?? 1),
 		sequence: Number(num(row, 'sequence') ?? 1),
 		approvedBy: num(row, 'approved_by'),
@@ -360,10 +369,7 @@ export function mapChargeRow(row: DbRow): PeriodCharge {
 		reportingCurrency: currencyCodeOf(s(row, 'source_reporting_currency')),
 		conversionRate: s(row, 'source_conversion_rate'),
 		conversionDate: s(row, 'source_conversion_date'),
-		conversionEvidenceReference: s(
-			row,
-			'source_conversion_evidence_reference'
-		),
+		conversionEvidenceReference: s(row, 'source_conversion_evidence_reference'),
 	};
 }
 
@@ -675,6 +681,9 @@ export async function loadDrilldown(
 	query: CostDrilldownQuery
 ): Promise<CostDrilldown> {
 	const { start, end } = monthBounds(query.month);
+	const reporting = reportingCurrencyOf({
+		reportingCurrency: query.reportingCurrency ?? null,
+	});
 	const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
 	const offset = Math.max(query.offset ?? 0, 0);
 	const state = stateFilterClause(query.state);
@@ -776,7 +785,8 @@ export async function loadDrilldown(
 			})
 		: [];
 	const countedCharges = charges.filter(
-		(charge) => charge.state === 'approved' && charge.sourceState === 'recognized'
+		(charge) =>
+			charge.state === 'approved' && charge.sourceState === 'recognized'
 	);
 	const chargeCurrencies = new Set(
 		countedCharges.map((charge) => charge.currency)
@@ -796,7 +806,9 @@ export async function loadDrilldown(
 		total: Number(num(count, 'total') ?? 0),
 		limit,
 		offset,
-		records: (rows as DbRow[]).map(mapCostRow).map(toCostRecordJson),
+		records: (rows as DbRow[])
+			.map(mapCostRow)
+			.map((record) => toCostRecordJson(record, reporting)),
 		period_charges: charges.map(toPeriodChargeJson),
 		totals: {
 			confirmed_amount: confirmed.amount,
