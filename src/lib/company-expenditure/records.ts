@@ -30,9 +30,10 @@ export interface SqlConnection {
 	): Promise<[unknown, unknown]>;
 }
 
-type DbRow = Record<string, unknown>;
+/** A raw database row; shared with the budget loaders (`budget-records.ts`). */
+export type DbRow = Record<string, unknown>;
 
-function s(
+export function s(
 	row: DbRow,
 	key: string,
 	fallback: string | null = null
@@ -45,7 +46,7 @@ function s(
 	return fallback;
 }
 
-function num(row: DbRow, key: string): number | null {
+export function num(row: DbRow, key: string): number | null {
 	const value = row[key];
 	if (value === null || value === undefined || value === '') return null;
 	const parsed = typeof value === 'number' ? value : Number(value);
@@ -80,7 +81,7 @@ const COST_SELECT = `
     LEFT JOIN projects p ON p.project_id = e.project_id AND p.isDelete = 0`;
 
 /** First and last day of a `YYYY-MM` month. */
-function monthBounds(month: string): { start: string; end: string } {
+export function monthBounds(month: string): { start: string; end: string } {
 	const [year, monthNumber] = month.split('-').map(Number);
 	const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
 	return {

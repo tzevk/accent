@@ -90,8 +90,9 @@ export default async function globalSetup(): Promise<void> {
 
 		const expenditure = await seedExpenditureFixtures();
 		console.log(
-			`[e2e] expenditure fixtures seeded for ${expenditure.month} and ${expenditure.nextMonth} ` +
-				`(${expenditure.costs} direct costs, ` +
+			`[e2e] expenditure fixtures seeded for ${expenditure.month}, ${expenditure.nextMonth}, ` +
+				`and ${expenditure.budgetMonth} (${expenditure.costs} direct costs, ` +
+				`${expenditure.budgets} cost budgets, ` +
 				`${Object.keys(expenditure.projects).length} projects)`
 		);
 
