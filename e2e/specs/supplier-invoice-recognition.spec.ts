@@ -1301,6 +1301,38 @@ test('excludes pending, rejected, cancelled, draft and unresolved records', asyn
 	}
 	expect(march.company.incurred_cost).toBe(MARCH_TOTAL);
 
+	// A standalone invoice with only a free-text PO number recognized normally,
+	// and the number stayed descriptive: no order identity was invented and its
+	// only link row is its own cost identity.
+	const noPo = await rows<{
+		po_number: string;
+		po_id: number | null;
+		cost_uid: string;
+	}>(
+		`SELECT po_number, po_id, cost_uid FROM purchase_invoices WHERE id = ?`,
+		[seeded.invoiceIds.noPurchaseOrder]
+	);
+	expect(noPo[0].po_number).toBe('E2E-SINV-PO-FREE-1003');
+	expect(noPo[0].po_id).toBeNull();
+	const noPoLinks = await rows<{ role: string; source_table: string }>(
+		`SELECT role, source_table FROM financial_cost_links WHERE cost_uid = ?`,
+		[noPo[0].cost_uid]
+	);
+	expect(noPoLinks).toEqual([
+		{ role: 'cost', source_table: 'purchase_invoices' },
+	]);
+	const noPoDrill = await drilldown(request, {
+		month: MONTH,
+		state: 'recognized',
+	});
+	expect(
+		noPoDrill.records.some(
+			(entry) =>
+				entry.expense_number ===
+				seededInvoice('noPurchaseOrder').invoiceNumber
+		)
+	).toBe(true);
+
 	evidence.states = {
 		evidence: march.evidence,
 		rejected: rejected.records.map((entry) => entry.expense_number),

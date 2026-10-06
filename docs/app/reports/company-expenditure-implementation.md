@@ -388,6 +388,12 @@ reject, cancel) with `expected_version`.
   The payable `PUT` refuses link rewrites (`422 link_change_requires_review`).
 - **Tax and withholding**: recoverable tax is excluded only with its evidence;
   withholding (TDS) is settlement information and never reduces cost.
+- **Conversion evidence** (migration `20261008091101`, #319 contract): a
+  foreign invoice stores its reporting target, rate, rate date, and evidence
+  reference, validated by the shared `resolveConversion` (full triple or none);
+  `converted_amount` is frozen at recognition. An invoice without matching
+  evidence keeps its own currency total with `unsupported` status — no guessed
+  or inverted rate, no mixed total.
 - **Authorization**: `purchase_orders:update` for the register and its
   commands, plus `other_expenses:approve` for recognize/reject/cancel and link
   decisions.
@@ -398,6 +404,11 @@ reject, cancel) with `expected_version`.
   `initializeSupplierCost`, `executeSupplierCommand`, `loadSupplierInvoiceDetail`,
   `decideSupplierLink`, `resolveCostReference`, `linkCostReference`,
   `registerCostIdentity`, and `registerCostSource` are the public interface.
+- **Source identity on the screen**: ids are only unique within a store, so the
+  report queue renders command controls for `direct_expense` rows alone;
+  another source's queue row states where its recognition workflow lives (the
+  admin Purchase Invoice register for supplier invoices), and list keys are
+  source- and split-unique.
 
 ## Currency conversion (ticket #319)
 
