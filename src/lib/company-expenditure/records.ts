@@ -9,6 +9,7 @@
  * transaction.
  */
 
+import { conversionStatusOf, currencyCodeOf, evidenceOf } from './currency';
 import { evaluateCost } from './recognition';
 import type {
 	CostClassification,
@@ -51,6 +52,17 @@ function num(row: DbRow, key: string): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * A DECIMAL kept as its exact string: a DECIMAL(20,10) rate holds more digits
+ * than a JS number can state, so it is never routed through `Number()`.
+ */
+function dec(row: DbRow, key: string): string | null {
+	const value = row[key];
+	if (value === null || value === undefined) return null;
+	const text = String(value).trim();
+	return text.length === 0 ? null : text;
+}
+
 /** The projection the module maps into `CostRecord`. */
 const COST_SELECT = `
   SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.cost_classification,
@@ -58,7 +70,9 @@ const COST_SELECT = `
          e.service_period_start, e.service_period_end, e.tax_treatment,
          e.tax_evidence_reference, e.recognized_amount, e.source_reference,
          e.evidence_reference, e.financial_version, e.recognized_by, e.recognized_at,
-         e.currency, e.amount, e.tax_amount, e.total_amount,
+         e.currency, e.reporting_currency, e.conversion_rate, e.conversion_date,
+         e.conversion_evidence_reference, e.converted_amount,
+         e.amount, e.tax_amount, e.total_amount,
          e.vendor_name, e.description, e.status,
          e.project_id, p.project_code,
          COALESCE(p.project_title, p.name) AS project_name, p.client_name
@@ -92,7 +106,13 @@ export function mapCostRow(row: DbRow): CostRecord {
 			(s(row, 'cost_classification') as CostClassification | null) ?? null,
 		state:
 			(s(row, 'recognition_state', 'draft') as RecognitionState) ?? 'draft',
-		currency: s(row, 'currency', 'INR'),
+		// A missing original currency stays missing: it is never read as INR.
+		currency: currencyCodeOf(s(row, 'currency')),
+		reportingCurrency: currencyCodeOf(s(row, 'reporting_currency')),
+		conversionRate: dec(row, 'conversion_rate'),
+		conversionDate: s(row, 'conversion_date'),
+		conversionEvidenceReference: s(row, 'conversion_evidence_reference'),
+		convertedAmount: num(row, 'converted_amount'),
 		grossAmount: num(row, 'total_amount'),
 		taxAmount: num(row, 'tax_amount'),
 		taxTreatment:
@@ -143,6 +163,12 @@ function toCostRecordJson(record: CostRecord): CostRecordJson {
 		service_period_end: record.servicePeriodEnd,
 		expense_date: record.expenseDate,
 		currency: record.currency,
+		reporting_currency: record.reportingCurrency,
+		conversion_rate: record.conversionRate,
+		conversion_date: record.conversionDate,
+		conversion_evidence_reference: record.conversionEvidenceReference,
+		converted_amount: record.convertedAmount,
+		conversion_status: conversionStatusOf(evidenceOf(record)),
 		gross_amount: record.grossAmount,
 		tax_amount: record.taxAmount,
 		tax_treatment: record.taxTreatment,
@@ -191,7 +217,7 @@ export async function loadMonthProjectCost(
 ): Promise<Map<number, Map<string, number | null>>> {
 	const { start, end } = monthBounds(month);
 	const [rows] = await db.execute(
-		`SELECT e.project_id, COALESCE(e.currency, 'INR') AS currency,
+		`SELECT e.project_id, e.currency AS currency,
               SUM(e.recognized_amount) AS amount,
               SUM(CASE WHEN e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts
        FROM expenses e
@@ -199,15 +225,17 @@ export async function loadMonthProjectCost(
         AND e.recognition_state = 'recognized'
         AND e.cost_classification = 'project'
         AND e.project_id IS NOT NULL
+        AND e.currency IS NOT NULL
         AND e.recognition_period BETWEEN ? AND ?
-      GROUP BY e.project_id, COALESCE(e.currency, 'INR')`,
+      GROUP BY e.project_id, e.currency`,
 		[start, end]
 	);
 	const costs = new Map<number, Map<string, number | null>>();
 	for (const row of rows as DbRow[]) {
 		const id = num(row, 'project_id');
 		if (id === null) continue;
-		const currency = s(row, 'currency', 'INR') ?? 'INR';
+		const currency = s(row, 'currency');
+		if (!currency) continue;
 		const unknownAmounts = num(row, 'unknown_amounts') ?? 0;
 		const perCurrency = costs.get(id) ?? new Map<string, number | null>();
 		// A missing recognized amount is unknown, never zero.
@@ -342,8 +370,9 @@ export async function loadDrilldown(
 		`SELECT COUNT(*) AS total,
               SUM(CASE WHEN e.recognition_state = 'recognized' THEN 1 ELSE 0 END) AS confirmed_records,
               SUM(CASE WHEN e.recognition_state = 'recognized' AND e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts,
-              COUNT(DISTINCT CASE WHEN e.recognition_state = 'recognized' THEN COALESCE(e.currency, 'INR') END) AS confirmed_currencies,
-              MIN(CASE WHEN e.recognition_state = 'recognized' THEN COALESCE(e.currency, 'INR') END) AS confirmed_currency,
+              COUNT(DISTINCT CASE WHEN e.recognition_state = 'recognized' THEN e.currency END) AS confirmed_currencies,
+              MIN(CASE WHEN e.recognition_state = 'recognized' THEN e.currency END) AS confirmed_currency,
+              SUM(CASE WHEN e.recognition_state = 'recognized' AND e.currency IS NULL THEN 1 ELSE 0 END) AS unknown_currency_records,
               SUM(CASE WHEN e.recognition_state = 'recognized' THEN e.recognized_amount ELSE 0 END) AS confirmed
          FROM expenses e
         WHERE ${whereSql}`,
@@ -352,10 +381,14 @@ export async function loadDrilldown(
 	const count = (countRows as DbRow[])[0] ?? {};
 	const unknownAmounts = num(count, 'unknown_amounts') ?? 0;
 	const confirmedCurrencies = num(count, 'confirmed_currencies') ?? 0;
-	// Unknown amounts and mixed currencies cannot be stated as one figure;
-	// with no confirmed record at all the subtotal is a known zero.
+	const unknownCurrencyRecords = num(count, 'unknown_currency_records') ?? 0;
+	// Unknown amounts, an unknown original currency, and mixed currencies
+	// cannot be stated as one figure; with no confirmed record at all the
+	// subtotal is a known zero.
 	const confirmedAmount =
-		unknownAmounts > 0 || confirmedCurrencies > 1
+		unknownAmounts > 0 ||
+		confirmedCurrencies > 1 ||
+		unknownCurrencyRecords > 0
 			? null
 			: (num(count, 'confirmed') ?? 0);
 	const [rows] = await db.execute(

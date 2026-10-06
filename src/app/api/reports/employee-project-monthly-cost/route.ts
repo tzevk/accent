@@ -120,9 +120,27 @@ export async function GET(request: Request) {
 					);
 				}
 			}
+			// The reporting basis is part of the request; absent means the
+			// company reporting currency. Only costs with matching stored
+			// conversion evidence are stated in it.
+			const reportingCurrencyParam = url.searchParams.get('reporting_currency');
+			const reportingCurrency = reportingCurrencyParam
+				? reportingCurrencyParam.trim().toUpperCase()
+				: null;
+			if (reportingCurrency && !/^[A-Z]{3}$/.test(reportingCurrency)) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'Valid reporting_currency (three-letter code) is required',
+						code: 'invalid_reporting_currency',
+					},
+					{ status: 400 }
+				);
+			}
 			const data = await fetchCompanyReconciliation({
 				month: monthParam,
 				projectId,
+				reportingCurrency,
 			});
 			return NextResponse.json({ success: true, data, view: 'expenditure' });
 		}

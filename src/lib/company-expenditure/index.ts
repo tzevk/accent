@@ -63,6 +63,16 @@ export { recordCost, executeCommand, loadCost, CostError } from './commands';
 export type { CostActor, CommandOptions } from './commands';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
+export {
+	REPORTING_CURRENCY,
+	convertToReporting,
+	conversionException,
+	conversionStatusOf,
+	currencyCodeOf,
+	evidenceOf,
+	parseConversionRate,
+	reportingCurrencyOf,
+} from './currency';
 export { monthLabel } from './reconciliation';
 export {
 	effectiveTaxTreatment,
@@ -74,7 +84,12 @@ export {
 	resolveRecognitionPeriod,
 } from './recognition';
 export type {
+	CompanyConversion,
 	CompanyReconciliation,
+	ConversionEvidence,
+	ConversionExceptionCode,
+	ConversionOutcome,
+	ConversionStatus,
 	CostClassification,
 	CostCommandInput,
 	CostCommandName,
@@ -87,6 +102,7 @@ export type {
 	CostPatch,
 	CostRecord,
 	CoverageNotice,
+	CurrencyReporting,
 	CurrencyTotal,
 	EvidenceSummary,
 	PeriodBasis,
@@ -127,6 +143,8 @@ export interface ReconciliationRequest {
 	month: string;
 	/** Narrow the Project detail; never the company reconciliation. */
 	projectId?: number | null;
+	/** Requested reporting basis; absent means the company reporting currency. */
+	reportingCurrency?: string | null;
 }
 
 /** Read one month's company reconciliation. */
@@ -153,6 +171,7 @@ export async function fetchCompanyReconciliation(
 		projectOptions,
 		availableMonths,
 		coverageDeclarations: SOURCE_COVERAGE,
+		reportingCurrency: request.reportingCurrency ?? null,
 	});
 }
 
