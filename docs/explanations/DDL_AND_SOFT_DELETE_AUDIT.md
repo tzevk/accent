@@ -1,6 +1,10 @@
 # DDL & Soft Delete Audit
 
-> Generated from `src/app/api/` — run `grep` to refresh. State verified 2026-08-04.
+> **Historical audit — state verified 2026-08-04** (committed 2026-08-04). Findings describe the
+> code at that date; re-verify before treating an item as open or resolved. Part of the
+> [documentation index](../README.md) (audit records).
+>
+> Generated from `src/app/api/` — run `grep` to refresh.
 
 **Knex migrations are now the single source of truth for schema.** `schema-init.js` is deprecated. All new DDL goes into `migrations/*.js` (see `AGENTS.md` for commands).
 
@@ -145,7 +149,7 @@ All of it — the baseline migration guarantees every table and column already e
 ### What NOT to touch in this cleanup
 
 - `src/utils/schema-init.js` — dead but harmless; delete it wholesale in a separate PR rather than inline-editing it across 50 route files.
-- DDL in `src/utils/activity-logger.js` — it creates `user_screen_time` at startup. **No knex migration exists for `user_screen_time` yet** — create one first, then remove the DDL.
+- DDL in `src/utils/activity-logger.ts` — it creates `user_screen_time` at startup. **No knex migration exists for `user_screen_time` yet** — create one first, then remove the DDL.
 
 ### Follow-ups
 

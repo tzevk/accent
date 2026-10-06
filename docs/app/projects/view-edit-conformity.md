@@ -30,9 +30,9 @@
 
 ### Tabs
 
-- Labels aligned to the edit: `Meetings` → `Meeting`, `Project Schedule` → `Schedule`, `List of Deliverables` → `Deliverables`, `Project Handover` → `Progress Measurement`.
-- Order reordered to the edit's sequence (Details, Scope, Activity, Schedule, Documents Received, Deliverables, Meeting, Progress Measurement, Manhours, Query Log, Assumption, Lessons Learnt, Upload Documents).
-- `List of Documents Received` **kept** — it renders `documents_received_list`, which the edit's visible "Input Document" tab does not (`input_documents_list` is a different dataset); renaming would mislabel.
+At the time of this change the view's tabs were realigned to the edit's labels and order (`Meetings` → `Meeting`, `Project Schedule` → `Schedule`, `List of Deliverables` → `Deliverables`, `Project Handover` → `Progress Measurement`; `List of Documents Received` kept because that panel renders `documents_received_list`).
+
+**Current state (2026-10-06):** the per-page tab lists were superseded — both pages now import the same canonical `PROJECT_TABS` from `src/lib/project-tabs.js` (19 ids, plus `TAB_ALIASES` for legacy ids). The view shows the full list to anyone with project-edit rights (super-admin or `projects:update`) and the fixed 9-id employee subset `scope, project_schedule, project_team, documents_received, documents_issued, assumption, discussion, query_log, lessons_learnt` to everyone else. The edit form applies its own section-level and `requiresPermission` gates (Quotation / Purchase Order / Invoice); the view's current filter does not gate those three. Labels now come from the shared module, so view and edit cannot drift again.
 
 ---
 
@@ -52,7 +52,7 @@
 - `prettier --check` — clean.
 - `npx vitest run src/app/projects/[id]/page.test.tsx` — 2/2 pass.
 - Browser (dev server, super-admin session, 1440×900):
-  - Admin default lands on Project Details → "General Project Information" panel; all 13 tabs render their panels.
+  - Admin default lands on Project Details → "General Project Information" panel; all tabs as configured at the time (13) render their panels.
   - Employee workspace renders its 9 tabs, defaults to Scope, back button → `/user/dashboard`.
   - Side-by-side comparison of view vs edit confirms identical header / tab-bar / panel-header structure (mode titles differ: "Project Overview" / "Edit Project").
   - Error path (bad project id) shows the message instead of crashing.
@@ -70,5 +70,5 @@
 ## Known follow-ups (deliberately not done)
 
 - **Inert `sticky top-0` on both pages.** An `overflow-x-hidden` ancestor becomes the sticky scroll container, so the edit page's sticky header scrolls away (verified: `stickyTop = -121` at max scroll). The view behaves identically, so it is conformant. To restore true stickiness on both: change the outer `overflow-x-hidden` to `overflow-x-clip` (does not create a scroll container) on `page.jsx` and `edit/EditProjectForm.jsx`.
-- **Unreachable panels.** Both files carry dead `hidden=` sections (`commercial`, `activities`, admin `team`, `procurement`, `construction`, `risk`, `closeout`) whose tab ids are in neither `TAB_CONFIG` nor the edit `TABS`. Left intact to keep the files symmetric; candidates for removal if the tab configs are ever pruned.
-- **`documents_received_list` vs `input_documents_list`.** The view shows the former; the edit's visible "Input Document" tab edits the latter. If the legacy list is meant to be retired, the view's Documents Received panel should read `input_documents_list` instead.
+- **Unreachable panels.** Both files carry dead `hidden=` sections (`commercial`, `activities`, admin `team`, `procurement`, `construction`, `risk`, `closeout`) whose tab ids are in neither the shared `PROJECT_TABS` nor the employee subset. Left intact to keep the files symmetric; candidates for removal if the tab configs are ever pruned.
+- **`documents_received_list` vs `input_documents_list` — resolved by the shared tab config.** Both pages' visible "Input Document" tab (`documents_received` id) renders `documents_received_list`; `input_documents_list` survives only as a legacy load path and an unreachable `input_documents` panel in the edit form.

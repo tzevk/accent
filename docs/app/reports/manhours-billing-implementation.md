@@ -2,7 +2,10 @@
 
 ## Overview
 
-`/reports/manhours-billing` — a per-client-project monthly billing statement: every employee who logged manhours on the selected project during the selected month appears as a row with their per-hour company charge, the billed amount, TDS + net payable, the per-hour Accent rate billed to the client and its amount, and the P&L columns. The layout mirrors the company's Excel manhours billing template (Client Name / Project Name-Number / Month-Year header block above a `Sr. No. | Employee Name | Designation | Total Manhours | Employee Charges | Amount | TDS | Net Payable | Accent Charges | Amount | P&L (After Deductions | TDS)` grid with section tints).
+`/reports/manhours-billing` — a per-client-project billing report with two views:
+
+- **Monthly** — a monthly billing statement: every employee who logged manhours on the selected project during the selected month appears as a row with their per-hour company charge, the billed amount, TDS + net payable, the per-hour Accent rate billed to the client and its amount, and the P&L columns. The layout mirrors the company's Excel manhours billing template (Client Name / Project Name-Number / Month-Year header block above a `Sr. No. | Employee Name | Designation | Total Manhours | Employee Charges | Amount | TDS | Net Payable | Accent Charges | Amount | P&L (After Deductions | TDS)` grid with section tints).
+- **Annual FY Matrix** — the same project's whole financial year (Apr–Mar) from the Project Manhours tab: one row per deputation member with the employee/client rates, twelve month-hour cells, Total Hrs, Employee Cost, Company Billing and P&L (mirrors the "Deputation Summary" workbook).
 
 **Route:** `src/app/api/reports/manhours-billing/route.ts` (+ `download/route.ts` for Excel)  
 **Page:** `src/app/reports/manhours-billing/page.tsx`  
@@ -17,33 +20,39 @@
 ### Data flow
 
 ```
-Browser (filters: client → project → month)
-  │  GET /api/reports/manhours-billing            (meta: clients, projects, months)
-  │  GET /api/reports/manhours-billing?project_id=&month=   (billing rows)
+Browser (filters: client → project → month | financial year)
+  │  GET /api/reports/manhours-billing                (meta: clients, projects, months, FYs)
+  │  GET /api/reports/manhours-billing?project_id=&month=            (monthly rows)
+  │  GET /api/reports/manhours-billing?project_id=&fy=&view=annual   (FY matrix)
   ▼
 data-source.ts
-  ├─ fetchBillingMeta()    → clients, projects, months with data
-  └─ fetchBillingData()    → project header + employee billing rows
-       ├─ user_activity_assignments (manhours: daily_entries)
-       ├─ users / employees         (employee resolution)
-       └─ employee_salary_profile   (monthly salary + hourly rate)
+  ├─ fetchBillingMeta()        → clients, projects, months and FYs with data
+  ├─ fetchBillingData()        → project header + monthly employee billing rows
+  │    ├─ project_manhours_list      (tab hours + rates for the month)
+  │    ├─ user_activity_assignments  (daily_entries fallback hours)
+  │    ├─ users / employees          (employee resolution)
+  │    └─ employee_salary_profile    (monthly salary + hourly rate fallback)
+  └─ fetchAnnualBillingData()  → FY matrix (Apr–Mar) per tab member, with the
+                                 same assignment fallback per month and rates
 ```
 
 ### Data sources
 
-| Field                                  | Source table                     | How it is derived                                                                                                                                                    |
-| -------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ------------- |
-| **Total Manhours**                     | `user_activity_assignments`      | Sum of `hours` in the assignment's `daily_entries` JSON array where `date` falls in the selected month; summed across every non-cancelled assignment for the project |
-| **Employee Name / Designation / Code** | `employees`                      | `CONCAT_WS(' ', first_name, last_name)`; designation = `position`                                                                                                    |     | `designation` |
-| **Employee Charges**                   | `projects.project_manhours_list` | Project Manhours tab's `rate_company` (RT/HR Employee); falls back to the salary-profile-derived hourly rate when unset                                              |
-| **Amount**                             | computed                         | Employee Charges × manhours (unrounded rate), 2dp, decimal.js (`@/lib/money`)                                                                                        |
-| **TDS**                                | computed                         | Amount × `tds_percentage` from the salary profile in force for the month (default **10%**, payroll's convention)                                                     |
-| **Net Payable**                        | computed                         | Amount − TDS                                                                                                                                                         |
-| **Accent Charges**                     | `projects.project_manhours_list` | Project Manhours tab's `rate_accent` (RT/HR Company); 0 when unset                                                                                                   |
-| **Accent Amount**                      | computed                         | Accent Charges × manhours, 2dp                                                                                                                                       |
-| **P&L After Deductions**               | computed                         | Accent Amount − Net Payable — profit after the employee's deductions                                                                                                 |
-| **P&L TDS**                            | computed                         | Accent Amount − Amount — gross margin before the employee's TDS (equivalently P&L After Deductions − TDS)                                                            |
-| **Client / Project**                   | `projects`                       | `client_name`, `project_code`, `project_title`/`name` on `isDelete = 0` rows with a client name                                                                      |
+| Field                                  | Source table                                                  | How it is derived                                                                                                                                                                                                              |
+| -------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Total Manhours**                     | `projects.project_manhours_list`, `user_activity_assignments` | The Project Manhours tab's `monthly_hours[<calendar month>]` wins; when that is 0/absent, the month's `daily_entries` hours are summed instead (`status <> 'Cancelled'`). Employees still at 0 are dropped in the monthly view |
+| **Employee Name / Designation / Code** | `employees`                                                   | `CONCAT_WS(' ', first_name, last_name)`; designation = `position`, falling back to `designation`                                                                                                                               |
+| **Employee Charges**                   | `projects.project_manhours_list`                              | Project Manhours tab's `rate_employee` (RT/HR Employee); falls back to the month's project config rate, then to the salary-profile-derived hourly rate when unset                                                              |
+| **Amount**                             | computed                                                      | Employee Charges × manhours (unrounded rate), 2dp, decimal.js (`@/lib/money`)                                                                                                                                                  |
+| **TDS**                                | computed                                                      | Amount × `tds_percentage` from the salary profile in force for the month (default **10%**, payroll's convention)                                                                                                               |
+| **Net Payable**                        | computed                                                      | Amount − TDS                                                                                                                                                                                                                   |
+| **Accent Charges**                     | `projects.project_manhours_list`                              | Project Manhours tab's `rate_client` (RT/HR Company); 0 when unset                                                                                                                                                             |
+| **Accent Amount**                      | computed                                                      | Accent Charges × manhours, 2dp                                                                                                                                                                                                 |
+| **P&L After Deductions**               | computed                                                      | Accent Amount − Net Payable — profit after the employee's deductions                                                                                                                                                           |
+| **P&L TDS**                            | computed                                                      | Accent Amount − Amount — gross margin before the employee's TDS (equivalently P&L After Deductions − TDS)                                                                                                                      |
+| **Client / Project**                   | `projects`                                                    | `client_name`, `project_code`, `project_title`/`name` on `isDelete = 0` rows with a client name                                                                                                                                |
+
+The tab rate keys were renamed from `rate_company`/`rate_accent` (the old pair was semantically inverted). `normalizeManhourEntry` in `data-source.ts` maps legacy rows to `rate_employee`/`rate_client` on read, so only the new keys are ever resolved.
 
 ---
 
@@ -60,14 +69,14 @@ Both rates come from the **Project Manhours tab** (`projects.project_manhours_li
 		"employee_id": "3",
 		"source_employee_id": 3,
 		"salary_type": "monthly",
-		"rate_company": 430,
-		"rate_accent": 480,
+		"rate_employee": 430,
+		"rate_client": 480,
 		"monthly_hours": { "jan": 10 }
 	}
 ]
 ```
 
-Rows are keyed by `employees.id` via `source_employee_id`, falling back to `employee_id` (the tab stores `String(employees.id)` for internal members). The **company rate** (`rate_company`) falls back to the salary-profile-derived hourly rate (the tab auto-fills it from there when an employee is added). The **Accent rate** (`rate_accent`) is manual — 0 when unset, which yields a negative P&L (the company pays the salary without billing the client).
+Rows are keyed by `employees.id` via `source_employee_id`, falling back to `employee_id` (the tab stores `String(employees.id)` for internal members). The **employee rate** (`rate_employee`, RT/HR Employee — what we pay) falls back to the month's project-config rate, then to the salary-profile-derived hourly rate (the tab auto-fills the field from there when an employee is added). The **client rate** (`rate_client`, RT/HR Company — what the client is billed) is manual — 0 when unset, which yields a negative P&L (the company pays the salary without billing the client).
 
 ### Monthly salary fallback and hourly rate
 
@@ -95,7 +104,7 @@ The displayed rate is rounded to 2dp (`resolveHourlyRate`).
 
 ### Why the Amount can differ from rate × manhours at face value
 
-The **billing amount uses the unrounded rate** (`computeRawHourlyRate`), while the grid displays the rounded rate. This matches the company's Excel template: a ₹20,000 salary at 240 standard hours displays **83.33** yet bills **16,666.67** (= 83.333… × 200 h), not 16,666.00. When a project `rate_company` is set, it is a plain decimal and bills exactly.
+The **billing amount uses the unrounded rate** (`computeRawHourlyRate`), while the grid displays the rounded rate. This matches the company's Excel template: a ₹20,000 salary at 240 standard hours displays **83.33** yet bills **16,666.67** (= 83.333… × 200 h), not 16,666.00. When a project `rate_employee` is set, it is a plain decimal and bills exactly.
 
 ```
 resolveHourlyRate(p)      = round2(computeRawHourlyRate(p))   // display
@@ -126,7 +135,7 @@ Money arithmetic goes through `@/lib/money` (`mul`, `sub`, `pctOf`, `toNumber`) 
 
 ## Manhours source and employee resolution
 
-Manhours come from **`user_activity_assignments.daily_entries`** — the actual daily time log employees fill in (same source as the Timesheet report and the Project Status person×day matrix). `daily_entries` is a JSON array:
+Manhours come from the Project Manhours tab first — `project_manhours_list[].monthly_hours[<calendar month key>]` — and from **`user_activity_assignments.daily_entries`** (the actual daily time log employees fill in, same source as the Timesheet report and the Project Status person×day matrix) when the tab has no hours for that employee and month. `daily_entries` is a JSON array:
 
 ```json
 [
@@ -147,7 +156,7 @@ Assignments are keyed by `user_id`, so each assignment is resolved to an employe
 2. `users.employee_id` (login account's FK to `employees`)
 3. email/username match (`users.email`/`users.username` ↔ `employees.email`/`employees.username`) for legacy data
 
-Employees with **zero hours in the month are dropped** — a billing statement only charges worked time.
+In the monthly view, employees with **zero hours in the month are dropped** — a billing statement only charges worked time. The annual view keeps every Project Manhours tab row (even all-zero months) and also adds internal employees who have assignment hours but no tab row.
 
 ---
 
@@ -173,6 +182,8 @@ interface BillingMeta {
 	projects: BillingProject[]; // { project_id, project_code, project_name, client_name }
 	months: string[]; // YYYY-MM, newest first: attendance months ∪ daily_entries months ∪ manhours-tab months ∪ current month
 	latest_month: string | null;
+	financial_years: { year: number; label: string }[]; // newest first, e.g. "FY 2026-27"
+	current_fy: number;
 }
 ```
 
@@ -216,7 +227,45 @@ interface BillingEmployeeRow {
 }
 ```
 
-Validation: `project_id` must be a positive integer, `month` must match `^\d{4}-\d{2}$`. Unknown project → 404.
+### Annual data (`?project_id=&fy=YYYY&view=annual`, or no `month` with `fy`)
+
+```typescript
+interface AnnualBillingData {
+	client_name: string;
+	project: { project_id: number; project_code: string; project_name: string };
+	fy_label: string; // e.g. "FY 2026-27"
+	fy_year: number; // start year (April)
+	months: string[]; // Apr … Mar (display labels)
+	month_keys: string[]; // apr … mar (payload keys)
+	rows: AnnualEmployeeRow[];
+	totals: {
+		monthly_hours: Record<string, number>; // apr … mar, 2dp
+		total_hours: number;
+		total_company_cost: number;
+		total_accent_cost: number;
+		total_pnl: number;
+	};
+}
+
+interface AnnualEmployeeRow {
+	sr_no: number;
+	id: string | number;
+	employee_id: number | null;
+	employee_code: string;
+	employee_name: string;
+	designation: string;
+	salary_type: string;
+	rate_employee: number;
+	rate_client: number;
+	monthly_hours: Record<string, number>; // apr … mar, 2dp
+	total_hours: number;
+	company_cost: number; // rate_employee × total_hours, 2dp
+	accent_cost: number; // rate_client × total_hours, 2dp
+	pnl: number; // accent_cost − company_cost, 2dp
+}
+```
+
+Validation: `project_id` must be a positive integer; monthly `month` must match `^\d{4}-\d{2}$`; annual `fy` must be an integer 2000–2100. Unknown project → 404, bad params → 400.
 
 ---
 
@@ -224,15 +273,19 @@ Validation: `project_id` must be a positive integer, `month` must match `^\d{4}-
 
 ### Filters (print-hidden)
 
-Three dependent `SearchableSelect` dropdowns (`src/components/ui/searchable-select.jsx`):
+A **Monthly | Annual FY Matrix** view toggle sits above the dropdowns; Monthly is the default.
+
+Monthly mode — three dependent `SearchableSelect` dropdowns (`src/components/ui/searchable-select.jsx`):
 
 1. **Client Name** → sets client; resets project to that client's first project
 2. **Project Name/Number** → filtered by client; label is `project_code - project_name`
 3. **Month/Year** → defaults to `meta.latest_month`
 
-Plus Refresh, Print (`window.print()`), and Export Excel buttons. Defaults are applied once when meta arrives (first client, its first project, latest month).
+Annual mode — the same Client and Project selects plus a **Financial Year** select built from `meta.financial_years`, defaulting to `meta.current_fy` (April–March).
 
-### Sheet
+Plus Refresh, Print (`window.print()`), and Export Excel buttons. Defaults are applied once when meta arrives (first client, its first project, latest month / current FY).
+
+### Sheet (Monthly)
 
 An Arial `text-[10px]` bordered grid (`border-black`, like the Timesheet report) with:
 
@@ -246,6 +299,15 @@ An Arial `text-[10px]` bordered grid (`border-black`, like the Timesheet report)
 - Empty state: "No manhours logged on this project in {month}."
 
 Money renders via `formatNumber` (en-IN, fixed 2dp, no currency symbol — matching the template); manhours via trimmed `toFixed(2)` (`176`, not `176.00`). The sheet sets `print-color-adjust: exact` so the tints survive printing.
+
+### Sheet (Annual FY Matrix)
+
+The same bordered-grid language, laid out like the "Deputation Summary" workbook:
+
+- Header block: `Client Name :` / `Project Name/Number :` / `Period / Financial Year :` (`FY 2026-27`, April {fy_year} – March {fy_year + 1})
+- Five summary cards above the table: **FY Total Manhours**, **{n} resources on deputation**, **Accent revenue**, **Total Employee Cost**, **Annual Net P&L** (with a % margin when accent revenue is positive)
+- Table columns: `Sr. | Team Member | Salary Type | RT/HR (Emp) | RT/HR (Co) | Apr … Mar | Total Hrs | Employee Cost | Company Billing | P&L`, with a grand-total row summing all twelve months and the three money columns
+- Empty state: "No deputation manhours recorded for this project in {FY}."
 
 ### Print
 
@@ -268,17 +330,19 @@ Loading (spinner + Navbar), Access Denied (red X panel), error (red panel + Retr
 
 Filename: `Manhours_Billing_<CLIENT>_<PROJECTCODE>_<MONTH>.xlsx`.
 
+The annual view exports the same way (`?project_id=&fy=&view=annual`): a `Deputation Summary` worksheet with rows 1–3 header (Client Name / Project Name-Number / Period–Financial Year), a single header row (`Sr. | Team Member | Salary Type | RT/HR (Emp) | RT/HR (Co) | Apr … Mar | Total Hrs | Employee Cost | Company Billing | P&L`), tinted data rows, a totals row, and the same landscape A4 fit-to-width setup. Filename: `Deputation_Summary_<CLIENT>_<PROJECTCODE>_<FY_LABEL>.xlsx`.
+
 ---
 
 ## Files changed
 
-| File                                                     | Change                                                                                    |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `src/app/reports/manhours-billing/data-source.ts`        | **Created** — types, pure transforms (unit-tested), server fetchers                       |
-| `src/app/reports/manhours-billing/page.tsx`              | **Created** — filter bar + print-styled sheet + Excel export button                       |
-| `src/app/reports/manhours-billing/excel-template.ts`     | **Created** — ExcelJS workbook builder                                                    |
-| `src/app/api/reports/manhours-billing/route.ts`          | **Created** — meta/data JSON API with RBAC                                                |
-| `src/app/api/reports/manhours-billing/download/route.ts` | **Created** — Excel download with RBAC                                                    |
-| `src/app/reports/manhours-billing/data-source.test.ts`   | **Created** — 24 unit tests (parsing, rate math, profile selection, row building, totals) |
-| `src/components/Navbar.jsx`                              | Added "Manhours Billing" entry to `reportsMenuConfig` (`ReceiptPercentIcon`)              |
-| `src/components/Sidebar.jsx`                             | Added `NavRow` "Manhours Billing" in Reports section (`BanknotesIcon`)                    |
+| File                                                     | Change                                                                                 |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `src/app/reports/manhours-billing/data-source.ts`        | **Created** — types, pure transforms (unit-tested), server fetchers                    |
+| `src/app/reports/manhours-billing/page.tsx`              | **Created** — filter bar + print-styled sheet + Excel export button                    |
+| `src/app/reports/manhours-billing/excel-template.ts`     | **Created** — ExcelJS workbook builder                                                 |
+| `src/app/api/reports/manhours-billing/route.ts`          | **Created** — meta/data JSON API with RBAC                                             |
+| `src/app/api/reports/manhours-billing/download/route.ts` | **Created** — Excel download with RBAC                                                 |
+| `src/app/reports/manhours-billing/data-source.test.ts`   | **Created** — unit tests (parsing, rate math, profile selection, row building, totals) |
+| `src/components/Navbar.jsx`                              | Added "Manhours Billing" entry to `reportsMenuConfig` (`ReceiptPercentIcon`)           |
+| `src/components/Sidebar.jsx`                             | Added `NavRow` "Manhours Billing" in Reports section (`BanknotesIcon`)                 |

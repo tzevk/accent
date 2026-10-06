@@ -1,5 +1,7 @@
 # Security Audit — Accent CRM
 
+> Index: [docs/README.md](README.md).
+
 > Generated 2026-08-06. Three parallel read-only security reviews (authentication/authorization, injection/code execution, data handling/uploads/dependencies) plus manual verification of every Critical/High finding against source.
 >
 > Coverage: ~180 API route files under `src/app/api/`, `middleware.ts`, `src/utils/api-permissions.js`, `src/utils/permissions.js`, `src/utils/password.ts`, upload/serving paths, `next.config.ts`, `package.json`/`package-lock.json`, `.env`, `scripts/`. Prior findings in `docs/todo/POOR_PRACTICES_AUDIT.md` (plaintext passwords, missing auth on download routes, wrong permission resources, in-memory rate-limiter §1.6, error-message leakage §2.2) were cross-referenced and are **not** re-reported.
@@ -72,7 +74,7 @@ Second-order risks: stored XSS in messaging and HTML download endpoints (no HTML
 
 > **Remediation outcome (branch `security/remediation-254`):** the workstreams that closed these rows are implemented and verified — see the status block at the top of `docs/todo/SECURITY_REMEDIATION_PLAN.md` and the artifacts under `e2e/artifacts/security-*.json`. Three further findings surfaced while implementing them (SEC-30 the proxy was never compiled, SEC-31 project creation 500'd, SEC-32 activity-log pool deadlock) and are recorded below.
 
-Verified read-only against HEAD `ff7440a`. The table above predates this pass; this section is authoritative where they differ. SEC-01…SEC-07, SEC-10, SEC-12, SEC-14, SEC-19 keep their recorded Fixed/Resolved status.
+Verified read-only against HEAD `ff7440a`. The table above predates this pass; this section is authoritative where they differ. SEC-01…SEC-07, SEC-10, SEC-12, SEC-14, SEC-19 keep their recorded Fixed/Resolved status. The `Verified status` column records the pre-implementation re-verification at `ff7440a`; a `Plan workstream X` note identifies the remediation workstream that addressed the finding. Residual owner/ops tasks (credential rotation, MySQL firewall/TLS, production rich-text scrub) remain as listed in the plan's workstream G and risk register.
 
 | ID     | Verified status                         | Evidence / note                                                                                                                                                                                                                                                                            |
 | ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -89,7 +91,7 @@ Verified read-only against HEAD `ff7440a`. The table above predates this pass; t
 | SEC-22 | **Open**                                | `login/route.js:88-90` verifies only when a row exists; `api/auth/login/route.js` still public. Plan workstream A.                                                                                                                                                                         |
 | SEC-23 | **Open**                                | `reports/page.jsx:464-576` writes raw fields via `document.write`. Plan workstream D.                                                                                                                                                                                                      |
 | SEC-24 | **Partial**                             | `next.config.ts:74-83` covers only `/uploads/:path*`. Static CSP + HSTS + X-Frame-Options + nosniff + Referrer-Policy planned (workstream B6, ADR-0012).                                                                                                                                   |
-| SEC-25 | **Open**                                | unused `jsonwebtoken`; `puppeteer-core` 24.x vs `puppeteer` 25.x skew. Plan workstream G.                                                                                                                                                                                                  |
+| SEC-25 | **Open**                                | unused `jsonwebtoken`; `puppeteer-core` 24.x vs `puppeteer` 25.x skew. Plan workstream G — `jsonwebtoken` and the direct `puppeteer-core` dependency removed 2026-10-06 (see SEC-25 update).                                                                                               |
 
 ## 🔴 Critical
 
@@ -436,6 +438,8 @@ Verified read-only against HEAD `ff7440a`. The table above predates this pass; t
 **Description:** Installed versions sit on patched lines for known CVEs: `next` 15.5.18 (CVE-2025-29927 middleware bypass fixed in 15.2.3; image-optimization DoS fixes in 15.4.1), `mysql2` 3.23.1 (CVE-2024-21507/21508/21512 fixed before 3.23.1), `exceljs` 4.4.0 (CVE-2024-6442 prototype pollution fixed in 4.4.0), `papaparse` 5.5.3 (ReDoS fixed in 5.4.x). Watch items: `jsonwebtoken` 9.0.2 (unmaintained since 2023 **and unused** — no imports in `src/`); `exceljs` 4.4.0 and `html2canvas` 1.4.1 effectively unmaintained; direct `puppeteer-core` 24.43.0 sits alongside `puppeteer` 25.1.0 which bundles its own core 25.1.0 — two browser-core versions in one tree; `@sparticuz/chromium` 148.0.0 must stay in lockstep.
 
 **Fix:** Remove unused `jsonwebtoken`; align `puppeteer-core` with `puppeteer`'s internal version; schedule migration off `exceljs`/`html2canvas`/`papaparse`; run `npm audit`/`osv-scanner` in CI.
+
+**Update (2026-10-06, package check):** removal done — neither `jsonwebtoken` nor a direct `puppeteer-core` dependency appears in `package.json`/`package-lock.json` (workstream G); the lock still carries puppeteer's own nested `puppeteer-core@25.1.0`. The remaining watch items (`exceljs`, `html2canvas`, `papaparse`, `@sparticuz/chromium` lockstep) are unchanged.
 
 ---
 

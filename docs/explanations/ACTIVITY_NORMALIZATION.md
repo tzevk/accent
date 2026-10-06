@@ -1,5 +1,8 @@
 # Activity Assignment Normalization — 2026-07-28
 
+> **Migration record — completed 2026-07-28.** Describes the state at that date; line references
+> and row counts may have drifted. Part of the [documentation index](../README.md).
+
 ## What changed
 
 User activity assignment data was migrated out of `projects.project_activities_list` (a shared JSON blob) into the existing `user_activity_assignments` table. The `project_activities_list` JSON blob remains as the source of truth for activity _definitions_ (used by `EditProjectForm.jsx`); only per-user assignment data moved to the normalized table.
@@ -10,7 +13,7 @@ User activity assignment data was migrated out of `projects.project_activities_l
 - [x] **Data migration** (`scripts/migrate-activity-assignments.js`): UPSERTs all user assignment data from JSON blobs into the normalized table. Idempotent — safe to re-run.
 - [x] **API rewrite** (`src/app/api/users/[id]/activity-assignments/route.js`): All four handlers (GET/PUT/PATCH/POST) now read/write `user_activity_assignments` directly instead of the JSON blob.
 - [x] **Report routes** (`src/app/api/reports/project-activities/`, `src/app/api/reports/employee-report/`): Now query `user_activity_assignments` instead of parsing JSON blobs.
-- [x] **Project sync** (`src/app/api/projects/[id]/route.js`): Changed from DELETE-all + INSERT-all to per-row UPSERT, preserving `daily_entries` and user-entered data across project saves.
+- [x] **Project sync** (`src/app/api/projects/[id]/route.js`): Changed from DELETE-all + INSERT-all to per-row UPSERT keyed on `(user_id, project_id, activity_id)`, so rows omitted from the payload are no longer deleted. Fields present in the payload — including `daily_entries` — are still overwritten with the form's copy on save.
 - [x] **Frontend**: No changes required — response shapes are preserved.
 
 ### Column mapping (JSON blob → normalized table)
@@ -42,10 +45,10 @@ User activity assignment data was migrated out of `projects.project_activities_l
 
 ### 1. Redundancy between `daily_entries` and `qty_completed`/`actual_hours`
 
-`qty_completed` and `actual_hours` are stored as standalone columns but should be derived aggregates of `daily_entries`. The GET handler already computes them at read time:
+`qty_completed` and `actual_hours` are stored as standalone columns but should be derived aggregates of `daily_entries`. The GET handler falls back to derived totals when the stored column is 0/absent (stored values win otherwise):
 
 ```js
-// route.js GET handler lines ~189-196
+// route.js GET handler lines ~158-166
 const derivedQty = dailyEntries.reduce(
 	(s, e) => s + (parseFloat(e.qty_done) || 0),
 	0
@@ -72,7 +75,7 @@ The stored column values can drift from the `daily_entries` ground truth because
 
 **Scaling concern:** The employee report loads **every row** with no date filter, parses **every JSON blob**, and builds per-user arrays in memory. At 10× scale (5,000 rows × 100 entries) that's ~50 MB parsed per request.
 
-**Fix:** Normalize into a `user_activity_daily_entries` table (see `POOR_PRACTICES_AUDIT.md` §3.7 for schema). This enables date-range queries (`WHERE date BETWEEN`), per-row UPSERT instead of full-array read-modify-write, and SQL aggregation (`SUM(hours) GROUP BY date`).
+**Fix:** Normalize into a `user_activity_daily_entries` table (see [`../todo/POOR_PRACTICES_AUDIT.md`](../todo/POOR_PRACTICES_AUDIT.md) §3.7 for schema). This enables date-range queries (`WHERE date BETWEEN`), per-row UPSERT instead of full-array read-modify-write, and SQL aggregation (`SUM(hours) GROUP BY date`).
 
 **Effort:** ~1 sprint (5+ frontend components assume `daily_entries` arrives as an inline array). Track as tech debt; tackle when reports get slow or a date-filtered query becomes necessary.
 

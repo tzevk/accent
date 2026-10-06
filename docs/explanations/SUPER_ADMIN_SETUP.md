@@ -1,5 +1,9 @@
 # Super Admin Setup Guide
 
+> **Status (reviewed 2026-10-06)**: Methods 1 and 2 are still valid. The Method 3 note below is
+> confirmed: `POST /api/users` does not read or insert `is_super_admin`, so promoting a user still
+> requires a direct database update. Part of the [documentation index](../README.md).
+
 This guide explains how to create a new super admin user with full permissions across all modules in the system.
 
 ## Overview
@@ -84,7 +88,7 @@ If you already have a super admin account, you can use the API:
 
 **Note**: Currently, the API doesn't expose the `is_super_admin` field in the POST endpoint. You'll need to either:
 
-1. Add it to the API route handler in [/src/app/api/users/route.js](src/app/api/users/route.js)
+1. Add it to the API route handler in [`src/app/api/users/route.js`](../../src/app/api/users/route.js)
 2. Or use Method 1 (direct database update) after creating the user
 
 ## Password Hashing

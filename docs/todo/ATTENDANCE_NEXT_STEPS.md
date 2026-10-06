@@ -1,6 +1,8 @@
 # Attendance — Next Steps (post pipeline fix)
 
 > Captured 2026-09-10 after the SmartOffice pipeline recovery (tz fix `7ea4f29`, ATS-only filter `7ca9d65`, double-tap collapse `94c4d7d`, prod `attendance_logs` wiped + refilled, scheduler re-enabled). Pipeline is healthy; both items below build on clean data.
+>
+> **Status:** open proposals — the rules below are undecided and none of this is implemented behavior. Index: [docs/README.md](../README.md).
 
 ## Item 1 — Late-3-days → absent rule
 

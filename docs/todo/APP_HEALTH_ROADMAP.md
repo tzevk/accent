@@ -2,7 +2,7 @@
 
 > Generated 2026-08-19 from codebase audit of `src/app/projects`, `migrations/`, `src/utils/*`, `src/app/api/*`.
 >
-> Complements `POOR_PRACTICES_AUDIT.md` — does not duplicate fixed items there. Each item has `file:line`, impact, and concrete fix.
+> Complements `POOR_PRACTICES_AUDIT.md` — does not duplicate fixed items there. Each item has `file:line`, impact, and concrete fix. Items not marked ✅/`FIXED` are proposals; dated fixes are noted inline. Index: [docs/README.md](../README.md).
 
 ## What was fixed in this pass
 
@@ -47,7 +47,7 @@ Verification: `npm run lint` on touched files clean, `npx tsc --noEmit` pre-exis
 - **Where:** `proxy.ts:38` `rateLimitStore Map`, `src/utils/api-permissions.js:21` `userCache Map + pendingUserFetches`, `src/app/api/logout/route.js` (the actual bug).
 - **Reassessment:** not a scaling issue for this app — every session-revocation path already called `invalidateUserCache()` except `POST /api/logout`, so a replayed cookie stayed authenticated for up to 5 min (`USER_CACHE_TTL`) after logout.
 - **Fixed:** `logout/route.js` now calls `invalidateUserCache(userId)` once `revokeSession` resolves a userId; regression coverage in new `src/app/api/logout/route.test.ts` (5 cases: invalidation call, cookie cleared `Max-Age=0`, DB-failure tolerance, no-cookie no-op, unknown-token no-op). Cross-instance staleness window accepted (per-instance Maps mean invalidation only clears the serving instance) — optional hardening knob: drop `USER_CACHE_TTL` 5 min → 60 s.
-- **Deferred (was "move to Upstash/Vercel KV"):** in-memory per-instance rate limiting is acceptable for an internal CRM on Vercel — worst case ≈ N instances × bounded attempts against bcrypt-throttled logins. Revisit triggers: abuse observed in logs, app becomes customer-facing, or Vercel Pro available (prefer platform Firewall rules then — zero code). Full decision record + ready-to-use Upstash sketch: plan doc `p0.4-rate-limit-and-usercache.md`. Related measured fact: dev MySQL reports `max_user_connections=0` (unlimited), `max_connections=300` shared server-wide — keep pools small anyway (Vercel multiplies per instance); tune via `DB_CONNECTION_LIMIT` env, never unbounded.
+- **Deferred (was "move to Upstash/Vercel KV"):** in-memory per-instance rate limiting is acceptable for an internal CRM on Vercel — worst case ≈ N instances × bounded attempts against bcrypt-throttled logins. Revisit triggers: abuse observed in logs, app becomes customer-facing, or Vercel Pro available (prefer platform Firewall rules then — zero code). Full decision record: ADR-0013 (the planned `p0.4-rate-limit-and-usercache.md` was never written — see the 2026-09-28 note above). Related measured fact: dev MySQL reports `max_user_connections=0` (unlimited), `max_connections=300` shared server-wide — keep pools small anyway (Vercel multiplies per instance); tune via `DB_CONNECTION_LIMIT` env, never unbounded.
 
 ## P1 — High value (<1 day each)
 

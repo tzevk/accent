@@ -1,7 +1,18 @@
 # Responsive Design Audit Report
 
+> **Historical audit — snapshot from 2026-02-25** (earliest commit; the original had no date). It
+> describes the code as it was then: file paths and line numbers may have drifted, and some
+> findings are now fixed. Re-verify before treating an item as open. Part of the
+> [documentation index](../README.md) (audit records).
+>
+> Verified fixed since this audit (2026-10-06): the global mobile offset in §1.1 (`.content-with-sidebar`
+> now gets `padding-top: 64px` below 640px) and the reports-page header overflow in §2.10
+> (`flex flex-wrap` now present). Still open at that date: duplicate `<Navbar>`/`<Sidebar>`
+> rendering in several pages (§1.2) and the Messages three-column layout (§2.1).
+> `src/app/admin/da-schedule/page.jsx` has since moved to `src/app/admin/payroll/rates/da/page.jsx`.
+
 **Application:** Accent SmartOffice (Next.js + Tailwind CSS v4)  
-**Date:** Auto-generated audit  
+**Date:** Undated at writing; snapshot committed 2026-02-25  
 **Scope:** All pages in `src/app/` and shared components in `src/components/`
 
 ---
@@ -67,7 +78,7 @@ The root layout (`src/app/layout.jsx`) already renders `<Sidebar>` and wraps chi
 | `src/app/admin/material-requisition/page.jsx` | ✅ | ❌ |
 | `src/app/reports/page.jsx` | ✅ (line ~711) | ❌ |
 | `src/app/admin/accounts/page.jsx` | ✅ (line ~165) | ❌ |
-| `src/app/admin/da-schedule/page.jsx` | ✅ (line ~98) | ❌ |
+| `src/app/admin/da-schedule/page.jsx` (now `admin/payroll/rates/da/`) | ✅ (line ~98) | ❌ |
 | `src/app/profile/page.jsx` | ✅ (line ~86) | ❌ |
 | `src/app/work-logs/page.jsx` | ✅ (line ~205) | ❌ |
 | `src/app/leads/page.js` | ✅ | ❌ |
@@ -354,7 +365,7 @@ Pages that render their own `<Navbar>` typically use `pt-24` or `pt-22` to manua
 
 ---
 
-### 2.20 `src/app/admin/da-schedule/page.jsx` (277 lines)
+### 2.20 `src/app/admin/da-schedule/page.jsx` (277 lines; since moved to `src/app/admin/payroll/rates/da/page.jsx`)
 
 **Severity:** 🟢 Good
 
@@ -484,4 +495,4 @@ These pages demonstrate proper responsive design and can serve as templates:
 - **`src/app/work-logs/page.jsx`** — Uses `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`, responsive grids, proper modal sizing
 - **`src/app/admin/tickets/page.jsx`** — Same `max-w-7xl` pattern, `flex-wrap` filters, good modal
 - **`src/app/tickets/page.jsx`** — Proper sidebar offset (`sm:pl-16`), responsive stats grid, `min-w-0` on cards
-- **`src/app/admin/da-schedule/page.jsx`** — Clean responsive padding, simple responsive grid
+- **`src/app/admin/da-schedule/page.jsx`** (now `src/app/admin/payroll/rates/da/page.jsx`) — Clean responsive padding, simple responsive grid

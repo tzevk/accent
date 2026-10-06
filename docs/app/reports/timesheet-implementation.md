@@ -2,7 +2,10 @@
 
 ## Overview
 
-`/reports/timesheet-report` — a per-employee monthly timesheet rendered in the same shape as the company's Excel monthly-timesheet template (`docs/extras/*_TIMESHEET_*`): a workbook header (employee code/name/designation/department, month/year), a day-column matrix with per-project hour rows, a "Daily Man Hours" (normal) row, an "Over Time Hours" row, and totals. Day-level values come from `employee_attendance` (status, overtime), holiday names from `holiday_master`, and the project/activity rows from `user_activity_assignments` (`daily_entries` JSON — the actual daily time log employees fill in, same source as Manhours Billing and the Project Status person×day matrix).
+`/reports/timesheet-report` — a per-employee monthly timesheet rendered in the same shape as the company's Excel monthly-timesheet template: a workbook header (employee code/name/designation/department, month/year), a day-column matrix with per-project hour rows, a "Daily Man Hours" (normal) row, an "Over Time Hours" row, and totals. Day-level values come from `employee_attendance` (status, overtime), holiday names from `holiday_master`, and the project/activity rows from `user_activity_assignments` (`daily_entries` JSON — the actual daily time log employees fill in, same source as Manhours Billing and the Project Status person×day matrix).
+
+The reference workbook, `docs/extras/05-shantanu_sonawane_TIMESHEET_MAY_2026.xlsx`, is a gitignored local asset.
+The published implementation is [excel-template.ts](../../../src/app/reports/timesheet-report/excel-template.ts).
 
 **Route:** `src/app/api/reports/timesheet-report/route.ts` (+ `download/route.ts` for Excel)  
 **Page:** `src/app/reports/timesheet-report/page.tsx`  
@@ -47,7 +50,7 @@ page.tsx (grid) / excel-template.ts (export) — same transforms
 `buildDays(month, attendanceRows, holidays, settings)` produces one `TsDay` per calendar day:
 
 - `status` comes from the attendance row (empty string → `null`); `hours` = `hoursForStatus(status, settings)` (8h for present, 4h for half-day, 0 for non-working).
-- **Weekly-off rule** (`isScheduledWeeklyOff`): Sundays plus the Saturday of the 2nd and 4th weeks (`ceil(day/7) ∈ {2, 4}`). When an attendance row exists, its `is_weekly_off` flag wins; without a row the rule applies. Mirrors the dashboard attendance card and the company's "alternate Saturday off" policy.
+- **Weekly-off rule** (`isScheduledWeeklyOff`, a thin alias over the shared `isWeeklyOff` in `src/utils/weekly-off.ts`, [ADR-0004](../../adr/0004-unified-weekly-off-rule.md)): Sundays plus the Saturday of the 2nd and 4th weeks (`ceil(day/7) ∈ {2, 4}`). When an attendance row exists, its `is_weekly_off` flag wins; without a row the rule applies. Mirrors the dashboard attendance card and the company's "alternate Saturday off" policy.
 - `day_type` = `holiday` > `weekly_off` > `working` (holiday_master wins).
 - `buildSummary` counts present/half-day/weekly-off/holiday/absent/leave days and sums standard + attendance-overtime hours for the summary strip.
 
@@ -72,7 +75,7 @@ page.tsx (grid) / excel-template.ts (export) — same transforms
 
 **The per-project cells and the "Monthly Man Hours" total column render hours capped at the standard working day per day** — `capProjectDays` splits an over-8h day across its projects proportionally so the top section never sums above the standard day, and the daily excess is surfaced in the Over Time Hours row. The cap exists to keep the top section honest; it never invents hours, and the raw log is preserved in the OT row and the grand total.
 
-The physically impossible days that used to reach the report (18h/20h/32h — the same actual hours entered against several assignments) were for a time **blocked at entry** by a `MAX_DAY_HOURS` (12h) per-user-per-date cap in `src/utils/activity-daily-hours.ts`; that entry-side enforcement was removed in Aug 2026 because it rejected legitimate bulk updates. The report's own per-day display cap (standard working day) and the OT split are unchanged.
+The physically impossible days that used to reach the report (18h/20h/32h — the same actual hours entered against several assignments) were for a time **blocked at entry** by a `MAX_DAY_HOURS` (12h) per-user-per-date cap in `src/utils/activity-daily-hours.ts` (that module has since been deleted); the entry-side enforcement was removed on 2026-08-13 (`1202303`) because it rejected legitimate bulk updates. The report's own per-day display cap (standard working day) and the OT split are unchanged.
 
 Rows with zero hours still appear when their `start_date`/`due_date` falls in the month (empty row, keeps the reference layout).
 

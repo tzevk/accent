@@ -53,4 +53,4 @@ report now prices at CTC ÷ Basis Hours); the Payroll Slip document, both PDFs
 and the run dashboard print CTC / Month Hours / Hours Logged / Rate; the Excel
 salary sheet reports the slip's own figures.
 
-Operator-facing walkthrough of this decision: `docs/app/payroll/operator-guide.md`.
+Operator-facing walkthrough of this decision: [`docs/app/payroll/operator-guide.md`](../app/payroll/operator-guide.md).

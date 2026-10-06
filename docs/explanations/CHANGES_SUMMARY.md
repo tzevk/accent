@@ -1,5 +1,8 @@
 # Changes Summary - Remove Hard-Coded User Access
 
+> **Historical change log — dated 2026-03-05** (committed 2026-03-06). Describes the state at that
+> date; paths may have moved since. Part of the [documentation index](../README.md) (audit records).
+
 ## Overview
 
 Removed all hard-coded references to "Rajesh Panchal" and replaced them with proper super admin permission checks using the `is_super_admin` flag in the database. This allows any user to be promoted to super admin with full system access.
@@ -137,7 +140,7 @@ Removed all hard-coded references to "Rajesh Panchal" and replaced them with pro
 
 ## New Documentation Files
 
-### `/SUPER_ADMIN_SETUP.md`
+### `docs/explanations/SUPER_ADMIN_SETUP.md`
 
 **Purpose:**
 
@@ -153,7 +156,7 @@ Removed all hard-coded references to "Rajesh Panchal" and replaced them with pro
 - Complete examples and scripts
 - Troubleshooting guide
 
-### `/create_super_admin.sql`
+### `scripts/create_super_admin.sql`
 
 **Purpose:**
 
@@ -258,7 +261,7 @@ See [SUPER_ADMIN_SETUP.md](SUPER_ADMIN_SETUP.md) for detailed instructions.
 
 ### Quick Script
 
-Use [create_super_admin.sql](create_super_admin.sql) for a ready-to-run script.
+Use [create_super_admin.sql](../../scripts/create_super_admin.sql) for a ready-to-run script.
 
 ## Verification Checklist
 
@@ -346,7 +349,7 @@ If needed, to rollback:
 ## Next Steps
 
 1. Review [SUPER_ADMIN_SETUP.md](SUPER_ADMIN_SETUP.md) for detailed documentation
-2. Run [create_super_admin.sql](create_super_admin.sql) to create your super admin
+2. Run [create_super_admin.sql](../../scripts/create_super_admin.sql) to create your super admin
 3. Test the super admin access
 4. Remove or demote any old test accounts
 5. Document your super admins internally

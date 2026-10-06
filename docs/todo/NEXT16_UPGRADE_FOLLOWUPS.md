@@ -1,7 +1,7 @@
 # Next.js 16 Upgrade — Type & Lint Debt Follow-ups
 
 > Generated 2026-08-24 after the Next.js **15.5.18 → 16.3.2** upgrade (`middleware.ts` → `proxy.ts`, Turbopack default, native ESLint flat configs).
-> Complements `APP_HEALTH_ROADMAP.md` and `POOR_PRACTICES_AUDIT.md` — covers only the debt deliberately deferred during the upgrade to keep that diff reviewable. Nothing below blocks shipping; all gates were green at hand-off.
+> Complements `APP_HEALTH_ROADMAP.md` and `POOR_PRACTICES_AUDIT.md` — covers only the debt deliberately deferred during the upgrade to keep that diff reviewable. Nothing below blocks shipping; all gates were green at hand-off. These are open follow-ups, not implemented work; dated resolutions are noted inline. Index: [docs/README.md](../README.md).
 
 ## Upgrade state at hand-off
 
@@ -19,7 +19,7 @@ Proven at upgrade time via a clean-HEAD worktree probe: all type errors below pr
 ## Item 1 — Unused vars cleanup (194 warnings)
 
 - **Where:** ~30 files, heaviest: `src/utils/payroll-calculator.js` (~15), `src/utils/schema-init.js` (6), `src/utils/database.js` (3), `src/lib/migration.stub.js`, `src/context/SessionContext.jsx`.
-- **Impact:** Noise only — but it buries real signal from the compiler rules in Item 3, and some entries are genuine dead code (e.g. `jsonwebtoken` is installed and unused per `docs/SECURITY_AUDIT.md` §watch-items).
+- **Impact:** Noise only — but it buries real signal from the compiler rules in Item 3, and some entries are genuine dead code (e.g. `jsonwebtoken` was installed and unused per `docs/SECURITY_AUDIT.md` SEC-25; it and the direct `puppeteer-core` dependency were removed in the 2026-09 security remediation, workstream G).
 - **Fix:** Mechanical delete/rename/underscore-prefix per site. Where an unused param documents a callback shape, rename to `_name` rather than removing.
 - **Effort:** ~1 hr. **Risk:** near zero.
 
@@ -61,7 +61,7 @@ Guidance:
 
 ## Related non-lint follow-ups from the same hand-off
 
-- `npm audit`: 13 vulnerabilities (1 critical, 10 high, 2 moderate) in dependency tree lines already tracked as watch items in `docs/SECURITY_AUDIT.md` §409 (exceljs, html2canvas, puppeteer-core duplication). Do **not** run `npm audit fix --force` blind — it force-bumps majors.
+- `npm audit`: 13 vulnerabilities (1 critical, 10 high, 2 moderate) in dependency tree lines already tracked as watch items in `docs/SECURITY_AUDIT.md` SEC-25 (exceljs, html2canvas; the direct `puppeteer-core` duplication was removed in the 2026-09 remediation). Do **not** run `npm audit fix --force` blind — it force-bumps majors.
 - Local dev machines may warn `EBADENGINE` (Node 26 present, `engines` pins `24.x`) — align either way deliberately.
 
 Verification when items land: update this file's tables to zero and tick each rule back to `'error'` in `eslint.config.mjs`.

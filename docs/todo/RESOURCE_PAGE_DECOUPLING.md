@@ -1,5 +1,7 @@
 # ResourcePage Decoupling — DONE
 
+> Index: [docs/README.md](../README.md).
+
 **Status:** ✅ Complete (2026-08-03). All 9 consumers resolved — 6 migrated to self-contained pages, 3 deleted as unused. `src/components/admin/ResourcePage.tsx` has been deleted; `ResourceFormModal.tsx` remains as the shared form renderer.
 
 > **Why this existed:** `POOR_PRACTICES_AUDIT.md` (also moved to `docs/todo/`) flagged the over-loaded generic `ResourcePage` as accumulating feature creep — pagination, stats, search, modals, form rendering, row actions, money/date/render cell helpers all glued together. Each new requirement risked breaking the 9 unrelated consumers. The fix was to stop reusing it.

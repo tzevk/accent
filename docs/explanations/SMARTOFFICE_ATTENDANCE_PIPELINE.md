@@ -1,5 +1,9 @@
 # SmartOffice Biometric Attendance Pipeline
 
+> Current guide — operational state as of 2026-08 (last updated 2026-10-03). Part of the
+> [documentation index](../README.md). Source: `scripts/smartoffice-sync/`, attendance webhook and
+> report routes.
+
 How biometric attendance gets from the door-side SmartOffice system into the
 Accent CRM, what the source data actually looks like, and the operational
 gotchas discovered while wiring it up (2026-08).

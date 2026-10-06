@@ -2,7 +2,7 @@
 
 > Captured 2026-09-09. Load-bearing work only — each item fixes a live weakness and teaches one hard skill. Sources: `docs/SECURITY_AUDIT.md`, `proxy.ts`, `src/utils/database.js`, `GLOSSARY.md`, `docs/todo/`.
 >
-> **2026-09-28: security scope moved.** Items 1, 2, 3 and 6 are covered and superseded by `docs/todo/SECURITY_REMEDIATION_PLAN.md` (workstreams F, B/D, C, A/E respectively) with decisions in ADR-0011…ADR-0014; their acceptance criteria are folded into that plan. Items 4 (payroll correctness) and 5 (connection pool) remain here.
+> **2026-09-28: security scope moved.** Items 1, 2, 3 and 6 are covered and superseded by `docs/todo/SECURITY_REMEDIATION_PLAN.md` (workstreams F, B/D, C, A/E respectively) with decisions in ADR-0011…ADR-0014; their acceptance criteria are folded into that plan. Items 4 (payroll correctness) and 5 (connection pool) remain here. The superseding workstreams are implemented and verified on branch `security/remediation-254` (2026-09-28 — see that plan's status block); items 1–3 and 6 below are kept as the pre-remediation problem record (paths as captured; the root `proxy.ts` later moved to `src/proxy.ts`). Index: [docs/README.md](../README.md).
 
 ## 1. Distributed rate limiter — `proxy.ts:38-177`
 

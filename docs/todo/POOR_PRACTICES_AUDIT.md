@@ -4,6 +4,8 @@
 
 Each finding includes concrete file:line references, severity, and a recommended fix. Findings already tracked in other docs (inline DDL, soft-delete gaps, responsive issues) are cross-referenced, not duplicated.
 
+> **Snapshot:** findings and statuses below reflect the tree at 2026-07-23; later security work is tracked in `docs/SECURITY_AUDIT.md` and `docs/todo/SECURITY_REMEDIATION_PLAN.md` — re-verify before treating a finding as open or resolved. Index: [docs/README.md](../README.md).
+
 ---
 
 ## 1. Critical Security Issues
@@ -69,6 +71,8 @@ Tests: `src/__tests__/api/admin/material-requisitions/download/route.test.ts` �
 `middleware.ts:35` uses an in-memory `Map` for rate limiting. On Vercel or any multi-instance deployment, each instance has its own store — rate limits are per-instance, not per-user.
 
 **Fix:** Use an external store (Upstash Redis, Vercel KV) or a database-backed rate limiter.
+
+**Update 2026-09-28:** partially superseded — `auth` and `heavy` rate-limit buckets are now database-backed (`src/utils/rate-limit-store.ts`, ADR-0013; SECURITY_REMEDIATION_PLAN workstream F, implemented); short-window categories remain per-instance in-memory by design. The `middleware.ts` path above is historical: the file was renamed `proxy.ts` and later moved to `src/proxy.ts`.
 
 ---
 
@@ -151,6 +155,8 @@ await db.execute('DELETE FROM functions_master WHERE id = ?', [id]); // <-- uses
 
 The inner `try` has a `finally` that releases `db`, but the outer block continues using it. The empty catch swallows the error, making the bug invisible.
 
+**Update (2026-10-06, source check):** no longer reproduces — the handler keeps a single `dbConnect()` and releases only in the outer `finally`, with no inner release (`src/app/api/activity-master/route.js:190-232`).
+
 ### 2.6 `db.release()` Before `return` (Not in Finally)
 
 **Severity:** 🟡 Medium — connection leak on exception
@@ -180,7 +186,7 @@ The inner `try` has a `finally` that releases `db`, but the outer block continue
 
 **Severity:** 🔴 Critical — massive per-request overhead
 
-Already documented in `docs/DDL_AND_SOFT_DELETE_AUDIT.md`. Worst offenders not yet addressed:
+Already documented in `docs/explanations/DDL_AND_SOFT_DELETE_AUDIT.md`. Worst offenders not yet addressed:
 
 | File                                                   | Impact                                                                |
 | ------------------------------------------------------ | --------------------------------------------------------------------- |
@@ -188,7 +194,7 @@ Already documented in `docs/DDL_AND_SOFT_DELETE_AUDIT.md`. Worst offenders not y
 | `src/app/api/admin/outgoing-quotations/route.js:12–72` | CREATE TABLE + multiple ALTER + index DROP/ADD on every GET/POST      |
 | `src/app/api/messages/route.js:397–465`                | SHOW TABLES + 5x CREATE TABLE IF NOT EXISTS + ALTER on every GET/POST |
 
-(See `DDL_AND_SOFT_DELETE_AUDIT.md` for full migration plan.)
+(See `docs/explanations/DDL_AND_SOFT_DELETE_AUDIT.md` for the full migration plan.)
 
 ### 3.2 N+1 Query Patterns
 
@@ -210,7 +216,7 @@ Already documented in `docs/DDL_AND_SOFT_DELETE_AUDIT.md`. Worst offenders not y
 
 **Severity:** 🟡 Medium
 
-Already documented in `DDL_AND_SOFT_DELETE_AUDIT.md` §2. Many master/utility tables still use hard `DELETE FROM` — roles, todos, holidays, banks, accounts, documents, activities master, sub-activities, etc.
+Already documented in `docs/explanations/DDL_AND_SOFT_DELETE_AUDIT.md` §2. Many master/utility tables still use hard `DELETE FROM` — roles, todos, holidays, banks, accounts, documents, activities master, sub-activities, etc.
 
 ### 3.4 Missing Transaction Wrapping for Multi-Statement Mutations
 
@@ -463,7 +469,7 @@ These are loaded eagerly. Only 2 files use `next/dynamic` for code splitting.
 
 **Severity:** 🔴 Critical — mobile content hidden behind navbar
 
-Already documented in `RESPONSIVE_AUDIT.md` §1.1: `.content-with-sidebar` has no `padding-top` on mobile, so content renders behind the fixed Navbar.
+Already documented in `docs/explanations/RESPONSIVE_AUDIT.md` §1.1: `.content-with-sidebar` has no `padding-top` on mobile, so content renders behind the fixed Navbar.
 
 ---
 
@@ -486,7 +492,7 @@ Already documented in `RESPONSIVE_AUDIT.md` §1.1: `.content-with-sidebar` has n
 | **P0 — Done ✅** | ~~Wrong permission checks (§1.3)~~ | 3 routes fixed (PROPOSALS→correct resource) | ~~~1 hour~~ → Done |
 | **P0 — Done ✅** | ~~Permission-only routes (§1.4)~~ | Cash-vouchers download now uses ensurePermission | ~~~30 min~~ → Done |
 | **P0 — Done ✅** | ~~Hardcoded admin mock (§1.5)~~ | Deleted rbac-middleware.js | ~~~5 min~~ → Done |
-| **P0 — Immediate** | Use-after-release bug (§2.5) | Guaranteed runtime crash | ~5 min (remove empty catch + fix flow) |
+| **P0 — Immediate** | Use-after-release bug (§2.5 — fixed in current source, see update) | Guaranteed runtime crash | ~5 min (remove empty catch + fix flow) |
 | **P1 — This sprint** | N+1 queries (§3.2) | Linear perf degradation | ~1 day (batch queries) |
 | **P1 — This sprint** | Missing pagination (§4) | Crash under production data | ~2 days (add LIMIT/OFFSET everywhere) |
 | **P1 — This sprint** | Inline DDL — unguarded routes (§3.1) | 50+ ALTERs per request | ~2 hours (strip DDL) |
@@ -502,6 +508,8 @@ Already documented in `RESPONSIVE_AUDIT.md` §1.1: `.content-with-sidebar` has n
 | **P3 — Backlog** | JSON daily_entries blob (§3.7) | Race condition risk, no SQL aggregation; reader-side duplication retired by `src/lib/logged-hours.ts` (#276) | ~1 sprint (normalize to table, rewrite 5+ frontend components) |
 
 ## What's Already Well-Done
+
+> **Later corrections (2026-09-28):** two bullets below did not survive re-verification — the `session_permissions` cookie fast path was deleted because it was forgeable (SEC-03), and the root-level middleware never compiled into production builds, so it was not an auth gate (SEC-30; it later moved to `src/proxy.ts`).
 
 It's worth noting what the codebase does well:
 

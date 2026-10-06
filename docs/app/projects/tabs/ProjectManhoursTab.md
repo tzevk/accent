@@ -12,35 +12,35 @@ Parent: `src/app/projects/[id]/edit/EditProjectForm.jsx` (state owner + save pat
 
 Each row in `projectManhours` state (annual shape, written verbatim to `project_manhours_list`):
 
-| Field                | Type                                         | Meaning                                                                         |
-| -------------------- | -------------------------------------------- | ------------------------------------------------------------------------------- |
-| `id`                 | number                                       | Local row id (`Date.now()` on Add Row)                                          |
-| `employee_id`        | string                                       | Option id — employee PK string, or `team:<member.id>` for external team members |
-| `employee_name`      | string                                       | Display name                                                                    |
-| `source_employee_id` | string \| ''                                 | Employee PK (empty for external members)                                        |
-| `salary_type`        | `monthly` \| `hourly` \| `daily` \| `custom` | Rate type; `monthly` rows auto-fetch attendance hours                           |
-| `rate_company`       | string \| number                             | RT/HR (Employee) — what we pay the employee (cost rate)                         |
-| `rate_accent`        | string \| number                             | RT/HR (Company) — what the deputation company pays us (billed rate)             |
-| `monthly_hours`      | `{ jan…dec: string \| number }`              | Month-keyed hours (lowercase 3-letter keys, calendar order)                     |
-| `legacy_data`        | object (optional)                            | Preserved pre-column legacy row (engineering/designer/drafting/…)               |
+| Field                | Type                                         | Meaning                                                                                                           |
+| -------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `id`                 | number                                       | Local row id (`Date.now()` on Add Row)                                                                            |
+| `employee_id`        | string                                       | Option id — employee PK string, or `team:<member.id>` for external team members                                   |
+| `employee_name`      | string                                       | Display name                                                                                                      |
+| `source_employee_id` | string \| ''                                 | Employee PK (empty for external members)                                                                          |
+| `salary_type`        | `monthly` \| `hourly` \| `daily` \| `custom` | Rate type; `monthly` rows auto-fetch attendance hours. Add Row starts empty; external members default to `custom` |
+| `rate_employee`      | string \| number                             | RT/HR (Employee) — what we pay the employee (cost rate). Legacy rows store this as `rate_company`                 |
+| `rate_client`        | string \| number                             | RT/HR (Company) — what the deputation company pays us (billed rate). Legacy rows store this as `rate_accent`      |
+| `monthly_hours`      | `{ jan…dec: string \| number }`              | Month-keyed hours (lowercase 3-letter keys, calendar order)                                                       |
+| `legacy_data`        | object (optional)                            | Preserved pre-column legacy row (engineering/designer/drafting/…)                                                 |
 
 ## Sources of team members
 
 `teamManhourPeople = teamEmployees + externalTeamMembers`:
 
 - **teamEmployees** — `employeesWithRates` (salary profiles) filtered to people matched to `projectTeamMembers` by employee id / code / email / name.
-- **externalTeamMembers** — `projectTeamMembers` with no employee-profile match (vendors via `account_type === 'vendor'` / `vendor_id`, or unmatched members), given `rate: 0`, `salary_type: 'custom'`, flagged `is_external_team_member`.
+- **externalTeamMembers** — `projectTeamMembers` with no employee-profile match (vendors via `account_type === 'vendor'` / `vendor_id`, or unmatched members), given `rate: 0` (so the row's `rate_employee` starts at 0), `salary_type: 'custom'`, flagged `is_external_team_member`.
 
 ## Attendance auto-fill
 
-On selecting a `monthly`-salary employee, `fetchAttendanceHours(employeeId)` (`EditProjectForm.jsx`) calls `GET /api/attendance?employee_id=&year=` and builds a `monthly_hours` map keyed `jan…dec` (calendar keys — independent of the display order). `P`/`HD`/`OT` records count; 8h default, in/out-time delta when present, half-day halved. The map replaces the row's `monthly_hours` (still user-editable).
+On selecting a `monthly`-salary employee, `fetchAttendanceHours(employeeId)` (`EditProjectForm.jsx`) calls `GET /api/attendance?employee_id=&year=` (year defaults to the current calendar year) and builds a `monthly_hours` map keyed `jan…dec` (calendar keys — independent of the display order). `P`/`HD`/`OT` records count; 8h default, in/out-time delta when present, half-day halved; each month is rounded to 1 dp and the result is cached per employee+year. The map replaces the row's `monthly_hours` (still user-editable).
 
-## Load normalization (`EditProjectForm.jsx`, ~line 1566)
+## Load normalization (`EditProjectForm.jsx`, `project_manhours_list` load block)
 
 `project_manhours_list` may arrive in three shapes; all are normalized to the annual-row shape on load:
 
-1. **Annual rows** (current) — used as-is.
-2. **Month-grouped rows** `[{ id, month, entries: [{ employee_id, employee_name, salary_type, rate, hours }] }]` — flattened per employee into `monthly_hours[monthKey]`; `rate_company` = entry `rate`, `rate_accent` left blank.
+1. **Annual rows** (current) — used as-is; `rate_employee: row.rate_employee ?? row.rate_company`, `rate_client: row.rate_client ?? row.rate_accent`.
+2. **Month-grouped rows** `[{ id, month, entries: [{ employee_id, employee_name, salary_type, rate, hours }] }]` — flattened per employee into `monthly_hours[monthKey]`; `rate_employee` = entry `rate`, `rate_client` left blank.
 3. **Legacy flat rows** (`name_of_engineer_designer`, `engineering`, …, `remarks`) — kept under `legacy_data` (not month-mapped).
 
 Save always writes the annual-row shape: `project_manhours_list: JSON.stringify(projectManhours || [])`.
@@ -53,7 +53,7 @@ Save always writes the annual-row shape: `project_manhours_list: JSON.stringify(
 
 - **Month columns are FY-ordered (Apr → Mar)** — display order only; `monthly_hours` keys stay `jan…dec` calendar, so attendance auto-fill, month totals, and the save payload all map by key regardless of column order. Shared constants `fyMonths` / `fyMonthKeys` drive the header, row inputs, and totals row so the three stay in sync.
 - **Total Hrs** = Σ `monthly_hours`.
-- **Employee Cost** = Total Hrs × `rate_company`; **Company Billing** = Total Hrs × `rate_accent`.
+- **Employee Cost** = Total Hrs × `rate_employee`; **Company Billing** = Total Hrs × `rate_client`.
 - **P&L** = Company Billing − Employee Cost (profit positive, loss negative). Header carries the tooltip "Profit & Loss (Company Billing − Employee Cost)". Cell color: green profit, red loss, gray at zero.
 - **Grand total row** sums hours and both costs across rows; per-month totals render `–` for zero months.
 
@@ -62,8 +62,8 @@ Save always writes the annual-row shape: `project_manhours_list: JSON.stringify(
 All cost math uses `@/lib/money` (decimal.js) — raw `parseFloat` + JS operators on money are banned (AGENTS.md):
 
 - `totalHrs = add(...Object.values(monthly_hours))`
-- `companyCost = mul(rate_company, totalHrs)`, `accentCost = mul(rate_accent, totalHrs)`
-- `pl = sub(accentCost, companyCost)`; comparisons via `gt(0)` / `lt(0)`
+- `employeeCost = mul(rate_employee, totalHrs)`, `clientBilling = mul(rate_client, totalHrs)`
+- `pl = sub(clientBilling, employeeCost)`; comparisons via `gt(0)` / `lt(0)`
 - Shared `totals` reducer (one computation for row + grand total): `add` / `mul` accumulators
 - Display boundary: `toNumber()` → `toLocaleString('en-IN', { min 2, max 2 })` via a single `inrFormat` helper
 
@@ -76,7 +76,7 @@ The project workbook export (`edit/excel/export/buildPayloads.js`) does **not** 
 ## Verification
 
 - `next lint` — clean; `prettier --check` — clean.
-- Browser end-to-end (super-admin session, Project Manhours tab): headers read `Apr … Mar … Total Hrs, Employee Cost, Company Billing, P&L, Actions`; with `rate_company = 100`, `rate_accent = 150`, Apr = 10h, row and grand total both render `10.0 / ₹1,000.00 / ₹1,500.00 / ₹500.00` — same values before and after the money.ts conversion, confirming the decimal path preserves results.
+- Browser end-to-end (super-admin session, Project Manhours tab): headers read `Apr … Mar … Total Hrs, Employee Cost, Company Billing, P&L, Actions`; with `rate_employee = 100`, `rate_client = 150` (then named `rate_company`/`rate_accent`), Apr = 10h, row and grand total both render `10.0 / ₹1,000.00 / ₹1,500.00 / ₹500.00` — same values before and after the money.ts conversion, confirming the decimal path preserves results.
 
 ## Files
 

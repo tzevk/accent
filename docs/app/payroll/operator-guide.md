@@ -3,9 +3,10 @@
 The month's payroll in one page: what must be true before a run, how a run is
 started, locked and paid, and what to check when a number looks wrong.
 
-The money is **hours-based** (ADR-0010): a Payroll Slip pays the Salary
-Profile's CTC apportioned over the month's working hours, at the hours the
-employee logged on project activities.
+The money is **hours-based**
+([ADR-0010](../../adr/0010-hours-logged-pay-basis.md)): a Payroll Slip pays the
+Salary Profile's CTC apportioned over the month's working hours, at the hours
+the employee logged on project activities.
 
 ```
 Gross (base)  = Hourly Rate × Logged Hours
@@ -24,12 +25,16 @@ Logged Hours  = Σ user_activity_assignments.daily_entries.hours, that calendar 
   days, PL used, absent days) but no longer adds or subtracts money: no
   overtime premium, no absence pro-rata. Unpaid absence costs pay only because
   those hours were never logged.
-- **Zero logged hours = ₹0 slip.** This is the single most important
-  operational consequence.
+- **Zero logged hours = no hours-based pay.** Every component of the base
+  (basic, da, hra, conveyance, call allowance) is computed from the logged
+  hours, so a month with no logs pays nothing for hours worked; Other
+  Allowances, bonus and incentive configured on the profile still print and
+  pay on top. This is the single most important operational consequence.
 - Rounding: the slip stores the rate at 2 dp (`hourly_rate`) while the money
   math uses the unrounded rate, so a fully logged month pays exactly the CTC —
-  ₹26,000 CTC over 208 h pays ₹26,000 for 208 h, not ₹25,999.84. Gross rounds
-  to whole rupees like every other payroll figure.
+  ₹25,000 CTC over 208 h pays ₹25,000 for 208 h, not ₹24,999.52 (which the
+  2 dp rate 120.19 would produce). Gross rounds to whole rupees like every
+  other payroll figure.
 - The dashboard/slip **Gross column is the slip's total earnings** — basic, da,
   hra, conveyance, call allowance, other allowances, bonus and incentive. The
   profile's **Other Allowances** sit outside the hours-based base and are added
@@ -66,21 +71,24 @@ flowchart LR
 
 One Payroll Run covers the whole month, both Employee Type streams. There are
 no off-cycle runs: a correction after payment flows into the next month's run
-as arrears (ADR-0008).
+as arrears ([ADR-0008](../../adr/0008-payroll-run-lock-and-route-tree.md)).
 
 ## Entry points
 
-| Screen                                         | Route                                  | Who                        | What they do                                                                                                      |
-| ---------------------------------------------- | -------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Payroll Run (dashboard)                        | `/admin/payroll`                       | admin, super-admin         | month picker, Payroll\|Contract toggle, Generate, Finalize, Reopen, Mark month paid, exports, per-employee review |
-| Payroll Slip                                   | `/admin/payroll/slips/[id]`            | admin, super-admin         | the printable slip document (Print, Download PDF)                                                                 |
-| Component Rates / DA Rates                     | `/admin/payroll/rates`, `/rates/da`    | admin, super-admin         | effective-dated DA, PT, MLWF, bonus, incentive, insurance rates                                                   |
-| Salary Profiles (master data)                  | `/employees/payroll`                   | admin, super-admin         | pay agreements: CTC/gross, salary type, `std_hours_per_day`, statutory flags, loan/advance                        |
-| Salary-slip table (per-slip payment + remarks) | `/reports`                             | payroll-permissioned users | `PUT /api/payroll/slips` per slip                                                                                 |
-| My Payslips                                    | `/user/payslips`                       | employee                   | own finalized slips + PDF                                                                                         |
-| Daily hours entry                              | project → Edit → **My Activities** tab | employee / PM              | the pay numerator (`daily_entries`)                                                                               |
+| Screen                                         | Route                                             | Who                        | What they do                                                                                                      |
+| ---------------------------------------------- | ------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Payroll Run (dashboard)                        | `/admin/payroll`                                  | admin, super-admin         | month picker, Payroll\|Contract toggle, Generate, Finalize, Reopen, Mark month paid, exports, per-employee review |
+| Payroll Slip                                   | `/admin/payroll/slips/[id]`                       | admin, super-admin         | the printable slip document (Print, Download PDF)                                                                 |
+| Component Rates / DA Rates                     | `/admin/payroll/rates`, `/admin/payroll/rates/da` | admin, super-admin         | effective-dated component rates: allowances, PF/ESIC/PT/MLWF, insurance, bonus, incentive, TDS                    |
+| Salary Profiles (master data)                  | `/employees/payroll`                              | admin, super-admin         | pay agreements: CTC/gross, salary type, `std_hours_per_day`, statutory flags, loan/advance                        |
+| Salary-slip table (per-slip payment + remarks) | `/reports`                                        | payroll-permissioned users | `PUT /api/payroll/slips` per slip                                                                                 |
+| My Payroll Slips                               | `/user/payslips`                                  | employee                   | own finalized slips + PDF                                                                                         |
+| Daily hours entry                              | project → Edit → **My Activities** tab            | employee / PM              | the pay numerator (`daily_entries`)                                                                               |
 
-The **My Payslips** card on `/user/dashboard` is hidden pending the feature's finalization; the `/user/payslips` route itself is unchanged.
+> **Status (2026-10-06):** the **Payroll Slips** card on `/user/dashboard` is
+> hidden because the feature is not final
+> ([PR #303](https://github.com/tzevk/accent/pull/303)); the `/user/payslips`
+> route and the payroll APIs are unchanged.
 
 `/admin/*` requires super-admin or role code `admin` (`src/app/admin/layout.tsx`);
 every payroll API additionally checks `RESOURCES.PAYROLL` (generate needs
@@ -90,14 +98,14 @@ every payroll API additionally checks `RESOURCES.PAYROLL` (generate needs
 
 ## Before the run — prerequisites
 
-| Prerequisite                                                                                       | Where                                                                                     | If missing                                                                                                                                       |
-| -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Salary Profile with CTC and `std_hours_per_day`                                                    | `/employees/payroll` (Contract pay section for contract staff)                            | Finalize blocks and names the employee: no profile → nothing to compute. Without `employer_cost` the CTC chain falls back to the agreed gross    |
-| Component Rates for the month                                                                      | `/admin/payroll/rates`                                                                    | DA falls back to the frozen config default (0 fixed); PT uses the statutory slab                                                                 |
-| Holidays published                                                                                 | Attendance → Holiday Master                                                               | Basis Hours count a holiday as a working day                                                                                                     |
-| Attendance entered                                                                                 | Attendance module                                                                         | Slip prints 0/absent days — money is unaffected                                                                                                  |
-| Login account linked to the employee (`users.employee_id`), or `employee_id` on the assignment row | User Master / employee record                                                             | Assignment rows resolve by `employee_id` → linked user → email/username match; an unresolvable row's hours are dropped and the employee reads ₹0 |
-| Daily hours logged by staff                                                                        | project → Edit → **My Activities** (nudged by the dashboard's "Activity Update Required") | ₹0 slip — HR's main pre-finalize check                                                                                                           |
+| Prerequisite                                                                                       | Where                                                                                     | If missing                                                                                                                                                                                           |
+| -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Salary Profile with CTC and `std_hours_per_day`                                                    | `/employees/payroll` (Contract pay section for contract staff)                            | Finalize blocks and names the employee: neither a profile nor a legacy `salary_structures` row → nothing to compute (ADR-0001). Without `employer_cost` the CTC chain falls back to the agreed gross |
+| Component Rates for the month                                                                      | `/admin/payroll/rates`                                                                    | DA falls back to the frozen config default (0 fixed); PT uses the statutory slab                                                                                                                     |
+| Holidays published                                                                                 | Attendance → Holiday Master                                                               | Basis Hours count a holiday as a working day                                                                                                                                                         |
+| Attendance entered                                                                                 | Attendance module                                                                         | Slip shows the standard working days as present and 0 absent — money is unaffected                                                                                                                   |
+| Login account linked to the employee (`users.employee_id`), or `employee_id` on the assignment row | User Master / employee record                                                             | Assignment rows resolve by `employee_id` → linked user → email/username match; an unresolvable row's hours are dropped, so that employee's hours-based pay reads 0                                   |
+| Daily hours logged by staff                                                                        | project → Edit → **My Activities** (nudged by the dashboard's "Activity Update Required") | No hours-based pay (allowance-only at best) — HR's main pre-finalize check                                                                                                                           |
 
 ## Running the month
 
@@ -105,7 +113,8 @@ every payroll API additionally checks `RESOURCES.PAYROLL` (generate needs
    stream.
 2. **Generate Payroll Slips** (`POST /api/payroll/generate`) — creates the
    month's Payroll Run as `draft` on first use, then writes a slip per active
-   employee of that stream who has a profile. **Employees who already have a
+   employee of that stream who has a salary profile (or a legacy
+   `salary_structures` row — ADR-0001). **Employees who already have a
    slip are skipped** (`results.skipped`), so a recompute needs its slip deleted
    first (reopen a finalized month, then delete on `/reports`). `{ employee_id,
 preview: true }` computes one slip without saving it.
@@ -164,10 +173,17 @@ PF … Deductions / Net Pay / Status` per row, totals in the footer, Payment
 
 ## Related
 
-- ADR-0010 — pay is the month's CTC over its hours, paid at the hours logged.
-- ADR-0009 — a slip's figures are its snapshot; readers never re-price it.
-- ADR-0008 — Payroll Run lock, route tree, audit.
-- ADR-0001 — Salary Profile is canonical; `salary_structures` is legacy fallback.
-- `docs/explanations/activity-daily-entries.md` — the `daily_entries` data model
-  and every write path for logged hours.
-- `docs/explanations/RBAC_PERMISSIONS_SYSTEM.md` — payroll permissions.
+- [ADR-0010](../../adr/0010-hours-logged-pay-basis.md) — pay is the month's CTC
+  over its hours, paid at the hours logged.
+- [ADR-0009](../../adr/0009-payroll-slip-figures-are-the-snapshot.md) — a slip's
+  figures are its snapshot; readers never re-price it.
+- [ADR-0008](../../adr/0008-payroll-run-lock-and-route-tree.md) — Payroll Run
+  lock, route tree, audit.
+- [ADR-0001](../../adr/0001-payroll-salary-profile-canonical.md) — Salary
+  Profile is canonical; `salary_structures` is legacy fallback.
+- [Daily activity entries](../../explanations/activity-daily-entries.md) — the
+  `daily_entries` data model and every write path for logged hours.
+- [RBAC permissions system](../../explanations/RBAC_PERMISSIONS_SYSTEM.md) —
+  payroll permissions.
+- [GLOSSARY](../../../GLOSSARY.md) — CTC, Basis Hours, Hourly Rate, Logged
+  Hours, Payroll Slip.
