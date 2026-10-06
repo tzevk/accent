@@ -25,17 +25,22 @@ import type {
 export interface SqlConnection {
 	execute(
 		sql: string,
-		params?: unknown[]
+		params?: Array<string | number | boolean | null>
 	): Promise<[unknown, unknown]>;
 }
 
 type DbRow = Record<string, unknown>;
 
-function s(row: DbRow, key: string, fallback: string | null = null): string | null {
+function s(
+	row: DbRow,
+	key: string,
+	fallback: string | null = null
+): string | null {
 	const value = row[key];
 	if (value === null || value === undefined) return fallback;
 	if (typeof value === 'string') return value;
-	if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+	if (typeof value === 'number' || typeof value === 'bigint')
+		return String(value);
 	return fallback;
 }
 
@@ -81,14 +86,17 @@ const MONTH_PREDICATE = `(
   OR (e.recognition_period IS NULL AND e.expense_date BETWEEN ? AND ?)
 )`;
 
-function mapCostRow(row: DbRow): CostRecord {
+export function mapCostRow(row: DbRow): CostRecord {
 	const financial = {
-		classification: (s(row, 'cost_classification') as CostClassification | null) ?? null,
-		state: (s(row, 'recognition_state', 'draft') as RecognitionState) ?? 'draft',
+		classification:
+			(s(row, 'cost_classification') as CostClassification | null) ?? null,
+		state:
+			(s(row, 'recognition_state', 'draft') as RecognitionState) ?? 'draft',
 		currency: s(row, 'currency', 'INR'),
 		grossAmount: num(row, 'total_amount'),
 		taxAmount: num(row, 'tax_amount'),
-		taxTreatment: (s(row, 'tax_treatment', 'unresolved') as TaxTreatment) ?? 'unresolved',
+		taxTreatment:
+			(s(row, 'tax_treatment', 'unresolved') as TaxTreatment) ?? 'unresolved',
 		taxEvidenceReference: s(row, 'tax_evidence_reference'),
 		servicePeriodStart: s(row, 'service_period_start'),
 		servicePeriodEnd: s(row, 'service_period_end'),
@@ -203,10 +211,7 @@ export async function loadMonthProjectCost(
 		const unknownAmounts = num(row, 'unknown_amounts') ?? 0;
 		const perCurrency = costs.get(id) ?? new Map<string, number | null>();
 		// A missing recognized amount is unknown, never zero.
-		perCurrency.set(
-			currency,
-			unknownAmounts > 0 ? null : num(row, 'amount')
-		);
+		perCurrency.set(currency, unknownAmounts > 0 ? null : num(row, 'amount'));
 		costs.set(id, perCurrency);
 	}
 	return costs;
@@ -284,7 +289,7 @@ export async function loadCostEvents(
 
 function stateFilterClause(state: CostDrilldownQuery['state']): {
 	clause: string;
-	params: unknown[];
+	params: Array<string | number>;
 } {
 	if (!state || state === 'all') return { clause: '1=1', params: [] };
 	if (state === 'unconfirmed') {
@@ -311,12 +316,14 @@ export async function loadDrilldown(
 	const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
 	const offset = Math.max(query.offset ?? 0, 0);
 	const state = stateFilterClause(query.state);
-	const where = [
-		'e.isDelete = 0',
-		MONTH_PREDICATE,
-		state.clause,
+	const where = ['e.isDelete = 0', MONTH_PREDICATE, state.clause];
+	const params: Array<string | number> = [
+		start,
+		end,
+		start,
+		end,
+		...state.params,
 	];
-	const params: unknown[] = [start, end, start, end, ...state.params];
 	if (query.classification && query.classification !== 'all') {
 		if (query.classification === 'unresolved') {
 			where.push('e.cost_classification IS NULL');

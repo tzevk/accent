@@ -148,18 +148,21 @@ const JOURNAL_COMMAND: Record<CostCommandName, CostJournalCommand> = {
 	cancel: 'cancelled',
 };
 
-const CLASSIFICATIONS = [
-	'project',
-	'company_overhead',
-	'unallocated',
-] as const;
+const CLASSIFICATIONS = ['project', 'company_overhead', 'unallocated'] as const;
 const TAX_TREATMENTS = [
 	'none',
 	'recoverable',
 	'non_recoverable',
 	'unresolved',
 ] as const;
-const PAYMENT_MODES = ['cash', 'bank', 'cheque', 'card', 'upi', 'other'] as const;
+const PAYMENT_MODES = [
+	'cash',
+	'bank',
+	'cheque',
+	'card',
+	'upi',
+	'other',
+] as const;
 const OPERATIONAL_STATUSES = [
 	'draft',
 	'submitted',
@@ -187,7 +190,12 @@ function enumOrThrow<T extends string>(
 	field: string
 ): T | null {
 	const picked = pickEnum(value, allowed);
-	if (value !== null && value !== undefined && String(value).trim() !== '' && !picked) {
+	if (
+		value !== null &&
+		value !== undefined &&
+		String(value).trim() !== '' &&
+		!picked
+	) {
 		throw new CostError(code, `Unknown ${field}: ${String(value)}`, 422, {
 			field,
 		});
@@ -245,20 +253,6 @@ async function writeJournal(db: SqlConnection, entry: JournalInput) {
 	);
 }
 
-function financialSnapshot(row: Record<string, unknown>): Record<string, unknown> {
-	return {
-		classification: row.cost_classification ?? null,
-		recognition_period: row.recognition_period ?? null,
-		period_basis: row.period_basis ?? null,
-		currency: row.currency ?? null,
-		gross_amount: row.total_amount ?? null,
-		tax_amount: row.tax_amount ?? null,
-		tax_treatment: row.tax_treatment ?? null,
-		recognized_amount: row.recognized_amount ?? null,
-		state: row.recognition_state ?? null,
-	};
-}
-
 /**
  * Record a direct cost. Without a classification the cost lands in the
  * explicit unresolved state; with `submit` it enters the recognition queue.
@@ -296,8 +290,7 @@ export async function recordCost(
 			'invalid_tax_treatment',
 			'tax_treatment'
 		) ?? 'unresolved';
-	const paymentMode =
-		pickEnum(input.paymentMode, PAYMENT_MODES) ?? 'bank';
+	const paymentMode = pickEnum(input.paymentMode, PAYMENT_MODES) ?? 'bank';
 	const operationalStatus = pickEnum(
 		input.operationalStatus,
 		OPERATIONAL_STATUSES
@@ -655,7 +648,9 @@ export async function executeCommand(
 			row.recognized_amount === null || row.recognized_amount === undefined
 				? null
 				: Number(row.recognized_amount);
-		let recognizedAt: string | null = (row.recognized_at ?? null) as string | null;
+		const recognizedAt: string | null = (row.recognized_at ?? null) as
+			| string
+			| null;
 		let recognizedBy: number | null =
 			row.recognized_by === null || row.recognized_by === undefined
 				? null
@@ -765,6 +760,3 @@ export async function executeCommand(
 		};
 	});
 }
-
-/** The effective tax treatment of a stored row, for reporting callers. */
-export { effectiveTaxTreatment };

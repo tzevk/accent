@@ -19,11 +19,7 @@
 import type Decimal from 'decimal.js';
 import { add, R, toNumber } from '@/lib/money';
 import type { SourceCoverageDeclaration } from './coverage';
-import {
-	effectiveTaxTreatment,
-	isConfirmed,
-	isOpenState,
-} from './recognition';
+import { effectiveTaxTreatment, isConfirmed, isOpenState } from './recognition';
 import type {
 	CompanyReconciliation,
 	CostRecord,
@@ -72,7 +68,7 @@ function confirmedAmount(record: CostRecord): number | null {
 	return record.evaluation.recognizedAmount;
 }
 
-function rounded(value: unknown): number {
+function rounded(value: Decimal.Value): number {
 	return toNumber(R(value).toDecimalPlaces(2));
 }
 
@@ -114,9 +110,7 @@ function countByState(
 		count: matching.length,
 		currency: currencyOf(matching),
 		amount: subtotal(matching, (record) =>
-			isConfirmed(record.state)
-				? confirmedAmount(record)
-				: record.grossAmount
+			isConfirmed(record.state) ? confirmedAmount(record) : record.grossAmount
 		),
 	};
 }
@@ -201,7 +195,8 @@ function projectRows(
 			rows.push({
 				project_id: id,
 				project_code: sample.projectCode ?? `#${id}`,
-				project_name: sample.projectName ?? sample.projectCode ?? `Project #${id}`,
+				project_name:
+					sample.projectName ?? sample.projectCode ?? `Project #${id}`,
 				client_name: sample.clientName,
 				currency,
 				incurred_cost: incurred,
@@ -237,7 +232,9 @@ function monthNotices(
 	grossMissing: number
 ): CoverageNotice[] {
 	const notices: CoverageNotice[] = [];
-	const openCount = records.filter((record) => isOpenState(record.state)).length;
+	const openCount = records.filter((record) =>
+		isOpenState(record.state)
+	).length;
 	const unresolvedClassification = records.filter(
 		(record) => record.classification === null
 	);
@@ -403,8 +400,12 @@ export function buildReconciliation(
 	const unresolvedTax = confirmed.filter(
 		(record) => effectiveTaxTreatment(record) === 'unresolved'
 	);
-	const unclassified = records.filter((record) => record.classification === null);
-	const missingAmounts = records.filter((record) => record.grossAmount === null);
+	const unclassified = records.filter(
+		(record) => record.classification === null
+	);
+	const missingAmounts = records.filter(
+		(record) => record.grossAmount === null
+	);
 	// A month holding more than one currency has no combined company figure:
 	// the per-currency slices carry each currency's own total instead.
 	const singleCurrency = currencies.length === 1;
@@ -450,7 +451,9 @@ export function buildReconciliation(
 			// Gross liability and recoverable tax are stated only for a single
 			// currency; a multi-currency month keeps them per currency in
 			// `currency_totals` rather than publishing a combined rupee figure.
-			gross_liability: singleCurrency ? currencyTotals[0].gross_liability : null,
+			gross_liability: singleCurrency
+				? currencyTotals[0].gross_liability
+				: null,
 			recoverable_tax: singleCurrency
 				? currencyTotals[0].recoverable_tax
 				: null,
@@ -462,7 +465,8 @@ export function buildReconciliation(
 					(record) => record.grossAmount ?? confirmedAmount(record)
 				),
 			},
-			known_zero_count: records.filter((record) => record.grossAmount === 0).length,
+			known_zero_count: records.filter((record) => record.grossAmount === 0)
+				.length,
 			record_count: confirmed.length,
 		},
 		projects: projectRows(

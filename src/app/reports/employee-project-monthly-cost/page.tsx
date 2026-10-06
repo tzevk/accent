@@ -571,10 +571,12 @@ export default function EmployeeProjectMonthlyCostPage() {
 	// must not reveal company expenditure, so the field grant is not accepted
 	// here (server routes enforce the same rule).
 	const hasAccess = isSuperAdmin || hasReportsPermission;
-	const canRecordCost = isSuperAdmin || (!!can && can('other_expenses', 'create'));
+	const canRecordCost =
+		isSuperAdmin || (!!can && can('other_expenses', 'create'));
 	const canRecognizeCost =
 		isSuperAdmin || (!!can && can('other_expenses', 'approve'));
-	const canEditCost = isSuperAdmin || (!!can && can('other_expenses', 'update'));
+	const canEditCost =
+		isSuperAdmin || (!!can && can('other_expenses', 'update'));
 	// The expenditure view reads the direct-expense ledger, so it needs that
 	// source's read privilege as well as reports:read. Without it the tab is
 	// not offered and the report opens on the employee-cost views; the server
@@ -1520,123 +1522,125 @@ export default function EmployeeProjectMonthlyCostPage() {
 					{viewMode !== 'expenditure' && (
 						<>
 							<div className="mt-3 flex flex-wrap items-center gap-2">
-						{viewMode === 'monthly' ? (
-							<div className="w-full max-w-[260px]">
-								<SearchableSelect
-									options={monthOptions}
-									value={selectedMonth}
-									onChange={(v) => setSelectedMonth(String(v))}
-									placeholder={months.length ? 'Select month…' : 'No months'}
-								/>
-							</div>
-						) : (
-							<select
-								value={selectedFy}
-								onChange={(e) => setSelectedFy(e.target.value)}
-								className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-purple-500"
-								title="Financial year (Apr–Mar)"
-							>
-								{financialYears.map((fy) => (
-									<option key={fy.year} value={String(fy.year)}>
-										{fy.label}
-									</option>
-								))}
-							</select>
-						)}
-						<div className="relative flex-1 min-w-[180px] max-w-sm">
-							<input
-								type="text"
-								value={search}
-								onChange={(e) => setSearch(e.target.value)}
-								placeholder="Search employee, project, client…"
-								className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-transparent focus:ring-2 focus:ring-purple-500"
-							/>
-						</div>
-						{viewMode === 'fy' && (
-							<div
-								role="tablist"
-								aria-label="Metric"
-								className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1"
-							>
-								{(['hours', 'cost'] as Metric[]).map((m) => (
-									<button
-										key={m}
-										type="button"
-										role="tab"
-										aria-selected={metric === m}
-										onClick={() => setMetric(m)}
-										className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold ${metric === m ? 'bg-white shadow text-[#64126D]' : 'text-gray-600'}`}
+								{viewMode === 'monthly' ? (
+									<div className="w-full max-w-[260px]">
+										<SearchableSelect
+											options={monthOptions}
+											value={selectedMonth}
+											onChange={(v) => setSelectedMonth(String(v))}
+											placeholder={
+												months.length ? 'Select month…' : 'No months'
+											}
+										/>
+									</div>
+								) : (
+									<select
+										value={selectedFy}
+										onChange={(e) => setSelectedFy(e.target.value)}
+										className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-purple-500"
+										title="Financial year (Apr–Mar)"
 									>
-										{m === 'hours' ? (
-											<ClockIcon className="h-3 w-3" />
+										{financialYears.map((fy) => (
+											<option key={fy.year} value={String(fy.year)}>
+												{fy.label}
+											</option>
+										))}
+									</select>
+								)}
+								<div className="relative flex-1 min-w-[180px] max-w-sm">
+									<input
+										type="text"
+										value={search}
+										onChange={(e) => setSearch(e.target.value)}
+										placeholder="Search employee, project, client…"
+										className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-transparent focus:ring-2 focus:ring-purple-500"
+									/>
+								</div>
+								{viewMode === 'fy' && (
+									<div
+										role="tablist"
+										aria-label="Metric"
+										className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1"
+									>
+										{(['hours', 'cost'] as Metric[]).map((m) => (
+											<button
+												key={m}
+												type="button"
+												role="tab"
+												aria-selected={metric === m}
+												onClick={() => setMetric(m)}
+												className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold ${metric === m ? 'bg-white shadow text-[#64126D]' : 'text-gray-600'}`}
+											>
+												{m === 'hours' ? (
+													<ClockIcon className="h-3 w-3" />
+												) : (
+													<BanknotesIcon className="h-3 w-3" />
+												)}
+												{m === 'hours' ? 'Hours' : 'Cost'}
+											</button>
+										))}
+									</div>
+								)}
+								<div className="ml-auto flex items-center gap-2">
+									<button
+										type="button"
+										onClick={() => activeQuery.refetch()}
+										disabled={isLoading}
+										className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+									>
+										<ArrowPathIcon
+											className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}
+										/>
+										Refresh
+									</button>
+									<button
+										type="button"
+										onClick={handleExport}
+										disabled={exporting || isLoading}
+										className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+									>
+										{exporting ? (
+											<ArrowPathIcon className="h-4 w-4 animate-spin" />
 										) : (
-											<BanknotesIcon className="h-3 w-3" />
+											<DocumentArrowDownIcon className="h-4 w-4" />
 										)}
-										{m === 'hours' ? 'Hours' : 'Cost'}
+										Excel
+									</button>
+									<button
+										type="button"
+										onClick={handlePrint}
+										className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-white hover:bg-gray-900"
+									>
+										<PrinterIcon className="h-4 w-4" />
+										Print
+									</button>
+								</div>
+							</div>
+							<div className="mt-3 flex items-center gap-1.5 border-b border-gray-200">
+								{(
+									['detailed', 'byEmployee', 'byProject'] as BreakdownTab[]
+								).map((tab) => (
+									<button
+										key={tab}
+										type="button"
+										onClick={() => setBreakdown(tab)}
+										className={`rounded-t-lg border-b-2 px-3 py-1.5 text-xs font-semibold ${breakdown === tab ? 'border-[#64126D] bg-[#64126D]/5 text-[#64126D]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+									>
+										{tab === 'detailed'
+											? viewMode === 'monthly'
+												? 'Project Wise'
+												: 'Detailed (Emp × Project)'
+											: tab === 'byEmployee'
+												? 'By Employee'
+												: viewMode === 'monthly'
+													? 'Project Summary'
+													: 'By Project'}
 									</button>
 								))}
+								<span className="ml-auto hidden text-xs text-gray-400 sm:inline">
+									Generated {generatedAt}
+								</span>
 							</div>
-						)}
-						<div className="ml-auto flex items-center gap-2">
-							<button
-								type="button"
-								onClick={() => activeQuery.refetch()}
-								disabled={isLoading}
-								className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-							>
-								<ArrowPathIcon
-									className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}
-								/>
-								Refresh
-							</button>
-							<button
-								type="button"
-								onClick={handleExport}
-								disabled={exporting || isLoading}
-								className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-							>
-								{exporting ? (
-									<ArrowPathIcon className="h-4 w-4 animate-spin" />
-								) : (
-									<DocumentArrowDownIcon className="h-4 w-4" />
-								)}
-								Excel
-							</button>
-							<button
-								type="button"
-								onClick={handlePrint}
-								className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-white hover:bg-gray-900"
-							>
-								<PrinterIcon className="h-4 w-4" />
-								Print
-							</button>
-						</div>
-					</div>
-					<div className="mt-3 flex items-center gap-1.5 border-b border-gray-200">
-						{(['detailed', 'byEmployee', 'byProject'] as BreakdownTab[]).map(
-							(tab) => (
-								<button
-									key={tab}
-									type="button"
-									onClick={() => setBreakdown(tab)}
-									className={`rounded-t-lg border-b-2 px-3 py-1.5 text-xs font-semibold ${breakdown === tab ? 'border-[#64126D] bg-[#64126D]/5 text-[#64126D]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-								>
-									{tab === 'detailed'
-										? viewMode === 'monthly'
-											? 'Project Wise'
-											: 'Detailed (Emp × Project)'
-										: tab === 'byEmployee'
-											? 'By Employee'
-											: viewMode === 'monthly'
-												? 'Project Summary'
-												: 'By Project'}
-								</button>
-							)
-						)}
-						<span className="ml-auto hidden text-xs text-gray-400 sm:inline">
-							Generated {generatedAt}
-						</span>
-					</div>
 						</>
 					)}
 				</div>
@@ -1787,13 +1791,14 @@ export default function EmployeeProjectMonthlyCostPage() {
 				</div>
 				{viewMode !== 'expenditure' && (
 					<p className="mx-auto mt-2 max-w-[1600px] text-[10px] leading-relaxed text-gray-400 print:hidden">
-						Hours are summed from daily activity logs per project; cost = payroll
-						hourly rate in force that month × hours logged that month
-						(hourly/daily rate when set, else gross salary ÷ standard working days
-						× hours per day). Monthly view shows total cost to company for the
-						selected month; FY view shows Apr–Mar matrix with company monthly
-						totals. These employee-cost views are estimates until a month's payroll
-						is finalized; the Expenditure view carries the recognized company cost.
+						Hours are summed from daily activity logs per project; cost =
+						payroll hourly rate in force that month × hours logged that month
+						(hourly/daily rate when set, else gross salary ÷ standard working
+						days × hours per day). Monthly view shows total cost to company for
+						the selected month; FY view shows Apr–Mar matrix with company
+						monthly totals. These employee-cost views are estimates until a
+						month&apos;s payroll is finalized; the Expenditure view carries the
+						recognized company cost.
 					</p>
 				)}
 			</main>
