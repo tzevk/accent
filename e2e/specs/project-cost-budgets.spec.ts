@@ -81,6 +81,7 @@ const FEB_BUDGET = seededBudget('alphaFebUsd');
 const PERIOD_BUDGET = seededBudget('gammaPeriod');
 const SCOPE_BUDGET = seededBudget('gammaScope');
 const PENDING_BUDGET = seededBudget('gammaPending');
+const CURRENCY_BUDGET = seededBudget('betaJuneUsd');
 
 /** What the browser workflow records and approves. */
 const UI_BUDGET = {
@@ -446,19 +447,30 @@ test('states currency, scope, period, ambiguity, and unsupported cost explicitly
 	const febInr = comparison(february, EXPENDITURE_PROJECTS.alpha.code, 'INR');
 	const febUsd = comparison(february, EXPENDITURE_PROJECTS.alpha.code, 'USD');
 	const usdBudget = Number(FEB_BUDGET.amount);
+	// The USD row compares with the USD budget: same Project, same currency.
 	expect(febUsd.incurred_cost).toBe(fixtureCost('alpha', NEXT_MONTH, 'USD'));
 	expect(febUsd.outcome).toBe('compared');
 	expect(febUsd.budget?.budget_uid).toBe(FEB_BUDGET.budgetUid);
 	expect(febUsd.variance).toBe(usdBudget - fixtureCost('alpha', NEXT_MONTH, 'USD'));
 	expect(febUsd.variance).toBe(170);
-	// The same approved budget does not lend itself to the INR row: currencies
-	// are never converted into each other for a comparison.
+	// The INR row does not borrow the USD budget: the annual INR budget covers
+	// February in INR, so that is what it compares with, and the USD budget
+	// stays a candidate it never compares against.
 	expect(febInr.incurred_cost).toBe(fixtureCost('alpha', NEXT_MONTH, 'INR'));
-	expect(febInr.outcome).toBe('incompatible_currency');
-	expect(febInr.budget).toBeNull();
-	expect(febInr.variance).toBeNull();
-	expect(febInr.detail).toContain('USD');
-	expect(noticeCodes(february)).toContain('budget_incompatible_currency');
+	expect(febInr.outcome).toBe('compared');
+	expect(febInr.budget?.budget_uid).toBe(APPROVED.budgetUid);
+	expect(febInr.budget?.currency).toBe('INR');
+	expect(febInr.variance).toBe(
+		Number(APPROVED.amount) - fixtureCost('alpha', NEXT_MONTH, 'INR')
+	);
+	expect(febInr.variance).toBe(4900);
+	expect(
+		febInr.candidates.map((candidate) => candidate.budget_uid).sort()
+	).toEqual([APPROVED.budgetUid, FEB_BUDGET.budgetUid].sort());
+	expect(febInr.detail).toContain(APPROVED.budgetUid);
+	// Both rows are comparable, so the month carries no incompatibility notice.
+	expect(noticeCodes(february)).not.toContain('budget_incompatible_currency');
+	expect(noticeCodes(february)).toContain('budget_variance_not_profit');
 
 	const budgetMonth = await reconciliation(request, BUDGET);
 	// gamma INR: the only approved INR budget covers January–May.
@@ -468,7 +480,9 @@ test('states currency, scope, period, ambiguity, and unsupported cost explicitly
 	expect(gammaInr.budget).toBeNull();
 	expect(gammaInr.variance).toBeNull();
 	expect(gammaInr.detail).toContain(PERIOD_BUDGET.periodEnd);
-	expect(gammaInr.candidates[0].budget_uid).toBe(PERIOD_BUDGET.budgetUid);
+	expect(gammaInr.candidates.map((c) => c.budget_uid)).toContain(
+		PERIOD_BUDGET.budgetUid
+	);
 
 	// gamma USD: the approved budget declares a commercial value, not a cost.
 	const gammaUsd = comparison(budgetMonth, EXPENDITURE_PROJECTS.gamma.code, 'USD');
@@ -477,8 +491,11 @@ test('states currency, scope, period, ambiguity, and unsupported cost explicitly
 	expect(gammaUsd.budget).toBeNull();
 	expect(gammaUsd.variance).toBeNull();
 	expect(gammaUsd.detail).toContain('commercial');
-	expect(gammaUsd.candidates[0].budget_uid).toBe(SCOPE_BUDGET.budgetUid);
-	expect(gammaUsd.candidates[0].scope).toBe('commercial_value');
+	const scopeCandidate = gammaUsd.candidates.find(
+		(candidate) => candidate.budget_uid === SCOPE_BUDGET.budgetUid
+	);
+	expect(scopeCandidate?.scope).toBe('commercial_value');
+	expect(scopeCandidate?.state).toBe('approved');
 
 	// gamma EUR: an approved budget exists, but its cost is not recognized
 	// yet, so nothing is compared against a guessed zero.
@@ -498,9 +515,28 @@ test('states currency, scope, period, ambiguity, and unsupported cost explicitly
 	expect(gammaGbp.candidates).toHaveLength(2);
 	expect(gammaGbp.variance).toBeNull();
 
+	// beta INR: the only budget approved for this Project is stated in USD, and
+	// the report refuses to convert one into the other to force a comparison.
+	const betaInr = comparison(budgetMonth, EXPENDITURE_PROJECTS.beta.code, 'INR');
+	expect(betaInr.incurred_cost).toBe(fixtureCost('beta', BUDGET, 'INR'));
+	expect(betaInr.outcome).toBe('incompatible_currency');
+	expect(betaInr.budget).toBeNull();
+	expect(betaInr.variance).toBeNull();
+	expect(betaInr.over_budget).toBeNull();
+	expect(betaInr.detail).toContain(CURRENCY_BUDGET.currency);
+	const currencyCandidate = betaInr.candidates.find(
+		(candidate) => candidate.budget_uid === CURRENCY_BUDGET.budgetUid
+	);
+	expect(currencyCandidate?.state).toBe('approved');
+	expect(currencyCandidate?.currency).toBe(CURRENCY_BUDGET.currency);
+	// The row's own currency exists nowhere in beta's budgets, so the mismatch
+	// is the statement — with no converted comparison invented.
+	expect(betaInr.candidates).toHaveLength(1);
+
 	const codes = noticeCodes(budgetMonth);
 	expect(codes).toContain('budget_incompatible_period');
 	expect(codes).toContain('budget_incompatible_scope');
+	expect(codes).toContain('budget_incompatible_currency');
 	expect(codes).toContain('budget_unsupported_incurred_cost');
 	expect(codes).toContain('budget_ambiguous');
 	// gamma carries a 999,999 commercial Project value; the approved budgets

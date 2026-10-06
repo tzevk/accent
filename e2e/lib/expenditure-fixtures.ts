@@ -537,7 +537,7 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		description: 'E2E February USD project cost',
 	},
 	{
-		key: 'mayInr',
+		key: 'juneInr',
 		expenseNumber: 'E2E-EXP-0017',
 		costUid: 'e2e-cost-0017',
 		classification: 'project',
@@ -561,7 +561,7 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		description: 'E2E June INR project cost awaiting an approved budget',
 	},
 	{
-		key: 'mayUsd',
+		key: 'juneUsd',
 		expenseNumber: 'E2E-EXP-0018',
 		costUid: 'e2e-cost-0018',
 		classification: 'project',
@@ -585,7 +585,7 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		description: 'E2E June USD cost whose only budget has a commercial scope',
 	},
 	{
-		key: 'mayEurPending',
+		key: 'juneEurPending',
 		expenseNumber: 'E2E-EXP-0019',
 		costUid: 'e2e-cost-0019',
 		classification: 'project',
@@ -609,7 +609,7 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		description: 'E2E June EUR cost awaiting recognition under an approved budget',
 	},
 	{
-		key: 'mayGbp',
+		key: 'juneGbp',
 		expenseNumber: 'E2E-EXP-0020',
 		costUid: 'e2e-cost-0020',
 		classification: 'project',
@@ -632,6 +632,30 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		evidenceReference: 'E2E-GRN-0020',
 		description: 'E2E June GBP cost with two approved budgets',
 	},
+	{
+		key: 'juneBetaInr',
+		expenseNumber: 'E2E-EXP-0021',
+		costUid: 'e2e-cost-0021',
+		classification: 'project',
+		project: 'beta',
+		state: 'recognized',
+		recognitionMonth: BUDGET_MONTH,
+		periodBasis: 'service_period',
+		serviceStart: '2019-06-11',
+		serviceEnd: '2019-06-11',
+		billDate: '2019-06-12',
+		expenseDate: '2019-06-12',
+		currency: 'INR',
+		amount: '300.00',
+		taxAmount: '0.00',
+		grossAmount: '300.00',
+		taxTreatment: 'none',
+		taxEvidence: null,
+		recognizedAmount: '300.00',
+		sourceReference: 'E2E-INV-0021',
+		evidenceReference: 'E2E-GRN-0021',
+		description: 'E2E June INR cost whose only approved budget is stated in USD',
+	},
 ];
 
 /**
@@ -644,9 +668,10 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
  * every comparison outcome the module must state explicitly:
  *
  *   alpha / 2019-01 / INR  approved covering budget            → compared
- *   alpha / 2019-02 / INR  approved USD budget only            → incompatible currency
- *   alpha / 2019-02 / USD  the same USD budget                 → compared
+ *   alpha / 2019-02 / INR  the annual INR budget covers it      → compared
+ *   alpha / 2019-02 / USD  the February USD budget             → compared
  *   beta  / 2019-01 / INR  no budget at all                    → missing
+ *   beta  / 2019-06 / INR  an approved USD budget only         → incompatible currency
  *   gamma / 2019-06 / INR  approved, but for an earlier period  → incompatible period
  *   gamma / 2019-06 / USD  approved commercial-value scope     → incompatible scope
  *   gamma / 2019-06 / EUR  approved, cost not recognized yet   → unsupported cost
@@ -794,6 +819,21 @@ export const EXPENDITURE_BUDGETS: SeedBudget[] = [
 		basisNote: 'E2E approved June cost budget (second of two)',
 		financialVersion: 3,
 		journal: ['recorded', 'updated', 'approved'],
+	},
+	{
+		key: 'betaJuneUsd',
+		budgetUid: 'e2e-budget-0008',
+		project: 'beta',
+		currency: 'USD',
+		amount: '700.00',
+		scope: 'project_incurred_cost',
+		periodStart: '2019-06-01',
+		periodEnd: '2019-06-30',
+		state: 'approved',
+		approvalEvidence: 'E2E-BUDGET-EVID-0008',
+		basisNote: 'E2E approved June cost budget stated in USD',
+		financialVersion: 1,
+		journal: ['recorded', 'approved'],
 	},
 ];
 

@@ -77,19 +77,15 @@ interface CandidateFlags {
 }
 
 /**
- * How closely one budget matches this month's row. Covering the month counts
- * most: that is what the reader asked about, so a covering draft is the more
- * relevant fact than an approved budget for a different period. Currency and
- * scope come next (never convert, never compare a non-cost budget), and
- * approval last, because an unapproved budget is not yet a budget.
+ * How closely one budget matches this month's row, among the candidates that
+ * can be compared with it at all. Covering the month counts most: that is what
+ * the reader asked about, so a covering draft is the more relevant fact than an
+ * approved budget for a different period. Scope comes next (never compare a
+ * non-cost budget), and approval last, because an unapproved budget is not yet
+ * a budget.
  */
 function matchScore(flags: CandidateFlags): number {
-	return (
-		(flags.covers ? 8 : 0) +
-		(flags.scope ? 4 : 0) +
-		(flags.currency ? 2 : 0) +
-		(flags.approved ? 1 : 0)
-	);
+	return (flags.covers ? 4 : 0) + (flags.scope ? 2 : 0) + (flags.approved ? 1 : 0);
 }
 
 function flagsOf(
@@ -144,18 +140,23 @@ function evaluateRow(
 	const confirmedRecords = key.filter((record) => isConfirmed(record.state)).length;
 	const pendingRecords = key.filter((record) => isOpenState(record.state)).length;
 
-	const flagged = candidates
-		.map((budget) => ({
-			budget,
-			flags: flagsOf(budget, monthStart, monthEnd, row.currency),
-		}))
-		.sort(
-			(a, b) =>
-				matchScore(b.flags) - matchScore(a.flags) ||
-				a.budget.budget_uid.localeCompare(b.budget.budget_uid)
-		);
-	const chosen = flagged.length > 0 ? flagged[0] : null;
-	const compatible = flagged.filter(
+	const flagged = candidates.map((budget) => ({
+		budget,
+		flags: flagsOf(budget, monthStart, monthEnd, row.currency),
+	}));
+	// A comparison exists only inside one currency, so a budget stated in
+	// another currency is never the closest candidate while one of the row's
+	// own currency exists: it can only be stated when nothing of the row's
+	// currency was approved, and then as an explicit currency mismatch.
+	const sameCurrency = flagged.filter((item) => item.flags.currency);
+	const pool = sameCurrency.length > 0 ? sameCurrency : flagged;
+	const ranked = pool.sort(
+		(a, b) =>
+			matchScore(b.flags) - matchScore(a.flags) ||
+			a.budget.budget_uid.localeCompare(b.budget.budget_uid)
+	);
+	const chosen = ranked.length > 0 ? ranked[0] : null;
+	const compatible = ranked.filter(
 		(item) =>
 			item.flags.approved &&
 			item.flags.covers &&
@@ -245,6 +246,15 @@ function evaluateRow(
 	}
 
 	const candidate = toBudgetCandidate(chosen.budget);
+	// The chooser holds the same currency whenever one exists, so a currency
+	// mismatch here means only a foreign-currency budget was approved: that is
+	// the statement, before any period or scope difference.
+	if (!chosen.flags.currency) {
+		return incompatible(
+			'incompatible_currency',
+			`${describe(candidate)} is stated in ${candidate.currency} and this Project's cost for ${month} is ${row.currency}; currencies are never converted to force a comparison.`
+		);
+	}
 	if (!chosen.flags.covers) {
 		return incompatible(
 			'incompatible_period',
@@ -255,12 +265,6 @@ function evaluateRow(
 		return incompatible(
 			'incompatible_scope',
 			`${describe(candidate)} declares a commercial value, not a cost budget, so it is not compared with Incurred Project Cost. Record an approved cost budget for ${row.project_code}.`
-		);
-	}
-	if (!chosen.flags.currency) {
-		return incompatible(
-			'incompatible_currency',
-			`${describe(candidate)} is stated in ${candidate.currency} and this Project's cost for ${month} is ${row.currency}; currencies are never converted to force a comparison.`
 		);
 	}
 	return incompatible(

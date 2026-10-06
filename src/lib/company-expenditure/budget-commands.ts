@@ -204,6 +204,25 @@ async function inBudgetTransaction<T>(
 	return withTransaction((db) => work(db)) as Promise<T>;
 }
 
+/**
+ * The Project a budget belongs to, read without a lock. The command takes the
+ * Project's row lock first and only then locks the budget row, so two commands
+ * always acquire their locks in the same order.
+ */
+async function loadBudgetProject(
+	db: SqlConnection,
+	id: number
+): Promise<{ projectId: number } | null> {
+	const [rows] = (await db.execute(
+		`SELECT project_id FROM project_cost_budgets
+      WHERE id = ? AND isDelete = 0
+      LIMIT 1`,
+		[id]
+	)) as [DbRow[], unknown];
+	if (rows.length === 0) return null;
+	return { projectId: Number(rows[0].project_id ?? 0) };
+}
+
 async function loadBudgetForUpdate(
 	db: SqlConnection,
 	id: number
@@ -328,6 +347,19 @@ export async function executeBudgetCommand(
 	}
 
 	return inBudgetTransaction(options, async (db) => {
+		const target = await loadBudgetProject(db, id);
+		if (!target) {
+			throw new CostError('budget_not_found', 'Cost budget not found', 404);
+		}
+		// Every budget command takes the Project's row lock first. Two approvals
+		// that overlap in period then serialize here, so each one supersedes
+		// what the other approved instead of both reading it as unapproved, and
+		// no pair of commands can lock Project and budget rows in opposite
+		// orders. Precedent: the Project quotation route locks the same row.
+		await db.execute(
+			`SELECT project_id FROM projects WHERE project_id = ? FOR UPDATE`,
+			[target.projectId]
+		);
 		const row = await loadBudgetForUpdate(db, id);
 		if (!row) {
 			throw new CostError('budget_not_found', 'Cost budget not found', 404);

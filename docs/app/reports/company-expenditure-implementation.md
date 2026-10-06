@@ -222,10 +222,14 @@ inside its period. Everything else is stated explicitly, never guessed:
 | `unsupported_incurred_cost` | An approved budget matches but no confirmed cost is recorded yet                     |
 | `no_incurred_cost`          | An approved covering budget exists with no Project cost row in the month             |
 
-The candidate closest to comparable is chosen by a fixed precedence (covers the
-month, then scope, then currency, then approval), so a covering draft is stated
-as `unapproved` rather than hidden behind an approved budget for another
-period. `budgets.notices` summarises every outcome, and the
+The candidate closest to comparable is chosen inside the row's own currency
+first — a comparison exists only in one currency — and then by a fixed
+precedence (covers the month, then scope, then approval). A covering draft in
+the row's currency is therefore stated as `unapproved` rather than hidden behind
+an approved budget for another period, a same-currency record with a commercial
+scope is stated as `incompatible_scope`, and a foreign-currency budget is stated
+as `incompatible_currency` only when nothing of the row's currency exists.
+`budgets.notices` summarises every outcome, and the
 `budget_variance_not_profit` notice states that remaining budget is not profit,
 recognized revenue, or a forecast of uncommitted work.
 
@@ -234,13 +238,16 @@ appends `recorded`. `update` (draft/submitted only), `submit`, `approve`, and
 `withdraw` are versioned commands: a stale version is refused `409
 stale_version`, a disallowed transition `409 invalid_transition`, an approval
 without evidence `422 approval_evidence_required`, and a withdrawal without a
-reason `422 reason_required`. Approving a later budget that overlaps an earlier
-approved budget of the same Project, currency, and scope marks the earlier row
-`superseded` and appends `superseded` — its amount, approval evidence, version,
-and journal stay readable, which is what a later closed-period review reads.
-Both tables follow the same rules as the cost tables: no deletes through the
-API, one journal row per accepted command, and commands join the caller's
-transaction when a connection is supplied.
+reason `422 reason_required`. Every command takes the Project's row lock before
+the budget row, so two approvals of overlapping periods serialize on the
+Project: the second supersedes the first instead of both staying approved, and a
+repeated or stale command still changes nothing. Approving a later budget that
+overlaps an earlier approved budget of the same Project, currency, and scope
+marks the earlier row `superseded` and appends `superseded` — its amount,
+approval evidence, version, and journal stay readable, which is what a later
+closed-period review reads. Both tables follow the same rules as the cost
+tables: no deletes through the API, one journal row per accepted command, and
+commands join the caller's transaction when a connection is supplied.
 
 ## Coverage: what the total does not include
 
