@@ -350,6 +350,8 @@ export interface ComparisonInput {
 	asOf: string;
 	/** The month's Project rows, before any Project filter narrows the detail. */
 	rows: ReconciliationProjectRow[];
+	/** Approved period charges dated in the prior month, stated elsewhere. */
+	priorChargeCount?: number;
 }
 
 /**
@@ -500,6 +502,18 @@ export function buildPeriodComparison(
 			period: 'prior',
 			currency: null,
 			count: 0,
+			amount: null,
+		});
+	}
+	if ((input.priorChargeCount ?? 0) > 0) {
+		disclosures.push({
+			code: 'prior_period_charges_excluded',
+			label: 'Period charges in the prior month',
+			detail: `${input.priorChargeCount} approved period charge(s) dated in ${window.priorMonth} are stated in that month's own reconciliation; an elapsed-day window carries no charge day, so the window figures above exclude them.`,
+			severity: 'info',
+			period: 'prior',
+			currency: null,
+			count: input.priorChargeCount ?? 0,
 			amount: null,
 		});
 	}

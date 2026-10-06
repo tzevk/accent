@@ -8,6 +8,7 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchJSON } from '@/utils/http';
 import ProjectMemberDetails from '@/components/projects/ProjectMemberDetails';
+import ProjectOrdersPanel from '@/components/ProjectOrdersPanel';
 import useSWR from 'swr';
 import { useSession } from '@/context/SessionContext';
 import { add, sub, mul, toNumber } from '@/lib/money';
@@ -2523,40 +2524,12 @@ export default function ProjectViewPage() {
 
 					{/* Purchase Order Tab (read-only) */}
 					{activeTab === 'purchase_order' && (
-						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
-							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
-								<div className="flex items-center gap-3">
-									<div className="rounded-xl bg-purple-50 p-2 ring-1 ring-inset ring-purple-100">
-										<DocumentTextIcon
-											className="h-4 w-4 text-purple-600"
-											aria-hidden="true"
-										/>
-									</div>
-									<div>
-										<h2 className="text-base font-semibold tracking-tight text-gray-900">
-											Purchase Order
-										</h2>
-										<p className="text-xs text-gray-500">
-											Purchase orders for this project (edit to manage)
-										</p>
-									</div>
-									{canEditProjectContent && (
-										<Link
-											href={`/projects/${project.id ?? project.project_id}/edit`}
-											className="ml-auto text-xs font-medium text-purple-600 hover:underline"
-										>
-											Edit →
-										</Link>
-									)}
-								</div>
-							</div>
-							<div className="px-6 py-5">
-								<p className="text-sm text-gray-500">
-									Purchase orders are managed in the edit view. Data is shared
-									via the same project_purchase_orders table.
-								</p>
-							</div>
-						</section>
+						<ProjectOrdersPanel
+							projectId={
+								project.id ?? project.project_id ?? project.project_code
+							}
+							canManageOrders={canEditProjectContent}
+						/>
 					)}
 
 					{/* Invoice Tab (read-only) */}

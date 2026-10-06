@@ -14,6 +14,11 @@ import {
 } from './lib/expenditure-fixtures';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 import {
+	ORDER_PROJECT,
+	cleanupOrderFixtures,
+	seedOrderFixtures,
+} from './lib/order-fixtures';
+import {
 	cleanupUtilizationFixtures,
 	seedUtilizationFixtures,
 } from './lib/utilization-fixtures';
@@ -27,6 +32,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupFixtures();
 		await cleanupAttendanceFixtures();
 		await cleanupUtilizationFixtures();
+		await cleanupOrderFixtures();
 		await cleanupExpenditureFixtures();
 		await cleanupExpenditureCurrencyFixtures();
 
@@ -78,7 +84,7 @@ export default async function globalSetup(): Promise<void> {
 		const utilization = await seedUtilizationFixtures();
 		console.log(
 			`[e2e] utilization fixtures seeded for ${utilization.month} ` +
-			`(${utilization.employees} employees, ${utilization.attendance} attendance rows, ` +
+				`(${utilization.employees} employees, ${utilization.attendance} attendance rows, ` +
 				`${utilization.assignments} assignments, ` +
 				`${utilization.loggedDays} logged days, ` +
 				`${utilization.linkedUsers} linked user accounts, ` +
@@ -101,6 +107,13 @@ export default async function globalSetup(): Promise<void> {
 			`[e2e] expenditure currency fixtures seeded for ${currency.months.join(', ')} ` +
 				`(${currency.costs} direct costs, ` +
 				`${Object.keys(currency.projects).length} projects)`
+		);
+
+		const orders = await seedOrderFixtures();
+		console.log(
+			`[e2e] order fixtures seeded for ${orders.month} ` +
+				`(project ${ORDER_PROJECT.code} #${orders.projectId}, ` +
+				`${Object.keys(orders.legacy).length} legacy copies)`
 		);
 	} finally {
 		await closeDb();

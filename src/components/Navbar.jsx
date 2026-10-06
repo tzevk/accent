@@ -207,17 +207,12 @@ const adminMenuGroups = [
 	},
 	{
 		key: 'purchase-orders',
-		name: 'Purchase Orders',
+		name: 'Orders',
 		icon: ClipboardDocumentCheckIcon,
 		items: [
 			{
-				name: 'Purchase Order (Incoming)',
-				href: '/admin/purchase-order',
-				icon: ClipboardDocumentCheckIcon,
-			},
-			{
-				name: 'Purchase Order (Outgoing)',
-				href: '/admin/outgoing-purchase-order',
+				name: 'Client & Supplier Orders',
+				href: '/admin/orders',
 				icon: ClipboardDocumentCheckIcon,
 			},
 		],

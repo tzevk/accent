@@ -1,4 +1,4 @@
-# Company Project Expenditure — Implementation (ticket #306)
+# Company Project Expenditure — Implementation (tickets #306, #317, #321)
 
 ## Overview
 
@@ -255,18 +255,18 @@ holding cost outside its own namespace.
 `project_cost_budgets` (`migrations/20261008092100_project_cost_budgets.js`) is
 its own record; no Project commercial field is ever read as a budget:
 
-| Column                          | Meaning                                                                        |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| `budget_uid`                    | Stable identity, shared with the approval journal                              |
-| `project_id`                    | The Project the approved cost budget belongs to                                 |
-| `currency`                      | The currency the amount is stated in — never converted for a comparison        |
-| `amount`                        | The approved amount, on the same basis as Incurred Project Cost                |
-| `scope`                         | `project_incurred_cost` (comparable) or `commercial_value` (context, never compared) |
-| `period_start`, `period_end`    | The period the approval covers                                                  |
-| `state`                         | `draft` / `submitted` / `approved` / `superseded` / `withdrawn`                |
-| `approval_evidence_reference`   | The evidence the approval rests on; approval without it is refused              |
-| `approved_by`, `approved_at`    | Who approved the version and when                                              |
-| `financial_version`             | Version the next command must present                                          |
+| Column                        | Meaning                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------ |
+| `budget_uid`                  | Stable identity, shared with the approval journal                                    |
+| `project_id`                  | The Project the approved cost budget belongs to                                      |
+| `currency`                    | The currency the amount is stated in — never converted for a comparison              |
+| `amount`                      | The approved amount, on the same basis as Incurred Project Cost                      |
+| `scope`                       | `project_incurred_cost` (comparable) or `commercial_value` (context, never compared) |
+| `period_start`, `period_end`  | The period the approval covers                                                       |
+| `state`                       | `draft` / `submitted` / `approved` / `superseded` / `withdrawn`                      |
+| `approval_evidence_reference` | The evidence the approval rests on; approval without it is refused                   |
+| `approved_by`, `approved_at`  | Who approved the version and when                                                    |
+| `financial_version`           | Version the next command must present                                                |
 
 `projects.project_value`, `projects.cost_to_company`, `projects.budget`,
 quotations, and purchase orders are commercial context: none of them becomes a
@@ -276,24 +276,35 @@ a guessed figure.
 **Comparison rules.** `budget-comparison.ts` builds `budgets` inside the
 reconciliation payload. A row is `compared` (with `variance` = approved budget
 − confirmed Incurred Project Cost) only when one approved budget matches the
-Project, the row's currency, the `project_incurred_cost` scope, and the month
-inside its period. Everything else is stated explicitly, never guessed:
+Project, the row's currency, the `project_incurred_cost` scope, and the period —
+**exactly the selected month**. A budget whose period is a year, a quarter, or a
+mid-month span states another period's cost too, so it is disclosed as an
+incompatible period and never allocated proportionally; a single month is the
+only period whose whole approved amount is that month's cost. The month's cost
+must also be supported: a confirmed operating record, a supported approved
+period charge (`period_charge_count`, #317), or any other integrated source.
+An unconfirmed month is never treated as a supported zero. Everything else is
+stated explicitly, never guessed:
 
-| Outcome                     | The reader is told                                                                 |
-| --------------------------- | ---------------------------------------------------------------------------------- |
+| Outcome                     | The reader is told                                                                  |
+| --------------------------- | ----------------------------------------------------------------------------------- |
 | `missing`                   | No budget recorded for this Project and currency                                    |
-| `unapproved`                | A covering budget exists but is not approved yet                                    |
-| `incompatible_currency`     | Only an approved budget in another currency exists — no conversion is invented       |
-| `incompatible_scope`        | The approved record declares a commercial value, not a cost budget                   |
-| `incompatible_period`       | The approved budget covers another period                                            |
-| `ambiguous`                 | More than one approved matching budget — none is picked                              |
-| `unsupported_incurred_cost` | An approved budget matches but no confirmed cost is recorded yet                     |
-| `no_incurred_cost`          | An approved covering budget exists with no Project cost row in the month             |
+| `unapproved`                | A same-currency, same-scope budget for this month exists but is not approved yet    |
+| `incompatible_currency`     | Only an approved budget in another currency exists — no conversion is invented      |
+| `incompatible_scope`        | The approved record declares a commercial value, not a cost budget                  |
+| `incompatible_period`       | The approved budget's period is not this month (annual or partial: no allocation)   |
+| `ambiguous`                 | More than one approved budget matches — none is picked                              |
+| `unsupported_incurred_cost` | An approved budget matches but no cost is confirmed yet (no direct cost, no charge) |
+| `no_incurred_cost`          | An approved budget exists with no Project cost row in the month                     |
 
-The candidate closest to comparable is chosen by a fixed precedence (covers the
-month, then scope, then currency, then approval), so a covering draft is stated
-as `unapproved` rather than hidden behind an approved budget for another
-period. `budgets.notices` summarises every outcome, and the
+The candidate closest to comparable is chosen inside the row's own currency
+first — a comparison exists only in one currency — and then by a fixed
+precedence (exactly this month, then scope, then approval). A draft of this
+month is therefore stated as `unapproved` rather than hidden behind an approved
+budget for another period, a same-currency record with a commercial scope is
+stated as `incompatible_scope`, and a foreign-currency budget is stated as
+`incompatible_currency` only when nothing of the row's currency exists.
+`budgets.notices` summarises every outcome, and the
 `budget_variance_not_profit` notice states that remaining budget is not profit,
 recognized revenue, or a forecast of uncommitted work.
 
@@ -302,7 +313,15 @@ appends `recorded`. `update` (draft/submitted only), `submit`, `approve`, and
 `withdraw` are versioned commands: a stale version is refused `409
 stale_version`, a disallowed transition `409 invalid_transition`, an approval
 without evidence `422 approval_evidence_required`, and a withdrawal without a
-reason `422 reason_required`. Approving a later budget that overlaps an earlier
+reason `422 reason_required`. Drafting, submitting, and withdrawing a draft or
+submitted budget need `other_expenses:update`; approving needs
+`other_expenses:approve`, and so does withdrawing an _approved_ budget, because
+that removes the basis the report was comparing with (`403
+approval_privilege_required`, refused inside the transaction under the row
+lock). Every command takes the Project's row lock before the budget row, so two
+approvals of overlapping periods serialize on the Project: the second supersedes
+the first instead of both staying approved, and a repeated or stale command
+still changes nothing. Approving a later budget that overlaps an earlier
 approved budget of the same Project, currency, and scope marks the earlier row
 `superseded` and appends `superseded` — its amount, approval evidence, version,
 and journal stay readable, which is what a later closed-period review reads.
@@ -328,16 +347,16 @@ a coverage warning, never a zero company cost.
 
 ## Authorization
 
-| Surface                                        | Privilege                                                     |
-| ---------------------------------------------- | ------------------------------------------------------------- |
-| Reconciliation, drilldown, expenditure months  | `reports:read` **and** `other_expenses:read` (or super admin) |
-| Employee-cost views and their export           | `reports:read`                                                |
-| Record a cost (report control and admin route) | `other_expenses:create`                                       |
-| Submit / update a cost                         | `other_expenses:update`                                       |
-| Recognize, reject, cancel                      | `other_expenses:approve`                                      |
-| Read cost budgets and their journals           | `other_expenses:read`                                         |
-| Record, edit, submit, withdraw a cost budget   | `other_expenses:update`                                       |
-| Approve a cost budget                          | `other_expenses:approve`                                      |
+| Surface                                            | Privilege                                                     |
+| -------------------------------------------------- | ------------------------------------------------------------- |
+| Reconciliation, drilldown, expenditure months      | `reports:read` **and** `other_expenses:read` (or super admin) |
+| Employee-cost views and their export               | `reports:read`                                                |
+| Record a cost (report control and admin route)     | `other_expenses:create`                                       |
+| Submit / update a cost                             | `other_expenses:update`                                       |
+| Recognize, reject, cancel                          | `other_expenses:approve`                                      |
+| Read cost budgets and their journals               | `other_expenses:read`                                         |
+| Record, edit, submit, withdraw a cost budget       | `other_expenses:update`                                       |
+| Approve a cost budget, or withdraw an approved one | `other_expenses:approve`                                      |
 
 The direct-expense ledger is the source of the expenditure reconciliation, so
 report access alone does not open it: the expenditure view, the drilldown, and
@@ -356,6 +375,7 @@ direct costs in `E2E-EXP-P*` / `E2E-EXP-*` (fixtures in
 `e2e/lib/expenditure-fixtures.ts`, purged and reseeded by `e2e/global-setup.ts`),
 plus a real `reports:read`-only reader identity, then asserts, from hand-computed
 fixture amounts:
+
 - every recognized cost appears once in its group and the groups equal the
   company total;
 - drafts, pending evidence, rejected, cancelled, unresolved, and missing amounts
@@ -387,18 +407,26 @@ fixture amounts:
 
 `e2e/specs/project-cost-budgets.spec.ts` (#321) drives the same real app and
 writes `e2e/artifacts/project-cost-budgets.json`. It extends the same fixture
-module (budget namespace `e2e-budget-*`, a third Project `E2E-EXP-P3`, four
-May-2019 costs, seven seeded budgets) and asserts, from the fixture literals:
+module (budget namespace `e2e-budget-*`, a third and fourth Project
+`E2E-EXP-P3`/`P4`, June-2019 costs, eleven seeded budgets, and the August
+charge-only month owned by #317) and asserts, from the fixture literals:
 
-- an approved budget covering January compares with alpha's 3,500 INR as
-  `compared` (5,000 − 3,500 = 1,500 remaining), while a Project with no budget
-  is `missing`;
-- currency, scope, period, ambiguity, and un-supported-cost outcomes are each
+- an approved budget whose period is exactly January compares with alpha's
+  3,500 INR as `compared` (5,000 − 3,500 = 1,500 remaining), while a Project with
+  no budget is `missing` and February's INR row states the January budget's
+  period as `incompatible_period` instead of stretching it over another month;
+- currency, scope, period, ambiguity, and unsupported-cost outcomes are each
   stated explicitly — a February USD budget compares only with the USD row, a
-  commercial-value record never becomes a cost budget, an approved budget for an
-  earlier period does not compare with May, a pending-only cost states
-  `unsupported_incurred_cost` instead of comparing with a guessed zero, and two
-  matching approved budgets state `ambiguous`;
+  commercial-value record never becomes a cost budget, an annual budget and a
+  mid-May-to-mid-June budget stay visible as `incompatible_period` with a null
+  variance and no proportional allocation, a pending-only cost states
+  `unsupported_incurred_cost` instead of comparing with a guessed zero, a
+  Project whose only approved budget is in another currency states
+  `incompatible_currency`, and two matching approved budgets state `ambiguous`;
+- an August month whose Project cost comes entirely from supported approved
+  period charges (#317) compares with an exact August budget and publishes the
+  over-budget variance — charge-only cost is confirmed cost, not an unconfirmed
+  zero, and no annual budget is allocated to that month;
 - the browser records, submits, and approves a budget through the report's own
   controls, with the approval evidence the control requires, and the report then
   compares it (5,000 − 1,200 = 3,800) with version 3 and three journal entries in
@@ -420,7 +448,8 @@ npx cross-env E2E_DB_NAME=accent_crm_dev_muse_e2e_expenditure npm run e2e
 ```
 
 For the two initial slices, select `expense-reconciliation.spec.ts` and
-`payroll-bonus.spec.ts` after the production build. Fixture cleanup derives SQL
+`payroll-bonus.spec.ts` after the production build; `expense-non-operating.spec.ts`
+adds the non-operating balances and their approved consumption (#317). Fixture cleanup derives SQL
 placeholders from its owned Employee codes, so added Employees remain rerun-safe.
 The payroll snapshot evidence includes the stored month and money columns.
 Namespaced fixtures identify test records; names alone do not exclude them from
@@ -504,3 +533,157 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
 - `docs/adr/0019-approved-cost-budgets.md` (#321)
 - `e2e/specs/project-cost-budgets.spec.ts` (#321)
 - `e2e/lib/expenditure-currency-fixtures.ts`, `e2e/specs/expenditure-currency.spec.ts` (#319)
+
+## Ticket #317 — non-operating items and approved period consumption
+
+An advance, deposit, prepayment, or capital purchase is a **balance**, not an
+expense: its payment or invoice must never enter Company Incurred Cost as the
+full amount of the month it was paid. The spend is classified by its nature
+(`expenses.cost_nature`), recorded with its own identity, amount,
+currency/tax basis, and evidence, and only **approved period consumption,
+depreciation, or amortization** becomes cost — in the charge's own month, with
+the source's destination and currency. There is no fixed-asset register, no
+statutory depreciation engine, and no automatic capitalization: an operator (or
+an import) states each charge with evidence, and the module only accepts or
+refuses it.
+
+### Data model
+
+| Object                         | Meaning                                                                                                                                                                                                                                            |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `expenses.cost_nature`         | `operating` (default, and what every pre-#317 row was), `advance`, `deposit`, `prepayment`, `capital`, or `unresolved`. Independent of `cost_classification`.                                                                                      |
+| `expense_period_charges`       | One approved (or cancelled) charge: `charge_uid`, `(source_table, source_id, source_cost_uid)`, `charge_period`, `basis`, `amount`, `currency`, `evidence_reference`, `state`, `financial_version`, `sequence`, approver/time, cancel reason/time. |
+| `expense_period_charge_events` | Append-only approval journal, one row per accepted command, keyed `(charge_uid, version)`; `approved` then `cancelled`.                                                                                                                            |
+
+`(source_cost_uid, charge_period, basis, sequence)` is unique: a month and basis
+for one source holds one approved charge, and re-entry after a cancellation
+takes the next sequence while both rows stay as history. Because a capture locks
+its source row (`SELECT … FOR UPDATE`), two concurrent captures serialize and
+the second is refused as a duplicate rather than double-writing.
+
+### Rules (`non-operating.ts`, pure)
+
+- A charge needs a supported balance: its source must already be **confirmed
+  cost** (that act establishes the balance) and its nature must be
+  `advance`/`deposit`/`prepayment`/`capital`.
+- Amount, evidence reference, and the source's currency are required; a month
+  that is not `YYYY-MM` is refused.
+- One approved charge per source/month/basis (`duplicate_period_charge`), and
+  the approved charges may never exceed the source's confirmed balance
+  (`exceeds_source_balance`, with the remaining amount in the response).
+- Cancelling is reasoned, versioned, and restores the balance; a cancelled
+  charge is never counted and never reduces the remaining amount.
+- A missing balance is unknown, not zero: an unconfirmed item states
+  `remaining_amount: null`.
+
+### Report and source detail
+
+`CompanyReconciliation.non_operating` carries the section: per item its identity
+(`cost_uid`, expense number, source/evidence reference), nature, destination,
+state, currency, gross amount, supported balance, consumption this month and to
+date, remaining amount, and its charges; plus `excluded_source_amount`,
+`consumed_this_month`, `consumed_to_date`, `remaining_amount`,
+`unapproved_count`, `unresolved_count`, `unresolved_source_amount`, and
+`charges_from_prior_items` (charges of the month whose balance was recognized in
+an earlier month). Only `operating` records are cost: a recognized non-operating
+item is excluded from `company.incurred_cost` and appears in
+`evidence.non_operating_recognized`; an `unresolved`-nature record is excluded
+and appears in `evidence.unresolved_nature` with the
+`nature_unresolved_treatment` notice. Approved charges are counted in
+`currency_totals[].period_charge_amount` / `period_charge_count`, in
+`projects[].period_charge_count`, and in `evidence.period_charges`. Coverage
+notices add `non_operating_items_separate`, `period_charges_counted`,
+`nature_unresolved_treatment`, `non_operating_item_not_approved`, and
+`period_charge_source_not_recognized`.
+
+`GET …/expenses` gains `nature=all|operating|non_operating|advance|deposit|prepayment|capital|unresolved`,
+returns each expense with `cost_nature`, returns the month's
+`period_charges` (approved and cancelled, so history stays visible), and
+splits `totals` into `confirmed_amount` (operating cost only),
+`non_operating_amount`, `nature_unresolved_amount`,
+`period_charge_amount`, and `period_charge_records`.
+
+A Project row's cost is confirmed cost for the budget comparison even when it
+comes entirely from approved period charges: the comparison counts
+`record_count + period_charge_count` (publishing `period_charges` per row), so
+a charge-only month states a variance against a matching-month approved budget
+instead of `unsupported_incurred_cost`; a month with neither still states
+`unsupported_incurred_cost`, and an annual/partial budget stays
+`incompatible_period`. A charge is stated in the reporting basis through its
+source's conversion evidence (`source_reporting_currency`,
+`source_conversion_rate`, `source_conversion_date`,
+`source_conversion_evidence_reference` on the charge), never by converting
+independently; `company.conversion` counts `converted_charges` /
+`unsupported_charges` beside the record figures.
+
+### Command contract
+
+```
+POST /api/admin/expenses/{id}/charges
+{ "period": "2019-08", "basis": "consumption|depreciation|amortization",
+  "amount": 20000, "evidence_reference": "…", "currency": "INR", "reason": "…" }
+
+POST /api/admin/expenses/{id}/charges/{chargeUid}
+{ "command": "cancel", "expected_version": 1, "reason": "…" }
+```
+
+| Outcome                          | Status | Code                                                 |
+| -------------------------------- | ------ | ---------------------------------------------------- |
+| Approved / cancelled             | 200    | `{ data: PeriodChargeJson }`                         |
+| Source not confirmed cost        | 409    | `source_not_recognized`                              |
+| Same month and basis approved    | 409    | `duplicate_period_charge`                            |
+| Stale charge version             | 409    | `version_conflict` (with `current_version`)          |
+| Operating nature                 | 422    | `nature_not_non_operating`                           |
+| Charge over the remaining amount | 422    | `exceeds_source_balance` (with `remaining_amount`)   |
+| Missing amount / evidence        | 422    | `invalid_charge_amount` / `charge_evidence_required` |
+| Currency not the source's        | 422    | `charge_currency_mismatch`                           |
+| Bad month / basis                | 422    | `invalid_charge_period` / `invalid_charge_basis`     |
+| Missing privilege                | 403    | —                                                    |
+
+Both routes need `other_expenses:approve`: a period charge is an approval.
+`cost_nature` is a versioned financial field, so the register `PUT` refuses it
+with `422 financial_fields_versioned` and it changes only through the `update`
+command (`patch.nature`). The report's non-operating section carries the
+controls: **Capture period charge** on each confirmed item (month, basis,
+amount, evidence, note) and **Cancel charge** on each approved charge, with the
+dialog surfacing the module's refusal verbatim.
+
+### End-to-end evidence (#317)
+
+`e2e/specs/expense-non-operating.spec.ts` drives the real app and writes
+`e2e/artifacts/expense-non-operating.json`. Its fixtures extend
+`e2e/lib/expenditure-fixtures.ts` in the same namespace — an advance, a deposit,
+a prepayment (consumed across two periods), a capital item with evidenced
+recoverable tax, an operating cost, an unresolved-treatment record, and an
+unapproved advance, recognized in 2019-07 with charges in 2019-08/2019-09 and
+ad-hoc charges in 2019-06 (never another spec's months). It asserts, from
+hand-computed fixture amounts:
+
+- the July balances are excluded from Company Incurred Cost and shown
+  separately with identity, evidence, consumed, and remaining amounts;
+- the August charges are cost in August alone (advance consumption, prepayment
+  consumption, capital depreciation) and the July month stays at zero cost;
+- the prepayment's second period charge lands in September and reduces its
+  remaining balance to zero; a cancelled deposit charge counts nowhere;
+- a duplicate month/basis, an oversized charge, an operating source, an
+  unapproved source, missing evidence/amount, a foreign currency, and a bad
+  month are all refused with their exact codes and change nothing; a cancelled
+  charge's period can be re-entered, and both rows keep their journal;
+- the browser captures a charge (balance falls, its own month gains the cost)
+  and cancels it (balance returns, version 2, journal `approved` → `cancelled`),
+  and a duplicate attempt through the same control surfaces the refusal;
+- recording an advance through the report form and recognizing it leaves the
+  incurred-cost KPI unchanged until its charge is captured; the register refuses
+  to reclassify its nature;
+- an unresolved treatment stays visible and excluded, an unapproved item has no
+  balance to consume, and an employee session or a `reports:read`-only reader
+  gets 403 on the charge routes and the reconciliation with no sensitive payload.
+
+### Files (#317)
+
+- `migrations/20261008091700_expense_non_operating_charges.js`
+- `src/lib/company-expenditure/non-operating.ts` (rules + charge JSON mapper)
+- `src/lib/company-expenditure/charges.ts` (`capturePeriodCharge`, `cancelPeriodCharge`)
+- `src/app/api/admin/expenses/[id]/charges/route.ts`,
+  `src/app/api/admin/expenses/[id]/charges/[chargeUid]/route.ts`
+- `e2e/specs/expense-non-operating.spec.ts`

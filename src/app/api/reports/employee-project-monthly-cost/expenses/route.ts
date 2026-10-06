@@ -41,6 +41,17 @@ const CLASSIFICATIONS = [
 	'unresolved',
 ] as const;
 
+const NATURES = [
+	'all',
+	'operating',
+	'non_operating',
+	'advance',
+	'deposit',
+	'prepayment',
+	'capital',
+	'unresolved',
+] as const;
+
 export async function GET(request: Request) {
 	try {
 		const user = await getCurrentUser(request);
@@ -92,6 +103,13 @@ export async function GET(request: Request) {
 				{ status: 400 }
 			);
 		}
+		const nature = url.searchParams.get('nature') ?? 'all';
+		if (!NATURES.includes(nature as (typeof NATURES)[number])) {
+			return NextResponse.json(
+				{ success: false, error: `Unknown nature: ${nature}` },
+				{ status: 400 }
+			);
+		}
 		let projectId: number | null = null;
 		const projectParam = url.searchParams.get('project_id');
 		if (projectParam) {
@@ -125,6 +143,7 @@ export async function GET(request: Request) {
 			month,
 			state: state as CostDrilldownQuery['state'],
 			classification: classification as CostDrilldownQuery['classification'],
+			nature: nature as CostDrilldownQuery['nature'],
 			projectId,
 			limit,
 			offset,
