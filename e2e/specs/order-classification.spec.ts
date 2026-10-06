@@ -4,6 +4,7 @@ import { writeArtifact } from '../lib/artifacts';
 import { rows } from '../lib/db';
 import { E2E_ENV } from '../lib/env';
 import {
+	CENTS_INVOICES,
 	CREATED_ORDERS,
 	INVOICE_LINK,
 	LEGACY_AMOUNTS,
@@ -40,6 +41,9 @@ test.describe.configure({ mode: 'serial', timeout: 120_000 });
 const PREFIX = ORDER_FIXTURE_PREFIX;
 const MONTH = ORDER_MONTH;
 const PROJECT = ORDER_PROJECT;
+/** Every supported client order value in the Project, to the cent. */
+const CLIENT_ORDER_TOTAL =
+	CREATED_ORDERS.client.net + CREATED_ORDERS.centsClient.net;
 
 interface OrderRecord {
 	orderUid: string;
@@ -383,6 +387,7 @@ test('queues every legacy copy without guessing direction from names or tables',
 	expect(byStore.has('project_invoices')).toBe(true);
 
 	// Same document number in two stores is a collision candidate, not proof.
+	// Both queued copies must see each other as candidates on the real surface.
 	const incoming = mine.find(
 		(item) =>
 			item.legacyStore === 'purchase_orders' &&
@@ -391,6 +396,15 @@ test('queues every legacy copy without guessing direction from names or tables',
 	expect(incoming).toBeTruthy();
 	const collisionStores = incoming.collisions.map((c) => c.legacyStore);
 	expect(collisionStores).toContain('outgoing_purchase_orders');
+	const outgoingCopy = mine.find(
+		(item) => item.legacyStore === 'outgoing_purchase_orders'
+	)!;
+	expect(outgoingCopy.collisions.map((c) => c.legacyStore)).toContain(
+		'purchase_orders'
+	);
+	expect(
+		incoming.collisions.some((c) => c.mappingId === outgoingCopy.mappingId)
+	).toBe(true);
 
 	evidence.queue = mine.map((item) => ({
 		mappingId: item.mappingId,
@@ -414,7 +428,7 @@ test('queues every legacy copy without guessing direction from names or tables',
 	expect(Number(canonical[0].n)).toBe(0);
 });
 
-test('refuses an order without explicit direction or firmness evidence', async ({
+test('refuses an order without explicit direction, evidence, a valid reference or currency', async ({
 	request,
 }) => {
 	const noDirection = await request.post('/api/admin/orders', {
@@ -447,14 +461,83 @@ test('refuses an order without explicit direction or firmness evidence', async (
 	expect(noEvidenceBody.success).toBe(false);
 	expect(noEvidenceBody.code).toBe('firmness_evidence_required');
 
+	// A Project reference that is not a live positive integer is refused, not
+	// dropped to NULL: a typo must not silently remove the order from its
+	// Project and its Project totals.
+	const badProject = await request.post('/api/admin/orders', {
+		data: {
+			direction: 'supplier',
+			order_number: `${PREFIX}BAD-PROJECT`,
+			counterparty_name: ORDER_SUPPLIER,
+			project_id: PROJECT.code,
+			amount_basis: 'unknown',
+		},
+	});
+	const badProjectBody = await apiJson<{ success: boolean; code: string }>(
+		badProject,
+		422
+	);
+	expect(badProjectBody.success).toBe(false);
+	expect(badProjectBody.code).toBe('invalid_project');
+
+	const badCompany = await request.post('/api/admin/orders', {
+		data: {
+			direction: 'supplier',
+			order_number: `${PREFIX}BAD-COMPANY`,
+			counterparty_name: ORDER_SUPPLIER,
+			company_id: -4,
+			amount_basis: 'unknown',
+		},
+	});
+	const badCompanyBody = await apiJson<{ success: boolean; code: string }>(
+		badCompany,
+		422
+	);
+	expect(badCompanyBody.success).toBe(false);
+	expect(badCompanyBody.code).toBe('invalid_company');
+
+	// A currency longer than ISO 4217 is refused, never truncated into a
+	// different valid code (USDT must not become USD).
+	const badCurrency = await request.post('/api/admin/orders', {
+		data: {
+			direction: 'supplier',
+			order_number: `${PREFIX}BAD-CURRENCY`,
+			counterparty_name: ORDER_SUPPLIER,
+			currency: 'USDT',
+			amount_basis: 'unknown',
+		},
+	});
+	const badCurrencyBody = await apiJson<{ success: boolean; code: string }>(
+		badCurrency,
+		422
+	);
+	expect(badCurrencyBody.success).toBe(false);
+	expect(badCurrencyBody.code).toBe('invalid_currency');
+
+	// A bad Project filter on the read path is refused too (a filter that
+	// silently disappears would show company-wide orders as Project orders).
+	const badFilter = await request.get(
+		'/api/admin/orders?project_id=E2E-EXP-310-P1'
+	);
+	expect(badFilter.status()).toBe(400);
+
 	const stored = await rows<{ n: number }>(
-		`SELECT COUNT(*) AS n FROM orders WHERE order_number IN (?, ?)`,
-		[`${PREFIX}NO-DIRECTION`, `${PREFIX}NO-EVIDENCE`]
+		`SELECT COUNT(*) AS n FROM orders WHERE order_number LIKE ?`,
+		[`${PREFIX}NO-%`]
 	);
 	expect(Number(stored[0].n)).toBe(0);
+	const storedBad = await rows<{ n: number }>(
+		`SELECT COUNT(*) AS n FROM orders WHERE order_number LIKE ?`,
+		[`${PREFIX}BAD-%`]
+	);
+	expect(Number(storedBad[0].n)).toBe(0);
 	evidence.refusedInvalidOrders = {
 		noDirection: noDirectionBody.code,
 		noEvidence: noEvidenceBody.code,
+		badProject: badProjectBody.code,
+		badCompany: badCompanyBody.code,
+		badCurrency: badCurrencyBody.code,
+		badFilter: badFilter.status(),
 	};
 });
 
@@ -1065,6 +1148,113 @@ test('links a client invoice to a canonical client order, never a supplier order
 	};
 });
 
+test('keeps order money and its client rollup at cent precision', async ({
+	page,
+	request,
+}) => {
+	// A stated net carrying cents: whole-unit rounding would store 250001 and
+	// drift from the invoices that follow.
+	const created = await apiJson<{ success: boolean; data: OrderRecord }>(
+		await request.post('/api/admin/orders', {
+			data: {
+				direction: 'client',
+				order_number: CREATED_ORDERS.centsClient.number,
+				counterparty_name: CREATED_ORDERS.centsClient.counterparty,
+				project_id: seeded.projectId,
+				currency: CREATED_ORDERS.centsClient.currency,
+				amount_basis: CREATED_ORDERS.centsClient.basis,
+				net_amount: CREATED_ORDERS.centsClient.net,
+				tax_amount: CREATED_ORDERS.centsClient.tax,
+				gross_amount: CREATED_ORDERS.centsClient.gross,
+				order_date: CREATED_ORDERS.centsClient.orderDate,
+				status: CREATED_ORDERS.centsClient.status,
+				firmness: CREATED_ORDERS.centsClient.firmness,
+			},
+		})
+	);
+	const uid = created.data.orderUid;
+
+	const stored = await dbOrder(CREATED_ORDERS.centsClient.number);
+	expect(Number(stored.net_amount)).toBe(CREATED_ORDERS.centsClient.net);
+	expect(Number(stored.gross_amount)).toBe(CREATED_ORDERS.centsClient.gross);
+	expect(Number(stored.tax_amount)).toBe(CREATED_ORDERS.centsClient.tax);
+
+	// The native order screen shows the cents in the row and the Project total.
+	await page.goto(`/admin/orders?project_id=${seeded.projectId}`);
+	const row = page.locator(
+		`[data-testid="order-row"][data-order-number="${CREATED_ORDERS.centsClient.number}"]`
+	);
+	await expect(row.getByTestId('order-row-value')).toHaveAttribute(
+		'data-amount',
+		String(CREATED_ORDERS.centsClient.net)
+	);
+	const clientTotalRow = page.locator(
+		'[data-testid="client-order-total-row"][data-currency="INR"][data-basis="net"]'
+	);
+	await expect(clientTotalRow).toHaveAttribute(
+		'data-amount',
+		String(CLIENT_ORDER_TOTAL)
+	);
+
+	// Two equal cent invoices roll up to exactly 66666.66, not whole-unit
+	// 66666, and the remaining value is stated minus that rollup.
+	for (const number of [CENTS_INVOICES.first, CENTS_INVOICES.second]) {
+		await apiJson(
+			await request.post('/api/admin/invoices', {
+				data: {
+					invoice_number: number,
+					invoice_date: `${MONTH}-22`,
+					client_name: ORDER_PROJECT.client,
+					order_uid: uid,
+					po_number: CREATED_ORDERS.centsClient.number,
+					items: [],
+					line_items: [],
+					total: CENTS_INVOICES.total,
+					gst_type: 'cgst_sgst',
+					status: 'sent',
+				},
+			})
+		);
+	}
+
+	const linked = await dbOrder(CREATED_ORDERS.centsClient.number);
+	expect(Number(linked.client_invoiced_value)).toBe(66666.66);
+	// 250000.75 − 2 × 33333.33, stated independently of the module's math.
+	const remaining = 184034.09;
+	const balance = await apiJson<{
+		success: boolean;
+		data: { remaining_balance: number | null };
+	}>(
+		await request.get(
+			`/api/admin/invoices/po-balance?order_uid=${encodeURIComponent(uid)}`
+		)
+	);
+	expect(Number(balance.data.remaining_balance)).toBe(remaining);
+
+	// Deleting both invoices restores the rollup to a known zero.
+	const invoiceRows = await rows<{ id: number }>(
+		`SELECT id FROM invoices WHERE invoice_number LIKE ? AND isDelete = 0`,
+		[`${PREFIX}INV-CENTS-%`]
+	);
+	expect(invoiceRows).toHaveLength(2);
+	for (const invoice of invoiceRows) {
+		await apiJson(
+			await request.delete(`/api/admin/invoices/${invoice.id}`)
+		);
+	}
+	const reversed = await dbOrder(CREATED_ORDERS.centsClient.number);
+	expect(Number(reversed.client_invoiced_value)).toBe(0);
+
+	recordCreated(uid, CREATED_ORDERS.centsClient.number, 'api');
+	evidence.centPrecision = {
+		orderUid: uid,
+		net: Number(stored.net_amount),
+		invoicedAfterTwoInvoices: Number(linked.client_invoiced_value),
+		remaining,
+		reversed: Number(reversed.client_invoiced_value),
+	};
+});
+
 test('shows canonical orders on the Project tab and keeps the legacy copies intact', async ({
 	page,
 	request,
@@ -1075,11 +1265,12 @@ test('shows canonical orders on the Project tab and keeps the legacy copies inta
 	await expect(panel).toBeVisible();
 
 	// Client value (commercial context) and supplier order values are shown
-	// separately, with the supplier note that order value is not cost.
+	// separately, with the supplier note that order value is not cost. The
+	// client total carries both client orders including their cents.
 	const clientTotal = panel.getByTestId('project-client-order-total');
 	await expect(clientTotal).toHaveAttribute(
 		'data-amount',
-		String(CREATED_ORDERS.client.net)
+		String(CLIENT_ORDER_TOTAL)
 	);
 	const supplierNet = panel.getByTestId('project-supplier-order-total-net');
 	await expect(supplierNet).toHaveAttribute(
@@ -1222,5 +1413,5 @@ test('regenerates the JSON evidence artifact', async () => {
 			);
 			return Number(found[0].n);
 		})
-		.toBe(6);
+		.toBe(7);
 });
