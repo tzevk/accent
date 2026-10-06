@@ -12,6 +12,19 @@ import type Decimal from 'decimal.js';
 export type CostClassification = 'project' | 'company_overhead' | 'unallocated';
 
 /**
+ * Which native store a cost row lives in. IDs come from different stores, so
+ * every cost carries its source discriminator; `cost_uid` stays the canonical
+ * identity across all of them.
+ */
+export type CostSource =
+	| 'direct_expense'
+	| 'supplier_invoice'
+	| 'other_expense'
+	| 'petty_cash'
+	| 'non_operating'
+	| 'payroll';
+
+/**
  * What the spend is, independent of where it belongs (#317). `operating` is
  * ordinary cost; `advance`, `deposit`, `prepayment`, and `capital` are
  * balances whose payment is not an expense until supported period consumption,
@@ -382,6 +395,62 @@ export interface EvidenceSummary {
 }
 
 /**
+ * One currency's slice of the petty-cash section. Cash figures follow the cash
+ * date; recognized cost follows the Recognition Period, so the two sides of
+ * the section are never mixed.
+ */
+export interface PettyCashCurrencySummary {
+	currency: string;
+	/** Voucher funding dated in the period (the mirrored credits). */
+	funding: number;
+	funding_event_count: number;
+	/** Actual spending dated in the period. */
+	spend: number;
+	spend_count: number;
+	/** Of that spending, the part drawn from a voucher. */
+	funded_spend: number;
+	/** Of that spending, the part recorded as a settlement of another cost. */
+	settled_spend: number;
+	/** `funding - funded_spend`; negative is disclosed as overspent funding. */
+	remaining_funding: number;
+	/** Recognized operating cost created by petty-cash spending (unsettled). */
+	recognized_cost: number;
+	/** Spending still draft or pending evidence: not confirmed cost. */
+	unconfirmed_spend: number;
+}
+
+/**
+ * Petty cash stated beside the company reconciliation: funding is cash into
+ * the float and never operating cost, spending is separate from the funding it
+ * draws on, and recognized cost counts only the spending that creates cost
+ * (a receipt already linked to another cost settles that cost instead).
+ */
+export interface PettyCashSummary {
+	/** The month the cash figures are stated for, or null for all time. */
+	month: string | null;
+	/** The single currency the summary is stated in, or null for none/many. */
+	currency: string | null;
+	funding: number | null;
+	spend: number | null;
+	/** Of the spending, the part recorded as a settlement of another cost. */
+	settled_spend: number | null;
+	/** Of the spending, the part still draft or pending evidence. */
+	unconfirmed_spend: number | null;
+	remaining_funding: number | null;
+	recognized_cost: number | null;
+	by_currency: PettyCashCurrencySummary[];
+	/** Receipts linked to a cost that is not a recognized cost. */
+	unresolved_settlements: { count: number; amount: number | null };
+	/** Spending with no voucher linkage: cost, but not attributed to funding. */
+	unlinked_spend: { count: number; amount: number | null };
+	/**
+	 * Rows whose original currency is unknown. They are stated in no currency
+	 * subtotal; the count is the disclosure instead.
+	 */
+	unknown_currency: { count: number };
+}
+
+/**
  * One approved (or cancelled) period charge, in the module's own shape: the
  * source balance it draws down plus the classification, project, and currency
  * the source carries. A charge never changes its source's identity; it is the
@@ -575,6 +644,8 @@ export interface CompanyReconciliation {
 	 */
 	non_operating: NonOperatingSection;
 	evidence: EvidenceSummary;
+	/** Petty-cash funding and spending, separate from incurred cost. */
+	petty_cash: PettyCashSummary;
 	sources: ReconciliationSourceSummary[];
 	coverage: CoverageNotice[];
 	/**

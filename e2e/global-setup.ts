@@ -24,6 +24,10 @@ import {
 } from './lib/other-expense-fixtures';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 import {
+	cleanupPettyCashFixtures,
+	seedPettyCashFixtures,
+} from './lib/petty-cash-fixtures';
+import {
 	ORDER_PROJECT,
 	cleanupOrderFixtures,
 	seedOrderFixtures,
@@ -49,6 +53,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupOrderFixtures();
 		await cleanupExpenditureFixtures();
 		await cleanupOtherExpenseFixtures();
+		await cleanupPettyCashFixtures();
 		await cleanupSupplierInvoiceFixtures();
 		await cleanupExpenditureAllocationFixtures();
 		await cleanupExpenditureCurrencyFixtures();
@@ -124,7 +129,11 @@ export default async function globalSetup(): Promise<void> {
 			`[e2e] other-expense fixtures seeded for ${otherExpenses.month} ` +
 				`(project ${otherExpenses.projectId}, target ${otherExpenses.targetCostUid})`
 		);
-
+		const pettyCash = await seedPettyCashFixtures();
+		console.log(
+			`[e2e] petty-cash fixtures seeded for ${pettyCash.month} and ${pettyCash.laterMonth} ` +
+				`(${Object.keys(pettyCash.projects).length} projects, target cost ${pettyCash.targetCostUid})`
+		);
 		const supplier = await seedSupplierInvoiceFixtures();
 		console.log(
 			`[e2e] supplier invoice fixtures seeded for ${supplier.month}, ` +

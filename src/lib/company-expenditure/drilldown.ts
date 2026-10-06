@@ -28,6 +28,7 @@ import {
 	type SqlConnection,
 } from './records';
 import { loadFilteredSupplierRecords } from './supplier-invoices';
+import { PETTY_CASH_COST_SOURCE } from './petty-cash';
 import type {
 	CostDrilldown,
 	CostDrilldownQuery,
@@ -40,6 +41,7 @@ const DRILLDOWN_SOURCES: readonly CostSource[] = [
 	'direct_expense',
 	'supplier_invoice',
 	'other_expense',
+	'petty_cash',
 ];
 
 function sortRecords(records: CostRecord[]): CostRecord[] {
@@ -107,6 +109,11 @@ export async function loadCombinedDrilldown(
 	}
 	if (source === 'all' || source === 'other_expense') {
 		results.push(...(await loadFilteredOtherExpenseRecords(db, query)));
+	}
+	if (source === 'all' || source === 'petty_cash') {
+		results.push(
+			...(await PETTY_CASH_COST_SOURCE.loadFilteredRecords(db, query))
+		);
 	}
 	const merged = sortRecords(results);
 

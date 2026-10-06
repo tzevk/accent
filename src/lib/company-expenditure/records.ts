@@ -180,7 +180,11 @@ export function mapCostRow(
 	};
 }
 
-/** The record as the report endpoints publish it, in the requested basis. */
+/**
+ * The record as the report endpoints publish it, in the requested basis: one
+ * `conversion_status` per response, so a reader never sees a record's status
+ * computed against a different currency than its figures.
+ */
 export function toCostRecordJson(
 	record: CostRecord,
 	reporting: string = REPORTING_CURRENCY
