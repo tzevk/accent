@@ -92,6 +92,7 @@ export function evaluateCost(input: CostFinancialInput): CostEvaluation {
 	const treatment = effectiveTaxTreatment(input);
 
 	if (!input.classification) exceptions.push('classification_unresolved');
+	if (input.nature === 'unresolved') exceptions.push('nature_unresolved');
 	if (!input.recognitionPeriod) exceptions.push('missing_recognition_period');
 	if (!input.sourceReference) exceptions.push('missing_source_reference');
 	if (!input.evidenceReference) exceptions.push('missing_evidence_reference');
