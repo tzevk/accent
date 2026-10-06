@@ -380,7 +380,7 @@ function normalizeSplits(
 	if (!Array.isArray(splits)) {
 		throw new CostError('invalid_splits', 'splits must be a list', 422);
 	}
-	return splits.map((split, index) => {
+	const normalized = splits.map((split, index) => {
 		const servicePeriodEnd = dateOrNull(split.servicePeriodEnd);
 		if (!servicePeriodEnd) {
 			throw new CostError(
@@ -426,6 +426,18 @@ function normalizeSplits(
 			note: text(split.note, 500),
 		};
 	});
+	// Canonical order: recognition month, then received-work start/end. A
+	// stable sort keeps the caller's order for full ties (two slices in one
+	// period), so the stored order, the frozen order, and the read-back order
+	// are the same by construction — never the request's arbitrary order.
+	return normalized.sort(
+		(a, b) =>
+			a.recognitionPeriod.localeCompare(b.recognitionPeriod) ||
+			(a.servicePeriodStart ?? a.servicePeriodEnd).localeCompare(
+				b.servicePeriodStart ?? b.servicePeriodEnd
+			) ||
+			a.servicePeriodEnd.localeCompare(b.servicePeriodEnd)
+	);
 }
 
 async function replaceSplits(
@@ -433,13 +445,17 @@ async function replaceSplits(
 	invoiceId: number,
 	splits: NormalizedSplit[],
 	actorId: number | null
-): Promise<void> {
+): Promise<number[]> {
 	await db.execute(
 		`DELETE FROM supplier_invoice_periods WHERE invoice_id = ?`,
 		[invoiceId]
 	);
+	// The inserted ids come back in the canonical order of `splits`, so the
+	// caller freezes each recognized amount onto the exact row it was computed
+	// from — never by zipping a re-read against request order.
+	const ids: number[] = [];
 	for (const split of splits) {
-		await db.execute(
+		const [inserted] = (await db.execute(
 			`INSERT INTO supplier_invoice_periods
          (invoice_id, service_period_start, service_period_end, recognition_period,
           amount, tax_amount, recognized_amount, note, created_by)
@@ -454,8 +470,10 @@ async function replaceSplits(
 				split.note,
 				actorId,
 			]
-		);
+		)) as [Record<string, unknown>, unknown];
+		ids.push(Number(inserted.insertId));
 	}
+	return ids;
 }
 
 async function loadSplitRows(
@@ -1083,17 +1101,32 @@ export async function executeSupplierCommand(
 		);
 		// The row lock was taken at load; this check is the backstop for a
 		// concurrent writer outside the lock.
+		let insertedSplitIds: number[] | null = null;
 		if (effectiveSplits !== null) {
-			await replaceSplits(db, input.id, effectiveSplits, actor.id);
+			insertedSplitIds = await replaceSplits(
+				db,
+				input.id,
+				effectiveSplits,
+				actor.id
+			);
 			effectiveSplits = null;
 		}
 		if (input.command === 'recognize' && splitRecognizedAmounts.length > 0) {
-			const [rows] = (await db.execute(
-				`SELECT id FROM supplier_invoice_periods
-            WHERE invoice_id = ? ORDER BY recognition_period, id`,
-				[input.id]
-			)) as [DbRow[], unknown];
-			for (let index = 0; index < rows.length; index++) {
+			// Freeze each slice onto the exact row its amounts were computed
+			// from: the inserted ids for a patched split list, otherwise the
+			// ids read in the same canonical (period, id) order the amounts
+			// came from — never a re-read zipped against request order.
+			const splitIds =
+				insertedSplitIds ??
+				(await loadSplitRows(db, input.id)).map((loaded) => loaded.id);
+			if (splitIds.length !== splitRecognizedAmounts.length) {
+				throw new CostError(
+					'split_identity_changed',
+					'The invoice slices changed while the command was applied',
+					409
+				);
+			}
+			for (let index = 0; index < splitIds.length; index++) {
 				await db.execute(
 					`UPDATE supplier_invoice_periods
                 SET recognized_amount = ?, converted_amount = ?
@@ -1101,7 +1134,7 @@ export async function executeSupplierCommand(
 					[
 						splitRecognizedAmounts[index] ?? null,
 						splitConvertedAmounts[index] ?? null,
-						Number(rows[index].id),
+						splitIds[index],
 					]
 				);
 			}

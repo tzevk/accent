@@ -817,6 +817,151 @@ test('splits one invoice across service periods without repeating it', async ({
 	};
 });
 
+test('freezes reverse-order and same-period splits onto their own rows', async ({
+	request,
+}) => {
+	// One invoice, four slices: two in August and two in September, supplied to
+	// the recognize command in a deliberately shuffled (reverse) order. Each
+	// month and each row must hold its own amounts — a zip against request
+	// order would silently move September's amount onto August's row.
+	const slices = [
+		{
+			start: '2020-09-16',
+			end: '2020-09-30',
+			amount: 20000,
+			month: '2020-09',
+		},
+		{
+			start: '2020-08-01',
+			end: '2020-08-15',
+			amount: 10000,
+			month: '2020-08',
+		},
+		{
+			start: '2020-09-01',
+			end: '2020-09-15',
+			amount: 10000,
+			month: '2020-09',
+		},
+		{
+			start: '2020-08-16',
+			end: '2020-08-31',
+			amount: 20000,
+			month: '2020-08',
+		},
+	] as const;
+	const created = await request.post('/api/admin/purchase-invoices', {
+		data: {
+			invoice_number: 'E2E-SINV-9006',
+			vendor_name: 'E2E Supplier Vendor shuffled',
+			invoice_date: '2020-09-05',
+			subtotal: 60000,
+			tax_amount: 0,
+			total: 60000,
+			currency: 'INR',
+			cost_classification: 'project',
+			project_id: seeded.projects.alpha,
+			service_period_start: '2020-08-01',
+			service_period_end: '2020-09-30',
+			tax_treatment: 'none',
+			source_reference: 'E2E-SINV-VENDOR-9006',
+			evidence_reference: 'E2E-SINV-GRN-9006',
+			withholding_tax_amount: 0,
+		},
+	});
+	expect(created.status(), await created.text()).toBe(200);
+	const createdBody = await created.json();
+	const id = Number(createdBody.data.id);
+	createdInvoices.push({
+		id,
+		cost_uid: createdBody.data.cost_uid,
+		where: 'api entry (shuffled splits)',
+	});
+
+	const recognized = await command(request, id, {
+		command: 'recognize',
+		expected_version: 1,
+		patch: {
+			splits: slices.map((slice) => ({
+				service_period_start: slice.start,
+				service_period_end: slice.end,
+				amount: slice.amount,
+				tax_amount: 0,
+				note: `E2E ${slice.start}`,
+			})),
+		},
+	});
+	expect(recognized.status, JSON.stringify(recognized.body)).toBe(200);
+
+	// Canonical order (month, then received-work start) with each row's own
+	// frozen amounts.
+	const sliceRows = await rows<{
+		service_period_start: string;
+		amount: string;
+		recognized_amount: string;
+		converted_amount: string;
+	}>(
+		`SELECT service_period_start, amount, recognized_amount, converted_amount
+       FROM supplier_invoice_periods WHERE invoice_id = ?
+      ORDER BY recognition_period, service_period_start`,
+		[id]
+	);
+	expect(sliceRows.map((row) => String(row.service_period_start).slice(0, 10))).toEqual([
+		'2020-08-01',
+		'2020-08-16',
+		'2020-09-01',
+		'2020-09-16',
+	]);
+	expect(sliceRows.map((row) => Number(row.amount))).toEqual([
+		10000, 20000, 10000, 20000,
+	]);
+	expect(sliceRows.map((row) => Number(row.recognized_amount))).toEqual([
+		10000, 20000, 10000, 20000,
+	]);
+	expect(sliceRows.map((row) => Number(row.converted_amount))).toEqual([
+		10000, 20000, 10000, 20000,
+	]);
+
+	// The report reads each month's own slices (duplicate periods supported),
+	// and the invoice states the full 60000 exactly once.
+	for (const [month, expectedSlices] of [
+		['2020-08', [10000, 20000]],
+		['2020-09', [10000, 20000]],
+	] as const) {
+		const report = await reconciliation(request, month);
+		const alpha = report.projects.find(
+			(entry) => entry.project_code === SUPPLIER_PROJECTS.alpha.code
+		);
+		expect(alpha?.incurred_cost).toBe(expectedSlices[0] + expectedSlices[1]);
+
+		const drill = await drilldown(request, { month, state: 'all' });
+		const slicesInMonth = drill.records
+			.filter((entry) => entry.cost_uid === createdBody.data.cost_uid)
+			.sort(
+				(a, b) => (a.split?.index ?? 0) - (b.split?.index ?? 0)
+			);
+		expect(slicesInMonth.map((entry) => entry.recognized_amount)).toEqual([
+			...expectedSlices,
+		]);
+		expect(slicesInMonth.map((entry) => entry.split?.count)).toEqual([4, 4]);
+	}
+	const frozen = await rows<{ recognized_amount: string; converted_amount: string }>(
+		`SELECT recognized_amount, converted_amount FROM purchase_invoices WHERE id = ?`,
+		[id]
+	);
+	expect(Number(frozen[0].recognized_amount)).toBe(60000);
+	expect(Number(frozen[0].converted_amount)).toBe(60000);
+
+	evidence.shuffledSplits = {
+		invoice: 'E2E-SINV-9006',
+		requestOrder: slices.map((slice) => slice.start),
+		frozenRows: sliceRows.map((row) => ({
+			start: String(row.service_period_start).slice(0, 10),
+			recognized: Number(row.recognized_amount),
+		})),
+	};
+});
+
 test('keeps a March service in March when invoiced in April and paid in May', async ({
 	request,
 }) => {
@@ -1789,5 +1934,5 @@ test('publishes the repeatable evidence artifact', async () => {
 	const created = artifact.createdThroughApp as {
 		invoices: Array<{ id: number }>;
 	};
-	expect(created.invoices.length).toBe(5);
+	expect(created.invoices.length).toBe(6);
 });
