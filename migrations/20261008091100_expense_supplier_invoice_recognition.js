@@ -61,7 +61,7 @@ export async function up(knex) {
 	const costColumns = [
 		{
 			name: 'cost_uid',
-			ddl: 'VARCHAR(64) NULL COMMENT \'Stable cost identity shared with source references\'',
+			ddl: "VARCHAR(64) NULL COMMENT 'Stable cost identity shared with source references'",
 		},
 		{
 			name: 'cost_classification',
@@ -91,7 +91,7 @@ export async function up(knex) {
 		{ name: 'recognized_at', ddl: 'DATETIME NULL' },
 		{
 			name: 'financial_version',
-			ddl: 'INT NOT NULL DEFAULT 1 COMMENT \'Version the next financial command must present\'',
+			ddl: "INT NOT NULL DEFAULT 1 COMMENT 'Version the next financial command must present'",
 		},
 		{
 			name: 'currency',
@@ -104,7 +104,7 @@ export async function up(knex) {
 		{ name: 'evidence_reference', ddl: 'VARCHAR(500) NULL' },
 		{
 			name: 'withholding_tax_amount',
-			ddl: 'DECIMAL(15,2) NOT NULL DEFAULT 0.00 COMMENT \'TDS: settlement only, never reduces incurred cost\'',
+			ddl: "DECIMAL(15,2) NOT NULL DEFAULT 0.00 COMMENT 'TDS: settlement only, never reduces incurred cost'",
 		},
 	];
 	for (const column of costColumns) {
@@ -115,22 +115,36 @@ export async function up(knex) {
 		}
 	}
 
-	if (!(await hasIndex('purchase_invoices', 'unique_purchase_invoice_cost_uid'))) {
+	if (
+		!(await hasIndex('purchase_invoices', 'unique_purchase_invoice_cost_uid'))
+	) {
 		await knex.raw(
 			'ALTER TABLE `purchase_invoices` ADD UNIQUE KEY `unique_purchase_invoice_cost_uid` (`cost_uid`)'
 		);
 	}
-	if (!(await hasIndex('purchase_invoices', 'idx_purchase_invoice_recognition'))) {
+	if (
+		!(await hasIndex('purchase_invoices', 'idx_purchase_invoice_recognition'))
+	) {
 		await knex.raw(
 			'ALTER TABLE `purchase_invoices` ADD KEY `idx_purchase_invoice_recognition` (`recognition_state`, `recognition_period`)'
 		);
 	}
-	if (!(await hasIndex('purchase_invoices', 'idx_purchase_invoice_classification'))) {
+	if (
+		!(await hasIndex(
+			'purchase_invoices',
+			'idx_purchase_invoice_classification'
+		))
+	) {
 		await knex.raw(
 			'ALTER TABLE `purchase_invoices` ADD KEY `idx_purchase_invoice_classification` (`cost_classification`, `recognition_period`)'
 		);
 	}
-	if (!(await hasIndex('purchase_invoices', 'idx_purchase_invoice_source_reference'))) {
+	if (
+		!(await hasIndex(
+			'purchase_invoices',
+			'idx_purchase_invoice_source_reference'
+		))
+	) {
 		await knex.raw(
 			'ALTER TABLE `purchase_invoices` ADD KEY `idx_purchase_invoice_source_reference` (`source_reference`)'
 		);
@@ -267,7 +281,9 @@ export async function down(knex) {
 			  LIMIT 1`
 		);
 		if (hasIndex.length) {
-			await knex.raw('ALTER TABLE `payment_payables` DROP INDEX `idx_payable_cost_uid`');
+			await knex.raw(
+				'ALTER TABLE `payment_payables` DROP INDEX `idx_payable_cost_uid`'
+			);
 		}
 		await knex.raw('ALTER TABLE `payment_payables` DROP COLUMN `cost_uid`');
 	}
@@ -285,7 +301,9 @@ export async function down(knex) {
 			[index]
 		);
 		if (rows.length) {
-			await knex.raw(`ALTER TABLE \`purchase_invoices\` DROP INDEX \`${index}\``);
+			await knex.raw(
+				`ALTER TABLE \`purchase_invoices\` DROP INDEX \`${index}\``
+			);
 		}
 	}
 	for (const column of [
@@ -314,7 +332,9 @@ export async function down(knex) {
 			[column]
 		);
 		if (rows.length) {
-			await knex.raw(`ALTER TABLE \`purchase_invoices\` DROP COLUMN \`${column}\``);
+			await knex.raw(
+				`ALTER TABLE \`purchase_invoices\` DROP COLUMN \`${column}\``
+			);
 		}
 	}
 }

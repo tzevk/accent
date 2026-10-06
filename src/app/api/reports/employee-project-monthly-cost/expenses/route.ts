@@ -16,7 +16,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
-import { fetchCostDrilldown } from '@/lib/company-expenditure';
+import { fetchCostDrilldown, isCurrencyCode } from '@/lib/company-expenditure';
 import type { CostDrilldownQuery } from '@/lib/company-expenditure';
 
 export const runtime = 'nodejs';
@@ -38,6 +38,17 @@ const CLASSIFICATIONS = [
 	'project',
 	'company_overhead',
 	'unallocated',
+	'unresolved',
+] as const;
+
+const NATURES = [
+	'all',
+	'operating',
+	'non_operating',
+	'advance',
+	'deposit',
+	'prepayment',
+	'capital',
 	'unresolved',
 ] as const;
 
@@ -85,10 +96,19 @@ export async function GET(request: Request) {
 		}
 		const classification = url.searchParams.get('classification') ?? 'all';
 		if (
-			!CLASSIFICATIONS.includes(classification as (typeof CLASSIFICATIONS)[number])
+			!CLASSIFICATIONS.includes(
+				classification as (typeof CLASSIFICATIONS)[number]
+			)
 		) {
 			return NextResponse.json(
 				{ success: false, error: `Unknown classification: ${classification}` },
+				{ status: 400 }
+			);
+		}
+		const nature = url.searchParams.get('nature') ?? 'all';
+		if (!NATURES.includes(nature as (typeof NATURES)[number])) {
+			return NextResponse.json(
+				{ success: false, error: `Unknown nature: ${nature}` },
 				{ status: 400 }
 			);
 		}
@@ -102,6 +122,23 @@ export async function GET(request: Request) {
 					{ status: 400 }
 				);
 			}
+		}
+
+		// The reporting basis the record status is stated in; absent means the
+		// company reporting currency. The shared validator owns the rule.
+		const reportingParam = url.searchParams.get('reporting_currency');
+		const reportingCurrency = reportingParam
+			? reportingParam.trim().toUpperCase()
+			: null;
+		if (reportingCurrency !== null && !isCurrencyCode(reportingCurrency)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Valid reporting_currency (three-letter code) is required',
+					code: 'invalid_reporting_currency',
+				},
+				{ status: 400 }
+			);
 		}
 
 		const limitParam = url.searchParams.get('limit');
@@ -121,11 +158,30 @@ export async function GET(request: Request) {
 			);
 		}
 
+		// The reporting basis every record's conversion status is stated in;
+		// absent means the company reporting currency.
+		const reportingParam = url.searchParams.get('reporting_currency');
+		const reportingCurrency = reportingParam
+			? reportingParam.trim().toUpperCase()
+			: null;
+		if (reportingCurrency && !/^[A-Z]{3}$/.test(reportingCurrency)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Valid reporting_currency (three-letter code) is required',
+					code: 'invalid_reporting_currency',
+				},
+				{ status: 400 }
+			);
+		}
+
 		const query: CostDrilldownQuery = {
 			month,
 			state: state as CostDrilldownQuery['state'],
 			classification: classification as CostDrilldownQuery['classification'],
+			nature: nature as CostDrilldownQuery['nature'],
 			projectId,
+			reportingCurrency,
 			limit,
 			offset,
 		};

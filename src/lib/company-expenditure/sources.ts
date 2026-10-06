@@ -70,7 +70,11 @@ export function registerCostSource(adapter: CostSourceAdapter): void {
 
 type DbRow = Record<string, unknown>;
 
-function s(row: DbRow, key: string, fallback: string | null = null): string | null {
+function s(
+	row: DbRow,
+	key: string,
+	fallback: string | null = null
+): string | null {
 	const value = row[key];
 	if (value === null || value === undefined) return fallback;
 	return typeof value === 'string' ? value : String(value);
@@ -158,7 +162,12 @@ export async function registerCostIdentity(
        cost_uid = VALUES(cost_uid),
        basis = 'system',
        review_state = 'confirmed'`,
-		[costUid, input.sourceTable, String(input.sourceId), input.createdBy ?? null]
+		[
+			costUid,
+			input.sourceTable,
+			String(input.sourceId),
+			input.createdBy ?? null,
+		]
 	);
 }
 
@@ -191,9 +200,14 @@ function enumOrThrow<T extends string>(
 ): T {
 	if (value === undefined) return fallback;
 	if (!allowed.includes(value)) {
-		throw new CostError('invalid_link_value', `Unknown ${field}: ${value}`, 422, {
-			field,
-		});
+		throw new CostError(
+			'invalid_link_value',
+			`Unknown ${field}: ${value}`,
+			422,
+			{
+				field,
+			}
+		);
 	}
 	return value;
 }

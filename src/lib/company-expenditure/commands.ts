@@ -27,9 +27,8 @@ import {
 	convertToReporting,
 	currencyCodeOf,
 	evidenceOf,
-	isCurrencyCode,
-	parseConversionRate,
 	reportingCurrencyOf,
+	resolveConversion,
 } from './currency';
 import {
 	evaluateCost,
@@ -63,10 +62,11 @@ export interface CommandOptions {
 }
 
 /**
- * Run `work` in the caller's transaction when one is supplied, and in a fresh
- * module-owned transaction otherwise. Exported so a source module (#315, #316,
- * #317) can honour the same contract: join the caller's transaction, never
- * open a second one around it.
+ * Run `work` in a transaction: the caller's when one is supplied (so a
+ * financial-close or revision check commits with this change), otherwise a
+ * transaction this module owns. Shared with the period-charge write path and
+ * with the source modules (#315 other expenses, #316 petty cash), which join
+ * the caller's transaction and never open a second one around it.
  */
 export async function inTransaction<T>(
 	options: CommandOptions | undefined,
@@ -147,6 +147,14 @@ const JOURNAL_COMMAND: Record<CostCommandName, CostJournalCommand> = {
 };
 
 const CLASSIFICATIONS = ['project', 'company_overhead', 'unallocated'] as const;
+const NATURES = [
+	'operating',
+	'advance',
+	'deposit',
+	'prepayment',
+	'capital',
+	'unresolved',
+] as const;
 const TAX_TREATMENTS = [
 	'none',
 	'recoverable',
@@ -181,111 +189,6 @@ function pickEnum<T extends string>(
 		: null;
 }
 
-interface ResolvedConversion {
-	currency: string | null;
-	reportingCurrency: string;
-	conversionRate: string | null;
-	conversionDate: string | null;
-	conversionEvidenceReference: string | null;
-}
-
-/**
- * Validate the original currency, the reporting target, and the optional
- * conversion triple. Evidence moves as a whole or not at all; a rate for a
- * cost already in its reporting currency, or for a cost whose original
- * currency is unknown, is contradictory and refused rather than dropped.
- */
-function resolveConversion(input: {
-	currency: unknown;
-	reportingCurrency: unknown;
-	conversionRate: unknown;
-	conversionDate: unknown;
-	conversionEvidenceReference: unknown;
-}): ResolvedConversion {
-	if (!isCurrencyCode(input.currency)) {
-		throw new CostError(
-			'invalid_currency',
-			'Currency must be a three-letter code',
-			422,
-			{ field: 'currency' }
-		);
-	}
-	if (!isCurrencyCode(input.reportingCurrency)) {
-		throw new CostError(
-			'invalid_currency',
-			'Reporting currency must be a three-letter code',
-			422,
-			{ field: 'reporting_currency' }
-		);
-	}
-	const currency = currencyCodeOf(input.currency);
-	const reportingCurrency = reportingCurrencyOf({
-		reportingCurrency: currencyCodeOf(input.reportingCurrency),
-	});
-	const rawRate = input.conversionRate;
-	const rateText =
-		rawRate === null || rawRate === undefined ? null : String(rawRate).trim();
-	const hasRate = rateText !== null && rateText.length > 0;
-	const conversionDate = dateOrNull(input.conversionDate);
-	const conversionEvidenceReference = text(input.conversionEvidenceReference, 500);
-	const hasAny =
-		hasRate || conversionDate !== null || conversionEvidenceReference !== null;
-	if (!hasAny) {
-		return {
-			currency,
-			reportingCurrency,
-			conversionRate: null,
-			conversionDate: null,
-			conversionEvidenceReference: null,
-		};
-	}
-	if (currency === null) {
-		throw new CostError(
-			'conversion_requires_currency',
-			'Conversion evidence needs the original currency first',
-			422,
-			{ field: 'conversion_rate' }
-		);
-	}
-	if (currency === reportingCurrency) {
-		throw new CostError(
-			'conversion_not_applicable',
-			'A cost already in its reporting currency carries no conversion evidence',
-			422,
-			{ field: 'conversion_rate' }
-		);
-	}
-	if (hasRate && parseConversionRate(rateText) === null) {
-		throw new CostError(
-			'invalid_conversion_rate',
-			'Conversion rate must be positive with at most 10 decimal places',
-			422,
-			{ field: 'conversion_rate' }
-		);
-	}
-	const missing: string[] = [];
-	if (!hasRate) missing.push('conversion_rate');
-	if (conversionDate === null) missing.push('conversion_date');
-	if (conversionEvidenceReference === null) {
-		missing.push('conversion_evidence_reference');
-	}
-	if (missing.length > 0) {
-		throw new CostError(
-			'conversion_evidence_incomplete',
-			'Conversion evidence needs the rate, its effective date, and its evidence reference together',
-			422,
-			{ missing }
-		);
-	}
-	return {
-		currency,
-		reportingCurrency,
-		conversionRate: rateText,
-		conversionDate,
-		conversionEvidenceReference,
-	};
-}
-
 function enumOrThrow<T extends string>(
 	value: unknown,
 	allowed: readonly T[],
@@ -312,6 +215,7 @@ async function loadCostForUpdate(
 ): Promise<Record<string, unknown> | null> {
 	const [rows] = (await db.execute(
 		`SELECT id, cost_uid, expense_number, expense_date, cost_classification,
+            cost_nature,
             recognition_state, recognition_period, period_basis,
             service_period_start, service_period_end, tax_treatment,
             tax_evidence_reference, recognized_amount, source_reference,
@@ -395,6 +299,11 @@ export async function recordCost(
 		'invalid_classification',
 		'cost_classification'
 	);
+	// A caller that states no nature records operating cost, the register's
+	// original meaning; nothing is ever auto-classified as advance or capital.
+	const nature =
+		enumOrThrow(input.nature, NATURES, 'invalid_nature', 'cost_nature') ??
+		'operating';
 	const taxTreatment =
 		enumOrThrow(
 			input.taxTreatment,
@@ -443,6 +352,7 @@ export async function recordCost(
 
 	const financial = {
 		classification,
+		nature,
 		state,
 		currency,
 		reportingCurrency: conversion.reportingCurrency,
@@ -489,13 +399,14 @@ export async function recordCost(
               amount, tax_amount, total_amount, currency, payment_mode, payment_reference,
               paid_to, paid_by, receipt_url, is_billable, is_reimbursable,
               project_id, department, notes, status, created_by, isDelete,
-              cost_uid, cost_classification, recognition_state, recognition_period,
+              cost_uid, cost_classification, cost_nature, recognition_state, recognition_period,
               period_basis, service_period_start, service_period_end, tax_treatment,
               tax_evidence_reference, recognized_amount, source_reference,
               evidence_reference, financial_version,
               reporting_currency, conversion_rate, conversion_date,
               conversion_evidence_reference, converted_amount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
+                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
                    ?, ?, ?, ?, ?)`,
 					[
 						expenseNumber,
@@ -522,6 +433,7 @@ export async function recordCost(
 						actor.id,
 						costUid,
 						classification,
+						nature,
 						state,
 						period,
 						basis,
@@ -562,6 +474,7 @@ export async function recordCost(
 					evidenceReference: financial.evidenceReference,
 					snapshot: {
 						classification,
+						nature,
 						recognition_period: period,
 						period_basis: basis,
 						currency,
@@ -589,6 +502,7 @@ export async function recordCost(
 					period_basis: basis,
 					recognized_amount: null,
 					cost_classification: classification,
+					cost_nature: nature,
 				};
 			});
 		} catch (error) {
@@ -617,6 +531,7 @@ export async function loadCost(
 ): Promise<CostRecord | null> {
 	const [rows] = (await db.execute(
 		`SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.cost_classification,
+            e.cost_nature,
             e.recognition_state, e.recognition_period, e.period_basis,
             e.service_period_start, e.service_period_end, e.tax_treatment,
             e.tax_evidence_reference, e.recognized_amount, e.source_reference,
@@ -681,6 +596,59 @@ export async function executeCommand(
 		}
 
 		const patch = input.patch ?? {};
+		// A conversion rate is evidence for one currency pair. Changing either
+		// side invalidates the stored triple: it is not inherited, because that
+		// would re-associate an old rate with a new currency and silently
+		// reprice the reporting figures. A pair that still needs converting
+		// must present the full fresh evidence in the same command.
+		const storedPair = {
+			currency: currencyCodeOf(row.currency),
+			reportingCurrency: reportingCurrencyOf({
+				reportingCurrency:
+					row.reporting_currency === null ||
+					row.reporting_currency === undefined
+						? null
+						: String(row.reporting_currency),
+			}),
+		};
+		const requestedPair = {
+			currency:
+				patch.currency !== undefined
+					? currencyCodeOf(patch.currency)
+					: storedPair.currency,
+			reportingCurrency:
+				patch.reportingCurrency !== undefined
+					? reportingCurrencyOf({
+							reportingCurrency: currencyCodeOf(patch.reportingCurrency),
+						})
+					: storedPair.reportingCurrency,
+		};
+		const pairChanged =
+			requestedPair.currency !== storedPair.currency ||
+			requestedPair.reportingCurrency !== storedPair.reportingCurrency;
+		const suppliesConversionEvidence =
+			patch.conversionRate !== undefined ||
+			patch.conversionDate !== undefined ||
+			patch.conversionEvidenceReference !== undefined;
+		if (
+			pairChanged &&
+			!suppliesConversionEvidence &&
+			requestedPair.currency !== null &&
+			requestedPair.currency !== requestedPair.reportingCurrency
+		) {
+			throw new CostError(
+				'conversion_evidence_required',
+				'Changing the original/reporting currency pair requires fresh conversion evidence for the new pair',
+				422,
+				{
+					fields: [
+						'conversion_rate',
+						'conversion_date',
+						'conversion_evidence_reference',
+					],
+				}
+			);
+		}
 		const mergedRaw = {
 			classification:
 				patch.classification !== undefined
@@ -691,6 +659,16 @@ export async function executeCommand(
 							'cost_classification'
 						)
 					: ((row.cost_classification ?? null) as CostRecord['classification']),
+			nature:
+				patch.nature !== undefined
+					? ((enumOrThrow(
+							patch.nature,
+							NATURES,
+							'invalid_nature',
+							'cost_nature'
+						) ?? 'operating') as CostRecord['nature'])
+					: (((row.cost_nature ?? 'operating') as CostRecord['nature']) ??
+						'operating'),
 			projectId:
 				patch.projectId !== undefined
 					? patch.projectId
@@ -714,18 +692,22 @@ export async function executeCommand(
 				patch.reportingCurrency !== undefined
 					? patch.reportingCurrency
 					: row.reporting_currency,
-			conversionRate:
-				patch.conversionRate !== undefined
+			// Stored evidence survives only when the pair does not change.
+			conversionRate: pairChanged
+				? (patch.conversionRate ?? null)
+				: patch.conversionRate !== undefined
 					? patch.conversionRate
 					: row.conversion_rate === null || row.conversion_rate === undefined
 						? null
 						: String(row.conversion_rate),
-			conversionDate:
-				patch.conversionDate !== undefined
+			conversionDate: pairChanged
+				? (patch.conversionDate ?? null)
+				: patch.conversionDate !== undefined
 					? patch.conversionDate
 					: row.conversion_date,
-			conversionEvidenceReference:
-				patch.conversionEvidenceReference !== undefined
+			conversionEvidenceReference: pairChanged
+				? (patch.conversionEvidenceReference ?? null)
+				: patch.conversionEvidenceReference !== undefined
 					? patch.conversionEvidenceReference
 					: row.conversion_evidence_reference,
 			grossAmount:
@@ -860,7 +842,8 @@ export async function executeCommand(
 				: toNumber(sub(R(merged.grossAmount), R(merged.taxAmount ?? 0)));
 		const [updated] = (await db.execute(
 			`UPDATE expenses
-          SET cost_classification = ?, recognition_state = ?, recognition_period = ?,
+          SET cost_classification = ?, cost_nature = ?, recognition_state = ?,
+              recognition_period = ?,
               period_basis = ?, service_period_start = ?, service_period_end = ?,
               expense_date = ?, tax_treatment = ?, tax_evidence_reference = ?,
               currency = ?, reporting_currency = ?, conversion_rate = ?,
@@ -874,6 +857,7 @@ export async function executeCommand(
         WHERE id = ? AND isDelete = 0 AND financial_version = ?`,
 			[
 				merged.classification,
+				merged.nature,
 				target,
 				resolved.period,
 				resolved.basis,
@@ -920,6 +904,7 @@ export async function executeCommand(
 			evidenceReference: merged.evidenceReference,
 			snapshot: {
 				classification: merged.classification,
+				nature: merged.nature,
 				recognition_period: resolved.period,
 				period_basis: resolved.basis,
 				currency: merged.currency,

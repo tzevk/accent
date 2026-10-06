@@ -18,6 +18,15 @@ import {
 } from './lib/other-expense-fixtures';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 import {
+	ORDER_PROJECT,
+	cleanupOrderFixtures,
+	seedOrderFixtures,
+} from './lib/order-fixtures';
+import {
+	cleanupSupplierInvoiceFixtures,
+	seedSupplierInvoiceFixtures,
+} from './lib/supplier-invoice-fixtures';
+import {
 	cleanupUtilizationFixtures,
 	seedUtilizationFixtures,
 } from './lib/utilization-fixtures';
@@ -31,8 +40,10 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupFixtures();
 		await cleanupAttendanceFixtures();
 		await cleanupUtilizationFixtures();
+		await cleanupOrderFixtures();
 		await cleanupExpenditureFixtures();
 		await cleanupOtherExpenseFixtures();
+		await cleanupSupplierInvoiceFixtures();
 		await cleanupExpenditureCurrencyFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
@@ -83,7 +94,7 @@ export default async function globalSetup(): Promise<void> {
 		const utilization = await seedUtilizationFixtures();
 		console.log(
 			`[e2e] utilization fixtures seeded for ${utilization.month} ` +
-			`(${utilization.employees} employees, ${utilization.attendance} attendance rows, ` +
+				`(${utilization.employees} employees, ${utilization.attendance} attendance rows, ` +
 				`${utilization.assignments} assignments, ` +
 				`${utilization.loggedDays} logged days, ` +
 				`${utilization.linkedUsers} linked user accounts, ` +
@@ -107,11 +118,27 @@ export default async function globalSetup(): Promise<void> {
 				`(project ${otherExpenses.projectId}, target ${otherExpenses.targetCostUid})`
 		);
 
+		const supplier = await seedSupplierInvoiceFixtures();
+		console.log(
+			`[e2e] supplier invoice fixtures seeded for ${supplier.month}, ` +
+				`${supplier.invoiceMonth} and ${supplier.laterMonth} ` +
+				`(${supplier.invoices} invoices, ` +
+				`${Object.keys(supplier.projects).length} projects, ` +
+				`${Object.keys(supplier.payableIds).length} payables)`
+		);
+
 		const currency = await seedExpenditureCurrencyFixtures();
 		console.log(
 			`[e2e] expenditure currency fixtures seeded for ${currency.months.join(', ')} ` +
 				`(${currency.costs} direct costs, ` +
 				`${Object.keys(currency.projects).length} projects)`
+		);
+
+		const orders = await seedOrderFixtures();
+		console.log(
+			`[e2e] order fixtures seeded for ${orders.month} ` +
+				`(project ${ORDER_PROJECT.code} #${orders.projectId}, ` +
+				`${Object.keys(orders.legacy).length} legacy copies)`
 		);
 	} finally {
 		await closeDb();

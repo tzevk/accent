@@ -12,8 +12,10 @@
  *
  * Data comes from `/api/reports/employee-project-monthly-cost?view=expenditure`
  * (reconciliation), `.../expenses` (drilldown and review queue),
- * `POST /api/admin/expenses` (entry), and
- * `POST /api/admin/expenses/{id}/commands` (versioned recognition commands).
+ * `POST /api/admin/expenses` (entry),
+ * `POST /api/admin/expenses/{id}/commands` (versioned recognition commands),
+ * and `POST /api/admin/expenses/{id}/charges[/{chargeUid}]` (approved period
+ * consumption of a non-operating balance, #317).
  */
 
 import { Fragment, useMemo, useState } from 'react';
@@ -30,8 +32,11 @@ import {
 } from '@heroicons/react/24/outline';
 import SearchableSelect from '@/components/ui/searchable-select';
 import { apiGet, apiPost } from '@/lib/api-client';
-import { formatCurrencyIn, formatDate } from '@/lib/format';
-import type { CostRecordJson } from '@/lib/company-expenditure/types';
+import { formatCurrencyIn, formatDate, formatNumber } from '@/lib/format';
+import type {
+	CostRecordJson,
+	PeriodChargeJson,
+} from '@/lib/company-expenditure';
 import BudgetSection, { type BudgetSectionPayload } from './budget-section';
 
 interface GroupRow {
@@ -63,6 +68,8 @@ interface CurrencyTotalRow {
 	gross_liability: number;
 	recoverable_tax: number;
 	unresolved_tax_gross: number;
+	period_charge_amount: number;
+	period_charge_count: number;
 	record_count: number;
 	reporting: CurrencyReportingRow;
 }
@@ -77,6 +84,7 @@ interface ProjectRow {
 	converted_incurred_cost: number | null;
 	incurred_cost: number;
 	record_count: number;
+	period_charge_count: number;
 	not_confirmed_cost: number | null;
 	previous_month_cost: number | null;
 	change_amount: number | null;
@@ -94,6 +102,43 @@ interface CoverageNoticeRow {
 	label: string;
 	detail: string;
 	severity: string;
+}
+
+/** One non-operating item with its balance, consumption, and charges (#317). */
+interface NonOperatingItemRow {
+	expense_id: number;
+	cost_uid: string;
+	expense_number: string;
+	nature: string;
+	source_state: string;
+	cost_classification: string | null;
+	project_id: number | null;
+	project_code: string | null;
+	project_name: string | null;
+	currency: string | null;
+	gross_amount: number | null;
+	recognized_amount: number | null;
+	recognition_period: string | null;
+	period_basis: string;
+	source_reference: string | null;
+	evidence_reference: string | null;
+	consumed_this_month: number;
+	consumed_to_date: number;
+	remaining_amount: number | null;
+	charges: PeriodChargeJson[];
+}
+
+interface NonOperatingSectionRow {
+	currency: string | null;
+	excluded_source_amount: number | null;
+	consumed_this_month: number | null;
+	consumed_to_date: number | null;
+	remaining_amount: number | null;
+	unapproved_count: number;
+	unresolved_count: number;
+	unresolved_source_amount: number | null;
+	items: NonOperatingItemRow[];
+	charges_from_prior_items: PeriodChargeJson[];
 }
 
 interface ReconciliationPayload {
@@ -124,12 +169,16 @@ interface ReconciliationPayload {
 		record_count: number;
 	};
 	projects: ProjectRow[];
+	non_operating: NonOperatingSectionRow;
 	evidence: {
 		recognized: EvidenceRow;
 		pending_evidence: EvidenceRow;
 		draft: EvidenceRow;
 		rejected: EvidenceRow;
 		cancelled: EvidenceRow;
+		period_charges: EvidenceRow;
+		non_operating_recognized: EvidenceRow;
+		unresolved_nature: EvidenceRow;
 		unresolved_classification: {
 			count: number;
 			currency: string | null;
@@ -151,12 +200,19 @@ interface ReconciliationPayload {
 }
 
 interface DrilldownPayload {
+	month: string;
+	scope: string;
 	total: number;
 	records: CostRecordJson[];
+	period_charges: PeriodChargeJson[];
 	totals: {
 		confirmed_amount: number | null;
 		currency: string | null;
 		records: number;
+		non_operating_amount: number | null;
+		nature_unresolved_amount: number | null;
+		period_charge_amount: number | null;
+		period_charge_records: number;
 	};
 }
 
@@ -203,16 +259,44 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
  * expense path.
  */
 const SOURCE_REGISTER_LABELS: Record<string, string> = {
-	other_expense: 'Other expense — approve in the register',
-	supplier_invoice: 'Supplier invoice — approve in the register',
-	petty_cash: 'Petty cash — approve in the register',
-	non_operating: 'Non-operating charge — approve in the register',
-	payroll: 'Payroll allocation — finalized with payroll',
+	other_expense: 'Recognized in the Other Expense register',
+	supplier_invoice: 'Recognized in the Purchase Invoice register',
+	petty_cash: 'Recognized in the Petty Cash register',
+	non_operating: 'Recognized in the period-charge workflow',
+	payroll: 'Finalized with payroll',
 };
 
 const SOURCE_REGISTER_LINKS: Record<string, string> = {
 	other_expense: '/admin/other-expenses',
 };
+
+/** What the spend is (#317), in the reader's words. */
+const NATURE_LABELS: Record<string, string> = {
+	operating: 'Operating cost',
+	advance: 'Advance',
+	deposit: 'Deposit',
+	prepayment: 'Prepayment',
+	capital: 'Capital item',
+	unresolved: 'Treatment unresolved',
+};
+
+const CHARGE_BASIS_LABELS: Record<string, string> = {
+	consumption: 'Consumption',
+	depreciation: 'Depreciation',
+	amortization: 'Amortization',
+};
+
+/** Natures whose balance is consumed by approved period charges. */
+const CONSUMABLE_NATURES = ['advance', 'deposit', 'prepayment', 'capital'];
+
+const NATURE_OPTIONS = [
+	{ value: 'operating', label: 'Operating cost' },
+	{ value: 'advance', label: 'Advance (balance, not cost)' },
+	{ value: 'deposit', label: 'Deposit (balance, not cost)' },
+	{ value: 'prepayment', label: 'Prepayment (balance, not cost)' },
+	{ value: 'capital', label: 'Capital item (balance, not cost)' },
+	{ value: 'unresolved', label: 'Treatment unresolved (excluded)' },
+];
 
 const CHANGE_LABELS: Record<string, string> = {
 	no_prior: 'No prior month',
@@ -227,10 +311,13 @@ function errorMessage(error: unknown): string {
 }
 
 /** Money whose original currency is unknown is never labelled as INR. */
-function formatSourceMoney(value: number | null, currency: string | null): string {
+function formatSourceMoney(
+	value: number | null,
+	currency: string | null
+): string {
 	if (value === null) return '—';
 	return currency === null
-		? `${value.toFixed(2)} (currency unknown)`
+		? `${formatNumber(value)} (currency unknown)`
 		: formatCurrencyIn(value, currency);
 }
 
@@ -252,6 +339,11 @@ export default function ExpenditureView({
 		record: CostRecordJson;
 		command: 'recognize' | 'reject' | 'cancel';
 	} | null>(null);
+	const [chargeTarget, setChargeTarget] = useState<NonOperatingItemRow | null>(
+		null
+	);
+	const [cancelChargeTarget, setCancelChargeTarget] =
+		useState<PeriodChargeJson | null>(null);
 
 	const reconciliationQuery = useQuery<{ data: ReconciliationPayload }>({
 		queryKey: ['expenditure', month, projectFilter, reportingCurrency],
@@ -268,11 +360,12 @@ export default function ExpenditureView({
 	});
 
 	const queueQuery = useQuery<{ data: DrilldownPayload }>({
-		queryKey: ['expenditure-queue', month],
+		queryKey: ['expenditure-queue', month, reportingCurrency],
 		queryFn: () =>
 			apiGet('/api/reports/employee-project-monthly-cost/expenses', {
 				month,
 				state: 'unconfirmed',
+				reporting_currency: reportingCurrency,
 			}),
 		enabled: !!month,
 		refetchOnWindowFocus: false,
@@ -280,12 +373,18 @@ export default function ExpenditureView({
 	});
 
 	const drilldownQuery = useQuery<{ data: DrilldownPayload }>({
-		queryKey: ['expenditure-drilldown', month, expandedProject],
+		queryKey: [
+			'expenditure-drilldown',
+			month,
+			expandedProject,
+			reportingCurrency,
+		],
 		queryFn: () =>
 			apiGet('/api/reports/employee-project-monthly-cost/expenses', {
 				month,
 				state: 'recognized',
 				project_id: expandedProject ?? undefined,
+				reporting_currency: reportingCurrency,
 			}),
 		enabled: expandedProject !== null,
 		refetchOnWindowFocus: false,
@@ -330,6 +429,50 @@ export default function ExpenditureView({
 		},
 	});
 
+	// Period consumption is an approval (#317): it joins the same
+	// invalidation path as the recognition commands, so the reconciliation,
+	// the queue, and the drilldown all read the post-charge truth.
+	const chargeMutation = useMutation({
+		mutationFn: (input: {
+			sourceId: number;
+			payload: Record<string, unknown>;
+		}) =>
+			apiPost(`/api/admin/expenses/${input.sourceId}/charges`, input.payload),
+		onSuccess: () => {
+			setChargeTarget(null);
+			void queryClient.invalidateQueries({ queryKey: ['expenditure'] });
+			void queryClient.invalidateQueries({ queryKey: ['expenditure-queue'] });
+			void queryClient.invalidateQueries({
+				queryKey: ['expenditure-drilldown'],
+			});
+		},
+	});
+
+	const cancelChargeMutation = useMutation({
+		mutationFn: (input: {
+			sourceId: number;
+			chargeUid: string;
+			expectedVersion: number;
+			reason: string;
+		}) =>
+			apiPost(
+				`/api/admin/expenses/${input.sourceId}/charges/${input.chargeUid}`,
+				{
+					command: 'cancel',
+					expected_version: input.expectedVersion,
+					reason: input.reason,
+				}
+			),
+		onSuccess: () => {
+			setCancelChargeTarget(null);
+			void queryClient.invalidateQueries({ queryKey: ['expenditure'] });
+			void queryClient.invalidateQueries({ queryKey: ['expenditure-queue'] });
+			void queryClient.invalidateQueries({
+				queryKey: ['expenditure-drilldown'],
+			});
+		},
+	});
+
 	const projectOptions = useMemo(() => {
 		const options = (data?.project_options ?? []).map((option) => ({
 			value: String(option.project_id),
@@ -340,10 +483,7 @@ export default function ExpenditureView({
 
 	if (!month) {
 		return (
-			<div
-				data-testid="expenditure-view"
-				className="p-6 text-sm text-gray-500"
-			>
+			<div data-testid="expenditure-view" className="p-6 text-sm text-gray-500">
 				Select a month to see the company expenditure reconciliation.
 			</div>
 		);
@@ -381,6 +521,10 @@ export default function ExpenditureView({
 		data.company.currency_totals
 			.map((row) => formatCurrencyIn(row[key], row.currency))
 			.join(' · ');
+	// A missing amount is unknown, never zero, and a multi-currency figure is
+	// not stated at all; both read as "Unknown" here rather than as a number.
+	const money = (value: number | null, currency: string | null) =>
+		value === null ? 'Unknown' : formatCurrencyIn(value, currency ?? 'INR');
 
 	return (
 		<div data-testid="expenditure-view" className="p-3 sm:p-4">
@@ -450,9 +594,12 @@ export default function ExpenditureView({
 			</div>
 
 			<p className="mb-1 text-xs text-gray-500">
-				Company Incurred Cost for {data.month_label}, stated in{' '}
-				{reportingCurrencyCode}. Each recognized direct cost is counted once;
-				Project filters narrow the detail only.
+				Company Incurred Cost for {data.month_label}
+				{data.company.currency !== null
+					? `, stated in ${data.company.currency}`
+					: ', shown per currency'}
+				. Each recognized direct cost is counted once; Project filters narrow
+				the detail only.
 			</p>
 			<p
 				data-testid="conversion-status"
@@ -494,7 +641,10 @@ export default function ExpenditureView({
 					>
 						{data.company.incurred_cost === null
 							? 'Not combinable'
-							: formatCurrencyIn(data.company.incurred_cost, data.company.currency)}
+							: formatCurrencyIn(
+									data.company.incurred_cost,
+									data.company.currency
+								)}
 					</p>
 					<p className="text-[10px] text-gray-500">
 						{data.company.record_count} recognized record(s)
@@ -509,8 +659,7 @@ export default function ExpenditureView({
 						data-amount={groupAmount('incurred_project_cost') ?? ''}
 						className="mt-0.5 text-lg font-bold text-gray-900"
 					>
-						{groupAmount('incurred_project_cost') === null &&
-						!companyStated
+						{groupAmount('incurred_project_cost') === null && !companyStated
 							? 'See currencies'
 							: formatCurrencyIn(
 									groupAmount('incurred_project_cost') ?? 0,
@@ -660,8 +809,8 @@ export default function ExpenditureView({
 								: currencyBreakdown('recoverable_tax')}
 						</li>
 						<li data-testid="tax-unresolved">
-							Unresolved tax kept at gross:{' '}
-							{data.company.unresolved_tax.count} record(s),{' '}
+							Unresolved tax kept at gross: {data.company.unresolved_tax.count}{' '}
+							record(s),{' '}
 							{data.company.unresolved_tax.gross_amount !== null
 								? formatCurrencyIn(
 										data.company.unresolved_tax.gross_amount,
@@ -729,6 +878,195 @@ export default function ExpenditureView({
 					))}
 				</ul>
 			</div>
+
+			{/* Non-operating balances and their approved consumption (#317) */}
+			{(data.non_operating.items.length > 0 ||
+				data.non_operating.charges_from_prior_items.length > 0) && (
+				<div
+					data-testid="non-operating-section"
+					className="mt-3 rounded-xl border border-amber-200 bg-amber-50/40 p-3"
+				>
+					<div className="flex flex-wrap items-baseline justify-between gap-2">
+						<p className="text-xs font-semibold text-gray-800">
+							Non-operating items — advances, deposits, prepayments, capital
+						</p>
+						<p className="text-[11px] text-gray-600">
+							Shown separately from operating cost: a payment or invoice here is
+							a balance, and only approved period consumption is counted.
+						</p>
+					</div>
+					<div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-700">
+						<span data-testid="non-operating-excluded">
+							Excluded source amount{' '}
+							{money(
+								data.non_operating.excluded_source_amount,
+								data.non_operating.currency
+							)}
+						</span>
+						<span data-testid="non-operating-consumed">
+							Consumed this month{' '}
+							{money(
+								data.non_operating.consumed_this_month,
+								data.non_operating.currency
+							)}
+						</span>
+						<span>
+							Consumed to date{' '}
+							{money(
+								data.non_operating.consumed_to_date,
+								data.non_operating.currency
+							)}
+						</span>
+						<span data-testid="non-operating-remaining">
+							Remaining{' '}
+							{money(
+								data.non_operating.remaining_amount,
+								data.non_operating.currency
+							)}
+						</span>
+						{data.non_operating.unapproved_count > 0 && (
+							<span data-testid="non-operating-unapproved">
+								{data.non_operating.unapproved_count} item(s) not approved yet —
+								no supported balance to consume
+							</span>
+						)}
+						{data.non_operating.unresolved_count > 0 && (
+							<span data-testid="non-operating-unresolved">
+								Treatment unresolved: {data.non_operating.unresolved_count}{' '}
+								record(s),{' '}
+								{money(
+									data.non_operating.unresolved_source_amount,
+									data.non_operating.currency
+								)}{' '}
+								excluded
+							</span>
+						)}
+					</div>
+					<ul className="mt-2 space-y-1.5">
+						{data.non_operating.items.map((entry) => (
+							<li
+								key={entry.cost_uid}
+								data-testid="non-operating-item"
+								data-cost-uid={entry.cost_uid}
+								data-nature={entry.nature}
+								data-recognized={entry.recognized_amount ?? ''}
+								data-remaining={entry.remaining_amount ?? ''}
+								className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+							>
+								<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+									<span className="font-medium text-gray-900">
+										{entry.source_reference ?? entry.expense_number}
+									</span>
+									<span
+										data-testid="item-nature"
+										className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900"
+									>
+										{NATURE_LABELS[entry.nature] ?? entry.nature}
+									</span>
+									<span>
+										{entry.cost_classification
+											? CLASSIFICATION_LABELS[entry.cost_classification]
+											: 'Destination unresolved'}
+										{entry.project_code ? ` · ${entry.project_code}` : ''}
+									</span>
+									<span>
+										Supported balance{' '}
+										{money(entry.recognized_amount, entry.currency)}
+									</span>
+									<span>
+										Consumed to date{' '}
+										{money(entry.consumed_to_date, entry.currency)}
+									</span>
+									<span className="font-semibold text-gray-900">
+										Remaining {money(entry.remaining_amount, entry.currency)}
+									</span>
+									<span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">
+										{STATE_LABELS[entry.source_state] ?? entry.source_state}
+									</span>
+									<span className="text-[10px] text-gray-500">
+										{entry.evidence_reference ?? 'No evidence reference'}
+									</span>
+									{canRecognize &&
+										entry.source_state === 'recognized' &&
+										CONSUMABLE_NATURES.includes(entry.nature) && (
+											<button
+												type="button"
+												data-testid="capture-charge"
+												onClick={() => {
+													chargeMutation.reset();
+													setChargeTarget(entry);
+												}}
+												className="rounded border border-[#64126D]/40 bg-[#64126D]/5 px-2 py-0.5 text-[11px] font-medium text-[#64126D] hover:bg-[#64126D]/10"
+											>
+												Capture period charge
+											</button>
+										)}
+								</div>
+								{entry.charges.length > 0 && (
+									<ul className="mt-1 space-y-0.5 border-t border-gray-100 pt-1">
+										{entry.charges.map((charge) => (
+											<li
+												key={charge.charge_uid}
+												data-testid="period-charge"
+												data-charge-uid={charge.charge_uid}
+												data-state={charge.state}
+												className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-600"
+											>
+												<span>
+													{CHARGE_BASIS_LABELS[charge.basis] ?? charge.basis}
+												</span>
+												<span className="font-medium text-gray-800">
+													{formatCurrencyIn(charge.amount, charge.currency)}
+												</span>
+												<span>{formatDate(charge.period)}</span>
+												<span>{charge.evidence_reference}</span>
+												<span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px]">
+													{charge.state === 'approved'
+														? 'Approved'
+														: 'Cancelled'}
+												</span>
+												{charge.state === 'approved' && canRecognize && (
+													<button
+														type="button"
+														onClick={() => {
+															cancelChargeMutation.reset();
+															setCancelChargeTarget(charge);
+														}}
+														className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-gray-50"
+													>
+														Cancel charge
+													</button>
+												)}
+											</li>
+										))}
+									</ul>
+								)}
+							</li>
+						))}
+					</ul>
+					{data.non_operating.charges_from_prior_items.length > 0 && (
+						<div
+							data-testid="prior-item-charges"
+							className="mt-2 border-t border-amber-200/70 pt-1.5 text-[11px] text-gray-600"
+						>
+							<p className="font-medium text-gray-700">
+								Charges on balances recognised in an earlier month
+							</p>
+							<ul className="mt-0.5 space-y-0.5">
+								{data.non_operating.charges_from_prior_items.map((charge) => (
+									<li key={charge.charge_uid}>
+										{charge.source_expense_number} ·{' '}
+										{CHARGE_BASIS_LABELS[charge.basis] ?? charge.basis} ·{' '}
+										{formatCurrencyIn(charge.amount, charge.currency)} ·{' '}
+										{formatDate(charge.period)} ·{' '}
+										{charge.state === 'approved' ? 'Approved' : 'Cancelled'}
+									</li>
+								))}
+							</ul>
+						</div>
+					)}
+				</div>
+			)}
 
 			{/* Project breakdown */}
 			<div className="mt-3 overflow-x-auto rounded-xl border border-gray-200 bg-white">
@@ -820,7 +1158,10 @@ export default function ExpenditureView({
 											{project.client_name ?? '—'}
 										</td>
 										<td className="px-3 py-2 text-right font-semibold text-gray-900">
-											{formatCurrencyIn(project.incurred_cost, project.currency)}
+											{formatCurrencyIn(
+												project.incurred_cost,
+												project.currency
+											)}
 										</td>
 										<td
 											data-testid="project-reporting-cost"
@@ -870,71 +1211,120 @@ export default function ExpenditureView({
 															Loading source records…
 														</p>
 													)}
-													{drilldownQuery.data?.data.records.length ===
-														0 && (
+													{drilldownQuery.data?.data.records.length === 0 && (
 														<p className="text-xs text-gray-500">
 															No recognized records for this Project in the
 															month.
 														</p>
 													)}
 													<ul className="space-y-1">
-														{drilldownQuery.data?.data.records.map(
-															(record) => (
-																<li
-																	key={record.id}
-																	data-testid="drilldown-record"
-																	data-source-reference={
-																		record.source_reference ?? ''
-																	}
-																	className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-700"
-																>
-																	<span className="font-medium">
-																		{record.source_reference ?? record.expense_number}
-																	</span>
-																	<span>{record.vendor_name ?? '—'}</span>
-																	<span>
-																		Period{' '}
-																		{formatDate(record.recognition_period)} (
-																		{PERIOD_BASIS_LABELS[record.period_basis] ??
-																			record.period_basis}
-																		)
-																	</span>
-																	<span>
-																		Gross{' '}
-																		{formatSourceMoney(
-																			record.gross_amount,
-																			record.currency
-																		)}
-																	</span>
-																	<span className="font-semibold">
-																		Recognized{' '}
-																		{formatSourceMoney(
-																			record.recognized_amount,
-																			record.currency
-																		)}
-																	</span>
-																	{record.conversion_status !== 'reporting' && (
-																		<span
-																			data-testid="record-conversion"
-																			data-status={record.conversion_status}
-																			data-rate={record.conversion_rate ?? ''}
-																			data-converted={
-																				record.converted_amount ?? ''
-																			}
-																			className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-900"
-																		>
-																			{record.conversion_status === 'unsupported'
-																				? `No rate to ${reportingCurrencyCode}`
-																				: `${record.currency} → ${reportingCurrencyCode} @ ${record.conversion_rate} on ${formatDate(record.conversion_date)} (${record.conversion_evidence_reference})`}
-																		</span>
+														{drilldownQuery.data?.data.records.map((record) => (
+															<li
+																key={`${record.source}-${record.id}-${record.split?.id ?? 0}`}
+																data-testid="drilldown-record"
+																data-source-reference={
+																	record.source_reference ?? ''
+																}
+																className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-700"
+															>
+																<span className="font-medium">
+																	{record.source_reference ??
+																		record.expense_number}
+																</span>
+																<span>{record.vendor_name ?? '—'}</span>
+																<span>
+																	Period {formatDate(record.recognition_period)}{' '}
+																	(
+																	{PERIOD_BASIS_LABELS[record.period_basis] ??
+																		record.period_basis}
+																	)
+																</span>
+																<span>
+																	Gross{' '}
+																	{formatSourceMoney(
+																		record.gross_amount,
+																		record.currency
 																	)}
-																	<span className="rounded bg-white px-1.5 py-0.5 text-[10px] text-gray-600">
-																		v{record.financial_version}
+																</span>
+																<span className="font-semibold">
+																	Recognized{' '}
+																	{formatSourceMoney(
+																		record.recognized_amount,
+																		record.currency
+																	)}
+																</span>
+																{record.conversion_status !== 'reporting' && (
+																	<span
+																		data-testid="record-conversion"
+																		data-status={record.conversion_status}
+																		data-rate={record.conversion_rate ?? ''}
+																		data-converted={
+																			record.converted_amount ?? ''
+																		}
+																		className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-900"
+																	>
+																		{record.conversion_status === 'unsupported'
+																			? `No rate to ${reportingCurrencyCode}`
+																			: `${record.currency} → ${reportingCurrencyCode} @ ${record.conversion_rate} on ${formatDate(record.conversion_date)} (${record.conversion_evidence_reference})`}
 																	</span>
-																</li>
-															)
-														)}
+																)}
+																<span className="rounded bg-white px-1.5 py-0.5 text-[10px] text-gray-600">
+																	v{record.financial_version}
+																</span>
+																{record.cost_nature !== 'operating' && (
+																	<span
+																		data-testid="record-nature"
+																		className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900"
+																	>
+																		{NATURE_LABELS[record.cost_nature] ??
+																			record.cost_nature}
+																	</span>
+																)}
+															</li>
+														))}
 													</ul>
+													{(drilldownQuery.data?.data.period_charges.length ??
+														0) > 0 && (
+														<div className="mt-1 border-t border-gray-200 pt-1">
+															<p className="text-[11px] font-medium text-gray-700">
+																Approved period consumption in{' '}
+																{formatDate(
+																	drilldownQuery.data?.data.month ?? month
+																)}
+															</p>
+															<ul className="space-y-0.5">
+																{drilldownQuery.data?.data.period_charges.map(
+																	(charge) => (
+																		<li
+																			key={charge.charge_uid}
+																			data-testid="drilldown-charge"
+																			data-charge-uid={charge.charge_uid}
+																			className="flex flex-wrap items-center gap-x-3 text-[11px] text-gray-600"
+																		>
+																			<span>
+																				{charge.source_expense_number}
+																			</span>
+																			<span>
+																				{CHARGE_BASIS_LABELS[charge.basis] ??
+																					charge.basis}
+																			</span>
+																			<span className="font-medium text-gray-800">
+																				{formatCurrencyIn(
+																					charge.amount,
+																					charge.currency
+																				)}
+																			</span>
+																			<span>
+																				{charge.state === 'approved'
+																					? 'Approved'
+																					: 'Cancelled'}
+																			</span>
+																		</li>
+																	)
+																)}
+															</ul>
+														</div>
+													)}
 												</div>
 											</td>
 										</tr>
@@ -990,7 +1380,7 @@ export default function ExpenditureView({
 						<tbody>
 							{queue.map((record) => (
 								<tr
-									key={record.id}
+									key={`${record.source}-${record.id}-${record.split?.id ?? 0}`}
 									data-testid="queue-row"
 									data-state={record.recognition_state}
 									data-source-reference={record.source_reference ?? ''}
@@ -1013,10 +1403,7 @@ export default function ExpenditureView({
 									<td className="px-3 py-2 text-right text-gray-900">
 										{record.gross_amount === null
 											? 'Amount unknown'
-											: formatSourceMoney(
-													record.gross_amount,
-													record.currency
-												)}
+											: formatSourceMoney(record.gross_amount, record.currency)}
 									</td>
 									<td className="px-3 py-2 text-xs text-gray-600">
 										{record.recognition_period
@@ -1035,13 +1422,17 @@ export default function ExpenditureView({
 									<td className="px-3 py-2">
 										<div className="flex flex-wrap items-center gap-1.5">
 											{record.source !== 'direct_expense' ? (
+												// IDs come from different stores: another source's
+												// row is never commanded through this register's
+												// command path. Its recognition workflow lives in
+												// its own register.
 												<a
 													href={SOURCE_REGISTER_LINKS[record.source]}
 													data-testid="queue-source-link"
 													className="text-xs font-medium text-[#64126D] underline"
 												>
 													{SOURCE_REGISTER_LABELS[record.source] ??
-														`${record.source} — approve in its register`}
+														`Source: ${record.source}`}
 												</a>
 											) : (
 												<>
@@ -1144,6 +1535,7 @@ export default function ExpenditureView({
 					record={editTarget}
 					projectOptions={data.project_options}
 					submitting={commandMutation.isPending}
+					canApprove={canRecognize}
 					error={
 						commandMutation.isError ? errorMessage(commandMutation.error) : null
 					}
@@ -1184,6 +1576,50 @@ export default function ExpenditureView({
 					}
 				/>
 			)}
+
+			{chargeTarget && (
+				<PeriodChargeDialog
+					item={chargeTarget}
+					submitting={chargeMutation.isPending}
+					error={
+						chargeMutation.isError ? errorMessage(chargeMutation.error) : null
+					}
+					onCancel={() => {
+						chargeMutation.reset();
+						setChargeTarget(null);
+					}}
+					onSubmit={(payload) =>
+						chargeMutation.mutate({
+							sourceId: chargeTarget.expense_id,
+							payload,
+						})
+					}
+				/>
+			)}
+
+			{cancelChargeTarget && (
+				<ChargeCancelDialog
+					charge={cancelChargeTarget}
+					submitting={cancelChargeMutation.isPending}
+					error={
+						cancelChargeMutation.isError
+							? errorMessage(cancelChargeMutation.error)
+							: null
+					}
+					onCancel={() => {
+						cancelChargeMutation.reset();
+						setCancelChargeTarget(null);
+					}}
+					onConfirm={(reason) =>
+						cancelChargeMutation.mutate({
+							sourceId: cancelChargeTarget.source_expense_id,
+							chargeUid: cancelChargeTarget.charge_uid,
+							expectedVersion: cancelChargeTarget.financial_version,
+							reason,
+						})
+					}
+				/>
+			)}
 		</div>
 	);
 }
@@ -1211,6 +1647,7 @@ function CostForm({
 	onSubmit,
 }: CostFormProps) {
 	const [classification, setClassification] = useState('project');
+	const [nature, setNature] = useState('operating');
 	const [projectId, setProjectId] = useState('');
 	const [sourceReference, setSourceReference] = useState('');
 	const [vendor, setVendor] = useState('');
@@ -1241,6 +1678,7 @@ function CostForm({
 		vendor_name: vendor || null,
 		expense_date: billDate || serviceStart || `${month}-01`,
 		cost_classification: classification || null,
+		cost_nature: nature,
 		project_id:
 			classification === 'project' && projectId ? Number(projectId) : null,
 		service_period_start: serviceStart || null,
@@ -1262,6 +1700,21 @@ function CostForm({
 		evidence_reference: evidenceReference || null,
 		submit: submitForRecognition,
 	});
+
+	// Evidence typed for one pair is not evidence for another: clearing it on a
+	// pair change keeps the typed rate from being attached to a new currency.
+	const changeCurrency = (next: string) => {
+		setCurrency(next);
+		setConversionRate('');
+		setConversionDate('');
+		setConversionEvidence('');
+	};
+	const changeReportingCurrency = (next: string) => {
+		setReportingCurrencyChoice(next);
+		setConversionRate('');
+		setConversionDate('');
+		setConversionEvidence('');
+	};
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
@@ -1303,6 +1756,23 @@ function CostForm({
 							<option value="company_overhead">Company Overhead</option>
 							<option value="unallocated">Unallocated Cost</option>
 							<option value="">Not yet classified</option>
+						</select>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							What the spend is
+						</span>
+						<select
+							aria-label="Nature"
+							value={nature}
+							onChange={(event) => setNature(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						>
+							{NATURE_OPTIONS.map((option) => (
+								<option key={option.value} value={option.value}>
+									{option.label}
+								</option>
+							))}
 						</select>
 					</label>
 					{classification === 'project' && (
@@ -1394,7 +1864,7 @@ function CostForm({
 						<select
 							aria-label="Currency"
 							value={currency}
-							onChange={(event) => setCurrency(event.target.value)}
+							onChange={(event) => changeCurrency(event.target.value)}
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
 							{CURRENCIES.map((code) => (
@@ -1411,9 +1881,7 @@ function CostForm({
 						<select
 							aria-label="Reporting currency"
 							value={reportingCurrencyChoice}
-							onChange={(event) =>
-								setReportingCurrencyChoice(event.target.value)
-							}
+							onChange={(event) => changeReportingCurrency(event.target.value)}
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
 							{CURRENCIES.map((code) => (
@@ -1534,7 +2002,9 @@ function CostForm({
 				<p className="mt-2 text-[11px] text-gray-500">
 					Cost is recognized in the month the work or service is received. Leave
 					the service period empty only when the bill date is the best available
-					evidence — it is recorded as a fallback.
+					evidence — it is recorded as a fallback. An advance, deposit,
+					prepayment, or capital item is not expensed by its payment: its
+					approved period consumption is captured from the report.
 				</p>
 
 				{error && (
@@ -1582,6 +2052,8 @@ interface CostEditDialogProps {
 	}>;
 	submitting: boolean;
 	error: string | null;
+	/** `other_expenses:approve` — the currency pair and its evidence are approval acts. */
+	canApprove: boolean;
 	onCancel: () => void;
 	onSubmit: (patch: Record<string, unknown>) => void;
 }
@@ -1599,12 +2071,14 @@ function CostEditDialog({
 	projectOptions,
 	submitting,
 	error,
+	canApprove,
 	onCancel,
 	onSubmit,
 }: CostEditDialogProps) {
 	const [classification, setClassification] = useState(
 		record.cost_classification ?? ''
 	);
+	const [nature, setNature] = useState(record.cost_nature ?? 'operating');
 	const [projectId, setProjectId] = useState(
 		record.project_id === null ? '' : String(record.project_id)
 	);
@@ -1650,8 +2124,26 @@ function CostEditDialog({
 		label: `${option.project_code} — ${option.project_name}`,
 	}));
 
+	// A stored rate is evidence for the pair it was recorded against. Changing
+	// either side clears it here, so the dialog never re-sends an old pair's
+	// rate for a new pair; fresh evidence (or none) is the operator's explicit
+	// statement, and the server refuses a convertible pair without it.
+	const changeCurrency = (next: string) => {
+		setCurrency(next);
+		setConversionRate('');
+		setConversionDate('');
+		setConversionEvidence('');
+	};
+	const changeReportingCurrency = (next: string) => {
+		setReportingCurrencyChoice(next);
+		setConversionRate('');
+		setConversionDate('');
+		setConversionEvidence('');
+	};
+
 	const buildPatch = () => ({
 		classification: classification || null,
+		nature,
 		projectId:
 			classification === 'project' && projectId ? Number(projectId) : null,
 		servicePeriodStart: serviceStart || null,
@@ -1694,7 +2186,9 @@ function CostEditDialog({
 			>
 				<div className="mb-3 flex items-start justify-between">
 					<div>
-						<h2 className="text-base font-semibold text-gray-900">Correct cost</h2>
+						<h2 className="text-base font-semibold text-gray-900">
+							Correct cost
+						</h2>
 						<p className="text-xs text-gray-500">
 							{record.source_reference ?? record.expense_number} · version{' '}
 							{record.financial_version}. Saving applies a versioned `update`
@@ -1728,6 +2222,23 @@ function CostEditDialog({
 							<option value="">Not yet classified</option>
 						</select>
 					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							What the spend is
+						</span>
+						<select
+							aria-label="Nature"
+							value={nature}
+							onChange={(event) => setNature(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						>
+							{NATURE_OPTIONS.map((option) => (
+								<option key={option.value} value={option.value}>
+									{option.label}
+								</option>
+							))}
+						</select>
+					</label>
 					{classification === 'project' && (
 						<div className="text-sm">
 							<span className="mb-1 block font-medium text-gray-700">
@@ -1754,12 +2265,15 @@ function CostEditDialog({
 						/>
 					</label>
 					<label className="text-sm">
-						<span className="mb-1 block font-medium text-gray-700">Currency</span>
+						<span className="mb-1 block font-medium text-gray-700">
+							Currency
+						</span>
 						<select
 							aria-label="Currency"
 							value={currency}
-							onChange={(event) => setCurrency(event.target.value)}
-							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+							onChange={(event) => changeCurrency(event.target.value)}
+							disabled={!canApprove}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
 						>
 							<option value="">Unknown (not guessed)</option>
 							{CURRENCIES.map((code) => (
@@ -1776,10 +2290,9 @@ function CostEditDialog({
 						<select
 							aria-label="Reporting currency"
 							value={reportingCurrencyChoice}
-							onChange={(event) =>
-								setReportingCurrencyChoice(event.target.value)
-							}
-							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+							onChange={(event) => changeReportingCurrency(event.target.value)}
+							disabled={!canApprove}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
 						>
 							{CURRENCIES.map((code) => (
 								<option key={code} value={code}>
@@ -1798,8 +2311,9 @@ function CostEditDialog({
 									aria-label="Conversion rate"
 									value={conversionRate}
 									onChange={(event) => setConversionRate(event.target.value)}
+									disabled={!canApprove}
 									placeholder={`1 ${currency} in ${reportingCurrencyChoice}`}
-									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
 								/>
 							</label>
 							<label className="text-sm">
@@ -1811,7 +2325,8 @@ function CostEditDialog({
 									aria-label="Conversion date"
 									value={conversionDate}
 									onChange={(event) => setConversionDate(event.target.value)}
-									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+									disabled={!canApprove}
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
 								/>
 							</label>
 							<label className="text-sm">
@@ -1824,8 +2339,9 @@ function CostEditDialog({
 									onChange={(event) =>
 										setConversionEvidence(event.target.value)
 									}
+									disabled={!canApprove}
 									placeholder="Contract, bank advice, or rate source"
-									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
 								/>
 							</label>
 						</>
@@ -1936,8 +2452,8 @@ function CostEditDialog({
 				</div>
 
 				<p className="mt-2 text-[11px] text-gray-500">
-					Saving corrects the cost in place. It cannot change a recognized
-					cost — cancel that cost first and record the correction as a new one.
+					Saving corrects the cost in place. It cannot change a recognized cost
+					— cancel that cost first and record the correction as a new one.
 				</p>
 
 				{error && (
@@ -2046,6 +2562,244 @@ function CommandDialog({
 						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
 					>
 						{label}
+					</button>
+				</div>
+			</form>
+		</div>
+	);
+}
+
+interface PeriodChargeDialogProps {
+	item: NonOperatingItemRow;
+	submitting: boolean;
+	error: string | null;
+	onCancel: () => void;
+	onSubmit: (payload: Record<string, unknown>) => void;
+}
+
+/**
+ * Capture one approved period charge against a non-operating item (#317). The
+ * charge's own month decides when it becomes cost, and the item's remaining
+ * supported balance is the ceiling the module enforces — the dialog states
+ * both so the operator sees why a refusal happens.
+ */
+function PeriodChargeDialog({
+	item,
+	submitting,
+	error,
+	onCancel,
+	onSubmit,
+}: PeriodChargeDialogProps) {
+	const [period, setPeriod] = useState(
+		item.recognition_period?.slice(0, 7) ?? ''
+	);
+	const [basis, setBasis] = useState('consumption');
+	const [amount, setAmount] = useState('');
+	const [evidence, setEvidence] = useState('');
+	const [note, setNote] = useState('');
+	// A missing amount is unknown, never zero.
+	const balance =
+		item.recognized_amount === null
+			? 'unknown'
+			: formatCurrencyIn(item.recognized_amount, item.currency);
+	const remaining =
+		item.remaining_amount === null
+			? 'unknown'
+			: formatCurrencyIn(item.remaining_amount, item.currency);
+
+	return (
+		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+			<form
+				data-testid="period-charge-dialog"
+				role="dialog"
+				aria-modal="true"
+				aria-label="Capture period charge"
+				className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl"
+				onSubmit={(event) => {
+					event.preventDefault();
+					onSubmit({
+						period,
+						basis,
+						amount: amount === '' ? null : Number(amount),
+						evidence_reference: evidence || null,
+						currency: item.currency,
+						reason: note || null,
+					});
+				}}
+			>
+				<h2 className="text-base font-semibold text-gray-900">
+					Capture period charge
+				</h2>
+				<p className="mt-1 text-xs text-gray-600">
+					{item.source_reference ?? item.expense_number} ·{' '}
+					{NATURE_LABELS[item.nature] ?? item.nature} · supported balance{' '}
+					{balance} · remaining {remaining}
+				</p>
+				<div className="mt-3 grid gap-3 md:grid-cols-2">
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Charge period
+						</span>
+						<input
+							type="month"
+							aria-label="Period"
+							value={period}
+							onChange={(event) => setPeriod(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">Basis</span>
+						<select
+							aria-label="Charge basis"
+							value={basis}
+							onChange={(event) => setBasis(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						>
+							<option value="consumption">Consumption</option>
+							<option value="depreciation">Depreciation</option>
+							<option value="amortization">Amortization</option>
+						</select>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Amount ({item.currency})
+						</span>
+						<input
+							type="number"
+							step="0.01"
+							aria-label="Amount"
+							value={amount}
+							onChange={(event) => setAmount(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Evidence reference
+						</span>
+						<input
+							aria-label="Evidence reference"
+							value={evidence}
+							onChange={(event) => setEvidence(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm md:col-span-2">
+						<span className="mb-1 block font-medium text-gray-700">Note</span>
+						<input
+							aria-label="Note"
+							value={note}
+							onChange={(event) => setNote(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+				</div>
+				<p className="mt-2 text-[11px] text-gray-500">
+					The charge becomes cost in its own month and can never exceed the
+					remaining supported balance. A month and basis can hold one approved
+					charge; cancel it to correct the entry.
+				</p>
+				{error && (
+					<p role="alert" className="mt-2 text-xs text-rose-600">
+						{error}
+					</p>
+				)}
+				<div className="mt-3 flex justify-end gap-2">
+					<button
+						type="button"
+						onClick={onCancel}
+						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						Close
+					</button>
+					<button
+						type="submit"
+						disabled={submitting}
+						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
+					>
+						Save period charge
+					</button>
+				</div>
+			</form>
+		</div>
+	);
+}
+
+interface ChargeCancelDialogProps {
+	charge: PeriodChargeJson;
+	submitting: boolean;
+	error: string | null;
+	onCancel: () => void;
+	onConfirm: (reason: string) => void;
+}
+
+/**
+ * Cancel an approved period charge. The reason and the version are required:
+ * cancellation restores the consumed balance, keeps the charge and its journal
+ * as history, and is the supported way to correct a wrong amount or month.
+ */
+function ChargeCancelDialog({
+	charge,
+	submitting,
+	error,
+	onCancel,
+	onConfirm,
+}: ChargeCancelDialogProps) {
+	const [reason, setReason] = useState('');
+
+	return (
+		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+			<form
+				data-testid="charge-cancel-dialog"
+				role="dialog"
+				aria-modal="true"
+				aria-label="Cancel period charge"
+				className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl"
+				onSubmit={(event) => {
+					event.preventDefault();
+					onConfirm(reason);
+				}}
+			>
+				<h2 className="text-base font-semibold text-gray-900">
+					Cancel period charge
+				</h2>
+				<p className="mt-1 text-xs text-gray-600">
+					{charge.source_expense_number} ·{' '}
+					{CHARGE_BASIS_LABELS[charge.basis] ?? charge.basis} ·{' '}
+					{formatCurrencyIn(charge.amount, charge.currency)} ·{' '}
+					{formatDate(charge.period)} · version {charge.financial_version}
+				</p>
+				<label className="mt-3 block text-sm">
+					<span className="mb-1 block font-medium text-gray-700">Reason</span>
+					<textarea
+						aria-label="Reason"
+						value={reason}
+						onChange={(event) => setReason(event.target.value)}
+						rows={3}
+						className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						placeholder="Why this consumption must not count"
+					/>
+				</label>
+				{error && (
+					<p role="alert" className="mt-2 text-xs text-rose-600">
+						{error}
+					</p>
+				)}
+				<div className="mt-3 flex justify-end gap-2">
+					<button
+						type="button"
+						onClick={onCancel}
+						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						Close
+					</button>
+					<button
+						type="submit"
+						disabled={submitting}
+						className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+					>
+						Cancel charge
 					</button>
 				</div>
 			</form>

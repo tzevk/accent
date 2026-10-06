@@ -26,7 +26,7 @@ export const SOURCE_COVERAGE: readonly SourceCoverageDeclaration[] = [
 		label: 'Direct expense recognition',
 		status: 'wired',
 		detail:
-			'Direct expenses are entered, recognized, and reconciled through this module (#306).',
+			'Direct expenses are entered, recognized, and reconciled through this module (#306). Non-operating items — advances, deposits, prepayments, and capital — are shown separately and contribute only their approved period consumption, depreciation, or amortization (#317).',
 	},
 	{
 		code: 'other_expense_source',
@@ -43,11 +43,11 @@ export const SOURCE_COVERAGE: readonly SourceCoverageDeclaration[] = [
 			'Recorded Payroll Slip employer cost and its frozen Project allocation are not part of this total yet; they are incorporated by a later slice (#307).',
 	},
 	{
-		code: 'supplier_source_not_incorporated',
+		code: 'supplier_source_wired',
 		label: 'Supplier invoices and commitments',
-		status: 'not_incorporated',
+		status: 'wired',
 		detail:
-			'Supplier invoices, orders, and Outstanding Supplier Commitment are not part of this total yet.',
+			'Supplier invoices are entered, recognized, and reconciled through this module (#311); one supplier liability is one cost, and payable follow-ups, receipt copies, and settlements link to it instead of counting again.',
 	},
 	{
 		code: 'cost_accrual_capture_not_incorporated',

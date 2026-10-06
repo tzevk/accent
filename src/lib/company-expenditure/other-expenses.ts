@@ -47,21 +47,33 @@ import {
 	registerCostSource,
 	resolveCostReference,
 } from './sources';
-import type { SqlConnection } from './records';
+import {
+	costSelectFrom,
+	mapCostRow,
+	MONTH_PREDICATE,
+	monthBounds,
+	natureFilterClause,
+	stateFilterClause,
+	type SqlConnection
+} from './records';
 import type {
 	CostClassification,
+	CostDrilldownQuery,
 	CostJournalCommand,
+	CostRecord,
 	PeriodBasis,
 	RecognitionState,
 	TaxTreatment,
 } from './types';
 
 /**
- * The other-expense cost source as the module reads it. Receipt copies are
- * excluded here once, so no aggregate, drilldown, or previous-month figure can
- * count one.
+ * The other-expense source expression: the canonical column vocabulary over the
+ * register's own row, with receipt copies excluded once (a copy evidences a
+ * cost, it is not one). These are operating costs — the non-operating balances
+ * are their own source (#317) — so the nature is stated as such rather than
+ * guessed from anything else.
  */
-export const OTHER_EXPENSE_COST_SOURCE = `SELECT 'other_expense' AS source_kind,
+const OTHER_EXPENSE_SOURCE = `SELECT 'operating' AS cost_nature,
     o.row_no AS id, o.cost_uid, o.voucher_number AS expense_number,
     COALESCE(o.bill_date, o.voucher_date) AS expense_date,
     o.cost_classification, o.recognition_state, o.recognition_period, o.period_basis,
@@ -70,12 +82,159 @@ export const OTHER_EXPENSE_COST_SOURCE = `SELECT 'other_expense' AS source_kind,
     o.evidence_reference, o.financial_version, o.recognized_by, o.recognized_at,
     o.currency, o.reporting_currency, o.conversion_rate, o.conversion_date,
     o.conversion_evidence_reference, o.converted_amount,
-    o.bill_amount AS amount, o.gst_amount AS tax_amount,
-    o.net_amount AS total_amount, COALESCE(o.vendor_name, o.employee_name) AS vendor_name,
+    o.bill_amount AS amount, o.gst_amount AS tax_amount, o.net_amount AS total_amount,
+    COALESCE(o.vendor_name, o.employee_name) AS vendor_name,
     o.description, o.status, o.project_id, o.isDelete,
     CAST(o.id AS CHAR) COLLATE utf8mb4_general_ci AS source_row_id
   FROM other_expenses o
  WHERE o.linked_cost_uid IS NULL`;
+
+const OTHER_EXPENSE_COST_SELECT = costSelectFrom(OTHER_EXPENSE_SOURCE);
+
+/** Every other-expense cost of one month, in any recognition state. */
+export async function loadOtherExpenseMonthRecords(
+	db: SqlConnection,
+	month: string
+): Promise<CostRecord[]> {
+	const { start, end } = monthBounds(month);
+	const [rows] = (await db.execute(
+		`${OTHER_EXPENSE_COST_SELECT}
+      WHERE e.isDelete = 0 AND ${MONTH_PREDICATE}
+      ORDER BY e.recognition_period DESC, e.expense_date DESC, e.id DESC`,
+		[start, end, start, end]
+	)) as [DbRow[], unknown];
+	return rows.map((row) => mapCostRow(row, 'other_expense'));
+}
+
+/**
+ * Confirmed Project cost of a month, keyed by Project id and then currency,
+ * exactly as the direct-expense reader states it: a Project can hold more than
+ * one currency in a month, and a missing recognized amount is unknown, not
+ * zero.
+ */
+export async function loadOtherExpenseMonthProjectCost(
+	db: SqlConnection,
+	month: string
+): Promise<Map<number, Map<string, number | null>>> {
+	const { start, end } = monthBounds(month);
+	const [rows] = (await db.execute(
+		`SELECT e.project_id, e.currency AS currency,
+              SUM(e.recognized_amount) AS amount,
+              SUM(CASE WHEN e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts
+       FROM (${OTHER_EXPENSE_SOURCE}) e
+      WHERE e.isDelete = 0
+        AND e.recognition_state = 'recognized'
+        AND e.cost_classification = 'project'
+        AND e.project_id IS NOT NULL
+        AND e.currency IS NOT NULL
+        AND e.recognition_period BETWEEN ? AND ?
+      GROUP BY e.project_id, e.currency`,
+		[start, end]
+	)) as [DbRow[], unknown];
+	const costs = new Map<number, Map<string, number | null>>();
+	for (const row of rows) {
+		const id = rowNumber(row, 'project_id');
+		const currency = rowValue<string>(row, 'currency');
+		if (id === null || !currency) continue;
+		const unknownAmounts = rowNumber(row, 'unknown_amounts') ?? 0;
+		const perCurrency = costs.get(id) ?? new Map<string, number | null>();
+		perCurrency.set(
+			currency,
+			unknownAmounts > 0 ? null : rowNumber(row, 'amount')
+		);
+		costs.set(id, perCurrency);
+	}
+	return costs;
+}
+
+/** Months with other-expense cost recorded, newest first. */
+export async function loadOtherExpenseMonths(
+	db: SqlConnection,
+	currentMonth: string
+): Promise<string[]> {
+	const [rows] = (await db.execute(
+		`SELECT DISTINCT DATE_FORMAT(COALESCE(e.recognition_period, e.expense_date), '%Y-%m') AS month
+       FROM (${OTHER_EXPENSE_SOURCE}) e
+      WHERE e.isDelete = 0
+        AND (e.recognition_period IS NOT NULL OR e.expense_date IS NOT NULL)`
+	)) as [DbRow[], unknown];
+	const months = new Set<string>([currentMonth]);
+	for (const row of rows) {
+		const month = rowValue<string>(row, 'month');
+		if (month) months.add(month);
+	}
+	return [...months].sort().reverse();
+}
+
+/**
+ * The register's matching records for one drilldown query. The filters are the
+ * same clauses the direct-expense reader uses, so one page and one total
+ * describe the same set for every source.
+ */
+export async function loadFilteredOtherExpenseRecords(
+	db: SqlConnection,
+	query: CostDrilldownQuery
+): Promise<CostRecord[]> {
+	const { start, end } = monthBounds(query.month);
+	const state = stateFilterClause(query.state);
+	const nature = natureFilterClause(query.nature);
+	const where = ['e.isDelete = 0', MONTH_PREDICATE, state.clause, nature.clause];
+	const params: Array<string | number> = [
+		start,
+		end,
+		start,
+		end,
+		...state.params,
+		...nature.params
+	];
+	if (query.classification && query.classification !== 'all') {
+		if (query.classification === 'unresolved') {
+			where.push('e.cost_classification IS NULL');
+		} else {
+			where.push('e.cost_classification = ?');
+			params.push(query.classification);
+		}
+	}
+	if (query.projectId !== undefined && query.projectId !== null) {
+		where.push('e.project_id = ?');
+		params.push(query.projectId);
+	}
+	const [rows] = (await db.execute(
+		`${OTHER_EXPENSE_COST_SELECT}
+      WHERE ${where.join(' AND ')}
+      ORDER BY e.recognition_period DESC, e.expense_date DESC, e.id DESC`,
+		params
+	)) as [DbRow[], unknown];
+	return rows.map((row) => mapCostRow(row, 'other_expense'));
+}
+
+/**
+ * Merge two previous-month Project cost maps (project → currency → amount):
+ * the same slice adds up, and an unknown contribution keeps the slice unknown.
+ */
+export function mergeProjectCostMaps(
+	left: Map<number, Map<string, number | null>>,
+	right: Map<number, Map<string, number | null>>
+): Map<number, Map<string, number | null>> {
+	const merged = new Map<number, Map<string, number | null>>();
+	for (const source of [left, right]) {
+		for (const [projectId, perCurrency] of source) {
+			const target = merged.get(projectId) ?? new Map<string, number | null>();
+			for (const [currency, amount] of perCurrency) {
+				const existing = target.get(currency);
+				if (existing === undefined) {
+					target.set(currency, amount);
+				} else if (existing === null || amount === null) {
+					target.set(currency, null);
+				} else {
+					target.set(currency, toNumber(add(R(existing), R(amount))));
+				}
+			}
+			merged.set(projectId, target);
+		}
+	}
+	return merged;
+}
 
 const CLASSIFICATIONS = ['project', 'company_overhead', 'unallocated'] as const;
 const TAX_TREATMENTS = [
@@ -846,6 +1005,9 @@ export async function captureOtherExpense(
 		payeeType === 'employee' ? idOrNull(input.employee_id) : null;
 	const evaluation = evaluateCost({
 		classification: financial.classification,
+		// An other expense is operating cost by definition; the non-operating
+		// balances are their own source (#317).
+		nature: 'operating',
 		state,
 		currency: conversion.currency,
 		grossAmount: financial.grossAmount,
@@ -1324,6 +1486,7 @@ export async function executeOtherExpenseCommand(
 			}
 			recognizedAmount = evaluateCost({
 				...merged,
+				nature: 'operating',
 				state: target,
 				servicePeriodStart: merged.servicePeriodStart,
 				servicePeriodEnd: merged.servicePeriodEnd,
