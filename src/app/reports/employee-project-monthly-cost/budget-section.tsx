@@ -585,6 +585,7 @@ export default function BudgetSection({
 									row.incurred_cost === null ? '' : String(row.incurred_cost)
 								}
 								data-budget={row.budget ? String(row.budget.amount) : ''}
+								data-charges={String(row.period_charges)}
 								data-variance={
 									row.variance === null ? '' : String(row.variance)
 								}
