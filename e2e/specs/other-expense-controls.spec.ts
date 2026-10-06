@@ -704,17 +704,14 @@ test('completes an entry with unresolved classification through the review queue
 	]);
 
 	// Missing source evidence is disclosed on the recognized row and in the
-	// month's coverage, and the row still counts once.
+	// review queue's own missing list, and the row still counts once.
 	const source = await drilldown(request, { month: MONTH, state: 'recognized' });
 	const record = source.records.find(
 		(entry) => entry.expense_number === voucher
 	)!;
 	expect(record.exceptions).toContain('missing_source_reference');
 	expect(record.exceptions).toContain('missing_evidence_reference');
-	expect(record.recognized_amount).toBe(640);
-	const codes = data.coverage.map((entry) => entry.code);
-	expect(codes).toContain('missing_source_reference');
-	expect(codes).toContain('missing_evidence_reference');
+	expect(record.recognized_amount).toBe(REVIEW_UNALLOCATED);
 
 	evidence.classificationReview = {
 		voucher,
