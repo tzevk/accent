@@ -251,6 +251,46 @@ export default function SupplierRecognitionDialog({
 	const splitMismatch =
 		splits.length > 0 && gross !== null && Math.abs(splitSum - gross) > 0.004;
 
+	/** Only conversion evidence that actually changed is sent (and repriced). */
+	const conversionPayload = (): Record<string, unknown> => {
+		const payload: Record<string, unknown> = {};
+		if (reportingCurrency !== (detail.reporting_currency ?? '')) {
+			payload.reporting_currency =
+				reportingCurrency === '' ? null : reportingCurrency;
+		}
+		if (conversionRate !== (detail.conversion_rate ?? '')) {
+			payload.conversion_rate =
+				conversionRate === '' ? null : conversionRate;
+		}
+		if (conversionDate !== (detail.conversion_date ?? '')) {
+			payload.conversion_date =
+				conversionDate === '' ? null : conversionDate;
+		}
+		if (
+			conversionEvidence !== (detail.conversion_evidence_reference ?? '')
+		) {
+			payload.conversion_evidence_reference =
+				conversionEvidence === '' ? null : conversionEvidence;
+		}
+		return payload;
+	};
+
+	/** A pair change invalidates the triple: stale evidence is never reused. */
+	const changeCurrency = (value: string) => {
+		if (value === currency) return;
+		setCurrency(value);
+		setConversionRate('');
+		setConversionDate('');
+		setConversionEvidence('');
+	};
+	const changeReportingCurrency = (value: string) => {
+		if (value === reportingCurrency) return;
+		setReportingCurrency(value);
+		setConversionRate('');
+		setConversionDate('');
+		setConversionEvidence('');
+	};
+
 	const patchPayload = () => ({
 		patch: {
 			cost_classification: classification === '' ? null : classification,
@@ -264,12 +304,7 @@ export default function SupplierRecognitionDialog({
 			source_reference: sourceReference || null,
 			evidence_reference: evidenceReference || null,
 			withholding_tax_amount: withholding === '' ? 0 : Number(withholding),
-			reporting_currency: reportingCurrency === '' ? null : reportingCurrency,
-			conversion_rate:
-				conversionRate === '' ? null : conversionRate,
-			conversion_date: conversionDate === '' ? null : conversionDate,
-			conversion_evidence_reference:
-				conversionEvidence === '' ? null : conversionEvidence,
+			...conversionPayload(),
 			splits: splits.map((split) => ({
 				service_period_start: split.service_period_start || null,
 				service_period_end: split.service_period_end || null,
@@ -478,7 +513,7 @@ export default function SupplierRecognitionDialog({
 						<select
 							data-testid="recognition-currency"
 							value={currency}
-							onChange={(event) => setCurrency(event.target.value)}
+							onChange={(event) => changeCurrency(event.target.value)}
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
 							{CURRENCIES.map((code) => (
@@ -560,7 +595,9 @@ export default function SupplierRecognitionDialog({
 						<select
 							data-testid="recognition-reporting-currency"
 							value={reportingCurrency}
-							onChange={(event) => setReportingCurrency(event.target.value)}
+							onChange={(event) =>
+								changeReportingCurrency(event.target.value)
+							}
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
 							<option value="">Company default</option>
@@ -608,6 +645,11 @@ export default function SupplierRecognitionDialog({
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						/>
 					</label>
+					<p className="text-[11px] text-gray-500 md:col-span-2">
+						Changing the currency or the reporting target clears the rate,
+						date, and reference — stale evidence for another currency pair is
+						never reused. Saving evidence needs approval access.
+					</p>
 				</div>
 
 				<div className="mt-4">

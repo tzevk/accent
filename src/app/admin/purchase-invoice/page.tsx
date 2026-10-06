@@ -393,13 +393,20 @@ const VERSIONED_FIELDS: Record<string, true> = {
 
 /**
  * Create-time transform: an empty conversion rate means "no conversion
- * evidence", not a zero rate, and the date/reference only travel with a rate.
+ * evidence", not a zero rate. Anything partially entered is left for the
+ * server to refuse explicitly (`conversion_evidence_incomplete`), so a
+ * half-filled triple is never silently dropped.
  */
 function stripEmptyConversion(
 	values: Record<string, unknown>
 ): Record<string, unknown> {
 	const next = { ...values };
-	if (!next.conversion_rate || Number(next.conversion_rate) <= 0) {
+	const hasDate = Boolean(next.conversion_date);
+	const hasReference =
+		typeof next.conversion_evidence_reference === 'string' &&
+		next.conversion_evidence_reference.trim().length > 0;
+	const rate = Number(next.conversion_rate ?? 0);
+	if (!hasDate && !hasReference && (!Number.isFinite(rate) || rate <= 0)) {
 		delete next.conversion_rate;
 		delete next.conversion_date;
 		delete next.conversion_evidence_reference;

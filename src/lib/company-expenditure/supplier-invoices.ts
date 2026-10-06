@@ -30,6 +30,7 @@ import {
 	convertToReporting,
 	currencyCodeOf,
 	evidenceOf,
+	reportingCurrencyOf,
 	resolveConversion,
 } from './currency';
 import { CostError } from './errors';
@@ -215,6 +216,7 @@ export interface SupplierSplitRow {
 	amount: number;
 	tax_amount: number;
 	recognized_amount: number | null;
+	converted_amount: number | null;
 	note: string | null;
 }
 
@@ -462,7 +464,7 @@ async function loadSplitRows(
 ): Promise<SupplierSplitRow[]> {
 	const [rows] = (await db.execute(
 		`SELECT id, service_period_start, service_period_end, recognition_period,
-            amount, tax_amount, recognized_amount, note
+            amount, tax_amount, recognized_amount, converted_amount, note
        FROM supplier_invoice_periods
       WHERE invoice_id = ?
       ORDER BY recognition_period, id`,
@@ -476,6 +478,7 @@ async function loadSplitRows(
 		amount: num(row, 'amount') ?? 0,
 		tax_amount: num(row, 'tax_amount') ?? 0,
 		recognized_amount: num(row, 'recognized_amount'),
+		converted_amount: num(row, 'converted_amount'),
 		note: s(row, 'note'),
 	}));
 }
@@ -807,22 +810,38 @@ export async function executeSupplierCommand(
 					: (num(row, 'withholding_tax_amount') ?? 0),
 		};
 
+		// A pair change (original currency or reporting target) must never carry
+		// the old pair's evidence: without an explicit fresh triple in this
+		// patch the stored rate/date/reference are dropped, the record states
+		// `unsupported`, and re-entering evidence is a new versioned act.
+		const storedCurrency = currencyCodeOf(s(row, 'currency'));
+		const storedReporting = reportingCurrencyOf({
+			reportingCurrency: s(row, 'reporting_currency'),
+		});
+		const reportingInput =
+			patch.reportingCurrency !== undefined
+				? patch.reportingCurrency
+				: s(row, 'reporting_currency');
+		const pairChanged =
+			currencyCodeOf(merged.currency) !== storedCurrency ||
+			reportingCurrencyOf({ reportingCurrency: reportingInput }) !==
+				storedReporting;
 		const rawConversion = {
 			currency: merged.currency,
-			reportingCurrency:
-				patch.reportingCurrency !== undefined
-					? patch.reportingCurrency
-					: s(row, 'reporting_currency'),
-			conversionRate:
-				patch.conversionRate !== undefined
+			reportingCurrency: reportingInput,
+			conversionRate: pairChanged
+				? (patch.conversionRate as unknown)
+				: patch.conversionRate !== undefined
 					? patch.conversionRate
 					: dec(row, 'conversion_rate'),
-			conversionDate:
-				patch.conversionDate !== undefined
+			conversionDate: pairChanged
+				? (patch.conversionDate as unknown)
+				: patch.conversionDate !== undefined
 					? patch.conversionDate
 					: s(row, 'conversion_date'),
-			conversionEvidenceReference:
-				patch.conversionEvidenceReference !== undefined
+			conversionEvidenceReference: pairChanged
+				? (patch.conversionEvidenceReference as unknown)
+				: patch.conversionEvidenceReference !== undefined
 					? patch.conversionEvidenceReference
 					: s(row, 'conversion_evidence_reference'),
 		};
@@ -886,6 +905,7 @@ export async function executeSupplierCommand(
 		const recognizedAt: string | null = s(row, 'recognized_at');
 		let recognizedBy: number | null = num(row, 'recognized_by');
 		const splitRecognizedAmounts: number[] = [];
+		const splitConvertedAmounts: Array<number | null> = [];
 
 		if (input.command === 'recognize') {
 			const blockers = recognitionBlockers({
@@ -934,13 +954,22 @@ export async function executeSupplierCommand(
 			recognizedBy = actor.id;
 			if (splitRows.length > 0) {
 				const treatment = evaluateCost(financial).effectiveTaxTreatment;
+				const evidence = evidenceOf({
+					currency: merged.currency,
+					reportingCurrency: conversion.reportingCurrency,
+					conversionRate: conversion.conversionRate,
+					conversionDate: conversion.conversionDate,
+					conversionEvidenceReference: conversion.conversionEvidenceReference,
+				});
 				for (const split of splitRows) {
-					splitRecognizedAmounts.push(
-						toNumber(
-							treatment === 'recoverable'
-								? sub(R(split.amount), R(split.taxAmount))
-								: R(split.amount)
-						)
+					const sliceRecognized = toNumber(
+						treatment === 'recoverable'
+							? sub(R(split.amount), R(split.taxAmount))
+							: R(split.amount)
+					);
+					splitRecognizedAmounts.push(sliceRecognized);
+					splitConvertedAmounts.push(
+						convertToReporting(sliceRecognized, evidence).amount
 					);
 				}
 			}
@@ -953,20 +982,27 @@ export async function executeSupplierCommand(
 				: toNumber(sub(R(merged.grossAmount), R(merged.taxAmount ?? 0)));
 		// The reporting-currency statement follows the same evidence rule as a
 		// direct expense: computed on recognition, kept as history through a
-		// later cancel, and null while the amount or evidence is unknown.
+		// later cancel, and null while the amount or evidence is unknown. A
+		// split invoice sums its per-slice conversions (the same per-record
+		// rounding the report applies), so the frozen invoice figure and the
+		// reported per-slice sum agree to the cent.
+		const conversionEvidence = evidenceOf({
+			currency: merged.currency,
+			reportingCurrency: conversion.reportingCurrency,
+			conversionRate: conversion.conversionRate,
+			conversionDate: conversion.conversionDate,
+			conversionEvidenceReference: conversion.conversionEvidenceReference,
+		});
 		const convertedAmount: number | null =
 			target === 'recognized'
-				? convertToReporting(
-						recognizedAmount,
-						evidenceOf({
-							currency: merged.currency,
-							reportingCurrency: conversion.reportingCurrency,
-							conversionRate: conversion.conversionRate,
-							conversionDate: conversion.conversionDate,
-							conversionEvidenceReference:
-								conversion.conversionEvidenceReference,
-						})
-					).amount
+				? splitConvertedAmounts.length > 0
+					? toNumber(
+							splitConvertedAmounts.reduce<Decimal>(
+								(total, sliceAmount) => total.add(sliceAmount ?? 0),
+								R(0)
+							)
+						)
+					: convertToReporting(recognizedAmount, conversionEvidence).amount
 				: state === 'recognized'
 					? num(row, 'converted_amount')
 					: null;
@@ -1027,9 +1063,14 @@ export async function executeSupplierCommand(
 			)) as [DbRow[], unknown];
 			for (let index = 0; index < rows.length; index++) {
 				await db.execute(
-					`UPDATE supplier_invoice_periods SET recognized_amount = ?
+					`UPDATE supplier_invoice_periods
+                SET recognized_amount = ?, converted_amount = ?
               WHERE id = ?`,
-					[splitRecognizedAmounts[index] ?? null, Number(rows[index].id)]
+					[
+						splitRecognizedAmounts[index] ?? null,
+						splitConvertedAmounts[index] ?? null,
+						Number(rows[index].id),
+					]
 				);
 			}
 		}
@@ -1051,6 +1092,7 @@ export async function executeSupplierCommand(
 				conversion_rate: conversion.conversionRate,
 				conversion_date: conversion.conversionDate,
 				conversion_evidence_reference: conversion.conversionEvidenceReference,
+				conversion_pair_changed: pairChanged,
 				converted_amount: convertedAmount,
 				gross_amount: merged.grossAmount,
 				tax_amount: merged.taxAmount,
@@ -1085,7 +1127,9 @@ const SPLIT_SELECT = `${INVOICE_SELECT},
     sp.id AS split_id, sp.service_period_start AS split_start,
     sp.service_period_end AS split_end, sp.recognition_period AS split_period,
     sp.amount AS split_amount, sp.tax_amount AS split_tax_amount,
-    sp.recognized_amount AS split_recognized_amount, sp.note AS split_note,
+    sp.recognized_amount AS split_recognized_amount,
+    sp.converted_amount AS split_converted_amount,
+    sp.note AS split_note,
     (SELECT COUNT(*) FROM supplier_invoice_periods sp2 WHERE sp2.invoice_id = i.id) AS split_count,
     (SELECT COUNT(*) FROM supplier_invoice_periods sp3
       WHERE sp3.invoice_id = i.id
@@ -1125,7 +1169,9 @@ export function mapSupplierRecordRow(row: DbRow): CostRecord {
 		conversionRate: dec(row, 'conversion_rate'),
 		conversionDate: s(row, 'conversion_date'),
 		conversionEvidenceReference: s(row, 'conversion_evidence_reference'),
-		convertedAmount: num(row, 'converted_amount'),
+		convertedAmount: hasSplit
+			? num(row, 'split_converted_amount')
+			: num(row, 'converted_amount'),
 		grossAmount,
 		taxAmount,
 		taxTreatment:

@@ -111,6 +111,37 @@ const FX_UNSUPPORTED = {
 } as const;
 
 /**
+ * A converted multi-period invoice whose per-slice rounding must agree with
+ * the report: 33.33 × 1.5 = 49.995 → 50.00 and 66.67 × 1.5 = 100.005 →
+ * 100.01, so the frozen invoice figure is the per-slice sum 150.01, not the
+ * single 150.00 a whole-invoice conversion would give.
+ */
+const FX_SPLIT = {
+	number: 'E2E-SINV-9005',
+	monthA: '2020-08',
+	monthB: '2020-09',
+	rate: 1.5,
+	rateDate: '2020-08-05',
+	evidenceReference: 'E2E-SINV-FX-9005',
+	slices: [
+		{
+			start: '2020-08-01',
+			end: '2020-08-31',
+			amount: '33.33',
+			converted: 50.0,
+		},
+		{
+			start: '2020-09-01',
+			end: '2020-09-30',
+			amount: '66.67',
+			converted: 100.01,
+		},
+	],
+	convertedTotal: 150.01,
+	sourceReference: 'E2E-SINV-VENDOR-9005',
+} as const;
+
+/**
  * Hand-computed from the fixture literals plus the two app-created invoices:
  * March confirmed = alpha 50000+25000+12000+100000+60000, beta 60000,
  * overhead 15000, unallocated 5000; the UI invoice's gross carries 18000 of
@@ -295,6 +326,8 @@ function publish(): void {
 				LATER_MONTH,
 				FX_INVOICE.month,
 				FX_UNSUPPORTED.month,
+				FX_SPLIT.monthA,
+				FX_SPLIT.monthB,
 			],
 		},
 		createdThroughApp: { invoices: createdInvoices, payables: createdPayables },
@@ -1128,10 +1161,67 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 	expect(Number(correctedRow[0].conversion_rate)).toBe(FX_INVOICE.updatedRate);
 	expect(Number(correctedRow[0].financial_version)).toBe(2);
 
+	// A pair change never reuses the old pair's evidence: switching the
+	// reporting target without a fresh triple clears the rate/date/reference
+	// (the record states `unsupported` until evidence is re-entered).
+	const switched = await command(request, id, {
+		command: 'update',
+		expected_version: 2,
+		patch: { reporting_currency: 'USD' },
+	});
+	expect(switched.status, JSON.stringify(switched.body)).toBe(200);
+	const clearedRow = await rows<{
+		reporting_currency: string;
+		conversion_rate: string | null;
+		conversion_date: string | null;
+		conversion_evidence_reference: string | null;
+		financial_version: number;
+	}>(
+		`SELECT reporting_currency, conversion_rate, conversion_date,
+            conversion_evidence_reference, financial_version
+       FROM purchase_invoices WHERE id = ?`,
+		[id]
+	);
+	expect(clearedRow[0].reporting_currency).toBe('USD');
+	expect(clearedRow[0].conversion_rate).toBeNull();
+	expect(clearedRow[0].conversion_date).toBeNull();
+	expect(clearedRow[0].conversion_evidence_reference).toBeNull();
+	expect(Number(clearedRow[0].financial_version)).toBe(3);
+	const pairJournal = await rows<{ snapshot: string }>(
+		`SELECT snapshot FROM financial_cost_events
+      WHERE cost_uid = ? AND version = 3`,
+		[createdBody.data.cost_uid]
+	);
+	expect(pairJournal[0].snapshot).toContain('"conversion_pair_changed":true');
+
+	// Switching back is another pair change; the evidence is still absent,
+	// and re-entering it is an explicit fresh act.
+	const restoredTarget = await command(request, id, {
+		command: 'update',
+		expected_version: 3,
+		patch: { reporting_currency: 'INR' },
+	});
+	expect(restoredTarget.status, JSON.stringify(restoredTarget.body)).toBe(200);
+	const fresh = await command(request, id, {
+		command: 'update',
+		expected_version: 4,
+		patch: {
+			conversion_rate: FX_INVOICE.updatedRate,
+			conversion_date: FX_INVOICE.rateDate,
+			conversion_evidence_reference: FX_INVOICE.evidenceReference,
+		},
+	});
+	expect(fresh.status, JSON.stringify(fresh.body)).toBe(200);
+	const freshRow = await rows<{ conversion_rate: string }>(
+		`SELECT conversion_rate FROM purchase_invoices WHERE id = ?`,
+		[id]
+	);
+	expect(Number(freshRow[0].conversion_rate)).toBe(FX_INVOICE.updatedRate);
+
 	// Recognition freezes the reporting-currency statement from that evidence.
 	const recognized = await command(request, id, {
 		command: 'recognize',
-		expected_version: 2,
+		expected_version: 5,
 	});
 	expect(recognized.status, JSON.stringify(recognized.body)).toBe(200);
 	const frozen = await rows<{
@@ -1173,6 +1263,12 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 		reportingCurrency: 'INR',
 		rate: FX_INVOICE.updatedRate,
 		converted: FX_INVOICE.converted,
+		pairChange: {
+			clearedToTarget: clearedRow[0],
+			journalRecorded: pairJournal[0].snapshot.includes(
+				'"conversion_pair_changed":true'
+			),
+		},
 		refusals: {
 			notApplicable: 'conversion_not_applicable',
 			partial: partial.body.code,
@@ -1236,6 +1332,117 @@ test('states a foreign supplier cost without evidence as unsupported', async ({
 		currency: 'USD',
 		incurred: report.company.incurred_cost,
 		reportingIncurred: report.company.currency_totals[0].reporting.incurred_cost,
+	};
+});
+
+test('reconciles a converted multi-period invoice by per-slice rounding', async ({
+	request,
+}) => {
+	// Capture a USD invoice with two service-period slices and full evidence.
+	const created = await request.post('/api/admin/purchase-invoices', {
+		data: {
+			invoice_number: FX_SPLIT.number,
+			vendor_name: 'E2E Supplier Vendor fx-split',
+			invoice_date: '2020-08-05',
+			subtotal: 100,
+			tax_amount: 0,
+			total: 100,
+			currency: 'USD',
+			cost_classification: 'project',
+			project_id: seeded.projects.beta,
+			service_period_start: FX_SPLIT.slices[0].start,
+			service_period_end: FX_SPLIT.slices[1].end,
+			tax_treatment: 'none',
+			source_reference: FX_SPLIT.sourceReference,
+			evidence_reference: 'E2E-SINV-GRN-9005',
+			withholding_tax_amount: 0,
+			reporting_currency: 'INR',
+			conversion_rate: FX_SPLIT.rate,
+			conversion_date: FX_SPLIT.rateDate,
+			conversion_evidence_reference: FX_SPLIT.evidenceReference,
+			splits: FX_SPLIT.slices.map((slice) => ({
+				service_period_start: slice.start,
+				service_period_end: slice.end,
+				amount: Number(slice.amount),
+				tax_amount: 0,
+				note: `E2E slice ${slice.start}`,
+			})),
+		},
+	});
+	expect(created.status(), await created.text()).toBe(200);
+	const createdBody = await created.json();
+	const id = Number(createdBody.data.id);
+	createdInvoices.push({
+		id,
+		cost_uid: createdBody.data.cost_uid,
+		where: 'api entry (USD, split, converted)',
+	});
+
+	const recognized = await command(request, id, {
+		command: 'recognize',
+		expected_version: 1,
+	});
+	expect(recognized.status, JSON.stringify(recognized.body)).toBe(200);
+
+	// The frozen invoice statement is the per-slice conversion sum, so it
+	// agrees with the report's per-record rounding to the cent.
+	const frozen = await rows<{
+		recognized_amount: string;
+		converted_amount: string;
+	}>(
+		`SELECT recognized_amount, converted_amount FROM purchase_invoices WHERE id = ?`,
+		[id]
+	);
+	expect(Number(frozen[0].recognized_amount)).toBe(100);
+	expect(Number(frozen[0].converted_amount)).toBe(FX_SPLIT.convertedTotal);
+
+	const sliceRows = await rows<{
+		recognized_amount: string;
+		converted_amount: string;
+	}>(
+		`SELECT recognized_amount, converted_amount
+       FROM supplier_invoice_periods WHERE invoice_id = ?
+      ORDER BY recognition_period`,
+		[id]
+	);
+	expect(sliceRows.map((row) => Number(row.recognized_amount))).toEqual([33.33, 66.67]);
+	expect(sliceRows.map((row) => Number(row.converted_amount))).toEqual([
+		FX_SPLIT.slices[0].converted,
+		FX_SPLIT.slices[1].converted,
+	]);
+
+	for (const [month, slice] of [
+		[FX_SPLIT.monthA, FX_SPLIT.slices[0]],
+		[FX_SPLIT.monthB, FX_SPLIT.slices[1]],
+	] as const) {
+		const report = await reconciliation(request, month);
+		expect(report.company.conversion.status).toBe('converted');
+		expect(report.company.incurred_cost).toBe(slice.converted);
+		expect(report.company.currency_totals[0].currency).toBe('USD');
+		expect(report.company.currency_totals[0].incurred_cost).toBe(
+			Number(slice.amount)
+		);
+		expect(report.company.currency_totals[0].reporting.incurred_cost).toBe(
+			slice.converted
+		);
+
+		const drill = await drilldown(request, { month, state: 'all' });
+		const record = drill.records.find(
+			(entry) => entry.cost_uid === createdBody.data.cost_uid
+		);
+		expect(record, JSON.stringify(drill.records)).toBeTruthy();
+		expect(record!.conversion_status).toBe('converted');
+		expect(record!.converted_amount).toBe(slice.converted);
+	}
+
+	evidence.convertedSplit = {
+		invoice: FX_SPLIT.number,
+		slices: FX_SPLIT.slices.map((slice) => ({
+			amount: slice.amount,
+			converted: slice.converted,
+		})),
+		frozenInvoiceConverted: Number(frozen[0].converted_amount),
+		frozenSliceConverted: sliceRows.map((row) => Number(row.converted_amount)),
 	};
 });
 
@@ -1390,6 +1597,18 @@ test('refuses recognition to unapproved and unauthorized identities', async ({
 			{ data: { command: 'recognize', expected_version: 1 } }
 		);
 		expect(editorRecognize.status()).toBe(403);
+		// Repricing conversion evidence is also an approval act.
+		const editorReprice = await editor.post(
+			`/api/admin/purchase-invoices/${seeded.invoiceIds.pending}/commands`,
+			{
+				data: {
+					command: 'update',
+					expected_version: 1,
+					patch: { conversion_rate: 80 },
+				},
+			}
+		);
+		expect(editorReprice.status()).toBe(403);
 		const stillPending = await rows<{ recognition_state: string }>(
 			`SELECT recognition_state FROM purchase_invoices WHERE id = ?`,
 			[seeded.invoiceIds.pending]
@@ -1507,9 +1726,11 @@ test('publishes the repeatable evidence artifact', async () => {
 		LATER_MONTH,
 		FX_INVOICE.month,
 		FX_UNSUPPORTED.month,
+		FX_SPLIT.monthA,
+		FX_SPLIT.monthB,
 	]);
 	const created = artifact.createdThroughApp as {
 		invoices: Array<{ id: number }>;
 	};
-	expect(created.invoices.length).toBe(4);
+	expect(created.invoices.length).toBe(5);
 });

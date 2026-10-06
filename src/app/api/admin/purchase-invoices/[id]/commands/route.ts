@@ -199,6 +199,30 @@ export async function POST(
 			);
 		}
 
+		// Repricing a cost's conversion evidence is an approval act (the same
+		// rule as the direct-expense register): a patch carrying any conversion
+		// field needs `other_expenses:approve` on top of the register privilege.
+		const rawPatch = (body.patch ?? undefined) as
+			| Record<string, unknown>
+			| undefined;
+		const conversionPatch =
+			rawPatch !== undefined &&
+			[
+				'reporting_currency',
+				'conversion_rate',
+				'conversion_date',
+				'conversion_evidence_reference',
+			].some((key) => rawPatch[key] !== undefined);
+		if (conversionPatch) {
+			const repricing = await ensurePermission(
+				request,
+				RESOURCES.OTHER_EXPENSES,
+				PERMISSIONS.APPROVE
+			);
+			if (repricing instanceof Response) return repricing;
+			if (!repricing.authorized) return repricing.response;
+		}
+
 		const input: SupplierCommandInput = {
 			id: invoiceId,
 			command,
@@ -208,9 +232,7 @@ export async function POST(
 				body.evidence_reference === undefined
 					? undefined
 					: String(body.evidence_reference),
-			patch: commandPatch(
-				(body.patch ?? undefined) as Record<string, unknown> | undefined
-			),
+			patch: commandPatch(rawPatch),
 		};
 		const result = await executeSupplierCommand(input, {
 			id: authResult.user?.id ?? null,

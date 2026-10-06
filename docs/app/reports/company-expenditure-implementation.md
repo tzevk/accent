@@ -391,9 +391,15 @@ reject, cancel) with `expected_version`.
 - **Conversion evidence** (migration `20261008091101`, #319 contract): a
   foreign invoice stores its reporting target, rate, rate date, and evidence
   reference, validated by the shared `resolveConversion` (full triple or none);
-  `converted_amount` is frozen at recognition. An invoice without matching
+  `converted_amount` is frozen at recognition. A pair change (currency or
+  reporting target) without an explicit fresh triple clears the stored
+  evidence instead of reusing it (`conversion_pair_changed` in the journal),
+  repricing needs `other_expenses:approve`, and an invoice without matching
   evidence keeps its own currency total with `unsupported` status — no guessed
-  or inverted rate, no mixed total.
+  or inverted rate, no mixed total. A split invoice also freezes each slice's
+  converted amount (`supplier_invoice_periods.converted_amount`: per-slice
+  rounding) and states its own converted amount as the sum of those slices, so
+  the frozen figure and the report agree to the cent.
 - **Authorization**: `purchase_orders:update` for the register and its
   commands, plus `other_expenses:approve` for recognize/reject/cancel and link
   decisions.
