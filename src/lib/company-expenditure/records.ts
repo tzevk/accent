@@ -111,6 +111,8 @@ export function mapCostRow(row: DbRow): CostRecord {
 	};
 	return {
 		...financial,
+		source: 'direct_expense',
+		split: null,
 		id: Number(num(row, 'id') ?? 0),
 		costUid: s(row, 'cost_uid'),
 		expenseNumber: s(row, 'expense_number', '') ?? '',
@@ -133,6 +135,8 @@ function toCostRecordJson(record: CostRecord): CostRecordJson {
 	return {
 		id: record.id,
 		cost_uid: record.costUid,
+		source: record.source,
+		split: record.split,
 		expense_number: record.expenseNumber,
 		recognition_state: record.state,
 		cost_classification: record.classification,
