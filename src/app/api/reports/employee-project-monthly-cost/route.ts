@@ -1,24 +1,28 @@
 /**
  * GET /api/reports/employee-project-monthly-cost
  *
- * Company-wide monthly project-cost view across all employees and all projects
- * (hours from user_activity_assignments daily_entries, hourly cost from
- * employee_salary_profile). Supports two viewing modes plus legacy per-employee.
+ * Company expenditure report. Leads with the direct-cost reconciliation and
+ * keeps the employee-cost views beside it.
  *
- * Without params              → meta (months, financial years, employees) for filter bar
- * ?view=monthly&month=YYYY-MM → company total for single month (breakdowns per employee/project)
- * ?view=fy&fy=YYYY            → FY matrix (Apr–Mar) with monthly company totals
- * ?employee_id=&fy=YYYY       → legacy per-employee FY matrix (backward compat)
+ * Without params                       → meta (months, expenditure months, FYs, employees)
+ * ?view=expenditure&month=YYYY-MM[&project_id=]
+ *                                      → Company Incurred Cost, its Project/Overhead/
+ *                                        Unallocated reconciliation, evidence states,
+ *                                        and coverage (src/lib/company-expenditure)
+ * ?view=monthly&month=YYYY-MM          → employee-cost estimate for one month
+ * ?view=fy&fy=YYYY                     → employee-cost FY matrix (Apr–Mar)
+ * ?employee_id=&fy=YYYY                → legacy per-employee FY matrix (backward compat)
  *
- * Access: same gate as the other report routes — super admins, users with
- * reports:read, or users holding the `project_activities` report field permission.
+ * Access: super admins or `reports:read`. The `project_activities` field grant
+ * no longer opens this report (ticket #306): Project Activity access alone must
+ * not reveal company expenditure. Entry, recognition, and drilldown follow the
+ * same rule; the expenditure routes are gated in the same way.
  */
 
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
-import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 import {
 	fetchCompanyCostMeta,
 	fetchEmployeeCostMeta,
@@ -27,6 +31,10 @@ import {
 	fetchMonthlyCompanyCost,
 	getFinancialYear,
 } from '@/app/reports/employee-project-monthly-cost/data-source';
+import {
+	fetchCompanyReconciliation,
+	fetchExpenditureMonths,
+} from '@/lib/company-expenditure';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,9 +56,11 @@ export async function GET(request: Request) {
 			RESOURCES.REPORTS,
 			PERMISSIONS.READ
 		);
-		const hasFieldPermission = hasProjectActivitiesFieldPermission(user);
 
-		if (!isSuperAdmin && !hasReportsPermission && !hasFieldPermission) {
+		// Financial access: a reporting privilege, never Project Activity access
+		// alone. The expenditure reconciliation names suppliers, amounts, and
+		// evidence, so the old `project_activities` field grant is not enough.
+		if (!isSuperAdmin && !hasReportsPermission) {
 			return NextResponse.json(
 				{
 					success: false,
@@ -68,11 +78,42 @@ export async function GET(request: Request) {
 		const monthParam = url.searchParams.get('month');
 		const viewParam = url.searchParams.get('view');
 
+		// Company expenditure reconciliation (direct cost), leading view.
+		if ((viewParam || '').toLowerCase() === 'expenditure') {
+			if (!monthParam || !/^\d{4}-\d{2}$/.test(monthParam)) {
+				return NextResponse.json(
+					{
+						success: false,
+						error:
+							'Valid month (YYYY-MM) is required for the expenditure view',
+					},
+					{ status: 400 }
+				);
+			}
+			const projectIdParam = url.searchParams.get('project_id');
+			let projectId: number | null = null;
+			if (projectIdParam) {
+				projectId = Number(projectIdParam);
+				if (!Number.isInteger(projectId) || projectId <= 0) {
+					return NextResponse.json(
+						{ success: false, error: 'Valid project_id is required' },
+						{ status: 400 }
+					);
+				}
+			}
+			const data = await fetchCompanyReconciliation({
+				month: monthParam,
+				projectId,
+			});
+			return NextResponse.json({ success: true, data, view: 'expenditure' });
+		}
+
 		// Meta-only request for the filter bar.
 		if (!employeeIdParam && !fyParam && !monthParam && !viewParam) {
-			const [companyMeta, legacyMeta] = await Promise.all([
+			const [companyMeta, legacyMeta, expenditureMonths] = await Promise.all([
 				fetchCompanyCostMeta(),
 				fetchEmployeeCostMeta(),
+				fetchExpenditureMonths(),
 			]);
 			// Merge so old and new clients both work; new UI reads months/fy, old reads employees
 			const meta = {
@@ -80,6 +121,7 @@ export async function GET(request: Request) {
 				employees: legacyMeta.employees,
 				financial_years: companyMeta.financial_years,
 				current_fy: companyMeta.current_fy,
+				expenditure_months: expenditureMonths,
 			};
 			return NextResponse.json({ success: true, meta });
 		}
