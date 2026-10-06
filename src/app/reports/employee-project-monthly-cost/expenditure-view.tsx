@@ -33,7 +33,10 @@ import {
 import SearchableSelect from '@/components/ui/searchable-select';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { formatCurrencyIn, formatDate } from '@/lib/format';
-import type { CostRecordJson, PeriodChargeJson } from '@/lib/company-expenditure';
+import type {
+	CostRecordJson,
+	PeriodChargeJson,
+} from '@/lib/company-expenditure';
 import BudgetSection, { type BudgetSectionPayload } from './budget-section';
 
 interface GroupRow {
@@ -112,7 +115,7 @@ interface NonOperatingItemRow {
 	project_id: number | null;
 	project_code: string | null;
 	project_name: string | null;
-	currency: string;
+	currency: string | null;
 	gross_amount: number | null;
 	recognized_amount: number | null;
 	recognition_period: string | null;
@@ -290,7 +293,10 @@ function errorMessage(error: unknown): string {
 }
 
 /** Money whose original currency is unknown is never labelled as INR. */
-function formatSourceMoney(value: number | null, currency: string | null): string {
+function formatSourceMoney(
+	value: number | null,
+	currency: string | null
+): string {
 	if (value === null) return '—';
 	return currency === null
 		? `${value.toFixed(2)} (currency unknown)`
@@ -402,7 +408,10 @@ export default function ExpenditureView({
 	// invalidation path as the recognition commands, so the reconciliation,
 	// the queue, and the drilldown all read the post-charge truth.
 	const chargeMutation = useMutation({
-		mutationFn: (input: { sourceId: number; payload: Record<string, unknown> }) =>
+		mutationFn: (input: {
+			sourceId: number;
+			payload: Record<string, unknown>;
+		}) =>
 			apiPost(`/api/admin/expenses/${input.sourceId}/charges`, input.payload),
 		onSuccess: () => {
 			setChargeTarget(null);
@@ -449,10 +458,7 @@ export default function ExpenditureView({
 
 	if (!month) {
 		return (
-			<div
-				data-testid="expenditure-view"
-				className="p-6 text-sm text-gray-500"
-			>
+			<div data-testid="expenditure-view" className="p-6 text-sm text-gray-500">
 				Select a month to see the company expenditure reconciliation.
 			</div>
 		);
@@ -607,7 +613,10 @@ export default function ExpenditureView({
 					>
 						{data.company.incurred_cost === null
 							? 'Not combinable'
-							: formatCurrencyIn(data.company.incurred_cost, data.company.currency)}
+							: formatCurrencyIn(
+									data.company.incurred_cost,
+									data.company.currency
+								)}
 					</p>
 					<p className="text-[10px] text-gray-500">
 						{data.company.record_count} recognized record(s)
@@ -622,8 +631,7 @@ export default function ExpenditureView({
 						data-amount={groupAmount('incurred_project_cost') ?? ''}
 						className="mt-0.5 text-lg font-bold text-gray-900"
 					>
-						{groupAmount('incurred_project_cost') === null &&
-						!companyStated
+						{groupAmount('incurred_project_cost') === null && !companyStated
 							? 'See currencies'
 							: formatCurrencyIn(
 									groupAmount('incurred_project_cost') ?? 0,
@@ -773,8 +781,8 @@ export default function ExpenditureView({
 								: currencyBreakdown('recoverable_tax')}
 						</li>
 						<li data-testid="tax-unresolved">
-							Unresolved tax kept at gross:{' '}
-							{data.company.unresolved_tax.count} record(s),{' '}
+							Unresolved tax kept at gross: {data.company.unresolved_tax.count}{' '}
+							record(s),{' '}
 							{data.company.unresolved_tax.gross_amount !== null
 								? formatCurrencyIn(
 										data.company.unresolved_tax.gross_amount,
@@ -855,8 +863,8 @@ export default function ExpenditureView({
 							Non-operating items — advances, deposits, prepayments, capital
 						</p>
 						<p className="text-[11px] text-gray-600">
-							Shown separately from operating cost: a payment or invoice here
-							is a balance, and only approved period consumption is counted.
+							Shown separately from operating cost: a payment or invoice here is
+							a balance, and only approved period consumption is counted.
 						</p>
 					</div>
 					<div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-700">
@@ -1122,7 +1130,10 @@ export default function ExpenditureView({
 											{project.client_name ?? '—'}
 										</td>
 										<td className="px-3 py-2 text-right font-semibold text-gray-900">
-											{formatCurrencyIn(project.incurred_cost, project.currency)}
+											{formatCurrencyIn(
+												project.incurred_cost,
+												project.currency
+											)}
 										</td>
 										<td
 											data-testid="project-reporting-cost"
@@ -1172,83 +1183,80 @@ export default function ExpenditureView({
 															Loading source records…
 														</p>
 													)}
-													{drilldownQuery.data?.data.records.length ===
-														0 && (
+													{drilldownQuery.data?.data.records.length === 0 && (
 														<p className="text-xs text-gray-500">
 															No recognized records for this Project in the
 															month.
 														</p>
 													)}
 													<ul className="space-y-1">
-														{drilldownQuery.data?.data.records.map(
-															(record) => (
-																<li
-																	key={record.id}
-																	data-testid="drilldown-record"
-																	data-source-reference={
-																		record.source_reference ?? ''
-																	}
-																	className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-700"
-																>
-																	<span className="font-medium">
-																		{record.source_reference ?? record.expense_number}
-																	</span>
-																	<span>{record.vendor_name ?? '—'}</span>
-																	<span>
-																		Period{' '}
-																		{formatDate(record.recognition_period)} (
-																		{PERIOD_BASIS_LABELS[record.period_basis] ??
-																			record.period_basis}
-																		)
-																	</span>
-																	<span>
-																		Gross{' '}
-																		{formatSourceMoney(
-																			record.gross_amount,
-																			record.currency
-																		)}
-																	</span>
-																	<span className="font-semibold">
-																		Recognized{' '}
-																		{formatSourceMoney(
-																			record.recognized_amount,
-																			record.currency
-																		)}
-																	</span>
-																	{record.conversion_status !== 'reporting' && (
-																		<span
-																			data-testid="record-conversion"
-																			data-status={record.conversion_status}
-																			data-rate={record.conversion_rate ?? ''}
-																			data-converted={
-																				record.converted_amount ?? ''
-																			}
-																			className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-900"
-																		>
-																			{record.conversion_status === 'unsupported'
-																				? `No rate to ${reportingCurrencyCode}`
-																				: `${record.currency} → ${reportingCurrencyCode} @ ${record.conversion_rate} on ${formatDate(record.conversion_date)} (${record.conversion_evidence_reference})`}
-																		</span>
+														{drilldownQuery.data?.data.records.map((record) => (
+															<li
+																key={record.id}
+																data-testid="drilldown-record"
+																data-source-reference={
+																	record.source_reference ?? ''
+																}
+																className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-700"
+															>
+																<span className="font-medium">
+																	{record.source_reference ??
+																		record.expense_number}
+																</span>
+																<span>{record.vendor_name ?? '—'}</span>
+																<span>
+																	Period {formatDate(record.recognition_period)}{' '}
+																	(
+																	{PERIOD_BASIS_LABELS[record.period_basis] ??
+																		record.period_basis}
+																	)
+																</span>
+																<span>
+																	Gross{' '}
+																	{formatSourceMoney(
+																		record.gross_amount,
+																		record.currency
 																	)}
-																	<span className="rounded bg-white px-1.5 py-0.5 text-[10px] text-gray-600">
-																		v{record.financial_version}
-																	</span>
-																	{record.cost_nature !==
-																		'operating' && (
-																		<span
-																			data-testid="record-nature"
-																			className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900"
-																		>
-																			{NATURE_LABELS[record.cost_nature] ??
-																				record.cost_nature}
-																		</span>
+																</span>
+																<span className="font-semibold">
+																	Recognized{' '}
+																	{formatSourceMoney(
+																		record.recognized_amount,
+																		record.currency
 																	)}
-																</li>
-															)
-														)}
+																</span>
+																{record.conversion_status !== 'reporting' && (
+																	<span
+																		data-testid="record-conversion"
+																		data-status={record.conversion_status}
+																		data-rate={record.conversion_rate ?? ''}
+																		data-converted={
+																			record.converted_amount ?? ''
+																		}
+																		className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-900"
+																	>
+																		{record.conversion_status === 'unsupported'
+																			? `No rate to ${reportingCurrencyCode}`
+																			: `${record.currency} → ${reportingCurrencyCode} @ ${record.conversion_rate} on ${formatDate(record.conversion_date)} (${record.conversion_evidence_reference})`}
+																	</span>
+																)}
+																<span className="rounded bg-white px-1.5 py-0.5 text-[10px] text-gray-600">
+																	v{record.financial_version}
+																</span>
+																{record.cost_nature !== 'operating' && (
+																	<span
+																		data-testid="record-nature"
+																		className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900"
+																	>
+																		{NATURE_LABELS[record.cost_nature] ??
+																			record.cost_nature}
+																	</span>
+																)}
+															</li>
+														))}
 													</ul>
-													{(drilldownQuery.data?.data.period_charges
-														.length ?? 0) > 0 && (
+													{(drilldownQuery.data?.data.period_charges.length ??
+														0) > 0 && (
 														<div className="mt-1 border-t border-gray-200 pt-1">
 															<p className="text-[11px] font-medium text-gray-700">
 																Approved period consumption in{' '}
@@ -1265,7 +1273,9 @@ export default function ExpenditureView({
 																			data-charge-uid={charge.charge_uid}
 																			className="flex flex-wrap items-center gap-x-3 text-[11px] text-gray-600"
 																		>
-																			<span>{charge.source_expense_number}</span>
+																			<span>
+																				{charge.source_expense_number}
+																			</span>
 																			<span>
 																				{CHARGE_BASIS_LABELS[charge.basis] ??
 																					charge.basis}
@@ -1365,10 +1375,7 @@ export default function ExpenditureView({
 									<td className="px-3 py-2 text-right text-gray-900">
 										{record.gross_amount === null
 											? 'Amount unknown'
-											: formatSourceMoney(
-													record.gross_amount,
-													record.currency
-												)}
+											: formatSourceMoney(record.gross_amount, record.currency)}
 									</td>
 									<td className="px-3 py-2 text-xs text-gray-600">
 										{record.recognition_period
@@ -2100,7 +2107,9 @@ function CostEditDialog({
 			>
 				<div className="mb-3 flex items-start justify-between">
 					<div>
-						<h2 className="text-base font-semibold text-gray-900">Correct cost</h2>
+						<h2 className="text-base font-semibold text-gray-900">
+							Correct cost
+						</h2>
 						<p className="text-xs text-gray-500">
 							{record.source_reference ?? record.expense_number} · version{' '}
 							{record.financial_version}. Saving applies a versioned `update`
@@ -2177,7 +2186,9 @@ function CostEditDialog({
 						/>
 					</label>
 					<label className="text-sm">
-						<span className="mb-1 block font-medium text-gray-700">Currency</span>
+						<span className="mb-1 block font-medium text-gray-700">
+							Currency
+						</span>
 						<select
 							aria-label="Currency"
 							value={currency}
@@ -2359,8 +2370,8 @@ function CostEditDialog({
 				</div>
 
 				<p className="mt-2 text-[11px] text-gray-500">
-					Saving corrects the cost in place. It cannot change a recognized
-					cost — cancel that cost first and record the correction as a new one.
+					Saving corrects the cost in place. It cannot change a recognized cost
+					— cancel that cost first and record the correction as a new one.
 				</p>
 
 				{error && (
@@ -2463,6 +2474,16 @@ function CommandDialog({
 					>
 						Close
 					</button>
+					<button
+						type="submit"
+						disabled={submitting}
+						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
+					>
+						{label}
+					</button>
+				</div>
+			</form>
+		</div>
 	);
 }
 

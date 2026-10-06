@@ -432,7 +432,11 @@ export interface NonOperatingItemJson {
 	project_id: number | null;
 	project_code: string | null;
 	project_name: string | null;
-	currency: string;
+	/**
+	 * The item's original currency; null is unknown — never read as INR, so
+	 * its figures are stated as unknown rather than attributed to one.
+	 */
+	currency: string | null;
 	/** Gross liability of the source document. */
 	gross_amount: number | null;
 	/** The supported balance: the source's confirmed amount. */
@@ -628,11 +632,7 @@ export interface CostJournalEntry {
 
 export interface CostDrilldownQuery {
 	month: string;
-	state?:
-		| RecognitionState
-		| 'unconfirmed'
-		| 'unresolved'
-		| 'all';
+	state?: RecognitionState | 'unconfirmed' | 'unresolved' | 'all';
 	classification?: CostClassification | 'unresolved' | 'all';
 	/**
 	 * What the spend is. `non_operating` selects the advance/deposit/

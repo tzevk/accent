@@ -104,7 +104,9 @@ function sumMoney(values: Array<number | null>): number {
  * any unknown original currency — an unknown currency can never be stated.
  */
 function currencyOf(records: CostRecord[]): string | null {
-	const codes = new Set(records.map((record) => currencyCodeOf(record.currency)));
+	const codes = new Set(
+		records.map((record) => currencyCodeOf(record.currency))
+	);
 	if (codes.has(null)) return null;
 	return codes.size === 1 ? ([...codes][0] as string) : null;
 }
@@ -255,7 +257,11 @@ function reportingSlice(
 	let recoverable = R(0);
 	let unresolvedGross = R(0);
 	for (const record of confirmed) {
-		const amount = convertedAmountOf(record, confirmedAmount(record), reporting);
+		const amount = convertedAmountOf(
+			record,
+			confirmedAmount(record),
+			reporting
+		);
 		if (amount === null) continue;
 		if (record.classification === 'project') project = add(project, amount);
 		else if (record.classification === 'company_overhead') {
@@ -484,7 +490,12 @@ function monthNotices(input: MonthNoticeInput): CoverageNotice[] {
 		record.evaluation.exceptions.includes('service_period_start_missing')
 	);
 	const unsupported = confirmed.filter(
-		(record) => conversionStatusOf(evidenceOf(record), reporting) === 'unsupported'
+		(record) =>
+			conversionStatusOf(evidenceOf(record), reporting) === 'unsupported'
+	);
+	const unsupportedCharges = input.countedCharges.filter(
+		(charge) =>
+			conversionStatusOf(evidenceOf(charge), reporting) === 'unsupported'
 	);
 	const unknownCurrency = confirmed.filter(
 		(record) => currencyCodeOf(record.currency) === null
@@ -499,14 +510,14 @@ function monthNotices(input: MonthNoticeInput): CoverageNotice[] {
 			severity: 'warning',
 		});
 	}
-	if (unsupported.length > 0) {
+	if (unsupported.length + unsupportedCharges.length > 0) {
 		const unsupportedCurrencies = currencyTotals
 			.filter((row) => row.reporting.status === 'unsupported')
 			.map((row) => row.currency);
 		notices.push({
 			code: 'currency_conversion_missing',
 			label: 'Some cost is not stated in the reporting currency',
-			detail: `${unsupported.length} recognized record(s) carry no supported conversion evidence for ${reporting}${
+			detail: `${unsupported.length + unsupportedCharges.length} confirmed item(s) (records or counted period charges) carry no supported conversion evidence for ${reporting}${
 				unsupportedCurrencies.length > 0
 					? ` (${unsupportedCurrencies.join(', ')})`
 					: ''
@@ -581,8 +592,7 @@ function monthNotices(input: MonthNoticeInput): CoverageNotice[] {
 
 	// ── Non-operating balances and their approved consumption (#317) ──────
 	const recognizedNonOperating = input.nonOperatingSources.filter(
-		(record) =>
-			isNonOperatingNature(record.nature) && isConfirmed(record.state)
+		(record) => isNonOperatingNature(record.nature) && isConfirmed(record.state)
 	);
 	if (input.nonOperatingSources.length > 0) {
 		notices.push({
@@ -631,7 +641,8 @@ function monthNotices(input: MonthNoticeInput): CoverageNotice[] {
 		});
 	}
 	const orphanedCharges = input.charges.filter(
-		(charge) => charge.state === 'approved' && charge.sourceState !== 'recognized'
+		(charge) =>
+			charge.state === 'approved' && charge.sourceState !== 'recognized'
 	);
 	if (orphanedCharges.length > 0) {
 		notices.push({
@@ -647,7 +658,8 @@ function monthNotices(input: MonthNoticeInput): CoverageNotice[] {
 /** Approved charges counted as cost: their source is still confirmed cost. */
 function countedChargesOf(charges: PeriodCharge[]): PeriodCharge[] {
 	return charges.filter(
-		(charge) => charge.state === 'approved' && charge.sourceState === 'recognized'
+		(charge) =>
+			charge.state === 'approved' && charge.sourceState === 'recognized'
 	);
 }
 /** Approved charges dated in one month, in the month's single currency. */
@@ -693,25 +705,30 @@ function nonOperatingSection(input: {
 		recognizedBalances,
 		(record) => record.recognizedAmount
 	);
-	const currencies = new Set(
-		[...sources, ...charges].map((entry) => entry.currency ?? 'INR')
+	// Unknown original currencies are never read as INR: an entry whose
+	// currency is unknown blocks any single-currency statement of the section.
+	const currencyCodes = new Set(
+		[...sources, ...charges].map((entry) => currencyCodeOf(entry.currency))
 	);
+	const knownCurrencies = [...currencyCodes].filter(
+		(code): code is string => code !== null
+	);
+	const singleCurrency =
+		!currencyCodes.has(null) && knownCurrencies.length === 1;
 	const monthSourceIds = new Set(monthSources.map((record) => record.id));
 	const consumedThisMonth = countedChargesOf(charges);
-	const consumedMonthAmount =
-		currencies.size > 1
-			? null
-			: rounded(sumMoney(consumedThisMonth.map((charge) => charge.amount)));
-	const consumedToDateAmount =
-		currencies.size > 1
-			? null
-			: rounded(
-					sumMoney(
-						recognizedBalances.map(
-							(record) => chargeTotals.get(record.costUid ?? '') ?? 0
-						)
+	const consumedMonthAmount = singleCurrency
+		? rounded(sumMoney(consumedThisMonth.map((charge) => charge.amount)))
+		: null;
+	const consumedToDateAmount = singleCurrency
+		? rounded(
+				sumMoney(
+					recognizedBalances.map(
+						(record) => chargeTotals.get(record.costUid ?? '') ?? 0
 					)
-				);
+				)
+			)
+		: null;
 	const remaining =
 		excludedSourceAmount === null || consumedToDateAmount === null
 			? null
@@ -737,7 +754,7 @@ function nonOperatingSection(input: {
 				project_id: record.projectId,
 				project_code: record.projectCode,
 				project_name: record.projectName,
-				currency: record.currency ?? 'INR',
+				currency: record.currency,
 				gross_amount: record.grossAmount,
 				recognized_amount: record.recognizedAmount,
 				recognition_period: record.recognitionPeriod,
@@ -765,12 +782,13 @@ function nonOperatingSection(input: {
 		})
 		.sort(
 			(a, b) =>
-				(b.recognition_period ?? '').localeCompare(a.recognition_period ?? '') ||
-				b.expense_id - a.expense_id
+				(b.recognition_period ?? '').localeCompare(
+					a.recognition_period ?? ''
+				) || b.expense_id - a.expense_id
 		);
 
 	return {
-		currency: currencies.size === 1 ? [...currencies][0] : null,
+		currency: singleCurrency ? knownCurrencies[0] : null,
 		excluded_source_amount: excludedSourceAmount,
 		consumed_this_month: consumedMonthAmount,
 		consumed_to_date: consumedToDateAmount,
@@ -880,18 +898,22 @@ export function buildReconciliation(
 	// confirmed record is supported (and there is at least one). Otherwise a
 	// single known currency keeps its own total and everything else has none.
 	const convertedRecords = confirmed.filter(
-		(record) => conversionStatusOf(evidenceOf(record), reporting) === 'converted'
+		(record) =>
+			conversionStatusOf(evidenceOf(record), reporting) === 'converted'
 	).length;
 	const unsupportedRecords = confirmed.filter(
-		(record) => conversionStatusOf(evidenceOf(record), reporting) === 'unsupported'
+		(record) =>
+			conversionStatusOf(evidenceOf(record), reporting) === 'unsupported'
 	).length;
 	// A period charge is cost of its own month, so its source's conversion
 	// evidence decides whether the charge can be stated in the reporting basis.
 	const convertedCharges = countedCharges.filter(
-		(charge) => conversionStatusOf(evidenceOf(charge), reporting) === 'converted'
+		(charge) =>
+			conversionStatusOf(evidenceOf(charge), reporting) === 'converted'
 	).length;
 	const unsupportedCharges = countedCharges.filter(
-		(charge) => conversionStatusOf(evidenceOf(charge), reporting) === 'unsupported'
+		(charge) =>
+			conversionStatusOf(evidenceOf(charge), reporting) === 'unsupported'
 	).length;
 	const unsupportedCost = unsupportedRecords + unsupportedCharges;
 	const singleCurrency = currencies.length === 1;

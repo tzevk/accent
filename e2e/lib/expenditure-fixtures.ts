@@ -641,7 +641,8 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		recognizedAmount: null,
 		sourceReference: 'E2E-INV-0019',
 		evidenceReference: 'E2E-GRN-0019',
-		description: 'E2E June EUR cost awaiting recognition under an approved budget',
+		description:
+			'E2E June EUR cost awaiting recognition under an approved budget',
 	},
 	{
 		key: 'mayGbp',
@@ -667,7 +668,6 @@ export const EXPENDITURE_COSTS: SeedCost[] = [
 		evidenceReference: 'E2E-GRN-0020',
 		description: 'E2E June GBP cost with two approved budgets',
 	},
-];
 	// ── Non-operating sources (#317) ──────────────────────────────────────
 	// Recognized balances, excluded from Company Incurred Cost; only approved
 	// period charges (EXPENDITURE_CHARGES below) become cost.
@@ -981,7 +981,14 @@ export interface SeedBudget {
 	/** The version the next command must present. */
 	financialVersion: number;
 	/** Which journal commands the fixture history holds, oldest first. */
-	journal: Array<'recorded' | 'updated' | 'submitted' | 'approved' | 'superseded' | 'withdrawn'>;
+	journal: Array<
+		| 'recorded'
+		| 'updated'
+		| 'submitted'
+		| 'approved'
+		| 'superseded'
+		| 'withdrawn'
+	>;
 }
 
 export const EXPENDITURE_BUDGETS: SeedBudget[] = [
@@ -1253,7 +1260,10 @@ export async function cleanupExpenditureFixtures(): Promise<number> {
                       SELECT project_id FROM projects WHERE project_code LIKE ?
                  )
               )`,
-			[`${EXPENDITURE_BUDGET_UID_PREFIX}%`, `${EXPENDITURE_PROJECT_CODE_PREFIX}%`]
+			[
+				`${EXPENDITURE_BUDGET_UID_PREFIX}%`,
+				`${EXPENDITURE_PROJECT_CODE_PREFIX}%`,
+			]
 		)
 	).affectedRows;
 	removed += (
@@ -1263,7 +1273,10 @@ export async function cleanupExpenditureFixtures(): Promise<number> {
            OR project_id IN (
                 SELECT project_id FROM projects WHERE project_code LIKE ?
               )`,
-			[`${EXPENDITURE_BUDGET_UID_PREFIX}%`, `${EXPENDITURE_PROJECT_CODE_PREFIX}%`]
+			[
+				`${EXPENDITURE_BUDGET_UID_PREFIX}%`,
+				`${EXPENDITURE_PROJECT_CODE_PREFIX}%`,
+			]
 		)
 	).affectedRows;
 	removed += (
@@ -1541,14 +1554,16 @@ export async function seedExpenditureFixtures(): Promise<SeededExpenditure> {
 /** The seeded period charge for a key, or a thrown error when missing. */
 export function seededCharge(key: string): SeedCharge {
 	const charge = EXPENDITURE_CHARGES.find((entry) => entry.key === key);
-	if (!charge) throw new Error(`Unknown expenditure charge fixture key: ${key}`);
+	if (!charge)
+		throw new Error(`Unknown expenditure charge fixture key: ${key}`);
 	return charge;
 }
 
 /** The seeded budget for a key, or a thrown error when it is missing. */
 export function seededBudget(key: string): SeedBudget {
 	const budget = EXPENDITURE_BUDGETS.find((entry) => entry.key === key);
-	if (!budget) throw new Error(`Unknown expenditure budget fixture key: ${key}`);
+	if (!budget)
+		throw new Error(`Unknown expenditure budget fixture key: ${key}`);
 	return budget;
 }
 

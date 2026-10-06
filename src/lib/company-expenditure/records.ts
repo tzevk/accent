@@ -266,7 +266,8 @@ export interface ChargeSource {
 	classification: CostClassification | null;
 	projectId: number | null;
 	recognizedAmount: number | null;
-	currency: string;
+	/** The source's original currency; null is unknown, never read as INR. */
+	currency: string | null;
 }
 
 /**
@@ -299,7 +300,7 @@ export async function loadChargeSourceForUpdate(
 			(s(row, 'cost_classification') as CostClassification | null) ?? null,
 		projectId: num(row, 'project_id'),
 		recognizedAmount: num(row, 'recognized_amount'),
-		currency: s(row, 'currency', 'INR') ?? 'INR',
+		currency: s(row, 'currency'),
 	};
 }
 
@@ -344,11 +345,11 @@ export function mapChargeRow(row: DbRow): PeriodCharge {
 		clientName: s(row, 'client_name'),
 		currency: s(row, 'currency', 'INR') ?? 'INR',
 		period: (s(row, 'charge_period', '') ?? '').slice(0, 10),
-		basis: (s(row, 'basis', 'consumption') as PeriodChargeBasis) ?? 'consumption',
+		basis:
+			(s(row, 'basis', 'consumption') as PeriodChargeBasis) ?? 'consumption',
 		amount: num(row, 'amount') ?? 0,
 		evidenceReference: s(row, 'evidence_reference', '') ?? '',
-		state:
-			(s(row, 'state', 'approved') as PeriodChargeState) ?? 'approved',
+		state: (s(row, 'state', 'approved') as PeriodChargeState) ?? 'approved',
 		financialVersion: Number(num(row, 'financial_version') ?? 1),
 		sequence: Number(num(row, 'sequence') ?? 1),
 		approvedBy: num(row, 'approved_by'),
@@ -360,10 +361,7 @@ export function mapChargeRow(row: DbRow): PeriodCharge {
 		reportingCurrency: currencyCodeOf(s(row, 'source_reporting_currency')),
 		conversionRate: s(row, 'source_conversion_rate'),
 		conversionDate: s(row, 'source_conversion_date'),
-		conversionEvidenceReference: s(
-			row,
-			'source_conversion_evidence_reference'
-		),
+		conversionEvidenceReference: s(row, 'source_conversion_evidence_reference'),
 	};
 }
 
@@ -776,7 +774,8 @@ export async function loadDrilldown(
 			})
 		: [];
 	const countedCharges = charges.filter(
-		(charge) => charge.state === 'approved' && charge.sourceState === 'recognized'
+		(charge) =>
+			charge.state === 'approved' && charge.sourceState === 'recognized'
 	);
 	const chargeCurrencies = new Set(
 		countedCharges.map((charge) => charge.currency)
