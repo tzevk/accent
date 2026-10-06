@@ -21,6 +21,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import type Decimal from 'decimal.js';
+import { R, toNumber } from '@/lib/money';
 import { withTransaction } from '@/utils/database';
 import { CostError } from './commands';
 import type { CostActor, CommandOptions } from './commands';
@@ -70,15 +72,24 @@ function amountOrThrow(value: unknown): number {
 			field: 'amount',
 		});
 	}
-	const parsed = Number(source);
-	if (!Number.isFinite(parsed) || parsed < 0) {
+	let parsed: Decimal;
+	try {
+		parsed = R(source);
+	} catch {
 		throw new CostError(
 			'invalid_amount',
 			'Amount must be a positive number',
 			422
 		);
 	}
-	return Math.round(parsed * 100) / 100;
+	if (!parsed.isFinite() || parsed.lt(0)) {
+		throw new CostError(
+			'invalid_amount',
+			'Amount must be a positive number',
+			422
+		);
+	}
+	return toNumber(parsed.toDecimalPlaces(2));
 }
 
 function currencyOrThrow(value: unknown): string {

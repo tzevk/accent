@@ -1214,6 +1214,45 @@ test('shows the budget section to an authorized reader only', async ({
 	}
 });
 
+test('rounds an entered half-cent budget once with decimal arithmetic', async ({
+	request,
+}) => {
+	const response = await request.post('/api/admin/cost-budgets', {
+		data: {
+			project_id: seeded.projects.alpha,
+			amount: '1.005',
+			currency: 'INR',
+			scope: 'project_incurred_cost',
+			period_start: '2024-01-01',
+			period_end: '2024-01-31',
+			basis_note: 'E2E half-cent budget',
+		},
+	});
+	expect(response.status(), await response.text()).toBe(201);
+	const budget = (await response.json()).data as BudgetRow;
+	created.push(budget.id);
+	expect(budget.amount).toBe(1.01);
+	const persisted = await rows<{ amount: string }>(
+		`SELECT amount FROM project_cost_budgets WHERE id = ?`,
+		[budget.id]
+	);
+	expect(persisted[0].amount).toBe('1.01');
+	const journal = await rows<{ amount: string }>(
+		`SELECT JSON_UNQUOTE(JSON_EXTRACT(snapshot, '$.amount')) AS amount
+       FROM project_cost_budget_events WHERE budget_uid = ? AND version = 1`,
+		[budget.budget_uid]
+	);
+	expect(Number(journal[0].amount)).toBe(1.01);
+	evidence.centRounding = {
+		input: '1.005',
+		expected: 1.01,
+		response: budget.amount,
+		persisted: persisted[0].amount,
+		journal: journal[0].amount,
+	};
+	publish();
+});
+
 test('regenerates the JSON evidence artifact', async () => {
 	publish();
 	const artifact = readArtifact('project-cost-budgets');
