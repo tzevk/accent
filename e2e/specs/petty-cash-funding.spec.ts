@@ -53,14 +53,25 @@ const EXPECTED = {
 	spendC: 800,
 	spendD: 400,
 	spendE: 500,
+	spendF: 100,
+	spendG: 50,
+	fxRate: '82.00',
+	fxRateUpdated: '83.50',
 } as const;
 
 type ReconciliationData = {
 	month: string;
 	company: {
 		currency: string | null;
+		reporting_currency: string;
 		incurred_cost: number | null;
 		groups: Array<{ key: string; amount: number }>;
+		conversion: {
+			status: 'reporting' | 'converted' | 'unsupported';
+			converted_records: number;
+			unsupported_records: number;
+			unsupported_currencies: string[];
+		};
 	};
 	projects: Array<{
 		project_id: number;
@@ -477,6 +488,7 @@ test('keeps missing linkage unresolved and refuses recognition or access without
 	const spendB = await recordSpend(request, {
 		transaction_date: `${MONTH}-12`,
 		debit_amount: EXPECTED.spendB,
+		currency: 'INR',
 		cost_classification: 'unallocated',
 		bill_date: `${MONTH}-12`,
 		evidence_reference: `${PETTY_CASH_PREFIX}-RECEIPT-B`,
@@ -491,6 +503,7 @@ test('keeps missing linkage unresolved and refuses recognition or access without
 	const spendD = await recordSpend(request, {
 		transaction_date: `${MONTH}-14`,
 		debit_amount: EXPECTED.spendD,
+		currency: 'INR',
 		bill_date: `${MONTH}-14`,
 		notes: `${PETTY_CASH_PREFIX} spend D unresolved`,
 	});
@@ -506,6 +519,7 @@ test('keeps missing linkage unresolved and refuses recognition or access without
 		const clerkB = await recordSpend(clerk, {
 			transaction_date: `${MONTH}-15`,
 			debit_amount: 99,
+			currency: 'INR',
 			cost_classification: 'unallocated',
 			bill_date: `${MONTH}-15`,
 			notes: `${PETTY_CASH_PREFIX} clerk attempt`,
@@ -608,6 +622,7 @@ test('a receipt already linked to another cost settles it instead of duplicating
 	const spendC = await recordSpend(request, {
 		transaction_date: `${MONTH}-18`,
 		debit_amount: EXPECTED.spendC,
+		currency: 'INR',
 		source_voucher_id: voucherId,
 		cost_classification: 'unallocated',
 		bill_date: `${MONTH}-18`,
@@ -687,6 +702,7 @@ test('recognizes a later-month spend in its own period only', async ({
 	const spendE = await recordSpend(request, {
 		transaction_date: `${LATER_MONTH}-05`,
 		debit_amount: EXPECTED.spendE,
+		currency: 'INR',
 		cost_classification: 'project',
 		project_id: seeded.projects.beta,
 		service_period_start: `${LATER_MONTH}-01`,
@@ -961,6 +977,157 @@ test('leaves the funding mirror deleted with its voucher when nothing was spent'
 	// The deleted voucher no longer states funding.
 	const later = await reconciliation(request, LATER_MONTH);
 	expect(later.petty_cash.funding).toBe(0);
+});
+
+test('captures and versions foreign-currency conversion evidence on petty cash', async ({
+	request,
+}) => {
+	// A partial triple is refused: evidence moves as a whole or not at all.
+	const partial = await recordSpend(request, {
+		transaction_date: `${LATER_MONTH}-08`,
+		debit_amount: EXPECTED.spendF,
+		currency: 'USD',
+		conversion_rate: EXPECTED.fxRate,
+		notes: `${PETTY_CASH_PREFIX} spend F partial evidence`,
+	});
+	expect(partial.status).toBe(422);
+	expect(partial.body.code).toBe('conversion_evidence_incomplete');
+	const invalidRate = await recordSpend(request, {
+		transaction_date: `${LATER_MONTH}-08`,
+		debit_amount: EXPECTED.spendF,
+		currency: 'USD',
+		conversion_rate: '0',
+		conversion_date: `${LATER_MONTH}-08`,
+		conversion_evidence_reference: `${PETTY_CASH_PREFIX}-FX-0`,
+		notes: `${PETTY_CASH_PREFIX} spend F invalid rate`,
+	});
+	expect(invalidRate.status).toBe(422);
+	expect(invalidRate.body.code).toBe('invalid_conversion_rate');
+	const refusedRows = await rows<{ count: number }>(
+		`SELECT COUNT(*) AS count FROM petty_cash_expenses WHERE notes LIKE ?`,
+		[`${PETTY_CASH_PREFIX} spend F%`]
+	);
+	expect(Number(refusedRows[0].count)).toBe(0);
+
+	// The full triple is captured with the spending, and the reporting-currency
+	// figure is computed from the recognized amount, not at capture.
+	const spendF = await recordSpend(request, {
+		transaction_date: `${LATER_MONTH}-08`,
+		debit_amount: EXPECTED.spendF,
+		currency: 'USD',
+		cost_classification: 'project',
+		project_id: seeded.projects.beta,
+		service_period_start: `${LATER_MONTH}-08`,
+		service_period_end: `${LATER_MONTH}-08`,
+		conversion_rate: EXPECTED.fxRate,
+		conversion_date: `${LATER_MONTH}-08`,
+		conversion_evidence_reference: `${PETTY_CASH_PREFIX}-FX-1`,
+		notes: `${PETTY_CASH_PREFIX} spend F foreign currency`,
+	});
+	expect(spendF.status, JSON.stringify(spendF.body)).toBe(200);
+	const spendFId = String((spendF.body.data as Record<string, unknown>).id);
+	spends.spendF = await spendRow(spendFId);
+	expect(spends.spendF.currency).toBe('USD');
+	expect(spends.spendF.conversion_rate).toBe(EXPECTED.fxRate);
+	expect(spends.spendF.conversion_date).toBe(`${LATER_MONTH}-08`);
+	expect(spends.spendF.conversion_evidence_reference).toBe(
+		`${PETTY_CASH_PREFIX}-FX-1`
+	);
+	expect(spends.spendF.converted_amount).toBeNull();
+	expect(Number(spends.spendF.conversion_rate)).toBe(Number(EXPECTED.fxRate));
+
+	// The register edit path refuses the conversion fields; they change only
+	// through the versioned update command.
+	const registerRefusal = await request.put(`${REGISTER}/${spendFId}`, {
+		data: { conversion_rate: '1.00' },
+	});
+	expect(registerRefusal.status()).toBe(422);
+	expect((await registerRefusal.json()).code).toBe(
+		'financial_fields_versioned'
+	);
+
+	const recognizeF = await runCommand(request, spendFId, {
+		command: 'recognize',
+		expected_version: 1,
+	});
+	expect(recognizeF.status, JSON.stringify(recognizeF.body)).toBe(200);
+	const recognizedF = await spendRow(spendFId);
+	// 100.00 USD × 82.00 = 8,200.00 INR, computed by the shared conversion.
+	expect(Number(recognizedF.converted_amount)).toBe(
+		EXPECTED.spendF * Number(EXPECTED.fxRate)
+	);
+	const journalF = await journalFor(String(recognizedF.cost_uid));
+	expect(journalF).toEqual([
+		{ version: 1, command: 'recorded' },
+		{ version: 2, command: 'recognized' },
+	]);
+	const [recognizedEvent] = await rows<{ snapshot: string }>(
+		`SELECT snapshot FROM financial_cost_events
+      WHERE cost_uid = ? AND version = 2`,
+		[String(recognizedF.cost_uid)]
+	);
+	const snapshot = JSON.parse(recognizedEvent.snapshot) as Record<
+		string,
+		unknown
+	>;
+	expect(snapshot.conversion_rate).toBe(EXPECTED.fxRate);
+	expect(Number(snapshot.converted_amount)).toBe(8200);
+
+	// Changing the evidence afterwards is a versioned update with a new
+	// converted figure.
+	const repriced = await runCommand(request, spendFId, {
+		command: 'update',
+		expected_version: 2,
+		patch: { conversionRate: EXPECTED.fxRateUpdated },
+	});
+	expect(repriced.status, JSON.stringify(repriced.body)).toBe(200);
+	const repricedRow = await spendRow(spendFId);
+	expect(Number(repricedRow.converted_amount)).toBe(
+		EXPECTED.spendF * Number(EXPECTED.fxRateUpdated)
+	);
+
+	// A second foreign spend without evidence stays explicit: recognized cost
+	// in its own currency, no reporting-currency figure, and no false total.
+	const spendG = await recordSpend(request, {
+		transaction_date: `${LATER_MONTH}-09`,
+		debit_amount: EXPECTED.spendG,
+		currency: 'USD',
+		cost_classification: 'project',
+		project_id: seeded.projects.beta,
+		bill_date: `${LATER_MONTH}-09`,
+		notes: `${PETTY_CASH_PREFIX} spend G unconverted`,
+	});
+	expect(spendG.status, JSON.stringify(spendG.body)).toBe(200);
+	const spendGId = String((spendG.body.data as Record<string, unknown>).id);
+	const recognizeG = await runCommand(request, spendGId, {
+		command: 'recognize',
+		expected_version: 1,
+	});
+	expect(recognizeG.status, JSON.stringify(recognizeG.body)).toBe(200);
+	const recognizedG = await spendRow(spendGId);
+	expect(recognizedG.converted_amount).toBeNull();
+
+	const later = await reconciliation(request, LATER_MONTH);
+	expect(later.company.reporting_currency).toBe('INR');
+	expect(later.company.conversion.converted_records).toBe(1);
+	expect(later.company.conversion.unsupported_records).toBe(1);
+	expect(later.company.conversion.unsupported_currencies).toEqual(['USD']);
+	// An unsupported slice keeps its own single currency instead of inventing
+	// a converted total: 100 + 50 USD, both original amounts.
+	expect(later.company.currency).toBe('USD');
+	expect(later.company.incurred_cost).toBe(
+		EXPECTED.spendF + EXPECTED.spendG
+	);
+	expect(coverageCodes(later)).toContain('currency_conversion_missing');
+
+	controlEvidence.conversion = {
+		partialEvidence: partial.body.code,
+		invalidRate: invalidRate.body.code,
+		convertedAmount: Number(recognizedF.converted_amount),
+		repricedConvertedAmount: Number(repricedRow.converted_amount),
+		unconvertedAmount: recognizedG.converted_amount,
+		unsupportedRecords: later.company.conversion.unsupported_records,
+	};
 });
 
 test('regenerates the JSON evidence artifact', async () => {

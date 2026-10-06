@@ -80,7 +80,7 @@ export const PETTY_CASH_CLERK = {
 		'petty_cash_expenses:update',
 		'petty_cash_expenses:delete',
 	],
-	ip: '198.18.0.24',
+	ip: '198.18.0.27',
 } as const;
 
 /** An authenticated user with no petty-cash privilege at all. */
@@ -92,7 +92,7 @@ export const PETTY_CASH_OUTSIDER = {
 	roleCode: 'e2e_316_no_cash',
 	roleName: 'E2E No Petty Cash',
 	permissions: ['reports:read'],
-	ip: '198.18.0.25',
+	ip: '198.18.0.28',
 } as const;
 
 export interface SeededPettyCash {

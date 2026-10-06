@@ -64,6 +64,20 @@ const COST_COLUMNS = [
 	{ name: 'service_period_start', ddl: 'DATE NULL' },
 	{ name: 'service_period_end', ddl: 'DATE NULL' },
 	{ name: 'currency', ddl: 'VARCHAR(3) NULL' },
+	{
+		name: 'reporting_currency',
+		ddl: "VARCHAR(3) NULL COMMENT 'Reporting target; NULL = company reporting currency'",
+	},
+	{
+		name: 'conversion_rate',
+		ddl: 'DECIMAL(20,10) NULL COMMENT \'Effective original → reporting rate, kept as a decimal\'',
+	},
+	{ name: 'conversion_date', ddl: 'DATE NULL' },
+	{ name: 'conversion_evidence_reference', ddl: 'VARCHAR(500) NULL' },
+	{
+		name: 'converted_amount',
+		ddl: "DECIMAL(20,2) NULL COMMENT 'Reporting-currency value of recognized_amount at the recorded rate'",
+	},
 	{ name: 'tax_amount', ddl: 'DECIMAL(15,2) NULL' },
 	{
 		name: 'tax_treatment',

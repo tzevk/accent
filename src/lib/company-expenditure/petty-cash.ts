@@ -42,7 +42,17 @@ import {
 	text,
 } from './fields';
 import { JOURNAL_COMMAND, writeCostEvent } from './journal';
-import { inTransaction, type CommandOptions, type CostActor } from './commands';
+import {
+	inTransaction,
+	resolveConversion,
+	type CommandOptions,
+	type CostActor,
+} from './commands';
+import {
+	convertToReporting,
+	evidenceOf,
+	reportingCurrencyOf,
+} from './currency';
 import {
 	evaluateCost,
 	nextState,
@@ -128,7 +138,9 @@ const SPEND_SELECT = `
          p.tax_treatment, p.tax_evidence_reference, p.recognized_amount,
          p.recognized_by, p.recognized_at, p.source_reference,
          p.evidence_reference, p.linked_cost_uid, p.financial_version,
-         COALESCE(p.currency, 'INR') AS currency, p.debit_amount,
+         p.currency, p.reporting_currency, p.conversion_rate,
+         p.conversion_date, p.conversion_evidence_reference, p.converted_amount,
+         p.debit_amount,
          pr.project_code, COALESCE(pr.project_title, pr.name) AS project_name,
          pr.client_name
     FROM petty_cash_expenses p
@@ -145,7 +157,13 @@ export function mapPettyCashRow(row: DbRow): CostRecord {
 			(s(row, 'cost_classification') as CostClassification | null) ?? null,
 		state:
 			(s(row, 'recognition_state', 'draft') as RecognitionState) ?? 'draft',
-		currency: s(row, 'currency', 'INR'),
+		// A NULL original currency is unknown — never read as INR.
+		currency: s(row, 'currency'),
+		reportingCurrency: s(row, 'reporting_currency'),
+		conversionRate: s(row, 'conversion_rate'),
+		conversionDate: s(row, 'conversion_date'),
+		conversionEvidenceReference: s(row, 'conversion_evidence_reference'),
+		convertedAmount: num(row, 'converted_amount'),
 		grossAmount: num(row, 'debit_amount'),
 		taxAmount: num(row, 'tax_amount'),
 		taxTreatment:
@@ -218,7 +236,7 @@ export async function loadPettyCashProjectCost(
 ): Promise<Map<number, Map<string, number | null>>> {
 	const { start, end } = monthBounds(month);
 	const [rows] = await db.execute(
-		`SELECT p.project_id, COALESCE(p.currency, 'INR') AS currency,
+		`SELECT p.project_id, p.currency AS currency,
               SUM(p.recognized_amount) AS amount,
               SUM(CASE WHEN p.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts
          FROM petty_cash_expenses p
@@ -229,14 +247,17 @@ export async function loadPettyCashProjectCost(
           AND p.cost_classification = 'project'
           AND p.project_id IS NOT NULL
           AND p.recognition_period BETWEEN ? AND ?
-        GROUP BY p.project_id, COALESCE(p.currency, 'INR')`,
+        GROUP BY p.project_id, p.currency`,
 		[start, end]
 	);
 	const costs = new Map<number, Map<string, number | null>>();
 	for (const row of rows as DbRow[]) {
 		const id = num(row, 'project_id');
 		if (id === null) continue;
-		const currency = s(row, 'currency', 'INR') ?? 'INR';
+		const currency = s(row, 'currency');
+		// A recognized cost always states its original currency; an unknown one
+		// is never folded into a currency subtotal.
+		if (!currency) continue;
 		const unknownAmounts = num(row, 'unknown_amounts') ?? 0;
 		const perCurrency = costs.get(id) ?? new Map<string, number | null>();
 		perCurrency.set(currency, unknownAmounts > 0 ? null : num(row, 'amount'));
@@ -276,7 +297,9 @@ function toAggregateMap(
 ): Map<string, CashAggregate> {
 	const map = new Map<string, CashAggregate>();
 	for (const row of rows) {
-		const currency = s(row, 'currency', 'INR') ?? 'INR';
+		// An unknown original currency is never folded into a currency subtotal.
+		const currency = s(row, 'currency');
+		if (!currency) continue;
 		const current = map.get(currency) ?? {
 			currency,
 			amount: 0,
@@ -320,25 +343,25 @@ export async function loadPettyCashSummary(
 		: [];
 
 	const [fundingRows] = await db.execute(
-		`SELECT COALESCE(p.currency, 'INR') AS currency, COUNT(*) AS count,
+		`SELECT p.currency AS currency, COUNT(*) AS count,
               COALESCE(SUM(p.credit_amount), 0) AS amount
          FROM petty_cash_expenses p
         WHERE p.isDelete = 0 AND p.entry_kind = 'funding' ${cashFilter}
-        GROUP BY COALESCE(p.currency, 'INR')`,
+        GROUP BY p.currency`,
 		cashParams
 	);
 	const [spendRows] = await db.execute(
-		`SELECT COALESCE(p.currency, 'INR') AS currency, COUNT(*) AS count,
+		`SELECT p.currency AS currency, COUNT(*) AS count,
               COALESCE(SUM(p.debit_amount), 0) AS amount,
               COALESCE(SUM(CASE WHEN p.source_voucher_id IS NOT NULL THEN p.debit_amount ELSE 0 END), 0) AS funded,
               COALESCE(SUM(CASE WHEN p.linked_cost_uid IS NOT NULL THEN p.debit_amount ELSE 0 END), 0) AS settled
          FROM petty_cash_expenses p
         WHERE p.isDelete = 0 AND p.entry_kind = 'spend' ${cashFilter}
-        GROUP BY COALESCE(p.currency, 'INR')`,
+        GROUP BY p.currency`,
 		cashParams
 	);
 	const [costRows] = await db.execute(
-		`SELECT COALESCE(p.currency, 'INR') AS currency,
+		`SELECT p.currency AS currency,
               COALESCE(SUM(CASE WHEN p.recognition_state = 'recognized' AND p.linked_cost_uid IS NULL
                                 THEN p.recognized_amount ELSE 0 END), 0) AS amount,
               COALESCE(SUM(CASE WHEN p.recognition_state IN ('draft','pending_evidence')
@@ -346,11 +369,11 @@ export async function loadPettyCashSummary(
                                 THEN p.debit_amount ELSE 0 END), 0) AS funded
          FROM petty_cash_expenses p
         WHERE p.isDelete = 0 AND p.entry_kind = 'spend' ${costFilter}
-        GROUP BY COALESCE(p.currency, 'INR')`,
+        GROUP BY p.currency`,
 		costParams
 	);
 	const [linkedRows] = await db.execute(
-		`SELECT p.linked_cost_uid, p.debit_amount, COALESCE(p.currency, 'INR') AS currency
+		`SELECT p.linked_cost_uid, p.debit_amount, p.currency AS currency
          FROM petty_cash_expenses p
         WHERE p.isDelete = 0 AND p.entry_kind = 'spend'
           AND p.linked_cost_uid IS NOT NULL ${cashFilter}`,
@@ -394,6 +417,15 @@ export async function loadPettyCashSummary(
 		};
 	});
 
+	// A row whose original currency is unknown is never folded into a currency
+	// subtotal; it is disclosed by count instead.
+	const unknownCurrencyCount = [
+		...(fundingRows as DbRow[]),
+		...(spendRows as DbRow[]),
+	]
+		.filter((row) => s(row, 'currency') === null)
+		.reduce((sum, row) => sum + (num(row, 'count') ?? 0), 0);
+
 	const single = currencies.length === 1;
 	const total = (value: number | undefined): number | null =>
 		single ? rounded(value ?? 0) : null;
@@ -411,12 +443,15 @@ export async function loadPettyCashSummary(
 		if (reference && reference.recognition_state === 'recognized') continue;
 		unresolvedCount += 1;
 		unresolvedAmount += num(row, 'debit_amount') ?? 0;
-		unresolvedCurrencies.add(s(row, 'currency', 'INR') ?? 'INR');
+		const currency = s(row, 'currency');
+		if (currency) unresolvedCurrencies.add(currency);
+		else unresolvedCurrencies.add('');
 	}
 
 	const [unlinkedRows] = await db.execute(
 		`SELECT COUNT(*) AS count, COALESCE(SUM(p.debit_amount), 0) AS amount,
-              COUNT(DISTINCT COALESCE(p.currency, 'INR')) AS currencies
+              COUNT(DISTINCT p.currency) AS currencies,
+              SUM(CASE WHEN p.currency IS NULL THEN 1 ELSE 0 END) AS unknown_currencies
          FROM petty_cash_expenses p
         WHERE p.isDelete = 0 AND p.entry_kind = 'spend'
           AND p.linked_cost_uid IS NULL
@@ -438,6 +473,7 @@ export async function loadPettyCashSummary(
 		remaining_funding: single ? byCurrency[0].remaining_funding : null,
 		recognized_cost: total(cost.get(currencies[0])?.amount),
 		by_currency: byCurrency,
+		unknown_currency: { count: unknownCurrencyCount },
 		unresolved_settlements: {
 			count: unresolvedCount,
 			amount: currencyOfSet(unresolvedCurrencies)
@@ -447,7 +483,8 @@ export async function loadPettyCashSummary(
 		unlinked_spend: {
 			count: num(unlinkedRow, 'count') ?? 0,
 			amount:
-				(num(unlinkedRow, 'currencies') ?? 0) > 1
+				(num(unlinkedRow, 'currencies') ?? 0) > 1 ||
+				(num(unlinkedRow, 'unknown_currencies') ?? 0) > 0
 					? null
 					: rounded(num(unlinkedRow, 'amount') ?? 0),
 		},
@@ -479,6 +516,12 @@ export interface PettyCashSpendInput {
 	servicePeriodStart?: string | null;
 	servicePeriodEnd?: string | null;
 	currency?: string | null;
+	/** Reporting target for this cost; absent means the company basis. */
+	reportingCurrency?: string | null;
+	/** Effective original → reporting rate; keeps its decimal string. */
+	conversionRate?: string | number | null;
+	conversionDate?: string | null;
+	conversionEvidenceReference?: string | null;
 	taxAmount?: number | null;
 	taxTreatment?: TaxTreatment;
 	taxEvidenceReference?: string | null;
@@ -557,6 +600,16 @@ export function pettyCashSpendInputFromJson(
 		servicePeriodStart: dateOrNull(body.service_period_start),
 		servicePeriodEnd: dateOrNull(body.service_period_end),
 		currency: text(body.currency, 3),
+		reportingCurrency: text(body.reporting_currency, 3),
+		conversionRate:
+			body.conversion_rate === null || body.conversion_rate === undefined
+				? null
+				: String(body.conversion_rate),
+		conversionDate: dateOrNull(body.conversion_date),
+		conversionEvidenceReference: text(
+			body.conversion_evidence_reference,
+			500
+		),
 		taxAmount: optionalNumber(body.tax_amount),
 		taxTreatment:
 			enumOrThrow(
@@ -632,6 +685,24 @@ export function pettyCashCommandInputFromJson(
 				currency:
 					rawPatch.currency !== undefined
 						? text(rawPatch.currency, 3)
+						: undefined,
+				reportingCurrency:
+					rawPatch.reportingCurrency !== undefined
+						? text(rawPatch.reportingCurrency, 3)
+						: undefined,
+				conversionRate:
+					rawPatch.conversionRate !== undefined
+						? rawPatch.conversionRate === null
+							? null
+							: String(rawPatch.conversionRate)
+						: undefined,
+				conversionDate:
+					rawPatch.conversionDate !== undefined
+						? dateOrNull(rawPatch.conversionDate)
+						: undefined,
+				conversionEvidenceReference:
+					rawPatch.conversionEvidenceReference !== undefined
+						? text(rawPatch.conversionEvidenceReference, 500)
 						: undefined,
 				grossAmount:
 					rawPatch.grossAmount !== undefined
@@ -776,7 +847,16 @@ export async function recordPettyCashSpend(
 			'invalid_tax_treatment',
 			'tax_treatment'
 		) ?? 'unresolved';
-	const currency = (text(input.currency, 3) ?? 'INR').toUpperCase();
+	// One conversion site: the same validation the direct-expense write path
+	// uses. A NULL original currency stays unknown (never guessed as INR).
+	const conversion = resolveConversion({
+		currency: input.currency,
+		reportingCurrency: input.reportingCurrency,
+		conversionRate: input.conversionRate,
+		conversionDate: input.conversionDate,
+		conversionEvidenceReference: input.conversionEvidenceReference,
+	});
+	const currency = conversion.currency;
 	const servicePeriodStart = dateOrNull(input.servicePeriodStart);
 	const servicePeriodEnd = dateOrNull(input.servicePeriodEnd);
 	const billDate = dateOrNull(input.billDate);
@@ -832,11 +912,13 @@ export async function recordPettyCashSpend(
               bill_no, bill_date, status, notes, created_by, source_voucher_id,
               entry_kind, cost_uid, cost_classification, project_id,
               recognition_state, recognition_period, period_basis,
-              service_period_start, service_period_end, currency, tax_amount,
+              service_period_start, service_period_end, currency,
+              reporting_currency, conversion_rate, conversion_date,
+              conversion_evidence_reference, converted_amount, tax_amount,
               tax_treatment, tax_evidence_reference, source_reference,
               evidence_reference, linked_cost_uid, financial_version)
            VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                   'spend', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+                   'spend', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 1)`,
 					[
 						id,
 						transactionNumber,
@@ -864,6 +946,10 @@ export async function recordPettyCashSpend(
 						servicePeriodStart,
 						servicePeriodEnd,
 						currency,
+						conversion.reportingCurrency,
+						conversion.conversionRate,
+						conversion.conversionDate,
+						conversion.conversionEvidenceReference,
 						taxAmount,
 						taxTreatment,
 						text(input.taxEvidenceReference, 255),
@@ -878,6 +964,12 @@ export async function recordPettyCashSpend(
 					classification,
 					state,
 					currency,
+					reportingCurrency: conversion.reportingCurrency,
+					conversionRate: conversion.conversionRate,
+					conversionDate: conversion.conversionDate,
+					conversionEvidenceReference:
+						conversion.conversionEvidenceReference,
+					convertedAmount: null,
 					grossAmount: amount,
 					taxAmount,
 					taxTreatment,
@@ -928,9 +1020,15 @@ export async function recordPettyCashSpend(
 						recognition_period: period,
 						period_basis: basis,
 						currency,
+						reporting_currency: conversion.reportingCurrency,
+						conversion_rate: conversion.conversionRate,
+						conversion_date: conversion.conversionDate,
+						conversion_evidence_reference:
+							conversion.conversionEvidenceReference,
 						gross_amount: amount,
 						tax_amount: taxAmount,
 						recognized_amount: null,
+						converted_amount: null,
 						state,
 						linked_cost_uid: resolvedLinkedUid,
 						source_voucher_id: sourceVoucherId,
@@ -1093,6 +1191,10 @@ export interface PettyCashSpendPatch {
 	servicePeriodEnd?: string | null;
 	billDate?: string | null;
 	currency?: string | null;
+	reportingCurrency?: string | null;
+	conversionRate?: string | number | null;
+	conversionDate?: string | null;
+	conversionEvidenceReference?: string | null;
 	grossAmount?: number | null;
 	taxAmount?: number | null;
 	taxTreatment?: TaxTreatment;
@@ -1130,7 +1232,9 @@ async function loadSpendForUpdate(
 		`SELECT id, numeric_id, entry_kind, cost_uid, cost_classification,
             project_id, recognition_state, recognition_period, period_basis,
             service_period_start, service_period_end, bill_date, transaction_date,
-            currency, debit_amount, tax_amount, tax_treatment,
+            currency, reporting_currency, conversion_rate, conversion_date,
+            conversion_evidence_reference, converted_amount,
+            debit_amount, tax_amount, tax_treatment,
             tax_evidence_reference, recognized_amount, source_reference,
             evidence_reference, linked_cost_uid, financial_version,
             recognized_by, recognized_at
@@ -1204,7 +1308,7 @@ export async function executePettyCashCommand(
 		}
 
 		const patch = input.patch ?? {};
-		const merged = {
+		const mergedRaw = {
 			classification:
 				patch.classification !== undefined
 					? enumOrThrow(
@@ -1234,10 +1338,25 @@ export async function executePettyCashCommand(
 				patch.billDate !== undefined
 					? dateOrNull(patch.billDate)
 					: dateOrNull(row.bill_date),
-			currency:
-				patch.currency !== undefined
-					? (text(patch.currency, 3) ?? 'INR').toUpperCase()
-					: (text(row.currency, 3) ?? 'INR'),
+			currency: patch.currency !== undefined ? patch.currency : row.currency,
+			reportingCurrency:
+				patch.reportingCurrency !== undefined
+					? patch.reportingCurrency
+					: row.reporting_currency,
+			conversionRate:
+				patch.conversionRate !== undefined
+					? patch.conversionRate
+					: row.conversion_rate === null || row.conversion_rate === undefined
+						? null
+						: String(row.conversion_rate),
+			conversionDate:
+				patch.conversionDate !== undefined
+					? patch.conversionDate
+					: row.conversion_date,
+			conversionEvidenceReference:
+				patch.conversionEvidenceReference !== undefined
+					? patch.conversionEvidenceReference
+					: row.conversion_evidence_reference,
 			grossAmount:
 				patch.grossAmount !== undefined
 					? amountOrNull(patch.grossAmount)
@@ -1274,6 +1393,9 @@ export async function executePettyCashCommand(
 					? text(patch.linkedCostUid, 64)
 					: text(row.linked_cost_uid, 64),
 		};
+		// The currency and its conversion evidence are one validated unit, the
+		// same rule the direct-expense write path applies.
+		const merged = { ...mergedRaw, ...resolveConversion(mergedRaw) };
 
 		assertClassificationProject(merged.classification, merged.projectId);
 
@@ -1311,6 +1433,7 @@ export async function executePettyCashCommand(
 			recognitionPeriod: resolved.period,
 			periodBasis: resolved.basis,
 			recognizedAmount: null,
+			convertedAmount: null,
 		};
 
 		let recognizedAmount: number | null = num(row, 'recognized_amount');
@@ -1343,6 +1466,17 @@ export async function executePettyCashCommand(
 			recognizedBy = actor.id;
 		}
 
+		// The durable reporting-currency figure at the stored rate; null while
+		// there is no confirmed amount or the evidence does not support one.
+		const convertedAmount =
+			recognizedAmount === null
+				? null
+				: convertToReporting(
+						recognizedAmount,
+						evidenceOf(merged),
+						reportingCurrencyOf(merged)
+					).amount;
+
 		const nextVersion = version + 1;
 		const operationalStatus = STATE_TO_STATUS[target];
 		const [updated] = (await db.execute(
@@ -1350,8 +1484,11 @@ export async function executePettyCashCommand(
           SET cost_classification = ?, recognition_state = ?, recognition_period = ?,
               period_basis = ?, service_period_start = ?, service_period_end = ?,
               bill_date = ?, tax_treatment = ?, tax_evidence_reference = ?,
-              currency = ?, debit_amount = ?, tax_amount = ?, source_reference = ?,
-              evidence_reference = ?, linked_cost_uid = ?, recognized_amount = ?,
+              currency = ?, reporting_currency = ?, conversion_rate = ?,
+              conversion_date = ?, conversion_evidence_reference = ?,
+              debit_amount = ?, tax_amount = ?, converted_amount = ?,
+              source_reference = ?, evidence_reference = ?, linked_cost_uid = ?,
+              recognized_amount = ?,
               recognized_by = ?,
               recognized_at = IF(?, NOW(), ?),
               financial_version = ?, status = ?,
@@ -1369,8 +1506,13 @@ export async function executePettyCashCommand(
 				merged.taxTreatment,
 				merged.taxEvidenceReference,
 				merged.currency,
+				merged.reportingCurrency,
+				merged.conversionRate,
+				merged.conversionDate,
+				merged.conversionEvidenceReference,
 				merged.grossAmount,
 				merged.taxAmount,
+				convertedAmount,
 				merged.sourceReference,
 				merged.evidenceReference,
 				linkedCostUid,
@@ -1409,10 +1551,15 @@ export async function executePettyCashCommand(
 				recognition_period: resolved.period,
 				period_basis: resolved.basis,
 				currency: merged.currency,
+				reporting_currency: merged.reportingCurrency,
+				conversion_rate: merged.conversionRate,
+				conversion_date: merged.conversionDate,
+				conversion_evidence_reference: merged.conversionEvidenceReference,
 				gross_amount: merged.grossAmount,
 				tax_amount: merged.taxAmount,
 				tax_treatment: merged.taxTreatment,
 				recognized_amount: recognizedAmount,
+				converted_amount: convertedAmount,
 				linked_cost_uid: linkedCostUid,
 				state: target,
 			},
