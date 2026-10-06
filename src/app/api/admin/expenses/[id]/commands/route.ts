@@ -16,11 +16,11 @@ import { NextResponse } from 'next/server';
 import { ensurePermission } from '@/utils/api-permissions';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 import { logActivity } from '@/utils/activity-logger';
-import {
-	CostError,
-	executeCommand,
+import { CostError, executeCommand } from '@/lib/company-expenditure';
+import type {
+	CostCommandInput,
+	CostCommandName,
 } from '@/lib/company-expenditure';
-import type { CostCommandInput, CostCommandName } from '@/lib/company-expenditure';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,9 +36,12 @@ const COMMANDS: CostCommandName[] = [
 /**
  * Conversion evidence reprices cost in the reporting currency, so setting or
  * changing it is an approval act even though it travels in an `update`
- * command; every other field edit stays `other_expenses:update`.
+ * command; changing either side of the currency pair is the same act (and the
+ * module refuses it without fresh evidence), so it is gated here too. Every
+ * other field edit stays `other_expenses:update`.
  */
 const CONVERSION_PATCH_FIELDS = [
+	'currency',
 	'reportingCurrency',
 	'conversionRate',
 	'conversionDate',
@@ -82,10 +85,7 @@ export async function POST(
 			// No EXPENSES resource exists; OTHER_EXPENSES is the existing
 			// expense-ledger resource this workflow extends.
 			RESOURCES.OTHER_EXPENSES,
-			permissionFor(
-				command,
-				body.patch as Record<string, unknown> | undefined
-			)
+			permissionFor(command, body.patch as Record<string, unknown> | undefined)
 		);
 		if (authResult instanceof Response) return authResult;
 		if (!authResult.authorized) return authResult.response;
