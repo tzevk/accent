@@ -44,7 +44,14 @@ const FINANCIAL_FIELDS = [
 	'recognized_at',
 	'financial_version',
 	'row_no',
-	'submit'
+	'submit',
+	// Conversion evidence is a module-owned financial field (#319); this
+	// register does not capture it yet, so a register edit must not pretend to.
+	'reporting_currency',
+	'conversion_rate',
+	'conversion_date',
+	'conversion_evidence_reference',
+	'converted_amount'
 ] as const;
 
 /** Operational fields the register itself owns. */
