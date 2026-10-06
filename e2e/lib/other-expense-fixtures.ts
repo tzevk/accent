@@ -135,10 +135,17 @@ async function cleanupOtherExpenseReader(): Promise<void> {
 export async function cleanupOtherExpenseFixtures(): Promise<number> {
 	await cleanupOtherExpenseReader();
 	let removed = 0;
-	// `other_expenses.id` is utf8mb4_general_ci and the link/journal tables are
-	// utf8mb4_unicode_ci, so the sub-select states the register's collation to
-	// keep the comparison legal.
-	const otherExpenses = `SELECT id COLLATE utf8mb4_general_ci FROM other_expenses
+	// `financial_cost_events.source_id` is INT and an other-expense journal row
+	// is keyed by the register's numeric `row_no`; the link table is keyed by
+	// the native UUID (`VARCHAR`) with its own collation.
+	const otherExpenseRows = `SELECT id COLLATE utf8mb4_general_ci FROM other_expenses
+     WHERE voucher_number LIKE ?
+        OR source_reference LIKE ?
+        OR evidence_reference LIKE ?
+        OR description LIKE ?
+        OR vendor_name LIKE ?
+        OR employee_name LIKE ?`;
+	const otherExpenseRowNumbers = `SELECT row_no FROM other_expenses
      WHERE voucher_number LIKE ?
         OR source_reference LIKE ?
         OR evidence_reference LIKE ?
@@ -151,14 +158,14 @@ export async function cleanupOtherExpenseFixtures(): Promise<number> {
 		`${OTHER_EXPENSE_PREFIX}%`,
 		`${OTHER_EXPENSE_PREFIX}%`,
 		`${OTHER_EXPENSE_PREFIX}%`,
-		`${OTHER_EXPENSE_PREFIX}%`,
+		`${OTHER_EXPENSE_PREFIX}%`
 	];
 	removed += (
 		await exec(
 			`DELETE FROM financial_cost_events
         WHERE cost_uid LIKE ?
            OR cost_uid LIKE ?
-           OR source_id IN (${otherExpenses})
+           OR source_id IN (${otherExpenseRowNumbers})
            OR source_id IN (
                 SELECT id FROM expenses
                  WHERE expense_number LIKE ?
@@ -169,7 +176,7 @@ export async function cleanupOtherExpenseFixtures(): Promise<number> {
 				`${OTHER_EXPENSE_COST_UID_PREFIX}run-%`,
 				...otherParams,
 				`${OTHER_EXPENSE_EXPENSE_PREFIX}%`,
-				`${OTHER_EXPENSE_COST_UID_PREFIX}%`,
+				`${OTHER_EXPENSE_COST_UID_PREFIX}%`
 			]
 		)
 	).affectedRows;
@@ -177,7 +184,7 @@ export async function cleanupOtherExpenseFixtures(): Promise<number> {
 		await exec(
 			`DELETE FROM financial_cost_links
         WHERE cost_uid LIKE ?
-           OR (source_table = 'other_expenses' AND source_id IN (${otherExpenses}))
+           OR (source_table = 'other_expenses' AND source_id IN (${otherExpenseRows}))
            OR (source_table = 'expenses' AND source_id IN (
                 SELECT id FROM expenses
                  WHERE expense_number LIKE ?
@@ -187,7 +194,7 @@ export async function cleanupOtherExpenseFixtures(): Promise<number> {
 				`${OTHER_EXPENSE_COST_UID_PREFIX}%`,
 				...otherParams,
 				`${OTHER_EXPENSE_EXPENSE_PREFIX}%`,
-				`${OTHER_EXPENSE_COST_UID_PREFIX}%`,
+				`${OTHER_EXPENSE_COST_UID_PREFIX}%`
 			]
 		)
 	).affectedRows;

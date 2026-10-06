@@ -242,6 +242,8 @@ export interface RecordedOtherExpense {
 
 export interface OtherExpenseRow {
 	id: string;
+	/** The numeric register key; the journal's `source_id` for this row. */
+	rowNo: number;
 	voucher_number: string;
 	cost_uid: string | null;
 	linked_cost_uid: string | null;
@@ -400,6 +402,7 @@ function keyOf(value: unknown): string {
 function asRow(row: DbRow): OtherExpenseRow {
 	return {
 		id: keyOf(row.id),
+		rowNo: rowNumber(row, 'row_no') ?? 0,
 		voucher_number: String(row.voucher_number ?? ''),
 		cost_uid: rowValue<string>(row, 'cost_uid'),
 		linked_cost_uid: rowValue<string>(row, 'linked_cost_uid'),
@@ -440,7 +443,7 @@ function asRow(row: DbRow): OtherExpenseRow {
 	};
 }
 
-const ROW_COLUMNS = `id, voucher_number, cost_uid, linked_cost_uid, project_id,
+const ROW_COLUMNS = `id, row_no, voucher_number, cost_uid, linked_cost_uid, project_id,
   cost_classification, recognition_state, recognition_period, period_basis,
   service_period_start, service_period_end, bill_date, currency, reporting_currency,
   conversion_rate, conversion_date, conversion_evidence_reference, converted_amount,
@@ -478,11 +481,17 @@ async function nextVoucherNumber(db: SqlConnection): Promise<string> {
 	return `OEX-${String(next).padStart(5, '0')}`;
 }
 
+/**
+ * Append one journal row. `financial_cost_events.source_id` is INT, so an
+ * other-expense command journals the register's numeric `row_no` — the native
+ * UUID stays the row's own key, the registry/reference key, and the command
+ * path's identity, and the journal never coerces it to a number.
+ */
 async function writeJournal(
 	db: SqlConnection,
 	entry: {
 		costUid: string;
-		sourceId: string;
+		sourceId: number;
 		version: number;
 		command: CostJournalCommand;
 		actorId: number | null;
@@ -520,11 +529,14 @@ async function findDuplicateCandidate(
 	input: {
 		vendorName: string | null;
 		grossAmount: number | null;
-		currency: string;
+		/** NULL = unknown original currency; it can never match a candidate. */
+		currency: string | null;
 		excludeCostUid: string | null;
 	}
 ): Promise<DuplicateCandidate | null> {
-	if (!input.vendorName || input.grossAmount === null) return null;
+	if (!input.vendorName || input.grossAmount === null || !input.currency) {
+		return null;
+	}
 	const [rows] = (await db.execute(
 		`SELECT c.cost_uid, c.label, c.source_table, c.recognition_state
        FROM (
@@ -574,7 +586,8 @@ async function findDuplicateCandidate(
 
 /** The row's conversion evidence, as the module stores and reads it. */
 interface ResolvedConversion {
-	currency: string;
+	/** NULL = the original currency is unknown, never assumed to be INR. */
+	currency: string | null;
 	reportingCurrency: string;
 	conversionRate: string | null;
 	conversionDate: string | null;
@@ -612,7 +625,7 @@ function resolveConversion(input: {
 			{ field: 'reporting_currency' }
 		);
 	}
-	const currency = currencyCodeOf(input.currency) as string;
+	const currency = currencyCodeOf(input.currency);
 	const reportingCurrency = reportingCurrencyOf({
 		reportingCurrency: currencyCodeOf(input.reportingCurrency)
 	});
@@ -635,6 +648,16 @@ function resolveConversion(input: {
 			conversionDate: null,
 			conversionEvidenceReference: null
 		};
+	}
+	// Conversion evidence needs the original currency first: an unknown
+	// currency can never support a rate, and is refused rather than stored.
+	if (currency === null) {
+		throw new CostError(
+			'conversion_requires_currency',
+			'Conversion evidence needs the original currency first',
+			422,
+			{ field: 'conversion_rate' }
+		);
 	}
 	if (currency === reportingCurrency) {
 		throw new CostError(
@@ -925,6 +948,22 @@ export async function captureOtherExpense(
 					]
 				);
 
+				// The journal's source key is the register's numeric `row_no`
+				// (`financial_cost_events.source_id` is INT); the row's UUID stays
+				// its native key, the registry key, and the command path's id.
+				const [rowNoRows] = (await db.execute(
+					`SELECT row_no FROM other_expenses WHERE id = ?`,
+					[id]
+				)) as [DbRow[], unknown];
+				const rowNo = Number(rowNoRows[0]?.row_no ?? 0);
+				if (!Number.isInteger(rowNo) || rowNo <= 0) {
+					throw new CostError(
+						'register_key_missing',
+						'The register did not assign this entry its numeric key',
+						500
+					);
+				}
+
 				const duplicateCandidates: DuplicateCandidate[] = [];
 				if (linked) {
 					await linkCostReference(db, {
@@ -967,7 +1006,7 @@ export async function captureOtherExpense(
 
 				await writeJournal(db, {
 					costUid,
-					sourceId: id,
+					sourceId: rowNo,
 					version: 1,
 					command: 'recorded',
 					actorId: actor.id,
@@ -1295,6 +1334,15 @@ export async function executeOtherExpenseCommand(
 			}).recognizedAmount;
 			recognizedBy = actor.id;
 			recognizedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+			// A recognized cost is cost-bearing by definition: make sure its
+			// canonical identity exists (idempotent), so any source can resolve
+			// it even if the row was unlinked or backfilled without one.
+			await registerCostIdentity(db, {
+				costUid: current.cost_uid ?? '',
+				sourceTable: 'other_expenses',
+				sourceId: current.id,
+				createdBy: actor.id
+			});
 		}
 
 		const nextVersion = current.financial_version + 1;
@@ -1357,7 +1405,7 @@ export async function executeOtherExpenseCommand(
 
 		await writeJournal(db, {
 			costUid: current.cost_uid ?? '',
-			sourceId: current.id,
+			sourceId: current.rowNo,
 			version: nextVersion,
 			command: JOURNAL_COMMAND[input.command] ?? 'updated',
 			actorId: actor.id,
@@ -1446,6 +1494,14 @@ export async function resolveOtherExpenseCopy(
 					404
 				);
 			}
+			if (requestedUid && requestedUid !== current.linked_cost_uid) {
+				throw new CostError(
+					'link_target_mismatch',
+					'The requested target is not the cost this entry is linked to',
+					422,
+					{ linked_cost_uid: current.linked_cost_uid }
+				);
+			}
 			await linkCostReference(db, {
 				costUid: current.linked_cost_uid,
 				sourceTable: 'other_expenses',
@@ -1460,6 +1516,14 @@ export async function resolveOtherExpenseCopy(
 				review: 'unlink_copy',
 				previous_link: current.linked_cost_uid
 			});
+			// The row is cost-bearing again: register its canonical identity
+			// idempotently, so a later reference to it still resolves.
+			await registerCostIdentity(db, {
+				costUid: current.cost_uid ?? '',
+				sourceTable: 'other_expenses',
+				sourceId: current.id,
+				createdBy: actor.id
+			});
 			return {
 				id: current.id,
 				cost_uid: current.cost_uid,
@@ -1471,25 +1535,28 @@ export async function resolveOtherExpenseCopy(
 		}
 
 		if (input.action === 'reject_copy') {
-			const uid = requestedUid ?? (candidate ? String(candidate.cost_uid) : null);
-			const rejected = await rejectCandidateLink(
-				db,
-				current.id,
-				uid,
-				candidate,
-				input,
-				actor
-			);
-			if (!rejected) {
+			if (!candidate) {
 				throw new CostError(
 					'link_not_found',
 					'No pending duplicate reference to reject',
 					404
 				);
 			}
+			const candidateUid = String(candidate.cost_uid ?? '');
+			// The decision is about the stored candidate: a different requested
+			// target is refused, never written over the preserved reference.
+			if (requestedUid && requestedUid !== candidateUid) {
+				throw new CostError(
+					'link_target_mismatch',
+					'The requested target is not the pending candidate for this entry',
+					422,
+					{ candidate_cost_uid: candidateUid }
+				);
+			}
+			await rejectCandidateLink(db, current.id, candidateUid, candidate, input, actor);
 			await releaseLink(db, current, nextVersionOf(current), actor, input, {
 				review: 'reject_copy',
-				candidate_cost_uid: uid
+				candidate_cost_uid: candidateUid
 			});
 			return {
 				id: current.id,
@@ -1556,7 +1623,7 @@ export async function resolveOtherExpenseCopy(
 		}
 		await writeJournal(db, {
 			costUid: current.cost_uid ?? '',
-			sourceId: current.id,
+			sourceId: current.rowNo,
 			version,
 			command: 'updated',
 			actorId: actor.id,
@@ -1587,20 +1654,20 @@ function nextVersionOf(current: OtherExpenseRow): number {
 }
 
 /**
- * Mark a pending candidate as rejected. The link row keeps its history: the
- * identity it proposed stays readable, only its review state changes.
+ * Mark the stored pending candidate as rejected. The link row keeps its
+ * history: the identity it proposed stays readable, only its review state
+ * changes, and the caller never writes a different target over it.
  */
 async function rejectCandidateLink(
 	db: SqlConnection,
 	id: string,
-	uid: string | null,
-	candidate: DbRow | null,
+	uid: string,
+	candidate: DbRow,
 	input: CopyReviewInput,
 	actor: CostActor
-): Promise<boolean> {
-	if (!uid && !candidate) return false;
+): Promise<void> {
 	await linkCostReference(db, {
-		costUid: uid ?? String(candidate!.cost_uid),
+		costUid: uid,
 		sourceTable: 'other_expenses',
 		sourceId: id,
 		role: 'receipt',
@@ -1608,10 +1675,9 @@ async function rejectCandidateLink(
 		reviewState: 'rejected',
 		evidenceReference:
 			text(input.evidence_reference, 500) ??
-			(candidate ? String(candidate.evidence_reference ?? '') || null : null),
+			(String(candidate.evidence_reference ?? '') || null),
 		createdBy: actor.id
 	});
-	return true;
 }
 
 /**
@@ -1642,7 +1708,7 @@ async function releaseLink(
 	}
 	await writeJournal(db, {
 		costUid: current.cost_uid ?? '',
-		sourceId: current.id,
+		sourceId: current.rowNo,
 		version,
 		command: 'updated',
 		actorId: actor.id,

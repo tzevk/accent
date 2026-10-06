@@ -332,8 +332,13 @@ async function storedOtherExpense(id: string) {
 }
 
 async function journalOf(costUid: string) {
-	return rows<{ version: number; command: string; reason: string | null }>(
-		`SELECT version, command, reason FROM financial_cost_events
+	return rows<{
+		version: number;
+		command: string;
+		reason: string | null;
+		source_id: number;
+	}>(
+		`SELECT version, command, reason, source_id FROM financial_cost_events
       WHERE cost_uid = ? ORDER BY version`,
 		[costUid]
 	);
@@ -456,7 +461,12 @@ test('records and recognizes a project-classified other expense through the entr
 	expect(link).toHaveLength(1);
 	expect(link[0].role).toBe('cost');
 	expect(link[0].basis).toBe('system');
-	expect(await journalOf(String(stored.cost_uid))).toHaveLength(1);
+	const firstJournal = await journalOf(String(stored.cost_uid));
+	expect(firstJournal).toHaveLength(1);
+	// The journal's INT source key is the register's numeric row_no, never a
+	// coerced UUID; the link table keeps the UUID as the register's own key.
+	expect(Number(stored.row_no)).toBeGreaterThan(0);
+	expect(firstJournal[0].source_id).toBe(Number(stored.row_no));
 
 	const before = await reconciliation(request);
 	expect(group(before, 'incurred_project_cost')).toBe(OTHER_EXPENSE_TARGET.gross);
@@ -1526,6 +1536,7 @@ test('agrees with the browser report and the independently persisted rows', asyn
 test('enforces source authorization on reads, capture, approval and review', async ({
 	request,
 	playwright,
+	browser,
 	baseURL,
 }) => {
 	const overheadId = String(
@@ -1632,6 +1643,50 @@ test('enforces source authorization on reads, capture, approval and review', asy
 		expect(Number(probe.financial_version)).toBe(2);
 		expect(probe.cost_classification).toBe('company_overhead');
 
+		// The same identity through the real browser controls: an operational
+		// save is allowed, a conversion-rate save is refused and writes nothing.
+		let savedThroughBrowser: Record<string, unknown> = {};
+		let refusedThroughBrowser: Record<string, unknown> = {};
+		const browserState = await reader.storageState();
+		const readerContext = await browser.newContext({
+			baseURL,
+			storageState: browserState,
+			extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.24' }
+		});
+		try {
+			const readerPage = await readerContext.newPage();
+			await readerPage.goto('/admin/other-expenses');
+			const authRow = readerPage.locator(
+				`[data-testid="oe-row"][data-voucher="${OTHER_EXPENSE_PREFIX}AUTH-1"]`
+			);
+			await expect(authRow).toBeVisible();
+			await authRow.getByTestId('oe-row-review').click();
+			const authDialog = readerPage.getByTestId('oe-review-dialog');
+			await expect(authDialog).toBeVisible();
+			await readerPage.locator('#oe-classification').selectOption('unallocated');
+			await readerPage.getByTestId('oe-save').click();
+			await expect(authDialog).toBeHidden();
+			savedThroughBrowser = await storedOtherExpense(throwaway.id);
+			expect(savedThroughBrowser.cost_classification).toBe('unallocated');
+			expect(Number(savedThroughBrowser.financial_version)).toBe(3);
+			expect(savedThroughBrowser.conversion_rate).toBeNull();
+
+			await authRow.getByTestId('oe-row-review').click();
+			await expect(authDialog).toBeVisible();
+			await readerPage.locator('#oe-conversion-rate').fill('2.0');
+			await readerPage.getByTestId('oe-save').click();
+			// Refused: the dialog stays open and the rate is not stored.
+			await expect(authDialog).toBeVisible();
+			await expect(
+				readerPage.getByText(/Forbidden|approval access/i).first()
+			).toBeVisible();
+			refusedThroughBrowser = await storedOtherExpense(throwaway.id);
+			expect(refusedThroughBrowser.conversion_rate).toBeNull();
+			expect(Number(refusedThroughBrowser.financial_version)).toBe(3);
+		} finally {
+			await readerContext.close();
+		}
+
 		// No failed command changed anything.
 		const after = await storedOtherExpense(overheadId);
 		expect(after).toEqual(before);
@@ -1655,6 +1710,8 @@ test('enforces source authorization on reads, capture, approval and review', asy
 				delete: deniedDelete.status(),
 				update: allowedEdit.status(),
 				conversionUpdate: deniedConversion.status(),
+				browserSave: savedThroughBrowser.cost_classification,
+				browserRateRefused: refusedThroughBrowser.conversion_rate === null,
 				unchanged: true
 			}
 		};

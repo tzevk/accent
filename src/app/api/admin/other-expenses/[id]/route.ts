@@ -79,11 +79,13 @@ async function loadRecognitionState(
 	db: PoolConnection,
 	id: string
 ): Promise<{ recognition_state: string; has_recognized_history: boolean } | null> {
+	// `financial_cost_events.source_id` is INT: an other-expense journal row is
+	// keyed by the register's numeric `row_no`, not by its UUID.
 	const [rows] = await db.execute(
 		`SELECT e.recognition_state,
             EXISTS(
               SELECT 1 FROM financial_cost_events ev
-               WHERE ev.source_table = 'other_expenses' AND ev.source_id = e.id
+               WHERE ev.source_table = 'other_expenses' AND ev.source_id = e.row_no
                  AND ev.command = 'recognized'
             ) AS has_recognized_history
        FROM ${TABLE} e

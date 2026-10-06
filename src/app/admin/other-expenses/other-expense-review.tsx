@@ -299,34 +299,34 @@ export function OtherExpenseReviewDialog({
 	const set = (key: string, value: string) =>
 		setDraft({ ...values, [key]: value });
 
-	const conversionTouched =
-		values.reporting_currency !== '' ||
-		values.conversion_rate !== '' ||
-		values.conversion_date !== '' ||
-		values.conversion_evidence_reference !== '';
-	const hadConversionEvidence = Boolean(
-		row?.reporting_currency ||
-			row?.conversion_rate ||
-			row?.conversion_date ||
-			row?.conversion_evidence_reference
-	);
+	// Only changed fields travel: the currency pair and the conversion evidence
+	// are approval-gated, so an unchanged value must never trigger the gate,
+	// while an explicit clear still does (the keys are sent blank).
+	const storedRate =
+		row?.conversion_rate === null || row?.conversion_rate === undefined
+			? ''
+			: String(row.conversion_rate);
+	const currencyChanged = values.currency !== (row?.currency ?? '');
+	const evidenceChanged =
+		values.reporting_currency !== (row?.reporting_currency ?? '') ||
+		values.conversion_rate !== storedRate ||
+		values.conversion_date !== (row?.conversion_date?.slice(0, 10) ?? '') ||
+		values.conversion_evidence_reference !==
+			(row?.conversion_evidence_reference ?? '');
 	const patch = {
 		classification: values.classification || null,
 		project_id: values.project_id || null,
 		service_period_start: values.service_period_start || null,
 		service_period_end: values.service_period_end || null,
 		bill_date: values.bill_date || null,
-		currency: values.currency || null,
 		gross_amount: values.gross_amount === '' ? null : values.gross_amount,
 		tax_amount: values.tax_amount === '' ? null : values.tax_amount,
 		tax_treatment: values.tax_treatment || null,
 		tax_evidence_reference: values.tax_evidence_reference || null,
 		source_reference: values.source_reference || null,
 		evidence_reference: values.evidence_reference || null,
-		// Conversion evidence moves as a whole and is approval-gated: the keys
-		// are sent only when the entry states or already carries evidence, so a
-		// plain edit never needs the approval permission.
-		...(conversionTouched || hadConversionEvidence
+		...(currencyChanged ? { currency: values.currency || null } : {}),
+		...(evidenceChanged
 			? {
 					reporting_currency: values.reporting_currency || null,
 					conversion_rate: values.conversion_rate || null,

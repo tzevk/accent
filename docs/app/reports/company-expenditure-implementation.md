@@ -409,9 +409,11 @@ source of the same module, not a second store:
   identity or totals, and `recognize` is refused with
   `duplicate_review_pending` until the reviewer decides. `POST
   /api/admin/other-expenses/{id}/review` with `confirm_copy` links the entry as
-  a receipt copy (a candidate becomes `basis='document'`), `reject_copy` keeps
-  it a standalone cost, and `unlink_copy` undoes a mistaken link. Each decision
-  appends exactly one journal row and bumps `financial_version`.
+  a receipt copy (a candidate becomes `basis='document'`), `reject_copy`
+  rejects only the stored pending candidate — a different requested target is
+  refused with `link_target_mismatch` rather than written over the preserved
+  reference — and `unlink_copy` undoes a mistaken link. Each decision appends
+  exactly one journal row and bumps `financial_version`.
 - **Unresolved classification** is disclosed, never guessed: the review read
   lists open entries with the fields they are missing, and recognition refuses
   without a classification (existing `recognition_blockers`).
@@ -423,7 +425,12 @@ source of the same module, not a second store:
   fields (`financial_fields_versioned`) and a recognized row (`cost_recognized`);
   `DELETE` refuses recognized cost and any row with recognized history
   (`cost_history_preserved`), so ordinary deletion cannot bypass the versioned
-  cancellation.
+  cancellation. The journal's `source_id` is INT, so an other-expense command
+  journals the register's numeric `row_no`; the UUID stays the register's own
+  key, the `financial_cost_links` reference key, and the command path's id —
+  the UUID is never coerced into the journal. Unlinking a receipt copy
+  registers the row's `role='cost'` identity again (idempotently), and
+  recognition does the same, so an unlinked or backfilled row still resolves.
 - **Reads**: `OTHER_EXPENSE_COST_SOURCE` projects this register into the
   module's canonical column vocabulary (including the conversion columns) and
   joins `COMPANY_COST_SOURCES`, so the reconciliation, previous-month
@@ -431,21 +438,24 @@ source of the same module, not a second store:
   receipt copies excluded once, in the source. The report queue marks
   non-direct-expense rows with a link to their register instead of sending the
   direct-expense commands at another store's id.
-- **Currency and conversion**: capture states the original currency (required;
-  a blank or non-code value is refused rather than read as INR) and may state
-  the conversion evidence — reporting target, rate, effective date, and
-  evidence reference — which the shared `currency.ts` helpers validate
-  (`conversion_evidence_incomplete`, `invalid_conversion_rate`,
-  `conversion_not_applicable`). `converted_amount` is recomputed by the module
-  from the recognized amount at the stored rate; no inverse or cross-rate is
-  ever derived, and a foreign amount without evidence stays in its own currency
-  and is disclosed as unconverted. A rate is evidence for one currency pair:
-  changing `currency` or `reporting_currency` never inherits the stored triple
-  (a new convertible pair without fresh evidence is refused with
-  `conversion_evidence_required`, a pair moved onto its reporting currency
-  clears the triple). Afterwards only a versioned `update` carrying the whole
-  evidence may change it, and that patch — like either side of the pair —
-  needs `other_expenses:approve` (the register PUT refuses the fields).
+- **Currency and conversion**: capture states the original currency and may
+  state the conversion evidence — reporting target, rate, effective date, and
+  evidence reference — which the shared `currency.ts` helpers validate. An
+  unknown original currency stays unknown (never read as INR), and it can never
+  carry a rate: evidence with a blank currency is refused with
+  `conversion_requires_currency`, alongside `conversion_evidence_incomplete`,
+  `invalid_conversion_rate`, and `conversion_not_applicable`.
+  `converted_amount` is recomputed by the module from the recognized amount at
+  the stored rate; no inverse or cross-rate is ever derived, and a foreign
+  amount without evidence stays in its own currency and is disclosed as
+  unconverted. A rate is evidence for one currency pair: changing `currency` or
+  `reporting_currency` never inherits the stored triple (a new convertible pair
+  without fresh evidence is refused with `conversion_evidence_required`, a pair
+  moved onto its reporting currency clears the triple). Afterwards only a
+  versioned `update` carrying the whole evidence may change it, and that patch
+  — like either side of the pair — needs `other_expenses:approve` (the register
+  PUT refuses the fields, and the review dialog sends only the fields that
+  actually changed, so an ordinary save is never approval-gated).
 - **Coverage**: `SOURCE_COVERAGE` declares `other_expense_source` as wired.
 
 End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
