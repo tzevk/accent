@@ -1,4 +1,4 @@
-# Company Project Expenditure — Implementation (ticket #306)
+# Company Project Expenditure — Implementation (tickets #306, #316)
 
 ## Overview
 
@@ -174,13 +174,77 @@ entries become coverage notices on every reconciliation:
 - recorded payroll employer cost — a later slice (#307);
 - supplier invoices, orders, and Outstanding Supplier Commitment;
 - evidenced Cost Accruals;
-- dated settlements and petty cash.
+- dated outward settlements and advances — petty-cash funding and spending are
+  incorporated separately (below).
 
 Month-specific notices add: no recognized cost, mixed currencies without
 conversion, records awaiting recognition, missing amounts, unresolved
 classification, unresolved tax, tax evidence missing, service periods that
-span months, and service periods whose start is not recorded. An empty month is
-a coverage warning, never a zero company cost.
+span months, service periods whose start is not recorded, petty-cash spending
+overspent against its funding, petty-cash spending awaiting recognition,
+petty-cash spending with no voucher linkage, and receipts linked to a cost that
+is not recognized. An empty month is a coverage warning, never a zero company
+cost.
+
+## Petty cash funding and spending (ticket #316)
+
+`petty_cash_expenses` holds two kinds of row, split by `entry_kind`:
+
+| Row                | Meaning                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| `funding`          | Cash into the float: one cash voucher and its mirrored credit, one funding event            |
+| `spend`            | Actual spending: one cost-bearing row with identity, period, approval, and destination      |
+
+Financial columns added by
+`migrations/20261008091600_petty_cash_funding_spending.js`: `entry_kind`,
+`cost_uid` (a cost identity for spending, a funding-event identity for the
+mirror), `numeric_id` (the journal's source key), `cost_classification`,
+`project_id`, `recognition_state`, `recognition_period`, `period_basis`,
+`service_period_start/end`, `currency`, `tax_amount`, `tax_treatment`,
+`tax_evidence_reference`, `recognized_amount`, `recognized_by/at`,
+`source_reference`, `evidence_reference`, `linked_cost_uid`,
+`financial_version` — the same vocabulary as `expenses`, so one set of
+recognition rules serves both.
+
+Rules:
+
+- **Funding is one event and never cost.** `ensureFundingMirror` inserts the
+  mirrored credit with the voucher, and updating the voucher updates that same
+  row (`fund-<voucherId>`, unique) instead of adding another. Both rows carry
+  `role='funding'` / `role='mirror'` links in `financial_cost_links` and are
+  never registered as a cost. An empty voucher total creates no funding event.
+- **Spending is captured with reliable references.** A voucher reference must
+  exist; a Project is a real `project_id` (classification `project` requires
+  it, Company Overhead and Unallocated must not carry one); the Recognition
+  Period follows the service period, else the bill date as a disclosed
+  fallback; the voucher's free-text `project_number` is never read as
+  identity. A spend with no classification stays unresolved and cannot be
+  recognized.
+- **A receipt linked to another cost settles it.** `linked_cost_uid` is
+  resolved through `resolveCostReference` (#311 contract) at capture and at
+  every command; an unresolvable link is refused and a resolvable one is
+  registered as `role='settlement'`, counts no new cost, and never registers
+  its own cost identity.
+- **Controlled lifecycle.** `POST /api/admin/petty-cash-expenses/{id}/commands`
+  carries `expected_version` (`update | submit | recognize | reject | cancel`),
+  increments `financial_version`, and appends one `financial_cost_events` row
+  (`source_table='petty_cash_expenses'`). Recognize needs
+  `petty_cash_expenses:approve`, submit/update need `petty_cash_expenses:update`.
+  Confirmed spending is refused `409 cost_recognized` for register edits and
+  deletes; financial fields are refused `422 financial_fields_versioned`;
+  funding rows refuse edits with `409 funding_event_managed_by_voucher`; a
+  voucher cannot be reduced below the spending drawn from it
+  (`409 funding_below_spend`) or deleted while it funds spending
+  (`409 voucher_has_spending`). A cancelled spend keeps its row, journal, and
+  recognized amount as history.
+- **The report states the four figures separately.** Every reconciliation
+  gains `petty_cash`: funding, spending, settled spending, unconfirmed
+  spending, remaining supported funding, and recognized cost, per currency
+  (combined only in a single-currency month). Recognized petty-cash cost flows
+  into the company groups and Project rows like any other cost source; funding
+  and remaining funding never do. The petty-cash register page
+  (`/admin/petty-cash-expenses`) shows the same four figures and drives the
+  entry, approval, and command controls.
 
 ## Authorization
 
@@ -191,6 +255,11 @@ a coverage warning, never a zero company cost.
 | Record a cost (report control and admin route) | `other_expenses:create`                                       |
 | Submit / update a cost                         | `other_expenses:update`                                       |
 | Recognize, reject, cancel                      | `other_expenses:approve`                                      |
+| Petty-cash register: read                      | `petty_cash_expenses:read`                                    |
+| Record / edit petty-cash spending              | `petty_cash_expenses:create` / `:update`                      |
+| Recognize, reject, cancel petty-cash spending  | `petty_cash_expenses:approve`                                 |
+| Delete draft petty-cash spending               | `petty_cash_expenses:delete`                                  |
+| Cash vouchers (funding)                        | super admin or `admin` role (unchanged)                       |
 
 The direct-expense ledger is the source of the expenditure reconciliation, so
 report access alone does not open it: the expenditure view, the drilldown, and
@@ -239,14 +308,49 @@ fixture amounts:
   employee-cost views still answer;
 - the browser shows the access panel to an employee session.
 
+`e2e/specs/petty-cash-funding.spec.ts` drives the petty-cash slice and writes
+`e2e/artifacts/petty-cash-funding.json` (fixtures in
+`e2e/lib/petty-cash-fixtures.ts`, namespace `E2E-EXP-316-*`, months 2019-06 and
+2019-08). From hand-computed fixture amounts it asserts:
+
+- a voucher and its mirrored credit are one funding event: exactly one mirror
+  row, the funding-event identity, `funding`/`mirror` links and **no** cost
+  link, no new expense row, and `funding` stated separately from a company cost
+  that does not move; a repeated voucher write updates the same mirror;
+- spending recorded through the register controls carries its identity,
+  evidence, recognition period, Project reference, and voucher link; the
+  register's Recognize control moves it to recognized cost once (version 2,
+  journal `recorded` → `recognized`) and the register and report state funding,
+  spending, remaining funding, and recognized cost separately;
+- missing linkage stays unresolved: a spend with no classification cannot be
+  recognized (`422 not_ready_for_recognition`), an unallocated but voucher-less
+  spend is still cost, the voucher's free-text project number never becomes a
+  Project attribution, and the coverage notices say so;
+- a receipt linked to an existing recognized cost settles it: a
+  `role='settlement'` link and no cost identity of its own, no second expense,
+  an unchanged company total, zero unresolved settlements, and a refused
+  `422 unknown_source_reference` for a link that does not resolve;
+- a later-month spend lands only in its own period; a register PUT of
+  financial fields is `422 financial_fields_versioned`; a draft delete is a
+  soft delete; confirmed spending is frozen (`409 cost_recognized`); a voucher
+  edit updates the one funding row and never spending; funding below spending
+  is `409 funding_below_spend`; a voucher with spending is `409
+  voucher_has_spending`; a voucher with no spending deletes with its mirror;
+- stale commands are `409 version_conflict`, reject/cancel demand a reason, and
+  a cancelled spend keeps its row, recognized amount, and journal history;
+- the petty-cash clerk can record but is refused recognition (`403`), and a
+  user with no petty-cash privilege is refused `403` for reads and writes with
+  nothing persisted.
+
 Use an isolated database for repeatable verification:
 
 ```powershell
 npx cross-env E2E_DB_NAME=accent_crm_dev_muse_e2e_expenditure npm run e2e
 ```
 
-For the two initial slices, select `expense-reconciliation.spec.ts` and
-`payroll-bonus.spec.ts` after the production build. Fixture cleanup derives SQL
+For the ticket slices, select `expense-reconciliation.spec.ts`,
+`payroll-bonus.spec.ts`, and `petty-cash-funding.spec.ts` after the production
+build. Fixture cleanup derives SQL
 placeholders from its owned Employee codes, so added Employees remain rerun-safe.
 The payroll snapshot evidence includes the stored month and money columns.
 Namespaced fixtures identify test records; names alone do not exclude them from
@@ -276,15 +380,31 @@ the current report. Keep this verification database separate from business data.
 - `migrations/20261006120000_expense_cost_recognition.js`
 - `migrations/20261007120000_expense_cost_period_basis_service_period_end.js`
   (extends `period_basis` for the disclosed partial service period)
-- `src/lib/company-expenditure/{index,types,recognition,reconciliation,records,commands,coverage}.ts`
+- `migrations/20261008091100_expense_supplier_invoice_recognition.js`
+  (shared cost identity/link seam, #311 dependency)
+- `migrations/20261008091600_petty_cash_funding_spending.js` (petty-cash
+  funding/spending split and financial columns, #316)
+- `src/lib/company-expenditure/{index,types,recognition,reconciliation,records,commands,coverage,errors,fields,journal,sources}.ts`
+- `src/lib/company-expenditure/petty-cash.ts` (petty-cash source: funding
+  mirror, spending capture, versioned commands, summary)
 - `src/app/api/reports/employee-project-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)
 - `src/app/api/reports/employee-project-monthly-cost/expenses/route.ts`
 - `src/app/api/reports/employee-project-monthly-cost/download/route.ts` (tightened gate)
 - `src/app/api/admin/expenses/route.js` (entry through the module)
 - `src/app/api/admin/expenses/[id]/commands/route.ts`
 - `src/app/api/admin/expenses/[id]/route.js` (recognized cost frozen; versioned financial fields refused)
+- `src/app/api/admin/petty-cash-expenses/route.ts` (spending entry through the
+  module; funding/spending/remaining/recognized summary)
+- `src/app/api/admin/petty-cash-expenses/[id]/route.ts` (funding rows and
+  confirmed spending frozen; versioned financial fields refused)
+- `src/app/api/admin/petty-cash-expenses/[id]/commands/route.ts` (versioned
+  petty-cash commands)
+- `src/app/api/admin/cash-vouchers/{route.js,[id]/route.js}` (one funding
+  mirror per voucher; funding floor; delete guards)
 - `src/app/reports/employee-project-monthly-cost/{page,expenditure-view}.tsx`
+- `src/app/admin/petty-cash-expenses/page.tsx` (register controls)
 - `src/lib/format.js` (`formatCurrencyIn`)
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
 - `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/global-setup.ts`
+- `e2e/lib/petty-cash-fixtures.ts`, `e2e/specs/petty-cash-funding.spec.ts`

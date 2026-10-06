@@ -128,6 +128,18 @@ _Avoid_: Cash paid, PO value, Total committed exposure
 The portion of a supplier order not yet recognized as incurred cost. Paying a supplier invoice does not itself create another incurred cost.
 _Avoid_: Unpaid invoice balance, Client PO balance, Cash paid
 
+**Petty Cash Funding**:
+Cash moved into the petty-cash float — one cash voucher (`cash_vouchers`) and its mirrored credit row in `petty_cash_expenses` are one funding event. Cash movement only: neither the voucher total nor the mirrored credit is operating cost. The pair carries a funding-event identity (`fund-<voucher>`, never a Cost Identity), and repeat mirroring updates that one row.
+_Avoid_: Petty cash expense, Petty cash cost, Advance
+
+**Petty Cash Spend**:
+Actual petty-cash spending — one debit row in `petty_cash_expenses` with its own Cost Identity, Recognition Period, approval state, and Project / Company Overhead / Unallocated classification. Spending creates cost once; a receipt already linked to another cost (`linked_cost_uid`) settles that cost instead of creating a second one, and missing voucher or Project linkage stays disclosed rather than inferred from free text.
+_Avoid_: Petty cash funding (the voucher side), Cash balance, Payment
+
+**Remaining Supported Funding**:
+Petty-cash funding dated in a period minus the spending drawn from vouchers in that period. Spending with no voucher linkage is cost but reduces no funding; unspent funding is never operating cost.
+_Avoid_: Petty cash balance, Cash in hand, Unspent expense
+
 **Project Employee Cost**:
 The share of an Employee's recorded monthly payroll employer cost, including earnings and employer contributions, attributed to a Project by its share of the Employee's Logged Hours. Excludes project expenses and supplier costs; it is not a measure of cash paid.
 _Avoid_: Total project expenditure, Total project cost, Project payments

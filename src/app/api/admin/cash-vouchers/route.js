@@ -1,8 +1,8 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-import crypto from 'node:crypto';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
+import { ensureFundingMirror } from '@/lib/company-expenditure';
 
 /**
  * GET /api/admin/cash-vouchers
@@ -234,28 +234,19 @@ export async function POST(request) {
 
 				voucherId = result.insertId;
 
-				// Create funding credit entry in petty_cash_expenses
-				const voucherDescription = data.description || data.notes || '';
-				if (totalAmount > 0) {
-					const pceId = crypto.randomUUID();
-					await db.execute(
-						`INSERT INTO petty_cash_expenses
-						(id, transaction_number, transaction_date, credit_amount, debit_amount,
-						 description, status, created_by, source_voucher_id)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-						[
-							pceId,
-							voucherNumber,
-							data.voucher_date || new Date().toISOString().split('T')[0],
-							totalAmount,
-							0,
-							voucherDescription,
-							'submitted',
-							user.id,
-							voucherId,
-						]
-					);
-				}
+				// One funding event: the voucher and its mirrored credit are the
+				// same cash movement, inserted together. Repeating the mirroring
+				// updates this one row instead of adding another (#316).
+				await ensureFundingMirror(db, {
+					voucherId,
+					voucherNumber,
+					voucherDate:
+						data.voucher_date || new Date().toISOString().split('T')[0],
+					totalAmount,
+					description: data.description || data.notes || '',
+					currency: data.currency ?? null,
+					actorId: user.id,
+				});
 
 				await db.execute('COMMIT');
 				break;
@@ -346,6 +337,27 @@ export async function DELETE(request) {
 
 		db = await dbConnect();
 
+		// A voucher with actual spending cannot be removed here: deleting it
+		// would take the spending's funding link (and, before #316, the spending
+		// rows themselves) with it. Reverse the spending first.
+		const [spends] = await db.execute(
+			`SELECT COUNT(*) AS count FROM petty_cash_expenses
+        WHERE source_voucher_id = ? AND entry_kind = 'spend' AND isDelete = 0`,
+			[id]
+		);
+		const spendCount = Number(spends[0]?.count ?? 0);
+		if (spendCount > 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: `This voucher funds ${spendCount} spending record(s). Remove or reverse them first; deleting the voucher must not erase spending.`,
+					code: 'voucher_has_spending',
+					spend_count: spendCount,
+				},
+				{ status: 409 }
+			);
+		}
+
 		const [result] = await db.execute(
 			'UPDATE cash_vouchers SET isDelete = 1 WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)',
 			[id]
@@ -358,14 +370,13 @@ export async function DELETE(request) {
 			);
 		}
 
-		try {
-			await db.execute(
-				'UPDATE petty_cash_expenses SET isDelete = 1 WHERE source_voucher_id = ?',
-				[id]
-			);
-		} catch (_) {
-			/* PCE table may not exist yet */
-		}
+		// Only the funding mirror goes with the voucher; it is the credit side
+		// of the same funding event.
+		await db.execute(
+			`UPDATE petty_cash_expenses SET isDelete = 1
+        WHERE source_voucher_id = ? AND entry_kind = 'funding'`,
+			[id]
+		);
 
 		return NextResponse.json({
 			success: true,

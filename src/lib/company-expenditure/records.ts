@@ -66,7 +66,7 @@ const COST_SELECT = `
     LEFT JOIN projects p ON p.project_id = e.project_id AND p.isDelete = 0`;
 
 /** First and last day of a `YYYY-MM` month. */
-function monthBounds(month: string): { start: string; end: string } {
+export function monthBounds(month: string): { start: string; end: string } {
 	const [year, monthNumber] = month.split('-').map(Number);
 	const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
 	return {

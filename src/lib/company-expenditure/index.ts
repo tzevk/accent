@@ -51,16 +51,41 @@ import {
 	loadProjectOptions,
 	type SqlConnection,
 } from './records';
+import {
+	loadPettyCashMonths,
+	loadPettyCashProjectCost,
+	loadPettyCashRecords,
+	loadPettyCashSummary,
+} from './petty-cash';
 import { buildReconciliation } from './reconciliation';
 import type {
 	CompanyReconciliation,
 	CostDrilldown,
 	CostDrilldownQuery,
 	CostJournalEntry,
+	PettyCashSummary,
 } from './types';
 
 export { recordCost, executeCommand, loadCost, CostError } from './commands';
 export type { CostActor, CommandOptions } from './commands';
+export {
+	ensureFundingMirror,
+	executePettyCashCommand,
+	fundingEventUid,
+	isPettyCashCommand,
+	pettyCashCommandInputFromJson,
+	pettyCashSpendInputFromJson,
+	recordPettyCashSpend,
+} from './petty-cash';
+export type {
+	FundingMirrorInput,
+	FundingMirrorResult,
+	PettyCashCommandInput,
+	PettyCashCommandResult,
+	PettyCashSpendInput,
+	PettyCashSpendPatch,
+	RecordedPettyCashSpend,
+} from './petty-cash';
 export {
 	linkCostReference,
 	registerCostIdentity,
@@ -105,6 +130,8 @@ export type {
 	CurrencyTotal,
 	EvidenceSummary,
 	PeriodBasis,
+	PettyCashCurrencySummary,
+	PettyCashSummary,
 	RecognitionState,
 	RecordCostInput,
 	RecordedCost,
@@ -127,14 +154,49 @@ function previousMonthOf(month: string): string | null {
 	return `${year}-${String(monthNumber - 1).padStart(2, '0')}`;
 }
 
+/**
+ * Confirmed Project cost of the previous month across every wired source. A
+ * per-currency amount stays null (unknown) when any contributing source
+ * reports unknown, so a comparison is never stated against an invented zero.
+ */
+function mergeProjectCost(
+	direct: Map<number, Map<string, number | null>>,
+	pettyCash: Map<number, Map<string, number | null>>
+): Map<number, Map<string, number | null>> {
+	const merged = new Map<number, Map<string, number | null>>();
+	for (const source of [direct, pettyCash]) {
+		for (const [projectId, perCurrency] of source) {
+			const target = merged.get(projectId) ?? new Map<string, number | null>();
+			for (const [currency, amount] of perCurrency) {
+				const existing = target.get(currency);
+				if (existing === undefined) {
+					target.set(currency, amount);
+				} else if (existing === null || amount === null) {
+					target.set(currency, null);
+				} else {
+					target.set(currency, existing + amount);
+				}
+			}
+			merged.set(projectId, target);
+		}
+	}
+	return merged;
+}
+
 /** Today's calendar month, from the server clock. */
 export function currentMonth(): string {
 	return new Date().toISOString().slice(0, 7);
 }
 
-/** Months with direct cost recorded, newest first, including the current one. */
+/** Months with cost recorded in any wired source, newest first. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
-	return loadExpenditureMonths(pool, currentMonth());
+	const [direct, pettyCash] = await Promise.all([
+		loadExpenditureMonths(pool, currentMonth()),
+		loadPettyCashMonths(pool),
+	]);
+	return [...new Set([currentMonth(), ...direct, ...pettyCash])]
+		.sort()
+		.reverse();
 }
 
 export interface ReconciliationRequest {
@@ -150,25 +212,52 @@ export async function fetchCompanyReconciliation(
 ): Promise<CompanyReconciliation> {
 	const month = request.month;
 	const previousMonth = previousMonthOf(month);
-	const [records, previousProjectCost, projectOptions, availableMonths] =
-		await Promise.all([
-			loadMonthRecords(pool, month),
-			previousMonth
-				? loadMonthProjectCost(pool, previousMonth)
-				: Promise.resolve(new Map<number, Map<string, number | null>>()),
-			loadProjectOptions(pool),
-			loadExpenditureMonths(pool, currentMonth()),
-		]);
+	const [
+		records,
+		pettyCashRecords,
+		pettyCash,
+		previousProjectCost,
+		previousPettyCashProjectCost,
+		projectOptions,
+		availableMonths,
+	] = await Promise.all([
+		loadMonthRecords(pool, month),
+		loadPettyCashRecords(pool, month),
+		loadPettyCashSummary(pool, month),
+		previousMonth
+			? loadMonthProjectCost(pool, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		previousMonth
+			? loadPettyCashProjectCost(pool, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		loadProjectOptions(pool),
+		fetchExpenditureMonths(),
+	]);
 
 	return buildReconciliation({
 		month,
-		records,
-		previousMonthProjectCost: previousProjectCost,
+		records: [...records, ...pettyCashRecords],
+		previousMonthProjectCost: mergeProjectCost(
+			previousProjectCost,
+			previousPettyCashProjectCost
+		),
 		projectFilter: request.projectId ?? null,
 		projectOptions,
 		availableMonths,
 		coverageDeclarations: SOURCE_COVERAGE,
+		pettyCash,
 	});
+}
+
+/**
+ * The petty-cash register's own view: funding, spending, remaining supported
+ * funding, and recognized cost — for one month, or all time when `month` is
+ * null.
+ */
+export async function fetchPettyCashSummary(
+	month: string | null = null
+): Promise<PettyCashSummary> {
+	return loadPettyCashSummary(pool, month);
 }
 
 /** Read the records behind a month's reconciliation. */

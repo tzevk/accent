@@ -54,6 +54,13 @@ export const SOURCE_COVERAGE: readonly SourceCoverageDeclaration[] = [
 		label: 'Cash paid',
 		status: 'not_incorporated',
 		detail:
-			'Dated settlements, petty-cash spending, and funding are not linked yet, so no cash-paid figure is presented.',
+			'Dated outward settlements and advances are not linked yet, so no company cash-paid figure is presented. Petty-cash funding and spending are incorporated separately (#316).',
+	},
+	{
+		code: 'petty_cash_source',
+		label: 'Petty cash funding and spending',
+		status: 'wired',
+		detail:
+			'Cash-voucher funding and its mirrored credit are one funding event and never operating cost; actual spending is recognized once with its Project, Company Overhead, or unresolved classification (#316).',
 	},
 ];

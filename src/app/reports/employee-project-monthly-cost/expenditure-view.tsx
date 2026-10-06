@@ -114,6 +114,26 @@ interface ReconciliationPayload {
 		known_zero: { count: number };
 	};
 	coverage: CoverageNoticeRow[];
+	petty_cash: {
+		month: string | null;
+		currency: string | null;
+		funding: number | null;
+		spend: number | null;
+		remaining_funding: number | null;
+		recognized_cost: number | null;
+		by_currency: Array<{
+			currency: string;
+			funding: number;
+			spend: number;
+			funded_spend: number;
+			settled_spend: number;
+			remaining_funding: number;
+			recognized_cost: number;
+			unconfirmed_spend: number;
+		}>;
+		unresolved_settlements: { count: number; amount: number | null };
+		unlinked_spend: { count: number; amount: number | null };
+	};
 	project_options: Array<{
 		project_id: number;
 		project_code: string;
@@ -503,6 +523,102 @@ export default function ExpenditureView({
 					</table>
 				</div>
 			)}
+
+			{/* Petty cash: funding, spending, remaining funding, recognized cost */}
+			<div
+				data-testid="petty-cash-section"
+				className="mt-3 rounded-xl border border-purple-200 bg-purple-50/40 p-3"
+			>
+				<p className="text-xs font-semibold text-purple-900">
+					Petty cash — funding and spending stay separate from incurred cost
+				</p>
+				<div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+					{(
+						[
+							[
+								'petty-funding-amount',
+								'Funding',
+								data.petty_cash.funding,
+								'Vouchers and their mirrored credits; cash into the float, never expense',
+							],
+							[
+								'petty-spend-amount',
+								'Spend',
+								data.petty_cash.spend,
+								'Actual petty-cash spending recorded this month',
+							],
+							[
+								'petty-remaining-amount',
+								'Remaining funded',
+								data.petty_cash.remaining_funding,
+								'Funding less the spending drawn from vouchers',
+							],
+							[
+								'petty-recognized-amount',
+								'Recognized cost',
+								data.petty_cash.recognized_cost,
+								'Approved spending, already counted once above',
+							],
+						] as const
+					).map(([testId, label, value, hint]) => (
+						<div
+							key={testId}
+							className="rounded-lg border border-purple-100 bg-white p-2"
+						>
+							<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+								{label}
+							</p>
+							<p
+								data-testid={testId}
+								data-amount={value === null ? '' : String(value)}
+								className="text-base font-bold text-purple-900"
+							>
+								{value === null
+									? '—'
+									: formatCurrencyIn(
+											value,
+											data.petty_cash.currency ?? 'INR'
+										)}
+							</p>
+							<p className="text-[10px] text-gray-500">{hint}</p>
+						</div>
+					))}
+				</div>
+				{data.petty_cash.by_currency.length > 1 && (
+					<ul className="mt-2 space-y-0.5 text-[11px] text-purple-900">
+						{data.petty_cash.by_currency.map((row) => (
+							<li key={row.currency} data-testid="petty-currency-row">
+								{row.currency}: funding{' '}
+								{formatCurrencyIn(row.funding, row.currency)} · spend{' '}
+								{formatCurrencyIn(row.spend, row.currency)} · remaining{' '}
+								{formatCurrencyIn(row.remaining_funding, row.currency)} ·
+								recognized {formatCurrencyIn(row.recognized_cost, row.currency)}
+							</li>
+						))}
+					</ul>
+				)}
+				<ul className="mt-2 space-y-0.5 text-[11px] text-purple-900/90">
+					<li data-testid="petty-unlinked-spend">
+						Spending without voucher linkage: {data.petty_cash.unlinked_spend.count}
+						{data.petty_cash.unlinked_spend.amount === null
+							? ''
+							: ` (${formatCurrencyIn(
+									data.petty_cash.unlinked_spend.amount,
+									data.petty_cash.currency ?? 'INR'
+								)})`}
+					</li>
+					<li data-testid="petty-unresolved-settlements">
+						Receipts settling an unrecognized cost:{' '}
+						{data.petty_cash.unresolved_settlements.count}
+						{data.petty_cash.unresolved_settlements.amount === null
+							? ''
+							: ` (${formatCurrencyIn(
+									data.petty_cash.unresolved_settlements.amount,
+									data.petty_cash.currency ?? 'INR'
+								)})`}
+					</li>
+				</ul>
+			</div>
 
 			{/* Tax and evidence */}
 			<div className="mt-3 grid gap-2 md:grid-cols-2">

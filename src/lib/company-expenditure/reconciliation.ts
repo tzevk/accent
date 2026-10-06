@@ -27,6 +27,7 @@ import type {
 	CurrencyTotal,
 	EvidenceStateSummary,
 	EvidenceSummary,
+	PettyCashSummary,
 	ReconciliationGroup,
 	ReconciliationProjectRow,
 } from './types';
@@ -328,6 +329,50 @@ function monthNotices(
 	return notices;
 }
 
+/**
+ * The petty-cash disclosures. Funding is never operating cost, spending is
+ * separate from it, and a receipt linked to an unrecognized cost settles
+ * nothing yet — all three are stated instead of being silently absorbed.
+ */
+function pettyCashNotices(summary: PettyCashSummary): CoverageNotice[] {
+	const notices: CoverageNotice[] = [];
+	for (const row of summary.by_currency) {
+		if (row.remaining_funding < 0) {
+			notices.push({
+				code: 'petty_cash_overspent',
+				label: 'Petty-cash spending exceeds its recorded funding',
+				detail: `${row.currency}: spending drawn from vouchers is ${Math.abs(row.remaining_funding).toFixed(2)} more than the funding dated in this month. The excess is spending, not inferred funding.`,
+				severity: 'warning',
+			});
+		}
+		if (row.unconfirmed_spend > 0) {
+			notices.push({
+				code: 'petty_cash_spending_awaiting_recognition',
+				label: 'Petty-cash spending awaiting recognition',
+				detail: `${row.currency}: ${row.unconfirmed_spend.toFixed(2)} of petty-cash spending is draft or pending evidence and is excluded from confirmed cost.`,
+				severity: 'warning',
+			});
+		}
+	}
+	if (summary.unlinked_spend.count > 0) {
+		notices.push({
+			code: 'petty_cash_spend_without_voucher',
+			label: 'Petty-cash spending without voucher linkage',
+			detail: `${summary.unlinked_spend.count} spending record(s) are not drawn from a recorded voucher. They are still cost, but they are not attributed to any funding, and no Project is inferred from voucher text.`,
+			severity: 'info',
+		});
+	}
+	if (summary.unresolved_settlements.count > 0) {
+		notices.push({
+			code: 'petty_cash_settlement_unresolved',
+			label: 'Petty-cash receipts linked to an unrecognized cost',
+			detail: `${summary.unresolved_settlements.count} receipt(s) reference a cost that is not a recognized cost; they settle nothing yet and add no cost of their own.`,
+			severity: 'warning',
+		});
+	}
+	return notices;
+}
+
 export interface ReconciliationInput {
 	month: string;
 	/** Every direct cost belonging to the month, in any recognition state. */
@@ -346,6 +391,11 @@ export interface ReconciliationInput {
 	}>;
 	availableMonths: string[];
 	coverageDeclarations: readonly SourceCoverageDeclaration[];
+	/**
+	 * Petty-cash funding and spending for the same month, stated beside the
+	 * cost reconciliation; funding never enters the company totals.
+	 */
+	pettyCash: PettyCashSummary;
 }
 
 /** Build the reconciliation payload. Pure: all data arrives as arguments. */
@@ -437,6 +487,7 @@ export function buildReconciliation(
 				severity: 'warning' as const,
 			})),
 		...monthNotices(records, confirmed, currencyTotals, missingAmounts.length),
+		...pettyCashNotices(input.pettyCash),
 	];
 
 	return {
@@ -476,6 +527,7 @@ export function buildReconciliation(
 			input.projectFilter
 		),
 		evidence,
+		petty_cash: input.pettyCash,
 		coverage: notices,
 		project_options: input.projectOptions,
 		available_months: input.availableMonths,

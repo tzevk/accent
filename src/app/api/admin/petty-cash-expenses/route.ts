@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import {
@@ -7,30 +6,17 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
-import crypto from 'node:crypto';
-import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import { isRetryableNumberError } from '@/utils/db-number-retry';
+import {
+	CostError,
+	fetchPettyCashSummary,
+	pettyCashSpendInputFromJson,
+	recordPettyCashSpend,
+} from '@/lib/company-expenditure';
 
 const TABLE = 'petty_cash_expenses';
 
-// Petty-cash numbers are PCX-#####. The read runs inside the caller's
-// transaction with a row lock (FOR UPDATE) on the newest row so concurrent
-// POSTs serialize behind it; the unique transaction-number index is the
-// backstop and a collision retries with a fresh read.
-async function nextNumber(db: PoolConnection): Promise<string> {
-	const [rows] = await db.execute<RowDataPacket[]>(
-		`SELECT transaction_number FROM ${TABLE} WHERE transaction_number LIKE 'PCX-%' AND isDelete = 0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`
-	);
-	let next = 1;
-	if (rows.length > 0) {
-		const match = /PCX-(\d+)/.exec(rows[0].transaction_number || '');
-		if (match) next = parseInt(match[1], 10) + 1;
-	}
-	return `PCX-${String(next).padStart(5, '0')}`;
-}
-
 export async function GET(request: Request) {
-	const authResult: any = await ensurePermission(
+	const authResult = await ensurePermission(
 		request,
 		RESOURCES.PETTY_CASH_EXPENSES,
 		PERMISSIONS.READ
@@ -38,7 +24,7 @@ export async function GET(request: Request) {
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
 
-	let db: any;
+	let db;
 	try {
 		const { searchParams } = new URL(request.url);
 		const search = searchParams.get('search');
@@ -60,7 +46,7 @@ export async function GET(request: Request) {
 
 		if (unsettled) {
 			where.push(
-				'pce.source_voucher_id IS NULL AND pce.debit_amount > 0 AND pce.credit_amount = 0'
+				"pce.entry_kind = 'spend' AND pce.source_voucher_id IS NULL AND pce.debit_amount > 0"
 			);
 		}
 
@@ -92,27 +78,38 @@ export async function GET(request: Request) {
 		);
 
 		// ── Voucher balances for add-dropdown (remaining > 0) ──
+		// Only spending draws a voucher down; the funding mirror is the credit
+		// side of the voucher itself and never reduces its own balance.
 		const [voucherBalances] = await db.execute(
 			`SELECT cv.id, cv.voucher_number, cv.total_amount, cv.paid_to, cv.notes, cv.description,
-				COALESCE(SUM(pce.debit_amount), 0) as total_debited,
-				cv.total_amount - COALESCE(SUM(pce.debit_amount), 0) as remaining
+				COALESCE(SUM(CASE WHEN pce.entry_kind = 'spend' THEN pce.debit_amount ELSE 0 END), 0) as total_debited,
+				cv.total_amount - COALESCE(SUM(CASE WHEN pce.entry_kind = 'spend' THEN pce.debit_amount ELSE 0 END), 0) as remaining
 			FROM cash_vouchers cv
 			LEFT JOIN ${TABLE} pce ON pce.source_voucher_id = cv.id AND pce.isDelete = 0
+			WHERE (cv.isDelete IS NULL OR cv.isDelete = 0)
 			GROUP BY cv.id
-			HAVING COALESCE(SUM(pce.debit_amount), 0) < cv.total_amount
+			HAVING COALESCE(SUM(CASE WHEN pce.entry_kind = 'spend' THEN pce.debit_amount ELSE 0 END), 0) < cv.total_amount
 			ORDER BY cv.voucher_number`
 		);
+
+		// Funding, spending, remaining supported funding, and recognized cost,
+		// stated separately from the ledger's running balance.
+		const funding = await fetchPettyCashSummary(null);
 
 		return NextResponse.json({
 			success: true,
 			data: rows,
 			stats: statsRows[0] || { totalDebits: 0, totalCredits: 0, balance: 0 },
 			voucherBalances: voucherBalances || [],
+			funding,
 		});
-	} catch (error: any) {
+	} catch (error) {
 		console.error('Error fetching petty cash expenses:', error);
 		return NextResponse.json(
-			{ success: false, error: error.message },
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to fetch',
+			},
 			{ status: 500 }
 		);
 	} finally {
@@ -121,7 +118,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-	const authResult: any = await ensurePermission(
+	const authResult = await ensurePermission(
 		request,
 		RESOURCES.PETTY_CASH_EXPENSES,
 		PERMISSIONS.CREATE
@@ -129,120 +126,47 @@ export async function POST(request: Request) {
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
 
-	let db: any;
 	try {
-		const body = await request.json();
+		const body = (await request.json()) as Record<string, unknown>;
 		const user = authResult.user;
 
-		if (!body.transaction_date) {
-			return NextResponse.json(
-				{ success: false, error: 'transaction_date is required' },
-				{ status: 400 }
-			);
-		}
+		// One write path: the module mints the number and the cost identity,
+		// applies the recognition-period and reference rules (a voucher must
+		// exist, a linked cost must resolve), and journals the row.
+		const recorded = await recordPettyCashSpend(
+			pettyCashSpendInputFromJson(body),
+			{ id: user?.id ?? null }
+		);
 
-		const creditAmt = Math.abs(Number(body.credit_amount ?? 0));
-		const debitAmt = Math.abs(Number(body.debit_amount ?? 0));
-		if (creditAmt === 0 && debitAmt === 0) {
-			return NextResponse.json(
-				{ success: false, error: 'credit_amount or debit_amount is required' },
-				{ status: 400 }
-			);
-		}
-
-		db = await dbConnect();
-
-		const id = crypto.randomUUID();
-
-		let custodianName = body.custodian_employee_name || null;
-		const custodianId = body.custodian_employee_id || null;
-
-		if (custodianId && !custodianName) {
-			const [eRows] = await db.execute(
-				"SELECT CONCAT(first_name, ' ', last_name) as full_name FROM employees WHERE id = ?",
-				[custodianId]
-			);
-			custodianName = eRows[0]?.full_name || null;
-		}
-
-		const sourceVoucherId = body.source_voucher_id
-			? parseInt(body.source_voucher_id, 10) || null
-			: null;
-
-		// Number generation and INSERT are one transaction so concurrent POSTs
-		// cannot mint the same PCX number; the unique transaction-number index
-		// makes a lost race a duplicate-key error, which retries from a fresh read.
-		let transactionNumber = '';
-		for (let attempt = 1; ; attempt++) {
-			await db.beginTransaction();
-			try {
-				transactionNumber = body.transaction_number || (await nextNumber(db));
-
-				await db.execute(
-					`INSERT INTO ${TABLE}
-				(id, transaction_number, transaction_date, credit_amount, debit_amount, expense_category,
-				 description, payment_mode, payment_reference, recipient_name,
-				 custodian_employee_id, custodian_employee_name,
-				 bill_no, bill_date, status, notes, created_by, source_voucher_id)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					[
-						id,
-						transactionNumber,
-						body.transaction_date,
-						creditAmt,
-						debitAmt,
-						body.expense_category || null,
-						body.description || null,
-						body.payment_mode || 'cash',
-						body.payment_reference || null,
-						body.recipient_name || null,
-						custodianId,
-						custodianName,
-						body.bill_no || null,
-						body.bill_date || null,
-						body.status || 'submitted',
-						body.notes || null,
-						user?.id || null,
-						sourceVoucherId,
-					]
-				);
-
-				await db.commit();
-				break;
-			} catch (error) {
-				await db.rollback();
-				if (
-					!body.transaction_number &&
-					isRetryableNumberError(error) &&
-					attempt < 5
-				) {
-					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
-					continue;
-				}
-				throw error;
-			}
-		}
-
-		await (logActivity as any)({
+		await logActivity({
 			userId: user?.id,
 			actionType: 'create',
 			resourceType: 'petty_cash_expense',
-			resourceId: id,
-			description: `Created petty cash ${transactionNumber}: credit ${creditAmt} / debit ${debitAmt}`,
-			request: request as any,
+			resourceId: recorded.id,
+			description: `Created petty cash ${recorded.transaction_number}: amount ${body.debit_amount ?? body.amount}`,
+			request,
 		});
 
-		return NextResponse.json({
-			success: true,
-			data: { id, transaction_number: transactionNumber },
-		});
-	} catch (error: any) {
+		return NextResponse.json({ success: true, data: recorded });
+	} catch (error) {
+		if (error instanceof CostError) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code,
+					...error.detail,
+				},
+				{ status: error.status }
+			);
+		}
 		console.error('Error creating petty cash expense:', error);
 		return NextResponse.json(
-			{ success: false, error: error.message },
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to create',
+			},
 			{ status: 500 }
 		);
-	} finally {
-		if (db) await db.end();
 	}
 }

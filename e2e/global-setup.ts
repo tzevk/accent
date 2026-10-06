@@ -10,6 +10,10 @@ import {
 } from './lib/expenditure-fixtures';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
 import {
+	cleanupPettyCashFixtures,
+	seedPettyCashFixtures,
+} from './lib/petty-cash-fixtures';
+import {
 	cleanupUtilizationFixtures,
 	seedUtilizationFixtures,
 } from './lib/utilization-fixtures';
@@ -24,6 +28,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupAttendanceFixtures();
 		await cleanupUtilizationFixtures();
 		await cleanupExpenditureFixtures();
+		await cleanupPettyCashFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
 		// trusted IP header; browser sign-ins carry no such header, so they land
@@ -88,6 +93,12 @@ export default async function globalSetup(): Promise<void> {
 			`[e2e] expenditure fixtures seeded for ${expenditure.month} and ${expenditure.nextMonth} ` +
 				`(${expenditure.costs} direct costs, ` +
 				`${Object.keys(expenditure.projects).length} projects)`
+		);
+
+		const pettyCash = await seedPettyCashFixtures();
+		console.log(
+			`[e2e] petty-cash fixtures seeded for ${pettyCash.month} and ${pettyCash.laterMonth} ` +
+				`(${Object.keys(pettyCash.projects).length} projects, target cost ${pettyCash.targetCostUid})`
 		);
 	} finally {
 		await closeDb();
