@@ -616,11 +616,14 @@ export function buildReconciliation(
 			: null;
 
 	const conversion: CompanyConversion = {
-		status: complete
-			? currencyTotals.some((row) => row.reporting.status === 'converted')
-				? 'converted'
-				: 'reporting'
-			: 'unsupported',
+		// Nothing unconverted means nothing is withheld: a month with no
+		// confirmed record is not "unsupported", it has nothing to state.
+		status:
+			unsupportedRecords === 0
+				? currencyTotals.some((row) => row.reporting.status === 'converted')
+					? 'converted'
+					: 'reporting'
+				: 'unsupported',
 		converted_records: convertedRecords,
 		unsupported_records: unsupportedRecords,
 		unsupported_currencies: currencyTotals

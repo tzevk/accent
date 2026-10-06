@@ -675,6 +675,9 @@ export default function ExpenditureView({
 						<li data-testid="evidence-row" data-state="missing_amount">
 							Missing amount: {data.evidence.missing_amount.count}
 						</li>
+						<li data-testid="evidence-row" data-state="missing_currency">
+							Missing original currency: {data.evidence.missing_currency.count}
+						</li>
 						<li data-testid="evidence-row" data-state="known_zero">
 							Known zero: {data.evidence.known_zero.count}
 						</li>

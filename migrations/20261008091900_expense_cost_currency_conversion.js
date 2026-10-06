@@ -46,7 +46,10 @@ const COLUMNS = [
 	},
 	{
 		name: 'converted_amount',
-		ddl: 'DECIMAL(15,2) NULL',
+		// Wider than `recognized_amount`: an amount near the (15,2) limit
+		// times a rate can exceed it, and a reporting figure must not fail to
+		// store after the cost was accepted.
+		ddl: 'DECIMAL(20,2) NULL',
 	},
 ];
 
