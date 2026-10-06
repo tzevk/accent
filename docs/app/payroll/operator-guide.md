@@ -80,6 +80,8 @@ as arrears (ADR-0008).
 | My Payslips                                    | `/user/payslips`                       | employee                   | own finalized slips + PDF                                                                                         |
 | Daily hours entry                              | project → Edit → **My Activities** tab | employee / PM              | the pay numerator (`daily_entries`)                                                                               |
 
+The **My Payslips** card on `/user/dashboard` is hidden pending the feature's finalization; the `/user/payslips` route itself is unchanged.
+
 `/admin/*` requires super-admin or role code `admin` (`src/app/admin/layout.tsx`);
 every payroll API additionally checks `RESOURCES.PAYROLL` (generate needs
 `CREATE`, listings `READ`), and only a super-admin may reopen. Old payroll URLs
