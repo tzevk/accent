@@ -9,7 +9,7 @@
  * recognize it) and the real report; the API drives the versioned commands and
  * the authorization outcomes; the database is read back independently.
  *
- * The namespace and the months (2019-06, 2019-08) belong to this spec alone
+ * The namespace and the months (2021-06, 2021-08) belong to this spec alone
  * (`e2e/lib/petty-cash-fixtures.ts`); 2019-01/02 belong to #306 and 2019-10/11/12
  * to #319.
  */
@@ -34,13 +34,13 @@ test.use({
 	storageState: 'e2e/.auth/admin-report.json',
 	// This spec's own rate-limit identity, set through the proxy's trusted
 	// header (ADR-0013), so a combined run cannot exhaust the shared budget.
-	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.26' },
+	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.60' },
 });
 test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
 const MONTH = PETTY_CASH_MONTH;
 const LATER_MONTH = PETTY_CASH_LATER_MONTH;
-const MONTH_LABEL = 'June 2019';
+const MONTH_LABEL = 'June 2021';
 const REGISTER = '/api/admin/petty-cash-expenses';
 
 /** The independently stated expectations, from the fixture literals. */
@@ -111,6 +111,24 @@ const spends: Record<string, Record<string, unknown>> = {};
 const controlEvidence: Record<string, unknown> = {};
 const authorizationEvidence: Record<string, unknown> = {};
 
+type DrilldownData = {
+	total: number;
+	records: Array<{
+		id: number;
+		source: string;
+		expense_number: string;
+		recognition_state: string;
+		recognized_amount: number | null;
+		currency: string | null;
+		conversion_status: string;
+	}>;
+	totals: {
+		confirmed_amount: number | null;
+		currency: string | null;
+		records: number;
+	};
+};
+
 async function reconciliation(
 	request: APIRequestContext,
 	month: string
@@ -122,6 +140,20 @@ async function reconciliation(
 	const body = await response.json();
 	expect(body.success).toBe(true);
 	return body.data as ReconciliationData;
+}
+
+async function drilldown(
+	request: APIRequestContext,
+	params: Record<string, string>
+): Promise<DrilldownData> {
+	const query = new URLSearchParams(params).toString();
+	const response = await request.get(
+		`/api/reports/employee-project-monthly-cost/expenses?${query}`
+	);
+	expect(response.status(), await response.text()).toBe(200);
+	const body = await response.json();
+	expect(body.success).toBe(true);
+	return body.data as DrilldownData;
 }
 
 function group(data: ReconciliationData, key: string): number {
@@ -476,6 +508,21 @@ test('records actual spending through the register and recognizes it once', asyn
 	);
 	expect(await kpi(page, 'petty-funding-amount')).toBe(EXPECTED.voucherTotal);
 	expect(await kpi(page, 'petty-recognized-amount')).toBe(EXPECTED.spendA);
+
+	// The drilldown carries the source rows behind those figures: the petty-cash
+	// spend appears once, with its native identity, beside the direct expense.
+	const drill = await drilldown(request, { month: MONTH, state: 'recognized' });
+	const pettyRows = drill.records.filter(
+		(record) => record.source === 'petty_cash'
+	);
+	expect(pettyRows.length).toBe(1);
+	expect(pettyRows[0].expense_number).toBe(transactionNumber);
+	expect(Number(pettyRows[0].recognized_amount)).toBe(EXPECTED.spendA);
+	expect(pettyRows[0].currency).toBe('INR');
+	expect(drill.totals.confirmed_amount).toBe(
+		EXPECTED.targetCost + EXPECTED.spendA
+	);
+	expect(drill.totals.currency).toBe('INR');
 });
 
 test('keeps missing linkage unresolved and refuses recognition or access without it', async ({
@@ -981,6 +1028,8 @@ test('leaves the funding mirror deleted with its voucher when nothing was spent'
 
 test('captures and versions foreign-currency conversion evidence on petty cash', async ({
 	request,
+	playwright,
+	baseURL,
 }) => {
 	// A partial triple is refused: evidence moves as a whole or not at all.
 	const partial = await recordSpend(request, {
@@ -1083,6 +1132,34 @@ test('captures and versions foreign-currency conversion evidence on petty cash',
 	expect(repriced.status, JSON.stringify(repriced.body)).toBe(200);
 	const repricedRow = await spendRow(spendFId);
 	expect(Number(repricedRow.converted_amount)).toBe(
+		EXPECTED.spendF * Number(EXPECTED.fxRateUpdated)
+	);
+
+	// A rate is evidence for one currency pair: changing the original currency
+	// without the fresh triple is refused, and a currency-only patch is
+	// approval territory (403 for a clerk without `:approve`).
+	const pairChange = await runCommand(request, spendFId, {
+		command: 'update',
+		expected_version: 3,
+		patch: { currency: 'EUR' },
+	});
+	expect(pairChange.status).toBe(422);
+	expect(pairChange.body.code).toBe('conversion_evidence_required');
+	const clerk = await loginPettyCashUser(playwright, baseURL, 'clerk');
+	try {
+		const clerkPatch = await runCommand(clerk, spendFId, {
+			command: 'update',
+			expected_version: 3,
+			patch: { currency: 'EUR' },
+		});
+		expect(clerkPatch.status).toBe(403);
+		authorizationEvidence.clerkCurrencyPatch = clerkPatch.status;
+	} finally {
+		await clerk.dispose();
+	}
+	const stillUsd = await spendRow(spendFId);
+	expect(stillUsd.currency).toBe('USD');
+	expect(Number(stillUsd.converted_amount)).toBe(
 		EXPECTED.spendF * Number(EXPECTED.fxRateUpdated)
 	);
 

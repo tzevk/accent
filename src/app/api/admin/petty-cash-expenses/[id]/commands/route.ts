@@ -22,7 +22,10 @@ import {
 	executePettyCashCommand,
 	pettyCashCommandInputFromJson,
 } from '@/lib/company-expenditure';
-import type { CostCommandName } from '@/lib/company-expenditure';
+import type {
+	CostCommandName,
+	PettyCashSpendPatch,
+} from '@/lib/company-expenditure';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,6 +35,22 @@ function permissionFor(command: CostCommandName): string {
 	return command === 'update' || command === 'submit'
 		? PERMISSIONS.UPDATE
 		: PERMISSIONS.APPROVE;
+}
+
+/**
+ * A currency or conversion-evidence change reprices the cost: the currency
+ * pair is approval territory (`currency.ts` contract §4), so an `update` that
+ * touches any of these fields needs `petty_cash_expenses:approve`.
+ */
+function patchTouchesCurrency(patch: PettyCashSpendPatch | undefined): boolean {
+	if (!patch) return false;
+	return (
+		patch.currency !== undefined ||
+		patch.reportingCurrency !== undefined ||
+		patch.conversionRate !== undefined ||
+		patch.conversionDate !== undefined ||
+		patch.conversionEvidenceReference !== undefined
+	);
 }
 
 export async function POST(
@@ -65,7 +84,9 @@ export async function POST(
 		const authResult = await ensurePermission(
 			request,
 			RESOURCES.PETTY_CASH_EXPENSES,
-			permissionFor(input.command)
+			input.command === 'update' && patchTouchesCurrency(input.patch)
+				? PERMISSIONS.APPROVE
+				: permissionFor(input.command)
 		);
 		if (authResult instanceof Response) return authResult;
 		if (!authResult.authorized) return authResult.response;

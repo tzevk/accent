@@ -152,7 +152,7 @@ export function mapCostRow(row: DbRow): CostRecord {
 }
 
 /** The record as the report endpoints publish it. */
-function toCostRecordJson(record: CostRecord): CostRecordJson {
+export function toCostRecordJson(record: CostRecord): CostRecordJson {
 	return {
 		id: record.id,
 		cost_uid: record.costUid,

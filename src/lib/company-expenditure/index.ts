@@ -80,10 +80,10 @@ import {
 	type SqlConnection,
 } from './records';
 import {
-	loadPettyCashMonths,
-	loadPettyCashProjectCost,
-	loadPettyCashRecords,
+	PETTY_CASH_COST_SOURCE,
 	loadPettyCashSummary,
+	type PettyCashDrilldown,
+	type PettyCashSourceDescriptor,
 } from './petty-cash';
 import { buildReconciliation, projectIdsIn } from './reconciliation';
 import type {
@@ -93,6 +93,7 @@ import type {
 	CostDrilldown,
 	CostDrilldownQuery,
 	CostJournalEntry,
+	CostRecordJson,
 	PettyCashSummary,
 } from './types';
 
@@ -130,6 +131,11 @@ export type {
 	CostSourceAdapter,
 } from './sources';
 export { recordCostBudget, executeBudgetCommand } from './budget-commands';
+export { PETTY_CASH_COST_SOURCE } from './petty-cash';
+export type {
+	PettyCashDrilldown,
+	PettyCashSourceDescriptor,
+} from './petty-cash';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
 export {
@@ -259,7 +265,7 @@ export function currentMonth(): string {
 export async function fetchExpenditureMonths(): Promise<string[]> {
 	const [direct, pettyCash] = await Promise.all([
 		loadExpenditureMonths(pool, currentMonth()),
-		loadPettyCashMonths(pool),
+		PETTY_CASH_COST_SOURCE.loadMonths(pool),
 	]);
 	return [...new Set([currentMonth(), ...direct, ...pettyCash])]
 		.sort()
@@ -308,17 +314,17 @@ export async function fetchCompanyReconciliation(
 		pettyCashMonths,
 	] = await Promise.all([
 		loadMonthRecords(db, month),
-		loadPettyCashRecords(db, month),
+		PETTY_CASH_COST_SOURCE.loadMonthRecords(db, month),
 		loadPettyCashSummary(db, month),
 		previousMonth
 			? loadMonthProjectCost(db, previousMonth)
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
 		previousMonth
-			? loadPettyCashProjectCost(db, previousMonth)
+			? PETTY_CASH_COST_SOURCE.loadProjectCost(db, previousMonth)
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
 		loadProjectOptions(db),
 		loadExpenditureMonths(db, currentMonth()),
-		loadPettyCashMonths(db),
+		PETTY_CASH_COST_SOURCE.loadMonths(db),
 	]);
 	const sourceRecords = [...records, ...pettyCashRecords];
 	const availableMonths = [
@@ -394,7 +400,106 @@ export async function fetchCostDrilldown(
 	queryInput: CostDrilldownQuery,
 	options?: CommandOptions
 ): Promise<CostDrilldown> {
-	return loadDrilldown(options?.connection ?? pool, queryInput);
+	const db = options?.connection ?? pool;
+	const limit = Math.min(Math.max(queryInput.limit ?? 50, 1), 200);
+	const offset = Math.max(queryInput.offset ?? 0, 0);
+	// Reads every source over the same widened window, then states one ordered,
+	// paginated union: a confirmed petty-cash cost appears exactly once. The
+	// per-source loaders cap their own window at 200 rows, so the union page is
+	// bounded the same way (deeper offsets rely on the ordered window).
+	const window: CostDrilldownQuery = {
+		...queryInput,
+		limit: Math.min(limit + offset, 200),
+		offset: 0,
+	};
+	const [expenses, pettyCash] = await Promise.all([
+		loadDrilldown(db, window),
+		PETTY_CASH_COST_SOURCE.loadDrilldown(db, window),
+	]);
+	const records = [...expenses.records, ...pettyCash.records]
+		.sort(compareDrilldownRecords)
+		.slice(offset, offset + limit);
+	const expensesHasRows = expenses.totals.records > 0;
+	const pettyCashHasRows = pettyCash.total > 0;
+	return {
+		month: queryInput.month,
+		scope: 'month',
+		total: expenses.total + pettyCash.total,
+		limit,
+		offset,
+		records,
+		totals: {
+			confirmed_amount: mergedDrilldownAmount(
+				expenses.totals,
+				pettyCash,
+				expensesHasRows,
+				pettyCashHasRows
+			),
+			currency: mergedDrilldownCurrency(
+				expenses.totals,
+				pettyCash,
+				expensesHasRows,
+				pettyCashHasRows
+			),
+			records: expenses.totals.records + pettyCash.total,
+		},
+	};
+}
+
+/** Highest-first by Recognition Period, then expense date, then source, id. */
+function compareDrilldownRecords(a: CostRecordJson, b: CostRecordJson): number {
+	const periodA = a.recognition_period ?? '';
+	const periodB = b.recognition_period ?? '';
+	if (periodA !== periodB) return periodA < periodB ? 1 : -1;
+	const dateA = a.expense_date ?? '';
+	const dateB = b.expense_date ?? '';
+	if (dateA !== dateB) return dateA < dateB ? 1 : -1;
+	if (a.source !== b.source) return a.source === 'direct_expense' ? -1 : 1;
+	return b.id - a.id;
+}
+
+/**
+ * The union totals can be stated as one figure only when every contributing
+ * source states a number in the same currency; otherwise the figure is null
+ * (unknown, never a wrong sum). A source with no rows states nothing.
+ */
+function mergedDrilldownAmount(
+	expensesTotals: CostDrilldown['totals'],
+	pettyCash: PettyCashDrilldown,
+	expensesHasRows: boolean,
+	pettyCashHasRows: boolean
+): number | null {
+	if (!pettyCashHasRows) return expensesTotals.confirmed_amount;
+	if (!expensesHasRows) return pettyCash.confirmed_amount;
+	if (
+		expensesTotals.confirmed_amount === null ||
+		pettyCash.confirmed_amount === null ||
+		expensesTotals.currency === null ||
+		pettyCash.currency === null ||
+		expensesTotals.currency !== pettyCash.currency
+	) {
+		return null;
+	}
+	return expensesTotals.confirmed_amount + pettyCash.confirmed_amount;
+}
+
+function mergedDrilldownCurrency(
+	expensesTotals: CostDrilldown['totals'],
+	pettyCash: PettyCashDrilldown,
+	expensesHasRows: boolean,
+	pettyCashHasRows: boolean
+): string | null {
+	if (!pettyCashHasRows) return expensesTotals.currency;
+	if (!expensesHasRows) return pettyCash.currency;
+	if (
+		expensesTotals.confirmed_amount === null ||
+		pettyCash.confirmed_amount === null
+	) {
+		return null;
+	}
+	return expensesTotals.currency === pettyCash.currency
+		? expensesTotals.currency
+		: null;
 }
 
 /** Read the versioned command history of one cost. */

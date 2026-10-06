@@ -266,6 +266,146 @@ export async function loadPettyCashProjectCost(
 	return costs;
 }
 
+export interface PettyCashDrilldown {
+	total: number;
+	records: CostRecordJson[];
+	confirmed_amount: number | null;
+	currency: string | null;
+}
+
+/**
+ * The petty-cash rows behind the report figures, with the same month, state,
+ * classification, and Project filters the direct-expense drilldown applies.
+ * A receipt already linked to another cost is not a cost row here: the linked
+ * cost is the one row counted, so the drilldown never shows the same spending
+ * twice. `confirmed_amount` is null when a confirmed amount is unknown or the
+ * confirmed rows span currencies, exactly like the direct-expense totals.
+ *
+ * When #319's drilldown-basis fix lands (`CostDrilldownQuery.reportingCurrency`
+ * with per-record `conversion_status` in the selected basis), forward the
+ * query's basis into the JSON mapping here — one basis per response.
+ */
+export async function loadPettyCashDrilldown(
+	db: SqlConnection,
+	query: CostDrilldownQuery
+): Promise<PettyCashDrilldown> {
+	const { start, end } = monthBounds(query.month);
+	const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+	const offset = Math.max(query.offset ?? 0, 0);
+	const where = [
+		'p.isDelete = 0',
+		"p.entry_kind = 'spend'",
+		'p.linked_cost_uid IS NULL',
+		'(p.recognition_period BETWEEN ? AND ? OR (p.recognition_period IS NULL AND p.bill_date BETWEEN ? AND ?))',
+	];
+	const params: Array<string | number> = [start, end, start, end];
+	if (query.state && query.state !== 'all') {
+		if (query.state === 'unconfirmed') {
+			where.push("p.recognition_state IN ('draft','pending_evidence')");
+		} else if (query.state === 'unresolved') {
+			where.push('p.cost_classification IS NULL');
+		} else {
+			where.push('p.recognition_state = ?');
+			params.push(query.state);
+		}
+	}
+	if (query.classification && query.classification !== 'all') {
+		if (query.classification === 'unresolved') {
+			where.push('p.cost_classification IS NULL');
+		} else {
+			where.push('p.cost_classification = ?');
+			params.push(query.classification);
+		}
+	}
+	if (query.projectId !== undefined && query.projectId !== null) {
+		where.push('p.project_id = ?');
+		params.push(query.projectId);
+	}
+	const whereSql = where.join(' AND ');
+
+	const [countRows] = await db.execute(
+		`SELECT COUNT(*) AS total,
+              SUM(CASE WHEN p.recognition_state = 'recognized' THEN 1 ELSE 0 END) AS confirmed_records,
+              SUM(CASE WHEN p.recognition_state = 'recognized' AND p.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts,
+              SUM(CASE WHEN p.recognition_state = 'recognized' AND p.currency IS NULL THEN 1 ELSE 0 END) AS unknown_currency_records,
+              COUNT(DISTINCT CASE WHEN p.recognition_state = 'recognized' THEN p.currency END) AS confirmed_currencies,
+              MIN(CASE WHEN p.recognition_state = 'recognized' THEN p.currency END) AS confirmed_currency,
+              SUM(CASE WHEN p.recognition_state = 'recognized' THEN p.recognized_amount ELSE 0 END) AS confirmed
+         FROM petty_cash_expenses p
+        WHERE ${whereSql}`,
+		params
+	);
+	const count = (countRows as DbRow[])[0] ?? {};
+	const unknownAmounts = num(count, 'unknown_amounts') ?? 0;
+	const unknownCurrency = num(count, 'unknown_currency_records') ?? 0;
+	const confirmedCurrencies = num(count, 'confirmed_currencies') ?? 0;
+	const confirmedAmount =
+		unknownAmounts > 0 || unknownCurrency > 0 || confirmedCurrencies > 1
+			? null
+			: (num(count, 'confirmed') ?? 0);
+	const [rows] = await db.execute(
+		`${SPEND_SELECT}
+      WHERE ${whereSql}
+      ORDER BY p.recognition_period DESC,
+               COALESCE(p.bill_date, p.transaction_date) DESC,
+               p.numeric_id DESC
+      LIMIT ? OFFSET ?`,
+		[...params, limit, offset]
+	);
+	return {
+		total: Number(num(count, 'total') ?? 0),
+		records: (rows as DbRow[]).map(mapPettyCashRow).map(toCostRecordJson),
+		confirmed_amount: confirmedAmount,
+		currency:
+			unknownCurrency > 0 || confirmedCurrencies !== 1
+				? null
+				: s(count, 'confirmed_currency'),
+	};
+}
+
+/**
+ * The petty-cash source as the common registry reads it: the native store and
+ * its keys (the UUID primary key a command addresses, the numeric key the
+ * journal uses), the command endpoint, and the cost-bearing predicate. The
+ * report reads (reconciliation, prior month, cost-to-date, drilldown) consume
+ * this descriptor so petty-cash confirmed cost is stated once, from one place.
+ */
+export interface PettyCashSourceDescriptor {
+	source: 'petty_cash';
+	table: 'petty_cash_expenses';
+	/** Native row key a command targets (`petty_cash_expenses.id`). */
+	nativeIdColumn: 'id';
+	/** Numeric row key the append-only journal uses. */
+	numericIdColumn: 'numeric_id';
+	/** Versioned command endpoint for one native row. */
+	commandHref: string;
+	/** Rows that are cost: spending that is not a settlement of another cost. */
+	costPredicate: string;
+	loadMonthRecords(db: SqlConnection, month: string): Promise<CostRecord[]>;
+	loadProjectCost(
+		db: SqlConnection,
+		month: string
+	): Promise<Map<number, Map<string, number | null>>>;
+	loadDrilldown(
+		db: SqlConnection,
+		query: CostDrilldownQuery
+	): Promise<PettyCashDrilldown>;
+	loadMonths(db: SqlConnection): Promise<string[]>;
+}
+
+export const PETTY_CASH_COST_SOURCE: PettyCashSourceDescriptor = {
+	source: 'petty_cash',
+	table: 'petty_cash_expenses',
+	nativeIdColumn: 'id',
+	numericIdColumn: 'numeric_id',
+	commandHref: '/api/admin/petty-cash-expenses/{id}/commands',
+	costPredicate: "entry_kind = 'spend' AND linked_cost_uid IS NULL",
+	loadMonthRecords: loadPettyCashRecords,
+	loadProjectCost: loadPettyCashProjectCost,
+	loadDrilldown: loadPettyCashDrilldown,
+	loadMonths: loadPettyCashMonths,
+};
+
 /** Months that carry petty-cash spending, newest first. */
 export async function loadPettyCashMonths(db: SqlConnection): Promise<string[]> {
 	const [rows] = await db.execute(
@@ -1395,7 +1535,48 @@ export async function executePettyCashCommand(
 		};
 		// The currency and its conversion evidence are one validated unit, the
 		// same rule the direct-expense write path applies.
-		const merged = { ...mergedRaw, ...resolveConversion(mergedRaw) };
+		let merged = { ...mergedRaw, ...resolveConversion(mergedRaw) };
+
+		// A rate is evidence for ONE currency pair (currency.ts contract §2/§4):
+		// changing the original or reporting currency never inherits the stored
+		// rate/date/reference. A new same-currency pair clears the triple; a new
+		// convertible pair needs the complete fresh triple in this command.
+		const previousPair = resolveConversion({
+			currency: row.currency,
+			reportingCurrency: row.reporting_currency,
+			conversionRate: null,
+			conversionDate: null,
+			conversionEvidenceReference: null,
+		});
+		const pairChanged =
+			previousPair.currency !== merged.currency ||
+			previousPair.reportingCurrency !== merged.reportingCurrency;
+		if (pairChanged) {
+			const storedRate =
+				row.conversion_rate === null || row.conversion_rate === undefined
+					? null
+					: String(row.conversion_rate).trim();
+			const patchCarriesEvidence =
+				patch.conversionRate !== undefined ||
+				patch.conversionDate !== undefined ||
+				patch.conversionEvidenceReference !== undefined;
+			if (merged.currency === merged.reportingCurrency) {
+				// The pair cannot be converted: the stale triple is cleared.
+				merged = {
+					...merged,
+					conversionRate: null,
+					conversionDate: null,
+					conversionEvidenceReference: null,
+				};
+			} else if (storedRate && !patchCarriesEvidence) {
+				throw new CostError(
+					'conversion_evidence_required',
+					'The stored conversion rate belongs to the previous currency pair. Supply the complete rate, date, and evidence reference for the new pair in this command.',
+					422,
+					{ field: 'conversion_rate' }
+				);
+			}
+		}
 
 		assertClassificationProject(merged.classification, merged.projectId);
 

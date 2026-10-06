@@ -21,18 +21,22 @@ type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
  *                       namespace note)
  *   expenses            `expense_number` / `vendor_name` like `E2E-EXP-316%`
  *   users/roles         `e2e_316_*`
- *   months              2019-06 (primary) and 2019-08 (later period)
+ *   months              **2021-06** (primary) and **2021-08** (later period) —
+ *                       reserved for #316; no other slice uses 2021
+ *   trusted IPs         **198.18.0.60** (spec requests), **198.18.0.61**
+ *                       (clerk), **198.18.0.62** (outsider) — reserved for #316
+ *                       (198.18.0.24 is #315's reader; 198.18.0.27 is #320's)
  *
- * Other tickets must not read, mutate, or clean these rows, and must not use
- * these months.
+ * Other tickets must not read, mutate, or clean these rows, must not use these
+ * months, and must not reuse those trusted IPs.
  *
  * The seeded rows state their own recognition inputs and the recognizable
  * outcome those inputs imply, so the spec asserts amounts it computed from
  * these literals rather than from the report's own aggregation.
  */
 
-export const PETTY_CASH_MONTH = '2019-06';
-export const PETTY_CASH_LATER_MONTH = '2019-08';
+export const PETTY_CASH_MONTH = '2021-06';
+export const PETTY_CASH_LATER_MONTH = '2021-08';
 export const PETTY_CASH_PREFIX = 'E2E-EXP-316';
 export const PETTY_CASH_VENDOR = 'E2E-EXP-316 Vendor';
 export const PETTY_CASH_CATEGORY = 'E2E Petty Cash';
@@ -43,9 +47,9 @@ export const PETTY_CASH_TARGET_EXPENSE = {
 	costUid: 'e2e-316-cost-inv1',
 	amount: '800.00',
 	project: 'alpha' as const,
-	serviceStart: '2019-06-05',
-	serviceEnd: '2019-06-05',
-	billDate: '2019-06-06',
+	serviceStart: '2021-06-05',
+	serviceEnd: '2021-06-05',
+	billDate: '2021-06-06',
 } as const;
 
 export const PETTY_CASH_PROJECTS = {
@@ -80,7 +84,7 @@ export const PETTY_CASH_CLERK = {
 		'petty_cash_expenses:update',
 		'petty_cash_expenses:delete',
 	],
-	ip: '198.18.0.27',
+	ip: '198.18.0.61',
 } as const;
 
 /** An authenticated user with no petty-cash privilege at all. */
@@ -92,7 +96,7 @@ export const PETTY_CASH_OUTSIDER = {
 	roleCode: 'e2e_316_no_cash',
 	roleName: 'E2E No Petty Cash',
 	permissions: ['reports:read'],
-	ip: '198.18.0.28',
+	ip: '198.18.0.62',
 } as const;
 
 export interface SeededPettyCash {
@@ -290,7 +294,7 @@ export async function seedPettyCashFixtures(): Promise<SeededPettyCash> {
         recognized_by, recognized_at)
        VALUES (?, ?, ?, 'E2E Sub Category', ?, ?, ?, 0, ?, 'INR', 'bank', ?, NULL, 0, 0, ?, NULL, ?, 'approved',
                NULL, 0, ?, 'project', 'recognized', ?, 'service_period', ?, ?, 'none', NULL,
-               ?, ?, ?, 1, NULL, '2019-06-06 09:00:00')`,
+               ?, ?, ?, 1, NULL, '2021-06-06 09:00:00')`,
 		[
 			target.expenseNumber,
 			target.billDate,

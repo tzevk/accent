@@ -323,6 +323,16 @@ Rules:
   and remaining funding never do. The petty-cash register page
   (`/admin/petty-cash-expenses`) shows the same four figures and drives the
   entry, approval, and command controls.
+- **The source registry carries petty cash.** `PETTY_CASH_COST_SOURCE`
+  (exported from the module barrel) declares the native store
+  (`petty_cash_expenses`), the UUID a command addresses (`id`), the numeric
+  journal key (`numeric_id`), the command endpoint
+  (`/api/admin/petty-cash-expenses/{id}/commands`), and the cost predicate
+  (`entry_kind='spend' AND linked_cost_uid IS NULL`), with the month-records,
+  previous-month Project cost, months, and drilldown loaders the report reads
+  consume. `fetchCostDrilldown` unions the direct-expense and petty-cash
+  windows into one ordered page, so a report drilldown shows confirmed
+  petty-cash cost exactly once (settlements, which are not cost, stay out).
 - **Conversion evidence follows the shared contract (#319).** Spending captures
   `reporting_currency`, `conversion_rate`, `conversion_date`, and
   `conversion_evidence_reference` through the same `resolveConversion`
@@ -332,8 +342,12 @@ Rules:
   from the recognized amount on every financial write through
   `convertToReporting` — one conversion site, no source-side rounding. The
   register PUT refuses the fields; only the versioned `update` command changes
-  them. A NULL original currency is unknown, never INR: such rows are excluded
-  from every currency subtotal and disclosed as
+  them, and an `update` that touches any currency/conversion field requires
+  `petty_cash_expenses:approve`. A rate is evidence for one currency pair: a
+  currency change never inherits the stored rate (a same-currency pair clears
+  the triple; a new convertible pair without the fresh triple is `422
+  conversion_evidence_required`). A NULL original currency is unknown, never
+  INR: such rows are excluded from every currency subtotal and disclosed as
   `petty_cash.unknown_currency.count`.
 
 ## Authorization
@@ -402,8 +416,8 @@ fixture amounts:
 
 `e2e/specs/petty-cash-funding.spec.ts` drives the petty-cash slice and writes
 `e2e/artifacts/petty-cash-funding.json` (fixtures in
-`e2e/lib/petty-cash-fixtures.ts`, namespace `E2E-EXP-316-*`, months 2019-06 and
-2019-08). From hand-computed fixture amounts it asserts:
+`e2e/lib/petty-cash-fixtures.ts`, namespace `E2E-EXP-316-*`, months 2021-06 and
+2021-08). From hand-computed fixture amounts it asserts:
 
 - a voucher and its mirrored credit are one funding event: exactly one mirror
   row, the funding-event identity, `funding`/`mirror` links and **no** cost
