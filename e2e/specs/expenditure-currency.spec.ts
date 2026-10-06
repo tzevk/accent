@@ -488,8 +488,9 @@ test('converts supported currencies into reporting totals that reconcile to thei
 	);
 
 	// A requested basis with no matching stored evidence derives nothing: the
-	// USD figures were stored against INR, so a USD request is unsupported
-	// rather than an inverse conversion.
+	// INR and AED figures were stored against INR, so a USD request cannot
+	// state them and there is no combined USD total. The USD records are
+	// natively in the requested basis and stay stated in it.
 	const usdBasis = await reconciliation(request, MONTH, {
 		reportingCurrency: 'USD',
 	});
@@ -497,11 +498,12 @@ test('converts supported currencies into reporting totals that reconcile to thei
 	expect(usdBasis.company.conversion.status).toBe('unsupported');
 	expect(usdBasis.company.currency).toBeNull();
 	expect(usdBasis.company.incurred_cost).toBeNull();
-	expect(
-		usdBasis.company.currency_totals.every(
-			(row) => row.reporting.status === 'unsupported'
-		)
-	).toBe(true);
+	expect(slice(usdBasis, 'INR').reporting.status).toBe('unsupported');
+	expect(slice(usdBasis, 'AED').reporting.status).toBe('unsupported');
+	expect(slice(usdBasis, 'USD').reporting.status).toBe('reporting');
+	// Native basis: the USD slice states its original 1,234.57 + 500.55 +
+	// 195,312.50 without any rate.
+	expect(slice(usdBasis, 'USD').reporting.incurred_cost).toBe(197047.62);
 	expect(coverageCodes(usdBasis)).toContain('currency_conversion_missing');
 
 	evidence.converted = {
