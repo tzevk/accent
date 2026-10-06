@@ -255,6 +255,15 @@ export async function POST(request) {
 							sourceReference: body.source_reference || null,
 							evidenceReference: body.evidence_reference || null,
 							withholdingTaxAmount: body.withholding_tax_amount ?? 0,
+							reportingCurrency: body.reporting_currency || null,
+							conversionRate:
+								body.conversion_rate === undefined ||
+								body.conversion_rate === ''
+									? null
+									: body.conversion_rate,
+							conversionDate: body.conversion_date || null,
+							conversionEvidenceReference:
+								body.conversion_evidence_reference || null,
 							submit:
 								body.submit === true ||
 								body.recognition_state === 'pending_evidence',

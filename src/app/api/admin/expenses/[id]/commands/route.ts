@@ -33,11 +33,30 @@ const COMMANDS: CostCommandName[] = [
 	'cancel',
 ];
 
+/**
+ * Conversion evidence reprices cost in the reporting currency, so setting or
+ * changing it is an approval act even though it travels in an `update`
+ * command; every other field edit stays `other_expenses:update`.
+ */
+const CONVERSION_PATCH_FIELDS = [
+	'reportingCurrency',
+	'conversionRate',
+	'conversionDate',
+	'conversionEvidenceReference',
+] as const;
+
 /** Recognition and refusal are approvals; drafting and edits are updates. */
-function permissionFor(command: CostCommandName): string {
-	return command === 'update' || command === 'submit'
-		? PERMISSIONS.UPDATE
-		: PERMISSIONS.APPROVE;
+function permissionFor(
+	command: CostCommandName,
+	patch: Record<string, unknown> | undefined
+): string {
+	if (command === 'update' || command === 'submit') {
+		const touchesConversion =
+			patch !== undefined &&
+			CONVERSION_PATCH_FIELDS.some((field) => patch[field] !== undefined);
+		return touchesConversion ? PERMISSIONS.APPROVE : PERMISSIONS.UPDATE;
+	}
+	return PERMISSIONS.APPROVE;
 }
 
 export async function POST(
@@ -63,7 +82,10 @@ export async function POST(
 			// No EXPENSES resource exists; OTHER_EXPENSES is the existing
 			// expense-ledger resource this workflow extends.
 			RESOURCES.OTHER_EXPENSES,
-			permissionFor(command)
+			permissionFor(
+				command,
+				body.patch as Record<string, unknown> | undefined
+			)
 		);
 		if (authResult instanceof Response) return authResult;
 		if (!authResult.authorized) return authResult.response;

@@ -116,6 +116,22 @@ function commandPatch(
 			raw.withholding_tax_amount === undefined
 				? undefined
 				: (raw.withholding_tax_amount as number | null),
+		reportingCurrency:
+			raw.reporting_currency === undefined
+				? undefined
+				: (raw.reporting_currency as string | null),
+		conversionRate:
+			raw.conversion_rate === undefined
+				? undefined
+				: (raw.conversion_rate as number | string | null),
+		conversionDate:
+			raw.conversion_date === undefined
+				? undefined
+				: (raw.conversion_date as string | null),
+		conversionEvidenceReference:
+			raw.conversion_evidence_reference === undefined
+				? undefined
+				: (raw.conversion_evidence_reference as string | null),
 	};
 	if (raw.splits !== undefined) {
 		patch.splits = Array.isArray(raw.splits)

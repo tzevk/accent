@@ -26,6 +26,12 @@ import { randomUUID } from 'node:crypto';
 import type Decimal from 'decimal.js';
 import { add, sub, R, toNumber } from '@/lib/money';
 import { withTransaction } from '@/utils/database';
+import {
+	convertToReporting,
+	currencyCodeOf,
+	evidenceOf,
+	resolveConversion,
+} from './currency';
 import { CostError } from './errors';
 import {
 	evaluateCost,
@@ -67,6 +73,14 @@ function num(row: DbRow, key: string): number | null {
 	if (value === null || value === undefined || value === '') return null;
 	const parsed = typeof value === 'number' ? value : Number(value);
 	return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** A DECIMAL kept as its exact text (a rate holds more digits than a number). */
+function dec(row: DbRow, key: string): string | null {
+	const value = row[key];
+	if (value === null || value === undefined) return null;
+	const text = String(value).trim();
+	return text.length === 0 ? null : text;
 }
 
 function text(value: unknown, max: number): string | null {
@@ -155,6 +169,12 @@ export interface SupplierInvoicePatch {
 	sourceReference?: string | null;
 	evidenceReference?: string | null;
 	withholdingTaxAmount?: number | null;
+	/** Reporting target; null keeps the default company reporting currency. */
+	reportingCurrency?: string | null;
+	/** Effective original → reporting rate, with its date and evidence. */
+	conversionRate?: number | string | null;
+	conversionDate?: string | null;
+	conversionEvidenceReference?: string | null;
 	/** Replace the service-period slices; null/[] clears them. */
 	splits?: SupplierSplitInput[] | null;
 }
@@ -239,6 +259,11 @@ export interface SupplierInvoiceDetail {
 	source_reference: string | null;
 	evidence_reference: string | null;
 	recognized_amount: number | null;
+	reporting_currency: string | null;
+	conversion_rate: string | null;
+	conversion_date: string | null;
+	conversion_evidence_reference: string | null;
+	converted_amount: number | null;
 	splits: SupplierSplitRow[];
 	links: SupplierLinkRow[];
 	link_candidates: SupplierLinkCandidate[];
@@ -513,8 +538,18 @@ export async function initializeSupplierCost(
 			{ missing: ['project_id_not_allowed'] }
 		);
 	}
-	const currency = (text(input.currency, 3) ?? s(row, 'currency', 'INR') ?? 'INR')
-		.toUpperCase();
+	const currency =
+		currencyCodeOf(input.currency) ??
+		currencyCodeOf(s(row, 'currency')) ??
+		s(row, 'currency', 'INR') ??
+		'INR';
+	const conversion = resolveConversion({
+		currency,
+		reportingCurrency: input.reportingCurrency,
+		conversionRate: input.conversionRate,
+		conversionDate: input.conversionDate,
+		conversionEvidenceReference: input.conversionEvidenceReference,
+	});
 	const grossAmount =
 		input.grossAmount !== undefined ? amountOrNull(input.grossAmount) : num(row, 'total');
 	const taxAmount =
@@ -552,6 +587,11 @@ export async function initializeSupplierCost(
 		classification,
 		state,
 		currency,
+		reportingCurrency: conversion.reportingCurrency,
+		conversionRate: conversion.conversionRate,
+		conversionDate: conversion.conversionDate,
+		conversionEvidenceReference: conversion.conversionEvidenceReference,
+		convertedAmount: null,
 		grossAmount,
 		taxAmount,
 		taxTreatment,
@@ -575,7 +615,9 @@ export async function initializeSupplierCost(
         SET cost_uid = ?, cost_classification = ?, recognition_state = ?,
             recognition_period = ?, period_basis = ?, service_period_start = ?,
             service_period_end = ?, tax_treatment = ?, tax_evidence_reference = ?,
-            currency = ?, subtotal = ?, tax_amount = ?, total = ?,
+            currency = ?, reporting_currency = ?, conversion_rate = ?,
+            conversion_date = ?, conversion_evidence_reference = ?, converted_amount = NULL,
+            subtotal = ?, tax_amount = ?, total = ?,
             withholding_tax_amount = ?, source_reference = ?, evidence_reference = ?,
             status = ?, financial_version = 1
       WHERE id = ? AND isDelete = 0`,
@@ -590,6 +632,10 @@ export async function initializeSupplierCost(
 			financial.taxTreatment,
 			financial.taxEvidenceReference,
 			currency,
+			conversion.reportingCurrency,
+			conversion.conversionRate,
+			conversion.conversionDate,
+			conversion.conversionEvidenceReference,
 			netAmount,
 			taxAmount,
 			grossAmount,
@@ -622,6 +668,11 @@ export async function initializeSupplierCost(
 			recognition_period: period,
 			period_basis: basis,
 			currency,
+			reporting_currency: conversion.reportingCurrency,
+			conversion_rate: conversion.conversionRate,
+			conversion_date: conversion.conversionDate,
+			conversion_evidence_reference: conversion.conversionEvidenceReference,
+			converted_amount: null,
 			gross_amount: grossAmount,
 			tax_amount: taxAmount,
 			recognized_amount: null,
@@ -764,6 +815,27 @@ export async function executeSupplierCommand(
 					: (num(row, 'withholding_tax_amount') ?? 0),
 		};
 
+		const rawConversion = {
+			currency: merged.currency,
+			reportingCurrency:
+				patch.reportingCurrency !== undefined
+					? patch.reportingCurrency
+					: s(row, 'reporting_currency'),
+			conversionRate:
+				patch.conversionRate !== undefined
+					? patch.conversionRate
+					: dec(row, 'conversion_rate'),
+			conversionDate:
+				patch.conversionDate !== undefined
+					? patch.conversionDate
+					: s(row, 'conversion_date'),
+			conversionEvidenceReference:
+				patch.conversionEvidenceReference !== undefined
+					? patch.conversionEvidenceReference
+					: s(row, 'conversion_evidence_reference'),
+		};
+		const conversion = resolveConversion(rawConversion);
+
 		if (!merged.classification && merged.projectId) {
 			// A destination chosen explicitly is a Project classification.
 			merged.classification = 'project';
@@ -807,6 +879,11 @@ export async function executeSupplierCommand(
 				: null;
 		const financial = {
 			...merged,
+			reportingCurrency: conversion.reportingCurrency,
+			conversionRate: conversion.conversionRate,
+			conversionDate: conversion.conversionDate,
+			conversionEvidenceReference: conversion.conversionEvidenceReference,
+			convertedAmount: null,
 			state: target,
 			recognitionPeriod: resolved.period,
 			periodBasis: resolved.basis,
@@ -882,11 +959,32 @@ export async function executeSupplierCommand(
 			merged.grossAmount === null
 				? null
 				: toNumber(sub(R(merged.grossAmount), R(merged.taxAmount ?? 0)));
+		// The reporting-currency statement follows the same evidence rule as a
+		// direct expense: computed on recognition, kept as history through a
+		// later cancel, and null while the amount or evidence is unknown.
+		const convertedAmount: number | null =
+			target === 'recognized'
+				? convertToReporting(
+						recognizedAmount,
+						evidenceOf({
+							currency: merged.currency,
+							reportingCurrency: conversion.reportingCurrency,
+							conversionRate: conversion.conversionRate,
+							conversionDate: conversion.conversionDate,
+							conversionEvidenceReference:
+								conversion.conversionEvidenceReference,
+						})
+					).amount
+				: state === 'recognized'
+					? num(row, 'converted_amount')
+					: null;
 		await db.execute(
 			`UPDATE purchase_invoices
           SET cost_classification = ?, recognition_state = ?, recognition_period = ?,
               period_basis = ?, service_period_start = ?, service_period_end = ?,
               tax_treatment = ?, tax_evidence_reference = ?, currency = ?,
+              reporting_currency = ?, conversion_rate = ?, conversion_date = ?,
+              conversion_evidence_reference = ?, converted_amount = ?,
               subtotal = ?, tax_amount = ?, total = ?, withholding_tax_amount = ?,
               source_reference = ?, evidence_reference = ?, recognized_amount = ?,
               recognized_by = ?, recognized_at = IF(?, NOW(), ?), financial_version = ?,
@@ -902,6 +1000,11 @@ export async function executeSupplierCommand(
 				merged.taxTreatment,
 				merged.taxEvidenceReference,
 				merged.currency,
+				conversion.reportingCurrency,
+				conversion.conversionRate,
+				conversion.conversionDate,
+				conversion.conversionEvidenceReference,
+				convertedAmount,
 				netAmount,
 				merged.taxAmount,
 				merged.grossAmount,
@@ -952,6 +1055,11 @@ export async function executeSupplierCommand(
 				recognition_period: resolved.period,
 				period_basis: resolved.basis,
 				currency: merged.currency,
+				reporting_currency: conversion.reportingCurrency,
+				conversion_rate: conversion.conversionRate,
+				conversion_date: conversion.conversionDate,
+				conversion_evidence_reference: conversion.conversionEvidenceReference,
+				converted_amount: convertedAmount,
 				gross_amount: merged.grossAmount,
 				tax_amount: merged.taxAmount,
 				tax_treatment: merged.taxTreatment,
@@ -1020,7 +1128,12 @@ export function mapSupplierRecordRow(row: DbRow): CostRecord {
 	const financial = {
 		classification,
 		state,
-		currency: s(row, 'currency', 'INR'),
+		currency: currencyCodeOf(s(row, 'currency', 'INR')),
+		reportingCurrency: currencyCodeOf(s(row, 'reporting_currency')),
+		conversionRate: dec(row, 'conversion_rate'),
+		conversionDate: s(row, 'conversion_date'),
+		conversionEvidenceReference: s(row, 'conversion_evidence_reference'),
+		convertedAmount: num(row, 'converted_amount'),
 		grossAmount,
 		taxAmount,
 		taxTreatment:
@@ -1247,6 +1360,11 @@ export async function loadSupplierInvoiceDetail(
 		source_reference: s(row, 'source_reference'),
 		evidence_reference: s(row, 'evidence_reference'),
 		recognized_amount: num(row, 'recognized_amount'),
+		reporting_currency: currencyCodeOf(s(row, 'reporting_currency')),
+		conversion_rate: dec(row, 'conversion_rate'),
+		conversion_date: s(row, 'conversion_date'),
+		conversion_evidence_reference: s(row, 'conversion_evidence_reference'),
+		converted_amount: num(row, 'converted_amount'),
 		splits,
 		links,
 		link_candidates,

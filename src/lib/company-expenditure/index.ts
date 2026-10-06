@@ -8,39 +8,67 @@
  * exports and nothing else:
  *
  *   reads
- *     fetchCompanyReconciliation({ month, projectId? })
+ *     fetchCompanyReconciliation({ month, projectId?, reportingCurrency? })
  *       Company Incurred Cost for a month, split into Incurred Project Cost,
  *       Company Overhead, and Unallocated Cost per currency, plus the Project
  *       breakdown, evidence states, and the coverage notices that say what the
- *       total does and does not include.
+ *       total does and does not include. The figures are stated in the
+ *       requested reporting currency (INR by default) using only matching
+ *       stored conversion evidence; an unconverted amount stays in its own
+ *       currency subtotal with an explicit exception.
  *     fetchCostDrilldown(query)
  *       The source records behind the figures, with identity, evidence, and
  *       the expense state they were counted from.
  *     fetchCostJournal(costUid)
  *       The append-only command history of one cost.
+ *     fetchProjectBudgets(projectId)
+ *       Every approved (and draft) Project cost budget with its amount,
+ *       currency, scope, period, approval evidence, and version.
+ *     fetchCostBudget(id) / fetchBudgetJournal(budgetUid)
+ *       One cost budget and its append-only approval journal.
  *     SOURCE_COVERAGE
  *       Which cost sources feed this module and which are still outstanding.
  *
  *   writes (one path, versioned)
  *     recordCost(input, actor, { connection? })
  *     executeCommand({ id, command, expectedVersion, reason?, patch? }, actor)
+ *     recordCostBudget(input, actor, { connection? })
+ *     executeBudgetCommand(
+ *       { id, command, expectedVersion, reason?, evidenceReference?, patch? },
+ *       actor
+ *     )
  *
  * Invariants the module guarantees to every caller:
  *  - confirmed cost is `recognition_state = 'recognized'` and nothing else;
  *  - a missing amount is NULL, never zero, and never silently recognized;
  *  - the Recognition Period comes from the received-work period, or the bill
  *    date as a disclosed fallback;
- *  - currencies are not added together without a supported conversion;
+ *  - currencies are not added together without a supported conversion, and a
+ *    missing original currency is unknown — never read as INR;
  *  - every accepted command increments `financial_version` and appends one
- *    journal row, so a repeated or stale command changes nothing.
+ *    journal row, so a repeated or stale command changes nothing;
+ *  - an approved cost budget is compared with Incurred Project Cost only when
+ *    Project, currency, scope, and period match, and a budget never enters a
+ *    cost total — `budgets` is its own section of the reconciliation.
  *
  * Later slices extend this module: a source adapter per cost source feeds the
  * same `buildReconciliation`, `command`/`revision` controls hang off the same
  * version + journal pair, and the Excel export consumes
  * `fetchCompanyReconciliation` so the download cannot disagree with the screen.
+ * Cost budgets carry their own versioned commands and journal beside the cost
+ * ones: a later financial close reads the same approved budget the month was
+ * compared with, and a superseded approval stays readable.
  */
 
 import { query } from '@/utils/database';
+import {
+	loadBudget,
+	loadBudgetEvents,
+	loadBudgetsCoveringMonth,
+	loadBudgetsForProject,
+	loadBudgetsForProjects,
+} from './budget-records';
+import type { CommandOptions } from './commands';
 import { SOURCE_COVERAGE } from './coverage';
 import { loadCombinedDrilldown } from './drilldown';
 import {
@@ -52,7 +80,7 @@ import {
 	type ProjectOption,
 	type SqlConnection,
 } from './records';
-import { buildReconciliation } from './reconciliation';
+import { buildReconciliation, projectIdsIn } from './reconciliation';
 import { registerCostSource } from './sources';
 import {
 	SUPPLIER_INVOICE_ADAPTER,
@@ -61,6 +89,8 @@ import {
 } from './supplier-invoices';
 import type {
 	CompanyReconciliation,
+	CostBudgetJournalEntry,
+	CostBudgetRecord,
 	CostDrilldown,
 	CostDrilldownQuery,
 	CostJournalEntry,
@@ -99,10 +129,25 @@ export type {
 	SupplierSplitRow,
 } from './supplier-invoices';
 export { isDrilldownSource } from './drilldown';
+export { recordCostBudget, executeBudgetCommand } from './budget-commands';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
 export type { ProjectOption } from './records';
+export {
+	REPORTING_CURRENCY,
+	convertToReporting,
+	conversionException,
+	conversionStatusOf,
+	currencyCodeOf,
+	evidenceOf,
+	isCurrencyCode,
+	parseConversionRate,
+	reportingCurrencyOf,
+	resolveConversion,
+} from './currency';
+export type { ResolvedConversion } from './currency';
 export { monthLabel } from './reconciliation';
+export { COST_BUDGET_SCOPES, isCostBudgetScope } from './types';
 export {
 	effectiveTaxTreatment,
 	evaluateCost,
@@ -113,7 +158,24 @@ export {
 	resolveRecognitionPeriod,
 } from './recognition';
 export type {
+	BudgetOutcome,
+	BudgetSection,
+	CompanyConversion,
 	CompanyReconciliation,
+	ConversionEvidence,
+	ConversionExceptionCode,
+	ConversionOutcome,
+	ConversionStatus,
+	CostBudgetCandidate,
+	CostBudgetCommandInput,
+	CostBudgetCommandName,
+	CostBudgetCommandResult,
+	CostBudgetJournalCommand,
+	CostBudgetJournalEntry,
+	CostBudgetPatch,
+	CostBudgetRecord,
+	CostBudgetScope,
+	CostBudgetState,
 	CostClassification,
 	CostCommandInput,
 	CostCommandName,
@@ -128,16 +190,24 @@ export type {
 	CostSource,
 	CostSplitInfo,
 	CoverageNotice,
+	CurrencyReporting,
 	CurrencyTotal,
 	EvidenceSummary,
 	PeriodBasis,
+	ProjectBudgetComparison,
 	RecognitionState,
+	RecordCostBudgetInput,
 	RecordCostInput,
 	RecordedCost,
 	ReconciliationProjectRow,
 	ReconciliationSourceSummary,
 	TaxTreatment,
 } from './types';
+
+export interface CostBudgetDetail {
+	budget: CostBudgetRecord;
+	journal: CostBudgetJournalEntry[];
+}
 
 /** The pooled connection this module reads through. */
 const pool: SqlConnection = {
@@ -178,12 +248,30 @@ export interface ReconciliationRequest {
 	month: string;
 	/** Narrow the Project detail; never the company reconciliation. */
 	projectId?: number | null;
+	/** Requested reporting basis; absent means the company reporting currency. */
+	reportingCurrency?: string | null;
 }
 
-/** Read one month's company reconciliation. */
+/** Covering budgets plus the row Projects' budgets, without duplicates. */
+function mergeBudgets(...groups: CostBudgetRecord[][]): CostBudgetRecord[] {
+	const byUid = new Map<string, CostBudgetRecord>();
+	for (const group of groups) {
+		for (const budget of group) byUid.set(budget.budget_uid, budget);
+	}
+	return [...byUid.values()];
+}
+
+/**
+ * Read one month's company reconciliation.
+ *
+ * Pass `options.connection` to read inside the caller's transaction (the later
+ * financial-close slice takes one coherent snapshot across every source).
+ */
 export async function fetchCompanyReconciliation(
-	request: ReconciliationRequest
+	request: ReconciliationRequest,
+	options?: CommandOptions
 ): Promise<CompanyReconciliation> {
+	const db = options?.connection ?? pool;
 	const month = request.month;
 	const previousMonth = previousMonthOf(month);
 	const [
@@ -194,34 +282,72 @@ export async function fetchCompanyReconciliation(
 		directMonths,
 		supplierMonths,
 	] = await Promise.all([
-		loadMonthRecords(pool, month),
-		loadSupplierMonthRecords(pool, month),
+		loadMonthRecords(db, month),
+		loadSupplierMonthRecords(db, month),
 		previousMonth
-			? loadMonthProjectCost(pool, previousMonth)
+			? loadMonthProjectCost(db, previousMonth)
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
-		loadProjectOptions(pool),
-		loadExpenditureMonths(pool, currentMonth()),
-		loadSupplierInvoiceMonths(pool, currentMonth()),
+		loadProjectOptions(db),
+		loadExpenditureMonths(db, currentMonth()),
+		loadSupplierInvoiceMonths(db, currentMonth()),
 	]);
+	const records = [...directRecords, ...supplierRecords];
+	// A budget is read when it covers the month or belongs to a Project the
+	// month has a row for, so an approved budget for another period is stated
+	// as such instead of the Project reading as unbudgeted.
+	const budgets = mergeBudgets(
+		await loadBudgetsCoveringMonth(db, month),
+		await loadBudgetsForProjects(db, projectIdsIn(records))
+	);
 
 	return buildReconciliation({
 		month,
-		records: [...directRecords, ...supplierRecords],
+		records,
 		previousMonthProjectCost: previousProjectCost,
+		budgets,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
 		availableMonths: [...new Set([...directMonths, ...supplierMonths])]
 			.sort()
 			.reverse(),
 		coverageDeclarations: SOURCE_COVERAGE,
+		reportingCurrency: request.reportingCurrency ?? null,
 	});
+}
+
+/** One Project's cost budgets, every state, newest first. */
+export async function fetchProjectBudgets(
+	projectId: number,
+	options?: CommandOptions
+): Promise<CostBudgetRecord[]> {
+	return loadBudgetsForProject(options?.connection ?? pool, projectId);
+}
+
+/** One cost budget with its append-only journal, or null when unknown. */
+export async function fetchCostBudget(
+	id: number,
+	options?: CommandOptions
+): Promise<CostBudgetDetail | null> {
+	const db = options?.connection ?? pool;
+	const budget = await loadBudget(db, id);
+	if (!budget) return null;
+	return { budget, journal: await loadBudgetEvents(db, budget.budget_uid) };
+}
+
+/** The versioned history of one cost budget, by its stable identity. */
+export async function fetchBudgetJournal(
+	budgetUid: string,
+	options?: CommandOptions
+): Promise<CostBudgetJournalEntry[]> {
+	return loadBudgetEvents(options?.connection ?? pool, budgetUid);
 }
 
 /** Read the records behind a month's reconciliation (every cost source). */
 export async function fetchCostDrilldown(
-	queryInput: CostDrilldownQuery
+	queryInput: CostDrilldownQuery,
+	options?: CommandOptions
 ): Promise<CostDrilldown> {
-	return loadCombinedDrilldown(pool, queryInput);
+	return loadCombinedDrilldown(options?.connection ?? pool, queryInput);
 }
 
 /** The active Projects a cost-destination control can choose from. */
@@ -231,7 +357,8 @@ export async function fetchProjectOptions(): Promise<ProjectOption[]> {
 
 /** Read the versioned command history of one cost. */
 export async function fetchCostJournal(
-	costUid: string
+	costUid: string,
+	options?: CommandOptions
 ): Promise<CostJournalEntry[]> {
-	return loadCostEvents(pool, costUid);
+	return loadCostEvents(options?.connection ?? pool, costUid);
 }

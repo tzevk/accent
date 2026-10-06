@@ -13,32 +13,48 @@ durable identity, recognize it into a month, reconcile it, and drill from a
 Project into its source records. Everything else the parent specification
 describes is named as coverage, not faked.
 
+Ticket #321 adds the **approved Project cost budget** beside that
+reconciliation: an authorized workflow records, submits, approves, supersedes,
+and withdraws a Project cost budget, and the report compares it with Incurred
+Project Cost only when Project, currency, scope, and period match. A budget is
+never a cost: it appears in its own section and never changes Company Incurred
+Cost, the Project breakdown, or the evidence summary.
+
 ## Architecture
 
 ```
-Expenditure view (page.tsx → expenditure-view.tsx)
+Expenditure view (page.tsx → expenditure-view.tsx → budget-section.tsx)
   ├─ GET  /api/reports/employee-project-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=]
   ├─ GET  /api/reports/employee-project-monthly-cost/expenses?month=&state=&classification=&project_id=
   ├─ POST /api/admin/expenses                        (record a cost)
-  └─ POST /api/admin/expenses/{id}/commands          (submit | recognize | reject | cancel | update)
+  ├─ POST /api/admin/expenses/{id}/commands          (submit | recognize | reject | cancel | update)
+  ├─ GET  /api/admin/cost-budgets?project_id=        (budget versions of one Project)
+  ├─ GET  /api/admin/cost-budgets/{id}               (one budget + its approval journal)
+  ├─ POST /api/admin/cost-budgets                    (record a draft budget)
+  └─ POST /api/admin/cost-budgets/{id}/commands      (update | submit | approve | withdraw)
             │
             ▼
   src/lib/company-expenditure  (the shared financial module)
-    index.ts         public interface
-    recognition.ts   pure rules: period, tax, recognition blockers, transitions
-    reconciliation.ts pure builder: groups, currencies, projects, evidence, coverage
-    records.ts       reads: month records, project cost, options, months, journal, drilldown
-    commands.ts      the single write path: recordCost, executeCommand, journal
-    coverage.ts      which sources feed the module and which do not
+    index.ts             public interface
+    recognition.ts       pure rules: period, tax, recognition blockers, transitions
+    reconciliation.ts    pure builder: groups, currencies, projects, evidence, coverage
+    records.ts           reads: month records, project cost, options, months, journal, drilldown
+    commands.ts          the single write path: recordCost, executeCommand, journal
+    budget-records.ts    reads: budget rows, covering budgets, journal
+    budget-commands.ts   the budget write path: recordCostBudget, executeBudgetCommand
+    budget-comparison.ts pure builder: the isolated budget section
+    coverage.ts          which sources feed the module and which do not
             │
             ▼
   expenses (+ cost_uid, recognition_*, financial_version)
   financial_cost_events (append-only command journal)
+  project_cost_budgets (+ scope, period, state, approval evidence, financial_version)
+  project_cost_budget_events (append-only approval journal)
 ```
 
-The module is the only place that reads or writes recognized cost. Screens,
-routes, and (later) the Excel export call its public interface; none of them
-reimplements a period, tax, or currency rule.
+The module is the only place that reads or writes recognized cost or an
+approved budget. Screens, routes, and (later) the Excel export call its public
+interface; none of them reimplements a period, tax, currency, or budget rule.
 
 ## Data model
 
@@ -166,6 +182,66 @@ The Excel download keeps exporting the employee-cost views; the reconciliation
 export belongs to the export slice, and the view therefore offers no download
 button yet.
 
+## Approved cost budget (#321)
+
+`project_cost_budgets` (`migrations/20261008092100_project_cost_budgets.js`) is
+its own record; no Project commercial field is ever read as a budget:
+
+| Column                          | Meaning                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `budget_uid`                    | Stable identity, shared with the approval journal                              |
+| `project_id`                    | The Project the approved cost budget belongs to                                 |
+| `currency`                      | The currency the amount is stated in — never converted for a comparison        |
+| `amount`                        | The approved amount, on the same basis as Incurred Project Cost                |
+| `scope`                         | `project_incurred_cost` (comparable) or `commercial_value` (context, never compared) |
+| `period_start`, `period_end`    | The period the approval covers                                                  |
+| `state`                         | `draft` / `submitted` / `approved` / `superseded` / `withdrawn`                |
+| `approval_evidence_reference`   | The evidence the approval rests on; approval without it is refused              |
+| `approved_by`, `approved_at`    | Who approved the version and when                                              |
+| `financial_version`             | Version the next command must present                                          |
+
+`projects.project_value`, `projects.cost_to_company`, `projects.budget`,
+quotations, and purchase orders are commercial context: none of them becomes a
+cost budget, and a Project with no recorded budget reports `missing` instead of
+a guessed figure.
+
+**Comparison rules.** `budget-comparison.ts` builds `budgets` inside the
+reconciliation payload. A row is `compared` (with `variance` = approved budget
+− confirmed Incurred Project Cost) only when one approved budget matches the
+Project, the row's currency, the `project_incurred_cost` scope, and the month
+inside its period. Everything else is stated explicitly, never guessed:
+
+| Outcome                     | The reader is told                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| `missing`                   | No budget recorded for this Project and currency                                    |
+| `unapproved`                | A covering budget exists but is not approved yet                                    |
+| `incompatible_currency`     | Only an approved budget in another currency exists — no conversion is invented       |
+| `incompatible_scope`        | The approved record declares a commercial value, not a cost budget                   |
+| `incompatible_period`       | The approved budget covers another period                                            |
+| `ambiguous`                 | More than one approved matching budget — none is picked                              |
+| `unsupported_incurred_cost` | An approved budget matches but no confirmed cost is recorded yet                     |
+| `no_incurred_cost`          | An approved covering budget exists with no Project cost row in the month             |
+
+The candidate closest to comparable is chosen by a fixed precedence (covers the
+month, then scope, then currency, then approval), so a covering draft is stated
+as `unapproved` rather than hidden behind an approved budget for another
+period. `budgets.notices` summarises every outcome, and the
+`budget_variance_not_profit` notice states that remaining budget is not profit,
+recognized revenue, or a forecast of uncommitted work.
+
+**Workflow and history.** Recording a budget stores a `draft` (version 1) and
+appends `recorded`. `update` (draft/submitted only), `submit`, `approve`, and
+`withdraw` are versioned commands: a stale version is refused `409
+stale_version`, a disallowed transition `409 invalid_transition`, an approval
+without evidence `422 approval_evidence_required`, and a withdrawal without a
+reason `422 reason_required`. Approving a later budget that overlaps an earlier
+approved budget of the same Project, currency, and scope marks the earlier row
+`superseded` and appends `superseded` — its amount, approval evidence, version,
+and journal stay readable, which is what a later closed-period review reads.
+Both tables follow the same rules as the cost tables: no deletes through the
+API, one journal row per accepted command, and commands join the caller's
+transaction when a connection is supplied.
+
 ## Coverage: what the total does not include
 
 `SOURCE_COVERAGE` declares each source and its state; the not-incorporated
@@ -191,6 +267,9 @@ a coverage warning, never a zero company cost.
 | Record a cost (report control and admin route) | `other_expenses:create`                                       |
 | Submit / update a cost                         | `other_expenses:update`                                       |
 | Recognize, reject, cancel                      | `other_expenses:approve`                                      |
+| Read cost budgets and their journals           | `other_expenses:read`                                         |
+| Record, edit, submit, withdraw a cost budget   | `other_expenses:update`                                       |
+| Approve a cost budget                          | `other_expenses:approve`                                      |
 
 The direct-expense ledger is the source of the expenditure reconciliation, so
 report access alone does not open it: the expenditure view, the drilldown, and
@@ -209,7 +288,6 @@ direct costs in `E2E-EXP-P*` / `E2E-EXP-*` (fixtures in
 `e2e/lib/expenditure-fixtures.ts`, purged and reseeded by `e2e/global-setup.ts`),
 plus a real `reports:read`-only reader identity, then asserts, from hand-computed
 fixture amounts:
-
 - every recognized cost appears once in its group and the groups equal the
   company total;
 - drafts, pending evidence, rejected, cancelled, unresolved, and missing amounts
@@ -238,6 +316,34 @@ fixture amounts:
   and drilldown with no sensitive payload and no `expenditure_months`, while the
   employee-cost views still answer;
 - the browser shows the access panel to an employee session.
+
+`e2e/specs/project-cost-budgets.spec.ts` (#321) drives the same real app and
+writes `e2e/artifacts/project-cost-budgets.json`. It extends the same fixture
+module (budget namespace `e2e-budget-*`, a third Project `E2E-EXP-P3`, four
+May-2019 costs, seven seeded budgets) and asserts, from the fixture literals:
+
+- an approved budget covering January compares with alpha's 3,500 INR as
+  `compared` (5,000 − 3,500 = 1,500 remaining), while a Project with no budget
+  is `missing`;
+- currency, scope, period, ambiguity, and un-supported-cost outcomes are each
+  stated explicitly — a February USD budget compares only with the USD row, a
+  commercial-value record never becomes a cost budget, an approved budget for an
+  earlier period does not compare with May, a pending-only cost states
+  `unsupported_incurred_cost` instead of comparing with a guessed zero, and two
+  matching approved budgets state `ambiguous`;
+- the browser records, submits, and approves a budget through the report's own
+  controls, with the approval evidence the control requires, and the report then
+  compares it (5,000 − 1,200 = 3,800) with version 3 and three journal entries in
+  the row and in MySQL;
+- a stale version is refused `409 stale_version` and changes nothing; approving a
+  superseding version marks the earlier row `superseded` (version 4, evidence
+  preserved, `superseded` journal entry naming the replacement) while both
+  versions stay readable;
+- an employee session and a `reports:read` reader without the ledger's read
+  privilege get `403` on budget reads and writes and no sensitive payload, and no
+  row or version changes;
+- January still reconciles to the expense fixtures' own arithmetic after every
+  budget mutation: a budget never moves Company Incurred Cost.
 
 Use an isolated database for repeatable verification:
 
@@ -293,6 +399,34 @@ reject, cancel) with `expected_version`.
   `decideSupplierLink`, `resolveCostReference`, `linkCostReference`,
   `registerCostIdentity`, and `registerCostSource` are the public interface.
 
+## Currency conversion (ticket #319)
+
+Implemented in `currency.ts`; the full consumer contract is published outside
+the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
+
+- The report read states its basis: `reporting_currency` on the HTTP request
+  (default INR), echoed as `company.reporting_currency`. Only matching stored
+  evidence is used — the original currency equals the requested basis, or the
+  stored target equals it and the full rate triple exists; no inverse or
+  cross-rate is derived.
+- `expenses.reporting_currency`, `conversion_rate`, `conversion_date`,
+  `conversion_evidence_reference`, and `converted_amount` come from
+  `migrations/20261008091900_expense_cost_currency_conversion.js`. The rate is
+  kept as its decimal string (DECIMAL(20,10) exceeds a JS number); conversion
+  runs per record, round-half-up to cents, in a high-precision Decimal clone.
+- A NULL `expenses.currency` is unknown — never INR — and is excluded from
+  every currency subtotal as `original_currency_missing`. Missing or partial
+  evidence is `conversion_evidence_missing` / `conversion_rate_invalid`.
+- `company.currency` / `incurred_cost` / `groups` state one complete total
+  (reporting currency once every confirmed record is supported; the single
+  original currency when it has no conversion evidence), and `null` when
+  currencies cannot be combined. Slice, project, and journal figures carry the
+  same interpretation; `converted_amount` and the journal snapshot preserve the
+  rate and converted figure for a later close snapshot.
+- Entry captures the triple through the report's Record cost form; afterwards
+  only the versioned `update` command may change it, and that patch requires
+  `other_expenses:approve`. The register PUT refuses the fields.
+
 ## Public interface for later slices
 
 `src/lib/company-expenditure/index.ts` is the contract later tickets extend:
@@ -310,8 +444,9 @@ reject, cancel) with `expected_version`.
 - **Financial close and revisions**: period state hangs off `recognition_period`
   and `financial_version`; commands already accept the caller's transaction, so
   a close check commits with the change.
-- **Currency**: conversion evidence extends `CurrencyTotal`, replacing the
-  `currency_conversion_missing` notice before any combined total appears.
+- **Currency**: implemented by #319 (`currency.ts`, `reporting_currency` +
+  `conversion_rate`/`conversion_date`/`conversion_evidence_reference`, per-record
+  rounding, requested-basis report input).
 - **Export**: consume `fetchCompanyReconciliation` and `fetchCostDrilldown`, so
   the download cannot disagree with the screen.
 
@@ -320,14 +455,18 @@ reject, cancel) with `expected_version`.
 - `migrations/20261006120000_expense_cost_recognition.js`
 - `migrations/20261007120000_expense_cost_period_basis_service_period_end.js`
   (extends `period_basis` for the disclosed partial service period)
-- `src/lib/company-expenditure/{index,types,recognition,reconciliation,records,commands,coverage}.ts`
+- `migrations/20261008091900_expense_cost_currency_conversion.js`
+  (reporting target + conversion evidence + converted snapshot, #319)
+- `migrations/20261008092100_project_cost_budgets.js` (#321: budgets + approval journal)
+- `src/lib/company-expenditure/{index,types,currency,recognition,reconciliation,records,commands,coverage,budget-records,budget-commands,budget-comparison}.ts`
 - `src/app/api/reports/employee-project-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)
 - `src/app/api/reports/employee-project-monthly-cost/expenses/route.ts`
 - `src/app/api/reports/employee-project-monthly-cost/download/route.ts` (tightened gate)
 - `src/app/api/admin/expenses/route.js` (entry through the module)
 - `src/app/api/admin/expenses/[id]/commands/route.ts`
 - `src/app/api/admin/expenses/[id]/route.js` (recognized cost frozen; versioned financial fields refused)
-- `src/app/reports/employee-project-monthly-cost/{page,expenditure-view}.tsx`
+- `src/app/api/admin/cost-budgets/route.ts`, `.../[id]/route.ts`, `.../[id]/commands/route.ts` (#321)
+- `src/app/reports/employee-project-monthly-cost/{page,expenditure-view,budget-section}.tsx`
 - `src/lib/format.js` (`formatCurrencyIn`)
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
@@ -342,5 +481,8 @@ reject, cancel) with `expected_version`.
 - `src/app/api/admin/payment-payables/route.js`, `[id]/route.js` (explicit
   invoice link on create; link rewrites refused)
 - `src/app/admin/purchase-invoice/page.tsx`, `SupplierRecognitionDialog.tsx`
-- `docs/adr/0019-supplier-invoice-recognition-single-cost.md`
+- `docs/adr/0020-supplier-invoice-recognition-single-cost.md`
 - `e2e/lib/supplier-invoice-fixtures.ts`, `e2e/specs/supplier-invoice-recognition.spec.ts` (#311)
+- `docs/adr/0019-approved-cost-budgets.md` (#321)
+- `e2e/specs/project-cost-budgets.spec.ts` (#321)
+- `e2e/lib/expenditure-currency-fixtures.ts`, `e2e/specs/expenditure-currency.spec.ts` (#319)

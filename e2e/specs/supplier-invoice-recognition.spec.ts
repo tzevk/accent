@@ -86,6 +86,31 @@ const API_INVOICE = {
 } as const;
 
 /**
+ * The USD invoice proving a native supplier record captures and versions
+ * original → reporting conversion evidence (never a null placeholder and never
+ * a guessed rate), in its own reserved months.
+ */
+const FX_INVOICE = {
+	number: 'E2E-SINV-9003',
+	month: '2020-06',
+	gross: 1200,
+	rate: 83.5,
+	updatedRate: 84,
+	rateDate: '2020-06-10',
+	evidenceReference: 'E2E-SINV-FX-9003',
+	converted: 1200 * 84,
+	sourceReference: 'E2E-SINV-VENDOR-9003',
+} as const;
+
+/** A USD invoice recognized with no conversion evidence at all. */
+const FX_UNSUPPORTED = {
+	number: 'E2E-SINV-9004',
+	month: '2020-07',
+	gross: 500,
+	sourceReference: 'E2E-SINV-VENDOR-9004',
+} as const;
+
+/**
  * Hand-computed from the fixture literals plus the two app-created invoices:
  * March confirmed = alpha 50000+25000+12000+100000+60000, beta 60000,
  * overhead 15000, unallocated 5000; the UI invoice's gross carries 18000 of
@@ -99,8 +124,12 @@ const MARCH = {
 	gross: 345000,
 	recoverableTax: 18000,
 	records: 8,
-	pendingCount: 2,
-	pendingGross: 9999 + 7777,
+	/** The source summary's review queue counts draft + pending evidence. */
+	pendingCount: 3,
+	pendingGross: 9999 + 7777 + 333,
+	/** The evidence summary separates pending evidence from draft. */
+	pendingEvidenceCount: 2,
+	pendingEvidenceGross: 9999 + 7777,
 	draftCount: 1,
 	rejectedCount: 1,
 	cancelledCount: 1,
@@ -136,6 +165,14 @@ interface ReconciliationData {
 	month_label: string;
 	company: {
 		currency: string | null;
+		reporting_currency: string;
+		conversion: {
+			status: string;
+			converted_records: number;
+			unsupported_records: number;
+			unsupported_currencies: string[];
+			unknown_currency_records: number;
+		};
 		incurred_cost: number | null;
 		currency_totals: Array<{
 			currency: string;
@@ -147,6 +184,12 @@ interface ReconciliationData {
 			recoverable_tax: number;
 			unresolved_tax_gross: number;
 			record_count: number;
+			reporting: {
+				currency: string;
+				status: string;
+				unsupported_count: number;
+				incurred_cost: number | null;
+			};
 		}>;
 		groups: Array<{
 			key: string;
@@ -206,6 +249,8 @@ interface DrilldownRecord {
 	recognition_period: string | null;
 	period_basis: string;
 	currency: string | null;
+	converted_amount: number | null;
+	conversion_status: string;
 	gross_amount: number | null;
 	recognized_amount: number | null;
 	source_reference: string | null;
@@ -244,7 +289,13 @@ function publish(): void {
 			projects: Object.values(SUPPLIER_PROJECTS).map((p) => p.code),
 			invoicePrefix: 'E2E-SINV-',
 			payablePrefix: 'E2E-SINV-PP-',
-			months: [MONTH, INVOICE_MONTH, LATER_MONTH],
+			months: [
+				MONTH,
+				INVOICE_MONTH,
+				LATER_MONTH,
+				FX_INVOICE.month,
+				FX_UNSUPPORTED.month,
+			],
 		},
 		createdThroughApp: { invoices: createdInvoices, payables: createdPayables },
 	});
@@ -964,14 +1015,240 @@ test('reports approved tax treatment without assuming GST credit', async ({
 	};
 });
 
+test('captures and versions conversion evidence on a native supplier invoice', async ({
+	request,
+}) => {
+	// Capture through the register API with the full original → reporting
+	// evidence triple. The invoice is USD; its reporting target is INR.
+	const created = await request.post('/api/admin/purchase-invoices', {
+		data: {
+			invoice_number: FX_INVOICE.number,
+			vendor_name: 'E2E Supplier Vendor fx',
+			invoice_date: '2020-06-05',
+			subtotal: FX_INVOICE.gross,
+			tax_amount: 0,
+			total: FX_INVOICE.gross,
+			currency: 'USD',
+			cost_classification: 'project',
+			project_id: seeded.projects.alpha,
+			service_period_start: '2020-06-05',
+			service_period_end: '2020-06-05',
+			tax_treatment: 'none',
+			source_reference: FX_INVOICE.sourceReference,
+			evidence_reference: 'E2E-SINV-GRN-9003',
+			withholding_tax_amount: 0,
+			reporting_currency: 'INR',
+			conversion_rate: FX_INVOICE.rate,
+			conversion_date: FX_INVOICE.rateDate,
+			conversion_evidence_reference: FX_INVOICE.evidenceReference,
+		},
+	});
+	expect(created.status(), await created.text()).toBe(200);
+	const createdBody = await created.json();
+	const id = Number(createdBody.data.id);
+	createdInvoices.push({
+		id,
+		cost_uid: createdBody.data.cost_uid,
+		where: 'api entry (USD)',
+	});
+
+	const persisted = await rows<{
+		currency: string;
+		reporting_currency: string;
+		conversion_rate: string;
+		conversion_date: string;
+		conversion_evidence_reference: string;
+		converted_amount: string | null;
+	}>(
+		`SELECT currency, reporting_currency, conversion_rate, conversion_date,
+            conversion_evidence_reference, converted_amount
+       FROM purchase_invoices WHERE id = ?`,
+		[id]
+	);
+	expect(persisted[0].currency).toBe('USD');
+	expect(persisted[0].reporting_currency).toBe('INR');
+	expect(Number(persisted[0].conversion_rate)).toBe(FX_INVOICE.rate);
+	expect(String(persisted[0].conversion_date).slice(0, 10)).toBe(
+		FX_INVOICE.rateDate
+	);
+	expect(persisted[0].conversion_evidence_reference).toBe(
+		FX_INVOICE.evidenceReference
+	);
+	expect(persisted[0].converted_amount).toBeNull();
+
+	// A contradictory or partial triple is refused and changes nothing.
+	const notApplicable = await request.post('/api/admin/purchase-invoices', {
+		data: {
+			invoice_number: 'E2E-SINV-9004-BAD',
+			vendor_name: 'E2E Supplier Vendor fx',
+			total: 100,
+			currency: 'INR',
+			reporting_currency: 'INR',
+			conversion_rate: 2,
+			conversion_date: FX_INVOICE.rateDate,
+			conversion_evidence_reference: 'E2E-SINV-FX-BAD',
+		},
+	});
+	expect(notApplicable.status()).toBe(422);
+	expect((await notApplicable.json()).code).toBe('conversion_not_applicable');
+	const partial = await command(request, id, {
+		command: 'update',
+		expected_version: 1,
+		patch: { conversion_date: null },
+	});
+	expect(partial.status, JSON.stringify(partial.body)).toBe(422);
+	expect(partial.body.code).toBe('conversion_evidence_incomplete');
+	const invalidRate = await command(request, id, {
+		command: 'update',
+		expected_version: 1,
+		patch: {
+			conversion_rate: 0,
+			conversion_date: FX_INVOICE.rateDate,
+			conversion_evidence_reference: FX_INVOICE.evidenceReference,
+		},
+	});
+	expect(invalidRate.status).toBe(422);
+	expect(invalidRate.body.code).toBe('invalid_conversion_rate');
+
+	// The evidence itself is versioned: the rate change persists.
+	const corrected = await command(request, id, {
+		command: 'update',
+		expected_version: 1,
+		patch: {
+			conversion_rate: FX_INVOICE.updatedRate,
+			conversion_date: FX_INVOICE.rateDate,
+			conversion_evidence_reference: FX_INVOICE.evidenceReference,
+		},
+	});
+	expect(corrected.status, JSON.stringify(corrected.body)).toBe(200);
+	const correctedRow = await rows<{ conversion_rate: string; financial_version: number }>(
+		`SELECT conversion_rate, financial_version FROM purchase_invoices WHERE id = ?`,
+		[id]
+	);
+	expect(Number(correctedRow[0].conversion_rate)).toBe(FX_INVOICE.updatedRate);
+	expect(Number(correctedRow[0].financial_version)).toBe(2);
+
+	// Recognition freezes the reporting-currency statement from that evidence.
+	const recognized = await command(request, id, {
+		command: 'recognize',
+		expected_version: 2,
+	});
+	expect(recognized.status, JSON.stringify(recognized.body)).toBe(200);
+	const frozen = await rows<{
+		recognized_amount: string;
+		converted_amount: string;
+	}>(
+		`SELECT recognized_amount, converted_amount FROM purchase_invoices WHERE id = ?`,
+		[id]
+	);
+	expect(Number(frozen[0].recognized_amount)).toBe(FX_INVOICE.gross);
+	expect(Number(frozen[0].converted_amount)).toBe(FX_INVOICE.converted);
+
+	const report = await reconciliation(request, FX_INVOICE.month);
+	expect(report.company.reporting_currency).toBe('INR');
+	expect(report.company.conversion.status).toBe('converted');
+	expect(report.company.incurred_cost).toBe(FX_INVOICE.converted);
+	expect(report.company.currency_totals).toHaveLength(1);
+	expect(report.company.currency_totals[0].currency).toBe('USD');
+	expect(report.company.currency_totals[0].incurred_cost).toBe(FX_INVOICE.gross);
+	expect(report.company.currency_totals[0].reporting.status).toBe('converted');
+	expect(report.company.currency_totals[0].reporting.incurred_cost).toBe(
+		FX_INVOICE.converted
+	);
+
+	const drill = await drilldown(request, {
+		month: FX_INVOICE.month,
+		state: 'all',
+	});
+	const record = drill.records.find(
+		(entry) => entry.cost_uid === createdBody.data.cost_uid
+	);
+	expect(record, JSON.stringify(drill.records)).toBeTruthy();
+	expect(record!.conversion_status).toBe('converted');
+	expect(record!.converted_amount).toBe(FX_INVOICE.converted);
+
+	evidence.conversion = {
+		invoice: FX_INVOICE.number,
+		currency: 'USD',
+		reportingCurrency: 'INR',
+		rate: FX_INVOICE.updatedRate,
+		converted: FX_INVOICE.converted,
+		refusals: {
+			notApplicable: 'conversion_not_applicable',
+			partial: partial.body.code,
+			invalidRate: invalidRate.body.code,
+		},
+	};
+});
+
+test('states a foreign supplier cost without evidence as unsupported', async ({
+	request,
+}) => {
+	// A USD invoice recognized without conversion evidence: it keeps its own
+	// currency total and is never given a guessed reporting-currency figure.
+	const created = await request.post('/api/admin/purchase-invoices', {
+		data: {
+			invoice_number: FX_UNSUPPORTED.number,
+			vendor_name: 'E2E Supplier Vendor fx-unsupported',
+			invoice_date: '2020-07-06',
+			subtotal: FX_UNSUPPORTED.gross,
+			tax_amount: 0,
+			total: FX_UNSUPPORTED.gross,
+			currency: 'USD',
+			cost_classification: 'company_overhead',
+			service_period_start: '2020-07-06',
+			service_period_end: '2020-07-06',
+			tax_treatment: 'none',
+			source_reference: FX_UNSUPPORTED.sourceReference,
+			evidence_reference: 'E2E-SINV-GRN-9005',
+		},
+	});
+	expect(created.status(), await created.text()).toBe(200);
+	const createdBody = await created.json();
+	const id = Number(createdBody.data.id);
+	createdInvoices.push({
+		id,
+		cost_uid: createdBody.data.cost_uid,
+		where: 'api entry (USD, no evidence)',
+	});
+	const recognized = await command(request, id, {
+		command: 'recognize',
+		expected_version: 1,
+	});
+	expect(recognized.status, JSON.stringify(recognized.body)).toBe(200);
+
+	const report = await reconciliation(request, FX_UNSUPPORTED.month);
+	expect(report.company.conversion.status).toBe('unsupported');
+	expect(report.company.currency).toBe('USD');
+	expect(report.company.incurred_cost).toBe(FX_UNSUPPORTED.gross);
+	expect(report.company.currency_totals).toHaveLength(1);
+	expect(report.company.currency_totals[0].reporting.status).toBe('unsupported');
+	expect(report.company.currency_totals[0].reporting.incurred_cost).toBeNull();
+
+	const stored = await rows<{ converted_amount: string | null }>(
+		`SELECT converted_amount FROM purchase_invoices WHERE id = ?`,
+		[id]
+	);
+	expect(stored[0].converted_amount).toBeNull();
+
+	evidence.unsupported = {
+		invoice: FX_UNSUPPORTED.number,
+		currency: 'USD',
+		incurred: report.company.incurred_cost,
+		reportingIncurred: report.company.currency_totals[0].reporting.incurred_cost,
+	};
+});
+
 test('excludes pending, rejected, cancelled, draft and unresolved records', async ({
 	request,
 }) => {
 	const march = await reconciliation(request, MONTH);
 	expect(march.company.incurred_cost).toBe(MARCH_TOTAL);
 	expect(march.company.record_count).toBe(MARCH.records);
-	expect(march.evidence.pending_evidence.count).toBe(MARCH.pendingCount);
-	expect(march.evidence.pending_evidence.amount).toBe(MARCH.pendingGross);
+	expect(march.evidence.pending_evidence.count).toBe(MARCH.pendingEvidenceCount);
+	expect(march.evidence.pending_evidence.amount).toBe(
+		MARCH.pendingEvidenceGross
+	);
 	expect(march.evidence.draft.count).toBe(MARCH.draftCount);
 	expect(march.evidence.rejected.count).toBe(MARCH.rejectedCount);
 	expect(march.evidence.cancelled.count).toBe(MARCH.cancelledCount);
@@ -1155,7 +1432,7 @@ test('shows the supplier figures through the report browser controls', async ({
 	expect(await beta.getAttribute('data-project-cost')).toBe(String(MARCH.beta));
 
 	// Expanding the Project lists the supplier source document behind the cost.
-	await alpha.click();
+	await alpha.getByTestId('project-expand').click();
 	await expect(
 		page.locator(
 			`[data-testid="drilldown-record"][data-source-reference="E2E-SINV-VENDOR-1002"]`
@@ -1192,9 +1469,15 @@ test('publishes the repeatable evidence artifact', async () => {
 	expect(artifact.ok).toBe(true);
 	expect(artifact.generatedAt).toBeTruthy();
 	const fixtureScope = artifact.fixtureScope as { months: string[] };
-	expect(fixtureScope.months).toEqual([MONTH, INVOICE_MONTH, LATER_MONTH]);
+	expect(fixtureScope.months).toEqual([
+		MONTH,
+		INVOICE_MONTH,
+		LATER_MONTH,
+		FX_INVOICE.month,
+		FX_UNSUPPORTED.month,
+	]);
 	const created = artifact.createdThroughApp as {
 		invoices: Array<{ id: number }>;
 	};
-	expect(created.invoices.length).toBe(2);
+	expect(created.invoices.length).toBe(4);
 });

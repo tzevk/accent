@@ -133,6 +133,10 @@ const schema = z.object({
 	source_reference: z.string().nullable().optional(),
 	evidence_reference: z.string().nullable().optional(),
 	withholding_tax_amount: z.coerce.number().min(0).optional(),
+	reporting_currency: z.string().nullable().optional(),
+	conversion_rate: z.coerce.number().optional(),
+	conversion_date: z.string().nullable().optional(),
+	conversion_evidence_reference: z.string().nullable().optional(),
 });
 
 const defaultValues = {
@@ -173,6 +177,10 @@ const defaultValues = {
 	source_reference: '',
 	evidence_reference: '',
 	withholding_tax_amount: 0,
+	reporting_currency: '',
+	conversion_rate: '',
+	conversion_date: '',
+	conversion_evidence_reference: '',
 };
 
 const formFields: FormField[] = [
@@ -321,6 +329,34 @@ const formFields: FormField[] = [
 		step: '0.01',
 		hint: 'Settlement only — never reduces incurred cost.',
 	},
+	{
+		name: 'reporting_currency',
+		label: 'Reporting currency',
+		type: 'select',
+		placeholder: 'Company default',
+		hint: 'Target for conversion evidence; blank keeps the company default.',
+		options: [
+			{ value: 'INR', label: 'INR' },
+			{ value: 'USD', label: 'USD' },
+			{ value: 'EUR', label: 'EUR' },
+			{ value: 'GBP', label: 'GBP' },
+			{ value: 'AED', label: 'AED' },
+			{ value: 'SGD', label: 'SGD' },
+		],
+	},
+	{
+		name: 'conversion_rate',
+		label: 'Conversion rate',
+		type: 'number',
+		step: '0.0000000001',
+		hint: 'Original → reporting rate; needs its date and reference too.',
+	},
+	{ name: 'conversion_date', label: 'Conversion rate date', type: 'date' },
+	{
+		name: 'conversion_evidence_reference',
+		label: 'Conversion evidence reference',
+		hint: 'Where the rate came from (contract, bank advice…).',
+	},
 ];
 
 /**
@@ -349,7 +385,27 @@ const VERSIONED_FIELDS: Record<string, true> = {
 	source_reference: true,
 	evidence_reference: true,
 	withholding_tax_amount: true,
+	reporting_currency: true,
+	conversion_rate: true,
+	conversion_date: true,
+	conversion_evidence_reference: true,
 };
+
+/**
+ * Create-time transform: an empty conversion rate means "no conversion
+ * evidence", not a zero rate, and the date/reference only travel with a rate.
+ */
+function stripEmptyConversion(
+	values: Record<string, unknown>
+): Record<string, unknown> {
+	const next = { ...values };
+	if (!next.conversion_rate || Number(next.conversion_rate) <= 0) {
+		delete next.conversion_rate;
+		delete next.conversion_date;
+		delete next.conversion_evidence_reference;
+	}
+	return next;
+}
 
 const columns: Column[] = [
 	{
@@ -710,7 +766,7 @@ function PurchaseInvoicePageInner() {
 									}
 									return next;
 								}
-							: undefined
+							: stripEmptyConversion
 					}
 					vendorListEndpoint="/api/vendors"
 					onClose={closeModal}

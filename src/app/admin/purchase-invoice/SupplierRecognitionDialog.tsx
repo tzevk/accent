@@ -53,6 +53,11 @@ interface RecognitionDetail {
 	source_reference: string | null;
 	evidence_reference: string | null;
 	recognized_amount: number | string | null;
+	reporting_currency: string | null;
+	conversion_rate: string | null;
+	conversion_date: string | null;
+	conversion_evidence_reference: string | null;
+	converted_amount: number | string | null;
 	splits: Array<{
 		id: number;
 		service_period_start: string | null;
@@ -151,6 +156,10 @@ export default function SupplierRecognitionDialog({
 	const [sourceReference, setSourceReference] = useState('');
 	const [evidenceReference, setEvidenceReference] = useState('');
 	const [withholding, setWithholding] = useState('');
+	const [reportingCurrency, setReportingCurrency] = useState('');
+	const [conversionRate, setConversionRate] = useState('');
+	const [conversionDate, setConversionDate] = useState('');
+	const [conversionEvidence, setConversionEvidence] = useState('');
 	const [splits, setSplits] = useState<SplitRowState[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [reasonAction, setReasonAction] = useState<
@@ -175,6 +184,10 @@ export default function SupplierRecognitionDialog({
 				? ''
 				: String(detail.withholding_tax_amount)
 		);
+		setReportingCurrency(detail.reporting_currency ?? '');
+		setConversionRate(detail.conversion_rate ?? '');
+		setConversionDate(detail.conversion_date ?? '');
+		setConversionEvidence(detail.conversion_evidence_reference ?? '');
 		setSplits(
 			(detail.splits ?? []).map((split) => ({
 				key: nextSplitKey(),
@@ -251,6 +264,12 @@ export default function SupplierRecognitionDialog({
 			source_reference: sourceReference || null,
 			evidence_reference: evidenceReference || null,
 			withholding_tax_amount: withholding === '' ? 0 : Number(withholding),
+			reporting_currency: reportingCurrency === '' ? null : reportingCurrency,
+			conversion_rate:
+				conversionRate === '' ? null : conversionRate,
+			conversion_date: conversionDate === '' ? null : conversionDate,
+			conversion_evidence_reference:
+				conversionEvidence === '' ? null : conversionEvidence,
 			splits: splits.map((split) => ({
 				service_period_start: split.service_period_start || null,
 				service_period_end: split.service_period_end || null,
@@ -326,7 +345,7 @@ export default function SupplierRecognitionDialog({
 					</p>
 				) : null}
 
-				<div className="mb-3 grid gap-3 md:grid-cols-3">
+				<div className="mb-3 grid gap-3 md:grid-cols-4">
 					<div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
 						<div className="text-[11px] font-semibold text-gray-500">
 							Invoice gross (liability)
@@ -345,7 +364,7 @@ export default function SupplierRecognitionDialog({
 								detail.recognized_amount === null ||
 								detail.recognized_amount === undefined
 									? ''
-									: String(detail.recognized_amount)
+									: String(Number(detail.recognized_amount))
 							}
 							className="text-sm font-semibold text-gray-900"
 						>
@@ -363,6 +382,26 @@ export default function SupplierRecognitionDialog({
 							{detail.recognition_period
 								? `${formatDate(detail.recognition_period)} · ${detail.period_basis ?? ''}`
 								: 'Unresolved'}
+						</div>
+					</div>
+					<div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+						<div className="text-[11px] font-semibold text-gray-500">
+							Converted amount
+						</div>
+						<div
+							data-testid="recognition-converted-amount"
+							data-amount={
+								detail.converted_amount === null ||
+								detail.converted_amount === undefined
+									? ''
+									: String(Number(detail.converted_amount))
+							}
+							className="text-sm font-semibold text-gray-900"
+						>
+							{detail.converted_amount === null ||
+							detail.converted_amount === undefined
+								? 'Unsupported'
+								: `${detail.reporting_currency ?? 'INR'} ${formatCurrency(Number(detail.converted_amount))}`}
 						</div>
 					</div>
 				</div>
@@ -511,6 +550,61 @@ export default function SupplierRecognitionDialog({
 							step="0.01"
 							value={withholding}
 							onChange={(event) => setWithholding(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Reporting currency
+						</span>
+						<select
+							data-testid="recognition-reporting-currency"
+							value={reportingCurrency}
+							onChange={(event) => setReportingCurrency(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						>
+							<option value="">Company default</option>
+							{CURRENCIES.map((code) => (
+								<option key={code} value={code}>
+									{code}
+								</option>
+							))}
+						</select>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Conversion rate
+						</span>
+						<input
+							data-testid="recognition-conversion-rate"
+							type="number"
+							step="0.0000000001"
+							value={conversionRate}
+							onChange={(event) => setConversionRate(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Conversion rate date
+						</span>
+						<input
+							data-testid="recognition-conversion-date"
+							type="date"
+							value={conversionDate}
+							onChange={(event) => setConversionDate(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Conversion evidence reference
+						</span>
+						<input
+							data-testid="recognition-conversion-evidence"
+							type="text"
+							value={conversionEvidence}
+							onChange={(event) => setConversionEvidence(event.target.value)}
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						/>
 					</label>

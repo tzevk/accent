@@ -10,6 +10,7 @@
  */
 
 import { R, toNumber } from '@/lib/money';
+import { currencyCodeOf } from './currency';
 import { loadFilteredExpenseRecords, toCostRecordJson, type SqlConnection } from './records';
 import { loadFilteredSupplierRecords } from './supplier-invoices';
 import type { CostDrilldown, CostDrilldownQuery, CostRecord, CostSource } from './types';
@@ -50,15 +51,23 @@ export async function loadCombinedDrilldown(
 	const merged = sortRecords(results);
 	const confirmed = merged.filter((record) => record.state === 'recognized');
 	const currencies = [
-		...new Set(confirmed.map((record) => record.currency ?? 'INR')),
+		...new Set(
+			confirmed
+				.map((record) => currencyCodeOf(record.currency))
+				.filter((code): code is string => code !== null)
+		),
 	];
-	// Unknown amounts and mixed currencies cannot be stated as one figure;
-	// with no confirmed record at all the subtotal is a known zero.
+	// Unknown amounts, an unknown original currency, and mixed currencies
+	// cannot be stated as one figure; with no confirmed record at all the
+	// subtotal is a known zero.
 	const unknownAmounts = confirmed.some(
 		(record) => record.recognizedAmount === null
 	);
+	const unknownCurrency = confirmed.some(
+		(record) => currencyCodeOf(record.currency) === null
+	);
 	const confirmedAmount =
-		unknownAmounts || currencies.length > 1
+		unknownAmounts || unknownCurrency || currencies.length > 1
 			? null
 			: toNumber(
 					confirmed.reduce(
