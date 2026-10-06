@@ -85,6 +85,20 @@ export const LATE_BONUS_WORKER = {
 	email: 'e2e.late.bonus@accent.test',
 };
 
+/**
+ * The Salary Profile preview fixture. The editor's employee list is scoped to
+ * Employee Type `Payroll` (`useEmployeeDirectory('Payroll')`), but a live
+ * active Payroll employee would join the Attendance and Utilization rosters.
+ * This one is `inactive` with no dates and no evidence, so it is on neither
+ * roster while still appearing in `/employees/payroll`.
+ */
+export const PREVIEW_BONUS_WORKER = {
+	code: 'E2E-EMP-0007',
+	firstName: 'E2E',
+	lastName: 'PreviewBonus',
+	email: 'e2e.preview.bonus@accent.test',
+};
+
 /** The Bonus Component Rate the bonus fixtures price against (fixed ₹1,000). */
 export const E2E_BONUS_AMOUNT = 1000;
 /** A later rate for the same month; stored Payroll Slips must keep ₹1,000. */
@@ -121,6 +135,7 @@ export interface Seeded {
 	zeroBonusEmployeeId: number;
 	contractBonusEmployeeId: number;
 	lateBonusEmployeeId: number;
+	previewBonusEmployeeId: number;
 }
 
 export interface MonthBasis {
@@ -200,6 +215,7 @@ export async function cleanupFixtures(): Promise<void> {
 		ZERO_BONUS_WORKER.code,
 		CONTRACT_BONUS_WORKER.code,
 		LATE_BONUS_WORKER.code,
+		PREVIEW_BONUS_WORKER.code,
 	];
 
 	// Log tables are best-effort: older schemas may name columns differently.
@@ -391,6 +407,35 @@ export async function seedFixtures(): Promise<Seeded> {
 		bonusEmployeeIds.push(inserted.insertId);
 	}
 
+	// The Salary Profile preview fixture: Employee Type Payroll so it is in
+	// the /employees/payroll editor list, but inactive with no dates and no
+	// evidence so it joins neither the Attendance nor the Utilization roster.
+	const previewBonus = await exec(
+		`INSERT INTO employees (employee_id, first_name, last_name, email, status, employee_type, isDelete)
+     VALUES (?, ?, ?, ?, 'inactive', 'Payroll', 0)`,
+		[
+			PREVIEW_BONUS_WORKER.code,
+			PREVIEW_BONUS_WORKER.firstName,
+			PREVIEW_BONUS_WORKER.lastName,
+			PREVIEW_BONUS_WORKER.email,
+		]
+	);
+	await exec(
+		`INSERT INTO employee_salary_profile
+       (employee_id, gross, gross_salary, employer_cost, other_allowances, effective_from, is_active,
+        pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, bonus_applicable, salary_type,
+        std_hours_per_day, std_working_days, tds_percentage, loan_amount, loan_amount_per_month, loan_active,
+        advance_amount, advance_active)
+     VALUES (?, ?, ?, ?, 0, '2019-01-01', 1, 1, 0, 0, 0, 1, 'monthly', ?, 26, 0, 0, 0, 0, 0, 0)`,
+		[
+			previewBonus.insertId,
+			E2E_CTC,
+			E2E_CTC,
+			E2E_CTC,
+			E2E_STD_HOURS_PER_DAY,
+		]
+	);
+
 	// The Bonus Component Rate the fixtures price against: fixed ₹1,000 from
 	// the payroll month. Namespaced by remarks so cleanup owns the row.
 	await exec(
@@ -415,5 +460,6 @@ export async function seedFixtures(): Promise<Seeded> {
 		zeroBonusEmployeeId: bonusEmployeeIds[1],
 		contractBonusEmployeeId: bonusEmployeeIds[2],
 		lateBonusEmployeeId: bonusEmployeeIds[3],
+		previewBonusEmployeeId: previewBonus.insertId,
 	};
 }

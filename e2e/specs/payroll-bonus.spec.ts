@@ -15,6 +15,7 @@ import {
 	E2E_CTC,
 	E2E_MONTH,
 	LATE_BONUS_WORKER,
+	PREVIEW_BONUS_WORKER,
 	ZERO_BONUS_WORKER,
 } from '../lib/fixtures';
 
@@ -445,9 +446,9 @@ test('the Salary Profile preview counts the bonus once, as earnings', async ({
 	page,
 }) => {
 	await page.goto('/employees/payroll');
-	await page.getByPlaceholder('Search employees...').fill('BonusWorker');
+	await page.getByPlaceholder('Search employees...').fill('PreviewBonus');
 	await page
-		.getByRole('button', { name: `Edit E2E ${BONUS_WORKER.lastName}` })
+		.getByRole('button', { name: `Edit E2E ${PREVIEW_BONUS_WORKER.lastName}` })
 		.click();
 	await page.getByRole('button', { name: 'Salary Profile' }).click();
 
@@ -479,7 +480,7 @@ test('the Salary Profile preview counts the bonus once, as earnings', async ({
 	await expect(employer.getByText('Bonus', { exact: true })).toHaveCount(0);
 
 	writeArtifact('payroll-bonus-preview-ui', {
-		employee: BONUS_WORKER.code,
+		employee: PREVIEW_BONUS_WORKER.code,
 		expected: {
 			earnings: 27_000,
 			employerContributions: 2_701,
