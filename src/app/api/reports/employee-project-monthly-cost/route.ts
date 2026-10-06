@@ -13,10 +13,14 @@
  * ?view=fy&fy=YYYY                     → employee-cost FY matrix (Apr–Mar)
  * ?employee_id=&fy=YYYY                → legacy per-employee FY matrix (backward compat)
  *
- * Access: super admins or `reports:read`. The `project_activities` field grant
- * no longer opens this report (ticket #306): Project Activity access alone must
+ * Access: super admins, or `reports:read` **and** `other_expenses:read` —
+ * the expenditure reconciliation reads the direct-expense ledger, so report
+ * access alone must not expose its rows or aggregates (existing source
+ * authorization, parent spec §149). The `project_activities` field grant no
+ * longer opens this report (ticket #306): Project Activity access alone must
  * not reveal company expenditure. Entry, recognition, and drilldown follow the
- * same rule; the expenditure routes are gated in the same way.
+ * same rule; the expenditure routes are gated in the same way. The
+ * employee-cost views keep their `reports:read` gate.
  */
 
 import { NextResponse } from 'next/server';
@@ -56,6 +60,12 @@ export async function GET(request: Request) {
 			RESOURCES.REPORTS,
 			PERMISSIONS.READ
 		);
+		// The direct-expense ledger is the source of the expenditure
+		// reconciliation, so its read privilege is required as well: a report
+		// reader without source access gets neither rows nor aggregates.
+		const hasExpenseSourceRead =
+			isSuperAdmin ||
+			hasPermission(user, RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ);
 
 		// Financial access: a reporting privilege, never Project Activity access
 		// alone. The expenditure reconciliation names suppliers, amounts, and
@@ -80,6 +90,15 @@ export async function GET(request: Request) {
 
 		// Company expenditure reconciliation (direct cost), leading view.
 		if ((viewParam || '').toLowerCase() === 'expenditure') {
+			if (!hasExpenseSourceRead) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'You do not have permission to view company expenditure',
+					},
+					{ status: 403 }
+				);
+			}
 			if (!monthParam || !/^\d{4}-\d{2}$/.test(monthParam)) {
 				return NextResponse.json(
 					{
@@ -113,7 +132,11 @@ export async function GET(request: Request) {
 			const [companyMeta, legacyMeta, expenditureMonths] = await Promise.all([
 				fetchCompanyCostMeta(),
 				fetchEmployeeCostMeta(),
-				fetchExpenditureMonths(),
+				// The months that carry direct cost are themselves source data:
+				// only a caller with the ledger's read privilege sees them.
+				hasExpenseSourceRead
+					? fetchExpenditureMonths()
+					: Promise.resolve<string[]>([]),
 			]);
 			// Merge so old and new clients both work; new UI reads months/fy, old reads employees
 			const meta = {

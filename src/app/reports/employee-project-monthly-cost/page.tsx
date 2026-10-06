@@ -574,6 +574,20 @@ export default function EmployeeProjectMonthlyCostPage() {
 	const canRecordCost = isSuperAdmin || (!!can && can('other_expenses', 'create'));
 	const canRecognizeCost =
 		isSuperAdmin || (!!can && can('other_expenses', 'approve'));
+	const canEditCost = isSuperAdmin || (!!can && can('other_expenses', 'update'));
+	// The expenditure view reads the direct-expense ledger, so it needs that
+	// source's read privilege as well as reports:read. Without it the tab is
+	// not offered and the report opens on the employee-cost views; the server
+	// refuses the expenditure endpoints either way. While auth is still
+	// loading, assume allowed so the default tab does not flicker.
+	const canReadExpenseSource =
+		authLoading || isSuperAdmin || (!!can && can('other_expenses', 'read'));
+
+	useEffect(() => {
+		if (!authLoading && !canReadExpenseSource && viewMode === 'expenditure') {
+			setViewMode('monthly');
+		}
+	}, [authLoading, canReadExpenseSource, viewMode]);
 	const error =
 		activeQuery.error?.message ||
 		(activeQuery.data as unknown as { error?: string })?.error ||
@@ -783,13 +797,14 @@ export default function EmployeeProjectMonthlyCostPage() {
 	}
 
 	const renderContent = () => {
-		if (viewMode === 'expenditure') {
+		if (viewMode === 'expenditure' && canReadExpenseSource) {
 			return (
 				<ExpenditureView
 					month={selectedMonth}
 					monthOptions={expenditureMonthOptions}
 					onMonthChange={setSelectedMonth}
 					canRecord={canRecordCost}
+					canEditCost={canEditCost}
 					canRecognize={canRecognizeCost}
 				/>
 			);
@@ -1468,16 +1483,18 @@ export default function EmployeeProjectMonthlyCostPage() {
 							aria-label="Report view"
 							className="inline-flex self-start rounded-xl border border-gray-200/80 bg-gray-100/90 p-1 shadow-inner sm:self-auto"
 						>
-							<button
-								type="button"
-								role="tab"
-								aria-selected={viewMode === 'expenditure'}
-								onClick={() => setViewMode('expenditure')}
-								className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === 'expenditure' ? 'bg-[#64126D] text-white shadow' : 'text-gray-600 hover:text-[#64126D]'}`}
-							>
-								<BanknotesIcon className="h-3.5 w-3.5" />
-								Expenditure
-							</button>
+							{canReadExpenseSource && (
+								<button
+									type="button"
+									role="tab"
+									aria-selected={viewMode === 'expenditure'}
+									onClick={() => setViewMode('expenditure')}
+									className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === 'expenditure' ? 'bg-[#64126D] text-white shadow' : 'text-gray-600 hover:text-[#64126D]'}`}
+								>
+									<BanknotesIcon className="h-3.5 w-3.5" />
+									Expenditure
+								</button>
+							)}
 							<button
 								type="button"
 								role="tab"

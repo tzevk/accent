@@ -6,9 +6,10 @@
  * state, and the version a command must present.
  *
  * Query: month=YYYY-MM (required), state, classification, project_id, limit,
- * offset. Gates on the financial reporting privilege (reports:read), matching
- * the reconciliation it drills into — Project Activity access alone must not
- * reveal supplier and expense detail.
+ * offset. Gates on the financial reporting privilege (`reports:read`) *and*
+ * the expense ledger's source read privilege (`other_expenses:read`), matching
+ * the reconciliation it drills into — report access alone, and Project
+ * Activity access, must not reveal supplier and expense detail.
  */
 
 import { NextResponse } from 'next/server';
@@ -51,10 +52,13 @@ export async function GET(request: Request) {
 		}
 		const isSuperAdmin =
 			user.is_super_admin === true || user.is_super_admin === 1;
-		if (
-			!isSuperAdmin &&
-			!hasPermission(user, RESOURCES.REPORTS, PERMISSIONS.READ)
-		) {
+		// The drilldown reads the direct-expense ledger: report access alone is
+		// not enough, the source's own read privilege is required as well.
+		const allowed =
+			isSuperAdmin ||
+			(hasPermission(user, RESOURCES.REPORTS, PERMISSIONS.READ) &&
+				hasPermission(user, RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ));
+		if (!allowed) {
 			return NextResponse.json(
 				{
 					success: false,
@@ -100,13 +104,30 @@ export async function GET(request: Request) {
 			}
 		}
 
+		const limitParam = url.searchParams.get('limit');
+		const limit = limitParam === null ? 50 : Number(limitParam);
+		if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+			return NextResponse.json(
+				{ success: false, error: 'Valid limit (1-200) is required' },
+				{ status: 400 }
+			);
+		}
+		const offsetParam = url.searchParams.get('offset');
+		const offset = offsetParam === null ? 0 : Number(offsetParam);
+		if (!Number.isInteger(offset) || offset < 0) {
+			return NextResponse.json(
+				{ success: false, error: 'Valid offset (0 or more) is required' },
+				{ status: 400 }
+			);
+		}
+
 		const query: CostDrilldownQuery = {
 			month,
 			state: state as CostDrilldownQuery['state'],
 			classification: classification as CostDrilldownQuery['classification'],
 			projectId,
-			limit: Number(url.searchParams.get('limit') ?? 50),
-			offset: Number(url.searchParams.get('offset') ?? 0),
+			limit,
+			offset,
 		};
 		const data = await fetchCostDrilldown(query);
 		return NextResponse.json({ success: true, data });

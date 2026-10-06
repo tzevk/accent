@@ -30,7 +30,7 @@ import {
 } from '@heroicons/react/24/outline';
 import SearchableSelect from '@/components/ui/searchable-select';
 import { apiGet, apiPost } from '@/lib/api-client';
-import { formatCurrency, formatCurrencyIn, formatDate } from '@/lib/format';
+import { formatCurrencyIn, formatDate } from '@/lib/format';
 import type { CostRecordJson } from '@/lib/company-expenditure/types';
 
 interface GroupRow {
@@ -46,6 +46,9 @@ interface CurrencyTotalRow {
 	company_overhead: number;
 	unallocated_cost: number;
 	incurred_cost: number;
+	gross_liability: number;
+	recoverable_tax: number;
+	unresolved_tax_gross: number;
 	record_count: number;
 }
 
@@ -54,9 +57,10 @@ interface ProjectRow {
 	project_code: string;
 	project_name: string;
 	client_name: string | null;
+	currency: string;
 	incurred_cost: number;
 	record_count: number;
-	not_confirmed_cost: number;
+	not_confirmed_cost: number | null;
 	previous_month_cost: number | null;
 	change_amount: number | null;
 	change_state: string;
@@ -64,6 +68,7 @@ interface ProjectRow {
 
 interface EvidenceRow {
 	count: number;
+	currency: string | null;
 	amount: number | null;
 }
 
@@ -85,7 +90,11 @@ interface ReconciliationPayload {
 		groups: GroupRow[];
 		gross_liability: number | null;
 		recoverable_tax: number | null;
-		unresolved_tax: { count: number; gross_amount: number };
+		unresolved_tax: {
+			count: number;
+			currency: string | null;
+			gross_amount: number | null;
+		};
 		known_zero_count: number;
 		record_count: number;
 	};
@@ -96,7 +105,11 @@ interface ReconciliationPayload {
 		draft: EvidenceRow;
 		rejected: EvidenceRow;
 		cancelled: EvidenceRow;
-		unresolved_classification: { count: number; gross_amount: number };
+		unresolved_classification: {
+			count: number;
+			currency: string | null;
+			gross_amount: number | null;
+		};
 		missing_amount: { count: number };
 		known_zero: { count: number };
 	};
@@ -113,7 +126,11 @@ interface ReconciliationPayload {
 interface DrilldownPayload {
 	total: number;
 	records: CostRecordJson[];
-	totals: { confirmed_amount: number; records: number };
+	totals: {
+		confirmed_amount: number | null;
+		currency: string | null;
+		records: number;
+	};
 }
 
 export interface ExpenditureViewProps {
@@ -122,6 +139,8 @@ export interface ExpenditureViewProps {
 	onMonthChange: (month: string) => void;
 	/** `other_expenses:create` — may record and submit a cost. */
 	canRecord: boolean;
+	/** `other_expenses:update` — may correct an open cost through `update`. */
+	canEditCost: boolean;
 	/** `other_expenses:approve` — may recognize, reject, or cancel a cost. */
 	canRecognize: boolean;
 }
@@ -134,6 +153,14 @@ const STATE_LABELS: Record<string, string> = {
 	recognized: 'Recognized',
 	rejected: 'Rejected',
 	cancelled: 'Cancelled',
+};
+
+/** How the Recognition Period was established, in the reader's words. */
+const PERIOD_BASIS_LABELS: Record<string, string> = {
+	service_period: 'service period',
+	service_period_end: 'service period end (start not recorded)',
+	bill_date_fallback: 'bill date fallback',
+	unresolved: 'unresolved',
 };
 
 const CLASSIFICATION_LABELS: Record<string, string> = {
@@ -159,12 +186,14 @@ export default function ExpenditureView({
 	monthOptions,
 	onMonthChange,
 	canRecord,
+	canEditCost,
 	canRecognize,
 }: ExpenditureViewProps) {
 	const queryClient = useQueryClient();
 	const [projectFilter, setProjectFilter] = useState('all');
 	const [expandedProject, setExpandedProject] = useState<number | null>(null);
 	const [formOpen, setFormOpen] = useState(false);
+	const [editTarget, setEditTarget] = useState<CostRecordJson | null>(null);
 	const [commandTarget, setCommandTarget] = useState<{
 		record: CostRecordJson;
 		command: 'recognize' | 'reject' | 'cancel';
@@ -217,14 +246,17 @@ export default function ExpenditureView({
 			command: string;
 			expectedVersion: number;
 			reason?: string;
+			patch?: Record<string, unknown>;
 		}) =>
 			apiPost(`/api/admin/expenses/${input.id}/commands`, {
 				command: input.command,
 				expected_version: input.expectedVersion,
 				reason: input.reason,
+				patch: input.patch,
 			}),
 		onSuccess: () => {
 			setCommandTarget(null);
+			setEditTarget(null);
 			void queryClient.invalidateQueries({ queryKey: ['expenditure'] });
 			void queryClient.invalidateQueries({ queryKey: ['expenditure-queue'] });
 			void queryClient.invalidateQueries({
@@ -281,6 +313,14 @@ export default function ExpenditureView({
 	const groupAmount = (key: string) =>
 		data.company.groups.find((group) => group.key === key)?.amount ?? null;
 	const multiCurrency = data.company.currency_totals.length > 1;
+	// A multi-currency month states tax figures per currency, from the same
+	// slices the report already publishes; they are never combined.
+	const currencyBreakdown = (
+		key: 'gross_liability' | 'recoverable_tax' | 'unresolved_tax_gross'
+	) =>
+		data.company.currency_totals
+			.map((row) => formatCurrencyIn(row[key], row.currency))
+			.join(' · ');
 
 	return (
 		<div data-testid="expenditure-view" className="p-3 sm:p-4">
@@ -472,16 +512,32 @@ export default function ExpenditureView({
 					</p>
 					<ul className="mt-1 space-y-0.5 text-xs text-gray-600">
 						<li data-testid="tax-gross">
-							Gross liability: {formatCurrency(data.company.gross_liability)}
+							Gross liability:{' '}
+							{multiCurrency
+								? currencyBreakdown('gross_liability')
+								: formatCurrencyIn(
+										data.company.gross_liability,
+										data.company.currency
+									)}
 						</li>
 						<li data-testid="tax-recoverable">
 							Confirmed recoverable tax excluded:{' '}
-							{formatCurrency(data.company.recoverable_tax)}
+							{multiCurrency
+								? currencyBreakdown('recoverable_tax')
+								: formatCurrencyIn(
+										data.company.recoverable_tax,
+										data.company.currency
+									)}
 						</li>
 						<li data-testid="tax-unresolved">
 							Unresolved tax kept at gross:{' '}
 							{data.company.unresolved_tax.count} record(s),{' '}
-							{formatCurrency(data.company.unresolved_tax.gross_amount)}
+							{multiCurrency
+								? currencyBreakdown('unresolved_tax_gross')
+								: formatCurrencyIn(
+										data.company.unresolved_tax.gross_amount,
+										data.company.currency
+									)}
 						</li>
 					</ul>
 				</div>
@@ -614,26 +670,39 @@ export default function ExpenditureView({
 												<span className="text-gray-500">
 													{project.project_name}
 												</span>
+												{multiCurrency && (
+													<span
+														data-testid="project-currency"
+														className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600"
+													>
+														{project.currency}
+													</span>
+												)}
 											</div>
 										</td>
 										<td className="px-3 py-2 text-gray-600">
 											{project.client_name ?? '—'}
 										</td>
 										<td className="px-3 py-2 text-right font-semibold text-gray-900">
-											{formatCurrencyIn(
-												project.incurred_cost,
-												data.company.currency
-											)}
+											{formatCurrencyIn(project.incurred_cost, project.currency)}
 										</td>
 										<td className="px-3 py-2 text-right text-gray-600">
-											{project.not_confirmed_cost > 0
-												? formatCurrency(project.not_confirmed_cost)
-												: '—'}
+											{project.not_confirmed_cost === null
+												? 'Amount unknown'
+												: project.not_confirmed_cost > 0
+													? formatCurrencyIn(
+															project.not_confirmed_cost,
+															project.currency
+														)
+													: '—'}
 										</td>
 										<td className="px-3 py-2 text-right text-gray-600">
 											{project.change_amount === null
 												? '—'
-												: formatCurrency(project.change_amount)}
+												: formatCurrencyIn(
+														project.change_amount,
+														project.currency
+													)}
 										</td>
 										<td className="px-3 py-2 text-xs text-gray-600">
 											{CHANGE_LABELS[project.change_state] ??
@@ -678,7 +747,9 @@ export default function ExpenditureView({
 																	<span>
 																		Period{' '}
 																		{formatDate(record.recognition_period)} (
-																		{record.period_basis})
+																		{PERIOD_BASIS_LABELS[record.period_basis] ??
+																			record.period_basis}
+																		)
 																	</span>
 																	<span>
 																		Gross{' '}
@@ -786,7 +857,10 @@ export default function ExpenditureView({
 									</td>
 									<td className="px-3 py-2 text-xs text-gray-600">
 										{record.recognition_period
-											? `${formatDate(record.recognition_period)} (${record.period_basis})`
+											? `${formatDate(record.recognition_period)} (${
+													PERIOD_BASIS_LABELS[record.period_basis] ??
+													record.period_basis
+												})`
 											: 'No recognition period'}
 									</td>
 									<td className="px-3 py-2 text-xs">
@@ -796,41 +870,56 @@ export default function ExpenditureView({
 										</span>
 									</td>
 									<td className="px-3 py-2">
-										{canRecognize ? (
-											<div className="flex gap-1.5">
+										<div className="flex flex-wrap items-center gap-1.5">
+											{canEditCost && (
 												<button
 													type="button"
-													onClick={() =>
-														setCommandTarget({ record, command: 'recognize' })
-													}
-													className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+													data-testid="queue-edit"
+													onClick={() => {
+														commandMutation.reset();
+														setEditTarget(record);
+													}}
+													className="rounded border border-[#64126D]/40 bg-[#64126D]/5 px-2 py-1 text-xs font-medium text-[#64126D] hover:bg-[#64126D]/10"
 												>
-													Recognize
+													Edit
 												</button>
-												<button
-													type="button"
-													onClick={() =>
-														setCommandTarget({ record, command: 'reject' })
-													}
-													className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
-												>
-													Reject
-												</button>
-												<button
-													type="button"
-													onClick={() =>
-														setCommandTarget({ record, command: 'cancel' })
-													}
-													className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-												>
-													Cancel cost
-												</button>
-											</div>
-										) : (
-											<span className="text-xs text-gray-400">
-												Recognition needs approval access
-											</span>
-										)}
+											)}
+											{canRecognize ? (
+												<>
+													<button
+														type="button"
+														onClick={() =>
+															setCommandTarget({ record, command: 'recognize' })
+														}
+														className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+													>
+														Recognize
+													</button>
+													<button
+														type="button"
+														onClick={() =>
+															setCommandTarget({ record, command: 'reject' })
+														}
+														className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
+													>
+														Reject
+													</button>
+													<button
+														type="button"
+														onClick={() =>
+															setCommandTarget({ record, command: 'cancel' })
+														}
+														className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+													>
+														Cancel cost
+													</button>
+												</>
+											) : (
+												<span className="text-xs text-gray-400">
+													Recognition needs approval access
+												</span>
+											)}
+										</div>
 									</td>
 								</tr>
 							))}
@@ -860,6 +949,29 @@ export default function ExpenditureView({
 						setFormOpen(false);
 					}}
 					onSubmit={(payload) => createMutation.mutate(payload)}
+				/>
+			)}
+
+			{editTarget && (
+				<CostEditDialog
+					record={editTarget}
+					projectOptions={data.project_options}
+					submitting={commandMutation.isPending}
+					error={
+						commandMutation.isError ? errorMessage(commandMutation.error) : null
+					}
+					onCancel={() => {
+						commandMutation.reset();
+						setEditTarget(null);
+					}}
+					onSubmit={(patch) =>
+						commandMutation.mutate({
+							id: editTarget.id,
+							command: 'update',
+							expectedVersion: editTarget.financial_version,
+							patch,
+						})
+					}
 				/>
 			)}
 
@@ -1195,6 +1307,311 @@ function CostForm({
 						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
 					>
 						Save and submit
+					</button>
+				</div>
+			</form>
+		</div>
+	);
+}
+
+interface CostEditDialogProps {
+	record: CostRecordJson;
+	projectOptions: Array<{
+		project_id: number;
+		project_code: string;
+		project_name: string;
+	}>;
+	submitting: boolean;
+	error: string | null;
+	onCancel: () => void;
+	onSubmit: (patch: Record<string, unknown>) => void;
+}
+
+/**
+ * Correct an open (draft or pending-evidence) cost through the versioned
+ * `update` command: amount, destination, recognition period, tax, and
+ * evidence. Without this control a cost recorded with an unknown amount could
+ * never be completed — the operator would have to cancel and re-record it.
+ * The patch carries the version the queue row was read at, so a concurrent
+ * change fails as a version conflict instead of silently overwriting.
+ */
+function CostEditDialog({
+	record,
+	projectOptions,
+	submitting,
+	error,
+	onCancel,
+	onSubmit,
+}: CostEditDialogProps) {
+	const [classification, setClassification] = useState(
+		record.cost_classification ?? ''
+	);
+	const [projectId, setProjectId] = useState(
+		record.project_id === null ? '' : String(record.project_id)
+	);
+	const [sourceReference, setSourceReference] = useState(
+		record.source_reference ?? ''
+	);
+	const [serviceStart, setServiceStart] = useState(
+		record.service_period_start ?? ''
+	);
+	const [serviceEnd, setServiceEnd] = useState(record.service_period_end ?? '');
+	const [billDate, setBillDate] = useState(record.expense_date ?? '');
+	const [currency, setCurrency] = useState(record.currency ?? 'INR');
+	const [grossAmount, setGrossAmount] = useState(
+		record.gross_amount === null ? '' : String(record.gross_amount)
+	);
+	const [taxAmount, setTaxAmount] = useState(
+		record.tax_amount === null ? '' : String(record.tax_amount)
+	);
+	const [taxTreatment, setTaxTreatment] = useState(record.tax_treatment);
+	const [taxEvidence, setTaxEvidence] = useState(
+		record.tax_evidence_reference ?? ''
+	);
+	const [evidenceReference, setEvidenceReference] = useState(
+		record.evidence_reference ?? ''
+	);
+
+	const projectControlOptions = projectOptions.map((option) => ({
+		value: String(option.project_id),
+		label: `${option.project_code} — ${option.project_name}`,
+	}));
+
+	const buildPatch = () => ({
+		classification: classification || null,
+		projectId:
+			classification === 'project' && projectId ? Number(projectId) : null,
+		servicePeriodStart: serviceStart || null,
+		servicePeriodEnd: serviceEnd || null,
+		billDate: billDate || null,
+		currency,
+		grossAmount: grossAmount === '' ? null : Number(grossAmount),
+		taxAmount: taxAmount === '' ? null : Number(taxAmount),
+		taxTreatment,
+		taxEvidenceReference: taxEvidence || null,
+		sourceReference: sourceReference || null,
+		evidenceReference: evidenceReference || null,
+	});
+
+	return (
+		<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+			<form
+				data-testid="cost-edit-dialog"
+				role="dialog"
+				aria-modal="true"
+				aria-label="Correct cost"
+				className="mt-8 w-full max-w-3xl rounded-xl bg-white p-4 shadow-xl"
+				onSubmit={(event) => {
+					event.preventDefault();
+					onSubmit(buildPatch());
+				}}
+			>
+				<div className="mb-3 flex items-start justify-between">
+					<div>
+						<h2 className="text-base font-semibold text-gray-900">Correct cost</h2>
+						<p className="text-xs text-gray-500">
+							{record.source_reference ?? record.expense_number} · version{' '}
+							{record.financial_version}. Saving applies a versioned `update`
+							with its own journal entry.
+						</p>
+					</div>
+					<button
+						type="button"
+						onClick={onCancel}
+						aria-label="Close"
+						className="rounded p-1 text-gray-500 hover:bg-gray-100"
+					>
+						<XMarkIcon className="h-4 w-4" />
+					</button>
+				</div>
+
+				<div className="grid gap-3 md:grid-cols-2">
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Destination
+						</span>
+						<select
+							aria-label="Classification"
+							value={classification}
+							onChange={(event) => setClassification(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						>
+							<option value="project">Project</option>
+							<option value="company_overhead">Company Overhead</option>
+							<option value="unallocated">Unallocated Cost</option>
+							<option value="">Not yet classified</option>
+						</select>
+					</label>
+					{classification === 'project' && (
+						<div className="text-sm">
+							<span className="mb-1 block font-medium text-gray-700">
+								Project
+							</span>
+							<SearchableSelect
+								options={projectControlOptions}
+								value={projectId}
+								onChange={(value) => setProjectId(String(value))}
+								placeholder="Select project…"
+								aria-label="Project"
+							/>
+						</div>
+					)}
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Source reference
+						</span>
+						<input
+							aria-label="Source reference"
+							value={sourceReference}
+							onChange={(event) => setSourceReference(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">Currency</span>
+						<select
+							aria-label="Currency"
+							value={currency}
+							onChange={(event) => setCurrency(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						>
+							{CURRENCIES.map((code) => (
+								<option key={code} value={code}>
+									{code}
+								</option>
+							))}
+						</select>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Gross amount
+						</span>
+						<input
+							type="number"
+							step="0.01"
+							aria-label="Gross amount"
+							value={grossAmount}
+							onChange={(event) => setGrossAmount(event.target.value)}
+							placeholder="Leave empty while unknown"
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Tax amount
+						</span>
+						<input
+							type="number"
+							step="0.01"
+							aria-label="Tax amount"
+							value={taxAmount}
+							onChange={(event) => setTaxAmount(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Service period start
+						</span>
+						<input
+							type="date"
+							aria-label="Service period start"
+							value={serviceStart}
+							onChange={(event) => setServiceStart(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Service period end
+						</span>
+						<input
+							type="date"
+							aria-label="Service period end"
+							value={serviceEnd}
+							onChange={(event) => setServiceEnd(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Bill date
+						</span>
+						<input
+							type="date"
+							aria-label="Bill date"
+							value={billDate}
+							onChange={(event) => setBillDate(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Tax treatment
+						</span>
+						<select
+							aria-label="Tax treatment"
+							value={taxTreatment}
+							onChange={(event) =>
+								setTaxTreatment(event.target.value as typeof taxTreatment)
+							}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						>
+							<option value="none">No tax recorded</option>
+							<option value="recoverable">Recoverable (with evidence)</option>
+							<option value="non_recoverable">Non-recoverable (in cost)</option>
+							<option value="unresolved">Unresolved</option>
+						</select>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Tax evidence reference
+						</span>
+						<input
+							aria-label="Tax evidence reference"
+							value={taxEvidence}
+							onChange={(event) => setTaxEvidence(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Evidence reference
+						</span>
+						<input
+							aria-label="Evidence reference"
+							value={evidenceReference}
+							onChange={(event) => setEvidenceReference(event.target.value)}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						/>
+					</label>
+				</div>
+
+				<p className="mt-2 text-[11px] text-gray-500">
+					Saving corrects the cost in place. It cannot change a recognized
+					cost — cancel that cost first and record the correction as a new one.
+				</p>
+
+				{error && (
+					<p role="alert" className="mt-2 text-xs text-rose-600">
+						{error}
+					</p>
+				)}
+
+				<div className="mt-3 flex justify-end gap-2">
+					<button
+						type="button"
+						onClick={onCancel}
+						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						Close
+					</button>
+					<button
+						type="submit"
+						disabled={submitting}
+						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
+					>
+						Save changes
 					</button>
 				</div>
 			</form>

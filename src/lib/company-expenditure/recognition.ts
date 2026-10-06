@@ -33,7 +33,9 @@ export function firstOfMonth(date: string): string {
 /**
  * The Recognition Period. The service period wins; the bill date is only a
  * disclosed fallback; without either the cost has no period and cannot be
- * recognized into a month.
+ * recognized into a month. When only the end of the received-work period is
+ * recorded, that end month is used and disclosed as `service_period_end`
+ * rather than silently falling through to the bill date.
  */
 export function resolveRecognitionPeriod(input: {
 	servicePeriodStart?: string | null;
@@ -44,6 +46,12 @@ export function resolveRecognitionPeriod(input: {
 		return {
 			period: firstOfMonth(input.servicePeriodStart),
 			basis: 'service_period',
+		};
+	}
+	if (input.servicePeriodEnd) {
+		return {
+			period: firstOfMonth(input.servicePeriodEnd),
+			basis: 'service_period_end',
 		};
 	}
 	if (input.billDate) {
@@ -94,6 +102,11 @@ export function evaluateCost(input: CostFinancialInput): CostEvaluation {
 		// Splitting a span across months belongs to the period-control slice;
 		// until then the whole cost sits in the month the work starts in.
 		exceptions.push('service_period_spans_months');
+	}
+	if (!input.servicePeriodStart && input.servicePeriodEnd) {
+		// The received-work period is known to have ended; its start is not
+		// recorded, and the cost sits in the end month (disclosed basis).
+		exceptions.push('service_period_start_missing');
 	}
 
 	if (gross === null) {

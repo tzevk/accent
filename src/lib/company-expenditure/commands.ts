@@ -21,6 +21,7 @@
 import { randomUUID } from 'node:crypto';
 import { add, sub, R, toNumber } from '@/lib/money';
 import { withTransaction } from '@/utils/database';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
 import {
 	evaluateCost,
 	nextState,
@@ -30,7 +31,9 @@ import {
 import { mapCostRow, type SqlConnection } from './records';
 import type {
 	CostCommandInput,
+	CostCommandName,
 	CostCommandResult,
+	CostJournalCommand,
 	CostRecord,
 	PeriodBasis,
 	RecordCostInput,
@@ -131,6 +134,20 @@ const STATE_TO_STATUS: Record<RecognitionState, string> = {
 	cancelled: 'submitted',
 };
 
+/**
+ * The one translation from the command API vocabulary (imperative) to the
+ * journal's vocabulary (`financial_cost_events.command`, past tense). The
+ * column is an ENUM of exactly these values under STRICT_TRANS_TABLES: writing
+ * the raw command name would truncate and roll the whole transaction back.
+ */
+const JOURNAL_COMMAND: Record<CostCommandName, CostJournalCommand> = {
+	update: 'updated',
+	submit: 'submitted',
+	recognize: 'recognized',
+	reject: 'rejected',
+	cancel: 'cancelled',
+};
+
 const CLASSIFICATIONS = [
 	'project',
 	'company_overhead',
@@ -202,7 +219,7 @@ interface JournalInput {
 	costUid: string;
 	sourceId: number;
 	version: number;
-	command: string;
+	command: CostJournalCommand;
 	actorId: number | null;
 	reason: string | null;
 	evidenceReference: string | null;
@@ -344,13 +361,18 @@ export async function recordCost(
 			? null
 			: toNumber(sub(R(grossAmount), R(taxAmount ?? 0)));
 
-	return inTransaction(options, async (db) => {
-		const costUid = mintCostUid();
-		let expenseNumber = text(input.expenseNumber, 50);
-		let insertId = 0;
-		for (let attempt = 1; ; attempt++) {
-			expenseNumber ??= await nextExpenseNumber(db);
-			try {
+	// Minting the number is a `SELECT ... FOR UPDATE` race: a concurrent create
+	// can make the INSERT collide (duplicate key), deadlock, or hit a lock-wait
+	// timeout. Each attempt runs its own transaction from a fresh read, as the
+	// register's create loop always did, and only when the module owns the
+	// transaction — a caller-supplied connection is never silently retried.
+	const ownsTransaction = !options?.connection;
+	for (let attempt = 1; ; attempt++) {
+		try {
+			return await inTransaction(options, async (db) => {
+				const costUid = mintCostUid();
+				const expenseNumber =
+					text(input.expenseNumber, 50) ?? (await nextExpenseNumber(db));
 				const [result] = (await db.execute(
 					`INSERT INTO expenses
              (expense_number, expense_date, category, sub_category, description, vendor_name,
@@ -399,55 +421,59 @@ export async function recordCost(
 						financial.evidenceReference,
 					]
 				)) as [Record<string, unknown>, unknown];
-				insertId = Number(result.insertId);
-				break;
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				if (
-					!input.expenseNumber &&
-					message.includes('Duplicate entry') &&
-					attempt < 5
-				) {
-					expenseNumber = null;
-					continue;
-				}
-				throw error;
+				const insertId = Number(result.insertId);
+
+				await writeJournal(db, {
+					costUid,
+					sourceId: insertId,
+					version: 1,
+					command: 'recorded',
+					actorId: actor.id,
+					reason:
+						state === 'pending_evidence' ? 'Submitted for recognition' : null,
+					evidenceReference: financial.evidenceReference,
+					snapshot: {
+						classification,
+						recognition_period: period,
+						period_basis: basis,
+						currency,
+						gross_amount: grossAmount,
+						tax_amount: taxAmount,
+						recognized_amount: null,
+						state,
+						exceptions: evaluation.exceptions,
+					},
+				});
+
+				return {
+					id: insertId,
+					expense_number: expenseNumber,
+					cost_uid: costUid,
+					recognition_state: state,
+					financial_version: 1,
+					recognition_period: period,
+					period_basis: basis,
+					recognized_amount: null,
+					cost_classification: classification,
+				};
+			});
+		} catch (error) {
+			if (
+				ownsTransaction &&
+				!input.expenseNumber &&
+				isRetryableNumberError(error) &&
+				attempt < 5
+			) {
+				// Separate the attempts so two racing creates do not collide again
+				// in lockstep.
+				const { promise, resolve } = Promise.withResolvers<void>();
+				setTimeout(resolve, 15 * attempt);
+				await promise;
+				continue;
 			}
+			throw error;
 		}
-
-		await writeJournal(db, {
-			costUid,
-			sourceId: insertId,
-			version: 1,
-			command: 'recorded',
-			actorId: actor.id,
-			reason: state === 'pending_evidence' ? 'Submitted for recognition' : null,
-			evidenceReference: financial.evidenceReference,
-			snapshot: {
-				classification,
-				recognition_period: period,
-				period_basis: basis,
-				currency,
-				gross_amount: grossAmount,
-				tax_amount: taxAmount,
-				recognized_amount: null,
-				state,
-				exceptions: evaluation.exceptions,
-			},
-		});
-
-		return {
-			id: insertId,
-			expense_number: expenseNumber!,
-			cost_uid: costUid,
-			recognition_state: state,
-			financial_version: 1,
-			recognition_period: period,
-			period_basis: basis,
-			recognized_amount: null,
-			cost_classification: classification,
-		};
-	});
+	}
 }
 
 /** The cost a command targets, in the module's own shape. */
@@ -667,8 +693,8 @@ export async function executeCommand(
 			`UPDATE expenses
           SET cost_classification = ?, recognition_state = ?, recognition_period = ?,
               period_basis = ?, service_period_start = ?, service_period_end = ?,
-              tax_treatment = ?, tax_evidence_reference = ?, currency = ?,
-              amount = ?, total_amount = ?, tax_amount = ?,
+              expense_date = ?, tax_treatment = ?, tax_evidence_reference = ?,
+              currency = ?, amount = ?, total_amount = ?, tax_amount = ?,
               source_reference = ?, evidence_reference = ?, recognized_amount = ?,
               recognized_by = ?,
               recognized_at = IF(?, NOW(), ?),
@@ -681,6 +707,7 @@ export async function executeCommand(
 				resolved.basis,
 				merged.servicePeriodStart,
 				merged.servicePeriodEnd,
+				merged.billDate,
 				merged.taxTreatment,
 				merged.taxEvidenceReference,
 				merged.currency,
@@ -710,7 +737,7 @@ export async function executeCommand(
 			costUid: String(row.cost_uid ?? ''),
 			sourceId: input.id,
 			version: nextVersion,
-			command: input.command,
+			command: JOURNAL_COMMAND[input.command],
 			actorId: actor.id,
 			reason: text(input.reason, 500),
 			evidenceReference: merged.evidenceReference,

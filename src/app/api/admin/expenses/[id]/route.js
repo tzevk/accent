@@ -10,6 +10,23 @@ import { logActivity } from '@/utils/activity-logger';
 const TABLE = 'expenses';
 
 /**
+ * The financial fields of a direct cost — the ones the versioned command path
+ * owns. The register edit path must not rewrite them: it carries no
+ * `financial_version` and appends no journal entry, so an edit here would
+ * change the amount a later `recognize` confirms while every command still
+ * sees the old version. Operational fields (vendor, payment, description,
+ * notes, category, and the register's own `status`) stay editable here.
+ */
+const FINANCIAL_FIELDS = [
+	'expense_date',
+	'amount',
+	'tax_amount',
+	'total_amount',
+	'currency',
+	'project_id',
+];
+
+/**
  * Confirmed cost is frozen here: an edit or a soft delete through the register
  * would change recognized cost with no version and no journal entry. The
  * recognition workflow is the way to change it (cancel it, then record the
@@ -94,16 +111,27 @@ export async function PUT(request, { params }) {
 		const refusal = await refuseRecognizedCostEdit(db, id);
 		if (refusal) return refusal;
 
+		const attemptedFinancialFields = FINANCIAL_FIELDS.filter(
+			(field) => body[field] !== undefined
+		);
+		if (attemptedFinancialFields.length > 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'Amount, tax, total, currency, expense date, and project are versioned financial fields. Change them through POST /api/admin/expenses/{id}/commands with command "update" and the current expected_version.',
+					code: 'financial_fields_versioned',
+					fields: attemptedFinancialFields,
+				},
+				{ status: 422 }
+			);
+		}
+
 		const fields = [
-			'expense_date',
 			'category',
 			'sub_category',
 			'description',
 			'vendor_name',
-			'amount',
-			'tax_amount',
-			'total_amount',
-			'currency',
 			'payment_mode',
 			'payment_reference',
 			'paid_to',
@@ -111,7 +139,6 @@ export async function PUT(request, { params }) {
 			'receipt_url',
 			'is_billable',
 			'is_reimbursable',
-			'project_id',
 			'department',
 			'notes',
 			'status',
