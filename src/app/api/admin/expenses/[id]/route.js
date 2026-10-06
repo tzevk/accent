@@ -23,6 +23,10 @@ const FINANCIAL_FIELDS = [
 	'tax_amount',
 	'total_amount',
 	'currency',
+	'reporting_currency',
+	'conversion_rate',
+	'conversion_date',
+	'conversion_evidence_reference',
 	'project_id',
 ];
 
@@ -119,7 +123,7 @@ export async function PUT(request, { params }) {
 				{
 					success: false,
 					error:
-						'Amount, tax, total, currency, expense date, and project are versioned financial fields. Change them through POST /api/admin/expenses/{id}/commands with command "update" and the current expected_version.',
+						'Amount, tax, total, currency, reporting currency, conversion evidence, expense date, and project are versioned financial fields. Change them through POST /api/admin/expenses/{id}/commands with command "update" and the current expected_version.',
 					code: 'financial_fields_versioned',
 					fields: attemptedFinancialFields,
 				},

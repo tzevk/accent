@@ -60,7 +60,13 @@ export const OTHER_EXPENSE_COST_SOURCE = `SELECT 'other_expense' AS source_kind,
     o.service_period_start, o.service_period_end, o.tax_treatment,
     o.tax_evidence_reference, o.recognized_amount, o.source_reference,
     o.evidence_reference, o.financial_version, o.recognized_by, o.recognized_at,
-    o.currency, o.bill_amount AS amount, o.gst_amount AS tax_amount,
+    o.currency,
+    -- Conversion evidence (#319) is not captured on this register yet: the amount
+    -- keeps its own currency and stays disclosed as unconverted, never converted
+    -- by this source.
+    NULL AS reporting_currency, NULL AS conversion_rate, NULL AS conversion_date,
+    NULL AS conversion_evidence_reference, NULL AS converted_amount,
+    o.bill_amount AS amount, o.gst_amount AS tax_amount,
     o.net_amount AS total_amount, COALESCE(o.vendor_name, o.employee_name) AS vendor_name,
     o.description, o.status, o.project_id, o.isDelete,
     CAST(o.id AS CHAR) AS source_row_id

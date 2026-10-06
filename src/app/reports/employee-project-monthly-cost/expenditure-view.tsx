@@ -32,12 +32,26 @@ import SearchableSelect from '@/components/ui/searchable-select';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { formatCurrencyIn, formatDate } from '@/lib/format';
 import type { CostRecordJson } from '@/lib/company-expenditure/types';
+import BudgetSection, { type BudgetSectionPayload } from './budget-section';
 
 interface GroupRow {
 	key: string;
 	label: string;
 	amount: number;
 	record_count: number;
+}
+
+interface CurrencyReportingRow {
+	currency: string;
+	status: 'reporting' | 'converted' | 'unsupported';
+	unsupported_count: number;
+	incurred_project_cost: number | null;
+	company_overhead: number | null;
+	unallocated_cost: number | null;
+	incurred_cost: number | null;
+	gross_liability: number | null;
+	recoverable_tax: number | null;
+	unresolved_tax_gross: number | null;
 }
 
 interface CurrencyTotalRow {
@@ -50,6 +64,7 @@ interface CurrencyTotalRow {
 	recoverable_tax: number;
 	unresolved_tax_gross: number;
 	record_count: number;
+	reporting: CurrencyReportingRow;
 }
 
 interface ProjectRow {
@@ -58,6 +73,8 @@ interface ProjectRow {
 	project_name: string;
 	client_name: string | null;
 	currency: string;
+	conversion_status: 'reporting' | 'converted' | 'unsupported';
+	converted_incurred_cost: number | null;
 	incurred_cost: number;
 	record_count: number;
 	not_confirmed_cost: number | null;
@@ -84,6 +101,14 @@ interface ReconciliationPayload {
 	month_label: string;
 	project_id: number | null;
 	company: {
+		reporting_currency: string;
+		conversion: {
+			status: 'reporting' | 'converted' | 'unsupported';
+			converted_records: number;
+			unsupported_records: number;
+			unsupported_currencies: string[];
+			unknown_currency_records: number;
+		};
 		currency: string | null;
 		incurred_cost: number | null;
 		currency_totals: CurrencyTotalRow[];
@@ -111,9 +136,11 @@ interface ReconciliationPayload {
 			gross_amount: number | null;
 		};
 		missing_amount: { count: number };
+		missing_currency: { count: number };
 		known_zero: { count: number };
 	};
 	coverage: CoverageNoticeRow[];
+	budgets: BudgetSectionPayload;
 	project_options: Array<{
 		project_id: number;
 		project_code: string;
@@ -199,6 +226,14 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : 'Something went wrong';
 }
 
+/** Money whose original currency is unknown is never labelled as INR. */
+function formatSourceMoney(value: number | null, currency: string | null): string {
+	if (value === null) return '—';
+	return currency === null
+		? `${value.toFixed(2)} (currency unknown)`
+		: formatCurrencyIn(value, currency);
+}
+
 export default function ExpenditureView({
 	month,
 	monthOptions,
@@ -209,6 +244,7 @@ export default function ExpenditureView({
 }: ExpenditureViewProps) {
 	const queryClient = useQueryClient();
 	const [projectFilter, setProjectFilter] = useState('all');
+	const [reportingCurrency, setReportingCurrency] = useState('INR');
 	const [expandedProject, setExpandedProject] = useState<number | null>(null);
 	const [formOpen, setFormOpen] = useState(false);
 	const [editTarget, setEditTarget] = useState<CostRecordJson | null>(null);
@@ -218,12 +254,13 @@ export default function ExpenditureView({
 	} | null>(null);
 
 	const reconciliationQuery = useQuery<{ data: ReconciliationPayload }>({
-		queryKey: ['expenditure', month, projectFilter],
+		queryKey: ['expenditure', month, projectFilter, reportingCurrency],
 		queryFn: () =>
 			apiGet('/api/reports/employee-project-monthly-cost', {
 				view: 'expenditure',
 				month,
 				project_id: projectFilter === 'all' ? undefined : projectFilter,
+				reporting_currency: reportingCurrency,
 			}),
 		enabled: !!month,
 		refetchOnWindowFocus: false,
@@ -330,7 +367,12 @@ export default function ExpenditureView({
 
 	const groupAmount = (key: string) =>
 		data.company.groups.find((group) => group.key === key)?.amount ?? null;
-	const multiCurrency = data.company.currency_totals.length > 1;
+	// A month is stated in the requested reporting currency only when every
+	// confirmed record is supported; otherwise its own currency subtotals are
+	// the whole answer and the warning below says so.
+	const conversion = data.company.conversion;
+	const companyStated = conversion.status !== 'unsupported';
+	const reportingCurrencyCode = data.company.reporting_currency;
 	// A multi-currency month states tax figures per currency, from the same
 	// slices the report already publishes; they are never combined.
 	const currencyBreakdown = (
@@ -365,6 +407,21 @@ export default function ExpenditureView({
 						aria-label="Project filter"
 					/>
 				</div>
+				<label className="text-xs font-medium text-gray-600">
+					<span className="mb-1 block">Reporting currency</span>
+					<select
+						aria-label="Reporting currency"
+						value={reportingCurrency}
+						onChange={(event) => setReportingCurrency(event.target.value)}
+						className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+					>
+						{CURRENCIES.map((code) => (
+							<option key={code} value={code}>
+								{code}
+							</option>
+						))}
+					</select>
+				</label>
 				<div className="ml-auto flex items-center gap-2">
 					<button
 						type="button"
@@ -392,10 +449,33 @@ export default function ExpenditureView({
 				</div>
 			</div>
 
-			<p className="mb-3 text-xs text-gray-500">
-				Company Incurred Cost for {data.month_label}. Each recognized direct
-				cost is counted once; Project filters narrow the detail only.
+			<p className="mb-1 text-xs text-gray-500">
+				Company Incurred Cost for {data.month_label}, stated in{' '}
+				{reportingCurrencyCode}. Each recognized direct cost is counted once;
+				Project filters narrow the detail only.
 			</p>
+			<p
+				data-testid="conversion-status"
+				data-status={conversion.status}
+				data-reporting-currency={reportingCurrencyCode}
+				className="mb-3 text-xs text-gray-600"
+			>
+				{conversion.status === 'reporting'
+					? `All recognized cost is already in ${reportingCurrencyCode}.`
+					: conversion.status === 'converted'
+						? `${conversion.converted_records} recognized record(s) converted into ${reportingCurrencyCode} at their recorded rates.`
+						: `${conversion.unsupported_records} recognized record(s) cannot be stated in ${reportingCurrencyCode} yet.`}
+			</p>
+			{!companyStated && data.company.record_count > 0 && (
+				<p
+					data-testid="conversion-warning"
+					className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"
+				>
+					No complete company total in {reportingCurrencyCode}: some recognized
+					cost has no supported conversion evidence for that basis, so only the
+					currency subtotals below are stated.
+				</p>
+			)}
 
 			{/* Company reconciliation */}
 			<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
@@ -429,7 +509,8 @@ export default function ExpenditureView({
 						data-amount={groupAmount('incurred_project_cost') ?? ''}
 						className="mt-0.5 text-lg font-bold text-gray-900"
 					>
-						{multiCurrency
+						{groupAmount('incurred_project_cost') === null &&
+						!companyStated
 							? 'See currencies'
 							: formatCurrencyIn(
 									groupAmount('incurred_project_cost') ?? 0,
@@ -449,7 +530,7 @@ export default function ExpenditureView({
 						data-amount={groupAmount('company_overhead') ?? ''}
 						className="mt-0.5 text-lg font-bold text-gray-900"
 					>
-						{multiCurrency
+						{groupAmount('company_overhead') === null && !companyStated
 							? 'See currencies'
 							: formatCurrencyIn(
 									groupAmount('company_overhead') ?? 0,
@@ -469,7 +550,7 @@ export default function ExpenditureView({
 						data-amount={groupAmount('unallocated_cost') ?? ''}
 						className="mt-0.5 text-lg font-bold text-gray-900"
 					>
-						{multiCurrency
+						{groupAmount('unallocated_cost') === null && !companyStated
 							? 'See currencies'
 							: formatCurrencyIn(
 									groupAmount('unallocated_cost') ?? 0,
@@ -483,11 +564,22 @@ export default function ExpenditureView({
 			</div>
 
 			{/* Currency subtotals: never combined without a supported conversion */}
-			{multiCurrency && (
-				<div className="mt-3 overflow-x-auto rounded-xl border border-amber-200 bg-amber-50 p-3">
-					<p className="text-xs font-semibold text-amber-900">
-						This month holds more than one currency. Amounts stay in their own
-						currency; no company total is shown until a conversion is supported.
+			{data.company.currency_totals.some(
+				(row) => row.reporting.status !== 'reporting'
+			) && (
+				<div
+					className={`mt-3 overflow-x-auto rounded-xl border p-3 ${
+						companyStated
+							? 'border-gray-200 bg-white'
+							: 'border-amber-200 bg-amber-50'
+					}`}
+				>
+					<p
+						className={`text-xs font-semibold ${companyStated ? 'text-gray-700' : 'text-amber-900'}`}
+					>
+						{companyStated
+							? `Each currency is converted into ${reportingCurrencyCode} at the rate recorded with its cost.`
+							: `Some currencies have no supported conversion to ${reportingCurrencyCode} yet. Their amounts stay in their own currency and no combined total is shown.`}
 					</p>
 					<table className="mt-2 w-full text-xs">
 						<thead>
@@ -497,11 +589,18 @@ export default function ExpenditureView({
 								<th className="py-1 pr-3 font-medium">Company Overhead</th>
 								<th className="py-1 pr-3 font-medium">Unallocated Cost</th>
 								<th className="py-1 pr-3 font-medium">Total</th>
+								<th className="py-1 pr-3 font-medium">
+									Reporting ({reportingCurrencyCode})
+								</th>
 							</tr>
 						</thead>
 						<tbody>
 							{data.company.currency_totals.map((row) => (
-								<tr key={row.currency} data-testid="currency-total-row">
+								<tr
+									key={row.currency}
+									data-testid="currency-total-row"
+									data-conversion-status={row.reporting.status}
+								>
 									<td className="py-1 pr-3 font-semibold">{row.currency}</td>
 									<td className="py-1 pr-3">
 										{formatCurrencyIn(row.incurred_project_cost, row.currency)}
@@ -514,6 +613,19 @@ export default function ExpenditureView({
 									</td>
 									<td className="py-1 pr-3 font-semibold">
 										{formatCurrencyIn(row.incurred_cost, row.currency)}
+									</td>
+									<td
+										data-testid="currency-reporting-row"
+										data-currency={row.currency}
+										data-status={row.reporting.status}
+										className="py-1 pr-3 font-semibold"
+									>
+										{row.reporting.incurred_cost === null
+											? `No rate to ${reportingCurrencyCode}`
+											: formatCurrencyIn(
+													row.reporting.incurred_cost,
+													reportingCurrencyCode
+												)}
 									</td>
 								</tr>
 							))}
@@ -531,31 +643,31 @@ export default function ExpenditureView({
 					<ul className="mt-1 space-y-0.5 text-xs text-gray-600">
 						<li data-testid="tax-gross">
 							Gross liability:{' '}
-							{multiCurrency
-								? currencyBreakdown('gross_liability')
-								: formatCurrencyIn(
+							{data.company.gross_liability !== null
+								? formatCurrencyIn(
 										data.company.gross_liability,
 										data.company.currency
-									)}
+									)
+								: currencyBreakdown('gross_liability')}
 						</li>
 						<li data-testid="tax-recoverable">
 							Confirmed recoverable tax excluded:{' '}
-							{multiCurrency
-								? currencyBreakdown('recoverable_tax')
-								: formatCurrencyIn(
+							{data.company.recoverable_tax !== null
+								? formatCurrencyIn(
 										data.company.recoverable_tax,
 										data.company.currency
-									)}
+									)
+								: currencyBreakdown('recoverable_tax')}
 						</li>
 						<li data-testid="tax-unresolved">
 							Unresolved tax kept at gross:{' '}
 							{data.company.unresolved_tax.count} record(s),{' '}
-							{multiCurrency
-								? currencyBreakdown('unresolved_tax_gross')
-								: formatCurrencyIn(
+							{data.company.unresolved_tax.gross_amount !== null
+								? formatCurrencyIn(
 										data.company.unresolved_tax.gross_amount,
 										data.company.currency
-									)}
+									)
+								: currencyBreakdown('unresolved_tax_gross')}
 						</li>
 					</ul>
 				</div>
@@ -582,6 +694,9 @@ export default function ExpenditureView({
 						</li>
 						<li data-testid="evidence-row" data-state="missing_amount">
 							Missing amount: {data.evidence.missing_amount.count}
+						</li>
+						<li data-testid="evidence-row" data-state="missing_currency">
+							Missing original currency: {data.evidence.missing_currency.count}
 						</li>
 						<li data-testid="evidence-row" data-state="known_zero">
 							Known zero: {data.evidence.known_zero.count}
@@ -633,6 +748,9 @@ export default function ExpenditureView({
 								Incurred cost
 							</th>
 							<th scope="col" className="px-3 py-2 text-right">
+								Reporting ({reportingCurrencyCode})
+							</th>
+							<th scope="col" className="px-3 py-2 text-right">
 								Not confirmed
 							</th>
 							<th scope="col" className="px-3 py-2 text-right">
@@ -646,7 +764,7 @@ export default function ExpenditureView({
 					<tbody>
 						{data.projects.length === 0 && (
 							<tr>
-								<td colSpan={6} className="px-3 py-4 text-center text-gray-500">
+								<td colSpan={7} className="px-3 py-4 text-center text-gray-500">
 									No Project-attributed cost in this month. Company Overhead and
 									Unallocated Cost stay in the reconciliation above.
 								</td>
@@ -688,7 +806,7 @@ export default function ExpenditureView({
 												<span className="text-gray-500">
 													{project.project_name}
 												</span>
-												{multiCurrency && (
+												{project.currency !== reportingCurrencyCode && (
 													<span
 														data-testid="project-currency"
 														className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600"
@@ -703,6 +821,18 @@ export default function ExpenditureView({
 										</td>
 										<td className="px-3 py-2 text-right font-semibold text-gray-900">
 											{formatCurrencyIn(project.incurred_cost, project.currency)}
+										</td>
+										<td
+											data-testid="project-reporting-cost"
+											data-conversion-status={project.conversion_status}
+											className="px-3 py-2 text-right font-semibold text-gray-900"
+										>
+											{project.converted_incurred_cost === null
+												? `No rate to ${reportingCurrencyCode}`
+												: formatCurrencyIn(
+														project.converted_incurred_cost,
+														reportingCurrencyCode
+													)}
 										</td>
 										<td className="px-3 py-2 text-right text-gray-600">
 											{project.not_confirmed_cost === null
@@ -729,7 +859,7 @@ export default function ExpenditureView({
 									</tr>
 									{expanded && (
 										<tr key={`${project.project_id}-drilldown`}>
-											<td colSpan={6} className="bg-gray-50/70 px-3 py-2">
+											<td colSpan={7} className="bg-gray-50/70 px-3 py-2">
 												<div data-testid="project-drilldown">
 													<p className="mb-1 text-xs font-semibold text-gray-700">
 														Source records recognized against{' '}
@@ -771,18 +901,33 @@ export default function ExpenditureView({
 																	</span>
 																	<span>
 																		Gross{' '}
-																		{formatCurrencyIn(
+																		{formatSourceMoney(
 																			record.gross_amount,
 																			record.currency
 																		)}
 																	</span>
 																	<span className="font-semibold">
 																		Recognized{' '}
-																		{formatCurrencyIn(
+																		{formatSourceMoney(
 																			record.recognized_amount,
 																			record.currency
 																		)}
 																	</span>
+																	{record.conversion_status !== 'reporting' && (
+																		<span
+																			data-testid="record-conversion"
+																			data-status={record.conversion_status}
+																			data-rate={record.conversion_rate ?? ''}
+																			data-converted={
+																				record.converted_amount ?? ''
+																			}
+																			className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-900"
+																		>
+																			{record.conversion_status === 'unsupported'
+																				? `No rate to ${reportingCurrencyCode}`
+																				: `${record.currency} → ${reportingCurrencyCode} @ ${record.conversion_rate} on ${formatDate(record.conversion_date)} (${record.conversion_evidence_reference})`}
+																		</span>
+																	)}
 																	<span className="rounded bg-white px-1.5 py-0.5 text-[10px] text-gray-600">
 																		v{record.financial_version}
 																	</span>
@@ -868,7 +1013,7 @@ export default function ExpenditureView({
 									<td className="px-3 py-2 text-right text-gray-900">
 										{record.gross_amount === null
 											? 'Amount unknown'
-											: formatCurrencyIn(
+											: formatSourceMoney(
 													record.gross_amount,
 													record.currency
 												)}
@@ -958,6 +1103,17 @@ export default function ExpenditureView({
 					</table>
 				)}
 			</div>
+
+			{/* Approved cost budget (#321). Its own section: a budget never
+			    enters the cost totals above, and the comparison states its own
+			    basis, exclusions, and version history. */}
+			<BudgetSection
+				month={month}
+				section={data.budgets}
+				projectOptions={data.project_options}
+				canManage={canEditCost}
+				canApprove={canRecognize}
+			/>
 
 			<p className="mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed text-gray-500">
 				<BanknotesIcon className="h-3 w-3" />
@@ -1063,6 +1219,10 @@ function CostForm({
 	const [serviceEnd, setServiceEnd] = useState('');
 	const [billDate, setBillDate] = useState('');
 	const [currency, setCurrency] = useState('INR');
+	const [reportingCurrencyChoice, setReportingCurrencyChoice] = useState('INR');
+	const [conversionRate, setConversionRate] = useState('');
+	const [conversionDate, setConversionDate] = useState('');
+	const [conversionEvidence, setConversionEvidence] = useState('');
 	const [grossAmount, setGrossAmount] = useState('');
 	const [taxAmount, setTaxAmount] = useState('');
 	const [taxTreatment, setTaxTreatment] = useState('none');
@@ -1087,6 +1247,13 @@ function CostForm({
 		service_period_end: serviceEnd || serviceStart || null,
 		bill_date: billDate || null,
 		currency,
+		reporting_currency: reportingCurrencyChoice,
+		conversion_rate:
+			currency === reportingCurrencyChoice ? null : conversionRate || null,
+		conversion_date:
+			currency === reportingCurrencyChoice ? null : conversionDate || null,
+		conversion_evidence_reference:
+			currency === reportingCurrencyChoice ? null : conversionEvidence || null,
 		gross_amount: grossAmount === '' ? null : Number(grossAmount),
 		tax_amount: taxAmount === '' ? 0 : Number(taxAmount),
 		tax_treatment: taxTreatment,
@@ -1239,6 +1406,67 @@ function CostForm({
 					</label>
 					<label className="text-sm">
 						<span className="mb-1 block font-medium text-gray-700">
+							Reporting currency
+						</span>
+						<select
+							aria-label="Reporting currency"
+							value={reportingCurrencyChoice}
+							onChange={(event) =>
+								setReportingCurrencyChoice(event.target.value)
+							}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						>
+							{CURRENCIES.map((code) => (
+								<option key={code} value={code}>
+									{code}
+								</option>
+							))}
+						</select>
+					</label>
+					{currency !== reportingCurrencyChoice && (
+						<>
+							<label className="text-sm">
+								<span className="mb-1 block font-medium text-gray-700">
+									Conversion rate
+								</span>
+								<input
+									aria-label="Conversion rate"
+									value={conversionRate}
+									onChange={(event) => setConversionRate(event.target.value)}
+									placeholder={`1 ${currency} in ${reportingCurrencyChoice}`}
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+								/>
+							</label>
+							<label className="text-sm">
+								<span className="mb-1 block font-medium text-gray-700">
+									Conversion date
+								</span>
+								<input
+									type="date"
+									aria-label="Conversion date"
+									value={conversionDate}
+									onChange={(event) => setConversionDate(event.target.value)}
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+								/>
+							</label>
+							<label className="text-sm">
+								<span className="mb-1 block font-medium text-gray-700">
+									Conversion evidence reference
+								</span>
+								<input
+									aria-label="Conversion evidence reference"
+									value={conversionEvidence}
+									onChange={(event) =>
+										setConversionEvidence(event.target.value)
+									}
+									placeholder="Contract, bank advice, or rate source"
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+								/>
+							</label>
+						</>
+					)}
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
 							Gross amount
 						</span>
 						<input
@@ -1388,7 +1616,21 @@ function CostEditDialog({
 	);
 	const [serviceEnd, setServiceEnd] = useState(record.service_period_end ?? '');
 	const [billDate, setBillDate] = useState(record.expense_date ?? '');
-	const [currency, setCurrency] = useState(record.currency ?? 'INR');
+	// A NULL original currency stays empty: it is unknown, and the operator
+	// must choose a real code rather than have INR assumed for them.
+	const [currency, setCurrency] = useState(record.currency ?? '');
+	const [reportingCurrencyChoice, setReportingCurrencyChoice] = useState(
+		record.reporting_currency ?? 'INR'
+	);
+	const [conversionRate, setConversionRate] = useState(
+		record.conversion_rate ?? ''
+	);
+	const [conversionDate, setConversionDate] = useState(
+		record.conversion_date ?? ''
+	);
+	const [conversionEvidence, setConversionEvidence] = useState(
+		record.conversion_evidence_reference ?? ''
+	);
 	const [grossAmount, setGrossAmount] = useState(
 		record.gross_amount === null ? '' : String(record.gross_amount)
 	);
@@ -1415,7 +1657,20 @@ function CostEditDialog({
 		servicePeriodStart: serviceStart || null,
 		servicePeriodEnd: serviceEnd || null,
 		billDate: billDate || null,
-		currency,
+		currency: currency || null,
+		reportingCurrency: reportingCurrencyChoice,
+		conversionRate:
+			!currency || currency === reportingCurrencyChoice
+				? null
+				: conversionRate || null,
+		conversionDate:
+			!currency || currency === reportingCurrencyChoice
+				? null
+				: conversionDate || null,
+		conversionEvidenceReference:
+			!currency || currency === reportingCurrencyChoice
+				? null
+				: conversionEvidence || null,
 		grossAmount: grossAmount === '' ? null : Number(grossAmount),
 		taxAmount: taxAmount === '' ? null : Number(taxAmount),
 		taxTreatment,
@@ -1506,6 +1761,7 @@ function CostEditDialog({
 							onChange={(event) => setCurrency(event.target.value)}
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
+							<option value="">Unknown (not guessed)</option>
 							{CURRENCIES.map((code) => (
 								<option key={code} value={code}>
 									{code}
@@ -1513,6 +1769,67 @@ function CostEditDialog({
 							))}
 						</select>
 					</label>
+					<label className="text-sm">
+						<span className="mb-1 block font-medium text-gray-700">
+							Reporting currency
+						</span>
+						<select
+							aria-label="Reporting currency"
+							value={reportingCurrencyChoice}
+							onChange={(event) =>
+								setReportingCurrencyChoice(event.target.value)
+							}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+						>
+							{CURRENCIES.map((code) => (
+								<option key={code} value={code}>
+									{code}
+								</option>
+							))}
+						</select>
+					</label>
+					{currency !== '' && currency !== reportingCurrencyChoice && (
+						<>
+							<label className="text-sm">
+								<span className="mb-1 block font-medium text-gray-700">
+									Conversion rate
+								</span>
+								<input
+									aria-label="Conversion rate"
+									value={conversionRate}
+									onChange={(event) => setConversionRate(event.target.value)}
+									placeholder={`1 ${currency} in ${reportingCurrencyChoice}`}
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+								/>
+							</label>
+							<label className="text-sm">
+								<span className="mb-1 block font-medium text-gray-700">
+									Conversion date
+								</span>
+								<input
+									type="date"
+									aria-label="Conversion date"
+									value={conversionDate}
+									onChange={(event) => setConversionDate(event.target.value)}
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+								/>
+							</label>
+							<label className="text-sm">
+								<span className="mb-1 block font-medium text-gray-700">
+									Conversion evidence reference
+								</span>
+								<input
+									aria-label="Conversion evidence reference"
+									value={conversionEvidence}
+									onChange={(event) =>
+										setConversionEvidence(event.target.value)
+									}
+									placeholder="Contract, bank advice, or rate source"
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+								/>
+							</label>
+						</>
+					)}
 					<label className="text-sm">
 						<span className="mb-1 block font-medium text-gray-700">
 							Gross amount
