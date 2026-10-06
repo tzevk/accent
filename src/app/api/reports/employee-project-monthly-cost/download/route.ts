@@ -13,7 +13,6 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
-import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 import {
 	fetchEmployeeProjectCost,
 	fetchFYCompanyCost,
@@ -49,9 +48,10 @@ export async function GET(request: Request) {
 			RESOURCES.REPORTS,
 			PERMISSIONS.READ
 		);
-		const hasFieldPermission = hasProjectActivitiesFieldPermission(user);
 
-		if (!isSuperAdmin && !hasReportsPermission && !hasFieldPermission) {
+		// Financial access: a reporting privilege, never Project Activity access
+		// alone (same rule as the JSON route).
+		if (!isSuperAdmin && !hasReportsPermission) {
 			return NextResponse.json(
 				{
 					success: false,

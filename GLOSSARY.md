@@ -108,6 +108,18 @@ _Avoid_: Company Overhead, Bench Cost, Zero cost
 Estimated cost for goods or services already received but not yet invoiced. The related invoice replaces the estimate rather than creating a second cost.
 _Avoid_: Supplier commitment, Advance, Forecast cost
 
+**Cost Identity**:
+The stable `cost_uid` of one underlying cost, minted when the cost is captured and carried by every later source reference, command, and revision. One underlying cost has one identity whichever workflow recorded it; the expense number stays a display and search reference.
+_Avoid_: Expense number (when meaning identity), Row id, Document number
+
+**Recognition Period**:
+The month a cost belongs to (`recognition_period`, as its first day), with `period_basis` saying how it was established. It comes from the received-work/service period, or from the bill date as a disclosed fallback; an order date or a payment date never sets it.
+_Avoid_: Invoice month, Payment month, Accounting period
+
+**Recognition State**:
+A direct cost's financial state — `draft`, `pending_evidence`, `recognized`, `rejected`, or `cancelled`. Only `recognized` is confirmed cost, and only an authorized recognize command sets it. It is not the expense register's `status`, so approving a register row does not create cost.
+_Avoid_: Expense status, Approval status, Paid
+
 **Incurred Project Cost**:
 Employee cost and non-employee expenses recognized for a Project in a period, whether paid or unpaid. Excludes unfulfilled supplier commitments and client order value.
 _Avoid_: Cash paid, PO value, Total committed exposure

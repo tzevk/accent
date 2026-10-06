@@ -10,6 +10,9 @@ const numberFormatter = new Intl.NumberFormat('en-IN', {
 	maximumFractionDigits: 2,
 });
 
+/** One Intl formatter per currency code, built on first use. */
+const currencyFormatters = new Map();
+
 const dateFormatter = new Intl.DateTimeFormat('en-IN', {
 	day: '2-digit',
 	month: 'short',
@@ -41,6 +44,34 @@ export function formatNumber(value) {
 	const n = typeof value === 'string' ? parseFloat(value) : value;
 	if (Number.isNaN(n)) return '—';
 	return numberFormatter.format(n);
+}
+
+/**
+ * Money in the currency it was recorded in. The expenditure reconciliation
+ * keeps currencies apart, so it cannot print every figure with the INR
+ * formatter; an unrecognised code falls back to a plain decimal with the code
+ * in front, never to a wrong currency symbol.
+ */
+export function formatCurrencyIn(value, currency) {
+	if (value === null || value === undefined || value === '') return '—';
+	const n = typeof value === 'string' ? parseFloat(value) : value;
+	if (Number.isNaN(n)) return '—';
+	const code = currency || 'INR';
+	let formatter = currencyFormatters.get(code);
+	if (!formatter) {
+		try {
+			formatter = new Intl.NumberFormat('en-IN', {
+				style: 'currency',
+				currency: code,
+				minimumFractionDigits: 2,
+				maximumFractionDigits: 2,
+			});
+		} catch {
+			formatter = null;
+		}
+		currencyFormatters.set(code, formatter);
+	}
+	return formatter ? formatter.format(n) : `${code} ${numberFormatter.format(n)}`;
 }
 
 export function formatDate(value) {
