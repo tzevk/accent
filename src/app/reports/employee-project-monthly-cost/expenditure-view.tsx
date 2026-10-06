@@ -1202,7 +1202,7 @@ export default function ExpenditureView({
 													<ul className="space-y-1">
 														{drilldownQuery.data?.data.records.map((record) => (
 															<li
-																key={record.id}
+																key={`${record.source}-${record.id}-${record.split?.id ?? 0}`}
 																data-testid="drilldown-record"
 																data-source-reference={
 																	record.source_reference ?? ''
@@ -1362,7 +1362,7 @@ export default function ExpenditureView({
 						<tbody>
 							{queue.map((record) => (
 								<tr
-									key={record.id}
+									key={`${record.source}-${record.id}-${record.split?.id ?? 0}`}
 									data-testid="queue-row"
 									data-state={record.recognition_state}
 									data-source-reference={record.source_reference ?? ''}
@@ -1402,56 +1402,75 @@ export default function ExpenditureView({
 										</span>
 									</td>
 									<td className="px-3 py-2">
-										<div className="flex flex-wrap items-center gap-1.5">
-											{canEditCost && (
-												<button
-													type="button"
-													data-testid="queue-edit"
-													onClick={() => {
-														commandMutation.reset();
-														setEditTarget(record);
-													}}
-													className="rounded border border-[#64126D]/40 bg-[#64126D]/5 px-2 py-1 text-xs font-medium text-[#64126D] hover:bg-[#64126D]/10"
-												>
-													Edit
-												</button>
-											)}
-											{canRecognize ? (
-												<>
+										{record.source === 'direct_expense' ? (
+											<div className="flex flex-wrap items-center gap-1.5">
+												{canEditCost && (
 													<button
 														type="button"
-														onClick={() =>
-															setCommandTarget({ record, command: 'recognize' })
-														}
-														className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+														data-testid="queue-edit"
+														onClick={() => {
+															commandMutation.reset();
+															setEditTarget(record);
+														}}
+														className="rounded border border-[#64126D]/40 bg-[#64126D]/5 px-2 py-1 text-xs font-medium text-[#64126D] hover:bg-[#64126D]/10"
 													>
-														Recognize
+														Edit
 													</button>
-													<button
-														type="button"
-														onClick={() =>
-															setCommandTarget({ record, command: 'reject' })
-														}
-														className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
-													>
-														Reject
-													</button>
-													<button
-														type="button"
-														onClick={() =>
-															setCommandTarget({ record, command: 'cancel' })
-														}
-														className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-													>
-														Cancel cost
-													</button>
-												</>
-											) : (
-												<span className="text-xs text-gray-400">
-													Recognition needs approval access
-												</span>
-											)}
-										</div>
+												)}
+												{canRecognize ? (
+													<>
+														<button
+															type="button"
+															onClick={() =>
+																setCommandTarget({
+																	record,
+																	command: 'recognize',
+																})
+															}
+															className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+														>
+															Recognize
+														</button>
+														<button
+															type="button"
+															onClick={() =>
+																setCommandTarget({ record, command: 'reject' })
+															}
+															className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
+														>
+															Reject
+														</button>
+														<button
+															type="button"
+															onClick={() =>
+																setCommandTarget({ record, command: 'cancel' })
+															}
+															className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+														>
+															Cancel cost
+														</button>
+													</>
+												) : (
+													<span className="text-xs text-gray-400">
+														Recognition needs approval access
+													</span>
+												)}
+											</div>
+										) : (
+											// IDs come from different stores: another source's
+											// row is never commanded through this register's
+											// command path. Its recognition workflow lives in
+											// its own register (supplier invoices: the admin
+											// Purchase Invoice screen).
+											<span
+												data-testid="queue-source-note"
+												className="text-xs text-gray-500"
+											>
+												{record.source === 'supplier_invoice'
+													? 'Recognized in the Purchase Invoice register'
+													: `Source: ${record.source}`}
+											</span>
+										)}
 									</td>
 								</tr>
 							))}

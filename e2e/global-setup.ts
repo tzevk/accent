@@ -19,6 +19,10 @@ import {
 	seedOrderFixtures,
 } from './lib/order-fixtures';
 import {
+	cleanupSupplierInvoiceFixtures,
+	seedSupplierInvoiceFixtures,
+} from './lib/supplier-invoice-fixtures';
+import {
 	cleanupUtilizationFixtures,
 	seedUtilizationFixtures,
 } from './lib/utilization-fixtures';
@@ -34,6 +38,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupUtilizationFixtures();
 		await cleanupOrderFixtures();
 		await cleanupExpenditureFixtures();
+		await cleanupSupplierInvoiceFixtures();
 		await cleanupExpenditureCurrencyFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
@@ -100,6 +105,15 @@ export default async function globalSetup(): Promise<void> {
 				`and ${expenditure.budgetMonth} (${expenditure.costs} direct costs, ` +
 				`${expenditure.budgets} cost budgets, ` +
 				`${Object.keys(expenditure.projects).length} projects)`
+		);
+
+		const supplier = await seedSupplierInvoiceFixtures();
+		console.log(
+			`[e2e] supplier invoice fixtures seeded for ${supplier.month}, ` +
+				`${supplier.invoiceMonth} and ${supplier.laterMonth} ` +
+				`(${supplier.invoices} invoices, ` +
+				`${Object.keys(supplier.projects).length} projects, ` +
+				`${Object.keys(supplier.payableIds).length} payables)`
 		);
 
 		const currency = await seedExpenditureCurrencyFixtures();

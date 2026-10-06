@@ -79,20 +79,27 @@ import {
 } from './budget-records';
 import type { CommandOptions } from './commands';
 import { SOURCE_COVERAGE } from './coverage';
+import { loadCombinedDrilldown } from './drilldown';
 import {
 	loadChargeTotals,
 	loadCostEvents,
 	loadCostRecordsByIds,
-	loadDrilldown,
 	loadExpenditureMonths,
 	loadMonthCharges,
 	loadMonthProjectCost,
 	loadMonthRecords,
 	loadNonOperatingSources,
 	loadProjectOptions,
+	type ProjectOption,
 	type SqlConnection,
 } from './records';
 import { buildReconciliation, projectIdsIn } from './reconciliation';
+import { registerCostSource } from './sources';
+import {
+	SUPPLIER_INVOICE_ADAPTER,
+	loadSupplierInvoiceMonths,
+	loadSupplierMonthRecords,
+} from './supplier-invoices';
 import type {
 	CompanyReconciliation,
 	CostBudgetJournalEntry,
@@ -146,9 +153,41 @@ export type {
 	OrderValueTotal,
 	UpdateOrderInput,
 } from './orders';
+export {
+	linkCostReference,
+	registerCostIdentity,
+	registerCostSource,
+	resolveCostReference,
+} from './sources';
+export type {
+	CostLinkBasis,
+	CostLinkReviewState,
+	CostLinkRole,
+	CostReference,
+	CostSourceAdapter,
+} from './sources';
+export {
+	decideSupplierLink,
+	executeSupplierCommand,
+	initializeSupplierCost,
+	loadSupplierInvoiceDetail,
+} from './supplier-invoices';
+export type {
+	InitializeSupplierCostInput,
+	RecordedSupplierCost,
+	SupplierCommandInput,
+	SupplierInvoiceDetail,
+	SupplierInvoicePatch,
+	SupplierLinkCandidate,
+	SupplierLinkRow,
+	SupplierSplitInput,
+	SupplierSplitRow,
+} from './supplier-invoices';
+export { isDrilldownSource } from './drilldown';
 export { recordCostBudget, executeBudgetCommand } from './budget-commands';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
+export type { ProjectOption } from './records';
 export {
 	REPORTING_CURRENCY,
 	convertToReporting,
@@ -218,6 +257,8 @@ export type {
 	CostPatch,
 	CostRecord,
 	CostRecordJson,
+	CostSource,
+	CostSplitInfo,
 	CoverageNotice,
 	CurrencyReporting,
 	CurrencyTotal,
@@ -234,6 +275,7 @@ export type {
 	RecordCostInput,
 	RecordedCost,
 	ReconciliationProjectRow,
+	ReconciliationSourceSummary,
 	TaxTreatment,
 } from './types';
 
@@ -246,6 +288,10 @@ export interface CostBudgetDetail {
 const pool: SqlConnection = {
 	execute: (sql, params) => query(sql, params),
 };
+
+// The supplier source registers its adapter so a `cost_uid` can resolve to a
+// purchase invoice from anywhere in the module.
+registerCostSource(SUPPLIER_INVOICE_ADAPTER);
 
 /** The month before `YYYY-MM`, or null at the calendar's start. */
 function previousMonthOf(month: string): string | null {
@@ -262,9 +308,14 @@ export function currentMonth(): string {
 	return new Date().toISOString().slice(0, 7);
 }
 
-/** Months with direct cost recorded, newest first, including the current one. */
+/** Months with cost recorded, newest first, including the current one. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
-	return loadExpenditureMonths(pool, currentMonth());
+	const current = currentMonth();
+	const [direct, supplier] = await Promise.all([
+		loadExpenditureMonths(pool, current),
+		loadSupplierInvoiceMonths(pool, current),
+	]);
+	return [...new Set([...direct, ...supplier])].sort().reverse();
 }
 
 export interface ReconciliationRequest {
@@ -299,14 +350,17 @@ export async function fetchCompanyReconciliation(
 	const month = request.month;
 	const previousMonth = previousMonthOf(month);
 	const [
-		records,
+		directRecords,
+		supplierRecords,
 		charges,
 		monthNonOperating,
 		previousProjectCost,
 		projectOptions,
-		availableMonths,
+		directMonths,
+		supplierMonths,
 	] = await Promise.all([
 		loadMonthRecords(db, month),
+		loadSupplierMonthRecords(db, month),
 		loadMonthCharges(db, { month }),
 		loadNonOperatingSources(db, month),
 		previousMonth
@@ -314,7 +368,9 @@ export async function fetchCompanyReconciliation(
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
 		loadProjectOptions(db),
 		loadExpenditureMonths(db, currentMonth()),
+		loadSupplierInvoiceMonths(db, currentMonth()),
 	]);
+	const records = [...directRecords, ...supplierRecords];
 
 	// A charge can draw down a balance recognized in an earlier month, so the
 	// section needs those sources too; every other source of the month is
@@ -357,7 +413,9 @@ export async function fetchCompanyReconciliation(
 		budgets,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
-		availableMonths,
+		availableMonths: [...new Set([...directMonths, ...supplierMonths])]
+			.sort()
+			.reverse(),
 		coverageDeclarations: SOURCE_COVERAGE,
 		reportingCurrency: request.reportingCurrency ?? null,
 	});
@@ -390,12 +448,17 @@ export async function fetchBudgetJournal(
 	return loadBudgetEvents(options?.connection ?? pool, budgetUid);
 }
 
-/** Read the records behind a month's reconciliation. */
+/** Read the records behind a month's reconciliation (every cost source). */
 export async function fetchCostDrilldown(
 	queryInput: CostDrilldownQuery,
 	options?: CommandOptions
 ): Promise<CostDrilldown> {
-	return loadDrilldown(options?.connection ?? pool, queryInput);
+	return loadCombinedDrilldown(options?.connection ?? pool, queryInput);
+}
+
+/** The active Projects a cost-destination control can choose from. */
+export async function fetchProjectOptions(): Promise<ProjectOption[]> {
+	return loadProjectOptions(pool);
 }
 
 /** Read the versioned command history of one cost. */

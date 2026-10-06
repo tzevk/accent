@@ -32,6 +32,18 @@ export type PeriodChargeBasis = 'consumption' | 'depreciation' | 'amortization';
 
 export type PeriodChargeState = 'approved' | 'cancelled';
 
+/**
+ * Which native store a cost row lives in. IDs come from different stores, so
+ * every cost carries its source discriminator; `cost_uid` stays the canonical
+ * identity across all of them.
+ */
+export type CostSource =
+	| 'direct_expense'
+	| 'supplier_invoice'
+	| 'other_expense'
+	| 'petty_cash'
+	| 'non_operating'
+	| 'payroll';
 /** Confirmed cost is `recognized` and nothing else. */
 export type RecognitionState =
 	| 'draft'
@@ -219,8 +231,25 @@ export interface CostEvaluation {
 	exceptions: CostExceptionCode[];
 }
 
+/**
+ * A period slice of a cost that spans several service periods (one supplier
+ * invoice billed across months). The slices total the cost's own amount; the
+ * slice is never a second cost.
+ */
+export interface CostSplitInfo {
+	/** `supplier_invoice_periods.id`. */
+	id: number;
+	/** 1-based position within the cost's slices. */
+	index: number;
+	/** How many slices the cost has in total. */
+	count: number;
+}
+
 /** One direct cost as the financial module sees it. */
 export interface CostRecord extends CostFinancialInput {
+	source: CostSource;
+	/** The service-period slice this record represents, or null. */
+	split: CostSplitInfo | null;
 	id: number;
 	costUid: string | null;
 	expenseNumber: string;
@@ -483,6 +512,22 @@ export interface NonOperatingSection {
 	charges_from_prior_items: PeriodChargeJson[];
 }
 
+/**
+ * One cost source's slice of the month: recognized cost, cost awaiting
+ * recognition, and records whose evidence is still unresolved. A reader can
+ * see what each store contributes to the company total without re-adding it.
+ */
+export interface ReconciliationSourceSummary {
+	source: CostSource;
+	label: string;
+	confirmed_count: number;
+	/** Null when the source's confirmed rows span currencies or miss an amount. */
+	confirmed_amount: number | null;
+	currency: string | null;
+	pending_count: number;
+	pending_amount: number | null;
+	unresolved_evidence_count: number;
+}
 export interface CompanyReconciliation {
 	month: string;
 	month_label: string;
@@ -520,6 +565,7 @@ export interface CompanyReconciliation {
 	 */
 	non_operating: NonOperatingSection;
 	evidence: EvidenceSummary;
+	sources: ReconciliationSourceSummary[];
 	coverage: CoverageNotice[];
 	/**
 	 * The approved cost budgets behind this month's Project detail. Its own
@@ -640,6 +686,8 @@ export interface CostDrilldownQuery {
 	 */
 	nature?: CostNature | 'non_operating' | 'all';
 	projectId?: number | null;
+	/** Narrow to one cost source; 'all' (default) merges every source. */
+	source?: CostSource | 'all';
 	/**
 	 * The reporting basis the record's conversion status is stated in; absent
 	 * means the company reporting currency. Status, label, and figures then
@@ -659,6 +707,9 @@ export interface CostDrilldownQuery {
 export interface CostRecordJson {
 	id: number;
 	cost_uid: string | null;
+	source: CostSource;
+	/** The service-period slice this record represents, or null. */
+	split: CostSplitInfo | null;
 	expense_number: string;
 	recognition_state: RecognitionState;
 	cost_classification: CostClassification | null;

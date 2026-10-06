@@ -22,13 +22,13 @@ import { randomUUID } from 'node:crypto';
 import { add, sub, R, toNumber } from '@/lib/money';
 import { withTransaction } from '@/utils/database';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
+import { CostError } from './errors';
 import {
 	convertToReporting,
 	currencyCodeOf,
 	evidenceOf,
-	isCurrencyCode,
-	parseConversionRate,
 	reportingCurrencyOf,
+	resolveConversion,
 } from './currency';
 import {
 	evaluateCost,
@@ -37,6 +37,7 @@ import {
 	resolveRecognitionPeriod,
 } from './recognition';
 import { mapCostRow, type SqlConnection } from './records';
+import { registerCostIdentity } from './sources';
 import type {
 	CostCommandInput,
 	CostCommandName,
@@ -49,6 +50,8 @@ import type {
 	RecognitionState,
 } from './types';
 
+export { CostError };
+
 export interface CostActor {
 	id: number | null;
 }
@@ -56,26 +59,6 @@ export interface CostActor {
 export interface CommandOptions {
 	/** Use the caller's connection/transaction instead of opening one. */
 	connection?: SqlConnection;
-}
-
-/** A command or validation failure the route maps onto an HTTP status. */
-export class CostError extends Error {
-	readonly code: string;
-	readonly status: number;
-	readonly detail: Record<string, unknown>;
-
-	constructor(
-		code: string,
-		message: string,
-		status: number,
-		detail: Record<string, unknown> = {}
-	) {
-		super(message);
-		this.name = 'CostError';
-		this.code = code;
-		this.status = status;
-		this.detail = detail;
-	}
 }
 
 /**
@@ -202,114 +185,6 @@ function pickEnum<T extends string>(
 	return (allowed as readonly string[]).includes(candidate)
 		? (candidate as T)
 		: null;
-}
-
-interface ResolvedConversion {
-	currency: string | null;
-	reportingCurrency: string;
-	conversionRate: string | null;
-	conversionDate: string | null;
-	conversionEvidenceReference: string | null;
-}
-
-/**
- * Validate the original currency, the reporting target, and the optional
- * conversion triple. Evidence moves as a whole or not at all; a rate for a
- * cost already in its reporting currency, or for a cost whose original
- * currency is unknown, is contradictory and refused rather than dropped.
- */
-function resolveConversion(input: {
-	currency: unknown;
-	reportingCurrency: unknown;
-	conversionRate: unknown;
-	conversionDate: unknown;
-	conversionEvidenceReference: unknown;
-}): ResolvedConversion {
-	if (!isCurrencyCode(input.currency)) {
-		throw new CostError(
-			'invalid_currency',
-			'Currency must be a three-letter code',
-			422,
-			{ field: 'currency' }
-		);
-	}
-	if (!isCurrencyCode(input.reportingCurrency)) {
-		throw new CostError(
-			'invalid_currency',
-			'Reporting currency must be a three-letter code',
-			422,
-			{ field: 'reporting_currency' }
-		);
-	}
-	const currency = currencyCodeOf(input.currency);
-	const reportingCurrency = reportingCurrencyOf({
-		reportingCurrency: currencyCodeOf(input.reportingCurrency),
-	});
-	const rawRate = input.conversionRate;
-	const rateText =
-		rawRate === null || rawRate === undefined ? null : String(rawRate).trim();
-	const hasRate = rateText !== null && rateText.length > 0;
-	const conversionDate = dateOrNull(input.conversionDate);
-	const conversionEvidenceReference = text(
-		input.conversionEvidenceReference,
-		500
-	);
-	const hasAny =
-		hasRate || conversionDate !== null || conversionEvidenceReference !== null;
-	if (!hasAny) {
-		return {
-			currency,
-			reportingCurrency,
-			conversionRate: null,
-			conversionDate: null,
-			conversionEvidenceReference: null,
-		};
-	}
-	if (currency === null) {
-		throw new CostError(
-			'conversion_requires_currency',
-			'Conversion evidence needs the original currency first',
-			422,
-			{ field: 'conversion_rate' }
-		);
-	}
-	if (currency === reportingCurrency) {
-		throw new CostError(
-			'conversion_not_applicable',
-			'A cost already in its reporting currency carries no conversion evidence',
-			422,
-			{ field: 'conversion_rate' }
-		);
-	}
-	if (hasRate && parseConversionRate(rateText) === null) {
-		throw new CostError(
-			'invalid_conversion_rate',
-			'Conversion rate must be positive with at most 10 decimal places',
-			422,
-			{ field: 'conversion_rate' }
-		);
-	}
-	const missing: string[] = [];
-	if (!hasRate) missing.push('conversion_rate');
-	if (conversionDate === null) missing.push('conversion_date');
-	if (conversionEvidenceReference === null) {
-		missing.push('conversion_evidence_reference');
-	}
-	if (missing.length > 0) {
-		throw new CostError(
-			'conversion_evidence_incomplete',
-			'Conversion evidence needs the rate, its effective date, and its evidence reference together',
-			422,
-			{ missing }
-		);
-	}
-	return {
-		currency,
-		reportingCurrency,
-		conversionRate: rateText,
-		conversionDate,
-		conversionEvidenceReference,
-	};
 }
 
 function enumOrThrow<T extends string>(
@@ -575,6 +450,16 @@ export async function recordCost(
 					]
 				)) as [Record<string, unknown>, unknown];
 				const insertId = Number(result.insertId);
+
+				// The cost-bearing row registers its canonical identity in the
+				// shared link table, in the same transaction, so foreign
+				// references (payables, receipts, later sources) can resolve it.
+				await registerCostIdentity(db, {
+					costUid,
+					sourceTable: 'expenses',
+					sourceId: insertId,
+					createdBy: actor.id,
+				});
 
 				await writeJournal(db, {
 					costUid,
