@@ -6,6 +6,7 @@ const earnings = [
 	['hra', 'HRA'],
 	['conveyance', 'Conveyance'],
 	['call_allowance', 'Call Allowance'],
+	['bonus', 'Bonus'],
 	['incentive', 'Incentive'],
 	['other_allowances', 'Other Allowances'],
 ];
@@ -29,7 +30,6 @@ const employerContributions = [
 	['pf_employer', 'Employer PF'],
 	['esic_employer', 'Employer ESIC'],
 	['mlwf_employer', 'Employer MLWF'],
-	['bonus', 'Bonus'],
 	['insurance', 'Insurance'],
 ];
 
