@@ -16,7 +16,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
-import { fetchCostDrilldown } from '@/lib/company-expenditure';
+import { fetchCostDrilldown, isCurrencyCode } from '@/lib/company-expenditure';
 import type { CostDrilldownQuery } from '@/lib/company-expenditure';
 
 export const runtime = 'nodejs';
@@ -104,6 +104,23 @@ export async function GET(request: Request) {
 			}
 		}
 
+		// The reporting basis the record status is stated in; absent means the
+		// company reporting currency. The shared validator owns the rule.
+		const reportingParam = url.searchParams.get('reporting_currency');
+		const reportingCurrency = reportingParam
+			? reportingParam.trim().toUpperCase()
+			: null;
+		if (reportingCurrency !== null && !isCurrencyCode(reportingCurrency)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Valid reporting_currency (three-letter code) is required',
+					code: 'invalid_reporting_currency',
+				},
+				{ status: 400 }
+			);
+		}
+
 		const limitParam = url.searchParams.get('limit');
 		const limit = limitParam === null ? 50 : Number(limitParam);
 		if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
@@ -126,6 +143,7 @@ export async function GET(request: Request) {
 			state: state as CostDrilldownQuery['state'],
 			classification: classification as CostDrilldownQuery['classification'],
 			projectId,
+			reportingCurrency,
 			limit,
 			offset,
 		};

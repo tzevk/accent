@@ -30,7 +30,7 @@ import {
 } from '@heroicons/react/24/outline';
 import SearchableSelect from '@/components/ui/searchable-select';
 import { apiGet, apiPost } from '@/lib/api-client';
-import { formatCurrencyIn, formatDate } from '@/lib/format';
+import { formatCurrencyIn, formatDate, formatNumber } from '@/lib/format';
 import type { CostRecordJson } from '@/lib/company-expenditure/types';
 import BudgetSection, { type BudgetSectionPayload } from './budget-section';
 
@@ -212,7 +212,7 @@ function errorMessage(error: unknown): string {
 function formatSourceMoney(value: number | null, currency: string | null): string {
 	if (value === null) return '—';
 	return currency === null
-		? `${value.toFixed(2)} (currency unknown)`
+		? `${formatNumber(value)} (currency unknown)`
 		: formatCurrencyIn(value, currency);
 }
 
@@ -250,11 +250,12 @@ export default function ExpenditureView({
 	});
 
 	const queueQuery = useQuery<{ data: DrilldownPayload }>({
-		queryKey: ['expenditure-queue', month],
+		queryKey: ['expenditure-queue', month, reportingCurrency],
 		queryFn: () =>
 			apiGet('/api/reports/employee-project-monthly-cost/expenses', {
 				month,
 				state: 'unconfirmed',
+				reporting_currency: reportingCurrency,
 			}),
 		enabled: !!month,
 		refetchOnWindowFocus: false,
@@ -262,12 +263,13 @@ export default function ExpenditureView({
 	});
 
 	const drilldownQuery = useQuery<{ data: DrilldownPayload }>({
-		queryKey: ['expenditure-drilldown', month, expandedProject],
+		queryKey: ['expenditure-drilldown', month, expandedProject, reportingCurrency],
 		queryFn: () =>
 			apiGet('/api/reports/employee-project-monthly-cost/expenses', {
 				month,
 				state: 'recognized',
 				project_id: expandedProject ?? undefined,
+				reporting_currency: reportingCurrency,
 			}),
 		enabled: expandedProject !== null,
 		refetchOnWindowFocus: false,
@@ -432,9 +434,12 @@ export default function ExpenditureView({
 			</div>
 
 			<p className="mb-1 text-xs text-gray-500">
-				Company Incurred Cost for {data.month_label}, stated in{' '}
-				{reportingCurrencyCode}. Each recognized direct cost is counted once;
-				Project filters narrow the detail only.
+				Company Incurred Cost for {data.month_label}
+				{data.company.currency !== null
+					? `, stated in ${data.company.currency}`
+					: ', shown per currency'}
+				. Each recognized direct cost is counted once; Project filters narrow
+				the detail only.
 			</p>
 			<p
 				data-testid="conversion-status"
@@ -1113,6 +1118,7 @@ export default function ExpenditureView({
 					record={editTarget}
 					projectOptions={data.project_options}
 					submitting={commandMutation.isPending}
+					canApprove={canRecognize}
 					error={
 						commandMutation.isError ? errorMessage(commandMutation.error) : null
 					}
@@ -1231,6 +1237,21 @@ function CostForm({
 		evidence_reference: evidenceReference || null,
 		submit: submitForRecognition,
 	});
+
+	// Evidence typed for one pair is not evidence for another: clearing it on a
+	// pair change keeps the typed rate from being attached to a new currency.
+	const changeCurrency = (next: string) => {
+		setCurrency(next);
+		setConversionRate('');
+		setConversionDate('');
+		setConversionEvidence('');
+	};
+	const changeReportingCurrency = (next: string) => {
+		setReportingCurrencyChoice(next);
+		setConversionRate('');
+		setConversionDate('');
+		setConversionEvidence('');
+	};
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
@@ -1363,7 +1384,7 @@ function CostForm({
 						<select
 							aria-label="Currency"
 							value={currency}
-							onChange={(event) => setCurrency(event.target.value)}
+							onChange={(event) => changeCurrency(event.target.value)}
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
 							{CURRENCIES.map((code) => (
@@ -1381,7 +1402,7 @@ function CostForm({
 							aria-label="Reporting currency"
 							value={reportingCurrencyChoice}
 							onChange={(event) =>
-								setReportingCurrencyChoice(event.target.value)
+								changeReportingCurrency(event.target.value)
 							}
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
@@ -1551,6 +1572,8 @@ interface CostEditDialogProps {
 	}>;
 	submitting: boolean;
 	error: string | null;
+	/** `other_expenses:approve` — the currency pair and its evidence are approval acts. */
+	canApprove: boolean;
 	onCancel: () => void;
 	onSubmit: (patch: Record<string, unknown>) => void;
 }
@@ -1568,6 +1591,7 @@ function CostEditDialog({
 	projectOptions,
 	submitting,
 	error,
+	canApprove,
 	onCancel,
 	onSubmit,
 }: CostEditDialogProps) {
@@ -1618,6 +1642,23 @@ function CostEditDialog({
 		value: String(option.project_id),
 		label: `${option.project_code} — ${option.project_name}`,
 	}));
+
+	// A stored rate is evidence for the pair it was recorded against. Changing
+	// either side clears it here, so the dialog never re-sends an old pair's
+	// rate for a new pair; fresh evidence (or none) is the operator's explicit
+	// statement, and the server refuses a convertible pair without it.
+	const changeCurrency = (next: string) => {
+		setCurrency(next);
+		setConversionRate('');
+		setConversionDate('');
+		setConversionEvidence('');
+	};
+	const changeReportingCurrency = (next: string) => {
+		setReportingCurrencyChoice(next);
+		setConversionRate('');
+		setConversionDate('');
+		setConversionEvidence('');
+	};
 
 	const buildPatch = () => ({
 		classification: classification || null,
@@ -1727,8 +1768,9 @@ function CostEditDialog({
 						<select
 							aria-label="Currency"
 							value={currency}
-							onChange={(event) => setCurrency(event.target.value)}
-							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+							onChange={(event) => changeCurrency(event.target.value)}
+							disabled={!canApprove}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
 						>
 							<option value="">Unknown (not guessed)</option>
 							{CURRENCIES.map((code) => (
@@ -1746,9 +1788,10 @@ function CostEditDialog({
 							aria-label="Reporting currency"
 							value={reportingCurrencyChoice}
 							onChange={(event) =>
-								setReportingCurrencyChoice(event.target.value)
+								changeReportingCurrency(event.target.value)
 							}
-							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+							disabled={!canApprove}
+							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
 						>
 							{CURRENCIES.map((code) => (
 								<option key={code} value={code}>
@@ -1767,8 +1810,9 @@ function CostEditDialog({
 									aria-label="Conversion rate"
 									value={conversionRate}
 									onChange={(event) => setConversionRate(event.target.value)}
+									disabled={!canApprove}
 									placeholder={`1 ${currency} in ${reportingCurrencyChoice}`}
-									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
 								/>
 							</label>
 							<label className="text-sm">
@@ -1780,7 +1824,8 @@ function CostEditDialog({
 									aria-label="Conversion date"
 									value={conversionDate}
 									onChange={(event) => setConversionDate(event.target.value)}
-									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+									disabled={!canApprove}
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
 								/>
 							</label>
 							<label className="text-sm">
@@ -1793,8 +1838,9 @@ function CostEditDialog({
 									onChange={(event) =>
 										setConversionEvidence(event.target.value)
 									}
+									disabled={!canApprove}
 									placeholder="Contract, bank advice, or rate source"
-									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+									className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
 								/>
 							</label>
 						</>

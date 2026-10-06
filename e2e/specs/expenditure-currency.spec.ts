@@ -224,6 +224,7 @@ interface DrilldownRecord {
 	conversion_date: string | null;
 	conversion_evidence_reference: string | null;
 	converted_amount: number | null;
+	conversion_status: string;
 	exceptions: string[];
 }
 
@@ -506,6 +507,37 @@ test('converts supported currencies into reporting totals that reconcile to thei
 	expect(slice(usdBasis, 'USD').reporting.incurred_cost).toBe(197047.62);
 	expect(coverageCodes(usdBasis)).toContain('currency_conversion_missing');
 
+	// The drilldown states each record's status in the same selected basis.
+	const usdDrill = await drilldown(request, {
+		month: MONTH,
+		state: 'recognized',
+		reporting_currency: 'USD',
+	});
+	expect(
+		usdDrill.records.find(
+			(record) => record.expense_number === 'E2E-EXP-319-0001'
+		)!.conversion_status
+	).toBe('unsupported');
+	expect(
+		usdDrill.records.find(
+			(record) => record.expense_number === 'E2E-EXP-319-0002'
+		)!.conversion_status
+	).toBe('reporting');
+	const inrDrill = await drilldown(request, {
+		month: MONTH,
+		state: 'recognized',
+	});
+	expect(
+		inrDrill.records.find(
+			(record) => record.expense_number === 'E2E-EXP-319-0001'
+		)!.conversion_status
+	).toBe('reporting');
+	expect(
+		inrDrill.records.find(
+			(record) => record.expense_number === 'E2E-EXP-319-0002'
+		)!.conversion_status
+	).toBe('converted');
+
 	evidence.converted = {
 		expected: {
 			groups: OCTOBER_GROUPS,
@@ -783,6 +815,20 @@ test('records conversion evidence through the real report controls', async ({
 	await page.getByLabel('Reporting currency', { exact: true }).selectOption('USD');
 	await expect(page.getByTestId('conversion-warning')).toBeVisible();
 	await expect(page.getByTestId('conversion-warning')).toContainText('USD');
+	// The drilldown is stated in the same selected basis: the INR cost has no
+	// rate to USD, and the badge says that instead of relabelling evidence.
+	const alphaExpand = page.locator(
+		`[data-testid="expenditure-project-row"][data-project-code="${CURRENCY_PROJECTS.alpha.code}"] [data-testid="project-expand"]`
+	);
+	await alphaExpand.click();
+	const inrDrillRow = page.locator(
+		'[data-testid="drilldown-record"][data-source-reference="E2E-319-INV-07"]'
+	);
+	await expect(inrDrillRow).toBeVisible();
+	const usdBadge = inrDrillRow.getByTestId('record-conversion');
+	await expect(usdBadge).toHaveAttribute('data-status', 'unsupported');
+	await expect(usdBadge).toContainText('No rate to USD');
+	await alphaExpand.click();
 	await page
 		.getByLabel('Reporting currency', { exact: true })
 		.selectOption('INR');
@@ -1056,6 +1102,153 @@ test('refuses partial conversion evidence and register-side rate edits', async (
 	};
 });
 
+test('refuses a stale rate on a currency-pair change and honors fresh evidence', async ({
+	request,
+	playwright,
+}) => {
+	// A pending cost holding a full USD → INR triple.
+	const created = await request.post('/api/admin/expenses', {
+		data: {
+			category: CURRENCY_CATEGORY,
+			description: 'E2E 319 pair-change cost',
+			vendor_name: `${CURRENCY_VENDOR_PREFIX}pair`,
+			expense_date: `${CONTROL_MONTH}-22`,
+			currency: 'USD',
+			reporting_currency: 'INR',
+			conversion_rate: '83.5',
+			conversion_date: `${CONTROL_MONTH}-01`,
+			conversion_evidence_reference: 'E2E-319-RATE-PAIR',
+			gross_amount: 100,
+			cost_classification: 'unallocated',
+			source_reference: 'E2E-319-INV-PAIR',
+			submit: true,
+		},
+	});
+	expect(created.status(), await created.text()).toBe(200);
+	const record = (await created.json()).data as {
+		id: number;
+		cost_uid: string;
+		financial_version: number;
+	};
+	created.push({ id: record.id, cost_uid: record.cost_uid, where: 'pair-change' });
+	const expectedVersion = record.financial_version;
+
+	// The pair is an approval act: an editor without :approve cannot touch it,
+	// so a currency-only patch cannot bypass the conversion gate.
+	const editor = await loginExpenditureCurrencyEditor(
+		playwright,
+		E2E_ENV.baseURL
+	);
+	let unauthorizedStatus = 0;
+	try {
+		const unauthorized = await editor.post(
+			`/api/admin/expenses/${record.id}/commands`,
+			{
+				data: {
+					command: 'update',
+					expected_version: expectedVersion,
+					patch: { currency: 'EUR' },
+				},
+			}
+		);
+		unauthorizedStatus = unauthorized.status();
+		expect(unauthorized.status()).toBe(403);
+	} finally {
+		await editor.dispose();
+	}
+
+	// Even an approver cannot carry the USD rate onto EUR: the pair change
+	// needs fresh evidence, and the refusal persists nothing.
+	const stale = await request.post(
+		`/api/admin/expenses/${record.id}/commands`,
+		{
+			data: {
+				command: 'update',
+				expected_version: expectedVersion,
+				patch: { currency: 'EUR' },
+			},
+		}
+	);
+	expect(stale.status()).toBe(422);
+	const staleBody = (await stale.json()) as { code: string; fields: string[] };
+	expect(staleBody.code).toBe('conversion_evidence_required');
+	expect(staleBody.fields).toContain('conversion_rate');
+	const untouched = await rows<Record<string, unknown>>(
+		`SELECT currency, reporting_currency, conversion_rate, conversion_date,
+            conversion_evidence_reference, converted_amount, financial_version
+       FROM expenses WHERE id = ?`,
+		[record.id]
+	);
+	expect(untouched[0].currency).toBe('USD');
+	expect(String(untouched[0].conversion_rate)).toBe('83.5');
+	expect(String(untouched[0].conversion_evidence_reference)).toBe(
+		'E2E-319-RATE-PAIR'
+	);
+	expect(untouched[0].converted_amount).toBeNull();
+	expect(Number(untouched[0].financial_version)).toBe(1);
+
+	// The full fresh triple for the new pair is accepted, and it is the rate
+	// that prices the cost when it is recognized.
+	const fresh = await request.post(
+		`/api/admin/expenses/${record.id}/commands`,
+		{
+			data: {
+				command: 'update',
+				expected_version: expectedVersion,
+				patch: {
+					currency: 'EUR',
+					conversion_rate: '90.25',
+					conversion_date: `${CONTROL_MONTH}-02`,
+					conversion_evidence_reference: 'E2E-319-RATE-PAIR-EUR',
+				},
+			},
+		}
+	);
+	expect(fresh.status(), await fresh.text()).toBe(200);
+	expect((await fresh.json()).data.financial_version).toBe(2);
+	const repriced = await rows<Record<string, unknown>>(
+		`SELECT currency, conversion_rate, converted_amount FROM expenses WHERE id = ?`,
+		[record.id]
+	);
+	expect(repriced[0].currency).toBe('EUR');
+	expect(String(repriced[0].conversion_rate)).toBe('90.25');
+	expect(repriced[0].converted_amount).toBeNull();
+
+	const recognize = await request.post(
+		`/api/admin/expenses/${record.id}/commands`,
+		{
+			data: {
+				command: 'recognize',
+				expected_version: 2,
+				reason: 'E2E 319 fresh pair evidence reviewed',
+			},
+		}
+	);
+	expect(recognize.status(), await recognize.text()).toBe(200);
+	const priced = await rows<Record<string, unknown>>(
+		`SELECT recognized_amount, converted_amount FROM expenses WHERE id = ?`,
+		[record.id]
+	);
+	// 100 EUR × 90.25, never × the old 83.5.
+	expect(Number(priced[0].recognized_amount)).toBe(100);
+	expect(Number(priced[0].converted_amount)).toBe(9025);
+
+	const data = await reconciliation(request, CONTROL_MONTH);
+	const eur = slice(data, 'EUR');
+	expect(eur.reporting.status).toBe('converted');
+	expect(eur.reporting.incurred_cost).toBe(CONTROL.eurConverted + 9025);
+	expect(eur.incurred_cost).toBe(CONTROL.eurOriginal + 100);
+
+	evidence.pairChange = {
+		unauthorizedStatus,
+		staleRefusal: staleBody,
+		originalRatePreserved: String(untouched[0].conversion_rate),
+		freshRate: String(repriced[0].conversion_rate),
+		converted: Number(priced[0].converted_amount),
+		eurReporting: eur.reporting.incurred_cost,
+	};
+});
+
 test('regenerates the JSON evidence artifact', async () => {
 	publish();
 	const artifact = readArtifact('expenditure-currency');
@@ -1070,4 +1263,5 @@ test('regenerates the JSON evidence artifact', async () => {
 	expect(artifact.uiRecorded).toBeTruthy();
 	expect(artifact.unknownCurrency).toBeTruthy();
 	expect(artifact.refusals).toBeTruthy();
+	expect(artifact.pairChange).toBeTruthy();
 });

@@ -36,9 +36,12 @@ const COMMANDS: CostCommandName[] = [
 /**
  * Conversion evidence reprices cost in the reporting currency, so setting or
  * changing it is an approval act even though it travels in an `update`
- * command; every other field edit stays `other_expenses:update`.
+ * command; changing either side of the currency pair is the same act (and the
+ * module refuses it without fresh evidence), so it is gated here too. Every
+ * other field edit stays `other_expenses:update`.
  */
 const CONVERSION_PATCH_FIELDS = [
+	'currency',
 	'reportingCurrency',
 	'conversionRate',
 	'conversionDate',

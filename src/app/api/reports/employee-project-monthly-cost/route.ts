@@ -38,6 +38,7 @@ import {
 import {
 	fetchCompanyReconciliation,
 	fetchExpenditureMonths,
+	isCurrencyCode,
 } from '@/lib/company-expenditure';
 
 export const runtime = 'nodejs';
@@ -122,12 +123,13 @@ export async function GET(request: Request) {
 			}
 			// The reporting basis is part of the request; absent means the
 			// company reporting currency. Only costs with matching stored
-			// conversion evidence are stated in it.
+			// conversion evidence are stated in it. The shared validator owns
+			// the three-letter rule, so route and module cannot drift.
 			const reportingCurrencyParam = url.searchParams.get('reporting_currency');
 			const reportingCurrency = reportingCurrencyParam
 				? reportingCurrencyParam.trim().toUpperCase()
 				: null;
-			if (reportingCurrency && !/^[A-Z]{3}$/.test(reportingCurrency)) {
+			if (reportingCurrency !== null && !isCurrencyCode(reportingCurrency)) {
 				return NextResponse.json(
 					{
 						success: false,
