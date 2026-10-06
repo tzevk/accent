@@ -71,7 +71,7 @@ export async function PUT(request, { params }) {
 				{
 					success: false,
 					error:
-						'This payable\'s link to its underlying cost changes through the invoice link review, not the register.',
+						"This payable's link to its underlying cost changes through the invoice link review, not the register.",
 					code: 'link_change_requires_review',
 					fields: attemptedLinks,
 				},

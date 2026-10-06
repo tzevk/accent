@@ -8,10 +8,7 @@ import {
 import { logActivity } from '@/utils/activity-logger';
 import { R, sub, gte, gt, toNumber } from '@/lib/money';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
-import {
-	CostError,
-	initializeSupplierCost,
-} from '@/lib/company-expenditure';
+import { CostError, initializeSupplierCost } from '@/lib/company-expenditure';
 
 const TABLE = 'purchase_invoices';
 

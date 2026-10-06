@@ -111,37 +111,6 @@ import type {
 
 export { recordCost, executeCommand, loadCost, CostError } from './commands';
 export type { CostActor, CommandOptions } from './commands';
-export {
-	linkCostReference,
-	registerCostIdentity,
-	registerCostSource,
-	resolveCostReference,
-} from './sources';
-export type {
-	CostLinkBasis,
-	CostLinkReviewState,
-	CostLinkRole,
-	CostReference,
-	CostSourceAdapter,
-} from './sources';
-export {
-	decideSupplierLink,
-	executeSupplierCommand,
-	initializeSupplierCost,
-	loadSupplierInvoiceDetail,
-} from './supplier-invoices';
-export type {
-	InitializeSupplierCostInput,
-	RecordedSupplierCost,
-	SupplierCommandInput,
-	SupplierInvoiceDetail,
-	SupplierInvoicePatch,
-	SupplierLinkCandidate,
-	SupplierLinkRow,
-	SupplierSplitInput,
-	SupplierSplitRow,
-} from './supplier-invoices';
-export { isDrilldownSource } from './drilldown';
 export { capturePeriodCharge, cancelPeriodCharge } from './charges';
 export type {
 	CapturePeriodChargeInput,
@@ -184,6 +153,37 @@ export type {
 	OrderValueTotal,
 	UpdateOrderInput,
 } from './orders';
+export {
+	linkCostReference,
+	registerCostIdentity,
+	registerCostSource,
+	resolveCostReference,
+} from './sources';
+export type {
+	CostLinkBasis,
+	CostLinkReviewState,
+	CostLinkRole,
+	CostReference,
+	CostSourceAdapter,
+} from './sources';
+export {
+	decideSupplierLink,
+	executeSupplierCommand,
+	initializeSupplierCost,
+	loadSupplierInvoiceDetail,
+} from './supplier-invoices';
+export type {
+	InitializeSupplierCostInput,
+	RecordedSupplierCost,
+	SupplierCommandInput,
+	SupplierInvoiceDetail,
+	SupplierInvoicePatch,
+	SupplierLinkCandidate,
+	SupplierLinkRow,
+	SupplierSplitInput,
+	SupplierSplitRow,
+} from './supplier-invoices';
+export { isDrilldownSource } from './drilldown';
 export { recordCostBudget, executeBudgetCommand } from './budget-commands';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
@@ -395,7 +395,6 @@ export async function fetchCompanyReconciliation(
 			.map((record) => record.costUid)
 			.filter((uid): uid is string => !!uid)
 	);
-
 	// A budget is read when it covers the month or belongs to a Project the
 	// month has a row for, so an approved budget for another period is stated
 	// as such instead of the Project reading as unbudgeted.

@@ -10,10 +10,10 @@
  */
 
 import {
+	REPORTING_CURRENCY,
 	conversionStatusOf,
 	currencyCodeOf,
 	evidenceOf,
-	REPORTING_CURRENCY,
 } from './currency';
 import { evaluateCost } from './recognition';
 import type {
@@ -142,6 +142,8 @@ export function mapCostRow(row: DbRow): CostRecord {
 	};
 	return {
 		...financial,
+		source: 'direct_expense',
+		split: null,
 		id: Number(num(row, 'id') ?? 0),
 		costUid: s(row, 'cost_uid'),
 		expenseNumber: s(row, 'expense_number', '') ?? '',
@@ -167,6 +169,8 @@ export function toCostRecordJson(
 	return {
 		id: record.id,
 		cost_uid: record.costUid,
+		source: record.source,
+		split: record.split,
 		expense_number: record.expenseNumber,
 		recognition_state: record.state,
 		cost_classification: record.classification,
@@ -650,7 +654,8 @@ function natureFilterClause(nature: CostDrilldownQuery['nature']): {
 /**
  * A drilldown subtotal that may only be stated in one currency: one unknown
  * amount or a second currency makes it null, because an unknown amount is not
- * zero and currencies are never added.
+ * zero and currencies are never added. Shared by the expense drilldown reader
+ * (`drilldown.ts`), which derives the counts from its merged records.
  */
 export function statedSubtotal(input: {
 	amount: number | null;
@@ -668,17 +673,17 @@ export function statedSubtotal(input: {
 }
 
 /**
- * The direct-expense rows matching a drilldown query, unpaginated, with the
- * state and nature filters applied. The combined reader (`drilldown.ts`)
- * merges this with the other cost sources and the period-charge section before
- * it sorts and pages, so one filter can never page one store's records past
- * another's; the charge totals live there too.
+ * The direct-expense rows matching a drilldown query, unpaginated. The
+ * combined drilldown (`drilldown.ts`) merges this with the other cost sources
+ * before it sorts and pages, so one filter can never page one store's records
+ * past another's.
  */
 export async function loadFilteredExpenseRecords(
 	db: SqlConnection,
 	query: CostDrilldownQuery
 ): Promise<CostRecord[]> {
 	const { start, end } = monthBounds(query.month);
+
 	const state = stateFilterClause(query.state);
 	const nature = natureFilterClause(query.nature);
 	const where = [
@@ -707,11 +712,11 @@ export async function loadFilteredExpenseRecords(
 		where.push('e.project_id = ?');
 		params.push(query.projectId);
 	}
-	const [rows] = await db.execute(
+	const [rows] = (await db.execute(
 		`${COST_SELECT}
       WHERE ${where.join(' AND ')}
       ORDER BY e.recognition_period DESC, e.expense_date DESC, e.id DESC`,
 		params
-	);
+	)) as [DbRow[], unknown];
 	return (rows as DbRow[]).map(mapCostRow);
 }

@@ -1,4 +1,4 @@
-# Company Project Expenditure — Implementation (tickets #306, #310, #311, #317, #319, #321)
+# Company Project Expenditure — Implementation (tickets #306, #311, #317, #321)
 
 ## Overview
 
@@ -476,6 +476,18 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
 - Entry captures the triple through the report's Record cost form; afterwards
   only the versioned `update` command may change it, and that patch requires
   `other_expenses:approve`. The register PUT refuses the fields.
+- A rate is evidence for one currency pair: changing `currency` or
+  `reporting_currency` never inherits the stored triple. The command needs the
+  full fresh evidence for a new convertible pair (`conversion_evidence_required`)
+  and the report's edit dialog clears the old evidence when the pair changes, so
+  a stale rate cannot be re-associated with a new currency or silently reprice
+  the figures. Pair changes are approval-gated like other conversion patches.
+- The drilldown carries the same selected basis as the report
+  (`reporting_currency` on the expenses route), and each record's
+  `conversion_status` is computed in it; status, badge, and figures therefore
+  always describe the same basis. The leading total names the basis it is
+  actually stated in (the native single-currency total when no combined total
+  exists).
 
 ## Public interface for later slices
 

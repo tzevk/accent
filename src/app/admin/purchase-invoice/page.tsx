@@ -285,7 +285,11 @@ const formFields: FormField[] = [
 		searchableValueKey: 'project_id',
 		searchableLabelFn: (item) =>
 			`${String(item.project_code ?? '')} — ${String(item.project_name ?? '')}`,
-		dependentOn: { field: 'cost_classification', values: ['project'], clearFields: ['project_id'] },
+		dependentOn: {
+			field: 'cost_classification',
+			values: ['project'],
+			clearFields: ['project_id'],
+		},
 	},
 	{
 		name: 'service_period_start',

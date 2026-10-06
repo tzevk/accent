@@ -64,7 +64,11 @@ export const SUPPLIER_SOURCE = 'supplier_invoice' as const;
 
 type DbRow = Record<string, unknown>;
 
-function s(row: DbRow, key: string, fallback: string | null = null): string | null {
+function s(
+	row: DbRow,
+	key: string,
+	fallback: string | null = null
+): string | null {
 	const value = row[key];
 	if (value === null || value === undefined) return fallback;
 	return typeof value === 'string' ? value : String(value);
@@ -563,7 +567,9 @@ export async function initializeSupplierCost(
 		conversionEvidenceReference: input.conversionEvidenceReference,
 	});
 	const grossAmount =
-		input.grossAmount !== undefined ? amountOrNull(input.grossAmount) : num(row, 'total');
+		input.grossAmount !== undefined
+			? amountOrNull(input.grossAmount)
+			: num(row, 'total');
 	const taxAmount =
 		input.taxAmount !== undefined
 			? amountOrNull(input.taxAmount)
@@ -577,11 +583,9 @@ export async function initializeSupplierCost(
 		) ?? 'unresolved';
 	const servicePeriodStart = dateOrNull(input.servicePeriodStart);
 	const servicePeriodEnd = dateOrNull(input.servicePeriodEnd);
-	const billDate =
-		dateOrNull(input.billDate) ?? s(row, 'invoice_date', null);
+	const billDate = dateOrNull(input.billDate) ?? s(row, 'invoice_date', null);
 	const withholdingTaxAmount = amountOrNull(input.withholdingTaxAmount) ?? 0;
-	const sourceReference =
-		text(input.sourceReference, 191) ?? null;
+	const sourceReference = text(input.sourceReference, 191) ?? null;
 	const evidenceReference = text(input.evidenceReference, 500);
 	const { period, basis } = resolveRecognitionPeriod({
 		servicePeriodStart,
@@ -597,6 +601,8 @@ export async function initializeSupplierCost(
 			: toNumber(sub(R(grossAmount), R(taxAmount ?? 0)));
 	const financial = {
 		classification,
+		// A supplier invoice is operating cost: never an advance, deposit,
+		// prepayment, or capital balance.
 		nature: 'operating' as const,
 		state,
 		currency,
@@ -789,7 +795,8 @@ export async function executeSupplierCommand(
 			currency:
 				patch.currency !== undefined
 					? (currencyCodeOf(patch.currency) ??
-						(s(row, 'currency', 'INR') ?? 'INR'))
+						s(row, 'currency', 'INR') ??
+						'INR')
 					: (s(row, 'currency', 'INR') ?? 'INR'),
 			grossAmount:
 				patch.grossAmount !== undefined
@@ -936,9 +943,7 @@ export async function executeSupplierCommand(
 				};
 
 		let effectiveSplits =
-			patch.splits !== undefined
-				? normalizeSplits(patch.splits)
-				: null;
+			patch.splits !== undefined ? normalizeSplits(patch.splits) : null;
 		const financial = {
 			...merged,
 			nature: 'operating' as const,
@@ -1213,7 +1218,9 @@ export function mapSupplierRecordRow(row: DbRow): CostRecord {
 	const state =
 		(s(row, 'recognition_state', 'draft') as RecognitionState) ?? 'draft';
 	const grossAmount = hasSplit ? num(row, 'split_amount') : num(row, 'total');
-	const taxAmount = hasSplit ? num(row, 'split_tax_amount') : num(row, 'tax_amount');
+	const taxAmount = hasSplit
+		? num(row, 'split_tax_amount')
+		: num(row, 'tax_amount');
 	const servicePeriodStart = hasSplit
 		? s(row, 'split_start')
 		: s(row, 'service_period_start');
@@ -1230,6 +1237,8 @@ export function mapSupplierRecordRow(row: DbRow): CostRecord {
 		: ((s(row, 'period_basis', 'unresolved') ?? 'unresolved') as PeriodBasis);
 	const financial = {
 		classification,
+		// A supplier invoice is operating cost: never an advance, deposit,
+		// prepayment, or capital balance.
 		nature: 'operating' as const,
 		state,
 		currency: currencyCodeOf(s(row, 'currency', 'INR')),
@@ -1323,13 +1332,29 @@ export async function loadFilteredSupplierRecords(
 		month: string;
 		state?: string;
 		classification?: string;
+		nature?: string;
 		projectId?: number | null;
 	}
 ): Promise<CostRecord[]> {
+	// A supplier invoice is operating cost: a filter for a non-operating
+	// balance or an unresolved treatment matches no supplier row.
+	if (
+		query.nature !== undefined &&
+		query.nature !== 'all' &&
+		query.nature !== 'operating'
+	) {
+		return [];
+	}
 	const { start, end } = monthBounds(query.month);
 	const state = supplierStateFilter(query.state);
 	const where = ['i.isDelete = 0', SUPPLIER_MONTH_PREDICATE, state.clause];
-	const params: Array<string | number> = [start, end, start, end, ...state.params];
+	const params: Array<string | number> = [
+		start,
+		end,
+		start,
+		end,
+		...state.params,
+	];
 	if (query.classification && query.classification !== 'all') {
 		if (query.classification === 'unresolved') {
 			where.push('i.cost_classification IS NULL');
@@ -1432,16 +1457,18 @@ export async function loadSupplierInvoiceDetail(
       ORDER BY pp.id`,
 		[id]
 	)) as [DbRow[], unknown];
-	const link_candidates: SupplierLinkCandidate[] = candidateRows.map((candidate) => ({
-		source_table: 'payment_payables',
-		source_id: String(num(candidate, 'id') ?? ''),
-		reference_number: s(candidate, 'reference_number', '') ?? '',
-		vendor_name: s(candidate, 'vendor_name', '') ?? '',
-		vendor_invoice_number: s(candidate, 'vendor_invoice_number'),
-		invoice_amount: num(candidate, 'invoice_amount'),
-		cost_uid: s(candidate, 'cost_uid'),
-		match_basis: s(candidate, 'match_basis', 'vendor_invoice_number') ?? '',
-	}));
+	const link_candidates: SupplierLinkCandidate[] = candidateRows.map(
+		(candidate) => ({
+			source_table: 'payment_payables',
+			source_id: String(num(candidate, 'id') ?? ''),
+			reference_number: s(candidate, 'reference_number', '') ?? '',
+			vendor_name: s(candidate, 'vendor_name', '') ?? '',
+			vendor_invoice_number: s(candidate, 'vendor_invoice_number'),
+			invoice_amount: num(candidate, 'invoice_amount'),
+			cost_uid: s(candidate, 'cost_uid'),
+			match_basis: s(candidate, 'match_basis', 'vendor_invoice_number') ?? '',
+		})
+	);
 	return {
 		id: Number(num(row, 'id') ?? 0),
 		invoice_number: s(row, 'invoice_number', '') ?? '',

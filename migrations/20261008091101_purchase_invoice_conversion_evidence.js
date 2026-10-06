@@ -37,20 +37,20 @@ export async function up(knex) {
 	const columns = [
 		{
 			name: 'reporting_currency',
-			ddl: 'VARCHAR(3) NULL COMMENT \'Reporting target; NULL = the company reporting currency\'',
+			ddl: "VARCHAR(3) NULL COMMENT 'Reporting target; NULL = the company reporting currency'",
 		},
 		{
 			name: 'conversion_rate',
-			ddl: 'DECIMAL(20,10) NULL COMMENT \'Effective original → reporting rate at conversion_date\'',
+			ddl: "DECIMAL(20,10) NULL COMMENT 'Effective original → reporting rate at conversion_date'",
 		},
 		{ name: 'conversion_date', ddl: 'DATE NULL' },
 		{
 			name: 'conversion_evidence_reference',
-			ddl: 'VARCHAR(500) NULL COMMENT \'Where the rate came from\'',
+			ddl: "VARCHAR(500) NULL COMMENT 'Where the rate came from'",
 		},
 		{
 			name: 'converted_amount',
-			ddl: 'DECIMAL(20,2) NULL COMMENT \'Reporting-currency value of recognized_amount\'',
+			ddl: "DECIMAL(20,2) NULL COMMENT 'Reporting-currency value of recognized_amount'",
 		},
 	];
 

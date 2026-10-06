@@ -18,10 +18,7 @@ import { NextResponse } from 'next/server';
 import { ensurePermission } from '@/utils/api-permissions';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 import { logActivity } from '@/utils/activity-logger';
-import {
-	CostError,
-	executeSupplierCommand,
-} from '@/lib/company-expenditure';
+import { CostError, executeSupplierCommand } from '@/lib/company-expenditure';
 import type {
 	CostCommandName,
 	SupplierCommandInput,
@@ -87,7 +84,9 @@ function commandPatch(
 				? undefined
 				: (raw.service_period_end as string | null),
 		billDate:
-			raw.bill_date === undefined ? undefined : (raw.bill_date as string | null),
+			raw.bill_date === undefined
+				? undefined
+				: (raw.bill_date as string | null),
 		currency:
 			raw.currency === undefined ? undefined : (raw.currency as string | null),
 		grossAmount:
@@ -95,7 +94,9 @@ function commandPatch(
 				? undefined
 				: (raw.gross_amount as number | null),
 		taxAmount:
-			raw.tax_amount === undefined ? undefined : (raw.tax_amount as number | null),
+			raw.tax_amount === undefined
+				? undefined
+				: (raw.tax_amount as number | null),
 		taxTreatment:
 			raw.tax_treatment === undefined
 				? undefined

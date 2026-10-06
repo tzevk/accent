@@ -162,9 +162,9 @@ export default function SupplierRecognitionDialog({
 	const [conversionEvidence, setConversionEvidence] = useState('');
 	const [splits, setSplits] = useState<SplitRowState[]>([]);
 	const [error, setError] = useState<string | null>(null);
-	const [reasonAction, setReasonAction] = useState<
-		'reject' | 'cancel' | null
-	>(null);
+	const [reasonAction, setReasonAction] = useState<'reject' | 'cancel' | null>(
+		null
+	);
 	const [reason, setReason] = useState('');
 
 	useEffect(() => {
@@ -259,16 +259,12 @@ export default function SupplierRecognitionDialog({
 				reportingCurrency === '' ? null : reportingCurrency;
 		}
 		if (conversionRate !== (detail.conversion_rate ?? '')) {
-			payload.conversion_rate =
-				conversionRate === '' ? null : conversionRate;
+			payload.conversion_rate = conversionRate === '' ? null : conversionRate;
 		}
 		if (conversionDate !== (detail.conversion_date ?? '')) {
-			payload.conversion_date =
-				conversionDate === '' ? null : conversionDate;
+			payload.conversion_date = conversionDate === '' ? null : conversionDate;
 		}
-		if (
-			conversionEvidence !== (detail.conversion_evidence_reference ?? '')
-		) {
+		if (conversionEvidence !== (detail.conversion_evidence_reference ?? '')) {
 			payload.conversion_evidence_reference =
 				conversionEvidence === '' ? null : conversionEvidence;
 		}
@@ -326,7 +322,11 @@ export default function SupplierRecognitionDialog({
 			...extra,
 		});
 
-	const updateSplit = (key: string, field: keyof SplitRowState, value: string) =>
+	const updateSplit = (
+		key: string,
+		field: keyof SplitRowState,
+		value: string
+	) =>
 		setSplits((rows) =>
 			rows.map((row) => (row.key === key ? { ...row, [field]: value } : row))
 		);
@@ -356,7 +356,8 @@ export default function SupplierRecognitionDialog({
 							data-testid="recognition-state"
 							className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATE_BADGE[detail.recognition_state] ?? STATE_BADGE.draft}`}
 						>
-							{STATE_LABEL[detail.recognition_state] ?? detail.recognition_state}
+							{STATE_LABEL[detail.recognition_state] ??
+								detail.recognition_state}
 						</span>
 						<button
 							type="button"
@@ -595,9 +596,7 @@ export default function SupplierRecognitionDialog({
 						<select
 							data-testid="recognition-reporting-currency"
 							value={reportingCurrency}
-							onChange={(event) =>
-								changeReportingCurrency(event.target.value)
-							}
+							onChange={(event) => changeReportingCurrency(event.target.value)}
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
 							<option value="">Company default</option>
@@ -648,9 +647,9 @@ export default function SupplierRecognitionDialog({
 					<p className="text-[11px] text-gray-500 md:col-span-2">
 						A rate is evidence for one currency pair. Changing the currency or
 						the reporting target requires the fresh rate, date, and reference
-						for the new pair in the same save (a same-currency pair needs
-						none); stale evidence is never reused. Saving evidence needs
-						approval access.
+						for the new pair in the same save (a same-currency pair needs none);
+						stale evidence is never reused. Saving evidence needs approval
+						access.
 					</p>
 				</div>
 
@@ -794,15 +793,14 @@ export default function SupplierRecognitionDialog({
 				</div>
 
 				<div className="mt-4">
-					<h3 className="text-sm font-semibold text-gray-800">
-						Source links
-					</h3>
+					<h3 className="text-sm font-semibold text-gray-800">Source links</h3>
 					<p className="mb-2 text-xs text-gray-500">
 						Payables and receipts that reference this cost. A link tracks the
 						one cost; it never becomes another expense.
 					</p>
 					<div className="space-y-1">
-						{detail.links.filter((link) => link.role !== 'cost').length === 0 ? (
+						{detail.links.filter((link) => link.role !== 'cost').length ===
+						0 ? (
 							<p className="text-xs text-gray-400">No linked follow-ups yet.</p>
 						) : (
 							detail.links

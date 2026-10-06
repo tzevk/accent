@@ -12,19 +12,6 @@ import type Decimal from 'decimal.js';
 export type CostClassification = 'project' | 'company_overhead' | 'unallocated';
 
 /**
- * Which native store a cost row lives in. IDs come from different stores, so
- * every cost carries its source discriminator; `cost_uid` stays the canonical
- * identity across all of them.
- */
-export type CostSource =
-	| 'direct_expense'
-	| 'supplier_invoice'
-	| 'other_expense'
-	| 'petty_cash'
-	| 'non_operating'
-	| 'payroll';
-
-/**
  * What the spend is, independent of where it belongs (#317). `operating` is
  * ordinary cost; `advance`, `deposit`, `prepayment`, and `capital` are
  * balances whose payment is not an expense until supported period consumption,
@@ -45,6 +32,18 @@ export type PeriodChargeBasis = 'consumption' | 'depreciation' | 'amortization';
 
 export type PeriodChargeState = 'approved' | 'cancelled';
 
+/**
+ * Which native store a cost row lives in. IDs come from different stores, so
+ * every cost carries its source discriminator; `cost_uid` stays the canonical
+ * identity across all of them.
+ */
+export type CostSource =
+	| 'direct_expense'
+	| 'supplier_invoice'
+	| 'other_expense'
+	| 'petty_cash'
+	| 'non_operating'
+	| 'payroll';
 /** Confirmed cost is `recognized` and nothing else. */
 export type RecognitionState =
 	| 'draft'
@@ -373,23 +372,6 @@ export interface EvidenceSummary {
 }
 
 /**
- * One cost source's slice of the month: recognized cost, cost awaiting
- * recognition, and records whose evidence is still unresolved. A reader can
- * see what each store contributes to the company total without re-adding it.
- */
-export interface ReconciliationSourceSummary {
-	source: CostSource;
-	label: string;
-	confirmed_count: number;
-	/** Null when the source's confirmed rows span currencies or miss an amount. */
-	confirmed_amount: number | null;
-	currency: string | null;
-	pending_count: number;
-	pending_amount: number | null;
-	unresolved_evidence_count: number;
-}
-
-/**
  * One approved (or cancelled) period charge, in the module's own shape: the
  * source balance it draws down plus the classification, project, and currency
  * the source carries. A charge never changes its source's identity; it is the
@@ -530,6 +512,22 @@ export interface NonOperatingSection {
 	charges_from_prior_items: PeriodChargeJson[];
 }
 
+/**
+ * One cost source's slice of the month: recognized cost, cost awaiting
+ * recognition, and records whose evidence is still unresolved. A reader can
+ * see what each store contributes to the company total without re-adding it.
+ */
+export interface ReconciliationSourceSummary {
+	source: CostSource;
+	label: string;
+	confirmed_count: number;
+	/** Null when the source's confirmed rows span currencies or miss an amount. */
+	confirmed_amount: number | null;
+	currency: string | null;
+	pending_count: number;
+	pending_amount: number | null;
+	unresolved_evidence_count: number;
+}
 export interface CompanyReconciliation {
 	month: string;
 	month_label: string;
@@ -690,7 +688,11 @@ export interface CostDrilldownQuery {
 	projectId?: number | null;
 	/** Narrow to one cost source; 'all' (default) merges every source. */
 	source?: CostSource | 'all';
-	/** Reporting basis the record states are computed in; absent = default. */
+	/**
+	 * The reporting basis the record's conversion status is stated in; absent
+	 * means the company reporting currency. Status, label, and figures then
+	 * share one basis, so a record's evidence is never mislabelled.
+	 */
 	reportingCurrency?: string | null;
 	limit?: number;
 	offset?: number;
@@ -724,6 +726,14 @@ export interface CostRecordJson {
 	conversion_date: string | null;
 	conversion_evidence_reference: string | null;
 	converted_amount: number | null;
+	/**
+	 * This record's evidence stated in the reporting basis the read was made
+	 * with (`reporting_currency` on the drilldown query, INR absent):
+	 * `reporting` when the record is already in that basis, `converted` when
+	 * its stored target matches it with a full rate triple, else
+	 * `unsupported`. The stored rate and `converted_amount` are only meaningful
+	 * together with this basis — never relabel one basis's rate as another's.
+	 */
 	conversion_status: ConversionStatus;
 	gross_amount: number | null;
 	tax_amount: number | null;

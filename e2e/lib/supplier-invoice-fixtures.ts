@@ -618,7 +618,13 @@ async function seedRoleUser(
 		`INSERT INTO users
        (username, password_hash, email, full_name, status, is_active, is_super_admin, role_id, account_type, isDelete)
      VALUES (?, ?, ?, ?, 'active', 1, 0, ?, 'employee', 0)`,
-		[user.username, passwordHash, user.email, user.fullName, insertedRole.insertId]
+		[
+			user.username,
+			passwordHash,
+			user.email,
+			user.fullName,
+			insertedRole.insertId,
+		]
 	);
 }
 

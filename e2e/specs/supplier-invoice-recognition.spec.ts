@@ -268,7 +268,12 @@ interface ReconciliationData {
 		pending_amount: number | null;
 		unresolved_evidence_count: number;
 	}>;
-	coverage: Array<{ code: string; label: string; detail: string; severity: string }>;
+	coverage: Array<{
+		code: string;
+		label: string;
+		detail: string;
+		severity: string;
+	}>;
 }
 
 interface DrilldownRecord {
@@ -296,7 +301,11 @@ interface DrilldownData {
 	month: string;
 	total: number;
 	records: DrilldownRecord[];
-	totals: { confirmed_amount: number | null; currency: string | null; records: number };
+	totals: {
+		confirmed_amount: number | null;
+		currency: string | null;
+		records: number;
+	};
 }
 
 interface CommandResult {
@@ -312,7 +321,8 @@ interface CommandResult {
 let seeded: SeededSupplierInvoices;
 const evidence: Record<string, unknown> = { ok: true, month: MONTH };
 /** Ids this spec records through the app, so the run leaves nothing behind. */
-const createdInvoices: Array<{ id: number; cost_uid: string; where: string }> = [];
+const createdInvoices: Array<{ id: number; cost_uid: string; where: string }> =
+	[];
 const createdPayables: Array<{ id: number; where: string }> = [];
 
 function publish(): void {
@@ -472,9 +482,10 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
 	publish();
 	for (const entry of createdPayables) {
-		await exec(`DELETE FROM financial_cost_links WHERE source_table = 'payment_payables' AND source_id = ?`, [
-			String(entry.id),
-		]);
+		await exec(
+			`DELETE FROM financial_cost_links WHERE source_table = 'payment_payables' AND source_id = ?`,
+			[String(entry.id)]
+		);
 		await exec(`DELETE FROM payment_payables WHERE id = ?`, [entry.id]);
 	}
 	if (createdInvoices.length) {
@@ -493,7 +504,10 @@ test.afterAll(async () => {
 		}
 		const ids = createdInvoices.map((entry) => entry.id);
 		const placeholders = ids.map(() => '?').join(', ');
-		await exec(`DELETE FROM purchase_invoices WHERE id IN (${placeholders})`, ids);
+		await exec(
+			`DELETE FROM purchase_invoices WHERE id IN (${placeholders})`,
+			ids
+		);
 	}
 	await cleanupSupplierInvoiceFixtures();
 });
@@ -509,7 +523,9 @@ test('records and recognizes a supplier invoice through the admin controls', asy
 	await page.locator('#invoice_number').fill(UI_INVOICE.number);
 	await page.locator('#vendor_name').fill('E2E Supplier Vendor ui');
 	await page.locator('#invoice_date').fill(UI_INVOICE.invoiceDate);
-	await page.locator('#subtotal').fill(String(UI_INVOICE.gross - UI_INVOICE.tax));
+	await page
+		.locator('#subtotal')
+		.fill(String(UI_INVOICE.gross - UI_INVOICE.tax));
 	await page.locator('#tax_amount').fill(String(UI_INVOICE.tax));
 	await page.locator('#total').fill(String(UI_INVOICE.gross));
 	await page.locator('#cost_classification').selectOption('project');
@@ -553,9 +569,7 @@ test('records and recognizes a supplier invoice through the admin controls', asy
 	expect(row.cost_uid).toMatch(/^cost-/);
 	expect(row.recognition_state).toBe('draft');
 	expect(row.financial_version).toBe(1);
-	expect(String(row.recognition_period).slice(0, 10)).toBe(
-		`${MONTH}-01`
-	);
+	expect(String(row.recognition_period).slice(0, 10)).toBe(`${MONTH}-01`);
 	expect(row.period_basis).toBe('service_period');
 	expect(row.cost_classification).toBe('project');
 	expect(row.project_id).toBe(seeded.projects.alpha);
@@ -576,10 +590,9 @@ test('records and recognizes a supplier invoice through the admin controls', asy
 	);
 	await page.getByTestId('recognition-recognize').click();
 	await expect(page.getByTestId('recognition-state')).toHaveText(/recognized/i);
-	await expect(page.getByTestId('recognition-recognized-amount')).toHaveAttribute(
-		'data-amount',
-		String(UI_INVOICE.recognized)
-	);
+	await expect(
+		page.getByTestId('recognition-recognized-amount')
+	).toHaveAttribute('data-amount', String(UI_INVOICE.recognized));
 	await page.getByTestId('recognition-close').click();
 
 	// Persisted evidence: recognized at gross − evidenced tax, versioned, and
@@ -733,10 +746,9 @@ test('splits one invoice across service periods without repeating it', async ({
        FROM supplier_invoice_periods WHERE invoice_id = ? ORDER BY recognition_period`,
 		[id]
 	);
-	expect(splits.map((entry) => String(entry.recognition_period).slice(0, 7))).toEqual([
-		MONTH,
-		INVOICE_MONTH,
-	]);
+	expect(
+		splits.map((entry) => String(entry.recognition_period).slice(0, 7))
+	).toEqual([MONTH, INVOICE_MONTH]);
 	expect(splits.map((entry) => Number(entry.amount))).toEqual([
 		API_INVOICE.march,
 		API_INVOICE.april,
@@ -906,12 +918,9 @@ test('freezes reverse-order and same-period splits onto their own rows', async (
       ORDER BY recognition_period, service_period_start`,
 		[id]
 	);
-	expect(sliceRows.map((row) => String(row.service_period_start).slice(0, 10))).toEqual([
-		'2020-08-01',
-		'2020-08-16',
-		'2020-09-01',
-		'2020-09-16',
-	]);
+	expect(
+		sliceRows.map((row) => String(row.service_period_start).slice(0, 10))
+	).toEqual(['2020-08-01', '2020-08-16', '2020-09-01', '2020-09-16']);
 	expect(sliceRows.map((row) => Number(row.amount))).toEqual([
 		10000, 20000, 10000, 20000,
 	]);
@@ -937,15 +946,16 @@ test('freezes reverse-order and same-period splits onto their own rows', async (
 		const drill = await drilldown(request, { month, state: 'all' });
 		const slicesInMonth = drill.records
 			.filter((entry) => entry.cost_uid === createdBody.data.cost_uid)
-			.sort(
-				(a, b) => (a.split?.index ?? 0) - (b.split?.index ?? 0)
-			);
+			.sort((a, b) => (a.split?.index ?? 0) - (b.split?.index ?? 0));
 		expect(slicesInMonth.map((entry) => entry.recognized_amount)).toEqual([
 			...expectedSlices,
 		]);
 		expect(slicesInMonth.map((entry) => entry.split?.count)).toEqual([4, 4]);
 	}
-	const frozen = await rows<{ recognized_amount: string; converted_amount: string }>(
+	const frozen = await rows<{
+		recognized_amount: string;
+		converted_amount: string;
+	}>(
 		`SELECT recognized_amount, converted_amount FROM purchase_invoices WHERE id = ?`,
 		[id]
 	);
@@ -998,7 +1008,9 @@ test('keeps a March service in March when invoiced in April and paid in May', as
 	const may = await reconciliation(request, LATER_MONTH);
 	expect(may.company.incurred_cost).toBeNull();
 	expect(may.company.record_count).toBe(0);
-	expect(may.coverage.map((entry) => entry.code)).toContain('no_recognized_cost');
+	expect(may.coverage.map((entry) => entry.code)).toContain(
+		'no_recognized_cost'
+	);
 	// No cost row was created by the payment in any store.
 	const mayCosts = await rows<{ invoices: number; expenses: number }>(
 		`SELECT (SELECT COUNT(*) FROM purchase_invoices
@@ -1007,7 +1019,12 @@ test('keeps a March service in March when invoiced in April and paid in May', as
             (SELECT COUNT(*) FROM expenses
               WHERE isDelete = 0 AND recognition_state = 'recognized'
                 AND recognition_period BETWEEN ? AND ?) AS expenses`,
-		[`${LATER_MONTH}-01`, `${LATER_MONTH}-31`, `${LATER_MONTH}-01`, `${LATER_MONTH}-31`]
+		[
+			`${LATER_MONTH}-01`,
+			`${LATER_MONTH}-31`,
+			`${LATER_MONTH}-01`,
+			`${LATER_MONTH}-31`,
+		]
 	);
 	expect(Number(mayCosts[0].invoices)).toBe(0);
 	expect(Number(mayCosts[0].expenses)).toBe(0);
@@ -1040,7 +1057,10 @@ test('links payable follow-ups and a receipt reference to one supplier cost', as
       WHERE source_table = 'payment_payables' AND source_id = ? AND role = 'liability'`,
 		[String(seeded.payableIds.linkedPayable)]
 	);
-	expect(explicitLink[0]).toEqual({ basis: 'explicit', review_state: 'confirmed' });
+	expect(explicitLink[0]).toEqual({
+		basis: 'explicit',
+		review_state: 'confirmed',
+	});
 
 	// The text match is preserved for review, not applied: it must not have
 	// changed the payable's identity or the report total.
@@ -1104,7 +1124,10 @@ test('links payable follow-ups and a receipt reference to one supplier cost', as
 	expect(createdPayable.status(), await createdPayable.text()).toBe(200);
 	const createdPayableBody = await createdPayable.json();
 	expect(createdPayableBody.data.cost_uid).toBe(invoice.costUid);
-	createdPayables.push({ id: Number(createdPayableBody.data.id), where: 'api' });
+	createdPayables.push({
+		id: Number(createdPayableBody.data.id),
+		where: 'api',
+	});
 
 	const refusedRewrite = await request.put(
 		`/api/admin/payment-payables/${createdPayableBody.data.id}`,
@@ -1151,7 +1174,9 @@ test('reports approved tax treatment without assuming GST credit', async ({
 	expect(april.company.incurred_cost).toBe(APRIL_TOTAL);
 	expect(april.company.recoverable_tax).toBe(APRIL.recoverableTax);
 	expect(april.company.unresolved_tax.count).toBe(APRIL.unresolvedTaxCount);
-	expect(april.company.unresolved_tax.gross_amount).toBe(APRIL.unresolvedTaxGross);
+	expect(april.company.unresolved_tax.gross_amount).toBe(
+		APRIL.unresolvedTaxGross
+	);
 
 	const noEvidence = await rows<{
 		recognized_amount: string;
@@ -1301,7 +1326,10 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 		},
 	});
 	expect(corrected.status, JSON.stringify(corrected.body)).toBe(200);
-	const correctedRow = await rows<{ conversion_rate: string; financial_version: number }>(
+	const correctedRow = await rows<{
+		conversion_rate: string;
+		financial_version: number;
+	}>(
 		`SELECT conversion_rate, financial_version FROM purchase_invoices WHERE id = ?`,
 		[id]
 	);
@@ -1428,7 +1456,9 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 	expect(report.company.incurred_cost).toBe(FX_INVOICE.converted);
 	expect(report.company.currency_totals).toHaveLength(1);
 	expect(report.company.currency_totals[0].currency).toBe('USD');
-	expect(report.company.currency_totals[0].incurred_cost).toBe(FX_INVOICE.gross);
+	expect(report.company.currency_totals[0].incurred_cost).toBe(
+		FX_INVOICE.gross
+	);
 	expect(report.company.currency_totals[0].reporting.status).toBe('converted');
 	expect(report.company.currency_totals[0].reporting.incurred_cost).toBe(
 		FX_INVOICE.converted
@@ -1508,7 +1538,9 @@ test('states a foreign supplier cost without evidence as unsupported', async ({
 	expect(report.company.currency).toBe('USD');
 	expect(report.company.incurred_cost).toBe(FX_UNSUPPORTED.gross);
 	expect(report.company.currency_totals).toHaveLength(1);
-	expect(report.company.currency_totals[0].reporting.status).toBe('unsupported');
+	expect(report.company.currency_totals[0].reporting.status).toBe(
+		'unsupported'
+	);
 	expect(report.company.currency_totals[0].reporting.incurred_cost).toBeNull();
 
 	const stored = await rows<{ converted_amount: string | null }>(
@@ -1521,7 +1553,8 @@ test('states a foreign supplier cost without evidence as unsupported', async ({
 		invoice: FX_UNSUPPORTED.number,
 		currency: 'USD',
 		incurred: report.company.incurred_cost,
-		reportingIncurred: report.company.currency_totals[0].reporting.incurred_cost,
+		reportingIncurred:
+			report.company.currency_totals[0].reporting.incurred_cost,
 	};
 });
 
@@ -1595,7 +1628,9 @@ test('reconciles a converted multi-period invoice by per-slice rounding', async 
       ORDER BY recognition_period`,
 		[id]
 	);
-	expect(sliceRows.map((row) => Number(row.recognized_amount))).toEqual([33.33, 66.67]);
+	expect(sliceRows.map((row) => Number(row.recognized_amount))).toEqual([
+		33.33, 66.67,
+	]);
 	expect(sliceRows.map((row) => Number(row.converted_amount))).toEqual([
 		FX_SPLIT.slices[0].converted,
 		FX_SPLIT.slices[1].converted,
@@ -1642,7 +1677,9 @@ test('excludes pending, rejected, cancelled, draft and unresolved records', asyn
 	const march = await reconciliation(request, MONTH);
 	expect(march.company.incurred_cost).toBe(MARCH_TOTAL);
 	expect(march.company.record_count).toBe(MARCH.records);
-	expect(march.evidence.pending_evidence.count).toBe(MARCH.pendingEvidenceCount);
+	expect(march.evidence.pending_evidence.count).toBe(
+		MARCH.pendingEvidenceCount
+	);
 	expect(march.evidence.pending_evidence.amount).toBe(
 		MARCH.pendingEvidenceGross
 	);
@@ -1667,11 +1704,17 @@ test('excludes pending, rejected, cancelled, draft and unresolved records', asyn
 	expect(direct.confirmed_amount).toBe(0);
 
 	// Drilldown states address exactly the non-confirmed rows.
-	const rejected = await drilldown(request, { month: MONTH, state: 'rejected' });
+	const rejected = await drilldown(request, {
+		month: MONTH,
+		state: 'rejected',
+	});
 	expect(rejected.records.map((entry) => entry.expense_number)).toEqual([
 		seededInvoice('rejected').invoiceNumber,
 	]);
-	const cancelled = await drilldown(request, { month: MONTH, state: 'cancelled' });
+	const cancelled = await drilldown(request, {
+		month: MONTH,
+		state: 'cancelled',
+	});
 	expect(cancelled.records.map((entry) => entry.expense_number)).toEqual([
 		seededInvoice('cancelled').invoiceNumber,
 	]);
@@ -1679,20 +1722,33 @@ test('excludes pending, rejected, cancelled, draft and unresolved records', asyn
 	expect(draft.records.map((entry) => entry.expense_number)).toEqual([
 		seededInvoice('draft').invoiceNumber,
 	]);
-	const pending = await drilldown(request, { month: MONTH, state: 'pending_evidence' });
-	expect(
-		pending.records.map((entry) => entry.expense_number).sort()
-	).toEqual(
-		[seededInvoice('pending').invoiceNumber, seededInvoice('unresolvedClassification').invoiceNumber].sort()
+	const pending = await drilldown(request, {
+		month: MONTH,
+		state: 'pending_evidence',
+	});
+	expect(pending.records.map((entry) => entry.expense_number).sort()).toEqual(
+		[
+			seededInvoice('pending').invoiceNumber,
+			seededInvoice('unresolvedClassification').invoiceNumber,
+		].sort()
 	);
 	const unresolved = await drilldown(request, {
 		month: MONTH,
 		classification: 'unresolved',
 	});
-	expect(unresolved.records.map((entry) => entry.expense_number).sort()).toEqual(
-		[seededInvoice('unresolvedClassification').invoiceNumber, seededInvoice('draft').invoiceNumber].sort()
+	expect(
+		unresolved.records.map((entry) => entry.expense_number).sort()
+	).toEqual(
+		[
+			seededInvoice('unresolvedClassification').invoiceNumber,
+			seededInvoice('draft').invoiceNumber,
+		].sort()
 	);
-	for (const record of [...rejected.records, ...cancelled.records, ...draft.records]) {
+	for (const record of [
+		...rejected.records,
+		...cancelled.records,
+		...draft.records,
+	]) {
 		expect(record.recognition_state).not.toBe('recognized');
 		expect(record.recognized_amount).toBeNull();
 	}
@@ -1705,10 +1761,9 @@ test('excludes pending, rejected, cancelled, draft and unresolved records', asyn
 		po_number: string;
 		po_id: number | null;
 		cost_uid: string;
-	}>(
-		`SELECT po_number, po_id, cost_uid FROM purchase_invoices WHERE id = ?`,
-		[seeded.invoiceIds.noPurchaseOrder]
-	);
+	}>(`SELECT po_number, po_id, cost_uid FROM purchase_invoices WHERE id = ?`, [
+		seeded.invoiceIds.noPurchaseOrder,
+	]);
 	expect(noPo[0].po_number).toBe('E2E-SINV-PO-FREE-1003');
 	expect(noPo[0].po_id).toBeNull();
 	const noPoLinks = await rows<{ role: string; source_table: string }>(
@@ -1725,8 +1780,7 @@ test('excludes pending, rejected, cancelled, draft and unresolved records', asyn
 	expect(
 		noPoDrill.records.some(
 			(entry) =>
-				entry.expense_number ===
-				seededInvoice('noPurchaseOrder').invoiceNumber
+				entry.expense_number === seededInvoice('noPurchaseOrder').invoiceNumber
 		)
 	).toBe(true);
 
@@ -1769,7 +1823,10 @@ test('refuses recognition to unapproved and unauthorized identities', async ({
 	expect(noReason.status).toBe(422);
 	expect(noReason.body.code).toBe('reason_required');
 	// None of the failed commands changed the row.
-	const unchanged = await rows<{ recognition_state: string; financial_version: number }>(
+	const unchanged = await rows<{
+		recognition_state: string;
+		financial_version: number;
+	}>(
 		`SELECT recognition_state, financial_version FROM purchase_invoices WHERE id = ?`,
 		[seeded.invoiceIds.pending]
 	);
@@ -1877,7 +1934,9 @@ test('shows the supplier figures through the report browser controls', async ({
 		`[data-testid="expenditure-project-row"][data-project-code="${SUPPLIER_PROJECTS.alpha.code}"]`
 	);
 	await expect(alpha).toBeVisible();
-	expect(await alpha.getAttribute('data-project-cost')).toBe(String(MARCH.alpha));
+	expect(await alpha.getAttribute('data-project-cost')).toBe(
+		String(MARCH.alpha)
+	);
 	const beta = page.locator(
 		`[data-testid="expenditure-project-row"][data-project-code="${SUPPLIER_PROJECTS.beta.code}"]`
 	);
