@@ -173,6 +173,23 @@ function basisOrThrow(value: unknown): PeriodChargeBasis {
 }
 
 /**
+ * The refusal a duplicate-key failure produces, or the original failure. The
+ * unique index on (source, period, basis, sequence) is the backstop that makes
+ * two truly concurrent captures impossible; the pre-check above is the friendly
+ * path, and this is what a race that slips past it reports.
+ */
+function chargeWriteError(error: unknown, context: BlockerContext): unknown {
+	const failure = error as { code?: string; message?: string };
+	if (
+		failure?.code === 'ER_DUP_ENTRY' &&
+		String(failure.message ?? '').includes('uq_period_charge_period_basis')
+	) {
+		return blockerError('duplicate_period_charge', context);
+	}
+	return error;
+}
+
+/**
  * Approve one period charge. The source row is locked for the whole command,
  * so two concurrent captures on one item serialize: the second sees the first
  * and is refused as a duplicate rather than both writing.
@@ -198,6 +215,14 @@ export async function capturePeriodCharge(
 			source.recognizedAmount,
 			consumedToDate(existing)
 		);
+		const context: BlockerContext = {
+			period,
+			basis,
+			sourceNature: source.nature,
+			sourceState: source.state,
+			sourceCurrency: source.currency,
+			remaining,
+		};
 		const blockers = periodChargeBlockers({
 			period,
 			basis,
@@ -211,14 +236,7 @@ export async function capturePeriodCharge(
 			existing,
 		});
 		if (blockers.length > 0) {
-			throw blockerError(blockers[0], {
-				period,
-				basis,
-				sourceNature: source.nature,
-				sourceState: source.state,
-				sourceCurrency: source.currency,
-				remaining,
-			});
+			throw blockerError(blockers[0], context);
 		}
 
 		// Re-entry after a cancellation carries the next sequence for that
@@ -232,9 +250,8 @@ export async function capturePeriodCharge(
 				)
 				.reduce((max, charge) => Math.max(max, charge.sequence), 0) + 1;
 		const chargeUid = `charge-${randomUUID()}`;
-		let insertId: number;
-		try {
-			const [result] = (await db.execute(
+		const [result] = (await db
+			.execute(
 				`INSERT INTO expense_period_charges
            (charge_uid, source_table, source_id, source_cost_uid, charge_period,
             basis, amount, currency, evidence_reference, state,
@@ -253,25 +270,11 @@ export async function capturePeriodCharge(
 					sequence,
 					actor.id,
 				]
-			)) as [Record<string, unknown>, unknown];
-			insertId = Number(result.insertId);
-		} catch (error) {
-			const failure = error as { code?: string; message?: string };
-			if (
-				failure?.code === 'ER_DUP_ENTRY' &&
-				String(failure.message ?? '').includes('uq_period_charge_period_basis')
-			) {
-				throw blockerError('duplicate_period_charge', {
-					period,
-					basis,
-					sourceNature: source.nature,
-					sourceState: source.state,
-					sourceCurrency: source.currency,
-					remaining,
-				});
-			}
-			throw error;
-		}
+			)
+			.catch((error: unknown) => {
+				throw chargeWriteError(error, context);
+			})) as [Record<string, unknown>, unknown];
+		const insertId = Number(result.insertId);
 
 		await db.execute(
 			`INSERT INTO expense_period_charge_events
