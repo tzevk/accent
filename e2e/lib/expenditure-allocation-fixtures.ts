@@ -239,8 +239,7 @@ export const ALLOCATION_EXPECTED = {
 		projectHours: 296,
 		noProjectHours: 88,
 		totalHours: 384,
-		recordedCount: 5,
-		knownZeroCount: 2,
+		recordedCount: 3,
 	},
 	/** 2026-03 estimate month, filtered to the fixture employees. */
 	estimateMonth: {
@@ -434,7 +433,7 @@ export async function seedExpenditureAllocationFixtures(): Promise<SeededAllocat
 
 	await seedAllocationHours(employeeIds, fixtureUser.insertId, projectIds);
 	await seedAllocationBonusSchedule();
-	await seedAllocationGateSlips(employeeIds);
+	await seedAllocationGateSlips();
 	await seedAllocationReaders();
 
 	return { projectIds, employeeIds };
@@ -588,9 +587,7 @@ async function seedAllocationBonusSchedule(): Promise<void> {
  * scoped to the fixture month, deleted by cleanup, never touching their other
  * fixtures or months.
  */
-async function seedAllocationGateSlips(
-	employeeIds: Record<AllocationEmployeeKey, number>
-): Promise<void> {
+async function seedAllocationGateSlips(): Promise<void> {
 	const codes = ['E2E-ATT-0009', 'E2E-UTIL-0019'];
 	const found = await rows<{ id: number; employee_id: string }>(
 		`SELECT id, employee_id FROM employees WHERE employee_id IN (?, ?)`,
@@ -611,9 +608,6 @@ async function seedAllocationGateSlips(
 			[ALLOCATION_MONTH_DAY, employee.id]
 		);
 	}
-	// Keep the unused parameter shape explicit: the fixture month's slip rows
-	// are the module's, whether they belong to a namespaced employee or not.
-	void employeeIds;
 }
 
 /** Roles and users for the two authorization outcomes. */

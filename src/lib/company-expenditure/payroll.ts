@@ -653,6 +653,19 @@ export async function loadPayrollMonth(
 		} else {
 			shares = allocateEmployerCost(estimatedAmount ?? 0, hourLines).shares;
 		}
+		// A recorded Employee's hours are the frozen allocation's hours: a later
+		// timesheet edit must not change the hours shown beside frozen cost.
+		const shownHours: PayrollHourLine[] = recorded
+			? recorded.shares
+					.filter((share) => share.basis !== 'no_logged_hours')
+					.map((share) => ({
+						project_id: share.project_id,
+						project_code: share.project_code,
+						project_name: share.project_name,
+						client_name: share.client_name,
+						hours: share.hours,
+					}))
+			: hourLines;
 
 		const status: PayrollEmployeeCost['status'] = recorded
 			? recorded.recordedEmployerCost === 0
@@ -687,7 +700,7 @@ export async function loadPayrollMonth(
 				month,
 			},
 			shares,
-			hours_by_project: hourLines,
+			hours_by_project: shownHours,
 		});
 	}
 

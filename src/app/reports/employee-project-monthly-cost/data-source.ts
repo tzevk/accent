@@ -992,6 +992,7 @@ export async function fetchEmployeeProjectCost(
 	const months = fyCalendarMonths(fyYear);
 	const payrollByMonth = await loadPayrollMonths(months);
 	const rows = buildFYAllocationRows(
+		fyYear,
 		months,
 		payrollByMonth,
 		new Map([[employeeId, employee]]),
@@ -1313,15 +1314,14 @@ export interface FYAllocationRow {
  * `employeeId` narrows to one Employee (the legacy per-employee view).
  */
 export function buildFYAllocationRows(
+	fyYear: number,
 	months: string[],
 	payrollByMonth: Map<string, PayrollEmployeeCost[]>,
 	employeeIndex: Map<number, EmployeeLookup>,
 	employeeId: number | null = null
 ): FYAllocationRow[] {
+	const calendar = fyKeyToCalendarMonthMap(fyYear);
 	const monthKeys = new Map<string, string>();
-	const calendar = fyKeyToCalendarMonthMap(
-		Number(months[0]?.slice(0, 4)) >= 4 ? Number(months[0].slice(0, 4)) : 0
-	);
 	for (const [key, month] of Object.entries(calendar)) {
 		monthKeys.set(month, key);
 	}
@@ -1511,7 +1511,12 @@ export async function fetchFYCompanyCost(
 		loadPayrollMonths(months),
 	]);
 
-	const rows = buildFYAllocationRows(months, payrollByMonth, employeeIndex);
+	const rows = buildFYAllocationRows(
+		fyYear,
+		months,
+		payrollByMonth,
+		employeeIndex
+	);
 	const employee_rows = buildFYAllocationEmployeeRows(rows);
 	const project_rows = buildFYAllocationProjectRows(rows);
 	const totals = allocationTotalsFromFYRows(rows);
