@@ -53,7 +53,8 @@ function num(row: DbRow, key: string): number | null {
 
 /** The projection the module maps into `CostRecord`. */
 const COST_SELECT = `
-  SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.cost_classification,
+  SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.created_at,
+         e.cost_classification,
          e.recognition_state, e.recognition_period, e.period_basis,
          e.service_period_start, e.service_period_end, e.tax_treatment,
          e.tax_evidence_reference, e.recognized_amount, e.source_reference,
@@ -115,6 +116,7 @@ export function mapCostRow(row: DbRow): CostRecord {
 		costUid: s(row, 'cost_uid'),
 		expenseNumber: s(row, 'expense_number', '') ?? '',
 		expenseDate: s(row, 'expense_date'),
+		createdAt: s(row, 'created_at'),
 		vendorName: s(row, 'vendor_name'),
 		description: s(row, 'description'),
 		projectId: num(row, 'project_id'),
@@ -142,6 +144,7 @@ function toCostRecordJson(record: CostRecord): CostRecordJson {
 		service_period_start: record.servicePeriodStart,
 		service_period_end: record.servicePeriodEnd,
 		expense_date: record.expenseDate,
+		created_at: record.createdAt,
 		currency: record.currency,
 		gross_amount: record.grossAmount,
 		tax_amount: record.taxAmount,
@@ -161,6 +164,7 @@ function toCostRecordJson(record: CostRecord): CostRecordJson {
 		recognized_by: record.recognizedBy,
 		missing_amount: record.grossAmount === null,
 		known_zero: record.grossAmount === 0,
+		reconstructed: record.reconstructed === true,
 		exceptions: record.evaluation.exceptions,
 	};
 }
@@ -181,15 +185,16 @@ export async function loadMonthRecords(
 }
 
 /**
- * Confirmed Project cost of a month, keyed by Project id and then currency.
- * A Project can hold more than one currency in a month, and those figures are
- * never combined; a group whose recognized amount is missing carries null.
+ * Cumulative confirmed Project cost of every month before `month`, keyed by
+ * Project id and then currency — the base Cost to Date adds the reported
+ * window to. A Project can hold more than one currency, and those figures are
+ * never combined; a group whose recognized amount is missing carries null,
+ * because an unknown amount is not zero.
  */
-export async function loadMonthProjectCost(
+export async function loadProjectCostBefore(
 	db: SqlConnection,
 	month: string
 ): Promise<Map<number, Map<string, number | null>>> {
-	const { start, end } = monthBounds(month);
 	const [rows] = await db.execute(
 		`SELECT e.project_id, COALESCE(e.currency, 'INR') AS currency,
               SUM(e.recognized_amount) AS amount,
@@ -199,9 +204,9 @@ export async function loadMonthProjectCost(
         AND e.recognition_state = 'recognized'
         AND e.cost_classification = 'project'
         AND e.project_id IS NOT NULL
-        AND e.recognition_period BETWEEN ? AND ?
+        AND e.recognition_period < ?
       GROUP BY e.project_id, COALESCE(e.currency, 'INR')`,
-		[start, end]
+		[`${month}-01`]
 	);
 	const costs = new Map<number, Map<string, number | null>>();
 	for (const row of rows as DbRow[]) {

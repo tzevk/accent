@@ -124,6 +124,18 @@ _Avoid_: Expense status, Approval status, Paid
 Employee cost and non-employee expenses recognized for a Project in a period, whether paid or unpaid. Excludes unfulfilled supplier commitments and client order value.
 _Avoid_: Cash paid, PO value, Total committed exposure
 
+**Comparable Period**:
+The prior period a month is measured against. A month that has fully elapsed is compared with the whole prior month; an unfinished month is compared over equivalent elapsed service periods — the first N days of both months, where N is the day the month is measured to (`as_of`, today by default) and the prior window is clamped to the prior month's length. A cost is inside the window when its received-work evidence starts on or before the window's last day; a confirmed cost with only a period end or a bill date is disclosed, not spread. Late entries (entered after the window closed), backdated recognition, and unequal coverage between the two windows are disclosed with the comparison, and a Project with no prior-period record has an unknown prior amount, never a zero.
+_Avoid_: Prior month (when the window may be partial), Budget, Full prior period
+
+**Cost to Date**:
+Cumulative confirmed cost of every month before the reported one plus the reported window, so it is stated through the window's last day rather than the month's. A contributing unknown amount makes it unknown (`null`), not zero.
+_Avoid_: Lifetime cost, Total commitment, Budget consumed
+
+**Project Cost Ranking**:
+The report's two orderings of the same Project rows inside one currency: largest monthly incurred cost, and largest change against the Comparable Period. A row whose comparison amount is unknown is not placed by increase — it is reported as unranked with its reason. Ties share a position.
+_Avoid_: Sort order, Priority, Importance
+
 **Outstanding Supplier Commitment**:
 The portion of a supplier order not yet recognized as incurred cost. Paying a supplier invoice does not itself create another incurred cost.
 _Avoid_: Unpaid invoice balance, Client PO balance, Cash paid

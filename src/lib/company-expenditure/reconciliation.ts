@@ -16,104 +16,48 @@
  *    reconciliation.
  */
 
-import type Decimal from 'decimal.js';
-import { add, R, toNumber } from '@/lib/money';
+import { add, R } from '@/lib/money';
 import type { SourceCoverageDeclaration } from './coverage';
 import { effectiveTaxTreatment, isConfirmed, isOpenState } from './recognition';
+import {
+	buildPeriodComparison,
+	changeStateFor,
+	comparisonWindow,
+	isLateEntry,
+	monthLabel,
+	percentChange,
+	projectEvidence,
+	rankProjects,
+	windowRecords,
+	withinWindow,
+	type ComparisonWindow,
+} from './ranking';
+import {
+	confirmedAmount,
+	countByState,
+	currencyOf,
+	rounded,
+	subtotal,
+	sumMoney,
+} from './totals';
 import type {
 	CompanyReconciliation,
 	CostRecord,
 	CoverageNotice,
 	CurrencyTotal,
-	EvidenceStateSummary,
 	EvidenceSummary,
+	FilteredProjectSubtotal,
 	ReconciliationGroup,
 	ReconciliationProjectRow,
 } from './types';
+
+export { monthLabel };
 
 const GROUP_LABELS = {
 	incurred_project_cost: 'Incurred Project Cost',
 	company_overhead: 'Company Overhead',
 	unallocated_cost: 'Unallocated Cost',
 } as const;
-
-const MONTH_NAMES = [
-	'January',
-	'February',
-	'March',
-	'April',
-	'May',
-	'June',
-	'July',
-	'August',
-	'September',
-	'October',
-	'November',
-	'December',
-];
-
-/** "2019-01" → "January 2019"; unparseable input is returned unchanged. */
-export function monthLabel(month: string): string {
-	const [year, monthNumber] = month.split('-').map(Number);
-	if (!year || !monthNumber || monthNumber < 1 || monthNumber > 12) {
-		return month;
-	}
-	return `${MONTH_NAMES[monthNumber - 1]} ${year}`;
-}
-
-/** The amount a confirmed record contributes; the stored figure wins. */
-function confirmedAmount(record: CostRecord): number | null {
-	if (!isConfirmed(record.state)) return null;
-	if (record.recognizedAmount !== null) return record.recognizedAmount;
-	return record.evaluation.recognizedAmount;
-}
-
-function rounded(value: Decimal.Value): number {
-	return toNumber(R(value).toDecimalPlaces(2));
-}
-
-/** Sum money without floating point drift, rounded once at the boundary. */
-function sumMoney(values: Array<number | null>): number {
-	return rounded(
-		values.reduce<Decimal>((total, value) => add(total, value ?? 0), R(0))
-	);
-}
-
-/** The single currency the records share, or null for none or more than one. */
-function currencyOf(records: CostRecord[]): string | null {
-	const codes = new Set(records.map((record) => record.currency ?? 'INR'));
-	return codes.size === 1 ? [...codes][0] : null;
-}
-
-/**
- * A subtotal that may only be stated in one currency. Zero records contribute
- * a known zero; a single unknown amount or a second currency makes the figure
- * null, because an unknown amount is not zero and currencies are never added.
- */
-function subtotal(
-	records: CostRecord[],
-	value: (record: CostRecord) => number | null
-): number | null {
-	if (records.length === 0) return 0;
-	const amounts = records.map(value);
-	if (amounts.some((amount) => amount === null)) return null;
-	if (currencyOf(records) === null) return null;
-	return sumMoney(amounts);
-}
-
-function countByState(
-	records: CostRecord[],
-	state: CostRecord['state']
-): EvidenceStateSummary {
-	const matching = records.filter((record) => record.state === state);
-	return {
-		count: matching.length,
-		currency: currencyOf(matching),
-		amount: subtotal(matching, (record) =>
-			isConfirmed(record.state) ? confirmedAmount(record) : record.grossAmount
-		),
-	};
-}
 
 function currencySlice(records: CostRecord[], currency: string): CurrencyTotal {
 	let project = R(0);
@@ -157,11 +101,12 @@ function currencySlice(records: CostRecord[], currency: string): CurrencyTotal {
 function projectRows(
 	confirmed: CostRecord[],
 	open: CostRecord[],
-	previousMonth: Map<number, Map<string, number | null>>,
-	projectFilter: number | null
+	priorMonthRecords: CostRecord[],
+	window: ComparisonWindow,
+	costBefore: Map<number, Map<string, number | null>>
 ): ReconciliationProjectRow[] {
 	// One row per Project and currency. Amounts in different currencies are
-	// never added, and the prior-month comparison is same-currency only; a
+	// never added, and the prior-period comparison is same-currency only; a
 	// Project costing in two currencies therefore shows two rows.
 	const ids = new Set<number>();
 	for (const record of [...confirmed, ...open]) {
@@ -169,13 +114,15 @@ function projectRows(
 			ids.add(record.projectId);
 		}
 	}
+	const priorWindowRecords = windowRecords(priorMonthRecords, window, 'prior');
+	const currentEnd = window.throughDate;
 	const rows: ReconciliationProjectRow[] = [];
 	for (const id of ids) {
-		if (projectFilter !== null && projectFilter !== id) continue;
 		const projectRecords = [...confirmed, ...open].filter(
 			(record) => record.projectId === id
 		);
 		const sample = projectRecords[0];
+		const evidence = projectEvidence(projectRecords);
 		const currencies = [
 			...new Set(projectRecords.map((record) => record.currency ?? 'INR')),
 		].sort();
@@ -190,8 +137,28 @@ function projectRows(
 				isOpenState(record.state)
 			);
 			const incurred = sumMoney(confirmedRows.map(confirmedAmount));
-			const previous = previousMonth.get(id)?.get(currency) ?? null;
-			const change = previous === null ? null : rounded(incurred - previous);
+			const inWindow = confirmedRows.filter((record) =>
+				withinWindow(record, window.currentDays, window.monthDays)
+			);
+			const comparison = sumMoney(inWindow.map(confirmedAmount));
+			const priorRows = priorWindowRecords.filter(
+				(record) =>
+					record.projectId === id &&
+					(record.currency ?? 'INR') === currency
+			);
+			// No prior-window record for this Project and currency is an unknown
+			// prior amount, never a zero: absence of records is not evidence of
+			// no expenditure.
+			const previous =
+				priorRows.length === 0
+					? null
+					: sumMoney(priorRows.map(confirmedAmount));
+			const before = costBefore.get(id);
+			const beforeAmount =
+				before === undefined ? 0 : before.get(currency);
+			const lateRows = inWindow.filter((record) =>
+				isLateEntry(record, currentEnd)
+			);
 			rows.push({
 				project_id: id,
 				project_code: sample.projectCode ?? `#${id}`,
@@ -202,18 +169,24 @@ function projectRows(
 				incurred_cost: incurred,
 				record_count: confirmedRows.length,
 				not_confirmed_cost: subtotal(openRows, (record) => record.grossAmount),
-				previous_month_cost: previous,
-				change_amount: change,
-				change_state:
-					previous === null
-						? 'no_prior'
-						: incurred === previous
-							? 'unchanged'
-							: previous === 0
-								? 'new'
-								: incurred > previous
-									? 'increase'
-									: 'decrease',
+				comparison_cost: comparison,
+				previous_period_cost: previous,
+				change_amount:
+					previous === null ? null : rounded(comparison - previous),
+				change_percent: percentChange(comparison, previous),
+				change_state: changeStateFor(comparison, previous),
+				cost_to_date:
+					beforeAmount === null
+						? null
+						: rounded(add(beforeAmount, comparison)),
+				late_entry:
+					lateRows.length === 0
+						? null
+						: {
+								count: lateRows.length,
+								amount: sumMoney(lateRows.map(confirmedAmount)),
+							},
+				evidence,
 			});
 		}
 	}
@@ -333,10 +306,18 @@ export interface ReconciliationInput {
 	/** Every direct cost belonging to the month, in any recognition state. */
 	records: CostRecord[];
 	/**
-	 * Confirmed Project cost of the previous month, keyed by project id and
-	 * then currency. `null` means that currency's prior amount is unknown.
+	 * Every direct cost of the prior month: the comparable period's own source.
+	 * Its records decide both the prior window's amounts and whether the prior
+	 * period has any evidence at all.
 	 */
-	previousMonthProjectCost: Map<number, Map<string, number | null>>;
+	priorMonthRecords: CostRecord[];
+	/** The date the reported month is measured to; today by default. */
+	asOf: string;
+	/**
+	 * Cumulative confirmed Project cost before the reported month, keyed by
+	 * project id and then currency; `null` is that currency's unknown amount.
+	 */
+	projectCostBefore: Map<number, Map<string, number | null>>;
 	projectFilter: number | null;
 	projectOptions: Array<{
 		project_id: number;
@@ -345,7 +326,34 @@ export interface ReconciliationInput {
 		client_name: string | null;
 	}>;
 	availableMonths: string[];
+	/** The server's current calendar month; the month the report opens on. */
+	currentMonth: string;
 	coverageDeclarations: readonly SourceCoverageDeclaration[];
+}
+
+/** The filtered Project detail's own subtotal, from its own rows. */
+function filteredSubtotal(
+	projectId: number | null,
+	rows: ReconciliationProjectRow[]
+): FilteredProjectSubtotal | null {
+	if (projectId === null) return null;
+	const currencies = [...new Set(rows.map((row) => row.currency))].sort();
+	return {
+		project_id: projectId,
+		currency_totals: currencies.map((currency) => {
+			const currencyRows = rows.filter((row) => row.currency === currency);
+			return {
+				currency,
+				incurred_cost: sumMoney(currencyRows.map((row) => row.incurred_cost)),
+				comparison_cost: sumMoney(
+					currencyRows.map((row) => row.comparison_cost)
+				),
+				cost_to_date: currencyRows.some((row) => row.cost_to_date === null)
+					? null
+					: sumMoney(currencyRows.map((row) => row.cost_to_date)),
+			};
+		}),
+	};
 }
 
 /** Build the reconciliation payload. Pure: all data arrives as arguments. */
@@ -353,6 +361,7 @@ export function buildReconciliation(
 	input: ReconciliationInput
 ): CompanyReconciliation {
 	const { records } = input;
+	const window = comparisonWindow(input.month, input.asOf);
 	const confirmed = records.filter(
 		(record) => confirmedAmount(record) !== null
 	);
@@ -439,10 +448,33 @@ export function buildReconciliation(
 		...monthNotices(records, confirmed, currencyTotals, missingAmounts.length),
 	];
 
+	// Rows are built company-wide first: the ranking, the comparison's
+	// disclosures, and the company reconciliation are never narrowed by the
+	// Project filter, and only the detail below is.
+	const allRows = projectRows(
+		confirmed,
+		open,
+		input.priorMonthRecords,
+		window,
+		input.projectCostBefore
+	);
+	const rows =
+		input.projectFilter === null
+			? allRows
+			: allRows.filter((row) => row.project_id === input.projectFilter);
+	const comparison = buildPeriodComparison({
+		month: input.month,
+		records,
+		priorMonthRecords: input.priorMonthRecords,
+		asOf: input.asOf,
+		rows: allRows,
+	});
+
 	return {
 		month: input.month,
 		month_label: monthLabel(input.month),
 		project_id: input.projectFilter,
+		current_month: input.currentMonth,
 		company: {
 			currency: singleCurrency ? currencies[0] : null,
 			incurred_cost: singleCurrency ? currencyTotals[0].incurred_cost : null,
@@ -469,12 +501,10 @@ export function buildReconciliation(
 				.length,
 			record_count: confirmed.length,
 		},
-		projects: projectRows(
-			confirmed,
-			open,
-			input.previousMonthProjectCost,
-			input.projectFilter
-		),
+		projects: rows,
+		comparison,
+		ranking: rankProjects(allRows),
+		filtered_subtotal: filteredSubtotal(input.projectFilter, rows),
 		evidence,
 		coverage: notices,
 		project_options: input.projectOptions,

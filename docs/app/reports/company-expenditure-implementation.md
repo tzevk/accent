@@ -131,14 +131,20 @@ instead of being cancelled and re-recorded.
 
 ## Report contract
 
-`GET /api/reports/employee-project-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=]`
+`GET /api/reports/employee-project-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=][&as_of=YYYY-MM-DD]`
 returns `company` (currency, incurred cost, per-currency subtotals — each with
 its own incurred cost, gross liability, recoverable tax, and unresolved-tax
 gross — the three groups, gross liability, recoverable tax, unresolved tax,
-known zeros), the Project breakdown with change against the previous month, the
+known zeros), the Project breakdown with its comparable-period comparison, the
 evidence summary, the coverage notices, the Project options for the entry
 control, and the months that carry cost. The Project filter narrows `projects`,
 never `company`.
+
+`as_of` identifies the comparable period: the date inside the reported month
+the month is measured to. It defaults to today, so a past month is compared in
+full and the current month over its elapsed days. A date that is not a real
+calendar date is `400 invalid_as_of`; one outside the reported month is
+`400 as_of_outside_month`.
 
 Currency rules are absolute, including the breakdown a reader uses to explain
 the month: a Project with cost in two currencies gets one row per currency
@@ -165,6 +171,56 @@ names the single currency when there is one).
 The Excel download keeps exporting the employee-cost views; the reconciliation
 export belongs to the export slice, and the view therefore offers no download
 button yet.
+
+## Comparable period, ranking, and cost to date (ticket #320)
+
+`src/lib/company-expenditure/ranking.ts` is the pure interpretation behind the
+report's period navigation, both orderings, and the cost-to-date column; the
+route, the drilldown, and the export must read it rather than re-deriving it.
+
+- **Window.** `comparisonWindow(month, asOf)` decides how much of the reported
+  month has elapsed. A month measured before its last day is unfinished: both
+  periods are then compared over their first `currentDays` days, the prior
+  window is clamped to the prior month's own length, and a clamped window is
+  disclosed as `unequal_window_length`. A month measured after its last day is
+  compared whole (`full_month_comparison`).
+- **Day rule.** A cost sits in the window when the day of its received-work
+  evidence starts on or before the window's last day (`service_period_start`,
+  else `service_period_end`, else the disclosed bill date). A confirmed cost
+  with no day at all is only covered by a full month, and the window counts it
+  as `undated_records` / `undated_period_evidence` instead of spreading it.
+- **Change.** Rows and the company carry the absolute change, a percentage
+  stated only for a known non-zero prior amount, and a state: a recorded zero
+  prior is `new` (absolute change, no percentage), and a Project with no prior
+  record at all is `no_prior` with both figures `null` — absence of records is
+  never read as zero cost.
+- **Ranking.** `ranking.by_cost` and `ranking.by_increase` order the same rows
+  inside one currency; ties share a position, and a row whose comparison amount
+  is unknown is listed in `ranking.increase_unranked` with its reason instead
+  of being placed by a guess.
+- **Cost to date.** `cost_to_date` accumulates confirmed cost of every month
+  before the reported one plus the reported window, so it is stated through
+  `comparison.cost_to_date_through`. A `null` means a contributing amount was
+  unknown, not zero.
+- **Evidence.** Every row carries `evidence` (state plus findings):
+  `recorded`, `estimated` (cost recorded but not confirmed), `reconstructed`
+  (a source module marked it so; none does yet), or `incomplete` (an unknown
+  amount, an unresolved tax treatment, or a period that is only a bill date or
+  a period end).
+- **Filtering.** `filtered_subtotal` is the filtered Project detail's own
+  subtotal. `company`, `comparison`, and `ranking` are company-wide and are
+  never narrowed by `project_id`.
+
+`e2e/specs/project-cost-ranking.spec.ts` drives the real app over the `#320`
+fixture block (Projects `E2E-EXP-P320A…E`, months 2022-05/2022-06, measured to
+2022-06-15) and writes `e2e/artifacts/project-cost-ranking.json`: it asserts the
+equal-period window, both orderings, the zero-prior and unknown-prior states,
+cost to date, late/backdated/unequal-coverage disclosure, the unfiltered company
+position behind a Project filter, the 400/403 refusals, and the browser flow
+(month and financial-year navigation, ranking switch, drilldown into recognized
+and unresolved evidence, and a cost entered, submitted, and recognized through
+the real controls). The spec refuses to run against a month that holds any cost
+outside its own namespace.
 
 ## Coverage: what the total does not include
 
@@ -277,6 +333,8 @@ the current report. Keep this verification database separate from business data.
 - `migrations/20261007120000_expense_cost_period_basis_service_period_end.js`
   (extends `period_basis` for the disclosed partial service period)
 - `src/lib/company-expenditure/{index,types,recognition,reconciliation,records,commands,coverage}.ts`
+- `src/lib/company-expenditure/{ranking,totals}.ts` (comparable period, both
+  orderings, cost to date, per-Project evidence; shared money subtotals)
 - `src/app/api/reports/employee-project-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)
 - `src/app/api/reports/employee-project-monthly-cost/expenses/route.ts`
 - `src/app/api/reports/employee-project-monthly-cost/download/route.ts` (tightened gate)
@@ -288,3 +346,5 @@ the current report. Keep this verification database separate from business data.
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
 - `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/global-setup.ts`
+- `e2e/specs/project-cost-ranking.spec.ts` (ranking, comparable period, cost to
+  date; artifact `e2e/artifacts/project-cost-ranking.json`)

@@ -523,12 +523,16 @@ export default function EmployeeProjectMonthlyCostPage() {
 
 	useEffect(() => {
 		if (!meta) return;
-		if (!selectedMonth && meta.latest_month)
-			setSelectedMonth(meta.latest_month);
-		else if (!selectedMonth && meta.current_month)
-			setSelectedMonth(meta.current_month);
+		// Company expenditure opens on the current month, so current cost
+		// growth is what the reader sees first; the employee-cost views keep
+		// opening on the latest month that has data.
+		const preferredMonth =
+			viewMode === 'expenditure'
+				? (meta.current_month ?? meta.latest_month)
+				: (meta.latest_month ?? meta.current_month);
+		if (!selectedMonth && preferredMonth) setSelectedMonth(preferredMonth);
 		if (!selectedFy && meta.current_fy) setSelectedFy(String(meta.current_fy));
-	}, [meta, selectedMonth, selectedFy]);
+	}, [meta, selectedMonth, selectedFy, viewMode]);
 
 	const monthlyQuery = useQuery<MonthlyResponse>({
 		queryKey: [

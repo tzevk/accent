@@ -8,18 +8,29 @@
  * exports and nothing else:
  *
  *   reads
- *     fetchCompanyReconciliation({ month, projectId? })
+ *     fetchCompanyReconciliation({ month, projectId?, asOf? })
  *       Company Incurred Cost for a month, split into Incurred Project Cost,
  *       Company Overhead, and Unallocated Cost per currency, plus the Project
  *       breakdown, evidence states, and the coverage notices that say what the
  *       total does and does not include.
+ *       The response also carries the month's `comparison` (the same month
+ *       measured against its Comparable Period, over equivalent elapsed
+ *       service periods while the month is unfinished), the `ranking` of the
+ *       Project rows by cost and by increase inside one currency, the
+ *       `filtered_subtotal` of a filtered Project detail, per-Project
+ *       `evidence`, and `cost_to_date`. `asOf` names the date inside the month
+ *       the comparison is measured to; it defaults to today.
  *     fetchCostDrilldown(query)
- *       The source records behind the figures, with identity, evidence, and
- *       the expense state they were counted from.
+ *       The source records behind the figures, with identity, evidence,
+ *       entry date, and the expense state they were counted from.
  *     fetchCostJournal(costUid)
  *       The append-only command history of one cost.
  *     SOURCE_COVERAGE
  *       Which cost sources feed this module and which are still outstanding.
+ *
+ *   financial calendar (shared with the report's month/FY navigation)
+ *     monthLabel(month), previousMonthOf(month), financialYearOf(month),
+ *     financialYearLabel(startYear), dayOfDate(value)
  *
  *   writes (one path, versioned)
  *     recordCost(input, actor, { connection? })
@@ -46,11 +57,12 @@ import {
 	loadCostEvents,
 	loadDrilldown,
 	loadExpenditureMonths,
-	loadMonthProjectCost,
 	loadMonthRecords,
+	loadProjectCostBefore,
 	loadProjectOptions,
 	type SqlConnection,
 } from './records';
+import { previousMonthOf } from './ranking';
 import { buildReconciliation } from './reconciliation';
 import type {
 	CompanyReconciliation,
@@ -64,6 +76,7 @@ export type { CostActor, CommandOptions } from './commands';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
 export { monthLabel } from './reconciliation';
+export { dayOfDate } from './ranking';
 export {
 	effectiveTaxTreatment,
 	evaluateCost,
@@ -74,7 +87,11 @@ export {
 	resolveRecognitionPeriod,
 } from './recognition';
 export type {
+	ChangeState,
 	CompanyReconciliation,
+	ComparisonBasis,
+	ComparisonCurrency,
+	ComparisonDisclosure,
 	CostClassification,
 	CostCommandInput,
 	CostCommandName,
@@ -89,7 +106,12 @@ export type {
 	CoverageNotice,
 	CurrencyTotal,
 	EvidenceSummary,
+	FilteredProjectSubtotal,
 	PeriodBasis,
+	PeriodComparison,
+	ProjectEvidenceState,
+	ProjectRanking,
+	RankingEntry,
 	RecognitionState,
 	RecordCostInput,
 	RecordedCost,
@@ -102,19 +124,14 @@ const pool: SqlConnection = {
 	execute: (sql, params) => query(sql, params),
 };
 
-/** The month before `YYYY-MM`, or null at the calendar's start. */
-function previousMonthOf(month: string): string | null {
-	const [year, monthNumber] = month.split('-').map(Number);
-	if (!year || !monthNumber) return null;
-	if (monthNumber === 1) {
-		return year - 1 < 1970 ? null : `${year - 1}-12`;
-	}
-	return `${year}-${String(monthNumber - 1).padStart(2, '0')}`;
-}
-
 /** Today's calendar month, from the server clock. */
 export function currentMonth(): string {
 	return new Date().toISOString().slice(0, 7);
+}
+
+/** Today's date, from the server clock: the default as-of of a month. */
+export function currentDate(): string {
+	return new Date().toISOString().slice(0, 10);
 }
 
 /** Months with direct cost recorded, newest first, including the current one. */
@@ -127,6 +144,12 @@ export interface ReconciliationRequest {
 	month: string;
 	/** Narrow the Project detail; never the company reconciliation. */
 	projectId?: number | null;
+	/**
+	 * The date the month is measured to, inside the reported month; it
+	 * identifies the comparable period. Defaults to today, so a past month is
+	 * compared in full and the current month over its elapsed days.
+	 */
+	asOf?: string | null;
 }
 
 /** Read one month's company reconciliation. */
@@ -134,13 +157,12 @@ export async function fetchCompanyReconciliation(
 	request: ReconciliationRequest
 ): Promise<CompanyReconciliation> {
 	const month = request.month;
-	const previousMonth = previousMonthOf(month);
-	const [records, previousProjectCost, projectOptions, availableMonths] =
+	const today = currentDate();
+	const [records, priorMonthRecords, projectCostBefore, projectOptions, availableMonths] =
 		await Promise.all([
 			loadMonthRecords(pool, month),
-			previousMonth
-				? loadMonthProjectCost(pool, previousMonth)
-				: Promise.resolve(new Map<number, Map<string, number | null>>()),
+			loadMonthRecords(pool, previousMonthOf(month)),
+			loadProjectCostBefore(pool, month),
 			loadProjectOptions(pool),
 			loadExpenditureMonths(pool, currentMonth()),
 		]);
@@ -148,10 +170,13 @@ export async function fetchCompanyReconciliation(
 	return buildReconciliation({
 		month,
 		records,
-		previousMonthProjectCost: previousProjectCost,
+		priorMonthRecords,
+		asOf: request.asOf ?? today,
+		projectCostBefore,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
 		availableMonths,
+		currentMonth: currentMonth(),
 		coverageDeclarations: SOURCE_COVERAGE,
 	});
 }

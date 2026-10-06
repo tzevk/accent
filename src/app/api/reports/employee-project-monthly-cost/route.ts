@@ -5,10 +5,13 @@
  * keeps the employee-cost views beside it.
  *
  * Without params                       → meta (months, expenditure months, FYs, employees)
- * ?view=expenditure&month=YYYY-MM[&project_id=]
+ * ?view=expenditure&month=YYYY-MM[&project_id=][&as_of=YYYY-MM-DD]
  *                                      → Company Incurred Cost, its Project/Overhead/
- *                                        Unallocated reconciliation, evidence states,
- *                                        and coverage (src/lib/company-expenditure)
+ *                                        Unallocated reconciliation, the comparable-period
+ *                                        comparison, both Project rankings, evidence
+ *                                        states, and coverage (src/lib/company-expenditure).
+ *                                        `as_of` identifies the comparable period inside
+ *                                        the month and defaults to today.
  * ?view=monthly&month=YYYY-MM          → employee-cost estimate for one month
  * ?view=fy&fy=YYYY                     → employee-cost FY matrix (Apr–Mar)
  * ?employee_id=&fy=YYYY                → legacy per-employee FY matrix (backward compat)
@@ -36,6 +39,7 @@ import {
 	getFinancialYear,
 } from '@/app/reports/employee-project-monthly-cost/data-source';
 import {
+	dayOfDate,
 	fetchCompanyReconciliation,
 	fetchExpenditureMonths,
 } from '@/lib/company-expenditure';
@@ -120,9 +124,38 @@ export async function GET(request: Request) {
 					);
 				}
 			}
+			// The comparable period is identified by the date the month is
+			// measured to. It must be a real date inside the reported month:
+			// a month is never compared against a window it does not have.
+			const asOfParam = url.searchParams.get('as_of');
+			let asOf: string | null = null;
+			if (asOfParam !== null) {
+				if (dayOfDate(asOfParam) === null) {
+					return NextResponse.json(
+						{
+							success: false,
+							error: 'Valid as_of date (YYYY-MM-DD) is required',
+							code: 'invalid_as_of',
+						},
+						{ status: 400 }
+					);
+				}
+				if (asOfParam.slice(0, 7) !== monthParam) {
+					return NextResponse.json(
+						{
+							success: false,
+							error: 'as_of must fall inside the reported month',
+							code: 'as_of_outside_month',
+						},
+						{ status: 400 }
+					);
+				}
+				asOf = asOfParam;
+			}
 			const data = await fetchCompanyReconciliation({
 				month: monthParam,
 				projectId,
+				asOf,
 			});
 			return NextResponse.json({ success: true, data, view: 'expenditure' });
 		}
