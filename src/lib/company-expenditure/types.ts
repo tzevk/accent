@@ -6,6 +6,8 @@
  * Recognition Period, Recognition State.
  */
 
+import type Decimal from 'decimal.js';
+
 /** Where a recognized cost belongs. `null` is the explicit unresolved state. */
 export type CostClassification = 'project' | 'company_overhead' | 'unallocated';
 
@@ -65,6 +67,9 @@ export type CostJournalCommand =
 /** Reasons a cost is not a clean confirmed amount. Disclosed, never hidden. */
 export type CostExceptionCode =
 	| 'missing_amount'
+	| 'original_currency_missing'
+	| 'conversion_evidence_missing'
+	| 'conversion_rate_invalid'
 	| 'tax_evidence_missing'
 	| 'tax_treatment_missing'
 	| 'tax_treatment_unresolved'
@@ -75,10 +80,91 @@ export type CostExceptionCode =
 	| 'missing_source_reference'
 	| 'missing_evidence_reference';
 
+/** How a cost's amount can be stated in the requested reporting currency. */
+export type ConversionStatus = 'reporting' | 'converted' | 'unsupported';
+
+/** Why a cost cannot be stated in the requested reporting currency. */
+export type ConversionExceptionCode =
+	| 'original_currency_missing'
+	| 'conversion_evidence_missing'
+	| 'conversion_rate_invalid';
+
+/**
+ * The evidence behind a reporting-currency figure: the original currency, the
+ * reporting target, and the effective rate/date/reference. The rate stays a
+ * decimal string (or Decimal): DECIMAL(20,10) holds more digits than a JS
+ * number can state exactly.
+ */
+export interface ConversionEvidence {
+	currency: string | null;
+	reportingCurrency?: string | null;
+	conversionRate: Decimal.Value | null;
+	conversionDate?: string | null;
+	conversionEvidenceReference?: string | null;
+}
+
+/**
+ * The reporting-currency statement of one amount. `reporting` means the
+ * amount is already in the requested basis; `converted` means stored evidence
+ * supports it; `unsupported` means no amount may be stated in that basis.
+ */
+export interface ConversionOutcome {
+	status: ConversionStatus;
+	reportingCurrency: string;
+	amount: number | null;
+	exception: ConversionExceptionCode | null;
+}
+
+/** One currency's report in the requested reporting currency. */
+export interface CurrencyReporting {
+	currency: string;
+	/**
+	 * `unsupported` when any confirmed record in the slice lacks matching
+	 * evidence; the figures are then null rather than a partial total.
+	 */
+	status: ConversionStatus;
+	unsupported_count: number;
+	incurred_project_cost: number | null;
+	company_overhead: number | null;
+	unallocated_cost: number | null;
+	incurred_cost: number | null;
+	gross_liability: number | null;
+	recoverable_tax: number | null;
+	unresolved_tax_gross: number | null;
+}
+
+/** Whether the month as a whole can be stated in the requested basis. */
+export interface CompanyConversion {
+	status: ConversionStatus;
+	converted_records: number;
+	unsupported_records: number;
+	/** Currencies with at least one confirmed record lacking matching evidence. */
+	unsupported_currencies: string[];
+	/** Confirmed records whose original currency is unknown. */
+	unknown_currency_records: number;
+}
+
 export interface CostFinancialInput {
 	classification: CostClassification | null;
 	state: RecognitionState;
+	/**
+	 * Original/transaction currency. Null is unknown: it is never guessed from
+	 * a Project default or read as INR, and it blocks recognition until
+	 * captured.
+	 */
 	currency: string | null;
+	/**
+	 * The currency this cost is reported in. Null means the company reporting
+	 * currency — a reporting-target default, not a statement about the
+	 * original transaction currency.
+	 */
+	reportingCurrency: string | null;
+	/** Effective original → reporting rate. Kept as the recorded string. */
+	conversionRate: string | null;
+	conversionDate: string | null;
+	conversionEvidenceReference: string | null;
+	/** Reporting-currency value of `recognizedAmount` at the recorded rate. */
+	convertedAmount: number | null;
 	/** Gross liability (`expenses.total_amount`). */
 	grossAmount: number | null;
 	/** Tax amount (`expenses.tax_amount`). */
@@ -145,6 +231,8 @@ export interface CurrencyTotal {
 	/** Gross liability of this currency's confirmed records with unresolved tax. */
 	unresolved_tax_gross: number;
 	record_count: number;
+	/** The same slice in the requested reporting currency. */
+	reporting: CurrencyReporting;
 }
 
 export interface ReconciliationGroup {
@@ -164,6 +252,10 @@ export interface ReconciliationProjectRow {
 	 * than one currency gets one row per currency; amounts are never combined.
 	 */
 	currency: string;
+	/** Whether this row can be stated in the requested reporting currency. */
+	conversion_status: ConversionStatus;
+	/** Reporting-currency cost; null unless every confirmed record is supported. */
+	converted_incurred_cost: number | null;
 	incurred_cost: number;
 	record_count: number;
 	/**
@@ -211,6 +303,7 @@ export interface EvidenceSummary {
 		gross_amount: number | null;
 	};
 	missing_amount: { count: number };
+	missing_currency: { count: number };
 	known_zero: { count: number };
 }
 
@@ -219,7 +312,16 @@ export interface CompanyReconciliation {
 	month_label: string;
 	project_id: number | null;
 	company: {
-		/** Reporting currency when one currency covers the month, else null. */
+		/** The reporting currency this read was stated in (default INR). */
+		reporting_currency: string;
+		/** Whether every confirmed record could be stated in that basis. */
+		conversion: CompanyConversion;
+		/**
+		 * The currency of `incurred_cost`, when one complete total is stated:
+		 * the reporting currency once every confirmed record is supported, or
+		 * the single original currency when those records share one but lack
+		 * conversion evidence. Null when currencies cannot be combined.
+		 */
 		currency: string | null;
 		/** Company Incurred Cost; null when currencies cannot be combined. */
 		incurred_cost: number | null;
@@ -239,10 +341,16 @@ export interface CompanyReconciliation {
 	evidence: EvidenceSummary;
 	coverage: CoverageNotice[];
 	/**
+	/**
 	 * Recorded employee cost from Payroll Slips (ADR-0016): frozen allocations
 	 * plus current-month payroll-based estimates, always stated separately.
 	 */
 	payroll: PayrollExpenditure;
+	/**
+	 * The approved cost budgets behind this month's Project detail. Its own
+	 * section: a budget never enters `company`, `projects`, or `evidence`.
+	 */
+	budgets: BudgetSection;
 	project_options: Array<{
 		project_id: number;
 		project_code: string;
@@ -376,6 +484,12 @@ export interface CostPatch {
 	servicePeriodEnd?: string | null;
 	billDate?: string | null;
 	currency?: string | null;
+	/** Reporting target; null means the company reporting currency. */
+	reportingCurrency?: string | null;
+	/** The full conversion triple must move together. */
+	conversionRate?: Decimal.Value | null;
+	conversionDate?: string | null;
+	conversionEvidenceReference?: string | null;
 	grossAmount?: number | null;
 	taxAmount?: number | null;
 	taxTreatment?: TaxTreatment;
@@ -475,6 +589,12 @@ export interface CostRecordJson {
 	service_period_end: string | null;
 	expense_date: string | null;
 	currency: string | null;
+	reporting_currency: string | null;
+	conversion_rate: string | null;
+	conversion_date: string | null;
+	conversion_evidence_reference: string | null;
+	converted_amount: number | null;
+	conversion_status: ConversionStatus;
 	gross_amount: number | null;
 	tax_amount: number | null;
 	tax_treatment: TaxTreatment;
@@ -510,4 +630,216 @@ export interface CostDrilldown {
 		currency: string | null;
 		records: number;
 	};
+}
+
+/* ------------------------------------------------------------------------- *
+ * Approved Project cost budgets
+ *
+ * A cost budget is its own record with its own identity and version history.
+ * `projects.project_value`, `projects.cost_to_company`, `projects.budget`,
+ * quotations, and purchase orders are commercial fields; none of them is read
+ * as a cost budget. A budget is compared with Incurred Project Cost only when
+ * Project, currency, scope, and period all match.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * What an approved budget is a budget *of*.
+ *
+ * `project_incurred_cost` is the comparable scope: the approved cost budget for
+ * a Project's Incurred Project Cost. `commercial_value` records a commercial
+ * figure for context; it is never compared as a cost budget and never enters a
+ * cost total, so a sales value cannot masquerade as an approved cost budget.
+ */
+export type CostBudgetScope = 'project_incurred_cost' | 'commercial_value';
+
+/** The scopes a budget can declare; anything else is refused. */
+export const COST_BUDGET_SCOPES = [
+	'project_incurred_cost',
+	'commercial_value',
+] as const;
+
+export function isCostBudgetScope(value: unknown): value is CostBudgetScope {
+	return (
+		typeof value === 'string' &&
+		(COST_BUDGET_SCOPES as readonly string[]).includes(value)
+	);
+}
+
+/**
+ * The budget lifecycle. Only `approved` is an approved cost budget; approving
+ * a later overlapping budget marks the earlier row `superseded`, which keeps
+ * its approval evidence, version, and journal.
+ */
+export type CostBudgetState =
+	| 'draft'
+	| 'submitted'
+	| 'approved'
+	| 'superseded'
+	| 'withdrawn';
+
+export type CostBudgetCommandName =
+	| 'update'
+	| 'submit'
+	| 'approve'
+	| 'withdraw';
+
+/** The journal's vocabulary (`project_cost_budget_events.command`). */
+export type CostBudgetJournalCommand =
+	| 'recorded'
+	| 'updated'
+	| 'submitted'
+	| 'approved'
+	| 'withdrawn'
+	| 'superseded';
+
+/** One cost budget row as the module and its callers read it. */
+export interface CostBudgetRecord {
+	id: number;
+	budget_uid: string;
+	project_id: number;
+	project_code: string;
+	project_name: string;
+	currency: string;
+	amount: number;
+	scope: CostBudgetScope;
+	state: CostBudgetState;
+	period_start: string;
+	period_end: string;
+	basis_note: string | null;
+	/** The approval evidence; an approved row always carries one. */
+	approval_evidence_reference: string | null;
+	approved_by: number | null;
+	approved_at: string | null;
+	financial_version: number;
+	created_by: number | null;
+	created_at: string;
+	updated_at: string;
+}
+
+/** The budget facts a comparison states, without the Project naming. */
+export interface CostBudgetCandidate {
+	budget_id: number;
+	budget_uid: string;
+	state: CostBudgetState;
+	currency: string;
+	scope: CostBudgetScope;
+	amount: number;
+	period_start: string;
+	period_end: string;
+	/** What the recorded basis says the approval covers. */
+	basis_note: string | null;
+	financial_version: number;
+	approval_evidence_reference: string | null;
+	approved_at: string | null;
+}
+
+/**
+ * Why a Project row is or is not compared with a budget.
+ *
+ * `compared` is the only state that publishes a variance. Everything else is
+ * explicit: a missing or unapproved budget, a budget whose currency, scope, or
+ * period does not match, several matching budgets (so no single one can be
+ * picked), an approved budget whose cost is not recognized yet, and an approved
+ * budget with no Incurred Project Cost recorded beside it.
+ */
+export type BudgetOutcome =
+	| 'compared'
+	| 'missing'
+	| 'unapproved'
+	| 'incompatible_currency'
+	| 'incompatible_scope'
+	| 'incompatible_period'
+	| 'ambiguous'
+	| 'unsupported_incurred_cost'
+	| 'no_incurred_cost';
+
+/** One Project row (or one approved budget with no row) and its budget basis. */
+export interface ProjectBudgetComparison {
+	project_id: number;
+	project_code: string;
+	project_name: string;
+	client_name: string | null;
+	/** The row's currency. A comparison never crosses currencies. */
+	currency: string;
+	/**
+	 * Confirmed Incurred Project Cost of this Project and currency, or null when
+	 * no such row exists for the month (`no_incurred_cost`).
+	 */
+	incurred_cost: number | null;
+	confirmed_records: number;
+	/** Draft or pending-evidence records that are not confirmed cost. */
+	pending_records: number;
+	outcome: BudgetOutcome;
+	/**
+	 * The comparison basis: the approved budget the variance is stated from
+	 * (`compared`), or the one a confirmed cost would be compared with
+	 * (`unsupported_incurred_cost`). Null for every other outcome, whose
+	 * detail names its `candidates` instead of implying an approved basis.
+	 */
+	budget: CostBudgetCandidate | null;
+	/** Every budget of the Project that this month's reading considered. */
+	candidates: CostBudgetCandidate[];
+	/** Approved budget minus Incurred Project Cost; only when `compared`. */
+	variance: number | null;
+	over_budget: boolean | null;
+	detail: string;
+}
+
+export interface BudgetSection {
+	month: string;
+	/** What a comparison is, and what it deliberately is not. */
+	basis: string;
+	/** Why a variance is not profit, revenue, or a forecast. */
+	variance_note: string;
+	comparisons: ProjectBudgetComparison[];
+	notices: CoverageNotice[];
+}
+
+export interface CostBudgetPatch {
+	currency?: string;
+	amount?: number;
+	scope?: CostBudgetScope;
+	periodStart?: string;
+	periodEnd?: string;
+	basisNote?: string | null;
+}
+
+export interface RecordCostBudgetInput extends CostBudgetPatch {
+	/** The Project the approved cost budget belongs to. */
+	projectId: number;
+}
+
+export interface CostBudgetCommandInput {
+	/** `project_cost_budgets.id` of the target budget. */
+	id: number;
+	command: CostBudgetCommandName;
+	expectedVersion: number;
+	reason?: string | null;
+	/** Required for `approve`: the evidence the approval rests on. */
+	evidenceReference?: string | null;
+	/** Field changes for `update`. */
+	patch?: CostBudgetPatch;
+}
+
+export interface CostBudgetCommandResult {
+	id: number;
+	budget_uid: string;
+	state: CostBudgetState;
+	financial_version: number;
+	currency: string;
+	amount: number;
+	scope: CostBudgetScope;
+	period_start: string;
+	period_end: string;
+	component: CostBudgetCommandName;
+}
+
+export interface CostBudgetJournalEntry {
+	version: number;
+	command: CostBudgetJournalCommand;
+	actor_user_id: number | null;
+	reason: string | null;
+	evidence_reference: string | null;
+	created_at: string;
+	snapshot: Record<string, unknown> | null;
 }

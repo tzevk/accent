@@ -59,8 +59,8 @@ export const ALLOCATION_ASSIGNMENT_PREFIX = 'e2e-alloc-assign-';
 export const ALLOCATION_BONUS_REMARKS = 'E2E-ALLOC bonus rate';
 export const ALLOCATION_BONUS_AMOUNT = 500;
 export const ALLOCATION_USERNAME = 'e2e_alloc_user';
-export const ALLOCATION_READER_IP = '198.18.0.24';
-export const ALLOCATION_FIN_READER_IP = '198.18.0.25';
+export const ALLOCATION_READER_IP = '198.18.0.27';
+export const ALLOCATION_FIN_READER_IP = '198.18.0.28';
 
 export const ALLOCATION_USER = {
 	username: ALLOCATION_USERNAME,
