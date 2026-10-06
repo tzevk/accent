@@ -193,6 +193,12 @@ interface ReconciliationData {
 			change_amount: number | null;
 			change_percent: number | null;
 			change_state: string;
+			groups: Array<{
+				key: string;
+				label: string;
+				amount: number;
+				record_count: number;
+			}>;
 			undated_records: number;
 			late_records: number;
 			late_cost: number;
@@ -445,6 +451,23 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
 	expect(data.comparison.currency_totals[0].prior_cost).toBe(
 		EXPECTED.company.priorWindow
 	);
+	// The window's own categories, each underlying cost counted once, and they
+	// sum to the window's company figure.
+	const windowCategories = data.comparison.currency_totals[0].groups;
+	expect(windowCategories.map((group) => [group.key, group.amount])).toEqual([
+		[
+			'incurred_project_cost',
+			EXPECTED.alpha.window +
+				EXPECTED.beta.window +
+				EXPECTED.gamma.window +
+				EXPECTED.delta.window,
+		],
+		['company_overhead', 50000],
+		['unallocated_cost', 20000],
+	]);
+	expect(
+		windowCategories.reduce((total, group) => total + group.amount, 0)
+	).toBe(EXPECTED.company.window);
 
 	// Every Project row states its month, its comparable window, the absolute
 	// change, the supported percentage, cost to date, and its evidence.
@@ -879,6 +902,30 @@ test('ranks, compares, and drills down through the real report controls', async 
 	);
 	await expect(page.getByTestId('comparison-percent')).toContainText('8.70%');
 	await expect(page.getByTestId('fy-label')).toContainText(FY_LABEL);
+	// The panel states the window's direct-cost categories as well, per
+	// currency, from the same records the comparison counts.
+	const categoryRow = page.getByTestId('comparison-currency-row');
+	await expect(categoryRow).toHaveAttribute(
+		'data-current',
+		String(EXPECTED.company.month)
+	);
+	for (const [category, amount] of [
+		[
+			'incurred_project_cost',
+			EXPECTED.alpha.month +
+				EXPECTED.beta.month +
+				EXPECTED.gamma.month +
+				EXPECTED.delta.month,
+		],
+		['company_overhead', 50000],
+		['unallocated_cost', 20000],
+	] as const) {
+		await expect(
+			categoryRow.locator(
+				`[data-testid="comparison-category"][data-category="${category}"]`
+			)
+		).toHaveAttribute('data-amount', String(amount));
+	}
 
 	// Largest cost first is the default ordering, straight from the payload.
 	expect(await renderedOrder(page)).toEqual([ALPHA, BETA, GAMMA, DELTA]);

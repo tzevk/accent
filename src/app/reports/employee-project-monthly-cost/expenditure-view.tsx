@@ -96,6 +96,12 @@ interface ComparisonCurrencyRow {
 	change_amount: number | null;
 	change_percent: number | null;
 	change_state: string;
+	groups: Array<{
+		key: string;
+		label: string;
+		amount: number;
+		record_count: number;
+	}>;
 	undated_records: number;
 	late_records: number;
 	late_cost: number;
@@ -829,10 +835,10 @@ export default function ExpenditureView({
 						</p>
 					</div>
 				</div>
-				{multiCurrency && data.comparison.currency_totals.length > 0 && (
+				{data.comparison.currency_totals.length > 0 && (
 					<table className="mt-2 w-full text-xs">
 						<caption className="sr-only">
-							Comparable period figures per currency
+							Comparable window by currency and direct-cost category
 						</caption>
 						<thead className="text-left text-[10px] uppercase tracking-wide text-gray-500">
 							<tr>
@@ -846,6 +852,15 @@ export default function ExpenditureView({
 								<th scope="col" className="text-right">
 									Change
 								</th>
+								<th scope="col" className="text-right">
+									Incurred Project Cost
+								</th>
+								<th scope="col" className="text-right">
+									Company Overhead
+								</th>
+								<th scope="col" className="text-right">
+									Unallocated Cost
+								</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -854,6 +869,8 @@ export default function ExpenditureView({
 									key={row.currency}
 									data-testid="comparison-currency-row"
 									data-currency={row.currency}
+									data-current={row.current_cost}
+									data-prior={row.prior_cost ?? ''}
 								>
 									<td>{row.currency}</td>
 									<td className="text-right">
@@ -867,6 +884,17 @@ export default function ExpenditureView({
 									<td className="text-right">
 										{percentLabel(row.change_percent, row.change_state)}
 									</td>
+									{row.groups.map((group) => (
+										<td
+											key={group.key}
+											data-testid="comparison-category"
+											data-category={group.key}
+											data-amount={group.amount}
+											className="text-right"
+										>
+											{formatCurrencyIn(group.amount, row.currency)}
+										</td>
+									))}
 								</tr>
 							))}
 						</tbody>

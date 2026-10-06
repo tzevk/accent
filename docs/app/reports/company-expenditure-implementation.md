@@ -189,6 +189,10 @@ route, the drilldown, and the export must read it rather than re-deriving it.
   else `service_period_end`, else the disclosed bill date). A confirmed cost
   with no day at all is only covered by a full month, and the window counts it
   as `undated_records` / `undated_period_evidence` instead of spreading it.
+- **Categories.** Each currency's window carries `groups` — Incurred Project
+  Cost, Company Overhead, Unallocated Cost — counted once from the window's own
+  records, so the reader sees which direct-cost category moved the comparison;
+  the three group amounts sum to the window's company figure.
 - **Change.** Rows and the company carry the absolute change, a percentage
   stated only for a known non-zero prior amount, and a state: a recorded zero
   prior is `new` (absolute change, no percentage), and a Project with no prior
