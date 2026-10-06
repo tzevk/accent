@@ -425,6 +425,11 @@ export interface CompanyReconciliation {
 	filtered_subtotal: FilteredProjectSubtotal | null;
 	evidence: EvidenceSummary;
 	coverage: CoverageNotice[];
+	/**
+	 * The approved cost budgets behind this month's Project detail. Its own
+	 * section: a budget never enters `company`, `projects`, or `evidence`.
+	 */
+	budgets: BudgetSection;
 	project_options: Array<{
 		project_id: number;
 		project_code: string;
@@ -591,4 +596,216 @@ export interface CostDrilldown {
 		currency: string | null;
 		records: number;
 	};
+}
+
+/* ------------------------------------------------------------------------- *
+ * Approved Project cost budgets
+ *
+ * A cost budget is its own record with its own identity and version history.
+ * `projects.project_value`, `projects.cost_to_company`, `projects.budget`,
+ * quotations, and purchase orders are commercial fields; none of them is read
+ * as a cost budget. A budget is compared with Incurred Project Cost only when
+ * Project, currency, scope, and period all match.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * What an approved budget is a budget *of*.
+ *
+ * `project_incurred_cost` is the comparable scope: the approved cost budget for
+ * a Project's Incurred Project Cost. `commercial_value` records a commercial
+ * figure for context; it is never compared as a cost budget and never enters a
+ * cost total, so a sales value cannot masquerade as an approved cost budget.
+ */
+export type CostBudgetScope = 'project_incurred_cost' | 'commercial_value';
+
+/** The scopes a budget can declare; anything else is refused. */
+export const COST_BUDGET_SCOPES = [
+	'project_incurred_cost',
+	'commercial_value',
+] as const;
+
+export function isCostBudgetScope(value: unknown): value is CostBudgetScope {
+	return (
+		typeof value === 'string' &&
+		(COST_BUDGET_SCOPES as readonly string[]).includes(value)
+	);
+}
+
+/**
+ * The budget lifecycle. Only `approved` is an approved cost budget; approving
+ * a later overlapping budget marks the earlier row `superseded`, which keeps
+ * its approval evidence, version, and journal.
+ */
+export type CostBudgetState =
+	| 'draft'
+	| 'submitted'
+	| 'approved'
+	| 'superseded'
+	| 'withdrawn';
+
+export type CostBudgetCommandName =
+	| 'update'
+	| 'submit'
+	| 'approve'
+	| 'withdraw';
+
+/** The journal's vocabulary (`project_cost_budget_events.command`). */
+export type CostBudgetJournalCommand =
+	| 'recorded'
+	| 'updated'
+	| 'submitted'
+	| 'approved'
+	| 'withdrawn'
+	| 'superseded';
+
+/** One cost budget row as the module and its callers read it. */
+export interface CostBudgetRecord {
+	id: number;
+	budget_uid: string;
+	project_id: number;
+	project_code: string;
+	project_name: string;
+	currency: string;
+	amount: number;
+	scope: CostBudgetScope;
+	state: CostBudgetState;
+	period_start: string;
+	period_end: string;
+	basis_note: string | null;
+	/** The approval evidence; an approved row always carries one. */
+	approval_evidence_reference: string | null;
+	approved_by: number | null;
+	approved_at: string | null;
+	financial_version: number;
+	created_by: number | null;
+	created_at: string;
+	updated_at: string;
+}
+
+/** The budget facts a comparison states, without the Project naming. */
+export interface CostBudgetCandidate {
+	budget_id: number;
+	budget_uid: string;
+	state: CostBudgetState;
+	currency: string;
+	scope: CostBudgetScope;
+	amount: number;
+	period_start: string;
+	period_end: string;
+	/** What the recorded basis says the approval covers. */
+	basis_note: string | null;
+	financial_version: number;
+	approval_evidence_reference: string | null;
+	approved_at: string | null;
+}
+
+/**
+ * Why a Project row is or is not compared with a budget.
+ *
+ * `compared` is the only state that publishes a variance. Everything else is
+ * explicit: a missing or unapproved budget, a budget whose currency, scope, or
+ * period does not match, several matching budgets (so no single one can be
+ * picked), an approved budget whose cost is not recognized yet, and an approved
+ * budget with no Incurred Project Cost recorded beside it.
+ */
+export type BudgetOutcome =
+	| 'compared'
+	| 'missing'
+	| 'unapproved'
+	| 'incompatible_currency'
+	| 'incompatible_scope'
+	| 'incompatible_period'
+	| 'ambiguous'
+	| 'unsupported_incurred_cost'
+	| 'no_incurred_cost';
+
+/** One Project row (or one approved budget with no row) and its budget basis. */
+export interface ProjectBudgetComparison {
+	project_id: number;
+	project_code: string;
+	project_name: string;
+	client_name: string | null;
+	/** The row's currency. A comparison never crosses currencies. */
+	currency: string;
+	/**
+	 * Confirmed Incurred Project Cost of this Project and currency, or null when
+	 * no such row exists for the month (`no_incurred_cost`).
+	 */
+	incurred_cost: number | null;
+	confirmed_records: number;
+	/** Draft or pending-evidence records that are not confirmed cost. */
+	pending_records: number;
+	outcome: BudgetOutcome;
+	/**
+	 * The comparison basis: the approved budget the variance is stated from
+	 * (`compared`), or the one a confirmed cost would be compared with
+	 * (`unsupported_incurred_cost`). Null for every other outcome, whose
+	 * detail names its `candidates` instead of implying an approved basis.
+	 */
+	budget: CostBudgetCandidate | null;
+	/** Every budget of the Project that this month's reading considered. */
+	candidates: CostBudgetCandidate[];
+	/** Approved budget minus Incurred Project Cost; only when `compared`. */
+	variance: number | null;
+	over_budget: boolean | null;
+	detail: string;
+}
+
+export interface BudgetSection {
+	month: string;
+	/** What a comparison is, and what it deliberately is not. */
+	basis: string;
+	/** Why a variance is not profit, revenue, or a forecast. */
+	variance_note: string;
+	comparisons: ProjectBudgetComparison[];
+	notices: CoverageNotice[];
+}
+
+export interface CostBudgetPatch {
+	currency?: string;
+	amount?: number;
+	scope?: CostBudgetScope;
+	periodStart?: string;
+	periodEnd?: string;
+	basisNote?: string | null;
+}
+
+export interface RecordCostBudgetInput extends CostBudgetPatch {
+	/** The Project the approved cost budget belongs to. */
+	projectId: number;
+}
+
+export interface CostBudgetCommandInput {
+	/** `project_cost_budgets.id` of the target budget. */
+	id: number;
+	command: CostBudgetCommandName;
+	expectedVersion: number;
+	reason?: string | null;
+	/** Required for `approve`: the evidence the approval rests on. */
+	evidenceReference?: string | null;
+	/** Field changes for `update`. */
+	patch?: CostBudgetPatch;
+}
+
+export interface CostBudgetCommandResult {
+	id: number;
+	budget_uid: string;
+	state: CostBudgetState;
+	financial_version: number;
+	currency: string;
+	amount: number;
+	scope: CostBudgetScope;
+	period_start: string;
+	period_end: string;
+	component: CostBudgetCommandName;
+}
+
+export interface CostBudgetJournalEntry {
+	version: number;
+	command: CostBudgetJournalCommand;
+	actor_user_id: number | null;
+	reason: string | null;
+	evidence_reference: string | null;
+	created_at: string;
+	snapshot: Record<string, unknown> | null;
 }

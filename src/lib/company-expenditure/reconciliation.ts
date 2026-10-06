@@ -17,6 +17,7 @@
  */
 
 import { add, R } from '@/lib/money';
+import { buildBudgetSection } from './budget-comparison';
 import type { SourceCoverageDeclaration } from './coverage';
 import { effectiveTaxTreatment, isConfirmed, isOpenState } from './recognition';
 import {
@@ -43,6 +44,7 @@ import {
 } from './totals';
 import type {
 	CompanyReconciliation,
+	CostBudgetRecord,
 	CostRecord,
 	CoverageNotice,
 	CurrencyTotal,
@@ -93,6 +95,17 @@ function currencySlice(records: CostRecord[], currency: string): CurrencyTotal {
 	};
 }
 
+/** The Project ids a month's records place rows for. */
+export function projectIdsIn(records: CostRecord[]): number[] {
+	const ids = new Set<number>();
+	for (const record of records) {
+		if (record.classification === 'project' && record.projectId !== null) {
+			ids.add(record.projectId);
+		}
+	}
+	return [...ids];
+}
+
 function projectRows(
 	confirmed: CostRecord[],
 	open: CostRecord[],
@@ -103,12 +116,7 @@ function projectRows(
 	// One row per Project and currency. Amounts in different currencies are
 	// never added, and the prior-period comparison is same-currency only; a
 	// Project costing in two currencies therefore shows two rows.
-	const ids = new Set<number>();
-	for (const record of [...confirmed, ...open]) {
-		if (record.classification === 'project' && record.projectId !== null) {
-			ids.add(record.projectId);
-		}
-	}
+	const ids = new Set<number>(projectIdsIn([...confirmed, ...open]));
 	const priorWindowRecords = windowRecords(priorMonthRecords, window, 'prior');
 	const currentEnd = window.throughDate;
 	const rows: ReconciliationProjectRow[] = [];
@@ -309,6 +317,11 @@ export interface ReconciliationInput {
 	 * project id and then currency; `null` is that currency's unknown amount.
 	 */
 	projectCostBefore: Map<number, Map<string, number | null>>;
+	/**
+	 * The cost budgets the budget section reads: every covering budget of the
+	 * month plus every budget of the Projects above.
+	 */
+	budgets: CostBudgetRecord[];
 	projectFilter: number | null;
 	projectOptions: Array<{
 		project_id: number;
@@ -440,8 +453,8 @@ export function buildReconciliation(
 	];
 
 	// Rows are built company-wide first: the ranking, the comparison's
-	// disclosures, and the company reconciliation are never narrowed by the
-	// Project filter, and only the detail below is.
+	// disclosures, the budget section, and the company reconciliation are never
+	// narrowed by the Project filter, and only the detail below is.
 	const allRows = projectRows(
 		confirmed,
 		open,
@@ -498,6 +511,17 @@ export function buildReconciliation(
 		filtered_subtotal: filteredSubtotal(input.projectFilter, rows),
 		evidence,
 		coverage: notices,
+		// The budget section is its own interpretation: a budget never enters
+		// `company`, `projects`, or `evidence`.
+		budgets: buildBudgetSection({
+			month: input.month,
+			// The budget section reads the company-wide rows, like the ranking
+			// and the comparison: a Project filter never hides a budget.
+			rows: allRows,
+			records,
+			budgets: input.budgets,
+			projectFilter: input.projectFilter,
+		}),
 		project_options: input.projectOptions,
 		available_months: input.availableMonths,
 	};
