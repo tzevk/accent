@@ -75,6 +75,11 @@ interface OtherExpenseApiRow {
 	service_period_end: string | null;
 	bill_date: string | null;
 	currency: string | null;
+	reporting_currency: string | null;
+	conversion_rate: string | null;
+	conversion_date: string | null;
+	conversion_evidence_reference: string | null;
+	converted_amount: number | null;
 	net_amount: number | null;
 	gst_amount: number | null;
 	bill_amount: number | null;
@@ -269,7 +274,16 @@ export function OtherExpenseReviewDialog({
 		service_period_start: row?.service_period_start?.slice(0, 10) ?? '',
 		service_period_end: row?.service_period_end?.slice(0, 10) ?? '',
 		bill_date: row?.bill_date?.slice(0, 10) ?? '',
-		currency: row?.currency ?? 'INR',
+		// A stored currency is shown as it is; an unknown one stays blank so the
+		// operator states it rather than inheriting INR silently.
+		currency: row?.currency ?? '',
+		reporting_currency: row?.reporting_currency ?? '',
+		conversion_rate:
+			row?.conversion_rate === null || row?.conversion_rate === undefined
+				? ''
+				: String(row.conversion_rate),
+		conversion_date: row?.conversion_date?.slice(0, 10) ?? '',
+		conversion_evidence_reference: row?.conversion_evidence_reference ?? '',
 		gross_amount: row?.net_amount === null || row?.net_amount === undefined
 			? ''
 			: String(row.net_amount),
@@ -285,6 +299,17 @@ export function OtherExpenseReviewDialog({
 	const set = (key: string, value: string) =>
 		setDraft({ ...values, [key]: value });
 
+	const conversionTouched =
+		values.reporting_currency !== '' ||
+		values.conversion_rate !== '' ||
+		values.conversion_date !== '' ||
+		values.conversion_evidence_reference !== '';
+	const hadConversionEvidence = Boolean(
+		row?.reporting_currency ||
+			row?.conversion_rate ||
+			row?.conversion_date ||
+			row?.conversion_evidence_reference
+	);
 	const patch = {
 		classification: values.classification || null,
 		project_id: values.project_id || null,
@@ -297,7 +322,19 @@ export function OtherExpenseReviewDialog({
 		tax_treatment: values.tax_treatment || null,
 		tax_evidence_reference: values.tax_evidence_reference || null,
 		source_reference: values.source_reference || null,
-		evidence_reference: values.evidence_reference || null
+		evidence_reference: values.evidence_reference || null,
+		// Conversion evidence moves as a whole and is approval-gated: the keys
+		// are sent only when the entry states or already carries evidence, so a
+		// plain edit never needs the approval permission.
+		...(conversionTouched || hadConversionEvidence
+			? {
+					reporting_currency: values.reporting_currency || null,
+					conversion_rate: values.conversion_rate || null,
+					conversion_date: values.conversion_date || null,
+					conversion_evidence_reference:
+						values.conversion_evidence_reference || null
+				}
+			: {})
 	};
 
 	const runCommand = useMutation({
@@ -544,6 +581,47 @@ export function OtherExpenseReviewDialog({
 							className={fieldClass}
 						/>
 					</label>
+					<label className={labelClass} htmlFor="oe-reporting-currency">
+						Reporting currency
+						<input
+							id="oe-reporting-currency"
+							value={values.reporting_currency}
+							onChange={(event) =>
+								set('reporting_currency', event.target.value)
+							}
+							className={fieldClass}
+						/>
+					</label>
+					<label className={labelClass} htmlFor="oe-conversion-rate">
+						Conversion rate
+						<input
+							id="oe-conversion-rate"
+							value={values.conversion_rate}
+							onChange={(event) => set('conversion_rate', event.target.value)}
+							className={fieldClass}
+						/>
+					</label>
+					<label className={labelClass} htmlFor="oe-conversion-date">
+						Conversion date
+						<input
+							id="oe-conversion-date"
+							type="date"
+							value={values.conversion_date}
+							onChange={(event) => set('conversion_date', event.target.value)}
+							className={fieldClass}
+						/>
+					</label>
+					<label className={labelClass} htmlFor="oe-conversion-evidence">
+						Conversion evidence reference
+						<input
+							id="oe-conversion-evidence"
+							value={values.conversion_evidence_reference}
+							onChange={(event) =>
+								set('conversion_evidence_reference', event.target.value)
+							}
+							className={fieldClass}
+						/>
+					</label>
 					<label className={labelClass} htmlFor="oe-evidence">
 						Decision evidence reference
 						<input
@@ -554,6 +632,13 @@ export function OtherExpenseReviewDialog({
 						/>
 					</label>
 				</div>
+
+				{row.converted_amount !== null ? (
+					<p className="mt-3 text-xs text-gray-600">
+						Reporting figure: {formatCurrency(row.converted_amount)} at{' '}
+						{row.conversion_rate ?? '—'} ({row.reporting_currency ?? '—'})
+					</p>
+				) : null}
 
 				<div className="mt-4 flex flex-wrap items-center gap-2">
 					<button

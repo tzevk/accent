@@ -41,8 +41,9 @@ export const OTHER_EXPENSE_TARGET = {
 } as const;
 
 /**
- * A reader with `other_expenses:read` and `reports:read` but no create,
- * update, or approve: the identity that proves the approval gate.
+ * A reader with `other_expenses:read` + `other_expenses:update` and
+ * `reports:read` but no create or approve: the identity that proves the
+ * approval gate (including the conversion-evidence gate on an edit).
  */
 export const OTHER_EXPENSE_READER = {
 	username: 'e2e_315_expense_reader',
@@ -79,7 +80,11 @@ async function seedOtherExpenseReader(): Promise<void> {
 		[
 			OTHER_EXPENSE_READER_ROLE.roleCode,
 			OTHER_EXPENSE_READER_ROLE.roleName,
-			JSON.stringify(['other_expenses:read', 'reports:read']),
+			JSON.stringify([
+				'other_expenses:read',
+				'other_expenses:update',
+				'reports:read'
+			]),
 			'E2E other-expense read-only fixture (e2e/lib/other-expense-fixtures.ts)',
 		]
 	);

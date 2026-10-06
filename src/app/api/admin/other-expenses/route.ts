@@ -44,6 +44,10 @@ const CAPTURE_FIELDS = [
 	'source_reference',
 	'evidence_reference',
 	'receipt_url',
+	'reporting_currency',
+	'conversion_rate',
+	'conversion_date',
+	'conversion_evidence_reference',
 	'linked_cost_uid',
 	'submit'
 ] as const;

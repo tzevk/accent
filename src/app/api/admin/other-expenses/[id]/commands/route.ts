@@ -14,11 +14,26 @@ import {
 const COMMANDS = ['update', 'submit', 'recognize', 'reject', 'cancel'] as const;
 type CommandName = (typeof COMMANDS)[number];
 
+/** Conversion evidence is module-owned (#319): changing it is an approval. */
+const CONVERSION_PATCH_FIELDS = [
+	'reporting_currency',
+	'conversion_rate',
+	'conversion_date',
+	'conversion_evidence_reference'
+] as const;
+
 /** Recognizing and rejecting cost need approval; editing needs update. */
-function permissionFor(command: CommandName): string {
-	return command === 'recognize' || command === 'reject' || command === 'cancel'
-		? PERMISSIONS.APPROVE
-		: PERMISSIONS.UPDATE;
+function permissionFor(
+	command: CommandName,
+	patch: OtherExpensePatch | undefined
+): string {
+	if (command === 'update' || command === 'submit') {
+		const touchesConversion =
+			patch !== undefined &&
+			CONVERSION_PATCH_FIELDS.some((field) => patch[field] !== undefined);
+		return touchesConversion ? PERMISSIONS.APPROVE : PERMISSIONS.UPDATE;
+	}
+	return PERMISSIONS.APPROVE;
 }
 
 function commandOf(value: unknown): CommandName | null {
@@ -66,10 +81,11 @@ export async function POST(
 		);
 	}
 
+	const patch = body.patch as OtherExpensePatch | undefined;
 	const auth = await ensurePermission(
 		request,
 		RESOURCES.OTHER_EXPENSES,
-		permissionFor(command)
+		permissionFor(command, patch)
 	);
 	if (auth instanceof Response) return auth;
 	const user = auth.user;
@@ -82,7 +98,7 @@ export async function POST(
 				expected_version: expectedVersion,
 				reason: body.reason ?? null,
 				evidence_reference: body.evidence_reference ?? null,
-				patch: body.patch as OtherExpensePatch | undefined
+				patch
 			},
 			{ id: user?.id ?? null }
 		);

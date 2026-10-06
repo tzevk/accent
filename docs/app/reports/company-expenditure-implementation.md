@@ -425,13 +425,23 @@ source of the same module, not a second store:
   (`cost_history_preserved`), so ordinary deletion cannot bypass the versioned
   cancellation.
 - **Reads**: `OTHER_EXPENSE_COST_SOURCE` projects this register into the
-  module's canonical column vocabulary (conversion evidence is not captured
-  here yet, so those columns are NULL and the amount stays in its own currency,
-  disclosed as unconverted) and joins `COMPANY_COST_SOURCES`, so the
-  reconciliation, previous-month comparison, month list, and drilldown count
-  other expenses exactly once — receipt copies excluded once, in the source.
-  The report queue marks non-direct-expense rows with a link to their register
-  instead of sending the direct-expense commands at another store's id.
+  module's canonical column vocabulary (including the conversion columns) and
+  joins `COMPANY_COST_SOURCES`, so the reconciliation, previous-month
+  comparison, month list, and drilldown count other expenses exactly once —
+  receipt copies excluded once, in the source. The report queue marks
+  non-direct-expense rows with a link to their register instead of sending the
+  direct-expense commands at another store's id.
+- **Currency and conversion**: capture states the original currency (required;
+  a blank or non-code value is refused rather than read as INR) and may state
+  the conversion evidence — reporting target, rate, effective date, and
+  evidence reference — which the shared `currency.ts` helpers validate
+  (`conversion_evidence_incomplete`, `invalid_conversion_rate`,
+  `conversion_not_applicable`). `converted_amount` is recomputed by the module
+  from the recognized amount at the stored rate; no inverse or cross-rate is
+  ever derived, and a foreign amount without evidence stays in its own currency
+  and is disclosed as unconverted. Afterwards only a versioned `update`
+  carrying the whole evidence may change it, and that patch needs
+  `other_expenses:approve` (the register PUT refuses the fields).
 - **Coverage**: `SOURCE_COVERAGE` declares `other_expense_source` as wired.
 
 End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +

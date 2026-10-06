@@ -177,6 +177,10 @@ const schema = z.object({
 	source_reference: z.string().nullable().optional(),
 	evidence_reference: z.string().nullable().optional(),
 	receipt_url: z.string().nullable().optional(),
+	reporting_currency: z.string().nullable().optional(),
+	conversion_rate: z.string().nullable().optional(),
+	conversion_date: z.string().nullable().optional(),
+	conversion_evidence_reference: z.string().nullable().optional(),
 	linked_cost_uid: z.string().nullable().optional(),
 	submit: z.string().nullable().optional(),
 });
@@ -206,6 +210,10 @@ const defaultValues = {
 	source_reference: '',
 	evidence_reference: '',
 	receipt_url: '',
+	reporting_currency: '',
+	conversion_rate: '',
+	conversion_date: '',
+	conversion_evidence_reference: '',
 	linked_cost_uid: '',
 	submit: '',
 };
@@ -366,6 +374,22 @@ const formFields: FormField[] = [
 	{ name: 'evidence_reference', label: 'Evidence reference' },
 	{ name: 'receipt_url', label: 'Receipt / document link', fullWidth: true },
 	{
+		name: 'reporting_currency',
+		label: 'Reporting currency',
+		hint: 'Required with the rate below; the company basis is INR',
+	},
+	{
+		name: 'conversion_rate',
+		label: 'Conversion rate',
+		hint: 'Original → reporting rate, effective on the conversion date',
+	},
+	{ name: 'conversion_date', label: 'Conversion date', type: 'date' },
+	{
+		name: 'conversion_evidence_reference',
+		label: 'Conversion evidence reference',
+		hint: 'Where the rate is evidenced; the module never invents a rate',
+	},
+	{
 		name: 'linked_cost_uid',
 		label: 'Receipt copy of cost id',
 		hint: 'Links evidence to an already recognized cost instead of a second expense',
@@ -472,6 +496,16 @@ const columns: Column[] = [
 				</span>
 			);
 		},
+	},
+	{
+		key: 'converted_amount',
+		label: 'Reporting amount',
+		headClassName: 'w-32 text-center',
+		cellClassName: 'text-right tabular-nums',
+		render: (row) =>
+			row.converted_amount === null || row.converted_amount === undefined
+				? '—'
+				: formatCurrency(Number(row.converted_amount)),
 	},
 	{
 		key: 'status',

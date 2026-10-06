@@ -64,6 +64,23 @@ const FINANCIAL_COLUMNS = [
 		'project_id',
 		'INT NULL COMMENT "Set only for a Project classification"',
 	],
+	// Conversion evidence (#319 contract): the same column names and shapes as
+	// `expenses`, so this register can state an original amount in the company
+	// reporting currency without any source-specific conversion logic.
+	[
+		'reporting_currency',
+		'VARCHAR(3) NULL COMMENT "Reporting target of the conversion; NULL = none stated"',
+	],
+	[
+		'conversion_rate',
+		'DECIMAL(20,10) NULL COMMENT "Original -> reporting rate effective on conversion_date"',
+	],
+	['conversion_date', 'DATE NULL'],
+	['conversion_evidence_reference', 'VARCHAR(500) NULL'],
+	[
+		'converted_amount',
+		'DECIMAL(20,2) NULL COMMENT "Recognized amount in the reporting currency, recomputed by the module"',
+	],
 ];
 
 const INDEXES = [

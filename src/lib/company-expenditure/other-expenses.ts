@@ -28,6 +28,14 @@ import { CostError } from './errors';
 import type { CommandOptions, CostActor } from './commands';
 import { inTransaction } from './commands';
 import {
+	convertToReporting,
+	currencyCodeOf,
+	evidenceOf,
+	isCurrencyCode,
+	parseConversionRate,
+	reportingCurrencyOf,
+} from './currency';
+import {
 	evaluateCost,
 	nextState,
 	recognitionBlockers,
@@ -60,12 +68,8 @@ export const OTHER_EXPENSE_COST_SOURCE = `SELECT 'other_expense' AS source_kind,
     o.service_period_start, o.service_period_end, o.tax_treatment,
     o.tax_evidence_reference, o.recognized_amount, o.source_reference,
     o.evidence_reference, o.financial_version, o.recognized_by, o.recognized_at,
-    o.currency,
-    -- Conversion evidence (#319) is not captured on this register yet: the amount
-    -- keeps its own currency and stays disclosed as unconverted, never converted
-    -- by this source.
-    NULL AS reporting_currency, NULL AS conversion_rate, NULL AS conversion_date,
-    NULL AS conversion_evidence_reference, NULL AS converted_amount,
+    o.currency, o.reporting_currency, o.conversion_rate, o.conversion_date,
+    o.conversion_evidence_reference, o.converted_amount,
     o.bill_amount AS amount, o.gst_amount AS tax_amount,
     o.net_amount AS total_amount, COALESCE(o.vendor_name, o.employee_name) AS vendor_name,
     o.description, o.status, o.project_id, o.isDelete,
@@ -204,6 +208,11 @@ export interface OtherExpenseCaptureInput {
 	source_reference?: unknown;
 	evidence_reference?: unknown;
 	receipt_url?: unknown;
+	/** Conversion evidence (#319): reporting target, rate, date, reference. */
+	reporting_currency?: unknown;
+	conversion_rate?: unknown;
+	conversion_date?: unknown;
+	conversion_evidence_reference?: unknown;
 	/** Set to make this row a receipt copy of an already recognized cost. */
 	linked_cost_uid?: unknown;
 	/** Enter the recognition queue instead of staying a draft. */
@@ -245,6 +254,11 @@ export interface OtherExpenseRow {
 	service_period_end: string | null;
 	bill_date: string | null;
 	currency: string | null;
+	reporting_currency: string | null;
+	conversion_rate: string | null;
+	conversion_date: string | null;
+	conversion_evidence_reference: string | null;
+	converted_amount: number | null;
 	gross_amount: number | null;
 	tax_amount: number | null;
 	tax_treatment: TaxTreatment;
@@ -267,6 +281,10 @@ export interface OtherExpensePatch {
 	service_period_end?: unknown;
 	bill_date?: unknown;
 	currency?: unknown;
+	reporting_currency?: unknown;
+	conversion_rate?: unknown;
+	conversion_date?: unknown;
+	conversion_evidence_reference?: unknown;
 	gross_amount?: unknown;
 	tax_amount?: unknown;
 	tax_treatment?: unknown;
@@ -396,6 +414,17 @@ function asRow(row: DbRow): OtherExpenseRow {
 		service_period_end: rowValue<string>(row, 'service_period_end'),
 		bill_date: rowValue<string>(row, 'bill_date'),
 		currency: rowValue<string>(row, 'currency'),
+		reporting_currency: rowValue<string>(row, 'reporting_currency'),
+		conversion_rate:
+			row.conversion_rate === null || row.conversion_rate === undefined
+				? null
+				: String(row.conversion_rate),
+		conversion_date: rowValue<string>(row, 'conversion_date'),
+		conversion_evidence_reference: rowValue<string>(
+			row,
+			'conversion_evidence_reference'
+		),
+		converted_amount: rowNumber(row, 'converted_amount'),
 		gross_amount: rowNumber(row, 'net_amount'),
 		tax_amount: rowNumber(row, 'gst_amount'),
 		tax_treatment: rowValue<TaxTreatment>(row, 'tax_treatment') ?? 'unresolved',
@@ -413,7 +442,9 @@ function asRow(row: DbRow): OtherExpenseRow {
 
 const ROW_COLUMNS = `id, voucher_number, cost_uid, linked_cost_uid, project_id,
   cost_classification, recognition_state, recognition_period, period_basis,
-  service_period_start, service_period_end, bill_date, currency, net_amount, gst_amount,
+  service_period_start, service_period_end, bill_date, currency, reporting_currency,
+  conversion_rate, conversion_date, conversion_evidence_reference, converted_amount,
+  net_amount, gst_amount,
   tax_treatment, tax_evidence_reference, source_reference, evidence_reference,
   receipt_url, recognized_amount, recognized_by, recognized_at, financial_version, status`;
 
@@ -500,7 +531,7 @@ async function findDuplicateCandidate(
          SELECT e.cost_uid,
                 e.expense_number AS label,
                 'expenses' AS source_table,
-                COALESCE(e.currency, 'INR') AS currency,
+                e.currency AS currency,
                 e.total_amount AS gross_amount,
                 e.vendor_name AS vendor_name,
                 e.recognition_state AS recognition_state
@@ -510,7 +541,7 @@ async function findDuplicateCandidate(
          SELECT o.cost_uid,
                 o.voucher_number AS label,
                 'other_expenses' AS source_table,
-                COALESCE(o.currency, 'INR') AS currency,
+                o.currency AS currency,
                 o.net_amount AS gross_amount,
                 COALESCE(o.vendor_name, o.employee_name) AS vendor_name,
                 o.recognition_state AS recognition_state
@@ -541,9 +572,128 @@ async function findDuplicateCandidate(
 	};
 }
 
+/** The row's conversion evidence, as the module stores and reads it. */
+interface ResolvedConversion {
+	currency: string;
+	reportingCurrency: string;
+	conversionRate: string | null;
+	conversionDate: string | null;
+	conversionEvidenceReference: string | null;
+}
+
+/**
+ * Validate the original currency, the reporting target, and the optional
+ * conversion triple, exactly as the direct-expense path does (#319): evidence
+ * moves as a whole or not at all, and a rate for an amount already in its
+ * reporting currency, or for an amount whose currency is unknown, is
+ * contradictory and refused rather than dropped. No inverse or cross-rate is
+ * ever derived.
+ */
+function resolveConversion(input: {
+	currency: unknown;
+	reportingCurrency: unknown;
+	conversionRate: unknown;
+	conversionDate: unknown;
+	conversionEvidenceReference: unknown;
+}): ResolvedConversion {
+	if (!isCurrencyCode(input.currency)) {
+		throw new CostError(
+			'invalid_currency',
+			'Currency must be a three-letter code',
+			422,
+			{ field: 'currency' }
+		);
+	}
+	if (!isCurrencyCode(input.reportingCurrency)) {
+		throw new CostError(
+			'invalid_currency',
+			'Reporting currency must be a three-letter code',
+			422,
+			{ field: 'reporting_currency' }
+		);
+	}
+	const currency = currencyCodeOf(input.currency) as string;
+	const reportingCurrency = reportingCurrencyOf({
+		reportingCurrency: currencyCodeOf(input.reportingCurrency)
+	});
+	const rawRate = input.conversionRate;
+	const rateText =
+		rawRate === null || rawRate === undefined ? null : String(rawRate).trim();
+	const hasRate = rateText !== null && rateText.length > 0;
+	const conversionDate = dateOrNull(input.conversionDate);
+	const conversionEvidenceReference = text(
+		input.conversionEvidenceReference,
+		500
+	);
+	const hasAny =
+		hasRate || conversionDate !== null || conversionEvidenceReference !== null;
+	if (!hasAny) {
+		return {
+			currency,
+			reportingCurrency,
+			conversionRate: null,
+			conversionDate: null,
+			conversionEvidenceReference: null
+		};
+	}
+	if (currency === reportingCurrency) {
+		throw new CostError(
+			'conversion_not_applicable',
+			'An amount already in its reporting currency carries no conversion evidence',
+			422,
+			{ field: 'conversion_rate' }
+		);
+	}
+	if (hasRate && parseConversionRate(rateText) === null) {
+		throw new CostError(
+			'invalid_conversion_rate',
+			'Conversion rate must be positive with at most 10 decimal places',
+			422,
+			{ field: 'conversion_rate' }
+		);
+	}
+	const missing: string[] = [];
+	if (!hasRate) missing.push('conversion_rate');
+	if (conversionDate === null) missing.push('conversion_date');
+	if (conversionEvidenceReference === null) {
+		missing.push('conversion_evidence_reference');
+	}
+	if (missing.length > 0) {
+		throw new CostError(
+			'conversion_evidence_incomplete',
+			'Conversion evidence needs the rate, its effective date, and its evidence reference together',
+			422,
+			{ missing }
+		);
+	}
+	return {
+		currency,
+		reportingCurrency,
+		conversionRate: rateText,
+		conversionDate,
+		conversionEvidenceReference
+	};
+}
+
+/**
+ * The durable reporting-currency figure: the recognized amount at the stored
+ * rate, or null while there is no confirmed amount or the evidence does not
+ * support one. Recomputed by the module; a caller never states it.
+ */
+function convertedAmountOf(
+	recognizedAmount: number | null,
+	evidence: ResolvedConversion
+): number | null {
+	if (recognizedAmount === null) return null;
+	return convertToReporting(
+		recognizedAmount,
+		evidenceOf(evidence),
+		reportingCurrencyOf(evidence)
+	).amount;
+}
+
 /** One capture's financial fields, resolved before the transaction opens. */
 function captureFinancials(input: OtherExpenseCaptureInput) {
-	const currency = (text(input.currency, 3) ?? 'INR').toUpperCase();
 	const statedTax = amountOrNull(input.tax_amount ?? input.gst_amount);
 	const statedGross = amountOrNull(input.gross_amount ?? input.net_amount);
 	const legacyNet = amountOrNull(input.amount ?? input.bill_amount);
@@ -597,7 +747,6 @@ function captureFinancials(input: OtherExpenseCaptureInput) {
 		);
 	}
 	return {
-		currency,
 		grossAmount,
 		taxAmount,
 		netAmount,
@@ -646,6 +795,13 @@ export async function captureOtherExpense(
 		throw new CostError('voucher_date_required', 'voucher_date is required', 400);
 	}
 	const financial = captureFinancials(input);
+	const conversion = resolveConversion({
+		currency: input.currency,
+		reportingCurrency: input.reporting_currency,
+		conversionRate: input.conversion_rate,
+		conversionDate: input.conversion_date,
+		conversionEvidenceReference: input.conversion_evidence_reference
+	});
 	const linkedCostUid = text(input.linked_cost_uid, 64);
 	const { period, basis } = resolveRecognitionPeriod({
 		servicePeriodStart: financial.servicePeriodStart,
@@ -668,7 +824,7 @@ export async function captureOtherExpense(
 	const evaluation = evaluateCost({
 		classification: financial.classification,
 		state,
-		currency: financial.currency,
+		currency: conversion.currency,
 		grossAmount: financial.grossAmount,
 		taxAmount: financial.taxAmount,
 		taxTreatment: financial.taxTreatment,
@@ -724,9 +880,11 @@ export async function captureOtherExpense(
               period_basis, service_period_start, service_period_end, currency,
               tax_treatment, tax_evidence_reference, source_reference,
               evidence_reference, receipt_url, linked_cost_uid, project_id,
-              financial_version)
+              financial_version, reporting_currency, conversion_rate,
+              conversion_date, conversion_evidence_reference, converted_amount)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
+                   ?, ?, ?, ?, NULL)`,
 					[
 						id,
 						voucherNumber,
@@ -752,14 +910,18 @@ export async function captureOtherExpense(
 						basis,
 						financial.servicePeriodStart,
 						financial.servicePeriodEnd,
-						financial.currency,
+						conversion.currency,
 						financial.taxTreatment,
 						financial.taxEvidenceReference,
 						financial.sourceReference,
 						financial.evidenceReference,
 						text(input.receipt_url, 500),
 						linked ? linked.cost_uid : null,
-						financial.projectId
+						financial.projectId,
+						conversion.reportingCurrency,
+						conversion.conversionRate,
+						conversion.conversionDate,
+						conversion.conversionEvidenceReference
 					]
 				);
 
@@ -785,7 +947,7 @@ export async function captureOtherExpense(
 					const candidate = await findDuplicateCandidate(db, {
 						vendorName: vendorName ?? employeeName,
 						grossAmount: financial.grossAmount,
-						currency: financial.currency,
+						currency: conversion.currency,
 						excludeCostUid: costUid
 					});
 					if (candidate) {
@@ -816,10 +978,16 @@ export async function captureOtherExpense(
 						classification: financial.classification,
 						recognition_period: period,
 						period_basis: basis,
-						currency: financial.currency,
+						currency: conversion.currency,
+						reporting_currency: conversion.reportingCurrency,
+						conversion_rate: conversion.conversionRate,
+						conversion_date: conversion.conversionDate,
+						conversion_evidence_reference:
+							conversion.conversionEvidenceReference,
 						gross_amount: financial.grossAmount,
 						tax_amount: financial.taxAmount,
 						recognized_amount: null,
+						converted_amount: null,
 						state,
 						linked_cost_uid: linked ? linked.cost_uid : null,
 						exceptions: evaluation.exceptions
@@ -925,7 +1093,7 @@ export async function executeOtherExpenseCommand(
 		}
 
 		const patch = input.patch ?? {};
-		const merged = {
+		const mergedRaw = {
 			classification:
 				patch.classification !== undefined
 					? enumOrThrow(
@@ -951,10 +1119,23 @@ export async function executeOtherExpenseCommand(
 				patch.bill_date !== undefined
 					? dateOrNull(patch.bill_date)
 					: current.bill_date,
-			currency:
-				patch.currency !== undefined
-					? (text(patch.currency, 3) ?? 'INR').toUpperCase()
-					: (current.currency ?? 'INR'),
+			currency: patch.currency !== undefined ? patch.currency : current.currency,
+			reportingCurrency:
+				patch.reporting_currency !== undefined
+					? patch.reporting_currency
+					: current.reporting_currency,
+			conversionRate:
+				patch.conversion_rate !== undefined
+					? patch.conversion_rate
+					: current.conversion_rate,
+			conversionDate:
+				patch.conversion_date !== undefined
+					? patch.conversion_date
+					: current.conversion_date,
+			conversionEvidenceReference:
+				patch.conversion_evidence_reference !== undefined
+					? patch.conversion_evidence_reference
+					: current.conversion_evidence_reference,
 			grossAmount:
 				patch.gross_amount !== undefined
 					? amountOrNull(patch.gross_amount)
@@ -987,6 +1168,10 @@ export async function executeOtherExpenseCommand(
 						? text(input.evidence_reference, 500)
 						: current.evidence_reference
 		};
+		// The currency and its conversion evidence are one validated unit (#319):
+		// a rate without a known original currency, a rate on an amount already
+		// in its reporting currency, or partial evidence is refused, not dropped.
+		const merged = { ...mergedRaw, ...resolveConversion(mergedRaw) };
 		if (merged.classification === 'project' && !merged.projectId) {
 			throw new CostError(
 				'classification_conflict',
@@ -1064,12 +1249,18 @@ export async function executeOtherExpenseCommand(
 			merged.grossAmount === null
 				? null
 				: toNumber(sub(R(merged.grossAmount), R(merged.taxAmount ?? 0)));
+		// The durable reporting-currency figure at the stored rate; null while
+		// there is no confirmed amount or the evidence does not support one.
+		const convertedAmount = convertedAmountOf(recognizedAmount, merged);
 		const [updated] = (await db.execute(
 			`UPDATE other_expenses
           SET cost_classification = ?, recognition_state = ?, recognition_period = ?,
               period_basis = ?, service_period_start = ?, service_period_end = ?,
               bill_date = ?, tax_treatment = ?, tax_evidence_reference = ?,
-              currency = ?, bill_amount = ?, net_amount = ?, gst_amount = ?,
+              currency = ?, reporting_currency = ?, conversion_rate = ?,
+              conversion_date = ?, conversion_evidence_reference = ?,
+              bill_amount = ?, net_amount = ?, gst_amount = ?,
+              converted_amount = ?,
               source_reference = ?, evidence_reference = ?, recognized_amount = ?,
               recognized_by = ?, recognized_at = IF(?, NOW(), ?), financial_version = ?
         WHERE id = ? AND isDelete = 0 AND financial_version = ?`,
@@ -1084,9 +1275,14 @@ export async function executeOtherExpenseCommand(
 				merged.taxTreatment,
 				merged.taxEvidenceReference,
 				merged.currency,
+				merged.reportingCurrency,
+				merged.conversionRate,
+				merged.conversionDate,
+				merged.conversionEvidenceReference,
 				netAmount,
 				merged.grossAmount,
 				merged.taxAmount,
+				convertedAmount,
 				merged.sourceReference,
 				merged.evidenceReference,
 				recognizedAmount,
@@ -1119,10 +1315,15 @@ export async function executeOtherExpenseCommand(
 				recognition_period: resolved.period,
 				period_basis: resolved.basis,
 				currency: merged.currency,
+				reporting_currency: merged.reportingCurrency,
+				conversion_rate: merged.conversionRate,
+				conversion_date: merged.conversionDate,
+				conversion_evidence_reference: merged.conversionEvidenceReference,
 				gross_amount: merged.grossAmount,
 				tax_amount: merged.taxAmount,
 				tax_treatment: merged.taxTreatment,
 				recognized_amount: recognizedAmount,
+				converted_amount: convertedAmount,
 				state: target
 			}
 		});

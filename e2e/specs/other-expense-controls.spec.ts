@@ -116,6 +116,13 @@ interface ReconciliationData {
 			recoverable_tax: number;
 			unresolved_tax_gross: number;
 			record_count: number;
+			reporting: {
+				currency: string;
+				status: string;
+				unsupported_count: number;
+				incurred_cost: number | null;
+				company_overhead: number | null;
+			};
 		}>;
 		groups: Array<{
 			key: string;
@@ -163,6 +170,8 @@ interface DrilldownRecord {
 	currency: string;
 	gross_amount: number | null;
 	recognized_amount: number | null;
+	converted_amount: number | null;
+	conversion_status: string;
 	source_reference: string | null;
 	evidence_reference: string | null;
 	financial_version: number;
@@ -293,6 +302,24 @@ async function reviewQueue(request: APIRequestContext): Promise<ReviewQueue> {
 	const response = await request.get('/api/admin/other-expenses/review');
 	expect(response.status(), await response.text()).toBe(200);
 	return (await response.json()).data as ReviewQueue;
+}
+
+interface ApiErrorBody {
+	code?: string;
+	missing?: string[];
+}
+
+/** Narrow a failed response's body without trusting its shape. */
+function errorBody(value: unknown): ApiErrorBody {
+	if (!value || typeof value !== 'object') return {};
+	const code = 'code' in value ? value.code : undefined;
+	const missing = 'missing' in value ? value.missing : undefined;
+	return {
+		code: typeof code === 'string' ? code : undefined,
+		missing: Array.isArray(missing)
+			? missing.filter((entry): entry is string => typeof entry === 'string')
+			: undefined
+	};
 }
 
 async function storedOtherExpense(id: string) {
@@ -1243,6 +1270,137 @@ test('keeps a foreign currency in its own subtotal instead of mixing it', async 
 	};
 });
 
+test('carries conversion evidence from capture to the reporting figure', async ({
+	request,
+}) => {
+	const voucher = `${OTHER_EXPENSE_PREFIX}FX-1`;
+	/** 50 USD at 84.5, rounded half-up to cents by the shared helper. */
+	const converted = 50 * 84.5;
+
+	const captured = await captureStandalone(request, {
+		voucher_number: voucher,
+		voucher_date: `${MONTH}-19`,
+		expense_category: 'Subscription',
+		payee_type: 'vendor',
+		vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}fx`,
+		bill_amount: 50,
+		gst_amount: 0,
+		description: `${OTHER_EXPENSE_PREFIX}USD cost with conversion evidence`,
+		cost_classification: 'company_overhead',
+		service_period_start: `${MONTH}-19`,
+		service_period_end: `${MONTH}-19`,
+		currency: 'USD',
+		reporting_currency: 'INR',
+		conversion_rate: '84.5000000000',
+		conversion_date: `${MONTH}-19`,
+		conversion_evidence_reference: `${OTHER_EXPENSE_PREFIX}RATE-1`,
+		submit: true,
+	});
+	created.push({ where: 'api-conversion', id: captured.id, voucher });
+
+	// Evidence moves as a whole: a rate without its date is refused, and a rate
+	// on an amount already in its reporting currency is contradictory.
+	const partial = await request.post('/api/admin/other-expenses', {
+		data: {
+			voucher_number: `${OTHER_EXPENSE_PREFIX}FX-PARTIAL`,
+			voucher_date: `${MONTH}-19`,
+			expense_category: 'Subscription',
+			payee_type: 'vendor',
+			vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}fx-partial`,
+			bill_amount: 50,
+			gst_amount: 0,
+			currency: 'USD',
+			reporting_currency: 'INR',
+			conversion_rate: '84.5',
+		},
+	});
+	expect(partial.status()).toBe(422);
+	const partialBody = errorBody(await partial.json());
+	expect(partialBody.code).toBe('conversion_evidence_incomplete');
+	expect(partialBody.missing).toContain('conversion_date');
+
+	const notApplicable = await request.post('/api/admin/other-expenses', {
+		data: {
+			voucher_number: `${OTHER_EXPENSE_PREFIX}FX-INR`,
+			voucher_date: `${MONTH}-19`,
+			expense_category: 'Subscription',
+			payee_type: 'vendor',
+			vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}fx-inr`,
+			bill_amount: 10,
+			gst_amount: 0,
+			currency: 'INR',
+			reporting_currency: 'INR',
+			conversion_rate: '1.0',
+			conversion_date: `${MONTH}-19`,
+			conversion_evidence_reference: `${OTHER_EXPENSE_PREFIX}RATE-NONE`,
+		},
+	});
+	expect(notApplicable.status()).toBe(422);
+	expect(errorBody(await notApplicable.json()).code).toBe(
+		'conversion_not_applicable'
+	);
+
+	const recognized = await command(request, captured.id, {
+		command: 'recognize',
+		expected_version: 1,
+		reason: 'E2E conversion evidence reviewed',
+	});
+	expect(recognized.status, JSON.stringify(recognized.body)).toBe(200);
+
+	const stored = await storedOtherExpense(captured.id);
+	expect(stored.currency).toBe('USD');
+	expect(stored.reporting_currency).toBe('INR');
+	expect(String(stored.conversion_rate)).toMatch(/^84\.5/);
+	expect(String(stored.conversion_date).slice(0, 10)).toBe(`${MONTH}-19`);
+	expect(stored.conversion_evidence_reference).toBe(
+		`${OTHER_EXPENSE_PREFIX}RATE-1`
+	);
+	expect(Number(stored.converted_amount)).toBe(converted);
+
+	// The month becomes complete in the reporting currency: the INR slice plus
+	// this record's converted figure.
+	const data = await reconciliation(request);
+	expect(data.company.currency).toBe('INR');
+	expect(data.company.incurred_cost).toBe(CONFIRMED.total + converted);
+	const usd = data.company.currency_totals.find(
+		(row) => row.currency === 'USD'
+	)!;
+	expect(usd.reporting.status).toBe('converted');
+	expect(usd.reporting.incurred_cost).toBe(converted);
+	expect(inr(data)!.incurred_cost).toBe(CONFIRMED.total);
+
+	const source = await drilldown(request, { month: MONTH, state: 'recognized' });
+	const row = source.records.find((entry) => entry.expense_number === voucher)!;
+	expect(row.conversion_status).toBe('converted');
+	expect(row.converted_amount).toBe(converted);
+
+	// Cancelling it restores the month to its INR-only reconciliation.
+	const cancelled = await command(request, captured.id, {
+		command: 'cancel',
+		expected_version: 2,
+		reason: 'E2E conversion evidence period closed',
+	});
+	expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+	expect((await reconciliation(request)).company.incurred_cost).toBe(
+		CONFIRMED.total
+	);
+
+	evidence.conversion = {
+		voucher,
+		expected: { rate: '84.5', converted },
+		observed: {
+			storedRate: String(stored.conversion_rate),
+			convertedAmount: Number(stored.converted_amount),
+			monthTotalWithConversion: CONFIRMED.total + converted,
+			usdReporting: usd.reporting,
+		},
+		refused: {
+			partial: partialBody.code,
+			notApplicable: 422
+		}
+	};
+});
+
 test('agrees with the browser report and the independently persisted rows', async ({
 	page,
 	request,
@@ -1273,13 +1431,13 @@ test('agrees with the browser report and the independently persisted rows', asyn
 		state: 'all',
 		limit: '200',
 	});
-	expect(source.total).toBe(9);
+	expect(source.total).toBe(10);
 	expect(source.totals.confirmed_amount).toBe(total);
-	expect(source.totals.records).toBe(9);
+	expect(source.totals.records).toBe(10);
 	const otherExpenseRows = source.records.filter(
 		(entry) => entry.source === 'other_expense'
 	);
-	expect(otherExpenseRows.length).toBe(8);
+	expect(otherExpenseRows.length).toBe(9);
 	expect(
 		otherExpenseRows.some((entry) => entry.recognition_state === 'cancelled')
 	).toBe(true);
@@ -1378,6 +1536,57 @@ test('enforces source authorization on reads, capture, approval and review', asy
 		);
 		expect(deniedDelete.status()).toBe(403);
 
+		// The reader may edit operational fields (update), but the conversion
+		// evidence is an approval-gated financial change and is refused.
+		const throwaway = await captureStandalone(request, {
+			voucher_number: `${OTHER_EXPENSE_PREFIX}AUTH-1`,
+			voucher_date: `${MONTH}-20`,
+			expense_category: 'Miscellaneous',
+			payee_type: 'vendor',
+			vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}auth`,
+			bill_amount: 25,
+			gst_amount: 0,
+			description: `${OTHER_EXPENSE_PREFIX}authorization probe`,
+			cost_classification: 'unallocated',
+			service_period_start: `${MONTH}-20`,
+			service_period_end: `${MONTH}-20`,
+			currency: 'INR',
+			submit: true
+		});
+		created.push({ where: 'api-auth', id: throwaway.id });
+		const allowedEdit = await reader.post(
+			`/api/admin/other-expenses/${throwaway.id}/commands`,
+			{
+				data: {
+					command: 'update',
+					expected_version: 1,
+					patch: { classification: 'company_overhead' }
+				}
+			}
+		);
+		expect(allowedEdit.status(), await allowedEdit.text()).toBe(200);
+		const deniedConversion = await reader.post(
+			`/api/admin/other-expenses/${throwaway.id}/commands`,
+			{
+				data: {
+					command: 'update',
+					expected_version: 2,
+					patch: {
+						reporting_currency: 'INR',
+						conversion_rate: '2.0',
+						conversion_date: `${MONTH}-20`,
+						conversion_evidence_reference: `${OTHER_EXPENSE_PREFIX}RATE-AUTH`
+					}
+				}
+			}
+		);
+		expect(deniedConversion.status()).toBe(403);
+		const probe = await storedOtherExpense(throwaway.id);
+		expect(probe.conversion_rate).toBeNull();
+		expect(probe.converted_amount).toBeNull();
+		expect(Number(probe.financial_version)).toBe(2);
+		expect(probe.cost_classification).toBe('company_overhead');
+
 		// No failed command changed anything.
 		const after = await storedOtherExpense(overheadId);
 		expect(after).toEqual(before);
@@ -1389,6 +1598,8 @@ test('enforces source authorization on reads, capture, approval and review', asy
 				approve: 403,
 				review: 403,
 				delete: 403,
+				update: 200,
+				conversionUpdate: 403
 			},
 			observed: {
 				list: list.status(),
@@ -1397,8 +1608,10 @@ test('enforces source authorization on reads, capture, approval and review', asy
 				approve: deniedApprove.status(),
 				review: deniedReview.status(),
 				delete: deniedDelete.status(),
-				unchanged: true,
-			},
+				update: allowedEdit.status(),
+				conversionUpdate: deniedConversion.status(),
+				unchanged: true
+			}
 		};
 	} finally {
 		await reader.dispose();
