@@ -91,6 +91,7 @@ export interface OrderRecord {
 	orderNumber: string;
 	direction: OrderDirection;
 	counterpartyName: string;
+	companyId: number | null;
 	projectId: number | null;
 	projectCode: string | null;
 	projectName: string | null;
@@ -458,6 +459,7 @@ export function mapOrderRow(row: DbRow): OrderRecord {
 		orderNumber: s(row, 'order_number', '') ?? '',
 		direction,
 		counterpartyName: s(row, 'counterparty_name', '') ?? '',
+		companyId: num(row, 'company_id'),
 		projectId: num(row, 'project_id'),
 		projectCode: s(row, 'project_code'),
 		projectName: s(row, 'project_name'),
@@ -837,6 +839,8 @@ export async function updateOrder(
 				patch.counterpartyName !== undefined
 					? patch.counterpartyName
 					: current.counterpartyName,
+			companyId:
+				patch.companyId !== undefined ? patch.companyId : current.companyId,
 			projectId: patch.projectId !== undefined ? patch.projectId : current.projectId,
 			currency: patch.currency !== undefined ? patch.currency : current.currency,
 			amountBasis:
