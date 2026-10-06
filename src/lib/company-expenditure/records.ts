@@ -10,7 +10,12 @@
  */
 
 import { add, R, toNumber } from '@/lib/money';
-import { conversionStatusOf, currencyCodeOf, evidenceOf } from './currency';
+import {
+	conversionStatusOf,
+	currencyCodeOf,
+	evidenceOf,
+	reportingCurrencyOf,
+} from './currency';
 import { toPeriodChargeJson } from './non-operating';
 import { evaluateCost } from './recognition';
 import type {
@@ -157,8 +162,11 @@ export function mapCostRow(row: DbRow): CostRecord {
 	};
 }
 
-/** The record as the report endpoints publish it. */
-function toCostRecordJson(record: CostRecord): CostRecordJson {
+/** The record as the report endpoints publish it, in the requested basis. */
+function toCostRecordJson(
+	record: CostRecord,
+	reporting: string
+): CostRecordJson {
 	return {
 		id: record.id,
 		cost_uid: record.costUid,
@@ -178,7 +186,7 @@ function toCostRecordJson(record: CostRecord): CostRecordJson {
 		conversion_date: record.conversionDate,
 		conversion_evidence_reference: record.conversionEvidenceReference,
 		converted_amount: record.convertedAmount,
-		conversion_status: conversionStatusOf(evidenceOf(record)),
+		conversion_status: conversionStatusOf(evidenceOf(record), reporting),
 		gross_amount: record.grossAmount,
 		tax_amount: record.taxAmount,
 		tax_treatment: record.taxTreatment,
@@ -673,6 +681,9 @@ export async function loadDrilldown(
 	query: CostDrilldownQuery
 ): Promise<CostDrilldown> {
 	const { start, end } = monthBounds(query.month);
+	const reporting = reportingCurrencyOf({
+		reportingCurrency: query.reportingCurrency ?? null,
+	});
 	const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
 	const offset = Math.max(query.offset ?? 0, 0);
 	const state = stateFilterClause(query.state);
@@ -795,7 +806,9 @@ export async function loadDrilldown(
 		total: Number(num(count, 'total') ?? 0),
 		limit,
 		offset,
-		records: (rows as DbRow[]).map(mapCostRow).map(toCostRecordJson),
+		records: (rows as DbRow[])
+			.map(mapCostRow)
+			.map((record) => toCostRecordJson(record, reporting)),
 		period_charges: charges.map(toPeriodChargeJson),
 		totals: {
 			confirmed_amount: confirmed.amount,

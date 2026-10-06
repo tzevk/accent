@@ -154,9 +154,7 @@ export {
 	convertToReporting,
 	conversionException,
 	conversionStatusOf,
-	currencyCodeOf,
-	evidenceOf,
-	parseConversionRate,
+	isCurrencyCode,
 	reportingCurrencyOf,
 } from './currency';
 export { monthLabel } from './reconciliation';

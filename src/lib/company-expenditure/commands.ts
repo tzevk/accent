@@ -250,7 +250,10 @@ function resolveConversion(input: {
 		rawRate === null || rawRate === undefined ? null : String(rawRate).trim();
 	const hasRate = rateText !== null && rateText.length > 0;
 	const conversionDate = dateOrNull(input.conversionDate);
-	const conversionEvidenceReference = text(input.conversionEvidenceReference, 500);
+	const conversionEvidenceReference = text(
+		input.conversionEvidenceReference,
+		500
+	);
 	const hasAny =
 		hasRate || conversionDate !== null || conversionEvidenceReference !== null;
 	if (!hasAny) {
@@ -706,6 +709,59 @@ export async function executeCommand(
 		}
 
 		const patch = input.patch ?? {};
+		// A conversion rate is evidence for one currency pair. Changing either
+		// side invalidates the stored triple: it is not inherited, because that
+		// would re-associate an old rate with a new currency and silently
+		// reprice the reporting figures. A pair that still needs converting
+		// must present the full fresh evidence in the same command.
+		const storedPair = {
+			currency: currencyCodeOf(row.currency),
+			reportingCurrency: reportingCurrencyOf({
+				reportingCurrency:
+					row.reporting_currency === null ||
+					row.reporting_currency === undefined
+						? null
+						: String(row.reporting_currency),
+			}),
+		};
+		const requestedPair = {
+			currency:
+				patch.currency !== undefined
+					? currencyCodeOf(patch.currency)
+					: storedPair.currency,
+			reportingCurrency:
+				patch.reportingCurrency !== undefined
+					? reportingCurrencyOf({
+							reportingCurrency: currencyCodeOf(patch.reportingCurrency),
+						})
+					: storedPair.reportingCurrency,
+		};
+		const pairChanged =
+			requestedPair.currency !== storedPair.currency ||
+			requestedPair.reportingCurrency !== storedPair.reportingCurrency;
+		const suppliesConversionEvidence =
+			patch.conversionRate !== undefined ||
+			patch.conversionDate !== undefined ||
+			patch.conversionEvidenceReference !== undefined;
+		if (
+			pairChanged &&
+			!suppliesConversionEvidence &&
+			requestedPair.currency !== null &&
+			requestedPair.currency !== requestedPair.reportingCurrency
+		) {
+			throw new CostError(
+				'conversion_evidence_required',
+				'Changing the original/reporting currency pair requires fresh conversion evidence for the new pair',
+				422,
+				{
+					fields: [
+						'conversion_rate',
+						'conversion_date',
+						'conversion_evidence_reference',
+					],
+				}
+			);
+		}
 		const mergedRaw = {
 			classification:
 				patch.classification !== undefined
@@ -749,18 +805,22 @@ export async function executeCommand(
 				patch.reportingCurrency !== undefined
 					? patch.reportingCurrency
 					: row.reporting_currency,
-			conversionRate:
-				patch.conversionRate !== undefined
+			// Stored evidence survives only when the pair does not change.
+			conversionRate: pairChanged
+				? (patch.conversionRate ?? null)
+				: patch.conversionRate !== undefined
 					? patch.conversionRate
 					: row.conversion_rate === null || row.conversion_rate === undefined
 						? null
 						: String(row.conversion_rate),
-			conversionDate:
-				patch.conversionDate !== undefined
+			conversionDate: pairChanged
+				? (patch.conversionDate ?? null)
+				: patch.conversionDate !== undefined
 					? patch.conversionDate
 					: row.conversion_date,
-			conversionEvidenceReference:
-				patch.conversionEvidenceReference !== undefined
+			conversionEvidenceReference: pairChanged
+				? (patch.conversionEvidenceReference ?? null)
+				: patch.conversionEvidenceReference !== undefined
 					? patch.conversionEvidenceReference
 					: row.conversion_evidence_reference,
 			grossAmount:

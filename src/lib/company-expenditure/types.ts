@@ -640,6 +640,12 @@ export interface CostDrilldownQuery {
 	 */
 	nature?: CostNature | 'non_operating' | 'all';
 	projectId?: number | null;
+	/**
+	 * The reporting basis the record's conversion status is stated in; absent
+	 * means the company reporting currency. Status, label, and figures then
+	 * share one basis, so a record's evidence is never mislabelled.
+	 */
+	reportingCurrency?: string | null;
 	limit?: number;
 	offset?: number;
 }
@@ -669,6 +675,14 @@ export interface CostRecordJson {
 	conversion_date: string | null;
 	conversion_evidence_reference: string | null;
 	converted_amount: number | null;
+	/**
+	 * This record's evidence stated in the reporting basis the read was made
+	 * with (`reporting_currency` on the drilldown query, INR absent):
+	 * `reporting` when the record is already in that basis, `converted` when
+	 * its stored target matches it with a full rate triple, else
+	 * `unsupported`. The stored rate and `converted_amount` are only meaningful
+	 * together with this basis — never relabel one basis's rate as another's.
+	 */
 	conversion_status: ConversionStatus;
 	gross_amount: number | null;
 	tax_amount: number | null;
