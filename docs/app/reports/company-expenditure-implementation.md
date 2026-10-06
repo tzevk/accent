@@ -566,5 +566,6 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
 - `docs/adr/0019-approved-cost-budgets.md` (#321)
+- `docs/adr/0020-petty-cash-funding-and-spending.md` (#316)
 - `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/specs/project-cost-budgets.spec.ts`, `e2e/global-setup.ts`
 - `e2e/lib/expenditure-currency-fixtures.ts`, `e2e/specs/expenditure-currency.spec.ts` (#319)
