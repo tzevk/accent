@@ -217,6 +217,7 @@ export async function cleanupFixtures(): Promise<void> {
 		LATE_BONUS_WORKER.code,
 		PREVIEW_BONUS_WORKER.code,
 	];
+	const employeePlaceholders = codes.map(() => '?').join(', ');
 
 	// Log tables are best-effort: older schemas may name columns differently.
 	for (const sql of [
@@ -243,16 +244,19 @@ export async function cleanupFixtures(): Promise<void> {
 	);
 	await exec(
 		`DELETE FROM payroll_slips
-      WHERE employee_id IN (SELECT id FROM employees WHERE employee_id IN (?, ?))`,
+      WHERE employee_id IN (SELECT id FROM employees WHERE employee_id IN (${employeePlaceholders}))`,
 		codes
 	);
 	await exec(
 		`DELETE FROM employee_salary_profile
-      WHERE employee_id IN (SELECT id FROM employees WHERE employee_id IN (?, ?))`,
+      WHERE employee_id IN (SELECT id FROM employees WHERE employee_id IN (${employeePlaceholders}))`,
 		codes
 	);
 	await exec(`DELETE FROM users WHERE username IN (?, ?)`, usernames);
-	await exec(`DELETE FROM employees WHERE employee_id IN (?, ?)`, codes);
+	await exec(
+		`DELETE FROM employees WHERE employee_id IN (${employeePlaceholders})`,
+		codes
+	);
 	await exec(`DELETE FROM holiday_master WHERE name = ?`, [HOLIDAY.name]);
 	await exec(`DELETE FROM deliverables_master WHERE deliverable_name LIKE ?`, [
 		`${DELIVERABLE_PREFIX}%`,
@@ -427,13 +431,7 @@ export async function seedFixtures(): Promise<Seeded> {
         std_hours_per_day, std_working_days, tds_percentage, loan_amount, loan_amount_per_month, loan_active,
         advance_amount, advance_active)
      VALUES (?, ?, ?, ?, 0, '2019-01-01', 1, 1, 0, 0, 0, 1, 'monthly', ?, 26, 0, 0, 0, 0, 0, 0)`,
-		[
-			previewBonus.insertId,
-			E2E_CTC,
-			E2E_CTC,
-			E2E_CTC,
-			E2E_STD_HOURS_PER_DAY,
-		]
+		[previewBonus.insertId, E2E_CTC, E2E_CTC, E2E_CTC, E2E_STD_HOURS_PER_DAY]
 	);
 
 	// The Bonus Component Rate the fixtures price against: fixed ₹1,000 from

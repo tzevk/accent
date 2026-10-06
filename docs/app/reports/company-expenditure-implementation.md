@@ -44,19 +44,19 @@ reimplements a period, tax, or currency rule.
 
 `expenses` (extended by `migrations/20261006120000_expense_cost_recognition.js`):
 
-| Column                                                                  | Meaning                                                                     |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `cost_uid`                                                              | Stable identity of the underlying cost, minted once at capture              |
-| `cost_classification`                                                   | `project` / `company_overhead` / `unallocated`; NULL = not yet classified   |
-| `recognition_state`                                                     | `draft` / `pending_evidence` / `recognized` / `rejected` / `cancelled`      |
-| `recognition_period`, `period_basis`                                    | The recognised month and how it was established                             |
-| `service_period_start`, `service_period_end`                            | Received-work period evidence                                               |
-| `tax_treatment`, `tax_evidence_reference`                               | none / recoverable / non_recoverable / unresolved, with its evidence        |
-| `recognized_amount`                                                     | Cost after evidenced recoverable tax; NULL means no confirmed cost          |
-| `source_reference`, `evidence_reference`                                | Original document and supporting evidence                                   |
-| `financial_version`                                                     | Version the next command must present                                       |
-| `recognized_by`, `recognized_at`                                        | Who confirmed the cost and when                                             |
-| `amount`, `tax_amount`, `total_amount`                                  | Base, tax, and gross liability — now NULLable, so missing is not zero       |
+| Column                                       | Meaning                                                                   |
+| -------------------------------------------- | ------------------------------------------------------------------------- |
+| `cost_uid`                                   | Stable identity of the underlying cost, minted once at capture            |
+| `cost_classification`                        | `project` / `company_overhead` / `unallocated`; NULL = not yet classified |
+| `recognition_state`                          | `draft` / `pending_evidence` / `recognized` / `rejected` / `cancelled`    |
+| `recognition_period`, `period_basis`         | The recognised month and how it was established                           |
+| `service_period_start`, `service_period_end` | Received-work period evidence                                             |
+| `tax_treatment`, `tax_evidence_reference`    | none / recoverable / non_recoverable / unresolved, with its evidence      |
+| `recognized_amount`                          | Cost after evidenced recoverable tax; NULL means no confirmed cost        |
+| `source_reference`, `evidence_reference`     | Original document and supporting evidence                                 |
+| `financial_version`                          | Version the next command must present                                     |
+| `recognized_by`, `recognized_at`             | Who confirmed the cost and when                                           |
+| `amount`, `tax_amount`, `total_amount`       | Base, tax, and gross liability — now NULLable, so missing is not zero     |
 
 `status` keeps its register meaning and is **not** the recognition state: a row
 approved in the expense register is not confirmed cost until it is recognized.
@@ -96,15 +96,15 @@ POST /api/admin/expenses/{id}/commands
   "reason": "…", "evidence_reference": "…", "patch": { … } }
 ```
 
-| Outcome               | Status | Code                                                     |
-| --------------------- | ------ | -------------------------------------------------------- |
-| Applied               | 200    | `{ data: { recognition_state, financial_version, … } }`   |
-| Stale version         | 409    | `version_conflict` (with `current_version`)               |
-| State forbids command | 422    | `command_not_allowed`                                     |
-| Not ready to recognize| 422    | `not_ready_for_recognition` (with `missing: [...]`)       |
-| Reject/cancel without a reason | 422 | `reason_required`                                 |
-| Missing privilege     | 403    | —                                                         |
-| Not found             | 404    | `not_found`                                               |
+| Outcome                        | Status | Code                                                    |
+| ------------------------------ | ------ | ------------------------------------------------------- |
+| Applied                        | 200    | `{ data: { recognition_state, financial_version, … } }` |
+| Stale version                  | 409    | `version_conflict` (with `current_version`)             |
+| State forbids command          | 422    | `command_not_allowed`                                   |
+| Not ready to recognize         | 422    | `not_ready_for_recognition` (with `missing: [...]`)     |
+| Reject/cancel without a reason | 422    | `reason_required`                                       |
+| Missing privilege              | 403    | —                                                       |
+| Not found                      | 404    | `not_found`                                             |
 
 Recognize, reject, and cancel need `other_expenses:approve`; submit and update
 need `other_expenses:update`. Editing or soft-deleting a recognized row through
@@ -184,13 +184,13 @@ a coverage warning, never a zero company cost.
 
 ## Authorization
 
-| Surface                                        | Privilege                |
-| ---------------------------------------------- | ------------------------ |
+| Surface                                        | Privilege                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------- |
 | Reconciliation, drilldown, expenditure months  | `reports:read` **and** `other_expenses:read` (or super admin) |
-| Employee-cost views and their export           | `reports:read`           |
-| Record a cost (report control and admin route) | `other_expenses:create`  |
-| Submit / update a cost                         | `other_expenses:update`  |
-| Recognize, reject, cancel                      | `other_expenses:approve` |
+| Employee-cost views and their export           | `reports:read`                                                |
+| Record a cost (report control and admin route) | `other_expenses:create`                                       |
+| Submit / update a cost                         | `other_expenses:update`                                       |
+| Recognize, reject, cancel                      | `other_expenses:approve`                                      |
 
 The direct-expense ledger is the source of the expenditure reconciliation, so
 report access alone does not open it: the expenditure view, the drilldown, and
@@ -239,9 +239,18 @@ fixture amounts:
   employee-cost views still answer;
 - the browser shows the access panel to an employee session.
 
-Run it with `E2E_DB_NAME=accent_crm_dev_muse_e2e_expenditure npm run e2e`
-(dedicated database), or `npm run e2e` against the dev database, where fixture
-isolation keeps every row out of business totals.
+Use an isolated database for repeatable verification:
+
+```powershell
+npx cross-env E2E_DB_NAME=accent_crm_dev_muse_e2e_expenditure npm run e2e
+```
+
+For the two initial slices, select `expense-reconciliation.spec.ts` and
+`payroll-bonus.spec.ts` after the production build. Fixture cleanup derives SQL
+placeholders from its owned Employee codes, so added Employees remain rerun-safe.
+The payroll snapshot evidence includes the stored month and money columns.
+Namespaced fixtures identify test records; names alone do not exclude them from
+the current report. Keep this verification database separate from business data.
 
 ## Public interface for later slices
 

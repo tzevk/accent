@@ -50,7 +50,7 @@ const BONUS_COST = BONUS_EARNINGS + EMPLOYER_CONTRIBUTIONS; // 16,065
 const ZERO_COST = GROSS + EMPLOYER_CONTRIBUTIONS; // 15,065
 
 /** The money columns a stored slip is asserted on; never `updated_at`. */
-const SLIP_MONEY_COLUMNS = `gross, basic, da, hra, conveyance, call_allowance,
+const SLIP_MONEY_COLUMNS = `month, gross, basic, da, hra, conveyance, call_allowance,
 	pf_employer, esic_employer, mlwf_employer, insurance, gratuity, pf_admin,
 	edli, bonus, total_earnings, total_employer_contributions, employer_cost`;
 
@@ -243,9 +243,7 @@ test('a bonus raises earnings once and never employer contributions', async ({
 			listing: {
 				bonus: Number(listed.bonus),
 				totalEarnings: Number(listed.total_earnings),
-				totalEmployerContributions: Number(
-					listed.total_employer_contributions
-				),
+				totalEmployerContributions: Number(listed.total_employer_contributions),
 				employerCost: Number(listed.employer_cost),
 			},
 		},
@@ -271,9 +269,9 @@ test('without the bonus the identical profile pays exactly ₹1,000 less, with u
 	// The delta between the twins is the bonus: earnings +₹1,000, employer
 	// contributions +₹0, employer cost +₹1,000.
 	const bonus = await storedSlip(await employeeIdFor(BONUS_WORKER.code));
-	expect(
-		Number(bonus.total_earnings) - Number(zero.total_earnings)
-	).toBe(E2E_BONUS_AMOUNT);
+	expect(Number(bonus.total_earnings) - Number(zero.total_earnings)).toBe(
+		E2E_BONUS_AMOUNT
+	);
 	expect(
 		Number(bonus.total_employer_contributions) -
 			Number(zero.total_employer_contributions)
@@ -308,8 +306,7 @@ test('without the bonus the identical profile pays exactly ₹1,000 less, with u
 				employerCost: Number(zero.employer_cost),
 			},
 			deltas: {
-				earnings:
-					Number(bonus.total_earnings) - Number(zero.total_earnings),
+				earnings: Number(bonus.total_earnings) - Number(zero.total_earnings),
 				employerContributions:
 					Number(bonus.total_employer_contributions) -
 					Number(zero.total_employer_contributions),
@@ -463,7 +460,9 @@ test('the Salary Profile preview counts the bonus once, as earnings', async ({
 		'section[aria-labelledby="salary-employer-heading"]'
 	);
 	const amountRow = (scope: Locator, label: string) =>
-		scope.getByText(label, { exact: true }).locator('xpath=following-sibling::output');
+		scope
+			.getByText(label, { exact: true })
+			.locator('xpath=following-sibling::output');
 
 	// The preview prices the full month (CTC 26,000): earnings 27,000 =
 	// 26,000 + 1,000 bonus; employer contributions 2,701 = PF 1,801
