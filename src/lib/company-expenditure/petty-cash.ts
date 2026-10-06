@@ -157,6 +157,9 @@ export function mapPettyCashRow(row: DbRow): CostRecord {
 	const financial = {
 		classification:
 			(s(row, 'cost_classification') as CostClassification | null) ?? null,
+		// Petty-cash spending is operating cost in this slice: the non-operating
+		// balances belong to #317 and never enter this register.
+		nature: 'operating' as const,
 		state:
 			(s(row, 'recognition_state', 'draft') as RecognitionState) ?? 'draft',
 		// A NULL original currency is unknown — never read as INR.
@@ -516,6 +519,14 @@ export async function loadPettyCashDrilldown(
 		'(p.recognition_period BETWEEN ? AND ? OR (p.recognition_period IS NULL AND p.bill_date BETWEEN ? AND ?))',
 	];
 	const params: Array<string | number> = [start, end, start, end];
+	// Every petty-cash row is operating cost: a non-operating or unresolved
+	// treatment filter selects nothing here, and never silently matches.
+	if (
+		query.nature === 'non_operating' ||
+		query.nature === 'unresolved'
+	) {
+		return { total: 0, records: [], confirmed_amount: 0, currency: null };
+	}
 	if (query.state && query.state !== 'all') {
 		if (query.state === 'unconfirmed') {
 			where.push("p.recognition_state IN ('draft','pending_evidence')");
@@ -569,9 +580,14 @@ export async function loadPettyCashDrilldown(
       LIMIT ? OFFSET ?`,
 		[...params, limit, offset]
 	);
+	const basis = reportingCurrencyOf({
+		reportingCurrency: query.reportingCurrency ?? null,
+	});
 	return {
 		total: Number(num(count, 'total') ?? 0),
-		records: (rows as DbRow[]).map(mapPettyCashRow).map(toCostRecordJson),
+		records: (rows as DbRow[])
+			.map(mapPettyCashRow)
+			.map((record) => toCostRecordJson(record, basis)),
 		confirmed_amount: confirmedAmount,
 		currency:
 			unknownCurrency > 0 || confirmedCurrencies !== 1
@@ -1327,6 +1343,7 @@ export async function recordPettyCashSpend(
 
 				const evaluation = evaluateCost({
 					classification,
+					nature: 'operating',
 					state,
 					currency,
 					reportingCurrency: conversion.reportingCurrency,
@@ -1868,6 +1885,7 @@ export async function executePettyCashCommand(
 
 		const financial = {
 			...merged,
+			nature: 'operating' as const,
 			state: target,
 			recognitionPeriod: resolved.period,
 			periodBasis: resolved.basis,

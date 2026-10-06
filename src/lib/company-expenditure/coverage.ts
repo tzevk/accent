@@ -26,7 +26,7 @@ export const SOURCE_COVERAGE: readonly SourceCoverageDeclaration[] = [
 		label: 'Direct expense recognition',
 		status: 'wired',
 		detail:
-			'Direct expenses are entered, recognized, and reconciled through this module (#306).',
+			'Direct expenses are entered, recognized, and reconciled through this module (#306). Non-operating items — advances, deposits, prepayments, and capital — are shown separately and contribute only their approved period consumption, depreciation, or amortization (#317).',
 	},
 	{
 		code: 'payroll_employee_cost_not_incorporated',

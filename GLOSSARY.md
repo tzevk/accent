@@ -112,6 +112,14 @@ _Avoid_: Supplier commitment, Advance, Forecast cost
 The stable `cost_uid` of one underlying cost, minted when the cost is captured and carried by every later source reference, command, and revision. One underlying cost has one identity whichever workflow recorded it; the expense number stays a display and search reference.
 _Avoid_: Expense number (when meaning identity), Row id, Document number
 
+**Non-operating Item**:
+A recorded spend whose nature is an advance, deposit, prepayment, or capital item (`expenses.cost_nature`), rather than operating cost. Its payment or invoice is a balance, not Company Incurred Cost; it is shown separately with its identity, amount, currency/tax basis, evidence, and unconsumed amount. A treatment that is still undecided stays explicitly unresolved and is also excluded from operating cost.
+_Avoid_: Operating cost, Fixed asset register, Capitalization decision
+
+**Period Charge**:
+An approved, evidenced consumption, depreciation, or amortization of a Non-operating Item's supported balance, dated in its own month (`expense_period_charges`). Only an approved charge becomes Company Incurred Cost, in that month, with the item's destination and currency. One item month and basis holds one approved charge, and the approved charges never exceed the item's confirmed balance; cancelling a charge is reasoned, versioned, and restores the balance.
+_Avoid_: Depreciation schedule, Automatic amortization, Payment
+
 **Recognition Period**:
 The month a cost belongs to (`recognition_period`, as its first day), with `period_basis` saying how it was established. It comes from the received-work/service period, or from the bill date as a disclosed fallback; an order date or a payment date never sets it.
 _Avoid_: Invoice month, Payment month, Accounting period
@@ -139,6 +147,25 @@ _Avoid_: Petty cash funding (the voucher side), Cash balance, Payment
 **Remaining Supported Funding**:
 Petty-cash funding dated in a period minus the spending drawn from vouchers in that period. Spending with no voucher linkage is cost but reduces no funding; unspent funding is never operating cost.
 _Avoid_: Petty cash balance, Cash in hand, Unspent expense
+**Order**:
+A client or supplier commitment with one **explicit** direction — `client` or `supplier` — stored in `orders`, identified by `order_uid`, and carrying its counterparty, Project, currency, tax/amount basis, order date, source document, status, and firm/cancellable evidence. The order number is a display and search attribute, never the identity: the same number may name two different orders.
+_Avoid_: Purchase order (when direction is unknown), PO, Commitment
+
+**Client Order**:
+An Order with direction `client` — commercial context for a Project. Its value is never incurred cost, supplier commitment, or recognized revenue; a client invoice may reference one, and its invoiced value rolls up on the order.
+_Avoid_: Sales order (when meaning an Order), Client PO value, Revenue
+
+**Supplier Order**:
+An Order with direction `supplier`. Its value is an Outstanding Supplier Commitment, not incurred cost; recognized goods or services consume it.
+_Avoid_: Purchase order (when direction is unknown), Supplier cost, Expense
+
+**Order Identity**:
+The stable `order_uid` minted when one underlying order is captured; every later reference — invoices, documents, consumption — carries it. The document number stays a display and search attribute.
+_Avoid_: PO number (when meaning identity), Row id, Document number
+
+**Legacy Order Copy**:
+An order representation left in a pre-canonical store (`purchase_orders`, `outgoing_purchase_orders`, `project_purchase_orders`, or a `project_invoices` row with `tab_type = 'purchase_order'`). It carries no reliable direction, so it is queued in `order_legacy_mappings` until a document-backed, versioned review classifies, links, or marks it a duplicate representation. Table names, counterparty text, and client-invoice links are not direction evidence, and a shared document number is not proof of one order.
+_Avoid_: Duplicate order (when unresolved), Old PO, Archived order
 
 **Project Employee Cost**:
 The share of an Employee's recorded monthly payroll employer cost, including earnings and employer contributions, attributed to a Project by its share of the Employee's Logged Hours. Excludes project expenses and supplier costs; it is not a measure of cash paid.

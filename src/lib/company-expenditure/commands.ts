@@ -74,7 +74,8 @@ export interface CommandOptions {
 /**
  * Run `work` inside one transaction: the caller's when it supplied a
  * connection (a close check or link update must commit with this change),
- * otherwise a fresh pooled transaction the module owns.
+ * otherwise a fresh pooled transaction the module owns. Shared with every
+ * source's write path (period charges, petty cash).
  */
 export async function inTransaction<T>(
 	options: CommandOptions | undefined,
@@ -116,6 +117,14 @@ const STATE_TO_STATUS: Record<RecognitionState, string> = {
 	cancelled: 'submitted',
 };
 
+const NATURES = [
+	'operating',
+	'advance',
+	'deposit',
+	'prepayment',
+	'capital',
+	'unresolved',
+] as const;
 const PAYMENT_MODES = [
 	'cash',
 	'bank',
@@ -182,7 +191,10 @@ export function resolveConversion(input: {
 		rawRate === null || rawRate === undefined ? null : String(rawRate).trim();
 	const hasRate = rateText !== null && rateText.length > 0;
 	const conversionDate = dateOrNull(input.conversionDate);
-	const conversionEvidenceReference = text(input.conversionEvidenceReference, 500);
+	const conversionEvidenceReference = text(
+		input.conversionEvidenceReference,
+		500
+	);
 	const hasAny =
 		hasRate || conversionDate !== null || conversionEvidenceReference !== null;
 	if (!hasAny) {
@@ -246,6 +258,7 @@ async function loadCostForUpdate(
 ): Promise<Record<string, unknown> | null> {
 	const [rows] = (await db.execute(
 		`SELECT id, cost_uid, expense_number, expense_date, cost_classification,
+            cost_nature,
             recognition_state, recognition_period, period_basis,
             service_period_start, service_period_end, tax_treatment,
             tax_evidence_reference, recognized_amount, source_reference,
@@ -299,6 +312,11 @@ export async function recordCost(
 		'invalid_classification',
 		'cost_classification'
 	);
+	// A caller that states no nature records operating cost, the register's
+	// original meaning; nothing is ever auto-classified as advance or capital.
+	const nature =
+		enumOrThrow(input.nature, NATURES, 'invalid_nature', 'cost_nature') ??
+		'operating';
 	const taxTreatment =
 		enumOrThrow(
 			input.taxTreatment,
@@ -332,6 +350,7 @@ export async function recordCost(
 
 	const financial = {
 		classification,
+		nature,
 		state,
 		currency,
 		reportingCurrency: conversion.reportingCurrency,
@@ -378,13 +397,14 @@ export async function recordCost(
               amount, tax_amount, total_amount, currency, payment_mode, payment_reference,
               paid_to, paid_by, receipt_url, is_billable, is_reimbursable,
               project_id, department, notes, status, created_by, isDelete,
-              cost_uid, cost_classification, recognition_state, recognition_period,
+              cost_uid, cost_classification, cost_nature, recognition_state, recognition_period,
               period_basis, service_period_start, service_period_end, tax_treatment,
               tax_evidence_reference, recognized_amount, source_reference,
               evidence_reference, financial_version,
               reporting_currency, conversion_rate, conversion_date,
               conversion_evidence_reference, converted_amount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
+                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
                    ?, ?, ?, ?, ?)`,
 					[
 						expenseNumber,
@@ -411,6 +431,7 @@ export async function recordCost(
 						actor.id,
 						costUid,
 						classification,
+						nature,
 						state,
 						period,
 						basis,
@@ -452,6 +473,7 @@ export async function recordCost(
 					evidenceReference: financial.evidenceReference,
 					snapshot: {
 						classification,
+						nature,
 						recognition_period: period,
 						period_basis: basis,
 						currency,
@@ -479,6 +501,7 @@ export async function recordCost(
 					period_basis: basis,
 					recognized_amount: null,
 					cost_classification: classification,
+					cost_nature: nature,
 				};
 			});
 		} catch (error) {
@@ -507,6 +530,7 @@ export async function loadCost(
 ): Promise<CostRecord | null> {
 	const [rows] = (await db.execute(
 		`SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.cost_classification,
+            e.cost_nature,
             e.recognition_state, e.recognition_period, e.period_basis,
             e.service_period_start, e.service_period_end, e.tax_treatment,
             e.tax_evidence_reference, e.recognized_amount, e.source_reference,
@@ -571,6 +595,59 @@ export async function executeCommand(
 		}
 
 		const patch = input.patch ?? {};
+		// A conversion rate is evidence for one currency pair. Changing either
+		// side invalidates the stored triple: it is not inherited, because that
+		// would re-associate an old rate with a new currency and silently
+		// reprice the reporting figures. A pair that still needs converting
+		// must present the full fresh evidence in the same command.
+		const storedPair = {
+			currency: currencyCodeOf(row.currency),
+			reportingCurrency: reportingCurrencyOf({
+				reportingCurrency:
+					row.reporting_currency === null ||
+					row.reporting_currency === undefined
+						? null
+						: String(row.reporting_currency),
+			}),
+		};
+		const requestedPair = {
+			currency:
+				patch.currency !== undefined
+					? currencyCodeOf(patch.currency)
+					: storedPair.currency,
+			reportingCurrency:
+				patch.reportingCurrency !== undefined
+					? reportingCurrencyOf({
+							reportingCurrency: currencyCodeOf(patch.reportingCurrency),
+						})
+					: storedPair.reportingCurrency,
+		};
+		const pairChanged =
+			requestedPair.currency !== storedPair.currency ||
+			requestedPair.reportingCurrency !== storedPair.reportingCurrency;
+		const suppliesConversionEvidence =
+			patch.conversionRate !== undefined ||
+			patch.conversionDate !== undefined ||
+			patch.conversionEvidenceReference !== undefined;
+		if (
+			pairChanged &&
+			!suppliesConversionEvidence &&
+			requestedPair.currency !== null &&
+			requestedPair.currency !== requestedPair.reportingCurrency
+		) {
+			throw new CostError(
+				'conversion_evidence_required',
+				'Changing the original/reporting currency pair requires fresh conversion evidence for the new pair',
+				422,
+				{
+					fields: [
+						'conversion_rate',
+						'conversion_date',
+						'conversion_evidence_reference',
+					],
+				}
+			);
+		}
 		const mergedRaw = {
 			classification:
 				patch.classification !== undefined
@@ -581,6 +658,16 @@ export async function executeCommand(
 							'cost_classification'
 						)
 					: ((row.cost_classification ?? null) as CostRecord['classification']),
+			nature:
+				patch.nature !== undefined
+					? ((enumOrThrow(
+							patch.nature,
+							NATURES,
+							'invalid_nature',
+							'cost_nature'
+						) ?? 'operating') as CostRecord['nature'])
+					: (((row.cost_nature ?? 'operating') as CostRecord['nature']) ??
+						'operating'),
 			projectId:
 				patch.projectId !== undefined
 					? patch.projectId
@@ -604,18 +691,22 @@ export async function executeCommand(
 				patch.reportingCurrency !== undefined
 					? patch.reportingCurrency
 					: row.reporting_currency,
-			conversionRate:
-				patch.conversionRate !== undefined
+			// Stored evidence survives only when the pair does not change.
+			conversionRate: pairChanged
+				? (patch.conversionRate ?? null)
+				: patch.conversionRate !== undefined
 					? patch.conversionRate
 					: row.conversion_rate === null || row.conversion_rate === undefined
 						? null
 						: String(row.conversion_rate),
-			conversionDate:
-				patch.conversionDate !== undefined
+			conversionDate: pairChanged
+				? (patch.conversionDate ?? null)
+				: patch.conversionDate !== undefined
 					? patch.conversionDate
 					: row.conversion_date,
-			conversionEvidenceReference:
-				patch.conversionEvidenceReference !== undefined
+			conversionEvidenceReference: pairChanged
+				? (patch.conversionEvidenceReference ?? null)
+				: patch.conversionEvidenceReference !== undefined
 					? patch.conversionEvidenceReference
 					: row.conversion_evidence_reference,
 			grossAmount:
@@ -731,7 +822,8 @@ export async function executeCommand(
 				: toNumber(sub(R(merged.grossAmount), R(merged.taxAmount ?? 0)));
 		const [updated] = (await db.execute(
 			`UPDATE expenses
-          SET cost_classification = ?, recognition_state = ?, recognition_period = ?,
+          SET cost_classification = ?, cost_nature = ?, recognition_state = ?,
+              recognition_period = ?,
               period_basis = ?, service_period_start = ?, service_period_end = ?,
               expense_date = ?, tax_treatment = ?, tax_evidence_reference = ?,
               currency = ?, reporting_currency = ?, conversion_rate = ?,
@@ -745,6 +837,7 @@ export async function executeCommand(
         WHERE id = ? AND isDelete = 0 AND financial_version = ?`,
 			[
 				merged.classification,
+				merged.nature,
 				target,
 				resolved.period,
 				resolved.basis,
@@ -792,6 +885,7 @@ export async function executeCommand(
 			evidenceReference: merged.evidenceReference,
 			snapshot: {
 				classification: merged.classification,
+				nature: merged.nature,
 				recognition_period: resolved.period,
 				period_basis: resolved.basis,
 				currency: merged.currency,

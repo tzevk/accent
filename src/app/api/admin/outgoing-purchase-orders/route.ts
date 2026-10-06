@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import {
@@ -6,11 +5,16 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-import { isRetryableNumberError } from '@/utils/db-number-retry';
 
+/**
+ * LEGACY READ ONLY (ticket #310). `outgoing_purchase_orders` is one of the
+ * four pre-canonical order stores; its rows are queued in the canonical order
+ * review and are not classified by the store's name. Entry and deletion moved
+ * to the canonical order API, so this endpoint no longer writes.
+ */
 export async function GET(request: Request) {
 	// RBAC check
-	const authResult: any = await ensurePermission(
+	const authResult = await ensurePermission(
 		request,
 		RESOURCES.PURCHASE_ORDERS,
 		PERMISSIONS.READ
@@ -18,21 +22,21 @@ export async function GET(request: Request) {
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
 
-	let connection: any;
+	let connection;
 	try {
 		connection = await dbConnect();
 
 		const [rows] = await connection.execute(
 			'SELECT * FROM outgoing_purchase_orders WHERE isDelete = 0 ORDER BY created_at DESC'
 		);
-		return NextResponse.json({ success: true, data: rows });
-	} catch (error: any) {
+		return NextResponse.json({ success: true, legacy: true, data: rows });
+	} catch (error) {
 		console.error('Error fetching outgoing purchase orders:', error);
 		return NextResponse.json(
 			{
 				success: false,
 				message: 'Failed to fetch outgoing purchase orders',
-				error: error.message,
+				error: error instanceof Error ? error.message : 'Unknown error',
 			},
 			{ status: 500 }
 		);
@@ -43,175 +47,9 @@ export async function GET(request: Request) {
 			} catch {
 				try {
 					await connection.end();
-				} catch {}
-			}
-		}
-	}
-}
-
-export async function POST(request: Request) {
-	const authResult: any = await ensurePermission(
-		request,
-		RESOURCES.PURCHASE_ORDERS,
-		PERMISSIONS.CREATE
-	);
-	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
-
-	let connection: any;
-	try {
-		const body = await request.json();
-		const {
-			company_name,
-			city,
-			po_number,
-			po_date,
-			po_amount,
-			tax_amount,
-			net_amount,
-			project_number,
-			description,
-			remarks,
-			status,
-		} = body;
-
-		if (!company_name || !po_number || !po_date || !po_amount) {
-			return NextResponse.json(
-				{ success: false, message: 'Missing required fields' },
-				{ status: 400 }
-			);
-		}
-
-		connection = await dbConnect();
-
-		const finalNetAmount =
-			net_amount ??
-			(parseFloat(po_amount) || 0) + (parseFloat(tax_amount) || 0);
-
-		// sr_no generation and the INSERT are one transaction: the read locks the
-		// highest serial (FOR UPDATE) so concurrent POSTs serialize, and the
-		// unique active_sr_no index makes a lost race a duplicate-key error that
-		// retries from a fresh read.
-		let nextSrNo = 0;
-		let newId: number | null = null;
-		for (let attempt = 1; ; attempt++) {
-			await connection.beginTransaction();
-			try {
-				const [lastRows] = await connection.execute(
-					'SELECT sr_no FROM outgoing_purchase_orders WHERE isDelete = 0 AND sr_no IS NOT NULL ORDER BY sr_no DESC LIMIT 1 FOR UPDATE'
-				);
-				nextSrNo = (lastRows?.[0]?.sr_no ?? 0) + 1;
-
-				const [result] = await connection.execute(
-					`INSERT INTO outgoing_purchase_orders 
-			 (sr_no, company_name, city, po_number, po_date, po_amount, tax_amount, net_amount, project_number, description, remarks, status)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					[
-						nextSrNo,
-						company_name,
-						city || null,
-						po_number,
-						po_date,
-						parseFloat(po_amount),
-						parseFloat(tax_amount) || 0,
-						finalNetAmount,
-						project_number || null,
-						description || null,
-						remarks || null,
-						status || 'pending',
-					]
-				);
-				newId = result.insertId;
-
-				await connection.commit();
-				break;
-			} catch (error) {
-				await connection.rollback();
-				if (isRetryableNumberError(error) && attempt < 5) {
-					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
-					continue;
+				} catch {
+					// Connection already closed.
 				}
-				throw error;
-			}
-		}
-
-		return NextResponse.json({
-			success: true,
-			message: 'Outgoing purchase order created successfully',
-			data: { id: newId, sr_no: nextSrNo },
-		});
-	} catch (error: any) {
-		console.error('Error creating outgoing purchase order:', error);
-		return NextResponse.json(
-			{
-				success: false,
-				message: 'Failed to create outgoing purchase order',
-				error: error.message,
-			},
-			{ status: 500 }
-		);
-	} finally {
-		if (connection) {
-			try {
-				await connection.release();
-			} catch {
-				try {
-					await connection.end();
-				} catch {}
-			}
-		}
-	}
-}
-
-export async function DELETE(request: Request) {
-	const authResult: any = await ensurePermission(
-		request,
-		RESOURCES.PURCHASE_ORDERS,
-		PERMISSIONS.DELETE
-	);
-	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
-
-	let connection: any;
-	try {
-		const { searchParams } = new URL(request.url);
-		const id = searchParams.get('id');
-
-		if (!id) {
-			return NextResponse.json(
-				{ success: false, message: 'ID is required' },
-				{ status: 400 }
-			);
-		}
-
-		connection = await dbConnect();
-		await connection.execute(
-			'UPDATE outgoing_purchase_orders SET isDelete = 1 WHERE id = ? AND isDelete = 0',
-			[id]
-		);
-
-		return NextResponse.json({
-			success: true,
-			message: 'Outgoing purchase order deleted successfully',
-		});
-	} catch (error: any) {
-		console.error('Error deleting outgoing purchase order:', error);
-		return NextResponse.json(
-			{
-				success: false,
-				message: 'Failed to delete outgoing purchase order',
-				error: error.message,
-			},
-			{ status: 500 }
-		);
-	} finally {
-		if (connection) {
-			try {
-				await connection.release();
-			} catch {
-				try {
-					await connection.end();
-				} catch {}
 			}
 		}
 	}
