@@ -82,7 +82,9 @@ const COST_SOURCE_COLUMNS = `id, cost_uid, expense_number, expense_date, cost_cl
 /** The direct-expense source (#306): costs live in `expenses`. */
 export const DIRECT_EXPENSE_COST_SOURCE =
 	`SELECT 'direct_expense' AS source_kind, ${COST_SOURCE_COLUMNS}, ` +
-	`CAST(id AS CHAR) AS source_row_id FROM expenses`;
+	// The register's own key as a string, in one stated collation so the union
+	// with a CHAR-keyed source (other expenses) cannot mix collations.
+	`CAST(id AS CHAR) COLLATE utf8mb4_general_ci AS source_row_id FROM expenses`;
 
 /**
  * The module's one source expression: the union of every wired source. Callers

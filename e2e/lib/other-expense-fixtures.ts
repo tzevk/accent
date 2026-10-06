@@ -130,7 +130,10 @@ async function cleanupOtherExpenseReader(): Promise<void> {
 export async function cleanupOtherExpenseFixtures(): Promise<number> {
 	await cleanupOtherExpenseReader();
 	let removed = 0;
-	const otherExpenses = `SELECT id FROM other_expenses
+	// `other_expenses.id` is utf8mb4_general_ci and the link/journal tables are
+	// utf8mb4_unicode_ci, so the sub-select states the register's collation to
+	// keep the comparison legal.
+	const otherExpenses = `SELECT id COLLATE utf8mb4_general_ci FROM other_expenses
      WHERE voucher_number LIKE ?
         OR source_reference LIKE ?
         OR evidence_reference LIKE ?

@@ -69,7 +69,7 @@ export const OTHER_EXPENSE_COST_SOURCE = `SELECT 'other_expense' AS source_kind,
     o.bill_amount AS amount, o.gst_amount AS tax_amount,
     o.net_amount AS total_amount, COALESCE(o.vendor_name, o.employee_name) AS vendor_name,
     o.description, o.status, o.project_id, o.isDelete,
-    CAST(o.id AS CHAR) AS source_row_id
+    CAST(o.id AS CHAR) COLLATE utf8mb4_general_ci AS source_row_id
   FROM other_expenses o
  WHERE o.linked_cost_uid IS NULL`;
 
@@ -1411,7 +1411,11 @@ export async function loadOtherExpenseReview(
               o.financial_version, COALESCE(o.vendor_name, o.employee_name) AS vendor_name,
               o.created_at, o.cost_uid AS copy_cost_uid
          FROM financial_cost_links l
-         JOIN other_expenses o ON o.id = l.source_id AND o.isDelete = 0
+         -- The link table is utf8mb4_unicode_ci and the register is
+         -- utf8mb4_general_ci; the register's collation is stated explicitly
+         -- so the comparison is legal, and the register side stays indexable.
+         JOIN other_expenses o
+           ON l.source_id COLLATE utf8mb4_general_ci = o.id AND o.isDelete = 0
         WHERE l.source_table = 'other_expenses' AND l.role = 'receipt'
         ORDER BY o.created_at DESC`
 	)) as [DbRow[], unknown];

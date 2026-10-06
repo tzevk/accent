@@ -163,6 +163,9 @@ export async function up(knex) {
 		`UPDATE \`other_expenses\` SET cost_uid = CONCAT('cost-', UUID()) WHERE cost_uid IS NULL`
 	);
 	if (await hasTable(knex, 'financial_cost_links')) {
+		// `other_expenses.id` is utf8mb4_general_ci while the link table is
+		// utf8mb4_unicode_ci; stating the register's collation explicitly keeps
+		// the comparison legal instead of raising an illegal collation mix.
 		await knex.raw(`
       INSERT INTO \`financial_cost_links\`
         (cost_uid, source_table, source_id, role, basis, review_state)
@@ -171,7 +174,9 @@ export async function up(knex) {
        WHERE o.cost_uid IS NOT NULL
          AND NOT EXISTS (
            SELECT 1 FROM \`financial_cost_links\` l
-            WHERE l.source_table = 'other_expenses' AND l.source_id = o.id AND l.role = 'cost'
+            WHERE l.source_table = 'other_expenses'
+              AND l.source_id COLLATE utf8mb4_general_ci = o.id
+              AND l.role = 'cost'
          )
     `);
 	}
