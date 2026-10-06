@@ -61,6 +61,19 @@ import type {
 
 export { recordCost, executeCommand, loadCost, CostError } from './commands';
 export type { CostActor, CommandOptions } from './commands';
+export {
+	linkCostReference,
+	registerCostIdentity,
+	registerCostSource,
+	resolveCostReference,
+} from './sources';
+export type {
+	CostLinkBasis,
+	CostLinkReviewState,
+	CostLinkRole,
+	CostReference,
+	CostSourceAdapter,
+} from './sources';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
 export { monthLabel } from './reconciliation';
@@ -86,6 +99,8 @@ export type {
 	CostJournalEntry,
 	CostPatch,
 	CostRecord,
+	CostSource,
+	CostSplitInfo,
 	CoverageNotice,
 	CurrencyTotal,
 	EvidenceSummary,

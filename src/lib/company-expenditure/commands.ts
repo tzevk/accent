@@ -22,6 +22,7 @@ import { randomUUID } from 'node:crypto';
 import { add, sub, R, toNumber } from '@/lib/money';
 import { withTransaction } from '@/utils/database';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
+import { CostError } from './errors';
 import {
 	evaluateCost,
 	nextState,
@@ -29,6 +30,7 @@ import {
 	resolveRecognitionPeriod,
 } from './recognition';
 import { mapCostRow, type SqlConnection } from './records';
+import { registerCostIdentity } from './sources';
 import type {
 	CostCommandInput,
 	CostCommandName,
@@ -41,6 +43,8 @@ import type {
 	RecognitionState,
 } from './types';
 
+export { CostError };
+
 export interface CostActor {
 	id: number | null;
 }
@@ -48,26 +52,6 @@ export interface CostActor {
 export interface CommandOptions {
 	/** Use the caller's connection/transaction instead of opening one. */
 	connection?: SqlConnection;
-}
-
-/** A command or validation failure the route maps onto an HTTP status. */
-export class CostError extends Error {
-	readonly code: string;
-	readonly status: number;
-	readonly detail: Record<string, unknown>;
-
-	constructor(
-		code: string,
-		message: string,
-		status: number,
-		detail: Record<string, unknown> = {}
-	) {
-		super(message);
-		this.name = 'CostError';
-		this.code = code;
-		this.status = status;
-		this.detail = detail;
-	}
 }
 
 async function inTransaction<T>(
@@ -415,6 +399,16 @@ export async function recordCost(
 					]
 				)) as [Record<string, unknown>, unknown];
 				const insertId = Number(result.insertId);
+
+				// The cost-bearing row registers its canonical identity in the
+				// shared link table, in the same transaction, so foreign
+				// references (payables, receipts, later sources) can resolve it.
+				await registerCostIdentity(db, {
+					costUid,
+					sourceTable: 'expenses',
+					sourceId: insertId,
+					createdBy: actor.id,
+				});
 
 				await writeJournal(db, {
 					costUid,

@@ -9,6 +9,19 @@
 /** Where a recognized cost belongs. `null` is the explicit unresolved state. */
 export type CostClassification = 'project' | 'company_overhead' | 'unallocated';
 
+/**
+ * Which native store a cost row lives in. IDs come from different stores, so
+ * every cost carries its source discriminator; `cost_uid` stays the canonical
+ * identity across all of them.
+ */
+export type CostSource =
+	| 'direct_expense'
+	| 'supplier_invoice'
+	| 'other_expense'
+	| 'petty_cash'
+	| 'non_operating'
+	| 'payroll';
+
 /** Confirmed cost is `recognized` and nothing else. */
 export type RecognitionState =
 	| 'draft'
@@ -103,8 +116,25 @@ export interface CostEvaluation {
 	exceptions: CostExceptionCode[];
 }
 
+/**
+ * A period slice of a cost that spans several service periods (one supplier
+ * invoice billed across months). The slices total the cost's own amount; the
+ * slice is never a second cost.
+ */
+export interface CostSplitInfo {
+	/** `supplier_invoice_periods.id`. */
+	id: number;
+	/** 1-based position within the cost's slices. */
+	index: number;
+	/** How many slices the cost has in total. */
+	count: number;
+}
+
 /** One direct cost as the financial module sees it. */
 export interface CostRecord extends CostFinancialInput {
+	source: CostSource;
+	/** The service-period slice this record represents, or null. */
+	split: CostSplitInfo | null;
 	id: number;
 	costUid: string | null;
 	expenseNumber: string;
@@ -347,6 +377,9 @@ export interface CostDrilldownQuery {
 export interface CostRecordJson {
 	id: number;
 	cost_uid: string | null;
+	source: CostSource;
+	/** The service-period slice this record represents, or null. */
+	split: CostSplitInfo | null;
 	expense_number: string;
 	recognition_state: RecognitionState;
 	cost_classification: CostClassification | null;
