@@ -500,6 +500,19 @@ splits `totals` into `confirmed_amount` (operating cost only),
 `non_operating_amount`, `nature_unresolved_amount`,
 `period_charge_amount`, and `period_charge_records`.
 
+A Project row's cost is confirmed cost for the budget comparison even when it
+comes entirely from approved period charges: the comparison counts
+`record_count + period_charge_count` (publishing `period_charges` per row), so
+a charge-only month states a variance against a matching-month approved budget
+instead of `unsupported_incurred_cost`; a month with neither still states
+`unsupported_incurred_cost`, and an annual/partial budget stays
+`incompatible_period`. A charge is stated in the reporting basis through its
+source's conversion evidence (`source_reporting_currency`,
+`source_conversion_rate`, `source_conversion_date`,
+`source_conversion_evidence_reference` on the charge), never by converting
+independently; `company.conversion` counts `converted_charges` /
+`unsupported_charges` beside the record figures.
+
 ### Command contract
 
 ```
