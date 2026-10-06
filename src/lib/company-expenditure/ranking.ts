@@ -230,12 +230,19 @@ export type WindowSupport = 'in' | 'out' | 'unproven';
 export function windowSupport(
 	record: CostRecord,
 	days: number,
-	monthDays: number
+	monthDays: number,
+	month: string
 ): WindowSupport {
 	if (days >= monthDays) return 'in';
 	const start = dayOfDate(record.servicePeriodStart);
 	const end = dayOfDate(record.servicePeriodEnd);
-	if (start === null || end === null) return 'unproven';
+	const startMonth = monthOfDate(record.servicePeriodStart);
+	const endMonth = monthOfDate(record.servicePeriodEnd);
+	// Both endpoints, in the window's own month and inside its elapsed days: a
+	// span that starts in an earlier month or crosses the cutoff is unproven.
+	if (start === null || end === null || startMonth !== month || endMonth !== month) {
+		return 'unproven';
+	}
 	if (start > days) return 'out';
 	return end <= days ? 'in' : 'unproven';
 }
@@ -244,9 +251,10 @@ export function windowSupport(
 export function withinWindow(
 	record: CostRecord,
 	days: number,
-	monthDays: number
+	monthDays: number,
+	month: string
 ): boolean {
-	return windowSupport(record, days, monthDays) === 'in';
+	return windowSupport(record, days, monthDays, month) === 'in';
 }
 
 /** Confirmed records the window covers. */
@@ -276,11 +284,12 @@ function confirmedWindowRecords(
 	const days = period === 'current' ? window.currentDays : window.priorDays;
 	const monthDays =
 		period === 'current' ? window.monthDays : window.priorMonthDays;
+	const month = period === 'current' ? window.month : window.priorMonth;
 	if (days === 0) return [];
 	return records.filter(
 		(record) =>
 			isConfirmed(record.state) &&
-			windowSupport(record, days, monthDays) === support
+			windowSupport(record, days, monthDays, month) === support
 	);
 }
 

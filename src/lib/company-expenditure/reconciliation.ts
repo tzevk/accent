@@ -339,7 +339,7 @@ function projectRows(
 				(outcome) => outcome.status === 'unsupported'
 			);
 			const inWindow = confirmedRows.filter((record) =>
-				withinWindow(record, window.currentDays, window.monthDays)
+				withinWindow(record, window.currentDays, window.monthDays, window.month)
 			);
 			const comparison = sumMoney([
 				...inWindow.map(confirmedAmount),
