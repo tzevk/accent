@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
 import { writeArtifact } from '../lib/artifacts';
 import { exec, rows } from '../lib/db';
 import { E2E_ENV } from '../lib/env';
@@ -35,7 +35,7 @@ import {
 
 test.use({
 	storageState: 'e2e/.auth/admin-report.json',
-	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.29' },
+	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.33' },
 });
 test.describe.configure({ mode: 'serial', timeout: 180_000 });
 
@@ -43,7 +43,6 @@ const MONTH = ALLOCATION_MONTH;
 const MONTH_DAY = ALLOCATION_MONTH_DAY;
 const ESTIMATE_MONTH = ALLOCATION_ESTIMATE_MONTH;
 const MONTH_LABEL = 'February 2026';
-const ESTIMATE_MONTH_LABEL = 'March 2026';
 
 interface PayrollTotals {
 	currency: string;

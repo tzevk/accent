@@ -15,6 +15,13 @@ import { exec, rows } from './db';
  * either month; `E2E-EXP-*`, `E2E-EMP-*`, `E2E-UTIL-*` and `E2E-ATT-*` rows
  * are never read, mutated, or cleaned here.
  *
+ * Cleanup owns only fixture rows: allocations and slips are deleted for
+ * `E2E-`-coded Employees in the fixture months, and cleanup/seed refuse with a
+ * thrown error when either month holds a Payroll Slip of a non-fixture
+ * Employee or a locked Payroll Run without fixture slips to prove ownership.
+ * A shared dev target therefore cannot lose real payroll; the harness is meant
+ * for the isolated E2E database.
+ *
  * Why 2026-02+ and not a 2019 month: Payroll Finalize refuses a month while an
  * active Payroll/Contract employee has no Salary Profile covering it, and the
  * attendance fixtures' profiles only start 2026-01-01 — so 2026-02 is the
@@ -59,8 +66,8 @@ export const ALLOCATION_ASSIGNMENT_PREFIX = 'e2e-alloc-assign-';
 export const ALLOCATION_BONUS_REMARKS = 'E2E-ALLOC bonus rate';
 export const ALLOCATION_BONUS_AMOUNT = 500;
 export const ALLOCATION_USERNAME = 'e2e_alloc_user';
-export const ALLOCATION_READER_IP = '198.18.0.27';
-export const ALLOCATION_FIN_READER_IP = '198.18.0.28';
+export const ALLOCATION_READER_IP = '198.18.0.31';
+export const ALLOCATION_FIN_READER_IP = '198.18.0.32';
 
 export const ALLOCATION_USER = {
 	username: ALLOCATION_USERNAME,
@@ -258,50 +265,101 @@ export interface SeededAllocation {
 
 /* ── fixture lifecycle ─────────────────────────────────────────────── */
 
+/**
+ * Refuse the fixture months when they are not ours to clean. Any Payroll Slip
+ * in 2026-02/2026-03 that does not belong to an `E2E-` fixture Employee — or a
+ * locked Payroll Run with no fixture slips to prove ownership — stops cleanup
+ * and seed before anything is deleted or written. The harness is meant for the
+ * isolated E2E database; this keeps a shared dev target safe.
+ */
+async function assertFixtureMonthsFree(): Promise<void> {
+	const monthDays = [ALLOCATION_MONTH_DAY, ALLOCATION_ESTIMATE_MONTH_DAY];
+	const slips = await rows<{ month: string; code: string | null }>(
+		`SELECT ps.month, e.employee_id AS code
+       FROM payroll_slips ps
+       LEFT JOIN employees e ON e.id = ps.employee_id
+      WHERE ps.month IN (?, ?)`,
+		monthDays
+	);
+	const foreign = slips.filter(
+		(slip) => !String(slip.code ?? '').startsWith('E2E-')
+	);
+	if (foreign.length > 0) {
+		throw new Error(
+			`[e2e] allocation fixture month holds ${foreign.length} Payroll Slip(s) of non-fixture employees ` +
+				`(e.g. ${foreign[0].code ?? 'unknown employee'}). Point the harness at the isolated E2E database ` +
+				'instead of touching real payroll data.'
+		);
+	}
+	const locked = await rows<{ month: number; status: string }>(
+		`SELECT month, status FROM payroll_runs
+      WHERE year = 2026 AND month IN (2, 3) AND status <> 'draft'`
+	);
+	for (const run of locked) {
+		const monthDay = `2026-${String(run.month).padStart(2, '0')}-01`;
+		const owned = slips.some(
+			(slip) => String(slip.month).slice(0, 10) === monthDay
+		);
+		if (!owned) {
+			throw new Error(
+				`[e2e] allocation fixture month ${monthDay} holds a ${run.status} Payroll Run with no fixture slips ` +
+					'to prove ownership. Point the harness at the isolated E2E database instead of touching real payroll data.'
+			);
+		}
+	}
+}
+
 /** Remove every row this module owns. Safe to run repeatedly. */
 export async function cleanupExpenditureAllocationFixtures(): Promise<void> {
+	await assertFixtureMonthsFree();
+
 	const employeeCodes = Object.values(ALLOCATION_EMPLOYEES).map(
 		(employee) => employee.code
 	);
 	const placeholders = employeeCodes.map(() => '?').join(', ');
+	// Fixture ownership is the `E2E-` Employee-code namespace, so a shared
+	// database's real Employees, slips, and allocations are never touched.
+	const FIXTURE_EMPLOYEES = `employee_id IN (
+    SELECT id FROM employees WHERE employee_id LIKE 'E2E-%'
+  )`;
+	const monthDays = [ALLOCATION_MONTH_DAY, ALLOCATION_ESTIMATE_MONTH_DAY];
 
-	// Allocation evidence is purged by its fixture month (only this module
-	// writes allocations for 2026-02) and by the fixture employees' slips.
+	// Allocation evidence: only the fixture months' allocations of fixture
+	// Employees — the guard above refused anything else.
 	await exec(
 		`DELETE FROM payroll_employee_allocation_shares
       WHERE allocation_id IN (
         SELECT id FROM payroll_employee_allocations
-         WHERE month = ? OR employee_id IN (
-           SELECT id FROM employees WHERE employee_id IN (${placeholders})
-         )
+         WHERE month IN (?, ?) AND ${FIXTURE_EMPLOYEES}
       )`,
-		[ALLOCATION_MONTH_DAY, ...employeeCodes]
+		[...monthDays]
 	);
 	await exec(
 		`DELETE FROM payroll_allocation_events
       WHERE allocation_uid IN (
         SELECT allocation_uid FROM payroll_employee_allocations
-         WHERE month = ? OR employee_id IN (
-           SELECT id FROM employees WHERE employee_id IN (${placeholders})
-         )
+         WHERE month IN (?, ?) AND ${FIXTURE_EMPLOYEES}
       )`,
-		[ALLOCATION_MONTH_DAY, ...employeeCodes]
+		[...monthDays]
 	);
 	await exec(
 		`DELETE FROM payroll_employee_allocations
-      WHERE month = ? OR employee_id IN (
-        SELECT id FROM employees WHERE employee_id IN (${placeholders})
-      )`,
-		[ALLOCATION_MONTH_DAY, ...employeeCodes]
+      WHERE month IN (?, ?) AND ${FIXTURE_EMPLOYEES}`,
+		[...monthDays]
 	);
 
-	// Slips: the fixture month belongs to this module — every slip there is
-	// either a fixture employee's, a generated zero of another fixture's
-	// employee, or one of the two safety-gate slips below.
-	await exec(`DELETE FROM payroll_slips WHERE month = ?`, [
-		ALLOCATION_MONTH_DAY,
-	]);
-	await exec(`DELETE FROM payroll_runs WHERE year = 2026 AND month IN (2, 3)`);
+	// Slips of fixture Employees in the fixture months — the generated zeros
+	// for every other fixture namespace and the two safety-gate slips below.
+	await exec(
+		`DELETE FROM payroll_slips
+      WHERE month IN (?, ?) AND ${FIXTURE_EMPLOYEES}`,
+		[...monthDays]
+	);
+	// Runs for the fixture months: the guard above proved every slip in them is
+	// fixture-owned, so a run left by this module is ours to remove.
+	await exec(
+		`DELETE FROM payroll_runs WHERE year = 2026 AND month IN (2, 3)`
+	);
 
 	await exec(
 		`DELETE FROM user_activity_assignments
