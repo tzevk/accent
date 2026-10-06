@@ -12,6 +12,36 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## Communicating with the user
+
+Applies whenever you write to the user: status updates, summaries, explanations, and questions.
+
+### Writing style
+
+Use simplified technical English, about 80% of ASD-STE100.
+
+- One idea per sentence. Keep sentences under 20 words.
+- Use active voice and present tense.
+- Use one word for one meaning. Do not swap synonyms for variety.
+- Use plain, common words. Keep articles (a, the).
+- Define a technical term the first time you use it.
+- Keep paragraphs to 6 sentences or fewer.
+- Put the most important information first.
+
+### Asking questions
+
+- Ask only when you cannot proceed safely or correctly without the answer.
+  Otherwise, make a reasonable assumption and state it.
+- Ask one question at a time. Make it specific and answerable in a few words.
+- Give 2-3 concrete options and say which one you recommend and why.
+- State what you already tried or checked, so the user does not repeat it.
+- Say what changes depending on the answer.
+
+### Reporting results
+
+- Say what you did, why, and what you are unsure about.
+- Do not only report that the task is done.
+
 > Next.js 16 App Router (Turbopack default) + React 19 + MySQL. Keep this file compact — every line should be something an agent would miss without help.
 
 ## Stack & Runtime
