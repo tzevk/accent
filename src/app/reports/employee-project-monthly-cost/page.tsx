@@ -584,12 +584,25 @@ export default function EmployeeProjectMonthlyCostPage() {
 	// loading, assume allowed so the default tab does not flicker.
 	const canReadExpenseSource =
 		authLoading || isSuperAdmin || (!!can && can('other_expenses', 'read'));
+	// Since #307 the reconciliation carries recorded Payroll Slip employer
+	// cost, so the payroll source privilege joins the same gate.
+	const canReadPayrollSource =
+		authLoading || isSuperAdmin || (!!can && can('payroll', 'read'));
 
 	useEffect(() => {
-		if (!authLoading && !canReadExpenseSource && viewMode === 'expenditure') {
+		if (
+			!authLoading &&
+			(!canReadExpenseSource || !canReadPayrollSource) &&
+			viewMode === 'expenditure'
+		) {
 			setViewMode('monthly');
 		}
-	}, [authLoading, canReadExpenseSource, viewMode]);
+	}, [
+		authLoading,
+		canReadExpenseSource,
+		canReadPayrollSource,
+		viewMode,
+	]);
 	const error =
 		activeQuery.error?.message ||
 		(activeQuery.data as unknown as { error?: string })?.error ||
@@ -799,7 +812,11 @@ export default function EmployeeProjectMonthlyCostPage() {
 	}
 
 	const renderContent = () => {
-		if (viewMode === 'expenditure' && canReadExpenseSource) {
+		if (
+			viewMode === 'expenditure' &&
+			canReadExpenseSource &&
+			canReadPayrollSource
+		) {
 			return (
 				<ExpenditureView
 					month={selectedMonth}
@@ -1485,7 +1502,7 @@ export default function EmployeeProjectMonthlyCostPage() {
 							aria-label="Report view"
 							className="inline-flex self-start rounded-xl border border-gray-200/80 bg-gray-100/90 p-1 shadow-inner sm:self-auto"
 						>
-							{canReadExpenseSource && (
+							{canReadExpenseSource && canReadPayrollSource && (
 								<button
 									type="button"
 									role="tab"

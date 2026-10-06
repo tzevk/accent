@@ -175,6 +175,14 @@ export interface ReconciliationProjectRow {
 	previous_month_cost: number | null;
 	change_amount: number | null;
 	change_state: 'no_prior' | 'new' | 'increase' | 'decrease' | 'unchanged';
+	/** Recorded employee cost allocated to this Project (ADR-0016), INR. */
+	employee_cost: number;
+	/** Payroll-based estimate for this Project, never part of `incurred_cost`. */
+	estimated_employee_cost: number;
+	/** Logged Hours this month on the Project, across the report's population. */
+	logged_hours: number;
+	/** Employees with Logged Hours on the Project this month. */
+	employee_count: number;
 }
 
 export interface EvidenceStateSummary {
@@ -230,6 +238,11 @@ export interface CompanyReconciliation {
 	projects: ReconciliationProjectRow[];
 	evidence: EvidenceSummary;
 	coverage: CoverageNotice[];
+	/**
+	 * Recorded employee cost from Payroll Slips (ADR-0016): frozen allocations
+	 * plus current-month payroll-based estimates, always stated separately.
+	 */
+	payroll: PayrollExpenditure;
 	project_options: Array<{
 		project_id: number;
 		project_code: string;
@@ -237,6 +250,111 @@ export interface CompanyReconciliation {
 		client_name: string | null;
 	}>;
 	available_months: string[];
+}
+
+export type PayrollPayStream = 'payroll' | 'contract';
+
+/** How an employee's cost is known this month. */
+export type PayrollCostStatus =
+	/** Frozen recorded allocation from a finalized Payroll Slip. */
+	| 'recorded'
+	/** Payroll-based estimate (no finalized allocation yet). */
+	| 'estimated'
+	/** A finalized slip whose recorded employer cost is a known zero. */
+	| 'known_zero'
+	/** Cost cannot be stated: no Salary Profile covers the month. */
+	| 'unknown';
+
+export type PayrollShareBasis = 'project' | 'no_project' | 'no_logged_hours';
+
+/** One destination's share of an employee's recorded or estimated cost. */
+export interface PayrollProjectShare {
+	/** null = No project (logged hours without one) or No logged hours. */
+	project_id: number | null;
+	project_code: string | null;
+	project_name: string | null;
+	client_name: string | null;
+	hours: number;
+	amount: number;
+	/** The cent the largest-remainder step applied to this share. */
+	rounding_adjustment: number;
+	basis: PayrollShareBasis;
+}
+
+/** Logged Hours on one Project, whether or not its cost is known. */
+export interface PayrollHourLine {
+	project_id: number | null;
+	project_code: string | null;
+	project_name: string | null;
+	client_name: string | null;
+	hours: number;
+}
+
+/** One Employee's employee-cost position for a month. */
+export interface PayrollEmployeeCost {
+	employee_id: number;
+	employee_code: string;
+	employee_name: string;
+	pay_stream: PayrollPayStream | 'unknown';
+	status: PayrollCostStatus;
+	/** Recorded employer cost from the frozen Payroll Slip allocation. */
+	recorded_amount: number | null;
+	/** Payroll-based estimate; never added to recorded cost. */
+	estimated_amount: number | null;
+	logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	/** Recorded cost exists and there are no Logged Hours: fully unallocated. */
+	no_logged_hours: boolean;
+	/** A covering Salary Profile exists but the month has no Payroll Slip. */
+	missing_slip: boolean;
+	/** Logged Hours exist but no Salary Profile covers the month. */
+	missing_pricing: boolean;
+	/** The month is finalized but this slip has no frozen allocation. */
+	allocation_missing: boolean;
+	source: {
+		payroll_slip_id: number | null;
+		allocation_id: number | null;
+		allocation_version: number | null;
+		allocation_kind: 'finalization' | 'reconstruction' | null;
+		month: string;
+	};
+	/** The money destinations: recorded shares when recorded, else estimated. */
+	shares: PayrollProjectShare[];
+	/** Every Logged Hour of the month, by Project, independent of pricing. */
+	hours_by_project: PayrollHourLine[];
+}
+
+/** The month's employee-cost position, stated in the reporting currency. */
+export interface PayrollExpenditure {
+	currency: string;
+	recorded_total: number;
+	estimated_total: number;
+	/** Recorded cost allocated to Projects. */
+	allocated_total: number;
+	/** Recorded cost left unallocated: No project + No logged hours. */
+	unallocated_total: number;
+	total_logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	/** Total cent applied by the largest-remainder step across the month. */
+	rounding_adjustment: number;
+	recorded_count: number;
+	known_zero_count: number;
+	estimated_count: number;
+	missing_slip_count: number;
+	missing_pricing_count: number;
+	allocation_missing_count: number;
+}
+
+/** The employee-cost drilldown: the same interpretation, per Employee. */
+export interface PayrollDrilldown {
+	month: string;
+	month_label: string;
+	currency: string;
+	totals: PayrollExpenditure;
+	employees: PayrollEmployeeCost[];
+	coverage: CoverageNotice[];
 }
 
 /** The command contract: every change carries the version it expects. */

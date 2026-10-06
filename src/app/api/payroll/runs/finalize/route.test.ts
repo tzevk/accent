@@ -3,11 +3,15 @@ import { grantFor } from '../../test-perms';
 
 const mocks = vi.hoisted(() => ({
 	mockDbConnect: vi.fn(),
+	mockWithTransaction: vi.fn(),
 	mockEnsurePermission: vi.fn(),
 	mockExecute: vi.fn(),
 }));
 
-vi.mock('@/utils/database', () => ({ dbConnect: mocks.mockDbConnect }));
+vi.mock('@/utils/database', () => ({
+	dbConnect: mocks.mockDbConnect,
+	withTransaction: mocks.mockWithTransaction,
+}));
 vi.mock('@/utils/api-permissions', () => ({
 	ensurePermission: mocks.mockEnsurePermission,
 	RESOURCES: { PAYROLL: 'payroll' },
@@ -70,6 +74,9 @@ describe('payroll finalize API — completeness gate and run lock (issue #242)',
 			execute: mocks.mockExecute,
 			release: vi.fn(),
 		});
+		mocks.mockWithTransaction.mockImplementation(async (fn) =>
+			fn(await mocks.mockDbConnect())
+		);
 		mocks.mockExecute.mockResolvedValue([[], undefined]);
 	});
 
@@ -323,6 +330,9 @@ describe('payroll finalize API — the transition is audited (issue #243)', () =
 			execute: mocks.mockExecute,
 			release: vi.fn(),
 		});
+		mocks.mockWithTransaction.mockImplementation(async (fn) =>
+			fn(await mocks.mockDbConnect())
+		);
 		mocks.mockExecute.mockResolvedValue([[], undefined]);
 	});
 

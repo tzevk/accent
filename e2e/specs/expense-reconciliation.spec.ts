@@ -604,9 +604,14 @@ test('keeps currencies separate until a supported conversion exists', async ({
 test('states which sources are not yet incorporated', async ({ request }) => {
 	const data = await reconciliation(request, MONTH);
 	const codes = coverageCodes(data);
-	// Employee cost arrives with #307; the report says so instead of showing a
-	// total that pretends to be complete.
-	expect(codes).toContain('payroll_employee_cost_not_incorporated');
+	// Employee cost is incorporated since #307 (ADR-0016): the reconciliation
+	// no longer declares payroll missing, and it discloses the month's payroll
+	// coverage instead (this month has no finalized Payroll Run).
+	expect(codes).not.toContain('payroll_employee_cost_not_incorporated');
+	expect(
+		codes.includes('payroll_not_generated') ||
+			codes.includes('payroll_not_finalized')
+	).toBe(true);
 	expect(codes).toContain('supplier_source_not_incorporated');
 	expect(codes).toContain('cash_and_payments_not_incorporated');
 	expect(codes).toContain('cost_accrual_capture_not_incorporated');

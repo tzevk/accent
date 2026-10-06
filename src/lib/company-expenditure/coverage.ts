@@ -31,9 +31,9 @@ export const SOURCE_COVERAGE: readonly SourceCoverageDeclaration[] = [
 	{
 		code: 'payroll_employee_cost_not_incorporated',
 		label: 'Employee cost (recorded payroll)',
-		status: 'not_incorporated',
+		status: 'wired',
 		detail:
-			'Recorded Payroll Slip employer cost and its frozen Project allocation are not part of this total yet; they are incorporated by a later slice (#307).',
+			'Recorded Payroll Slip employer cost and its frozen Project allocation are part of this total (#307, ADR-0016); estimates are disclosed separately.',
 	},
 	{
 		code: 'supplier_source_not_incorporated',
