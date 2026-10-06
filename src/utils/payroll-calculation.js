@@ -738,12 +738,14 @@ export function calculatePayroll(
 	const gratuity = money(
 		pctOf(decimal(basic), PAYROLL_CONFIG.GRATUITY_PERCENT, 0)
 	);
+	// Employer contributions are genuine employer costs only. Bonus is
+	// employee earnings — already inside totalEarnings — so including it here
+	// charged the same bonus a second time into employer cost (issue #305).
 	const totalEmployerContributions = money(
 		add(
 			pfEmployer,
 			esicEmployer,
 			mlwfEmployer,
-			bonus,
 			insurance,
 			gratuity,
 			pfAdmin,

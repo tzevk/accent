@@ -56,7 +56,9 @@ export default async function globalSetup(): Promise<void> {
 		const seeded = await seedFixtures();
 		console.log(
 			`[e2e] fixtures seeded for ${E2E_MONTH} (admin #${seeded.adminUserId}, ` +
-				`worker employee #${seeded.workerEmployeeId}, zero-hours employee #${seeded.zeroHoursEmployeeId})`
+				`worker employee #${seeded.workerEmployeeId}, zero-hours employee #${seeded.zeroHoursEmployeeId}, ` +
+				`bonus employees #${seeded.bonusEmployeeId}/#${seeded.zeroBonusEmployeeId}/#${seeded.contractBonusEmployeeId}/#${seeded.lateBonusEmployeeId}, ` +
+				`preview employee #${seeded.previewBonusEmployeeId})`
 		);
 
 		const attendance = await seedAttendanceFixtures();
