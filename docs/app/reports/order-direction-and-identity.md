@@ -15,6 +15,16 @@ A supplier order value is an **Outstanding Supplier Commitment**, never incurred
 cost. Client order value is **commercial context**: not income, not cost, and not
 a budget. Neither figure is ever produced from the other.
 
+Money is stored to the cent (`decimal(15,2)`) with the module's shared Decimal
+helpers: a stated `250000.75` stays `250000.75`, a rollup of two `33333.33`
+client invoices is `66666.66`, and the remaining value is stated value minus
+that rollup. A missing amount is NULL, never zero. A supplied Project or company
+reference that is not a positive integer (a code, typo, negative or fractional
+value) is refused (`invalid_project` / `invalid_company`) instead of being
+dropped to NULL; an explicit null/blank still means unknown, and a filter that
+is not a positive integer is refused on the read path. A currency longer than
+ISO 4217 (`USDT`) is refused, never truncated into a different valid code.
+
 ## Module interface
 
 `src/lib/company-expenditure/orders.ts`, re-exported through
