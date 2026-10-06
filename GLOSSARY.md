@@ -92,6 +92,18 @@ _Avoid_: Attendance %, Allocation %, Productivity
 CTC-based monthly price of an Employee — `employee_salary_profile.employer_cost` (stored CTC), falling back to `gross_salary` then `gross`. Profile picked by `pickActiveProfile` (effective-range cover, else latest active). In the Employee Utilization report a month the employment window only partly covers is pro-rated by employed working days ÷ the month's working days, 2dp — a full-month window reproduces the full CTC, and the row is marked partial ("Partial (window)") with the covered dates.
 _Avoid_: Gross, Salary (ambiguous), Hourly rate
 
+**Project Employee Cost**:
+The share of an Employee's recorded monthly payroll employer cost, including earnings and employer contributions, attributed to a Project by its share of the Employee's Logged Hours. Excludes project expenses and supplier costs; it is not a measure of cash paid.
+_Avoid_: Total project expenditure, Total project cost, Project payments
+
+**Unallocated Employee Cost**:
+Recorded payroll employer cost that cannot be attributed to a Project. Includes the share for Logged Hours without a Project and the full cost of an Employee with no Logged Hours; it is not Bench Cost.
+_Avoid_: Bench Cost, Zero project cost, Missing salary
+
+**Project Cost Allocation Revision**:
+An explicit correction to how finalized employee payroll cost is attributed to Projects. Preserves the previous attribution and the reason for the correction; it does not itself change the employee's payroll cost.
+_Avoid_: Payroll correction, Timesheet edit, Payroll regeneration
+
 **Bench Cost**:
 `monthly_cost − Hourly Rate × logged_hours` — Monthly Cost (pro-rated for a partial window, see above) minus the utilized figure, priced with the same CTC ÷ Basis Hours rate a Payroll Slip pays with (ADR-0010), so the report reconciles with the slips. The utilized figure plus Bench Cost foots to Monthly Cost per row and in totals (overload may read negative); a row without a covering Salary Profile shows blank cost, never zero.
 _Avoid_: Fractional cost, Loss, Waste
