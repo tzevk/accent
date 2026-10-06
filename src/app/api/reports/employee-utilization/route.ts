@@ -14,9 +14,10 @@ import {
 /**
  * GET /api/reports/employee-utilization
  *
- * Team utilization report for one month: one row per active employee with
- * capacity, logged hours, utilization plus band flag, monthly/bench costs,
- * and totals — sorted by flag band, then bench cost descending.
+ * Team utilization report for one month: one row per employee on that
+ * month's payroll roster with capacity, logged hours, utilization plus band
+ * flag, monthly/bench costs, and totals — sorted by flag band, then bench
+ * cost descending.
  *
  * Without params  → meta (months with data + flag options) for the filter bar.
  * ?month=YYYY-MM  → the team rows and totals for that month.
@@ -27,7 +28,8 @@ import {
  * `project_activities` report field permission (view/edit) — the same gate
  * used by the other report routes.
  *
- * Capacity is always full-month (no mid-month pro-rating in v1).
+ * Capacity and cost pro-rate to each row's employment window; the
+ * bench/utilized rate is CTC ÷ the month's Basis Hours.
  *
  * Uses pool.execute (via query()) — no long-held connection.
  */

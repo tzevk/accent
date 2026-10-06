@@ -2,20 +2,39 @@ import { describe, it, expect } from 'vitest';
 import {
 	STANDARD_WORKING_HOURS,
 	HALF_DAY_HOURS,
+	STD_HOURS_PER_DAY_DEFAULT,
 	UNDER_UTILIZATION_THRESHOLD,
 	OVER_UTILIZATION_THRESHOLD,
 	resolveMonthlyCost,
+	basisDaysInMonth,
 	computeCtcHourlyRate,
 	resolveCtcHourlyRate,
+	proratedMonthlyCost,
 	buildCapacity,
 	utilizationPercent,
 	bandForUtilization,
 	buildTeamRow,
 	buildUtilizationTotals,
+	summarizeTrailing,
+	buildTrendPoint,
+	buildDepartmentSummary,
+	sortUtilizationRows,
 	monthLabel,
+	trendMonths,
 } from '@/app/reports/employee-utilization/data-source';
 import type { SalaryProfile } from '@/app/reports/manhours-billing/data-source';
+import {
+	PROJECT_BREAKDOWN_TOP_N,
+	buildProjectBreakdown,
+	buildProjectBuckets,
+	projectDisplayName,
+	type BreakdownAssignment,
+} from '@/app/reports/employee-utilization/project-breakdown';
 import { sumLoggedHoursForMonth as sumLoggedHours } from '@/lib/logged-hours';
+import {
+	intersectsEmploymentWindow,
+	resolveEmploymentWindow,
+} from '@/lib/payroll-roster';
 
 // May 2026: 31 days. Sundays 3/10/17/24/31, Saturdays 2/9/16/23/30.
 // Scheduled weekly offs: 5 Sundays + 2nd Sat (9th) + 4th Sat (23rd) = 7.
@@ -62,6 +81,66 @@ describe('buildCapacity', () => {
 		expect(capacity.weekly_off_days).toBe(7);
 		expect(capacity.holiday_days).toBe(0);
 		expect(capacity.gross_capacity_hours).toBe(192);
+		expect(capacity.capacity_hours).toBe(192);
+		// An open window is the whole month: the two pro-rating counts agree.
+		expect(capacity.employed_working_days).toBe(24);
+		expect(capacity.month_working_days).toBe(24);
+	});
+
+	it('scopes every bucket to the employment window', () => {
+		// 11–20 May 2026: 9 working days, Sunday 17th the only weekly off.
+		const capacity = buildCapacity(MAY, [], new Set(), {
+			start: '2026-05-11',
+			end: '2026-05-20',
+		});
+		expect(capacity.working_days).toBe(9);
+		expect(capacity.weekly_off_days).toBe(1);
+		expect(capacity.holiday_days).toBe(0);
+		expect(capacity.gross_capacity_hours).toBe(72);
+		expect(capacity.capacity_hours).toBe(72);
+		expect(capacity.employed_working_days).toBe(9);
+		// The denominator stays the full month, holiday and all.
+		expect(capacity.month_working_days).toBe(24);
+	});
+
+	it('counts the month denominator outside the window but no bucket', () => {
+		const capacity = buildCapacity(MAY, [], new Set(['2026-05-01']), {
+			start: '2026-05-11',
+			end: '2026-05-20',
+		});
+		// The 1 May holiday is outside the window: no bucket, but it still
+		// shortens the month's own working days (24 → 23).
+		expect(capacity.holiday_days).toBe(0);
+		expect(capacity.working_days).toBe(9);
+		expect(capacity.month_working_days).toBe(23);
+	});
+
+	it('keeps the leave rules inside the window', () => {
+		const capacity = buildCapacity(
+			MAY,
+			[
+				{ date: '2026-05-12', status: 'PL' },
+				{ date: '2026-05-13', status: 'HD' },
+			],
+			new Set(),
+			{ start: '2026-05-11', end: '2026-05-20' }
+		);
+		expect(capacity.leave_days).toBe(1);
+		expect(capacity.half_days).toBe(1);
+		// 9 × 8 = 72, minus a full day and half a day.
+		expect(capacity.capacity_hours).toBe(60);
+	});
+
+	it('credits the standard day for an H-status row (optional holiday)', () => {
+		// An optional holiday is never injected; recorded 'H' attendance must
+		// not zero the day either — it falls through to the 8h credit.
+		const capacity = buildCapacity(
+			MAY,
+			[{ date: '2026-05-04', status: 'H' }],
+			new Set()
+		);
+		expect(capacity.holiday_days).toBe(0);
+		expect(capacity.leave_days).toBe(0);
 		expect(capacity.capacity_hours).toBe(192);
 	});
 
@@ -129,6 +208,8 @@ describe('buildCapacity', () => {
 		const capacity = buildCapacity('garbage', [], new Set());
 		expect(capacity.working_days).toBe(0);
 		expect(capacity.capacity_hours).toBe(0);
+		expect(capacity.employed_working_days).toBe(0);
+		expect(capacity.month_working_days).toBe(0);
 	});
 });
 
@@ -213,51 +294,111 @@ describe('resolveMonthlyCost', () => {
 	});
 });
 
+describe('basisDaysInMonth (payroll Basis Hours calendar)', () => {
+	it('counts every non-Sunday day, 2nd/4th Saturdays included', () => {
+		// May 2026: 31 days, 5 Sundays; Saturdays 9 and 23 stay in — the
+		// capacity calendar's 24 working days would be wrong here.
+		expect(basisDaysInMonth(MAY, new Set())).toBe(26);
+	});
+
+	it('subtracts injected holidays that are not Sundays', () => {
+		expect(basisDaysInMonth(MAY, new Set(['2026-05-01']))).toBe(25);
+		// A holiday landing on a Sunday is already excluded: no double count.
+		expect(basisDaysInMonth(MAY, new Set(['2026-05-03']))).toBe(26);
+	});
+
+	it('moves with the calendar month', () => {
+		// July 2026: 31 days, 4 Sundays (5/12/19/26) → 27 basis days.
+		expect(basisDaysInMonth('2026-07', new Set())).toBe(27);
+		expect(basisDaysInMonth('garbage', new Set())).toBe(0);
+	});
+});
+
 describe('computeCtcHourlyRate and resolveCtcHourlyRate', () => {
-	it('apportions monthly CTC over standard days times hours per day', () => {
-		// 22000 / (26 × 8) = 105.769… unrounded for money math.
-		expect(computeCtcHourlyRate(profile())).toBeCloseTo(105.7692, 4);
-		expect(resolveCtcHourlyRate(profile())).toBe(105.77);
+	it('apportions CTC over the month’s Basis Hours', () => {
+		// 26 basis days × 8h = 208h; 22000 / 208 = 105.769… for money math.
+		expect(computeCtcHourlyRate(profile(), 26)).toBeCloseTo(105.7692, 4);
+		expect(resolveCtcHourlyRate(profile(), 26)).toBe(105.77);
 	});
 
-	it('uses the direct rate for hourly, daily, and custom types', () => {
-		expect(
-			computeCtcHourlyRate(profile({ salary_type: 'hourly', hourly_rate: 250 }))
-		).toBe(250);
-		expect(
-			computeCtcHourlyRate(profile({ salary_type: 'daily', daily_rate: 800 }))
-		).toBe(800);
-		expect(
-			computeCtcHourlyRate(profile({ salary_type: 'custom', hourly_rate: 300 }))
-		).toBe(300);
+	it('moves with the month’s basis days (the payroll rule)', () => {
+		// July 2026: 27 basis days × 8 = 216h; 22000 / 216 = 101.8518…
+		expect(computeCtcHourlyRate(profile(), 27)).toBeCloseTo(101.8519, 4);
+		expect(resolveCtcHourlyRate(profile(), 27)).toBe(101.85);
+		// One holiday on a working day lowers the denominator, raising the rate.
+		expect(resolveCtcHourlyRate(profile(), 25)).toBe(110);
 	});
 
-	it('falls back to 26 days and 8 hours when the profile omits them', () => {
+	it('falls back to 8 hours per day when the profile omits them', () => {
+		expect(STD_HOURS_PER_DAY_DEFAULT).toBe(8);
 		expect(
-			computeCtcHourlyRate(
-				profile({ std_working_days: 0, std_hours_per_day: 0 })
-			)
+			computeCtcHourlyRate(profile({ std_hours_per_day: 0 }), 26)
 		).toBeCloseTo(22000 / 208, 4);
 	});
 
-	it('respects profile-level working days and hours per day', () => {
+	it('ignores std_working_days and direct stored rates', () => {
+		// Payroll prices CTC over the month's basis hours: the profile's own
+		// denominator and the direct hourly/daily/custom rates are all decoys.
 		expect(
 			resolveCtcHourlyRate(
-				profile({
-					employer_cost: 22000,
-					std_working_days: 22,
-					std_hours_per_day: 8,
-				})
+				profile({ std_working_days: 22, employer_cost: 26000 }),
+				26
 			)
 		).toBe(125);
+		for (const salary_type of ['hourly', 'daily', 'custom']) {
+			expect(
+				resolveCtcHourlyRate(
+					profile({
+						salary_type,
+						hourly_rate: 999,
+						daily_rate: 999,
+						employer_cost: 26000,
+					}),
+					26
+				),
+				salary_type
+			).toBe(125);
+		}
 	});
 
-	it('returns 0 when there is no monthly cost', () => {
+	it('keeps the profile’s hours per day in the denominator', () => {
+		// 26 basis days × 4h = 104h; 20000 / 104 = 192.307…
+		expect(
+			resolveCtcHourlyRate(
+				profile({ employer_cost: 20000, std_hours_per_day: 4 }),
+				26
+			)
+		).toBe(192.31);
+	});
+
+	it('returns 0 with no CTC or no basis days', () => {
 		expect(
 			computeCtcHourlyRate(
-				profile({ employer_cost: 0, gross_salary: 0, gross: 0 })
+				profile({ employer_cost: 0, gross_salary: 0, gross: 0 }),
+				26
 			)
 		).toBe(0);
+		expect(computeCtcHourlyRate(profile(), 0)).toBe(0);
+	});
+});
+
+describe('proratedMonthlyCost', () => {
+	it('pro-rates by employed over month working days at 2dp', () => {
+		expect(proratedMonthlyCost(22000, 12, 24)).toBe(11000);
+		expect(proratedMonthlyCost(22000, 9, 24)).toBe(8250);
+		// 22000 × 11 ÷ 24 = 10083.333… → 10083.33.
+		expect(proratedMonthlyCost(22000, 11, 24)).toBe(10083.33);
+	});
+
+	it('reproduces the monthly cost exactly for a full-month window', () => {
+		expect(proratedMonthlyCost(22000, 24, 24)).toBe(22000);
+		expect(proratedMonthlyCost(22000.567, 24, 24)).toBe(22000.57);
+	});
+
+	it('costs nothing when the window has no working days', () => {
+		// A window covering only weekly offs/holidays: capacity 0, cost 0.
+		expect(proratedMonthlyCost(22000, 0, 24)).toBe(0);
+		expect(proratedMonthlyCost(22000, 0, 0)).toBe(0);
 	});
 });
 
@@ -276,6 +417,11 @@ describe('buildTeamRow', () => {
 		expect(row.logged_hours).toBe(16);
 		expect(row.utilization_percent).toBe(8.33);
 		expect(row.utilization_band).toBe('under');
+		expect(row.state).toBeNull();
+		// No month scope in this input: both window bounds read as open.
+		expect(row.employment_start).toBeNull();
+		expect(row.employment_end).toBeNull();
+		expect(row.is_partial_window).toBe(false);
 		expect(row.monthly_cost).toBe(22000);
 		expect(row.cost_status).toBe('priced');
 		// 16h × 105.769… = 1692.31; fractional + bench foots to monthly.
@@ -305,17 +451,19 @@ describe('buildTeamRow', () => {
 				rate: 144.23,
 			},
 			{
+				// The stored hourly rate (250) is a decoy: CTC ÷ 208h wins.
 				salary_type: 'hourly',
 				overrides: {
 					salary_type: 'hourly',
 					hourly_rate: 250,
-					employer_cost: 52000,
-					gross_salary: 52000,
+					employer_cost: 40000,
+					gross_salary: 40000,
 				},
-				monthly: 52000,
-				rate: 250,
+				monthly: 40000,
+				rate: 192.31,
 			},
 			{
+				// Likewise the stored daily rate (800): 20800 ÷ 208 = 100.
 				salary_type: 'daily',
 				overrides: {
 					salary_type: 'daily',
@@ -324,7 +472,7 @@ describe('buildTeamRow', () => {
 					gross_salary: 20800,
 				},
 				monthly: 20800,
-				rate: 800,
+				rate: 100,
 			},
 			{
 				salary_type: 'lumpsum',
@@ -345,7 +493,7 @@ describe('buildTeamRow', () => {
 					gross_salary: 30000,
 				},
 				monthly: 30000,
-				rate: 300,
+				rate: 144.23,
 			},
 		];
 		for (const c of cases) {
@@ -359,12 +507,164 @@ describe('buildTeamRow', () => {
 			});
 			expect(row.monthly_cost).toBe(c.monthly);
 			expect(row.cost_status).toBe('priced');
-			expect(resolveCtcHourlyRate(profile(c.overrides))).toBe(c.rate);
+			// May 2026 has 26 basis days × 8h = 208h.
+			expect(resolveCtcHourlyRate(profile(c.overrides), 26)).toBe(c.rate);
 			expect(row.fractional_cost! + row.bench_cost!).toBeCloseTo(
 				row.monthly_cost!,
 				2
 			);
 		}
+	});
+
+	it('prices with the month’s basis days, not the profile denominator', () => {
+		const row = buildTeamRow({
+			employee_id: 1,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8, '2026-05-05': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [
+				profile({
+					salary_type: 'hourly',
+					hourly_rate: 999,
+					std_working_days: 22,
+					employer_cost: 26000,
+					gross_salary: 26000,
+				}),
+			],
+		});
+		// 26000 / (26 × 8) = 125 — never 26000 / (22 × 8) = 147.73, never 999.
+		expect(row.monthly_cost).toBe(26000);
+		expect(row.fractional_cost).toBe(2000);
+		expect(row.bench_cost).toBe(24000);
+	});
+
+	it('folds the month’s holidays into the rate denominator', () => {
+		const row = buildTeamRow({
+			employee_id: 1,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(['2026-05-01']),
+			profiles: [profile({ employer_cost: 22000, gross_salary: 22000 })],
+		});
+		// 25 basis days × 8h = 200h → 110/h; Capacity nets the same holiday.
+		expect(row.fractional_cost).toBe(880);
+		expect(row.capacity_hours).toBe(184);
+	});
+
+	it('carries the window and pro-rates capacity and Monthly Cost to it', () => {
+		const row = buildTeamRow({
+			employee_id: 7,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-12': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			employment_start: '2026-05-11',
+			employment_end: '2026-05-20',
+		});
+		expect(row.employment_start).toBe('2026-05-11');
+		expect(row.employment_end).toBe('2026-05-20');
+		expect(row.is_partial_window).toBe(true);
+		// 9 working days inside the window × 8h.
+		expect(row.capacity_hours).toBe(72);
+		// 22000 × 9 ÷ 24 = 8250; 8h × 105.769… = 846.15, footing preserved.
+		expect(row.monthly_cost).toBe(8250);
+		expect(row.fractional_cost).toBe(846.15);
+		expect(row.fractional_cost! + row.bench_cost!).toBeCloseTo(
+			row.monthly_cost!,
+			2
+		);
+	});
+
+	it('marks a window covering the whole month as not partial', () => {
+		const row = buildTeamRow({
+			employee_id: 7,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			employment_start: '2026-05-01',
+			employment_end: '2026-05-31',
+		});
+		expect(row.is_partial_window).toBe(false);
+		expect(row.capacity_hours).toBe(192);
+		expect(row.monthly_cost).toBe(22000);
+	});
+
+	it('costs a window with no working days at zero with null utilization', () => {
+		const row = buildTeamRow({
+			employee_id: 7,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			// 23 May = 4th Saturday (weekly off), 24 May = Sunday.
+			employment_start: '2026-05-23',
+			employment_end: '2026-05-24',
+		});
+		expect(row.is_partial_window).toBe(true);
+		expect(row.capacity_hours).toBe(0);
+		expect(row.utilization_percent).toBeNull();
+		expect(row.utilization_band).toBeNull();
+		expect(row.monthly_cost).toBe(0);
+		expect(row.fractional_cost).toBe(0);
+		expect(row.bench_cost).toBe(0);
+		expect(row.cost_status).toBe('priced');
+	});
+
+	it('flags a zero-Logged-Hours month as no time logged without moving the band', () => {
+		const row = buildTeamRow({
+			employee_id: 2,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		// The 0% Under reading stays factual — the state rides alongside it.
+		expect(row.logged_hours).toBe(0);
+		expect(row.utilization_percent).toBe(0);
+		expect(row.utilization_band).toBe('under');
+		expect(row.state).toBe('no_time_logged');
+		// A full-month idle row keeps the whole CTC as bench: 22000 − 0.
+		expect(row.capacity_hours).toBe(192);
+		expect(row.bench_cost).toBe(22000);
+	});
+
+	it('applies the no-time-logged state independently of cost and capacity', () => {
+		// No covering profile: the blank costs stay blank, the state still applies.
+		const noProfileRow = buildTeamRow({
+			employee_id: 9,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [],
+		});
+		expect(noProfileRow.state).toBe('no_time_logged');
+		expect(noProfileRow.cost_status).toBe('no-profile');
+		expect(noProfileRow.monthly_cost).toBeNull();
+		expect(noProfileRow.bench_cost).toBeNull();
+
+		// A window covering no working days reads percent/band null — and the
+		// state still stands, because it is about the Logged Hours alone.
+		const noCapacityRow = buildTeamRow({
+			employee_id: 7,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			employment_start: '2026-05-23',
+			employment_end: '2026-05-24',
+		});
+		expect(noCapacityRow.utilization_percent).toBeNull();
+		expect(noCapacityRow.utilization_band).toBeNull();
+		expect(noCapacityRow.state).toBe('no_time_logged');
 	});
 
 	it('shows hours and utilization with blank cost for a missing profile', () => {
@@ -439,6 +739,37 @@ describe('buildTeamRow', () => {
 		});
 		expect(row.monthly_cost).toBe(26000);
 	});
+
+	it('carries the trailing window it is given, and an empty one otherwise', () => {
+		const trailing = summarizeTrailing([
+			{ month: '2026-03', employed: true, utilization_percent: 50 },
+			{ month: '2026-04', employed: true, utilization_percent: 40 },
+			{ month: '2026-05', employed: true, utilization_percent: 8.33 },
+		]);
+		const withHistory = buildTeamRow({
+			employee_id: 7,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			trailing,
+		});
+		expect(withHistory.trailing).toEqual(trailing.trailing);
+		expect(withHistory.chronic_under).toBe(true);
+
+		// A single-month row carries no history, so no marker can stand.
+		const single = buildTeamRow({
+			employee_id: 8,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		expect(single.trailing).toEqual([]);
+		expect(single.chronic_under).toBe(false);
+	});
 });
 
 describe('buildUtilizationTotals', () => {
@@ -463,6 +794,7 @@ describe('buildUtilizationTotals', () => {
 		expect(totals.employee_count).toBe(2);
 		expect(totals.priced_count).toBe(1);
 		expect(totals.unpriced_count).toBe(1);
+		expect(totals.no_logged_count).toBe(0);
 		expect(totals.capacity_hours).toBe(384);
 		expect(totals.logged_hours).toBe(16);
 		expect(totals.monthly_cost).toBe(22000);
@@ -470,6 +802,435 @@ describe('buildUtilizationTotals', () => {
 			totals.monthly_cost!,
 			2
 		);
+	});
+
+	it('counts the rows that logged nothing in the month', () => {
+		const idle = buildTeamRow({
+			employee_id: 3,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		const busy = buildTeamRow({
+			employee_id: 4,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [],
+		});
+		const totals = buildUtilizationTotals([idle, busy]);
+		expect(idle.state).toBe('no_time_logged');
+		expect(busy.state).toBeNull();
+		expect(totals.no_logged_count).toBe(1);
+		expect(totals.employee_count).toBe(2);
+		expect(totals.logged_hours).toBe(8);
+		expect(buildUtilizationTotals([]).no_logged_count).toBe(0);
+
+		// The no-log count is the viewed month's, not the totalled grid's:
+		// a band-filtered call still counts the month rows it is handed.
+		expect(buildUtilizationTotals([busy], [idle, busy]).no_logged_count).toBe(
+			1
+		);
+		expect(buildUtilizationTotals([idle], [idle, busy]).no_logged_count).toBe(
+			1
+		);
+	});
+});
+
+describe('trendMonths', () => {
+	it('reads the six months ending at the viewed month, oldest first', () => {
+		expect(trendMonths('2019-01')).toEqual([
+			'2018-08',
+			'2018-09',
+			'2018-10',
+			'2018-11',
+			'2018-12',
+			'2019-01',
+		]);
+		// The span crosses the year boundary backwards; the trailing window is
+		// its last three months.
+		expect(trendMonths('2026-05')).toEqual([
+			'2025-12',
+			'2026-01',
+			'2026-02',
+			'2026-03',
+			'2026-04',
+			'2026-05',
+		]);
+		expect(trendMonths('2026-05').slice(-3)).toEqual([
+			'2026-03',
+			'2026-04',
+			'2026-05',
+		]);
+	});
+
+	it('returns no span for an invalid month', () => {
+		expect(trendMonths('garbage')).toEqual([]);
+		expect(trendMonths('2026-13')).toEqual([]);
+	});
+});
+
+describe('summarizeTrailing', () => {
+	const cell = (
+		month: string,
+		employed: boolean,
+		utilization_percent: number | null
+	) => ({ month, employed, utilization_percent });
+
+	it('keeps the three months oldest first and marks an all-under window chronic', () => {
+		const window = summarizeTrailing([
+			cell('2026-03', true, 50),
+			cell('2026-04', true, 79.99),
+			cell('2026-05', true, 0),
+		]);
+		expect(window.trailing).toEqual([
+			{ month: '2026-03', employed: true, utilization_percent: 50 },
+			{ month: '2026-04', employed: true, utilization_percent: 79.99 },
+			{ month: '2026-05', employed: true, utilization_percent: 0 },
+		]);
+		expect(window.chronic_under).toBe(true);
+	});
+
+	it('needs at least two employed months of history', () => {
+		// Two employed months, both under: chronic even with a blank earlier cell.
+		expect(
+			summarizeTrailing([
+				cell('2026-03', false, null),
+				cell('2026-04', true, 40),
+				cell('2026-05', true, 60),
+			]).chronic_under
+		).toBe(true);
+		// One employed month is a one-off, never chronic.
+		expect(
+			summarizeTrailing([
+				cell('2026-03', false, null),
+				cell('2026-04', false, null),
+				cell('2026-05', true, 40),
+			]).chronic_under
+		).toBe(false);
+	});
+
+	it('breaks the marker on any employed month at or above 80', () => {
+		expect(
+			summarizeTrailing([
+				cell('2026-03', true, 50),
+				cell('2026-04', true, 80),
+				cell('2026-05', true, 30),
+			]).chronic_under
+		).toBe(false);
+	});
+
+	it('never counts a null percent (no capacity) as below', () => {
+		expect(
+			summarizeTrailing([
+				cell('2026-03', true, null),
+				cell('2026-04', true, 30),
+				cell('2026-05', true, 30),
+			]).chronic_under
+		).toBe(false);
+	});
+
+	it('does not mark a window with no employed month', () => {
+		expect(
+			summarizeTrailing([
+				cell('2026-03', false, null),
+				cell('2026-04', false, null),
+				cell('2026-05', false, null),
+			]).chronic_under
+		).toBe(false);
+	});
+});
+
+describe('buildTrendPoint', () => {
+	const pricedRow = buildTeamRow({
+		employee_id: 1,
+		month: MAY,
+		daily_entries: [entries({ '2026-05-04': 8, '2026-05-05': 8 })],
+		attendance: [],
+		holidays: new Set(),
+		profiles: [profile()],
+	});
+	const unpricedRow = buildTeamRow({
+		employee_id: 2,
+		month: MAY,
+		daily_entries: [entries({ '2026-05-04': 8, '2026-05-05': 8 })],
+		attendance: [],
+		holidays: new Set(),
+		profiles: [],
+	});
+
+	it('weights utilization by capacity and sums bench over priced rows', () => {
+		const point = buildTrendPoint(MAY, [pricedRow, unpricedRow]);
+		expect(point.month).toBe(MAY);
+		// 32h logged over 384h of capacity; the unpriced row still counts for hours.
+		expect(point.utilization_percent).toBe(8.33);
+		// Bench covers the priced row only: 22000 − 1692.31.
+		expect(point.bench_cost).toBe(20307.69);
+	});
+
+	it('leaves the percent null when the month credits no capacity', () => {
+		const empty = buildTeamRow({
+			employee_id: 3,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			// 23 May = 4th Saturday, 24 May = Sunday: no working days.
+			employment_start: '2026-05-23',
+			employment_end: '2026-05-24',
+		});
+		const point = buildTrendPoint(MAY, [empty]);
+		expect(point.utilization_percent).toBeNull();
+		// The window still costs (a priced zero-capacity row keeps its bench).
+		expect(point.bench_cost).toBe(0);
+	});
+
+	it('leaves bench null when no row is priced, and for an empty roster', () => {
+		expect(buildTrendPoint(MAY, [unpricedRow]).bench_cost).toBeNull();
+		expect(buildTrendPoint(MAY, [])).toEqual({
+			month: MAY,
+			utilization_percent: null,
+			bench_cost: null,
+		});
+	});
+});
+
+describe('buildDepartmentSummary', () => {
+	/** 12 working days × 8h — half of May 2026's 192h capacity. */
+	const HALF_MONTH_ENTRIES = [
+		entries({
+			'2026-05-04': 8,
+			'2026-05-05': 8,
+			'2026-05-06': 8,
+			'2026-05-07': 8,
+			'2026-05-08': 8,
+			'2026-05-11': 8,
+			'2026-05-12': 8,
+			'2026-05-13': 8,
+			'2026-05-14': 8,
+			'2026-05-18': 8,
+			'2026-05-19': 8,
+			'2026-05-20': 8,
+		}),
+	];
+
+	const engineeringPriced = buildTeamRow({
+		employee_id: 1,
+		department: 'Engineering',
+		month: MAY,
+		daily_entries: [entries({ '2026-05-04': 8, '2026-05-05': 8 })],
+		attendance: [],
+		holidays: new Set(),
+		profiles: [profile()],
+	});
+	const engineeringIdleUnpriced = buildTeamRow({
+		employee_id: 2,
+		department: 'Engineering',
+		month: MAY,
+		daily_entries: [],
+		attendance: [],
+		holidays: new Set(),
+		profiles: [],
+	});
+	const operationsIdle = buildTeamRow({
+		employee_id: 3,
+		department: 'Operations',
+		month: MAY,
+		daily_entries: [],
+		attendance: [],
+		holidays: new Set(),
+		profiles: [profile()],
+	});
+	const unsetHalfMonth = buildTeamRow({
+		employee_id: 4,
+		month: MAY,
+		daily_entries: HALF_MONTH_ENTRIES,
+		attendance: [],
+		holidays: new Set(),
+		profiles: [profile()],
+	});
+
+	it('rolls the month up per department, weighted by capacity, unset last', () => {
+		const summaries = buildDepartmentSummary([
+			operationsIdle,
+			unsetHalfMonth,
+			engineeringIdleUnpriced,
+			engineeringPriced,
+		]);
+
+		// Name ascending, the unset bucket last.
+		expect(summaries.map((summary) => summary.department)).toEqual([
+			'Engineering',
+			'Operations',
+			null,
+		]);
+
+		// Two members, one priced and one not: the unpriced row still counts
+		// for hours (16h over 384h = 4.17%) but contributes no money, and it
+		// is the department's one no-log row.
+		const engineering = summaries[0];
+		expect(engineering).toEqual({
+			department: 'Engineering',
+			headcount: 2,
+			capacity_weighted_utilization: 4.17,
+			logged_hours: 16,
+			capacity_hours: 384,
+			bench_cost: 20307.69,
+			no_logged_count: 1,
+		});
+
+		// An idle priced member: 0h logged of 192h, the whole CTC benched.
+		expect(summaries[1]).toEqual({
+			department: 'Operations',
+			headcount: 1,
+			capacity_weighted_utilization: 0,
+			logged_hours: 0,
+			capacity_hours: 192,
+			bench_cost: 22000,
+			no_logged_count: 1,
+		});
+
+		// The unset bucket: 96h of 192h = 50%, bench 22000 − round2(96 ×
+		// 105.769…) = 11846.15, nothing unlogged.
+		expect(summaries[2]).toEqual({
+			department: null,
+			headcount: 1,
+			capacity_weighted_utilization: 50,
+			logged_hours: 96,
+			capacity_hours: 192,
+			bench_cost: 11846.15,
+			no_logged_count: 0,
+		});
+	});
+
+	it('weights utilization by capacity, not by the mean of the rows’ percents', () => {
+		// A half-utilized partial window (72h capacity, 36h logged) beside a
+		// full idle month (192h): Σ logged ÷ Σ capacity = 36/264 = 13.64%,
+		// where the two rows' own percents average 25%.
+		const partial = buildTeamRow({
+			employee_id: 5,
+			department: 'Field',
+			month: MAY,
+			daily_entries: [
+				entries({
+					'2026-05-11': 8,
+					'2026-05-12': 8,
+					'2026-05-13': 8,
+					'2026-05-14': 8,
+					'2026-05-15': 4,
+				}),
+			],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			employment_start: '2026-05-11',
+			employment_end: '2026-05-20',
+		});
+		const full = buildTeamRow({
+			employee_id: 6,
+			department: 'Field',
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		expect(partial.utilization_percent).toBe(50);
+		expect(full.utilization_percent).toBe(0);
+
+		const [summary] = buildDepartmentSummary([partial, full]);
+		expect(summary.capacity_weighted_utilization).toBe(13.64);
+		expect(summary.logged_hours).toBe(36);
+		expect(summary.capacity_hours).toBe(264);
+	});
+
+	it('normalizes an empty-string department to the unset bucket', () => {
+		const blank = buildTeamRow({
+			employee_id: 7,
+			department: '',
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		expect(blank.department).toBeNull();
+		expect(buildDepartmentSummary([blank]).map((s) => s.department)).toEqual([
+			null,
+		]);
+		// A raw named department rides on the row untouched.
+		const named = buildTeamRow({
+			employee_id: 8,
+			department: 'Engineering',
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		expect(named.department).toBe('Engineering');
+	});
+
+	it('leaves bench null for a wholly unpriced department and percent null without capacity', () => {
+		const [unpriced] = buildDepartmentSummary([engineeringIdleUnpriced]);
+		expect(unpriced.department).toBe('Engineering');
+		expect(unpriced.capacity_weighted_utilization).toBe(0);
+		expect(unpriced.bench_cost).toBeNull();
+
+		// 23 May = 4th Saturday, 24 May = Sunday: a priced window with no
+		// working day credits no capacity and benches its zero monthly cost.
+		const noCapacity = buildTeamRow({
+			employee_id: 9,
+			department: 'Bench',
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+			employment_start: '2026-05-23',
+			employment_end: '2026-05-24',
+		});
+		const [empty] = buildDepartmentSummary([noCapacity]);
+		expect(empty.capacity_weighted_utilization).toBeNull();
+		expect(empty.capacity_hours).toBe(0);
+		expect(empty.bench_cost).toBe(0);
+	});
+
+	it('returns nothing for an empty roster', () => {
+		expect(buildDepartmentSummary([])).toEqual([]);
+	});
+});
+
+describe('sortUtilizationRows', () => {
+	it('keeps a no-time-logged row in its band-then-bench slot', () => {
+		// The idle row's 22000 bench (0 logged) out-ranks the busy row's
+		// 21153.85 even though the busy row logged hours: the state is not a
+		// sort key, the Under band plus bench cost is.
+		const idle = buildTeamRow({
+			employee_id: 1,
+			month: MAY,
+			daily_entries: [],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		const busy = buildTeamRow({
+			employee_id: 2,
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles: [profile()],
+		});
+		const sorted = sortUtilizationRows([busy, idle]);
+		expect(sorted.map((row) => row.employee_id)).toEqual([1, 2]);
+		expect(sorted[0].state).toBe('no_time_logged');
+		expect(sorted[0].utilization_band).toBe('under');
+		expect(sorted[1].state).toBeNull();
 	});
 });
 
@@ -480,5 +1241,357 @@ describe('monthLabel', () => {
 
 	it('returns the input for invalid months', () => {
 		expect(monthLabel('garbage')).toBe('garbage');
+	});
+});
+
+describe('project breakdown', () => {
+	function assignment(
+		overrides: Partial<BreakdownAssignment> = {}
+	): BreakdownAssignment {
+		return {
+			project_id: 1,
+			resolved_project_id: 1,
+			project_code: 'P-1',
+			project_title: 'Project One',
+			project_name: null,
+			client_name: 'Client One',
+			activity_name: 'Design',
+			discipline_name: null,
+			hours: 8,
+			...overrides,
+		};
+	}
+
+	it('pins the top-N constant from the brief', () => {
+		expect(PROJECT_BREAKDOWN_TOP_N).toBe(5);
+	});
+
+	it('groups one project’s assignments, summing hours and activity detail', () => {
+		const result = buildProjectBuckets([
+			assignment({ activity_name: 'Modeling', hours: 8 }),
+			assignment({
+				activity_name: 'Design',
+				discipline_name: 'Piping',
+				hours: 16,
+			}),
+			assignment({ activity_name: 'Modeling', hours: 4 }),
+			assignment({
+				project_id: 2,
+				resolved_project_id: 2,
+				project_code: 'P-2',
+				project_title: 'Project Two',
+				client_name: 'Client Two',
+				activity_name: 'Review',
+				hours: 12,
+			}),
+		]);
+
+		expect(result.projects.map((bucket) => bucket.project_id)).toEqual([1, 2]);
+		expect(result.projects[0].hours).toBe(28);
+		expect(result.projects[0].activities).toEqual([
+			{ activity_name: 'Design', discipline_name: 'Piping', hours: 16 },
+			{ activity_name: 'Modeling', discipline_name: null, hours: 12 },
+		]);
+		expect(result.projects[0].project_code).toBe('P-1');
+		expect(result.projects[0].project_name).toBe('Project One');
+		expect(result.projects[0].client_name).toBe('Client One');
+		expect(result.noProject).toBeNull();
+		expect(result.loggedHours).toBe(40);
+	});
+
+	it('sorts project groups hours descending with the project id as tie-break', () => {
+		const result = buildProjectBuckets([
+			assignment({ project_id: 9, resolved_project_id: 9, hours: 8 }),
+			assignment({ project_id: 4, resolved_project_id: 4, hours: 8 }),
+			assignment({ project_id: 7, resolved_project_id: 7, hours: 16 }),
+		]);
+		expect(result.projects.map((bucket) => bucket.project_id)).toEqual([
+			7, 4, 9,
+		]);
+		expect(result.projects.map((bucket) => bucket.hours)).toEqual([16, 8, 8]);
+	});
+
+	it('keeps the top N and folds the rest into Other with its project count', () => {
+		const assignments: BreakdownAssignment[] = [];
+		for (let projectId = 1; projectId <= 7; projectId += 1) {
+			assignments.push(
+				assignment({
+					project_id: projectId,
+					resolved_project_id: projectId,
+					project_code: `P-${projectId}`,
+					project_title: `Project ${projectId}`,
+					hours: projectId * 8,
+				})
+			);
+		}
+		const breakdown = buildProjectBreakdown({
+			month: '2026-05',
+			employee: { id: 3, code: 'E-3', name: 'Three' },
+			assignments,
+		});
+
+		expect(breakdown.projects.map((bucket) => bucket.project_id)).toEqual([
+			7, 6, 5, 4, 3,
+		]);
+		expect(breakdown.other).toEqual({ hours: 24, project_count: 2 });
+		expect(breakdown.no_project).toBeNull();
+		expect(breakdown.logged_hours).toBe(224);
+		// Footing: top N + Other + (No project) is the whole month.
+		expect(
+			[
+				...breakdown.projects,
+				...(breakdown.no_project ? [breakdown.no_project] : []),
+			].reduce((sum, bucket) => sum + bucket.hours, 0) + breakdown.other.hours
+		).toBe(breakdown.logged_hours);
+		expect(breakdown.top_n).toBe(PROJECT_BREAKDOWN_TOP_N);
+	});
+
+	it('keeps No project explicit and never merges it into Other', () => {
+		const assignments: BreakdownAssignment[] = [];
+		for (let projectId = 1; projectId <= 6; projectId += 1) {
+			assignments.push(
+				assignment({ project_id: projectId, resolved_project_id: projectId })
+			);
+		}
+		assignments.push(
+			assignment({
+				project_id: null,
+				resolved_project_id: null,
+				project_code: null,
+				project_title: null,
+				client_name: null,
+				activity_name: 'Internal',
+				hours: 8,
+			})
+		);
+		// A project id the `projects` rows do not resolve is project-less too.
+		assignments.push(
+			assignment({
+				project_id: 99,
+				resolved_project_id: null,
+				project_code: null,
+				project_title: null,
+				client_name: null,
+				activity_name: 'Unresolved',
+				hours: 8,
+			})
+		);
+
+		const breakdown = buildProjectBreakdown({
+			month: '2026-05',
+			employee: { id: 4, code: 'E-4', name: 'Four' },
+			assignments,
+		});
+
+		expect(breakdown.projects.length).toBe(PROJECT_BREAKDOWN_TOP_N);
+		expect(breakdown.other).toEqual({ hours: 8, project_count: 1 });
+		expect(breakdown.no_project).toMatchObject({
+			project_id: null,
+			project_code: null,
+			project_name: null,
+			client_name: null,
+			hours: 16,
+		});
+		expect(
+			breakdown.no_project!.activities.map((activity) => activity.activity_name)
+		).toEqual(['Internal', 'Unresolved']);
+		expect(breakdown.logged_hours).toBe(64);
+	});
+
+	it('ignores zero and negative hours and returns an empty payload for nothing', () => {
+		const breakdown = buildProjectBreakdown({
+			month: '2026-05',
+			employee: { id: 5, code: 'E-5', name: 'Five' },
+			assignments: [
+				assignment({ hours: 0 }),
+				assignment({ project_id: 2, resolved_project_id: 2, hours: -4 }),
+			],
+		});
+		expect(breakdown.projects).toEqual([]);
+		expect(breakdown.other).toEqual({ hours: 0, project_count: 0 });
+		expect(breakdown.no_project).toBeNull();
+		expect(breakdown.logged_hours).toBe(0);
+
+		const empty = buildProjectBreakdown({
+			month: '2026-05',
+			employee: { id: 6, code: 'E-6', name: 'Six' },
+			assignments: [],
+		});
+		expect(empty.projects).toEqual([]);
+		expect(empty.other).toEqual({ hours: 0, project_count: 0 });
+		expect(empty.no_project).toBeNull();
+		expect(empty.logged_hours).toBe(0);
+		expect(empty.top_n).toBe(PROJECT_BREAKDOWN_TOP_N);
+	});
+
+	it('falls back title → name → code → Project #<id> for the display name', () => {
+		expect(
+			projectDisplayName({
+				project_id: 1,
+				project_title: 'Title',
+				project_name: 'Name',
+				project_code: 'C-1',
+			})
+		).toBe('Title');
+		expect(
+			projectDisplayName({
+				project_id: 2,
+				project_title: '  ',
+				project_name: 'Name',
+				project_code: 'C-2',
+			})
+		).toBe('Name');
+		expect(
+			projectDisplayName({
+				project_id: 3,
+				project_title: null,
+				project_name: null,
+				project_code: 'C-3',
+			})
+		).toBe('C-3');
+		expect(
+			projectDisplayName({
+				project_id: 4,
+				project_title: null,
+				project_name: null,
+				project_code: null,
+			})
+		).toBe('Project #4');
+	});
+});
+
+describe('resolveEmploymentWindow evidence extrema', () => {
+	it('closes an active window on the latest evidence, not by source order', () => {
+		// The EMP-002 class: attendance 2026-08-26 but a newer Logged Hours day
+		// 2026-09-01 — September must stay inside the window.
+		const window = resolveEmploymentWindow({
+			status: 'active',
+			joining_date: '2023-04-10',
+			first_attendance_date: '2026-08-26',
+			last_attendance_date: '2026-08-26',
+			first_logged_date: '2026-09-01',
+			last_logged_date: '2026-09-01',
+		});
+		expect(window).toEqual({
+			start: '2023-04-10',
+			end: '2026-09-01',
+			unresolved: false,
+			start_source: 'joining_date',
+			end_source: 'logged_hours',
+		});
+		expect(intersectsEmploymentWindow(window, '2026-09')).toBe(true);
+	});
+
+	it('opens the start on the earliest evidence across sources', () => {
+		const attendanceFirst = resolveEmploymentWindow({
+			status: 'active',
+			first_attendance_date: '2026-03-02',
+			last_attendance_date: '2026-03-02',
+			first_logged_date: '2026-03-04',
+			last_logged_date: '2026-03-04',
+		});
+		expect(attendanceFirst.start).toBe('2026-03-02');
+		expect(attendanceFirst.start_source).toBe('attendance');
+
+		const loggedFirst = resolveEmploymentWindow({
+			status: 'active',
+			first_attendance_date: '2026-03-07',
+			last_attendance_date: '2026-03-07',
+			first_logged_date: '2026-03-04',
+			last_logged_date: '2026-03-04',
+		});
+		expect(loggedFirst.start).toBe('2026-03-04');
+		expect(loggedFirst.start_source).toBe('logged_hours');
+	});
+
+	it('counts screen time and activity logs as evidence on both bounds', () => {
+		const window = resolveEmploymentWindow({
+			status: 'active',
+			first_screen_time_date: '2026-09-20',
+			last_screen_time_date: '2026-09-24',
+			first_activity_log_date: '2026-09-18',
+			last_activity_log_date: '2026-09-30',
+		});
+		expect(window.start).toBe('2026-09-18');
+		expect(window.start_source).toBe('activity_logs');
+		expect(window.end).toBe('2026-09-30');
+		expect(window.end_source).toBe('activity_logs');
+
+		// A single screen-time day is the whole window: the employee is placed
+		// in that month and in no other.
+		const screenOnly = resolveEmploymentWindow({
+			status: 'active',
+			first_screen_time_date: '2026-10-05',
+			last_screen_time_date: '2026-10-05',
+		});
+		expect(screenOnly.start).toBe('2026-10-05');
+		expect(screenOnly.start_source).toBe('screen_time');
+		expect(screenOnly.end).toBe('2026-10-05');
+		expect(screenOnly.end_source).toBe('screen_time');
+		expect(intersectsEmploymentWindow(screenOnly, '2026-10')).toBe(true);
+		expect(intersectsEmploymentWindow(screenOnly, '2026-11')).toBe(false);
+	});
+
+	it('keeps joining/hire/exit above any newer evidence', () => {
+		const joined = resolveEmploymentWindow({
+			status: 'active',
+			joining_date: '2023-04-10',
+			first_activity_log_date: '2020-01-02',
+			last_activity_log_date: '2026-10-05',
+		});
+		expect(joined.start).toBe('2023-04-10');
+		expect(joined.start_source).toBe('joining_date');
+		expect(joined.end).toBe('2026-10-05');
+		expect(joined.end_source).toBe('activity_logs');
+
+		const hired = resolveEmploymentWindow({
+			status: 'active',
+			hire_date: '2026-05-01',
+			first_attendance_date: '2026-04-01',
+			last_attendance_date: '2026-04-01',
+		});
+		expect(hired.start).toBe('2026-05-01');
+		expect(hired.start_source).toBe('hire_date');
+
+		// A leaver's exit_date caps newer evidence: activity after they left
+		// does not reopen the window.
+		const leaver = resolveEmploymentWindow({
+			status: 'terminated',
+			exit_date: '2019-01-18',
+			last_activity_log_date: '2019-03-07',
+		});
+		expect(leaver.end).toBe('2019-01-18');
+		expect(leaver.end_source).toBe('exit_date');
+	});
+
+	it('keeps open/unresolved semantics when no evidence exists', () => {
+		const active = resolveEmploymentWindow({ status: 'active' });
+		expect(active).toEqual({
+			start: null,
+			end: null,
+			unresolved: false,
+			start_source: 'active_status',
+			end_source: 'active_status',
+		});
+
+		const leaver = resolveEmploymentWindow({ status: 'terminated' });
+		expect(leaver).toEqual({
+			start: null,
+			end: null,
+			unresolved: true,
+			start_source: 'unresolved',
+			end_source: 'unresolved',
+		});
+	});
+
+	it('prefers attendance on an equal evidence day (source-order tie-break)', () => {
+		const window = resolveEmploymentWindow({
+			status: 'active',
+			first_attendance_date: '2026-09-01',
+			first_logged_date: '2026-09-01',
+			last_activity_log_date: '2026-09-30',
+		});
+		expect(window.start).toBe('2026-09-01');
+		expect(window.start_source).toBe('attendance');
 	});
 });

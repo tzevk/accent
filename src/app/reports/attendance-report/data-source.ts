@@ -13,10 +13,10 @@
  *    (first punch of the day → last, direction-agnostic, pooled across
  *    devices, with the bounded cross-midnight merge of issue #281).
  *
- * The roster comes from `./roster` (`selectPayrollRoster`): the report filters
- * on the Employee record, payroll filters on `salary_profile.salary_type`, and
- * the accepted divergence is reported on `ArData.disclosure` rather than
- * hidden.
+ * The roster comes from `@/lib/payroll-roster` (`selectPayrollRoster`): the
+ * report filters on the Employee record, payroll filters on
+ * `salary_profile.salary_type`, and the accepted divergence is reported on
+ * `ArData.disclosure` rather than hidden.
  *
  * A Punch belongs to the Employee stamped on `attendance_logs.employee_id` at
  * ingest — the Device Code a row carries is display metadata, so a
@@ -48,7 +48,7 @@ import {
 	type RosterDisclosure,
 	type RosterEmployeeInput,
 	type RosterMember,
-} from './roster';
+} from '@/lib/payroll-roster';
 
 // ─── Public types ───────────────────────────────────────────────────
 
