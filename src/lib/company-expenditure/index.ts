@@ -71,6 +71,7 @@ import {
 	loadBudgetsForProject,
 	loadBudgetsForProjects,
 } from './budget-records';
+import type { CommandOptions } from './commands';
 import { SOURCE_COVERAGE } from './coverage';
 import {
 	loadChargeTotals,
