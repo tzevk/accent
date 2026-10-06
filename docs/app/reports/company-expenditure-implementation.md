@@ -1,4 +1,4 @@
-# Company Project Expenditure — Implementation (ticket #306)
+# Company Project Expenditure — Implementation (tickets #306, #311)
 
 ## Overview
 
@@ -252,6 +252,47 @@ The payroll snapshot evidence includes the stored month and money columns.
 Namespaced fixtures identify test records; names alone do not exclude them from
 the current report. Keep this verification database separate from business data.
 
+## Supplier invoice recognition (#311)
+
+One supplier liability is one `purchase_invoices` row carrying `cost_uid` and the
+same recognition fields as a direct expense. The financial write path is
+`src/lib/company-expenditure/supplier-invoices.ts`
+(`initializeSupplierCost`, `executeSupplierCommand`); the register route inserts
+the native row and calls `initializeSupplierCost` inside the same transaction,
+so an invoice either exists with its cost identity or not at all. The register
+`PUT`/`DELETE` refuse recognized cost (`409 cost_recognized`) and versioned
+financial fields (`422 financial_fields_versioned`); those change only through
+`POST /api/admin/purchase-invoices/{id}/commands` (update, submit, recognize,
+reject, cancel) with `expected_version`.
+
+- **Period slices** (`supplier_invoice_periods`): one invoice covering several
+  service periods records one slice per period. Recognition requires the slice
+  gross amounts to total the invoice exactly and the slice taxes to total the
+  invoice tax (`not_ready_for_recognition` with `split_total_mismatch` /
+  `split_tax_mismatch`). Each month counts only its own slice; the slice's
+  `recognized_amount` is frozen at recognition. The drilldown publishes the
+  slice (`split: { id, index, count }`) with the slice's own gross and cost.
+- **Source links** (`financial_cost_links`, contract
+  `C:/Files/OCDSE/Work/expenditure-source-contract.md`): a payable created with
+  `purchase_invoice_id` migrates to the invoice's `cost_uid` (basis `explicit`,
+  confirmed) and creates no cost; a payable whose `vendor_invoice_number` names
+  the invoice is surfaced as a candidate on the invoice detail and resolved
+  through `POST /api/admin/purchase-invoices/{id}/links` (confirm →
+  basis `document`; reject → `review_state='rejected'`), never automatically.
+  The payable `PUT` refuses link rewrites (`422 link_change_requires_review`).
+- **Tax and withholding**: recoverable tax is excluded only with its evidence;
+  withholding (TDS) is settlement information and never reduces cost.
+- **Authorization**: `purchase_orders:update` for the register and its
+  commands, plus `other_expenses:approve` for recognize/reject/cancel and link
+  decisions.
+- **Report**: the reconciliation merges every source's records and publishes a
+  per-source summary (`CompanyReconciliation.sources`); coverage flips the
+  supplier source to wired. The same module serves the screen and the
+  drilldown; `fetchCompanyReconciliation`, `fetchCostDrilldown`,
+  `initializeSupplierCost`, `executeSupplierCommand`, `loadSupplierInvoiceDetail`,
+  `decideSupplierLink`, `resolveCostReference`, `linkCostReference`,
+  `registerCostIdentity`, and `registerCostSource` are the public interface.
+
 ## Public interface for later slices
 
 `src/lib/company-expenditure/index.ts` is the contract later tickets extend:
@@ -259,8 +300,11 @@ the current report. Keep this verification database separate from business data.
 - **#307 recorded payroll**: add `payroll_slips` + allocation as a source
   adapter that produces `CostRecord`s into the same `buildReconciliation`; the
   employee-cost views then become consumers of recorded cost.
-- **Supplier cost and commitments**: one adapter per store, `cost_uid` mapped
-  through the source-identity table, commitment consumption as its own section.
+- **Supplier cost and commitments** (#311): the invoice source adapter and the
+  shared `financial_cost_links` registry are in place; #312 adds supplier-order
+  classification/consumption on top of `cost_uid` and publishes Outstanding
+  Supplier Commitment as its own section. A receipt copy or settlement in any
+  store references `cost_uid` and registers a link row.
 - **Cost Accruals**: the accrual is another cost identity whose replacement
   invoice supersedes it in the same chain; the journal already carries versions.
 - **Financial close and revisions**: period state hangs off `recognition_period`
@@ -288,3 +332,15 @@ the current report. Keep this verification database separate from business data.
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
 - `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/global-setup.ts`
+- `migrations/20261008091100_expense_supplier_invoice_recognition.js` (#311;
+  `purchase_invoices` financial columns, `supplier_invoice_periods`,
+  `financial_cost_links`, `payment_payables.cost_uid`)
+- `src/lib/company-expenditure/{sources,errors,supplier-invoices,drilldown}.ts` (#311)
+- `src/app/api/admin/purchase-invoices/{options,[id]/commands,[id]/links}` (#311)
+- `src/app/api/admin/purchase-invoices/route.js`, `[id]/route.js` (financial
+  capture through the module; recognized cost and versioned fields refused)
+- `src/app/api/admin/payment-payables/route.js`, `[id]/route.js` (explicit
+  invoice link on create; link rewrites refused)
+- `src/app/admin/purchase-invoice/page.tsx`, `SupplierRecognitionDialog.tsx`
+- `docs/adr/0019-supplier-invoice-recognition-single-cost.md`
+- `e2e/lib/supplier-invoice-fixtures.ts`, `e2e/specs/supplier-invoice-recognition.spec.ts` (#311)

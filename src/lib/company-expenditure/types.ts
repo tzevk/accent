@@ -236,6 +236,23 @@ export interface EvidenceSummary {
 	known_zero: { count: number };
 }
 
+/**
+ * One cost source's slice of the month: recognized cost, cost awaiting
+ * recognition, and records whose evidence is still unresolved. A reader can
+ * see what each store contributes to the company total without re-adding it.
+ */
+export interface ReconciliationSourceSummary {
+	source: CostSource;
+	label: string;
+	confirmed_count: number;
+	/** Null when the source's confirmed rows span currencies or miss an amount. */
+	confirmed_amount: number | null;
+	currency: string | null;
+	pending_count: number;
+	pending_amount: number | null;
+	unresolved_evidence_count: number;
+}
+
 export interface CompanyReconciliation {
 	month: string;
 	month_label: string;
@@ -259,6 +276,7 @@ export interface CompanyReconciliation {
 	};
 	projects: ReconciliationProjectRow[];
 	evidence: EvidenceSummary;
+	sources: ReconciliationSourceSummary[];
 	coverage: CoverageNotice[];
 	project_options: Array<{
 		project_id: number;
@@ -364,6 +382,8 @@ export interface CostDrilldownQuery {
 		| 'all';
 	classification?: CostClassification | 'unresolved' | 'all';
 	projectId?: number | null;
+	/** Narrow to one cost source; 'all' (default) merges every source. */
+	source?: CostSource | 'all';
 	limit?: number;
 	offset?: number;
 }

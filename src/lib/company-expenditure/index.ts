@@ -42,16 +42,23 @@
 
 import { query } from '@/utils/database';
 import { SOURCE_COVERAGE } from './coverage';
+import { loadCombinedDrilldown } from './drilldown';
 import {
 	loadCostEvents,
-	loadDrilldown,
 	loadExpenditureMonths,
 	loadMonthProjectCost,
 	loadMonthRecords,
 	loadProjectOptions,
+	type ProjectOption,
 	type SqlConnection,
 } from './records';
 import { buildReconciliation } from './reconciliation';
+import { registerCostSource } from './sources';
+import {
+	SUPPLIER_INVOICE_ADAPTER,
+	loadSupplierInvoiceMonths,
+	loadSupplierMonthRecords,
+} from './supplier-invoices';
 import type {
 	CompanyReconciliation,
 	CostDrilldown,
@@ -74,8 +81,27 @@ export type {
 	CostReference,
 	CostSourceAdapter,
 } from './sources';
+export {
+	decideSupplierLink,
+	executeSupplierCommand,
+	initializeSupplierCost,
+	loadSupplierInvoiceDetail,
+} from './supplier-invoices';
+export type {
+	InitializeSupplierCostInput,
+	RecordedSupplierCost,
+	SupplierCommandInput,
+	SupplierInvoiceDetail,
+	SupplierInvoicePatch,
+	SupplierLinkCandidate,
+	SupplierLinkRow,
+	SupplierSplitInput,
+	SupplierSplitRow,
+} from './supplier-invoices';
+export { isDrilldownSource } from './drilldown';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
+export type { ProjectOption } from './records';
 export { monthLabel } from './reconciliation';
 export {
 	effectiveTaxTreatment,
@@ -109,6 +135,7 @@ export type {
 	RecordCostInput,
 	RecordedCost,
 	ReconciliationProjectRow,
+	ReconciliationSourceSummary,
 	TaxTreatment,
 } from './types';
 
@@ -116,6 +143,10 @@ export type {
 const pool: SqlConnection = {
 	execute: (sql, params) => query(sql, params),
 };
+
+// The supplier source registers its adapter so a `cost_uid` can resolve to a
+// purchase invoice from anywhere in the module.
+registerCostSource(SUPPLIER_INVOICE_ADAPTER);
 
 /** The month before `YYYY-MM`, or null at the calendar's start. */
 function previousMonthOf(month: string): string | null {
@@ -132,9 +163,14 @@ export function currentMonth(): string {
 	return new Date().toISOString().slice(0, 7);
 }
 
-/** Months with direct cost recorded, newest first, including the current one. */
+/** Months with cost recorded, newest first, including the current one. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
-	return loadExpenditureMonths(pool, currentMonth());
+	const current = currentMonth();
+	const [direct, supplier] = await Promise.all([
+		loadExpenditureMonths(pool, current),
+		loadSupplierInvoiceMonths(pool, current),
+	]);
+	return [...new Set([...direct, ...supplier])].sort().reverse();
 }
 
 export interface ReconciliationRequest {
@@ -150,32 +186,47 @@ export async function fetchCompanyReconciliation(
 ): Promise<CompanyReconciliation> {
 	const month = request.month;
 	const previousMonth = previousMonthOf(month);
-	const [records, previousProjectCost, projectOptions, availableMonths] =
-		await Promise.all([
-			loadMonthRecords(pool, month),
-			previousMonth
-				? loadMonthProjectCost(pool, previousMonth)
-				: Promise.resolve(new Map<number, Map<string, number | null>>()),
-			loadProjectOptions(pool),
-			loadExpenditureMonths(pool, currentMonth()),
-		]);
+	const [
+		directRecords,
+		supplierRecords,
+		previousProjectCost,
+		projectOptions,
+		directMonths,
+		supplierMonths,
+	] = await Promise.all([
+		loadMonthRecords(pool, month),
+		loadSupplierMonthRecords(pool, month),
+		previousMonth
+			? loadMonthProjectCost(pool, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		loadProjectOptions(pool),
+		loadExpenditureMonths(pool, currentMonth()),
+		loadSupplierInvoiceMonths(pool, currentMonth()),
+	]);
 
 	return buildReconciliation({
 		month,
-		records,
+		records: [...directRecords, ...supplierRecords],
 		previousMonthProjectCost: previousProjectCost,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
-		availableMonths,
+		availableMonths: [...new Set([...directMonths, ...supplierMonths])]
+			.sort()
+			.reverse(),
 		coverageDeclarations: SOURCE_COVERAGE,
 	});
 }
 
-/** Read the records behind a month's reconciliation. */
+/** Read the records behind a month's reconciliation (every cost source). */
 export async function fetchCostDrilldown(
 	queryInput: CostDrilldownQuery
 ): Promise<CostDrilldown> {
-	return loadDrilldown(pool, queryInput);
+	return loadCombinedDrilldown(pool, queryInput);
+}
+
+/** The active Projects a cost-destination control can choose from. */
+export async function fetchProjectOptions(): Promise<ProjectOption[]> {
+	return loadProjectOptions(pool);
 }
 
 /** Read the versioned command history of one cost. */

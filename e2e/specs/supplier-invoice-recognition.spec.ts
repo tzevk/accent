@@ -2,15 +2,12 @@ import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { readArtifact, writeArtifact } from '../lib/artifacts';
 import { exec, rows } from '../lib/db';
-import { E2E_ENV } from '../lib/env';
 import {
 	SUPPLIER_API_INVOICE,
-	SUPPLIER_EDITOR_USER,
 	SUPPLIER_INVOICE_MONTH,
 	SUPPLIER_MONTH,
 	SUPPLIER_LATER_MONTH,
 	SUPPLIER_PROJECTS,
-	SUPPLIER_REPORTS_ONLY_USER,
 	SUPPLIER_UI_INVOICE,
 	cleanupSupplierInvoiceFixtures,
 	loginSupplierEditor,

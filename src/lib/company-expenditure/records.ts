@@ -13,7 +13,6 @@ import { evaluateCost } from './recognition';
 import type {
 	CostClassification,
 	CostRecordJson,
-	CostDrilldown,
 	CostDrilldownQuery,
 	CostJournalEntry,
 	CostRecord,
@@ -131,7 +130,7 @@ export function mapCostRow(row: DbRow): CostRecord {
 }
 
 /** The record as the report endpoints publish it. */
-function toCostRecordJson(record: CostRecord): CostRecordJson {
+export function toCostRecordJson(record: CostRecord): CostRecordJson {
 	return {
 		id: record.id,
 		cost_uid: record.costUid,
@@ -309,16 +308,16 @@ function stateFilterClause(state: CostDrilldownQuery['state']): {
 }
 
 /**
- * The source drilldown: the same rows the reconciliation counted, read back
- * with their identity, evidence, and journal version.
+ * The direct-expense rows matching a drilldown query, unpaginated. The
+ * combined drilldown (`drilldown.ts`) merges this with the other cost sources
+ * before it sorts and pages, so one filter can never page one store's records
+ * past another's.
  */
-export async function loadDrilldown(
+export async function loadFilteredExpenseRecords(
 	db: SqlConnection,
 	query: CostDrilldownQuery
-): Promise<CostDrilldown> {
+): Promise<CostRecord[]> {
 	const { start, end } = monthBounds(query.month);
-	const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
-	const offset = Math.max(query.offset ?? 0, 0);
 	const state = stateFilterClause(query.state);
 	const where = ['e.isDelete = 0', MONTH_PREDICATE, state.clause];
 	const params: Array<string | number> = [
@@ -340,47 +339,11 @@ export async function loadDrilldown(
 		where.push('e.project_id = ?');
 		params.push(query.projectId);
 	}
-	const whereSql = where.join(' AND ');
-
-	const [countRows] = await db.execute(
-		`SELECT COUNT(*) AS total,
-              SUM(CASE WHEN e.recognition_state = 'recognized' THEN 1 ELSE 0 END) AS confirmed_records,
-              SUM(CASE WHEN e.recognition_state = 'recognized' AND e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts,
-              COUNT(DISTINCT CASE WHEN e.recognition_state = 'recognized' THEN COALESCE(e.currency, 'INR') END) AS confirmed_currencies,
-              MIN(CASE WHEN e.recognition_state = 'recognized' THEN COALESCE(e.currency, 'INR') END) AS confirmed_currency,
-              SUM(CASE WHEN e.recognition_state = 'recognized' THEN e.recognized_amount ELSE 0 END) AS confirmed
-         FROM expenses e
-        WHERE ${whereSql}`,
-		params
-	);
-	const count = (countRows as DbRow[])[0] ?? {};
-	const unknownAmounts = num(count, 'unknown_amounts') ?? 0;
-	const confirmedCurrencies = num(count, 'confirmed_currencies') ?? 0;
-	// Unknown amounts and mixed currencies cannot be stated as one figure;
-	// with no confirmed record at all the subtotal is a known zero.
-	const confirmedAmount =
-		unknownAmounts > 0 || confirmedCurrencies > 1
-			? null
-			: (num(count, 'confirmed') ?? 0);
-	const [rows] = await db.execute(
+	const [rows] = (await db.execute(
 		`${COST_SELECT}
-      WHERE ${whereSql}
-      ORDER BY e.recognition_period DESC, e.expense_date DESC, e.id DESC
-      LIMIT ? OFFSET ?`,
-		[...params, limit, offset]
-	);
-	return {
-		month: query.month,
-		scope: 'month',
-		total: Number(num(count, 'total') ?? 0),
-		limit,
-		offset,
-		records: (rows as DbRow[]).map(mapCostRow).map(toCostRecordJson),
-		totals: {
-			confirmed_amount: confirmedAmount,
-			currency:
-				confirmedCurrencies === 1 ? s(count, 'confirmed_currency') : null,
-			records: Number(num(count, 'total') ?? 0),
-		},
-	};
+      WHERE ${where.join(' AND ')}
+      ORDER BY e.recognition_period DESC, e.expense_date DESC, e.id DESC`,
+		params
+	)) as [DbRow[], unknown];
+	return (rows as DbRow[]).map(mapCostRow);
 }

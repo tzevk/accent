@@ -120,6 +120,18 @@ _Avoid_: Invoice month, Payment month, Accounting period
 A direct cost's financial state — `draft`, `pending_evidence`, `recognized`, `rejected`, or `cancelled`. Only `recognized` is confirmed cost, and only an authorized recognize command sets it. It is not the expense register's `status`, so approving a register row does not create cost.
 _Avoid_: Expense status, Approval status, Paid
 
+**Supplier Cost**:
+The recognized cost of one supplier invoice — the single liability for the goods or services received. A payable follow-up, a receipt copy, or a later payment references this one cost; none of them creates another. Its gross liability, transaction currency, tax treatment, and evidence stay on the invoice, and its Recognition Period comes from the service period (the invoice date only as a disclosed fallback).
+_Avoid_: Payable amount, Payment, Receipt copy
+
+**Service-Period Slice**:
+One received-work period's share of a supplier invoice that covers several periods (`supplier_invoice_periods`). The slices total the invoice gross exactly, each month counts only its own slice, and recognition is refused while they do not total it. A slice is never a second cost.
+_Avoid_: Partial invoice, Split payment, Duplicate invoice
+
+**Financial Cost Link**:
+A durable, reviewed mapping from a foreign row (payable, receipt copy, settlement, funding event) to a cost's `cost_uid`, held in `financial_cost_links` with a role, a basis, and a review state. Only confirmed links are authoritative; a text candidate stays pending review and never merges identity or totals.
+_Avoid_: Duplicate expense, Auto-match, Journal entry
+
 **Incurred Project Cost**:
 Employee cost and non-employee expenses recognized for a Project in a period, whether paid or unpaid. Excludes unfulfilled supplier commitments and client order value.
 _Avoid_: Cash paid, PO value, Total committed exposure

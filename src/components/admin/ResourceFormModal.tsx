@@ -282,6 +282,7 @@ export default function ResourceFormModal({
 																	}
 																}}
 																placeholder={field.placeholder ?? 'Select…'}
+																aria-label={field.label}
 															/>
 														)
 													) : (

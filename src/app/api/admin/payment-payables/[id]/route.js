@@ -60,9 +60,27 @@ export async function PUT(request, { params }) {
 
 		db = await dbConnect();
 
+		// The payable's link to its underlying cost is a reviewed financial
+		// mapping, not a register field: it is set when the payable is created
+		// with its invoice, or through the link-review endpoint on the invoice.
+		const attemptedLinks = ['purchase_invoice_id', 'cost_uid'].filter(
+			(field) => body[field] !== undefined
+		);
+		if (attemptedLinks.length > 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'This payable\'s link to its underlying cost changes through the invoice link review, not the register.',
+					code: 'link_change_requires_review',
+					fields: attemptedLinks,
+				},
+				{ status: 422 }
+			);
+		}
+
 		const fields = [
 			'vendor_invoice_number',
-			'purchase_invoice_id',
 			'vendor_name',
 			'vendor_email',
 			'vendor_phone',
