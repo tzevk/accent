@@ -790,7 +790,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 				{/* Main Content */}
 				<div
-					className={`flex-1 transition-[margin] duration-200 ${todoPanelOpen ? 'ml-72' : 'ml-0'}`}
+					className={`flex-1 min-w-0 transition-[margin] duration-200 ${todoPanelOpen ? 'sm:ml-72' : 'ml-0'}`}
 				>
 					<div className="px-2 sm:px-3 lg:px-4 py-2">
 						<div className="bg-white/60 backdrop-blur-sm rounded-xl border border-gray-200/60 shadow-sm p-2 sm:p-3 xl:p-4 space-y-3 xl:space-y-4">
