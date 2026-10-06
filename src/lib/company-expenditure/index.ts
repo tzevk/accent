@@ -43,6 +43,8 @@
 import { query } from '@/utils/database';
 import { SOURCE_COVERAGE } from './coverage';
 import {
+	costSourceUnion,
+	DIRECT_EXPENSE_COST_SOURCE,
 	loadCostEvents,
 	loadDrilldown,
 	loadExpenditureMonths,
@@ -52,6 +54,7 @@ import {
 	type SqlConnection,
 } from './records';
 import { buildReconciliation } from './reconciliation';
+import { OTHER_EXPENSE_COST_SOURCE } from './other-expenses';
 import type {
 	CompanyReconciliation,
 	CostDrilldown,
@@ -61,6 +64,37 @@ import type {
 
 export { recordCost, executeCommand, loadCost, CostError } from './commands';
 export type { CostActor, CommandOptions } from './commands';
+export {
+	captureOtherExpense,
+	executeOtherExpenseCommand,
+	loadOtherExpenseReview,
+	resolveOtherExpenseCopy,
+} from './other-expenses';
+export type {
+	CopyReviewAction,
+	CopyReviewInput,
+	CopyReviewResult,
+	DuplicateCandidate,
+	LinkedCopyReview,
+	OtherExpenseCaptureInput,
+	OtherExpenseCommandInput,
+	OtherExpenseCommandResult,
+	OtherExpensePatch,
+	OtherExpenseReviewQueue,
+	OtherExpenseRow,
+	PendingCopyReview,
+	RecordedOtherExpense,
+	UnresolvedOtherExpense,
+} from './other-expenses';
+
+/**
+ * Every wired cost source, read through one projection. A later source ticket
+ * appends its own `XX_COST_SOURCE` here; no ticket adds a second aggregation.
+ */
+export const COMPANY_COST_SOURCES = costSourceUnion([
+	DIRECT_EXPENSE_COST_SOURCE,
+	OTHER_EXPENSE_COST_SOURCE,
+]);
 export {
 	linkCostReference,
 	registerCostIdentity,
@@ -76,6 +110,7 @@ export type {
 } from './sources';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
+export type { SqlConnection } from './records';
 export { monthLabel } from './reconciliation';
 export {
 	effectiveTaxTreatment,
@@ -134,7 +169,7 @@ export function currentMonth(): string {
 
 /** Months with direct cost recorded, newest first, including the current one. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
-	return loadExpenditureMonths(pool, currentMonth());
+	return loadExpenditureMonths(pool, currentMonth(), COMPANY_COST_SOURCES);
 }
 
 export interface ReconciliationRequest {
@@ -152,12 +187,12 @@ export async function fetchCompanyReconciliation(
 	const previousMonth = previousMonthOf(month);
 	const [records, previousProjectCost, projectOptions, availableMonths] =
 		await Promise.all([
-			loadMonthRecords(pool, month),
+			loadMonthRecords(pool, month, COMPANY_COST_SOURCES),
 			previousMonth
-				? loadMonthProjectCost(pool, previousMonth)
+				? loadMonthProjectCost(pool, previousMonth, COMPANY_COST_SOURCES)
 				: Promise.resolve(new Map<number, Map<string, number | null>>()),
 			loadProjectOptions(pool),
-			loadExpenditureMonths(pool, currentMonth()),
+			loadExpenditureMonths(pool, currentMonth(), COMPANY_COST_SOURCES),
 		]);
 
 	return buildReconciliation({
@@ -175,7 +210,7 @@ export async function fetchCompanyReconciliation(
 export async function fetchCostDrilldown(
 	queryInput: CostDrilldownQuery
 ): Promise<CostDrilldown> {
-	return loadDrilldown(pool, queryInput);
+	return loadDrilldown(pool, queryInput, COMPANY_COST_SOURCES);
 }
 
 /** Read the versioned command history of one cost. */

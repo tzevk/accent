@@ -29,6 +29,13 @@ export const SOURCE_COVERAGE: readonly SourceCoverageDeclaration[] = [
 			'Direct expenses are entered, recognized, and reconciled through this module (#306).',
 	},
 	{
+		code: 'other_expense_source',
+		label: 'Other expenses and receipt copies',
+		status: 'wired',
+		detail:
+			'Other expenses are recorded, classified, recognized, and reconciled through this module; a receipt copy links to an already recognized cost instead of adding a second one (#315).',
+	},
+	{
 		code: 'payroll_employee_cost_not_incorporated',
 		label: 'Employee cost (recorded payroll)',
 		status: 'not_incorporated',

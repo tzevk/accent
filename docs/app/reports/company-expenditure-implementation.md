@@ -252,6 +252,56 @@ The payroll snapshot evidence includes the stored month and money columns.
 Namespaced fixtures identify test records; names alone do not exclude them from
 the current report. Keep this verification database separate from business data.
 
+## Other expenses and receipt copies (ticket #315)
+
+The other-expense register (`other_expenses`, `OEX-#####`) is a cost-bearing
+source of the same module, not a second store:
+
+- **Capture** (`POST /api/admin/other-expenses`) records the register's own
+  fields plus classification (`project | company_overhead | unallocated`, or
+  deliberately unresolved), the Recognition Period inputs (service period, bill
+  date as the disclosed fallback), currency, tax treatment and its evidence
+  reference, source/evidence references, a receipt/document link, and
+  `submit` for the recognition queue. Number minting, the row, the canonical
+  `cost_uid` (registered in `financial_cost_links`, role `cost`), and the
+  version-1 journal row are one transaction.
+- **Receipt copies**: a capture carrying `linked_cost_uid` links to an already
+  recognized cost (`role='receipt'`, `basis='explicit'`, confirmed) and never
+  becomes a cost. The register read (`link` filter) and the review read show it
+  as a copy; every command refuses it with `receipt_copy_not_cost`.
+- **Duplicate review**: a standalone capture whose normalized vendor and gross
+  amount match a recognized cost stores a **candidate** link
+  (`basis='candidate'`, `review_state='pending_review'`). It never merges
+  identity or totals, and `recognize` is refused with
+  `duplicate_review_pending` until the reviewer decides. `POST
+  /api/admin/other-expenses/{id}/review` with `confirm_copy` links the entry as
+  a receipt copy (a candidate becomes `basis='document'`), `reject_copy` keeps
+  it a standalone cost, and `unlink_copy` undoes a mistaken link. Each decision
+  appends exactly one journal row and bumps `financial_version`.
+- **Unresolved classification** is disclosed, never guessed: the review read
+  lists open entries with the fields they are missing, and recognition refuses
+  without a classification (existing `recognition_blockers`).
+- **Commands and authorization**: `POST
+  /api/admin/other-expenses/{id}/commands` carries `update | submit |
+  recognize | reject | cancel` with `expected_version`; update/submit need
+  `other_expenses:update`, recognize/reject/cancel need
+  `other_expenses:approve`. Register `PUT` refuses the versioned financial
+  fields (`financial_fields_versioned`) and a recognized row (`cost_recognized`);
+  `DELETE` refuses recognized cost and any row with recognized history
+  (`cost_history_preserved`), so ordinary deletion cannot bypass the versioned
+  cancellation.
+- **Reads**: `OTHER_EXPENSE_COST_SOURCE` is projected into the module's
+  canonical column vocabulary and appended to `COMPANY_COST_SOURCES`, so the
+  reconciliation, previous-month comparison, month list, and drilldown count
+  other expenses exactly once — receipt copies excluded once, in the source.
+  The report queue marks non-direct-expense rows with a link to their register
+  instead of sending the direct-expense commands at another store's id.
+- **Coverage**: `SOURCE_COVERAGE` declares `other_expense_source` as wired.
+
+End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
+`e2e/specs/other-expense-controls.spec.ts` (month `2019-04`, namespace
+`E2E-EXP-315-*` / `E2E-315-*`), artifact `e2e/artifacts/other-expense-controls.json`.
+
 ## Public interface for later slices
 
 `src/lib/company-expenditure/index.ts` is the contract later tickets extend:
@@ -288,3 +338,14 @@ the current report. Keep this verification database separate from business data.
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
 - `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/global-setup.ts`
+
+Ticket #315 adds:
+
+- `migrations/20261008091500_expense_other_expense_recognition.js`
+- `src/lib/company-expenditure/other-expenses.ts` (capture, commands, copy
+  review, review reads, source projection, source adapter)
+- `src/app/admin/other-expenses/{page,other-expense-review}.tsx`
+- `src/app/api/admin/other-expenses/route.ts`, `[id]/route.ts`,
+  `[id]/commands/route.ts`, `[id]/review/route.ts`, `review/route.ts`
+- `e2e/lib/other-expense-fixtures.ts`,
+  `e2e/specs/other-expense-controls.spec.ts`, `e2e/global-setup.ts`

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -21,6 +21,7 @@ import {
 	EyeIcon,
 	PencilIcon,
 	TrashIcon,
+	ClipboardDocumentCheckIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
@@ -50,6 +51,9 @@ import type {
 	Column,
 	Pagination as PaginationType,
 } from '@/types/admin';
+import OtherExpenseReviewPanel, {
+	OtherExpenseReviewDialog,
+} from './other-expense-review';
 
 const Select: ComponentType<
 	SelectHTMLAttributes<HTMLSelectElement> & RefAttributes<HTMLSelectElement>
@@ -65,6 +69,16 @@ const STATUS_OPTIONS = [
 	{ value: 'submitted', label: 'Submitted' },
 	{ value: 'approved', label: 'Approved' },
 	{ value: 'rejected', label: 'Rejected' },
+];
+
+const RECOGNITION_OPTIONS = [
+	{ value: 'all', label: 'All recognition' },
+	{ value: 'draft', label: 'Draft' },
+	{ value: 'pending_evidence', label: 'Pending evidence' },
+	{ value: 'recognized', label: 'Recognized' },
+	{ value: 'rejected', label: 'Rejected cost' },
+	{ value: 'cancelled', label: 'Cancelled cost' },
+	{ value: 'linked', label: 'Receipt copies' },
 ];
 
 const CATEGORY_OPTIONS = [
@@ -85,11 +99,48 @@ const PAYEE_TYPE_OPTIONS = [
 	{ value: 'employee', label: 'Employee' },
 ];
 
+const CLASSIFICATION_OPTIONS = [
+	{ value: '', label: 'Unresolved (needs review)' },
+	{ value: 'project', label: 'Project' },
+	{ value: 'company_overhead', label: 'Company Overhead' },
+	{ value: 'unallocated', label: 'Unallocated Cost' },
+];
+
+const TAX_TREATMENT_OPTIONS = [
+	{ value: 'unresolved', label: 'Unresolved' },
+	{ value: 'none', label: 'None' },
+	{ value: 'recoverable', label: 'Recoverable (needs evidence)' },
+	{ value: 'non_recoverable', label: 'Non-recoverable' },
+];
+
+const RECOGNITION_QUEUE_OPTIONS = [
+	{ value: '', label: 'Keep as draft' },
+	{ value: 'submitted', label: 'Submit for recognition' },
+];
+
 const STATUS_BADGE: Record<string, string> = {
 	draft: 'bg-slate-100 text-slate-700',
 	submitted: 'bg-amber-100 text-amber-700',
 	approved: 'bg-sky-100 text-sky-700',
 	rejected: 'bg-rose-100 text-rose-700',
+};
+
+const RECOGNITION_BADGE: Record<string, string> = {
+	draft: 'bg-slate-100 text-slate-700',
+	pending_evidence: 'bg-amber-100 text-amber-800',
+	recognized: 'bg-emerald-100 text-emerald-800',
+	rejected: 'bg-rose-100 text-rose-700',
+	cancelled: 'bg-gray-200 text-gray-700',
+	linked: 'bg-violet-100 text-violet-800',
+};
+
+const RECOGNITION_LABELS: Record<string, string> = {
+	draft: 'Draft',
+	pending_evidence: 'Pending evidence',
+	recognized: 'Recognized',
+	rejected: 'Rejected',
+	cancelled: 'Cancelled',
+	linked: 'Receipt copy',
 };
 
 const PAYEE_BADGE: Record<string, string> = {
@@ -114,6 +165,20 @@ const schema = z.object({
 	gst_amount: z.coerce.number().min(0).optional(),
 	description: z.string().nullable().optional(),
 	status: z.enum(['draft', 'submitted', 'approved', 'rejected']).optional(),
+	// Module fields: where the cost belongs, when it was received, in what
+	// currency and with what tax evidence.
+	cost_classification: z.string().nullable().optional(),
+	project_id: z.coerce.number().int().optional(),
+	service_period_start: z.string().nullable().optional(),
+	service_period_end: z.string().nullable().optional(),
+	currency: z.string().nullable().optional(),
+	tax_treatment: z.string().nullable().optional(),
+	tax_evidence_reference: z.string().nullable().optional(),
+	source_reference: z.string().nullable().optional(),
+	evidence_reference: z.string().nullable().optional(),
+	receipt_url: z.string().nullable().optional(),
+	linked_cost_uid: z.string().nullable().optional(),
+	submit: z.string().nullable().optional(),
 });
 
 const defaultValues = {
@@ -131,7 +196,81 @@ const defaultValues = {
 	gst_amount: '',
 	description: '',
 	status: 'submitted',
+	cost_classification: '',
+	project_id: '',
+	service_period_start: '',
+	service_period_end: '',
+	currency: 'INR',
+	tax_treatment: 'unresolved',
+	tax_evidence_reference: '',
+	source_reference: '',
+	evidence_reference: '',
+	receipt_url: '',
+	linked_cost_uid: '',
+	submit: '',
 };
+
+/**
+ * Financial fields the versioned cost commands own. The register edit form
+ * shows them read-only and never posts them: the PUT route refuses them, so a
+ * register edit cannot change cost without a version, a reason, and a journal
+ * entry. Recording a new entry through this page still sends them.
+ */
+const FINANCIAL_FIELDS: Record<string, true> = {
+	bill_date: true,
+	bill_amount: true,
+	gst_amount: true,
+	currency: true,
+	project_id: true,
+	cost_classification: true,
+	service_period_start: true,
+	service_period_end: true,
+	tax_treatment: true,
+	tax_evidence_reference: true,
+	source_reference: true,
+	evidence_reference: true,
+	receipt_url: true,
+	linked_cost_uid: true,
+	submit: true,
+};
+
+/** Drop the command-owned fields from an edit payload (create keeps them). */
+function stripFinancialFields(
+	values: Record<string, unknown>
+): Record<string, unknown> {
+	const payload: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(values)) {
+		if (FINANCIAL_FIELDS[key] || key === 'sr_no') continue;
+		if (value === '') continue;
+		payload[key] = value;
+	}
+	return payload;
+}
+
+/**
+ * The create payload: the whole register plus the module's financial fields,
+ * with blank optionals absent rather than sent as empty strings (a missing
+ * amount stays unknown, it never becomes a recorded zero).
+ */
+function toCreatePayload(
+	values: Record<string, unknown>
+): Record<string, unknown> {
+	const payload: Record<string, unknown> = { ...values };
+	delete payload.sr_no;
+	if (payload.payee_type === 'vendor') {
+		delete payload.employee_name;
+		delete payload.employee_id;
+	}
+	if (payload.payee_type === 'employee') {
+		delete payload.vendor_name;
+		delete payload.vendor_id;
+	}
+	payload.submit = values.submit === 'submitted';
+	for (const [key, value] of Object.entries(payload)) {
+		if (value === '') payload[key] = null;
+	}
+	return payload;
+}
 
 const formFields: FormField[] = [
 	{
@@ -195,16 +334,60 @@ const formFields: FormField[] = [
 		step: '0.01',
 	},
 	{
-		name: 'description',
-		label: 'Description',
-		type: 'textarea',
+		name: 'cost_classification',
+		label: 'Classification',
+		type: 'select',
+		options: CLASSIFICATION_OPTIONS,
+		hint: 'Project, Company Overhead, or deliberately unresolved',
+	},
+	{
+		name: 'project_id',
+		label: 'Project',
+		type: 'select',
+		options: [],
+		hint: 'Required for a Project classification',
+	},
+	{
+		name: 'service_period_start',
+		label: 'Service period start',
+		type: 'date',
+		hint: 'When the goods, work, or services were received',
+	},
+	{ name: 'service_period_end', label: 'Service period end', type: 'date' },
+	{ name: 'currency', label: 'Currency' },
+	{
+		name: 'tax_treatment',
+		label: 'Tax treatment',
+		type: 'select',
+		options: TAX_TREATMENT_OPTIONS,
+	},
+	{ name: 'tax_evidence_reference', label: 'Tax evidence reference' },
+	{ name: 'source_reference', label: 'Source reference' },
+	{ name: 'evidence_reference', label: 'Evidence reference' },
+	{ name: 'receipt_url', label: 'Receipt / document link', fullWidth: true },
+	{
+		name: 'linked_cost_uid',
+		label: 'Receipt copy of cost id',
+		hint: 'Links evidence to an already recognized cost instead of a second expense',
 		fullWidth: true,
+	},
+	{
+		name: 'submit',
+		label: 'Recognition queue',
+		type: 'select',
+		options: RECOGNITION_QUEUE_OPTIONS,
 	},
 	{
 		name: 'status',
 		label: 'Status',
 		type: 'select',
 		options: STATUS_OPTIONS_FOR_FORM,
+	},
+	{
+		name: 'description',
+		label: 'Description',
+		type: 'textarea',
+		fullWidth: true,
 	},
 ];
 
@@ -243,31 +426,52 @@ const columns: Column[] = [
 	},
 	{ key: 'bill_no', label: 'Bill No.', headClassName: 'text-center' },
 	{
-		key: 'bill_date',
-		label: 'Bill Date',
-		date: true,
-		headClassName: 'w-28 text-center',
-	},
-	{
-		key: 'bill_amount',
-		label: 'Bill Amount',
-		money: true,
-		headClassName: 'w-32 text-center',
-		cellClassName: 'text-right tabular-nums',
-	},
-	{
-		key: 'gst_amount',
-		label: 'GST / IGST',
-		money: true,
-		headClassName: 'w-28 text-center',
-		cellClassName: 'text-right tabular-nums',
-	},
-	{
 		key: 'net_amount',
 		label: 'Net Bill Amount',
-		money: true,
 		headClassName: 'w-36 text-center',
 		cellClassName: 'text-right font-semibold tabular-nums',
+		render: (row) =>
+			row.net_amount === null || row.net_amount === undefined
+				? 'Unknown'
+				: formatCurrency(Number(row.net_amount)),
+	},
+	{
+		key: 'recognition_state',
+		label: 'Cost state',
+		headClassName: 'w-36 text-center',
+		render: (row) => {
+			const linked = Boolean(row.linked_cost_uid);
+			const state = linked ? 'linked' : String(row.recognition_state ?? 'draft');
+			return (
+				<span
+					data-testid="oe-state"
+					data-voucher={String(row.voucher_number ?? '')}
+					data-state={state}
+					className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${RECOGNITION_BADGE[state] ?? RECOGNITION_BADGE.draft}`}
+				>
+					{RECOGNITION_LABELS[state] ?? state}
+				</span>
+			);
+		},
+	},
+	{
+		key: 'cost_uid',
+		label: 'Cost / link',
+		headClassName: 'w-48 text-center',
+		render: (row) => {
+			if (row.linked_cost_uid) {
+				return (
+					<span className="text-[11px] text-violet-700">
+						copy of {String(row.linked_cost_uid)}
+					</span>
+				);
+			}
+			return (
+				<span className="text-[11px] text-gray-500">
+					{row.cost_uid ? String(row.cost_uid) : '—'}
+				</span>
+			);
+		},
 	},
 	{
 		key: 'status',
@@ -336,20 +540,6 @@ const TONE_COLOR_MAP: Record<StatTone, string> = {
 	violet: 'text-violet-600',
 };
 
-function transformSubmit(values: Record<string, unknown>) {
-	const result = { ...values };
-	if (result.payee_type === 'vendor') {
-		delete result.employee_name;
-		delete result.employee_id;
-	}
-	if (result.payee_type === 'employee') {
-		delete result.vendor_name;
-		delete result.vendor_id;
-	}
-	delete result.sr_no;
-	return result;
-}
-
 function getNested(
 	obj: Record<string, unknown>,
 	path: string,
@@ -366,27 +556,72 @@ function getNested(
 	);
 }
 
+interface ProjectOptionRow {
+	project_id: number;
+	project_code: string;
+	project_title: string | null;
+	name: string | null;
+}
+
 function OtherExpensesPageInner() {
 	const urlSearchParams = useSearchParams();
 	const initialSearch = urlSearchParams?.get('search') ?? '';
 	const [search, setSearch] = useState(initialSearch);
 	const [statusFilter, setStatusFilter] = useState('all');
+	const [recognitionFilter, setRecognitionFilter] = useState('all');
 	const [page, setPage] = useState(1);
+	const [tab, setTab] = useState<'register' | 'review'>('register');
 	const [modalState, setModalState] = useState<{
 		mode: ModalMode;
 		row: Record<string, unknown> | null;
 	}>({ mode: null, row: null });
+	const [reviewTarget, setReviewTarget] = useState<{
+		id: string;
+		voucher: string;
+	} | null>(null);
 
 	const listQuery = useQuery<ApiListResponse>({
-		queryKey: ['other-expenses', { search, status: statusFilter, page }],
+		queryKey: ['other-expenses', { search, status: statusFilter, recognitionFilter, page }],
 		queryFn: () =>
 			apiGet('/api/admin/other-expenses', {
 				search,
 				status: statusFilter,
+				recognition_state: recognitionFilter,
 				page,
 				limit: PAGE_SIZE,
 			}),
 	});
+
+	const projectsQuery = useQuery<{ data: ProjectOptionRow[] }>({
+		queryKey: ['projects-for-expenditure'],
+		queryFn: () => apiGet('/api/projects'),
+		staleTime: 60_000,
+	});
+	const projectOptions = (projectsQuery.data?.data ?? []).map((project) => ({
+		value: String(project.project_id),
+		label: `${project.project_code} — ${project.project_title ?? project.name ?? ''}`,
+	}));
+
+	const createFormFields = useMemo(
+		() =>
+			formFields.map((field) =>
+				field.name === 'project_id' ? { ...field, options: projectOptions } : field
+			),
+		[projectOptions]
+	);
+	const editFormFields = useMemo(
+		() =>
+			createFormFields.map((field) =>
+				FINANCIAL_FIELDS[field.name]
+					? {
+							...field,
+							disabled: true,
+							hint: 'Versioned cost field — change it through Review',
+						}
+					: field
+			),
+		[createFormFields]
+	);
 
 	const rows = listQuery.data?.data ?? [];
 	const pagination: PaginationType = listQuery.data?.pagination ?? {
@@ -432,10 +667,40 @@ function OtherExpensesPageInner() {
 								Other Expenses
 							</h1>
 							<p className="text-sm text-gray-500 mt-0.5">
-								Track miscellaneous expenses against vendors and employees
+								Record operating cost against Projects, Company Overhead, or as
+								deliberately unresolved, and review receipt copies
 							</p>
 						</div>
 						<div className="flex items-center gap-2">
+							<div
+								data-testid="other-expense-tabs"
+								className="flex items-center rounded-lg border border-gray-200 bg-white p-0.5"
+							>
+								<button
+									type="button"
+									data-testid="tab-register"
+									onClick={() => setTab('register')}
+									className={`rounded-md px-3 py-1 text-sm font-medium ${
+										tab === 'register'
+											? 'bg-[#64126D] text-white'
+											: 'text-gray-600'
+									}`}
+								>
+									Register
+								</button>
+								<button
+									type="button"
+									data-testid="tab-review"
+									onClick={() => setTab('review')}
+									className={`rounded-md px-3 py-1 text-sm font-medium ${
+										tab === 'review'
+											? 'bg-[#64126D] text-white'
+											: 'text-gray-600'
+									}`}
+								>
+									Review
+								</button>
+							</div>
 							<Button
 								variant="outline"
 								size="sm"
@@ -454,131 +719,173 @@ function OtherExpensesPageInner() {
 						</div>
 					</header>
 
-					{statsConfig.length > 0 ? (
-						<div className="flex gap-4 mb-6">
-							{statsConfig.map((s) => {
-								const displayValue = s.money
-									? formatCurrency(stats[s.key] ?? 0)
-									: (stats[s.key] ?? 0).toLocaleString('en-IN');
-								return (
-									<div
-										key={s.key}
-										className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2"
-									>
-										<div
-											className={`text-lg font-bold ${TONE_COLOR_MAP[s.tone] || 'text-gray-900'}`}
-										>
-											{displayValue}
-										</div>
-										<div className="text-xs text-gray-600">{s.label}</div>
+					{tab === 'review' ? (
+						<OtherExpenseReviewPanel
+							onOpenEntry={(id, voucher) => setReviewTarget({ id, voucher })}
+						/>
+					) : (
+						<>
+							{statsConfig.length > 0 ? (
+								<div className="flex gap-4 mb-2 flex-wrap">
+									{statsConfig.map((s) => {
+										const displayValue = s.money
+											? formatCurrency(stats[s.key] ?? 0)
+											: (stats[s.key] ?? 0).toLocaleString('en-IN');
+										return (
+											<div
+												key={s.key}
+												className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2"
+											>
+												<div
+													className={`text-lg font-bold ${TONE_COLOR_MAP[s.tone] || 'text-gray-900'}`}
+												>
+													{displayValue}
+												</div>
+												<div className="text-xs text-gray-600">{s.label}</div>
+											</div>
+										);
+									})}
+								</div>
+							) : null}
+
+							<div className="rounded-xl border border-gray-200 bg-white shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
+								<div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
+									<div className="relative flex-1 min-w-[200px] max-w-md">
+										<Input
+											placeholder="Search by voucher #, bill #, vendor, employee…"
+											value={search}
+											onChange={(e) => {
+												setSearch(e.target.value);
+												setPage(1);
+											}}
+										/>
 									</div>
-								);
-							})}
-						</div>
-					) : null}
-
-					<div className="rounded-xl border border-gray-200 bg-white shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
-						<div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
-							<div className="relative flex-1 min-w-[200px] max-w-md">
-								<Input
-									placeholder="Search by voucher #, bill #, vendor, employee…"
-									value={search}
-									onChange={(e) => {
-										setSearch(e.target.value);
-										setPage(1);
-									}}
-								/>
-							</div>
-							<Select
-								value={statusFilter}
-								onChange={(e) => {
-									setStatusFilter(e.target.value);
-									setPage(1);
-								}}
-								className="w-40"
-							>
-								{STATUS_OPTIONS.map((o) => (
-									<option key={o.value} value={o.value}>
-										{o.label}
-									</option>
-								))}
-							</Select>
-						</div>
-
-						<div className="flex-1 min-h-0 overflow-auto">
-							<Table>
-								<TableHeader>
-									<TableRow className="sticky top-0 z-10 bg-white">
-										{columns.map((c) => (
-											<TableHead key={c.key} className={c.headClassName}>
-												{c.label}
-											</TableHead>
+									<Select
+										value={statusFilter}
+										onChange={(e) => {
+											setStatusFilter(e.target.value);
+											setPage(1);
+										}}
+										className="w-40"
+									>
+										{STATUS_OPTIONS.map((o) => (
+											<option key={o.value} value={o.value}>
+												{o.label}
+											</option>
 										))}
-										<TableHead className="text-center">Actions</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{listQuery.isLoading ? (
-										<TableEmpty>Loading…</TableEmpty>
-									) : rows.length === 0 ? (
-										<TableEmpty>No records found.</TableEmpty>
-									) : (
-										rows.map((row) => (
-											<TableRow key={row.id as string}>
-												{columns.map((c) => {
-													const value = getNested(row, c.key, '');
-													let display: ReactNode = value as ReactNode;
-													if (c.money)
-														display = formatCurrency(value as number);
-													else if (c.date)
-														display = formatDate(value as string);
-													else if (c.render) display = c.render(row);
-													return (
-														<TableCell key={c.key} className={c.cellClassName}>
-															{display ?? '—'}
-														</TableCell>
-													);
-												})}
-												<TableCell className="text-center">
-													<div className="inline-flex items-center gap-1">
-														<button
-															onClick={() => openView(row)}
-															className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-															title="View"
-														>
-															<EyeIcon className="h-4 w-4" />
-														</button>
-														<button
-															onClick={() => openEdit(row)}
-															className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-															title="Edit"
-														>
-															<PencilIcon className="h-4 w-4" />
-														</button>
-														<button
-															onClick={() => onDelete(row)}
-															className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-															title="Delete"
-														>
-															<TrashIcon className="h-4 w-4" />
-														</button>
-													</div>
-												</TableCell>
+									</Select>
+									<Select
+										value={recognitionFilter}
+										onChange={(e) => {
+											setRecognitionFilter(e.target.value);
+											setPage(1);
+										}}
+										className="w-48"
+									>
+										{RECOGNITION_OPTIONS.map((o) => (
+											<option key={o.value} value={o.value}>
+												{o.label}
+											</option>
+										))}
+									</Select>
+								</div>
+
+								<div className="flex-1 min-h-0 overflow-auto">
+									<Table>
+										<TableHeader>
+											<TableRow className="sticky top-0 z-10 bg-white">
+												{columns.map((c) => (
+													<TableHead key={c.key} className={c.headClassName}>
+														{c.label}
+													</TableHead>
+												))}
+												<TableHead className="text-center">Actions</TableHead>
 											</TableRow>
-										))
-									)}
-								</TableBody>
-							</Table>
-						</div>
-						<div className="border-t border-gray-100 px-4">
-							<Pagination
-								page={pagination.page}
-								totalPages={pagination.totalPages}
-								total={pagination.total}
-								onPageChange={setPage}
-							/>
-						</div>
-					</div>
+										</TableHeader>
+										<TableBody>
+											{listQuery.isLoading ? (
+												<TableEmpty>Loading…</TableEmpty>
+											) : rows.length === 0 ? (
+												<TableEmpty>No records found.</TableEmpty>
+											) : (
+												rows.map((row) => (
+													<TableRow key={row.id as string}>
+														{columns.map((c) => {
+															const value = getNested(row, c.key, '');
+															let display: ReactNode = value as ReactNode;
+															if (c.money)
+																display = formatCurrency(value as number);
+															else if (c.date)
+																display = formatDate(value as string);
+															else if (c.render) display = c.render(row);
+															return (
+																<TableCell
+																	key={c.key}
+																	className={c.cellClassName}
+																>
+																	{display ?? '—'}
+																</TableCell>
+															);
+														})}
+														<TableCell className="text-center">
+															<div
+																data-testid="oe-row"
+																data-voucher={String(row.voucher_number ?? '')}
+																className="inline-flex items-center gap-1"
+															>
+																<button
+																	onClick={() => openView(row)}
+																	className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+																	title="View"
+																>
+																	<EyeIcon className="h-4 w-4" />
+																</button>
+																<button
+																	onClick={() => openEdit(row)}
+																	className="p-1.5 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+																	title="Edit"
+																>
+																	<PencilIcon className="h-4 w-4" />
+																</button>
+																<button
+																	data-testid="oe-row-review"
+																	onClick={() =>
+																		setReviewTarget({
+																			id: String(row.id),
+																			voucher: String(row.voucher_number ?? ''),
+																		})
+																	}
+																	className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+																	title="Review"
+																>
+																	<ClipboardDocumentCheckIcon className="h-4 w-4" />
+																</button>
+																<button
+																	onClick={() => onDelete(row)}
+																	className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+																	title="Delete"
+																>
+																	<TrashIcon className="h-4 w-4" />
+																</button>
+															</div>
+														</TableCell>
+													</TableRow>
+												))
+											)}
+										</TableBody>
+									</Table>
+								</div>
+								<div className="border-t border-gray-100 px-4">
+									<Pagination
+										page={pagination.page}
+										totalPages={pagination.totalPages}
+										total={pagination.total}
+										onPageChange={setPage}
+									/>
+								</div>
+							</div>
+						</>
+					)}
 				</div>
 			</div>
 
@@ -590,8 +897,12 @@ function OtherExpensesPageInner() {
 					endpoint="/api/admin/other-expenses"
 					defaultValues={defaultValues}
 					zodSchema={schema}
-					formFields={formFields}
-					transformSubmit={transformSubmit}
+					formFields={
+						modalState.mode === 'edit' ? editFormFields : createFormFields
+					}
+					transformSubmit={
+						modalState.mode === 'edit' ? stripFinancialFields : toCreatePayload
+					}
 					vendorListEndpoint="/api/vendors"
 					employeeListEndpoint="/api/employees/list"
 					onClose={closeModal}
@@ -599,6 +910,15 @@ function OtherExpensesPageInner() {
 						closeModal();
 						listQuery.refetch();
 					}}
+				/>
+			) : null}
+
+			{reviewTarget ? (
+				<OtherExpenseReviewDialog
+					id={reviewTarget.id}
+					voucher={reviewTarget.voucher}
+					onClose={() => setReviewTarget(null)}
+					onSaved={() => listQuery.refetch()}
 				/>
 			) : null}
 		</div>

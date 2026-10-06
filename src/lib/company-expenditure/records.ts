@@ -17,6 +17,7 @@ import type {
 	CostDrilldownQuery,
 	CostJournalEntry,
 	CostRecord,
+	CostSource,
 	RecognitionState,
 	TaxTreatment,
 } from './types';
@@ -51,9 +52,37 @@ function num(row: DbRow, key: string): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** The projection the module maps into `CostRecord`. */
-const COST_SELECT = `
-  SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.cost_classification,
+/**
+ * The canonical column vocabulary every cost source projects into. A source is
+ * a SELECT over its own table that emits exactly these names (plus
+ * `source_kind` and `source_row_id`), so one set of reads serves every source
+ * and the reconciliation cannot grow a second aggregation.
+ */
+const COST_SOURCE_COLUMNS = `id, cost_uid, expense_number, expense_date, cost_classification,
+  recognition_state, recognition_period, period_basis, service_period_start, service_period_end,
+  tax_treatment, tax_evidence_reference, recognized_amount, source_reference, evidence_reference,
+  financial_version, recognized_by, recognized_at, currency, amount, tax_amount, total_amount,
+  vendor_name, description, status, project_id, isDelete`;
+
+/** The direct-expense source (#306): costs live in `expenses`. */
+export const DIRECT_EXPENSE_COST_SOURCE =
+	`SELECT 'direct_expense' AS source_kind, ${COST_SOURCE_COLUMNS}, ` +
+	`CAST(id AS CHAR) AS source_row_id FROM expenses`;
+
+/**
+ * The module's one source expression: the union of every wired source. Callers
+ * wrap it in a derived table (`FROM (${source}) e`), so each source is a plain
+ * projected SELECT over its own table.
+ */
+export function costSourceUnion(sources: readonly string[]): string {
+	return sources.join(' UNION ALL ');
+}
+
+/** The read projection over any source expression (aliased `e`). */
+function costSelect(source: string): string {
+	return `
+  SELECT e.source_kind, e.source_row_id,
+         e.id, e.cost_uid, e.expense_number, e.expense_date, e.cost_classification,
          e.recognition_state, e.recognition_period, e.period_basis,
          e.service_period_start, e.service_period_end, e.tax_treatment,
          e.tax_evidence_reference, e.recognized_amount, e.source_reference,
@@ -62,8 +91,9 @@ const COST_SELECT = `
          e.vendor_name, e.description, e.status,
          e.project_id, p.project_code,
          COALESCE(p.project_title, p.name) AS project_name, p.client_name
-    FROM expenses e
+    FROM (${source}) e
     LEFT JOIN projects p ON p.project_id = e.project_id AND p.isDelete = 0`;
+}
 
 /** First and last day of a `YYYY-MM` month. */
 function monthBounds(month: string): { start: string; end: string } {
@@ -111,7 +141,8 @@ export function mapCostRow(row: DbRow): CostRecord {
 	};
 	return {
 		...financial,
-		source: 'direct_expense',
+		source: (s(row, 'source_kind') as CostSource | null) ?? 'direct_expense',
+		sourceId: s(row, 'source_row_id', String(num(row, 'id') ?? '')) ?? '',
 		split: null,
 		id: Number(num(row, 'id') ?? 0),
 		costUid: s(row, 'cost_uid'),
@@ -136,6 +167,7 @@ function toCostRecordJson(record: CostRecord): CostRecordJson {
 		id: record.id,
 		cost_uid: record.costUid,
 		source: record.source,
+		source_id: record.sourceId,
 		split: record.split,
 		expense_number: record.expenseNumber,
 		recognition_state: record.state,
@@ -172,11 +204,12 @@ function toCostRecordJson(record: CostRecord): CostRecordJson {
 /** Every cost of one month, in any recognition state. */
 export async function loadMonthRecords(
 	db: SqlConnection,
-	month: string
+	month: string,
+	source: string = DIRECT_EXPENSE_COST_SOURCE
 ): Promise<CostRecord[]> {
 	const { start, end } = monthBounds(month);
 	const [rows] = await db.execute(
-		`${COST_SELECT}
+		`${costSelect(source)}
       WHERE e.isDelete = 0 AND ${MONTH_PREDICATE}
       ORDER BY e.expense_date DESC, e.id DESC`,
 		[start, end, start, end]
@@ -191,14 +224,15 @@ export async function loadMonthRecords(
  */
 export async function loadMonthProjectCost(
 	db: SqlConnection,
-	month: string
+	month: string,
+	source: string = DIRECT_EXPENSE_COST_SOURCE
 ): Promise<Map<number, Map<string, number | null>>> {
 	const { start, end } = monthBounds(month);
 	const [rows] = await db.execute(
 		`SELECT e.project_id, COALESCE(e.currency, 'INR') AS currency,
               SUM(e.recognized_amount) AS amount,
               SUM(CASE WHEN e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts
-       FROM expenses e
+       FROM (${source}) e
       WHERE e.isDelete = 0
         AND e.recognition_state = 'recognized'
         AND e.cost_classification = 'project'
@@ -249,11 +283,12 @@ export async function loadProjectOptions(
 /** Months with direct cost recorded, newest first, always including today's. */
 export async function loadExpenditureMonths(
 	db: SqlConnection,
-	currentMonth: string
+	currentMonth: string,
+	source: string = DIRECT_EXPENSE_COST_SOURCE
 ): Promise<string[]> {
 	const [rows] = await db.execute(
 		`SELECT DISTINCT DATE_FORMAT(COALESCE(e.recognition_period, e.expense_date), '%Y-%m') AS month
-       FROM expenses e
+       FROM (${source}) e
       WHERE e.isDelete = 0
         AND (e.recognition_period IS NOT NULL OR e.expense_date IS NOT NULL)`
 	);
@@ -314,7 +349,8 @@ function stateFilterClause(state: CostDrilldownQuery['state']): {
  */
 export async function loadDrilldown(
 	db: SqlConnection,
-	query: CostDrilldownQuery
+	query: CostDrilldownQuery,
+	source: string = DIRECT_EXPENSE_COST_SOURCE
 ): Promise<CostDrilldown> {
 	const { start, end } = monthBounds(query.month);
 	const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
@@ -349,7 +385,7 @@ export async function loadDrilldown(
               COUNT(DISTINCT CASE WHEN e.recognition_state = 'recognized' THEN COALESCE(e.currency, 'INR') END) AS confirmed_currencies,
               MIN(CASE WHEN e.recognition_state = 'recognized' THEN COALESCE(e.currency, 'INR') END) AS confirmed_currency,
               SUM(CASE WHEN e.recognition_state = 'recognized' THEN e.recognized_amount ELSE 0 END) AS confirmed
-         FROM expenses e
+         FROM (${source}) e
         WHERE ${whereSql}`,
 		params
 	);
@@ -363,7 +399,7 @@ export async function loadDrilldown(
 			? null
 			: (num(count, 'confirmed') ?? 0);
 	const [rows] = await db.execute(
-		`${COST_SELECT}
+		`${costSelect(source)}
       WHERE ${whereSql}
       ORDER BY e.recognition_period DESC, e.expense_date DESC, e.id DESC
       LIMIT ? OFFSET ?`,

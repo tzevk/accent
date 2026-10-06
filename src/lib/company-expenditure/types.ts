@@ -133,6 +133,8 @@ export interface CostSplitInfo {
 /** One direct cost as the financial module sees it. */
 export interface CostRecord extends CostFinancialInput {
 	source: CostSource;
+	/** The source row's own key as a string (`expenses.id`, a UUID, …). */
+	sourceId: string;
 	/** The service-period slice this record represents, or null. */
 	split: CostSplitInfo | null;
 	id: number;
@@ -378,6 +380,8 @@ export interface CostRecordJson {
 	id: number;
 	cost_uid: string | null;
 	source: CostSource;
+	/** The source row's own key as a string, for source-aware consumers. */
+	source_id: string;
 	/** The service-period slice this record represents, or null. */
 	split: CostSplitInfo | null;
 	expense_number: string;

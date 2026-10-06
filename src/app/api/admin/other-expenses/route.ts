@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
+import type { PoolConnection } from 'mysql2/promise';
 import { dbConnect } from '@/utils/database';
 import {
 	ensurePermission,
@@ -7,38 +7,71 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
-import crypto from 'node:crypto';
-import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import { isRetryableNumberError } from '@/utils/db-number-retry';
+import {
+	captureOtherExpense,
+	CostError,
+	type OtherExpenseCaptureInput,
+} from '@/lib/company-expenditure';
 
 const TABLE = 'other_expenses';
 
-// Other-expense vouchers are OEX-#####. The read runs inside the caller's
-// transaction with a row lock (FOR UPDATE) on the newest row so concurrent
-// POSTs serialize behind it; the unique active voucher-number index is the
-// backstop and a collision retries with a fresh read.
-async function nextNumber(db: PoolConnection): Promise<string> {
-	const [rows] = await db.execute<RowDataPacket[]>(
-		`SELECT voucher_number FROM ${TABLE} WHERE voucher_number LIKE 'OEX-%' AND isDelete = 0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`
-	);
-	let next = 1;
-	if (rows.length > 0) {
-		const match = /OEX-(\d+)/.exec(rows[0].voucher_number || '');
-		if (match) next = parseInt(match[1], 10) + 1;
+const CAPTURE_FIELDS = [
+	'voucher_number',
+	'voucher_date',
+	'expense_category',
+	'payee_type',
+	'vendor_id',
+	'vendor_name',
+	'employee_id',
+	'employee_name',
+	'bill_no',
+	'bill_date',
+	'bill_amount',
+	'gst_amount',
+	'net_amount',
+	'description',
+	'status',
+	'gross_amount',
+	'amount',
+	'tax_amount',
+	'currency',
+	'cost_classification',
+	'project_id',
+	'service_period_start',
+	'service_period_end',
+	'tax_treatment',
+	'tax_evidence_reference',
+	'source_reference',
+	'evidence_reference',
+	'receipt_url',
+	'linked_cost_uid',
+	'submit'
+] as const;
+
+/** The register body, exactly the fields the module validates. */
+function toCaptureInput(
+	body: Record<string, unknown>
+): OtherExpenseCaptureInput {
+	const input: Record<string, unknown> = {};
+	for (const field of CAPTURE_FIELDS) {
+		input[field] = body[field];
 	}
-	return `OEX-${String(next).padStart(5, '0')}`;
+	return input;
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : 'Unexpected error';
 }
 
 export async function GET(request: Request) {
-	const authResult: any = await ensurePermission(
+	const auth = await ensurePermission(
 		request,
 		RESOURCES.OTHER_EXPENSES,
 		PERMISSIONS.READ
 	);
-	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
+	if (auth instanceof Response) return auth;
 
-	let db: any;
+	let db: PoolConnection | null = null;
 	try {
 		const { searchParams } = new URL(request.url);
 		const page = parseInt(searchParams.get('page') || '1');
@@ -46,6 +79,7 @@ export async function GET(request: Request) {
 		const status = searchParams.get('status');
 		const category = searchParams.get('expense_category');
 		const payeeType = searchParams.get('payee_type');
+		const recognitionState = searchParams.get('recognition_state');
 		const search = searchParams.get('search');
 		const offset = (page - 1) * limit;
 
@@ -65,12 +99,20 @@ export async function GET(request: Request) {
 			where.push('payee_type = ?');
 			params.push(payeeType);
 		}
+		// `linked` is its own view: a receipt copy evidences a cost, it is not a
+		// cost in any recognition state.
+		if (recognitionState === 'linked') {
+			where.push('linked_cost_uid IS NOT NULL');
+		} else if (recognitionState && recognitionState !== 'all') {
+			where.push('recognition_state = ?');
+			params.push(recognitionState);
+		}
 		if (search) {
 			where.push(
-				'(voucher_number LIKE ? OR bill_no LIKE ? OR vendor_name LIKE ? OR employee_name LIKE ? OR description LIKE ?)'
+				'(voucher_number LIKE ? OR bill_no LIKE ? OR vendor_name LIKE ? OR employee_name LIKE ? OR description LIKE ? OR source_reference LIKE ?)'
 			);
 			const s = `%${search}%`;
-			params.push(s, s, s, s, s);
+			params.push(s, s, s, s, s, s);
 		}
 
 		const whereSql = where.join(' AND ');
@@ -78,7 +120,8 @@ export async function GET(request: Request) {
 			`SELECT COUNT(*) as total FROM ${TABLE} WHERE ${whereSql}`,
 			params
 		);
-		const total = countRows[0]?.total || 0;
+		const count = countRows as Array<{ total: number }>;
+		const total = count[0]?.total || 0;
 
 		const [rows] = await db.execute(
 			`SELECT *, ROW_NUMBER() OVER (ORDER BY voucher_date DESC, created_at DESC) as sr_no FROM ${TABLE} WHERE ${whereSql} ORDER BY voucher_date DESC, created_at DESC LIMIT ? OFFSET ?`,
@@ -93,7 +136,9 @@ export async function GET(request: Request) {
 				SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
 				SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
 				COALESCE(SUM(net_amount), 0) as totalAmount,
-				COALESCE(SUM(CASE WHEN status = 'approved' THEN net_amount ELSE 0 END), 0) as approvedAmount
+				COALESCE(SUM(CASE WHEN status = 'approved' THEN net_amount ELSE 0 END), 0) as approvedAmount,
+				SUM(CASE WHEN recognition_state = 'recognized' AND linked_cost_uid IS NULL THEN 1 ELSE 0 END) as recognizedCost,
+				SUM(CASE WHEN linked_cost_uid IS NOT NULL THEN 1 ELSE 0 END) as linkedCopies
 			FROM ${TABLE}
 			WHERE isDelete = 0
 		`);
@@ -105,35 +150,32 @@ export async function GET(request: Request) {
 				page,
 				limit,
 				total,
-				totalPages: Math.ceil(total / limit),
+				totalPages: Math.ceil(total / limit)
 			},
-			stats: statsRows[0] || {},
+			stats: (statsRows as Array<Record<string, unknown>>)[0] || {}
 		});
-	} catch (error: any) {
+	} catch (error) {
 		console.error('Error fetching other expenses:', error);
 		return NextResponse.json(
-			{ success: false, error: error.message },
+			{ success: false, error: errorMessage(error) },
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.release();
+		if (db) db.release();
 	}
 }
 
 export async function POST(request: Request) {
-	const authResult: any = await ensurePermission(
+	const auth = await ensurePermission(
 		request,
 		RESOURCES.OTHER_EXPENSES,
 		PERMISSIONS.CREATE
 	);
-	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
+	if (auth instanceof Response) return auth;
+	const user = auth.user;
 
-	let db: any;
 	try {
-		const body = await request.json();
-		const user = authResult.user;
-
+		const body = (await request.json()) as Record<string, unknown>;
 		if (!body.voucher_date) {
 			return NextResponse.json(
 				{ success: false, error: 'voucher_date is required' },
@@ -153,111 +195,43 @@ export async function POST(request: Request) {
 			);
 		}
 
-		db = await dbConnect();
-
-		const id = crypto.randomUUID();
-		const billAmount = Number(body.bill_amount ?? 0);
-		const gstAmount = Number(body.gst_amount ?? 0);
-		const netAmount = body.net_amount ?? billAmount + gstAmount;
-
-		let vendorName = body.vendor_name || null;
-		const vendorId = body.vendor_id || null;
-		let employeeName = body.employee_name || null;
-		const employeeId = body.employee_id || null;
-
-		if (body.payee_type === 'vendor' && vendorId && !vendorName) {
-			const [vRows] = await db.execute(
-				'SELECT vendor_name FROM vendors WHERE id = ?',
-				[vendorId]
-			);
-			vendorName = vRows[0]?.vendor_name || null;
-		}
-		if (body.payee_type === 'employee' && employeeId && !employeeName) {
-			const [eRows] = await db.execute(
-				"SELECT CONCAT(first_name, ' ', last_name) as full_name FROM employees WHERE id = ?",
-				[employeeId]
-			);
-			employeeName = eRows[0]?.full_name || null;
-		}
-
-		// Number generation and INSERT are one transaction so concurrent POSTs
-		// cannot mint the same OEX number; the unique active voucher-number index
-		// makes a lost race a duplicate-key error, which retries from a fresh read.
-		let voucherNumber = '';
-		for (let attempt = 1; ; attempt++) {
-			await db.beginTransaction();
-			try {
-				voucherNumber = body.voucher_number || (await nextNumber(db));
-
-				await db.execute(
-					`INSERT INTO ${TABLE}
-				(id, voucher_number, voucher_date, expense_category, payee_type,
-				 vendor_id, vendor_name, employee_id, employee_name,
-				 bill_no, bill_date, bill_amount, gst_amount, net_amount,
-				 description, status, created_by)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					[
-						id,
-						voucherNumber,
-						body.voucher_date,
-						body.expense_category,
-						body.payee_type,
-						vendorId,
-						vendorName,
-						employeeId,
-						employeeName,
-						body.bill_no || null,
-						body.bill_date || null,
-						billAmount,
-						gstAmount,
-						netAmount,
-						body.description || null,
-						body.status || 'submitted',
-						user?.id || null,
-					]
-				);
-
-				await db.commit();
-				break;
-			} catch (error) {
-				await db.rollback();
-				if (
-					!body.voucher_number &&
-					isRetryableNumberError(error) &&
-					attempt < 5
-				) {
-					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
-					continue;
-				}
-				throw error;
-			}
-		}
+		// Number minting, the register row, the canonical identity (or receipt
+		// link), and the journal row are one transaction inside the module.
+		const data = await captureOtherExpense(toCaptureInput(body), {
+			id: user?.id ?? null
+		});
 
 		const payeeLabel =
 			body.payee_type === 'vendor'
-				? `vendor ${vendorName || vendorId || ''}`
-				: `employee ${employeeName || employeeId || ''}`;
+				? `vendor ${body.vendor_name || body.vendor_id || ''}`
+				: `employee ${body.employee_name || body.employee_id || ''}`;
 
-		await (logActivity as any)({
+		await logActivity({
 			userId: user?.id,
 			actionType: 'create',
 			resourceType: 'other_expense',
-			resourceId: id,
-			description: `Created other expense ${voucherNumber} for ${body.expense_category} (${payeeLabel})`,
-			request: request as any,
+			resourceId: data.id,
+			description: `Created other expense ${data.voucher_number} for ${body.expense_category} (${payeeLabel})`,
+			request
 		});
 
-		return NextResponse.json({
-			success: true,
-			data: { id, voucher_number: voucherNumber },
-		});
-	} catch (error: any) {
+		return NextResponse.json({ success: true, data });
+	} catch (error) {
+		if (error instanceof CostError) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code,
+					...error.detail
+				},
+				{ status: error.status }
+			);
+		}
 		console.error('Error creating other expense:', error);
 		return NextResponse.json(
-			{ success: false, error: error.message },
+			{ success: false, error: errorMessage(error) },
 			{ status: 500 }
 		);
-	} finally {
-		if (db) await db.release();
 	}
 }

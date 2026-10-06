@@ -54,7 +54,13 @@ export interface CommandOptions {
 	connection?: SqlConnection;
 }
 
-async function inTransaction<T>(
+/**
+ * Run `work` in the caller's transaction when one is supplied, and in a fresh
+ * module-owned transaction otherwise. Exported so a source module (#315, #316,
+ * #317) can honour the same contract: join the caller's transaction, never
+ * open a second one around it.
+ */
+export async function inTransaction<T>(
 	options: CommandOptions | undefined,
 	work: (db: SqlConnection) => Promise<T>
 ): Promise<T> {
