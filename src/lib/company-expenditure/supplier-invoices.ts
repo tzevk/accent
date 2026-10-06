@@ -810,37 +810,69 @@ export async function executeSupplierCommand(
 					: (num(row, 'withholding_tax_amount') ?? 0),
 		};
 
-		// A pair change (original currency or reporting target) must never carry
-		// the old pair's evidence: without an explicit fresh triple in this
-		// patch the stored rate/date/reference are dropped, the record states
-		// `unsupported`, and re-entering evidence is a new versioned act.
-		const storedCurrency = currencyCodeOf(s(row, 'currency'));
-		const storedReporting = reportingCurrencyOf({
-			reportingCurrency: s(row, 'reporting_currency'),
-		});
-		const reportingInput =
-			patch.reportingCurrency !== undefined
-				? patch.reportingCurrency
-				: s(row, 'reporting_currency');
+		// A rate is evidence for one currency pair: a changed pair never inherits
+		// the stored rate/date/reference (the corrected #319 rule). A convertible
+		// new pair demands the complete fresh triple in this same command
+		// (`conversion_evidence_required`); a same-currency new pair clears it.
+		const storedPair = {
+			currency: currencyCodeOf(s(row, 'currency')),
+			reportingCurrency: reportingCurrencyOf({
+				reportingCurrency: s(row, 'reporting_currency'),
+			}),
+		};
+		const requestedPair = {
+			currency:
+				patch.currency !== undefined
+					? currencyCodeOf(patch.currency)
+					: storedPair.currency,
+			reportingCurrency:
+				patch.reportingCurrency !== undefined
+					? reportingCurrencyOf({
+							reportingCurrency: currencyCodeOf(patch.reportingCurrency),
+						})
+					: storedPair.reportingCurrency,
+		};
 		const pairChanged =
-			currencyCodeOf(merged.currency) !== storedCurrency ||
-			reportingCurrencyOf({ reportingCurrency: reportingInput }) !==
-				storedReporting;
+			requestedPair.currency !== storedPair.currency ||
+			requestedPair.reportingCurrency !== storedPair.reportingCurrency;
+		const suppliesConversionEvidence =
+			patch.conversionRate !== undefined ||
+			patch.conversionDate !== undefined ||
+			patch.conversionEvidenceReference !== undefined;
+		if (
+			pairChanged &&
+			!suppliesConversionEvidence &&
+			requestedPair.currency !== null &&
+			requestedPair.currency !== requestedPair.reportingCurrency
+		) {
+			throw new CostError(
+				'conversion_evidence_required',
+				'Changing the original/reporting currency pair requires fresh conversion evidence for the new pair',
+				422,
+				{
+					fields: [
+						'conversion_rate',
+						'conversion_date',
+						'conversion_evidence_reference',
+					],
+				}
+			);
+		}
 		const rawConversion = {
-			currency: merged.currency,
-			reportingCurrency: reportingInput,
+			currency: requestedPair.currency ?? currencyCodeOf(merged.currency),
+			reportingCurrency: requestedPair.reportingCurrency,
 			conversionRate: pairChanged
-				? (patch.conversionRate as unknown)
+				? (patch.conversionRate ?? null)
 				: patch.conversionRate !== undefined
 					? patch.conversionRate
 					: dec(row, 'conversion_rate'),
 			conversionDate: pairChanged
-				? (patch.conversionDate as unknown)
+				? (patch.conversionDate ?? null)
 				: patch.conversionDate !== undefined
 					? patch.conversionDate
 					: s(row, 'conversion_date'),
 			conversionEvidenceReference: pairChanged
-				? (patch.conversionEvidenceReference as unknown)
+				? (patch.conversionEvidenceReference ?? null)
 				: patch.conversionEvidenceReference !== undefined
 					? patch.conversionEvidenceReference
 					: s(row, 'conversion_evidence_reference'),

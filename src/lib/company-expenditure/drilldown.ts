@@ -10,7 +10,7 @@
  */
 
 import { R, toNumber } from '@/lib/money';
-import { currencyCodeOf } from './currency';
+import { currencyCodeOf, reportingCurrencyOf } from './currency';
 import { loadFilteredExpenseRecords, toCostRecordJson, type SqlConnection } from './records';
 import { loadFilteredSupplierRecords } from './supplier-invoices';
 import type { CostDrilldown, CostDrilldownQuery, CostRecord, CostSource } from './types';
@@ -77,6 +77,9 @@ export async function loadCombinedDrilldown(
 				);
 	const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
 	const offset = Math.max(query.offset ?? 0, 0);
+	const reporting = reportingCurrencyOf({
+		reportingCurrency: query.reportingCurrency ?? null,
+	});
 	return {
 		month: query.month,
 		scope: 'month',
@@ -85,7 +88,7 @@ export async function loadCombinedDrilldown(
 		offset,
 		records: merged
 			.slice(offset, offset + limit)
-			.map((record) => toCostRecordJson(record)),
+			.map((record) => toCostRecordJson(record, reporting)),
 		totals: {
 			confirmed_amount: confirmedAmount,
 			currency: currencies.length === 1 ? currencies[0] : null,

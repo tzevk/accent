@@ -96,6 +96,8 @@ const FX_INVOICE = {
 	gross: 1200,
 	rate: 83.5,
 	updatedRate: 84,
+	/** A fresh triple for the changed pair (USD → EUR). */
+	pairRate: 0.9,
 	rateDate: '2020-06-10',
 	evidenceReference: 'E2E-SINV-FX-9003',
 	converted: 1200 * 84,
@@ -1161,15 +1163,68 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 	expect(Number(correctedRow[0].conversion_rate)).toBe(FX_INVOICE.updatedRate);
 	expect(Number(correctedRow[0].financial_version)).toBe(2);
 
-	// A pair change never reuses the old pair's evidence: switching the
-	// reporting target without a fresh triple clears the rate/date/reference
-	// (the record states `unsupported` until evidence is re-entered).
-	const switched = await command(request, id, {
+	// A rate is evidence for one currency pair: a convertible pair change
+	// without a fresh triple is refused and nothing changes.
+	const refusedPair = await command(request, id, {
 		command: 'update',
 		expected_version: 2,
+		patch: { reporting_currency: 'EUR' },
+	});
+	expect(refusedPair.status, JSON.stringify(refusedPair.body)).toBe(422);
+	expect(refusedPair.body.code).toBe('conversion_evidence_required');
+	expect(refusedPair.body.fields).toContain('conversion_rate');
+	const unchangedPair = await rows<{
+		reporting_currency: string;
+		conversion_rate: string | null;
+		financial_version: number;
+	}>(
+		`SELECT reporting_currency, conversion_rate, financial_version
+       FROM purchase_invoices WHERE id = ?`,
+		[id]
+	);
+	expect(unchangedPair[0].reporting_currency).toBe('INR');
+	expect(Number(unchangedPair[0].conversion_rate)).toBe(FX_INVOICE.updatedRate);
+	expect(Number(unchangedPair[0].financial_version)).toBe(2);
+
+	// The same pair change with a fresh, explicit triple is accepted and the
+	// stored evidence is the new pair's, never the old one's.
+	const repriced = await command(request, id, {
+		command: 'update',
+		expected_version: 2,
+		patch: {
+			reporting_currency: 'EUR',
+			conversion_rate: FX_INVOICE.pairRate,
+			conversion_date: FX_INVOICE.rateDate,
+			conversion_evidence_reference: FX_INVOICE.evidenceReference,
+		},
+	});
+	expect(repriced.status, JSON.stringify(repriced.body)).toBe(200);
+	const repricedRow = await rows<{
+		reporting_currency: string;
+		conversion_rate: string | null;
+		financial_version: number;
+	}>(
+		`SELECT reporting_currency, conversion_rate, financial_version
+       FROM purchase_invoices WHERE id = ?`,
+		[id]
+	);
+	expect(repricedRow[0].reporting_currency).toBe('EUR');
+	expect(Number(repricedRow[0].conversion_rate)).toBe(FX_INVOICE.pairRate);
+	expect(Number(repricedRow[0].financial_version)).toBe(3);
+	const pairJournal = await rows<{ snapshot: string }>(
+		`SELECT snapshot FROM financial_cost_events
+      WHERE cost_uid = ? AND version = 3`,
+		[createdBody.data.cost_uid]
+	);
+	expect(pairJournal[0].snapshot).toContain('"conversion_pair_changed":true');
+
+	// A same-currency pair needs no conversion: the triple is cleared.
+	const sameCurrency = await command(request, id, {
+		command: 'update',
+		expected_version: 3,
 		patch: { reporting_currency: 'USD' },
 	});
-	expect(switched.status, JSON.stringify(switched.body)).toBe(200);
+	expect(sameCurrency.status, JSON.stringify(sameCurrency.body)).toBe(200);
 	const clearedRow = await rows<{
 		reporting_currency: string;
 		conversion_rate: string | null;
@@ -1186,26 +1241,14 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 	expect(clearedRow[0].conversion_rate).toBeNull();
 	expect(clearedRow[0].conversion_date).toBeNull();
 	expect(clearedRow[0].conversion_evidence_reference).toBeNull();
-	expect(Number(clearedRow[0].financial_version)).toBe(3);
-	const pairJournal = await rows<{ snapshot: string }>(
-		`SELECT snapshot FROM financial_cost_events
-      WHERE cost_uid = ? AND version = 3`,
-		[createdBody.data.cost_uid]
-	);
-	expect(pairJournal[0].snapshot).toContain('"conversion_pair_changed":true');
+	expect(Number(clearedRow[0].financial_version)).toBe(4);
 
-	// Switching back is another pair change; the evidence is still absent,
-	// and re-entering it is an explicit fresh act.
-	const restoredTarget = await command(request, id, {
-		command: 'update',
-		expected_version: 3,
-		patch: { reporting_currency: 'INR' },
-	});
-	expect(restoredTarget.status, JSON.stringify(restoredTarget.body)).toBe(200);
+	// Back to the INR basis with a fresh triple; recognition freezes it.
 	const fresh = await command(request, id, {
 		command: 'update',
 		expected_version: 4,
 		patch: {
+			reporting_currency: 'INR',
 			conversion_rate: FX_INVOICE.updatedRate,
 			conversion_date: FX_INVOICE.rateDate,
 			conversion_evidence_reference: FX_INVOICE.evidenceReference,
@@ -1264,7 +1307,9 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 		rate: FX_INVOICE.updatedRate,
 		converted: FX_INVOICE.converted,
 		pairChange: {
-			clearedToTarget: clearedRow[0],
+			refusedWithoutFreshTriple: 'conversion_evidence_required',
+			repricedWithFreshTriple: repricedRow[0],
+			sameCurrencyPairCleared: clearedRow[0],
 			journalRecorded: pairJournal[0].snapshot.includes(
 				'"conversion_pair_changed":true'
 			),
@@ -1609,6 +1654,18 @@ test('refuses recognition to unapproved and unauthorized identities', async ({
 			}
 		);
 		expect(editorReprice.status()).toBe(403);
+		// A currency-only patch is the same approval act and cannot bypass it.
+		const editorCurrency = await editor.post(
+			`/api/admin/purchase-invoices/${seeded.invoiceIds.pending}/commands`,
+			{
+				data: {
+					command: 'update',
+					expected_version: 1,
+					patch: { currency: 'EUR' },
+				},
+			}
+		);
+		expect(editorCurrency.status()).toBe(403);
 		const stillPending = await rows<{ recognition_state: string }>(
 			`SELECT recognition_state FROM purchase_invoices WHERE id = ?`,
 			[seeded.invoiceIds.pending]

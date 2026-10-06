@@ -9,7 +9,12 @@
  * transaction.
  */
 
-import { conversionStatusOf, currencyCodeOf, evidenceOf } from './currency';
+import {
+	conversionStatusOf,
+	currencyCodeOf,
+	evidenceOf,
+	REPORTING_CURRENCY,
+} from './currency';
 import { evaluateCost } from './recognition';
 import type {
 	CostClassification,
@@ -150,8 +155,11 @@ export function mapCostRow(row: DbRow): CostRecord {
 	};
 }
 
-/** The record as the report endpoints publish it. */
-export function toCostRecordJson(record: CostRecord): CostRecordJson {
+/** The record as the report endpoints publish it, in the requested basis. */
+export function toCostRecordJson(
+	record: CostRecord,
+	reporting: string = REPORTING_CURRENCY
+): CostRecordJson {
 	return {
 		id: record.id,
 		cost_uid: record.costUid,
@@ -172,7 +180,7 @@ export function toCostRecordJson(record: CostRecord): CostRecordJson {
 		conversion_date: record.conversionDate,
 		conversion_evidence_reference: record.conversionEvidenceReference,
 		converted_amount: record.convertedAmount,
-		conversion_status: conversionStatusOf(evidenceOf(record)),
+		conversion_status: conversionStatusOf(evidenceOf(record), reporting),
 		gross_amount: record.grossAmount,
 		tax_amount: record.taxAmount,
 		tax_treatment: record.taxTreatment,

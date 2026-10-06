@@ -497,6 +497,8 @@ export interface CostDrilldownQuery {
 	projectId?: number | null;
 	/** Narrow to one cost source; 'all' (default) merges every source. */
 	source?: CostSource | 'all';
+	/** Reporting basis the record states are computed in; absent = default. */
+	reportingCurrency?: string | null;
 	limit?: number;
 	offset?: number;
 }

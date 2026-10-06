@@ -646,9 +646,11 @@ export default function SupplierRecognitionDialog({
 						/>
 					</label>
 					<p className="text-[11px] text-gray-500 md:col-span-2">
-						Changing the currency or the reporting target clears the rate,
-						date, and reference — stale evidence for another currency pair is
-						never reused. Saving evidence needs approval access.
+						A rate is evidence for one currency pair. Changing the currency or
+						the reporting target requires the fresh rate, date, and reference
+						for the new pair in the same save (a same-currency pair needs
+						none); stale evidence is never reused. Saving evidence needs
+						approval access.
 					</p>
 				</div>
 

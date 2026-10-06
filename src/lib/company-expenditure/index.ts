@@ -138,10 +138,7 @@ export {
 	convertToReporting,
 	conversionException,
 	conversionStatusOf,
-	currencyCodeOf,
-	evidenceOf,
 	isCurrencyCode,
-	parseConversionRate,
 	reportingCurrencyOf,
 	resolveConversion,
 } from './currency';

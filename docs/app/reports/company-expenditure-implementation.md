@@ -392,11 +392,15 @@ reject, cancel) with `expected_version`.
   foreign invoice stores its reporting target, rate, rate date, and evidence
   reference, validated by the shared `resolveConversion` (full triple or none);
   `converted_amount` is frozen at recognition. A pair change (currency or
-  reporting target) without an explicit fresh triple clears the stored
-  evidence instead of reusing it (`conversion_pair_changed` in the journal),
-  repricing needs `other_expenses:approve`, and an invoice without matching
-  evidence keeps its own currency total with `unsupported` status — no guessed
-  or inverted rate, no mixed total. A split invoice also freezes each slice's
+  reporting target) never inherits the stored evidence: a convertible new pair
+  requires the complete fresh triple in the same command
+  (`422 conversion_evidence_required`), a same-currency pair clears it, the
+  journal records `conversion_pair_changed`, `currency` is among the
+  approve-gated patch fields, and the dialog clears its triple on a pair
+  change. The drilldown takes `reporting_currency` and states each record's
+  `conversion_status` in that basis. An invoice without matching evidence
+  keeps its own currency total with `unsupported` status — no guessed or
+  inverted rate, no mixed total. A split invoice also freezes each slice's
   converted amount (`supplier_invoice_periods.converted_amount`: per-slice
   rounding) and states its own converted amount as the sum of those slices, so
   the frozen figure and the report agree to the cent.

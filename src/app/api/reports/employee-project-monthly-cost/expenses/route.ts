@@ -121,11 +121,29 @@ export async function GET(request: Request) {
 			);
 		}
 
+		// The reporting basis every record's conversion status is stated in;
+		// absent means the company reporting currency.
+		const reportingParam = url.searchParams.get('reporting_currency');
+		const reportingCurrency = reportingParam
+			? reportingParam.trim().toUpperCase()
+			: null;
+		if (reportingCurrency && !/^[A-Z]{3}$/.test(reportingCurrency)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Valid reporting_currency (three-letter code) is required',
+					code: 'invalid_reporting_currency',
+				},
+				{ status: 400 }
+			);
+		}
+
 		const query: CostDrilldownQuery = {
 			month,
 			state: state as CostDrilldownQuery['state'],
 			classification: classification as CostDrilldownQuery['classification'],
 			projectId,
+			reportingCurrency,
 			limit,
 			offset,
 		};

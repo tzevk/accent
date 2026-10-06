@@ -208,6 +208,7 @@ export async function POST(
 		const conversionPatch =
 			rawPatch !== undefined &&
 			[
+				'currency',
 				'reporting_currency',
 				'conversion_rate',
 				'conversion_date',
