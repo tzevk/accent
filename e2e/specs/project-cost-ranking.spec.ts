@@ -43,8 +43,9 @@ import {
 test.use({
 	storageState: 'e2e/.auth/admin-report.json',
 	// This spec's own rate-limit identity through the proxy's trusted header
-	// (ADR-0013), so a combined run cannot exhaust another spec's budget.
-	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.24' },
+	// (ADR-0013), so a combined run cannot share a bucket with another spec
+	// (#306 uses .21/.23, #315 .24), and cannot exhaust the shared budget.
+	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.27' },
 });
 test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
