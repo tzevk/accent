@@ -51,8 +51,6 @@ interface BudgetComparisonRow {
 	/** Approved period charges (#317) included in `incurred_cost`. */
 	period_charges: number;
 	pending_records: number;
-	/** Supported approved period charges (#317) inside this month's cost. */
-	period_charges: number;
 	outcome: string;
 	budget: BudgetCandidateRow | null;
 	candidates: BudgetCandidateRow[];

@@ -1235,3 +1235,11 @@ An empty or estimated-only payroll month does not establish recorded zero.
 `e2e/specs/payroll-only-cost-budget.spec.ts` covers positive and recorded-zero payroll-only Projects.
 It checks budget approval, report values, payroll storage, and the browser comparison.
 Its archived payroll fixtures use June 2017 and refuse foreign slips or an unowned payroll run.
+
+### Integrated contract repairs
+
+Native expense rows map with an explicit callback, so array indexes cannot replace their source identity.
+The reconciliation input includes approved period charges, source balances, and prior full-month cost.
+Cost to date preserves an explicit unknown amount. An absent currency entry contributes no prior cost.
+Employee financial-year details use the same recorded allocation hourly rate as the financial-year table.
+Unused Salary Profile estimate builders are removed. All active employee-cost readers use the shared payroll interpretation.
