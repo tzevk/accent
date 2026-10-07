@@ -66,6 +66,7 @@ import {
 import type {
 	CostClassification,
 	CostCommandName,
+	CostDrilldownQuery,
 	CostRecord,
 	PeriodBasis,
 	RecognitionState,
@@ -189,6 +190,7 @@ export function mapPettyCashRow(row: DbRow): CostRecord {
 	return {
 		...financial,
 		source: 'petty_cash',
+		sourceId: s(row, 'id') ?? '',
 		split: null,
 		id: Number(num(row, 'numeric_id') ?? 0),
 		costUid: s(row, 'cost_uid'),

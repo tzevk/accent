@@ -33,6 +33,10 @@ const scheduleDate = (value) =>
  * Load the effective Component Rates (payroll_schedules) once per run.
  * All component rates — including DA — resolve from `payroll_schedules`
  * (Component Rates); there is no legacy DA-table fallback.
+ * @param {Date|string} forDate - The month to price: a `YYYY-MM`/`YYYY-MM-DD`
+ *   string or a Date, as `scheduleDate` accepts.
+ * @param {object|null} existingDb - Caller's connection, passed through so a
+ *   caller inside a transaction reads one snapshot.
  */
 export async function getEffectivePayrollSchedule(
 	forDate = new Date(),
