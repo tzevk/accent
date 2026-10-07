@@ -625,8 +625,8 @@ async function advanceOrderVersion(
 		`UPDATE orders SET financial_version = financial_version + 1
       WHERE order_uid = ? AND financial_version = ? AND isDelete = 0`,
 		[orderUid, expectedVersion]
-	)) as [unknown, { affectedRows?: number }];
-	const affected = Number(result[1]?.affectedRows ?? 0);
+	)) as [{ affectedRows?: number }, unknown];
+	const affected = Number(result[0]?.affectedRows ?? 0);
 	if (affected !== 1) {
 		throw new OrderError(
 			'stale_version',
@@ -880,8 +880,8 @@ export async function recordOrderConsumption(
 					reason,
 					evidenceReference,
 				]
-			)) as [unknown, { insertId?: number }];
-			insertId = Number(result[1]?.insertId ?? 0);
+			)) as [{ insertId?: number }, unknown];
+			insertId = Number(result[0]?.insertId ?? 0);
 		} catch (error) {
 			const errno = (error as { errno?: number; code?: string })?.errno;
 			const code = (error as { code?: string })?.code;
