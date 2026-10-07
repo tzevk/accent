@@ -265,11 +265,7 @@ test.describe('financial races', () => {
 		// The rollup owner is a canonical client order; the supplier order is
 		// the refusal probe (a client invoice can never reference it). Both are
 		// created through the real entry API, not inserted directly.
-		orderUid = await createRaceOrder(
-			'client',
-			ORDER_NUMBER,
-			CLIENT_NAME
-		);
+		orderUid = await createRaceOrder('client', ORDER_NUMBER, CLIENT_NAME);
 		supplierOrderUid = await createRaceOrder(
 			'supplier',
 			SUPPLIER_ORDER_NUMBER,
@@ -283,9 +279,9 @@ test.describe('financial races', () => {
 			[ORDER_NUMBER, SUPPLIER_ORDER_NUMBER]
 		);
 		expect(seeded).toHaveLength(2);
-		expect(
-			new Set(seeded.map((row) => row.direction))
-		).toEqual(new Set(['client', 'supplier']));
+		expect(new Set(seeded.map((row) => row.direction))).toEqual(
+			new Set(['client', 'supplier'])
+		);
 	});
 
 	test.afterAll(async () => {

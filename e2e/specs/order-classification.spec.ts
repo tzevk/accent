@@ -1247,9 +1247,7 @@ test('keeps order money and its client rollup at cent precision', async ({
 	);
 	expect(invoiceRows).toHaveLength(2);
 	for (const invoice of invoiceRows) {
-		await apiJson(
-			await request.delete(`/api/admin/invoices/${invoice.id}`)
-		);
+		await apiJson(await request.delete(`/api/admin/invoices/${invoice.id}`));
 	}
 	const reversed = await dbOrder(CREATED_ORDERS.centsClient.number);
 	expect(Number(reversed.client_invoiced_value)).toBe(0);

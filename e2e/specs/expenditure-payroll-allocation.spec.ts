@@ -849,7 +849,11 @@ test('prices the month from the eligible canonical profile, never a newer legacy
 
 	// With no canonical profile at all the legacy row is still the pricing.
 	const legacy = employeeOf(
-		await payrollDrilldown(request, ESTIMATE_MONTH, seeded.employeeIds.legacyOnly),
+		await payrollDrilldown(
+			request,
+			ESTIMATE_MONTH,
+			seeded.employeeIds.legacyOnly
+		),
 		'E2E-ALLOC-09'
 	);
 	expect(legacy.status).toBe('estimated');

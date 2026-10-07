@@ -1401,7 +1401,9 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 	);
 	expect(pairJournal[0].reporting_currency).toBe('EUR');
 	expect(Number(pairJournal[0].conversion_rate)).toBe(FX_INVOICE.pairRate);
-	expect(pairJournal[0].conversion_evidence_reference).toBe(FX_INVOICE.evidenceReference);
+	expect(pairJournal[0].conversion_evidence_reference).toBe(
+		FX_INVOICE.evidenceReference
+	);
 
 	// A same-currency pair needs no conversion: the triple is cleared.
 	const sameCurrency = await command(request, id, {
