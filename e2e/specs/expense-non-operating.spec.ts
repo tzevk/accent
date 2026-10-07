@@ -224,7 +224,11 @@ interface ReconciliationData {
 		period_charge_count: number;
 	}>;
 	evidence: {
-		recognized: { count: number; currency: string | null; amount: number | null };
+		recognized: {
+			count: number;
+			currency: string | null;
+			amount: number | null;
+		};
 		period_charges: {
 			count: number;
 			currency: string | null;
@@ -359,10 +363,9 @@ async function cancelCharge(
 	chargeUid: string,
 	data: Record<string, unknown>
 ) {
-	return request.post(
-		`/api/admin/expenses/${sourceId}/charges/${chargeUid}`,
-		{ data: { command: 'cancel', ...data } }
-	);
+	return request.post(`/api/admin/expenses/${sourceId}/charges/${chargeUid}`, {
+		data: { command: 'cancel', ...data },
+	});
 }
 
 /** Open the report on the expenditure view for one month. */
@@ -489,9 +492,7 @@ test('excludes non-operating balances from Company Incurred Cost and shows them 
 	expect(capital.gross_amount).toBe(NON_OPERATING.capitalGross);
 	expect(capital.recognized_amount).toBe(NON_OPERATING.capitalRecognized);
 	expect(capital.consumed_to_date).toBe(5000);
-	expect(capital.remaining_amount).toBe(
-		NON_OPERATING.capitalRecognized - 5000
-	);
+	expect(capital.remaining_amount).toBe(NON_OPERATING.capitalRecognized - 5000);
 
 	const draft = item(data, seededCost('draftAdvance').costUid)!;
 	expect(draft.source_state).toBe('draft');
@@ -584,12 +585,14 @@ test('counts approved period consumption in its own month, never the balance mon
 	)!;
 	expect(inr.period_charge_amount).toBe(AUGUST.charges);
 	expect(inr.period_charge_count).toBe(AUGUST.chargeRecords);
-	expect(august.company.incurred_cost).toBe(
-		AUGUST.charges + AUGUST_OPERATING
-	);
+	expect(august.company.incurred_cost).toBe(AUGUST.charges + AUGUST_OPERATING);
 
-	const alpha = august.projects.find((row) => row.project_code === 'E2E-EXP-P1')!;
-	const beta = august.projects.find((row) => row.project_code === 'E2E-EXP-P2')!;
+	const alpha = august.projects.find(
+		(row) => row.project_code === 'E2E-EXP-P1'
+	)!;
+	const beta = august.projects.find(
+		(row) => row.project_code === 'E2E-EXP-P2'
+	)!;
 	expect(alpha.incurred_cost).toBe(AUGUST.projectAlpha);
 	expect(alpha.period_charge_count).toBe(2);
 	expect(beta.incurred_cost).toBe(AUGUST.projectBeta);
@@ -633,9 +636,7 @@ test('counts approved period consumption in its own month, never the balance mon
 	const capital = item(august, seededCost('capitalPractice').costUid)!;
 	expect(capital.charges[0].basis).toBe('depreciation');
 	expect(capital.consumed_this_month).toBe(5000);
-	expect(capital.remaining_amount).toBe(
-		NON_OPERATING.capitalRecognized - 5000
-	);
+	expect(capital.remaining_amount).toBe(NON_OPERATING.capitalRecognized - 5000);
 
 	// The items in this month are the July sources carrying a charge here plus
 	// the unresolved-nature record; no July balance is recognised in August.
@@ -683,7 +684,8 @@ test('counts approved period consumption in its own month, never the balance mon
 		].sort()
 	);
 	const approvedCharge = chargeDrilldown.period_charges.find(
-		(charge) => charge.charge_uid === seededCharge('advanceConsumption').chargeUid
+		(charge) =>
+			charge.charge_uid === seededCharge('advanceConsumption').chargeUid
 	)!;
 	expect(approvedCharge.source_cost_uid).toBe(
 		seededCost('advancePractice').costUid
@@ -1014,9 +1016,9 @@ test('captures and cancels a period charge through the report controls', async (
 	expect(chargedMonth.company.incurred_cost).toBe(5000);
 	const balanceMonth = await reconciliation(request, CHARGE_MONTH);
 	expect(balanceMonth.company.incurred_cost).toBe(AUGUST.total);
-	expect(item(balanceMonth, seededCost('advancePractice').costUid)!.remaining_amount).toBe(
-		35000
-	);
+	expect(
+		item(balanceMonth, seededCost('advancePractice').costUid)!.remaining_amount
+	).toBe(35000);
 
 	// A duplicate through the same control surfaces the refusal and writes
 	// nothing.
@@ -1103,7 +1105,9 @@ test('records a non-operating item through the report and excludes it until cons
 	await page.getByRole('button', { name: 'Record cost', exact: true }).click();
 	const form = page.getByTestId('cost-form');
 	await expect(form).toBeVisible();
-	await form.getByLabel('Nature', { exact: true }).selectOption(UI_EXPENSE.nature);
+	await form
+		.getByLabel('Nature', { exact: true })
+		.selectOption(UI_EXPENSE.nature);
 	await form
 		.getByLabel('Classification', { exact: true })
 		.selectOption('company_overhead');
@@ -1130,7 +1134,9 @@ test('records a non-operating item through the report and excludes it until cons
 	await form
 		.getByLabel('Evidence reference', { exact: true })
 		.fill(UI_EXPENSE.evidence);
-	await form.getByRole('button', { name: 'Save and submit', exact: true }).click();
+	await form
+		.getByRole('button', { name: 'Save and submit', exact: true })
+		.click();
 	await expect(form).toBeHidden();
 
 	const queued = await rows<Record<string, unknown>>(
@@ -1213,10 +1219,9 @@ test('records a non-operating item through the report and excludes it until cons
 
 	// A register edit cannot reclassify the item: nature is a versioned
 	// financial field, changed only through the command path.
-	const registerEdit = await request.put(
-		`/api/admin/expenses/${createdId}`,
-		{ data: { cost_nature: 'capital' } }
-	);
+	const registerEdit = await request.put(`/api/admin/expenses/${createdId}`, {
+		data: { cost_nature: 'capital' },
+	});
 	expect(registerEdit.status()).toBe(422);
 	const refusal = await registerEdit.json();
 	expect(refusal.code).toBe('financial_fields_versioned');
@@ -1344,7 +1349,9 @@ test('refuses unauthorized charge writes and reads without changing data', async
 			`/api/reports/employee-project-monthly-cost?view=expenditure&month=${SOURCE_MONTH}`
 		);
 		expect(readerReport.status()).toBe(403);
-		expect(JSON.stringify(await readerReport.json())).not.toContain('E2E-INV-317');
+		expect(JSON.stringify(await readerReport.json())).not.toContain(
+			'E2E-INV-317'
+		);
 		const readerDrill = await reader.get(
 			`/api/reports/employee-project-monthly-cost/expenses?month=${SOURCE_MONTH}`
 		);

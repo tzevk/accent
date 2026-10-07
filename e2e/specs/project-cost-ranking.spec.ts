@@ -805,9 +805,7 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
 	expect(disclosureCodes(data)).not.toContain('unequal_window_length');
 	// Neither compared month holds a day-less monthly item, so the day-less
 	// rule has nothing to withhold here.
-	expect(disclosureCodes(data)).not.toContain(
-		'dayless_monthly_cost_unproven'
-	);
+	expect(disclosureCodes(data)).not.toContain('dayless_monthly_cost_unproven');
 	for (const entry of data.comparison.disclosures) {
 		expect(entry.severity === 'warning' || entry.severity === 'info').toBe(
 			true
@@ -1737,10 +1735,7 @@ test('withholds an elapsed-window change for day-less monthly cost', async ({
 	const payrollWindow = payroll.comparison.currency_totals[0];
 	expect(payrollWindow.dayless_records).toBe(PAYROLL_CASE.recordedCount);
 	expect(payrollWindow.dayless_cost).toBe(PAYROLL_CASE.recorded);
-	const payrollDayless = disclosureOf(
-		payroll,
-		'dayless_monthly_cost_unproven'
-	);
+	const payrollDayless = disclosureOf(payroll, 'dayless_monthly_cost_unproven');
 	expect(payrollDayless.count).toBe(PAYROLL_CASE.recordedCount);
 	expect(payrollDayless.amount).toBe(PAYROLL_CASE.recorded);
 	for (const [code, amount] of [
