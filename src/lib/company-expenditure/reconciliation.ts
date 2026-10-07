@@ -67,6 +67,9 @@ import type {
 	CurrencyReporting,
 	CurrencyTotal,
 	EvidenceSummary,
+	EvidenceStateSummary,
+	PayrollExpenditure,
+	PayrollEmployeeCost,
 	FilteredProjectSubtotal,
 	PettyCashSummary,
 	NonOperatingItemJson,
@@ -516,7 +519,7 @@ function projectRows(
 						? null
 						: sumMoney(priorRows.map(confirmedAmount));
 			const before = costBefore.get(id);
-			const beforeAmount = before === undefined ? 0 : before.get(currency);
+			const beforeAmount = before?.get(currency);
 			const lateRows = inWindow.filter((record) =>
 				isLateEntry(record, currentEnd)
 			);
@@ -595,7 +598,9 @@ function projectRows(
 					? 'unproven'
 					: changeStateFor(comparison, previous),
 				cost_to_date:
-					beforeAmount === null ? null : rounded(add(beforeAmount, comparison)),
+					beforeAmount === null
+						? null
+						: rounded(add(beforeAmount ?? 0, comparison)),
 				late_entry:
 					lateRows.length === 0
 						? null
@@ -1088,6 +1093,12 @@ export interface ReconciliationInput {
 	 * period has any evidence at all.
 	 */
 	priorMonthRecords: CostRecord[];
+	/** Recognized non-operating sources and their approved monthly charges. */
+	charges: PeriodCharge[];
+	nonOperatingSources: CostRecord[];
+	chargeTotals: Map<string, number>;
+	/** Prior full-month cost, including all native sources and payroll. */
+	previousMonthProjectCost: Map<number, Map<string, number | null>>;
 	/** The date the reported month is measured to; today by default. */
 	asOf: string;
 	/**
