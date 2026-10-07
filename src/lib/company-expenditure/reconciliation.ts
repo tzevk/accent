@@ -1045,6 +1045,7 @@ const SOURCE_LABELS: Record<string, string> = {
 	petty_cash: 'Petty cash',
 	non_operating: 'Non-operating charges',
 	payroll: 'Employee cost (payroll)',
+	cost_accrual: 'Cost accruals',
 };
 
 /**
@@ -1055,6 +1056,7 @@ const SOURCE_LABELS: Record<string, string> = {
 const WIRED_SOURCES: ReadonlyArray<CostRecord['source']> = [
 	'direct_expense',
 	'supplier_invoice',
+	'cost_accrual',
 ];
 
 function sourceSummaries(records: CostRecord[]): ReconciliationSourceSummary[] {

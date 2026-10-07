@@ -122,6 +122,34 @@ import {
 import { buildReconciliation, projectIdsIn } from './reconciliation';
 import { registerCostSource } from './sources';
 import {
+	ACCRUAL_ADAPTER,
+	loadAccrualMonthProjectCost,
+	loadAccrualMonthRecords,
+	loadAccrualMonths,
+	loadAccrualProjectCostBefore,
+} from './accruals';
+export {
+	captureAccrualCost,
+	executeAccrualCommand,
+	executeAccrualReplacement,
+	loadAccrualConsumption,
+	loadAccrualDetail,
+} from './accruals';
+export type {
+	AccrualCaptureInput,
+	AccrualCommandInput,
+	AccrualConsumptionRow,
+	AccrualDetail,
+	AccrualLinkRow,
+	AccrualPatch,
+	AccrualReplacementCandidate,
+	AccrualReplacementInput,
+	AccrualReplacementResult,
+	AccrualReplacementRow,
+	AccrualSliceReference,
+	RecordedAccrual,
+} from './accruals';
+import {
 	loadFilteredOtherExpenseRecords,
 	loadOtherExpenseMonthProjectCost,
 	loadOtherExpenseMonthRecords,
@@ -402,6 +430,9 @@ const pool: SqlConnection = {
 // The supplier source registers its adapter so a `cost_uid` can resolve to a
 // purchase invoice from anywhere in the module.
 registerCostSource(SUPPLIER_INVOICE_ADAPTER);
+// The accrual source registers its adapter the same way (#313), including the
+// remaining slice #312's consumption command reads.
+registerCostSource(ACCRUAL_ADAPTER);
 
 
 /** Today's calendar month, from the server clock. */
@@ -417,13 +448,14 @@ export function currentDate(): string {
 /** Months with cost recorded in any wired source, newest first. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
 	const current = currentMonth();
-	const [direct, supplier, payroll, otherExpense, pettyCash] =
+	const [direct, supplier, payroll, otherExpense, pettyCash, accrual] =
 		await Promise.all([
 			loadExpenditureMonths(pool, current),
 			loadSupplierInvoiceMonths(pool, current),
 			loadPayrollAllocationMonths(pool),
 			loadOtherExpenseMonths(pool, current),
 			PETTY_CASH_COST_SOURCE.loadMonths(pool),
+			loadAccrualMonths(pool, current),
 		]);
 	const months = new Set([
 		...direct,
@@ -431,6 +463,7 @@ export async function fetchExpenditureMonths(): Promise<string[]> {
 		...payroll,
 		...otherExpense,
 		...pettyCash,
+		...accrual,
 	]);
 	months.add(current);
 	return [...months].sort().reverse();
@@ -504,6 +537,11 @@ export async function fetchCompanyReconciliation(
 		previousPayrollCost,
 		otherExpenseMonths,
 		pettyCashMonths,
+		accrualRecords,
+		accrualPriorRecords,
+		previousAccrualProjectCost,
+		accrualCostBefore,
+		accrualMonths,
 	] = await Promise.all([
 		loadMonthRecords(db, month),
 		loadMonthRecords(db, previousMonth),
@@ -550,12 +588,22 @@ export async function fetchCompanyReconciliation(
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
 		loadOtherExpenseMonths(db, currentMonth()),
 		PETTY_CASH_COST_SOURCE.loadMonths(db),
+		loadAccrualMonthRecords(db, month),
+		previousMonth
+			? loadAccrualMonthRecords(db, previousMonth)
+			: Promise.resolve([]),
+		previousMonth
+			? loadAccrualMonthProjectCost(db, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		loadAccrualProjectCostBefore(db, month),
+		loadAccrualMonths(db, currentMonth()),
 	]);
 	const records = [
 		...directRecords,
 		...supplierRecords,
 		...otherExpenseRecords,
 		...pettyCashRecords,
+		...accrualRecords,
 	];
 	// The comparison's prior window reads the same sources the month reads, so
 	// its prior side is measured from evidence and not from a single source.
@@ -564,6 +612,7 @@ export async function fetchCompanyReconciliation(
 		...supplierPriorRecords,
 		...otherExpensePriorRecords,
 		...pettyCashPriorRecords,
+		...accrualPriorRecords,
 	];
 
 	// A charge can draw down a balance recognized in an earlier month, so the
@@ -600,6 +649,7 @@ export async function fetchCompanyReconciliation(
 		previousOtherExpenseProjectCost,
 		previousPettyCashProjectCost,
 		previousPayrollCost,
+		previousAccrualProjectCost,
 	].reduce(
 		mergeProjectCostMaps,
 		new Map<number, Map<string, number | null>>()
@@ -613,6 +663,7 @@ export async function fetchCompanyReconciliation(
 		otherExpenseCostBefore,
 		pettyCashCostBefore,
 		payrollCostBefore,
+		accrualCostBefore,
 	].reduce(
 		mergeProjectCostMaps,
 		new Map<number, Map<string, number | null>>()
@@ -647,6 +698,7 @@ export async function fetchCompanyReconciliation(
 				...payrollMonths,
 				...otherExpenseMonths,
 				...pettyCashMonths,
+				...accrualMonths,
 			]),
 		]
 			.sort()

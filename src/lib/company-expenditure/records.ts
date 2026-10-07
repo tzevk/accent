@@ -234,6 +234,7 @@ export function toCostRecordJson(
 		missing_amount: record.grossAmount === null,
 		known_zero: record.grossAmount === 0,
 		reconstructed: record.reconstructed === true,
+		accrual: record.accrual ?? null,
 		exceptions: record.evaluation.exceptions,
 	};
 }
