@@ -45,7 +45,9 @@ type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
  *   E2E-RECON-05  slip ₹5,000; hours P1 25h → ₹5,000.00. The concurrent
  *                 propose/approve flow.
  *   E2E-RECON-06  slip ₹3,000; hours P1 30h + P2 30h + no project 30h = 90h →
- *                 ₹1,000.00 each. The stale-version flow: the reviewed
+ *                 exact shares ₹999.99⅔ each, so the largest-remainder step
+ *                 adds one cent to every share: ₹1,000.00 each, adjustment
+ *                 +₹0.03. The stale-version flow: the reviewed
  *                 proposal freezes even after the timesheet changes.
  *   E2E-RECON-07  (2018-02) slip ₹6,000; hours P1 27h + P2 27h = 54h →
  *                 ₹3,000.00 / ₹3,000.00; a ₹99,000 monthly profile covers
@@ -285,7 +287,10 @@ export const RECONSTRUCTION_EXPECTED = {
 		recordedCount: 5,
 		knownZeroCount: 0,
 		allocationMissingCount: 1,
-		roundingAdjustment: 0.01,
+		// 01 contributes +0.01 (one leftover cent to No project); 06
+		// contributes +0.03 (one leftover cent to each of its three
+		// 30h/30h/30h shares, since 3000/3 is not exact cents).
+		roundingAdjustment: 0.04,
 		project1: 24933.33,
 		project2: 10750,
 		unallocated: 14816.67,
