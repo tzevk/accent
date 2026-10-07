@@ -115,6 +115,13 @@ consumption.
 | `order_consumptions`       | One consumed native slice: `order_uid`, `cost_uid`, amount on the order's tax basis and currency, Recognition Period, `source_version`, `state`, `version`, actor/reason/evidence, release evidence |
 | `order_consumption_events` | Append-only per-row journal (`recorded` / `released`), keyed `(consumption_id, version)`                                                                                                            |
 
+Identifier collation is per reference: the `order_uid` columns use
+`utf8mb4_unicode_ci` to match `orders.order_uid`, and the `cost_uid`
+columns use `utf8mb4_general_ci` to match the shared financial cost
+identity (`financial_cost_links`, `financial_cost_events`). Each column
+carries the collation of the column it joins, so the joins need no
+query-level coercion.
+
 Rules the module enforces:
 
 - **Eligibility**: only a `direction = 'supplier'` order with an explicit
