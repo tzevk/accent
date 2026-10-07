@@ -1152,34 +1152,77 @@ test('captures and versions foreign-currency conversion evidence on petty cash',
 	expect(Number(snapshot.conversion_rate)).toBe(Number(EXPECTED.fxRate));
 	expect(Number(snapshot.converted_amount)).toBe(8200);
 
-	// Changing the evidence afterwards is a versioned update with a new
-	// converted figure.
-	const repriced = await runCommand(request, spendFId, {
+	// A recognized spend is frozen: repricing it in place is refused, so a
+	// correction cancels the recognized spend and re-records it. The refusal
+	// keeps the recognized figure from changing silently (the parent #304
+	// explicit-revision rule; `recognition.ts` allows `recognized: ['cancel']`
+	// only, and the same spec already pins the freeze at :850-859).
+	const repriceRefused = await runCommand(request, spendFId, {
 		command: 'update',
 		expected_version: 2,
 		patch: { conversionRate: EXPECTED.fxRateUpdated },
 	});
-	expect(repriced.status, JSON.stringify(repriced.body)).toBe(200);
-	const repricedRow = await spendRow(spendFId);
-	expect(Number(repricedRow.converted_amount)).toBe(
-		EXPECTED.spendF * Number(EXPECTED.fxRateUpdated)
+	expect(repriceRefused.status).toBe(422);
+	expect(repriceRefused.body.code).toBe('command_not_allowed');
+	expect(repriceRefused.body.state).toBe('recognized');
+
+	// The explicit correction: cancel the recognized spend with a reason, then
+	// record the same spending again with the corrected conversion evidence.
+	// The cancelled row keeps its history, so the cost is counted once.
+	const cancelF = await runCommand(request, spendFId, {
+		command: 'cancel',
+		expected_version: 2,
+		reason: `${PETTY_CASH_PREFIX} spend F rate corrected by re-record`,
+	});
+	expect(cancelF.status, JSON.stringify(cancelF.body)).toBe(200);
+	const cancelledF = await spendRow(spendFId);
+	expect(cancelledF.recognition_state).toBe('cancelled');
+	expect(Number(cancelledF.financial_version)).toBe(3);
+	// The cancelled row keeps what was recognized: the original 100.00 USD
+	// amount (the 8,200.00 INR converted figure stays on `converted_amount`).
+	expect(Number(cancelledF.recognized_amount)).toBe(EXPECTED.spendF);
+	expect(await journalFor(String(cancelledF.cost_uid))).toEqual([
+		{ version: 1, command: 'recorded' },
+		{ version: 2, command: 'recognized' },
+		{ version: 3, command: 'cancelled' },
+	]);
+
+	const spendF2 = await recordSpend(request, {
+		transaction_date: `${LATER_MONTH}-08`,
+		debit_amount: EXPECTED.spendF,
+		currency: 'USD',
+		cost_classification: 'project',
+		project_id: seeded.projects.beta,
+		service_period_start: `${LATER_MONTH}-08`,
+		service_period_end: `${LATER_MONTH}-08`,
+		conversion_rate: EXPECTED.fxRateUpdated,
+		conversion_date: `${LATER_MONTH}-08`,
+		conversion_evidence_reference: `${PETTY_CASH_PREFIX}-FX-2`,
+		notes: `${PETTY_CASH_PREFIX} spend F corrected rate`,
+	});
+	expect(spendF2.status, JSON.stringify(spendF2.body)).toBe(200);
+	const spendF2Id = String((spendF2.body.data as Record<string, unknown>).id);
+	spends.spendF2 = await spendRow(spendF2Id);
+	expect(Number(spends.spendF2.conversion_rate)).toBe(
+		Number(EXPECTED.fxRateUpdated)
 	);
+	expect(spends.spendF2.converted_amount).toBeNull();
 
 	// A rate is evidence for one currency pair: changing the original currency
 	// without the fresh triple is refused, and a currency-only patch is
 	// approval territory (403 for a clerk without `:approve`).
-	const pairChange = await runCommand(request, spendFId, {
+	const pairChange = await runCommand(request, spendF2Id, {
 		command: 'update',
-		expected_version: 3,
+		expected_version: 1,
 		patch: { currency: 'EUR' },
 	});
 	expect(pairChange.status).toBe(422);
 	expect(pairChange.body.code).toBe('conversion_evidence_required');
 	const clerk = await loginPettyCashUser(playwright, baseURL, 'clerk');
 	try {
-		const clerkPatch = await runCommand(clerk, spendFId, {
+		const clerkPatch = await runCommand(clerk, spendF2Id, {
 			command: 'update',
-			expected_version: 3,
+			expected_version: 1,
 			patch: { currency: 'EUR' },
 		});
 		expect(clerkPatch.status).toBe(403);
@@ -1187,11 +1230,28 @@ test('captures and versions foreign-currency conversion evidence on petty cash',
 	} finally {
 		await clerk.dispose();
 	}
-	const stillUsd = await spendRow(spendFId);
+	const stillUsd = await spendRow(spendF2Id);
 	expect(stillUsd.currency).toBe('USD');
-	expect(Number(stillUsd.converted_amount)).toBe(
+	expect(Number(stillUsd.conversion_rate)).toBe(
+		Number(EXPECTED.fxRateUpdated)
+	);
+	expect(stillUsd.converted_amount).toBeNull();
+
+	// The corrected spend recognizes once, with the new converted figure.
+	const recognizeF2 = await runCommand(request, spendF2Id, {
+		command: 'recognize',
+		expected_version: 1,
+	});
+	expect(recognizeF2.status, JSON.stringify(recognizeF2.body)).toBe(200);
+	const recognizedF2 = await spendRow(spendF2Id);
+	// 100.00 USD × 83.50 = 8,350.00 INR, computed by the shared conversion.
+	expect(Number(recognizedF2.converted_amount)).toBe(
 		EXPECTED.spendF * Number(EXPECTED.fxRateUpdated)
 	);
+	expect(await journalFor(String(recognizedF2.cost_uid))).toEqual([
+		{ version: 1, command: 'recorded' },
+		{ version: 2, command: 'recognized' },
+	]);
 
 	// A second foreign spend without evidence stays explicit: recognized cost
 	// in its own currency, no reporting-currency figure, and no false total.
@@ -1229,7 +1289,9 @@ test('captures and versions foreign-currency conversion evidence on petty cash',
 		partialEvidence: partial.body.code,
 		invalidRate: invalidRate.body.code,
 		convertedAmount: Number(recognizedF.converted_amount),
-		repricedConvertedAmount: Number(repricedRow.converted_amount),
+		repriceRefused: repriceRefused.body.code,
+		cancelledVersion: Number(cancelledF.financial_version),
+		repricedConvertedAmount: Number(recognizedF2.converted_amount),
 		unconvertedAmount: recognizedG.converted_amount,
 		unsupportedRecords: later.company.conversion.unsupported_records,
 	};
