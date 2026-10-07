@@ -840,7 +840,7 @@ export async function captureAccrualCost(
           conversion_evidence_reference, converted_amount, source_reference,
           evidence_reference, recognized_amount, replaced_amount, owner_user_id,
           financial_version, isDelete, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL,
                ?, ?, NULL, 0, ?, 1, 0, ?)`,
 			[
 				accrualNumber,
