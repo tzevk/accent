@@ -380,8 +380,13 @@ async function openExpenditure(page: Page, monthLabel: string): Promise<void> {
 async function selectBudgetProject(page: Page, code: string): Promise<void> {
 	await page.getByLabel('Project', { exact: true }).last().click();
 	await page.getByPlaceholder('Search...').fill(code);
+	// Option labels read `${code} — ${name}` and the dropdown filters by
+	// substring, so a bare `^code` prefix also matches the #320 `P320A–H`
+	// siblings of `E2E-EXP-P3`. Anchor on the ` — ` separator so only the
+	// exact project matches.
+	const exactCode = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	await page
-		.getByRole('button', { name: new RegExp(`^${code}`), exact: false })
+		.getByRole('button', { name: new RegExp(`^${exactCode} — `) })
 		.click();
 }
 
