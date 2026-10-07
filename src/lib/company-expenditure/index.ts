@@ -121,6 +121,8 @@ import {
 } from './petty-cash';
 import { buildReconciliation, projectIdsIn } from './reconciliation';
 import { registerCostSource } from './sources';
+import { loadAllocationRevisionHistory } from './allocation-revisions';
+import type { AllocationRevisionHistory } from './allocation-revisions';
 import {
 	loadFilteredOtherExpenseRecords,
 	loadOtherExpenseMonthProjectCost,
@@ -289,6 +291,21 @@ export type {
 	FreezeSummary,
 	PayrollMonthInterpretation,
 } from './payroll';
+export {
+	loadAllocationRevisionHistory,
+	registerAllocationMutationGuard,
+	reviseEmployeeAllocation,
+} from './allocation-revisions';
+export type {
+	AllocationMutationGuard,
+	AllocationMutationRefusal,
+	AllocationRevisionHistory,
+	AllocationRevisionLine,
+	AllocationRevisionResult,
+	AllocationVersionSnapshot,
+	AllocationVersionView,
+	ReviseAllocationInput,
+} from './allocation-revisions';
 export {
 	CHARGE_BASIS_LABELS,
 	COST_NATURES,
@@ -657,6 +674,22 @@ export async function fetchCompanyReconciliation(
 		reportingCurrency: request.reportingCurrency ?? null,
 		pettyCash,
 	});
+}
+
+/**
+ * Version history of one Payroll Slip's Project allocation (#309). Every
+ * version, its journal row, actor, reason/evidence, and whether the shares
+ * still reconcile. Read through the pooled connection unless the caller
+ * supplies one.
+ */
+export async function fetchAllocationRevisionHistory(
+	payrollSlipId: number,
+	options?: CommandOptions
+): Promise<AllocationRevisionHistory | null> {
+	return loadAllocationRevisionHistory(
+		options?.connection ?? pool,
+		payrollSlipId
+	);
 }
 
 /** Read the employee-cost drilldown behind one month's reconciliation. */

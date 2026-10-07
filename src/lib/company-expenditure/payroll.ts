@@ -230,7 +230,7 @@ interface FrozenAllocation {
 	employeeName: string;
 	payStream: 'payroll' | 'contract';
 	version: number;
-	kind: 'finalization' | 'reconstruction';
+	kind: 'finalization' | 'reconstruction' | 'revision';
 	recordedEmployerCost: number;
 	totalLoggedHours: number;
 	projectHours: number;
@@ -403,7 +403,8 @@ async function loadFrozenAllocations(
 		version: Number(num(row, 'version') ?? 1),
 		kind: (str(row, 'kind') ?? 'finalization') as
 			| 'finalization'
-			| 'reconstruction',
+			| 'reconstruction'
+			| 'revision',
 		recordedEmployerCost: Number(num(row, 'recorded_employer_cost') ?? 0),
 		totalLoggedHours: Number(num(row, 'total_logged_hours') ?? 0),
 		projectHours: Number(num(row, 'project_hours') ?? 0),
@@ -898,6 +899,18 @@ function payrollNotices(
 			code: 'payroll_no_project_hours',
 			label: 'Logged Hours without a Project',
 			detail: `${noProject.length} employee(s) logged hours without a Project; those hours stay in the allocation denominator and their share remains Unallocated Employee Cost.`,
+			severity: 'info',
+		});
+	}
+	// A corrected attribution is disclosed like every other evidence state: the
+	// report shows the selected version and the revision history stays readable
+	// (#309).
+	const revised = allocations.filter((allocation) => allocation.kind === 'revision');
+	if (locked && revised.length > 0) {
+		notices.push({
+			code: 'payroll_allocation_revised',
+			label: 'Project cost allocation revised',
+			detail: `${revised.length} recorded allocation(s) were corrected through an explicit revision; the report shows the selected version and the full history remains available.`,
 			severity: 'info',
 		});
 	}
