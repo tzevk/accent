@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { writeArtifact } from '../lib/artifacts';
+import { trackArtifactOutcome } from '../lib/artifact-outcome';
 import { exec, rows } from '../lib/db';
 import { E2E_ENV } from '../lib/env';
+import { parseJsonColumn } from '../lib/json-column';
 import { ADMIN_USER } from '../lib/fixtures';
 import {
 	RECONSTRUCTION_ADMIN_IP,
@@ -196,7 +198,10 @@ let runsSnapshot = '';
 const evidence: Record<string, unknown> = { ok: true, month: MONTH };
 const EXPECTED = RECONSTRUCTION_EXPECTED;
 
+const outcome = trackArtifactOutcome();
+
 function publish(): void {
+	evidence.ok = outcome.ok;
 	writeArtifact('expenditure-payroll-reconstruction', {
 		...evidence,
 		fixtureScope: {
@@ -520,7 +525,7 @@ test('missing timesheets freeze as fully unallocated with recorded limitations',
 	expect(event).toHaveLength(1);
 	expect(event[0].command).toBe('reconstructed');
 	expect(event[0].evidence_reference).toBe(result.proposal_uid);
-	const snapshot = JSON.parse(event[0].snapshot) as {
+	const snapshot = parseJsonColumn(event[0].snapshot) as {
 		reconstruction: {
 			proposal_uid: string;
 			financial_version: number;
@@ -746,7 +751,7 @@ test('the approved reconstruction persists as immutable evidence and reads disti
 	expect(Number(proposal[0].reviewed_by)).toBe(adminUserId);
 	expect(proposal[0].reviewed_at).toBeTruthy();
 	expect(Number(proposal[0].frozen_allocation_id)).toBe(allocation[0].id);
-	const proposalEvidence = JSON.parse(proposal[0].evidence) as {
+	const proposalEvidence = parseJsonColumn(proposal[0].evidence) as {
 		source_table: string;
 		source_field: string;
 		recorded_employer_cost: number;
@@ -758,7 +763,7 @@ test('the approved reconstruction persists as immutable evidence and reads disti
 	expect(proposalEvidence.pay_stream_source).toBe(
 		'salary_profile_observed_at_proposal'
 	);
-	expect(JSON.parse(proposal[0].missing_evidence)).toEqual([]);
+	expect(parseJsonColumn(proposal[0].missing_evidence)).toEqual([]);
 
 	const row = employeeOf(
 		await payrollDrilldown(request, MONTH, seeded.employeeIds.splitMonthly),

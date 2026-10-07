@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt';
 import type { Cookie } from '@playwright/test';
 import type { APIRequestContext, PlaywrightWorkerArgs } from '@playwright/test';
 import { exec, rows } from './db';
+import { seedInertGateSlips } from './payroll-gate-slip';
 
 type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
 
@@ -558,74 +559,19 @@ export async function seedExpenditureAllocationRevisionFixtures(): Promise<Seede
 	}
 
 	await seedRevisionReaders();
-	const gateSlips = await seedRevisionGateSlips();
+	// The inert gate slips the shared helper writes for every other fixture
+	// namespace (see seedInertGateSlips), so these two months can finalize.
+	const gateSlips =
+		(await seedInertGateSlips({
+			monthDay: REVISION_MONTH_DAY,
+			ownPrefix: REVISION_EMPLOYEE_PREFIX,
+		})) +
+		(await seedInertGateSlips({
+			monthDay: REVISION_PAID_MONTH_DAY,
+			ownPrefix: REVISION_EMPLOYEE_PREFIX,
+		}));
 
 	return { projectIds, employeeIds, gateSlips };
-}
-
-/**
- * Payroll Finalize refuses a month while any active Payroll/Contract employee
- * has no Salary Profile covering it. Every other fixture namespace's profiles
- * start in 2019/2026, so for 2018-03/04 they are uncovered and could not be
- * generated a slip the normal way. This writes the zero slip Generate would
- * have written — scoped to the two fixture months, deleted by cleanup — for
- * `E2E-` coded employees only; a non-fixture employee in the gate's own
- * population stops the seed instead of fabricating payroll for a real person.
- *
- * The population is read with the gate's own predicate
- * (`findEmployeesWithoutProfiles`, src/app/api/payroll/_lib/payroll-run.js).
- */
-async function seedRevisionGateSlips(): Promise<number> {
-	const monthDays = [REVISION_MONTH_DAY, REVISION_PAID_MONTH_DAY];
-	let written = 0;
-	for (const monthDay of monthDays) {
-		const uncovered = await rows<{
-			id: number;
-			employee_id: string;
-		}>(
-			`SELECT e.id, e.employee_id
-         FROM employees e
-        WHERE (e.status = 'active' OR e.status IS NULL)
-          AND e.isDelete = 0
-          AND e.employee_type IN ('Payroll', 'Contract')
-          AND NOT EXISTS (
-            SELECT 1 FROM employee_salary_profile esp
-             WHERE esp.employee_id = e.id AND esp.is_active = 1
-               AND esp.effective_from <= ?
-               AND (esp.effective_to IS NULL OR esp.effective_to >= ?)
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM salary_structures ss
-             WHERE ss.employee_id = e.id AND ss.is_active = 1
-               AND ss.effective_from <= ?
-               AND (ss.effective_to IS NULL OR ss.effective_to >= ?)
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM payroll_slips ps
-             WHERE ps.employee_id = e.id AND ps.month = ?
-          )
-        ORDER BY e.employee_id`,
-			[monthDay, monthDay, monthDay, monthDay, monthDay]
-		);
-		for (const employee of uncovered) {
-			if (!String(employee.employee_id).startsWith('E2E-')) {
-				throw new Error(
-					`[e2e] revision fixture month ${monthDay} would need an inert gate slip for non-fixture employee ` +
-						`${employee.employee_id}. Point the harness at the isolated E2E database instead.`
-				);
-			}
-			await exec(
-				`INSERT INTO payroll_slips
-           (month, employee_id, gross, basic, hra, conveyance, call_allowance,
-            total_earnings, total_deductions, net_pay, pf_employer, esic_employer,
-            total_employer_contributions, employer_cost, payment_status)
-         VALUES (?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'pending')`,
-				[monthDay, employee.id]
-			);
-			written++;
-		}
-	}
-	return written;
 }
 
 /** Roles and users for the three authorization outcomes. */

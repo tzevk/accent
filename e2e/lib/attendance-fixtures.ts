@@ -635,9 +635,17 @@ export async function cleanupAttendanceFixtures(): Promise<number> {
 
 	// Children before parents, so foreign keys never block a delete: punch,
 	// attendance and profile rows reference the employees, and assignments
-	// reference both the employees and the fixture user.
+	// reference both the employees and the fixture user. Other fixtures'
+	// inert gate slips can reference these employees too (the revision and
+	// allocation fixtures write zero slips for every uncovered E2E roster so
+	// their own months can finalize); the payroll_slips FK would block the
+	// employee delete below, so they go first.
 	if (employeeIds.length) {
 		const placeholders = employeeIds.map(() => '?').join(', ');
+		await exec(
+			`DELETE FROM payroll_slips WHERE employee_id IN (${placeholders})`,
+			employeeIds
+		);
 		await exec(
 			`DELETE FROM attendance_logs WHERE employee_id IN (${placeholders})`,
 			employeeIds

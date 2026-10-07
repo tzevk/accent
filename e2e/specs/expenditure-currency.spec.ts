@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 import Decimal from 'decimal.js';
 import { readArtifact, writeArtifact } from '../lib/artifacts';
+import { trackArtifactOutcome } from '../lib/artifact-outcome';
 import { exec, rows } from '../lib/db';
 import { E2E_ENV } from '../lib/env';
 import {
@@ -260,7 +261,10 @@ const created: Array<{ id: number; cost_uid: string; where: string }> = [];
 /** The pending row the unknown-currency test records, for the edit refusal. */
 let unknownCurrencyRowId = 0;
 
+const outcome = trackArtifactOutcome();
+
 function publish(): void {
+	evidence.ok = outcome.ok;
 	writeArtifact('expenditure-currency', {
 		...evidence,
 		months: [MONTH, MISSING_MONTH, CONTROL_MONTH],

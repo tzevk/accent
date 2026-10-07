@@ -69,9 +69,13 @@ export default async function globalSetup(): Promise<void> {
 	try {
 		// Payroll generation includes other fixture rosters. Remove its guarded
 		// month-owned slips before any roster cleanup deletes their employees.
+		// The revision cleanup runs first on purpose: its inert gate slips
+		// cover every `E2E-%` roster in 2018-03/04, so clearing them before
+		// the allocation cleanup deletes `E2E-ALLOC-%` employees keeps the
+		// payroll_slips FK from blocking that delete.
+		await cleanupExpenditureAllocationRevisionFixtures();
 		await cleanupExpenditureAllocationFixtures();
 		await cleanupExpenditureReconstructionFixtures();
-		await cleanupExpenditureAllocationRevisionFixtures();
 		await cleanupFixtures();
 		await cleanupAttendanceFixtures();
 		await cleanupUtilizationFixtures();

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { APIRequestContext, APIResponse, Page } from '@playwright/test';
 import { writeArtifact } from '../lib/artifacts';
+import { trackArtifactOutcome } from '../lib/artifact-outcome';
 import { rows } from '../lib/db';
 import { E2E_ENV } from '../lib/env';
 import {
@@ -125,7 +126,10 @@ const created: Array<{ orderUid: string; orderNumber: string; by: string }> =
 /** Status codes observed for the read/write authorization probes. */
 const authorizationEvidence: Record<string, number> = {};
 
+const outcome = trackArtifactOutcome();
+
 function publish(): void {
+	evidence.ok = outcome.ok;
 	writeArtifact('order-classification', {
 		...evidence,
 		fixtureScope: {

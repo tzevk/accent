@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { writeArtifact } from '../lib/artifacts';
+import { trackArtifactOutcome } from '../lib/artifact-outcome';
 import { exec, rows } from '../lib/db';
 import {
 	ALLOCATION_EXPECTED,
@@ -375,7 +376,10 @@ const createdThroughApp: Array<{
 	where: string;
 }> = [];
 
+const outcome = trackArtifactOutcome();
+
 function publish(): void {
+	evidence.ok = outcome.ok;
 	writeArtifact('project-cost-ranking', {
 		...evidence,
 		fixtureScope: {

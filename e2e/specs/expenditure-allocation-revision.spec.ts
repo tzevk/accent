@@ -3,6 +3,7 @@ import type { APIRequestContext } from '@playwright/test';
 import { writeArtifact } from '../lib/artifacts';
 import { exec, rows } from '../lib/db';
 import { E2E_ENV } from '../lib/env';
+import { parseJsonColumn } from '../lib/json-column';
 import {
 	REVISION_EXPECTED,
 	REVISION_MONTH,
@@ -762,7 +763,7 @@ test('performs the authorized revision with old and new figures, preserving the 
 	expect(Number(event.actor_user_id)).toBe(Number(financeUser.id));
 	expect(event.reason).toBe(MONTHLY.revisionReason);
 	expect(event.evidence_reference).toBe(MONTHLY.revisionEvidence);
-	const snapshot = JSON.parse(event.snapshot) as {
+	const snapshot = parseJsonColumn(event.snapshot) as {
 		previous_version: number;
 		previous: { shares: PayrollShare[] };
 		corrected_lines: Array<{ project_id: number | null; hours: number }>;
