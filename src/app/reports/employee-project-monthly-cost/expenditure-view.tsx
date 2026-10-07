@@ -914,12 +914,17 @@ export default function ExpenditureView({
 			}));
 	}, [data, rankingMode]);
 
-	// Financial-year navigation: April–March, stepping a whole year at a time
-	// and never past the current month, so the picker cannot show a future
-	// month as if its cost had happened. The composed candidate is checked
-	// against `current_month` itself: a month in January–March composes its
-	// candidate in the following calendar year, which a financial-year-only
-	// guard would let through.
+	// Financial-year navigation: April–March, stepping a whole year to the
+	// same month at a time and never past the current month, so the picker
+	// cannot show a future month as if its cost had happened. The composed
+	// candidate is checked against `current_month` itself: a month in
+	// January–March composes its candidate in the following calendar year,
+	// which a financial-year-only guard would let through. The step always
+	// lands on the same month one year over (#320): landing on the target
+	// year's latest month with cost instead would break the round trip (June
+	// 2022 → June 2023 → back must return to June 2022, not September 2022),
+	// and an empty target month reports its coverage warning rather than an
+	// invented zero.
 	const financialYear = data ? financialYearOf(data.month) : null;
 	const currentFinancialYear = data
 		? financialYearOf(data.current_month)
@@ -933,18 +938,7 @@ export default function ExpenditureView({
 		const year = Number(monthNumber) >= 4 ? target : target + 1;
 		const candidate = `${year}-${monthNumber}`;
 		if (candidate > data.current_month) return;
-		// Prefer a month the picker already offers inside the target year; when
-		// the target year holds no cost at all, the candidate itself is opened
-		// (the picker lists the selected month, and an empty month reports its
-		// coverage warning rather than an invented zero).
-		const inTargetYear = data.available_months
-			.filter(
-				(month) =>
-					financialYearOf(month) === target && month <= data.current_month
-			)
-			.sort()
-			.reverse();
-		onMonthChange(inTargetYear[0] ?? candidate);
+		onMonthChange(candidate);
 	};
 
 	if (!month) {
