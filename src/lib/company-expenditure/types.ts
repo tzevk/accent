@@ -7,6 +7,7 @@
  */
 
 import type Decimal from 'decimal.js';
+import type { SupplierCommitmentSection } from './commitments';
 
 /** Where a recognized cost belongs. `null` is the explicit unresolved state. */
 export type CostClassification = 'project' | 'company_overhead' | 'unallocated';
@@ -864,6 +865,12 @@ export interface CompanyReconciliation {
 	 * section: a budget never enters `company`, `projects`, or `evidence`.
 	 */
 	budgets: BudgetSection;
+	/**
+	 * Outstanding Supplier Commitment (#312): supplier order value not yet
+	 * consumed by recognized cost, reconstructed as of the month, plus its
+	 * explicit eligibility/timing exceptions. Never incurred cost.
+	 */
+	supplier_commitment: SupplierCommitmentSection;
 	project_options: Array<{
 		project_id: number;
 		project_code: string;

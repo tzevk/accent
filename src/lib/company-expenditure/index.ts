@@ -89,6 +89,10 @@ import {
 	loadBudgetsForProjects,
 } from './budget-records';
 import type { CommandOptions } from './commands';
+import {
+	fetchSupplierCommitmentRollforward,
+	loadOrderCommitmentMonths,
+} from './commitments';
 import { SOURCE_COVERAGE } from './coverage';
 import { loadCombinedDrilldown } from './drilldown';
 import {
@@ -266,6 +270,30 @@ export type {
 } from './supplier-invoices';
 export { isDrilldownSource } from './drilldown';
 export { recordCostBudget, executeBudgetCommand } from './budget-commands';
+export {
+	fetchOrderCommitment,
+	fetchSupplierCommitmentRollforward,
+	loadOrderCommitmentMonths,
+	recordOrderConsumption,
+	releaseOrderConsumption,
+} from './commitments';
+export type {
+	CommitmentBasis,
+	CommitmentException,
+	CommitmentRollforwardMonth,
+	CommitmentRollforwardQuery,
+	ConsumptionSource,
+	ConsumptionState,
+	OrderCommitmentDetail,
+	OrderConsumptionCandidate,
+	OrderConsumptionRecord,
+	RecordOrderConsumptionInput,
+	RecordOrderConsumptionResult,
+	ReleaseOrderConsumptionInput,
+	SupplierCommitmentOrderRow,
+	SupplierCommitmentSection,
+	SupplierCommitmentTotal,
+} from './commitments';
 export { PETTY_CASH_COST_SOURCE } from './petty-cash';
 export type { PettyCashSourceDescriptor } from './petty-cash';
 export { SOURCE_COVERAGE } from './coverage';
@@ -458,13 +486,14 @@ export function currentDate(): string {
 /** Months with cost recorded in any wired source, newest first. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
 	const current = currentMonth();
-	const [direct, supplier, payroll, otherExpense, pettyCash] =
+	const [direct, supplier, payroll, otherExpense, pettyCash, orders] =
 		await Promise.all([
 			loadExpenditureMonths(pool, current),
 			loadSupplierInvoiceMonths(pool, current),
 			loadPayrollAllocationMonths(pool),
 			loadOtherExpenseMonths(pool, current),
 			PETTY_CASH_COST_SOURCE.loadMonths(pool),
+			loadOrderCommitmentMonths(pool),
 		]);
 	const months = new Set([
 		...direct,
@@ -472,6 +501,9 @@ export async function fetchExpenditureMonths(): Promise<string[]> {
 		...payroll,
 		...otherExpense,
 		...pettyCash,
+		// An order-only historical month (a commitment recorded with no cost
+		// yet) must stay reachable through the month controls.
+		...orders,
 	]);
 	months.add(current);
 	return [...months].sort().reverse();
@@ -545,6 +577,7 @@ export async function fetchCompanyReconciliation(
 		previousPayrollCost,
 		otherExpenseMonths,
 		pettyCashMonths,
+		orderMonths,
 	] = await Promise.all([
 		loadMonthRecords(db, month),
 		loadMonthRecords(db, previousMonth),
@@ -591,6 +624,7 @@ export async function fetchCompanyReconciliation(
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
 		loadOtherExpenseMonths(db, currentMonth()),
 		PETTY_CASH_COST_SOURCE.loadMonths(db),
+		loadOrderCommitmentMonths(db),
 	]);
 	const records = [
 		...directRecords,
@@ -659,6 +693,13 @@ export async function fetchCompanyReconciliation(
 		await loadBudgetsCoveringMonth(db, month),
 		await loadBudgetsForProjects(db, projectIdsIn(records, charges))
 	);
+	// Outstanding Supplier Commitment (#312): reconstructed as of the month
+	// from the order journal and the recorded consumption, on the caller's
+	// connection so a financial close takes one coherent snapshot.
+	const supplierCommitment = await fetchSupplierCommitmentRollforward(
+		{ month },
+		{ connection: db }
+	);
 
 	return buildReconciliation({
 		month,
@@ -675,6 +716,7 @@ export async function fetchCompanyReconciliation(
 		budgets,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
+		supplierCommitment,
 		availableMonths: [
 			...new Set([
 				...directMonths,
@@ -682,6 +724,7 @@ export async function fetchCompanyReconciliation(
 				...payrollMonths,
 				...otherExpenseMonths,
 				...pettyCashMonths,
+				...orderMonths,
 			]),
 		]
 			.sort()

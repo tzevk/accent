@@ -45,6 +45,10 @@ import {
 	seedOrderFixtures,
 } from './lib/order-fixtures';
 import {
+	cleanupOrderConsumptionFixtures,
+	seedOrderConsumptionFixtures,
+} from './lib/order-consumption-fixtures';
+import {
 	cleanupSupplierInvoiceFixtures,
 	seedSupplierInvoiceFixtures,
 } from './lib/supplier-invoice-fixtures';
@@ -68,6 +72,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupAttendanceFixtures();
 		await cleanupUtilizationFixtures();
 		await cleanupOrderFixtures();
+		await cleanupOrderConsumptionFixtures();
 		await cleanupExpenditureFixtures();
 		await cleanupOtherExpenseFixtures();
 		await cleanupPettyCashFixtures();
@@ -188,6 +193,14 @@ export default async function globalSetup(): Promise<void> {
 			`[e2e] order fixtures seeded for ${orders.month} ` +
 				`(project ${ORDER_PROJECT.code} #${orders.projectId}, ` +
 				`${Object.keys(orders.legacy).length} legacy copies)`
+		);
+
+		const consumption = await seedOrderConsumptionFixtures();
+		console.log(
+			`[e2e] order-consumption fixtures seeded for ${consumption.month}, ` +
+				`${consumption.nextMonth} and ${consumption.laterMonth} ` +
+				`(${Object.keys(consumption.orderUids).length} orders, ` +
+				`${Object.keys(consumption.invoiceIds).length} recognized invoices)`
 		);
 	} finally {
 		await closeDb();
