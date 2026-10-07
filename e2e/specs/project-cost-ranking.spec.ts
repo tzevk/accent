@@ -62,7 +62,7 @@ import {
  * window figures stay at the dated cost (p320g's prior window is the recorded
  * zero 0), and the change is withheld with both items disclosed (2 / 17000).
  * February 2026 (measured to its 15th) holds the finalized payroll month's
- * recorded 36500 (three employees): the comparison would otherwise read the
+ * recorded 37539 (three employees): the comparison would otherwise read the
  * January window's 2500 as a fall, and it withholds that change instead.
  *
  * The month is measured to an explicit date, so an unfinished month, its
@@ -469,8 +469,14 @@ async function renderedOrder(page: Page): Promise<string[]> {
 		.evaluateAll((nodes) =>
 			nodes.map((node) => node.getAttribute('data-project-code') ?? '')
 		);
-	const mine = [ALPHA, BETA, GAMMA, DELTA, ENTERED];
-	return codes.filter((code) => mine.includes(code));
+	const mine: Record<string, true> = {
+		[ALPHA]: true,
+		[BETA]: true,
+		[GAMMA]: true,
+		[DELTA]: true,
+		[ENTERED]: true,
+	};
+	return codes.filter((code) => mine[code]);
 }
 
 function betaRow(page: Page) {
@@ -1700,7 +1706,7 @@ test('withholds an elapsed-window change for day-less monthly cost', async ({
 	]);
 
 	// February 2026 measured to its 15th: the finalized payroll month's
-	// recorded 36500 is day-less monthly cost too. Without the rule the
+	// recorded 37539 is day-less monthly cost too. Without the rule the
 	// comparison would state a fall against January's 2500 while the month's
 	// real cost sat outside the window; with it the change is withheld, and
 	// the two costed Projects cannot be ranked by increase either.

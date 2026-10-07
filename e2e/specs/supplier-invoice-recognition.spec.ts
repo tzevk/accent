@@ -1797,6 +1797,12 @@ test('refuses recognition to unapproved and unauthorized identities', async ({
 	request,
 	baseURL,
 }) => {
+	// The login fixtures need the configured base URL; the Playwright option
+	// is typed optional, so fail before any work when it is unset.
+	if (!baseURL) {
+		throw new Error('The E2E run is missing its configured baseURL');
+	}
+
 	// Error outcomes for a stale version and an unknown command (admin).
 	const invoice = seededInvoice('pending');
 	const stale = await command(request, seeded.invoiceIds.pending, {
@@ -1974,9 +1980,7 @@ test('shows the supplier figures through the report browser controls', async ({
 
 test('publishes the repeatable evidence artifact', async () => {
 	publish();
-	const artifact = readArtifact<Record<string, unknown>>(
-		'supplier-invoice-recognition'
-	);
+	const artifact = readArtifact('supplier-invoice-recognition');
 	expect(artifact.flow).toBe('supplier-invoice-recognition');
 	expect(artifact.ok).toBe(true);
 	expect(artifact.generatedAt).toBeTruthy();
