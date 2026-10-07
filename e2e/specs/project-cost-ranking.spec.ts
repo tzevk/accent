@@ -719,16 +719,27 @@ test('ranks Projects over an equal elapsed period and states what it cannot rank
 	expect(delta.evidence.findings).toContain('unknown_amount');
 	expect(delta.evidence.unknown_amount_records).toBe(1);
 	expect(delta.evidence.reconstructed_records).toBe(0);
+	// The recognition period names the month; the received-work day (31 May)
+	// is carried by the service period, which is what the day rule reads.
 	const lastDay = await rows<{
 		recognized_amount: string;
-		recognition_period: string;
+		recognition_month: string;
+		service_period_start: string;
+		service_period_end: string;
 	}>(
-		`SELECT recognized_amount, recognition_period FROM expenses
-      WHERE isDelete = 0 AND expense_number = 'E2E-EXP-320-D11'`
+		`SELECT recognized_amount,
+              DATE_FORMAT(recognition_period, '%Y-%m') AS recognition_month,
+              service_period_start, service_period_end
+         FROM expenses
+        WHERE isDelete = 0 AND expense_number = 'E2E-EXP-320-D11'`
 	);
 	expect(lastDay).toHaveLength(1);
 	expect(Number(lastDay[0].recognized_amount)).toBe(EXPECTED.delta.priorMonth);
-	expect(String(lastDay[0].recognition_period).slice(0, 10)).toBe(
+	expect(lastDay[0].recognition_month).toBe(PRIOR_MONTH);
+	expect(String(lastDay[0].service_period_start).slice(0, 10)).toBe(
+		`${PRIOR_MONTH}-31`
+	);
+	expect(String(lastDay[0].service_period_end).slice(0, 10)).toBe(
 		`${PRIOR_MONTH}-31`
 	);
 
