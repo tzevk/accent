@@ -824,6 +824,11 @@ export default function EmployeeProjectMonthlyCostPage() {
 					canRecord={canRecordCost}
 					canEditCost={canEditCost}
 					canRecognize={canRecognizeCost}
+					// #308: reaching this view already proves the financial read
+					// gate (reports + both source reads, above); the reconstruction
+					// controls add the operation privilege the routes enforce.
+					canProposeReconstruction={canEditCost}
+					canReviewReconstruction={canRecognizeCost}
 				/>
 			);
 		}
