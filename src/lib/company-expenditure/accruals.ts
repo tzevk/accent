@@ -832,8 +832,9 @@ export async function captureAccrualCost(
 		const [inserted] = (await db.execute(
 			`INSERT INTO cost_accruals
          (accrual_number, cost_uid, description, vendor_name, vendor_reference,
-          order_uid, evidence_basis, cost_classification, recognition_state,
-          recognition_period, period_basis, service_period_start, service_period_end,
+          order_uid, evidence_basis, cost_classification, project_id,
+          recognition_state, recognition_period, period_basis,
+          service_period_start, service_period_end,
           gross_amount, tax_amount, tax_treatment, tax_evidence_reference,
           currency, reporting_currency, conversion_rate, conversion_date,
           conversion_evidence_reference, converted_amount, source_reference,
@@ -850,6 +851,7 @@ export async function captureAccrualCost(
 				text(input.orderUid, 64),
 				evidenceBasis,
 				classification,
+				projectId,
 				state,
 				period,
 				basis,
@@ -1246,8 +1248,9 @@ export async function executeAccrualCommand(
 		await db.execute(
 			`UPDATE cost_accruals
           SET description = ?, vendor_name = ?, vendor_reference = ?, order_uid = ?,
-              evidence_basis = ?, cost_classification = ?, recognition_state = ?,
-              recognition_period = ?, period_basis = ?, service_period_start = ?,
+              evidence_basis = ?, cost_classification = ?, project_id = ?,
+              recognition_state = ?, recognition_period = ?,
+              period_basis = ?, service_period_start = ?,
               service_period_end = ?, gross_amount = ?, tax_amount = ?,
               tax_treatment = ?, tax_evidence_reference = ?, currency = ?,
               reporting_currency = ?, conversion_rate = ?, conversion_date = ?,
@@ -1263,6 +1266,7 @@ export async function executeAccrualCommand(
 				merged.orderUid,
 				merged.evidenceBasis,
 				merged.classification,
+				merged.projectId,
 				target,
 				resolved.period,
 				resolved.basis,
