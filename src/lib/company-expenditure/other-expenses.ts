@@ -1064,6 +1064,11 @@ export async function captureOtherExpense(
 		nature: 'operating',
 		state,
 		currency: conversion.currency,
+		reportingCurrency: conversion.reportingCurrency,
+		conversionRate: conversion.conversionRate,
+		conversionDate: conversion.conversionDate,
+		conversionEvidenceReference: conversion.conversionEvidenceReference,
+		convertedAmount: null,
 		grossAmount: financial.grossAmount,
 		taxAmount: financial.taxAmount,
 		taxTreatment: financial.taxTreatment,
@@ -1509,7 +1514,7 @@ export async function executeOtherExpenseCommand(
 
 		let recognizedAmount = current.recognized_amount;
 		let recognizedBy = current.recognized_by;
-		const recognizedAt = current.recognized_at;
+		let recognizedAt = current.recognized_at;
 
 		if (input.command === 'recognize') {
 			const candidate = await findPendingCandidate(db, current.id);
@@ -1545,6 +1550,7 @@ export async function executeOtherExpenseCommand(
 				billDate: merged.billDate,
 				recognitionPeriod: resolved.period,
 				periodBasis: resolved.basis,
+				convertedAmount: null,
 				recognizedAmount: null,
 			}).recognizedAmount;
 			recognizedBy = actor.id;

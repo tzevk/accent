@@ -105,6 +105,7 @@ import {
 	type ProjectOption,
 	type SqlConnection,
 } from './records';
+export type { SqlConnection } from './records';
 import { previousMonthOf } from './ranking';
 import {
 	loadAllocatedProjectCostBefore,

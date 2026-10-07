@@ -45,9 +45,8 @@ import {
 	linkCostReference,
 	registerCostIdentity,
 	type CostSourceAdapter,
-	type SqlConnection,
 } from './sources';
-import { monthBounds } from './records';
+import { monthBounds, type SqlConnection } from './records';
 import type {
 	CostClassification,
 	CostCommandName,
@@ -1274,6 +1273,7 @@ export function mapSupplierRecordRow(row: DbRow): CostRecord {
 	return {
 		...financial,
 		source: SUPPLIER_SOURCE,
+		sourceId: String(num(row, 'id') ?? ''),
 		split: hasSplit
 			? {
 					id: Number(num(row, 'split_id') ?? 0),

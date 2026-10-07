@@ -37,6 +37,7 @@ import {
 	loadChargeByUid,
 	loadChargeSourceForUpdate,
 	loadSourceCharges,
+	s,
 } from './records';
 import type {
 	CostNature,
@@ -396,7 +397,7 @@ export async function cancelPeriodCharge(
 				version + 1,
 				actor.id,
 				reason,
-				row.evidence_reference ?? null,
+				s(row, 'evidence_reference'),
 				JSON.stringify({ state: 'cancelled', reason }),
 			]
 		);

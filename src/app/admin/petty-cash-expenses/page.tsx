@@ -117,7 +117,7 @@ interface ApiResponse {
 interface ProjectOption {
 	project_id: number;
 	project_code: string;
-	project_name?: string | null;
+	project_title?: string | null;
 	name?: string | null;
 }
 
@@ -841,7 +841,12 @@ export default function PettyCashExpensesPage() {
 					</TableCell>
 				</TableRow>
 				<TableRow className="bg-purple-50/50">
-					<TableCell colSpan={columns.length + 1} className="px-2 py-2">
+					{/* Full-width sub-row: `TableCell` has no colSpan prop, so the
+					    native cell carries the same base classes. */}
+					<td
+						colSpan={columns.length + 1}
+						className="px-2 py-2 text-sm text-gray-900 align-middle"
+					>
 						{renderFinancialControls(form, setForm, !isAdd)}
 						{!isAdd && (
 							<p className="mt-1 text-[10px] text-gray-500">
@@ -850,7 +855,7 @@ export default function PettyCashExpensesPage() {
 								the current version, not this register edit.
 							</p>
 						)}
-					</TableCell>
+					</td>
 				</TableRow>
 			</>
 		);
