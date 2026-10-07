@@ -219,7 +219,7 @@ function currencySlice(
 		period_charge_count: charges.length,
 		record_count: records.filter((record) => confirmedAmount(record) !== null)
 			.length,
-		reporting: reportingSlice(records, charges, currency, reporting),
+		reporting: reportingSlice(records, charges, currency, reporting, employeeCost),
 	};
 }
 
@@ -1165,7 +1165,8 @@ export function buildReconciliation(
 		employees: [],
 		coverage: [],
 	};
-	const payrollRecorded = payroll.totals.recorded_total !== 0;
+	const payrollRecorded =
+		payroll.totals.recorded_count > 0 || payroll.totals.known_zero_count > 0;
 	// Employee cost carries no conversion evidence: a requested basis other
 	// than the payroll currency cannot state it.
 	const payrollNotInReportingBasis =

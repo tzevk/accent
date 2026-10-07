@@ -1131,6 +1131,9 @@ This includes a recorded zero allocation.
 Estimated employee cost does not support a comparison.
 The report carries `recorded_employee_count` separately from employees with Logged Hours.
 Expense record counts remain expense-only.
+Company reporting-currency totals include recorded Project shares and unallocated employee cost.
+A recorded-zero payroll month remains a supported zero in its native currency.
+An empty or estimated-only payroll month does not establish recorded zero.
 
 `e2e/specs/payroll-only-cost-budget.spec.ts` covers positive and recorded-zero payroll-only Projects.
 It checks budget approval, report values, payroll storage, and the browser comparison.

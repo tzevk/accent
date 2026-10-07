@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { rows } from '../lib/db';
+import { exec, rows } from '../lib/db';
 import { writeArtifact } from '../lib/artifacts';
 import {
 	BUDGET_PAYROLL_MONTH,
@@ -10,6 +10,9 @@ import {
 } from '../lib/budget-payroll-fixtures';
 
 interface ReportData {
+	company: { currency: string | null; incurred_cost: number | null;
+		groups: Array<{ key: string; amount: number }> };
+	payroll: { known_zero_count: number; recorded_total: number };
 	projects: Array<{ project_id: number; employee_cost: number; incurred_cost: number }>;
 	budgets: { comparisons: Array<{
 		project_id: number; outcome: string; incurred_cost: number | null;
@@ -50,6 +53,12 @@ test('compares recorded payroll-only and known-zero payroll costs with approved 
 	expect(report.status(), await report.text()).toBe(200);
 	const data = (await report.json()).data as ReportData;
 	evidence.report = data;
+	expect(data.company.incurred_cost).toBe(1000);
+	for (const [key, amount] of [
+		['incurred_project_cost', 600], ['company_overhead', 0], ['unallocated_cost', 400],
+	] as const) {
+		expect(data.company.groups.find(group => group.key === key)?.amount).toBe(amount);
+	}
 	for (const [projectId, cost, variance] of [
 		[fixture.positiveProjectId, 600, -100], [fixture.zeroProjectId, 0, 500],
 	]) {
@@ -96,4 +105,31 @@ test('compares recorded payroll-only and known-zero payroll costs with approved 
 		await expect(row).toHaveAttribute('data-variance', String(variance));
 	}
 	await page.screenshot({ path: 'e2e/artifacts/payroll-only-cost-budget.png', fullPage: true });
+});
+
+test('states a recorded-zero payroll month as known zero, not missing cost', async ({ request }) => {
+	// Keep only the archived zero snapshot; fixture writes do not touch business data.
+	await exec(`DELETE FROM payroll_allocation_events WHERE source_table = 'payroll_slips' AND source_id = ?`,
+		[fixture.positiveSlipId]);
+	await exec(`DELETE s FROM payroll_employee_allocation_shares s
+		JOIN payroll_employee_allocations a ON a.id = s.allocation_id WHERE a.payroll_slip_id = ?`,
+		[fixture.positiveSlipId]);
+	await exec(`DELETE FROM payroll_employee_allocations WHERE payroll_slip_id = ?`, [fixture.positiveSlipId]);
+	await exec(`DELETE FROM payroll_slips WHERE id = ?`, [fixture.positiveSlipId]);
+	const response = await request.get(`/api/reports/employee-project-monthly-cost?view=expenditure&month=${BUDGET_PAYROLL_MONTH}`);
+	expect(response.status(), await response.text()).toBe(200);
+	const data = (await response.json()).data as ReportData;
+	evidence.recordedZeroMonth = data;
+	expect(data.company.currency).toBe('INR');
+	expect(data.company.incurred_cost).toBe(0);
+	expect(data.payroll.known_zero_count).toBe(1);
+	expect(data.payroll.recorded_total).toBe(0);
+	expect(data.budgets.comparisons.find(row => row.project_id === fixture.zeroProjectId)?.variance).toBe(500);
+	const stored = await rows<{ employer_cost: string; allocated: string }>(
+		`SELECT ps.employer_cost, SUM(s.amount) AS allocated FROM payroll_slips ps
+		 JOIN payroll_employee_allocations a ON a.payroll_slip_id = ps.id
+		 JOIN payroll_employee_allocation_shares s ON s.allocation_id = a.id
+		 WHERE ps.id = ? GROUP BY ps.employer_cost`, [fixture.zeroSlipId]);
+	evidence.recordedZeroStorage = stored;
+	expect(stored.map(row => [Number(row.employer_cost), Number(row.allocated)])).toEqual([[0, 0]]);
 });
