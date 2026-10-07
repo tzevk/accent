@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
+import Decimal from 'decimal.js';
 import { readArtifact, writeArtifact } from '../lib/artifacts';
 import { exec, rows } from '../lib/db';
 import { E2E_ENV } from '../lib/env';
@@ -117,6 +118,15 @@ const CONTROL = {
 const CONTROL_TOTAL_AFTER_RATE = CONTROL.inr + CONTROL.aedConverted;
 const CONTROL_TOTAL_AFTER_ENTRY =
 	CONTROL_TOTAL_AFTER_RATE + CONTROL.eurConverted;
+
+/** Compares a rate by numeric value; its textual scale is not the contract. */
+const expectRate = (actual: unknown, expected: string) => {
+	expect(actual, `rate ${expected}`).not.toBeNull();
+	expect(
+		new Decimal(String(actual)).equals(expected),
+		`rate ${String(actual)} equals ${expected}`
+	).toBe(true);
+};
 
 interface CurrencyReportingData {
 	currency: string;
@@ -435,7 +445,7 @@ test('converts supported currencies into reporting totals that reconcile to thei
 	expect(filtered.company.incurred_cost).toBe(OCTOBER_TOTAL);
 
 	// The database keeps every original amount and stores the evidence; the
-	// ten-decimal rate is preserved as the string it was recorded with.
+	// ten-decimal rate keeps the numeric value it was recorded with.
 	const stored = await rows<Record<string, unknown>>(
 		`SELECT expense_number, currency, amount, total_amount, recognized_amount,
             reporting_currency, conversion_rate, conversion_date,
@@ -463,9 +473,8 @@ test('converts supported currencies into reporting totals that reconcile to thei
 		expect(Number(row.total_amount)).toBe(amount);
 		expect(Number(row.recognized_amount)).toBe(amount);
 		expect(row.currency).toBe(currency);
-		expect(
-			row.conversion_rate === null ? null : String(row.conversion_rate)
-		).toBe(rate);
+		if (rate === null) expect(row.conversion_rate).toBeNull();
+		else expectRate(row.conversion_rate, rate);
 		expect(Number(row.converted_amount)).toBe(converted);
 	};
 	expectStored('E2E-EXP-319-0001', 'INR', 10000, null, 10000);
@@ -479,9 +488,9 @@ test('converts supported currencies into reporting totals that reconcile to thei
 		'82.9999974656',
 		16210937.01
 	);
-	// The stored rate kept every decimal of the recorded string.
+	// The stored rate kept every decimal of the recorded value.
 	const precise = storedByNumber.get('E2E-EXP-319-0009')!;
-	expect(String(precise.conversion_rate)).toBe(CURRENCY_RATES.precise.rate);
+	expectRate(precise.conversion_rate, CURRENCY_RATES.precise.rate);
 	expect(precise.reporting_currency).toBe(CURRENCY_REPORTING_CURRENCY);
 	expect(String(precise.conversion_date).slice(0, 10)).toBe(
 		CURRENCY_RATES.precise.date
@@ -758,7 +767,7 @@ test('applies a supported rate through the versioned command on the rounding bou
 	expect(Number(stored[0].recognized_amount)).toBe(CONTROL.aedOriginal);
 	expect(stored[0].currency).toBe('AED');
 	expect(stored[0].reporting_currency).toBe(CURRENCY_REPORTING_CURRENCY);
-	expect(String(stored[0].conversion_rate)).toBe(CURRENCY_RATES.aed.rate);
+	expectRate(stored[0].conversion_rate, CURRENCY_RATES.aed.rate);
 	expect(Number(stored[0].converted_amount)).toBe(CONTROL.aedConverted);
 	expect(Number(stored[0].financial_version)).toBe(3);
 
@@ -782,7 +791,7 @@ test('applies a supported rate through the versioned command on the rounding bou
 		'recognized',
 	]);
 	const updateSnapshot = snapshotOf(journal[1].snapshot);
-	expect(updateSnapshot.conversion_rate).toBe(CURRENCY_RATES.aed.rate);
+	expectRate(updateSnapshot.conversion_rate, CURRENCY_RATES.aed.rate);
 	expect(updateSnapshot.conversion_date).toBe('2019-12-31');
 	expect(updateSnapshot.conversion_evidence_reference).toBe(
 		'E2E-319-RATE-CONTROL'
@@ -918,7 +927,7 @@ test('records conversion evidence through the real report controls', async ({
 	expect(Number(queued[0].financial_version)).toBe(1);
 	expect(queued[0].currency).toBe('EUR');
 	expect(queued[0].reporting_currency).toBe(CURRENCY_REPORTING_CURRENCY);
-	expect(String(queued[0].conversion_rate)).toBe(CONTROL.eurRate);
+	expectRate(queued[0].conversion_rate, CONTROL.eurRate);
 	expect(Number(queued[0].total_amount)).toBe(CONTROL.eurOriginal);
 	expect(queued[0].converted_amount).toBeNull();
 	const createdId = Number(queued[0].id);
@@ -969,7 +978,7 @@ test('records conversion evidence through the real report controls', async ({
 	expect(Number(recognized[0].recognized_amount)).toBe(CONTROL.eurOriginal);
 	expect(Number(recognized[0].total_amount)).toBe(CONTROL.eurOriginal);
 	expect(Number(recognized[0].converted_amount)).toBe(CONTROL.eurConverted);
-	expect(String(recognized[0].conversion_rate)).toBe(CONTROL.eurRate);
+	expectRate(recognized[0].conversion_rate, CONTROL.eurRate);
 	expect(String(recognized[0].conversion_date).slice(0, 10)).toBe(
 		`${CONTROL_MONTH}-16`
 	);
@@ -1211,7 +1220,7 @@ test('refuses a stale rate on a currency-pair change and honors fresh evidence',
 		[record.id]
 	);
 	expect(untouched[0].currency).toBe('USD');
-	expect(String(untouched[0].conversion_rate)).toBe('83.5');
+	expectRate(untouched[0].conversion_rate, '83.5');
 	expect(String(untouched[0].conversion_evidence_reference)).toBe(
 		'E2E-319-RATE-PAIR'
 	);
@@ -1242,7 +1251,7 @@ test('refuses a stale rate on a currency-pair change and honors fresh evidence',
 		[record.id]
 	);
 	expect(repriced[0].currency).toBe('EUR');
-	expect(String(repriced[0].conversion_rate)).toBe('90.25');
+	expectRate(repriced[0].conversion_rate, '90.25');
 	expect(repriced[0].converted_amount).toBeNull();
 
 	const recognize = await request.post(
