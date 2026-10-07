@@ -1,4 +1,4 @@
-# Company Project Expenditure — Implementation (tickets #306, #311, #316, #317, #319, #321)
+# Company Project Expenditure — Implementation (tickets #306, #307, #308, #309, #311, #316, #317, #319, #321)
 
 ## Overview
 
@@ -439,6 +439,130 @@ finalized month without a frozen allocation (`payroll_allocation_missing`), and
 an unfinalized or ungenerated month (`payroll_not_finalized` /
 `payroll_not_generated`) are coverage notices; No project and No logged hours
 amounts are disclosed as info notices. A finalized zero stays a known zero.
+
+## Reviewed allocation reconstruction (#308)
+
+Implemented in `reconstruction.ts` (ADR-0016); the consumer contract for the
+later allocation slices (#309 revisions, #322 close, #324 export) is published
+outside the repo at `C:/Files/OCDSE/Work/expenditure-reconstruction-contract.md`.
+
+**The rule.** An already-finalized Payroll Slip without saved allocation shares
+is rebuilt **once** from its recorded `employer_cost` and the available monthly
+Logged Hours — the same `allocateEmployerCost` rule and the same canonical
+month-hours loader #307 freezes with. The current Salary Profile never prices a
+reconstruction; it only contributes the `pay_stream` metadata observed at
+proposal time, labelled as such (`pay_stream_source`). Missing evidence never
+invents Project attribution: with no eligible Logged Hours the whole recorded
+cost freezes as one `no_logged_hours` share (`timesheet_missing`), and hours
+without a reliable Project stay in the denominator as `no_project`
+(`hours_without_project`).
+
+**Proposal before freeze.** A reconstruction is a proposal until an authorized
+reviewer approves it; unreviewed data never becomes the current allocation
+header.
+
+| Table                                         | Meaning                                                                                                                                                                                               |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `payroll_allocation_reconstruction_proposals` | One proposal per Payroll Slip and `financial_version`: recorded cost, denominator hours, evidence and missing-evidence snapshots, actor, reconstruction time, review decision, `frozen_allocation_id` |
+| `payroll_allocation_reconstruction_shares`    | The proposed destinations, same shape as the allocation shares; approval copies these exact rows, so what the reviewer saw is what freezes                                                            |
+
+Approval writes the reviewed figures into `payroll_employee_allocations` with
+`kind = 'reconstruction'` (`version = MAX(version)+1`, one journal row per
+version) and appends a `reconstructed` row to `payroll_allocation_events`
+carrying the proposal uid, reconstruction time/actor, reviewer, evidence, and
+limitations. The commands never write `payroll_slips` or `payroll_runs`, so a
+reconstruction changes no slip, payment status, or payroll-run state.
+
+**Commands.** `POST …/payroll/reconstruction` (`{ month, payroll_slip_id,
+evidence_reference? }`) proposes; `POST …/payroll/reconstruction/{uid}`
+(`{ command: approve|reject, expected_version, reason? }`) reviews. One pending
+proposal per slip, one allocation per slip, `expected_version` on every review,
+and the slip row locked before a version is minted — repeated or concurrent
+commands are refused (`reconstruction_pending`, `allocation_exists`,
+`already_reviewed`, `version_conflict`, `run_not_locked`, `month_mismatch`,
+`slip_not_found`) with no partial write. An existing reviewed allocation is
+never replaced. Both routes require the financial read gate (super admin, or
+`reports:read` + `other_expenses:read` + `payroll:read`) **and** the operation
+privilege (`other_expenses:update` to propose, `other_expenses:approve` to
+review); the UI renders the same conjunction.
+
+**Report contract.** The payroll drilldown rows gain `reconstruction` — the
+slip's latest proposal with `proposal_uid`, `financial_version`, `status`,
+proposed/reviewed actor names and times, `review_reason`, `missing_evidence`,
+`evidence`, and its `shares`. A pending or rejected proposal is shown beside
+the row as a proposal (the row keeps `allocation_missing`, its recorded amount
+stays null); an approved proposal attaches only while its freeze is the current
+recorded allocation, and the row shows a distinct "Reconstructed" badge with
+the evidence panel — never presented as the original finalization-time
+attribution. New coverage codes: `payroll_reconstruction_pending` and
+`payroll_reconstructed` (info); the `payroll_allocation_missing` warning stays
+for slips still without an applicable allocation.
+
+## Project Cost Allocation Revision (#309)
+
+Implemented in `allocation-revisions.ts` (ADR-0016, GLOSSARY _Project Cost
+Allocation Revision_); the consumer contract for the later close/revision
+slices (#322/#323) is published outside the repo at
+`C:/Files/OCDSE/Work/expenditure-allocation-revision-contract.md`.
+
+**The rule.** A revision corrects _how_ a finalized Payroll Slip's recorded
+employer cost is attributed to Projects — it never changes the amount. The
+operator states the corrected monthly Logged Hours per destination (a live
+Project, or No project), the command re-runs the single frozen rule
+`allocateEmployerCost`, and the new version sums exactly to the same
+`payroll_slips.employer_cost` the previous version summed to. The corrected
+cents are therefore the deterministic largest-remainder split of the same
+employer cost; no second rule and no direct amount input exist.
+
+**Append-only versions with old/new evidence.** Each revision appends one
+`payroll_employee_allocations` row for the slip with the next `version` and
+`kind = 'revision'` (the migration extends that ENUM; `down` narrows only when
+no revision row exists), its ordinary share rows, and one
+`payroll_allocation_events` row with `command = 'revised'`, the actor, the
+required reason and evidence reference, and a snapshot carrying the previous
+version, its shares, the corrected lines, and the revised figures. Previous
+versions are never updated or deleted; the selected version stays the highest
+`version`, exactly the read #307 already performs.
+
+**Command contract.**
+`POST /api/reports/employee-project-monthly-cost/payroll/revisions` — body
+`{ payroll_slip_id, expected_version, reason, evidence_reference,
+lines: [{ project_id, hours }] }`; `lines: []` states "no eligible hours" and
+must be sent explicitly. All checks run in one transaction: the slip row is
+locked `FOR UPDATE`, the latest allocation row is locked and its version must
+equal `expected_version`, the month's latest Payroll Run must be locked
+(`finalized`/`paid` — a reopened `draft` month refuses with `run_not_locked`,
+and re-finalization remains the way back), every registered financial-period
+guard runs, the reason/evidence and lines are validated (positive hours per
+live Project, no duplicate destination), and only then are the version, shares,
+and journal row written. A stale version, an unauthorized caller, an invalid
+line, or a guard refusal writes nothing; a concurrent or repeated revision
+loses on the version check or the `unique_slip_allocation_version` key
+(mapped to `version_conflict`). A revision of a `paid` month is allowed —
+attribution is not pay — while the paid-month reopen restriction stays
+untouched, and no revision ever writes `payroll_slips`, `payroll_runs`, or
+payment state.
+
+**Read contract.** `GET
+/api/reports/employee-project-monthly-cost/payroll/revisions?payroll_slip_id=`
+returns the slip's full history: every version with its kind, recorded employer
+cost, hours totals, shares, frozen actor/time, journal command, reason,
+evidence, `superseded_by`, and whether it still reconciles (`SUM(shares.amount)
+= recorded_employer_cost`), plus `selected_version`. Both routes sit behind the
+payroll drilldown's financial read gate (`reports:read` **and**
+`other_expenses:read` **and** `payroll:read`, or super admin); POST additionally
+requires `payroll:update`. The drilldown's `source.allocation_kind` now includes
+`revision`, the report labels the row `· revised`, the payroll coverage array
+gains the info notice `payroll_allocation_revised`, and the report's employee
+row carries an **Allocation history** panel with the version table and the
+**Revise allocation** dialog (rendered only for gate holders; the server refuses
+regardless).
+
+**Financial-period seam for #322.** `registerAllocationMutationGuard` accepts a
+`(db, monthDay)` guard; the revision transaction runs every registered guard
+before writing and turns a refusal into an explicit failure with no partial
+write. No guard is registered while no financial-close module exists — #322
+registers its closed-month check there without editing #309.
 
 ## Coverage: what the total does not include
 
@@ -975,8 +1099,13 @@ End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
 - **#307 recorded payroll**: implemented (`payroll.ts`): recorded employer-cost
   allocation frozen with Payroll Finalize, estimates from the corrected payroll
   calculation, the payroll drilldown, and the employee-cost views as consumers
-  of the same interpretation. The later allocation slices (#308/#309) extend it
-  through `C:/Files/OCDSE/Work/expenditure-payroll-allocation-contract.md`.
+  of the same interpretation. **#309 allocation revisions** are implemented
+  (`allocation-revisions.ts`): append-only correction versions with reason/
+  evidence/actor, the revisions GET/POST surface, the report history panel, and
+  the registered financial-period guard seam; #308 (reconstruction) and #322
+  (close) extend the same tables and seam. Contracts:
+  `C:/Files/OCDSE/Work/expenditure-payroll-allocation-contract.md` and
+  `C:/Files/OCDSE/Work/expenditure-allocation-revision-contract.md`.
 - **Supplier cost and commitments** (#311): the invoice source adapter and the
   shared `financial_cost_links` registry are in place; #312 adds supplier-order
   classification/consumption on top of `cost_uid` and publishes Outstanding
@@ -1010,7 +1139,13 @@ End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
 - `migrations/20261008092100_project_cost_budgets.js` (#321: budgets + approval journal)
 - `migrations/20261008090700_payroll_employee_cost_allocation.js`
   (#307: allocations, shares, allocation journal)
+- `migrations/20261008090900_payroll_allocation_revision.ts`
+  (#309: extends the allocation `kind` ENUM with `revision`)
 - `src/lib/company-expenditure/{index,types,currency,recognition,reconciliation,records,commands,payroll,coverage,budget-records,budget-commands,budget-comparison}.ts`
+- `src/lib/company-expenditure/allocation-revisions.ts` (#309: the versioned
+  revision command, the history read, and the registered financial-period guard seam)
+- `src/app/api/reports/employee-project-monthly-cost/payroll/revisions/route.ts`
+  (#309: GET history + POST authorized revision)
 - `src/lib/company-expenditure/{ranking,totals}.ts` (comparable period, both
   orderings, cost to date, per-Project evidence; shared money subtotals)
 - `src/app/api/reports/employee-project-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)

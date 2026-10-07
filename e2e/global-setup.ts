@@ -19,6 +19,18 @@ import {
 	seedExpenditureAllocationFixtures,
 } from './lib/expenditure-allocation-fixtures';
 import {
+	RECONSTRUCTION_MONTH,
+	RECONSTRUCTION_PENDING_MONTH,
+	cleanupExpenditureReconstructionFixtures,
+	seedExpenditureReconstructionFixtures,
+} from './lib/expenditure-reconstruction-fixtures';
+import {
+	REVISION_MONTH,
+	REVISION_PAID_MONTH,
+	cleanupExpenditureAllocationRevisionFixtures,
+	seedExpenditureAllocationRevisionFixtures,
+} from './lib/expenditure-allocation-revision-fixtures';
+import {
 	cleanupOtherExpenseFixtures,
 	seedOtherExpenseFixtures,
 } from './lib/other-expense-fixtures';
@@ -32,6 +44,10 @@ import {
 	cleanupOrderFixtures,
 	seedOrderFixtures,
 } from './lib/order-fixtures';
+import {
+	cleanupOrderConsumptionFixtures,
+	seedOrderConsumptionFixtures,
+} from './lib/order-consumption-fixtures';
 import {
 	cleanupSupplierInvoiceFixtures,
 	seedSupplierInvoiceFixtures,
@@ -50,10 +66,13 @@ export default async function globalSetup(): Promise<void> {
 		// Payroll generation includes other fixture rosters. Remove its guarded
 		// month-owned slips before any roster cleanup deletes their employees.
 		await cleanupExpenditureAllocationFixtures();
+		await cleanupExpenditureReconstructionFixtures();
+		await cleanupExpenditureAllocationRevisionFixtures();
 		await cleanupFixtures();
 		await cleanupAttendanceFixtures();
 		await cleanupUtilizationFixtures();
 		await cleanupOrderFixtures();
+		await cleanupOrderConsumptionFixtures();
 		await cleanupExpenditureFixtures();
 		await cleanupOtherExpenseFixtures();
 		await cleanupPettyCashFixtures();
@@ -150,6 +169,18 @@ export default async function globalSetup(): Promise<void> {
 				`(${Object.keys(allocation.employeeIds).length} employees, ` +
 				`${Object.keys(allocation.projectIds).length} projects)`
 		);
+		const reconstruction = await seedExpenditureReconstructionFixtures();
+		console.log(
+			`[e2e] reconstruction fixtures seeded for ${RECONSTRUCTION_MONTH} and ${RECONSTRUCTION_PENDING_MONTH} ` +
+				`(${Object.keys(reconstruction.employeeIds).length} employees, ` +
+				`${Object.keys(reconstruction.projectIds).length} projects)`
+		);
+		const revision = await seedExpenditureAllocationRevisionFixtures();
+		console.log(
+			`[e2e] allocation revision fixtures seeded for ${REVISION_MONTH} and ${REVISION_PAID_MONTH} ` +
+				`(${Object.keys(revision.employeeIds).length} employees, ` +
+				`${Object.keys(revision.projectIds).length} projects)`
+		);
 		const currency = await seedExpenditureCurrencyFixtures();
 		console.log(
 			`[e2e] expenditure currency fixtures seeded for ${currency.months.join(', ')} ` +
@@ -162,6 +193,14 @@ export default async function globalSetup(): Promise<void> {
 			`[e2e] order fixtures seeded for ${orders.month} ` +
 				`(project ${ORDER_PROJECT.code} #${orders.projectId}, ` +
 				`${Object.keys(orders.legacy).length} legacy copies)`
+		);
+
+		const consumption = await seedOrderConsumptionFixtures();
+		console.log(
+			`[e2e] order-consumption fixtures seeded for ${consumption.month}, ` +
+				`${consumption.nextMonth} and ${consumption.laterMonth} ` +
+				`(${Object.keys(consumption.orderUids).length} orders, ` +
+				`${Object.keys(consumption.invoiceIds).length} recognized invoices)`
 		);
 	} finally {
 		await closeDb();

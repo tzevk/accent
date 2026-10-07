@@ -101,3 +101,49 @@ reviewer decides, with a reason and an evidence reference:
 
 Each decision is versioned (`expected_version`), so a replayed or concurrent
 review changes nothing and duplicates nothing.
+
+## Supplier commitment consumption (#312)
+
+Recognized goods or services consume the corresponding supplier order, by
+`orders.order_uid` plus the recognized cost's `cost_uid` and its native
+Recognition Period — never by a text PO number. A client order and a client
+invoice link never reduce a supplier commitment, and a payment never defines
+consumption.
+
+| Where                      | What                                                                                                                                                                                                |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `order_consumptions`       | One consumed native slice: `order_uid`, `cost_uid`, amount on the order's tax basis and currency, Recognition Period, `source_version`, `state`, `version`, actor/reason/evidence, release evidence |
+| `order_consumption_events` | Append-only per-row journal (`recorded` / `released`), keyed `(consumption_id, version)`                                                                                                            |
+
+Rules the module enforces:
+
+- **Eligibility**: only a `direction = 'supplier'` order with an explicit
+  `gross`/`net` basis, a stated value, and a valid currency enters the
+  supported commitment; drafts, pending orders, unknown bases, missing values,
+  and pending legacy copies stay explicit exceptions (never counted, never
+  guessed).
+- **Native amounts**: the amount is the frozen slice gross (gross-basis order)
+  or gross minus tax (net-basis order); several same-month slices are summed,
+  never `.find(first)`. A missing or non-positive native amount refuses.
+- **One slice, one order**: `UNIQUE (cost_uid, recognized_period, active_key)`
+  is the global active source-slice backstop, so two competing orders can
+  never consume the same slice; the second attempt refuses
+  `slice_already_consumed`.
+- **Versioned and atomic**: a record locks the order row and the authoritative
+  source row, checks `expected_order_version` and `expected_source_version`,
+  and refuses a stale version, a cancelled order, or a cost that is no longer
+  recognized before any write. A correction is release + re-record (reasoned,
+  evidenced) — there is no in-place amount edit.
+- **Rollforward**: opening, new commitment, consumption, cancellation, and
+  closing are reconstructed per (currency, tax basis) pair as of each month
+  from the recorded acts — a later cancellation never erases an earlier
+  month's commitment, and the cancellation amount uses consumption through its
+  effective month. A timing act that cannot be proved stays out of the month
+  buckets and is disclosed as `unsupported_timing`; application `created_at`
+  is never invented as a business date.
+
+HTTP: `GET /api/admin/orders/{uid}/commitment` (order read plus
+`other_expenses:read`), `POST /api/admin/orders/{uid}/consumption` and
+`POST /api/admin/orders/{uid}/consumption/release` (order update plus
+`other_expenses:approve`). The report's Outstanding Supplier Commitment section
+reads the same rollforward through `fetchCompanyReconciliation`.
