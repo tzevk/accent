@@ -1872,6 +1872,14 @@ export const EXPENDITURE_CHARGES: SeedCharge[] = [
  */
 export const EXPENDITURE_BUDGET_UID_PREFIX = 'e2e-budget-';
 /**
+ * Prefix the product mints for budgets recorded through the app
+ * (`recordCostBudget` in `src/lib/company-expenditure/budget-commands.ts`).
+ * Seeded fixtures use `EXPENDITURE_BUDGET_UID_PREFIX`; runtime rows never
+ * carry the fixture namespace, so assertions on app-created rows must use
+ * this prefix.
+ */
+export const EXPENDITURE_MINTED_BUDGET_UID_PREFIX = 'costbudget-';
+/**
  * A commercial figure seeded on the budget-only Project. The report must never
  * read a Project sales value as a cost budget, so the spec asserts this number
  * appears nowhere in the budget section.

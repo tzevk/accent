@@ -9,6 +9,7 @@ import {
 	EXPENDITURE_BUDGET_UID_PREFIX,
 	EXPENDITURE_COSTS,
 	EXPENDITURE_EDITOR_HEADERS,
+	EXPENDITURE_MINTED_BUDGET_UID_PREFIX,
 	EXPENDITURE_MONTH,
 	EXPENDITURE_NEXT_MONTH,
 	EXPENDITURE_PROJECTS,
@@ -779,7 +780,12 @@ test('records, submits, and approves a budget through the report controls', asyn
 	await expect(draftRow).toHaveCount(1);
 	uiBudgetId = Number(await draftRow.getAttribute('data-budget-id'));
 	uiBudgetUid = String(await draftRow.getAttribute('data-budget-uid'));
-	expect(uiBudgetUid.startsWith(EXPENDITURE_BUDGET_UID_PREFIX)).toBe(true);
+	// The draft row was minted by the product, not seeded: it carries the
+	// runtime namespace (`costbudget-`), never the fixture namespace
+	// (`e2e-budget-`, reserved for seeded rows).
+	expect(uiBudgetUid.startsWith(EXPENDITURE_MINTED_BUDGET_UID_PREFIX)).toBe(
+		true
+	);
 	created.push(uiBudgetId);
 	// Address the row by its identity from here on: its state changes, and a
 	// state-qualified locator would stop matching the moment it does.
