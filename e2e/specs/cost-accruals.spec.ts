@@ -380,6 +380,17 @@ test('seeded accruals are counted once in July, drafts and pending never are', a
 	expect(projectRow(july, ACCRUAL_PROJECTS.alpha.code).incurred_cost).toBe(
 		240000
 	);
+	// The seeded Project accruals carry their Project identity in the database,
+	// so the report's Project cost can attribute them to alpha.
+	const seededProjectRows = await rows<{ project_id: number }>(
+		`SELECT project_id FROM cost_accruals
+      WHERE accrual_number LIKE ? AND cost_classification = 'project' AND isDelete = 0`,
+		[`${ACCRUAL_NUMBER_PREFIX}%`]
+	);
+	expect(seededProjectRows.length).toBeGreaterThanOrEqual(6);
+	for (const row of seededProjectRows) {
+		expect(Number(row.project_id)).toBe(seeded.projects.alpha);
+	}
 	const accrualSource = sourceOf(july, 'cost_accrual');
 	expect(accrualSource.confirmed_amount).toBe(240000);
 	expect(accrualSource.confirmed_count).toBe(3);
@@ -1048,6 +1059,8 @@ test('report and drilldown state the accrual chain once', async ({
 	expect(a1?.accrual?.replaced_amount).toBe(100000);
 	expect(a1?.accrual?.remaining_amount).toBe(0);
 	expect(a1?.accrual?.replacement_count).toBe(2);
+	// The accrual's Project identity resolves through the projects join.
+	expect(a1?.project_code).toBe(ACCRUAL_PROJECTS.alpha.code);
 	const a2 = byUid.get(seededAccrual('a2').costUid);
 	expect(a2?.accrual?.replaced_amount).toBe(100000);
 	expect(a2?.accrual?.remaining_amount).toBe(0);

@@ -565,12 +565,12 @@ export async function seedCostAccrualFixtures(): Promise<SeededCostAccruals> {
 		const inserted = await exec(
 			`INSERT INTO cost_accruals
          (accrual_number, cost_uid, description, vendor_name, vendor_reference,
-          evidence_basis, cost_classification, recognition_state, recognition_period,
+          evidence_basis, cost_classification, project_id, recognition_state, recognition_period,
           period_basis, service_period_start, service_period_end, gross_amount, tax_amount,
           tax_treatment, tax_evidence_reference, currency, recognized_amount, replaced_amount,
           recognized_by, recognized_at, owner_user_id, financial_version, isDelete, created_by)
        VALUES (?, ?, ?, ?, NULL,
-               ?, ?, ?, ?, 'service_period', ?, ?, ?, ?,
+               ?, ?, ?, ?, ?, 'service_period', ?, ?, ?, ?,
                ?, ?, ?, ?, 0,
                NULL, ?, ?, 1, 0, NULL)`,
 			[
@@ -580,6 +580,7 @@ export async function seedCostAccrualFixtures(): Promise<SeededCostAccruals> {
 				`${ACCRUAL_VENDOR_PREFIX}${accrual.key}`,
 				accrual.evidenceBasis,
 				accrual.classification,
+				projectId,
 				accrual.state,
 				accrual.recognitionMonth ? `${accrual.recognitionMonth}-01` : null,
 				accrual.serviceStart,

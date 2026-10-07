@@ -19,7 +19,9 @@ import type { Knex } from 'knex';
  * `financial_cost_events.command` gains `replaced` and `released` for the two
  * accrual-side transitions. Cross-source cost/native identities use
  * `utf8mb4_general_ci` (migration 20261009000000), so column-to-column joins
- * need no per-query coercion.
+ * need no per-query coercion. A Project classification carries `project_id`,
+ * the same INT reference to `projects.project_id` that `other_expenses` and
+ * `purchase_invoices` store; an INT join needs no collation.
  *
  * Idempotent: every step checks information_schema first. ESM `.ts` (Node 24 /
  * current Knex), additive, never edits an earlier migration.
@@ -66,7 +68,13 @@ async function hasIndex(
 	return rows.length > 0;
 }
 
-/** Whether a column's ENUM already lists a value (idempotent growth). */
+/**
+ * Whether a column's ENUM already lists a value (idempotent growth).
+ * The column must exist: a missing column means the migration that
+ * creates it has not run, and silently skipping the MODIFY would
+ * leave the shared registry unable to store the values this feature
+ * writes — so this fails loudly instead.
+ */
 async function enumHasValue(
 	knex: Knex,
 	table: string,
@@ -79,7 +87,11 @@ async function enumHasValue(
 		  LIMIT 1`,
 		[table, column]
 	);
-	if (rows.length === 0) return true; // column absent: nothing to grow yet
+	if (rows.length === 0) {
+		throw new Error(
+			`${table}.${column} is absent from information_schema: its ENUM cannot grow. Run the migration that creates the column first.`
+		);
+	}
 	const columnType = String(rows[0].columnType ?? '');
 	return columnType.includes(`'${value}'`);
 }
@@ -124,6 +136,7 @@ export async function up(knex: Knex): Promise<void> {
         \`order_uid\` ${GENERAL_CI} NULL COMMENT 'Canonical supplier order (#310) this work belongs to; consumption is #312/#314',
         \`evidence_basis\` ENUM('received_work','supported_estimate','purchase_order') NOT NULL DEFAULT 'received_work',
         \`cost_classification\` ENUM('project','company_overhead','unallocated') NULL COMMENT 'NULL = not yet classified (unresolved)',
+        \`project_id\` INT NULL COMMENT 'Set only for a Project classification; the same INT reference to projects.project_id every native source stores',
         \`recognition_state\` ENUM('draft','pending_evidence','recognized','rejected','cancelled') NOT NULL DEFAULT 'draft',
         \`recognition_period\` DATE NULL COMMENT 'First day of the recognised month',
         \`period_basis\` ENUM('service_period','service_period_end','bill_date_fallback','unresolved') NOT NULL DEFAULT 'unresolved',
@@ -156,6 +169,7 @@ export async function up(knex: Knex): Promise<void> {
         UNIQUE KEY \`uq_cost_accrual_cost_uid\` (\`cost_uid\`),
         KEY \`idx_cost_accrual_recognition\` (\`recognition_state\`, \`recognition_period\`),
         KEY \`idx_cost_accrual_classification\` (\`cost_classification\`, \`recognition_period\`),
+        KEY \`idx_cost_accrual_project\` (\`project_id\`),
         KEY \`idx_cost_accrual_order\` (\`order_uid\`),
         KEY \`idx_cost_accrual_owner\` (\`owner_user_id\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
