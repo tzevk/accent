@@ -656,7 +656,10 @@ test('the browser proposes and approves a reconstruction through the real report
 	await expect(panel).toBeVisible();
 	await expect(panel).toHaveAttribute('data-financial-version', '1');
 	await expect(panel).toHaveAttribute('data-status', 'approved');
-	await expect(panel).toHaveAttribute('data-missing-evidence', '');
+	await expect(panel).toHaveAttribute(
+		'data-missing-evidence',
+		'hours_without_project'
+	);
 	await expect(panel).not.toHaveAttribute('data-reconstructed-at', '');
 	await expect(panel).not.toHaveAttribute('data-reviewed-by', '');
 	const p1 = detail
@@ -769,7 +772,13 @@ test('the approved reconstruction persists as immutable evidence and reads disti
 	expect(proposalEvidence.pay_stream_source).toBe(
 		'salary_profile_observed_at_proposal'
 	);
-	expect(parseJsonColumn(proposal[0].missing_evidence)).toEqual([]);
+	expect(parseJsonColumn(proposal[0].missing_evidence)).toEqual([
+		{
+			code: 'hours_without_project',
+			detail:
+				'40 of 192 Logged Hours have no reliable Project; those hours stay in the denominator and their share stays unallocated.',
+		},
+	]);
 
 	const row = employeeOf(
 		await payrollDrilldown(request, MONTH, seeded.employeeIds.splitMonthly),
