@@ -495,7 +495,7 @@ function gammaRow(page: Page) {
 	);
 }
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ playwright }) => {
 	// Rerun safety: an interrupted earlier run may have left the cost this spec
 	// records through the browser form behind. Remove it (and its journal)
 	// before seeding, so every run starts from the fixture's own figures.
@@ -514,8 +514,34 @@ test.beforeAll(async () => {
 	seeded = await seedExpenditureFixtures();
 	// The day-less payroll case reads #307's finalized allocation month; its
 	// fixtures are seeded here too so this spec proves the rule on its own,
-	// and removed again in afterAll.
-	await seedExpenditureAllocationFixtures();
+	// and removed again in afterAll. Seeding alone leaves no finalized run
+	// (the #307 afterAll deletes the 2026-02/03 runs+slips), so Generate and
+	// Finalize Feb-2026 through the real payroll API — the same calls the
+	// #307 spec makes — before any test reads the month.
+	const allocationSeeded = await seedExpenditureAllocationFixtures();
+	const payrollApi = await playwright.request.newContext({
+		baseURL: E2E_ENV.baseURL,
+		storageState: 'e2e/.auth/admin-report.json',
+		extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.27' },
+	});
+	try {
+		const monthDay = `${ALLOCATION_MONTH}-01`;
+		const generate = await payrollApi.post('/api/payroll/generate', {
+			data: {
+				month: monthDay,
+				all: true,
+				include_bonus: true,
+				bonus_employee_ids: Object.values(allocationSeeded.employeeIds),
+			},
+		});
+		expect(generate.status(), await generate.text()).toBe(200);
+		const finalize = await payrollApi.post('/api/payroll/runs/finalize', {
+			data: { month: monthDay },
+		});
+		expect(finalize.status(), await finalize.text()).toBe(200);
+	} finally {
+		await payrollApi.dispose();
+	}
 	// The fixture months are this spec's own namespace: another slice's cost in
 	// any of them would move the figures below, so the run refuses to guess
 	// instead of asserting against a month it does not own.
