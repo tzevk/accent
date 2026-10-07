@@ -1009,13 +1009,13 @@ test('links a receipt copy to an already recognized cost instead of a second exp
 	// An unknown or not-yet-recognized target fails visibly.
 	const unknownTarget = await apiPost(request, '/api/admin/other-expenses', {
 		voucher_number: `${OTHER_EXPENSE_PREFIX}COPY-BAD`,
-			voucher_date: `${MONTH}-14`,
-			expense_category: 'Repairs & Maintenance',
-			payee_type: 'vendor',
-			vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}copy-bad`,
-			bill_amount: 10,
-			gst_amount: 0,
-			linked_cost_uid: `${OTHER_EXPENSE_PREFIX}no-such-cost`,
+		voucher_date: `${MONTH}-14`,
+		expense_category: 'Repairs & Maintenance',
+		payee_type: 'vendor',
+		vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}copy-bad`,
+		bill_amount: 10,
+		gst_amount: 0,
+		linked_cost_uid: `${OTHER_EXPENSE_PREFIX}no-such-cost`,
 	});
 	expect(unknownTarget.status()).toBe(422);
 	expect((await unknownTarget.json()).code).toBe('cost_reference_unresolved');
@@ -1029,13 +1029,13 @@ test('links a receipt copy to an already recognized cost instead of a second exp
 	);
 	const notRecognized = await apiPost(request, '/api/admin/other-expenses', {
 		voucher_number: `${OTHER_EXPENSE_PREFIX}COPY-DRAFT`,
-			voucher_date: `${MONTH}-14`,
-			expense_category: 'Repairs & Maintenance',
-			payee_type: 'vendor',
-			vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}copy-draft`,
-			bill_amount: 10,
-			gst_amount: 0,
-			linked_cost_uid: draftCostUid,
+		voucher_date: `${MONTH}-14`,
+		expense_category: 'Repairs & Maintenance',
+		payee_type: 'vendor',
+		vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}copy-draft`,
+		bill_amount: 10,
+		gst_amount: 0,
+		linked_cost_uid: draftCostUid,
 	});
 	expect(notRecognized.status()).toBe(422);
 	expect((await notRecognized.json()).code).toBe('cost_not_recognized');
@@ -1420,15 +1420,15 @@ test('carries conversion evidence from capture to the reporting figure', async (
 	// on an amount already in its reporting currency is contradictory.
 	const partial = await apiPost(request, '/api/admin/other-expenses', {
 		voucher_number: `${OTHER_EXPENSE_PREFIX}FX-PARTIAL`,
-			voucher_date: `${MONTH}-19`,
-			expense_category: 'Subscription',
-			payee_type: 'vendor',
-			vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}fx-partial`,
-			bill_amount: 50,
-			gst_amount: 0,
-			currency: 'USD',
-			reporting_currency: 'INR',
-			conversion_rate: '84.5',
+		voucher_date: `${MONTH}-19`,
+		expense_category: 'Subscription',
+		payee_type: 'vendor',
+		vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}fx-partial`,
+		bill_amount: 50,
+		gst_amount: 0,
+		currency: 'USD',
+		reporting_currency: 'INR',
+		conversion_rate: '84.5',
 	});
 	expect(partial.status()).toBe(422);
 	const partialBody = errorBody(await partial.json());
@@ -1437,17 +1437,17 @@ test('carries conversion evidence from capture to the reporting figure', async (
 
 	const notApplicable = await apiPost(request, '/api/admin/other-expenses', {
 		voucher_number: `${OTHER_EXPENSE_PREFIX}FX-INR`,
-			voucher_date: `${MONTH}-19`,
-			expense_category: 'Subscription',
-			payee_type: 'vendor',
-			vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}fx-inr`,
-			bill_amount: 10,
-			gst_amount: 0,
-			currency: 'INR',
-			reporting_currency: 'INR',
-			conversion_rate: '1.0',
-			conversion_date: `${MONTH}-19`,
-			conversion_evidence_reference: `${OTHER_EXPENSE_PREFIX}RATE-NONE`,
+		voucher_date: `${MONTH}-19`,
+		expense_category: 'Subscription',
+		payee_type: 'vendor',
+		vendor_name: `${OTHER_EXPENSE_VENDOR_PREFIX}fx-inr`,
+		bill_amount: 10,
+		gst_amount: 0,
+		currency: 'INR',
+		reporting_currency: 'INR',
+		conversion_rate: '1.0',
+		conversion_date: `${MONTH}-19`,
+		conversion_evidence_reference: `${OTHER_EXPENSE_PREFIX}RATE-NONE`,
 	});
 	expect(notApplicable.status()).toBe(422);
 	expect(errorBody(await notApplicable.json()).code).toBe(
