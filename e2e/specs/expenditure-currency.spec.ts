@@ -1244,9 +1244,9 @@ test('refuses a stale rate on a currency-pair change and honors fresh evidence',
 				expected_version: expectedVersion,
 				patch: {
 					currency: 'EUR',
-					conversion_rate: '90.25',
-					conversion_date: `${CONTROL_MONTH}-02`,
-					conversion_evidence_reference: 'E2E-319-RATE-PAIR-EUR',
+					conversionRate: '90.25',
+					conversionDate: `${CONTROL_MONTH}-02`,
+					conversionEvidenceReference: 'E2E-319-RATE-PAIR-EUR',
 				},
 			},
 		}
