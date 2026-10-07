@@ -612,13 +612,16 @@ test('refuses unsupported bases, wrong currencies, and invalid linkage without w
 			code: 'currency_mismatch',
 		},
 		{
+			// ORD-2014: cancelled with zero consumptions. ORD-2001 cannot be
+			// used here: it carries the seeded historical consumption the
+			// rollforward test needs, so its no-write check can never be 0.
 			name: 'cancelled order',
-			orderNumber: 'E2E-312-ORD-2001',
+			orderNumber: 'E2E-312-ORD-2014',
 			body: consumptionBody({
 				costUid: seeded.costUids['INV-1009'],
 				period: CONSUMPTION_NEXT_MONTH,
 				basis: 'gross',
-				orderVersion: 3,
+				orderVersion: 1,
 			}),
 			status: 422,
 			code: 'order_cancelled',
