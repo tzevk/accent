@@ -722,8 +722,11 @@ test('refuses unsupported bases, wrong currencies, and invalid linkage without w
       WHERE o.order_number LIKE ?`,
 		[`${CONSUMPTION_PREFIX}ORD-%`]
 	);
-	// Only the one UI-recorded consumption from the first test exists.
-	expect(Number(journal[0].n)).toBe(1);
+	// Seeded ORD-2001 historical consumption + the one UI-recorded
+	// consumption from the first test. Refusals journal nothing (the
+	// contract guard runs before any write; the journal holds recorded /
+	// released rows only), so the probes above add zero rows.
+	expect(Number(journal[0].n)).toBe(2);
 	evidence.refusals = observed;
 });
 
