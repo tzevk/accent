@@ -19,24 +19,27 @@ type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
  * (`ALLOCATION_MONTH`, the finalized month) and **2026-03**
  * (`ALLOCATION_ESTIMATE_MONTH`, the estimates month). No other ticket uses
  * either month; `E2E-EXP-*`, `E2E-EMP-*`, `E2E-UTIL-*` and `E2E-ATT-*` rows
- * are never read, mutated, or cleaned here.
+ * outside the fixture months are never read, mutated, or cleaned here.
  *
- * Cleanup owns only fixture rows: allocations and slips are deleted for
- * `E2E-`-coded Employees in the fixture months, and cleanup/seed refuse with a
- * thrown error when either month holds a Payroll Slip of a non-fixture
- * Employee or a locked Payroll Run without fixture slips to prove ownership.
- * A shared dev target therefore cannot lose real payroll; the harness is meant
- * for the isolated E2E database.
+ * Cleanup owns only fixture rows: allocations and slips of `E2E-`-coded
+ * Employees are deleted for the fixture months — including the slips Generate
+ * writes for other fixture namespaces and the gate slips seeded below, which
+ * is what lets those namespaces delete their Employees without a Payroll Slip
+ * foreign key blocking it — and cleanup/seed refuse with a thrown error when
+ * either month holds a Payroll Slip of a non-fixture Employee or a locked
+ * Payroll Run without fixture slips to prove ownership. A shared dev target
+ * therefore cannot lose real payroll; the harness is meant for the isolated
+ * E2E database.
  *
  * Why 2026-02+ and not a 2019 month: Payroll Finalize refuses a month while an
  * active Payroll/Contract employee has no Salary Profile covering it, and the
  * attendance fixtures' profiles only start 2026-01-01 — so 2026-02 is the
- * earliest month that every seeded fixture employee can be paid in. The
- * employees whose namespaces deliberately carry no covering profile
- * (`E2E-ATT-0009`, `E2E-UTIL-0019`) get a zero Payroll Slip for the fixture
- * month from this file, which is the same thing Generate would have written
- * had they a profile; it is inert for their own specs because they never read
- * the fixture month.
+ * earliest month that every seeded fixture employee can be paid in. Every
+ * fixture employee the gate would name (`E2E-ATT-0009`, `E2E-UTIL-0019`, and
+ * the Utilization roster's open-ended Contract member `E2E-UTIL-0006`) gets a
+ * zero Payroll Slip for the fixture month from this file, which is the same
+ * thing Generate would have written had they a profile; it is inert for their
+ * own specs because they never read the fixture month.
  *
  * The fixture amounts are stated once here and derived by hand from the payroll
  * rules (ADR-0010 hours-based pay, zero statutory flags):
@@ -463,8 +466,8 @@ export async function cleanupExpenditureAllocationFixtures(): Promise<void> {
 		[...monthDays]
 	);
 
-	// Slips of fixture Employees in the fixture months — the generated zeros
-	// for every other fixture namespace and the two safety-gate slips below.
+	// Slips of fixture Employees in the fixture months — the zeros Generate
+	// wrote for every other fixture namespace and the gate slips seeded below.
 	await exec(
 		`DELETE FROM payroll_slips
       WHERE month IN (?, ?) AND ${FIXTURE_EMPLOYEES}`,
@@ -810,25 +813,56 @@ async function seedAllocationBonusSchedule(): Promise<void> {
 }
 
 /**
- * Two active Payroll employees in the other fixture namespaces deliberately
- * have no Salary Profile at all (`E2E-ATT-0009`, `E2E-UTIL-0019`), which makes
- * Payroll Finalize refuse every month. They cannot be generated a slip the
- * normal way, so this file writes the zero slip Generate would have written —
- * scoped to the fixture month, deleted by cleanup, never touching their other
- * fixtures or months.
+ * Payroll Finalize refuses a month while an active Payroll/Contract employee
+ * has no Salary Profile covering it. Fixture employees from other namespaces
+ * are eligible for the fixture months too — the Utilization roster's
+ * `E2E-UTIL-0006` is an open-ended Contract member whose profile is omitted by
+ * design — so without an inert slip for them this file could not finalize its
+ * own month. They cannot be generated a slip the normal way, so this file
+ * writes the zero slip Generate would have written — scoped to the fixture
+ * month, deleted by cleanup, never touching their other fixtures or months.
+ *
+ * The population is read with the gate's own predicate
+ * (`findEmployeesWithoutProfiles`, src/app/api/payroll/_lib/payroll-run.js)
+ * narrowed to `E2E-` fixture Employees outside this file's namespace, so a new
+ * fixture member cannot reintroduce the collision, while this file's own
+ * deliberate no-profile cases (`E2E-ALLOC-*`) stay visible to the gate.
  */
 async function seedAllocationGateSlips(): Promise<void> {
-	const codes = ['E2E-ATT-0009', 'E2E-UTIL-0019'];
-	const found = await rows<{ id: number; employee_id: string }>(
-		`SELECT id, employee_id FROM employees WHERE employee_id IN (?, ?)`,
-		codes
+	const uncovered = await rows<{ id: number; employee_id: string }>(
+		`SELECT e.id, e.employee_id
+       FROM employees e
+      WHERE e.employee_id LIKE 'E2E-%'
+        AND e.employee_id NOT LIKE 'E2E-ALLOC-%'
+        AND (e.status = 'active' OR e.status IS NULL)
+        AND e.isDelete = 0
+        AND e.employee_type IN ('Payroll', 'Contract')
+        AND NOT EXISTS (
+          SELECT 1 FROM employee_salary_profile esp
+           WHERE esp.employee_id = e.id AND esp.is_active = 1
+             AND esp.effective_from <= ?
+             AND (esp.effective_to IS NULL OR esp.effective_to >= ?)
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM salary_structures ss
+           WHERE ss.employee_id = e.id AND ss.is_active = 1
+             AND ss.effective_from <= ?
+             AND (ss.effective_to IS NULL OR ss.effective_to >= ?)
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM payroll_slips ps
+           WHERE ps.employee_id = e.id AND ps.month = ?
+        )
+      ORDER BY e.employee_id`,
+		[
+			ALLOCATION_MONTH_DAY,
+			ALLOCATION_MONTH_DAY,
+			ALLOCATION_MONTH_DAY,
+			ALLOCATION_MONTH_DAY,
+			ALLOCATION_MONTH_DAY,
+		]
 	);
-	for (const employee of found) {
-		const [existing] = await rows<{ id: number }>(
-			`SELECT id FROM payroll_slips WHERE employee_id = ? AND month = ?`,
-			[employee.id, ALLOCATION_MONTH_DAY]
-		);
-		if (existing) continue;
+	for (const employee of uncovered) {
 		await exec(
 			`INSERT INTO payroll_slips
          (month, employee_id, gross, basic, hra, conveyance, call_allowance,
