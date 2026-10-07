@@ -710,9 +710,14 @@ app and writes `e2e/artifacts/expenditure-payroll-allocation.json`. It owns the
 months **2026-02** (finalized) and **2026-03** (estimates), Projects
 `E2E-ALLOC-P1/P2`, Employees `E2E-ALLOC-01..09`, a fixture Bonus Component Rate,
 and two reader identities (fixtures in
-`e2e/lib/expenditure-allocation-fixtures.ts`, wired into `e2e/global-setup.ts`),
-and asserts, from hand-computed fixture literals (employer cost = priced gross
-plus the genuine employer contributions — e.g. ₹26,000 gross + ₹750 gratuity):
+`e2e/lib/expenditure-allocation-fixtures.ts`, wired into `e2e/global-setup.ts`).
+Finalize refuses a month while an active Payroll/Contract fixture employee from
+another namespace has no covering Salary Profile, so the fixture also writes the
+inert zero Payroll Slip for every `E2E-` employee the gate's own predicate names
+— the Utilization roster's open-ended Contract member `E2E-UTIL-0006` included —
+scoped to 2026-02 and removed by its cleanup. The spec asserts, from
+hand-computed fixture literals (employer cost = priced gross plus the genuine
+employer contributions — e.g. ₹26,000 gross + ₹750 gratuity):
 
 - Generate through the authenticated route writes the stated slip amounts
   (₹26,750 monthly, ₹10,289 contract, ₹500 bonus-only, and known zeros), and the
