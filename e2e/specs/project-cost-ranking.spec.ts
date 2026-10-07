@@ -1049,10 +1049,13 @@ test('keeps the company reconciliation unfiltered behind a Project filter', asyn
 		rows: filtered.projects.length,
 	};
 
-	// The budget section reads exactly the rows the response publishes, so a
-	// Project filter cannot leave another Project's approved budget looking
-	// missing: the filtered section states the filtered Project only, and the
-	// unfiltered one still states every Project with a row.
+	// The budget section reads exactly the rows the response publishes: the
+	// filtered section states the filtered Project only, and the unfiltered
+	// one still states every Project with a row. June 2022 holds no approved
+	// cost budget for any of these Projects (EXPENDITURE_BUDGETS covers only
+	// 2019 P1-P4), so every comparison is `missing` by design
+	// (budget-comparison.ts): a missing budget never blocks cost reporting
+	// (parent #304). The scope check is what this spec owns here.
 	const filteredSection = filtered.budgets;
 	const unfilteredSection = unfiltered.budgets;
 	expect(filteredSection.comparisons.map((row) => row.project_code)).toEqual([
@@ -1064,8 +1067,17 @@ test('keeps the company reconciliation unfiltered behind a Project filter', asyn
 		GAMMA,
 		DELTA,
 	]);
-	expect(unfilteredSection.comparisons.map((row) => row.outcome)).not.toContain(
-		'missing'
+	expect(unfilteredSection.comparisons.map((row) => row.outcome)).toEqual([
+		'missing',
+		'missing',
+		'missing',
+		'missing',
+	]);
+	expect(filteredSection.comparisons.map((row) => row.outcome)).toEqual([
+		'missing',
+	]);
+	expect(unfilteredSection.notices.map((notice) => notice.code)).toContain(
+		'budget_missing'
 	);
 	evidence.budgets = {
 		filtered: filteredSection.comparisons.map((row) => [
