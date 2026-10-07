@@ -2083,6 +2083,9 @@ registerCostSource({
 			classification:
 				rowValue<CostClassification>(row, 'cost_classification') ?? null,
 			project_id: rowNumber(row, 'project_id'),
+			// Other expenses carry no nature of their own: they are operating
+			// cost by construction (their source expression states the same).
+			nature: 'operating',
 		};
 	},
 });

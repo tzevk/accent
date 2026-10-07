@@ -13,6 +13,10 @@ import {
 	seedCostAccrualFixtures,
 } from './lib/cost-accrual-fixtures';
 import {
+	cleanupCashFixtures,
+	seedCashFixtures,
+} from './lib/expenditure-cash-fixtures';
+import {
 	cleanupExpenditureFixtures,
 	seedExpenditureFixtures,
 } from './lib/expenditure-fixtures';
@@ -87,6 +91,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupSupplierInvoiceFixtures();
 		await cleanupExpenditureCurrencyFixtures();
 		await cleanupCostAccrualFixtures();
+		await cleanupCashFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
 		// trusted IP header; browser sign-ins carry no such header, so they land
@@ -202,6 +207,12 @@ export default async function globalSetup(): Promise<void> {
 			`[e2e] cost accrual fixtures seeded for ${accruals.month}, ` +
 				`${accruals.partialMonth} and ${accruals.finalMonth} ` +
 				`(${accruals.accruals} accruals, ${accruals.invoices} replacement invoices)`
+		);
+
+		const cash = await seedCashFixtures();
+		console.log(
+			`[e2e] cash settlement fixtures seeded for 2018-10, 2018-11 and 2018-12 ` +
+				`(${Object.keys(cash.projects).length} projects, slip #${cash.slipId})`
 		);
 
 		const orders = await seedOrderFixtures();

@@ -7,6 +7,7 @@
  */
 
 import type Decimal from 'decimal.js';
+import type { CashSection } from './cash';
 import type { SupplierCommitmentSection } from './commitments';
 
 /** Where a recognized cost belongs. `null` is the explicit unresolved state. */
@@ -901,6 +902,12 @@ export interface CompanyReconciliation {
 	 * explicit eligibility/timing exceptions. Never incurred cost.
 	 */
 	supplier_commitment: SupplierCommitmentSection;
+	/**
+	 * Dated outward cash paid (#318): recorded settlements, native payroll
+	 * payouts, and dated petty-cash spending, with funding shown apart and
+	 * legacy gaps disclosed. Never incurred cost.
+	 */
+	cash: CashSection;
 	project_options: Array<{
 		project_id: number;
 		project_code: string;

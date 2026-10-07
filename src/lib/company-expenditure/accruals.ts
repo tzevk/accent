@@ -452,6 +452,9 @@ export const ACCRUAL_ADAPTER: CostSourceAdapter &
 			classification:
 				(s(row, 'cost_classification') as CostClassification | null) ?? null,
 			project_id: num(row, 'project_id'),
+			// Cost Accruals carry no nature of their own: they are operating
+			// cost by construction (their CostRecords state the same).
+			nature: 'operating',
 		};
 	},
 	async loadSlices(db, sourceId, options) {

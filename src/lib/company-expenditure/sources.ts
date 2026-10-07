@@ -20,7 +20,12 @@
 
 import { CostError } from './errors';
 import type { SqlConnection } from './records';
-import type { CostClassification, CostSource, RecognitionState } from './types';
+import type {
+	CostClassification,
+	CostNature,
+	CostSource,
+	RecognitionState,
+} from './types';
 
 export type CostLinkRole =
 	| 'cost'
@@ -54,6 +59,12 @@ export interface CostReference {
 	recognition_state: RecognitionState;
 	classification: CostClassification | null;
 	project_id: number | null;
+	/**
+	 * What the spend is (#317), for consumers that state advances apart from
+	 * operating cost (#318 cash targets). Filled by adapters that know it;
+	 * absent means the source never stated one.
+	 */
+	nature?: CostNature | null;
 }
 
 export interface CostSourceAdapter {
@@ -122,7 +133,8 @@ const DIRECT_EXPENSE_ADAPTER: CostSourceAdapter = {
 		const row = await loadRow(
 			db,
 			`SELECT cost_uid, expense_number, currency, total_amount, tax_amount,
-              recognized_amount, recognition_state, cost_classification, project_id
+              recognized_amount, recognition_state, cost_classification, project_id,
+              cost_nature
          FROM expenses
         WHERE id = ? AND isDelete = 0`,
 			[id]
@@ -143,6 +155,7 @@ const DIRECT_EXPENSE_ADAPTER: CostSourceAdapter = {
 			classification:
 				(s(row, 'cost_classification') as CostClassification | null) ?? null,
 			project_id: num(row, 'project_id'),
+			nature: (s(row, 'cost_nature', 'operating') as CostNature) ?? 'operating',
 		};
 	},
 };

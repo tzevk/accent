@@ -250,6 +250,9 @@ const PETTY_CASH_SOURCE_ADAPTER: CostSourceAdapter = {
 			classification:
 				(s(row, 'cost_classification') as CostClassification | null) ?? null,
 			project_id: num(row, 'project_id'),
+			// Petty-cash spending carries no nature of its own: it is
+			// operating cost by construction (its CostRecord states the same).
+			nature: 'operating',
 		};
 	},
 };
