@@ -684,8 +684,16 @@ function normaliseOrder(
 			255,
 			'counterparty_required'
 		),
-		companyId: referenceIdOrNull(input.companyId, 'company_id', 'invalid_company'),
-		projectId: referenceIdOrNull(input.projectId, 'project_id', 'invalid_project'),
+		companyId: referenceIdOrNull(
+			input.companyId,
+			'company_id',
+			'invalid_company'
+		),
+		projectId: referenceIdOrNull(
+			input.projectId,
+			'project_id',
+			'invalid_project'
+		),
 		currency,
 		amountBasis,
 		grossAmount,
