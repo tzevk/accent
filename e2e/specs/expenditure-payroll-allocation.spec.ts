@@ -1207,7 +1207,9 @@ test('refuses unauthorized readers and invalid requests without leaking values',
 			expect(monthly.status()).toBe(200);
 			const body = await view.text();
 			expect(body).not.toContain('E2E-ALLOC-01');
-			expect(body).not.toContain('36500');
+			expect(body).not.toContain(
+				String(ALLOCATION_EXPECTED.month.recordedTotal)
+			);
 		}
 	} finally {
 		await reader.dispose();
