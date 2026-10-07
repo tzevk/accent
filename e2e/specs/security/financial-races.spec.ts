@@ -9,18 +9,22 @@ import { loginAs } from '../../lib/security-fixtures';
  * Financial races under workstream E of the security remediation plan,
  * verified through the real API against the real database.
  *
- * E1 — PO balance race. Six concurrent `POST /api/admin/invoices` (each 300)
- * hit one purchase order whose `remaining_balance` is 1000. The remediated
- * invariant is *consistency*, not a floor: `admin/invoices/route.js` locks the
- * PO row (`SELECT ... FOR UPDATE`) and decrements it relatively
- * (`remaining_balance = remaining_balance - ?`), so concurrent creates must
- * never lose a decrement — but over-limit rejection is explicitly out of scope
- * (the route never had a negative-balance rule), so `remaining_balance` may go
- * negative exactly as before. The spec therefore asserts
- * `final remaining_balance === 1000 - 300 x successfulCount`, one stored
- * invoice row per 2xx, and each 2xx number stored exactly once. Requests carry
- * distinct client-supplied numbers so the number-generator race cannot mask
- * the balance race.
+ * E1 — canonical order rollup race. Six concurrent `POST /api/admin/invoices`
+ * (each 300) reference one canonical client order. Since the #310 cutover an
+ * invoice links its order by the durable `order_uid`; the free-text
+ * `po_number` match that used to decrement `purchase_orders.remaining_balance`
+ * is gone, and the balance owner is the order's `client_invoiced_value`
+ * rollup. The remediated invariant is *consistency*, not a floor: the
+ * invoice route locks the order row (`SELECT ... FOR UPDATE`) and rolls the
+ * invoiced value up inside the caller's transaction, so concurrent creates
+ * must never lose an increment — and the route has no ceiling rule, so the
+ * remaining client value may go negative exactly as the old purchase-order
+ * balance did. The spec therefore asserts `client_invoiced_value ===
+ * 300 x successfulCount`, one stored invoice row per 2xx (each carrying the
+ * canonical order reference and its own running remaining value), one
+ * `client_invoiced` journal event per 2xx, and a supplier-order link refused
+ * with no partial write. Requests carry distinct client-supplied numbers so
+ * the number-generator race cannot mask the rollup race.
  *
  * E2 — number-generator race. Six concurrent `POST /api/admin/purchase-invoices`
  * without a client-supplied number must mint distinct `PI-#####` numbers: the
@@ -34,16 +38,29 @@ import { loginAs } from '../../lib/security-fixtures';
 
 const ARTIFACT = 'security-financial-races';
 const RUN = Date.now().toString(36);
-const PO_PREFIX = 'E2E-RACE-PO-';
-const PO_NUMBER = `${PO_PREFIX}${RUN}`;
-const INVOICE_NUMBER_PREFIX = `${PO_PREFIX}INV-${RUN}-`;
+const RACE_PREFIX = 'E2E-RACE-';
+const ORDER_NUMBER = `${RACE_PREFIX}${RUN}-ORD`;
+const SUPPLIER_ORDER_NUMBER = `${RACE_PREFIX}${RUN}-SUP`;
+const INVOICE_NUMBER_PREFIX = `${RACE_PREFIX}${RUN}-INV-`;
 const CLIENT_NAME = `E2E Race Client ${RUN}`;
 const VENDOR_PREFIX = 'E2E Race Vendor ';
 const VENDOR_NAME = `${VENDOR_PREFIX}${RUN}`;
-const PO_OPENING_BALANCE = 1000;
+const ORDER_STATED_VALUE = 1000;
 const INVOICE_AMOUNT = 300;
 const PURCHASE_INVOICE_AMOUNT = 100;
 const CONCURRENCY = 6;
+
+/**
+ * The running remaining client value after each successful link, sorted. The
+ * invariant is consistency: every link stores its own step down from the
+ * stated value, so the set of stored steps is fixed no matter the order the
+ * six transactions commit in. The old purchase-order balance ended at -800;
+ * the canonical remaining client value ends at the same figure.
+ */
+const EXPECTED_REMAINING_VALUES = Array.from(
+	{ length: CONCURRENCY },
+	(_, index) => ORDER_STATED_VALUE - INVOICE_AMOUNT * (index + 1)
+).sort((left, right) => left - right);
 
 interface Attempt {
 	status: number;
@@ -53,28 +70,69 @@ interface Attempt {
 }
 
 interface ApiJson {
+	success?: boolean;
 	message?: string;
 	error?: string;
-	data?: { id?: number; invoice_number?: string };
+	code?: string;
+	data?: { id?: number; invoice_number?: string; orderUid?: string };
 }
 
-interface PoRow {
-	original_value: string;
-	remaining_balance: string;
+interface OrderRow {
+	gross_amount: string;
+	client_invoiced_value: string;
+}
+
+interface RaceInvoiceRow {
+	id: number;
+	invoice_number: string;
+	total: string;
+	balance_po_value: string;
+	order_uid: string;
+}
+
+interface RaceEventRow {
+	event: string;
+	amount: string;
+	reference: string;
 }
 
 /**
  * Evidence collected across the tests, rewritten to the artifact after every
  * test so a failing assertion still leaves the observed statuses on disk.
  */
-const evidence: Record<string, unknown> = {
-	po: { poNumber: PO_NUMBER, openingBalance: PO_OPENING_BALANCE },
+interface RaceEvidence {
+	order: {
+		orderNumber: string;
+		orderUid: string | null;
+		direction: 'client';
+		statedValue: number;
+	};
+	supplierOrder: {
+		orderNumber: string;
+		orderUid: string | null;
+	};
+	finding: string;
+	[key: string]: unknown;
+}
+
+const evidence: RaceEvidence = {
+	order: {
+		orderNumber: ORDER_NUMBER,
+		orderUid: null,
+		direction: 'client',
+		statedValue: ORDER_STATED_VALUE,
+	},
+	supplierOrder: {
+		orderNumber: SUPPLIER_ORDER_NUMBER,
+		orderUid: null,
+	},
 	finding:
-		'POST allows remaining_balance to go negative by design; the remediated invariant is consistency (no lost updates), not a floor',
+		'POST /api/admin/invoices links a client order by order_uid and rolls client_invoiced_value up under a row lock; the remediated invariant is consistency (no lost updates), not a floor — the remaining client value may go negative exactly as the old purchase-order balance did',
 };
 
 let api: APIRequestContext | undefined;
-let poId = 0;
+let orderUid = '';
+let supplierOrderUid = '';
 
 function context(): APIRequestContext {
 	if (!api) {
@@ -121,15 +179,55 @@ function sortedIds(ids: number[]): number[] {
 	return [...ids].sort((a, b) => a - b);
 }
 
+/** Create one canonical order through the entry API; return its `order_uid`. */
+async function createRaceOrder(
+	direction: 'client' | 'supplier',
+	orderNumber: string,
+	counterpartyName: string
+): Promise<string> {
+	const response = await context().post('/api/admin/orders', {
+		data: {
+			direction,
+			order_number: orderNumber,
+			counterparty_name: counterpartyName,
+			currency: 'INR',
+			amount_basis: 'gross',
+			gross_amount: ORDER_STATED_VALUE,
+			tax_amount: 0,
+			net_amount: ORDER_STATED_VALUE,
+			order_date: new Date().toISOString().slice(0, 10),
+			status: 'approved',
+			firmness: 'firm',
+			firmness_evidence_reference: `${orderNumber}-DOC`,
+			source_document_reference: orderNumber,
+			remarks: 'e2e/specs/security/financial-races.spec.ts',
+		},
+	});
+	const body = await readJson(response);
+	expect(response.status(), `order creation ${orderNumber}`).toBe(200);
+	expect(body.success, `order creation ${orderNumber}`).toBe(true);
+	const createdUid = String(body.data?.orderUid ?? '');
+	expect(
+		createdUid,
+		`order creation ${orderNumber} returned a canonical order_uid`
+	).toMatch(/^ord-/);
+	return createdUid;
+}
+
 /** Table, column and prefix identifying every row this spec creates. */
 const RACE_ROWS = [
-	{ table: 'invoices', column: 'po_number', prefix: PO_PREFIX },
+	{ table: 'invoices', column: 'invoice_number', prefix: RACE_PREFIX },
 	{ table: 'purchase_invoices', column: 'vendor_name', prefix: VENDOR_PREFIX },
-	{ table: 'purchase_orders', column: 'po_number', prefix: PO_PREFIX },
+	{ table: 'orders', column: 'order_number', prefix: RACE_PREFIX },
 ];
 
-/** Hard-delete every row this spec owns, child tables first. */
+/** Hard-delete every row this spec owns, journal rows before their orders. */
 async function purgeRaceRows(): Promise<void> {
+	await exec(
+		`DELETE FROM order_events WHERE order_uid IN
+         (SELECT order_uid FROM orders WHERE order_number LIKE ?)`,
+		[`${RACE_PREFIX}%`]
+	);
 	for (const { table, column, prefix } of RACE_ROWS) {
 		await exec(`DELETE FROM ${table} WHERE ${column} LIKE ?`, [`${prefix}%`]);
 	}
@@ -152,44 +250,42 @@ async function countRaceRows(): Promise<Record<string, number>> {
 function saveEvidence(): void {
 	writeArtifact(ARTIFACT, { ...evidence });
 	const artifact = readArtifact(ARTIFACT);
-	expect(artifact.po).toMatchObject({ poNumber: PO_NUMBER });
+	expect(artifact.order).toMatchObject({ orderNumber: ORDER_NUMBER });
 }
 
 test.describe('financial races', () => {
 	test.describe.configure({ timeout: 120_000 });
 
 	test.beforeAll(async ({ playwright }) => {
-		// Leftovers from a crashed earlier run would collide with the PO number.
+		// Leftovers from a crashed earlier run would collide with the order
+		// and invoice numbers.
 		await purgeRaceRows();
 		api = await loginAs(playwright, E2E_ENV.baseURL, 'superAdmin');
 
-		// The POST only needs client_name + po_number + total; the PO row is
-		// pre-inserted so the request takes the existing-PO branch
-		// (`SELECT ... FOR UPDATE` + relative decrement).
-		const po = await exec(
-			`INSERT INTO purchase_orders
-         (po_number, vendor_name, original_value, remaining_balance, po_date, status, isDelete)
-       VALUES (?, ?, ?, ?, ?, 'draft', 0)`,
-			[
-				PO_NUMBER,
-				VENDOR_NAME,
-				PO_OPENING_BALANCE,
-				PO_OPENING_BALANCE,
-				new Date().toISOString().slice(0, 10),
-			]
+		// The rollup owner is a canonical client order; the supplier order is
+		// the refusal probe (a client invoice can never reference it). Both are
+		// created through the real entry API, not inserted directly.
+		orderUid = await createRaceOrder(
+			'client',
+			ORDER_NUMBER,
+			CLIENT_NAME
 		);
-		poId = po.insertId;
-		evidence.po = {
-			id: poId,
-			poNumber: PO_NUMBER,
-			openingBalance: PO_OPENING_BALANCE,
-		};
+		supplierOrderUid = await createRaceOrder(
+			'supplier',
+			SUPPLIER_ORDER_NUMBER,
+			VENDOR_NAME
+		);
+		evidence.order.orderUid = orderUid;
+		evidence.supplierOrder.orderUid = supplierOrderUid;
 
-		const seeded = await rows<{ id: number }>(
-			'SELECT id FROM purchase_orders WHERE id = ?',
-			[poId]
+		const seeded = await rows<{ order_uid: string; direction: string }>(
+			'SELECT order_uid, direction FROM orders WHERE order_number IN (?, ?)',
+			[ORDER_NUMBER, SUPPLIER_ORDER_NUMBER]
 		);
-		expect(seeded).toHaveLength(1);
+		expect(seeded).toHaveLength(2);
+		expect(
+			new Set(seeded.map((row) => row.direction))
+		).toEqual(new Set(['client', 'supplier']));
 	});
 
 	test.afterAll(async () => {
@@ -197,10 +293,10 @@ test.describe('financial races', () => {
 		await api?.dispose();
 	});
 
-	test('concurrent invoice POSTs never lose a PO decrement', async () => {
+	test('concurrent invoice POSTs never lose an order rollup', async () => {
 		const payloads = Array.from({ length: CONCURRENCY }, (_, index) => ({
 			client_name: CLIENT_NAME,
-			po_number: PO_NUMBER,
+			order_uid: orderUid,
 			total: INVOICE_AMOUNT,
 			invoice_number: `${INVOICE_NUMBER_PREFIX}${index + 1}`,
 			status: 'draft',
@@ -217,36 +313,63 @@ test.describe('financial races', () => {
 			(attempt) => attempt.status < 200 || attempt.status >= 300
 		);
 
-		const [poRow] = await rows<PoRow>(
-			'SELECT original_value, remaining_balance FROM purchase_orders WHERE id = ?',
-			[poId]
+		const [orderRow] = await rows<OrderRow>(
+			'SELECT gross_amount, client_invoiced_value FROM orders WHERE order_uid = ?',
+			[orderUid]
 		);
-		expect(poRow).toBeTruthy();
-		const finalBalance = Number(poRow.remaining_balance);
+		expect(orderRow).toBeTruthy();
+		const finalInvoiced = Number(orderRow.client_invoiced_value);
 
-		const storedInvoices = await rows<{
-			id: number;
-			invoice_number: string;
-			total: string;
-		}>(
-			`SELECT id, invoice_number, total FROM invoices
-         WHERE po_number = ? AND isDelete = 0
-         ORDER BY id`,
-			[PO_NUMBER]
+		const storedInvoices = await rows<RaceInvoiceRow>(
+			`SELECT id, invoice_number, total, balance_po_value, order_uid
+           FROM invoices
+          WHERE order_uid = ? AND isDelete = 0
+          ORDER BY id`,
+			[orderUid]
 		);
 		const storedNumbers = storedInvoices.map((row) => row.invoice_number);
 		const storedSum = (
 			await rows<{ sum_total: string | null }>(
 				`SELECT SUM(total) AS sum_total FROM invoices
-           WHERE po_number = ? AND isDelete = 0`,
-				[PO_NUMBER]
+           WHERE order_uid = ? AND isDelete = 0`,
+				[orderUid]
 			)
 		)[0]?.sum_total;
 		const duplicateGroups = await rows<{ invoice_number: string; c: number }>(
 			`SELECT invoice_number, COUNT(*) AS c FROM invoices
-         WHERE po_number = ? AND isDelete = 0
-         GROUP BY invoice_number HAVING c > 1`,
-			[PO_NUMBER]
+           WHERE order_uid = ? AND isDelete = 0
+           GROUP BY invoice_number HAVING c > 1`,
+			[orderUid]
+		);
+		const remainingValues = storedInvoices
+			.map((row) => Number(row.balance_po_value))
+			.sort((left, right) => left - right);
+		const linkedEvents = await rows<RaceEventRow>(
+			`SELECT event, amount, reference FROM order_events
+           WHERE order_uid = ? AND event = 'client_invoiced'
+           ORDER BY id`,
+			[orderUid]
+		);
+
+		// A supplier order refuses the link, and the refusal must leave no
+		// invoice row and no rollup behind.
+		const refused = await context().post('/api/admin/invoices', {
+			data: {
+				client_name: CLIENT_NAME,
+				order_uid: supplierOrderUid,
+				total: INVOICE_AMOUNT,
+				invoice_number: `${INVOICE_NUMBER_PREFIX}REFUSED`,
+				status: 'draft',
+			},
+		});
+		const refusedBody = await readJson(refused);
+		const refusedRows = await rows<{ n: number }>(
+			'SELECT COUNT(*) AS n FROM invoices WHERE invoice_number = ?',
+			[`${INVOICE_NUMBER_PREFIX}REFUSED`]
+		);
+		const supplierAfter = await rows<{ client_invoiced_value: string | null }>(
+			'SELECT client_invoiced_value FROM orders WHERE order_uid = ?',
+			[supplierOrderUid]
 		);
 
 		evidence.invoiceRace = {
@@ -261,28 +384,36 @@ test.describe('financial races', () => {
 			storedIds: sortedIds(storedInvoices.map((row) => Number(row.id))),
 			storedNumbers,
 			storedSum,
-			finalBalance,
-			openingBalance: Number(poRow.original_value),
+			finalInvoiced,
+			statedValue: Number(orderRow.gross_amount),
+			remainingValues,
+			expectedRemainingValues: EXPECTED_REMAINING_VALUES,
 			storedRowCount: storedInvoices.length,
 			duplicateGroups: duplicateGroups.length,
+			linkedEventCount: linkedEvents.length,
+			refusal: {
+				status: refused.status(),
+				code: refusedBody.code ?? null,
+				storedRows: Number(refusedRows[0]?.n ?? 0),
+				supplierInvoicedValue: supplierAfter[0]?.client_invoiced_value ?? null,
+			},
 		};
 		saveEvidence();
 
-		// Every create lands: the requests carry distinct client numbers, so the
-		// only shared resource is the locked PO row, which serializes them.
+		// Every create lands: the requests carry distinct client numbers, and
+		// the order-row lock serializes the rollups behind them.
 		expect(failures).toEqual([]);
 		expect(successes).toHaveLength(CONCURRENCY);
 		expect(new Set(numbersOf(successes))).toEqual(
 			new Set(payloads.map((payload) => payload.invoice_number))
 		);
 
-		// The lost-update invariant: exactly one decrement per successful create.
-		expect(finalBalance).toBe(
-			PO_OPENING_BALANCE - INVOICE_AMOUNT * successes.length
-		);
-		expect(Number(poRow.original_value)).toBe(PO_OPENING_BALANCE);
+		// The lost-update invariant: exactly one rollup per successful create.
+		expect(finalInvoiced).toBe(INVOICE_AMOUNT * successes.length);
+		expect(Number(orderRow.gross_amount)).toBe(ORDER_STATED_VALUE);
 
-		// The database mirrors the 2xx count: one row, one number, one total each.
+		// The database mirrors the 2xx count: one row, one number, one total
+		// each, every row carrying the canonical order reference.
 		expect(storedInvoices).toHaveLength(successes.length);
 		expect(sortedIds(storedInvoices.map((row) => Number(row.id)))).toEqual(
 			sortedIds(idsOf(successes))
@@ -292,12 +423,37 @@ test.describe('financial races', () => {
 		expect(
 			storedInvoices.every((row) => Number(row.total) === INVOICE_AMOUNT)
 		).toBe(true);
+		expect(storedInvoices.every((row) => row.order_uid === orderUid)).toBe(
+			true
+		);
 		expect(duplicateGroups).toHaveLength(0);
 		for (const number of numbersOf(successes)) {
 			expect(storedNumbers.filter((stored) => stored === number)).toHaveLength(
 				1
 			);
 		}
+
+		// Each successful link stored its own running remaining value: the six
+		// serialized steps from the stated value, none lost, none repeated.
+		expect(remainingValues).toEqual(EXPECTED_REMAINING_VALUES);
+
+		// One journal event per successful link, each carrying its amount and
+		// the invoice number as its reference.
+		expect(linkedEvents).toHaveLength(successes.length);
+		expect(
+			linkedEvents.every((event) => Number(event.amount) === INVOICE_AMOUNT)
+		).toBe(true);
+		expect(new Set(linkedEvents.map((event) => event.reference))).toEqual(
+			new Set(storedNumbers)
+		);
+
+		// The refusal changes nothing: no invoice row behind it, and the
+		// supplier order keeps its null rollup.
+		expect(refused.status()).toBe(422);
+		expect(refusedBody.success).toBe(false);
+		expect(refusedBody.code).toBe('order_not_client');
+		expect(Number(refusedRows[0]?.n ?? 0)).toBe(0);
+		expect(supplierAfter[0]?.client_invoiced_value ?? null).toBeNull();
 	});
 
 	test('concurrent purchase-invoice creates mint unique numbers', async () => {
@@ -316,23 +472,23 @@ test.describe('financial races', () => {
 
 		const stored = await rows<{ id: number; invoice_number: string }>(
 			`SELECT id, invoice_number FROM purchase_invoices
-         WHERE vendor_name = ? AND isDelete = 0
-         ORDER BY id`,
+          WHERE vendor_name = ? AND isDelete = 0
+          ORDER BY id`,
 			[VENDOR_NAME]
 		);
 		const storedNumbers = stored.map((row) => row.invoice_number);
 		const scopedDuplicates = await rows<{ invoice_number: string; c: number }>(
 			`SELECT invoice_number, COUNT(*) AS c FROM purchase_invoices
-         WHERE vendor_name = ? AND isDelete = 0
-         GROUP BY invoice_number HAVING c > 1`,
+          WHERE vendor_name = ? AND isDelete = 0
+          GROUP BY invoice_number HAVING c > 1`,
 			[VENDOR_NAME]
 		);
 		const tableDuplicates = responseNumbers.length
 			? await rows<{ invoice_number: string; c: number }>(
 					`SELECT invoice_number, COUNT(*) AS c FROM purchase_invoices
-             WHERE isDelete = 0
-               AND invoice_number IN (${responseNumbers.map(() => '?').join(', ')})
-             GROUP BY invoice_number HAVING c > 1`,
+              WHERE isDelete = 0
+                AND invoice_number IN (${responseNumbers.map(() => '?').join(', ')})
+              GROUP BY invoice_number HAVING c > 1`,
 					responseNumbers
 				)
 			: [];
@@ -373,27 +529,33 @@ test.describe('financial races', () => {
 	test('cleanup hard-deletes every row the races created', async () => {
 		// `before` is recorded for the artifact, not asserted per table: a retry or
 		// a filtered run re-enters `beforeAll`, which re-purges the namespace and
-		// re-inserts only the PO, so the invoice tables can legitimately be empty
-		// here. The PO always exists in this attempt, so it is safe to assert.
+		// re-creates the orders, so the invoice tables can legitimately be empty
+		// here. The orders always exist in this attempt, so they are safe to assert.
 		const before = await countRaceRows();
-		expect(before.purchase_orders).toBe(1);
+		expect(before.orders).toBe(2);
 
 		await purgeRaceRows();
 
 		const after = await countRaceRows();
-		evidence.cleanup = { before, after, poId };
+		evidence.cleanup = { before, after, orderUid, supplierOrderUid };
 		saveEvidence();
 
 		expect(after).toEqual({
-			purchase_orders: 0,
 			invoices: 0,
 			purchase_invoices: 0,
+			orders: 0,
 		});
-		const [poById] = await rows<{ c: number }>(
-			'SELECT COUNT(*) AS c FROM purchase_orders WHERE id = ?',
-			[poId]
+		const [orderByUid] = await rows<{ c: number }>(
+			'SELECT COUNT(*) AS c FROM orders WHERE order_uid = ?',
+			[orderUid]
 		);
-		expect(Number(poById.c)).toBe(0);
+		expect(Number(orderByUid.c)).toBe(0);
+		// The journal rows go with their orders: none may survive the purge.
+		const [eventsByUid] = await rows<{ c: number }>(
+			'SELECT COUNT(*) AS c FROM order_events WHERE order_uid IN (?, ?)',
+			[orderUid, supplierOrderUid]
+		);
+		expect(Number(eventsByUid.c)).toBe(0);
 
 		// The flow is only ok once every row is verifiably gone.
 		writeArtifact(ARTIFACT, { ok: true, ...evidence });
