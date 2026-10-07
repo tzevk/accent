@@ -250,7 +250,7 @@ export async function loadMonthRecords(
       ORDER BY e.expense_date DESC, e.id DESC`,
 		[start, end, start, end]
 	);
-	return (rows as DbRow[]).map(mapCostRow);
+	return (rows as DbRow[]).map((row) => mapCostRow(row));
 }
 
 /**
@@ -271,7 +271,7 @@ export async function loadNonOperatingSources(
       ORDER BY e.expense_date DESC, e.id DESC`,
 		[start, end, start, end]
 	);
-	return (rows as DbRow[]).map(mapCostRow);
+	return (rows as DbRow[]).map((row) => mapCostRow(row));
 }
 
 /**
@@ -290,7 +290,7 @@ export async function loadCostRecordsByIds(
       ORDER BY e.id`,
 		ids
 	);
-	return (rows as DbRow[]).map(mapCostRow);
+	return (rows as DbRow[]).map((row) => mapCostRow(row));
 }
 
 /** The source row a period charge draws down, as the write path needs it. */
@@ -805,5 +805,5 @@ export async function loadFilteredExpenseRecords(
       ORDER BY e.recognition_period DESC, e.expense_date DESC, e.id DESC`,
 		params
 	)) as [DbRow[], unknown];
-	return (rows as DbRow[]).map(mapCostRow);
+	return (rows as DbRow[]).map((row) => mapCostRow(row));
 }
