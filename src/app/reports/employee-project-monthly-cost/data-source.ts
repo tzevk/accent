@@ -12,10 +12,9 @@
  * 2. FY Annual (FY YYYY Apr-Mar): 12-month matrix per employee / project,
  *    with monthly company totals and FY grand totals.
  *
- * Legacy per-employee FY view is retained for backward compatibility:
- *   fetchEmployeeProjectCost(employeeId, fyYear) etc.
+ * The employee-specific FY reader uses the same recorded allocations and estimates.
  *
- * Calculation (mirrors the Manhours Billing report's conventions):
+ * Financial interpretation:
  * - Hours: `user_activity_assignments.daily_entries` timesheet logs (the same
  *   source behind ProjectActivityAssignments.jsx), bucketed into calendar months.
  * - Employee cost comes from the shared financial interpretation
@@ -86,11 +85,11 @@ export interface ProjectCostRow {
 	project_code: string;
 	project_name: string;
 	client_name: string;
-	/** Display hourly rate (2dp) from the profile active at FY start (Apr). */
+	/** Display rate derived from the row's financial cost and Logged Hours. */
 	hourly_rate: number;
 	/** Hours logged per FY month key (apr…mar). */
 	monthly_hours: Record<string, number>;
-	/** Cost per FY month key = rate(active profile for that month) × hours. */
+	/** Recorded allocation or payroll-based estimate for each FY month. */
 	monthly_cost: Record<string, number>;
 	total_hours: number;
 	total_cost: number;
