@@ -417,6 +417,7 @@ test('records actual spending through the register and recognizes it once', asyn
 	await page
 		.getByLabel('Amount', { exact: true })
 		.fill(String(EXPECTED.spendA));
+	await page.getByLabel('Transaction date').fill(`${MONTH}-10`);
 	await page.getByLabel('Notes').fill(`${PETTY_CASH_PREFIX} spend A`);
 	await page.getByLabel('Bill date').fill(`${MONTH}-10`);
 	await page
