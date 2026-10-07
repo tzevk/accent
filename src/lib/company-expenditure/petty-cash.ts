@@ -29,7 +29,10 @@
 
 import { randomUUID } from 'node:crypto';
 import { R, toNumber } from '@/lib/money';
-import { isDuplicateKeyError, isRetryableNumberError } from '@/utils/db-number-retry';
+import {
+	isDuplicateKeyError,
+	isRetryableNumberError,
+} from '@/utils/db-number-retry';
 import { CostError } from './errors';
 import {
 	CLASSIFICATIONS,
