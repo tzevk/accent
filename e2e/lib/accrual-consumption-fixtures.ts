@@ -240,8 +240,7 @@ export function linkedAccrual(key: string): SeedLinkedAccrual {
 
 export function transferInvoice(key: string): SeedTransferInvoice {
 	const invoice = TRANSFER_INVOICES.find((entry) => entry.key === key);
-	if (!invoice)
-		throw new Error(`Unknown transfer invoice fixture key: ${key}`);
+	if (!invoice) throw new Error(`Unknown transfer invoice fixture key: ${key}`);
 	return invoice;
 }
 
@@ -343,7 +342,10 @@ export async function cleanupAccrualConsumptionFixtures(): Promise<number> {
 		`DELETE FROM order_consumptions WHERE order_uid IN (${orderUidSelector}) OR cost_uid LIKE ?`,
 	]) {
 		removed += (
-			await exec(sql, [...orderUidParams, `${ACCRUAL_CONSUMPTION_COST_PREFIX}%`])
+			await exec(sql, [
+				...orderUidParams,
+				`${ACCRUAL_CONSUMPTION_COST_PREFIX}%`,
+			])
 		).affectedRows;
 	}
 	for (const sql of [
@@ -418,9 +420,10 @@ export async function cleanupAccrualConsumptionFixtures(): Promise<number> {
 		)
 	).affectedRows;
 	removed += (
-		await exec(`DELETE FROM order_events WHERE order_uid IN (${orderUidSelector})`, [
-			...orderUidParams,
-		])
+		await exec(
+			`DELETE FROM order_events WHERE order_uid IN (${orderUidSelector})`,
+			[...orderUidParams]
+		)
 	).affectedRows;
 	removed += (
 		await exec(`DELETE FROM orders WHERE order_number LIKE ?`, [
@@ -512,7 +515,8 @@ export async function seedAccrualConsumptionFixtures(): Promise<SeededAccrualCon
 		const order = ACCRUAL_CONSUMPTION_ORDERS.find(
 			(entry) => entry.key === accrual.orderKey
 		);
-		if (!order) throw new Error(`[e2e] unknown fixture order: ${accrual.orderKey}`);
+		if (!order)
+			throw new Error(`[e2e] unknown fixture order: ${accrual.orderKey}`);
 		const inserted = await exec(
 			`INSERT INTO cost_accruals
          (accrual_number, cost_uid, description, vendor_name, vendor_reference,

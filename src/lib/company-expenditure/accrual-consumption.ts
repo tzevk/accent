@@ -49,10 +49,7 @@ import type {
 	AccrualReplacementResult,
 } from './accruals';
 import { executeAccrualCommand, executeAccrualReplacement } from './accruals';
-import {
-	recordOrderConsumption,
-	releaseOrderConsumption,
-} from './commitments';
+import { recordOrderConsumption, releaseOrderConsumption } from './commitments';
 
 type DbRow = Record<string, unknown>;
 
@@ -354,7 +351,10 @@ export async function executeAccrualCommandWithConsumption(
 			: reasonBase;
 		const evidenceReference = trimReason(input.evidenceReference);
 
-		if (input.command === 'recognize' && result.recognition_state === 'recognized') {
+		if (
+			input.command === 'recognize' &&
+			result.recognition_state === 'recognized'
+		) {
 			const { recorded, remaining } = await recordCostPeriods(db, {
 				orderUid,
 				costUid: link.costUid,
@@ -378,7 +378,10 @@ export async function executeAccrualCommandWithConsumption(
 			};
 		}
 
-		if (input.command === 'cancel' && result.recognition_state === 'cancelled') {
+		if (
+			input.command === 'cancel' &&
+			result.recognition_state === 'cancelled'
+		) {
 			const released = await releaseCostRows(db, {
 				orderUid,
 				costUid: link.costUid,
@@ -409,7 +412,9 @@ export async function executeAccrualCommandWithConsumption(
 		);
 		return { ...result, consumption: null };
 	}
-	return withTransaction((db) => run(db)) as Promise<AccrualCommandWithConsumptionResult>;
+	return withTransaction((db) =>
+		run(db)
+	) as Promise<AccrualCommandWithConsumptionResult>;
 }
 
 /**
@@ -467,8 +472,7 @@ export async function executeAccrualReplacementWithConsumption(
 		)) as [DbRow[], unknown];
 		const orderCurrency = orderCurrencyOf(s(orderRows[0], 'currency', ''));
 
-		let skippedInvoice: AccrualReplacementConsumption['skipped_invoice'] =
-			null;
+		let skippedInvoice: AccrualReplacementConsumption['skipped_invoice'] = null;
 		let recordedInvoice: AccrualRecordedConsumption[] = [];
 		if (invoiceCurrency === null || invoiceCurrency !== orderCurrency) {
 			// Currencies are never mixed: the superseded estimate leaves the
@@ -524,7 +528,9 @@ export async function executeAccrualReplacementWithConsumption(
 	};
 
 	if (options?.connection) return run(options.connection);
-	return withTransaction((db) => run(db)) as Promise<AccrualReplacementWithConsumptionResult>;
+	return withTransaction((db) =>
+		run(db)
+	) as Promise<AccrualReplacementWithConsumptionResult>;
 }
 
 /**
@@ -563,10 +569,7 @@ export async function restoreAccrualConsumptionForReleasedReplacements(
 			[accrualId]
 		)) as [DbRow[], unknown];
 		if (accrualRows.length === 0) continue;
-		const orderUid = await lockLinkedOrder(
-			db,
-			s(accrualRows[0], 'order_uid')
-		);
+		const orderUid = await lockLinkedOrder(db, s(accrualRows[0], 'order_uid'));
 		if (!orderUid) continue;
 		const state = s(accrualRows[0], 'recognition_state', 'draft');
 		if (state !== 'recognized') continue;
@@ -592,7 +595,9 @@ export async function restoreAccrualConsumptionForReleasedReplacements(
 		const { recorded } = await recordCostPeriods(db, {
 			orderUid,
 			costUid,
-			expectedSourceVersion: Number(num(versionRows[0], 'financial_version') ?? 1),
+			expectedSourceVersion: Number(
+				num(versionRows[0], 'financial_version') ?? 1
+			),
 			source: 'accrual',
 			actor: input.actor,
 			reason,

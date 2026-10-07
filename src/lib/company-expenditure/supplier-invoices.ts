@@ -1114,14 +1114,13 @@ export async function executeSupplierCommand(
 		// silently returning to the commitment.
 		let restoredConsumption: AccrualCancelConsumption[] | null = null;
 		if (input.command === 'cancel') {
-			const releasedReplacementIds =
-				await releaseAccrualReplacementsForInvoice(
-					db,
-					input.id,
-					actor.id,
-					text(input.reason, 500),
-					text(merged.evidenceReference, 500)
-				);
+			const releasedReplacementIds = await releaseAccrualReplacementsForInvoice(
+				db,
+				input.id,
+				actor.id,
+				text(input.reason, 500),
+				text(merged.evidenceReference, 500)
+			);
 			restoredConsumption =
 				await restoreAccrualConsumptionForReleasedReplacements(db, {
 					replacementIds: releasedReplacementIds,

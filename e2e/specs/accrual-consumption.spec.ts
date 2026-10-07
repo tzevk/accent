@@ -234,7 +234,11 @@ function projectRow(data: ReconciliationJson, code: string) {
 	return found!;
 }
 
-function bucket(section: CommitmentSectionJson, currency: string, basis: string) {
+function bucket(
+	section: CommitmentSectionJson,
+	currency: string,
+	basis: string
+) {
 	const found = section.totals.find(
 		(total) => total.currency === currency && total.basis === basis
 	);
@@ -527,9 +531,9 @@ test('October states every recognized estimate once, drafts never', async ({
 	// recognized: I1 60000 + I4 50000 + I5a 20000 + I5b 20000. All Project P1,
 	// all INR. Drafts (A4, A5) never count.
 	expect(october.company.incurred_cost).toBe(355000);
-	expect(projectRow(october, ACCRUAL_CONSUMPTION_PROJECT_CODE).incurred_cost).toBe(
-		355000
-	);
+	expect(
+		projectRow(october, ACCRUAL_CONSUMPTION_PROJECT_CODE).incurred_cost
+	).toBe(355000);
 });
 
 test('partial replacement moves the matched amount to the invoice and keeps the remainder', async ({
@@ -568,9 +572,7 @@ test('partial replacement moves the matched amount to the invoice and keeps the 
 	);
 	expect(released.filter((entry) => entry.state === 'active')).toHaveLength(1);
 	expect(
-		Number(
-			released.find((entry) => entry.state === 'active')!.amount
-		)
+		Number(released.find((entry) => entry.state === 'active')!.amount)
 	).toBe(40000);
 	const invoiceRows = consumptions.filter(
 		(entry) => entry.cost_uid === transferInvoice('I1').costUid
@@ -592,9 +594,12 @@ test('partial replacement moves the matched amount to the invoice and keeps the 
       ORDER BY id`,
 		[orderUid, linkedAccrual('A1').costUid, transferInvoice('I1').costUid]
 	);
-	expect(
-		journal.map((entry) => entry.event)
-	).toEqual(['recorded', 'released', 'recorded', 'recorded']);
+	expect(journal.map((entry) => entry.event)).toEqual([
+		'recorded',
+		'released',
+		'recorded',
+		'recorded',
+	]);
 
 	// The consumed total is preserved: nothing doubled, nothing restored.
 	const detail = await commitment(request, orderUid);
@@ -629,17 +634,15 @@ test('final replacement into another month consumes the invoice in its own perio
 	const accrualRows = consumptions.filter(
 		(entry) => entry.cost_uid === linkedAccrual('A1').costUid
 	);
-	expect(
-		accrualRows.filter((entry) => entry.state === 'active')
-	).toHaveLength(0);
+	expect(accrualRows.filter((entry) => entry.state === 'active')).toHaveLength(
+		0
+	);
 	const invoiceRows = consumptions.filter(
 		(entry) => entry.cost_uid === transferInvoice('I2').costUid
 	);
 	expect(invoiceRows).toHaveLength(1);
 	expect(Number(invoiceRows[0].amount)).toBe(40000);
-	expect(String(invoiceRows[0].recognized_period)).toContain(
-		NEXT_MONTH
-	);
+	expect(String(invoiceRows[0].recognized_period)).toContain(NEXT_MONTH);
 
 	const detail = await commitment(request, orderUid);
 	expect(detail.effectiveConsumption).toBe(205000);
@@ -670,9 +673,9 @@ test('a foreign-currency actual releases the estimate without consuming another 
 	// USD invoice is explicitly left unconsumed, with its variance explained
 	// on the replacement row.
 	expect(consumption.released_amount).toBe(30000);
-	expect(
-		(consumption.skipped_invoice as Record<string, unknown>).code
-	).toBe('invoice_currency_unconsumed');
+	expect((consumption.skipped_invoice as Record<string, unknown>).code).toBe(
+		'invoice_currency_unconsumed'
+	);
 
 	const consumptions = await dbConsumptions(orderUid);
 	expect(
@@ -718,8 +721,7 @@ test('cancelling the foreign invoice restores the estimate and its consumption',
 	const consumptions = await dbConsumptions(orderUid);
 	const restored = consumptions.filter(
 		(entry) =>
-			entry.cost_uid === linkedAccrual('A3').costUid &&
-			entry.state === 'active'
+			entry.cost_uid === linkedAccrual('A3').costUid && entry.state === 'active'
 	);
 	expect(restored).toHaveLength(1);
 	expect(Number(restored[0].amount)).toBe(30000);
@@ -763,16 +765,13 @@ test('concurrent replacements transfer once and refuse the loser without writes'
 			expected_accrual_version: 2,
 			expected_invoice_version: 1,
 		});
-	const [first, second] = await Promise.all([
-		attempt('I5a'),
-		attempt('I5b'),
-	]);
+	const [first, second] = await Promise.all([attempt('I5a'), attempt('I5b')]);
 	const statuses = [first.status, second.status].sort();
 	expect(statuses).toEqual([200, 409]);
 	const winner = first.status === 200 ? first : second;
-	expect(
-		(winner.body.data as Record<string, unknown>).replaced_amount
-	).toBe(20000);
+	expect((winner.body.data as Record<string, unknown>).replaced_amount).toBe(
+		20000
+	);
 	const loser = first.status === 200 ? second : first;
 	expect(loser.body.code).toBe('version_conflict');
 
@@ -782,9 +781,9 @@ test('concurrent replacements transfer once and refuse the loser without writes'
 	const accrualRows = consumptions.filter(
 		(entry) => entry.cost_uid === linkedAccrual('A5').costUid
 	);
-	expect(
-		accrualRows.filter((entry) => entry.state === 'active')
-	).toHaveLength(0);
+	expect(accrualRows.filter((entry) => entry.state === 'active')).toHaveLength(
+		0
+	);
 	const winnerKeys = ['I5a', 'I5b'].filter((key) =>
 		consumptions.some(
 			(entry) =>
@@ -861,18 +860,26 @@ test('authorization keeps recognition, replacement, and consumption behind their
 		baseURL
 	);
 	try {
-		const recognized = await accrualCommand(restricted, seeded.accrualIds['A4'], {
-			command: 'recognize',
-			expected_version: 1,
-		});
+		const recognized = await accrualCommand(
+			restricted,
+			seeded.accrualIds['A4'],
+			{
+				command: 'recognize',
+				expected_version: 1,
+			}
+		);
 		expect(recognized.status).toBe(403);
 
-		const replaced = await accrualReplacement(restricted, seeded.accrualIds['A2'], {
-			invoice_id: seeded.invoiceIds['I4'],
-			final: false,
-			expected_accrual_version: 2,
-			expected_invoice_version: 1,
-		});
+		const replaced = await accrualReplacement(
+			restricted,
+			seeded.accrualIds['A2'],
+			{
+				invoice_id: seeded.invoiceIds['I4'],
+				final: false,
+				expected_accrual_version: 2,
+				expected_invoice_version: 1,
+			}
+		);
 		expect(replaced.status).toBe(403);
 
 		const recordResponse = await restricted.post(
@@ -988,7 +995,9 @@ test('the report states the transferred commitment per month without double coun
 	await expect(page.getByTestId('expenditure-view')).toBeVisible();
 	await page.getByLabel('Month', { exact: true }).click();
 	await page.getByPlaceholder('Search...').fill('November 2018');
-	await page.getByRole('button', { name: 'November 2018', exact: true }).click();
+	await page
+		.getByRole('button', { name: 'November 2018', exact: true })
+		.click();
 	await expect(page.getByTestId('expenditure-view')).toHaveAttribute(
 		'data-month',
 		NEXT_MONTH
