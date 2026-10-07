@@ -160,14 +160,20 @@ instead of being cancelled and re-recorded.
 
 ## Report contract
 
-`GET /api/reports/employee-project-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=]`
+`GET /api/reports/employee-project-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=][&as_of=YYYY-MM-DD]`
 returns `company` (currency, incurred cost, per-currency subtotals — each with
 its own incurred cost, gross liability, recoverable tax, and unresolved-tax
 gross — the three groups, gross liability, recoverable tax, unresolved tax,
-known zeros), the Project breakdown with change against the previous month, the
+known zeros), the Project breakdown with its comparable-period comparison, the
 evidence summary, the coverage notices, the Project options for the entry
 control, and the months that carry cost. The Project filter narrows `projects`,
 never `company`.
+
+`as_of` identifies the comparable period: the date inside the reported month
+the month is measured to. It defaults to today, so a past month is compared in
+full and the current month over its elapsed days. A date that is not a real
+calendar date is `400 invalid_as_of`; one outside the reported month is
+`400 as_of_outside_month`.
 
 Currency rules are absolute, including the breakdown a reader uses to explain
 the month: a Project with cost in two currencies gets one row per currency
@@ -194,6 +200,93 @@ names the single currency when there is one).
 The Excel download keeps exporting the employee-cost views; the reconciliation
 export belongs to the export slice, and the view therefore offers no download
 button yet.
+
+## Comparable period, ranking, and cost to date (ticket #320)
+
+`src/lib/company-expenditure/ranking.ts` is the pure interpretation behind the
+report's period navigation, both orderings, and the cost-to-date column; the
+route, the drilldown, and the export must read it rather than re-deriving it.
+
+- **Window.** `comparisonWindow(month, asOf)` decides how much of the reported
+  month has elapsed. A month measured before its last day is unfinished: both
+  periods are then compared over their first `currentDays` days, the prior
+  window is clamped to the prior month's own length, and a clamped window is
+  disclosed as `unequal_window_length`. A month measured after its last day is
+  compared whole (`full_month_comparison`): the prior window is the whole prior
+  month however many days it holds, so June (30 days) against May (31 days)
+  includes 31 May.
+- **Day rule.** A partial window states only cost whose received-work period is
+  fully dated and wholly inside it: `service_period_start` and
+  `service_period_end` both carry a real day, both lie in the window's own
+  month, and the end is on or before the window's last day. A period crossing
+  the cutoff, a period starting in the prior month, and a bill-date-only period
+  are unproven — never prorated, never counted in full by their first day. They
+  are left out of the window figures, disclosed as `window_evidence_unproven`
+  with their own count and amount, and the change they would distort is
+  withheld (`change_state: 'unproven'`); the row is then unranked by increase
+  with reason `unproven_partial_window`. A month that has fully elapsed counts
+  every recognized cost of that month, and its undated records are disclosed as
+  `undated_period_evidence`.
+- **Day-less monthly cost.** Approved period charges dated in either compared
+  month and recorded employee cost frozen in either month belong to the month,
+  not to a day: an elapsed window cannot place them either. They are excluded
+  from the window figures, published per currency as `dayless_records` /
+  `dayless_cost`, disclosed as `dayless_monthly_cost_unproven`, and they
+  withhold the change exactly as unproven records do (no known prior zero, no
+  supported increase). The window figures count operating cost only; a
+  non-operating balance or an unresolved nature never enters them.
+- **Categories.** Each currency's window carries `groups` — Incurred Project
+  Cost, Company Overhead, Unallocated Cost — counted once from the window's own
+  records, so the reader sees which direct-cost category moved the comparison;
+  the three group amounts sum to the window's company figure.
+- **Change.** Rows and the company carry the absolute change, a percentage
+  stated only for a known non-zero prior amount, and a state: a recorded zero
+  prior is `new` (absolute change, no percentage), and a Project with no prior
+  record at all is `no_prior` with both figures `null` — absence of records is
+  never read as zero cost.
+- **Ranking.** `ranking.by_cost` and `ranking.by_increase` order the same rows
+  inside one currency; ties share a position, and a row whose comparison amount
+  is unknown is listed in `ranking.increase_unranked` with its reason instead
+  of being placed by a guess.
+- **Cost to date.** `cost_to_date` accumulates confirmed cost of every month
+  before the reported one plus the reported window, so it is stated through
+  `comparison.cost_to_date_through`. The base is every wired source in its own
+  currency: direct recognized cost and approved period charges, supplier
+  invoices, other expenses, petty cash, and frozen employee cost — each
+  merged per Project and currency (`loadProjectCostBefore`,
+  `loadSupplierProjectCostBefore`, `loadOtherExpenseProjectCostBefore`,
+  `loadPettyCashProjectCostBefore`, `loadAllocatedProjectCostBefore`). A
+  `null` means a contributing amount was unknown, not zero.
+- **Evidence.** Every row carries `evidence` (state plus findings):
+  `recorded`, `estimated` (cost recorded but not confirmed), `reconstructed`
+  (a source module marked it so; none does yet), or `incomplete` (an unknown
+  amount, an unresolved tax treatment, or a period that is only a bill date or
+  a period end).
+- **Filtering.** `filtered_subtotal` is the filtered Project detail's own
+  subtotal. `company`, `comparison`, and `ranking` are company-wide and are
+  never narrowed by `project_id`.
+
+`e2e/specs/project-cost-ranking.spec.ts` drives the real app over the `#320`
+fixture block (Projects `E2E-EXP-P320A…H`, months 2022-05/2022-06 measured to
+2022-06-15, plus boundary rows: a 31 May cost, two June spans that cannot prove
+their window membership — one crossing the 15th cutoff, one starting in May —
+a January 2026 cost, a 2022-08/2022-09 pair that spans currencies, and
+2022-03/2022-04 charge rows whose approved period charges are day-less) and
+writes `e2e/artifacts/project-cost-ranking.json`: it asserts the equal-period
+window with its withheld change and unproven disclosure, that a fully elapsed
+month keeps the prior month's last day and counts both crossing spans in its
+rows, its change figures, and its increase ordering, both orderings, the
+zero-prior and unknown-prior states, cost to date, late/backdated/
+unequal-coverage disclosure, the day-less withholding for a period charge and
+for the finalized payroll month 2026-02 (whose fixtures are seeded and removed
+by this spec), the unfiltered company position and the published-row scope
+behind a Project filter (including #321's budget section), the 400/403
+refusals, and the browser flow: month and financial-year navigation (into an
+empty month and never into a future one), a currency-split comparison stated
+per currency rather than as unknown, the ranking switch, drilldown into
+recognized and unresolved evidence, and a cost entered, submitted, recognized,
+and re-ranked through the real controls. The spec refuses to run against any of
+its months holding cost outside its own namespace.
 
 ## Approved cost budget (#321)
 
@@ -911,6 +1004,8 @@ End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
 - `migrations/20261008090700_payroll_employee_cost_allocation.js`
   (#307: allocations, shares, allocation journal)
 - `src/lib/company-expenditure/{index,types,currency,recognition,reconciliation,records,commands,payroll,coverage,budget-records,budget-commands,budget-comparison}.ts`
+- `src/lib/company-expenditure/{ranking,totals}.ts` (comparable period, both
+  orderings, cost to date, per-Project evidence; shared money subtotals)
 - `src/app/api/reports/employee-project-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)
 - `src/app/api/reports/employee-project-monthly-cost/expenses/route.ts`
 - `src/app/api/reports/employee-project-monthly-cost/payroll/route.ts` (#307 drilldown)
@@ -940,6 +1035,8 @@ End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
 - `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/global-setup.ts`
+- `e2e/specs/project-cost-ranking.spec.ts` (ranking, comparable period, cost to
+  date; artifact `e2e/artifacts/project-cost-ranking.json`)
 - `migrations/20261008091100_expense_supplier_invoice_recognition.js` (#311;
   `purchase_invoices` financial columns, `supplier_invoice_periods`,
   `financial_cost_links`, `payment_payables.cost_uid`)

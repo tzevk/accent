@@ -168,6 +168,16 @@ export function convertToReporting(
 	};
 }
 
+/** The same amount in the requested reporting basis, or null when unsupported. */
+export function convertedAmountOf(
+	record: Parameters<typeof evidenceOf>[0],
+	value: number | null,
+	reporting: string
+): number | null {
+	if (value === null) return null;
+	return convertToReporting(value, evidenceOf(record), reporting).amount;
+}
+
 /** The conversion evidence a stored cost carries, in one shape. */
 export function evidenceOf(record: {
 	currency: string | null;

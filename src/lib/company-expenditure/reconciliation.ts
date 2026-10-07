@@ -17,11 +17,11 @@
  *    reconciliation.
  */
 
-import type Decimal from 'decimal.js';
-import { add, R, toNumber } from '@/lib/money';
+import { add, R } from '@/lib/money';
 import { buildBudgetSection } from './budget-comparison';
 import type { SourceCoverageDeclaration } from './coverage';
 import {
+	convertedAmountOf,
 	convertToReporting,
 	conversionStatusOf,
 	currencyCodeOf,
@@ -34,6 +34,30 @@ import {
 	toPeriodChargeJson,
 } from './non-operating';
 import { effectiveTaxTreatment, isConfirmed, isOpenState } from './recognition';
+import {
+	buildPeriodComparison,
+	changeStateFor,
+	comparisonWindow,
+	isLateEntry,
+	monthLabel,
+	percentChange,
+	projectEvidence,
+	rankProjects,
+	unprovenWindowRecords,
+	windowRecords,
+	withinWindow,
+	type ComparisonWindow,
+	type DaylessMonthCost,
+} from './ranking';
+import {
+	confirmedAmount,
+	countByState,
+	currencyOf,
+	GROUP_LABELS,
+	rounded,
+	subtotal,
+	sumMoney,
+} from './totals';
 import type {
 	CompanyConversion,
 	CompanyReconciliation,
@@ -42,8 +66,8 @@ import type {
 	CoverageNotice,
 	CurrencyReporting,
 	CurrencyTotal,
-	EvidenceStateSummary,
 	EvidenceSummary,
+	FilteredProjectSubtotal,
 	PettyCashSummary,
 	NonOperatingItemJson,
 	NonOperatingSection,
@@ -53,106 +77,7 @@ import type {
 	ReconciliationSourceSummary,
 } from './types';
 
-const GROUP_LABELS = {
-	incurred_project_cost: 'Incurred Project Cost',
-	company_overhead: 'Company Overhead',
-	unallocated_cost: 'Unallocated Cost',
-} as const;
-
-const MONTH_NAMES = [
-	'January',
-	'February',
-	'March',
-	'April',
-	'May',
-	'June',
-	'July',
-	'August',
-	'September',
-	'October',
-	'November',
-	'December',
-];
-
-/** "2019-01" → "January 2019"; unparseable input is returned unchanged. */
-export function monthLabel(month: string): string {
-	const [year, monthNumber] = month.split('-').map(Number);
-	if (!year || !monthNumber || monthNumber < 1 || monthNumber > 12) {
-		return month;
-	}
-	return `${MONTH_NAMES[monthNumber - 1]} ${year}`;
-}
-
-/** The amount a confirmed record contributes; the stored figure wins. */
-function confirmedAmount(record: CostRecord): number | null {
-	if (!isConfirmed(record.state)) return null;
-	if (record.recognizedAmount !== null) return record.recognizedAmount;
-	return record.evaluation.recognizedAmount;
-}
-
-function rounded(value: Decimal.Value): number {
-	return toNumber(R(value).toDecimalPlaces(2));
-}
-
-/** Sum money without floating point drift, rounded once at the boundary. */
-function sumMoney(values: Array<number | null>): number {
-	return rounded(
-		values.reduce<Decimal>((total, value) => add(total, value ?? 0), R(0))
-	);
-}
-
-/**
- * The single currency the records share, or null for none, more than one, or
- * any unknown original currency — an unknown currency can never be stated.
- */
-function currencyOf(records: CostRecord[]): string | null {
-	const codes = new Set(
-		records.map((record) => currencyCodeOf(record.currency))
-	);
-	if (codes.has(null)) return null;
-	return codes.size === 1 ? ([...codes][0] as string) : null;
-}
-
-/**
- * A subtotal that may only be stated in one currency. Zero records contribute
- * a known zero; a single unknown amount, an unknown currency, or a second
- * currency makes the figure null, because an unknown amount is not zero and
- * currencies are never added.
- */
-function subtotal(
-	records: CostRecord[],
-	value: (record: CostRecord) => number | null
-): number | null {
-	if (records.length === 0) return 0;
-	const amounts = records.map(value);
-	if (amounts.some((amount) => amount === null)) return null;
-	if (currencyOf(records) === null) return null;
-	return sumMoney(amounts);
-}
-
-/** The same amount in the requested reporting basis, or null when unsupported. */
-function convertedAmountOf(
-	record: CostRecord,
-	value: number | null,
-	reporting: string
-): number | null {
-	if (value === null) return null;
-	return convertToReporting(value, evidenceOf(record), reporting).amount;
-}
-
-function countByState(
-	records: CostRecord[],
-	state: CostRecord['state']
-): EvidenceStateSummary {
-	const matching = records.filter((record) => record.state === state);
-	return {
-		count: matching.length,
-		currency: currencyOf(matching),
-		amount: subtotal(matching, (record) =>
-			isConfirmed(record.state) ? confirmedAmount(record) : record.grossAmount
-		),
-	};
-}
+export { monthLabel };
 
 function currencySlice(
 	records: CostRecord[],
@@ -464,14 +389,19 @@ function payrollAggregates(
 function projectRows(
 	confirmed: CostRecord[],
 	open: CostRecord[],
+	priorMonthRecords: CostRecord[],
 	charges: PeriodCharge[],
+	priorCharges: PeriodCharge[],
 	previousMonth: Map<number, Map<string, number | null>>,
-	projectFilter: number | null,
+	priorPayroll: Map<number, Map<string, number | null>>,
+	monthRecords: CostRecord[],
+	window: ComparisonWindow,
+	costBefore: Map<number, Map<string, number | null>>,
 	reporting: string,
 	payroll: ReconciliationPayrollInput
 ): ReconciliationProjectRow[] {
 	// One row per Project and currency. Amounts in different currencies are
-	// never added, and the prior-month comparison is same-currency only; a
+	// never added, and the prior-period comparison is same-currency only; a
 	// Project costing in two currencies therefore shows two rows. A record
 	// whose currency is unknown cannot be stated and stays out of the rows; a
 	// period charge always carries its source's currency. Recorded employee
@@ -482,14 +412,16 @@ function projectRows(
 		(record) => currencyCodeOf(record.currency) !== null
 	);
 	const ids = new Set<number>(projectIdsIn(stated, charges));
+	const priorWindowRecords = windowRecords(priorMonthRecords, window, 'prior');
+	const currentEnd = window.throughDate;
 	for (const id of aggregates.hoursByProject.keys()) ids.add(id);
 	for (const id of aggregates.recordedByProject.keys()) ids.add(id);
 	const rows: ReconciliationProjectRow[] = [];
 	for (const id of ids) {
-		if (projectFilter !== null && projectFilter !== id) continue;
 		const projectRecords = stated.filter((record) => record.projectId === id);
 		const projectCharges = charges.filter((charge) => charge.projectId === id);
 		const sample = projectRecords[0] ?? projectCharges[0];
+		const evidence = projectEvidence(projectRecords);
 		const currencies = [
 			...new Set([
 				...projectRecords.map(
@@ -553,8 +485,76 @@ function projectRows(
 			const unsupported =
 				reportingOutcomes.some((outcome) => outcome.status === 'unsupported') ||
 				employeeUnsupported;
-			const previous = previousMonth.get(id)?.get(currency) ?? null;
-			const change = previous === null ? null : rounded(incurred - previous);
+			const inWindow = confirmedRows.filter((record) =>
+				withinWindow(record, window.currentDays, window.monthDays, window.month)
+			);
+			const comparison = sumMoney([
+				...inWindow.map(confirmedAmount),
+				// Charges and recorded employee cost belong to the same
+				// whole-month figures the prior side reads; an elapsed window has
+				// no day for them and withholds the change instead.
+				...(window.basis === 'full_month'
+					? [
+							...currencyCharges.map((charge) => charge.amount),
+							employeeCost,
+						]
+					: []),
+			]);
+			const priorRows = priorWindowRecords.filter(
+				(record) =>
+					record.projectId === id &&
+					currencyCodeOf(record.currency) === currency
+			);
+			// A whole-month comparison reads the prior month's own confirmed
+			// cost, charges included; an elapsed window can only be measured
+			// from the prior month's dated records, and a charge carries no
+			// day, so it is excluded there and disclosed.
+			const previous =
+				window.basis === 'full_month'
+					? (previousMonth.get(id)?.get(currency) ?? null)
+					: priorRows.length === 0
+						? null
+						: sumMoney(priorRows.map(confirmedAmount));
+			const before = costBefore.get(id);
+			const beforeAmount = before === undefined ? 0 : before.get(currency);
+			const lateRows = inWindow.filter((record) =>
+				isLateEntry(record, currentEnd)
+			);
+			const priorUnproven = unprovenWindowRecords(
+				priorMonthRecords,
+				window,
+				'prior'
+			).filter(
+				(record) =>
+					record.projectId === id && currencyCodeOf(record.currency) === currency
+			);
+			const currentUnproven = unprovenWindowRecords(
+				monthRecords,
+				window,
+				'current'
+			).filter(
+				(record) =>
+					record.projectId === id && currencyCodeOf(record.currency) === currency
+			);
+			// A partial window that cannot prove where its cost sits cannot state
+			// this row's change either; the row keeps its unproven records visible
+			// through the evidence column and is left out of the increase order.
+			// Day-less monthly cost of either compared month — approved period
+			// charges and recorded employee cost — is just as unplaceable inside
+			// an elapsed window, so it withholds the change rather than letting
+			// the window's dated cost alone state a new cost or an increase.
+			const priorDaylessCharges = priorCharges.filter(
+				(charge) => charge.projectId === id && charge.currency === currency
+			);
+			const priorDaylessPayroll = priorPayroll.get(id)?.get(currency) ?? 0;
+			const unproven =
+				priorUnproven.length > 0 ||
+				currentUnproven.length > 0 ||
+				(window.basis === 'equal_period' &&
+					(currencyCharges.length > 0 ||
+						priorDaylessCharges.length > 0 ||
+						employeeCost !== 0 ||
+						priorDaylessPayroll !== 0));
 			rows.push({
 				project_id: id,
 				project_code:
@@ -582,18 +582,27 @@ function projectRows(
 				record_count: confirmedRows.length,
 				period_charge_count: currencyCharges.length,
 				not_confirmed_cost: subtotal(openRows, (record) => record.grossAmount),
-				previous_month_cost: previous,
-				change_amount: change,
-				change_state:
-					previous === null
-						? 'no_prior'
-						: incurred === previous
-							? 'unchanged'
-							: previous === 0
-								? 'new'
-								: incurred > previous
-									? 'increase'
-									: 'decrease',
+				comparison_cost: comparison,
+				previous_period_cost: previous,
+				change_amount:
+					unproven || previous === null
+						? null
+						: rounded(comparison - previous),
+				change_percent: unproven
+					? null
+					: percentChange(comparison, previous),
+				change_state: unproven
+					? 'unproven'
+					: changeStateFor(comparison, previous),
+				cost_to_date:
+					beforeAmount === null ? null : rounded(add(beforeAmount, comparison)),
+				late_entry:
+					lateRows.length === 0
+						? null
+						: {
+								count: lateRows.length,
+								amount: sumMoney(lateRows.map(confirmedAmount)),
+							},
 				employee_cost: employeeCost,
 				estimated_employee_cost: estimatedEmployeeCost,
 				logged_hours:
@@ -604,6 +613,7 @@ function projectRows(
 					currency === payroll.currency
 						? (aggregates.employeesByProject.get(id)?.size ?? 0)
 						: 0,
+				evidence,
 				recorded_employee_count:
 					currency === payroll.currency
 						? (aggregates.recordedEmployeesByProject.get(id)?.size ?? 0)
@@ -1073,24 +1083,30 @@ export interface ReconciliationInput {
 	/** Every direct cost belonging to the month, in any recognition state. */
 	records: CostRecord[];
 	/**
-	 * Every period charge dated in the month, approved and cancelled: the
-	 * approved ones whose source is still confirmed cost are counted here.
+	 * Every direct cost of the prior month: the comparable period's own source.
+	 * Its records decide both the prior window's amounts and whether the prior
+	 * period has any evidence at all.
 	 */
-	charges: PeriodCharge[];
+	priorMonthRecords: CostRecord[];
+	/** The date the reported month is measured to; today by default. */
+	asOf: string;
 	/**
-	 * Non-operating records to show separately: this month's advances,
-	 * deposits, prepayments, capital items, and unresolved-treatment records,
-	 * plus the sources of this month's charges when they were recognized in an
-	 * earlier month.
+	 * Cumulative confirmed Project cost before the reported month, keyed by
+	 * project id and then currency; `null` is that currency's unknown amount.
 	 */
-	nonOperatingSources: CostRecord[];
-	/** Approved charges to date per source identity, across all months. */
-	chargeTotals: Map<string, number>;
+	projectCostBefore: Map<number, Map<string, number | null>>;
 	/**
-	 * Confirmed Project cost of the previous month, keyed by project id and
-	 * then currency. `null` means that currency's prior amount is unknown.
+	 * Approved period charges dated in the prior month. They belong to that
+	 * month's own reconciliation; an elapsed-day window has no day for them, so
+	 * the comparison withholds the change they would distort and discloses them.
 	 */
-	previousMonthProjectCost: Map<number, Map<string, number | null>>;
+	priorCharges?: PeriodCharge[];
+	/**
+	 * Recorded employee cost of the prior month, keyed by project and currency.
+	 * Like the prior month's charges it is day-less monthly cost an elapsed
+	 * window cannot place.
+	 */
+	priorPayrollCost?: Map<number, Map<string, number | null>>;
 	/**
 	 * The cost budgets the budget section reads: every covering budget of the
 	 * month plus every budget of the Projects above.
@@ -1104,6 +1120,8 @@ export interface ReconciliationInput {
 		client_name: string | null;
 	}>;
 	availableMonths: string[];
+	/** The server's current calendar month; the month the report opens on. */
+	currentMonth: string;
 	coverageDeclarations: readonly SourceCoverageDeclaration[];
 	/**
 	 * Petty-cash funding and spending for the same month, stated beside the
@@ -1148,11 +1166,37 @@ export interface ReconciliationPayrollInput {
 	coverage: CoverageNotice[];
 }
 
+/** The filtered Project detail's own subtotal, from its own rows. */
+function filteredSubtotal(
+	projectId: number | null,
+	rows: ReconciliationProjectRow[]
+): FilteredProjectSubtotal | null {
+	if (projectId === null) return null;
+	const currencies = [...new Set(rows.map((row) => row.currency))].sort();
+	return {
+		project_id: projectId,
+		currency_totals: currencies.map((currency) => {
+			const currencyRows = rows.filter((row) => row.currency === currency);
+			return {
+				currency,
+				incurred_cost: sumMoney(currencyRows.map((row) => row.incurred_cost)),
+				comparison_cost: sumMoney(
+					currencyRows.map((row) => row.comparison_cost)
+				),
+				cost_to_date: currencyRows.some((row) => row.cost_to_date === null)
+					? null
+					: sumMoney(currencyRows.map((row) => row.cost_to_date)),
+			};
+		}),
+	};
+}
+
 /** Build the reconciliation payload. Pure: all data arrives as arguments. */
 export function buildReconciliation(
 	input: ReconciliationInput
 ): CompanyReconciliation {
 	const { records } = input;
+	const window = comparisonWindow(input.month, input.asOf);
 	// Only operating records carry cost. Non-operating balances and records
 	// whose treatment is unresolved are reported separately, never expensed;
 	// approved period charges are cost of their own month instead.
@@ -1177,6 +1221,7 @@ export function buildReconciliation(
 	);
 	const open = records.filter((record) => isOpenState(record.state));
 	const countedCharges = countedChargesOf(input.charges);
+	const priorCharges = input.priorCharges ?? [];
 	const knownConfirmed = confirmed.filter(
 		(record) => currencyCodeOf(record.currency) !== null
 	);
@@ -1404,20 +1449,76 @@ export function buildReconciliation(
 		...pettyCashNotices(input.pettyCash),
 	];
 
-	const projects = projectRows(
+	// Rows are built company-wide first: the ranking, the comparison's
+	// disclosures, the budget section, and the company reconciliation are never
+	// narrowed by the Project filter, and only the detail below is.
+	//
+	// Day-less monthly cost of the two compared months: approved period charges
+	// and recorded employee cost belong to the month, not to a day, so an
+	// elapsed window can never place them. It is disclosed with its own figures
+	// and withholds the change it would distort.
+	const daylessCosts: DaylessMonthCost[] = [];
+	const addDayless = (currency: string, count: number, amount: number): void => {
+		if (count === 0 || amount === 0) return;
+		const existing = daylessCosts.find((entry) => entry.currency === currency);
+		if (existing) {
+			existing.count += count;
+			existing.amount = rounded(add(existing.amount, amount));
+		} else {
+			daylessCosts.push({ currency, count, amount: rounded(amount) });
+		}
+	};
+	for (const charge of countedCharges) {
+		addDayless(charge.currency, 1, charge.amount);
+	}
+	for (const charge of priorCharges) {
+		addDayless(charge.currency, 1, charge.amount);
+	}
+	if (payrollRecorded) {
+		addDayless(
+			payroll.currency,
+			payroll.totals.recorded_count,
+			payroll.totals.recorded_total
+		);
+	}
+	for (const perCurrency of (input.priorPayrollCost ?? new Map()).values()) {
+		for (const [currency, amount] of perCurrency) {
+			if (amount === null || amount === 0) continue;
+			addDayless(currency, 1, amount);
+		}
+	}
+	const allRows = projectRows(
 		confirmed,
 		open,
+		input.priorMonthRecords,
 		countedCharges,
+		priorCharges,
 		input.previousMonthProjectCost,
-		input.projectFilter,
+		input.priorPayrollCost ?? new Map(),
+		records,
+		window,
+		input.projectCostBefore,
 		reporting,
 		payroll
 	);
+	const rows =
+		input.projectFilter === null
+			? allRows
+			: allRows.filter((row) => row.project_id === input.projectFilter);
+	const comparison = buildPeriodComparison({
+		month: input.month,
+		records,
+		priorMonthRecords: input.priorMonthRecords,
+		asOf: input.asOf,
+		rows: allRows,
+		monthDayless: daylessCosts,
+	});
 
 	return {
 		month: input.month,
 		month_label: monthLabel(input.month),
 		project_id: input.projectFilter,
+		current_month: input.currentMonth,
 		company: {
 			reporting_currency: reporting,
 			conversion,
@@ -1459,13 +1560,16 @@ export function buildReconciliation(
 				.length,
 			record_count: confirmed.length,
 		},
-		projects,
+		projects: rows,
 		non_operating: nonOperatingSection({
 			sources: input.nonOperatingSources,
 			charges: input.charges,
 			chargeTotals: input.chargeTotals,
 			month: input.month,
 		}),
+		comparison,
+		ranking: rankProjects(allRows),
+		filtered_subtotal: filteredSubtotal(input.projectFilter, rows),
 		evidence,
 		petty_cash: input.pettyCash,
 		sources: sourceSummaries(records),
@@ -1477,7 +1581,10 @@ export function buildReconciliation(
 		// `company`, `projects`, or `evidence`.
 		budgets: buildBudgetSection({
 			month: input.month,
-			rows: projects,
+			// The section reads the same rows the payload publishes, so its own
+			// `projectFilter` narrowing cannot fabricate `missing` outcomes for
+			// Projects the filtered response does not list.
+			rows,
 			records,
 			budgets: input.budgets,
 			projectFilter: input.projectFilter,

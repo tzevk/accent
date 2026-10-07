@@ -257,6 +257,8 @@ export interface CostRecord extends CostFinancialInput {
 	costUid: string | null;
 	expenseNumber: string;
 	expenseDate: string | null;
+	/** When the record entered the system: late and backdated disclosure. */
+	createdAt: string | null;
 	vendorName: string | null;
 	description: string | null;
 	projectId: number | null;
@@ -266,6 +268,11 @@ export interface CostRecord extends CostFinancialInput {
 	financialVersion: number;
 	recognizedAt: string | null;
 	recognizedBy: number | null;
+	/**
+	 * Set by a source adapter whose cost was reconstructed rather than
+	 * originally snapshotted (#307 payroll allocations). Absent means no.
+	 */
+	reconstructed?: boolean;
 	evaluation: CostEvaluation;
 }
 
@@ -308,6 +315,7 @@ export interface ReconciliationGroup {
 	record_count: number;
 }
 
+/** One row per (Project, currency): how its month compares with the prior period. */
 export interface ReconciliationProjectRow {
 	project_id: number;
 	project_code: string;
@@ -322,6 +330,7 @@ export interface ReconciliationProjectRow {
 	conversion_status: ConversionStatus;
 	/** Reporting-currency cost; null unless every confirmed record is supported. */
 	converted_incurred_cost: number | null;
+	/** Confirmed cost of the whole reported month, in this row's currency. */
 	incurred_cost: number;
 	record_count: number;
 	/** Approved period charges included in `incurred_cost` for this row. */
@@ -332,9 +341,27 @@ export interface ReconciliationProjectRow {
 	 * zero).
 	 */
 	not_confirmed_cost: number | null;
-	previous_month_cost: number | null;
+	/**
+	 * Confirmed cost inside the comparable window of the reported month. It
+	 * equals `incurred_cost` for a month that has fully elapsed.
+	 */
+	comparison_cost: number;
+	/**
+	 * The prior period's comparable cost, in this row's currency. Null when the
+	 * Project has no recorded cost in that window: absence of records is not
+	 * evidence of zero cost, so the prior amount stays unknown.
+	 */
+	previous_period_cost: number | null;
 	change_amount: number | null;
-	change_state: 'no_prior' | 'new' | 'increase' | 'decrease' | 'unchanged';
+	/** Percentage of a known non-zero prior amount; null for zero or unknown. */
+	change_percent: number | null;
+	change_state: ChangeState;
+	/** Cumulative confirmed cost through the window's last day. */
+	cost_to_date: number | null;
+	/** Cost in the window entered into the system after the window closed. */
+	late_entry: { count: number; amount: number | null } | null;
+	/** What the row's figures rest on: recorded, estimated, reconstructed, incomplete. */
+	evidence: ProjectEvidenceState;
 	/** Recorded employee cost allocated to this Project (ADR-0016), INR. */
 	employee_cost: number;
 	/** Payroll-based estimate for this Project, never part of `incurred_cost`. */
@@ -345,6 +372,183 @@ export interface ReconciliationProjectRow {
 	employee_count: number;
 	/** Employees with frozen recorded shares, including known-zero shares. */
 	recorded_employee_count: number;
+}
+
+/** Ordering of one amount against its comparable prior period. */
+export type ChangeState =
+	| 'no_prior'
+	| 'new'
+	| 'increase'
+	| 'decrease'
+	| 'unchanged'
+	/**
+	 * A partial window whose evidence cannot prove where its cost sits: the
+	 * change is withheld rather than stated from an unproven part.
+	 */
+	| 'unproven';
+
+/** How the reported window was bounded. */
+export type ComparisonBasis = 'equal_period' | 'full_month';
+
+/** One currency's company figures over the comparable period. */
+export interface ComparisonCurrency {
+	currency: string;
+	/** Company Incurred Cost inside the reported window. */
+	current_cost: number;
+	/** The prior window's cost; null when that currency has no prior records. */
+	prior_cost: number | null;
+	change_amount: number | null;
+	change_percent: number | null;
+	change_state: ChangeState;
+	/**
+	 * Records in either compared period whose day-level evidence cannot prove
+	 * the elapsed window covers them, with their own known amounts.
+	 */
+	unproven_records: number;
+	unproven_cost: number | null;
+	/** The window's own direct-cost categories, each counted once. */
+	groups: ReconciliationGroup[];
+	/** Window records counted without day-level service evidence. */
+	undated_records: number;
+	/** Window records entered after the window closed. */
+	late_records: number;
+	late_cost: number;
+	/** Prior-window records entered after that window closed. */
+	prior_late_records: number;
+	prior_late_cost: number;
+	/**
+	 * Day-less monthly cost of the two compared months — approved period
+	 * charges and recorded employee cost — that an elapsed window cannot
+	 * place. It is excluded from the figures above and withholds the change.
+	 */
+	dayless_records: number;
+	dayless_cost: number;
+}
+
+/** Something the comparison does or does not cover, stated with its figures. */
+export interface ComparisonDisclosure {
+	code:
+		| 'equal_period_comparison'
+		| 'full_month_comparison'
+		| 'unequal_window_length'
+		| 'late_recorded_cost'
+		| 'backdated_recognition'
+		| 'undated_period_evidence'
+		| 'window_evidence_unproven'
+		| 'dayless_monthly_cost_unproven'
+		| 'unequal_evidence_coverage'
+		| 'unknown_prior_cost'
+		| 'zero_prior_cost'
+		| 'no_prior_period_evidence';
+	label: string;
+	detail: string;
+	severity: CoverageSeverity;
+	/** Which period the finding belongs to; null when it spans both. */
+	period: 'current' | 'prior' | null;
+	/** The one currency the finding's amount is stated in, else null. */
+	currency: string | null;
+	count: number;
+	amount: number | null;
+}
+
+/**
+ * The reported month against its comparable period. An unfinished month is
+ * compared over equivalent elapsed service periods; a month that has fully
+ * elapsed is compared in full.
+ */
+export interface PeriodComparison {
+	month: string;
+	/** The date the month is measured to: today, or a requested as-of date. */
+	as_of: string;
+	prior_month: string;
+	prior_month_label: string;
+	basis: ComparisonBasis;
+	unfinished: boolean;
+	/** Days the reported month has elapsed; null when the whole month is in. */
+	elapsed_days: number | null;
+	current_days: number;
+	prior_days: number;
+	/** True when the prior month is shorter than the reported window. */
+	window_mismatch: boolean;
+	/** The one currency both totals are stated in, else null. */
+	currency: string | null;
+	current_cost: number | null;
+	prior_cost: number | null;
+	change_amount: number | null;
+	change_percent: number | null;
+	/**
+	 * `no_prior` also covers a scope whose comparison cannot be stated at all
+	 * (more than one currency without a supported conversion); the per-currency
+	 * figures carry the real states.
+	 */
+	change_state: ChangeState;
+	currency_totals: ComparisonCurrency[];
+	/** Date Cost to date is cumulative through (the window's last day). */
+	cost_to_date_through: string;
+	disclosures: ComparisonDisclosure[];
+}
+
+/** What one Project's figures rest on, from the evidence its records carry. */
+export interface ProjectEvidenceState {
+	state: 'recorded' | 'estimated' | 'reconstructed' | 'incomplete';
+	/** Every finding behind the state, disclosed. */
+	findings: string[];
+	confirmed_records: number;
+	/** Records recorded against the Project but not yet confirmed. */
+	estimated_records: number;
+	/** Open or confirmed records with no amount: unknown, not zero. */
+	unknown_amount_records: number;
+	/** Confirmed records whose tax treatment is not settled. */
+	unresolved_tax_records: number;
+	/** Confirmed records counted from the disclosed bill-date fallback. */
+	bill_date_fallback_records: number;
+	/**
+	 * Records a source module marked as reconstructed rather than originally
+	 * snapshotted. Zero until a source (#307 payroll allocations) says otherwise.
+	 */
+	reconstructed_records: number;
+}
+
+/** One Project's position in an ordering. */
+export interface RankingEntry {
+	project_id: number;
+	project_code: string;
+	project_name: string;
+	client_name: string | null;
+	currency: string;
+	/** Position inside the entry's currency; ties share a position. */
+	rank: number;
+	incurred_cost: number;
+	comparison_cost: number;
+	previous_period_cost: number | null;
+	change_amount: number | null;
+	change_percent: number | null;
+	change_state: ChangeState;
+}
+
+/** Largest-cost and largest-increase orderings, never mixing currencies. */
+export interface ProjectRanking {
+	by_cost: RankingEntry[];
+	by_increase: RankingEntry[];
+	/** Rows the increase ordering cannot place, with the reason why. */
+	increase_unranked: Array<{
+		project_id: number;
+		currency: string;
+		reason: 'unknown_prior' | 'unproven_partial_window';
+		detail: string;
+	}>;
+	currencies: string[];
+}
+
+/** The filtered Project detail's own subtotal — never the company figure. */
+export interface FilteredProjectSubtotal {
+	project_id: number;
+	currency_totals: Array<{
+		currency: string;
+		incurred_cost: number;
+		comparison_cost: number;
+		cost_to_date: number | null;
+	}>;
 }
 
 export interface EvidenceStateSummary {
@@ -601,6 +805,8 @@ export interface CompanyReconciliation {
 	month: string;
 	month_label: string;
 	project_id: number | null;
+	/** The server's current calendar month: the month the report opens on. */
+	current_month: string;
 	company: {
 		/** The reporting currency this read was stated in (default INR). */
 		reporting_currency: string;
@@ -633,6 +839,15 @@ export interface CompanyReconciliation {
 	 * shown separately from operating cost with their remaining balances.
 	 */
 	non_operating: NonOperatingSection;
+	/** The reported month against its comparable prior period. */
+	comparison: PeriodComparison;
+	/** Largest-cost and largest-increase orderings of `projects`. */
+	ranking: ProjectRanking;
+	/**
+	 * The filtered Project detail's subtotal, present only when a filter is
+	 * applied; the company reconciliation above is never narrowed by it.
+	 */
+	filtered_subtotal: FilteredProjectSubtotal | null;
 	evidence: EvidenceSummary;
 	/** Petty-cash funding and spending, separate from incurred cost. */
 	petty_cash: PettyCashSummary;
@@ -904,6 +1119,8 @@ export interface CostRecordJson {
 	service_period_start: string | null;
 	service_period_end: string | null;
 	expense_date: string | null;
+	/** When the record entered the system; late and backdated disclosure. */
+	created_at: string | null;
 	currency: string | null;
 	reporting_currency: string | null;
 	conversion_rate: string | null;
@@ -937,6 +1154,8 @@ export interface CostRecordJson {
 	recognized_by: number | null;
 	missing_amount: boolean;
 	known_zero: boolean;
+	/** True when a source module reconstructed this cost rather than snapshotting it. */
+	reconstructed: boolean;
 	exceptions: CostExceptionCode[];
 }
 

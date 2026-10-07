@@ -142,7 +142,7 @@ const SPEND_SELECT = `
          p.evidence_reference, p.linked_cost_uid, p.financial_version,
          p.currency, p.reporting_currency, p.conversion_rate,
          p.conversion_date, p.conversion_evidence_reference, p.converted_amount,
-         p.debit_amount,
+         p.debit_amount, p.created_at,
          pr.project_code, COALESCE(pr.project_title, pr.name) AS project_name,
          pr.client_name
     FROM petty_cash_expenses p
@@ -194,6 +194,7 @@ export function mapPettyCashRow(row: DbRow): CostRecord {
 		costUid: s(row, 'cost_uid'),
 		expenseNumber: s(row, 'transaction_number', '') ?? '',
 		expenseDate: s(row, 'bill_date') ?? s(row, 'transaction_date'),
+		createdAt: s(row, 'created_at'),
 		vendorName: s(row, 'recipient_name'),
 		description: s(row, 'description'),
 		projectId: num(row, 'project_id'),
@@ -580,6 +581,45 @@ export const PETTY_CASH_COST_SOURCE: PettyCashSourceDescriptor = {
 	loadFilteredRecords: loadFilteredPettyCashRecords,
 	loadMonths: loadPettyCashMonths,
 };
+
+/**
+ * Recognized petty-cash Project cost of every month before `month`: the Cost
+ * to Date base's petty-cash side.
+ */
+export async function loadPettyCashProjectCostBefore(
+	db: SqlConnection,
+	month: string
+): Promise<Map<number, Map<string, number | null>>> {
+	const [rows] = await db.execute(
+		`SELECT p.project_id, p.currency AS currency,
+              SUM(p.recognized_amount) AS amount,
+              SUM(CASE WHEN p.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts
+         FROM petty_cash_expenses p
+        WHERE p.isDelete = 0
+          AND p.entry_kind = 'spend'
+          AND p.linked_cost_uid IS NULL
+          AND p.recognition_state = 'recognized'
+          AND p.cost_classification = 'project'
+          AND p.project_id IS NOT NULL
+          AND p.recognition_period < ?
+        GROUP BY p.project_id, p.currency`,
+		[`${month}-01`]
+	);
+	const costs = new Map<number, Map<string, number | null>>();
+	for (const row of rows as DbRow[]) {
+		const id = num(row, 'project_id');
+		if (id === null) continue;
+		const currency = s(row, 'currency');
+		// A recognized cost always states its original currency; an unknown one
+		// is never folded into a currency subtotal.
+		if (!currency) continue;
+		const unknownAmounts = num(row, 'unknown_amounts') ?? 0;
+		const perCurrency = costs.get(id) ?? new Map<string, number | null>();
+		perCurrency.set(currency, unknownAmounts > 0 ? null : num(row, 'amount'));
+		costs.set(id, perCurrency);
+	}
+	return costs;
+}
 
 /** Months that carry petty-cash spending, newest first. */
 export async function loadPettyCashMonths(

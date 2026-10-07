@@ -8,7 +8,7 @@
  * exports and nothing else:
  *
  *   reads
- *     fetchCompanyReconciliation({ month, projectId?, reportingCurrency? })
+ *     fetchCompanyReconciliation({ month, projectId?, asOf?, reportingCurrency? })
  *       Company Incurred Cost for a month, split into Incurred Project Cost,
  *       Company Overhead, and Unallocated Cost per currency, plus the Project
  *       breakdown, evidence states, and the coverage notices that say what the
@@ -16,9 +16,16 @@
  *       requested reporting currency (INR by default) using only matching
  *       stored conversion evidence; an unconverted amount stays in its own
  *       currency subtotal with an explicit exception.
+ *       The response also carries the month's `comparison` (the same month
+ *       measured against its Comparable Period, over equivalent elapsed
+ *       service periods while the month is unfinished), the `ranking` of the
+ *       Project rows by cost and by increase inside one currency, the
+ *       `filtered_subtotal` of a filtered Project detail, per-Project
+ *       `evidence`, and `cost_to_date`. `asOf` names the date inside the month
+ *       the comparison is measured to; it defaults to today.
  *     fetchCostDrilldown(query)
- *       The source records behind the figures, with identity, evidence, and
- *       the expense state they were counted from.
+ *       The source records behind the figures, with identity, evidence,
+ *       entry date, and the expense state they were counted from.
  *     fetchCostJournal(costUid)
  *       The append-only command history of one cost.
  *     fetchProjectBudgets(projectId)
@@ -28,6 +35,10 @@
  *       One cost budget and its append-only approval journal.
  *     SOURCE_COVERAGE
  *       Which cost sources feed this module and which are still outstanding.
+ *
+ *   financial calendar (shared with the report's month/FY navigation)
+ *     monthLabel(month), previousMonthOf(month), financialYearOf(month),
+ *     financialYearLabel(startYear), dayOfDate(value)
  *
  *   writes (one path, versioned)
  *     recordCost(input, actor, { connection? })
@@ -89,17 +100,24 @@ import {
 	loadMonthProjectCost,
 	loadMonthRecords,
 	loadNonOperatingSources,
+	loadProjectCostBefore,
 	loadProjectOptions,
 	type ProjectOption,
 	type SqlConnection,
 } from './records';
+import { previousMonthOf } from './ranking';
 import {
+	loadAllocatedProjectCostBefore,
 	loadMonthAllocatedProjectCost,
 	loadPayrollAllocationMonths,
 	loadPayrollDrilldown,
 	loadPayrollMonth,
 } from './payroll';
-import { PETTY_CASH_COST_SOURCE, loadPettyCashSummary } from './petty-cash';
+import {
+	PETTY_CASH_COST_SOURCE,
+	loadPettyCashProjectCostBefore,
+	loadPettyCashSummary,
+} from './petty-cash';
 import { buildReconciliation, projectIdsIn } from './reconciliation';
 import { registerCostSource } from './sources';
 import {
@@ -107,12 +125,15 @@ import {
 	loadOtherExpenseMonthProjectCost,
 	loadOtherExpenseMonthRecords,
 	loadOtherExpenseMonths,
+	loadOtherExpenseProjectCostBefore,
 	mergeProjectCostMaps,
 } from './other-expenses';
 import {
 	SUPPLIER_INVOICE_ADAPTER,
 	loadSupplierInvoiceMonths,
+	loadSupplierMonthProjectCost,
 	loadSupplierMonthRecords,
+	loadSupplierProjectCostBefore,
 } from './supplier-invoices';
 import type {
 	CompanyReconciliation,
@@ -250,6 +271,7 @@ export {
 	reportingCurrencyOf,
 } from './currency';
 export { monthLabel } from './reconciliation';
+export { dayOfDate } from './ranking';
 export { COST_BUDGET_SCOPES, isCostBudgetScope } from './types';
 export {
 	allocateEmployerCost,
@@ -295,8 +317,12 @@ export {
 export type {
 	BudgetOutcome,
 	BudgetSection,
+	ChangeState,
 	CompanyConversion,
 	CompanyReconciliation,
+	ComparisonBasis,
+	ComparisonCurrency,
+	ComparisonDisclosure,
 	ConversionEvidence,
 	ConversionExceptionCode,
 	ConversionOutcome,
@@ -330,6 +356,7 @@ export type {
 	CurrencyReporting,
 	CurrencyTotal,
 	EvidenceSummary,
+	FilteredProjectSubtotal,
 	NonOperatingItemJson,
 	NonOperatingSection,
 	PayrollCostStatus,
@@ -346,7 +373,11 @@ export type {
 	PeriodChargeJson,
 	PeriodChargeBasis,
 	PeriodChargeState,
+	PeriodComparison,
 	ProjectBudgetComparison,
+	ProjectEvidenceState,
+	ProjectRanking,
+	RankingEntry,
 	RecognitionState,
 	RecordCostBudgetInput,
 	RecordCostInput,
@@ -370,48 +401,15 @@ const pool: SqlConnection = {
 // purchase invoice from anywhere in the module.
 registerCostSource(SUPPLIER_INVOICE_ADAPTER);
 
-/** The month before `YYYY-MM`, or null at the calendar's start. */
-function previousMonthOf(month: string): string | null {
-	const [year, monthNumber] = month.split('-').map(Number);
-	if (!year || !monthNumber) return null;
-	if (monthNumber === 1) {
-		return year - 1 < 1970 ? null : `${year - 1}-12`;
-	}
-	return `${year}-${String(monthNumber - 1).padStart(2, '0')}`;
-}
-
-/**
- * Confirmed Project cost of the previous month across every wired source. A
- * per-currency amount stays null (unknown) when any contributing source
- * reports unknown, so a comparison is never stated against an invented zero.
- */
-function mergeProjectCost(
-	direct: Map<number, Map<string, number | null>>,
-	pettyCash: Map<number, Map<string, number | null>>
-): Map<number, Map<string, number | null>> {
-	const merged = new Map<number, Map<string, number | null>>();
-	for (const source of [direct, pettyCash]) {
-		for (const [projectId, perCurrency] of source) {
-			const target = merged.get(projectId) ?? new Map<string, number | null>();
-			for (const [currency, amount] of perCurrency) {
-				const existing = target.get(currency);
-				if (existing === undefined) {
-					target.set(currency, amount);
-				} else if (existing === null || amount === null) {
-					target.set(currency, null);
-				} else {
-					target.set(currency, existing + amount);
-				}
-			}
-			merged.set(projectId, target);
-		}
-	}
-	return merged;
-}
 
 /** Today's calendar month, from the server clock. */
 export function currentMonth(): string {
 	return new Date().toISOString().slice(0, 7);
+}
+
+/** Today's date, from the server clock: the default as-of of a month. */
+export function currentDate(): string {
+	return new Date().toISOString().slice(0, 10);
 }
 
 /** Months with cost recorded in any wired source, newest first. */
@@ -441,6 +439,12 @@ export interface ReconciliationRequest {
 	month: string;
 	/** Narrow the Project detail; never the company reconciliation. */
 	projectId?: number | null;
+	/**
+	 * The date the month is measured to, inside the reported month; it
+	 * identifies the comparable period. Defaults to today, so a past month is
+	 * compared in full and the current month over its elapsed days.
+	 */
+	asOf?: string | null;
 	/** Requested reporting basis; absent means the company reporting currency. */
 	reportingCurrency?: string | null;
 }
@@ -466,18 +470,30 @@ export async function fetchCompanyReconciliation(
 ): Promise<CompanyReconciliation> {
 	const db = options?.connection ?? pool;
 	const month = request.month;
+	const today = currentDate();
 	const previousMonth = previousMonthOf(month);
 	const [
 		directRecords,
+		directPriorRecords,
+		directCostBefore,
 		supplierRecords,
+		supplierPriorRecords,
 		otherExpenseRecords,
+		otherExpensePriorRecords,
 		charges,
 		monthNonOperating,
 		pettyCashRecords,
+		pettyCashPriorRecords,
 		pettyCash,
 		previousProjectCost,
+		previousCharges,
 		previousOtherExpenseProjectCost,
 		previousPettyCashProjectCost,
+		previousSupplierProjectCost,
+		supplierCostBefore,
+		otherExpenseCostBefore,
+		pettyCashCostBefore,
+		payrollCostBefore,
 		projectOptions,
 		directMonths,
 		supplierMonths,
@@ -488,21 +504,40 @@ export async function fetchCompanyReconciliation(
 		pettyCashMonths,
 	] = await Promise.all([
 		loadMonthRecords(db, month),
+		loadMonthRecords(db, previousMonth),
+		loadProjectCostBefore(db, month),
 		loadSupplierMonthRecords(db, month),
+		loadSupplierMonthRecords(db, previousMonth),
 		loadOtherExpenseMonthRecords(db, month),
+		previousMonth
+			? loadOtherExpenseMonthRecords(db, previousMonth)
+			: Promise.resolve([]),
 		loadMonthCharges(db, { month }),
 		loadNonOperatingSources(db, month),
 		PETTY_CASH_COST_SOURCE.loadMonthRecords(db, month),
+		previousMonth
+			? PETTY_CASH_COST_SOURCE.loadMonthRecords(db, previousMonth)
+			: Promise.resolve([]),
 		loadPettyCashSummary(db, month),
 		previousMonth
 			? loadMonthProjectCost(db, previousMonth)
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		previousMonth
+			? loadMonthCharges(db, { month: previousMonth })
+			: Promise.resolve([]),
 		previousMonth
 			? loadOtherExpenseMonthProjectCost(db, previousMonth)
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
 		previousMonth
 			? PETTY_CASH_COST_SOURCE.loadProjectCost(db, previousMonth)
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		previousMonth
+			? loadSupplierMonthProjectCost(db, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		loadSupplierProjectCostBefore(db, month),
+		loadOtherExpenseProjectCostBefore(db, month),
+		loadPettyCashProjectCostBefore(db, month),
+		loadAllocatedProjectCostBefore(db, month),
 		loadProjectOptions(db),
 		loadExpenditureMonths(db, currentMonth()),
 		loadSupplierInvoiceMonths(db, currentMonth()),
@@ -514,11 +549,19 @@ export async function fetchCompanyReconciliation(
 		loadOtherExpenseMonths(db, currentMonth()),
 		PETTY_CASH_COST_SOURCE.loadMonths(db),
 	]);
-	const sourceRecords = [
+	const records = [
 		...directRecords,
 		...supplierRecords,
 		...otherExpenseRecords,
 		...pettyCashRecords,
+	];
+	// The comparison's prior window reads the same sources the month reads, so
+	// its prior side is measured from evidence and not from a single source.
+	const priorMonthRecords = [
+		...directPriorRecords,
+		...supplierPriorRecords,
+		...otherExpensePriorRecords,
+		...pettyCashPriorRecords,
 	];
 
 	// A charge can draw down a balance recognized in an earlier month, so the
@@ -545,44 +588,53 @@ export async function fetchCompanyReconciliation(
 			.filter((uid): uid is string => !!uid)
 	);
 
-	// The prior-month comparison is like-for-like: recorded employee cost is
-	// part of the month it was frozen in.
-	for (const [projectId, perCurrency] of previousPayrollCost) {
-		const target =
-			previousProjectCost.get(projectId) ?? new Map<string, number | null>();
-		for (const [currency, amount] of perCurrency) {
-			const existing = target.get(currency);
-			if (existing === undefined) {
-				target.set(currency, amount);
-			} else if (existing !== null && amount !== null) {
-				target.set(currency, existing + amount);
-			} else {
-				target.set(currency, null);
-			}
-		}
-		previousProjectCost.set(projectId, target);
-	}
+	// The prior-month comparison is like-for-like across every wired source:
+	// recorded employee cost is part of the month it was frozen in, supplier
+	// cost joins the direct, other-expense, and petty-cash costs, and the
+	// direct loader already includes the month's approved period charges.
+	const previousMonthProjectCost = [
+		previousProjectCost,
+		previousSupplierProjectCost,
+		previousOtherExpenseProjectCost,
+		previousPettyCashProjectCost,
+		previousPayrollCost,
+	].reduce(
+		mergeProjectCostMaps,
+		new Map<number, Map<string, number | null>>()
+	);
+	// Cost to Date is cumulative across the same sources: every month before
+	// the reported one, recognized operating Project cost plus approved period
+	// charges (the direct loader covers both), each source in its own currency.
+	const projectCostBefore = [
+		directCostBefore,
+		supplierCostBefore,
+		otherExpenseCostBefore,
+		pettyCashCostBefore,
+		payrollCostBefore,
+	].reduce(
+		mergeProjectCostMaps,
+		new Map<number, Map<string, number | null>>()
+	);
 	// A budget is read when it covers the month or belongs to a Project the
 	// month has a row for, so an approved budget for another period is stated
 	// as such instead of the Project reading as unbudgeted.
 	const budgets = mergeBudgets(
 		await loadBudgetsCoveringMonth(db, month),
-		await loadBudgetsForProjects(db, projectIdsIn(sourceRecords, charges))
+		await loadBudgetsForProjects(db, projectIdsIn(records, charges))
 	);
 
 	return buildReconciliation({
 		month,
-		records: sourceRecords,
+		records,
+		priorMonthRecords,
+		asOf: request.asOf ?? today,
+		projectCostBefore,
+		priorCharges: previousCharges,
+		priorPayrollCost: previousPayrollCost,
 		charges,
 		nonOperatingSources,
 		chargeTotals,
-		previousMonthProjectCost: mergeProjectCost(
-			mergeProjectCostMaps(
-				previousProjectCost,
-				previousOtherExpenseProjectCost
-			),
-			previousPettyCashProjectCost
-		),
+		previousMonthProjectCost,
 		budgets,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
@@ -597,6 +649,7 @@ export async function fetchCompanyReconciliation(
 		]
 			.sort()
 			.reverse(),
+		currentMonth: currentMonth(),
 		coverageDeclarations: SOURCE_COVERAGE,
 		payroll,
 		reportingCurrency: request.reportingCurrency ?? null,

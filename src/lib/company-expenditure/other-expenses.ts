@@ -83,6 +83,7 @@ const OTHER_EXPENSE_SOURCE = `SELECT 'operating' AS cost_nature,
     o.currency, o.reporting_currency, o.conversion_rate, o.conversion_date,
     o.conversion_evidence_reference, o.converted_amount,
     o.bill_amount AS amount, o.gst_amount AS tax_amount, o.net_amount AS total_amount,
+    o.created_at,
     COALESCE(o.vendor_name, o.employee_name) AS vendor_name,
     o.description, o.status, o.project_id, o.isDelete,
     CAST(o.id AS CHAR) COLLATE utf8mb4_general_ci AS source_row_id
@@ -130,6 +131,44 @@ export async function loadOtherExpenseMonthProjectCost(
         AND e.recognition_period BETWEEN ? AND ?
       GROUP BY e.project_id, e.currency`,
 		[start, end]
+	)) as [DbRow[], unknown];
+	const costs = new Map<number, Map<string, number | null>>();
+	for (const row of rows) {
+		const id = rowNumber(row, 'project_id');
+		const currency = rowValue<string>(row, 'currency');
+		if (id === null || !currency) continue;
+		const unknownAmounts = rowNumber(row, 'unknown_amounts') ?? 0;
+		const perCurrency = costs.get(id) ?? new Map<string, number | null>();
+		perCurrency.set(
+			currency,
+			unknownAmounts > 0 ? null : rowNumber(row, 'amount')
+		);
+		costs.set(id, perCurrency);
+	}
+	return costs;
+}
+
+/**
+ * Recognized other-expense Project cost of every month before `month`: the
+ * Cost to Date base's other-expense side.
+ */
+export async function loadOtherExpenseProjectCostBefore(
+	db: SqlConnection,
+	month: string
+): Promise<Map<number, Map<string, number | null>>> {
+	const [rows] = (await db.execute(
+		`SELECT e.project_id, e.currency AS currency,
+              SUM(e.recognized_amount) AS amount,
+              SUM(CASE WHEN e.recognized_amount IS NULL THEN 1 ELSE 0 END) AS unknown_amounts
+       FROM (${OTHER_EXPENSE_SOURCE}) e
+      WHERE e.isDelete = 0
+        AND e.recognition_state = 'recognized'
+        AND e.cost_classification = 'project'
+        AND e.project_id IS NOT NULL
+        AND e.currency IS NOT NULL
+        AND e.recognition_period < ?
+      GROUP BY e.project_id, e.currency`,
+		[`${month}-01`]
 	)) as [DbRow[], unknown];
 	const costs = new Map<number, Map<string, number | null>>();
 	for (const row of rows) {

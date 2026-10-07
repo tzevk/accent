@@ -160,7 +160,7 @@ interface ReconciliationData {
 		incurred_cost: number;
 		record_count: number;
 		not_confirmed_cost: number | null;
-		previous_month_cost: number | null;
+		previous_period_cost: number | null;
 		change_amount: number | null;
 		change_state: string;
 	}>;
@@ -376,7 +376,7 @@ test('reconciles every recognized direct expense once into its group', async ({
 	expect(beta?.incurred_cost).toBe(JANUARY.beta);
 	expect(alpha!.incurred_cost + beta!.incurred_cost).toBe(JANUARY.project);
 	expect(alpha?.change_state).toBe('no_prior');
-	expect(alpha?.previous_month_cost).toBeNull();
+	expect(alpha?.previous_period_cost).toBeNull();
 
 	evidence.january = {
 		expected: JANUARY,
@@ -583,11 +583,11 @@ test('keeps currencies separate until a supported conversion exists', async ({
 	const alphaInr = alphaRows.find((row) => row.currency === 'INR')!;
 	const alphaUsd = alphaRows.find((row) => row.currency === 'USD')!;
 	expect(alphaInr.incurred_cost).toBe(FEBRUARY.inr);
-	expect(alphaInr.previous_month_cost).toBe(JANUARY.alpha);
+	expect(alphaInr.previous_period_cost).toBe(JANUARY.alpha);
 	expect(alphaInr.change_amount).toBe(FEBRUARY.inr - JANUARY.alpha);
 	expect(alphaInr.change_state).toBe('decrease');
 	expect(alphaUsd.incurred_cost).toBe(FEBRUARY.usdProject);
-	expect(alphaUsd.previous_month_cost).toBeNull();
+	expect(alphaUsd.previous_period_cost).toBeNull();
 	expect(alphaUsd.change_amount).toBeNull();
 	expect(alphaUsd.change_state).toBe('no_prior');
 
@@ -620,7 +620,7 @@ test('keeps currencies separate until a supported conversion exists', async ({
 			code: row.project_code,
 			currency: row.currency,
 			cost: row.incurred_cost,
-			previous: row.previous_month_cost,
+			previous: row.previous_period_cost,
 		})),
 		coverage: coverageCodes(data),
 	};

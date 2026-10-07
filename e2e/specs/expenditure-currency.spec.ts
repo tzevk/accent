@@ -185,7 +185,7 @@ interface ReconciliationData {
 		incurred_cost: number;
 		record_count: number;
 		not_confirmed_cost: number | null;
-		previous_month_cost: number | null;
+		previous_period_cost: number | null;
 		change_amount: number | null;
 		change_state: string;
 	}>;

@@ -81,7 +81,8 @@ function dec(row: DbRow, key: string): string | null {
  */
 export function costSelectFrom(source: string): string {
 	return `
-  SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.cost_classification,
+  SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.created_at,
+         e.cost_classification,
          e.cost_nature,
          e.recognition_state, e.recognition_period, e.period_basis,
          e.service_period_start, e.service_period_end, e.tax_treatment,
@@ -167,6 +168,7 @@ export function mapCostRow(
 		costUid: s(row, 'cost_uid'),
 		expenseNumber: s(row, 'expense_number', '') ?? '',
 		expenseDate: s(row, 'expense_date'),
+		createdAt: s(row, 'created_at'),
 		vendorName: s(row, 'vendor_name'),
 		description: s(row, 'description'),
 		projectId: num(row, 'project_id'),
@@ -205,6 +207,7 @@ export function toCostRecordJson(
 		service_period_start: record.servicePeriodStart,
 		service_period_end: record.servicePeriodEnd,
 		expense_date: record.expenseDate,
+		created_at: record.createdAt,
 		currency: record.currency,
 		reporting_currency: record.reportingCurrency,
 		conversion_rate: record.conversionRate,
@@ -230,6 +233,7 @@ export function toCostRecordJson(
 		recognized_by: record.recognizedBy,
 		missing_amount: record.grossAmount === null,
 		known_zero: record.grossAmount === 0,
+		reconstructed: record.reconstructed === true,
 		exceptions: record.evaluation.exceptions,
 	};
 }
@@ -550,6 +554,65 @@ export async function loadMonthProjectCost(
          ) cost
         GROUP BY project_id, currency`,
 		[start, end, start, end]
+	);
+	const costs = new Map<number, Map<string, number | null>>();
+	for (const row of rows as DbRow[]) {
+		const id = num(row, 'project_id');
+		if (id === null) continue;
+		const currency = s(row, 'currency');
+		if (!currency) continue;
+		const unknownAmounts = num(row, 'unknown_amounts') ?? 0;
+		const perCurrency = costs.get(id) ?? new Map<string, number | null>();
+		// A missing recognized amount is unknown, never zero.
+		perCurrency.set(currency, unknownAmounts > 0 ? null : num(row, 'amount'));
+		costs.set(id, perCurrency);
+	}
+	return costs;
+}
+
+/**
+ * Cumulative confirmed Project cost of every month before `month`, keyed by
+ * Project id and then currency — the base Cost to Date adds the reported
+ * window to. It counts the same cost the reconciliation states (recognized
+ * operating cost plus approved period charges), bounded before the month, and
+ * a group whose recognized amount is missing carries null because an unknown
+ * amount is not zero.
+ */
+export async function loadProjectCostBefore(
+	db: SqlConnection,
+	month: string
+): Promise<Map<number, Map<string, number | null>>> {
+	const [rows] = await db.execute(
+		`SELECT project_id, currency,
+              SUM(amount) AS amount,
+              SUM(unknown_amounts) AS unknown_amounts
+         FROM (
+           SELECT e.project_id, e.currency AS currency,
+                  e.recognized_amount AS amount,
+                  CASE WHEN e.recognized_amount IS NULL THEN 1 ELSE 0 END AS unknown_amounts
+             FROM expenses e
+            WHERE e.isDelete = 0
+              AND e.recognition_state = 'recognized'
+              AND e.cost_nature = 'operating'
+              AND e.cost_classification = 'project'
+              AND e.project_id IS NOT NULL
+              AND e.currency IS NOT NULL
+              AND e.recognition_period < ?
+           UNION ALL
+           SELECT e.project_id, e.currency AS currency,
+                  c.amount AS amount, 0 AS unknown_amounts
+             FROM expense_period_charges c
+             JOIN expenses e ON e.id = c.source_id
+            WHERE c.state = 'approved'
+              AND e.isDelete = 0
+              AND e.recognition_state = 'recognized'
+              AND e.cost_classification = 'project'
+              AND e.project_id IS NOT NULL
+              AND e.currency IS NOT NULL
+              AND c.charge_period < ?
+         ) cost
+        GROUP BY project_id, currency`,
+		[`${month}-01`, `${month}-01`]
 	);
 	const costs = new Map<number, Map<string, number | null>>();
 	for (const row of rows as DbRow[]) {

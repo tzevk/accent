@@ -965,6 +965,40 @@ export async function loadMonthAllocatedProjectCost(
 	return costs;
 }
 
+/**
+ * The same recorded cost of every month before `month`: the Cost to Date
+ * base's employee-cost side. A frozen allocation exists only for a month
+ * whose run was locked, so the allocation row is its own lock evidence.
+ */
+export async function loadAllocatedProjectCostBefore(
+	db: SqlConnection,
+	month: string
+): Promise<Map<number, Map<string, number | null>>> {
+	const [rows] = await db.execute(
+		`SELECT s.project_id, SUM(s.amount) AS amount
+       FROM payroll_employee_allocation_shares s
+       JOIN payroll_employee_allocations a ON a.id = s.allocation_id
+      WHERE a.month < ?
+        AND a.version = (
+          SELECT MAX(a2.version) FROM payroll_employee_allocations a2
+           WHERE a2.payroll_slip_id = a.payroll_slip_id
+        )
+        AND s.project_id IS NOT NULL
+      GROUP BY s.project_id`,
+		[`${month}-01`]
+	);
+	const costs = new Map<number, Map<string, number | null>>();
+	for (const row of rows as DbRow[]) {
+		const projectId = num(row, 'project_id');
+		if (projectId === null) continue;
+		costs.set(
+			projectId,
+			new Map([[PAYROLL_CURRENCY, Number(num(row, 'amount') ?? 0)]])
+		);
+	}
+	return costs;
+}
+
 /** Months that carry recorded employee cost, newest first. */
 export async function loadPayrollAllocationMonths(
 	db: SqlConnection
