@@ -1243,3 +1243,5 @@ The reconciliation input includes approved period charges, source balances, and 
 Cost to date preserves an explicit unknown amount. An absent currency entry contributes no prior cost.
 Employee financial-year details use the same recorded allocation hourly rate as the financial-year table.
 Unused Salary Profile estimate builders are removed. All active employee-cost readers use the shared payroll interpretation.
+The public module exports `linkCostReference` for authenticated payable-entry routes.
+These references track the existing supplier cost. They do not create another recognized cost.

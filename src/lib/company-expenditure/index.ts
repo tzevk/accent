@@ -261,6 +261,7 @@ export { recordCostBudget, executeBudgetCommand } from './budget-commands';
 export { PETTY_CASH_COST_SOURCE } from './petty-cash';
 export type { PettyCashSourceDescriptor } from './petty-cash';
 export { SOURCE_COVERAGE } from './coverage';
+export { linkCostReference } from './sources';
 export type { SourceCoverageDeclaration } from './coverage';
 export type { ProjectOption } from './records';
 export {
