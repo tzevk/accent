@@ -996,7 +996,7 @@ export interface PayrollEmployeeCost {
 		payroll_slip_id: number | null;
 		allocation_id: number | null;
 		allocation_version: number | null;
-		allocation_kind: 'finalization' | 'reconstruction' | null;
+		allocation_kind: 'finalization' | 'reconstruction' | 'revision' | null;
 		month: string;
 	};
 	/** The money destinations: recorded shares when recorded, else estimated. */
