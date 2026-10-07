@@ -180,6 +180,16 @@ async function accrualReplacement(
 	return { status: response.status(), body: await response.json() };
 }
 
+async function captureAccrual(
+	request: APIRequestContext,
+	payload: Record<string, unknown>
+): Promise<{ status: number; body: Record<string, unknown> }> {
+	const response = await request.post('/api/admin/cost-accruals', {
+		data: payload,
+	});
+	return { status: response.status(), body: await response.json() };
+}
+
 async function invoiceCommand(
 	request: APIRequestContext,
 	id: number,
@@ -985,6 +995,51 @@ test('the report states the transferred commitment per month without double coun
 	);
 	await expect(page.getByTestId('commitment-section')).toBeVisible();
 	evidence.report = { october: 255000, november: 40000 };
+});
+
+test('an unlinked accrual recognizes without consuming anything', async ({
+	request,
+}) => {
+	const orderUid = seeded.orderUids['ORD-3001'];
+	const before = await dbConsumptions(orderUid);
+	for (const [label, extra] of [
+		['omitted link', {}],
+		['explicit null link', { order_uid: null }],
+	] as const) {
+		const captured = await captureAccrual(request, {
+			description: `${ACCRUAL_CONSUMPTION_PREFIX}received work ${label} (10000 estimate)`,
+			evidence_basis: 'received_work',
+			service_period_start: `${MONTH}-01`,
+			service_period_end: `${MONTH}-28`,
+			cost_classification: 'project',
+			project_id: seeded.projectId,
+			gross_amount: 10000,
+			tax_amount: 0,
+			tax_treatment: 'none',
+			currency: 'INR',
+			source_reference: `${ACCRUAL_CONSUMPTION_PREFIX}SRC-${label}`,
+			evidence_reference: `${ACCRUAL_CONSUMPTION_PREFIX}EV-${label}`,
+			...extra,
+		});
+		expect(captured.status, JSON.stringify(captured.body)).toBe(201);
+		const accrualId = (captured.body.data as { id: number }).id;
+		createdAccrualIds.push(accrualId);
+		const result = await accrualCommand(request, accrualId, {
+			command: 'recognize',
+			expected_version: 1,
+		});
+		expect(result.status, JSON.stringify(result.body)).toBe(200);
+		const data = result.body.data as Record<string, unknown>;
+		expect(data.recognition_state).toBe('recognized');
+		// No link, no composition: the outcome is explicitly null and the
+		// stored link stays NULL (never the text "null").
+		expect(data.consumption).toBeNull();
+		const stored = await dbAccrual(accrualId);
+		expect(stored.order_uid).toBeNull();
+	}
+	const after = await dbConsumptions(orderUid);
+	expect(after.length).toBe(before.length);
+	evidence.unlinked = { recognized: 2, consumed: 0 };
 });
 
 test('the artifact records the accrual consumption evidence', async () => {

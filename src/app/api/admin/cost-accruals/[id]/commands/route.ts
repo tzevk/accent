@@ -74,7 +74,12 @@ function commandPatch(raw: Record<string, unknown> | undefined): AccrualPatch {
 			raw.vendor_reference === undefined
 				? undefined
 				: String(raw.vendor_reference),
-		orderUid: raw.order_uid === undefined ? undefined : String(raw.order_uid),
+		orderUid:
+			raw.order_uid === undefined
+				? undefined
+				: raw.order_uid === null || String(raw.order_uid).trim() === ''
+					? null
+					: String(raw.order_uid),
 		evidenceBasis:
 			raw.evidence_basis === undefined ? undefined : String(raw.evidence_basis),
 		costClassification:

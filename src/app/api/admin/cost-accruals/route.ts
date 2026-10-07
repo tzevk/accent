@@ -38,7 +38,12 @@ function captureInput(body: Record<string, unknown>): AccrualCaptureInput {
 			body.vendor_reference === undefined
 				? undefined
 				: String(body.vendor_reference),
-		orderUid: body.order_uid === undefined ? undefined : String(body.order_uid),
+		orderUid:
+			body.order_uid === undefined ||
+			body.order_uid === null ||
+			String(body.order_uid).trim() === ''
+				? undefined
+				: String(body.order_uid),
 		evidenceBasis:
 			body.evidence_basis === undefined
 				? undefined
