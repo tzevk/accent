@@ -12,7 +12,21 @@ import {
 	cleanupExpenditureFixtures,
 	seedExpenditureFixtures,
 } from './lib/expenditure-fixtures';
+import {
+	ALLOCATION_ESTIMATE_MONTH,
+	ALLOCATION_MONTH,
+	cleanupExpenditureAllocationFixtures,
+	seedExpenditureAllocationFixtures,
+} from './lib/expenditure-allocation-fixtures';
+import {
+	cleanupOtherExpenseFixtures,
+	seedOtherExpenseFixtures,
+} from './lib/other-expense-fixtures';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
+import {
+	cleanupPettyCashFixtures,
+	seedPettyCashFixtures,
+} from './lib/petty-cash-fixtures';
 import {
 	ORDER_PROJECT,
 	cleanupOrderFixtures,
@@ -38,7 +52,10 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupUtilizationFixtures();
 		await cleanupOrderFixtures();
 		await cleanupExpenditureFixtures();
+		await cleanupOtherExpenseFixtures();
+		await cleanupPettyCashFixtures();
 		await cleanupSupplierInvoiceFixtures();
+		await cleanupExpenditureAllocationFixtures();
 		await cleanupExpenditureCurrencyFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
@@ -107,6 +124,16 @@ export default async function globalSetup(): Promise<void> {
 				`${Object.keys(expenditure.projects).length} projects)`
 		);
 
+		const otherExpenses = await seedOtherExpenseFixtures();
+		console.log(
+			`[e2e] other-expense fixtures seeded for ${otherExpenses.month} ` +
+				`(project ${otherExpenses.projectId}, target ${otherExpenses.targetCostUid})`
+		);
+		const pettyCash = await seedPettyCashFixtures();
+		console.log(
+			`[e2e] petty-cash fixtures seeded for ${pettyCash.month} and ${pettyCash.laterMonth} ` +
+				`(${Object.keys(pettyCash.projects).length} projects, target cost ${pettyCash.targetCostUid})`
+		);
 		const supplier = await seedSupplierInvoiceFixtures();
 		console.log(
 			`[e2e] supplier invoice fixtures seeded for ${supplier.month}, ` +
@@ -115,7 +142,12 @@ export default async function globalSetup(): Promise<void> {
 				`${Object.keys(supplier.projects).length} projects, ` +
 				`${Object.keys(supplier.payableIds).length} payables)`
 		);
-
+		const allocation = await seedExpenditureAllocationFixtures();
+		console.log(
+			`[e2e] allocation fixtures seeded for ${ALLOCATION_MONTH} and ${ALLOCATION_ESTIMATE_MONTH} ` +
+				`(${Object.keys(allocation.employeeIds).length} employees, ` +
+				`${Object.keys(allocation.projectIds).length} projects)`
+		);
 		const currency = await seedExpenditureCurrencyFixtures();
 		console.log(
 			`[e2e] expenditure currency fixtures seeded for ${currency.months.join(', ')} ` +

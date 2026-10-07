@@ -36,13 +36,22 @@ import {
 	recognitionBlockers,
 	resolveRecognitionPeriod,
 } from './recognition';
+import { JOURNAL_COMMAND, writeCostEvent } from './journal';
+import {
+	CLASSIFICATIONS,
+	TAX_TREATMENTS,
+	amountOrNull,
+	assertClassificationProject,
+	dateOrNull,
+	enumOrThrow,
+	pickEnum,
+	text,
+} from './fields';
 import { mapCostRow, type SqlConnection } from './records';
 import { registerCostIdentity } from './sources';
 import type {
 	CostCommandInput,
-	CostCommandName,
 	CostCommandResult,
-	CostJournalCommand,
 	CostRecord,
 	PeriodBasis,
 	RecordCostInput,
@@ -64,7 +73,9 @@ export interface CommandOptions {
 /**
  * Run `work` in a transaction: the caller's when one is supplied (so a
  * financial-close or revision check commits with this change), otherwise a
- * transaction this module owns. Shared with the period-charge write path.
+ * transaction this module owns. Shared with the period-charge write path and
+ * with the source modules (#315 other expenses, #316 petty cash), which join
+ * the caller's transaction and never open a second one around it.
  */
 export async function inTransaction<T>(
 	options: CommandOptions | undefined,
@@ -98,30 +109,6 @@ function mintCostUid(): string {
 	return `cost-${randomUUID()}`;
 }
 
-function text(value: unknown, max: number): string | null {
-	if (value === null || value === undefined) return null;
-	const trimmed = String(value).trim();
-	return trimmed.length === 0 ? null : trimmed.slice(0, max);
-}
-
-function amountOrNull(value: unknown): number | null {
-	if (value === null || value === undefined || value === '') return null;
-	const parsed = typeof value === 'number' ? value : Number(value);
-	if (!Number.isFinite(parsed)) {
-		throw new CostError('invalid_amount', 'Amount must be a number', 422);
-	}
-	return parsed;
-}
-
-function dateOrNull(value: unknown): string | null {
-	const trimmed = text(value, 10);
-	if (!trimmed) return null;
-	if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-		throw new CostError('invalid_date', `Invalid date: ${trimmed}`, 422);
-	}
-	return trimmed;
-}
-
 const STATE_TO_STATUS: Record<RecognitionState, string> = {
 	draft: 'draft',
 	pending_evidence: 'submitted',
@@ -130,33 +117,12 @@ const STATE_TO_STATUS: Record<RecognitionState, string> = {
 	cancelled: 'submitted',
 };
 
-/**
- * The one translation from the command API vocabulary (imperative) to the
- * journal's vocabulary (`financial_cost_events.command`, past tense). The
- * column is an ENUM of exactly these values under STRICT_TRANS_TABLES: writing
- * the raw command name would truncate and roll the whole transaction back.
- */
-const JOURNAL_COMMAND: Record<CostCommandName, CostJournalCommand> = {
-	update: 'updated',
-	submit: 'submitted',
-	recognize: 'recognized',
-	reject: 'rejected',
-	cancel: 'cancelled',
-};
-
-const CLASSIFICATIONS = ['project', 'company_overhead', 'unallocated'] as const;
 const NATURES = [
 	'operating',
 	'advance',
 	'deposit',
 	'prepayment',
 	'capital',
-	'unresolved',
-] as const;
-const TAX_TREATMENTS = [
-	'none',
-	'recoverable',
-	'non_recoverable',
 	'unresolved',
 ] as const;
 const PAYMENT_MODES = [
@@ -174,38 +140,6 @@ const OPERATIONAL_STATUSES = [
 	'rejected',
 	'reimbursed',
 ] as const;
-
-/** One of `allowed`, or null for anything else — request bodies are untrusted. */
-function pickEnum<T extends string>(
-	value: unknown,
-	allowed: readonly T[]
-): T | null {
-	if (value === null || value === undefined) return null;
-	const candidate = String(value).trim();
-	return (allowed as readonly string[]).includes(candidate)
-		? (candidate as T)
-		: null;
-}
-
-function enumOrThrow<T extends string>(
-	value: unknown,
-	allowed: readonly T[],
-	code: string,
-	field: string
-): T | null {
-	const picked = pickEnum(value, allowed);
-	if (
-		value !== null &&
-		value !== undefined &&
-		String(value).trim() !== '' &&
-		!picked
-	) {
-		throw new CostError(code, `Unknown ${field}: ${String(value)}`, 422, {
-			field,
-		});
-	}
-	return picked;
-}
 
 async function loadCostForUpdate(
 	db: SqlConnection,
@@ -228,36 +162,6 @@ async function loadCostForUpdate(
 		[id]
 	)) as [Record<string, unknown>[], unknown];
 	return rows.length > 0 ? rows[0] : null;
-}
-
-interface JournalInput {
-	costUid: string;
-	sourceId: number;
-	version: number;
-	command: CostJournalCommand;
-	actorId: number | null;
-	reason: string | null;
-	evidenceReference: string | null;
-	snapshot: Record<string, unknown>;
-}
-
-async function writeJournal(db: SqlConnection, entry: JournalInput) {
-	await db.execute(
-		`INSERT INTO financial_cost_events
-       (cost_uid, source_table, source_id, version, command, actor_user_id, reason,
-        evidence_reference, snapshot)
-     VALUES (?, 'expenses', ?, ?, ?, ?, ?, ?, ?)`,
-		[
-			entry.costUid,
-			entry.sourceId,
-			entry.version,
-			entry.command,
-			entry.actorId,
-			entry.reason,
-			entry.evidenceReference,
-			JSON.stringify(entry.snapshot),
-		]
-	);
 }
 
 /**
@@ -316,22 +220,7 @@ export async function recordCost(
 	);
 	const projectId = input.projectId ?? null;
 
-	if (classification === 'project' && !projectId) {
-		throw new CostError(
-			'classification_conflict',
-			'A Project classification needs a project_id',
-			422,
-			{ missing: ['project_id'] }
-		);
-	}
-	if (classification && classification !== 'project' && projectId) {
-		throw new CostError(
-			'classification_conflict',
-			'Company Overhead and Unallocated Cost cannot carry a project_id',
-			422,
-			{ missing: ['project_id_not_allowed'] }
-		);
-	}
+	assertClassificationProject(classification, projectId);
 	if (grossAmount !== null && grossAmount < 0 && taxAmount === null) {
 		throw new CostError(
 			'invalid_amount',
@@ -461,8 +350,9 @@ export async function recordCost(
 					createdBy: actor.id,
 				});
 
-				await writeJournal(db, {
+				await writeCostEvent(db, {
 					costUid,
+					sourceTable: 'expenses',
 					sourceId: insertId,
 					version: 1,
 					command: 'recorded',
@@ -745,26 +635,7 @@ export async function executeCommand(
 		// in its reporting currency, is refused rather than dropped.
 		const merged = { ...mergedRaw, ...resolveConversion(mergedRaw) };
 
-		if (merged.classification === 'project' && !merged.projectId) {
-			throw new CostError(
-				'classification_conflict',
-				'A Project classification needs a project_id',
-				422,
-				{ missing: ['project_id'] }
-			);
-		}
-		if (
-			merged.classification &&
-			merged.classification !== 'project' &&
-			merged.projectId
-		) {
-			throw new CostError(
-				'classification_conflict',
-				'Company Overhead and Unallocated Cost cannot carry a project_id',
-				422,
-				{ missing: ['project_id_not_allowed'] }
-			);
-		}
+		assertClassificationProject(merged.classification, merged.projectId);
 
 		const existingBasis = (row.period_basis ?? 'unresolved') as PeriodBasis;
 		const datesChanged =
@@ -892,8 +763,9 @@ export async function executeCommand(
 			);
 		}
 
-		await writeJournal(db, {
+		await writeCostEvent(db, {
 			costUid: String(row.cost_uid ?? ''),
+			sourceTable: 'expenses',
 			sourceId: input.id,
 			version: nextVersion,
 			command: JOURNAL_COMMAND[input.command],

@@ -106,12 +106,34 @@ import {
 	type SqlConnection,
 } from './records';
 import { previousMonthOf } from './ranking';
+import {
+	loadAllocatedProjectCostBefore,
+	loadMonthAllocatedProjectCost,
+	loadPayrollAllocationMonths,
+	loadPayrollDrilldown,
+	loadPayrollMonth,
+} from './payroll';
+import {
+	PETTY_CASH_COST_SOURCE,
+	loadPettyCashProjectCostBefore,
+	loadPettyCashSummary,
+} from './petty-cash';
 import { buildReconciliation, projectIdsIn } from './reconciliation';
 import { registerCostSource } from './sources';
 import {
+	loadFilteredOtherExpenseRecords,
+	loadOtherExpenseMonthProjectCost,
+	loadOtherExpenseMonthRecords,
+	loadOtherExpenseMonths,
+	loadOtherExpenseProjectCostBefore,
+	mergeProjectCostMaps,
+} from './other-expenses';
+import {
 	SUPPLIER_INVOICE_ADAPTER,
 	loadSupplierInvoiceMonths,
+	loadSupplierMonthProjectCost,
 	loadSupplierMonthRecords,
+	loadSupplierProjectCostBefore,
 } from './supplier-invoices';
 import type {
 	CompanyReconciliation,
@@ -120,10 +142,60 @@ import type {
 	CostDrilldown,
 	CostDrilldownQuery,
 	CostJournalEntry,
+	PayrollDrilldown,
+	CostRecordJson,
+	PettyCashSummary,
 } from './types';
 
 export { recordCost, executeCommand, loadCost, CostError } from './commands';
 export type { CostActor, CommandOptions } from './commands';
+export {
+	captureOtherExpense,
+	executeOtherExpenseCommand,
+	loadOtherExpenseReview,
+	resolveOtherExpenseCopy,
+} from './other-expenses';
+export type {
+	CopyReviewAction,
+	CopyReviewInput,
+	CopyReviewResult,
+	DuplicateCandidate,
+	LinkedCopyReview,
+	OtherExpenseCaptureInput,
+	OtherExpenseCommandInput,
+	OtherExpenseCommandResult,
+	OtherExpensePatch,
+	OtherExpenseReviewQueue,
+	OtherExpenseRow,
+	PendingCopyReview,
+	RecordedOtherExpense,
+	UnresolvedOtherExpense,
+} from './other-expenses';
+export {
+	ensureFundingMirror,
+	executePettyCashCommand,
+	fundingEventUid,
+	isPettyCashCommand,
+	loadPettyCashGuardRow,
+	loadVoucherGuard,
+	pettyCashCommandInputFromJson,
+	pettyCashRegisterRefusal,
+	pettyCashSpendInputFromJson,
+	recordPettyCashSpend,
+	voucherRegisterRefusal,
+} from './petty-cash';
+export type {
+	FundingMirrorInput,
+	FundingMirrorResult,
+	PettyCashCommandInput,
+	PettyCashCommandResult,
+	PettyCashGuardRow,
+	PettyCashSpendInput,
+	PettyCashSpendPatch,
+	RecordedPettyCashSpend,
+	RegisterRefusal,
+	VoucherGuard,
+} from './petty-cash';
 export { capturePeriodCharge, cancelPeriodCharge } from './charges';
 export type {
 	CapturePeriodChargeInput,
@@ -167,19 +239,6 @@ export type {
 	UpdateOrderInput,
 } from './orders';
 export {
-	linkCostReference,
-	registerCostIdentity,
-	registerCostSource,
-	resolveCostReference,
-} from './sources';
-export type {
-	CostLinkBasis,
-	CostLinkReviewState,
-	CostLinkRole,
-	CostReference,
-	CostSourceAdapter,
-} from './sources';
-export {
 	decideSupplierLink,
 	executeSupplierCommand,
 	initializeSupplierCost,
@@ -198,6 +257,8 @@ export type {
 } from './supplier-invoices';
 export { isDrilldownSource } from './drilldown';
 export { recordCostBudget, executeBudgetCommand } from './budget-commands';
+export { PETTY_CASH_COST_SOURCE } from './petty-cash';
+export type { PettyCashSourceDescriptor } from './petty-cash';
 export { SOURCE_COVERAGE } from './coverage';
 export type { SourceCoverageDeclaration } from './coverage';
 export type { ProjectOption } from './records';
@@ -212,6 +273,20 @@ export {
 export { monthLabel } from './reconciliation';
 export { dayOfDate } from './ranking';
 export { COST_BUDGET_SCOPES, isCostBudgetScope } from './types';
+export {
+	allocateEmployerCost,
+	freezeMonthAllocations,
+	loadMonthAllocatedProjectCost,
+	loadPayrollMonth,
+	PAYROLL_CURRENCY,
+	summarizePayroll,
+} from './payroll';
+export type {
+	AllocationLine,
+	AllocationOutcome,
+	FreezeSummary,
+	PayrollMonthInterpretation,
+} from './payroll';
 export {
 	CHARGE_BASIS_LABELS,
 	COST_NATURES,
@@ -284,7 +359,17 @@ export type {
 	FilteredProjectSubtotal,
 	NonOperatingItemJson,
 	NonOperatingSection,
+	PayrollCostStatus,
+	PayrollDrilldown,
+	PayrollEmployeeCost,
+	PayrollExpenditure,
+	PayrollHourLine,
+	PayrollPayStream,
+	PayrollProjectShare,
+	PayrollShareBasis,
 	PeriodBasis,
+	PettyCashCurrencySummary,
+	PettyCashSummary,
 	PeriodChargeJson,
 	PeriodChargeBasis,
 	PeriodChargeState,
@@ -327,14 +412,26 @@ export function currentDate(): string {
 	return new Date().toISOString().slice(0, 10);
 }
 
-/** Months with cost recorded, newest first, including the current one. */
+/** Months with cost recorded in any wired source, newest first. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
 	const current = currentMonth();
-	const [direct, supplier] = await Promise.all([
-		loadExpenditureMonths(pool, current),
-		loadSupplierInvoiceMonths(pool, current),
+	const [direct, supplier, payroll, otherExpense, pettyCash] =
+		await Promise.all([
+			loadExpenditureMonths(pool, current),
+			loadSupplierInvoiceMonths(pool, current),
+			loadPayrollAllocationMonths(pool),
+			loadOtherExpenseMonths(pool, current),
+			PETTY_CASH_COST_SOURCE.loadMonths(pool),
+		]);
+	const months = new Set([
+		...direct,
+		...supplier,
+		...payroll,
+		...otherExpense,
+		...pettyCash,
 	]);
-	return [...new Set([...direct, ...supplier])].sort().reverse();
+	months.add(current);
+	return [...months].sort().reverse();
 }
 
 export interface ReconciliationRequest {
@@ -378,37 +475,94 @@ export async function fetchCompanyReconciliation(
 	const [
 		directRecords,
 		directPriorRecords,
-		projectCostBefore,
+		directCostBefore,
 		supplierRecords,
 		supplierPriorRecords,
+		otherExpenseRecords,
+		otherExpensePriorRecords,
 		charges,
 		monthNonOperating,
+		pettyCashRecords,
+		pettyCashPriorRecords,
+		pettyCash,
 		previousProjectCost,
 		previousCharges,
+		previousOtherExpenseProjectCost,
+		previousPettyCashProjectCost,
+		previousSupplierProjectCost,
+		supplierCostBefore,
+		otherExpenseCostBefore,
+		pettyCashCostBefore,
+		payrollCostBefore,
 		projectOptions,
 		directMonths,
 		supplierMonths,
+		payrollMonths,
+		payroll,
+		previousPayrollCost,
+		otherExpenseMonths,
+		pettyCashMonths,
 	] = await Promise.all([
 		loadMonthRecords(db, month),
 		loadMonthRecords(db, previousMonth),
 		loadProjectCostBefore(db, month),
 		loadSupplierMonthRecords(db, month),
 		loadSupplierMonthRecords(db, previousMonth),
+		loadOtherExpenseMonthRecords(db, month),
+		previousMonth
+			? loadOtherExpenseMonthRecords(db, previousMonth)
+			: Promise.resolve([]),
 		loadMonthCharges(db, { month }),
 		loadNonOperatingSources(db, month),
+		PETTY_CASH_COST_SOURCE.loadMonthRecords(db, month),
+		previousMonth
+			? PETTY_CASH_COST_SOURCE.loadMonthRecords(db, previousMonth)
+			: Promise.resolve([]),
+		loadPettyCashSummary(db, month),
 		previousMonth
 			? loadMonthProjectCost(db, previousMonth)
 			: Promise.resolve(new Map<number, Map<string, number | null>>()),
 		previousMonth
 			? loadMonthCharges(db, { month: previousMonth })
 			: Promise.resolve([]),
+		previousMonth
+			? loadOtherExpenseMonthProjectCost(db, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		previousMonth
+			? PETTY_CASH_COST_SOURCE.loadProjectCost(db, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		previousMonth
+			? loadSupplierMonthProjectCost(db, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		loadSupplierProjectCostBefore(db, month),
+		loadOtherExpenseProjectCostBefore(db, month),
+		loadPettyCashProjectCostBefore(db, month),
+		loadAllocatedProjectCostBefore(db, month),
 		loadProjectOptions(db),
 		loadExpenditureMonths(db, currentMonth()),
 		loadSupplierInvoiceMonths(db, currentMonth()),
+		loadPayrollAllocationMonths(db),
+		loadPayrollMonth(db, month),
+		previousMonth
+			? loadMonthAllocatedProjectCost(db, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		loadOtherExpenseMonths(db, currentMonth()),
+		PETTY_CASH_COST_SOURCE.loadMonths(db),
 	]);
-	const records = [...directRecords, ...supplierRecords];
-	// The comparison's prior window reads the same sources the month does.
-	const priorMonthRecords = [...directPriorRecords, ...supplierPriorRecords];
+	const records = [
+		...directRecords,
+		...supplierRecords,
+		...otherExpenseRecords,
+		...pettyCashRecords,
+	];
+	// The comparison's prior window reads the same sources the month reads, so
+	// its prior side is measured from evidence and not from a single source.
+	const priorMonthRecords = [
+		...directPriorRecords,
+		...supplierPriorRecords,
+		...otherExpensePriorRecords,
+		...pettyCashPriorRecords,
+	];
 
 	// A charge can draw down a balance recognized in an earlier month, so the
 	// section needs those sources too; every other source of the month is
@@ -433,6 +587,34 @@ export async function fetchCompanyReconciliation(
 			.map((record) => record.costUid)
 			.filter((uid): uid is string => !!uid)
 	);
+
+	// The prior-month comparison is like-for-like across every wired source:
+	// recorded employee cost is part of the month it was frozen in, supplier
+	// cost joins the direct, other-expense, and petty-cash costs, and the
+	// direct loader already includes the month's approved period charges.
+	const previousMonthProjectCost = [
+		previousProjectCost,
+		previousSupplierProjectCost,
+		previousOtherExpenseProjectCost,
+		previousPettyCashProjectCost,
+		previousPayrollCost,
+	].reduce(
+		mergeProjectCostMaps,
+		new Map<number, Map<string, number | null>>()
+	);
+	// Cost to Date is cumulative across the same sources: every month before
+	// the reported one, recognized operating Project cost plus approved period
+	// charges (the direct loader covers both), each source in its own currency.
+	const projectCostBefore = [
+		directCostBefore,
+		supplierCostBefore,
+		otherExpenseCostBefore,
+		pettyCashCostBefore,
+		payrollCostBefore,
+	].reduce(
+		mergeProjectCostMaps,
+		new Map<number, Map<string, number | null>>()
+	);
 	// A budget is read when it covers the month or belongs to a Project the
 	// month has a row for, so an approved budget for another period is stated
 	// as such instead of the Project reading as unbudgeted.
@@ -447,23 +629,65 @@ export async function fetchCompanyReconciliation(
 		priorMonthRecords,
 		asOf: request.asOf ?? today,
 		projectCostBefore,
-		priorMonthChargeCount: previousCharges.length,
+		priorCharges: previousCharges,
+		priorPayrollCost: previousPayrollCost,
 		charges,
 		nonOperatingSources,
 		chargeTotals,
-		previousMonthProjectCost: previousProjectCost,
+		previousMonthProjectCost,
 		budgets,
 		projectFilter: request.projectId ?? null,
 		projectOptions,
-		availableMonths: [...new Set([...directMonths, ...supplierMonths])]
+		availableMonths: [
+			...new Set([
+				...directMonths,
+				...supplierMonths,
+				...payrollMonths,
+				...otherExpenseMonths,
+				...pettyCashMonths,
+			]),
+		]
 			.sort()
 			.reverse(),
 		currentMonth: currentMonth(),
 		coverageDeclarations: SOURCE_COVERAGE,
+		payroll,
 		reportingCurrency: request.reportingCurrency ?? null,
+		pettyCash,
 	});
 }
 
+/** Read the employee-cost drilldown behind one month's reconciliation. */
+export async function fetchPayrollDrilldown(
+	month: string,
+	employeeId: number | null = null,
+	options?: CommandOptions
+): Promise<PayrollDrilldown> {
+	const { interpretation, employees, totals } = await loadPayrollDrilldown(
+		options?.connection ?? pool,
+		month,
+		employeeId
+	);
+	return {
+		month,
+		month_label: interpretation.monthLabel,
+		currency: interpretation.currency,
+		totals,
+		employees,
+		coverage: interpretation.coverage,
+	};
+}
+
+/**
+ * The petty-cash register's own view: funding, spending, remaining supported
+ * funding, and recognized cost — for one month, or all time when `month` is
+ * null.
+ */
+export async function fetchPettyCashSummary(
+	month: string | null = null
+): Promise<PettyCashSummary> {
+	return loadPettyCashSummary(pool, month);
+}
 /** One Project's cost budgets, every state, newest first. */
 export async function fetchProjectBudgets(
 	projectId: number,

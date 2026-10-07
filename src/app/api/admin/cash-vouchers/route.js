@@ -1,8 +1,12 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-import crypto from 'node:crypto';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
+import {
+	ensureFundingMirror,
+	loadVoucherGuard,
+	voucherRegisterRefusal,
+} from '@/lib/company-expenditure';
 
 /**
  * GET /api/admin/cash-vouchers
@@ -234,28 +238,19 @@ export async function POST(request) {
 
 				voucherId = result.insertId;
 
-				// Create funding credit entry in petty_cash_expenses
-				const voucherDescription = data.description || data.notes || '';
-				if (totalAmount > 0) {
-					const pceId = crypto.randomUUID();
-					await db.execute(
-						`INSERT INTO petty_cash_expenses
-						(id, transaction_number, transaction_date, credit_amount, debit_amount,
-						 description, status, created_by, source_voucher_id)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-						[
-							pceId,
-							voucherNumber,
-							data.voucher_date || new Date().toISOString().split('T')[0],
-							totalAmount,
-							0,
-							voucherDescription,
-							'submitted',
-							user.id,
-							voucherId,
-						]
-					);
-				}
+				// One funding event: the voucher and its mirrored credit are the
+				// same cash movement, inserted together. Repeating the mirroring
+				// updates this one row instead of adding another (#316).
+				await ensureFundingMirror(db, {
+					voucherId,
+					voucherNumber,
+					voucherDate:
+						data.voucher_date || new Date().toISOString().split('T')[0],
+					totalAmount,
+					description: data.description || data.notes || '',
+					currency: data.currency ?? null,
+					actorId: user.id,
+				});
 
 				await db.execute('COMMIT');
 				break;
@@ -346,25 +341,49 @@ export async function DELETE(request) {
 
 		db = await dbConnect();
 
-		const [result] = await db.execute(
-			'UPDATE cash_vouchers SET isDelete = 1 WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)',
-			[id]
-		);
-
-		if (result.affectedRows === 0) {
-			return NextResponse.json(
-				{ success: false, error: 'Voucher not found' },
-				{ status: 404 }
-			);
-		}
-
+		// A voucher with actual spending cannot be removed here, and no capture
+		// may slip between the check and the delete: the voucher row is locked
+		// for the whole mutation (`loadVoucherGuard`), and spending capture locks
+		// the same row before it inserts.
+		await db.execute('START TRANSACTION');
 		try {
+			const guard = await loadVoucherGuard(db, Number(id));
+			if (!guard) {
+				await db.execute('ROLLBACK');
+				return NextResponse.json(
+					{ success: false, error: 'Voucher not found' },
+					{ status: 404 }
+				);
+			}
+			const refusal = voucherRegisterRefusal(guard);
+			if (refusal) {
+				await db.execute('ROLLBACK');
+				return NextResponse.json(
+					{
+						success: false,
+						error: refusal.message,
+						code: refusal.code,
+						...refusal.detail,
+					},
+					{ status: refusal.status }
+				);
+			}
+
 			await db.execute(
-				'UPDATE petty_cash_expenses SET isDelete = 1 WHERE source_voucher_id = ?',
+				'UPDATE cash_vouchers SET isDelete = 1 WHERE id = ? AND (isDelete IS NULL OR isDelete = 0)',
 				[id]
 			);
-		} catch (_) {
-			/* PCE table may not exist yet */
+			// Only the funding mirror goes with the voucher; it is the credit
+			// side of the same funding event.
+			await db.execute(
+				`UPDATE petty_cash_expenses SET isDelete = 1
+          WHERE source_voucher_id = ? AND entry_kind = 'funding'`,
+				[id]
+			);
+			await db.execute('COMMIT');
+		} catch (txError) {
+			await db.execute('ROLLBACK');
+			throw txError;
 		}
 
 		return NextResponse.json({

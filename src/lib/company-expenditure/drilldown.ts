@@ -19,6 +19,7 @@
 import { add, R, toNumber } from '@/lib/money';
 import { currencyCodeOf, reportingCurrencyOf } from './currency';
 import { isNonOperatingNature, toPeriodChargeJson } from './non-operating';
+import { loadFilteredOtherExpenseRecords } from './other-expenses';
 import {
 	loadFilteredExpenseRecords,
 	loadMonthCharges,
@@ -27,6 +28,7 @@ import {
 	type SqlConnection,
 } from './records';
 import { loadFilteredSupplierRecords } from './supplier-invoices';
+import { PETTY_CASH_COST_SOURCE } from './petty-cash';
 import type {
 	CostDrilldown,
 	CostDrilldownQuery,
@@ -38,6 +40,8 @@ import type {
 const DRILLDOWN_SOURCES: readonly CostSource[] = [
 	'direct_expense',
 	'supplier_invoice',
+	'other_expense',
+	'petty_cash',
 ];
 
 function sortRecords(records: CostRecord[]): CostRecord[] {
@@ -89,12 +93,27 @@ export async function loadCombinedDrilldown(
 	query: CostDrilldownQuery
 ): Promise<CostDrilldown> {
 	const source = query.source ?? 'all';
+	// Supplier invoices are operating cost: a non-operating or unresolved
+	// nature filter must never surface them.
+	const supplierIsOperating =
+		!query.nature || query.nature === 'all' || query.nature === 'operating';
 	const results: CostRecord[] = [];
 	if (source === 'all' || source === 'direct_expense') {
 		results.push(...(await loadFilteredExpenseRecords(db, query)));
 	}
-	if (source === 'all' || source === 'supplier_invoice') {
+	if (
+		(source === 'all' || source === 'supplier_invoice') &&
+		supplierIsOperating
+	) {
 		results.push(...(await loadFilteredSupplierRecords(db, query)));
+	}
+	if (source === 'all' || source === 'other_expense') {
+		results.push(...(await loadFilteredOtherExpenseRecords(db, query)));
+	}
+	if (source === 'all' || source === 'petty_cash') {
+		results.push(
+			...(await PETTY_CASH_COST_SOURCE.loadFilteredRecords(db, query))
+		);
 	}
 	const merged = sortRecords(results);
 

@@ -101,6 +101,11 @@ interface ProjectRow {
 	cost_to_date: number | null;
 	late_entry: { count: number; amount: number | null } | null;
 	evidence: ProjectEvidenceRow;
+	/** Recorded employee cost allocated to this Project (#307, ADR-0016). */
+	employee_cost: number;
+	estimated_employee_cost: number;
+	logged_hours: number;
+	employee_count: number;
 }
 
 interface ProjectEvidenceRow {
@@ -132,6 +137,9 @@ interface ComparisonCurrencyRow {
 	late_cost: number;
 	prior_late_records: number;
 	prior_late_cost: number;
+	/** Day-less monthly cost the elapsed window cannot place. */
+	dayless_records: number;
+	dayless_cost: number;
 }
 
 interface ComparisonDisclosureRow {
@@ -183,6 +191,69 @@ interface RankingPayload {
 		detail: string;
 	}>;
 	currencies: string[];
+}
+
+interface PayrollShareRow {
+	project_id: number | null;
+	project_code: string | null;
+	project_name: string | null;
+	client_name: string | null;
+	hours: number;
+	amount: number;
+	rounding_adjustment: number;
+	basis: string;
+}
+
+interface PayrollEmployeeRow {
+	employee_id: number;
+	employee_code: string;
+	employee_name: string;
+	pay_stream: string;
+	status: string;
+	recorded_amount: number | null;
+	estimated_amount: number | null;
+	logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	no_logged_hours: boolean;
+	missing_slip: boolean;
+	missing_pricing: boolean;
+	allocation_missing: boolean;
+	source: {
+		payroll_slip_id: number | null;
+		allocation_id: number | null;
+		allocation_version: number | null;
+		allocation_kind: string | null;
+		month: string;
+	};
+	shares: PayrollShareRow[];
+}
+
+interface PayrollSummaryRow {
+	currency: string;
+	recorded_total: number;
+	estimated_total: number;
+	allocated_total: number;
+	unallocated_total: number;
+	total_logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	rounding_adjustment: number;
+	recorded_count: number;
+	known_zero_count: number;
+	estimated_count: number;
+	missing_slip_count: number;
+	missing_pricing_count: number;
+	allocation_missing_count: number;
+}
+
+interface PayrollDrilldownPayload {
+	month: string;
+	month_label: string;
+	currency: string;
+	totals: PayrollSummaryRow;
+	employees: PayrollEmployeeRow[];
+	coverage: CoverageNoticeRow[];
 }
 
 interface EvidenceRow {
@@ -295,6 +366,28 @@ interface ReconciliationPayload {
 		known_zero: { count: number };
 	};
 	coverage: CoverageNoticeRow[];
+	payroll: PayrollSummaryRow;
+	petty_cash: {
+		month: string | null;
+		currency: string | null;
+		funding: number | null;
+		spend: number | null;
+		remaining_funding: number | null;
+		recognized_cost: number | null;
+		by_currency: Array<{
+			currency: string;
+			funding: number;
+			spend: number;
+			funded_spend: number;
+			settled_spend: number;
+			remaining_funding: number;
+			recognized_cost: number;
+			unconfirmed_spend: number;
+		}>;
+		unresolved_settlements: { count: number; amount: number | null };
+		unlinked_spend: { count: number; amount: number | null };
+		unknown_currency: { count: number };
+	};
 	budgets: BudgetSectionPayload;
 	project_options: Array<{
 		project_id: number;
@@ -356,6 +449,24 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
 	project: 'Project',
 	company_overhead: 'Company Overhead',
 	unallocated: 'Unallocated Cost',
+};
+
+/**
+ * Where a cost from another source register is reviewed. Its approval lives in
+ * that register's own controls (a versioned `financial_version` + journal like
+ * this one), so the report must not send its row-level commands to the direct
+ * expense path.
+ */
+const SOURCE_REGISTER_LABELS: Record<string, string> = {
+	other_expense: 'Recognized in the Other Expense register',
+	supplier_invoice: 'Recognized in the Purchase Invoice register',
+	petty_cash: 'Recognized in the Petty Cash register',
+	non_operating: 'Recognized in the period-charge workflow',
+	payroll: 'Finalized with payroll',
+};
+
+const SOURCE_REGISTER_LINKS: Record<string, string> = {
+	other_expense: '/admin/other-expenses',
 };
 
 /** What the spend is (#317), in the reader's words. */
@@ -437,6 +548,13 @@ function rankMap(
 	);
 }
 
+/** How an employee's cost is known (#307). */
+const PAYROLL_STATUS_LABELS: Record<string, string> = {
+	recorded: 'Recorded',
+	estimated: 'Estimated',
+	known_zero: 'Known zero',
+	unknown: 'Unknown pricing',
+};
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : 'Something went wrong';
 }
@@ -471,6 +589,7 @@ export default function ExpenditureView({
 		record: CostRecordJson;
 		command: 'recognize' | 'reject' | 'cancel';
 	} | null>(null);
+	const [expandedEmployee, setExpandedEmployee] = useState<number | null>(null);
 	const [chargeTarget, setChargeTarget] = useState<NonOperatingItemRow | null>(
 		null
 	);
@@ -537,6 +656,18 @@ export default function ExpenditureView({
 		refetchOnWindowFocus: false,
 		staleTime: 15_000,
 	});
+	// The employee-cost drilldown loads with the payroll section; the summary
+	// itself already rides the reconciliation payload.
+	const payrollQuery = useQuery<{ data: PayrollDrilldownPayload }>({
+		queryKey: ['expenditure-payroll', month],
+		queryFn: () =>
+			apiGet('/api/reports/employee-project-monthly-cost/payroll', {
+				month,
+			}),
+		refetchOnWindowFocus: false,
+		staleTime: 15_000,
+	});
+	const payrollEmployees = payrollQuery.data?.data.employees ?? [];
 
 	const data = reconciliationQuery.data?.data ?? null;
 	const queue = queueQuery.data?.data?.records ?? [];
@@ -1127,6 +1258,8 @@ export default function ExpenditureView({
 									data-currency={row.currency}
 									data-current={row.current_cost}
 									data-prior={row.prior_cost ?? ''}
+									data-dayless={row.dayless_cost}
+									data-dayless-count={row.dayless_records}
 								>
 									<td>{row.currency}</td>
 									<td className="text-right">
@@ -1297,6 +1430,108 @@ export default function ExpenditureView({
 					</table>
 				</div>
 			)}
+
+			{/* Petty cash: funding, spending, remaining funding, recognized cost */}
+			<div
+				data-testid="petty-cash-section"
+				className="mt-3 rounded-xl border border-purple-200 bg-purple-50/40 p-3"
+			>
+				<p className="text-xs font-semibold text-purple-900">
+					Petty cash — funding and spending stay separate from incurred cost
+				</p>
+				<div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+					{(
+						[
+							[
+								'petty-funding-amount',
+								'Funding',
+								data.petty_cash.funding,
+								'Vouchers and their mirrored credits; cash into the float, never expense',
+							],
+							[
+								'petty-spend-amount',
+								'Spend',
+								data.petty_cash.spend,
+								'Actual petty-cash spending recorded this month',
+							],
+							[
+								'petty-remaining-amount',
+								'Remaining funded',
+								data.petty_cash.remaining_funding,
+								'Funding less the spending drawn from vouchers',
+							],
+							[
+								'petty-recognized-amount',
+								'Recognized cost',
+								data.petty_cash.recognized_cost,
+								'Approved spending, already counted once above',
+							],
+						] as const
+					).map(([testId, label, value, hint]) => (
+						<div
+							key={testId}
+							className="rounded-lg border border-purple-100 bg-white p-2"
+						>
+							<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+								{label}
+							</p>
+							<p
+								data-testid={testId}
+								data-amount={value === null ? '' : String(value)}
+								className="text-base font-bold text-purple-900"
+							>
+								{value === null
+									? '—'
+									: formatCurrencyIn(value, data.petty_cash.currency ?? 'INR')}
+							</p>
+							<p className="text-[10px] text-gray-500">{hint}</p>
+						</div>
+					))}
+				</div>
+				{data.petty_cash.by_currency.length > 1 && (
+					<ul className="mt-2 space-y-0.5 text-[11px] text-purple-900">
+						{data.petty_cash.by_currency.map((row) => (
+							<li key={row.currency} data-testid="petty-currency-row">
+								{row.currency}: funding{' '}
+								{formatCurrencyIn(row.funding, row.currency)} · spend{' '}
+								{formatCurrencyIn(row.spend, row.currency)} · remaining{' '}
+								{formatCurrencyIn(row.remaining_funding, row.currency)} ·
+								recognized {formatCurrencyIn(row.recognized_cost, row.currency)}
+							</li>
+						))}
+					</ul>
+				)}
+				<ul className="mt-2 space-y-0.5 text-[11px] text-purple-900/90">
+					<li data-testid="petty-unlinked-spend">
+						Spending without voucher linkage:{' '}
+						{data.petty_cash.unlinked_spend.count}
+						{data.petty_cash.unlinked_spend.amount === null
+							? ''
+							: ` (${formatCurrencyIn(
+									data.petty_cash.unlinked_spend.amount,
+									data.petty_cash.currency ?? 'INR'
+								)})`}
+					</li>
+					<li data-testid="petty-unresolved-settlements">
+						Receipts settling an unrecognized cost:{' '}
+						{data.petty_cash.unresolved_settlements.count}
+						{data.petty_cash.unresolved_settlements.amount === null
+							? ''
+							: ` (${formatCurrencyIn(
+									data.petty_cash.unresolved_settlements.amount,
+									data.petty_cash.currency ?? 'INR'
+								)})`}
+					</li>
+					{data.petty_cash.unknown_currency &&
+						data.petty_cash.unknown_currency.count > 0 && (
+							<li data-testid="petty-unknown-currency">
+								Records whose original currency is unknown:{' '}
+								{data.petty_cash.unknown_currency.count} — stated in no currency
+								subtotal
+							</li>
+						)}
+				</ul>
+			</div>
 
 			{/* Tax and evidence */}
 			<div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -1602,6 +1837,12 @@ export default function ExpenditureView({
 								Client
 							</th>
 							<th scope="col" className="px-3 py-2 text-right">
+								Employee cost
+							</th>
+							<th scope="col" className="px-3 py-2 text-right">
+								Logged Hours
+							</th>
+							<th scope="col" className="px-3 py-2 text-right">
 								Incurred cost
 							</th>
 							<th scope="col" className="px-3 py-2 text-right">
@@ -1629,7 +1870,7 @@ export default function ExpenditureView({
 					<tbody>
 						{data.projects.length === 0 && (
 							<tr>
-								<td colSpan={10} className="px-3 py-4 text-center text-gray-500">
+								<td colSpan={12} className="px-3 py-4 text-center text-gray-500">
 									No Project-attributed cost in this month. Company Overhead and
 									Unallocated Cost stay in the reconciliation above.
 								</td>
@@ -1664,6 +1905,8 @@ export default function ExpenditureView({
 											) ?? ''
 										}
 										data-rank={rank ?? ''}
+										data-employee-cost={String(project.employee_cost)}
+										data-logged-hours={String(project.logged_hours)}
 										className="border-t border-gray-100"
 									>
 										<td className="px-3 py-2 text-xs font-semibold text-gray-500">
@@ -1707,6 +1950,29 @@ export default function ExpenditureView({
 										</td>
 										<td className="px-3 py-2 text-gray-600">
 											{project.client_name ?? '—'}
+										</td>
+										<td className="px-3 py-2 text-right text-gray-700">
+											{project.employee_cost === 0
+												? '—'
+												: formatCurrencyIn(
+														project.employee_cost,
+														project.currency
+													)}
+											{project.estimated_employee_cost > 0 && (
+												<span className="ml-1 text-[10px] text-amber-700">
+													+
+													{formatCurrencyIn(
+														project.estimated_employee_cost,
+														project.currency
+													)}{' '}
+													est.
+												</span>
+											)}
+										</td>
+										<td className="px-3 py-2 text-right tabular-nums text-gray-600">
+											{project.logged_hours === 0
+												? '—'
+												: formatNumber(project.logged_hours)}
 										</td>
 										<td className="px-3 py-2 text-right font-semibold text-gray-900">
 											{formatCurrencyIn(
@@ -1809,7 +2075,7 @@ export default function ExpenditureView({
 									</tr>
 									{expanded && (
 										<tr key={`${project.project_id}-${project.currency}-drilldown`}>
-											<td colSpan={10} className="bg-gray-50/70 px-3 py-2">
+											<td colSpan={12} className="bg-gray-50/70 px-3 py-2">
 												<div
 													data-testid="project-drilldown"
 													data-currency={project.currency}
@@ -1997,6 +2263,295 @@ export default function ExpenditureView({
 				</table>
 			</div>
 
+			{/* Recorded employee cost (#307, ADR-0016) */}
+			<div
+				data-testid="payroll-summary"
+				data-recorded-total={String(data.payroll.recorded_total)}
+				data-estimated-total={String(data.payroll.estimated_total)}
+				data-unallocated-total={String(data.payroll.unallocated_total)}
+				className="mt-3 rounded-xl border border-gray-200 bg-white"
+			>
+				<div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-3 py-2">
+					<p className="text-xs font-semibold text-gray-700">
+						Employee cost — recorded Payroll Slip allocation
+					</p>
+					<p className="text-[11px] text-gray-500">
+						Recorded{' '}
+						{formatCurrencyIn(
+							data.payroll.recorded_total,
+							data.payroll.currency
+						)}{' '}
+						· Estimated{' '}
+						{formatCurrencyIn(
+							data.payroll.estimated_total,
+							data.payroll.currency
+						)}{' '}
+						· Unallocated{' '}
+						{formatCurrencyIn(
+							data.payroll.unallocated_total,
+							data.payroll.currency
+						)}{' '}
+						(No project + No logged hours)
+					</p>
+				</div>
+				<div className="grid gap-x-4 gap-y-1 px-3 py-2 text-[11px] text-gray-600 sm:grid-cols-4">
+					<span>
+						Logged Hours: {formatNumber(data.payroll.total_logged_hours)}
+					</span>
+					<span>Project Hours: {formatNumber(data.payroll.project_hours)}</span>
+					<span>
+						No project Hours: {formatNumber(data.payroll.no_project_hours)}
+					</span>
+					<span>
+						Rounding adjustment:{' '}
+						{formatCurrencyIn(
+							data.payroll.rounding_adjustment,
+							data.payroll.currency
+						)}
+					</span>
+				</div>
+				<div className="overflow-x-auto border-t border-gray-100">
+					<table className="w-full min-w-[900px] text-sm">
+						<thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+							<tr>
+								<th scope="col" className="px-3 py-2">
+									Employee
+								</th>
+								<th scope="col" className="px-3 py-2">
+									Stream
+								</th>
+								<th scope="col" className="px-3 py-2">
+									Status
+								</th>
+								<th scope="col" className="px-3 py-2 text-right">
+									Logged Hours
+								</th>
+								<th scope="col" className="px-3 py-2 text-right">
+									Recorded
+								</th>
+								<th scope="col" className="px-3 py-2 text-right">
+									Estimated
+								</th>
+								<th scope="col" className="px-3 py-2">
+									Source Payroll Slip
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							{payrollQuery.isLoading && (
+								<tr>
+									<td
+										colSpan={7}
+										className="px-3 py-4 text-center text-xs text-gray-500"
+									>
+										Loading employee cost…
+									</td>
+								</tr>
+							)}
+							{payrollQuery.isError && (
+								<tr>
+									<td
+										colSpan={7}
+										className="px-3 py-4 text-center text-xs text-rose-600"
+									>
+										{errorMessage(payrollQuery.error)}
+									</td>
+								</tr>
+							)}
+							{!payrollQuery.isLoading &&
+								!payrollQuery.isError &&
+								payrollEmployees.length === 0 && (
+									<tr>
+										<td
+											colSpan={7}
+											className="px-3 py-4 text-center text-xs text-gray-500"
+										>
+											No employee cost for {data.month_label}.
+										</td>
+									</tr>
+								)}
+							{payrollEmployees.map((employee) => {
+								const expanded = expandedEmployee === employee.employee_id;
+								return (
+									<Fragment key={employee.employee_id}>
+										<tr
+											data-testid="payroll-employee-row"
+											data-employee-code={employee.employee_code}
+											data-status={employee.status}
+											data-recorded={employee.recorded_amount ?? ''}
+											data-estimated={employee.estimated_amount ?? ''}
+											data-hours={String(employee.logged_hours)}
+											className="border-t border-gray-100"
+										>
+											<td className="px-3 py-2">
+												<div className="flex items-center gap-1.5">
+													<button
+														type="button"
+														data-testid="payroll-employee-expand"
+														aria-expanded={expanded}
+														onClick={() =>
+															setExpandedEmployee(
+																expanded ? null : employee.employee_id
+															)
+														}
+														className="rounded p-0.5 text-gray-500 hover:bg-gray-100"
+														aria-label={`${expanded ? 'Hide' : 'Show'} Project shares for ${employee.employee_code}`}
+													>
+														{expanded ? (
+															<ChevronDownIcon className="h-4 w-4" />
+														) : (
+															<ChevronRightIcon className="h-4 w-4" />
+														)}
+													</button>
+													<div>
+														<div className="font-medium text-gray-900">
+															{employee.employee_name}
+														</div>
+														<div className="text-[10px] text-gray-500">
+															{employee.employee_code}
+															{employee.no_logged_hours && ' · No logged hours'}
+															{employee.missing_slip && ' · Missing slip'}
+															{employee.missing_pricing && ' · Missing pricing'}
+															{employee.allocation_missing &&
+																' · Allocation missing'}
+														</div>
+													</div>
+												</div>
+											</td>
+											<td className="px-3 py-2 text-xs capitalize text-gray-600">
+												{employee.pay_stream}
+											</td>
+											<td className="px-3 py-2 text-xs">
+												<span
+													className={
+														employee.status === 'recorded'
+															? 'rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-900'
+															: employee.status === 'estimated'
+																? 'rounded bg-amber-100 px-1.5 py-0.5 text-amber-900'
+																: 'rounded bg-gray-100 px-1.5 py-0.5 text-gray-700'
+													}
+												>
+													{PAYROLL_STATUS_LABELS[employee.status] ??
+														employee.status}
+												</span>
+											</td>
+											<td className="px-3 py-2 text-right tabular-nums text-gray-700">
+												{formatNumber(employee.logged_hours)}
+											</td>
+											<td className="px-3 py-2 text-right font-semibold text-gray-900">
+												{employee.recorded_amount === null
+													? '—'
+													: formatCurrencyIn(
+															employee.recorded_amount,
+															data.payroll.currency
+														)}
+											</td>
+											<td className="px-3 py-2 text-right text-gray-600">
+												{employee.estimated_amount === null
+													? '—'
+													: formatCurrencyIn(
+															employee.estimated_amount,
+															data.payroll.currency
+														)}
+											</td>
+											<td className="px-3 py-2 text-xs text-gray-600">
+												{employee.source.payroll_slip_id === null
+													? 'No Payroll Slip'
+													: `Slip #${employee.source.payroll_slip_id}${
+															employee.source.allocation_version
+																? ` · allocation v${employee.source.allocation_version}`
+																: ''
+														}${
+															employee.source.allocation_kind ===
+															'reconstruction'
+																? ' · reconstructed'
+																: ''
+														}`}
+											</td>
+										</tr>
+										{expanded && (
+											<tr key={`${employee.employee_id}-shares`}>
+												<td colSpan={7} className="bg-gray-50/70 px-3 py-2">
+													<p className="mb-1 text-xs font-semibold text-gray-700">
+														Project shares for {employee.employee_code}
+													</p>
+													<table className="w-full text-xs">
+														<thead>
+															<tr className="text-left text-gray-500">
+																<th className="py-1 pr-3 font-medium">
+																	Destination
+																</th>
+																<th className="py-1 pr-3 text-right font-medium">
+																	Hours
+																</th>
+																<th className="py-1 pr-3 text-right font-medium">
+																	Amount
+																</th>
+																<th className="py-1 pr-3 text-right font-medium">
+																	Rounding
+																</th>
+																<th className="py-1 font-medium">Basis</th>
+															</tr>
+														</thead>
+														<tbody>
+															{employee.shares.map((share, index) => (
+																<tr
+																	key={`${share.project_id ?? share.basis}-${index}`}
+																	data-testid="payroll-share-row"
+																	data-project-code={share.project_code ?? ''}
+																	data-hours={String(share.hours)}
+																	data-amount={String(share.amount)}
+																	data-adjustment={String(
+																		share.rounding_adjustment
+																	)}
+																	data-basis={share.basis}
+																>
+																	<td className="py-1 pr-3 text-gray-800">
+																		{share.project_id === null
+																			? share.basis === 'no_project'
+																				? 'No project'
+																				: 'No logged hours'
+																			: `${share.project_code} — ${share.project_name ?? ''}`}
+																	</td>
+																	<td className="py-1 pr-3 text-right tabular-nums">
+																		{formatNumber(share.hours)}
+																	</td>
+																	<td className="py-1 pr-3 text-right tabular-nums font-medium">
+																		{formatCurrencyIn(
+																			share.amount,
+																			data.payroll.currency
+																		)}
+																	</td>
+																	<td className="py-1 pr-3 text-right tabular-nums text-gray-500">
+																		{share.rounding_adjustment === 0
+																			? '—'
+																			: formatCurrencyIn(
+																					share.rounding_adjustment,
+																					data.payroll.currency
+																				)}
+																	</td>
+																	<td className="py-1 text-gray-500">
+																		{share.basis === 'project'
+																			? 'Logged Hours'
+																			: share.basis === 'no_project'
+																				? 'Unallocated · No project'
+																				: 'Unallocated · No logged hours'}
+																	</td>
+																</tr>
+															))}
+														</tbody>
+													</table>
+												</td>
+											</tr>
+										)}
+									</Fragment>
+								);
+							})}
+						</tbody>
+					</table>
+				</div>
+			</div>
+
 			{/* Recognition queue */}
 			<div
 				data-testid="recognition-queue"
@@ -2081,75 +2636,82 @@ export default function ExpenditureView({
 										</span>
 									</td>
 									<td className="px-3 py-2">
-										{record.source === 'direct_expense' ? (
-											<div className="flex flex-wrap items-center gap-1.5">
-												{canEditCost && (
-													<button
-														type="button"
-														data-testid="queue-edit"
-														onClick={() => {
-															commandMutation.reset();
-															setEditTarget(record);
-														}}
-														className="rounded border border-[#64126D]/40 bg-[#64126D]/5 px-2 py-1 text-xs font-medium text-[#64126D] hover:bg-[#64126D]/10"
-													>
-														Edit
-													</button>
-												)}
-												{canRecognize ? (
-													<>
+										<div className="flex flex-wrap items-center gap-1.5">
+											{record.source !== 'direct_expense' ? (
+												// IDs come from different stores: another source's
+												// row is never commanded through this register's
+												// command path. Its recognition workflow lives in
+												// its own register.
+												<a
+													href={SOURCE_REGISTER_LINKS[record.source]}
+													data-testid="queue-source-link"
+													className="text-xs font-medium text-[#64126D] underline"
+												>
+													{SOURCE_REGISTER_LABELS[record.source] ??
+														`Source: ${record.source}`}
+												</a>
+											) : (
+												<>
+													{canEditCost && (
 														<button
 															type="button"
-															onClick={() =>
-																setCommandTarget({
-																	record,
-																	command: 'recognize',
-																})
-															}
-															className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+															data-testid="queue-edit"
+															onClick={() => {
+																commandMutation.reset();
+																setEditTarget(record);
+															}}
+															className="rounded border border-[#64126D]/40 bg-[#64126D]/5 px-2 py-1 text-xs font-medium text-[#64126D] hover:bg-[#64126D]/10"
 														>
-															Recognize
+															Edit
 														</button>
-														<button
-															type="button"
-															onClick={() =>
-																setCommandTarget({ record, command: 'reject' })
-															}
-															className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
-														>
-															Reject
-														</button>
-														<button
-															type="button"
-															onClick={() =>
-																setCommandTarget({ record, command: 'cancel' })
-															}
-															className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-														>
-															Cancel cost
-														</button>
-													</>
-												) : (
-													<span className="text-xs text-gray-400">
-														Recognition needs approval access
-													</span>
-												)}
-											</div>
-										) : (
-											// IDs come from different stores: another source's
-											// row is never commanded through this register's
-											// command path. Its recognition workflow lives in
-											// its own register (supplier invoices: the admin
-											// Purchase Invoice screen).
-											<span
-												data-testid="queue-source-note"
-												className="text-xs text-gray-500"
-											>
-												{record.source === 'supplier_invoice'
-													? 'Recognized in the Purchase Invoice register'
-													: `Source: ${record.source}`}
-											</span>
-										)}
+													)}
+													{canRecognize ? (
+														<>
+															<button
+																type="button"
+																onClick={() =>
+																	setCommandTarget({
+																		record,
+																		command: 'recognize',
+																	})
+																}
+																className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+															>
+																Recognize
+															</button>
+															<button
+																type="button"
+																onClick={() =>
+																	setCommandTarget({
+																		record,
+																		command: 'reject',
+																	})
+																}
+																className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
+															>
+																Reject
+															</button>
+															<button
+																type="button"
+																onClick={() =>
+																	setCommandTarget({
+																		record,
+																		command: 'cancel',
+																	})
+																}
+																className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+															>
+																Cancel cost
+															</button>
+														</>
+													) : (
+														<span className="text-xs text-gray-400">
+															Recognition needs approval access
+														</span>
+													)}
+												</>
+											)}
+										</div>
 									</td>
 								</tr>
 							))}

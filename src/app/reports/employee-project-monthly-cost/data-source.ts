@@ -18,14 +18,11 @@
  * Calculation (mirrors the Manhours Billing report's conventions):
  * - Hours: `user_activity_assignments.daily_entries` timesheet logs (the same
  *   source behind ProjectActivityAssignments.jsx), bucketed into calendar months.
- * - Hourly cost: `employee_salary_profile` via payroll's formula — hourly_rate
- *   (hourly/custom) or daily_rate when set, else gross_salary ÷
- *   (std_working_days × std_hours_per_day). `pickActiveProfile` honours each
- *   month's effective_from/to range so mid-year raises are reflected.
- * - Monthly cost = hourly rate for that month × hours logged that month.
- *
- * Rate helpers are imported from the manhours-billing data-source so both
- * reports can never diverge on salary→rate math.
+ * - Employee cost comes from the shared financial interpretation
+ *   (`@/lib/company-expenditure`, #307/ADR-0016): recorded employer-cost
+ *   allocations frozen at Payroll Finalize where they exist, the corrected
+ *   payroll calculation's estimate otherwise. The obsolete Gross-first
+ *   billing-derived rate × hours path is no longer used by these views.
  */
 
 import type Decimal from 'decimal.js';
@@ -43,6 +40,12 @@ import {
 	type SalaryProfile,
 } from '@/app/reports/manhours-billing/data-source';
 import { parseDailyEntries, parseDailyEntryRecords } from '@/lib/logged-hours';
+import {
+	loadPayrollMonth,
+	type CoverageNotice,
+	type PayrollEmployeeCost,
+	type PayrollExpenditure,
+} from '@/lib/company-expenditure';
 
 export { FY_MONTHS, FY_MONTH_KEYS, getFinancialYear, formatFyLabel };
 
@@ -165,6 +168,10 @@ export interface CompanyCostTotals {
 	monthly_cost: Record<string, number>;
 	total_hours: number;
 	total_cost: number;
+	/** Recorded employer-cost allocation portion, where the month had one. */
+	recorded_cost?: number;
+	/** Payroll-based estimate portion. */
+	estimated_cost?: number;
 	blended_rate: number;
 }
 
@@ -200,6 +207,12 @@ export interface MonthlyCompanyCostRow {
 	hourly_rate: number;
 	hours: number;
 	cost: number;
+	/** How this row's cost is known (#307): recorded, estimated, or unknown. */
+	cost_status: EmployeeCostStatus;
+	/** Recorded employer-cost allocation portion. */
+	recorded_cost: number;
+	/** Payroll-based estimate portion. */
+	estimated_cost: number;
 }
 
 export interface MonthlyCompanyCostData {
@@ -218,6 +231,8 @@ export interface MonthlyCompanyCostData {
 		hourly_rate: number;
 		hours: number;
 		cost: number;
+		recorded_cost: number;
+		estimated_cost: number;
 		project_count: number;
 	}>;
 	project_rows: Array<{
@@ -228,15 +243,22 @@ export interface MonthlyCompanyCostData {
 		client_name: string;
 		hours: number;
 		cost: number;
+		recorded_cost: number;
+		estimated_cost: number;
 		employee_count: number;
 	}>;
 	totals: {
 		total_hours: number;
 		total_cost: number;
+		recorded_cost: number;
+		estimated_cost: number;
 		blended_rate: number;
 		employee_count: number;
 		project_count: number;
 	};
+	/** The month's employee-cost position and its coverage disclosures. */
+	payroll: PayrollExpenditure;
+	coverage: CoverageNotice[];
 }
 
 // ─── Small accessors (mysql2 rows are plain objects) ────────────────
@@ -937,7 +959,12 @@ export async function fetchEmployeeCostMeta(): Promise<CostMeta> {
 
 /**
  * Full consolidated payload for one employee + financial year: every project
- * they logged manhours on, with monthly hours and monthly payroll cost.
+ * they logged manhours on, with monthly hours and monthly employee cost.
+ *
+ * Cost comes from the shared financial interpretation (#307, ADR-0016):
+ * recorded employer-cost allocations where the month was finalized, the
+ * corrected payroll calculation's estimate otherwise. The obsolete
+ * Gross-first billing-derived rate × hours path is no longer used here.
  */
 export async function fetchEmployeeProjectCost(
 	employeeId: number,
@@ -962,70 +989,26 @@ export async function fetchEmployeeProjectCost(
 		designation: s(emp, 'position', '') || s(emp, 'designation', '') || null,
 	};
 
-	// Salary profiles for rate resolution (payroll's effective-dated history).
-	const salaryProfiles: SalaryProfile[] = [];
-	try {
-		const [profileRows] = (await query(
-			`SELECT employee_id, gross, gross_salary, employer_cost,
-			        hourly_rate, daily_rate, std_hours_per_day, std_working_days,
-			        salary_type, tds_percentage,
-			        DATE_FORMAT(effective_from, '%Y-%m-%d') AS effective_from,
-			        DATE_FORMAT(effective_to, '%Y-%m-%d') AS effective_to
-			 FROM employee_salary_profile
-			 WHERE is_active = 1 AND employee_id = ?`,
-			[employeeId]
-		)) as [DbRow[], unknown];
-		for (const p of profileRows) {
-			const pid = n(p, 'employee_id');
-			if (!pid) continue;
-			salaryProfiles.push({
-				employee_id: pid,
-				gross: n(p, 'gross'),
-				gross_salary: n(p, 'gross_salary'),
-				employer_cost: n(p, 'employer_cost'),
-				hourly_rate: n(p, 'hourly_rate'),
-				daily_rate: n(p, 'daily_rate'),
-				std_hours_per_day: n(p, 'std_hours_per_day', 8),
-				std_working_days: n(p, 'std_working_days', 26),
-				salary_type: s(p, 'salary_type', 'monthly'),
-				tds_percentage: n(p, 'tds_percentage', 0),
-				effective_from: s(p, 'effective_from', '') || null,
-				effective_to: s(p, 'effective_to', '') || null,
-			});
-		}
-	} catch {
-		/* table may not exist */
-	}
-
-	// Activity assignments across ALL projects (ProjectActivityAssignments
-	// source). Keyed by user_id, so widen the match through the login account:
-	// explicit employee_id column, users.employee_id link, or email/username
-	// (login emails routinely differ from the employee record's).
-	let assignmentRows: DbRow[] = [];
-	try {
-		[assignmentRows] = (await query(
-			`SELECT uaa.project_id, uaa.daily_entries,
-			        p.project_code, p.client_name,
-			        COALESCE(NULLIF(p.project_title, ''), NULLIF(p.name, ''), '') AS project_name
-			 FROM user_activity_assignments uaa
-			 LEFT JOIN projects p ON p.project_id = uaa.project_id
-			 WHERE uaa.status <> 'Cancelled'
-			   AND (
-			     uaa.employee_id = ?
-			     OR uaa.user_id IN (
-			       SELECT u.id FROM users u
-			       WHERE (u.email <> '' AND u.email = ?)
-			          OR (u.username <> '' AND u.username = ?)
-			          OR (u.employee_id IS NOT NULL AND u.employee_id = ?)
-			     )
-			   )`,
-			[employeeId, s(emp, 'email'), s(emp, 'username'), employeeId]
-		)) as [DbRow[], unknown];
-	} catch {
-		/* table may not exist */
-	}
-
-	const rows = buildProjectCostRows(assignmentRows, salaryProfiles, fyYear);
+	const months = fyCalendarMonths(fyYear);
+	const payrollByMonth = await loadPayrollMonths(months);
+	const rows = buildFYAllocationRows(
+		fyYear,
+		months,
+		payrollByMonth,
+		new Map([[employeeId, employee]]),
+		employeeId
+	).map((row) => ({
+		sr_no: row.sr_no,
+		project_id: row.project_id,
+		project_code: row.project_code,
+		project_name: row.project_name,
+		client_name: row.client_name,
+		hourly_rate: row.blended_rate,
+		monthly_hours: row.monthly_hours,
+		monthly_cost: row.monthly_cost,
+		total_hours: row.total_hours,
+		total_cost: row.total_cost,
+	}));
 
 	return {
 		employee,
@@ -1035,6 +1018,418 @@ export async function fetchEmployeeProjectCost(
 		month_keys: Array.from(FY_MONTH_KEYS),
 		rows,
 		totals: buildProjectCostTotals(rows),
+	};
+}
+
+// ─── Company-wide employee cost from the shared interpretation ──────
+
+/** The pooled connection the financial module reads through. */
+const payrollPool = {
+	execute: (sql: string, params?: Array<string | number | boolean | null>) =>
+		query(sql, params),
+};
+
+/** Load the shared employee-cost interpretation for several months. */
+async function loadPayrollMonths(
+	months: string[]
+): Promise<Map<string, PayrollEmployeeCost[]>> {
+	const entries = await Promise.all(
+		months.map(async (month) => {
+			const interpretation = await loadPayrollMonth(payrollPool, month);
+			return [month, interpretation.employees] as const;
+		})
+	);
+	return new Map(entries);
+}
+
+/** The twelve calendar months of a financial year, April first. */
+function fyCalendarMonths(fyYear: number): string[] {
+	const calendar = fyKeyToCalendarMonthMap(fyYear);
+	return FY_MONTH_KEYS.map((key) => calendar[key]);
+}
+
+/** How a row's cost is known. */
+export type EmployeeCostStatus =
+	| 'recorded'
+	| 'estimated'
+	| 'known_zero'
+	| 'unknown';
+
+export interface EmployeeCostDestination {
+	project_id: number | null;
+	project_code: string;
+	project_name: string;
+	client_name: string;
+}
+
+/** Hours without a Project: their share is Unallocated Employee Cost. */
+const NO_PROJECT_DESTINATION: EmployeeCostDestination = {
+	project_id: null,
+	project_code: 'NO-PROJECT',
+	project_name: 'No project',
+	client_name: '',
+};
+
+/** Recorded cost with no Logged Hours: wholly unallocated. */
+const NO_LOGGED_HOURS_DESTINATION: EmployeeCostDestination = {
+	project_id: null,
+	project_code: 'NO-LOGGED-HOURS',
+	project_name: 'No logged hours',
+	client_name: '',
+};
+
+function destinationOf(share: {
+	project_id: number | null;
+	project_code: string | null;
+	project_name: string | null;
+	client_name: string | null;
+	basis: string;
+}): EmployeeCostDestination {
+	if (share.project_id !== null) {
+		return {
+			project_id: share.project_id,
+			project_code: share.project_code ?? `#${share.project_id}`,
+			project_name:
+				share.project_name ??
+				share.project_code ??
+				`Project #${share.project_id}`,
+			client_name: share.client_name ?? '',
+		};
+	}
+	return share.basis === 'no_project'
+		? NO_PROJECT_DESTINATION
+		: NO_LOGGED_HOURS_DESTINATION;
+}
+
+/**
+ * One row per Employee and cost destination for one month, with the recorded
+ * and estimated amounts stated separately.
+ */
+export function buildMonthlyAllocationRows(
+	employees: PayrollEmployeeCost[],
+	employeeIndex: Map<number, EmployeeLookup>
+): MonthlyCompanyCostRow[] {
+	const rows: MonthlyCompanyCostRow[] = [];
+	for (const employee of employees) {
+		const lookup = employeeIndex.get(employee.employee_id);
+		const recorded = employee.recorded_amount !== null;
+		const status: EmployeeCostStatus = recorded
+			? employee.recorded_amount === 0
+				? 'known_zero'
+				: 'recorded'
+			: employee.estimated_amount !== null
+				? 'estimated'
+				: 'unknown';
+		for (const share of employee.shares) {
+			const destination = destinationOf(share);
+			rows.push({
+				sr_no: 0,
+				employee_id: employee.employee_id,
+				employee_code: employee.employee_code,
+				employee_name: employee.employee_name,
+				department: lookup?.department ?? null,
+				designation: lookup?.designation ?? null,
+				project_id: destination.project_id,
+				project_code: destination.project_code,
+				project_name: destination.project_name,
+				client_name: destination.client_name,
+				hourly_rate: share.hours > 0 ? round2(share.amount / share.hours) : 0,
+				hours: share.hours,
+				cost: share.amount,
+				recorded_cost: recorded ? share.amount : 0,
+				estimated_cost: recorded ? 0 : share.amount,
+				cost_status: status,
+			});
+		}
+	}
+	rows.sort(
+		(a, b) =>
+			a.employee_name.localeCompare(b.employee_name) ||
+			a.project_code.localeCompare(b.project_code)
+	);
+	rows.forEach((row, index) => {
+		row.sr_no = index + 1;
+	});
+	return rows;
+}
+
+export function buildMonthlyAllocationEmployeeRows(
+	rows: MonthlyCompanyCostRow[]
+): MonthlyCompanyCostData['employee_rows'] {
+	const grouped = new Map<
+		number,
+		MonthlyCompanyCostData['employee_rows'][number] & { _projects: Set<string> }
+	>();
+	for (const row of rows) {
+		let aggregate = grouped.get(row.employee_id);
+		if (!aggregate) {
+			aggregate = {
+				sr_no: 0,
+				employee_id: row.employee_id,
+				employee_code: row.employee_code,
+				employee_name: row.employee_name,
+				department: row.department,
+				designation: row.designation,
+				hourly_rate: 0,
+				hours: 0,
+				cost: 0,
+				recorded_cost: 0,
+				estimated_cost: 0,
+				project_count: 0,
+				_projects: new Set<string>(),
+			};
+			grouped.set(row.employee_id, aggregate);
+		}
+		aggregate.hours = round2(aggregate.hours + row.hours);
+		aggregate.cost = round2(aggregate.cost + row.cost);
+		aggregate.recorded_cost = round2(
+			aggregate.recorded_cost + row.recorded_cost
+		);
+		aggregate.estimated_cost = round2(
+			aggregate.estimated_cost + row.estimated_cost
+		);
+		if (row.project_id !== null)
+			aggregate._projects.add(String(row.project_id));
+	}
+	const result = [...grouped.values()].map((aggregate) => {
+		const { _projects, ...rest } = aggregate;
+		return {
+			...rest,
+			project_count: _projects.size,
+			hourly_rate: rest.hours > 0 ? round2(rest.cost / rest.hours) : 0,
+		};
+	});
+	result.sort((a, b) => a.employee_name.localeCompare(b.employee_name));
+	result.forEach((row, index) => {
+		row.sr_no = index + 1;
+	});
+	return result;
+}
+
+export function buildMonthlyAllocationProjectRows(
+	rows: MonthlyCompanyCostRow[]
+): MonthlyCompanyCostData['project_rows'] {
+	const grouped = new Map<
+		string,
+		MonthlyCompanyCostData['project_rows'][number] & { _employees: Set<number> }
+	>();
+	for (const row of rows) {
+		const key =
+			row.project_id !== null ? String(row.project_id) : row.project_code;
+		let aggregate = grouped.get(key);
+		if (!aggregate) {
+			aggregate = {
+				sr_no: 0,
+				project_id: row.project_id,
+				project_code: row.project_code,
+				project_name: row.project_name,
+				client_name: row.client_name,
+				hours: 0,
+				cost: 0,
+				recorded_cost: 0,
+				estimated_cost: 0,
+				employee_count: 0,
+				_employees: new Set<number>(),
+			};
+			grouped.set(key, aggregate);
+		}
+		aggregate.hours = round2(aggregate.hours + row.hours);
+		aggregate.cost = round2(aggregate.cost + row.cost);
+		aggregate.recorded_cost = round2(
+			aggregate.recorded_cost + row.recorded_cost
+		);
+		aggregate.estimated_cost = round2(
+			aggregate.estimated_cost + row.estimated_cost
+		);
+		aggregate._employees.add(row.employee_id);
+	}
+	const result = [...grouped.values()].map((aggregate) => {
+		const { _employees, ...rest } = aggregate;
+		return { ...rest, employee_count: _employees.size };
+	});
+	result.sort(
+		(a, b) =>
+			a.project_code.localeCompare(b.project_code) ||
+			a.project_name.localeCompare(b.project_name)
+	);
+	result.forEach((row, index) => {
+		row.sr_no = index + 1;
+	});
+	return result;
+}
+
+export function buildMonthlyAllocationTotals(
+	rows: MonthlyCompanyCostRow[]
+): MonthlyCompanyCostData['totals'] {
+	let hours = R(0);
+	let cost = R(0);
+	let recorded = R(0);
+	let estimated = R(0);
+	const employees = new Set<number>();
+	const projects = new Set<string>();
+	for (const row of rows) {
+		hours = add(hours, row.hours);
+		cost = add(cost, row.cost);
+		recorded = add(recorded, row.recorded_cost);
+		estimated = add(estimated, row.estimated_cost);
+		employees.add(row.employee_id);
+		if (row.project_id !== null) projects.add(String(row.project_id));
+	}
+	const hoursNumber = round2(toNumber(hours));
+	const costNumber = round2(toNumber(cost));
+	return {
+		total_hours: hoursNumber,
+		total_cost: costNumber,
+		recorded_cost: round2(toNumber(recorded)),
+		estimated_cost: round2(toNumber(estimated)),
+		blended_rate:
+			hoursNumber > 0
+				? round2(toNumber(div(R(costNumber), hoursNumber).toDecimalPlaces(2)))
+				: 0,
+		employee_count: employees.size,
+		project_count: projects.size,
+	};
+}
+
+/** One Employee/Project row of a financial year, monthly cost included. */
+export interface FYAllocationRow {
+	sr_no: number;
+	employee_id: number;
+	employee_code: string;
+	employee_name: string;
+	department: string | null;
+	designation: string | null;
+	project_id: number | null;
+	project_code: string;
+	project_name: string;
+	client_name: string;
+	monthly_hours: Record<string, number>;
+	monthly_cost: Record<string, number>;
+	total_hours: number;
+	total_cost: number;
+	recorded_cost: number;
+	estimated_cost: number;
+	blended_rate: number;
+}
+
+/**
+ * Build one row per Employee and destination across a financial year's months.
+ * `employeeId` narrows to one Employee (the legacy per-employee view).
+ */
+export function buildFYAllocationRows(
+	fyYear: number,
+	months: string[],
+	payrollByMonth: Map<string, PayrollEmployeeCost[]>,
+	employeeIndex: Map<number, EmployeeLookup>,
+	employeeId: number | null = null
+): FYAllocationRow[] {
+	const calendar = fyKeyToCalendarMonthMap(fyYear);
+	const monthKeys = new Map<string, string>();
+	for (const [key, month] of Object.entries(calendar)) {
+		monthKeys.set(month, key);
+	}
+	const grouped = new Map<string, FYAllocationRow>();
+	for (const month of months) {
+		const key = monthKeys.get(month) ?? month;
+		for (const employee of payrollByMonth.get(month) ?? []) {
+			if (employeeId !== null && employee.employee_id !== employeeId) continue;
+			const lookup = employeeIndex.get(employee.employee_id);
+			for (const share of employee.shares) {
+				const destination = destinationOf(share);
+				const groupKey = `${employee.employee_id}::${destination.project_code}`;
+				let row = grouped.get(groupKey);
+				if (!row) {
+					row = {
+						sr_no: 0,
+						employee_id: employee.employee_id,
+						employee_code: employee.employee_code,
+						employee_name: employee.employee_name,
+						department: lookup?.department ?? null,
+						designation: lookup?.designation ?? null,
+						project_id: destination.project_id,
+						project_code: destination.project_code,
+						project_name: destination.project_name,
+						client_name: destination.client_name,
+						monthly_hours: {},
+						monthly_cost: {},
+						total_hours: 0,
+						total_cost: 0,
+						recorded_cost: 0,
+						estimated_cost: 0,
+						blended_rate: 0,
+					};
+					grouped.set(groupKey, row);
+				}
+				row.monthly_hours[key] = round2(
+					(row.monthly_hours[key] ?? 0) + share.hours
+				);
+				row.monthly_cost[key] = round2(
+					(row.monthly_cost[key] ?? 0) + share.amount
+				);
+				row.total_hours = round2(row.total_hours + share.hours);
+				row.total_cost = round2(row.total_cost + share.amount);
+				if (employee.recorded_amount !== null) {
+					row.recorded_cost = round2(row.recorded_cost + share.amount);
+				} else {
+					row.estimated_cost = round2(row.estimated_cost + share.amount);
+				}
+			}
+		}
+	}
+	const rows = [...grouped.values()].filter(
+		(row) => row.total_hours > 0 || row.total_cost > 0
+	);
+	rows.sort(
+		(a, b) =>
+			a.employee_name.localeCompare(b.employee_name) ||
+			a.project_code.localeCompare(b.project_code)
+	);
+	rows.forEach((row, index) => {
+		row.sr_no = index + 1;
+		row.blended_rate =
+			row.total_hours > 0 ? round2(row.total_cost / row.total_hours) : 0;
+	});
+	return rows;
+}
+
+function allocationTotalsFromFYRows(
+	rows: FYAllocationRow[]
+): CompanyCostTotals {
+	const monthlyHours: Record<string, Decimal> = {};
+	const monthlyCost: Record<string, Decimal> = {};
+	for (const key of FY_MONTH_KEYS) {
+		monthlyHours[key] = R(0);
+		monthlyCost[key] = R(0);
+	}
+	let totalHours = R(0);
+	let totalCost = R(0);
+	for (const row of rows) {
+		for (const key of FY_MONTH_KEYS) {
+			monthlyHours[key] = add(monthlyHours[key], row.monthly_hours[key] ?? 0);
+			monthlyCost[key] = add(monthlyCost[key], row.monthly_cost[key] ?? 0);
+		}
+		totalHours = add(totalHours, row.total_hours);
+		totalCost = add(totalCost, row.total_cost);
+	}
+	const hours = round2(toNumber(totalHours));
+	const cost = round2(toNumber(totalCost));
+	return {
+		monthly_hours: Object.fromEntries(
+			FY_MONTH_KEYS.map((key) => [key, round2(toNumber(monthlyHours[key]))])
+		),
+		monthly_cost: Object.fromEntries(
+			FY_MONTH_KEYS.map((key) => [key, round2(toNumber(monthlyCost[key]))])
+		),
+		total_hours: hours,
+		total_cost: cost,
+		recorded_cost: round2(
+			rows.reduce((sum, row) => add(sum, row.recorded_cost), R(0)).toNumber()
+		),
+		estimated_cost: round2(
+			rows.reduce((sum, row) => add(sum, row.estimated_cost), R(0)).toNumber()
+		),
+		blended_rate:
+			hours > 0 ? round2(toNumber(div(R(cost), hours).toDecimalPlaces(2))) : 0,
 	};
 }
 
@@ -1065,101 +1460,6 @@ async function loadEmployeeIndex(): Promise<Map<number, EmployeeLookup>> {
 		/* employees table may not exist */
 	}
 	return map;
-}
-
-async function loadUserMaps(): Promise<{
-	userToEmployee: Map<number, number>;
-	userEmailToEmployee: Map<string, number>;
-}> {
-	const userToEmployee = new Map<number, number>();
-	const userEmailToEmployee = new Map<string, number>();
-	try {
-		const [empRows] = (await query(
-			`SELECT id, employee_id, email, username FROM employees WHERE isDelete = 0`
-		)) as [DbRow[], unknown];
-		for (const r of empRows) {
-			const id = n(r, 'id');
-			if (!id) continue;
-			const email = s(r, 'email').toLowerCase();
-			const username = s(r, 'username').toLowerCase();
-			if (email) userEmailToEmployee.set(email, id);
-			if (username) userEmailToEmployee.set(username, id);
-		}
-	} catch {}
-	try {
-		const [userRows] = (await query(
-			`SELECT id, employee_id, email, username FROM users`
-		)) as [DbRow[], unknown];
-		for (const u of userRows) {
-			const userId = n(u, 'id');
-			const empId = n(u, 'employee_id', 0);
-			if (userId && empId) userToEmployee.set(userId, empId);
-			const email = s(u, 'email').toLowerCase();
-			const username = s(u, 'username').toLowerCase();
-			if (email && empId) userEmailToEmployee.set(email, empId);
-			if (username && empId) userEmailToEmployee.set(username, empId);
-			// Also allow lookup of user email -> employee even if not directly linked? already handled
-		}
-	} catch {}
-	return { userToEmployee, userEmailToEmployee };
-}
-
-async function loadSalaryProfilesGrouped(): Promise<
-	Map<number, SalaryProfile[]>
-> {
-	const grouped = new Map<number, SalaryProfile[]>();
-	try {
-		const [rows] = (await query(
-			`SELECT employee_id, gross, gross_salary, employer_cost,
-			        hourly_rate, daily_rate, std_hours_per_day, std_working_days,
-			        salary_type, tds_percentage,
-			        DATE_FORMAT(effective_from, '%Y-%m-%d') AS effective_from,
-			        DATE_FORMAT(effective_to, '%Y-%m-%d') AS effective_to
-			 FROM employee_salary_profile
-			 WHERE is_active = 1`
-		)) as [DbRow[], unknown];
-		for (const p of rows) {
-			const employeeId = n(p, 'employee_id');
-			if (!employeeId) continue;
-			const profile: SalaryProfile = {
-				employee_id: employeeId,
-				gross: n(p, 'gross'),
-				gross_salary: n(p, 'gross_salary'),
-				employer_cost: n(p, 'employer_cost'),
-				hourly_rate: n(p, 'hourly_rate'),
-				daily_rate: n(p, 'daily_rate'),
-				std_hours_per_day: n(p, 'std_hours_per_day', 8),
-				std_working_days: n(p, 'std_working_days', 26),
-				salary_type: s(p, 'salary_type', 'monthly'),
-				tds_percentage: n(p, 'tds_percentage', 0),
-				effective_from: s(p, 'effective_from', '') || null,
-				effective_to: s(p, 'effective_to', '') || null,
-			};
-			const arr = grouped.get(employeeId) || [];
-			arr.push(profile);
-			grouped.set(employeeId, arr);
-		}
-	} catch {}
-	return grouped;
-}
-
-async function loadAllAssignmentRows(): Promise<DbRow[]> {
-	try {
-		const [rows] = (await query(
-			`SELECT uaa.project_id, uaa.employee_id, uaa.user_id, uaa.daily_entries,
-			        p.project_code, p.client_name,
-			        COALESCE(NULLIF(p.project_title, ''), NULLIF(p.name, ''), '') AS project_name,
-			        u.email AS user_email, u.username AS user_username
-			 FROM user_activity_assignments uaa
-			 LEFT JOIN projects p ON p.project_id = uaa.project_id
-			 LEFT JOIN users u ON u.id = uaa.user_id
-			 WHERE uaa.status <> 'Cancelled'
-			   AND uaa.daily_entries IS NOT NULL AND uaa.daily_entries NOT IN ('', '[]')`
-		)) as [DbRow[], unknown];
-		return rows;
-	} catch {
-		return [];
-	}
 }
 
 /** Company-wide meta: months + FY options */
@@ -1214,36 +1514,29 @@ export async function fetchCompanyCostMeta(): Promise<CompanyCostMeta> {
 export async function fetchFYCompanyCost(
 	fyYear: number = getFinancialYear()
 ): Promise<FYCompanyCostData> {
-	const [employeeIndex, userMaps, salaryGrouped, assignmentRows] =
-		await Promise.all([
-			loadEmployeeIndex(),
-			loadUserMaps(),
-			loadSalaryProfilesGrouped(),
-			loadAllAssignmentRows(),
-		]);
+	const months = fyCalendarMonths(fyYear);
+	const [employeeIndex, payrollByMonth] = await Promise.all([
+		loadEmployeeIndex(),
+		loadPayrollMonths(months),
+	]);
 
-	const rows = buildCompanyCostRows(
-		assignmentRows,
-		employeeIndex,
-		userMaps.userToEmployee,
-		userMaps.userEmailToEmployee,
-		salaryGrouped,
-		fyYear
+	const rows = buildFYAllocationRows(
+		fyYear,
+		months,
+		payrollByMonth,
+		employeeIndex
 	);
-
-	const employee_rows = buildCompanyEmployeeFYRows(rows);
-	const project_rows = buildCompanyProjectFYRows(rows);
-	const totals = buildCompanyCostTotals(rows);
+	const employee_rows = buildFYAllocationEmployeeRows(rows);
+	const project_rows = buildFYAllocationProjectRows(rows);
+	const totals = allocationTotalsFromFYRows(rows);
 
 	const projectSet = new Set<string>();
 	const employeeSet = new Set<number>();
 	for (const r of rows) {
 		employeeSet.add(r.employee_id);
-		const pk =
-			r.project_id != null
-				? String(r.project_id)
-				: r.project_code || r.project_name;
-		projectSet.add(pk);
+		projectSet.add(
+			r.project_id != null ? String(r.project_id) : r.project_code
+		);
 	}
 
 	return {
@@ -1265,6 +1558,133 @@ export async function fetchFYCompanyCost(
 	};
 }
 
+/** Aggregate FY allocation rows per Employee. */
+export function buildFYAllocationEmployeeRows(
+	rows: FYAllocationRow[]
+): CompanyEmployeeFYRow[] {
+	const grouped = new Map<
+		number,
+		CompanyEmployeeFYRow & { _projects: Set<string> }
+	>();
+	for (const row of rows) {
+		let aggregate = grouped.get(row.employee_id);
+		if (!aggregate) {
+			const monthly_hours: Record<string, number> = {};
+			const monthly_cost: Record<string, number> = {};
+			for (const key of FY_MONTH_KEYS) {
+				monthly_hours[key] = 0;
+				monthly_cost[key] = 0;
+			}
+			aggregate = {
+				sr_no: 0,
+				employee_id: row.employee_id,
+				employee_code: row.employee_code,
+				employee_name: row.employee_name,
+				department: row.department,
+				designation: row.designation,
+				hourly_rate: 0,
+				monthly_hours,
+				monthly_cost,
+				total_hours: 0,
+				total_cost: 0,
+				project_count: 0,
+				_projects: new Set<string>(),
+			};
+			grouped.set(row.employee_id, aggregate);
+		}
+		for (const key of FY_MONTH_KEYS) {
+			aggregate.monthly_hours[key] = round2(
+				(aggregate.monthly_hours[key] ?? 0) + (row.monthly_hours[key] ?? 0)
+			);
+			aggregate.monthly_cost[key] = round2(
+				(aggregate.monthly_cost[key] ?? 0) + (row.monthly_cost[key] ?? 0)
+			);
+		}
+		aggregate.total_hours = round2(aggregate.total_hours + row.total_hours);
+		aggregate.total_cost = round2(aggregate.total_cost + row.total_cost);
+		aggregate._projects.add(
+			row.project_id != null ? String(row.project_id) : row.project_code
+		);
+	}
+	const result = [...grouped.values()].map((aggregate) => {
+		const { _projects, ...rest } = aggregate;
+		return {
+			...rest,
+			project_count: _projects.size,
+			hourly_rate:
+				rest.total_hours > 0 ? round2(rest.total_cost / rest.total_hours) : 0,
+		};
+	});
+	result.sort((a, b) => a.employee_name.localeCompare(b.employee_name));
+	result.forEach((row, index) => {
+		row.sr_no = index + 1;
+	});
+	return result;
+}
+
+/** Aggregate FY allocation rows per Project (and the unallocated buckets). */
+export function buildFYAllocationProjectRows(
+	rows: FYAllocationRow[]
+): CompanyProjectFYRow[] {
+	const grouped = new Map<
+		string,
+		CompanyProjectFYRow & { _employees: Set<number> }
+	>();
+	for (const row of rows) {
+		const key =
+			row.project_id != null ? String(row.project_id) : row.project_code;
+		let aggregate = grouped.get(key);
+		if (!aggregate) {
+			const monthly_hours: Record<string, number> = {};
+			const monthly_cost: Record<string, number> = {};
+			for (const monthKey of FY_MONTH_KEYS) {
+				monthly_hours[monthKey] = 0;
+				monthly_cost[monthKey] = 0;
+			}
+			aggregate = {
+				sr_no: 0,
+				project_id: row.project_id,
+				project_code: row.project_code,
+				project_name: row.project_name,
+				client_name: row.client_name,
+				monthly_hours,
+				monthly_cost,
+				total_hours: 0,
+				total_cost: 0,
+				employee_count: 0,
+				_employees: new Set<number>(),
+			};
+			grouped.set(key, aggregate);
+		}
+		for (const monthKey of FY_MONTH_KEYS) {
+			aggregate.monthly_hours[monthKey] = round2(
+				(aggregate.monthly_hours[monthKey] ?? 0) +
+					(row.monthly_hours[monthKey] ?? 0)
+			);
+			aggregate.monthly_cost[monthKey] = round2(
+				(aggregate.monthly_cost[monthKey] ?? 0) +
+					(row.monthly_cost[monthKey] ?? 0)
+			);
+		}
+		aggregate.total_hours = round2(aggregate.total_hours + row.total_hours);
+		aggregate.total_cost = round2(aggregate.total_cost + row.total_cost);
+		aggregate._employees.add(row.employee_id);
+	}
+	const result = [...grouped.values()].map((aggregate) => {
+		const { _employees, ...rest } = aggregate;
+		return { ...rest, employee_count: _employees.size };
+	});
+	result.sort(
+		(a, b) =>
+			a.project_code.localeCompare(b.project_code) ||
+			a.project_name.localeCompare(b.project_name)
+	);
+	result.forEach((row, index) => {
+		row.sr_no = index + 1;
+	});
+	return result;
+}
+
 /** Fetch company-wide monthly data for a single YYYY-MM */
 export async function fetchMonthlyCompanyCost(
 	month: string
@@ -1274,153 +1694,18 @@ export async function fetchMonthlyCompanyCost(
 	const m = Number(month.slice(5, 7));
 	if (!y || m < 1 || m > 12) return null;
 
-	const [employeeIndex, userMaps, salaryGrouped, assignmentRows] =
-		await Promise.all([
-			loadEmployeeIndex(),
-			loadUserMaps(),
-			loadSalaryProfilesGrouped(),
-			loadAllAssignmentRows(),
-		]);
+	const [employeeIndex, interpretation] = await Promise.all([
+		loadEmployeeIndex(),
+		loadPayrollMonth(payrollPool, month),
+	]);
 
-	const rows = buildMonthlyCompanyRows(
-		assignmentRows,
-		employeeIndex,
-		userMaps.userToEmployee,
-		userMaps.userEmailToEmployee,
-		salaryGrouped,
-		month
+	const rows = buildMonthlyAllocationRows(
+		interpretation.employees,
+		employeeIndex
 	);
-
-	// Build aggregated employee and project rows for the month
-	const empGrouped = new Map<
-		number,
-		(typeof rows)[number] & { project_count: number } & {
-			_projSet: Set<string>;
-		}
-	>();
-	const projGrouped = new Map<
-		string,
-		{
-			hours: number;
-			cost: number;
-			project_id: number | null;
-			project_code: string;
-			project_name: string;
-			client_name: string;
-			_empSet: Set<number>;
-		}
-	>();
-
-	let totalHours = R(0);
-	let totalCost = R(0);
-	const empSet = new Set<number>();
-	const projSet = new Set<string>();
-
-	for (const r of rows) {
-		totalHours = add(totalHours, r.hours);
-		totalCost = add(totalCost, r.cost);
-		empSet.add(r.employee_id);
-		const pk =
-			r.project_id != null
-				? String(r.project_id)
-				: r.project_code || r.project_name;
-		projSet.add(pk);
-
-		// employee aggregation
-		let eg = empGrouped.get(r.employee_id) as unknown as {
-			hours: number;
-			cost: number;
-			_projSet: Set<string>;
-			employee_id: number;
-			employee_code: string;
-			employee_name: string;
-			department: string | null;
-			designation: string | null;
-			hourly_rate: number;
-		} & Record<string, unknown>;
-		if (!eg) {
-			eg = {
-				employee_id: r.employee_id,
-				employee_code: r.employee_code,
-				employee_name: r.employee_name,
-				department: r.department,
-				designation: r.designation,
-				hourly_rate: r.hourly_rate,
-				hours: 0,
-				cost: 0,
-				_projSet: new Set<string>(),
-			} as unknown as typeof eg;
-			empGrouped.set(
-				r.employee_id,
-				eg as unknown as typeof empGrouped extends Map<number, infer V>
-					? V
-					: never
-			);
-		}
-		eg.hours = round2(eg.hours + r.hours);
-		eg.cost = round2(eg.cost + r.cost);
-		eg._projSet.add(pk);
-		// keep blended? For monthly we keep first rate, but could compute weighted avg
-		// hourly_rate stays as profile rate, not blended across projects (same employee same rate)
-
-		// project aggregation
-		let pg = projGrouped.get(pk);
-		if (!pg) {
-			pg = {
-				project_id: r.project_id,
-				project_code: r.project_code,
-				project_name: r.project_name,
-				client_name: r.client_name,
-				hours: 0,
-				cost: 0,
-				_empSet: new Set<number>(),
-			};
-			projGrouped.set(pk, pg);
-		}
-		pg.hours = round2(pg.hours + r.hours);
-		pg.cost = round2(pg.cost + r.cost);
-		pg._empSet.add(r.employee_id);
-	}
-
-	const totalHoursNum = round2(toNumber(totalHours));
-	const totalCostNum = round2(toNumber(totalCost));
-
-	const employee_rows = Array.from(empGrouped.values())
-		.map((g) => ({
-			sr_no: 0,
-			employee_id: (g as unknown as { employee_id: number }).employee_id,
-			employee_code: (g as unknown as { employee_code: string }).employee_code,
-			employee_name: (g as unknown as { employee_name: string }).employee_name,
-			department: (g as unknown as { department: string | null }).department,
-			designation: (g as unknown as { designation: string | null }).designation,
-			hourly_rate: (g as unknown as { hourly_rate: number }).hourly_rate,
-			hours: (g as unknown as { hours: number }).hours,
-			cost: (g as unknown as { cost: number }).cost,
-			project_count: (g as unknown as { _projSet: Set<string> })._projSet.size,
-		}))
-		.sort((a, b) => a.employee_name.localeCompare(b.employee_name))
-		.map((r, i) => ({ ...r, sr_no: i + 1 }));
-
-	const project_rows = Array.from(projGrouped.values())
-		.map((g) => ({
-			sr_no: 0,
-			project_id: g.project_id,
-			project_code: g.project_code,
-			project_name: g.project_name,
-			client_name: g.client_name,
-			hours: g.hours,
-			cost: g.cost,
-			employee_count: g._empSet.size,
-		}))
-		.sort(
-			(a, b) =>
-				a.project_code.localeCompare(b.project_code) ||
-				a.project_name.localeCompare(b.project_name)
-		)
-		.map((r, i) => ({ ...r, sr_no: i + 1 }));
-
-	rows.forEach((r, i) => (r.sr_no = i + 1)); // ensure sr_no already, but reaffirm
-
+	const employee_rows = buildMonthlyAllocationEmployeeRows(rows);
+	const project_rows = buildMonthlyAllocationProjectRows(rows);
+	const totals = buildMonthlyAllocationTotals(rows);
 	const fyYear = m >= 4 ? y : y - 1;
 
 	return {
@@ -1431,17 +1716,8 @@ export async function fetchMonthlyCompanyCost(
 		rows,
 		employee_rows,
 		project_rows,
-		totals: {
-			total_hours: totalHoursNum,
-			total_cost: totalCostNum,
-			blended_rate:
-				totalHoursNum > 0
-					? round2(
-							toNumber(div(R(totalCostNum), totalHoursNum).toDecimalPlaces(2))
-						)
-					: 0,
-			employee_count: empSet.size,
-			project_count: projSet.size,
-		},
+		totals,
+		payroll: interpretation.totals,
+		coverage: interpretation.coverage,
 	};
 }

@@ -47,6 +47,7 @@ import {
 	windowRecords,
 	withinWindow,
 	type ComparisonWindow,
+	type DaylessMonthCost,
 } from './ranking';
 import {
 	confirmedAmount,
@@ -67,6 +68,7 @@ import type {
 	CurrencyTotal,
 	EvidenceSummary,
 	FilteredProjectSubtotal,
+	PettyCashSummary,
 	NonOperatingItemJson,
 	NonOperatingSection,
 	PeriodCharge,
@@ -81,7 +83,8 @@ function currencySlice(
 	records: CostRecord[],
 	charges: PeriodCharge[],
 	currency: string,
-	reporting: string
+	reporting: string,
+	employeeCost?: { project: number; unallocated: number; count: number }
 ): CurrencyTotal {
 	let project = R(0);
 	let overhead = R(0);
@@ -121,6 +124,13 @@ function currencySlice(
 			unallocated = add(unallocated, charge.amount);
 		}
 	}
+	// Recorded employee cost (ADR-0016) is always in the payroll currency and
+	// joins the same reconciliation: Project shares into Incurred Project
+	// Cost, No project / No logged hours shares into Unallocated Cost.
+	if (employeeCost) {
+		project = add(project, employeeCost.project);
+		unallocated = add(unallocated, employeeCost.unallocated);
+	}
 	return {
 		currency,
 		incurred_project_cost: rounded(project),
@@ -147,11 +157,13 @@ function reportingSlice(
 	records: CostRecord[],
 	charges: PeriodCharge[],
 	currency: string,
-	reporting: string
+	reporting: string,
+	employeeCost?: { project: number; unallocated: number; count: number }
 ): CurrencyReporting {
 	const confirmed = records.filter(
 		(record) => confirmedAmount(record) !== null
 	);
+
 	const unsupported =
 		confirmed.filter(
 			(record) =>
@@ -160,7 +172,12 @@ function reportingSlice(
 		charges.filter(
 			(charge) =>
 				conversionStatusOf(evidenceOf(charge), reporting) === 'unsupported'
-		).length;
+		).length +
+		// Recorded employee cost is already in the payroll currency and carries
+		// no conversion evidence, so any other requested basis cannot state it.
+		(employeeCost !== undefined && reporting !== currency
+			? employeeCost.count
+			: 0);
 	if (unsupported > 0) {
 		return {
 			currency: reporting,
@@ -228,6 +245,12 @@ function reportingSlice(
 			unallocated = add(unallocated, amount);
 		}
 	}
+	// Employee cost is stated in the payroll currency: it is already the
+	// requested basis exactly when the two currencies agree.
+	if (employeeCost && reporting === currency) {
+		project = add(project, employeeCost.project);
+		unallocated = add(unallocated, employeeCost.unallocated);
+	}
 	return {
 		currency: reporting,
 		status: currency === reporting ? 'reporting' : 'converted',
@@ -268,28 +291,106 @@ export function projectIdsIn(
 	}
 	return [...ids];
 }
+/** Recorded employee cost per Project, from the frozen allocation shares. */
+interface PayrollAggregates {
+	recordedByProject: Map<number, number>;
+	estimatedByProject: Map<number, number>;
+	hoursByProject: Map<number, number>;
+	employeesByProject: Map<number, Set<number>>;
+	identityByProject: Map<
+		number,
+		{ project_code: string; project_name: string; client_name: string | null }
+	>;
+}
+
+function payrollAggregates(
+	payroll: ReconciliationPayrollInput
+): PayrollAggregates {
+	const recordedByProject = new Map<number, number>();
+	const estimatedByProject = new Map<number, number>();
+	const hoursByProject = new Map<number, number>();
+	const employeesByProject = new Map<number, Set<number>>();
+	const identityByProject = new Map<
+		number,
+		{ project_code: string; project_name: string; client_name: string | null }
+	>();
+	for (const employee of payroll.employees) {
+		for (const share of employee.shares) {
+			if (share.project_id === null) continue;
+			if (employee.recorded_amount !== null) {
+				recordedByProject.set(
+					share.project_id,
+					rounded((recordedByProject.get(share.project_id) ?? 0) + share.amount)
+				);
+				if (share.project_code || share.project_name) {
+					identityByProject.set(share.project_id, {
+						project_code: share.project_code ?? `#${share.project_id}`,
+						project_name:
+							share.project_name ??
+							share.project_code ??
+							`Project #${share.project_id}`,
+						client_name: share.client_name,
+					});
+				}
+			} else if (employee.estimated_amount !== null) {
+				estimatedByProject.set(
+					share.project_id,
+					rounded(
+						(estimatedByProject.get(share.project_id) ?? 0) + share.amount
+					)
+				);
+			}
+		}
+		for (const line of employee.hours_by_project) {
+			if (line.project_id === null) continue;
+			hoursByProject.set(
+				line.project_id,
+				rounded((hoursByProject.get(line.project_id) ?? 0) + line.hours)
+			);
+			const set = employeesByProject.get(line.project_id) ?? new Set<number>();
+			set.add(employee.employee_id);
+			employeesByProject.set(line.project_id, set);
+		}
+	}
+	return {
+		recordedByProject,
+		estimatedByProject,
+		hoursByProject,
+		employeesByProject,
+		identityByProject,
+	};
+}
 
 function projectRows(
 	confirmed: CostRecord[],
 	open: CostRecord[],
 	priorMonthRecords: CostRecord[],
 	charges: PeriodCharge[],
+	priorCharges: PeriodCharge[],
 	previousMonth: Map<number, Map<string, number | null>>,
+	priorPayroll: Map<number, Map<string, number | null>>,
+	monthRecords: CostRecord[],
 	window: ComparisonWindow,
 	costBefore: Map<number, Map<string, number | null>>,
-	reporting: string
+	reporting: string,
+	payroll: ReconciliationPayrollInput
 ): ReconciliationProjectRow[] {
 	// One row per Project and currency. Amounts in different currencies are
 	// never added, and the prior-period comparison is same-currency only; a
 	// Project costing in two currencies therefore shows two rows. A record
 	// whose currency is unknown cannot be stated and stays out of the rows; a
-	// period charge always carries its source's currency.
+	// period charge always carries its source's currency. Recorded employee
+	// cost joins its Project's payroll-currency row, and a Project with only
+	// Logged Hours still gets a row so the hours show.
+	const aggregates = payrollAggregates(payroll);
 	const stated = [...confirmed, ...open].filter(
 		(record) => currencyCodeOf(record.currency) !== null
 	);
 	const ids = new Set<number>(projectIdsIn(stated, charges));
 	const priorWindowRecords = windowRecords(priorMonthRecords, window, 'prior');
 	const currentEnd = window.throughDate;
+	for (const id of aggregates.hoursByProject.keys()) ids.add(id);
+	for (const id of aggregates.recordedByProject.keys()) ids.add(id);
 	const rows: ReconciliationProjectRow[] = [];
 	for (const id of ids) {
 		const projectRecords = stated.filter((record) => record.projectId === id);
@@ -302,8 +403,15 @@ function projectRows(
 					(record) => currencyCodeOf(record.currency) as string
 				),
 				...projectCharges.map((charge) => charge.currency),
+				// Employee cost is recorded in the payroll currency.
+				...(aggregates.hoursByProject.has(id) ||
+				aggregates.recordedByProject.has(id) ||
+				aggregates.estimatedByProject.has(id)
+					? [payroll.currency]
+					: []),
 			]),
 		].sort();
+		const frozenIdentity = aggregates.identityByProject.get(id);
 		for (const currency of currencies) {
 			const currencyRecords = projectRecords.filter(
 				(record) => currencyCodeOf(record.currency) === currency
@@ -317,10 +425,20 @@ function projectRows(
 			const openRows = currencyRecords.filter((record) =>
 				isOpenState(record.state)
 			);
-			const incurred = sumMoney([
-				...confirmedRows.map(confirmedAmount),
-				...currencyCharges.map((charge) => charge.amount),
-			]);
+			const employeeCost =
+				currency === payroll.currency
+					? rounded(aggregates.recordedByProject.get(id) ?? 0)
+					: 0;
+			const estimatedEmployeeCost =
+				currency === payroll.currency
+					? rounded(aggregates.estimatedByProject.get(id) ?? 0)
+					: 0;
+			const incurred = rounded(
+				sumMoney([
+					...confirmedRows.map(confirmedAmount),
+					...currencyCharges.map((charge) => charge.amount),
+				]) + employeeCost
+			);
 			// A charge inherits its source's conversion evidence, so the
 			// reporting basis of a charge-only row is the source's basis.
 			const reportingOutcomes = [
@@ -335,18 +453,26 @@ function projectRows(
 					convertToReporting(charge.amount, evidenceOf(charge), reporting)
 				),
 			];
-			const unsupported = reportingOutcomes.some(
-				(outcome) => outcome.status === 'unsupported'
-			);
+			// Employee cost carries no conversion evidence: on any basis other
+			// than the payroll currency the row cannot be stated in reporting
+			// currency either.
+			const employeeUnsupported = employeeCost !== 0 && reporting !== currency;
+			const unsupported =
+				reportingOutcomes.some((outcome) => outcome.status === 'unsupported') ||
+				employeeUnsupported;
 			const inWindow = confirmedRows.filter((record) =>
 				withinWindow(record, window.currentDays, window.monthDays, window.month)
 			);
 			const comparison = sumMoney([
 				...inWindow.map(confirmedAmount),
-				// Charges belong to the same whole-month figures the prior side
-				// reads; an elapsed window has no day for them.
+				// Charges and recorded employee cost belong to the same
+				// whole-month figures the prior side reads; an elapsed window has
+				// no day for them and withholds the change instead.
 				...(window.basis === 'full_month'
-					? currencyCharges.map((charge) => charge.amount)
+					? [
+							...currencyCharges.map((charge) => charge.amount),
+							employeeCost,
+						]
 					: []),
 			]);
 			const priorRows = priorWindowRecords.filter(
@@ -378,7 +504,7 @@ function projectRows(
 					record.projectId === id && currencyCodeOf(record.currency) === currency
 			);
 			const currentUnproven = unprovenWindowRecords(
-				records,
+				monthRecords,
 				window,
 				'current'
 			).filter(
@@ -388,14 +514,32 @@ function projectRows(
 			// A partial window that cannot prove where its cost sits cannot state
 			// this row's change either; the row keeps its unproven records visible
 			// through the evidence column and is left out of the increase order.
+			// Day-less monthly cost of either compared month — approved period
+			// charges and recorded employee cost — is just as unplaceable inside
+			// an elapsed window, so it withholds the change rather than letting
+			// the window's dated cost alone state a new cost or an increase.
+			const priorDaylessCharges = priorCharges.filter(
+				(charge) => charge.projectId === id && charge.currency === currency
+			);
+			const priorDaylessPayroll = priorPayroll.get(id)?.get(currency) ?? 0;
 			const unproven =
-				priorUnproven.length > 0 || currentUnproven.length > 0;
+				priorUnproven.length > 0 ||
+				currentUnproven.length > 0 ||
+				(window.basis === 'equal_period' &&
+					(currencyCharges.length > 0 ||
+						priorDaylessCharges.length > 0 ||
+						employeeCost !== 0 ||
+						priorDaylessPayroll !== 0));
 			rows.push({
 				project_id: id,
-				project_code: sample.projectCode ?? `#${id}`,
+				project_code:
+					frozenIdentity?.project_code ?? sample?.projectCode ?? `#${id}`,
 				project_name:
-					sample.projectName ?? sample.projectCode ?? `Project #${id}`,
-				client_name: sample.clientName,
+					frozenIdentity?.project_name ??
+					sample?.projectName ??
+					sample?.projectCode ??
+					`Project #${id}`,
+				client_name: frozenIdentity?.client_name ?? sample?.clientName ?? null,
 				currency,
 				conversion_status: unsupported
 					? 'unsupported'
@@ -404,7 +548,10 @@ function projectRows(
 						: 'converted',
 				converted_incurred_cost: unsupported
 					? null
-					: sumMoney(reportingOutcomes.map((outcome) => outcome.amount)),
+					: rounded(
+							sumMoney(reportingOutcomes.map((outcome) => outcome.amount)) +
+								(reporting === currency ? employeeCost : 0)
+						),
 				incurred_cost: incurred,
 				record_count: confirmedRows.length,
 				period_charge_count: currencyCharges.length,
@@ -430,6 +577,16 @@ function projectRows(
 								count: lateRows.length,
 								amount: sumMoney(lateRows.map(confirmedAmount)),
 							},
+				employee_cost: employeeCost,
+				estimated_employee_cost: estimatedEmployeeCost,
+				logged_hours:
+					currency === payroll.currency
+						? rounded(aggregates.hoursByProject.get(id) ?? 0)
+						: 0,
+				employee_count:
+					currency === payroll.currency
+						? (aggregates.employeesByProject.get(id)?.size ?? 0)
+						: 0,
 				evidence,
 			});
 		}
@@ -639,6 +796,50 @@ function monthNotices(input: MonthNoticeInput): CoverageNotice[] {
 			code: 'period_charge_source_not_recognized',
 			label: 'Period charges without confirmed sources',
 			detail: `${orphanedCharges.length} approved period charge(s) are not counted because the source they consume is no longer confirmed cost.`,
+			severity: 'warning',
+		});
+	}
+	return notices;
+}
+
+/**
+ * The petty-cash disclosures. Funding is never operating cost, spending is
+ * separate from it, and a receipt linked to an unrecognized cost settles
+ * nothing yet — all three are stated instead of being silently absorbed.
+ */
+function pettyCashNotices(summary: PettyCashSummary): CoverageNotice[] {
+	const notices: CoverageNotice[] = [];
+	for (const row of summary.by_currency) {
+		if (row.remaining_funding < 0) {
+			notices.push({
+				code: 'petty_cash_overspent',
+				label: 'Petty-cash spending exceeds its recorded funding',
+				detail: `${row.currency}: spending drawn from vouchers is ${Math.abs(row.remaining_funding).toFixed(2)} more than the funding dated in this month. The excess is spending, not inferred funding.`,
+				severity: 'warning',
+			});
+		}
+		if (row.unconfirmed_spend > 0) {
+			notices.push({
+				code: 'petty_cash_spending_awaiting_recognition',
+				label: 'Petty-cash spending awaiting recognition',
+				detail: `${row.currency}: ${row.unconfirmed_spend.toFixed(2)} of petty-cash spending is draft or pending evidence and is excluded from confirmed cost.`,
+				severity: 'warning',
+			});
+		}
+	}
+	if (summary.unlinked_spend.count > 0) {
+		notices.push({
+			code: 'petty_cash_spend_without_voucher',
+			label: 'Petty-cash spending without voucher linkage',
+			detail: `${summary.unlinked_spend.count} spending record(s) are not drawn from a recorded voucher. They are still cost, but they are not attributed to any funding, and no Project is inferred from voucher text.`,
+			severity: 'info',
+		});
+	}
+	if (summary.unresolved_settlements.count > 0) {
+		notices.push({
+			code: 'petty_cash_settlement_unresolved',
+			label: 'Petty-cash receipts linked to an unrecognized cost',
+			detail: `${summary.unresolved_settlements.count} receipt(s) reference a cost that is not a recognized cost; they settle nothing yet and add no cost of their own.`,
 			severity: 'warning',
 		});
 	}
@@ -867,9 +1068,15 @@ export interface ReconciliationInput {
 	/**
 	 * Approved period charges dated in the prior month. They belong to that
 	 * month's own reconciliation; an elapsed-day window has no day for them, so
-	 * the comparison discloses how many are stated elsewhere.
+	 * the comparison withholds the change they would distort and discloses them.
 	 */
-	priorChargeCount?: number;
+	priorCharges?: PeriodCharge[];
+	/**
+	 * Recorded employee cost of the prior month, keyed by project and currency.
+	 * Like the prior month's charges it is day-less monthly cost an elapsed
+	 * window cannot place.
+	 */
+	priorPayrollCost?: Map<number, Map<string, number | null>>;
 	/**
 	 * The cost budgets the budget section reads: every covering budget of the
 	 * month plus every budget of the Projects above.
@@ -886,8 +1093,47 @@ export interface ReconciliationInput {
 	/** The server's current calendar month; the month the report opens on. */
 	currentMonth: string;
 	coverageDeclarations: readonly SourceCoverageDeclaration[];
+	/**
+	 * Petty-cash funding and spending for the same month, stated beside the
+	 * cost reconciliation; funding never enters the company totals.
+	 */
+	pettyCash: PettyCashSummary;
 	/** Requested reporting basis; absent means the company reporting currency. */
 	reportingCurrency?: string | null;
+	/** Recorded employee cost and estimates (ADR-0016) for the month. */
+	payroll?: ReconciliationPayrollInput;
+}
+
+/** The empty employee-cost slice, for a direct-cost-only caller. */
+const EMPTY_PAYROLL_TOTALS: PayrollExpenditure = {
+	currency: 'INR',
+	recorded_total: 0,
+	estimated_total: 0,
+	allocated_total: 0,
+	unallocated_total: 0,
+	total_logged_hours: 0,
+	project_hours: 0,
+	no_project_hours: 0,
+	rounding_adjustment: 0,
+	recorded_count: 0,
+	known_zero_count: 0,
+	estimated_count: 0,
+	missing_slip_count: 0,
+	missing_pricing_count: 0,
+	allocation_missing_count: 0,
+};
+
+/**
+ * The employee-cost slice the reconciliation consumes: the same interpretation
+ * the payroll drilldown publishes. Optional on the input only for callers that
+ * pre-date #307 (tests constructing a direct-cost-only reconciliation); the
+ * report always passes it.
+ */
+export interface ReconciliationPayrollInput {
+	currency: string;
+	totals: PayrollExpenditure;
+	employees: PayrollEmployeeCost[];
+	coverage: CoverageNotice[];
 }
 
 /** The filtered Project detail's own subtotal, from its own rows. */
@@ -927,12 +1173,24 @@ export function buildReconciliation(
 	const reporting = reportingCurrencyOf({
 		reportingCurrency: input.reportingCurrency ?? null,
 	});
+	const payroll: ReconciliationPayrollInput = input.payroll ?? {
+		currency: 'INR',
+		totals: EMPTY_PAYROLL_TOTALS,
+		employees: [],
+		coverage: [],
+	};
+	const payrollRecorded = payroll.totals.recorded_total !== 0;
+	// Employee cost carries no conversion evidence: a requested basis other
+	// than the payroll currency cannot state it.
+	const payrollNotInReportingBasis =
+		payrollRecorded && reporting !== payroll.currency;
 	const costRecords = records.filter((record) => record.nature === 'operating');
 	const confirmed = costRecords.filter(
 		(record) => confirmedAmount(record) !== null
 	);
 	const open = records.filter((record) => isOpenState(record.state));
 	const countedCharges = countedChargesOf(input.charges);
+	const priorCharges = input.priorCharges ?? [];
 	const knownConfirmed = confirmed.filter(
 		(record) => currencyCodeOf(record.currency) !== null
 	);
@@ -945,6 +1203,9 @@ export function buildReconciliation(
 				(record) => currencyCodeOf(record.currency) as string
 			),
 			...countedCharges.map((charge) => charge.currency),
+			// Recorded employee cost adds its own currency slice; estimates
+			// never reach the company total.
+			...(payrollRecorded ? [payroll.currency] : []),
 		]),
 	].sort();
 	const currencyTotals = currencies.map((currency) =>
@@ -954,7 +1215,15 @@ export function buildReconciliation(
 			),
 			countedCharges.filter((charge) => charge.currency === currency),
 			currency,
-			reporting
+			reporting,
+			currency === payroll.currency && payrollRecorded
+				? {
+						project: payroll.totals.allocated_total,
+						unallocated: payroll.totals.unallocated_total,
+						count:
+							payroll.totals.recorded_count + payroll.totals.known_zero_count,
+					}
+				: undefined
 		)
 	);
 
@@ -981,7 +1250,10 @@ export function buildReconciliation(
 	).length;
 	const unsupportedCost = unsupportedRecords + unsupportedCharges;
 	const singleCurrency = currencies.length === 1;
-	const complete = unsupportedCost === 0 && currencies.length > 0;
+	const complete =
+		unsupportedCost === 0 &&
+		currencies.length > 0 &&
+		!payrollNotInReportingBasis;
 	// One known currency that cannot be stated in the reporting basis keeps its
 	// own total; a complete month states every figure in the reporting basis.
 	const singleUnsupportedCurrency =
@@ -1061,7 +1333,7 @@ export function buildReconciliation(
 		// Nothing unconverted means nothing is withheld: a month with no
 		// confirmed record is not "unsupported", it has nothing to state.
 		status:
-			unsupportedCost === 0
+			unsupportedCost === 0 && !payrollNotInReportingBasis
 				? currencyTotals.some((row) => row.reporting.status === 'converted')
 					? 'converted'
 					: 'reporting'
@@ -1070,9 +1342,14 @@ export function buildReconciliation(
 		unsupported_records: unsupportedRecords,
 		converted_charges: convertedCharges,
 		unsupported_charges: unsupportedCharges,
-		unsupported_currencies: currencyTotals
-			.filter((row) => row.reporting.status === 'unsupported')
-			.map((row) => row.currency),
+		unsupported_currencies: [
+			...new Set([
+				...currencyTotals
+					.filter((row) => row.reporting.status === 'unsupported')
+					.map((row) => row.currency),
+				...(payrollNotInReportingBasis ? [payroll.currency] : []),
+			]),
+		],
 		unknown_currency_records: confirmed.filter(
 			(record) => currencyCodeOf(record.currency) === null
 		).length,
@@ -1137,20 +1414,61 @@ export function buildReconciliation(
 			nonOperatingSources: input.nonOperatingSources,
 			reporting,
 		}),
+		...payroll.coverage,
+		...pettyCashNotices(input.pettyCash),
 	];
 
 	// Rows are built company-wide first: the ranking, the comparison's
 	// disclosures, the budget section, and the company reconciliation are never
 	// narrowed by the Project filter, and only the detail below is.
+	//
+	// Day-less monthly cost of the two compared months: approved period charges
+	// and recorded employee cost belong to the month, not to a day, so an
+	// elapsed window can never place them. It is disclosed with its own figures
+	// and withholds the change it would distort.
+	const daylessCosts: DaylessMonthCost[] = [];
+	const addDayless = (currency: string, count: number, amount: number): void => {
+		if (count === 0 || amount === 0) return;
+		const existing = daylessCosts.find((entry) => entry.currency === currency);
+		if (existing) {
+			existing.count += count;
+			existing.amount = rounded(add(existing.amount, amount));
+		} else {
+			daylessCosts.push({ currency, count, amount: rounded(amount) });
+		}
+	};
+	for (const charge of countedCharges) {
+		addDayless(charge.currency, 1, charge.amount);
+	}
+	for (const charge of priorCharges) {
+		addDayless(charge.currency, 1, charge.amount);
+	}
+	if (payrollRecorded) {
+		addDayless(
+			payroll.currency,
+			payroll.totals.recorded_count,
+			payroll.totals.recorded_total
+		);
+	}
+	for (const perCurrency of (input.priorPayrollCost ?? new Map()).values()) {
+		for (const [currency, amount] of perCurrency) {
+			if (amount === null || amount === 0) continue;
+			addDayless(currency, 1, amount);
+		}
+	}
 	const allRows = projectRows(
 		confirmed,
 		open,
 		input.priorMonthRecords,
 		countedCharges,
+		priorCharges,
 		input.previousMonthProjectCost,
+		input.priorPayrollCost ?? new Map(),
+		records,
 		window,
 		input.projectCostBefore,
-		reporting
+		reporting,
+		payroll
 	);
 	const rows =
 		input.projectFilter === null
@@ -1162,7 +1480,7 @@ export function buildReconciliation(
 		priorMonthRecords: input.priorMonthRecords,
 		asOf: input.asOf,
 		rows: allRows,
-		priorChargeCount: input.priorChargeCount ?? 0,
+		monthDayless: daylessCosts,
 	});
 
 	return {
@@ -1222,8 +1540,12 @@ export function buildReconciliation(
 		ranking: rankProjects(allRows),
 		filtered_subtotal: filteredSubtotal(input.projectFilter, rows),
 		evidence,
+		petty_cash: input.pettyCash,
 		sources: sourceSummaries(records),
 		coverage: notices,
+		// Recorded employee cost (ADR-0016): frozen allocations plus disclosed
+		// estimates, never mixed into the estimate-free company total.
+		payroll: payroll.totals,
 		// The budget section is its own interpretation: a budget never enters
 		// `company`, `projects`, or `evidence`.
 		budgets: buildBudgetSection({

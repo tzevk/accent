@@ -111,6 +111,29 @@ export const CREATED_ORDERS = {
 		firmness: 'unknown' as const,
 		sourceDocument: '',
 	},
+	/** Client order carrying cents, so whole-unit rounding cannot hide. */
+	centsClient: {
+		number: 'E2E-EXP-310-CLI-2',
+		counterparty: ORDER_PROJECT.client,
+		currency: 'INR',
+		basis: 'net' as const,
+		net: 250000.75,
+		tax: 0,
+		gross: 250000.75,
+		orderDate: `${ORDER_MONTH}-16`,
+		status: 'approved',
+		firmness: 'unknown' as const,
+	},
+} as const;
+
+/**
+ * Two equal cent invoices against the cents client order: their rollup must be
+ * exactly 66666.66, not the whole-unit 66666.
+ */
+export const CENTS_INVOICES = {
+	first: 'E2E-EXP-310-INV-CENTS-1',
+	second: 'E2E-EXP-310-INV-CENTS-2',
+	total: 33333.33,
 } as const;
 
 /** The client invoice used to prove the canonical invoice reference. */
@@ -296,6 +319,17 @@ async function purgeOrderNamespaces(): Promise<number> {
 		await exec(`DELETE FROM outgoing_purchase_orders WHERE po_number LIKE ?`, [
 			`${ORDER_FIXTURE_PREFIX}%`,
 		])
+	).affectedRows;
+	// project_purchase_orders has no soft-delete column and no FK, so its rows
+	// outlive both their Project and this namespace; purge by number and by the
+	// namespace's Projects so a rerun cannot re-queue an orphan copy.
+	removed += (
+		await exec(
+			`DELETE FROM project_purchase_orders
+        WHERE po_number LIKE ?
+           OR project_id IN (SELECT project_id FROM projects WHERE project_code LIKE ?)`,
+			[`${ORDER_FIXTURE_PREFIX}%`, `${ORDER_FIXTURE_PREFIX}P%`]
+		)
 	).affectedRows;
 	removed += (
 		await exec(`DELETE FROM project_invoices WHERE invoice_number LIKE ?`, [

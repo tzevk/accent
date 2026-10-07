@@ -12,6 +12,19 @@ import type Decimal from 'decimal.js';
 export type CostClassification = 'project' | 'company_overhead' | 'unallocated';
 
 /**
+ * Which native store a cost row lives in. IDs come from different stores, so
+ * every cost carries its source discriminator; `cost_uid` stays the canonical
+ * identity across all of them.
+ */
+export type CostSource =
+	| 'direct_expense'
+	| 'supplier_invoice'
+	| 'other_expense'
+	| 'petty_cash'
+	| 'non_operating'
+	| 'payroll';
+
+/**
  * What the spend is, independent of where it belongs (#317). `operating` is
  * ordinary cost; `advance`, `deposit`, `prepayment`, and `capital` are
  * balances whose payment is not an expense until supported period consumption,
@@ -248,6 +261,8 @@ export interface CostSplitInfo {
 /** One direct cost as the financial module sees it. */
 export interface CostRecord extends CostFinancialInput {
 	source: CostSource;
+	/** The source row's own key as a string (`expenses.id`, a UUID, …). */
+	sourceId: string;
 	/** The service-period slice this record represents, or null. */
 	split: CostSplitInfo | null;
 	id: number;
@@ -403,6 +418,13 @@ export interface ComparisonCurrency {
 	/** Prior-window records entered after that window closed. */
 	prior_late_records: number;
 	prior_late_cost: number;
+	/**
+	 * Day-less monthly cost of the two compared months — approved period
+	 * charges and recorded employee cost — that an elapsed window cannot
+	 * place. It is excluded from the figures above and withholds the change.
+	 */
+	dayless_records: number;
+	dayless_cost: number;
 }
 
 /** Something the comparison does or does not cover, stated with its figures. */
@@ -415,10 +437,10 @@ export interface ComparisonDisclosure {
 		| 'backdated_recognition'
 		| 'undated_period_evidence'
 		| 'window_evidence_unproven'
+		| 'dayless_monthly_cost_unproven'
 		| 'unequal_evidence_coverage'
 		| 'unknown_prior_cost'
 		| 'zero_prior_cost'
-		| 'prior_period_charges_excluded'
 		| 'no_prior_period_evidence';
 	label: string;
 	detail: string;
@@ -566,6 +588,62 @@ export interface EvidenceSummary {
 	missing_amount: { count: number };
 	missing_currency: { count: number };
 	known_zero: { count: number };
+}
+
+/**
+ * One currency's slice of the petty-cash section. Cash figures follow the cash
+ * date; recognized cost follows the Recognition Period, so the two sides of
+ * the section are never mixed.
+ */
+export interface PettyCashCurrencySummary {
+	currency: string;
+	/** Voucher funding dated in the period (the mirrored credits). */
+	funding: number;
+	funding_event_count: number;
+	/** Actual spending dated in the period. */
+	spend: number;
+	spend_count: number;
+	/** Of that spending, the part drawn from a voucher. */
+	funded_spend: number;
+	/** Of that spending, the part recorded as a settlement of another cost. */
+	settled_spend: number;
+	/** `funding - funded_spend`; negative is disclosed as overspent funding. */
+	remaining_funding: number;
+	/** Recognized operating cost created by petty-cash spending (unsettled). */
+	recognized_cost: number;
+	/** Spending still draft or pending evidence: not confirmed cost. */
+	unconfirmed_spend: number;
+}
+
+/**
+ * Petty cash stated beside the company reconciliation: funding is cash into
+ * the float and never operating cost, spending is separate from the funding it
+ * draws on, and recognized cost counts only the spending that creates cost
+ * (a receipt already linked to another cost settles that cost instead).
+ */
+export interface PettyCashSummary {
+	/** The month the cash figures are stated for, or null for all time. */
+	month: string | null;
+	/** The single currency the summary is stated in, or null for none/many. */
+	currency: string | null;
+	funding: number | null;
+	spend: number | null;
+	/** Of the spending, the part recorded as a settlement of another cost. */
+	settled_spend: number | null;
+	/** Of the spending, the part still draft or pending evidence. */
+	unconfirmed_spend: number | null;
+	remaining_funding: number | null;
+	recognized_cost: number | null;
+	by_currency: PettyCashCurrencySummary[];
+	/** Receipts linked to a cost that is not a recognized cost. */
+	unresolved_settlements: { count: number; amount: number | null };
+	/** Spending with no voucher linkage: cost, but not attributed to funding. */
+	unlinked_spend: { count: number; amount: number | null };
+	/**
+	 * Rows whose original currency is unknown. They are stated in no currency
+	 * subtotal; the count is the disclosure instead.
+	 */
+	unknown_currency: { count: number };
 }
 
 /**
@@ -773,8 +851,16 @@ export interface CompanyReconciliation {
 	 */
 	filtered_subtotal: FilteredProjectSubtotal | null;
 	evidence: EvidenceSummary;
+	/** Petty-cash funding and spending, separate from incurred cost. */
+	petty_cash: PettyCashSummary;
 	sources: ReconciliationSourceSummary[];
 	coverage: CoverageNotice[];
+	/**
+	/**
+	 * Recorded employee cost from Payroll Slips (ADR-0016): frozen allocations
+	 * plus current-month payroll-based estimates, always stated separately.
+	 */
+	payroll: PayrollExpenditure;
 	/**
 	 * The approved cost budgets behind this month's Project detail. Its own
 	 * section: a budget never enters `company`, `projects`, or `evidence`.
@@ -787,6 +873,111 @@ export interface CompanyReconciliation {
 		client_name: string | null;
 	}>;
 	available_months: string[];
+}
+
+export type PayrollPayStream = 'payroll' | 'contract';
+
+/** How an employee's cost is known this month. */
+export type PayrollCostStatus =
+	/** Frozen recorded allocation from a finalized Payroll Slip. */
+	| 'recorded'
+	/** Payroll-based estimate (no finalized allocation yet). */
+	| 'estimated'
+	/** A finalized slip whose recorded employer cost is a known zero. */
+	| 'known_zero'
+	/** Cost cannot be stated: no Salary Profile covers the month. */
+	| 'unknown';
+
+export type PayrollShareBasis = 'project' | 'no_project' | 'no_logged_hours';
+
+/** One destination's share of an employee's recorded or estimated cost. */
+export interface PayrollProjectShare {
+	/** null = No project (logged hours without one) or No logged hours. */
+	project_id: number | null;
+	project_code: string | null;
+	project_name: string | null;
+	client_name: string | null;
+	hours: number;
+	amount: number;
+	/** The cent the largest-remainder step applied to this share. */
+	rounding_adjustment: number;
+	basis: PayrollShareBasis;
+}
+
+/** Logged Hours on one Project, whether or not its cost is known. */
+export interface PayrollHourLine {
+	project_id: number | null;
+	project_code: string | null;
+	project_name: string | null;
+	client_name: string | null;
+	hours: number;
+}
+
+/** One Employee's employee-cost position for a month. */
+export interface PayrollEmployeeCost {
+	employee_id: number;
+	employee_code: string;
+	employee_name: string;
+	pay_stream: PayrollPayStream | 'unknown';
+	status: PayrollCostStatus;
+	/** Recorded employer cost from the frozen Payroll Slip allocation. */
+	recorded_amount: number | null;
+	/** Payroll-based estimate; never added to recorded cost. */
+	estimated_amount: number | null;
+	logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	/** Recorded cost exists and there are no Logged Hours: fully unallocated. */
+	no_logged_hours: boolean;
+	/** A covering Salary Profile exists but the month has no Payroll Slip. */
+	missing_slip: boolean;
+	/** Logged Hours exist but no Salary Profile covers the month. */
+	missing_pricing: boolean;
+	/** The month is finalized but this slip has no frozen allocation. */
+	allocation_missing: boolean;
+	source: {
+		payroll_slip_id: number | null;
+		allocation_id: number | null;
+		allocation_version: number | null;
+		allocation_kind: 'finalization' | 'reconstruction' | null;
+		month: string;
+	};
+	/** The money destinations: recorded shares when recorded, else estimated. */
+	shares: PayrollProjectShare[];
+	/** Every Logged Hour of the month, by Project, independent of pricing. */
+	hours_by_project: PayrollHourLine[];
+}
+
+/** The month's employee-cost position, stated in the reporting currency. */
+export interface PayrollExpenditure {
+	currency: string;
+	recorded_total: number;
+	estimated_total: number;
+	/** Recorded cost allocated to Projects. */
+	allocated_total: number;
+	/** Recorded cost left unallocated: No project + No logged hours. */
+	unallocated_total: number;
+	total_logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	/** Total cent applied by the largest-remainder step across the month. */
+	rounding_adjustment: number;
+	recorded_count: number;
+	known_zero_count: number;
+	estimated_count: number;
+	missing_slip_count: number;
+	missing_pricing_count: number;
+	allocation_missing_count: number;
+}
+
+/** The employee-cost drilldown: the same interpretation, per Employee. */
+export interface PayrollDrilldown {
+	month: string;
+	month_label: string;
+	currency: string;
+	totals: PayrollExpenditure;
+	employees: PayrollEmployeeCost[];
+	coverage: CoverageNotice[];
 }
 
 /** The command contract: every change carries the version it expects. */
@@ -916,6 +1107,8 @@ export interface CostRecordJson {
 	id: number;
 	cost_uid: string | null;
 	source: CostSource;
+	/** The source row's own key as a string, for source-aware consumers. */
+	source_id: string;
 	/** The service-period slice this record represents, or null. */
 	split: CostSplitInfo | null;
 	expense_number: string;

@@ -29,11 +29,18 @@ export const SOURCE_COVERAGE: readonly SourceCoverageDeclaration[] = [
 			'Direct expenses are entered, recognized, and reconciled through this module (#306). Non-operating items — advances, deposits, prepayments, and capital — are shown separately and contribute only their approved period consumption, depreciation, or amortization (#317).',
 	},
 	{
+		code: 'other_expense_source',
+		label: 'Other expenses and receipt copies',
+		status: 'wired',
+		detail:
+			'Other expenses are recorded, classified, recognized, and reconciled through this module; a receipt copy links to an already recognized cost instead of adding a second one (#315).',
+	},
+	{
 		code: 'payroll_employee_cost_not_incorporated',
 		label: 'Employee cost (recorded payroll)',
-		status: 'not_incorporated',
+		status: 'wired',
 		detail:
-			'Recorded Payroll Slip employer cost and its frozen Project allocation are not part of this total yet; they are incorporated by a later slice (#307).',
+			'Recorded Payroll Slip employer cost and its frozen Project allocation are part of this total (#307, ADR-0016); estimates are disclosed separately.',
 	},
 	{
 		code: 'supplier_source_wired',
@@ -54,6 +61,13 @@ export const SOURCE_COVERAGE: readonly SourceCoverageDeclaration[] = [
 		label: 'Cash paid',
 		status: 'not_incorporated',
 		detail:
-			'Dated settlements, petty-cash spending, and funding are not linked yet, so no cash-paid figure is presented.',
+			'Dated outward settlements and advances are not linked yet, so no company cash-paid figure is presented. Petty-cash funding and spending are incorporated separately (#316).',
+	},
+	{
+		code: 'petty_cash_source',
+		label: 'Petty cash funding and spending',
+		status: 'wired',
+		detail:
+			'Cash-voucher funding and its mirrored credit are one funding event and never operating cost; actual spending is recognized once with its Project, Company Overhead, or unresolved classification (#316).',
 	},
 ];

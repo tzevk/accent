@@ -1,17 +1,26 @@
-# Company Project Expenditure — Implementation (tickets #306, #311, #317, #321)
+# Company Project Expenditure — Implementation (tickets #306, #311, #316, #317, #319, #321)
 
 ## Overview
 
 The report at `/reports/employee-project-monthly-cost` now leads with **Company
 Incurred Cost** for a month, reconciled to **Incurred Project Cost**, **Company
 Overhead**, and **Unallocated Cost**. Each underlying direct cost is counted
-once. The employee-cost Monthly and Financial Year views stay available beside
-it until recorded payroll replaces their estimate (#307).
+once. The employee-cost Monthly and Financial Year views read the same shared
+interpretation: recorded employer-cost allocation where the month was
+finalized, the corrected payroll calculation's estimate otherwise.
 
 Ticket #306 delivers the first complete slice: capture a direct expense with a
 durable identity, recognize it into a month, reconcile it, and drill from a
 Project into its source records. Everything else the parent specification
 describes is named as coverage, not faked.
+
+Ticket #307 adds **recorded employer cost** (ADR-0016): each Payroll Slip's
+employer cost is allocated across the Employee's monthly Logged Hours into
+deterministic cent shares that reconcile exactly to the slip, hours without a
+Project stay in the denominator as Unallocated Employee Cost, and Payroll
+Finalize freezes the shares with the run lock in one transaction. The
+expenditure view, its employee drilldown, and the employee-cost views all read
+that one interpretation.
 
 Ticket #321 adds the **approved Project cost budget** beside that
 reconciliation: an authorized workflow records, submits, approves, supersedes,
@@ -26,20 +35,23 @@ Cost, the Project breakdown, or the evidence summary.
 Expenditure view (page.tsx → expenditure-view.tsx → budget-section.tsx)
   ├─ GET  /api/reports/employee-project-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=]
   ├─ GET  /api/reports/employee-project-monthly-cost/expenses?month=&state=&classification=&project_id=
+  ├─ GET  /api/reports/employee-project-monthly-cost/payroll?month=[&employee_id=]
   ├─ POST /api/admin/expenses                        (record a cost)
   ├─ POST /api/admin/expenses/{id}/commands          (submit | recognize | reject | cancel | update)
   ├─ GET  /api/admin/cost-budgets?project_id=        (budget versions of one Project)
   ├─ GET  /api/admin/cost-budgets/{id}               (one budget + its approval journal)
   ├─ POST /api/admin/cost-budgets                    (record a draft budget)
-  └─ POST /api/admin/cost-budgets/{id}/commands      (update | submit | approve | withdraw)
+  ├─ POST /api/admin/cost-budgets/{id}/commands      (update | submit | approve | withdraw)
+  └─ POST /api/payroll/runs/finalize                 (locks the month and freezes allocations)
             │
             ▼
   src/lib/company-expenditure  (the shared financial module)
     index.ts             public interface
     recognition.ts       pure rules: period, tax, recognition blockers, transitions
-    reconciliation.ts    pure builder: groups, currencies, projects, evidence, coverage
+    reconciliation.ts    pure builder: groups, currencies, projects, evidence, coverage, payroll
     records.ts           reads: month records, project cost, options, months, journal, drilldown
     commands.ts          the single write path: recordCost, executeCommand, journal
+    payroll.ts           recorded employer-cost allocation: shares, freeze, estimates, drilldown
     budget-records.ts    reads: budget rows, covering budgets, journal
     budget-commands.ts   the budget write path: recordCostBudget, executeBudgetCommand
     budget-comparison.ts pure builder: the isolated budget section
@@ -48,6 +60,7 @@ Expenditure view (page.tsx → expenditure-view.tsx → budget-section.tsx)
             ▼
   expenses (+ cost_uid, recognition_*, financial_version)
   financial_cost_events (append-only command journal)
+  payroll_employee_allocations (+ shares, payroll_allocation_events)
   project_cost_budgets (+ scope, period, state, approval evidence, financial_version)
   project_cost_budget_events (append-only approval journal)
 ```
@@ -329,43 +342,228 @@ Both tables follow the same rules as the cost tables: no deletes through the
 API, one journal row per accepted command, and commands join the caller's
 transaction when a connection is supplied.
 
+## Recorded employee cost allocation (#307)
+
+Implemented in `payroll.ts` (ADR-0016); the consumer contract for the later
+allocation slices (#308/#309) is published outside the repo at
+`C:/Files/OCDSE/Work/expenditure-payroll-allocation-contract.md`.
+
+**The rule.** Each Payroll Slip's recorded `employer_cost` is allocated across
+the Employee's eligible monthly Logged Hours — the same
+`user_activity_assignments.daily_entries` source and the same canonical parser
+the payroll calculator prices slips from, so the denominator cannot drift from
+the hours the slip was paid at. Every destination's exact share is floored to
+the cent and the remaining cents (fewer than the number of destinations) go one
+each to the largest fractional remainders — ties broken by larger hours, then by
+the canonical destination order. The result sums exactly to the slip; each share
+persists the cent it received (`rounding_adjustment`) so the adjustment is
+attributable, and the allocation records the slip id, Employee, month, and
+version as its source identity.
+
+**No project / No logged hours.** Hours without a reliable Project (no
+`project_id`, or one whose Project row is gone) stay in the denominator and
+their share is Unallocated Employee Cost, labelled `no_project`. With no Logged
+Hours the whole recorded cost stays unallocated as `no_logged_hours` — it is
+never spread over known Projects, and it is never Bench Cost.
+
+**Freeze at Payroll Finalize.** `POST /api/payroll/runs/finalize` runs one
+transaction: the `draft → finalized` transition (guarded by
+`WHERE status = 'draft'`), its audit entry, and `freezeMonthAllocations` for
+every Payroll Slip of the month. A concurrent finalize loses on the guard and
+writes nothing; a repeated finalize is refused `409`; a later timesheet or
+Salary Profile edit cannot move a frozen share. A re-finalization after an
+authorized reopen appends the next version (`unique_slip_allocation_version`),
+so history stays readable and duplicates are impossible.
+
+| Table                                | Meaning                                                                                                                                                                                                          |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `payroll_employee_allocations`       | One frozen allocation per Payroll Slip and version: recorded employer cost, denominator hours, project/no-project hours, the total rounding cent, the snapshotted Employee identity and pay stream, who froze it |
+| `payroll_employee_allocation_shares` | One row per destination: Project (with snapshotted code/name/client), `no_project`, or `no_logged_hours`, with hours, amount, and the applied cent                                                               |
+| `payroll_allocation_events`          | Append-only freeze journal keyed `(allocation_uid, version)`, snapshot included                                                                                                                                  |
+
+**Report contract.** The reconciliation payload gains
+`payroll: { currency, recorded_total, estimated_total, allocated_total,
+unallocated_total, total_logged_hours, project_hours, no_project_hours,
+rounding_adjustment, recorded_count, known_zero_count, estimated_count,
+missing_slip_count, missing_pricing_count, allocation_missing_count }`;
+Project rows gain `employee_cost`, `estimated_employee_cost`, `logged_hours`,
+and `employee_count`. Recorded employee cost joins the payroll-currency slice
+(Project shares into Incurred Project Cost, unallocated shares into Unallocated
+Cost) and the prior-month comparison, while estimates never enter a confirmed
+total. `GET …/payroll?month=[&employee_id=]` is the employee drilldown: per
+Employee status (`recorded` / `estimated` / `known_zero` / `unknown`), recorded
+and estimated amounts, Logged Hours by Project, the source Payroll Slip and
+allocation version, and shares with basis and rounding. The employee-cost
+Monthly and Financial Year views read the same module, so the obsolete
+Gross-first billing-derived rate × hours path is no longer a consumer path.
+
+**Gaps are stated, not hidden.** Estimates are labelled and separate; a missing
+Payroll Slip (`payroll_slip_missing`), missing pricing (`payroll_pricing_missing`
+— hours with no covering Salary Profile, whose cost is unknown, not zero), a
+finalized month without a frozen allocation (`payroll_allocation_missing`), and
+an unfinalized or ungenerated month (`payroll_not_finalized` /
+`payroll_not_generated`) are coverage notices; No project and No logged hours
+amounts are disclosed as info notices. A finalized zero stays a known zero.
+
 ## Coverage: what the total does not include
 
 `SOURCE_COVERAGE` declares each source and its state; the not-incorporated
 entries become coverage notices on every reconciliation:
 
-- recorded payroll employer cost — a later slice (#307);
 - supplier invoices, orders, and Outstanding Supplier Commitment;
 - evidenced Cost Accruals;
-- dated settlements and petty cash.
+- dated outward settlements and advances — petty-cash funding and spending are
+  incorporated separately (below).
+
+Recorded payroll employer cost is `wired` since #307 and no longer appears as a
+not-incorporated notice; its own coverage notices (above) state the month's
+payroll completeness.
 
 Month-specific notices add: no recognized cost, mixed currencies without
 conversion, records awaiting recognition, missing amounts, unresolved
 classification, unresolved tax, tax evidence missing, service periods that
-span months, and service periods whose start is not recorded. An empty month is
-a coverage warning, never a zero company cost.
+span months, service periods whose start is not recorded, petty-cash spending
+overspent against its funding, petty-cash spending awaiting recognition,
+petty-cash spending with no voucher linkage, and receipts linked to a cost that
+is not recognized. An empty month is a coverage warning, never a zero company
+cost.
+
+## Petty cash funding and spending (ticket #316)
+
+`petty_cash_expenses` holds two kinds of row, split by `entry_kind`:
+
+| Row       | Meaning                                                                                |
+| --------- | -------------------------------------------------------------------------------------- |
+| `funding` | Cash into the float: one cash voucher and its mirrored credit, one funding event       |
+| `spend`   | Actual spending: one cost-bearing row with identity, period, approval, and destination |
+
+Financial columns added by
+`migrations/20261008091600_petty_cash_funding_spending.js`: `entry_kind`,
+`cost_uid` (a cost identity for spending, a funding-event identity for the
+mirror), `numeric_id` (the journal's source key), `cost_classification`,
+`project_id`, `recognition_state`, `recognition_period`, `period_basis`,
+`service_period_start/end`, `currency`, `tax_amount`, `tax_treatment`,
+`tax_evidence_reference`, `recognized_amount`, `recognized_by/at`,
+`source_reference`, `evidence_reference`, `linked_cost_uid`,
+`financial_version`, and the conversion evidence
+(`reporting_currency`, `conversion_rate`, `conversion_date`,
+`conversion_evidence_reference`, `converted_amount`) — the same vocabulary as
+`expenses`, so one set of recognition rules serves both.
+
+Rules:
+
+- **Funding is one event and never cost.** `ensureFundingMirror` inserts the
+  mirrored credit with the voucher, and updating the voucher updates that same
+  row (`fund-<voucherId>`, unique) instead of adding another. Both rows carry
+  `role='funding'` / `role='mirror'` links in `financial_cost_links` and are
+  never registered as a cost. An empty voucher total creates no funding event.
+- **Spending is captured with reliable references.** A voucher reference must
+  exist; a Project is a real `project_id` (classification `project` requires
+  it, Company Overhead and Unallocated must not carry one); the Recognition
+  Period follows the service period, else the bill date as a disclosed
+  fallback; the voucher's free-text `project_number` is never read as
+  identity. A spend with no classification stays unresolved and cannot be
+  recognized.
+- **A receipt linked to another cost settles it.** `linked_cost_uid` is
+  resolved through `resolveCostReference` (#311 contract) at capture and at
+  every command; an unresolvable link is refused and a resolvable one is
+  registered as `role='settlement'`, counts no new cost, and never registers
+  its own cost identity. Petty cash registers its own source adapter
+  (`petty_cash_expenses`), so a spending identity resolves for every consumer
+  — including another petty-cash receipt. A versioned link transition moves the
+  registry row with the meaning: becoming a settlement drops the `role='cost'`
+  row, becoming cost again restores it — atomically, so nothing resolves a cost
+  the report excludes or misses one it counts.
+- **Voucher mutations and spending capture serialize on the voucher row.**
+  Capture locks the named voucher `FOR UPDATE` before inserting, and the voucher
+  update/delete guards (`loadVoucherGuard` + `voucherRegisterRefusal`, exported)
+  lock the same row for the whole mutation. A delete can therefore never count
+  zero spending, let a capture commit, and then erase the funding event; the
+  guarded soft delete of a voucher plus its one funding mirror is one
+  transaction.
+- **Recognized history survives an ordinary delete.** Beyond confirmed cost,
+  spending that was ever recognized (even after a reasoned cancellation) refuses
+  a register delete with `409 cost_history_preserved`; the row and its
+  `recorded` → `recognized` → `cancelled` journal stay readable. The guard hooks
+  (`loadPettyCashGuardRow`, `pettyCashRegisterRefusal`, `loadVoucherGuard`,
+  `voucherRegisterRefusal`) are exported so the #322 close/revision slice hangs
+  its closed-period checks off the same decisions.
+- **Controlled lifecycle.** `POST /api/admin/petty-cash-expenses/{id}/commands`
+  carries `expected_version` (`update | submit | recognize | reject | cancel`),
+  increments `financial_version`, and appends one `financial_cost_events` row
+  (`source_table='petty_cash_expenses'`). Recognize needs
+  `petty_cash_expenses:approve`, submit/update need `petty_cash_expenses:update`.
+  Confirmed spending is refused `409 cost_recognized` for register edits and
+  deletes; financial fields are refused `422 financial_fields_versioned`;
+  funding rows refuse edits with `409 funding_event_managed_by_voucher`; a
+  voucher cannot be reduced below the spending drawn from it
+  (`409 funding_below_spend`) or deleted while it funds spending
+  (`409 voucher_has_spending`). A cancelled spend keeps its row, journal, and
+  recognized amount as history.
+- **The report states the four figures separately.** Every reconciliation
+  gains `petty_cash`: funding, spending, settled spending, unconfirmed
+  spending, remaining supported funding, and recognized cost, per currency
+  (combined only in a single-currency month). Recognized petty-cash cost flows
+  into the company groups and Project rows like any other cost source; funding
+  and remaining funding never do. The petty-cash register page
+  (`/admin/petty-cash-expenses`) shows the same four figures and drives the
+  entry, approval, and command controls.
+- **The source registry carries petty cash.** `PETTY_CASH_COST_SOURCE`
+  (exported from the module barrel) declares the native store
+  (`petty_cash_expenses`), the UUID a command addresses (`id`), the numeric
+  journal key (`numeric_id`), the command endpoint
+  (`/api/admin/petty-cash-expenses/{id}/commands`), and the cost predicate
+  (`entry_kind='spend' AND linked_cost_uid IS NULL`), with the month-records,
+  previous-month Project cost, months, and drilldown loaders the report reads
+  consume. `fetchCostDrilldown` unions the direct-expense and petty-cash
+  windows into one ordered page, so a report drilldown shows confirmed
+  petty-cash cost exactly once (settlements, which are not cost, stay out).
+- **Conversion evidence follows the shared contract (#319).** Spending captures
+  `reporting_currency`, `conversion_rate`, `conversion_date`, and
+  `conversion_evidence_reference` through the same `resolveConversion`
+  validation (full triple or none; a partial triple is
+  `422 conversion_evidence_incomplete`, an invalid rate
+  `422 invalid_conversion_rate`), and the module recomputes `converted_amount`
+  from the recognized amount on every financial write through
+  `convertToReporting` — one conversion site, no source-side rounding. The
+  register PUT refuses the fields; only the versioned `update` command changes
+  them, and an `update` that touches any currency/conversion field requires
+  `petty_cash_expenses:approve`. A rate is evidence for one currency pair: a
+  currency change never inherits the stored rate (a same-currency pair clears
+  the triple; a new convertible pair without the fresh triple is `422
+conversion_evidence_required`). A NULL original currency is unknown, never
+  INR: such rows are excluded from every currency subtotal and disclosed as
+  `petty_cash.unknown_currency.count`.
 
 ## Authorization
 
-| Surface                                            | Privilege                                                     |
-| -------------------------------------------------- | ------------------------------------------------------------- |
-| Reconciliation, drilldown, expenditure months      | `reports:read` **and** `other_expenses:read` (or super admin) |
-| Employee-cost views and their export               | `reports:read`                                                |
-| Record a cost (report control and admin route)     | `other_expenses:create`                                       |
-| Submit / update a cost                             | `other_expenses:update`                                       |
-| Recognize, reject, cancel                          | `other_expenses:approve`                                      |
-| Read cost budgets and their journals               | `other_expenses:read`                                         |
-| Record, edit, submit, withdraw a cost budget       | `other_expenses:update`                                       |
-| Approve a cost budget, or withdraw an approved one | `other_expenses:approve`                                      |
+| Surface                                            | Privilege                                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Reconciliation, drilldown, expenditure months      | `reports:read` **and** `other_expenses:read` **and** `payroll:read` (or super admin) |
+| Employee-cost views and their export               | `reports:read`                                                                       |
+| Employee-cost drilldown (`…/payroll`)              | `reports:read` **and** `other_expenses:read` **and** `payroll:read` (or super admin) |
+| Record a cost (report control and admin route)     | `other_expenses:create`                                                              |
+| Submit / update a cost                             | `other_expenses:update`                                                              |
+| Recognize, reject, cancel                          | `other_expenses:approve`                                                             |
+| Petty-cash register: read                          | `petty_cash_expenses:read`                                                           |
+| Record / edit petty-cash spending                  | `petty_cash_expenses:create` / `:update`                                             |
+| Recognize, reject, cancel petty-cash spending      | `petty_cash_expenses:approve`                                                        |
+| Delete draft petty-cash spending                   | `petty_cash_expenses:delete`                                                         |
+| Cash vouchers (funding)                            | super admin or `admin` role (unchanged)                                              |
+| Read cost budgets and their journals               | `other_expenses:read`                                                                |
+| Record, edit, submit, withdraw a cost budget       | `other_expenses:update`                                                              |
+| Approve a cost budget, or withdraw an approved one | `other_expenses:approve`                                                             |
+| Finalize a Payroll Run (freezes allocations)       | `payroll:update`                                                                     |
 
 The direct-expense ledger is the source of the expenditure reconciliation, so
-report access alone does not open it: the expenditure view, the drilldown, and
+report access alone does not open it: the expenditure view, its drilldowns, and
 the `expenditure_months` list in the meta payload require the ledger's read
-privilege as well (parent spec §149 — existing source authorization and
-financial privileges). A `reports:read` reader without it keeps the
-employee-cost views and is refused `403` with no source rows or aggregates. The
-Project Activity field grant opens none of this, and Employee Utilization is
-untouched.
+privilege and — since the reconciliation carries recorded Payroll Slip employer
+cost (#307) — the payroll source's read privilege as well (parent spec §149 —
+existing source authorization and financial privileges). A `reports:read`
+reader without them keeps the employee-cost views and is refused `403` with no
+source rows or aggregates. The Project Activity field grant opens none of this,
+and Employee Utilization is untouched.
 
 ## End-to-end evidence
 
@@ -405,11 +603,44 @@ fixture amounts:
   employee-cost views still answer;
 - the browser shows the access panel to an employee session.
 
-`e2e/specs/project-cost-budgets.spec.ts` (#321) drives the same real app and
-writes `e2e/artifacts/project-cost-budgets.json`. It extends the same fixture
-module (budget namespace `e2e-budget-*`, a third and fourth Project
-`E2E-EXP-P3`/`P4`, June-2019 costs, eleven seeded budgets, and the August
-charge-only month owned by #317) and asserts, from the fixture literals:
+`e2e/specs/petty-cash-funding.spec.ts` drives the petty-cash slice and writes
+`e2e/artifacts/petty-cash-funding.json` (fixtures in
+`e2e/lib/petty-cash-fixtures.ts`, namespace `E2E-EXP-316-*`, months 2021-06 and
+2021-08). From hand-computed fixture amounts it asserts:
+
+- a voucher and its mirrored credit are one funding event: exactly one mirror
+  row, the funding-event identity, `funding`/`mirror` links and **no** cost
+  link, no new expense row, and `funding` stated separately from a company cost
+  that does not move; a repeated voucher write updates the same mirror;
+- spending recorded through the register controls carries its identity,
+  evidence, recognition period, Project reference, and voucher link; the
+  register's Recognize control moves it to recognized cost once (version 2,
+  journal `recorded` → `recognized`) and the register and report state funding,
+  spending, remaining funding, and recognized cost separately;
+- missing linkage stays unresolved: a spend with no classification cannot be
+  recognized (`422 not_ready_for_recognition`), an unallocated but voucher-less
+  spend is still cost, the voucher's free-text project number never becomes a
+  Project attribution, and the coverage notices say so;
+- a receipt linked to an existing recognized cost settles it: a
+  `role='settlement'` link and no cost identity of its own, no second expense,
+  an unchanged company total, zero unresolved settlements, and a refused
+  `422 unknown_source_reference` for a link that does not resolve;
+- a later-month spend lands only in its own period; a register PUT of
+  financial fields is `422 financial_fields_versioned`; a draft delete is a
+  soft delete; confirmed spending is frozen (`409 cost_recognized`); a voucher
+  edit updates the one funding row and never spending; funding below spending
+  is `409 funding_below_spend`; a voucher with spending is `409
+voucher_has_spending`; a voucher with no spending deletes with its mirror;
+- stale commands are `409 version_conflict`, reject/cancel demand a reason, and
+  a cancelled spend keeps its row, recognized amount, and journal history;
+- the petty-cash clerk can record but is refused recognition (`403`), and a
+  user with no petty-cash privilege is refused `403` for reads and writes with
+  nothing persisted.
+  `e2e/specs/project-cost-budgets.spec.ts` (#321) drives the same real app and
+  writes `e2e/artifacts/project-cost-budgets.json`. It extends the same fixture
+  module (budget namespace `e2e-budget-*`, a third and fourth Project
+  `E2E-EXP-P3`/`P4`, June-2019 costs, eleven seeded budgets, and the August
+  charge-only month owned by #317) and asserts, from the fixture literals:
 
 - an approved budget whose period is exactly January compares with alpha's
   3,500 INR as `compared` (5,000 − 3,500 = 1,500 remaining), while a Project with
@@ -441,15 +672,59 @@ charge-only month owned by #317) and asserts, from the fixture literals:
 - January still reconciles to the expense fixtures' own arithmetic after every
   budget mutation: a budget never moves Company Incurred Cost.
 
+`e2e/specs/expenditure-payroll-allocation.spec.ts` (#307) drives the same real
+app and writes `e2e/artifacts/expenditure-payroll-allocation.json`. It owns the
+months **2026-02** (finalized) and **2026-03** (estimates), Projects
+`E2E-ALLOC-P1/P2`, Employees `E2E-ALLOC-01..06`, a fixture Bonus Component Rate,
+and two reader identities (fixtures in
+`e2e/lib/expenditure-allocation-fixtures.ts`, wired into `e2e/global-setup.ts`),
+and asserts, from hand-computed fixture literals:
+
+- Generate through the authenticated route writes the stated slip amounts
+  (₹26,000 monthly, ₹10,000 contract, ₹500 bonus-only, and known zeros), and the
+  month holds exactly three nonzero slips;
+- before finalization the month states estimates only: no recorded total, no
+  company incurred cost, `payroll_not_finalized` coverage, and the drilldown
+  marks the Employee `estimated` with the slip as source;
+- deleting one slip discloses `payroll_slip_missing` with the estimate intact,
+  regenerating clears it, and a finalize attempt with a missing slip is refused
+  `409` with no allocation written and the run still `draft`;
+- finalization freezes one allocation per slip in the same transaction: every
+  frozen allocation sums exactly to its slip's `employer_cost`, one journal row
+  per slip, version 1 only, and a repeated finalize changes nothing;
+- the reconciliation states recorded ₹36,500.00 (P1 ₹14,635.41, P2 ₹13,447.92,
+  unallocated ₹8,416.67, rounding ₹0.02, 384 Logged Hours) with the two
+  Projects' employee cost and hours, no payroll coverage warnings, and the
+  drilldown shows both pay streams, the largest-remainder cent on the
+  no-project/P2 shares, and No logged hours fully unallocated;
+- 2026-03 states the payroll-based estimate (₹5,250 = 42h at the corrected
+  calculation) separately, with `payroll_not_generated` and
+  `payroll_pricing_missing` for the Employee who logged hours with no profile;
+- the browser's expenditure view shows the payroll summary, the employee row,
+  and the No project share from the real controls;
+- reopen returns the month to estimates while the version-1 allocations remain
+  readable, two concurrent finalizes yield exactly one `200` and one `409`, and
+  version 2 is written once per slip and reconciles again;
+- later timesheet and Salary Profile edits (through the fixture row and the real
+  profile route) leave the frozen shares and the Payroll Slip unchanged, and a
+  renamed Project keeps its frozen identity in the report;
+- paid payroll cannot reopen (`409`) and the frozen allocation stays recorded;
+- a `reports:read` reader and a `reports:read` + `other_expenses:read` reader
+  are both refused `403` on the reconciliation and the payroll drilldown (the
+  payroll source privilege is the missing one), while the employee-cost views
+  keep their existing contract; malformed and unknown requests are `400`/`404`.
+
 Use an isolated database for repeatable verification:
 
 ```powershell
 npx cross-env E2E_DB_NAME=accent_crm_dev_muse_e2e_expenditure npm run e2e
 ```
 
-For the two initial slices, select `expense-reconciliation.spec.ts` and
-`payroll-bonus.spec.ts` after the production build; `expense-non-operating.spec.ts`
-adds the non-operating balances and their approved consumption (#317). Fixture cleanup derives SQL
+For the ticket slices, select `expense-reconciliation.spec.ts`,
+`payroll-bonus.spec.ts`, and `petty-cash-funding.spec.ts` after the production
+build; `expense-non-operating.spec.ts` adds the non-operating balances and their
+approved consumption (#317), and the currency and budget specs cover #319/#321.
+Fixture cleanup derives SQL
 placeholders from its owned Employee codes, so added Employees remain rerun-safe.
 The payroll snapshot evidence includes the stored month and money columns.
 Namespaced fixtures identify test records; names alone do not exclude them from
@@ -557,13 +832,91 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
   actually stated in (the native single-currency total when no combined total
   exists).
 
+## Other expenses and receipt copies (ticket #315)
+
+The other-expense register (`other_expenses`, `OEX-#####`) is a cost-bearing
+source of the same module, not a second store:
+
+- **Capture** (`POST /api/admin/other-expenses`) records the register's own
+  fields plus classification (`project | company_overhead | unallocated`, or
+  deliberately unresolved), the Recognition Period inputs (service period, bill
+  date as the disclosed fallback), currency, tax treatment and its evidence
+  reference, source/evidence references, a receipt/document link, and
+  `submit` for the recognition queue. Number minting, the row, the canonical
+  `cost_uid` (registered in `financial_cost_links`, role `cost`), and the
+  version-1 journal row are one transaction.
+- **Receipt copies**: a capture carrying `linked_cost_uid` links to an already
+  recognized cost (`role='receipt'`, `basis='explicit'`, confirmed) and never
+  becomes a cost. The register read (`linked` filter) and the review read show
+  it as a copy; every command refuses it with `receipt_copy_not_cost`.
+- **Duplicate review**: a standalone capture whose normalized vendor and gross
+  amount match a recognized cost stores a **candidate** link
+  (`basis='candidate'`, `review_state='pending_review'`). It never merges
+  identity or totals, and `recognize` is refused with
+  `duplicate_review_pending` until the reviewer decides. `POST
+/api/admin/other-expenses/{id}/review` with `confirm_copy` links the entry as
+  a receipt copy (a candidate becomes `basis='document'`), `reject_copy`
+  rejects only the stored pending candidate — a different requested target is
+  refused with `link_target_mismatch` rather than written over the preserved
+  reference — and `unlink_copy` undoes a mistaken link. Each decision appends
+  exactly one journal row and bumps `financial_version`.
+- **Unresolved classification** is disclosed, never guessed: the review read
+  lists open entries with the fields they are missing, and recognition refuses
+  without a classification (existing `recognition_blockers`).
+- **Commands and authorization**: `POST
+/api/admin/other-expenses/{id}/commands` carries `update | submit |
+recognize | reject | cancel` with `expected_version`; update/submit need
+  `other_expenses:update`, recognize/reject/cancel need
+  `other_expenses:approve`. Register `PUT` refuses the versioned financial
+  fields (`financial_fields_versioned`) and a recognized row (`cost_recognized`);
+  `DELETE` refuses recognized cost and any row with recognized history
+  (`cost_history_preserved`), so ordinary deletion cannot bypass the versioned
+  cancellation. The journal's `source_id` is INT, so an other-expense command
+  journals the register's numeric `row_no`; the UUID stays the register's own
+  key, the `financial_cost_links` reference key, and the command path's id —
+  the UUID is never coerced into the journal. Unlinking a receipt copy
+  registers the row's `role='cost'` identity again (idempotently), and
+  recognition does the same, so an unlinked or backfilled row still resolves.
+- **Reads**: `OTHER_EXPENSE_COST_SOURCE` projects this register into the
+  module's canonical column vocabulary (including the conversion columns) and
+  joins `COMPANY_COST_SOURCES`, so the reconciliation, previous-month
+  comparison, month list, and drilldown count other expenses exactly once —
+  receipt copies excluded once, in the source. The report queue marks
+  non-direct-expense rows with a link to their register instead of sending the
+  direct-expense commands at another store's id.
+- **Currency and conversion**: capture states the original currency and may
+  state the conversion evidence — reporting target, rate, effective date, and
+  evidence reference — which the shared `currency.ts` helpers validate. An
+  unknown original currency stays unknown (never read as INR), and it can never
+  carry a rate: evidence with a blank currency is refused with
+  `conversion_requires_currency`, alongside `conversion_evidence_incomplete`,
+  `invalid_conversion_rate`, and `conversion_not_applicable`.
+  `converted_amount` is recomputed by the module from the recognized amount at
+  the stored rate; no inverse or cross-rate is ever derived, and a foreign
+  amount without evidence stays in its own currency and is disclosed as
+  unconverted. A rate is evidence for one currency pair: changing `currency` or
+  `reporting_currency` never inherits the stored triple (a new convertible pair
+  without fresh evidence is refused with `conversion_evidence_required`, a pair
+  moved onto its reporting currency clears the triple). Afterwards only a
+  versioned `update` carrying the whole evidence may change it, and that patch
+  — like either side of the pair — needs `other_expenses:approve` (the register
+  PUT refuses the fields, and the review dialog sends only the fields that
+  actually changed, so an ordinary save is never approval-gated).
+- **Coverage**: `SOURCE_COVERAGE` declares `other_expense_source` as wired.
+
+End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
+`e2e/specs/other-expense-controls.spec.ts` (month `2019-04`, namespace
+`E2E-EXP-315-*` / `E2E-315-*`), artifact `e2e/artifacts/other-expense-controls.json`.
+
 ## Public interface for later slices
 
 `src/lib/company-expenditure/index.ts` is the contract later tickets extend:
 
-- **#307 recorded payroll**: add `payroll_slips` + allocation as a source
-  adapter that produces `CostRecord`s into the same `buildReconciliation`; the
-  employee-cost views then become consumers of recorded cost.
+- **#307 recorded payroll**: implemented (`payroll.ts`): recorded employer-cost
+  allocation frozen with Payroll Finalize, estimates from the corrected payroll
+  calculation, the payroll drilldown, and the employee-cost views as consumers
+  of the same interpretation. The later allocation slices (#308/#309) extend it
+  through `C:/Files/OCDSE/Work/expenditure-payroll-allocation-contract.md`.
 - **Supplier cost and commitments** (#311): the invoice source adapter and the
   shared `financial_cost_links` registry are in place; #312 adds supplier-order
   classification/consumption on top of `cost_uid` and publishes Outstanding
@@ -585,20 +938,44 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
 - `migrations/20261006120000_expense_cost_recognition.js`
 - `migrations/20261007120000_expense_cost_period_basis_service_period_end.js`
   (extends `period_basis` for the disclosed partial service period)
+- `migrations/20261008091100_expense_supplier_invoice_recognition.js`
+  (shared cost identity/link seam, #311 dependency)
+- `migrations/20261008091600_petty_cash_funding_spending.js` (petty-cash
+  funding/spending split and financial columns, #316)
+- `src/lib/company-expenditure/{index,types,recognition,reconciliation,records,commands,coverage,errors,fields,journal,sources}.ts`
+- `src/lib/company-expenditure/petty-cash.ts` (petty-cash source: funding
+  mirror, spending capture, versioned commands, summary)
 - `migrations/20261008091900_expense_cost_currency_conversion.js`
   (reporting target + conversion evidence + converted snapshot, #319)
 - `migrations/20261008092100_project_cost_budgets.js` (#321: budgets + approval journal)
-- `src/lib/company-expenditure/{index,types,recognition,reconciliation,records,commands,coverage}.ts`
+- `migrations/20261008090700_payroll_employee_cost_allocation.js`
+  (#307: allocations, shares, allocation journal)
+- `src/lib/company-expenditure/{index,types,currency,recognition,reconciliation,records,commands,payroll,coverage,budget-records,budget-commands,budget-comparison}.ts`
 - `src/lib/company-expenditure/{ranking,totals}.ts` (comparable period, both
   orderings, cost to date, per-Project evidence; shared money subtotals)
-- `src/lib/company-expenditure/{budget-records,budget-commands,budget-comparison}.ts` (#321)
-- `src/lib/company-expenditure/currency.ts` (#319: reporting basis + conversion evidence)
 - `src/app/api/reports/employee-project-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)
 - `src/app/api/reports/employee-project-monthly-cost/expenses/route.ts`
+- `src/app/api/reports/employee-project-monthly-cost/payroll/route.ts` (#307 drilldown)
 - `src/app/api/reports/employee-project-monthly-cost/download/route.ts` (tightened gate)
+- `src/app/api/payroll/runs/finalize/route.js` (one transaction: lock, audit, allocation freeze)
 - `src/app/api/admin/expenses/route.js` (entry through the module)
 - `src/app/api/admin/expenses/[id]/commands/route.ts`
 - `src/app/api/admin/expenses/[id]/route.js` (recognized cost frozen; versioned financial fields refused)
+- `src/app/api/admin/petty-cash-expenses/route.ts` (spending entry through the
+  module; funding/spending/remaining/recognized summary)
+- `src/app/api/admin/petty-cash-expenses/[id]/route.ts` (funding rows and
+  confirmed spending frozen; versioned financial fields refused)
+- `src/app/api/admin/petty-cash-expenses/[id]/commands/route.ts` (versioned
+  petty-cash commands)
+- `src/app/api/admin/cash-vouchers/{route.js,[id]/route.js}` (one funding
+  mirror per voucher; funding floor; delete guards)
+- `src/app/reports/employee-project-monthly-cost/{page,expenditure-view}.tsx`
+- `src/app/admin/petty-cash-expenses/page.tsx` (register controls)
+- `src/lib/format.js` (`formatCurrencyIn`)
+- `src/components/Navbar.jsx` (financial gate)
+- `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
+- `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/global-setup.ts`
+- `e2e/lib/petty-cash-fixtures.ts`, `e2e/specs/petty-cash-funding.spec.ts`
 - `src/app/api/admin/cost-budgets/route.ts`, `.../[id]/route.ts`, `.../[id]/commands/route.ts` (#321)
 - `src/app/reports/employee-project-monthly-cost/{page,expenditure-view,budget-section}.tsx`
 - `src/lib/format.js` (`formatCurrencyIn`)
@@ -620,8 +997,22 @@ the repo at `C:/Files/OCDSE/Work/expenditure-currency-contract.md`.
 - `docs/adr/0020-supplier-invoice-recognition-single-cost.md`
 - `e2e/lib/supplier-invoice-fixtures.ts`, `e2e/specs/supplier-invoice-recognition.spec.ts` (#311)
 - `docs/adr/0019-approved-cost-budgets.md` (#321)
+- `docs/adr/0021-petty-cash-funding-and-spending.md` (#316)
+- `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/specs/project-cost-budgets.spec.ts`, `e2e/global-setup.ts`
 - `e2e/specs/project-cost-budgets.spec.ts` (#321)
 - `e2e/lib/expenditure-currency-fixtures.ts`, `e2e/specs/expenditure-currency.spec.ts` (#319)
+- `e2e/lib/expenditure-allocation-fixtures.ts`, `e2e/specs/expenditure-payroll-allocation.spec.ts` (#307)
+
+Ticket #315 adds:
+
+- `migrations/20261008091500_expense_other_expense_recognition.js`
+- `src/lib/company-expenditure/other-expenses.ts` (capture, commands, copy
+  review, review reads, source projection, source adapter)
+- `src/app/admin/other-expenses/{page,other-expense-review}.tsx`
+- `src/app/api/admin/other-expenses/route.ts`, `[id]/route.ts`,
+  `[id]/commands/route.ts`, `[id]/review/route.ts`, `review/route.ts`
+- `e2e/lib/other-expense-fixtures.ts`,
+  `e2e/specs/other-expense-controls.spec.ts`, `e2e/global-setup.ts`
 
 ## Ticket #317 — non-operating items and approved period consumption
 

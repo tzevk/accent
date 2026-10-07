@@ -135,7 +135,12 @@ interface ReconciliationData {
 			unresolved_tax_gross: number;
 			record_count: number;
 		}>;
-		groups: Array<{ key: string; label: string; amount: number; record_count: number }>;
+		groups: Array<{
+			key: string;
+			label: string;
+			amount: number;
+			record_count: number;
+		}>;
 		gross_liability: number | null;
 		recoverable_tax: number | null;
 		unresolved_tax: {
@@ -171,7 +176,12 @@ interface ReconciliationData {
 		};
 		known_zero: { count: number };
 	};
-	coverage: Array<{ code: string; label: string; detail: string; severity: string }>;
+	coverage: Array<{
+		code: string;
+		label: string;
+		detail: string;
+		severity: string;
+	}>;
 	project_options: Array<{ project_id: number; project_code: string }>;
 	available_months: string[];
 }
@@ -321,7 +331,9 @@ test('reconciles every recognized direct expense once into its group', async ({
 	expect(group(data, 'unallocated_cost')).toBe(JANUARY.unallocated);
 	expect(data.company.incurred_cost).toBe(JANUARY.total);
 
-	const inr = data.company.currency_totals.find((row) => row.currency === 'INR');
+	const inr = data.company.currency_totals.find(
+		(row) => row.currency === 'INR'
+	);
 	expect(inr, 'INR subtotal').toBeTruthy();
 	expect(inr!.incurred_project_cost).toBe(JANUARY.project);
 	expect(inr!.company_overhead).toBe(JANUARY.overhead);
@@ -409,15 +421,20 @@ test('keeps drafts, pending, rejected, cancelled, unresolved and missing out of 
 	expect(data.company.incurred_cost).toBe(JANUARY.total);
 
 	// The missing amount is unknown, not zero.
-	const missing = await rows<{ amount: string | null; total_amount: string | null }>(
-		`SELECT amount, total_amount FROM expenses WHERE expense_number = ?`,
-		[seededCost('missingAmount').expenseNumber]
-	);
+	const missing = await rows<{
+		amount: string | null;
+		total_amount: string | null;
+	}>(`SELECT amount, total_amount FROM expenses WHERE expense_number = ?`, [
+		seededCost('missingAmount').expenseNumber,
+	]);
 	expect(missing[0].total_amount).toBeNull();
 	expect(missing[0].amount).toBeNull();
 
 	// The known zero is a recorded zero.
-	const zero = await rows<{ total_amount: string | null; recognized_amount: string | null }>(
+	const zero = await rows<{
+		total_amount: string | null;
+		recognized_amount: string | null;
+	}>(
 		`SELECT total_amount, recognized_amount FROM expenses WHERE expense_number = ?`,
 		[seededCost('knownZero').expenseNumber]
 	);
@@ -425,7 +442,10 @@ test('keeps drafts, pending, rejected, cancelled, unresolved and missing out of 
 	expect(Number(zero[0].recognized_amount)).toBe(0);
 
 	// The review queue reads the same rows back with their evidence state.
-	const queue = await drilldown(request, { month: MONTH, state: 'unconfirmed' });
+	const queue = await drilldown(request, {
+		month: MONTH,
+		state: 'unconfirmed',
+	});
 	expect(queue.scope).toBe('month');
 	expect(queue.total).toBe(3);
 	const numbers = queue.records.map((row) => row.expense_number).sort();
@@ -483,10 +503,9 @@ test('refuses to recognize a cost whose amount is unknown', async ({
 	expect(stored[0].recognized_amount).toBeNull();
 
 	// A rejection without a reason is refused as well, so refusal is reasoned.
-	const unreasoned = await request.post(
-		`/api/admin/expenses/${id}/commands`,
-		{ data: { command: 'reject', expected_version: 1 } }
-	);
+	const unreasoned = await request.post(`/api/admin/expenses/${id}/commands`, {
+		data: { command: 'reject', expected_version: 1 },
+	});
 	expect(unreasoned.status()).toBe(422);
 	expect((await unreasoned.json()).code).toBe('reason_required');
 
@@ -525,8 +544,12 @@ test('keeps currencies separate until a supported conversion exists', async ({
 }) => {
 	const data = await reconciliation(request, NEXT_MONTH);
 	expect(data.company.currency_totals).toHaveLength(2);
-	const inr = data.company.currency_totals.find((row) => row.currency === 'INR')!;
-	const usd = data.company.currency_totals.find((row) => row.currency === 'USD')!;
+	const inr = data.company.currency_totals.find(
+		(row) => row.currency === 'INR'
+	)!;
+	const usd = data.company.currency_totals.find(
+		(row) => row.currency === 'USD'
+	)!;
 	expect(inr.incurred_project_cost).toBe(FEBRUARY.inr);
 	expect(inr.incurred_cost).toBe(FEBRUARY.inr);
 	expect(usd.incurred_project_cost).toBe(FEBRUARY.usdProject);
@@ -569,7 +592,11 @@ test('keeps currencies separate until a supported conversion exists', async ({
 	expect(alphaUsd.change_state).toBe('no_prior');
 
 	// The database rows agree: one USD Project cost, one INR Project cost.
-	const persisted = await rows<{ currency: string; total: string; records: number }>(
+	const persisted = await rows<{
+		currency: string;
+		total: string;
+		records: number;
+	}>(
 		`SELECT currency, SUM(recognized_amount) AS total, COUNT(*) AS records
        FROM expenses
       WHERE isDelete = 0 AND recognition_state = 'recognized'
@@ -579,9 +606,7 @@ test('keeps currencies separate until a supported conversion exists', async ({
       ORDER BY currency`,
 		[`${NEXT_MONTH}-01`, `${NEXT_MONTH}-28`]
 	);
-	expect(
-		persisted.map((row) => [row.currency, Number(row.total)])
-	).toEqual([
+	expect(persisted.map((row) => [row.currency, Number(row.total)])).toEqual([
 		['INR', FEBRUARY.inr],
 		['USD', FEBRUARY.usdProject],
 	]);
@@ -604,9 +629,14 @@ test('keeps currencies separate until a supported conversion exists', async ({
 test('states which sources are not yet incorporated', async ({ request }) => {
 	const data = await reconciliation(request, MONTH);
 	const codes = coverageCodes(data);
-	// Employee cost arrives with #307; the report says so instead of showing a
-	// total that pretends to be complete.
-	expect(codes).toContain('payroll_employee_cost_not_incorporated');
+	// Employee cost is incorporated since #307 (ADR-0016): the reconciliation
+	// no longer declares payroll missing, and it discloses the month's payroll
+	// coverage instead (this month has no finalized Payroll Run).
+	expect(codes).not.toContain('payroll_employee_cost_not_incorporated');
+	expect(
+		codes.includes('payroll_not_generated') ||
+			codes.includes('payroll_not_finalized')
+	).toBe(true);
 	expect(codes).toContain('supplier_source_not_incorporated');
 	expect(codes).toContain('cash_and_payments_not_incorporated');
 	expect(codes).toContain('cost_accrual_capture_not_incorporated');
@@ -731,7 +761,11 @@ test('records and recognizes a cost through authenticated requests, once', async
 	expect(stored[0].tax_treatment).toBe('recoverable');
 	expect(stored[0].tax_evidence_reference).toBe('GST-EVID-API');
 
-	const events = await rows<{ version: number; command: string; reason: string | null }>(
+	const events = await rows<{
+		version: number;
+		command: string;
+		reason: string | null;
+	}>(
 		`SELECT version, command, reason FROM financial_cost_events
       WHERE cost_uid = ? ORDER BY version`,
 		[record.cost_uid]
@@ -766,7 +800,10 @@ test('records and recognizes a cost through authenticated requests, once', async
 		costUid: record.cost_uid,
 		expected: API_CREATED,
 		observedState: recognized,
-		events: events.map((row) => ({ version: row.version, command: row.command })),
+		events: events.map((row) => ({
+			version: row.version,
+			command: row.command,
+		})),
 		monthTotal: after.company.incurred_cost,
 		staleVersionStatus: replay.status(),
 	};
@@ -865,10 +902,12 @@ test('recognizes a cost through the real report controls', async ({ page }) => {
 	await page.getByRole('button', { name: 'Record cost', exact: true }).click();
 	const form = page.getByTestId('cost-form');
 	await expect(form).toBeVisible();
-	await form.getByLabel('Classification', { exact: true }).selectOption(
-		'company_overhead'
-	);
-	await form.getByLabel('Source reference', { exact: true }).fill('E2E-INV-UI-1');
+	await form
+		.getByLabel('Classification', { exact: true })
+		.selectOption('company_overhead');
+	await form
+		.getByLabel('Source reference', { exact: true })
+		.fill('E2E-INV-UI-1');
 	await form
 		.getByLabel('Vendor', { exact: true })
 		.fill(`${EXPENDITURE_VENDOR_PREFIX}ui`);
@@ -889,7 +928,9 @@ test('recognizes a cost through the real report controls', async ({ page }) => {
 	await form
 		.getByLabel('Evidence reference', { exact: true })
 		.fill('E2E-GRN-UI-1');
-	await form.getByRole('button', { name: 'Save and submit', exact: true }).click();
+	await form
+		.getByRole('button', { name: 'Save and submit', exact: true })
+		.click();
 	await expect(form).toBeHidden();
 
 	// The entry lands in the review queue with its period and amount, and the
@@ -927,7 +968,9 @@ test('recognizes a cost through the real report controls', async ({ page }) => {
 	await row.getByRole('button', { name: 'Recognize', exact: true }).click();
 	const dialog = page.getByTestId('command-dialog');
 	await expect(dialog).toBeVisible();
-	await dialog.getByLabel('Reason', { exact: true }).fill('E2E evidence reviewed');
+	await dialog
+		.getByLabel('Reason', { exact: true })
+		.fill('E2E evidence reviewed');
 	await dialog
 		.getByRole('button', { name: 'Recognize expense', exact: true })
 		.click();
@@ -969,7 +1012,10 @@ test('recognizes a cost through the real report controls', async ({ page }) => {
 		observedOverheadDelta: UI_CREATED.recognized,
 		state: stored[0].recognition_state,
 		version: Number(stored[0].financial_version),
-		events: events.map((event) => ({ version: event.version, command: event.command })),
+		events: events.map((event) => ({
+			version: event.version,
+			command: event.command,
+		})),
 	};
 });
 
@@ -1081,7 +1127,9 @@ test('corrects a pending cost through the report and refuses register edits', as
 	expect(events[1].command).toBe('updated');
 
 	// The completed row now recognizes from the queue, once.
-	await queueRow.getByRole('button', { name: 'Recognize', exact: true }).click();
+	await queueRow
+		.getByRole('button', { name: 'Recognize', exact: true })
+		.click();
 	const commandDialog = page.getByTestId('command-dialog');
 	await expect(commandDialog).toBeVisible();
 	await commandDialog
@@ -1116,15 +1164,18 @@ test('corrects a pending cost through the report and refuses register edits', as
 	};
 });
 
-test('drills from a project into its source records', async ({ page, request }) => {
+test('drills from a project into its source records', async ({
+	page,
+	request,
+}) => {
 	await openExpenditure(page, MONTH_LABEL);
 	const row = page.locator(
 		`[data-testid="expenditure-project-row"][data-project-code="${EXPENDITURE_PROJECTS.alpha.code}"]`
 	);
 	await expect(row).toBeVisible();
-	expect(
-		Number(await row.getAttribute('data-project-cost'))
-	).toBe(JANUARY.alpha);
+	expect(Number(await row.getAttribute('data-project-cost'))).toBe(
+		JANUARY.alpha
+	);
 
 	await row.getByTestId('project-expand').click();
 	const panel = page.getByTestId('project-drilldown');

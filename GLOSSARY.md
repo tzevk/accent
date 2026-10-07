@@ -160,6 +160,17 @@ _Avoid_: Sort order, Priority, Importance
 The portion of a supplier order not yet recognized as incurred cost. Paying a supplier invoice does not itself create another incurred cost.
 _Avoid_: Unpaid invoice balance, Client PO balance, Cash paid
 
+**Petty Cash Funding**:
+Cash moved into the petty-cash float — one cash voucher (`cash_vouchers`) and its mirrored credit row in `petty_cash_expenses` are one funding event. Cash movement only: neither the voucher total nor the mirrored credit is operating cost. The pair carries a funding-event identity (`fund-<voucher>`, never a Cost Identity), and repeat mirroring updates that one row.
+_Avoid_: Petty cash expense, Petty cash cost, Advance
+
+**Petty Cash Spend**:
+Actual petty-cash spending — one debit row in `petty_cash_expenses` with its own Cost Identity, Recognition Period, approval state, and Project / Company Overhead / Unallocated classification. Spending creates cost once; a receipt already linked to another cost (`linked_cost_uid`) settles that cost instead of creating a second one, and missing voucher or Project linkage stays disclosed rather than inferred from free text.
+_Avoid_: Petty cash funding (the voucher side), Cash balance, Payment
+
+**Remaining Supported Funding**:
+Petty-cash funding dated in a period minus the spending drawn from vouchers in that period. Spending with no voucher linkage is cost but reduces no funding; unspent funding is never operating cost.
+_Avoid_: Petty cash balance, Cash in hand, Unspent expense
 **Order**:
 A client or supplier commitment with one **explicit** direction — `client` or `supplier` — stored in `orders`, identified by `order_uid`, and carrying its counterparty, Project, currency, tax/amount basis, order date, source document, status, and firm/cancellable evidence. The order number is a display and search attribute, never the identity: the same number may name two different orders.
 _Avoid_: Purchase order (when direction is unknown), PO, Commitment

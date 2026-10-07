@@ -24,7 +24,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { roundR, toNumber } from '@/lib/money';
+import type Decimal from 'decimal.js';
+import { add, R, sub, toNumber } from '@/lib/money';
 import { query, withTransaction } from '@/utils/database';
 import type { SqlConnection } from './records';
 
@@ -370,6 +371,16 @@ function enumValue<T extends string>(
 	return parsed as T;
 }
 
+/**
+ * Money is stored to the cent (`decimal(15,2)`), matching the rest of the
+ * expenditure module (`reconciliation.ts`). Never whole units: a stated
+ * 250000.75 must stay 250000.75, and a rollup of two 33333.33 invoices must be
+ * 66666.66. A missing amount is NULL and never reaches this helper as zero.
+ */
+function canonicalMoney(value: Decimal.Value): number {
+	return toNumber(R(value).toDecimalPlaces(2));
+}
+
 function amountOrNull(value: unknown, code: string): number | null {
 	if (value === null || value === undefined || value === '') return null;
 	const parsed = typeof value === 'number' ? value : Number(value);
@@ -378,7 +389,7 @@ function amountOrNull(value: unknown, code: string): number | null {
 			field: code,
 		});
 	}
-	return toNumber(roundR(parsed));
+	return canonicalMoney(parsed);
 }
 
 function dateOrNull(value: unknown): string | null {
@@ -445,7 +456,7 @@ function remainingClientValue(order: {
 	if (order.direction !== 'client') return null;
 	const stated = statedOrderValue(order);
 	if (stated === null) return null;
-	return toNumber(roundR(stated - (order.clientInvoicedValue ?? 0)));
+	return canonicalMoney(sub(stated, order.clientInvoicedValue ?? 0));
 }
 
 const ORDER_SELECT = `
@@ -543,6 +554,27 @@ interface NormalisedOrder {
 	remarks: string | null;
 }
 
+/**
+ * A reference to another record (Project, company) is either absent — an
+ * explicit null/blank, which stays unknown — or a live positive integer id. A
+ * code, typo, or negative/fractional value is refused, never dropped to NULL,
+ * so a bad reference cannot quietly remove the order from its Project.
+ */
+function referenceIdOrNull(
+	value: unknown,
+	field: string,
+	code: string
+): number | null {
+	if (value === null || value === undefined || value === '') return null;
+	const parsed = typeof value === 'number' ? value : Number(value);
+	if (!Number.isInteger(parsed) || parsed <= 0) {
+		throw new OrderError(code, `${field} must be a positive integer`, 422, {
+			field,
+		});
+	}
+	return parsed;
+}
+
 function normaliseOrder(
 	input: CreateOrderInput,
 	options: { requireDirection: boolean; fallbackOrderNumber?: string | null }
@@ -573,7 +605,7 @@ function normaliseOrder(
 		);
 	}
 
-	const currencyRaw = text(input.currency, 3) ?? 'INR';
+	const currencyRaw = text(input.currency, 64) ?? 'INR';
 	const currency = currencyRaw.toUpperCase();
 	if (!/^[A-Z]{3}$/.test(currency)) {
 		throw new OrderError('invalid_currency', 'Currency must be ISO 4217', 422, {
@@ -652,8 +684,8 @@ function normaliseOrder(
 			255,
 			'counterparty_required'
 		),
-		companyId: num({ value: input.companyId }, 'value'),
-		projectId: num({ value: input.projectId }, 'value'),
+		companyId: referenceIdOrNull(input.companyId, 'company_id', 'invalid_company'),
+		projectId: referenceIdOrNull(input.projectId, 'project_id', 'invalid_project'),
 		currency,
 		amountBasis,
 		grossAmount,
@@ -977,16 +1009,22 @@ function normaliseQuery(queryInput: OrderQuery = {}): ListFilter {
 		}
 		offset = parsed;
 	}
-	const projectId = num({ value: queryInput.projectId }, 'value');
-	if (projectId !== null && (!Number.isInteger(projectId) || projectId <= 0)) {
-		throw new OrderError(
-			'invalid_project',
-			'project_id must be a positive integer',
-			400,
-			{
-				field: 'project_id',
-			}
-		);
+	let projectId: number | null = null;
+	if (
+		queryInput.projectId !== undefined &&
+		queryInput.projectId !== null &&
+		queryInput.projectId !== ''
+	) {
+		const parsed = Number(queryInput.projectId);
+		if (!Number.isInteger(parsed) || parsed <= 0) {
+			throw new OrderError(
+				'invalid_project',
+				'project_id must be a positive integer',
+				400,
+				{ field: 'project_id' }
+			);
+		}
+		projectId = parsed;
 	}
 	return {
 		direction: enumValue<OrderDirection>(
@@ -1253,13 +1291,15 @@ export async function fetchOrderReviewQueue(
          ORDER BY id`,
 			documentNumbers
 		)) as [DbRow[], unknown];
-		const byId = new Set(items.map((item) => item.mappingId));
 		for (const row of collisionRows) {
 			const mappingId = num(row, 'id') ?? 0;
-			if (byId.has(mappingId)) continue;
 			const documentNumber = s(row, 'document_number');
 			for (const item of items) {
 				if (item.documentNumber !== documentNumber) continue;
+				// A copy is never its own collision candidate; two queued copies
+				// sharing a number must see each other whether or not both are
+				// on the returned page.
+				if (item.mappingId === mappingId) continue;
 				item.collisions.push({
 					mappingId,
 					legacyStore: s(row, 'legacy_store', '') as LegacyOrderStore,
@@ -1553,6 +1593,14 @@ export async function linkClientInvoice(
 	input: ClientInvoiceLinkInput,
 	connection: SqlConnection
 ): Promise<ClientInvoiceLinkResult> {
+	if (!Number.isFinite(input.amountDelta)) {
+		throw new OrderError(
+			'invalid_amount',
+			'An invoice link needs a finite amount',
+			422,
+			{ field: 'total' }
+		);
+	}
 	const [rows] = (await connection.execute(
 		`SELECT order_uid, direction, amount_basis, gross_amount, net_amount, client_invoiced_value
        FROM orders WHERE order_uid = ? AND isDelete = 0 FOR UPDATE`,
@@ -1572,9 +1620,9 @@ export async function linkClientInvoice(
 			{ field: 'order_uid' }
 		);
 	}
-	const delta = toNumber(roundR(input.amountDelta));
-	const nextInvoiced = toNumber(
-		roundR((order.clientInvoicedValue ?? 0) + delta)
+	const delta = canonicalMoney(input.amountDelta);
+	const nextInvoiced = canonicalMoney(
+		add(order.clientInvoicedValue ?? 0, delta)
 	);
 	await connection.execute(
 		`UPDATE orders SET client_invoiced_value = ? WHERE order_uid = ? AND isDelete = 0`,

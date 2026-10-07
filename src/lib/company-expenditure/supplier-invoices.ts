@@ -946,6 +946,7 @@ export async function executeSupplierCommand(
 			patch.splits !== undefined ? normalizeSplits(patch.splits) : null;
 		const financial = {
 			...merged,
+			nature: 'operating' as const,
 			reportingCurrency: conversion.reportingCurrency,
 			conversionRate: conversion.conversionRate,
 			conversionDate: conversion.conversionDate,
@@ -1194,6 +1195,12 @@ const SUPPLIER_MONTH_PREDICATE = `(
   OR (sp.id IS NOT NULL AND sp.recognition_period BETWEEN ? AND ?)
 )`;
 
+/** The same predicate, for every month before the reported one. */
+const SUPPLIER_BEFORE_PREDICATE = `(
+  (sp.id IS NULL AND COALESCE(i.recognition_period, i.invoice_date) < ?)
+  OR (sp.id IS NOT NULL AND sp.recognition_period < ?)
+)`;
+
 const SPLIT_SELECT = `${INVOICE_SELECT},
     sp.id AS split_id, sp.service_period_start AS split_start,
     sp.service_period_end AS split_end, sp.recognition_period AS split_period,
@@ -1278,6 +1285,7 @@ export function mapSupplierRecordRow(row: DbRow): CostRecord {
 		costUid: s(row, 'cost_uid'),
 		expenseNumber: s(row, 'invoice_number', '') ?? '',
 		expenseDate: s(row, 'invoice_date'),
+		createdAt: s(row, 'created_at'),
 		vendorName: s(row, 'vendor_name'),
 		description: s(row, 'description'),
 		projectId: num(row, 'project_id'),
@@ -1305,6 +1313,71 @@ export async function loadSupplierMonthRecords(
 		[start, end, start, end]
 	)) as [DbRow[], unknown];
 	return rows.map(mapSupplierRecordRow);
+}
+
+/**
+ * One Project-and-currency cost map from supplier records: recognized,
+ * Project-attributed, stated in a known currency; an unknown amount stays
+ * unknown rather than reading as zero.
+ */
+function supplierProjectCost(
+	records: CostRecord[]
+): Map<number, Map<string, number | null>> {
+	const costs = new Map<number, Map<string, number | null>>();
+	for (const record of records) {
+		if (
+			record.state !== 'recognized' ||
+			record.classification !== 'project' ||
+			record.projectId === null ||
+			record.currency === null
+		) {
+			continue;
+		}
+		const perCurrency =
+			costs.get(record.projectId) ?? new Map<string, number | null>();
+		const existing = perCurrency.get(record.currency);
+		if (existing === null || record.recognizedAmount === null) {
+			perCurrency.set(record.currency, null);
+		} else {
+			perCurrency.set(
+				record.currency,
+				toNumber(add(R(existing ?? 0), R(record.recognizedAmount)))
+			);
+		}
+		costs.set(record.projectId, perCurrency);
+	}
+	return costs;
+}
+
+/** Recognized supplier Project cost of one month, per Project and currency. */
+export async function loadSupplierMonthProjectCost(
+	db: SqlConnection,
+	month: string
+): Promise<Map<number, Map<string, number | null>>> {
+	const { start, end } = monthBounds(month);
+	const [rows] = (await db.execute(
+		`${SPLIT_SELECT}
+       ${SPLIT_FROM}
+      WHERE i.isDelete = 0 AND ${SUPPLIER_MONTH_PREDICATE}
+      ORDER BY i.id, sp.recognition_period, sp.id`,
+		[start, end, start, end]
+	)) as [DbRow[], unknown];
+	return supplierProjectCost(rows.map(mapSupplierRecordRow));
+}
+
+/** The same cost of every month before `month`: the Cost to Date base. */
+export async function loadSupplierProjectCostBefore(
+	db: SqlConnection,
+	month: string
+): Promise<Map<number, Map<string, number | null>>> {
+	const [rows] = (await db.execute(
+		`${SPLIT_SELECT}
+       ${SPLIT_FROM}
+      WHERE i.isDelete = 0 AND ${SUPPLIER_BEFORE_PREDICATE}
+      ORDER BY i.id, sp.recognition_period, sp.id`,
+		[`${month}-01`, `${month}-01`]
+	)) as [DbRow[], unknown];
+	return supplierProjectCost(rows.map(mapSupplierRecordRow));
 }
 
 function supplierStateFilter(state: string | undefined): {

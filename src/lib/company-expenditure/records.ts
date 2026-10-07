@@ -23,6 +23,7 @@ import type {
 	CostDrilldownQuery,
 	CostJournalEntry,
 	CostRecord,
+	CostSource,
 	PeriodCharge,
 	PeriodChargeBasis,
 	PeriodChargeState,
@@ -72,8 +73,14 @@ function dec(row: DbRow, key: string): string | null {
 	return text.length === 0 ? null : text;
 }
 
-/** The projection the module maps into `CostRecord`. */
-const COST_SELECT = `
+/**
+ * The projection the module maps into `CostRecord`, over any source expression
+ * (aliased `e`). A source expression is a SELECT that emits the canonical
+ * column names plus `source_row_id` (its own row key as a string), so a source
+ * adapter can reuse this one projection instead of restating it.
+ */
+export function costSelectFrom(source: string): string {
+	return `
   SELECT e.id, e.cost_uid, e.expense_number, e.expense_date, e.created_at,
          e.cost_classification,
          e.cost_nature,
@@ -86,9 +93,17 @@ const COST_SELECT = `
          e.amount, e.tax_amount, e.total_amount,
          e.vendor_name, e.description, e.status,
          e.project_id, p.project_code,
-         COALESCE(p.project_title, p.name) AS project_name, p.client_name
-    FROM expenses e
+         COALESCE(p.project_title, p.name) AS project_name, p.client_name,
+         e.source_row_id
+    FROM (${source}) e
     LEFT JOIN projects p ON p.project_id = e.project_id AND p.isDelete = 0`;
+}
+
+/** The direct-expense source expression: its own key as a string row id. */
+const DIRECT_EXPENSE_SOURCE = `SELECT *, CAST(id AS CHAR) COLLATE utf8mb4_general_ci AS source_row_id
+    FROM expenses`;
+
+const COST_SELECT = costSelectFrom(DIRECT_EXPENSE_SOURCE);
 
 /** First and last day of a `YYYY-MM` month. */
 export function monthBounds(month: string): { start: string; end: string } {
@@ -106,12 +121,15 @@ export function monthBounds(month: string): { start: string; end: string } {
  * cannot be placed in a month, and the reconciliation counts it separately
  * through the coverage notices rather than guessing.
  */
-const MONTH_PREDICATE = `(
+export const MONTH_PREDICATE = `(
   (e.recognition_period BETWEEN ? AND ?)
   OR (e.recognition_period IS NULL AND e.expense_date BETWEEN ? AND ?)
 )`;
 
-export function mapCostRow(row: DbRow): CostRecord {
+export function mapCostRow(
+	row: DbRow,
+	source: CostSource = 'direct_expense'
+): CostRecord {
 	const financial = {
 		classification:
 			(s(row, 'cost_classification') as CostClassification | null) ?? null,
@@ -143,7 +161,8 @@ export function mapCostRow(row: DbRow): CostRecord {
 	};
 	return {
 		...financial,
-		source: 'direct_expense',
+		source,
+		sourceId: s(row, 'source_row_id', String(num(row, 'id') ?? '')) ?? '',
 		split: null,
 		id: Number(num(row, 'id') ?? 0),
 		costUid: s(row, 'cost_uid'),
@@ -163,7 +182,11 @@ export function mapCostRow(row: DbRow): CostRecord {
 	};
 }
 
-/** The record as the report endpoints publish it, in the requested basis. */
+/**
+ * The record as the report endpoints publish it, in the requested basis: one
+ * `conversion_status` per response, so a reader never sees a record's status
+ * computed against a different currency than its figures.
+ */
 export function toCostRecordJson(
 	record: CostRecord,
 	reporting: string = REPORTING_CURRENCY
@@ -172,6 +195,7 @@ export function toCostRecordJson(
 		id: record.id,
 		cost_uid: record.costUid,
 		source: record.source,
+		source_id: record.sourceId,
 		split: record.split,
 		expense_number: record.expenseNumber,
 		recognition_state: record.state,
@@ -683,7 +707,7 @@ export async function loadCostEvents(
 	}));
 }
 
-function stateFilterClause(state: CostDrilldownQuery['state']): {
+export function stateFilterClause(state: CostDrilldownQuery['state']): {
 	clause: string;
 	params: Array<string | number>;
 } {
@@ -700,7 +724,7 @@ function stateFilterClause(state: CostDrilldownQuery['state']): {
 	return { clause: 'e.recognition_state = ?', params: [state] };
 }
 
-function natureFilterClause(nature: CostDrilldownQuery['nature']): {
+export function natureFilterClause(nature: CostDrilldownQuery['nature']): {
 	clause: string;
 	params: Array<string | number>;
 } {

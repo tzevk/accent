@@ -288,6 +288,9 @@ function confirmedWindowRecords(
 	if (days === 0) return [];
 	return records.filter(
 		(record) =>
+			// Only operating cost is cost: a non-operating balance or an
+			// unresolved nature never enters the window figures.
+			record.nature === 'operating' &&
 			isConfirmed(record.state) &&
 			windowSupport(record, days, monthDays, month) === support
 	);
@@ -325,12 +328,25 @@ export function percentChange(
 	return rounded(mul(div(sub(current, prior), prior), 100));
 }
 
+/**
+ * Day-less monthly cost of one currency: approved period charges dated in a
+ * compared month and recorded employee cost frozen in it. Both belong to the
+ * month, not to a day, so an elapsed window can never place them.
+ */
+export interface DaylessMonthCost {
+	currency: string;
+	/** How many day-less items the month holds (charges and allocations). */
+	count: number;
+	amount: number;
+}
+
 /** One currency's company figures over the reported and prior windows. */
 function currencyComparison(
 	records: CostRecord[],
 	priorRecords: CostRecord[],
 	currency: string,
-	window: ComparisonWindow
+	window: ComparisonWindow,
+	daylessCost: DaylessMonthCost | null
 ): ComparisonCurrency {
 	const sameCurrency = (record: CostRecord) =>
 		currencyCodeOf(record.currency) === currency;
@@ -358,7 +374,9 @@ function currencyComparison(
 	// A window that cannot prove where its cost sits cannot state a change: the
 	// figures below are the provable part, and the disclosure carries the
 	// unproven part with its own amounts.
-	const unproven = currentUnproven.length > 0 || priorUnproven.length > 0;
+	const dayless = window.basis === 'equal_period' ? daylessCost : null;
+	const unproven =
+		currentUnproven.length > 0 || priorUnproven.length > 0 || dayless !== null;
 	const currentEnd = windowEndDate(window, 'current');
 	const priorEnd = windowEndDate(window, 'prior');
 	const lateCurrent = current.filter((record) =>
@@ -406,6 +424,10 @@ function currencyComparison(
 		late_cost: sumMoney(lateCurrent.map(confirmedAmount)),
 		prior_late_records: latePrior.length,
 		prior_late_cost: sumMoney(latePrior.map(confirmedAmount)),
+		// Zero means the window has nothing day-less it cannot place; the
+		// figures above are then the month's own for every basis.
+		dayless_records: dayless?.count ?? 0,
+		dayless_cost: dayless?.amount ?? 0,
 	};
 }
 
@@ -419,8 +441,12 @@ export interface ComparisonInput {
 	asOf: string;
 	/** The month's Project rows, before any Project filter narrows the detail. */
 	rows: ReconciliationProjectRow[];
-	/** Approved period charges dated in the prior month, stated elsewhere. */
-	priorChargeCount?: number;
+	/**
+	 * Day-less monthly cost of the two compared months, by currency: approved
+	 * period charges and recorded employee cost. An elapsed window cannot place
+	 * it, so the comparison withholds the change it would distort.
+	 */
+	monthDayless?: DaylessMonthCost[];
 }
 
 /**
@@ -431,8 +457,12 @@ export function buildPeriodComparison(
 	input: ComparisonInput
 ): PeriodComparison {
 	const window = comparisonWindow(input.month, input.asOf);
+	const dayless =
+		window.basis === 'equal_period' ? (input.monthDayless ?? []) : [];
 	// A record whose original currency is unknown cannot be stated, so it never
-	// opens a currency slice; the month notices disclose how many those are.
+	// opens a currency slice; the month notices disclose how many those are. A
+	// currency whose month holds day-less cost opens one too, so the withheld
+	// change is stated in the currency it belongs to.
 	const codes = [
 		...new Set(
 			[
@@ -440,11 +470,18 @@ export function buildPeriodComparison(
 				...windowRecords(input.priorMonthRecords, window, 'prior'),
 			].map((record) => currencyCodeOf(record.currency))
 		),
+		...dayless.map((entry) => entry.currency),
 	]
 		.filter((code): code is string => code !== null)
 		.sort();
 	const currencyTotals = codes.map((currency) =>
-		currencyComparison(input.records, input.priorMonthRecords, currency, window)
+		currencyComparison(
+			input.records,
+			input.priorMonthRecords,
+			currency,
+			window,
+			dayless.find((entry) => entry.currency === currency) ?? null
+		)
 	);
 	const only = currencyTotals.length === 1 ? currencyTotals[0] : null;
 	const prior = only?.prior_cost ?? null;
@@ -578,7 +615,7 @@ export function buildPeriodComparison(
 			amount: only?.prior_late_cost ?? null,
 		});
 	}
-	if (!input.priorMonthRecords.some((record) => isConfirmed(record.state))) {
+	if (!input.priorMonthRecords.some((record) => record.nature === 'operating' && isConfirmed(record.state))) {
 		disclosures.push({
 			code: 'no_prior_period_evidence',
 			label: 'No recognized cost in the prior month',
@@ -590,16 +627,24 @@ export function buildPeriodComparison(
 			amount: null,
 		});
 	}
-	if ((input.priorChargeCount ?? 0) > 0) {
+	const daylessCount = currencyTotals.reduce(
+		(total, row) => total + row.dayless_records,
+		0
+	);
+	if (daylessCount > 0) {
+		const daylessAmount = currencyTotals.reduce(
+			(total, row) => total + row.dayless_cost,
+			0
+		);
 		disclosures.push({
-			code: 'prior_period_charges_excluded',
-			label: 'Period charges in the prior month',
-			detail: `${input.priorChargeCount} approved period charge(s) dated in ${window.priorMonth} are stated in that month's own reconciliation; an elapsed-day window carries no charge day, so the window figures above exclude them.`,
-			severity: 'info',
-			period: 'prior',
-			currency: null,
-			count: input.priorChargeCount ?? 0,
-			amount: null,
+			code: 'dayless_monthly_cost_unproven',
+			label: 'Monthly cost without a day in the elapsed window',
+			detail: `${daylessCount} day-less monthly item(s) of ${monthLabel(window.month)} and ${monthLabel(window.priorMonth)} — approved period charges and recorded employee cost — carry no day the elapsed window can place. They are left out of the window figures above and the change is withheld rather than stated as a new cost or an increase.`,
+			severity: 'warning',
+			period: null,
+			currency: only?.currency ?? null,
+			count: daylessCount,
+			amount: rounded(daylessAmount),
 		});
 	}
 	// Row-level comparison states, stated with the company figures they belong
