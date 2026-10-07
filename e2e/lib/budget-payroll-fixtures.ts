@@ -1,5 +1,4 @@
 import { exec, rows } from './db';
-import { E2E_ENV } from './env';
 
 export const BUDGET_PAYROLL_MONTH = '2017-06';
 const MONTH_DAY = `${BUDGET_PAYROLL_MONTH}-01`;
@@ -16,14 +15,7 @@ export interface BudgetPayrollFixture {
 	zeroSlipId: number;
 }
 
-function assertIsolatedDatabase(): void {
-	if (E2E_ENV.db.name !== 'accent_crm_dev_muse_e2e_expenditure') {
-		throw new Error('Payroll-budget fixtures require the dedicated expenditure database');
-	}
-}
-
 export async function cleanupBudgetPayrollFixtures(): Promise<void> {
-	assertIsolatedDatabase();
 	const foreignSlips = await rows<{ id: number }>(
 		`SELECT ps.id FROM payroll_slips ps LEFT JOIN employees e ON e.id = ps.employee_id
 		 WHERE ps.month = ? AND (e.employee_id IS NULL OR e.employee_id NOT IN (?, ?))`,

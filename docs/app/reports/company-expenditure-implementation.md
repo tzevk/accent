@@ -1115,4 +1115,4 @@ Expense record counts remain expense-only.
 
 `e2e/specs/payroll-only-cost-budget.spec.ts` covers positive and recorded-zero payroll-only Projects.
 It checks budget approval, report values, payroll storage, and the browser comparison.
-Its archived payroll fixtures use June 2017 in the dedicated expenditure database.
+Its archived payroll fixtures use June 2017 and refuse foreign slips or an unowned payroll run.
