@@ -478,7 +478,10 @@ test('reconstructs the commitment rollforward as of each month', async ({
 
 	// No double count: May has no recognized cost at all, while the order
 	// commitment is 10000 — the order value is never incurred expenditure.
-	expect(may.company.incurred_cost).toBe(0);
+	// An empty month states no company total (null), not a zero total: zero
+	// is a stated amount, null is no statable amount (cf. types.ts and the
+	// toBeNull empty-month pins in the payroll/currency/non-operating specs).
+	expect(may.company.incurred_cost).toBeNull();
 	// June's INR cost is the recognized supplier invoices only (3000 + 41000),
 	// not the 7000 remaining commitment nor the 10000 order value.
 	const juneInrCost = june.company.currency_totals.find(
