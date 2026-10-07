@@ -88,6 +88,7 @@ export async function GET(request: Request) {
 		const offset = (page - 1) * limit;
 
 		db = await dbConnect();
+		if (!db) throw new Error('Database connection unavailable');
 
 		const where = ['1=1 AND isDelete = 0'];
 		const params: (string | number)[] = [];
