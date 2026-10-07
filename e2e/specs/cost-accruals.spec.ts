@@ -661,7 +661,23 @@ test('final replacement explains the estimate-versus-actual difference', async (
 	await page
 		.getByTestId('accrual-replacement-evidence')
 		.fill('E2E-ACCR-DIFF-EV-9001');
+	// Await the replacement POST before reading the database: the row the
+	// assertions below query only exists after the server commits, and the
+	// '0' substring also matches the pre-replacement '₹40,000.00', so it
+	// gates nothing on its own (same waitForResponse shape as :450 above).
+	const replacementPosted = page.waitForResponse(
+		(response) =>
+			response
+				.url()
+				.includes(
+					`/api/admin/cost-accruals/${seeded.accrualIds.a1}/replacements`
+				) && response.request().method() === 'POST'
+	);
 	await page.getByTestId('accrual-replacement-submit').click();
+	const replacementResponse = await replacementPosted;
+	expect(replacementResponse.status(), await replacementResponse.text()).toBe(
+		200
+	);
 	await expect(page.getByTestId('accrual-remaining-amount')).toContainText('0');
 
 	const replacements = await rows<Record<string, unknown>>(
