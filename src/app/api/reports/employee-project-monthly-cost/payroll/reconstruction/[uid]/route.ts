@@ -101,7 +101,7 @@ export async function POST(
 			userId: authResult.user?.id ?? 0,
 			actionType: command === 'approve' ? 'approve' : 'reject',
 			resourceType: 'payroll_allocation_reconstruction',
-			resourceId: result.proposal_uid,
+			resourceId: result.evidence.payroll_slip_id,
 			description: `Allocation reconstruction ${command} (version ${result.financial_version}) for proposal ${result.proposal_uid}`,
 			request,
 		});
