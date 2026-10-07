@@ -99,7 +99,12 @@ async function loadRecognitionState(
 		recognition_state: string;
 		has_recognized_history: number;
 	}>;
-	return found.length > 0 ? found[0] : null;
+	if (found.length === 0) return null;
+	// MySQL reports EXISTS() as 0/1; the callers read a real boolean.
+	return {
+		recognition_state: found[0].recognition_state,
+		has_recognized_history: Number(found[0].has_recognized_history) !== 0,
+	};
 }
 
 export async function GET(
@@ -117,6 +122,7 @@ export async function GET(
 	try {
 		const { id } = await params;
 		db = await dbConnect();
+		if (!db) throw new Error('Database connection unavailable');
 		const [rows] = await db.execute(
 			`SELECT * FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
 			[id]
@@ -150,6 +156,7 @@ export async function PUT(
 		const body = (await request.json()) as Record<string, unknown>;
 
 		db = await dbConnect();
+		if (!db) throw new Error('Database connection unavailable');
 		const state = await loadRecognitionState(db, id);
 		if (!state) {
 			return NextResponse.json(
@@ -248,6 +255,7 @@ export async function DELETE(
 	try {
 		const { id } = await params;
 		db = await dbConnect();
+		if (!db) throw new Error('Database connection unavailable');
 		const state = await loadRecognitionState(db, id);
 		if (!state) {
 			return NextResponse.json(
@@ -269,7 +277,7 @@ export async function DELETE(
 				{ status: 409 }
 			);
 		}
-		if (Number(state.has_recognized_history) !== 0) {
+		if (state.has_recognized_history) {
 			return NextResponse.json(
 				{
 					success: false,

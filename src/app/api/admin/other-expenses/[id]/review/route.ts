@@ -22,6 +22,17 @@ function actionOf(value: unknown): CopyReviewAction | null {
 	return ACTIONS.includes(candidate) ? candidate : null;
 }
 
+/**
+ * One review option as text. The module reads these fields through its own
+ * string coercion; narrow the raw body value here so the command receives
+ * `string | null` instead of an arbitrary JSON value.
+ */
+function optionalText(value: unknown): string | null {
+	if (value === null || value === undefined) return null;
+	const text = String(value).trim();
+	return text.length === 0 ? null : text;
+}
+
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : 'Unexpected error';
 }
@@ -81,9 +92,9 @@ export async function POST(
 				id,
 				action,
 				expected_version: expectedVersion,
-				reason: body.reason ?? null,
-				evidence_reference: body.evidence_reference ?? null,
-				target_cost_uid: body.target_cost_uid ?? null,
+				reason: optionalText(body.reason),
+				evidence_reference: optionalText(body.evidence_reference),
+				target_cost_uid: optionalText(body.target_cost_uid),
 			},
 			{ id: user?.id ?? null }
 		);

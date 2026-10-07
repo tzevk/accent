@@ -41,6 +41,7 @@ import {
 	financialYearOf,
 } from '@/lib/company-expenditure/ranking';
 import type {
+	CostNature,
 	CostRecordJson,
 	PeriodChargeJson,
 } from '@/lib/company-expenditure';
@@ -488,7 +489,7 @@ const CHARGE_BASIS_LABELS: Record<string, string> = {
 /** Natures whose balance is consumed by approved period charges. */
 const CONSUMABLE_NATURES = ['advance', 'deposit', 'prepayment', 'capital'];
 
-const NATURE_OPTIONS = [
+const NATURE_OPTIONS: ReadonlyArray<{ value: CostNature; label: string }> = [
 	{ value: 'operating', label: 'Operating cost' },
 	{ value: 'advance', label: 'Advance (balance, not cost)' },
 	{ value: 'deposit', label: 'Deposit (balance, not cost)' },
@@ -496,6 +497,15 @@ const NATURE_OPTIONS = [
 	{ value: 'capital', label: 'Capital item (balance, not cost)' },
 	{ value: 'unresolved', label: 'Treatment unresolved (excluded)' },
 ];
+
+/** The select's exact vocabulary, for narrowing a DOM string to `CostNature`. */
+const NATURE_VALUES: readonly string[] = NATURE_OPTIONS.map(
+	(option) => option.value
+);
+
+function isCostNature(value: string): value is CostNature {
+	return NATURE_VALUES.includes(value);
+}
 
 const CHANGE_LABELS: Record<string, string> = {
 	no_prior: 'No prior month',
@@ -3454,7 +3464,10 @@ function CostEditDialog({
 						<select
 							aria-label="Nature"
 							value={nature}
-							onChange={(event) => setNature(event.target.value)}
+							onChange={(event) => {
+								const next = event.target.value;
+								if (isCostNature(next)) setNature(next);
+							}}
 							className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
 						>
 							{NATURE_OPTIONS.map((option) => (
