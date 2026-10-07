@@ -91,8 +91,8 @@ const SUPPLIER_REPORTS_ONLY_ROLE = {
 } as const;
 
 /** Distinct login/API rate-limit identities (ADR-0013), never 198.18.0.2x. */
-const SUPPLIER_EDITOR_IP = '198.18.0.31';
-const SUPPLIER_REPORTS_ONLY_IP = '198.18.0.32';
+const SUPPLIER_EDITOR_IP = '198.18.0.71';
+const SUPPLIER_REPORTS_ONLY_IP = '198.18.0.72';
 
 export type SupplierState =
 	| 'draft'

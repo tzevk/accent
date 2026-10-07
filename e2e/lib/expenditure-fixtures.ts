@@ -1967,6 +1967,7 @@ async function seedExpenditureEditor(): Promise<void> {
 			EXPENDITURE_EDITOR_ROLE.roleName,
 			JSON.stringify([
 				'reports:read',
+				'payroll:read',
 				'other_expenses:read',
 				'other_expenses:update',
 			]),

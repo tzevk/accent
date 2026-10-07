@@ -45,18 +45,6 @@ export type PeriodChargeBasis = 'consumption' | 'depreciation' | 'amortization';
 
 export type PeriodChargeState = 'approved' | 'cancelled';
 
-/**
- * Which native store a cost row lives in. IDs come from different stores, so
- * every cost carries its source discriminator; `cost_uid` stays the canonical
- * identity across all of them.
- */
-export type CostSource =
-	| 'direct_expense'
-	| 'supplier_invoice'
-	| 'other_expense'
-	| 'petty_cash'
-	| 'non_operating'
-	| 'payroll';
 /** Confirmed cost is `recognized` and nothing else. */
 export type RecognitionState =
 	| 'draft'
