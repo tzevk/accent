@@ -27,6 +27,8 @@ import type Decimal from 'decimal.js';
 import { add, sub, R, toNumber } from '@/lib/money';
 import { withTransaction } from '@/utils/database';
 import { releaseAccrualReplacementsForInvoice } from './accruals';
+import { restoreAccrualConsumptionForReleasedReplacements } from './accrual-consumption';
+import type { AccrualCancelConsumption } from './accrual-consumption';
 import {
 	convertToReporting,
 	currencyCodeOf,
@@ -210,6 +212,15 @@ export interface RecordedSupplierCost {
 	period_basis: PeriodBasis;
 	recognized_amount: number | null;
 	cost_classification: CostClassification | null;
+}
+
+/**
+ * A supplier command result. Cancelling a replacement invoice also states
+ * the restored accrual consumption #314 re-recorded in the same transaction
+ * (null when no live replacement existed).
+ */
+export interface SupplierCommandResult extends CostCommandResult {
+	accrual_consumption: AccrualCancelConsumption[] | null;
 }
 
 export interface SupplierSplitRow {
@@ -786,8 +797,8 @@ export async function executeSupplierCommand(
 	input: SupplierCommandInput,
 	actor: { id: number | null },
 	options?: { connection?: SqlConnection }
-): Promise<CostCommandResult> {
-	const run = async (db: SqlConnection): Promise<CostCommandResult> => {
+): Promise<SupplierCommandResult> {
+	const run = async (db: SqlConnection): Promise<SupplierCommandResult> => {
 		const row = await loadInvoiceForUpdate(db, input.id);
 		if (!row) {
 			throw new CostError('not_found', 'Supplier invoice not found', 404);
@@ -1097,15 +1108,27 @@ export async function executeSupplierCommand(
 		// its accrual, so no committed state ever counts the cancelled invoice
 		// and the restored estimate together, and none of the received-work
 		// cost silently disappears (contract
-		// C:/Files/OCDSE/Work/expenditure-accrual-contract.md §4b).
+		// C:/Files/OCDSE/Work/expenditure-accrual-contract.md §4b). #314 then
+		// re-records the restored remainder's order consumption in the same
+		// commit, so the estimate keeps consuming its order instead of
+		// silently returning to the commitment.
+		let restoredConsumption: AccrualCancelConsumption[] | null = null;
 		if (input.command === 'cancel') {
-			await releaseAccrualReplacementsForInvoice(
-				db,
-				input.id,
-				actor.id,
-				text(input.reason, 500),
-				text(merged.evidenceReference, 500)
-			);
+			const releasedReplacementIds =
+				await releaseAccrualReplacementsForInvoice(
+					db,
+					input.id,
+					actor.id,
+					text(input.reason, 500),
+					text(merged.evidenceReference, 500)
+				);
+			restoredConsumption =
+				await restoreAccrualConsumptionForReleasedReplacements(db, {
+					replacementIds: releasedReplacementIds,
+					actor: { id: actor.id },
+					reason: text(input.reason, 500),
+					evidenceReference: text(merged.evidenceReference, 500),
+				});
 		}
 		const netAmount =
 			merged.grossAmount === null
@@ -1256,11 +1279,12 @@ export async function executeSupplierCommand(
 			recognized_amount: recognizedAmount,
 			recognition_period: resolved.period,
 			component: input.command,
+			accrual_consumption: restoredConsumption,
 		};
 	};
 
 	if (options?.connection) return run(options.connection);
-	return withTransaction((db) => run(db)) as Promise<CostCommandResult>;
+	return withTransaction((db) => run(db)) as Promise<SupplierCommandResult>;
 }
 
 /** The SQL month predicate for split-aware supplier cost. */

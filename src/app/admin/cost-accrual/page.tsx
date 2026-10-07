@@ -109,6 +109,7 @@ const PAGE_SIZE = 20;
 const EMPTY_CAPTURE = {
 	description: '',
 	vendorName: '',
+	orderUid: '',
 	evidenceBasis: 'received_work',
 	servicePeriodStart: '',
 	servicePeriodEnd: '',
@@ -162,6 +163,7 @@ export default function CostAccrualPage() {
 			await apiPost('/api/admin/cost-accruals', {
 				description: capture.description,
 				vendor_name: capture.vendorName || null,
+				order_uid: capture.orderUid.trim() || null,
 				evidence_basis: capture.evidenceBasis,
 				service_period_start: capture.servicePeriodStart || null,
 				service_period_end: capture.servicePeriodEnd || null,
@@ -374,6 +376,19 @@ export default function CostAccrualPage() {
 									value={capture.vendorName}
 									onChange={(event) =>
 										setCapture({ ...capture, vendorName: event.target.value })
+									}
+								/>
+							</label>
+							<label className="text-sm">
+								<span className="text-gray-700">
+									Supplier order link (order_uid)
+								</span>
+								<Input
+									data-testid="accrual-order"
+									placeholder="ord-…"
+									value={capture.orderUid}
+									onChange={(event) =>
+										setCapture({ ...capture, orderUid: event.target.value })
 									}
 								/>
 							</label>

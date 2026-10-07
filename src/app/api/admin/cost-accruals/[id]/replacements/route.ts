@@ -12,6 +12,11 @@
  * the shared chain link, and the journal row commit together or not at all.
  * Cancelling the replacement invoice later releases the matched amount back to
  * the accrual in the cancel command's own transaction.
+ *
+ * #314 composes the replacement with the order-consumption transfer in the
+ * same transaction: the accrual's active consumption is released and the
+ * invoice's native slices (plus a partial remainder) are recorded, so the
+ * matched amount moves exactly once.
  */
 
 import { NextResponse } from 'next/server';
@@ -20,7 +25,8 @@ import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 import { logActivity } from '@/utils/activity-logger';
 import {
 	CostError,
-	executeAccrualReplacement,
+	OrderError,
+	executeAccrualReplacementWithConsumption,
 } from '@/lib/company-expenditure';
 
 export const runtime = 'nodejs';
@@ -80,7 +86,7 @@ export async function POST(
 
 		const optionalText = (value: unknown): string | null =>
 			value === undefined || value === null ? null : String(value);
-		const result = await executeAccrualReplacement(
+		const result = await executeAccrualReplacementWithConsumption(
 			{
 				accrualId,
 				invoiceId,
@@ -114,6 +120,18 @@ export async function POST(
 			return NextResponse.json(
 				{
 					success: false,
+					error: error.message,
+					code: error.code,
+					...error.detail,
+				},
+				{ status: error.status }
+			);
+		}
+		if (error instanceof OrderError) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: error.message,
 					error: error.message,
 					code: error.code,
 					...error.detail,
