@@ -219,6 +219,7 @@ interface ProjectRow {
 	estimated_employee_cost: number;
 	logged_hours: number;
 	employee_count: number;
+	recorded_employee_count: number;
 	evidence: {
 		state: string;
 		findings: string[];

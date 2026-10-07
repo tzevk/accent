@@ -395,7 +395,15 @@ Employee status (`recorded` / `estimated` / `known_zero` / `unknown`), recorded
 and estimated amounts, Logged Hours by Project, the source Payroll Slip and
 allocation version, and shares with basis and rounding. The employee-cost
 Monthly and Financial Year views read the same module, so the obsolete
-Gross-first billing-derived rate × hours path is no longer a consumer path.
+Gross-first billing-derived rate × hours path is no longer a consumer path;
+their per-row `hourly_rate` is stated with the shared Decimal money rule
+(ROUND_HALF_UP, e.g. 302.25 ÷ 30 h → 10.08), and FY rows carry it so the FY
+table and workbook Rate/Hr column stay wired. Estimated rows keep the live
+Project identity their shares carry; a frozen recorded share's snapshotted
+identity is never overwritten by an estimate. Estimates price from the eligible
+canonical Salary Profile whenever one covers the month, falling back to a
+legacy `salary_structures` row only when none does — the same choice Payroll
+Generate prices slips with.
 
 **Gaps are stated, not hidden.** Estimates are labelled and separate; a missing
 Payroll Slip (`payroll_slip_missing`), missing pricing (`payroll_pricing_missing`
@@ -675,13 +683,14 @@ voucher_has_spending`; a voucher with no spending deletes with its mirror;
 `e2e/specs/expenditure-payroll-allocation.spec.ts` (#307) drives the same real
 app and writes `e2e/artifacts/expenditure-payroll-allocation.json`. It owns the
 months **2026-02** (finalized) and **2026-03** (estimates), Projects
-`E2E-ALLOC-P1/P2`, Employees `E2E-ALLOC-01..06`, a fixture Bonus Component Rate,
+`E2E-ALLOC-P1/P2`, Employees `E2E-ALLOC-01..09`, a fixture Bonus Component Rate,
 and two reader identities (fixtures in
 `e2e/lib/expenditure-allocation-fixtures.ts`, wired into `e2e/global-setup.ts`),
-and asserts, from hand-computed fixture literals:
+and asserts, from hand-computed fixture literals (employer cost = priced gross
+plus the genuine employer contributions — e.g. ₹26,000 gross + ₹750 gratuity):
 
 - Generate through the authenticated route writes the stated slip amounts
-  (₹26,000 monthly, ₹10,000 contract, ₹500 bonus-only, and known zeros), and the
+  (₹26,750 monthly, ₹10,289 contract, ₹500 bonus-only, and known zeros), and the
   month holds exactly three nonzero slips;
 - before finalization the month states estimates only: no recorded total, no
   company incurred cost, `payroll_not_finalized` coverage, and the drilldown
@@ -692,14 +701,24 @@ and asserts, from hand-computed fixture literals:
 - finalization freezes one allocation per slip in the same transaction: every
   frozen allocation sums exactly to its slip's `employer_cost`, one journal row
   per slip, version 1 only, and a repeated finalize changes nothing;
-- the reconciliation states recorded ₹36,500.00 (P1 ₹14,635.41, P2 ₹13,447.92,
-  unallocated ₹8,416.67, rounding ₹0.02, 384 Logged Hours) with the two
-  Projects' employee cost and hours, no payroll coverage warnings, and the
-  drilldown shows both pay streams, the largest-remainder cent on the
-  no-project/P2 shares, and No logged hours fully unallocated;
-- 2026-03 states the payroll-based estimate (₹5,250 = 42h at the corrected
+- the reconciliation states recorded ₹37,539.00 (P1 ₹15,057.79, P2 ₹13,836.04,
+  unallocated ₹8,645.17, rounding ₹0.02, 384 Logged Hours; per-Project frozen
+  hours 153 and 143, not the 296 month-wide total) with the two Projects'
+  employee cost and hours, no payroll coverage warnings, and the drilldown shows
+  both pay streams, the largest-remainder cent on the no-project/P2 shares, and
+  No logged hours fully unallocated;
+- 2026-03 states the payroll-based estimate (₹5,402 = 42h at the corrected
   calculation) separately, with `payroll_not_generated` and
-  `payroll_pricing_missing` for the Employee who logged hours with no profile;
+  `payroll_pricing_missing` for the Employee who logged hours with no profile,
+  and estimate-only Projects keep their live code/name/client identity in the
+  reconciliation instead of an internal `#<id>`;
+- the eligible canonical Salary Profile prices an Employee holding a newer
+  legacy `salary_structures` row, matching Payroll Generate, while a legacy row
+  with no canonical profile still prices its month;
+- the monthly and FY views state every derived rate with the money rule: the
+  fixture's 501.15 ÷ 10 h is exactly 50.115 and must read 50.12 (the naive float
+  product reads 50.11), and the FY payload carries `hourly_rate` for the page
+  table and workbook Rate/Hr column;
 - the browser's expenditure view shows the payroll summary, the employee row,
   and the No project share from the real controls;
 - reopen returns the month to estimates while the version-1 allocations remain
@@ -1176,3 +1195,15 @@ hand-computed fixture amounts:
 - `src/app/api/admin/expenses/[id]/charges/route.ts`,
   `src/app/api/admin/expenses/[id]/charges/[chargeUid]/route.ts`
 - `e2e/specs/expense-non-operating.spec.ts`
+
+### Payroll-only budget comparisons (#307 / #321)
+
+Frozen employee allocations support a monthly cost budget comparison.
+This includes a recorded zero allocation.
+Estimated employee cost does not support a comparison.
+The report carries `recorded_employee_count` separately from employees with Logged Hours.
+Expense record counts remain expense-only.
+
+`e2e/specs/payroll-only-cost-budget.spec.ts` covers positive and recorded-zero payroll-only Projects.
+It checks budget approval, report values, payroll storage, and the browser comparison.
+Its archived payroll fixtures use June 2017 and refuse foreign slips or an unowned payroll run.

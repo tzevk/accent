@@ -362,6 +362,16 @@ export interface ReconciliationProjectRow {
 	late_entry: { count: number; amount: number | null } | null;
 	/** What the row's figures rest on: recorded, estimated, reconstructed, incomplete. */
 	evidence: ProjectEvidenceState;
+	/** Recorded employee cost allocated to this Project (ADR-0016), INR. */
+	employee_cost: number;
+	/** Payroll-based estimate for this Project, never part of `incurred_cost`. */
+	estimated_employee_cost: number;
+	/** Logged Hours this month on the Project, across the report's population. */
+	logged_hours: number;
+	/** Employees with Logged Hours on the Project this month. */
+	employee_count: number;
+	/** Employees with frozen recorded shares, including known-zero shares. */
+	recorded_employee_count: number;
 }
 
 /** Ordering of one amount against its comparable prior period. */
@@ -1321,12 +1331,6 @@ export interface ProjectBudgetComparison {
 	period_charges: number;
 	/** Draft or pending-evidence operating records that are not confirmed cost. */
 	pending_records: number;
-	/**
-	 * Supported approved period charges the row counts (#317). They are part of
-	 * Incurred Project Cost, so a Project whose month is charge-only still
-	 * supports a budget comparison.
-	 */
-	period_charges: number;
 	outcome: BudgetOutcome;
 	/**
 	 * The comparison basis: the approved budget the variance is stated from

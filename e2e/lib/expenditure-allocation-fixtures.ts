@@ -40,23 +40,34 @@ import { exec, rows } from './db';
  *
  *   Month 2026-02 has 28 days, 4 Sundays, so 24 working days × 8h = 192 basis
  *   hours — the same calendar the payroll calculator reads from
- *   `holiday_master` (no fixture holiday falls in 2026-02).
+ *   `holiday_master` (no fixture holiday falls in 2026-02). 2026-03 has 26
+ *   working days → 208 basis hours.
  *
- *   E2E-ALLOC-01 monthly CTC ₹26,000, 192h logged → gross = CTC = what the
- *   heads add to (₹15,600 + ₹5,200 + ₹2,600 + ₹2,600). Logged on P1 80h,
- *   P2 72h, no project 40h.
- *   E2E-ALLOC-02 contract CTC ₹10,000, 192h logged → ₹10,000. P1 73h, P2 71h,
- *   no project 48h.
+ *   Employer cost is earnings + the genuine employer contributions; a
+ *   zero-flag profile still carries gratuity = 4.81 % of Basic, Basic = 60 %
+ *   of the priced gross.
+ *
+ *   E2E-ALLOC-01 monthly CTC ₹26,000, 192h logged → gross = CTC (heads
+ *   ₹15,600 + ₹5,200 + ₹2,600 + ₹2,600) + ₹750 gratuity = ₹26,750. Logged on
+ *   P1 80h, P2 72h, no project 40h.
+ *   E2E-ALLOC-02 contract CTC ₹10,000, 192h logged → ₹10,000 + ₹289 gratuity
+ *   = ₹10,289. P1 73h, P2 71h, no project 48h.
  *   E2E-ALLOC-03 monthly CTC ₹26,000, zero hours, fixture Bonus Component Rate
- *   ₹500 → earnings ₹500, fully unallocated (no Logged Hours).
+ *   ₹500 → earnings ₹500 on an empty gross, fully unallocated.
  *   E2E-ALLOC-04 monthly CTC ₹26,000, zero hours, no bonus → known zero.
  *   E2E-ALLOC-06 profile covering 2026-02 only, zero hours → known zero.
+ *   E2E-ALLOC-07 canonical CTC ₹26,000 + a *newer* legacy row ₹52,000 → the
+ *   canonical profile prices March: ₹5,402.
+ *   E2E-ALLOC-08 canonical CTC ₹10,116, 26h logged → ₹1,265 + ₹37 gratuity =
+ *   ₹1,303 → shares ₹501.15 (10h) + ₹801.85 (16h); 501.15 ÷ 10 = 50.115, the
+ *   half-cent boundary the money rule rounds to ₹50.12.
+ *   E2E-ALLOC-09 only a legacy row (₹41,600 gross, ₹24,960 Basic) → ₹27,841.
  *
- *   The rounding adjustment is the deterministic largest-remainder cent: exact
- *   shares ₹10,833.33⅓ / ₹9,750.00 / ₹5,416.66⅔ leave one cent, which goes to
- *   the largest remainder (the no-project share) → ₹10,833.33 / ₹9,750.00 /
- *   ₹5,416.67 with a +₹0.01 adjustment. E2E-ALLOC-02: exact ₹3,802.08⅓ /
- *   ₹3,697.91⅔ / ₹2,500.00 → P2 receives the cent.
+ *   The rounding adjustment is the deterministic largest-remainder cent:
+ *   E2E-ALLOC-01's exact shares ₹11,145.83⅓ / ₹10,031.25 / ₹5,572.91⅔ leave
+ *   one cent, which goes to the largest remainder (the no-project share) →
+ *   ₹11,145.83 / ₹10,031.25 / ₹5,572.92 with a +₹0.01 adjustment; E2E-ALLOC-02
+ *   gives its cent to the P2 share the same way.
  */
 
 export const ALLOCATION_MONTH = '2026-02';
@@ -176,6 +187,50 @@ export const ALLOCATION_EMPLOYEES = {
 		ctc: 26000,
 		profileTo: '2026-02-28',
 	},
+	/**
+	 * Same canonical profile and hours as `estimateOnly`, plus a *newer* legacy
+	 * `salary_structures` row. The eligible canonical profile must still price
+	 * the 2026-03 estimate — Payroll Generate's own rule — so its estimate
+	 * matches `estimateOnly` even though the legacy row is newer.
+	 */
+	canonicalFirst: {
+		code: 'E2E-ALLOC-07',
+		firstName: 'E2E',
+		lastName: 'Canonical First',
+		email: 'e2e.alloc.07@accent.test',
+		employeeType: 'Permanent',
+		salaryType: 'monthly',
+		ctc: 26000,
+		profileFrom: '2026-02-05',
+		legacyProfile: { gross: 52000, basic: 31200, effectiveFrom: '2026-02-20' },
+	},
+	/**
+	 * The half-cent rate boundary: a destination share whose cost ÷ hours lands
+	 * exactly on x.xx5 must round with the shared money rule (Decimal
+	 * ROUND_HALF_UP), not `Math.round` on the float product.
+	 */
+	boundaryRate: {
+		code: 'E2E-ALLOC-08',
+		firstName: 'E2E',
+		lastName: 'Boundary Rate',
+		email: 'e2e.alloc.08@accent.test',
+		employeeType: 'Permanent',
+		salaryType: 'monthly',
+		ctc: 10116,
+		profileFrom: '2026-03-01',
+	},
+	/** No canonical profile at all: the legacy row is the only pricing. */
+	legacyOnly: {
+		code: 'E2E-ALLOC-09',
+		firstName: 'E2E',
+		lastName: 'Legacy Only',
+		email: 'e2e.alloc.09@accent.test',
+		employeeType: 'Permanent',
+		salaryType: 'monthly',
+		ctc: 0,
+		profileFrom: null,
+		legacyProfile: { gross: 41600, basic: 24960, effectiveFrom: '2026-02-20' },
+	},
 } as const;
 
 export type AllocationEmployeeKey = keyof typeof ALLOCATION_EMPLOYEES;
@@ -183,29 +238,36 @@ export type AllocationEmployeeKey = keyof typeof ALLOCATION_EMPLOYEES;
 /**
  * Independently stated expectations. The spec asserts these literals; it never
  * calls the report module's own allocation functions to derive them.
+ *
+ * Amounts are the payroll calculator's own composition: the priced gross plus
+ * the genuine employer contributions — here only gratuity = 4.81 % of Basic,
+ * Basic = 60 % of the gross, so a ₹26,000 gross month costs ₹26,750 (a
+ * ₹1,000-share contract month ₹10,289). Each frozen share is the
+ * largest-remainder cent split of that employer cost over the destination
+ * hours below; adjustments are the cents the remainder step applied.
  */
 export const ALLOCATION_EXPECTED = {
-	/** 24 working days × 8h (holiday_master has no 2026-02 holiday). */
+	/** 24 working days × 8h in 2026-02 (no fixture holiday lands in it). */
 	basisHours: 192,
-	/** Legacy stream-wise expectations for the finalized month. */
+	/** Stream-wise expectations for the finalized month. */
 	employees: {
 		splitMonthly: {
-			slipEmployerCost: 26000,
+			slipEmployerCost: 26750,
 			hours: 192,
 			projectHours: 152,
 			noProjectHours: 40,
-			recorded: 26000,
-			shares: { p1: 10833.33, p2: 9750.0, noProject: 5416.67 },
+			recorded: 26750,
+			shares: { p1: 11145.83, p2: 10031.25, noProject: 5572.92 },
 			adjustments: { p1: 0, p2: 0, noProject: 0.01 },
 			payStream: 'payroll',
 		},
 		contractRounding: {
-			slipEmployerCost: 10000,
+			slipEmployerCost: 10289,
 			hours: 192,
 			projectHours: 144,
 			noProjectHours: 48,
-			recorded: 10000,
-			shares: { p1: 3802.08, p2: 3697.92, noProject: 2500.0 },
+			recorded: 10289,
+			shares: { p1: 3911.96, p2: 3804.79, noProject: 2572.25 },
 			adjustments: { p1: 0, p2: 0.01, noProject: 0 },
 			payStream: 'contract',
 		},
@@ -233,30 +295,77 @@ export const ALLOCATION_EXPECTED = {
 		},
 		estimateOnly: {
 			/** 208 basis hours in 2026-03 (31 days − 5 Sundays), 42h logged. */
-			estimated: 5250,
+			estimated: 5402,
 			hours: 42,
-			shares: { p1: 3000, p2: 2250 },
+			shares: { p1: 3086.86, p2: 2315.14 },
+			payStream: 'payroll',
+		},
+		/**
+		 * Same canonical profile (CTC 26,000) and hours as `estimateOnly`, so
+		 * the canonical-first rule must price it identically. Pricing from its
+		 * newer legacy row would give 36,901 instead (52,000 gross with a
+		 * stored Basic of 31,200).
+		 */
+		canonicalFirst: {
+			estimated: 5402,
+			hours: 42,
+			shares: { p1: 3086.86, p2: 2315.14 },
+			payStream: 'payroll',
+			legacyPriced: 36901,
+		},
+		/**
+		 * CTC 10,116 over 208 basis hours and 26 h logged: gross 1,265,
+		 * employer cost 1,303 → shares 501.15 (10 h) and 801.85 (16 h).
+		 * 501.15 / 10 h is exactly 50.115: the money rule (ROUND_HALF_UP)
+		 * states 50.12, while Math.round on the float product gives 50.11.
+		 */
+		boundaryRate: {
+			estimated: 1303,
+			hours: 26,
+			p1Hours: 10,
+			p2Hours: 16,
+			shares: { p1: 501.15, p2: 801.85 },
+			rates: { p1: 50.12, p2: 50.12 },
+			naiveP1Rate: 50.11,
+			payStream: 'payroll',
+		},
+		/** The legacy row (41,600 gross, stored Basic 24,960) is the only pricing. */
+		legacyOnly: {
+			estimated: 27841,
+			hours: 21,
+			shares: { p1: 27841 },
 			payStream: 'payroll',
 		},
 	},
 	/** Month reconciliation after 2026-02 finalizes (no direct costs exist). */
 	month: {
-		recordedTotal: 36500,
-		project1: 14635.41,
-		project2: 13447.92,
-		unallocated: 8416.67,
+		recordedTotal: 37539,
+		project1: 15057.79,
+		project2: 13836.04,
+		unallocated: 8645.17,
 		roundedAdjustment: 0.02,
 		projectHours: 296,
+		/** Frozen per-Project hours: 80 + 73 and 72 + 71. */
+		project1Hours: 153,
+		project2Hours: 143,
 		noProjectHours: 88,
 		totalHours: 384,
 		recordedCount: 3,
 	},
-	/** 2026-03 estimate month, filtered to the fixture employees. */
+	/** 2026-03 estimate month, filtered to the fixture employees and Projects. */
 	estimateMonth: {
-		estimateOnlyEstimated: 5250,
-		estimateOnlyP1: 3000,
-		estimateOnlyP2: 2250,
+		estimateOnlyEstimated: 5402,
+		estimateOnlyP1: 3086.86,
+		estimateOnlyP2: 2315.14,
 		missingPricingHours: 8,
+		/** P1: 24 (05) + 8 (06) + 24 (07) + 10 (08) + 21 (09). */
+		project1Hours: 87,
+		/** P2: 18 (05) + 18 (07) + 16 (08). */
+		project2Hours: 52,
+		/** P1: 3,086.86 (05) + 3,086.86 (07) + 501.15 (08) + 27,841 (09). */
+		project1Estimated: 34515.87,
+		/** P2: 2,315.14 (05) + 2,315.14 (07) + 801.85 (08). */
+		project2Estimated: 5432.13,
 	},
 } as const;
 
@@ -376,6 +485,13 @@ export async function cleanupExpenditureAllocationFixtures(): Promise<void> {
       )`,
 		employeeCodes
 	);
+	await exec(
+		`DELETE FROM salary_structures
+      WHERE employee_id IN (
+        SELECT id FROM employees WHERE employee_id IN (${placeholders})
+      )`,
+		employeeCodes
+	);
 	await exec(`DELETE FROM payroll_schedules WHERE remarks = ?`, [
 		ALLOCATION_BONUS_REMARKS,
 	]);
@@ -466,27 +582,50 @@ export async function seedExpenditureAllocationFixtures(): Promise<SeededAllocat
 		employeeIds[key] = inserted.insertId;
 
 		const profileFrom =
-			('profileFrom' in employee && employee.profileFrom) || '2026-01-01';
-		const profileTo = ('profileTo' in employee && employee.profileTo) || null;
-		await exec(
-			`INSERT INTO employee_salary_profile
+			'profileFrom' in employee ? employee.profileFrom : '2026-01-01';
+		if (profileFrom !== null) {
+			const profileTo = ('profileTo' in employee && employee.profileTo) || null;
+			await exec(
+				`INSERT INTO employee_salary_profile
          (employee_id, gross, gross_salary, employer_cost, other_allowances,
           effective_from, effective_to, is_active, pf_applicable, esic_applicable,
           pt_applicable, mlwf_applicable, bonus_applicable, salary_type,
           std_hours_per_day, std_working_days, tds_percentage,
           loan_amount, loan_amount_per_month, loan_active, advance_amount, advance_active)
        VALUES (?, ?, ?, ?, 0, ?, ?, 1, 0, 0, 0, 0, ?, ?, 8, 26, 0, 0, 0, 0, 0, 0)`,
-			[
-				inserted.insertId,
-				employee.ctc,
-				employee.ctc,
-				employee.ctc,
-				profileFrom,
-				profileTo,
-				'bonusApplicable' in employee ? employee.bonusApplicable : 0,
-				employee.salaryType,
-			]
-		);
+				[
+					inserted.insertId,
+					employee.ctc,
+					employee.ctc,
+					employee.ctc,
+					profileFrom,
+					profileTo,
+					'bonusApplicable' in employee ? employee.bonusApplicable : 0,
+					employee.salaryType,
+				]
+			);
+		}
+		// The legacy pricing row #307's canonical-first selection must respect:
+		// read-only fallback in `salary_structures` (ADR-0001), exactly what
+		// Payroll Generate falls back to when no canonical profile covers.
+		if ('legacyProfile' in employee) {
+			await exec(
+				`INSERT INTO salary_structures
+           (employee_id, version, effective_from, effective_to, is_active, pay_type,
+            ctc, gross_salary, basic_salary, pf_applicable, esic_applicable,
+            pt_applicable, mlwf_applicable, tds_applicable, standard_working_days,
+            standard_hours_per_day, remarks)
+         VALUES (?, 1, ?, NULL, 1, ?, 0, ?, ?, 0, 0, 0, 0, 0, 26, 8, ?)`,
+				[
+					inserted.insertId,
+					employee.legacyProfile.effectiveFrom,
+					employee.salaryType,
+					employee.legacyProfile.gross,
+					employee.legacyProfile.basic,
+					`legacy pricing row for ${employee.code} (e2e/lib/expenditure-allocation-fixtures.ts)`,
+				]
+			);
+		}
 	}
 
 	await seedAllocationHours(employeeIds, fixtureUser.insertId, projectIds);
@@ -504,6 +643,9 @@ export async function seedExpenditureAllocationFixtures(): Promise<SeededAllocat
  *   ALLOC-02  P1 73h, P2 71h, no project 48h   (total 192)
  *   ALLOC-05  P1 24h, P2 18h                   (2026-03, total 42)
  *   ALLOC-06  P1 8h                            (2026-03)
+ *   ALLOC-07  P1 24h, P2 18h                   (2026-03, total 42)
+ *   ALLOC-08  P1 10h, P2 16h                   (2026-03, total 26 — the rate boundary)
+ *   ALLOC-09  P1 21h                           (2026-03)
  */
 async function seedAllocationHours(
 	employeeIds: Record<AllocationEmployeeKey, number>,
@@ -589,6 +731,29 @@ async function seedAllocationHours(
 		]),
 		assignment('06-p1', employeeIds.missingPricing, projectIds.p1, [
 			day(ALLOCATION_ESTIMATE_MONTH, 10, 8),
+		]),
+		assignment('07-p1', employeeIds.canonicalFirst, projectIds.p1, [
+			day(ALLOCATION_ESTIMATE_MONTH, 2, 8),
+			day(ALLOCATION_ESTIMATE_MONTH, 3, 8),
+			day(ALLOCATION_ESTIMATE_MONTH, 4, 8),
+		]),
+		assignment('07-p2', employeeIds.canonicalFirst, projectIds.p2, [
+			day(ALLOCATION_ESTIMATE_MONTH, 5, 8),
+			day(ALLOCATION_ESTIMATE_MONTH, 6, 8),
+			day(ALLOCATION_ESTIMATE_MONTH, 9, 2),
+		]),
+		assignment('08-p1', employeeIds.boundaryRate, projectIds.p1, [
+			day(ALLOCATION_ESTIMATE_MONTH, 11, 8),
+			day(ALLOCATION_ESTIMATE_MONTH, 12, 2),
+		]),
+		assignment('08-p2', employeeIds.boundaryRate, projectIds.p2, [
+			day(ALLOCATION_ESTIMATE_MONTH, 13, 8),
+			day(ALLOCATION_ESTIMATE_MONTH, 16, 8),
+		]),
+		assignment('09-p1', employeeIds.legacyOnly, projectIds.p1, [
+			day(ALLOCATION_ESTIMATE_MONTH, 10, 8),
+			day(ALLOCATION_ESTIMATE_MONTH, 11, 8),
+			day(ALLOCATION_ESTIMATE_MONTH, 12, 5),
 		]),
 	];
 

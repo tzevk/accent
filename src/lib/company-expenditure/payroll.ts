@@ -300,7 +300,14 @@ async function loadProfiles(
 	return profiles;
 }
 
-/** The profile in force on the first day of `month`, canonical first. */
+/**
+ * The profile in force on the first day of `month`. The eligible canonical
+ * Salary Profile always wins; the legacy `salary_structures` row is only used
+ * when no canonical profile covers the month (as a field fallback alongside a
+ * chosen canonical, exactly like `batchGetSalaryProfiles` in the payroll
+ * calculator, so the report's estimate cannot disagree with the slip Payroll
+ * Generate would price).
+ */
 function profileForMonth(
 	rows: ProfileRow[] | undefined,
 	monthDay: string
@@ -320,17 +327,22 @@ function profileForMonth(
 		const id = num(row, 'id') ?? 0;
 		return { from, id };
 	};
-	const eligible = rows.filter((entry) =>
-		covers(entry.canonical ?? entry.legacy ?? {})
-	);
-	if (eligible.length === 0) return null;
-	eligible.sort((a, b) => {
-		const left = rank(a.canonical ?? a.legacy ?? {});
-		const right = rank(b.canonical ?? b.legacy ?? {});
-		return right.from.localeCompare(left.from) || right.id - left.id;
-	});
-	const chosen = eligible[0];
-	return normalizeSalaryProfile(chosen.canonical, chosen.legacy);
+	const newestEligible = (side: 'canonical' | 'legacy'): DbRow | null => {
+		const eligible = rows
+			.map((entry) => entry[side])
+			.filter((row): row is DbRow => row !== null && covers(row));
+		if (eligible.length === 0) return null;
+		eligible.sort((a, b) => {
+			const left = rank(a);
+			const right = rank(b);
+			return right.from.localeCompare(left.from) || right.id - left.id;
+		});
+		return eligible[0];
+	};
+	const canonical = newestEligible('canonical');
+	const legacy = newestEligible('legacy');
+	if (!canonical && !legacy) return null;
+	return normalizeSalaryProfile(canonical, legacy);
 }
 
 async function loadSlips(
