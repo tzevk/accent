@@ -469,7 +469,15 @@ test('captures and recognizes an accrual through the admin browser controls', as
 	await page
 		.getByTestId('accrual-evidence-reference')
 		.fill(UI_ACCRUAL.evidenceReference);
+	const capturePosted = page.waitForResponse(
+		(response) =>
+			response.url().includes('/api/admin/cost-accruals') &&
+			response.request().method() === 'POST'
+	);
 	await page.getByTestId('accrual-capture-submit').click();
+	const captureResponse = await capturePosted;
+	expect(captureResponse.status(), await captureResponse.text()).toBe(201);
+	await expect(page.getByTestId('accrual-capture-form')).toBeHidden();
 
 	const created = await rows<{
 		id: number;
