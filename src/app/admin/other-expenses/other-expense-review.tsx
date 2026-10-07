@@ -256,9 +256,13 @@ export function OtherExpenseReviewDialog({
 	onSaved: () => void;
 }) {
 	const queryClient = useQueryClient();
+	// Commands carry `expected_version`, so the dialog must start from the
+	// entry as stored now. A cached copy would replay the version it was read
+	// at and every command after a save would fail as a version conflict.
 	const rowQuery = useQuery<{ data: OtherExpenseApiRow }>({
 		queryKey: ['other-expense', id],
 		queryFn: () => apiGet(`/api/admin/other-expenses/${id}`),
+		gcTime: 0,
 	});
 	const projectsQuery = useQuery<{ data: ProjectOptionRow[] }>({
 		queryKey: ['projects-for-expenditure'],
