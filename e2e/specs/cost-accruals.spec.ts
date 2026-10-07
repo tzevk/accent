@@ -384,6 +384,11 @@ test('seeded accruals are counted once in July, drafts and pending never are', a
 	expect(projectRow(july, ACCRUAL_PROJECTS.alpha.code).incurred_cost).toBe(
 		240000
 	);
+	// August already states every recognized invoice (i1 60000 + i3 80000 +
+	// i4 30000 + i5 10000): the invoice is authoritative cost from
+	// recognition, so replacement linkage later moves July only.
+	const august = await reconciliation(request, PARTIAL_MONTH);
+	expect(august.company.incurred_cost).toBe(180000);
 	// The seeded Project accruals carry their Project identity in the database,
 	// so the report's Project cost can attribute them to alpha.
 	const seededProjectRows = await rows<{ project_id: number }>(
@@ -609,12 +614,14 @@ test('partial replacement supersedes only the matched amount', async ({
 		)
 	).toBe(true);
 
-	// July drops by the replaced amount; August gains the invoice: the sum is
-	// preserved because only the matching accrual amount was superseded.
+	// July drops by the replaced amount; August already states every recognized
+	// invoice (the invoice is authoritative cost from recognition and is never
+	// mutated by the replacement): the chain states the invoice plus the
+	// accrual's unmatched remainder, never both in full.
 	const july = await reconciliation(request, MONTH);
 	expect(july.company.incurred_cost).toBe(230000);
 	const august = await reconciliation(request, PARTIAL_MONTH);
-	expect(august.company.incurred_cost).toBe(60000);
+	expect(august.company.incurred_cost).toBe(180000);
 
 	const detail = await accrualDetail(request, seeded.accrualIds.a1);
 	expect(detail.data.recognized_amount).toBe(40000);
@@ -689,8 +696,10 @@ test('final replacement explains the estimate-versus-actual difference', async (
 
 	const july = await reconciliation(request, MONTH);
 	expect(july.company.incurred_cost).toBe(190000);
+	// September states the linked invoice plus the still-unlinked September
+	// rows (a6 20000 + i2 50000 + i6 8000): linkage moves July only.
 	const september = await reconciliation(request, FINAL_MONTH);
-	expect(september.company.incurred_cost).toBe(50000);
+	expect(september.company.incurred_cost).toBe(78000);
 	evidence.final = { replaced: 40000, difference: 10000 };
 });
 
@@ -727,8 +736,9 @@ test('a final replacement below the estimate releases the variance', async ({
 
 	const july = await reconciliation(request, MONTH);
 	expect(july.company.incurred_cost).toBe(90000);
+	// August still states every recognized invoice; linking i3 moves July only.
 	const august = await reconciliation(request, PARTIAL_MONTH);
-	expect(august.company.incurred_cost).toBe(140000);
+	expect(august.company.incurred_cost).toBe(180000);
 	evidence.belowEstimate = { replaced: 100000, difference: -20000 };
 });
 
@@ -751,7 +761,7 @@ test('cancelling a replaced invoice restores the estimate atomically', async ({
 	const beforeJuly = await reconciliation(request, MONTH);
 	const beforeAugust = await reconciliation(request, PARTIAL_MONTH);
 	expect(beforeJuly.company.incurred_cost).toBe(60000);
-	expect(beforeAugust.company.incurred_cost).toBe(170000);
+	expect(beforeAugust.company.incurred_cost).toBe(180000);
 	const beforeSum =
 		(beforeJuly.company.incurred_cost ?? 0) +
 		(beforeAugust.company.incurred_cost ?? 0);
@@ -812,7 +822,7 @@ test('cancelling a replaced invoice restores the estimate atomically', async ({
 	const afterJuly = await reconciliation(request, MONTH);
 	const afterAugust = await reconciliation(request, PARTIAL_MONTH);
 	expect(afterJuly.company.incurred_cost).toBe(90000);
-	expect(afterAugust.company.incurred_cost).toBe(140000);
+	expect(afterAugust.company.incurred_cost).toBe(150000);
 	const afterSum =
 		(afterJuly.company.incurred_cost ?? 0) +
 		(afterAugust.company.incurred_cost ?? 0);
