@@ -588,7 +588,6 @@ export default function BudgetSection({
 								}
 								data-charges={String(row.period_charges)}
 								data-budget={row.budget ? String(row.budget.amount) : ''}
-								data-charges={String(row.period_charges)}
 								data-variance={
 									row.variance === null ? '' : String(row.variance)
 								}

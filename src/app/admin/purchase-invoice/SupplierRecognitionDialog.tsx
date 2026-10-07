@@ -701,7 +701,7 @@ export default function SupplierRecognitionDialog({
 					</div>
 					{splits.length === 0 ? (
 						<p className="text-xs text-gray-500">
-							Single period: the invoice's own service period applies. Add
+							Single period: the invoice&apos;s own service period applies. Add
 							slices when one invoice covers several months.
 						</p>
 					) : (
