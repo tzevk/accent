@@ -439,8 +439,9 @@ test('compares only an approved budget of matching scope and currency', async ({
 	expect(alpha.over_budget).toBe(false);
 	expect(alpha.detail).toContain(APPROVED.approvalEvidence as string);
 
-	// beta: nothing was ever approved, so the report says so instead of
-	// inventing a budget from the Project's commercial fields.
+	// beta: no budget covers January in any currency (its only approved budget
+	// is June's, in USD), so the report says so instead of inventing a budget
+	// from the Project's commercial fields or a mismatch from another month.
 	const beta = comparison(january, EXPENDITURE_PROJECTS.beta.code, 'INR');
 	expect(beta.incurred_cost).toBe(JANUARY_BETA);
 	expect(beta.outcome).toBe('missing');

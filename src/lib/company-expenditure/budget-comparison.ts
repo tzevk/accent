@@ -198,9 +198,14 @@ function evaluateRow(
 	// A comparison exists only inside one currency, so a budget stated in
 	// another currency is never the closest candidate while one of the row's
 	// own currency exists: it can only be stated when nothing of the row's
-	// currency was approved, and then as an explicit currency mismatch.
+	// currency was approved, and then as an explicit currency mismatch. A
+	// foreign-currency budget that does not touch this month says nothing about
+	// this month at all, so it never turns a missing budget into a mismatch.
 	const sameCurrency = flagged.filter((item) => item.flags.currency);
-	const pool = sameCurrency.length > 0 ? sameCurrency : flagged;
+	const pool =
+		sameCurrency.length > 0
+			? sameCurrency
+			: flagged.filter((item) => item.flags.overlapsMonth);
 	const ranked = pool.sort(
 		(a, b) =>
 			matchScore(b.flags) - matchScore(a.flags) ||

@@ -326,7 +326,7 @@ stated explicitly, never guessed:
 
 | Outcome                     | The reader is told                                                                  |
 | --------------------------- | ----------------------------------------------------------------------------------- |
-| `missing`                   | No budget recorded for this Project and currency                                    |
+| `missing`                   | No budget of this currency, and none of any currency touching this month            |
 | `unapproved`                | A same-currency, same-scope budget for this month exists but is not approved yet    |
 | `incompatible_currency`     | Only an approved budget in another currency exists — no conversion is invented      |
 | `incompatible_scope`        | The approved record declares a commercial value, not a cost budget                  |
@@ -341,7 +341,9 @@ precedence (exactly this month, then scope, then approval). A draft of this
 month is therefore stated as `unapproved` rather than hidden behind an approved
 budget for another period, a same-currency record with a commercial scope is
 stated as `incompatible_scope`, and a foreign-currency budget is stated as
-`incompatible_currency` only when nothing of the row's currency exists.
+`incompatible_currency` only when nothing of the row's currency exists and
+that foreign-currency budget's period touches the month. A foreign-currency
+budget for another period alone leaves the row `missing`.
 `budgets.notices` summarises every outcome, and the
 `budget_variance_not_profit` notice states that remaining budget is not profit,
 recognized revenue, or a forecast of uncommitted work.
