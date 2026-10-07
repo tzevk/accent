@@ -1192,7 +1192,15 @@ test('ranks, compares, and drills down through the real report controls', async 
 		'data-value',
 		String(EXPECTED.company.month - EXPECTED.company.priorMonth)
 	);
-	await expect(page.getByTestId('comparison-percent')).toContainText('18.4%');
+	await expect(page.getByTestId('comparison-percent')).toHaveAttribute(
+		'data-value',
+		'18.4'
+	);
+	// Numeric comparison only: the display decimals (18.4% vs 18.40%) are
+	// a formatting choice, not an asserted contract.
+	const percentText =
+		(await page.getByTestId('comparison-percent').textContent()) ?? '';
+	expect(Number(percentText.replace('%', '').trim())).toBeCloseTo(18.4, 1);
 	await expect(page.getByTestId('fy-label')).toContainText(FY_LABEL);
 	// The panel states the window's direct-cost categories as well, per
 	// currency, from the same records the comparison counts.
