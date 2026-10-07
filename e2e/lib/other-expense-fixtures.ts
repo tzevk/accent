@@ -5,6 +5,7 @@ import type {
 	PlaywrightWorkerArgs,
 } from '@playwright/test';
 import { exec, rows } from './db';
+import { EXPENDITURE_REPORT_ONLY_USER } from './expenditure-fixtures';
 
 /** The Playwright fixture object handed to specs (`({ playwright })`). */
 type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
@@ -342,6 +343,67 @@ export async function seededTargetExpenseId(): Promise<number> {
 		);
 	}
 	return Number(found[0].id);
+}
+
+/**
+ * Re-create the shared report-only reader when an earlier spec's teardown
+ * removed it (order-dependent 401 in ticket #315's authorization test).
+ *
+ * The `e2e_cost_reports_only` row is owned by
+ * `e2e/lib/expenditure-fixtures.ts`, and every sibling spec that reseeds in
+ * `beforeAll` and purges in `afterAll` (expense-reconciliation,
+ * expense-non-operating, project-cost-budgets, project-cost-ranking) deletes
+ * it on the way out. Those files run before this one in a full suite, so the
+ * login fails with 401 even though the credentials are correct; an isolated
+ * run passes because global setup seeded the row moments earlier. Ensuring
+ * the row here keeps this spec self-sufficient without touching the owner's
+ * fixtures. The literals mirror the owner's seed; the role code is what that
+ * module's cleanup matches on.
+ */
+export async function ensureExpenditureReportOnlyReader(): Promise<void> {
+	const found = await rows<{ id: number }>(
+		`SELECT id FROM users WHERE username = ? AND isDelete = 0`,
+		[EXPENDITURE_REPORT_ONLY_USER.username]
+	);
+	if (found.length > 0) return;
+	const roleCode = 'e2e_cost_reports_reader';
+	const existingRole = await rows<{ id: number }>(
+		`SELECT id FROM roles_master WHERE role_code = ?`,
+		[roleCode]
+	);
+	let roleId: number;
+	if (existingRole.length > 0) {
+		roleId = Number(existingRole[0].id);
+	} else {
+		const role = await exec(
+			`INSERT INTO roles_master
+       (role_code, role_name, role_hierarchy, department, permissions, description, status)
+      VALUES (?, ?, 40, 'E2E', ?, ?, 'active')`,
+			[
+				roleCode,
+				'E2E Cost Reports Reader',
+				JSON.stringify(['reports:read']),
+				'E2E expenditure fixture reader (e2e/lib/expenditure-fixtures.ts)',
+			]
+		);
+		roleId = role.insertId;
+	}
+	const passwordHash = await bcrypt.hash(
+		EXPENDITURE_REPORT_ONLY_USER.password,
+		10
+	);
+	await exec(
+		`INSERT INTO users
+       (username, password_hash, email, full_name, status, is_active, is_super_admin, role_id, account_type, isDelete)
+      VALUES (?, ?, ?, ?, 'active', 1, 0, ?, 'employee', 0)`,
+		[
+			EXPENDITURE_REPORT_ONLY_USER.username,
+			passwordHash,
+			EXPENDITURE_REPORT_ONLY_USER.email,
+			EXPENDITURE_REPORT_ONLY_USER.fullName,
+			roleId,
+		]
+	);
 }
 
 /**

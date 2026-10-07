@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, APIResponse, Page } from '@playwright/test';
 import { writeArtifact } from '../lib/artifacts';
 import { trackArtifactOutcome } from '../lib/artifact-outcome';
 import { rows } from '../lib/db';
@@ -11,6 +11,7 @@ import {
 	OTHER_EXPENSE_TARGET,
 	OTHER_EXPENSE_VENDOR_PREFIX,
 	cleanupOtherExpenseFixtures,
+	ensureExpenditureReportOnlyReader,
 	loginOtherExpenseReader,
 	seedOtherExpenseFixtures,
 	type SeededOtherExpenses,
@@ -247,7 +248,8 @@ async function reconciliation(
 	request: APIRequestContext,
 	month = MONTH
 ): Promise<ReconciliationData> {
-	const response = await request.get(
+	const response = await apiGet(
+		request,
 		`/api/reports/employee-project-monthly-cost?view=expenditure&month=${month}`
 	);
 	expect(response.status(), await response.text()).toBe(200);
@@ -261,7 +263,8 @@ async function drilldown(
 	params: Record<string, string>
 ): Promise<DrilldownData> {
 	const query = new URLSearchParams(params).toString();
-	const response = await request.get(
+	const response = await apiGet(
+		request,
 		`/api/reports/employee-project-monthly-cost/expenses?${query}`
 	);
 	expect(response.status(), await response.text()).toBe(200);
@@ -278,12 +281,88 @@ function inr(data: ReconciliationData) {
 	return data.company.currency_totals.find((row) => row.currency === 'INR');
 }
 
+/** Sleep without pulling a timer helper into the spec. */
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Seconds the guard names until the window ends (`Retry-After`), bounded so a
+ * surprising header cannot stall the spec past its own timeout.
+ */
+function retryAfterMs(response: APIResponse): number {
+	const seconds = Number(response.headers()['retry-after']);
+	if (!Number.isFinite(seconds) || seconds <= 0) return 1_000;
+	return Math.min(seconds * 1_000, 65_000);
+}
+
+/**
+ * The spec shares one in-memory `api` budget (120/min) between its API context
+ * and its browser pages (same session + trusted-header identity,
+ * `198.18.0.22`), so a burst of register/report traffic can 429 a later call
+ * (trace: `x-ratelimit-limit: 120`, `retry-after: 60`). Wait out exactly the
+ * window the guard names and retry; any other status returns at once, so
+ * business refusals (403/409/422) still assert strictly. Rate limits stay as
+ * they are — the spec paces itself instead.
+ */
+async function apiGet(
+	request: APIRequestContext,
+	url: string,
+	retries = 2
+): Promise<APIResponse> {
+	let response = await request.get(url);
+	for (
+		let attempt = 0;
+		response.status() === 429 && attempt < retries;
+		attempt += 1
+	) {
+		await sleep(retryAfterMs(response));
+		response = await request.get(url);
+	}
+	return response;
+}
+
+async function apiPost(
+	request: APIRequestContext,
+	url: string,
+	data: Record<string, unknown>,
+	retries = 2
+): Promise<APIResponse> {
+	let response = await request.post(url, { data });
+	for (
+		let attempt = 0;
+		response.status() === 429 && attempt < retries;
+		attempt += 1
+	) {
+		await sleep(retryAfterMs(response));
+		response = await request.post(url, { data });
+	}
+	return response;
+}
+
+async function apiDelete(
+	request: APIRequestContext,
+	url: string,
+	retries = 2
+): Promise<APIResponse> {
+	let response = await request.delete(url);
+	for (
+		let attempt = 0;
+		response.status() === 429 && attempt < retries;
+		attempt += 1
+	) {
+		await sleep(retryAfterMs(response));
+		response = await request.delete(url);
+	}
+	return response;
+}
+
 /** Record a standalone cost and return the captured row. */
 async function captureStandalone(
 	request: APIRequestContext,
 	data: Record<string, unknown>
 ): Promise<CapturedOtherExpense> {
-	const response = await request.post('/api/admin/other-expenses', { data });
+	const response = await apiPost(request, '/api/admin/other-expenses', data);
 	expect(response.status(), await response.text()).toBe(200);
 	const body = await response.json();
 	expect(body.success).toBe(true);
@@ -295,15 +374,16 @@ async function command(
 	id: string,
 	body: Record<string, unknown>
 ): Promise<{ status: number; body: Record<string, unknown> }> {
-	const response = await request.post(
+	const response = await apiPost(
+		request,
 		`/api/admin/other-expenses/${id}/commands`,
-		{ data: body }
+		body
 	);
 	return { status: response.status(), body: await response.json() };
 }
 
 async function reviewQueue(request: APIRequestContext): Promise<ReviewQueue> {
-	const response = await request.get('/api/admin/other-expenses/review');
+	const response = await apiGet(request, '/api/admin/other-expenses/review');
 	expect(response.status(), await response.text()).toBe(200);
 	return (await response.json()).data as ReviewQueue;
 }
@@ -927,9 +1007,8 @@ test('links a receipt copy to an already recognized cost instead of a second exp
 	);
 
 	// An unknown or not-yet-recognized target fails visibly.
-	const unknownTarget = await request.post('/api/admin/other-expenses', {
-		data: {
-			voucher_number: `${OTHER_EXPENSE_PREFIX}COPY-BAD`,
+	const unknownTarget = await apiPost(request, '/api/admin/other-expenses', {
+		voucher_number: `${OTHER_EXPENSE_PREFIX}COPY-BAD`,
 			voucher_date: `${MONTH}-14`,
 			expense_category: 'Repairs & Maintenance',
 			payee_type: 'vendor',
@@ -937,7 +1016,6 @@ test('links a receipt copy to an already recognized cost instead of a second exp
 			bill_amount: 10,
 			gst_amount: 0,
 			linked_cost_uid: `${OTHER_EXPENSE_PREFIX}no-such-cost`,
-		},
 	});
 	expect(unknownTarget.status()).toBe(422);
 	expect((await unknownTarget.json()).code).toBe('cost_reference_unresolved');
@@ -949,9 +1027,8 @@ test('links a receipt copy to an already recognized cost instead of a second exp
 			)
 		).cost_uid
 	);
-	const notRecognized = await request.post('/api/admin/other-expenses', {
-		data: {
-			voucher_number: `${OTHER_EXPENSE_PREFIX}COPY-DRAFT`,
+	const notRecognized = await apiPost(request, '/api/admin/other-expenses', {
+		voucher_number: `${OTHER_EXPENSE_PREFIX}COPY-DRAFT`,
 			voucher_date: `${MONTH}-14`,
 			expense_category: 'Repairs & Maintenance',
 			payee_type: 'vendor',
@@ -959,7 +1036,6 @@ test('links a receipt copy to an already recognized cost instead of a second exp
 			bill_amount: 10,
 			gst_amount: 0,
 			linked_cost_uid: draftCostUid,
-		},
 	});
 	expect(notRecognized.status()).toBe(422);
 	expect((await notRecognized.json()).code).toBe('cost_not_recognized');
@@ -1181,7 +1257,8 @@ test('refuses ordinary deletion of recognized cost and keeps cancelled history',
 	expect(group(before, 'company_overhead')).toBe(1000);
 
 	// Ordinary deletion cannot remove confirmed cost.
-	const refusal = await request.delete(
+	const refusal = await apiDelete(
+		request,
 		`/api/admin/other-expenses/${overheadId}`
 	);
 	expect(refusal.status()).toBe(409);
@@ -1210,7 +1287,8 @@ test('refuses ordinary deletion of recognized cost and keeps cancelled history',
 	expect(inr(after)!.recoverable_tax).toBe(0);
 
 	// Even cancelled history cannot be deleted away.
-	const secondRefusal = await request.delete(
+	const secondRefusal = await apiDelete(
+		request,
 		`/api/admin/other-expenses/${overheadId}`
 	);
 	expect(secondRefusal.status()).toBe(409);
@@ -1340,9 +1418,8 @@ test('carries conversion evidence from capture to the reporting figure', async (
 
 	// Evidence moves as a whole: a rate without its date is refused, and a rate
 	// on an amount already in its reporting currency is contradictory.
-	const partial = await request.post('/api/admin/other-expenses', {
-		data: {
-			voucher_number: `${OTHER_EXPENSE_PREFIX}FX-PARTIAL`,
+	const partial = await apiPost(request, '/api/admin/other-expenses', {
+		voucher_number: `${OTHER_EXPENSE_PREFIX}FX-PARTIAL`,
 			voucher_date: `${MONTH}-19`,
 			expense_category: 'Subscription',
 			payee_type: 'vendor',
@@ -1352,16 +1429,14 @@ test('carries conversion evidence from capture to the reporting figure', async (
 			currency: 'USD',
 			reporting_currency: 'INR',
 			conversion_rate: '84.5',
-		},
 	});
 	expect(partial.status()).toBe(422);
 	const partialBody = errorBody(await partial.json());
 	expect(partialBody.code).toBe('conversion_evidence_incomplete');
 	expect(partialBody.missing).toContain('conversion_date');
 
-	const notApplicable = await request.post('/api/admin/other-expenses', {
-		data: {
-			voucher_number: `${OTHER_EXPENSE_PREFIX}FX-INR`,
+	const notApplicable = await apiPost(request, '/api/admin/other-expenses', {
+		voucher_number: `${OTHER_EXPENSE_PREFIX}FX-INR`,
 			voucher_date: `${MONTH}-19`,
 			expense_category: 'Subscription',
 			payee_type: 'vendor',
@@ -1373,7 +1448,6 @@ test('carries conversion evidence from capture to the reporting figure', async (
 			conversion_rate: '1.0',
 			conversion_date: `${MONTH}-19`,
 			conversion_evidence_reference: `${OTHER_EXPENSE_PREFIX}RATE-NONE`,
-		},
 	});
 	expect(notApplicable.status()).toBe(422);
 	expect(errorBody(await notApplicable.json()).code).toBe(
@@ -1761,6 +1835,9 @@ test('enforces source authorization on reads, capture, approval and review', asy
 
 	// A reader without `other_expenses:read` sees nothing at all: the register
 	// gate refuses the ledger even though the same identity may read reports.
+	// Sibling specs purge this shared identity in their own teardowns, so make
+	// sure the row exists before logging in as it (order-dependent 401).
+	await ensureExpenditureReportOnlyReader();
 	const reportOnly = await loginExpenditureReportOnlyReader(
 		playwright,
 		baseURL!
