@@ -132,6 +132,7 @@ interface ReconciliationData {
 		project_id: number;
 		project_code: string;
 		project_name: string;
+		client_name: string | null;
 		currency: string;
 		incurred_cost: number;
 		employee_cost: number;
@@ -234,6 +235,67 @@ function shareOf(
 	);
 	expect(found, `share ${projectCode ?? 'no project'}`).toBeTruthy();
 	return found!;
+}
+
+/**
+ * cost ÷ hours at 2dp with the shared money rule (ROUND_HALF_UP), computed
+ * from integer cents so the spec never borrows the report's own arithmetic.
+ */
+function halfUpRate(cost: number, hours: number): number {
+	const cents = Math.round(cost * 100);
+	const hourHundredths = Math.round(hours * 100);
+	if (hourHundredths <= 0) return 0;
+	return (
+		Math.floor((cents * 100 * 2 + hourHundredths) / (hourHundredths * 2)) / 100
+	);
+}
+
+interface MonthlyCostRow {
+	employee_id: number;
+	employee_code: string;
+	project_id: number | null;
+	project_code: string;
+	hours: number;
+	cost: number;
+	hourly_rate: number;
+}
+
+interface FYCostRow {
+	employee_code: string;
+	project_code: string;
+	total_hours: number;
+	total_cost: number;
+	recorded_cost: number;
+	estimated_cost: number;
+	hourly_rate: number;
+}
+
+/** The company-wide monthly rows behind the Expenditure table and workbook. */
+async function monthlyCompanyCost(
+	request: APIRequestContext,
+	month: string
+): Promise<{ rows: MonthlyCostRow[] }> {
+	const response = await request.get(
+		`/api/reports/employee-project-monthly-cost?view=monthly&month=${month}`
+	);
+	expect(response.status(), await response.text()).toBe(200);
+	const body = await response.json();
+	expect(body.success).toBe(true);
+	return body.data;
+}
+
+/** The company-wide FY matrix behind the FY table and workbook. */
+async function fyCompanyCost(
+	request: APIRequestContext,
+	fyYear: number
+): Promise<{ rows: FYCostRow[] }> {
+	const response = await request.get(
+		`/api/reports/employee-project-monthly-cost?view=fy&fy=${fyYear}`
+	);
+	expect(response.status(), await response.text()).toBe(200);
+	const body = await response.json();
+	expect(body.success).toBe(true);
+	return body.data;
 }
 
 /** Every finalized slip's frozen shares must add back to its employer cost. */
@@ -376,7 +438,9 @@ test('shows estimates separately from recorded cost before finalization', async 
 	expect(employee.source.payroll_slip_id).not.toBeNull();
 	expect(employee.source.allocation_id).toBeNull();
 	expect(employee.shares.map((share) => share.amount)).toEqual([
-		10833.33, 9750, 5416.67,
+		ALLOCATION_EXPECTED.employees.splitMonthly.shares.p1,
+		ALLOCATION_EXPECTED.employees.splitMonthly.shares.p2,
+		ALLOCATION_EXPECTED.employees.splitMonthly.shares.noProject,
 	]);
 
 	evidence.beforeFinalize = {
@@ -408,7 +472,9 @@ test('discloses a missing Payroll Slip without inventing recorded cost', async (
 	expect(employee.missing_slip).toBe(true);
 	expect(employee.status).toBe('estimated');
 	expect(employee.recorded_amount).toBeNull();
-	expect(employee.estimated_amount).toBe(26000);
+	expect(employee.estimated_amount).toBe(
+		ALLOCATION_EXPECTED.employees.splitMonthly.recorded
+	);
 
 	// Put the slip back through the real Generate path, and prove the gap is
 	// gone before finalizing.
@@ -550,15 +616,16 @@ test('reports the frozen recorded cost, hours, and rounding in the company recon
 		(row) => row.project_code === ALLOCATION_PROJECTS.p1.code
 	)!;
 	expect(p1.employee_cost).toBe(expected.project1);
-	expect(p1.logged_hours).toBe(
-		ALLOCATION_EXPECTED.employees.splitMonthly.projectHours +
-			ALLOCATION_EXPECTED.employees.contractRounding.projectHours
-	);
+	// Project rows state their own frozen hours, not the month-wide total:
+	// P1 holds E2E-ALLOC-01's 80 h + E2E-ALLOC-02's 73 h.
+	expect(p1.logged_hours).toBe(ALLOCATION_EXPECTED.month.project1Hours);
 	expect(p1.incurred_cost).toBe(expected.project1);
 	const p2 = data.projects.find(
 		(row) => row.project_code === ALLOCATION_PROJECTS.p2.code
 	)!;
 	expect(p2.employee_cost).toBe(expected.project2);
+	// P2 holds E2E-ALLOC-01's 72 h + E2E-ALLOC-02's 71 h.
+	expect(p2.logged_hours).toBe(ALLOCATION_EXPECTED.month.project2Hours);
 	expect(p2.incurred_cost).toBe(expected.project2);
 
 	// No payroll coverage warnings survive a complete finalization.
@@ -715,6 +782,145 @@ test('states the current-month payroll-based estimate and missing pricing', asyn
 			hours: missing.logged_hours,
 		},
 	};
+});
+
+test('states estimate-only Project identity without an internal placeholder', async ({
+	request,
+}) => {
+	const data = await reconciliation(request, ESTIMATE_MONTH);
+	const expected = ALLOCATION_EXPECTED.estimateMonth;
+	const project = (id: number) =>
+		data.projects.find((row) => row.project_id === id);
+	const p1 = project(seeded.projectIds.p1)!;
+	const p2 = project(seeded.projectIds.p2)!;
+	expect(p1, 'P1 estimate row').toBeTruthy();
+	expect(p2, 'P2 estimate row').toBeTruthy();
+
+	// Estimated (and hours-only) Project cost must keep the live identity the
+	// shares carry — never `#<id>` / `Project #<id>`.
+	expect(p1.project_code).toBe(ALLOCATION_PROJECTS.p1.code);
+	expect(p1.project_name).toBe(ALLOCATION_PROJECTS.p1.name);
+	expect(p1.client_name).toBe(ALLOCATION_PROJECTS.p1.client);
+	expect(p2.project_code).toBe(ALLOCATION_PROJECTS.p2.code);
+	expect(p2.project_name).toBe(ALLOCATION_PROJECTS.p2.name);
+	expect(p2.client_name).toBe(ALLOCATION_PROJECTS.p2.client);
+
+	// The month is estimates only: no recorded employee cost enters the rows.
+	expect(p1.employee_cost).toBe(0);
+	expect(p2.employee_cost).toBe(0);
+	expect(p1.estimated_employee_cost).toBe(expected.project1Estimated);
+	expect(p2.estimated_employee_cost).toBe(expected.project2Estimated);
+	expect(p1.logged_hours).toBe(expected.project1Hours);
+	expect(p2.logged_hours).toBe(expected.project2Hours);
+
+	evidence.estimateIdentity = { p1, p2 };
+});
+
+test('prices the month from the eligible canonical profile, never a newer legacy row', async ({
+	request,
+}) => {
+	const employees = ALLOCATION_EXPECTED.employees;
+	const canonical = employeeOf(
+		await payrollDrilldown(
+			request,
+			ESTIMATE_MONTH,
+			seeded.employeeIds.canonicalFirst
+		),
+		'E2E-ALLOC-07'
+	);
+	// The canonical profile (CTC 26,000) prices March even though the legacy
+	// `salary_structures` row is newer — the same choice Payroll Generate makes.
+	expect(canonical.status).toBe('estimated');
+	expect(canonical.pay_stream).toBe(employees.canonicalFirst.payStream);
+	expect(canonical.estimated_amount).toBe(employees.canonicalFirst.estimated);
+	expect(canonical.estimated_amount).not.toBe(
+		employees.canonicalFirst.legacyPriced
+	);
+	expect(shareOf(canonical, ALLOCATION_PROJECTS.p1.code).amount).toBe(
+		employees.canonicalFirst.shares.p1
+	);
+	expect(shareOf(canonical, ALLOCATION_PROJECTS.p2.code).amount).toBe(
+		employees.canonicalFirst.shares.p2
+	);
+
+	// With no canonical profile at all the legacy row is still the pricing.
+	const legacy = employeeOf(
+		await payrollDrilldown(request, ESTIMATE_MONTH, seeded.employeeIds.legacyOnly),
+		'E2E-ALLOC-09'
+	);
+	expect(legacy.status).toBe('estimated');
+	expect(legacy.estimated_amount).toBe(employees.legacyOnly.estimated);
+	expect(shareOf(legacy, ALLOCATION_PROJECTS.p1.code).amount).toBe(
+		employees.legacyOnly.shares.p1
+	);
+
+	evidence.profileSelection = {
+		canonicalFirst: canonical.estimated_amount,
+		legacyOnly: legacy.estimated_amount,
+	};
+});
+
+test('rates derived hourly figures with the money rule at the half-cent boundary', async ({
+	request,
+}) => {
+	const monthly = await monthlyCompanyCost(request, ESTIMATE_MONTH);
+	const boundary = ALLOCATION_EXPECTED.employees.boundaryRate;
+	const row = monthly.rows.find(
+		(entry) =>
+			entry.employee_code === 'E2E-ALLOC-08' &&
+			entry.project_code === ALLOCATION_PROJECTS.p1.code
+	)!;
+	expect(row, 'boundary employee P1 row').toBeTruthy();
+	expect(row.hours).toBe(boundary.p1Hours);
+	expect(row.cost).toBe(boundary.shares.p1);
+	// 501.15 ÷ 10 h is exactly 50.115 → the money rule states 50.12.
+	expect(row.hourly_rate).toBe(boundary.rates.p1);
+	expect(row.hourly_rate).toBe(halfUpRate(row.cost, row.hours));
+	// The naive float product would have stated 50.11 for this exact ratio.
+	expect(Math.round((row.cost / row.hours) * 100) / 100).toBe(
+		boundary.naiveP1Rate
+	);
+
+	// Every monthly row uses the same rule.
+	for (const entry of monthly.rows) {
+		expect(entry.hourly_rate, `${entry.employee_code} rate`).toBe(
+			halfUpRate(entry.cost, entry.hours)
+		);
+	}
+
+	// The FY matrix the page table and workbook read carries the same rate.
+	const fy = await fyCompanyCost(request, 2026);
+	expect(fy.rows.length).toBeGreaterThan(0);
+	for (const entry of fy.rows) {
+		expect(
+			typeof entry.hourly_rate,
+			`${entry.employee_code} FY rate column`
+		).toBe('number');
+		expect(entry.hourly_rate, `${entry.employee_code} FY rate`).toBe(
+			halfUpRate(entry.total_cost, entry.total_hours)
+		);
+	}
+	const splitRow = fy.rows.find(
+		(entry) =>
+			entry.employee_code === 'E2E-ALLOC-01' &&
+			entry.project_code === ALLOCATION_PROJECTS.p1.code
+	)!;
+	expect(splitRow, 'E2E-ALLOC-01 FY P1 row').toBeTruthy();
+	expect(splitRow.total_hours).toBe(80);
+	expect(splitRow.total_cost).toBe(
+		ALLOCATION_EXPECTED.employees.splitMonthly.shares.p1
+	);
+	expect(splitRow.hourly_rate).toBe(139.32);
+	const boundaryRow = fy.rows.find(
+		(entry) =>
+			entry.employee_code === 'E2E-ALLOC-08' &&
+			entry.project_code === ALLOCATION_PROJECTS.p1.code
+	)!;
+	expect(boundaryRow, 'boundary employee FY P1 row').toBeTruthy();
+	expect(boundaryRow.total_hours).toBe(boundary.p1Hours);
+	expect(boundaryRow.hourly_rate).toBe(boundary.rates.p1);
+
+	evidence.rates = { monthly: row, fySplit: splitRow, fyBoundary: boundaryRow };
 });
 
 test('shows recorded employee cost in the real report controls', async ({
