@@ -121,11 +121,11 @@ export default function AccrualRecognitionDialog({
 	const [differencePeriod, setDifferencePeriod] = useState('');
 	const [evidence, setEvidence] = useState('');
 
-	const detailQuery = useQuery({
+	const detailQuery = useQuery<{ data: AccrualDetail }>({
 		queryKey: ['cost-accrual', accrualId],
 		queryFn: () => apiGet(`/api/admin/cost-accruals/${accrualId}`),
 	});
-	const detail = detailQuery.data?.data as AccrualDetail | undefined;
+	const detail = detailQuery.data?.data;
 	const candidates = detail?.replacement_candidates ?? [];
 	const selected = candidates.find(
 		(candidate) => String(candidate.invoice_id) === invoiceId

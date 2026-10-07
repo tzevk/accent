@@ -650,7 +650,7 @@ export async function reviseEmployeeAllocation(
 			]
 		);
 
-		const [eventRow] = (await db.execute(
+		const [eventRows] = (await db.execute(
 			`SELECT created_at FROM payroll_allocation_events
         WHERE allocation_uid = ? AND version = ?`,
 			[allocationUid, version]
@@ -679,7 +679,7 @@ export async function reviseEmployeeAllocation(
 			shares: outcome.shares,
 			previous,
 			actor_user_id: actor.id,
-			revised_at: str(eventRow ?? {}, 'created_at') ?? '',
+			revised_at: str(eventRows[0] ?? {}, 'created_at') ?? '',
 		};
 	});
 }

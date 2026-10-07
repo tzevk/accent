@@ -22,6 +22,7 @@
  * caller's connection/transaction (`CommandOptions.connection`).
  */
 
+import type Decimal from 'decimal.js';
 import { add, R, toNumber } from '@/lib/money';
 import type { CommandOptions, CostActor } from './commands';
 import { inTransaction } from './commands';
@@ -95,7 +96,8 @@ function str(row: DbRow | undefined, key: string): string | null {
 	return typeof value === 'string' ? value : String(value);
 }
 
-function round2(value: number): number {
+/** Round a sum to cents and convert it at the DB/JSON boundary. */
+function round2(value: Decimal.Value): number {
 	return toNumber(R(value).toDecimalPlaces(2));
 }
 

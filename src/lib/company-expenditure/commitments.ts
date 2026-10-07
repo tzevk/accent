@@ -1324,6 +1324,7 @@ export async function fetchSupplierCommitmentRollforward(
 			value: number;
 			currency: string | null;
 			basis: CommitmentBasis | null;
+			detail: string;
 		}
 	>();
 	const addException = (
@@ -1430,7 +1431,8 @@ export async function fetchSupplierCommitmentRollforward(
 			timeline,
 			value: stated,
 			currency: order.currency.toUpperCase(),
-			basis,
+			// Narrowed: an unknown basis already left above as unsupported_basis.
+			basis: order.amountBasis,
 			eligibleMonth: timeline.eligibleAt.slice(0, 7),
 			endedMonth: timeline.endedAt ? timeline.endedAt.slice(0, 7) : null,
 		};

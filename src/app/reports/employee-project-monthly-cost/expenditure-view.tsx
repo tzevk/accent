@@ -44,6 +44,7 @@ import type {
 	CostNature,
 	CostRecordJson,
 	PeriodChargeJson,
+	SupplierCommitmentSection,
 } from '@/lib/company-expenditure';
 import BudgetSection, { type BudgetSectionPayload } from './budget-section';
 
@@ -359,6 +360,8 @@ interface ReconciliationPayload {
 	};
 	projects: ProjectRow[];
 	non_operating: NonOperatingSectionRow;
+	/** Outstanding Supplier Commitment (#312), outside incurred cost. */
+	supplier_commitment: SupplierCommitmentSection;
 	comparison: ComparisonPayload;
 	ranking: RankingPayload;
 	filtered_subtotal: {

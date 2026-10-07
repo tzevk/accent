@@ -1,10 +1,9 @@
 import bcrypt from 'bcrypt';
 import type { Cookie } from '@playwright/test';
-import type {
-	APIRequestContext,
-	Playwright as PlaywrightApi,
-} from '@playwright/test';
+import type { APIRequestContext, PlaywrightWorkerArgs } from '@playwright/test';
 import { exec, rows } from './db';
+
+type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
 
 /**
  * Ticket #309 — Project Cost Allocation Revision fixtures.

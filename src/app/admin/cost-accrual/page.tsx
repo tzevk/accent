@@ -69,6 +69,19 @@ interface ProjectOption {
 	project_name: string;
 }
 
+/** `GET /api/admin/cost-accruals` success body. */
+interface AccrualListResponse {
+	success: true;
+	data: AccrualRow[];
+	pagination: { page: number; limit: number; total: number };
+}
+
+/** `GET /api/admin/cost-accruals/options` success body. */
+interface AccrualOptionsResponse {
+	success: true;
+	data: { projects: ProjectOption[]; owners: OwnerOption[] };
+}
+
 const STATE_LABELS: Record<string, string> = {
 	draft: 'Draft',
 	pending_evidence: 'Pending evidence',
@@ -120,7 +133,7 @@ export default function CostAccrualPage() {
 	const [saving, setSaving] = useState(false);
 	const [dialogId, setDialogId] = useState<number | null>(null);
 
-	const listQuery = useQuery({
+	const listQuery = useQuery<AccrualListResponse>({
 		queryKey: ['cost-accruals', search, stateFilter, page],
 		queryFn: () =>
 			apiGet('/api/admin/cost-accruals', {
@@ -131,25 +144,22 @@ export default function CostAccrualPage() {
 			}),
 	});
 
-	const optionsQuery = useQuery({
+	const optionsQuery = useQuery<AccrualOptionsResponse>({
 		queryKey: ['cost-accrual-options'],
 		queryFn: () => apiGet('/api/admin/cost-accruals/options'),
 	});
 
-	const rows = useMemo(
-		() => (listQuery.data?.data ?? []) as AccrualRow[],
-		[listQuery.data]
-	);
-	const pagination = listQuery.data?.pagination as
-		| { page: number; limit: number; total: number }
-		| undefined;
-	const projects = (optionsQuery.data?.data?.projects ?? []) as ProjectOption[];
-	const owners = (optionsQuery.data?.data?.owners ?? []) as OwnerOption[];
+	const rows = useMemo(() => listQuery.data?.data ?? [], [listQuery.data]);
+	const pagination = listQuery.data?.pagination;
+	const projects = optionsQuery.data?.data.projects ?? [];
+	const owners = optionsQuery.data?.data.owners ?? [];
 
 	async function submitCapture(): Promise<void> {
 		setSaving(true);
 		try {
-			const response = await apiPost('/api/admin/cost-accruals', {
+			// A refused capture answers with an error status, which apiPost
+			// throws; the catch below reports it.
+			await apiPost('/api/admin/cost-accruals', {
 				description: capture.description,
 				vendor_name: capture.vendorName || null,
 				evidence_basis: capture.evidenceBasis,
@@ -170,10 +180,6 @@ export default function CostAccrualPage() {
 				evidence_reference: capture.evidenceReference || null,
 				owner_user_id: capture.ownerUserId ? Number(capture.ownerUserId) : null,
 			});
-			if (!response.success) {
-				toast.error(response.error ?? 'Capture failed');
-				return;
-			}
 			toast.success('Cost accrual captured');
 			setCaptureOpen(false);
 			setCapture({ ...EMPTY_CAPTURE });
