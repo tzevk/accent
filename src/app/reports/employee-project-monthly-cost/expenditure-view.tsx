@@ -3348,14 +3348,44 @@ export default function ExpenditureView({
 						commandMutation.reset();
 						setCommandTarget(null);
 					}}
-					onConfirm={(reason) =>
-						commandMutation.mutate({
-							id: liveCommandRecord.id,
-							command: commandTarget.command,
-							expectedVersion: liveCommandRecord.financial_version,
-							reason,
-						})
-					}
+					onConfirm={(reason) => {
+						void (async () => {
+							// The queue refetch triggered by the pending-cost correction
+							// can still be in flight when the operator confirms: the
+							// 961c137 trace shows the recognize POST starting before
+							// the queue GET finishes, so the cached live record is
+							// still the pre-edit version and the command fails with a
+							// spurious version_conflict the operator did not cause.
+							// Re-read the queue before stating the version. A genuine
+							// concurrent change after this read still returns 409,
+							// stays open, and surfaces the refusal inline.
+							try {
+								const fresh = await queueQuery.refetch();
+								const records = fresh.data?.data.records ?? queue;
+								const current =
+									records.find(
+										(record) =>
+											record.id === commandTarget.record.id &&
+											record.source === commandTarget.record.source &&
+											(record.split?.id ?? 0) ===
+												(commandTarget.record.split?.id ?? 0)
+									) ?? liveCommandRecord;
+								commandMutation.mutate({
+									id: current.id,
+									command: commandTarget.command,
+									expectedVersion: current.financial_version,
+									reason,
+								});
+							} catch {
+								commandMutation.mutate({
+									id: liveCommandRecord.id,
+									command: commandTarget.command,
+									expectedVersion: liveCommandRecord.financial_version,
+									reason,
+								});
+							}
+						})();
+					}}
 				/>
 			)}
 
