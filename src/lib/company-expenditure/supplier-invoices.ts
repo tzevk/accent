@@ -319,6 +319,65 @@ export const SUPPLIER_INVOICE_ADAPTER: CostSourceAdapter = {
 			project_id: num(row, 'project_id'),
 		};
 	},
+	/**
+	 * The invoice's native slices: one per `supplier_invoice_periods` row, or
+	 * one slice for the invoice itself when it carries no split. Rows are
+	 * returned as stored (several rows may share a Recognition Period); the
+	 * consumer sums a month's rows, never `.find(first)`.
+	 */
+	async loadSlices(db, sourceId, options) {
+		const id = Number(sourceId);
+		if (!Number.isInteger(id) || id <= 0) return [];
+		const lock = options?.forUpdate ? ' FOR UPDATE' : '';
+		const [rows] = (await db.execute(
+			`SELECT cost_uid, invoice_number, currency, total, tax_amount,
+              recognized_amount, recognition_state, recognition_period,
+              financial_version
+         FROM purchase_invoices
+        WHERE id = ? AND isDelete = 0${lock}`,
+			[id]
+		)) as [DbRow[], unknown];
+		if (rows.length === 0) return [];
+		const invoice = rows[0];
+		const base = {
+			cost_uid: s(invoice, 'cost_uid', '') ?? '',
+			source_table: SUPPLIER_TABLE,
+			source_id: String(id),
+			label: s(invoice, 'invoice_number'),
+			currency: s(invoice, 'currency', 'INR'),
+			recognition_state:
+				(s(invoice, 'recognition_state', 'draft') as RecognitionState) ??
+				'draft',
+			financial_version: Number(num(invoice, 'financial_version') ?? 1),
+		};
+		const [splits] = (await db.execute(
+			`SELECT recognition_period, amount, tax_amount, recognized_amount
+         FROM supplier_invoice_periods
+        WHERE invoice_id = ?
+        ORDER BY recognition_period ASC, id ASC`,
+			[id]
+		)) as [DbRow[], unknown];
+		if (splits.length > 0) {
+			return splits.map((split) => ({
+				...base,
+				recognition_period: String(s(split, 'recognition_period') ?? ''),
+				gross_amount: num(split, 'amount'),
+				tax_amount: num(split, 'tax_amount'),
+				recognized_amount: num(split, 'recognized_amount'),
+			}));
+		}
+		const period = s(invoice, 'recognition_period');
+		if (!period) return [];
+		return [
+			{
+				...base,
+				recognition_period: period,
+				gross_amount: num(invoice, 'total'),
+				tax_amount: num(invoice, 'tax_amount'),
+				recognized_amount: num(invoice, 'recognized_amount'),
+			},
+		];
+	},
 };
 
 async function loadInvoiceForUpdate(

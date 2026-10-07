@@ -44,6 +44,7 @@ import type {
 	PayrollExpenditure,
 	PayrollHourLine,
 	PayrollProjectShare,
+	PayrollReconstructionSummary,
 } from './types';
 
 /** The currency Payroll Slips are recorded in — the company's own payroll. */
@@ -230,7 +231,7 @@ interface FrozenAllocation {
 	employeeName: string;
 	payStream: 'payroll' | 'contract';
 	version: number;
-	kind: 'finalization' | 'reconstruction';
+	kind: 'finalization' | 'reconstruction' | 'revision';
 	recordedEmployerCost: number;
 	totalLoggedHours: number;
 	projectHours: number;
@@ -360,7 +361,8 @@ async function loadSlips(
 	}));
 }
 
-async function loadRunStatus(
+/** The month's latest Payroll Run status, or null when none exists. */
+export async function loadRunStatus(
 	db: SqlConnection,
 	monthDay: string
 ): Promise<string | null> {
@@ -403,7 +405,8 @@ async function loadFrozenAllocations(
 		version: Number(num(row, 'version') ?? 1),
 		kind: (str(row, 'kind') ?? 'finalization') as
 			| 'finalization'
-			| 'reconstruction',
+			| 'reconstruction'
+			| 'revision',
 		recordedEmployerCost: Number(num(row, 'recorded_employer_cost') ?? 0),
 		totalLoggedHours: Number(num(row, 'total_logged_hours') ?? 0),
 		projectHours: Number(num(row, 'project_hours') ?? 0),
@@ -537,6 +540,106 @@ async function loadMonthHours(
 	return result;
 }
 
+/* ── reconstruction basis (#308) ───────────────────────────────────── */
+
+/** One Payroll Slip's reconstruction basis: identity, hours, and run lock. */
+export interface AllocationBasis {
+	slip: {
+		id: number;
+		employeeId: number;
+		/** The slip's recorded employer cost — the one amount allocated. */
+		employerCost: number;
+		/** The slip's month as `YYYY-MM-01`. */
+		monthDay: string;
+	};
+	runStatus: string | null;
+	employeeCode: string;
+	employeeName: string;
+	/**
+	 * The Salary Profile stream observed now (reconstructed metadata from the
+	 * repaired canonical-first selection) — never used for pricing.
+	 */
+	payStream: 'payroll' | 'contract';
+	/** The same eligible monthly Logged Hours the freeze allocates from. */
+	hours: PayrollHourLine[];
+}
+
+/**
+ * The reconstruction basis for one Payroll Slip (#308): the recorded employer
+ * cost, the snapshotted identity, the run lock, and the canonical month hours.
+ * Uses exactly the helpers the freeze uses, so a reconstruction cannot derive
+ * a different denominator or a second pricing rule.
+ */
+export async function loadAllocationBasis(
+	db: SqlConnection,
+	slipId: number
+): Promise<AllocationBasis | null> {
+	const [slipRows] = await db.execute(
+		`SELECT id, employee_id, employer_cost, month
+       FROM payroll_slips WHERE id = ?`,
+		[slipId]
+	);
+	const row = (slipRows as DbRow[])[0];
+	if (!row) return null;
+	const employeeId = Number(num(row, 'employee_id') ?? 0);
+	const monthDay = (str(row, 'month') ?? '').slice(0, 10);
+	const employerCost = Number(num(row, 'employer_cost') ?? 0);
+
+	const [employees, profiles, hours, runStatus] = await Promise.all([
+		loadEmployees(db),
+		loadProfiles(db),
+		loadMonthHours(db, monthDay),
+		monthDay
+			? loadRunStatus(db, monthDay)
+			: Promise.resolve<string | null>(null),
+	]);
+	const profile = profileForMonth(profiles.get(employeeId), monthDay);
+	const employee = employees.get(employeeId);
+	const payStream: AllocationBasis['payStream'] =
+		profile &&
+		String(
+			profile.salary_type ?? profile.pay_type ?? 'monthly'
+		).toLowerCase() === 'contract'
+			? 'contract'
+			: 'payroll';
+	return {
+		slip: {
+			id: Number(num(row, 'id') ?? 0),
+			employeeId,
+			employerCost: round2(employerCost),
+			monthDay,
+		},
+		runStatus,
+		employeeCode: employee?.code ?? `#${employeeId}`,
+		employeeName: employee?.name ?? `Employee #${employeeId}`,
+		payStream,
+		hours: (hours.byEmployee.get(employeeId) ?? []).map((line) => ({
+			...line,
+		})),
+	};
+}
+
+/* ── reconstruction summary seam (#308) ────────────────────────────── */
+
+/**
+ * Reads the month's latest reconstruction proposals, keyed by
+ * `payroll_slips.id`. Registered by the barrel with the reconstruction module
+ * so this interpretation stays free of a module cycle; without a registration
+ * the month simply carries no reconstruction state.
+ */
+export type ReconstructionSummaryReader = (
+	db: SqlConnection,
+	monthDay: string
+) => Promise<Map<number, PayrollReconstructionSummary>>;
+
+let reconstructionSummaryReader: ReconstructionSummaryReader | null = null;
+
+export function registerReconstructionSummaryReader(
+	reader: ReconstructionSummaryReader
+): void {
+	reconstructionSummaryReader = reader;
+}
+
 /* ── the month's interpretation ────────────────────────────────────── */
 
 export interface PayrollMonthInterpretation {
@@ -569,7 +672,8 @@ function monthLabelOf(month: string): string {
 	return `${names[monthNumber - 1]} ${year}`;
 }
 
-function isLockedStatus(status: string | null): boolean {
+/** A locked run (`finalized`/`paid`) is what makes an allocation applicable. */
+export function isLockedStatus(status: string | null): boolean {
 	return status === 'finalized' || status === 'paid';
 }
 
@@ -583,6 +687,7 @@ export async function loadPayrollMonth(
 	month: string
 ): Promise<PayrollMonthInterpretation> {
 	const monthDay = `${month}-01`;
+	const summaryReader = reconstructionSummaryReader;
 	const [
 		employees,
 		profiles,
@@ -592,6 +697,7 @@ export async function loadPayrollMonth(
 		hours,
 		workingDays,
 		schedule,
+		reconstructions,
 	] = await Promise.all([
 		loadEmployees(db),
 		loadProfiles(db),
@@ -601,6 +707,9 @@ export async function loadPayrollMonth(
 		loadMonthHours(db, monthDay),
 		getWorkingDaysForMonth(month, db),
 		getEffectivePayrollSchedule(monthDay, db),
+		summaryReader
+			? summaryReader(db, monthDay)
+			: Promise.resolve(new Map<number, PayrollReconstructionSummary>()),
 	]);
 
 	const slipByEmployee = new Map(slips.map((slip) => [slip.employeeId, slip]));
@@ -684,6 +793,18 @@ export async function loadPayrollMonth(
 		const missingSlip = slip === null && profile !== null && runStatus !== null;
 		const missingPricing = slip === null && profile === null && loggedHours > 0;
 		const allocationMissing = slip !== null && locked && allocation === null;
+		// The slip's latest reconstruction proposal: pending and rejected
+		// proposals stay beside the row as proposals; an approved one attaches
+		// only while its freeze is the current recorded allocation.
+		const summary = slip ? (reconstructions.get(slip.id) ?? null) : null;
+		const reconstruction =
+			summary === null
+				? null
+				: summary.status === 'approved'
+					? recorded?.kind === 'reconstruction'
+						? summary
+						: null
+					: summary;
 
 		let shares: PayrollProjectShare[];
 		if (recorded) {
@@ -741,6 +862,7 @@ export async function loadPayrollMonth(
 			},
 			shares,
 			hours_by_project: shownHours,
+			reconstruction,
 		});
 	}
 
@@ -883,6 +1005,28 @@ function payrollNotices(
 			severity: 'warning',
 		});
 	}
+	const reconstructedRows = rows.filter(
+		(row) => row.reconstruction?.status === 'approved'
+	);
+	if (reconstructedRows.length > 0) {
+		notices.push({
+			code: 'payroll_reconstructed',
+			label: 'Reviewed reconstructed Project allocations',
+			detail: `${reconstructedRows.length} employee(s) carry reviewed reconstructed allocations built from recorded employer cost and available monthly timesheets; reconstruction time, reviewer, and evidence limitations are stated in the employee detail.`,
+			severity: 'info',
+		});
+	}
+	const pendingReconstruction = rows.filter(
+		(row) => row.reconstruction?.status === 'pending'
+	);
+	if (pendingReconstruction.length > 0) {
+		notices.push({
+			code: 'payroll_reconstruction_pending',
+			label: 'Reconstruction proposals awaiting review',
+			detail: `${pendingReconstruction.length} reconstruction proposal(s) await review; they are not recorded cost until an authorized reviewer approves them.`,
+			severity: 'info',
+		});
+	}
 	const noHours = recordedRows.filter((row) => row.no_logged_hours);
 	if (noHours.length > 0) {
 		notices.push({
@@ -898,6 +1042,20 @@ function payrollNotices(
 			code: 'payroll_no_project_hours',
 			label: 'Logged Hours without a Project',
 			detail: `${noProject.length} employee(s) logged hours without a Project; those hours stay in the allocation denominator and their share remains Unallocated Employee Cost.`,
+			severity: 'info',
+		});
+	}
+	// A corrected attribution is disclosed like every other evidence state: the
+	// report shows the selected version and the revision history stays readable
+	// (#309).
+	const revised = allocations.filter(
+		(allocation) => allocation.kind === 'revision'
+	);
+	if (locked && revised.length > 0) {
+		notices.push({
+			code: 'payroll_allocation_revised',
+			label: 'Project cost allocation revised',
+			detail: `${revised.length} recorded allocation(s) were corrected through an explicit revision; the report shows the selected version and the full history remains available.`,
 			severity: 'info',
 		});
 	}

@@ -158,8 +158,8 @@ export default function ProjectOrdersPanel({ projectId, canManageOrders }) {
 						data-testid="project-supplier-commitment-note"
 						className="text-xs text-gray-500"
 					>
-						Ordered value only; remaining commitment needs recognized
-						consumption linked to the order.
+						Ordered value only, never incurred cost. Open a supplier order to
+						see its recognized consumption and remaining commitment.
 					</p>
 					{supplierTotals
 						.filter((row) => row.currency === 'INR')

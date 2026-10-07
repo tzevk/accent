@@ -19,6 +19,7 @@
 
 import { add, R } from '@/lib/money';
 import { buildBudgetSection } from './budget-comparison';
+import type { SupplierCommitmentSection } from './commitments';
 import type { SourceCoverageDeclaration } from './coverage';
 import {
 	convertedAmountOf,
@@ -147,7 +148,13 @@ function currencySlice(
 		period_charge_count: charges.length,
 		record_count: records.filter((record) => confirmedAmount(record) !== null)
 			.length,
-		reporting: reportingSlice(records, charges, currency, reporting, employeeCost),
+		reporting: reportingSlice(
+			records,
+			charges,
+			currency,
+			reporting,
+			employeeCost
+		),
 	};
 }
 
@@ -360,7 +367,8 @@ function payrollAggregates(
 						)
 					);
 				}
-				if (identity) estimatedIdentityByProject.set(share.project_id, identity);
+				if (identity)
+					estimatedIdentityByProject.set(share.project_id, identity);
 			}
 		}
 		for (const line of employee.hours_by_project) {
@@ -497,10 +505,7 @@ function projectRows(
 				// whole-month figures the prior side reads; an elapsed window has
 				// no day for them and withholds the change instead.
 				...(window.basis === 'full_month'
-					? [
-							...currencyCharges.map((charge) => charge.amount),
-							employeeCost,
-						]
+					? [...currencyCharges.map((charge) => charge.amount), employeeCost]
 					: []),
 			]);
 			const priorRows = priorWindowRecords.filter(
@@ -529,7 +534,8 @@ function projectRows(
 				'prior'
 			).filter(
 				(record) =>
-					record.projectId === id && currencyCodeOf(record.currency) === currency
+					record.projectId === id &&
+					currencyCodeOf(record.currency) === currency
 			);
 			const currentUnproven = unprovenWindowRecords(
 				monthRecords,
@@ -537,7 +543,8 @@ function projectRows(
 				'current'
 			).filter(
 				(record) =>
-					record.projectId === id && currencyCodeOf(record.currency) === currency
+					record.projectId === id &&
+					currencyCodeOf(record.currency) === currency
 			);
 			// A partial window that cannot prove where its cost sits cannot state
 			// this row's change either; the row keeps its unproven records visible
@@ -567,8 +574,7 @@ function projectRows(
 					sample?.projectName ??
 					sample?.projectCode ??
 					`Project #${id}`,
-				client_name:
-					payrollIdentity?.client_name ?? sample?.clientName ?? null,
+				client_name: payrollIdentity?.client_name ?? sample?.clientName ?? null,
 				currency,
 				conversion_status: unsupported
 					? 'unsupported'
@@ -588,12 +594,8 @@ function projectRows(
 				comparison_cost: comparison,
 				previous_period_cost: previous,
 				change_amount:
-					unproven || previous === null
-						? null
-						: rounded(comparison - previous),
-				change_percent: unproven
-					? null
-					: percentChange(comparison, previous),
+					unproven || previous === null ? null : rounded(comparison - previous),
+				change_percent: unproven ? null : percentChange(comparison, previous),
 				change_state: unproven
 					? 'unproven'
 					: changeStateFor(comparison, previous),
@@ -1123,6 +1125,11 @@ export interface ReconciliationInput {
 	 * month plus every budget of the Projects above.
 	 */
 	budgets: CostBudgetRecord[];
+	/**
+	 * Outstanding Supplier Commitment (#312), reconstructed as of the month
+	 * from the order journal and the recorded consumption.
+	 */
+	supplierCommitment: SupplierCommitmentSection;
 	projectFilter: number | null;
 	projectOptions: Array<{
 		project_id: number;
@@ -1469,7 +1476,11 @@ export function buildReconciliation(
 	// elapsed window can never place them. It is disclosed with its own figures
 	// and withholds the change it would distort.
 	const daylessCosts: DaylessMonthCost[] = [];
-	const addDayless = (currency: string, count: number, amount: number): void => {
+	const addDayless = (
+		currency: string,
+		count: number,
+		amount: number
+	): void => {
 		if (count === 0 || amount === 0) return;
 		const existing = daylessCosts.find((entry) => entry.currency === currency);
 		if (existing) {
@@ -1602,5 +1613,9 @@ export function buildReconciliation(
 		}),
 		project_options: input.projectOptions,
 		available_months: input.availableMonths,
+		// Outstanding Supplier Commitment (#312): supplier order value not yet
+		// consumed by recognized cost, with its explicit exceptions. Never part
+		// of `company`, `projects`, or `evidence`.
+		supplier_commitment: input.supplierCommitment,
 	};
 }
