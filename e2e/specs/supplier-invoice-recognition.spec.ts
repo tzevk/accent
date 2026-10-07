@@ -1384,12 +1384,20 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 	expect(repricedRow[0].reporting_currency).toBe('EUR');
 	expect(Number(repricedRow[0].conversion_rate)).toBe(FX_INVOICE.pairRate);
 	expect(Number(repricedRow[0].financial_version)).toBe(3);
-	const pairJournal = await rows<{ snapshot: string }>(
-		`SELECT snapshot FROM financial_cost_events
-      WHERE cost_uid = ? AND version = 3`,
+	const pairJournal = await rows<{
+		reporting_currency: string;
+		conversion_rate: string;
+		conversion_evidence_reference: string;
+	}>(
+		`SELECT JSON_UNQUOTE(JSON_EXTRACT(snapshot, '$.reporting_currency')) AS reporting_currency,
+            JSON_UNQUOTE(JSON_EXTRACT(snapshot, '$.conversion_rate')) AS conversion_rate,
+            JSON_UNQUOTE(JSON_EXTRACT(snapshot, '$.conversion_evidence_reference')) AS conversion_evidence_reference
+       FROM financial_cost_events WHERE cost_uid = ? AND version = 3`,
 		[createdBody.data.cost_uid]
 	);
-	expect(pairJournal[0].snapshot).toContain('"conversion_pair_changed":true');
+	expect(pairJournal[0].reporting_currency).toBe('EUR');
+	expect(Number(pairJournal[0].conversion_rate)).toBe(FX_INVOICE.pairRate);
+	expect(pairJournal[0].conversion_evidence_reference).toBe(FX_INVOICE.evidenceReference);
 
 	// A same-currency pair needs no conversion: the triple is cleared.
 	const sameCurrency = await command(request, id, {

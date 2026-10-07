@@ -1245,3 +1245,12 @@ Employee financial-year details use the same recorded allocation hourly rate as 
 Unused Salary Profile estimate builders are removed. All active employee-cost readers use the shared payroll interpretation.
 The public module exports `linkCostReference` for authenticated payable-entry routes.
 These references track the existing supplier cost. They do not create another recognized cost.
+
+### Shared identifier collations
+
+Migration `20261009000000_expenditure_identity_collation.ts` aligns shared financial identifiers with native source keys.
+The registry, command journal, and period-charge references use `utf8mb4_general_ci`.
+This preserves native identifier comparison rules and permits column-to-column joins.
+It does not change source documents, amounts, or native primary keys.
+The isolated E2E database applies the migration successfully.
+Native source, event, and period-charge joins execute without collation errors.
