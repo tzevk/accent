@@ -769,6 +769,23 @@ export default function ExpenditureView({
 	const data = reconciliationQuery.data?.data ?? null;
 	const queue = queueQuery.data?.data?.records ?? [];
 
+	// The command dialog opens from a queue-row snapshot, but the row can
+	// move under it: saving the pending-cost correction (update) bumps
+	// financial_version and the queue refetch lands after the dialog opens.
+	// Confirming with the snapshot version then fails with a stale
+	// version_conflict even though the operator just made that edit. Resolve
+	// the record the queue holds now, so the command states the version the
+	// operator sees; a genuine concurrent change still refuses with 409, stays
+	// open, and surfaces the refusal inline.
+	const liveCommandRecord = commandTarget
+		? (queue.find(
+				(record) =>
+					record.id === commandTarget.record.id &&
+					record.source === commandTarget.record.source &&
+					(record.split?.id ?? 0) === (commandTarget.record.split?.id ?? 0)
+			) ?? commandTarget.record)
+		: null;
+
 	const commandMutation = useMutation({
 		mutationFn: (input: {
 			id: number;
@@ -3206,36 +3223,39 @@ export default function ExpenditureView({
 														<>
 															<button
 																type="button"
-																onClick={() =>
+																onClick={() => {
+																	commandMutation.reset();
 																	setCommandTarget({
 																		record,
 																		command: 'recognize',
-																	})
-																}
+																	});
+																}}
 																className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
 															>
 																Recognize
 															</button>
 															<button
 																type="button"
-																onClick={() =>
+																onClick={() => {
+																	commandMutation.reset();
 																	setCommandTarget({
 																		record,
 																		command: 'reject',
-																	})
-																}
+																	});
+																}}
 																className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
 															>
 																Reject
 															</button>
 															<button
 																type="button"
-																onClick={() =>
+																onClick={() => {
+																	commandMutation.reset();
 																	setCommandTarget({
 																		record,
 																		command: 'cancel',
-																	})
-																}
+																	});
+																}}
 																className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
 															>
 																Cancel cost
@@ -3316,9 +3336,9 @@ export default function ExpenditureView({
 				/>
 			)}
 
-			{commandTarget && (
+			{commandTarget && liveCommandRecord && (
 				<CommandDialog
-					record={commandTarget.record}
+					record={liveCommandRecord}
 					command={commandTarget.command}
 					submitting={commandMutation.isPending}
 					error={
@@ -3330,9 +3350,9 @@ export default function ExpenditureView({
 					}}
 					onConfirm={(reason) =>
 						commandMutation.mutate({
-							id: commandTarget.record.id,
+							id: liveCommandRecord.id,
 							command: commandTarget.command,
-							expectedVersion: commandTarget.record.financial_version,
+							expectedVersion: liveCommandRecord.financial_version,
 							reason,
 						})
 					}
