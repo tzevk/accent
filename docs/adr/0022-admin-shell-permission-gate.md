@@ -1,4 +1,4 @@
-# The /admin/* shell grants read-holders a data-less shell; APIs stay the boundary
+# The /admin/\* shell grants read-holders a data-less shell; APIs stay the boundary
 
 `src/app/admin/layout.tsx` renders the admin shell for any identity with `other_expenses:read`, not only the admin role — the read-only other-expense reader (#315) reviews through the same page the APIs serve, and E2E drives that identity through a real browser at `/admin/other-expenses`. The shell carries no data: every section fetches client-side and each API still enforces its own create/approve/review/delete refusals, and the sidebar only links sections the identity may read.
 
