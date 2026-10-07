@@ -19,6 +19,7 @@
 
 import { add, R } from '@/lib/money';
 import { buildBudgetSection } from './budget-comparison';
+import type { SupplierCommitmentSection } from './commitments';
 import type { SourceCoverageDeclaration } from './coverage';
 import {
 	convertedAmountOf,
@@ -1123,6 +1124,11 @@ export interface ReconciliationInput {
 	 * month plus every budget of the Projects above.
 	 */
 	budgets: CostBudgetRecord[];
+	/**
+	 * Outstanding Supplier Commitment (#312), reconstructed as of the month
+	 * from the order journal and the recorded consumption.
+	 */
+	supplierCommitment: SupplierCommitmentSection;
 	projectFilter: number | null;
 	projectOptions: Array<{
 		project_id: number;
@@ -1602,5 +1608,9 @@ export function buildReconciliation(
 		}),
 		project_options: input.projectOptions,
 		available_months: input.availableMonths,
+		// Outstanding Supplier Commitment (#312): supplier order value not yet
+		// consumed by recognized cost, with its explicit exceptions. Never part
+		// of `company`, `projects`, or `evidence`.
+		supplier_commitment: input.supplierCommitment,
 	};
 }

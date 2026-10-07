@@ -1639,6 +1639,146 @@ export default function ExpenditureView({
 				</ul>
 			</div>
 
+			{/* Outstanding Supplier Commitment (#312) */}
+			<div
+				data-testid="commitment-section"
+				className="mt-3 rounded-xl border border-sky-200 bg-sky-50/40 p-3"
+			>
+				<div className="flex flex-wrap items-baseline justify-between gap-2">
+					<p className="text-xs font-semibold text-gray-800">
+						Outstanding Supplier Commitment
+					</p>
+					<p className="text-[11px] text-gray-600">
+						Supplier order value not yet consumed by recognized cost — never
+						incurred cost. Reconstructed as of this month from the recorded
+						eligibility, consumption, and cancellation acts.
+					</p>
+				</div>
+				<div className="mt-2 space-y-2">
+					{data.supplier_commitment.totals.map((total) => (
+						<div
+							key={`${total.currency}-${total.basis}`}
+							data-testid="commitment-row"
+							data-currency={total.currency}
+							data-basis={total.basis}
+							data-closing={total.closingCommitment}
+							data-consumption={total.consumptionInMonth}
+							className="rounded-lg border border-sky-100 bg-white/70 p-2"
+						>
+							<div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-gray-800">
+								<span className="font-medium">
+									{total.currency} ·{' '}
+									{total.basis === 'gross' ? 'including tax' : 'net of tax'} ·{' '}
+									{total.unconsumedOrderCount} order
+									{total.unconsumedOrderCount === 1 ? '' : 's'} open
+								</span>
+								<span>
+									Closing commitment:{' '}
+									<strong>
+										{money(total.closingCommitment, total.currency)}
+									</strong>{' '}
+									· consumed this month:{' '}
+									{money(total.consumptionInMonth, total.currency)}
+								</span>
+							</div>
+							<table className="mt-1 min-w-full text-[11px] text-gray-700">
+								<thead>
+									<tr className="text-left text-gray-500">
+										<th className="pr-2">Month</th>
+										<th className="pr-2">Opening</th>
+										<th className="pr-2">New</th>
+										<th className="pr-2">Consumption</th>
+										<th className="pr-2">Cancellation</th>
+										<th>Closing</th>
+									</tr>
+								</thead>
+								<tbody>
+									{total.months.map((row) => (
+										<tr key={row.month} data-testid="commitment-month">
+											<td className="pr-2">{row.month}</td>
+											<td className="pr-2">{money(row.opening, total.currency)}</td>
+											<td className="pr-2">
+												{money(row.newCommitment, total.currency)}
+											</td>
+											<td className="pr-2">
+												{money(row.consumption, total.currency)}
+											</td>
+											<td className="pr-2">
+												{money(row.cancellation, total.currency)}
+											</td>
+											<td>{money(row.closing, total.currency)}</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					))}
+					{data.supplier_commitment.totals.length === 0 && (
+						<p className="text-xs text-gray-500">
+							No supported supplier commitment this month.
+						</p>
+					)}
+					{data.supplier_commitment.orders.length > 0 && (
+						<div className="overflow-x-auto">
+							<table className="min-w-full text-[11px] text-gray-700">
+								<thead>
+									<tr className="text-left text-gray-500">
+										<th className="pr-2">Order</th>
+										<th className="pr-2">Counterparty</th>
+										<th className="pr-2">Project</th>
+										<th className="pr-2">Value</th>
+										<th className="pr-2">Consumed</th>
+										<th className="pr-2">Remaining</th>
+										<th>Status</th>
+									</tr>
+								</thead>
+								<tbody>
+									{data.supplier_commitment.orders.map((order) => (
+										<tr
+											key={order.orderUid}
+											data-testid="commitment-order"
+											data-order-number={order.orderNumber}
+											data-remaining={order.remaining}
+										>
+											<td className="pr-2">{order.orderNumber}</td>
+											<td className="pr-2">{order.counterpartyName}</td>
+											<td className="pr-2">{order.projectCode || '—'}</td>
+											<td className="pr-2">{money(order.value, order.currency)}</td>
+											<td className="pr-2">
+												{money(order.consumption, order.currency)}
+											</td>
+											<td className="pr-2">
+												{money(order.remaining, order.currency)}
+											</td>
+											<td>{order.status}</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					)}
+					{data.supplier_commitment.exceptions.length > 0 && (
+						<ul className="space-y-1 text-[11px] text-amber-900">
+							{data.supplier_commitment.exceptions.map((exception) => (
+								<li
+									key={`${exception.code}-${exception.currency ?? ''}-${exception.basis ?? ''}`}
+									data-testid="commitment-exception"
+									data-code={exception.code}
+									data-count={exception.orderCount}
+								>
+									<span className="font-medium">{exception.code}</span>:{' '}
+									{exception.detail} ({exception.orderCount}
+									{exception.value === null
+										? ', value unknown'
+										: `, ${formatCurrencyIn(exception.value, exception.currency ?? 'INR')}`}
+									)
+								</li>
+							))}
+						</ul>
+					)}
+				</div>
+			</div>
+
 			{/* Non-operating balances and their approved consumption (#317) */}
 			{(data.non_operating.items.length > 0 ||
 				data.non_operating.charges_from_prior_items.length > 0) && (

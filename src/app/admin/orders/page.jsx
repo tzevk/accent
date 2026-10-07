@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import DocumentUpload from '@/components/DocumentUpload';
 
 /**
@@ -85,6 +85,21 @@ export default function OrdersPage() {
 	const [selectedUid, setSelectedUid] = useState(null);
 	const [detail, setDetail] = useState(null);
 	const [loadError, setLoadError] = useState(null);
+	const [commitment, setCommitment] = useState(null);
+	const [commitmentError, setCommitmentError] = useState(null);
+	const [consumptionDraft, setConsumptionDraft] = useState({
+		candidate: '',
+		reason: '',
+		evidence_reference: '',
+	});
+	const [consumptionBusy, setConsumptionBusy] = useState(false);
+	const [consumptionNotice, setConsumptionNotice] = useState(null);
+	const [releaseTarget, setReleaseTarget] = useState(null);
+	const [releaseDraft, setReleaseDraft] = useState({
+		version: null,
+		reason: '',
+		evidence_reference: '',
+	});
 
 	// The Project tab links here with ?project_id=…; read it from the URL
 	// without a Suspense boundary (client-only page).
@@ -163,6 +178,137 @@ export default function OrdersPage() {
 			cancelled = true;
 		};
 	}, [selectedUid]);
+
+	// Supplier commitment detail (#312): consumption, remaining, exceptions,
+	// and the recognized cost slices a control may offer. It needs the order
+	// register read plus the supplier source read; a reader without either
+	// gets an explicit permission message, never fabricated figures.
+	const loadCommitment = useCallback(async (orderUid) => {
+		if (!orderUid) {
+			setCommitment(null);
+			return;
+		}
+		const { ok, status, body } = await readJson(
+			await fetch(
+				`/api/admin/orders/${encodeURIComponent(orderUid)}/commitment`
+			)
+		);
+		if (!ok) {
+			setCommitment(null);
+			setCommitmentError(
+				status === 403
+					? 'You do not have permission to view supplier commitment.'
+					: body?.message || 'Failed to load the commitment detail.'
+			);
+			return;
+		}
+		setCommitmentError(null);
+		setCommitment(body.data);
+	}, []);
+
+	useEffect(() => {
+		if (detail?.order?.direction === 'supplier') {
+			loadCommitment(detail.order.orderUid);
+		} else {
+			setCommitment(null);
+			setCommitmentError(null);
+		}
+		setReleaseTarget(null);
+		setConsumptionNotice(null);
+	}, [detail, loadCommitment]);
+
+	const recordConsumption = useCallback(async () => {
+		if (!commitment?.order) return;
+		const separator = consumptionDraft.candidate.indexOf('|');
+		if (separator < 0) return;
+		const costUid = consumptionDraft.candidate.slice(0, separator);
+		const recognizedPeriod = consumptionDraft.candidate.slice(separator + 1);
+		const candidate = (commitment.candidates ?? []).find(
+			(entry) =>
+				entry.costUid === costUid &&
+				entry.recognizedPeriod === recognizedPeriod
+		);
+		setConsumptionBusy(true);
+		setConsumptionNotice(null);
+		try {
+			const { ok, body } = await readJson(
+				await fetch(
+					`/api/admin/orders/${encodeURIComponent(commitment.order.orderUid)}/consumption`,
+					{
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							cost_uid: costUid,
+							recognized_period: recognizedPeriod,
+							tax_basis: commitment.order.amountBasis,
+							expected_version: commitment.order.financialVersion,
+							expected_source_version: candidate?.financialVersion ?? null,
+							reason: consumptionDraft.reason || null,
+							evidence_reference: consumptionDraft.evidence_reference || null,
+						}),
+					}
+				)
+			);
+			if (!ok) {
+				setConsumptionNotice({
+					tone: 'error',
+					message: body?.message || 'Failed to record the consumption.',
+				});
+				return;
+			}
+			setConsumptionNotice({
+				tone: 'success',
+				message: `Consumption recorded; remaining ${body.data.remainingCommitment}.`,
+			});
+			setConsumptionDraft({
+				candidate: '',
+				reason: '',
+				evidence_reference: '',
+			});
+			await Promise.all([loadCommitment(commitment.order.orderUid), refresh()]);
+		} finally {
+			setConsumptionBusy(false);
+		}
+	}, [commitment, consumptionDraft, loadCommitment, refresh]);
+
+	const releaseConsumption = useCallback(async () => {
+		if (!commitment?.order || releaseTarget === null) return;
+		setConsumptionBusy(true);
+		setConsumptionNotice(null);
+		try {
+			const { ok, body } = await readJson(
+				await fetch(
+					`/api/admin/orders/${encodeURIComponent(commitment.order.orderUid)}/consumption/release`,
+					{
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							consumption_id: releaseTarget,
+							expected_version: releaseDraft.version,
+							reason: releaseDraft.reason || null,
+							evidence_reference: releaseDraft.evidence_reference || null,
+						}),
+					}
+				)
+			);
+			if (!ok) {
+				setConsumptionNotice({
+					tone: 'error',
+					message: body?.message || 'Failed to release the consumption.',
+				});
+				return;
+			}
+			setConsumptionNotice({
+				tone: 'success',
+				message: 'Consumption released; the native slice is free again.',
+			});
+			setReleaseTarget(null);
+			setReleaseDraft({ reason: '', evidence_reference: '' });
+			await Promise.all([loadCommitment(commitment.order.orderUid), refresh()]);
+		} finally {
+			setConsumptionBusy(false);
+		}
+	}, [commitment, releaseTarget, releaseDraft, loadCommitment, refresh]);
 
 	const visibleOrders = useMemo(() => {
 		const orders = list?.orders ?? [];
@@ -327,8 +473,8 @@ export default function OrdersPage() {
 						className="text-xs text-gray-500"
 						data-testid="supplier-commitment-note"
 					>
-						Ordered value, not incurred cost; remaining commitment needs
-						recognized consumption linked to the order.
+						Ordered value, not incurred cost. Open a supplier order to see its
+						recognized consumption, remaining commitment, and exceptions.
 					</p>
 					<div className="mt-2 space-y-1">
 						{totalsFor('supplier').map((row) => (
@@ -773,6 +919,289 @@ export default function OrdersPage() {
 										entityId={detail.order.id}
 									/>
 								</div>
+								{detail.order.direction === 'supplier' && (
+									<div
+										data-testid="order-commitment"
+										data-order-uid={detail.order.orderUid}
+										className="rounded-lg border border-sky-200 bg-sky-50/40 p-3"
+									>
+										<h3 className="text-xs font-semibold uppercase text-gray-500">
+											Supplier commitment
+										</h3>
+										{commitmentError && (
+											<p className="mt-1 text-xs text-red-600" role="alert">
+												{commitmentError}
+											</p>
+										)}
+										{!commitmentError && !commitment && (
+											<p className="mt-1 text-xs text-gray-500">
+												Loading commitment…
+											</p>
+										)}
+										{commitment && (
+											<div className="mt-2 space-y-2 text-xs text-gray-800">
+												<div className="flex flex-wrap gap-x-4 gap-y-1">
+													<p
+														data-testid="commitment-remaining"
+														data-amount={
+															commitment.remainingCommitment ?? ''
+														}
+													>
+														<span className="font-semibold">
+															Remaining commitment:
+														</span>{' '}
+														{money(commitment.remainingCommitment)} (
+														{detail.order.currency} ·{' '}
+														{detail.order.amountBasis})
+													</p>
+													<p
+														data-testid="commitment-consumed"
+														data-amount={commitment.effectiveConsumption}
+													>
+														<span className="font-semibold">
+															Recognized consumption:
+														</span>{' '}
+														{money(commitment.effectiveConsumption)}
+													</p>
+												</div>
+												{commitment.exceptions.length > 0 && (
+													<ul
+														data-testid="commitment-exceptions"
+														className="list-disc pl-4 text-amber-800"
+													>
+														{commitment.exceptions.map((code) => (
+															<li key={code}>{code}</li>
+														))}
+													</ul>
+												)}
+												<div className="overflow-x-auto">
+													<table className="min-w-full">
+														<thead>
+															<tr className="text-left text-[11px] uppercase text-gray-500">
+																<th className="pr-2">Cost</th>
+																<th className="pr-2">Period</th>
+																<th className="pr-2">Amount</th>
+																<th className="pr-2">State</th>
+																<th />
+															</tr>
+														</thead>
+														<tbody>
+															{commitment.consumptions.map((row) => (
+																<Fragment key={row.id}>
+																	<tr
+																		data-testid="order-consumption-row"
+																		data-consumption-id={row.id}
+																		data-state={row.state}
+																		data-amount={row.amount}
+																	>
+																		<td className="pr-2">
+																			{row.costLabel || row.costUid}
+																		</td>
+																		<td className="pr-2">
+																			{row.recognizedPeriod}
+																		</td>
+																		<td className="pr-2">
+																			{money(row.amount)} {row.currency} ·{' '}
+																			{row.taxBasis}
+																		</td>
+																		<td className="pr-2">
+																			{row.state}
+																			{row.effective ? '' : ' (not counted)'}
+																		</td>
+																		<td>
+																			{row.state === 'active' && (
+																				<button
+																					type="button"
+																					data-testid="consumption-release"
+																					onClick={() => {
+																						setReleaseTarget(row.id);
+																						setReleaseDraft({
+																							version: row.version,
+																							reason: '',
+																							evidence_reference: '',
+																						});
+																					}}
+																					className="rounded border border-gray-300 px-2 py-1 text-[11px]"
+																				>
+																					Release
+																				</button>
+																			)}
+																		</td>
+																	</tr>
+																	{row.state === 'released' &&
+																		row.releaseReason && (
+																			<tr>
+																				<td
+																					colSpan={5}
+																					data-testid="consumption-release-evidence"
+																					className="pb-1 text-[11px] text-gray-500"
+																				>
+																					Released:{' '}
+																					{row.releaseReason}
+																					{row.releaseEvidenceReference
+																						? ` · ${row.releaseEvidenceReference}`
+																						: ''}
+																				</td>
+																			</tr>
+																		)}
+																</Fragment>
+															))}
+															{commitment.consumptions.length === 0 && (
+																<tr>
+																	<td
+																		colSpan={5}
+																		className="py-1 text-gray-500"
+																	>
+																		No recognized consumption linked yet.
+																	</td>
+																</tr>
+															)}
+														</tbody>
+													</table>
+												</div>
+												{releaseTarget !== null && (
+													<div
+														data-testid="consumption-release-dialog"
+														className="space-y-1 rounded border border-amber-200 bg-amber-50/60 p-2"
+													>
+														<p className="font-semibold">
+															Release consumption #{releaseTarget}
+														</p>
+														<input
+															data-testid="release-reason"
+															value={releaseDraft.reason}
+															onChange={(event) =>
+																setReleaseDraft((prev) => ({
+																	...prev,
+																	reason: event.target.value,
+																}))
+															}
+															placeholder="Reason (required)"
+															className="w-full rounded border border-gray-300 px-2 py-1"
+														/>
+														<input
+															data-testid="release-evidence"
+															value={releaseDraft.evidence_reference}
+															onChange={(event) =>
+																setReleaseDraft((prev) => ({
+																	...prev,
+																	evidence_reference: event.target.value,
+																}))
+															}
+															placeholder="Evidence reference"
+															className="w-full rounded border border-gray-300 px-2 py-1"
+														/>
+														<div className="flex gap-2">
+															<button
+																type="button"
+																data-testid="release-confirm"
+																disabled={
+																	consumptionBusy ||
+																	!releaseDraft.reason.trim()
+																}
+																onClick={releaseConsumption}
+																className="rounded bg-[#64126D] px-2 py-1 text-[11px] text-white disabled:opacity-40"
+															>
+																Release
+															</button>
+															<button
+																type="button"
+																onClick={() => setReleaseTarget(null)}
+																className="rounded border border-gray-300 px-2 py-1 text-[11px]"
+															>
+																Cancel
+															</button>
+														</div>
+													</div>
+												)}
+												{commitment.candidates.length > 0 && (
+													<div
+														data-testid="consumption-record"
+														className="space-y-1 rounded border border-sky-200 bg-white p-2"
+													>
+														<p className="font-semibold">
+															Record recognized consumption
+														</p>
+														<select
+															data-testid="consumption-candidate"
+															value={consumptionDraft.candidate}
+															onChange={(event) =>
+																setConsumptionDraft((prev) => ({
+																	...prev,
+																	candidate: event.target.value,
+																}))
+															}
+															className="w-full rounded border border-gray-300 px-2 py-1"
+														>
+															<option value="">
+																Select a recognized cost slice…
+															</option>
+															{commitment.candidates.map((candidate) => (
+																<option
+																	key={`${candidate.costUid}|${candidate.recognizedPeriod}`}
+																	value={`${candidate.costUid}|${candidate.recognizedPeriod}`}
+																>
+																	{candidate.label || candidate.costUid} ·{' '}
+																	{candidate.recognizedPeriod} ·{' '}
+																	{money(candidate.amount)} {candidate.currency}
+																</option>
+															))}
+														</select>
+														<input
+															data-testid="consumption-reason"
+															value={consumptionDraft.reason}
+															onChange={(event) =>
+																setConsumptionDraft((prev) => ({
+																	...prev,
+																	reason: event.target.value,
+																}))
+															}
+															placeholder="Reason"
+															className="w-full rounded border border-gray-300 px-2 py-1"
+														/>
+														<input
+															data-testid="consumption-evidence"
+															value={consumptionDraft.evidence_reference}
+															onChange={(event) =>
+																setConsumptionDraft((prev) => ({
+																	...prev,
+																	evidence_reference: event.target.value,
+																}))
+															}
+															placeholder="Evidence reference"
+															className="w-full rounded border border-gray-300 px-2 py-1"
+														/>
+														<button
+															type="button"
+															data-testid="consumption-confirm"
+															disabled={
+																consumptionBusy ||
+																!consumptionDraft.candidate
+															}
+															onClick={recordConsumption}
+															className="rounded bg-[#64126D] px-2 py-1 text-[11px] text-white disabled:opacity-40"
+														>
+															Record consumption
+														</button>
+													</div>
+												)}
+												{consumptionNotice && (
+													<p
+														data-testid="consumption-notice"
+														role="status"
+														className={
+															consumptionNotice.tone === 'error'
+																? 'text-red-600'
+																: 'text-green-700'
+														}
+													>
+														{consumptionNotice.message}
+													</p>
+												)}
+											</div>
+										)}
+									</div>
+								)}
 							</div>
 						) : (
 							<p className="text-sm text-gray-500">Loading order…</p>
