@@ -251,6 +251,11 @@ const adminMenuGroups = [
 				icon: WalletIcon,
 			},
 			{
+				name: 'Cost Accrual',
+				href: '/admin/cost-accrual',
+				icon: WalletIcon,
+			},
+			{
 				name: 'Petty Cash Expenses',
 				href: '/admin/petty-cash-expenses',
 				icon: WalletIcon,

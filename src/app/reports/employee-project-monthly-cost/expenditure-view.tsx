@@ -2343,10 +2343,22 @@ export default function ExpenditureView({
 															<li
 																key={`${record.source}-${record.id}-${record.split?.id ?? 0}`}
 																data-testid="drilldown-record"
+																data-source={record.source}
+																data-cost-uid={record.cost_uid ?? ''}
 																data-source-reference={
 																	record.source_reference ?? ''
 																}
 																data-created-at={record.created_at ?? ''}
+																data-accrual-remaining={
+																	record.accrual
+																		? (record.accrual.remaining_amount ?? '')
+																		: undefined
+																}
+																data-accrual-replaced={
+																	record.accrual
+																		? record.accrual.replaced_amount
+																		: undefined
+																}
 																className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-700"
 															>
 																<span className="font-medium">
@@ -2375,6 +2387,30 @@ export default function ExpenditureView({
 																		record.currency
 																	)}
 																</span>
+																{record.accrual && (
+																	<span
+																		data-testid="record-accrual"
+																		className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-900"
+																	>
+																		Cost accrual · accrued{' '}
+																		{formatSourceMoney(
+																			record.accrual.remaining_amount,
+																			record.currency
+																		)}{' '}
+																		· replaced{' '}
+																		{formatSourceMoney(
+																			record.accrual.replaced_amount,
+																			record.currency
+																		)}
+																		{record.accrual.replacement_count > 0
+																			? ` · ${record.accrual.replacement_count} replacement${
+																					record.accrual.replacement_count === 1
+																						? ''
+																						: 's'
+																				}`
+																			: ''}
+																	</span>
+																)}
 																{record.conversion_status !== 'reporting' && (
 																	<span
 																		data-testid="record-conversion"

@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 import type Decimal from 'decimal.js';
 import { add, sub, R, toNumber } from '@/lib/money';
 import { withTransaction } from '@/utils/database';
+import { releaseAccrualReplacementsForInvoice } from './accruals';
 import {
 	convertToReporting,
 	currencyCodeOf,
@@ -1091,6 +1092,21 @@ export async function executeSupplierCommand(
 		}
 
 		const nextVersion = version + 1;
+		// Cancelling an invoice atomically releases every live accrual
+		// replacement in this same transaction: the matched estimate returns to
+		// its accrual, so no committed state ever counts the cancelled invoice
+		// and the restored estimate together, and none of the received-work
+		// cost silently disappears (contract
+		// C:/Files/OCDSE/Work/expenditure-accrual-contract.md §4b).
+		if (input.command === 'cancel') {
+			await releaseAccrualReplacementsForInvoice(
+				db,
+				input.id,
+				actor.id,
+				text(input.reason, 500),
+				text(merged.evidenceReference, 500)
+			);
+		}
 		const netAmount =
 			merged.grossAmount === null
 				? null

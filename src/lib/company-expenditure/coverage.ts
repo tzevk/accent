@@ -50,11 +50,11 @@ export const SOURCE_COVERAGE: readonly SourceCoverageDeclaration[] = [
 			'Supplier invoices are entered, recognized, and reconciled through this module (#311); one supplier liability is one cost, and payable follow-ups, receipt copies, and settlements link to it instead of counting again.',
 	},
 	{
-		code: 'cost_accrual_capture_not_incorporated',
+		code: 'cost_accrual_source',
 		label: 'Cost Accruals',
-		status: 'not_incorporated',
+		status: 'wired',
 		detail:
-			'Evidenced Cost Accruals and their replacement invoices are not captured yet; no accrual estimate is added to this total.',
+			'Evidenced Cost Accruals for received work and their partial or final replacement invoices are captured, recognized, and reconciled through this module (#313); a replacement supersedes only the matched accrual amount, so the estimate and the invoice are never both counted in full.',
 	},
 	{
 		code: 'cash_and_payments_not_incorporated',

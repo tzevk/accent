@@ -19,6 +19,7 @@
 import { add, R, toNumber } from '@/lib/money';
 import { currencyCodeOf, reportingCurrencyOf } from './currency';
 import { isNonOperatingNature, toPeriodChargeJson } from './non-operating';
+import { loadFilteredAccrualRecords } from './accruals';
 import { loadFilteredOtherExpenseRecords } from './other-expenses';
 import {
 	loadFilteredExpenseRecords,
@@ -42,6 +43,7 @@ const DRILLDOWN_SOURCES: readonly CostSource[] = [
 	'supplier_invoice',
 	'other_expense',
 	'petty_cash',
+	'cost_accrual',
 ];
 
 function sortRecords(records: CostRecord[]): CostRecord[] {
@@ -115,6 +117,13 @@ export async function loadCombinedDrilldown(
 			...(await PETTY_CASH_COST_SOURCE.loadFilteredRecords(db, query))
 		);
 	}
+	// A Cost Accrual is operating cost: a non-operating or unresolved nature
+	// filter must never surface it.
+	const accrualIsOperating =
+		!query.nature || query.nature === 'all' || query.nature === 'operating';
+	if ((source === 'all' || source === 'cost_accrual') && accrualIsOperating) {
+		results.push(...(await loadFilteredAccrualRecords(db, query)));
+	}
 	const merged = sortRecords(results);
 
 	// Charges are confirmed cost of their own month, so they belong to the
@@ -122,6 +131,7 @@ export async function loadCombinedDrilldown(
 	// cost, and a cancelled charge is returned as history but never counted.
 	const includeCharges =
 		source !== 'supplier_invoice' &&
+		source !== 'cost_accrual' &&
 		(!query.state || query.state === 'all' || query.state === 'recognized');
 	const periodCharges = includeCharges
 		? await loadMonthCharges(db, {

@@ -29,7 +29,9 @@ export type CostLinkRole =
 	| 'settlement'
 	| 'funding'
 	| 'mirror'
-	| 'split';
+	| 'split'
+	/** A replacement invoice superseding a Cost Accrual's matched amount (#313). */
+	| 'replacement';
 
 export type CostLinkBasis = 'system' | 'explicit' | 'document' | 'candidate';
 
@@ -189,6 +191,7 @@ const LINK_ROLES: readonly CostLinkRole[] = [
 	'funding',
 	'mirror',
 	'split',
+	'replacement',
 ];
 const LINK_BASES: readonly CostLinkBasis[] = [
 	'system',

@@ -1,4 +1,4 @@
-# Company Project Expenditure — Implementation (tickets #306, #307, #308, #309, #311, #316, #317, #319, #321)
+# Company Project Expenditure — Implementation (tickets #306, #307, #308, #309, #311, #313, #316, #317, #319, #321)
 
 ## Overview
 
@@ -973,6 +973,70 @@ reject, cancel) with `expected_version`.
   another source's queue row states where its recognition workflow lives (the
   admin Purchase Invoice register for supplier invoices), and list keys are
   source- and split-unique.
+
+## Cost Accruals (#313)
+
+Evidenced supplier work already received but not yet invoiced is one
+`cost_accruals` row with its own `cost_uid` and the shared recognition fields
+(migration `20261008091300`; contract
+`C:/Files/OCDSE/Work/expenditure-accrual-contract.md`). The write path is
+`src/lib/company-expenditure/accruals.ts` (`captureAccrualCost`,
+`executeAccrualCommand`, `executeAccrualReplacement`); the register is
+`/admin/cost-accrual` with `GET/POST /api/admin/cost-accruals`, the detail
+`GET /api/admin/cost-accruals/{id}`, the versioned commands
+`POST /api/admin/cost-accruals/{id}/commands` (update, submit, recognize,
+reject, cancel), the replacement
+`POST /api/admin/cost-accruals/{id}/replacements`, and the form choices
+`GET /api/admin/cost-accruals/options` (Projects and owners).
+
+- **Evidence**: only received goods/services with evidence
+  (`evidence_basis='received_work'`) or an explicitly identified supported
+  estimate (`supported_estimate`) create cost. An unused PO balance is not
+  evidence: capture and recognition refuse it with
+  `422 po_balance_not_evidence`. Recognition additionally requires an
+  `evidence_reference` and a received-work period (an accrual has no bill date,
+  so `period_basis` is `service_period`/`service_period_end` only). Drafts and
+  pending-evidence rows are review-queue rows, never cost.
+- **Replacement**: a recognized supplier invoice supersedes the matching
+  accrual amount. The accrual's `recognized_amount` is reduced and
+  `replaced_amount` accumulates; a partial replacement leaves the unmatched
+  remainder visible, and a final replacement supersedes the whole remaining
+  estimate (an actual below it releases the variance). The invoice itself is
+  never mutated. `cost_accrual_replacements` carries the matched amount, the
+  invoice amount at match time, the estimate-versus-actual `difference_amount`
+  with its `difference_period`, `difference_reason`, and evidence, both
+  versions, and the release state; `financial_cost_links` gains the
+  `replacement` role for the chain. A non-zero difference without a reason and
+  evidence is refused (`422 difference_evidence_required`).
+- **Lifecycle integrity**: cancelling a replacement invoice releases every
+  live replacement in the cancel command's own transaction — the matched
+  amount returns to the accrual, the row records `state='released'` with its
+  reason/actor/evidence, and the accrual journal records `released`. No
+  committed state ever counts the cancelled invoice and the restored estimate
+  together, and none of the received-work cost silently disappears. A
+  recognized invoice cannot be repriced or deleted (register refusals), so
+  cancel is the only path, and it is atomic and version-guarded.
+- **Versioning**: every command and replacement states its expected version;
+  repeats and concurrent requests are refused (`409 version_conflict`,
+  `409 replacement_exists`, `409 invoice_already_replacement`) and write
+  nothing. The replacement locks the invoice row before the accrual row (the
+  same order the cancel transition uses), so the two can never deadlock.
+- **Authorization**: `other_expenses:create` to capture, `other_expenses:update`
+  for update/submit (approve when the patch reprices the currency pair),
+  `other_expenses:approve` for recognize/reject/cancel and replacements, and
+  `other_expenses:read` for the register, detail, and options.
+- **Report**: the accrual source joins the same registry —
+  `loadAccrualMonthRecords`/`loadFilteredAccrualRecords` feed the
+  reconciliation and drilldown, the source summary shows `Cost accruals`
+  (confirmed remaining estimate, review queue), the drilldown publishes the
+  `accrual` block (`evidence_basis`, `order_uid`, `owner_user_id`,
+  `replaced_amount`, `remaining_amount`, `replacement_count`), and prior-month
+  comparison and cost-to-date read `loadAccrualMonthProjectCost` /
+  `loadAccrualProjectCostBefore`. Coverage flips the notice to
+  `cost_accrual_source` (wired). `ACCRUAL_ADAPTER` also implements the
+  remaining-slice `loadSlices` that #312's consumption command reads;
+  `loadAccrualConsumption(db, orderUid)` is the published transfer view for
+  #314.
 
 ## Currency conversion (ticket #319)
 

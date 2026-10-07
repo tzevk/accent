@@ -23,7 +23,8 @@ export type CostSource =
 	| 'other_expense'
 	| 'petty_cash'
 	| 'non_operating'
-	| 'payroll';
+	| 'payroll'
+	| 'cost_accrual';
 
 /**
  * What the spend is, independent of where it belongs (#317). `operating` is
@@ -97,7 +98,11 @@ export type CostJournalCommand =
 	| 'submitted'
 	| 'recognized'
 	| 'rejected'
-	| 'cancelled';
+	| 'cancelled'
+	/** A replacement invoice superseded part/all of a Cost Accrual (#313). */
+	| 'replaced'
+	/** The cancel transition restored a superseded accrual amount (#313). */
+	| 'released';
 
 /** Reasons a cost is not a clean confirmed amount. Disclosed, never hidden. */
 export type CostExceptionCode =
@@ -247,6 +252,29 @@ export interface CostSplitInfo {
 	count: number;
 }
 
+/** What supports a Cost Accrual's recognition (#313). */
+export type AccrualEvidenceBasis =
+	| 'received_work'
+	| 'supported_estimate'
+	/** An unused PO balance: refused at capture and recognition. */
+	| 'purchase_order';
+
+/**
+ * The accrual-specific evidence a Cost Accrual record carries (#313): what
+ * supports it, which canonical supplier order it belongs to, its finance
+ * owner, and how much of its estimate replacement invoices have superseded
+ * versus what remains.
+ */
+export interface AccrualRecordInfo {
+	evidence_basis: AccrualEvidenceBasis;
+	order_uid: string | null;
+	owner_user_id: number | null;
+	replaced_amount: number;
+	/** The remaining recognized estimate; null = unknown. */
+	remaining_amount: number | null;
+	replacement_count: number;
+}
+
 /** One direct cost as the financial module sees it. */
 export interface CostRecord extends CostFinancialInput {
 	source: CostSource;
@@ -274,6 +302,8 @@ export interface CostRecord extends CostFinancialInput {
 	 * originally snapshotted (#307 payroll allocations). Absent means no.
 	 */
 	reconstructed?: boolean;
+	/** The accrual evidence block, when this record is a Cost Accrual (#313). */
+	accrual?: AccrualRecordInfo | null;
 	evaluation: CostEvaluation;
 }
 
@@ -1229,6 +1259,8 @@ export interface CostRecordJson {
 	known_zero: boolean;
 	/** True when a source module reconstructed this cost rather than snapshotting it. */
 	reconstructed: boolean;
+	/** The accrual evidence block, when this record is a Cost Accrual (#313). */
+	accrual: AccrualRecordInfo | null;
 	exceptions: CostExceptionCode[];
 }
 

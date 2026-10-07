@@ -134,6 +134,34 @@ import { registerCostSource } from './sources';
 import { loadAllocationRevisionHistory } from './allocation-revisions';
 import type { AllocationRevisionHistory } from './allocation-revisions';
 import {
+	ACCRUAL_ADAPTER,
+	loadAccrualMonthProjectCost,
+	loadAccrualMonthRecords,
+	loadAccrualMonths,
+	loadAccrualProjectCostBefore,
+} from './accruals';
+export {
+	captureAccrualCost,
+	executeAccrualCommand,
+	executeAccrualReplacement,
+	loadAccrualConsumption,
+	loadAccrualDetail,
+} from './accruals';
+export type {
+	AccrualCaptureInput,
+	AccrualCommandInput,
+	AccrualConsumptionRow,
+	AccrualDetail,
+	AccrualLinkRow,
+	AccrualPatch,
+	AccrualReplacementCandidate,
+	AccrualReplacementInput,
+	AccrualReplacementResult,
+	AccrualReplacementRow,
+	AccrualSliceReference,
+	RecordedAccrual,
+} from './accruals';
+import {
 	loadFilteredOtherExpenseRecords,
 	loadOtherExpenseMonthProjectCost,
 	loadOtherExpenseMonthRecords,
@@ -468,6 +496,9 @@ const pool: SqlConnection = {
 // The supplier source registers its adapter so a `cost_uid` can resolve to a
 // purchase invoice from anywhere in the module.
 registerCostSource(SUPPLIER_INVOICE_ADAPTER);
+// The accrual source registers its adapter the same way (#313), including the
+// remaining slice #312's consumption command reads.
+registerCostSource(ACCRUAL_ADAPTER);
 
 // #308: the reconstruction module teaches the month read to join each slip's
 // latest reconstruction proposal without a payroll — reconstruction cycle.
@@ -486,7 +517,7 @@ export function currentDate(): string {
 /** Months with cost recorded in any wired source, newest first. */
 export async function fetchExpenditureMonths(): Promise<string[]> {
 	const current = currentMonth();
-	const [direct, supplier, payroll, otherExpense, pettyCash, orders] =
+	const [direct, supplier, payroll, otherExpense, pettyCash, orders, accrual] =
 		await Promise.all([
 			loadExpenditureMonths(pool, current),
 			loadSupplierInvoiceMonths(pool, current),
@@ -494,6 +525,7 @@ export async function fetchExpenditureMonths(): Promise<string[]> {
 			loadOtherExpenseMonths(pool, current),
 			PETTY_CASH_COST_SOURCE.loadMonths(pool),
 			loadOrderCommitmentMonths(pool),
+			loadAccrualMonths(pool, current),
 		]);
 	const months = new Set([
 		...direct,
@@ -504,6 +536,7 @@ export async function fetchExpenditureMonths(): Promise<string[]> {
 		// An order-only historical month (a commitment recorded with no cost
 		// yet) must stay reachable through the month controls.
 		...orders,
+		...accrual,
 	]);
 	months.add(current);
 	return [...months].sort().reverse();
@@ -578,6 +611,11 @@ export async function fetchCompanyReconciliation(
 		otherExpenseMonths,
 		pettyCashMonths,
 		orderMonths,
+		accrualRecords,
+		accrualPriorRecords,
+		previousAccrualProjectCost,
+		accrualCostBefore,
+		accrualMonths,
 	] = await Promise.all([
 		loadMonthRecords(db, month),
 		loadMonthRecords(db, previousMonth),
@@ -625,12 +663,22 @@ export async function fetchCompanyReconciliation(
 		loadOtherExpenseMonths(db, currentMonth()),
 		PETTY_CASH_COST_SOURCE.loadMonths(db),
 		loadOrderCommitmentMonths(db),
+		loadAccrualMonthRecords(db, month),
+		previousMonth
+			? loadAccrualMonthRecords(db, previousMonth)
+			: Promise.resolve([]),
+		previousMonth
+			? loadAccrualMonthProjectCost(db, previousMonth)
+			: Promise.resolve(new Map<number, Map<string, number | null>>()),
+		loadAccrualProjectCostBefore(db, month),
+		loadAccrualMonths(db, currentMonth()),
 	]);
 	const records = [
 		...directRecords,
 		...supplierRecords,
 		...otherExpenseRecords,
 		...pettyCashRecords,
+		...accrualRecords,
 	];
 	// The comparison's prior window reads the same sources the month reads, so
 	// its prior side is measured from evidence and not from a single source.
@@ -639,6 +687,7 @@ export async function fetchCompanyReconciliation(
 		...supplierPriorRecords,
 		...otherExpensePriorRecords,
 		...pettyCashPriorRecords,
+		...accrualPriorRecords,
 	];
 
 	// A charge can draw down a balance recognized in an earlier month, so the
@@ -675,6 +724,7 @@ export async function fetchCompanyReconciliation(
 		previousOtherExpenseProjectCost,
 		previousPettyCashProjectCost,
 		previousPayrollCost,
+		previousAccrualProjectCost,
 	].reduce(mergeProjectCostMaps, new Map<number, Map<string, number | null>>());
 	// Cost to Date is cumulative across the same sources: every month before
 	// the reported one, recognized operating Project cost plus approved period
@@ -685,6 +735,7 @@ export async function fetchCompanyReconciliation(
 		otherExpenseCostBefore,
 		pettyCashCostBefore,
 		payrollCostBefore,
+		accrualCostBefore,
 	].reduce(mergeProjectCostMaps, new Map<number, Map<string, number | null>>());
 	// A budget is read when it covers the month or belongs to a Project the
 	// month has a row for, so an approved budget for another period is stated
@@ -725,6 +776,7 @@ export async function fetchCompanyReconciliation(
 				...otherExpenseMonths,
 				...pettyCashMonths,
 				...orderMonths,
+				...accrualMonths,
 			]),
 		]
 			.sort()

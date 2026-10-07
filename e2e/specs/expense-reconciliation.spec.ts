@@ -629,6 +629,8 @@ test('keeps currencies separate until a supported conversion exists', async ({
 test('states which sources are not yet incorporated', async ({ request }) => {
 	const data = await reconciliation(request, MONTH);
 	const codes = coverageCodes(data);
+	// #313 wires Cost Accruals into the same registry, so its coverage notice
+	// no longer claims the source is missing; the code is not repinned here.
 	// Employee cost is incorporated since #307 (ADR-0016): the reconciliation
 	// no longer declares payroll missing, and it discloses the month's payroll
 	// coverage instead (this month has no finalized Payroll Run).
@@ -639,7 +641,6 @@ test('states which sources are not yet incorporated', async ({ request }) => {
 	).toBe(true);
 	expect(codes).toContain('supplier_source_not_incorporated');
 	expect(codes).toContain('cash_and_payments_not_incorporated');
-	expect(codes).toContain('cost_accrual_capture_not_incorporated');
 	// Open evidence in the month is disclosed.
 	expect(codes).toContain('records_awaiting_recognition');
 	expect(codes).toContain('missing_amount');
