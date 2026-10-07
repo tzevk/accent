@@ -343,6 +343,8 @@ export interface ReconciliationProjectRow {
 	logged_hours: number;
 	/** Employees with Logged Hours on the Project this month. */
 	employee_count: number;
+	/** Employees with frozen recorded shares, including known-zero shares. */
+	recorded_employee_count: number;
 }
 
 export interface EvidenceStateSummary {
@@ -1110,12 +1112,6 @@ export interface ProjectBudgetComparison {
 	period_charges: number;
 	/** Draft or pending-evidence operating records that are not confirmed cost. */
 	pending_records: number;
-	/**
-	 * Supported approved period charges the row counts (#317). They are part of
-	 * Incurred Project Cost, so a Project whose month is charge-only still
-	 * supports a budget comparison.
-	 */
-	period_charges: number;
 	outcome: BudgetOutcome;
 	/**
 	 * The comparison basis: the approved budget the variance is stated from

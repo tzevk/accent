@@ -372,6 +372,7 @@ interface PayrollAggregates {
 	estimatedByProject: Map<number, number>;
 	hoursByProject: Map<number, number>;
 	employeesByProject: Map<number, Set<number>>;
+	recordedEmployeesByProject: Map<number, Set<number>>;
 	identityByProject: Map<
 		number,
 		{ project_code: string; project_name: string; client_name: string | null }
@@ -385,6 +386,7 @@ function payrollAggregates(
 	const estimatedByProject = new Map<number, number>();
 	const hoursByProject = new Map<number, number>();
 	const employeesByProject = new Map<number, Set<number>>();
+	const recordedEmployeesByProject = new Map<number, Set<number>>();
 	const identityByProject = new Map<
 		number,
 		{ project_code: string; project_name: string; client_name: string | null }
@@ -393,6 +395,10 @@ function payrollAggregates(
 		for (const share of employee.shares) {
 			if (share.project_id === null) continue;
 			if (employee.recorded_amount !== null) {
+				const recordedEmployees =
+					recordedEmployeesByProject.get(share.project_id) ?? new Set<number>();
+				recordedEmployees.add(employee.employee_id);
+				recordedEmployeesByProject.set(share.project_id, recordedEmployees);
 				recordedByProject.set(
 					share.project_id,
 					rounded((recordedByProject.get(share.project_id) ?? 0) + share.amount)
@@ -432,6 +438,7 @@ function payrollAggregates(
 		estimatedByProject,
 		hoursByProject,
 		employeesByProject,
+		recordedEmployeesByProject,
 		identityByProject,
 	};
 }
@@ -577,6 +584,10 @@ function projectRows(
 				employee_count:
 					currency === payroll.currency
 						? (aggregates.employeesByProject.get(id)?.size ?? 0)
+						: 0,
+				recorded_employee_count:
+					currency === payroll.currency
+						? (aggregates.recordedEmployeesByProject.get(id)?.size ?? 0)
 						: 0,
 			});
 		}
