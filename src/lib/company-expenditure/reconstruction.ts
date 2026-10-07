@@ -27,6 +27,7 @@ import { add, R, toNumber } from '@/lib/money';
 import type { CommandOptions, CostActor } from './commands';
 import { inTransaction } from './commands';
 import { CostError } from './errors';
+import { isRetryableNumberError } from '@/utils/db-number-retry';
 import { text } from './fields';
 import {
 	PAYROLL_CURRENCY,
@@ -352,184 +353,202 @@ export async function proposeAllocationReconstruction(
 	options?: CommandOptions
 ): Promise<ReconstructionCommandResult> {
 	const evidenceReference = text(input.evidenceReference, 500);
-	return inTransaction(options, async (db) => {
-		// Lock ordering (shared with the review command and #309's revision
-		// writer): the slip's latest proposal row first, then the slip row —
-		// every allocation writer takes the slip row, so a fixed order here
-		// means concurrent propose/approve/revision commands queue instead of
-		// deadlocking.
-		const latestRows = await readRows(
-			db,
-			`SELECT financial_version, status
+	try {
+		return await inTransaction(options, async (db) => {
+			// Lock ordering (shared with the review command and #309's revision
+			// writer): the slip's latest proposal row first, then the slip row —
+			// every allocation writer takes the slip row, so a fixed order here
+			// means concurrent propose/approve/revision commands queue instead of
+			// deadlocking.
+			const latestRows = await readRows(
+				db,
+				`SELECT financial_version, status
          FROM payroll_allocation_reconstruction_proposals
         WHERE payroll_slip_id = ?
         ORDER BY financial_version DESC
         LIMIT 1 FOR UPDATE`,
-			[input.payrollSlipId]
-		);
-		const slipRows = await readRows(
-			db,
-			`SELECT id FROM payroll_slips WHERE id = ? FOR UPDATE`,
-			[input.payrollSlipId]
-		);
-		if (slipRows.length === 0) {
-			throw new CostError(
-				'slip_not_found',
-				`Payroll Slip ${input.payrollSlipId} does not exist`,
-				404
+				[input.payrollSlipId]
 			);
-		}
-		const basis = await loadAllocationBasis(db, input.payrollSlipId);
-		if (!basis) {
-			throw new CostError(
-				'slip_not_found',
-				`Payroll Slip ${input.payrollSlipId} does not exist`,
-				404
+			const slipRows = await readRows(
+				db,
+				`SELECT id FROM payroll_slips WHERE id = ? FOR UPDATE`,
+				[input.payrollSlipId]
 			);
-		}
-		const month = basis.slip.monthDay.slice(0, 7);
-		if (month !== input.month) {
-			throw new CostError(
-				'month_mismatch',
-				`Payroll Slip ${input.payrollSlipId} belongs to ${month}, not ${input.month}`,
-				409
-			);
-		}
-		if (!isLockedStatus(basis.runStatus)) {
-			throw new CostError(
-				'run_not_locked',
-				'The month must be finalized or paid before its slips can be reconstructed',
-				409
-			);
-		}
-		const allocationRows = await readRows(
-			db,
-			`SELECT COALESCE(MAX(version), 0) AS version
+			if (slipRows.length === 0) {
+				throw new CostError(
+					'slip_not_found',
+					`Payroll Slip ${input.payrollSlipId} does not exist`,
+					404
+				);
+			}
+			const basis = await loadAllocationBasis(db, input.payrollSlipId);
+			if (!basis) {
+				throw new CostError(
+					'slip_not_found',
+					`Payroll Slip ${input.payrollSlipId} does not exist`,
+					404
+				);
+			}
+			const month = basis.slip.monthDay.slice(0, 7);
+			if (month !== input.month) {
+				throw new CostError(
+					'month_mismatch',
+					`Payroll Slip ${input.payrollSlipId} belongs to ${month}, not ${input.month}`,
+					409
+				);
+			}
+			if (!isLockedStatus(basis.runStatus)) {
+				throw new CostError(
+					'run_not_locked',
+					'The month must be finalized or paid before its slips can be reconstructed',
+					409
+				);
+			}
+			const allocationRows = await readRows(
+				db,
+				`SELECT COALESCE(MAX(version), 0) AS version
          FROM payroll_employee_allocations
         WHERE payroll_slip_id = ?`,
-			[input.payrollSlipId]
-		);
-		if (Number(num(allocationRows[0], 'version') ?? 0) > 0) {
-			throw new CostError(
-				'allocation_exists',
-				'This Payroll Slip already has a saved allocation; a reconstruction never replaces it',
-				409
+				[input.payrollSlipId]
 			);
-		}
-		const latest = latestRows[0];
-		if (str(latest, 'status') === 'pending') {
-			throw new CostError(
-				'reconstruction_pending',
-				'A reconstruction proposal for this Payroll Slip already awaits review',
-				409
+			if (Number(num(allocationRows[0], 'version') ?? 0) > 0) {
+				throw new CostError(
+					'allocation_exists',
+					'This Payroll Slip already has a saved allocation; a reconstruction never replaces it',
+					409
+				);
+			}
+			const latest = latestRows[0];
+			if (str(latest, 'status') === 'pending') {
+				throw new CostError(
+					'reconstruction_pending',
+					'A reconstruction proposal for this Payroll Slip already awaits review',
+					409
+				);
+			}
+			const financialVersion =
+				Number(num(latest, 'financial_version') ?? 0) + 1;
+			const proposalUid = `payroll-recon-${input.payrollSlipId}-v${financialVersion}`;
+
+			const money = round2(basis.slip.employerCost);
+			const outcome = allocateEmployerCost(money, basis.hours);
+			const totalHours = round2(
+				outcome.shares.reduce((sum, share) => add(sum, share.hours), R(0))
 			);
-		}
-		const financialVersion = Number(num(latest, 'financial_version') ?? 0) + 1;
-		const proposalUid = `payroll-recon-${input.payrollSlipId}-v${financialVersion}`;
+			const projectHours = round2(
+				outcome.shares
+					.filter((share) => share.basis === 'project')
+					.reduce((sum, share) => add(sum, share.hours), R(0))
+			);
+			const noProjectHours = round2(
+				outcome.shares
+					.filter((share) => share.basis === 'no_project')
+					.reduce((sum, share) => add(sum, share.hours), R(0))
+			);
+			const limitations: PayrollReconstructionLimitation[] = [];
+			if (totalHours === 0) {
+				limitations.push({
+					code: 'timesheet_missing',
+					detail: `No eligible Logged Hours are recorded for ${month}; the whole recorded cost stays unallocated.`,
+				});
+			} else if (noProjectHours > 0) {
+				limitations.push({
+					code: 'hours_without_project',
+					detail: `${noProjectHours} of ${totalHours} Logged Hours have no reliable Project; those hours stay in the denominator and their share stays unallocated.`,
+				});
+			}
+			const evidenceSnapshot: PayrollReconstructionEvidence = {
+				source_table: 'user_activity_assignments',
+				source_field: 'daily_entries',
+				month,
+				employee_id: basis.slip.employeeId,
+				payroll_slip_id: basis.slip.id,
+				recorded_employer_cost: money,
+				currency: PAYROLL_CURRENCY,
+				total_logged_hours: totalHours,
+				project_hours: projectHours,
+				no_project_hours: noProjectHours,
+				destinations: outcome.shares.length,
+				pay_stream_source: 'salary_profile_observed_at_proposal',
+			};
 
-		const money = round2(basis.slip.employerCost);
-		const outcome = allocateEmployerCost(money, basis.hours);
-		const totalHours = round2(
-			outcome.shares.reduce((sum, share) => add(sum, share.hours), R(0))
-		);
-		const projectHours = round2(
-			outcome.shares
-				.filter((share) => share.basis === 'project')
-				.reduce((sum, share) => add(sum, share.hours), R(0))
-		);
-		const noProjectHours = round2(
-			outcome.shares
-				.filter((share) => share.basis === 'no_project')
-				.reduce((sum, share) => add(sum, share.hours), R(0))
-		);
-		const limitations: PayrollReconstructionLimitation[] = [];
-		if (totalHours === 0) {
-			limitations.push({
-				code: 'timesheet_missing',
-				detail: `No eligible Logged Hours are recorded for ${month}; the whole recorded cost stays unallocated.`,
-			});
-		} else if (noProjectHours > 0) {
-			limitations.push({
-				code: 'hours_without_project',
-				detail: `${noProjectHours} of ${totalHours} Logged Hours have no reliable Project; those hours stay in the denominator and their share stays unallocated.`,
-			});
-		}
-		const evidenceSnapshot: PayrollReconstructionEvidence = {
-			source_table: 'user_activity_assignments',
-			source_field: 'daily_entries',
-			month,
-			employee_id: basis.slip.employeeId,
-			payroll_slip_id: basis.slip.id,
-			recorded_employer_cost: money,
-			currency: PAYROLL_CURRENCY,
-			total_logged_hours: totalHours,
-			project_hours: projectHours,
-			no_project_hours: noProjectHours,
-			destinations: outcome.shares.length,
-			pay_stream_source: 'salary_profile_observed_at_proposal',
-		};
-
-		const inserted = await executeWrite(
-			db,
-			`INSERT INTO payroll_allocation_reconstruction_proposals
+			const inserted = await executeWrite(
+				db,
+				`INSERT INTO payroll_allocation_reconstruction_proposals
          (proposal_uid, payroll_slip_id, month, employee_id, employee_code,
           employee_name, pay_stream, financial_version, status,
           recorded_employer_cost, currency, total_logged_hours, project_hours,
           no_project_hours, rounding_adjustment, evidence, missing_evidence,
           evidence_reference, proposed_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			[
-				proposalUid,
-				basis.slip.id,
-				basis.slip.monthDay,
-				basis.slip.employeeId,
-				basis.employeeCode,
-				basis.employeeName,
-				basis.payStream,
-				financialVersion,
-				money,
-				PAYROLL_CURRENCY,
-				totalHours,
-				projectHours,
-				noProjectHours,
-				outcome.roundingAdjustment,
-				JSON.stringify(evidenceSnapshot),
-				JSON.stringify(limitations),
-				evidenceReference,
-				actor.id,
-			]
-		);
-		for (const share of outcome.shares) {
-			await executeWrite(
-				db,
-				`INSERT INTO payroll_allocation_reconstruction_shares
+				[
+					proposalUid,
+					basis.slip.id,
+					basis.slip.monthDay,
+					basis.slip.employeeId,
+					basis.employeeCode,
+					basis.employeeName,
+					basis.payStream,
+					financialVersion,
+					money,
+					PAYROLL_CURRENCY,
+					totalHours,
+					projectHours,
+					noProjectHours,
+					outcome.roundingAdjustment,
+					JSON.stringify(evidenceSnapshot),
+					JSON.stringify(limitations),
+					evidenceReference,
+					actor.id,
+				]
+			);
+			for (const share of outcome.shares) {
+				await executeWrite(
+					db,
+					`INSERT INTO payroll_allocation_reconstruction_shares
            (proposal_id, project_id, project_code, project_name, client_name,
             hours, amount, rounding_adjustment, basis)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				[
-					inserted.insertId,
-					share.project_id,
-					share.project_code,
-					share.project_name,
-					share.client_name,
-					share.hours,
-					share.amount,
-					share.rounding_adjustment,
-					share.basis,
-				]
-			);
-		}
+					[
+						inserted.insertId,
+						share.project_id,
+						share.project_code,
+						share.project_name,
+						share.client_name,
+						share.hours,
+						share.amount,
+						share.rounding_adjustment,
+						share.basis,
+					]
+				);
+			}
 
-		const summary = await loadProposal(db, proposalUid);
-		if (!summary) {
+			const summary = await loadProposal(db, proposalUid);
+			if (!summary) {
+				throw new CostError(
+					'proposal_not_written',
+					'The reconstruction proposal could not be read back',
+					500
+				);
+			}
+			return { ...summary, allocation: null };
+		});
+	} catch (error) {
+		if (error instanceof CostError) throw error;
+		// Concurrent proposes serialize on the slip and proposal locks, so the
+		// loser surfaces as a deadlock, a lock-wait timeout, or a unique-key
+		// collision on (payroll_slip_id, financial_version). The winning
+		// proposal now awaits review, so refuse as the same 409 conflict the
+		// pending guard returns for a sequential repeat.
+		if (isRetryableNumberError(error)) {
 			throw new CostError(
-				'proposal_not_written',
-				'The reconstruction proposal could not be read back',
-				500
+				'reconstruction_pending',
+				'A reconstruction proposal for this Payroll Slip already awaits review',
+				409
 			);
 		}
-		return { ...summary, allocation: null };
-	});
+		throw error;
+	}
 }
 
 /* ── the review command ────────────────────────────────────────────── */
