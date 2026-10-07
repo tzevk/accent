@@ -203,6 +203,10 @@ _Avoid_: Bench Cost, Zero project cost, Missing salary
 An explicit correction to how finalized employee payroll cost is attributed to Projects. Preserves the previous attribution and the reason for the correction; it does not itself change the employee's payroll cost.
 _Avoid_: Payroll correction, Timesheet edit, Payroll regeneration
 
+**Project Cost Allocation Reconstruction**:
+A one-time rebuild of a finalized Payroll Slip's Project attribution from its recorded employer cost and the available monthly Logged Hours, for slips that predate saved allocations. Stored as a proposal until a reviewer approves it; the result is labelled reconstructed and never presented as the original finalization-time attribution.
+_Avoid_: Payroll repricing, Salary Profile estimate, Original allocation
+
 **Bench Cost**:
 `monthly_cost − Hourly Rate × logged_hours` — Monthly Cost (pro-rated for a partial window, see above) minus the utilized figure, priced with the same CTC ÷ Basis Hours rate a Payroll Slip pays with (ADR-0010), so the report reconciles with the slips. The utilized figure plus Bench Cost foots to Monthly Cost per row and in totals (overload may read negative); a row without a covering Salary Profile shows blank cost, never zero.
 _Avoid_: Fractional cost, Loss, Waste

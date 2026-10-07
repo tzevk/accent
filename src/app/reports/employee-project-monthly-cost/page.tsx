@@ -497,8 +497,12 @@ export default function EmployeeProjectMonthlyCostPage() {
 			field_permissions?: unknown;
 		} | null;
 		can: (resource: string, permission: string) => boolean;
-		RESOURCES: { REPORTS: string };
-		PERMISSIONS: { READ: string };
+		RESOURCES: {
+			REPORTS: string;
+			OTHER_EXPENSES: string;
+			PAYROLL: string;
+		};
+		PERMISSIONS: { READ: string; UPDATE: string };
 		loading: boolean;
 	};
 
@@ -581,6 +585,18 @@ export default function EmployeeProjectMonthlyCostPage() {
 		isSuperAdmin || (!!can && can('other_expenses', 'approve'));
 	const canEditCost =
 		isSuperAdmin || (!!can && can('other_expenses', 'update'));
+	// The Project Cost Allocation Revision (#309) is a versioned financial
+	// command: the payroll drilldown's read gate plus the payroll write
+	// privilege. The server enforces the same conjunction.
+	const canReviseAllocation =
+		isSuperAdmin ||
+		(!!can &&
+			!!RESOURCES &&
+			!!PERMISSIONS &&
+			can(RESOURCES.REPORTS, PERMISSIONS.READ) &&
+			can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ) &&
+			can(RESOURCES.PAYROLL, PERMISSIONS.READ) &&
+			can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE));
 	// The expenditure view reads the direct-expense ledger, so it needs that
 	// source's read privilege as well as reports:read. Without it the tab is
 	// not offered and the report opens on the employee-cost views; the server
@@ -824,6 +840,12 @@ export default function EmployeeProjectMonthlyCostPage() {
 					canRecord={canRecordCost}
 					canEditCost={canEditCost}
 					canRecognize={canRecognizeCost}
+					// #308: reaching this view already proves the financial read
+					// gate (reports + both source reads, above); the reconstruction
+					// controls add the operation privilege the routes enforce.
+					canProposeReconstruction={canEditCost}
+					canReviewReconstruction={canRecognizeCost}
+					canRevise={canReviseAllocation}
 				/>
 			);
 		}

@@ -205,6 +205,26 @@ interface PayrollShareRow {
 	basis: string;
 }
 
+interface PayrollReconstructionRow {
+	proposal_uid: string;
+	financial_version: number;
+	status: string;
+	recorded_employer_cost: number;
+	currency: string;
+	total_logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	rounding_adjustment: number;
+	missing_evidence: Array<{ code: string; detail: string }>;
+	proposed_by_name: string | null;
+	proposed_at: string | null;
+	reviewed_by_name: string | null;
+	reviewed_at: string | null;
+	review_reason: string | null;
+	evidence_reference: string | null;
+	shares: PayrollShareRow[];
+}
+
 interface PayrollEmployeeRow {
 	employee_id: number;
 	employee_code: string;
@@ -228,6 +248,8 @@ interface PayrollEmployeeRow {
 		month: string;
 	};
 	shares: PayrollShareRow[];
+	/** #308: the slip's latest reconstruction proposal, or null. */
+	reconstruction: PayrollReconstructionRow | null;
 }
 
 interface PayrollSummaryRow {
@@ -426,6 +448,23 @@ export interface ExpenditureViewProps {
 	canEditCost: boolean;
 	/** `other_expenses:approve` — may recognize, reject, or cancel a cost. */
 	canRecognize: boolean;
+	/**
+	 * #308: the financial read gate (`reports:read` + `other_expenses:read` +
+	 * `payroll:read`, or super admin) **and** `other_expenses:update` — may
+	 * propose a historical allocation reconstruction.
+	 */
+	canProposeReconstruction: boolean;
+	/**
+	 * #308: the financial read gate **and** `other_expenses:approve` — may
+	 * approve or reject a reconstruction proposal.
+	 */
+	canReviewReconstruction: boolean;
+	/**
+	 * Financial read gate + `payroll:update` — may revise a finalized Payroll
+	 * Slip's Project cost allocation (#309). The server enforces the same
+	 * conjunction regardless of what renders.
+	 */
+	canRevise: boolean;
 }
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
@@ -587,6 +626,9 @@ export default function ExpenditureView({
 	canRecord,
 	canEditCost,
 	canRecognize,
+	canProposeReconstruction,
+	canReviewReconstruction,
+	canRevise,
 }: ExpenditureViewProps) {
 	const queryClient = useQueryClient();
 	const [projectFilter, setProjectFilter] = useState('all');
@@ -600,6 +642,7 @@ export default function ExpenditureView({
 		command: 'recognize' | 'reject' | 'cancel';
 	} | null>(null);
 	const [expandedEmployee, setExpandedEmployee] = useState<number | null>(null);
+	const [reconstructionReason, setReconstructionReason] = useState('');
 	const [chargeTarget, setChargeTarget] = useState<NonOperatingItemRow | null>(
 		null
 	);
@@ -678,6 +721,47 @@ export default function ExpenditureView({
 		staleTime: 15_000,
 	});
 	const payrollEmployees = payrollQuery.data?.data.employees ?? [];
+
+	// #308: reconstruction commands ride the report's own routes. The server
+	// enforces the financial read gate + operation privilege; the controls
+	// below render only under the same conjunction.
+	const proposeReconstruction = useMutation({
+		mutationFn: (slipId: number) =>
+			apiPost(
+				'/api/reports/employee-project-monthly-cost/payroll/reconstruction',
+				{ month, payroll_slip_id: slipId }
+			),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
+				queryKey: ['expenditure-payroll', month],
+			});
+			void queryClient.invalidateQueries({ queryKey: ['expenditure'] });
+		},
+	});
+	const reviewReconstruction = useMutation({
+		mutationFn: (input: {
+			proposalUid: string;
+			command: 'approve' | 'reject';
+			expectedVersion: number;
+			reason?: string;
+		}) =>
+			apiPost(
+				`/api/reports/employee-project-monthly-cost/payroll/reconstruction/${input.proposalUid}`,
+				{
+					command: input.command,
+					expected_version: input.expectedVersion,
+					reason: input.reason || undefined,
+				}
+			),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
+				queryKey: ['expenditure-payroll', month],
+			});
+			void queryClient.invalidateQueries({ queryKey: ['expenditure'] });
+		},
+	});
+	const reconstructionError =
+		proposeReconstruction.error ?? reviewReconstruction.error;
 
 	const data = reconciliationQuery.data?.data ?? null;
 	const queue = queueQuery.data?.data?.records ?? [];
@@ -1329,8 +1413,8 @@ export default function ExpenditureView({
 				</ul>
 				<p className="mt-2 text-[11px] text-gray-500">
 					Cost to date is cumulative recognized cost through{' '}
-					{formatDate(data.comparison.cost_to_date_through)}, the window&apos;s last
-					day.
+					{formatDate(data.comparison.cost_to_date_through)}, the window&apos;s
+					last day.
 				</p>
 			</div>
 
@@ -1639,6 +1723,150 @@ export default function ExpenditureView({
 				</ul>
 			</div>
 
+			{/* Outstanding Supplier Commitment (#312) */}
+			<div
+				data-testid="commitment-section"
+				className="mt-3 rounded-xl border border-sky-200 bg-sky-50/40 p-3"
+			>
+				<div className="flex flex-wrap items-baseline justify-between gap-2">
+					<p className="text-xs font-semibold text-gray-800">
+						Outstanding Supplier Commitment
+					</p>
+					<p className="text-[11px] text-gray-600">
+						Supplier order value not yet consumed by recognized cost — never
+						incurred cost. Reconstructed as of this month from the recorded
+						eligibility, consumption, and cancellation acts.
+					</p>
+				</div>
+				<div className="mt-2 space-y-2">
+					{data.supplier_commitment.totals.map((total) => (
+						<div
+							key={`${total.currency}-${total.basis}`}
+							data-testid="commitment-row"
+							data-currency={total.currency}
+							data-basis={total.basis}
+							data-closing={total.closingCommitment}
+							data-consumption={total.consumptionInMonth}
+							className="rounded-lg border border-sky-100 bg-white/70 p-2"
+						>
+							<div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-gray-800">
+								<span className="font-medium">
+									{total.currency} ·{' '}
+									{total.basis === 'gross' ? 'including tax' : 'net of tax'} ·{' '}
+									{total.unconsumedOrderCount} order
+									{total.unconsumedOrderCount === 1 ? '' : 's'} open
+								</span>
+								<span>
+									Closing commitment:{' '}
+									<strong>
+										{money(total.closingCommitment, total.currency)}
+									</strong>{' '}
+									· consumed this month:{' '}
+									{money(total.consumptionInMonth, total.currency)}
+								</span>
+							</div>
+							<table className="mt-1 min-w-full text-[11px] text-gray-700">
+								<thead>
+									<tr className="text-left text-gray-500">
+										<th className="pr-2">Month</th>
+										<th className="pr-2">Opening</th>
+										<th className="pr-2">New</th>
+										<th className="pr-2">Consumption</th>
+										<th className="pr-2">Cancellation</th>
+										<th>Closing</th>
+									</tr>
+								</thead>
+								<tbody>
+									{total.months.map((row) => (
+										<tr key={row.month} data-testid="commitment-month">
+											<td className="pr-2">{row.month}</td>
+											<td className="pr-2">
+												{money(row.opening, total.currency)}
+											</td>
+											<td className="pr-2">
+												{money(row.newCommitment, total.currency)}
+											</td>
+											<td className="pr-2">
+												{money(row.consumption, total.currency)}
+											</td>
+											<td className="pr-2">
+												{money(row.cancellation, total.currency)}
+											</td>
+											<td>{money(row.closing, total.currency)}</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					))}
+					{data.supplier_commitment.totals.length === 0 && (
+						<p className="text-xs text-gray-500">
+							No supported supplier commitment this month.
+						</p>
+					)}
+					{data.supplier_commitment.orders.length > 0 && (
+						<div className="overflow-x-auto">
+							<table className="min-w-full text-[11px] text-gray-700">
+								<thead>
+									<tr className="text-left text-gray-500">
+										<th className="pr-2">Order</th>
+										<th className="pr-2">Counterparty</th>
+										<th className="pr-2">Project</th>
+										<th className="pr-2">Value</th>
+										<th className="pr-2">Consumed</th>
+										<th className="pr-2">Remaining</th>
+										<th>Status</th>
+									</tr>
+								</thead>
+								<tbody>
+									{data.supplier_commitment.orders.map((order) => (
+										<tr
+											key={order.orderUid}
+											data-testid="commitment-order"
+											data-order-number={order.orderNumber}
+											data-remaining={order.remaining}
+										>
+											<td className="pr-2">{order.orderNumber}</td>
+											<td className="pr-2">{order.counterpartyName}</td>
+											<td className="pr-2">{order.projectCode || '—'}</td>
+											<td className="pr-2">
+												{money(order.value, order.currency)}
+											</td>
+											<td className="pr-2">
+												{money(order.consumption, order.currency)}
+											</td>
+											<td className="pr-2">
+												{money(order.remaining, order.currency)}
+											</td>
+											<td>{order.status}</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					)}
+					{data.supplier_commitment.exceptions.length > 0 && (
+						<ul className="space-y-1 text-[11px] text-amber-900">
+							{data.supplier_commitment.exceptions.map((exception) => (
+								<li
+									key={`${exception.code}-${exception.currency ?? ''}-${exception.basis ?? ''}`}
+									data-testid="commitment-exception"
+									data-code={exception.code}
+									data-count={exception.orderCount}
+								>
+									<span className="font-medium">{exception.code}</span>:{' '}
+									{exception.detail} ({exception.orderCount}
+									{exception.value === null
+										? ', value unknown'
+										: `, ${formatCurrencyIn(exception.value, exception.currency ?? 'INR')}`}
+									)
+								</li>
+							))}
+						</ul>
+					)}
+				</div>
+			</div>
+
 			{/* Non-operating balances and their approved consumption (#317) */}
 			{(data.non_operating.items.length > 0 ||
 				data.non_operating.charges_from_prior_items.length > 0) && (
@@ -1880,7 +2108,10 @@ export default function ExpenditureView({
 					<tbody>
 						{data.projects.length === 0 && (
 							<tr>
-								<td colSpan={12} className="px-3 py-4 text-center text-gray-500">
+								<td
+									colSpan={12}
+									className="px-3 py-4 text-center text-gray-500"
+								>
 									No Project-attributed cost in this month. Company Overhead and
 									Unallocated Cost stay in the reconciliation above.
 								</td>
@@ -2084,7 +2315,9 @@ export default function ExpenditureView({
 										</td>
 									</tr>
 									{expanded && (
-										<tr key={`${project.project_id}-${project.currency}-drilldown`}>
+										<tr
+											key={`${project.project_id}-${project.currency}-drilldown`}
+										>
 											<td colSpan={12} className="bg-gray-50/70 px-3 py-2">
 												<div
 													data-testid="project-drilldown"
@@ -2382,6 +2615,7 @@ export default function ExpenditureView({
 								)}
 							{payrollEmployees.map((employee) => {
 								const expanded = expandedEmployee === employee.employee_id;
+								const reconstruction = employee.reconstruction;
 								return (
 									<Fragment key={employee.employee_id}>
 										<tr
@@ -2427,6 +2661,126 @@ export default function ExpenditureView({
 														</div>
 													</div>
 												</div>
+												{/* #308: reconstruction state and its review controls. Pending
+												    and rejected proposals are shown as proposals, never as
+												    recorded cost; the controls render only under the same
+												    read-gate + operation-privilege conjunction the routes
+												    enforce. */}
+												{(reconstruction ||
+													(employee.allocation_missing &&
+														canProposeReconstruction)) && (
+													<div className="mt-1 flex flex-wrap items-center gap-1.5">
+														{reconstruction && (
+															<span
+																data-testid={
+																	reconstruction.status === 'approved'
+																		? 'payroll-reconstruction-badge'
+																		: reconstruction.status === 'pending'
+																			? 'payroll-reconstruction-pending'
+																			: 'payroll-reconstruction-rejected'
+																}
+																data-status={reconstruction.status}
+																data-financial-version={String(
+																	reconstruction.financial_version
+																)}
+																className={
+																	reconstruction.status === 'approved'
+																		? 'rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-900'
+																		: reconstruction.status === 'pending'
+																			? 'rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900'
+																			: 'rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-900'
+																}
+															>
+																{reconstruction.status === 'approved'
+																	? 'Reconstructed'
+																	: reconstruction.status === 'pending'
+																		? `Reconstruction v${reconstruction.financial_version} · Awaiting review`
+																		: `Reconstruction v${reconstruction.financial_version} · Rejected`}
+															</span>
+														)}
+														{reconstruction?.status === 'pending' &&
+															canReviewReconstruction && (
+																<>
+																	<input
+																		data-testid="payroll-reconstruction-reason"
+																		value={reconstructionReason}
+																		onChange={(event) =>
+																			setReconstructionReason(
+																				event.target.value
+																			)
+																		}
+																		placeholder="Review reason (optional)"
+																		className="w-44 rounded border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-700"
+																	/>
+																	<button
+																		type="button"
+																		data-testid="payroll-reconstruction-approve"
+																		disabled={reviewReconstruction.isPending}
+																		onClick={() =>
+																			reviewReconstruction.mutate({
+																				proposalUid:
+																					reconstruction.proposal_uid,
+																				command: 'approve',
+																				expectedVersion:
+																					reconstruction.financial_version,
+																				reason: reconstructionReason,
+																			})
+																		}
+																		className="rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+																	>
+																		Approve
+																	</button>
+																	<button
+																		type="button"
+																		data-testid="payroll-reconstruction-reject"
+																		disabled={reviewReconstruction.isPending}
+																		onClick={() =>
+																			reviewReconstruction.mutate({
+																				proposalUid:
+																					reconstruction.proposal_uid,
+																				command: 'reject',
+																				expectedVersion:
+																					reconstruction.financial_version,
+																				reason: reconstructionReason,
+																			})
+																		}
+																		className="rounded border border-rose-300 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+																	>
+																		Reject
+																	</button>
+																</>
+															)}
+														{!reconstruction &&
+															employee.allocation_missing &&
+															canProposeReconstruction && (
+																<button
+																	type="button"
+																	data-testid="payroll-reconstruction-propose"
+																	disabled={
+																		proposeReconstruction.isPending ||
+																		employee.source.payroll_slip_id === null
+																	}
+																	onClick={() => {
+																		if (
+																			employee.source.payroll_slip_id !== null
+																		) {
+																			proposeReconstruction.mutate(
+																				employee.source.payroll_slip_id
+																			);
+																		}
+																	}}
+																	className="rounded border border-[#64126D] px-1.5 py-0.5 text-[10px] font-medium text-[#64126D] hover:bg-[#64126D]/5 disabled:opacity-60"
+																>
+																	Propose reconstruction
+																</button>
+															)}
+													</div>
+												)}
+												{reconstructionError && (
+													<div className="mt-0.5 text-[10px] text-rose-600">
+														{errorMessage(reconstructionError)}
+													</div>
+												)}
 											</td>
 											<td className="px-3 py-2 text-xs capitalize text-gray-600">
 												{employee.pay_stream}
@@ -2475,7 +2829,9 @@ export default function ExpenditureView({
 															employee.source.allocation_kind ===
 															'reconstruction'
 																? ' · reconstructed'
-																: ''
+																: employee.source.allocation_kind === 'revision'
+																	? ' · revised'
+																	: ''
 														}`}
 											</td>
 										</tr>
@@ -2551,6 +2907,138 @@ export default function ExpenditureView({
 															))}
 														</tbody>
 													</table>
+													{/* #308: reconstruction evidence, distinct from an original
+													    finalization-time snapshot: what was reconstructed,
+													    from which evidence, when, by whom, and what stays
+													    limited. A pending proposal states its proposed shares
+													    and never claims they are recorded cost. */}
+													{reconstruction && (
+														<div
+															data-testid="payroll-reconstruction-evidence"
+															data-status={reconstruction.status}
+															data-financial-version={String(
+																reconstruction.financial_version
+															)}
+															data-reconstructed-at={
+																reconstruction.proposed_at ?? ''
+															}
+															data-proposed-by={
+																reconstruction.proposed_by_name ?? ''
+															}
+															data-reviewed-at={
+																reconstruction.reviewed_at ?? ''
+															}
+															data-reviewed-by={
+																reconstruction.reviewed_by_name ?? ''
+															}
+															data-missing-evidence={reconstruction.missing_evidence
+																.map((entry) => entry.code)
+																.join(',')}
+															className="mt-2 rounded border border-amber-200 bg-amber-50/60 px-2 py-1.5"
+														>
+															<p className="text-[11px] font-semibold text-amber-900">
+																Reconstruction evidence — reconstructed, not the
+																original finalization-time attribution
+															</p>
+															<p className="text-[11px] text-amber-900/80">
+																Proposed {reconstruction.proposed_at ?? '—'} by{' '}
+																{reconstruction.proposed_by_name ?? 'unknown'} ·{' '}
+																{reconstruction.status === 'pending'
+																	? 'awaiting review'
+																	: `${reconstruction.status} on ${
+																			reconstruction.reviewed_at ?? '—'
+																		} by ${
+																			reconstruction.reviewed_by_name ??
+																			'unknown'
+																		}`}
+																{reconstruction.review_reason
+																	? ` · ${reconstruction.review_reason}`
+																	: ''}
+															</p>
+															<p className="text-[11px] text-amber-900/80">
+																Recorded employer cost{' '}
+																{formatCurrencyIn(
+																	reconstruction.recorded_employer_cost,
+																	data.payroll.currency
+																)}{' '}
+																against{' '}
+																{formatNumber(
+																	reconstruction.total_logged_hours
+																)}{' '}
+																Logged Hours; this evidence was not stored at
+																the slip&apos;s original finalization.
+															</p>
+															{reconstruction.missing_evidence.length > 0 && (
+																<ul className="mt-1 list-disc pl-4 text-[11px] text-amber-900">
+																	{reconstruction.missing_evidence.map(
+																		(entry) => (
+																			<li key={entry.code}>{entry.detail}</li>
+																		)
+																	)}
+																</ul>
+															)}
+															{reconstruction.status === 'pending' &&
+																reconstruction.shares.length > 0 && (
+																	<div className="mt-1">
+																		<p className="text-[11px] font-medium text-amber-900">
+																			Proposed shares (not recorded until
+																			approved)
+																		</p>
+																		<table className="w-full text-xs">
+																			<tbody>
+																				{reconstruction.shares.map(
+																					(share, index) => (
+																						<tr
+																							key={`${share.project_id ?? share.basis}-${index}`}
+																							data-testid="payroll-reconstruction-share-row"
+																							data-project-code={
+																								share.project_code ?? ''
+																							}
+																							data-hours={String(share.hours)}
+																							data-amount={String(share.amount)}
+																							data-adjustment={String(
+																								share.rounding_adjustment
+																							)}
+																							data-basis={share.basis}
+																							className="text-amber-900"
+																						>
+																							<td className="py-0.5 pr-3">
+																								{share.project_id === null
+																									? share.basis === 'no_project'
+																										? 'No project'
+																										: 'No logged hours'
+																									: `${share.project_code} — ${
+																											share.project_name ?? ''
+																										}`}
+																							</td>
+																							<td className="py-0.5 pr-3 text-right tabular-nums">
+																								{formatNumber(share.hours)} h
+																							</td>
+																							<td className="py-0.5 text-right tabular-nums font-medium">
+																								{formatCurrencyIn(
+																									share.amount,
+																									data.payroll.currency
+																								)}
+																							</td>
+																						</tr>
+																					)
+																				)}
+																			</tbody>
+																		</table>
+																	</div>
+																)}
+														</div>
+													)}
+													{employee.source.allocation_id !== null &&
+														employee.source.payroll_slip_id !== null && (
+															<AllocationRevisionPanel
+																slipId={employee.source.payroll_slip_id}
+																employee={employee}
+																projectOptions={data.project_options}
+																currency={data.payroll.currency}
+																canRevise={canRevise}
+															/>
+														)}
 												</td>
 											</tr>
 										)}
@@ -4041,6 +4529,470 @@ function ChargeCancelDialog({
 					</button>
 				</div>
 			</form>
+		</div>
+	);
+}
+
+/* ── Project Cost Allocation Revisions (#309, ADR-0016) ───────────── */
+
+interface AllocationHistoryVersion {
+	version: number;
+	kind: string;
+	allocation_uid: string;
+	recorded_employer_cost: number;
+	total_logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	rounding_adjustment: number;
+	frozen_at: string;
+	frozen_by: number | null;
+	actor_name: string | null;
+	command: string | null;
+	reason: string | null;
+	evidence_reference: string | null;
+	journal_at: string | null;
+	superseded_by: number | null;
+	reconciles: boolean;
+	shares: PayrollShareRow[];
+}
+
+interface AllocationHistoryPayload {
+	payroll_slip_id: number;
+	month: string;
+	employee_code: string;
+	selected_version: number;
+	versions: AllocationHistoryVersion[];
+}
+
+const ALLOCATION_KIND_LABELS: Record<string, string> = {
+	finalization: 'Finalized',
+	reconstruction: 'Reconstructed',
+	revision: 'Revised',
+};
+
+/**
+ * The revision history of one frozen allocation plus the authorized
+ * correction control: the selected version, every prior version with its
+ * actor, reason, evidence, and old/new figures, and the dialog that appends
+ * the next immutable version through the versioned command API.
+ */
+function AllocationRevisionPanel({
+	slipId,
+	employee,
+	projectOptions,
+	currency,
+	canRevise,
+}: {
+	slipId: number;
+	employee: PayrollEmployeeRow;
+	projectOptions: Array<{
+		project_id: number;
+		project_code: string;
+		project_name: string;
+		client_name: string | null;
+	}>;
+	currency: string;
+	canRevise: boolean;
+}) {
+	const [dialogOpen, setDialogOpen] = useState(false);
+	const historyQuery = useQuery<{ data: AllocationHistoryPayload }>({
+		queryKey: ['payroll-allocation-history', slipId],
+		queryFn: () =>
+			apiGet('/api/reports/employee-project-monthly-cost/payroll/revisions', {
+				payroll_slip_id: slipId,
+			}),
+		refetchOnWindowFocus: false,
+		staleTime: 0,
+	});
+	const history = historyQuery.data?.data;
+	const versions = history?.versions ?? [];
+	const selected = versions.find(
+		(version) => version.version === history?.selected_version
+	);
+
+	const destinationRows = (selected?.shares ?? [])
+		.filter((share) => share.basis !== 'no_logged_hours')
+		.map((share) => ({
+			projectId: share.project_id === null ? '' : String(share.project_id),
+			hours: String(share.hours),
+		}))
+		.sort((a, b) => {
+			if (a.projectId === b.projectId) return 0;
+			if (a.projectId === '') return 1;
+			if (b.projectId === '') return -1;
+			return Number(a.projectId) - Number(b.projectId);
+		});
+
+	return (
+		<div
+			data-testid="payroll-allocation-history"
+			className="mt-2 rounded border border-gray-200 bg-white"
+		>
+			<div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-2 py-1.5">
+				<p className="text-xs font-semibold text-gray-700">
+					Allocation history — Slip #{slipId}
+					{history ? ` · selected v${history.selected_version}` : ''}
+				</p>
+				{canRevise && selected && (
+					<button
+						type="button"
+						data-testid="payroll-revise-open"
+						onClick={() => setDialogOpen(true)}
+						className="rounded bg-[#64126D] px-2 py-1 text-xs font-medium text-white hover:bg-[#52105a]"
+					>
+						Revise allocation
+					</button>
+				)}
+			</div>
+			{historyQuery.isLoading && (
+				<p className="px-2 py-2 text-xs text-gray-500">
+					Loading allocation history…
+				</p>
+			)}
+			{historyQuery.isError && (
+				<p className="px-2 py-2 text-xs text-rose-600">
+					{errorMessage(historyQuery.error)}
+				</p>
+			)}
+			{!historyQuery.isLoading && !historyQuery.isError && (
+				<div className="overflow-x-auto">
+					<table className="w-full text-xs">
+						<thead>
+							<tr className="text-left text-gray-500">
+								<th className="py-1 pl-2 pr-3 font-medium">Version</th>
+								<th className="py-1 pr-3 font-medium">Kind</th>
+								<th className="py-1 pr-3 font-medium">Actor</th>
+								<th className="py-1 pr-3 font-medium">Frozen</th>
+								<th className="py-1 pr-3 font-medium">Reason</th>
+								<th className="py-1 pr-3 font-medium">Evidence</th>
+								<th className="py-1 pr-3 font-medium">Destinations</th>
+								<th className="py-1 pr-2 font-medium">State</th>
+							</tr>
+						</thead>
+						<tbody>
+							{versions.map((version) => (
+								<tr
+									key={version.version}
+									data-testid="payroll-history-version"
+									data-version={String(version.version)}
+									data-kind={version.kind}
+									data-selected={
+										version.version === history?.selected_version
+											? 'true'
+											: 'false'
+									}
+									className="border-t border-gray-100 align-top"
+								>
+									<td className="py-1 pl-2 pr-3 tabular-nums text-gray-800">
+										v{version.version}
+									</td>
+									<td className="py-1 pr-3 text-gray-700">
+										{ALLOCATION_KIND_LABELS[version.kind] ?? version.kind}
+									</td>
+									<td className="py-1 pr-3 text-gray-600">
+										{version.actor_name ?? '—'}
+									</td>
+									<td className="py-1 pr-3 text-gray-600">
+										{formatDate(version.frozen_at)}
+									</td>
+									<td className="py-1 pr-3 text-gray-600">
+										{version.reason ?? '—'}
+									</td>
+									<td className="py-1 pr-3 text-gray-600">
+										{version.evidence_reference ?? '—'}
+									</td>
+									<td className="py-1 pr-3 text-gray-700">
+										{version.shares
+											.map(
+												(share) =>
+													`${
+														share.project_id === null
+															? share.basis === 'no_project'
+																? 'No project'
+																: 'No logged hours'
+															: share.project_code
+													} ${formatNumber(share.hours)}h → ${formatCurrencyIn(
+														share.amount,
+														currency
+													)}`
+											)
+											.join(' · ')}
+									</td>
+									<td className="py-1 pr-2">
+										{version.version === history?.selected_version ? (
+											<span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-900">
+												Selected
+											</span>
+										) : (
+											<span className="text-gray-500">
+												Superseded by v{version.superseded_by}
+											</span>
+										)}
+										{!version.reconciles && (
+											<span className="ml-1 rounded bg-rose-100 px-1.5 py-0.5 text-rose-900">
+												Unreconciled
+											</span>
+										)}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			)}
+			{dialogOpen && selected && history && (
+				<ReviseAllocationDialog
+					slipId={slipId}
+					employeeCode={employee.employee_code}
+					projectOptions={projectOptions}
+					currency={currency}
+					expectedVersion={history.selected_version}
+					recordedEmployerCost={selected.recorded_employer_cost}
+					destinations={destinationRows}
+					onClose={() => setDialogOpen(false)}
+				/>
+			)}
+		</div>
+	);
+}
+
+/**
+ * The authorized correction: corrected monthly Logged Hours per destination
+ * plus the required reason and evidence, submitted with the version the
+ * operator saw. A stale version or a refused command surfaces inline and
+ * changes nothing.
+ */
+function ReviseAllocationDialog({
+	slipId,
+	employeeCode,
+	projectOptions,
+	currency,
+	expectedVersion,
+	recordedEmployerCost,
+	destinations,
+	onClose,
+}: {
+	slipId: number;
+	employeeCode: string;
+	projectOptions: Array<{
+		project_id: number;
+		project_code: string;
+		project_name: string;
+		client_name: string | null;
+	}>;
+	currency: string;
+	expectedVersion: number;
+	recordedEmployerCost: number;
+	destinations: Array<{ projectId: string; hours: string }>;
+	onClose: () => void;
+}) {
+	const queryClient = useQueryClient();
+	const [rows, setRows] = useState(destinations);
+	const [reason, setReason] = useState('');
+	const [evidence, setEvidence] = useState('');
+	const [error, setError] = useState<string | null>(null);
+	const [submitting, setSubmitting] = useState(false);
+
+	const used = new Set(rows.map((row) => row.projectId));
+	const addable = projectOptions.filter(
+		(option) => !used.has(String(option.project_id))
+	);
+
+	const submit = async () => {
+		setError(null);
+		if (!reason.trim()) {
+			setError('A reason is required for an allocation revision');
+			return;
+		}
+		if (!evidence.trim()) {
+			setError('An evidence reference is required for an allocation revision');
+			return;
+		}
+		const lines: Array<{ project_id: number | null; hours: number }> = [];
+		for (const row of rows) {
+			if (row.hours.trim() === '') continue;
+			const hours = Number(row.hours);
+			if (!Number.isFinite(hours) || hours <= 0) {
+				setError(
+					'Every destination states positive hours; remove destinations that have none'
+				);
+				return;
+			}
+			lines.push({
+				project_id: row.projectId === '' ? null : Number(row.projectId),
+				hours,
+			});
+		}
+		setSubmitting(true);
+		try {
+			await apiPost(
+				'/api/reports/employee-project-monthly-cost/payroll/revisions',
+				{
+					payroll_slip_id: slipId,
+					expected_version: expectedVersion,
+					reason,
+					evidence_reference: evidence,
+					lines,
+				}
+			);
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: ['payroll-allocation-history', slipId],
+				}),
+				queryClient.invalidateQueries({ queryKey: ['expenditure-payroll'] }),
+				queryClient.invalidateQueries({ queryKey: ['expenditure'] }),
+			]);
+			onClose();
+		} catch (submitError) {
+			setError(errorMessage(submitError));
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
+	return (
+		<div
+			data-testid="payroll-revise-dialog"
+			data-expected-version={String(expectedVersion)}
+			className="border-t border-gray-200 bg-gray-50/70 px-2 py-2"
+		>
+			<p className="mb-1 text-xs font-semibold text-gray-700">
+				Revise allocation for {employeeCode} — recorded employer cost{' '}
+				{formatCurrencyIn(recordedEmployerCost, currency)}, expected version v
+				{expectedVersion}
+			</p>
+			<p className="mb-2 text-[11px] text-gray-500">
+				State the corrected monthly hours per destination. The recorded employer
+				cost does not change; the corrected shares are appended as the next
+				version.
+			</p>
+			{rows.map((row, index) => (
+				<div
+					key={`${row.projectId}-${index}`}
+					className="mb-1 flex items-center gap-2"
+				>
+					<SearchableSelect
+						options={[
+							{ value: '', label: 'No project' },
+							...projectOptions.map((option) => ({
+								value: String(option.project_id),
+								label: `${option.project_code} — ${option.project_name}`,
+							})),
+						]}
+						value={row.projectId}
+						onChange={(value) =>
+							setRows((prev) =>
+								prev.map((entry, entryIndex) =>
+									entryIndex === index ? { ...entry, projectId: value } : entry
+								)
+							)
+						}
+						placeholder="Destination"
+					/>
+					<input
+						data-testid="payroll-revise-hours"
+						aria-label={`Hours for destination ${index + 1}`}
+						type="number"
+						min="0"
+						step="0.01"
+						value={row.hours}
+						onChange={(event) =>
+							setRows((prev) =>
+								prev.map((entry, entryIndex) =>
+									entryIndex === index
+										? { ...entry, hours: event.target.value }
+										: entry
+								)
+							)
+						}
+						className="w-28 rounded border border-gray-300 px-2 py-1 text-xs"
+					/>
+					<button
+						type="button"
+						aria-label={`Remove destination ${index + 1}`}
+						onClick={() =>
+							setRows((prev) =>
+								prev.filter((_, entryIndex) => entryIndex !== index)
+							)
+						}
+						className="rounded p-0.5 text-gray-500 hover:bg-gray-100"
+					>
+						<XMarkIcon className="h-3.5 w-3.5" />
+					</button>
+				</div>
+			))}
+			<div className="mb-2 flex items-center gap-2">
+				<SearchableSelect
+					options={[
+						{ value: '', label: 'Add destination…' },
+						...addable.map((option) => ({
+							value: String(option.project_id),
+							label: `${option.project_code} — ${option.project_name}`,
+						})),
+					]}
+					value=""
+					onChange={(value) => {
+						if (value === '') return;
+						setRows((prev) => {
+							const next = [...prev, { projectId: value, hours: '' }];
+							next.sort((a, b) => {
+								if (a.projectId === b.projectId) return 0;
+								if (a.projectId === '') return 1;
+								if (b.projectId === '') return -1;
+								return Number(a.projectId) - Number(b.projectId);
+							});
+							return next;
+						});
+					}}
+					placeholder="Add destination"
+				/>
+			</div>
+			<div className="mb-1 flex flex-wrap items-center gap-2">
+				<input
+					data-testid="payroll-revise-reason"
+					aria-label="Revision reason"
+					type="text"
+					value={reason}
+					onChange={(event) => setReason(event.target.value)}
+					placeholder="Reason (required)"
+					className="w-72 rounded border border-gray-300 px-2 py-1 text-xs"
+				/>
+				<input
+					data-testid="payroll-revise-evidence"
+					aria-label="Revision evidence"
+					type="text"
+					value={evidence}
+					onChange={(event) => setEvidence(event.target.value)}
+					placeholder="Evidence reference (required)"
+					className="w-72 rounded border border-gray-300 px-2 py-1 text-xs"
+				/>
+			</div>
+			{error && (
+				<p
+					data-testid="payroll-revise-error"
+					className="mb-1 text-xs text-rose-600"
+				>
+					{error}
+				</p>
+			)}
+			<div className="flex justify-end gap-2">
+				<button
+					type="button"
+					onClick={onClose}
+					className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+				>
+					Close
+				</button>
+				<button
+					type="button"
+					data-testid="payroll-revise-submit"
+					disabled={submitting}
+					onClick={submit}
+					className="rounded-lg bg-[#64126D] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
+				>
+					{submitting ? 'Revising…' : 'Apply revision'}
+				</button>
+			</div>
 		</div>
 	);
 }

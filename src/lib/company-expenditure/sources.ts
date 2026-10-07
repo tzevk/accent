@@ -59,6 +59,16 @@ export interface CostSourceAdapter {
 	/** Native table name, matching `financial_cost_links.source_table`. */
 	table: string;
 	load(db: SqlConnection, sourceId: string): Promise<CostReference | null>;
+	/**
+	 * Native Recognition Period slices, for consumers that address one month of
+	 * a cost (supplier-order consumption, #312). A source without this method
+	 * states no slices: consumption refuses rather than guessing a period.
+	 */
+	loadSlices?(
+		db: SqlConnection,
+		sourceId: string,
+		options?: { forUpdate?: boolean }
+	): Promise<CostSliceReference[]>;
 }
 
 const adapters = new Map<string, CostSourceAdapter>();
@@ -301,4 +311,61 @@ export async function resolveCostReference(
 	const reference = await adapter.load(db, sourceId);
 	if (!reference) return null;
 	return { ...reference, cost_uid: reference.cost_uid || uid };
+}
+
+/**
+ * One native Recognition Period slice of a cost, as its source states it. A
+ * source with several slices in one month (a duplicate-month split) returns
+ * one row per native slice; the consumer sums them by period — it never picks
+ * the first row it finds.
+ */
+export interface CostSliceReference {
+	cost_uid: string;
+	source_table: string;
+	source_id: string;
+	label: string | null;
+	currency: string | null;
+	/** First day of the month this slice belongs to (`YYYY-MM-01`). */
+	recognition_period: string;
+	/** null = unknown, never 0. */
+	gross_amount: number | null;
+	tax_amount: number | null;
+	recognized_amount: number | null;
+	recognition_state: RecognitionState;
+	/** The source row's `financial_version` at read time. */
+	financial_version: number;
+}
+
+/**
+ * Read a cost's native slices. Returns null when the identity does not resolve
+ * or the source has no slice reader; an empty list means the source exists but
+ * states no slice (for example a cost that is not recognized yet). With
+ * `forUpdate` the source row is locked, so a version-guarded command can
+ * refuse a stale or cancelled source before it writes anything.
+ */
+export async function resolveCostSlices(
+	db: SqlConnection,
+	costUid: string,
+	options?: { forUpdate?: boolean }
+): Promise<CostSliceReference[] | null> {
+	const uid = costUid?.trim();
+	if (!uid) return null;
+	const row = await loadRow(
+		db,
+		`SELECT source_table, source_id
+       FROM financial_cost_links
+      WHERE cost_uid = ? AND role = 'cost'
+      LIMIT 1`,
+		[uid]
+	);
+	if (!row) return null;
+	const sourceTable = s(row, 'source_table', '') ?? '';
+	const sourceId = s(row, 'source_id', '') ?? '';
+	const adapter = adapters.get(sourceTable);
+	if (!adapter?.loadSlices) return null;
+	const slices = await adapter.loadSlices(db, sourceId, options);
+	return slices.map((slice) => ({
+		...slice,
+		cost_uid: slice.cost_uid || uid,
+	}));
 }
