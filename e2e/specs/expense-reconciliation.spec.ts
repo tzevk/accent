@@ -643,7 +643,10 @@ test('states which sources are not yet incorporated', async ({ request }) => {
 		codes.includes('payroll_not_generated') ||
 			codes.includes('payroll_not_finalized')
 	).toBe(true);
-	expect(codes).toContain('supplier_source_not_incorporated');
+	// #311 wires the supplier source into the same registry, so its coverage
+	// notice no longer claims the source is missing; the code is not repinned
+	// here (same treatment as #313 above).
+	expect(codes).not.toContain('supplier_source_not_incorporated');
 	expect(codes).toContain('cash_and_payments_not_incorporated');
 	// Open evidence in the month is disclosed.
 	expect(codes).toContain('records_awaiting_recognition');
