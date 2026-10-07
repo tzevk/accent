@@ -467,7 +467,7 @@ export function buildPeriodComparison(
 	// change is stated in the currency it belongs to.
 	const codes = [
 		...new Set([
-			[
+			...[
 				...windowRecords(input.records, window, 'current'),
 				...windowRecords(input.priorMonthRecords, window, 'prior'),
 			].map((record) => currencyCodeOf(record.currency)),
