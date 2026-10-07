@@ -1147,7 +1147,9 @@ test('captures and versions foreign-currency conversion evidence on petty cash',
 		string,
 		unknown
 	>;
-	expect(snapshot.conversion_rate).toBe(EXPECTED.fxRate);
+	// The snapshot stores the DECIMAL(20,10) textual rendering, so the rate
+	// compares numerically (the #319 rate contract; R7 :1109 holds).
+	expect(Number(snapshot.conversion_rate)).toBe(Number(EXPECTED.fxRate));
 	expect(Number(snapshot.converted_amount)).toBe(8200);
 
 	// Changing the evidence afterwards is a versioned update with a new
