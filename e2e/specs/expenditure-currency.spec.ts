@@ -1134,7 +1134,7 @@ test('refuses a stale rate on a currency-pair change and honors fresh evidence',
 	playwright,
 }) => {
 	// A pending cost holding a full USD → INR triple.
-	const created = await request.post('/api/admin/expenses', {
+	const createdResponse = await request.post('/api/admin/expenses', {
 		data: {
 			category: CURRENCY_CATEGORY,
 			description: 'E2E 319 pair-change cost',
@@ -1151,8 +1151,8 @@ test('refuses a stale rate on a currency-pair change and honors fresh evidence',
 			submit: true,
 		},
 	});
-	expect(created.status(), await created.text()).toBe(200);
-	const record = (await created.json()).data as {
+	expect(createdResponse.status(), await createdResponse.text()).toBe(200);
+	const record = (await createdResponse.json()).data as {
 		id: number;
 		cost_uid: string;
 		financial_version: number;

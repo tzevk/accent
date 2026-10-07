@@ -1006,7 +1006,7 @@ test('reopen returns the month to estimates while keeping the frozen history, an
 	const statuses = [first.status(), second.status()].sort();
 	expect(statuses).toEqual([200, 409]);
 
-	const versions = await rows<{ version: number }>(
+	const versions = await rows<{ version: number; n: number }>(
 		`SELECT version, COUNT(*) AS n FROM payroll_employee_allocations WHERE month = ?
       GROUP BY version ORDER BY version`,
 		[MONTH_DAY]

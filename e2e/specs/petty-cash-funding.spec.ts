@@ -87,6 +87,7 @@ type ReconciliationData = {
 		spend: number | null;
 		remaining_funding: number | null;
 		recognized_cost: number | null;
+		unconfirmed_spend: number | null;
 		by_currency: Array<{
 			currency: string;
 			funding: number;
@@ -539,6 +540,12 @@ test('keeps missing linkage unresolved and refuses recognition or access without
 	playwright,
 	baseURL,
 }) => {
+	// The login fixtures need the configured base URL; the Playwright option
+	// is typed optional, so fail before any work when it is unset.
+	if (!baseURL) {
+		throw new Error('The E2E run is missing its configured baseURL');
+	}
+
 	// A deliberate destination without a voucher reference: still cost,
 	// attributed to no funding.
 	const spendB = await recordSpend(request, {
@@ -1039,6 +1046,12 @@ test('captures and versions foreign-currency conversion evidence on petty cash',
 	playwright,
 	baseURL,
 }) => {
+	// The login fixtures need the configured base URL; the Playwright option
+	// is typed optional, so fail before any work when it is unset.
+	if (!baseURL) {
+		throw new Error('The E2E run is missing its configured baseURL');
+	}
+
 	// A partial triple is refused: evidence moves as a whole or not at all.
 	const partial = await recordSpend(request, {
 		transaction_date: `${LATER_MONTH}-08`,
@@ -1386,8 +1399,10 @@ test('regenerates the JSON evidence artifact', async () => {
 	const artifact = readArtifact('petty-cash-funding');
 	expect(artifact).toBeTruthy();
 	expect(artifact!.expectedAmounts).toEqual(EXPECTED);
-	expect(artifact!.voucher.id).toBe(voucherId);
-	expect(artifact!.fixtureScope.prefix).toBe(PETTY_CASH_PREFIX);
+	const voucher = artifact!.voucher as { id: number };
+	expect(voucher.id).toBe(voucherId);
+	const fixtureScope = artifact!.fixtureScope as { prefix: string };
+	expect(fixtureScope.prefix).toBe(PETTY_CASH_PREFIX);
 	const controls = artifact!.controls as Record<string, unknown>;
 	expect(controls.repeatedMirroring).toBeTruthy();
 	expect(controls.editsAndDeletion).toBeTruthy();

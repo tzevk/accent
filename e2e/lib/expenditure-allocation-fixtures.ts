@@ -1,10 +1,13 @@
 import bcrypt from 'bcrypt';
-import type { Cookie } from '@playwright/test';
 import type {
 	APIRequestContext,
-	Playwright as PlaywrightApi,
+	Cookie,
+	PlaywrightWorkerArgs,
 } from '@playwright/test';
 import { exec, rows } from './db';
+
+/** The Playwright fixture object handed to specs (`({ playwright })`). */
+type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
 
 /**
  * Ticket #307 — recorded employer-cost allocation fixtures.
