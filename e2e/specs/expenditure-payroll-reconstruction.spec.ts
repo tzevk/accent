@@ -645,22 +645,28 @@ test('the browser proposes and approves a reconstruction through the real report
 	await expect(badge).toHaveAttribute('data-status', 'approved');
 
 	// The expanded detail carries the reconstruction evidence distinctly.
+	// The panel and share rows live in the sibling detail <tr> that follows
+	// the employee row (expenditure-view.tsx closes payroll-employee-row
+	// before the expanded detail row), so scope to that following row — the
+	// adjacency itself ties the evidence to this employee.
 	await row.getByTestId('payroll-employee-expand').click();
-	const panel = row.getByTestId('payroll-reconstruction-evidence');
+	const detail = row.locator('xpath=following-sibling::tr[1]');
+	await expect(detail).toContainText('E2E-RECON-01');
+	const panel = detail.getByTestId('payroll-reconstruction-evidence');
 	await expect(panel).toBeVisible();
 	await expect(panel).toHaveAttribute('data-financial-version', '1');
 	await expect(panel).toHaveAttribute('data-status', 'approved');
 	await expect(panel).toHaveAttribute('data-missing-evidence', '');
 	await expect(panel).not.toHaveAttribute('data-reconstructed-at', '');
 	await expect(panel).not.toHaveAttribute('data-reviewed-by', '');
-	const p1 = row
+	const p1 = detail
 		.getByTestId('payroll-share-row')
 		.filter({ hasText: RECONSTRUCTION_PROJECTS.p1.code });
 	await expect(p1).toHaveAttribute(
 		'data-amount',
 		String(EXPECTED.month.employees.splitMonthly.shares.p1)
 	);
-	const noProject = row
+	const noProject = detail
 		.getByTestId('payroll-share-row')
 		.filter({ hasText: 'No project' });
 	await expect(noProject).toHaveAttribute(
