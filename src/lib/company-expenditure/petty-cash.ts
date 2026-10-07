@@ -29,7 +29,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { R, toNumber } from '@/lib/money';
-import { isRetryableNumberError } from '@/utils/db-number-retry';
+import { isDuplicateKeyError, isRetryableNumberError } from '@/utils/db-number-retry';
 import { CostError } from './errors';
 import {
 	CLASSIFICATIONS,
@@ -1127,10 +1127,15 @@ export function pettyCashCommandInputFromJson(
 }
 
 async function nextTransactionNumber(db: SqlConnection): Promise<string> {
+	// The register number is unique across every row — a soft-deleted
+	// (isDelete = 1) spend keeps its number — so the next one is derived from
+	// the highest minted suffix over all rows, never from the latest live row.
+	// Reading only live rows (or ordering by created_at) re-mints a deleted
+	// row's number, and the retry below then collides on every attempt.
 	const [rows] = await db.execute(
 		`SELECT transaction_number FROM petty_cash_expenses
-      WHERE transaction_number LIKE 'PCX-%' AND isDelete = 0
-      ORDER BY created_at DESC LIMIT 1 FOR UPDATE`
+      WHERE transaction_number LIKE 'PCX-%'
+      ORDER BY CAST(SUBSTRING(transaction_number, 5) AS UNSIGNED) DESC, created_at DESC LIMIT 1 FOR UPDATE`
 	);
 	let next = 1;
 	const first = (rows as DbRow[])[0];
@@ -1428,6 +1433,17 @@ export async function recordPettyCashSpend(
 				setTimeout(resolve, 15 * attempt);
 				await promise;
 				continue;
+			}
+			// A duplicate register number is a conflict, never a 500: an
+			// explicitly supplied number collides with an existing row, and an
+			// auto-minted one exhausted its retries against a concurrent mint.
+			if (isDuplicateKeyError(error)) {
+				throw new CostError(
+					'duplicate_transaction_number',
+					'That petty-cash transaction number is already in use',
+					409,
+					{ field: 'transaction_number' }
+				);
 			}
 			throw error;
 		}
