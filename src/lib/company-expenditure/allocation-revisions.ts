@@ -32,6 +32,7 @@ import { CostError } from './errors';
 import { inTransaction, type CommandOptions } from './commands';
 import type { SqlConnection } from './records';
 import { add, R, toNumber } from '@/lib/money';
+import type Decimal from 'decimal.js';
 import type { ResultSetHeader } from 'mysql2/promise';
 import type { PayrollProjectShare } from './types';
 
@@ -160,7 +161,7 @@ function str(row: DbRow, key: string): string | null {
 	return typeof value === 'string' ? value : String(value);
 }
 
-function round2(value: number): number {
+function round2(value: Decimal.Value): number {
 	return toNumber(R(value).toDecimalPlaces(2));
 }
 
