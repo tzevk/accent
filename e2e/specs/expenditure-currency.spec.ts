@@ -806,7 +806,10 @@ test('applies a supported rate through the versioned command on the rounding bou
 	const data = await reconciliation(request, CONTROL_MONTH);
 	const aed = slice(data, 'AED');
 	expect(aed.reporting.status).toBe('converted');
-	expect(aed.reporting.unallocated_cost).toBe(CONTROL.aedConverted);
+	// Control AED cost e2e-319-cost-0008 is project-classified (beta), so its
+	// converted amount routes to the project bucket, not unallocated.
+	expect(aed.reporting.incurred_project_cost).toBe(CONTROL.aedConverted);
+	expect(aed.reporting.unallocated_cost).toBe(0);
 	expect(data.company.currency).toBe('INR');
 	expect(data.company.incurred_cost).toBe(CONTROL_TOTAL_AFTER_RATE);
 
