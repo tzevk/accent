@@ -1625,7 +1625,7 @@ test('states a currency-split comparison per currency, not as unknown', async ({
 	page,
 	request,
 }) => {
-	// September 2021's comparison spans currencies: INR this month, USD in the
+	// September 2022's comparison spans currencies: INR this month, USD in the
 	// prior month. No single prior or change figure exists, yet each currency's
 	// own amount is known and stated.
 	const data = await reconciliation(request, { month: '2022-09' });
@@ -1647,7 +1647,7 @@ test('states a currency-split comparison per currency, not as unknown', async ({
 	expect(usd.prior_cost).toBe(200);
 	expect(usd.change_amount).toBe(-200);
 
-	await openExpenditure(page, 'September 2021');
+	await openExpenditure(page, 'September 2022');
 	const view = page.getByTestId('expenditure-view');
 	await expect(view).toHaveAttribute('data-month', '2022-09');
 	await expect(page.getByTestId('comparison-prior')).toContainText(
