@@ -28,9 +28,14 @@ import type { Knex } from 'knex';
  * consumption never mutates the cost row, so keying it there would misstate
  * the cost's own version sequence.
  *
- * Identifier columns use `utf8mb4_general_ci` to match the native source keys
- * (`orders.order_uid`, `purchase_invoices.cost_uid`, migration
- * 20261009000000), so column-to-column joins need no query-specific coercion.
+ * Identifier columns carry the collation of the column each one joins,
+ * decided per reference: `order_uid` columns use `utf8mb4_unicode_ci`
+ * to match `orders.order_uid` (the `orders` table default, migration
+ * 20261008091000), and `cost_uid` columns use `utf8mb4_general_ci`
+ * to match the shared financial cost identity
+ * (`financial_cost_links.cost_uid`, `financial_cost_events.cost_uid`,
+ * migration 20261009000000). Column-to-column joins then need no
+ * query-specific coercion.
  *
  * Idempotent: every step checks information_schema first.
  */
@@ -50,7 +55,7 @@ export async function up(knex: Knex): Promise<void> {
 		await knex.raw(`
 CREATE TABLE \`order_consumptions\` (
   \`id\` int(11) NOT NULL AUTO_INCREMENT,
-  \`order_uid\` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  \`order_uid\` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   \`cost_uid\` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   \`cost_source\` varchar(32) NOT NULL,
   \`source\` enum('invoice','accrual') NOT NULL DEFAULT 'invoice',
@@ -85,7 +90,7 @@ CREATE TABLE \`order_consumptions\` (
 CREATE TABLE \`order_consumption_events\` (
   \`id\` int(11) NOT NULL AUTO_INCREMENT,
   \`consumption_id\` int(11) NOT NULL,
-  \`order_uid\` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  \`order_uid\` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   \`cost_uid\` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   \`event\` enum('recorded','released') NOT NULL,
   \`version\` int(11) NOT NULL,

@@ -668,43 +668,27 @@ export async function cleanupOrderConsumptionFixtures(): Promise<number> {
 		`DELETE FROM order_consumption_events WHERE order_uid IN (${orderUidSelector}) OR cost_uid LIKE ?`,
 		`DELETE FROM order_consumptions WHERE order_uid IN (${orderUidSelector}) OR cost_uid LIKE ?`,
 	]) {
-		try {
-			const result = await exec(sql, [...orderUidParams, `e2e-312-cost-%`]);
-			removed += result.affectedRows ?? 0;
-		} catch {
-			// Pre-migration schema — nothing to purge yet.
-		}
+		const result = await exec(sql, [...orderUidParams, `e2e-312-cost-%`]);
+		removed += result.affectedRows ?? 0;
 	}
 
-	try {
-		removed += (
-			await exec(
-				`DELETE FROM order_events WHERE order_uid IN (${orderUidSelector})`,
-				orderUidParams
-			)
-		).affectedRows;
-	} catch {
-		// Orders table may not exist before the migration.
-	}
-	try {
-		removed += (
-			await exec(
-				`DELETE FROM order_legacy_mappings WHERE document_number LIKE ?`,
-				[`${CONSUMPTION_PREFIX}%`]
-			)
-		).affectedRows;
-	} catch {
-		// Orders table may not exist before the migration.
-	}
-	try {
-		removed += (
-			await exec(`DELETE FROM orders WHERE order_number LIKE ?`, [
-				`${CONSUMPTION_PREFIX}ORD-%`,
-			])
-		).affectedRows;
-	} catch {
-		// Orders table may not exist before the migration.
-	}
+	removed += (
+		await exec(
+			`DELETE FROM order_events WHERE order_uid IN (${orderUidSelector})`,
+			orderUidParams
+		)
+	).affectedRows;
+	removed += (
+		await exec(
+			`DELETE FROM order_legacy_mappings WHERE document_number LIKE ?`,
+			[`${CONSUMPTION_PREFIX}%`]
+		)
+	).affectedRows;
+	removed += (
+		await exec(`DELETE FROM orders WHERE order_number LIKE ?`, [
+			`${CONSUMPTION_PREFIX}ORD-%`,
+		])
+	).affectedRows;
 
 	removed += (
 		await exec(
