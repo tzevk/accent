@@ -1360,7 +1360,14 @@ test('ranks, compares, and drills down through the real report controls', async 
 	// The filtered Project subtotal never replaces the company position.
 	await page.getByLabel('Project filter', { exact: true }).click();
 	await page.getByPlaceholder('Search...').fill(ALPHA);
-	await page.getByRole('button', { name: new RegExp(ALPHA) }).click();
+	// Exact option label: the row's expand button also contains the code
+	// ("Show source records for ..."), so a regex matches two buttons.
+	await page
+		.getByRole('button', {
+			name: `${ALPHA} — ${EXPENDITURE_PROJECTS.p320a.title}`,
+			exact: true,
+		})
+		.click();
 	const subtotal = page.getByTestId('filtered-subtotal');
 	await expect(subtotal).toBeVisible();
 	await expect(
@@ -1431,7 +1438,13 @@ test('records, recognizes, and re-ranks a cost through the report controls', asy
 		.selectOption('project');
 	await form.getByLabel('Project', { exact: true }).click();
 	await page.getByPlaceholder('Search...').fill(ENTERED);
-	await page.getByRole('button', { name: new RegExp(ENTERED) }).click();
+	// Exact option label, as above: a regex also matches the row's expand button.
+	await page
+		.getByRole('button', {
+			name: `${ENTERED} — ${EXPENDITURE_PROJECTS.p320e.title}`,
+			exact: true,
+		})
+		.click();
 	await form
 		.getByLabel('Source reference', { exact: true })
 		.fill(UI_ENTRY.sourceReference);
