@@ -648,8 +648,12 @@ export function buildPeriodComparison(
 		});
 	}
 	// Row-level comparison states, stated with the company figures they belong
-	// to so neither a new cost nor an unknown one can pass unlabeled.
-	const zeroPrior = input.rows.filter((row) => row.previous_period_cost === 0);
+	// to so neither a new cost nor an unknown one can pass unlabeled. A row
+	// whose change is withheld as unproven is disclosed by the window evidence
+	// findings instead: it is neither a new cost nor an unknown prior.
+	const zeroPrior = input.rows.filter(
+		(row) => row.previous_period_cost === 0 && row.change_state !== 'unproven'
+	);
 	if (zeroPrior.length > 0) {
 		disclosures.push({
 			code: 'zero_prior_cost',
@@ -663,7 +667,7 @@ export function buildPeriodComparison(
 		});
 	}
 	const unknownPrior = input.rows.filter(
-		(row) => row.previous_period_cost === null
+		(row) => row.previous_period_cost === null && row.change_state !== 'unproven'
 	);
 	if (unknownPrior.length > 0) {
 		disclosures.push({
