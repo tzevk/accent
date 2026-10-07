@@ -464,13 +464,13 @@ export function buildPeriodComparison(
 	// currency whose month holds day-less cost opens one too, so the withheld
 	// change is stated in the currency it belongs to.
 	const codes = [
-		...new Set(
+		...new Set([
 			[
 				...windowRecords(input.records, window, 'current'),
 				...windowRecords(input.priorMonthRecords, window, 'prior'),
-			].map((record) => currencyCodeOf(record.currency))
-		),
-		...dayless.map((entry) => entry.currency),
+			].map((record) => currencyCodeOf(record.currency)),
+			...dayless.map((entry) => entry.currency),
+		]),
 	]
 		.filter((code): code is string => code !== null)
 		.sort();
