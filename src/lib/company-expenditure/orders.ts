@@ -828,6 +828,7 @@ export async function createOrder(
 			payload: {
 				direction: normalised.direction,
 				order_number: normalised.orderNumber,
+				status: normalised.status,
 				amount_basis: normalised.amountBasis,
 				gross_amount: normalised.grossAmount,
 				net_amount: normalised.netAmount,
@@ -1453,6 +1454,9 @@ export async function resolveLegacyOrder(
 					origin: `${current.legacyStore}#${current.legacyId}`,
 					evidence_reference: evidenceReference,
 					direction: normalised.direction,
+					status: normalised.status,
+					amount_basis: normalised.amountBasis,
+					currency: normalised.currency,
 				},
 			});
 			const created = await loadOrderByUid(db, canonicalOrderUid);
