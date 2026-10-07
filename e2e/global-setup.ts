@@ -13,6 +13,10 @@ import {
 	seedCostAccrualFixtures,
 } from './lib/cost-accrual-fixtures';
 import {
+	cleanupAccrualConsumptionFixtures,
+	seedAccrualConsumptionFixtures,
+} from './lib/accrual-consumption-fixtures';
+import {
 	cleanupExpenditureFixtures,
 	seedExpenditureFixtures,
 } from './lib/expenditure-fixtures';
@@ -87,6 +91,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupSupplierInvoiceFixtures();
 		await cleanupExpenditureCurrencyFixtures();
 		await cleanupCostAccrualFixtures();
+		await cleanupAccrualConsumptionFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
 		// trusted IP header; browser sign-ins carry no such header, so they land
@@ -217,6 +222,14 @@ export default async function globalSetup(): Promise<void> {
 				`${consumption.nextMonth} and ${consumption.laterMonth} ` +
 				`(${Object.keys(consumption.orderUids).length} orders, ` +
 				`${Object.keys(consumption.invoiceIds).length} recognized invoices)`
+		);
+
+		const accrualConsumption = await seedAccrualConsumptionFixtures();
+		console.log(
+			`[e2e] accrual-consumption fixtures seeded for ${accrualConsumption.month} ` +
+				`and ${accrualConsumption.nextMonth} ` +
+				`(${Object.keys(accrualConsumption.accrualIds).length} linked accruals, ` +
+				`${Object.keys(accrualConsumption.invoiceIds).length} transfer invoices)`
 		);
 	} finally {
 		await closeDb();

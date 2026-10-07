@@ -289,6 +289,7 @@ export type {
 	InitializeSupplierCostInput,
 	RecordedSupplierCost,
 	SupplierCommandInput,
+	SupplierCommandResult,
 	SupplierInvoiceDetail,
 	SupplierInvoicePatch,
 	SupplierLinkCandidate,
@@ -322,6 +323,21 @@ export type {
 	SupplierCommitmentSection,
 	SupplierCommitmentTotal,
 } from './commitments';
+export {
+	executeAccrualCommandWithConsumption,
+	executeAccrualReplacementWithConsumption,
+	restoreAccrualConsumptionForReleasedReplacements,
+} from './accrual-consumption';
+export type {
+	AccrualCancelConsumption,
+	AccrualCommandWithConsumptionResult,
+	AccrualConsumptionActor,
+	AccrualConsumptionOptions,
+	AccrualRecordedConsumption,
+	AccrualRecognitionConsumption,
+	AccrualReplacementConsumption,
+	AccrualReplacementWithConsumptionResult,
+} from './accrual-consumption';
 export { PETTY_CASH_COST_SOURCE } from './petty-cash';
 export type { PettyCashSourceDescriptor } from './petty-cash';
 export { SOURCE_COVERAGE } from './coverage';

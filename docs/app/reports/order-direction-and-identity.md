@@ -154,3 +154,37 @@ HTTP: `GET /api/admin/orders/{uid}/commitment` (order read plus
 `POST /api/admin/orders/{uid}/consumption/release` (order update plus
 `other_expenses:approve`). The report's Outstanding Supplier Commitment section
 reads the same rollforward through `fetchCompanyReconciliation`.
+
+## Accrual consumption (#314)
+
+Received work recognized through a Cost Accrual reduces the corresponding
+outstanding commitment before its supplier invoice exists. The accrual carries
+the link as `cost_accruals.order_uid` (a local register reference — the
+double-store rule — never a second consumption path); `order_consumptions`
+stays the single consumption store.
+
+`src/lib/company-expenditure/accrual-consumption.ts` composes #312's
+consumption commands with #313's accrual commands in one transaction — it
+writes no consumption row itself and re-derives no amount:
+
+- `executeAccrualCommandWithConsumption`: recognizing a linked accrual records
+  its remaining slice (`source: 'accrual'`) in the same commit; cancelling one
+  releases its active rows. An accrual without an order link takes the pure
+  #313 path. A refusal (unknown order, currency or basis mismatch, slice
+  already consumed, capacity exceeded) fails the command with its explicit
+  code and zero partial writes.
+- `executeAccrualReplacementWithConsumption`: a replacement releases the
+  accrual's active rows and records the invoice's native slices in their own
+  periods plus the partial remainder, atomically — the replaced portion moves
+  exactly once and the remainder never silently returns to the commitment. A
+  replacement invoice in another currency leaves the order while its leg is
+  explicitly skipped (`invoice_currency_unconsumed`); its variance stays
+  explained on the replacement row.
+- `restoreAccrualConsumptionForReleasedReplacements`: cancelling a
+  replacement invoice re-records the restored remainder in the cancel
+  command's own transaction, so the received-work cost keeps consuming its
+  order.
+
+The procurement commitment detail and the report section show the resulting
+chain (order, accrual, and invoice rows) with their source, amount, period,
+and release evidence; every leg is a reasoned, evidenced consumption event.

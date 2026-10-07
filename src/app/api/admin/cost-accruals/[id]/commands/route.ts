@@ -18,7 +18,11 @@ import { NextResponse } from 'next/server';
 import { ensurePermission } from '@/utils/api-permissions';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 import { logActivity } from '@/utils/activity-logger';
-import { CostError, executeAccrualCommand } from '@/lib/company-expenditure';
+import {
+	CostError,
+	OrderError,
+	executeAccrualCommandWithConsumption,
+} from '@/lib/company-expenditure';
 import type {
 	AccrualCommandInput,
 	AccrualPatch,
@@ -70,7 +74,12 @@ function commandPatch(raw: Record<string, unknown> | undefined): AccrualPatch {
 			raw.vendor_reference === undefined
 				? undefined
 				: String(raw.vendor_reference),
-		orderUid: raw.order_uid === undefined ? undefined : String(raw.order_uid),
+		orderUid:
+			raw.order_uid === undefined
+				? undefined
+				: raw.order_uid === null || String(raw.order_uid).trim() === ''
+					? null
+					: String(raw.order_uid),
 		evidenceBasis:
 			raw.evidence_basis === undefined ? undefined : String(raw.evidence_basis),
 		costClassification:
@@ -196,7 +205,7 @@ export async function POST(
 					: String(body.evidence_reference),
 			patch: commandPatch(body.patch as Record<string, unknown> | undefined),
 		};
-		const result = await executeAccrualCommand(input, {
+		const result = await executeAccrualCommandWithConsumption(input, {
 			id: authResult.user?.id ?? null,
 		});
 
@@ -215,6 +224,18 @@ export async function POST(
 			return NextResponse.json(
 				{
 					success: false,
+					error: error.message,
+					code: error.code,
+					...error.detail,
+				},
+				{ status: error.status }
+			);
+		}
+		if (error instanceof OrderError) {
+			return NextResponse.json(
+				{
+					success: false,
+					message: error.message,
 					error: error.message,
 					code: error.code,
 					...error.detail,

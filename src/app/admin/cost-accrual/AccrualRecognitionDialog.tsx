@@ -248,6 +248,17 @@ export default function AccrualRecognitionDialog({
 							</div>
 							<div>
 								<span className="block text-xs text-gray-500">
+									Supplier order link
+								</span>
+								<span
+									data-testid="accrual-order-link"
+									className="font-medium text-gray-900"
+								>
+									{detail.order_uid ?? '—'}
+								</span>
+							</div>
+							<div>
+								<span className="block text-xs text-gray-500">
 									Recognition period
 								</span>
 								<span className="font-medium text-gray-900">
