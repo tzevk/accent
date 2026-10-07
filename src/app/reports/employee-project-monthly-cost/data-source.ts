@@ -286,6 +286,15 @@ function round2(v: number): number {
 	return Math.round(v * 100) / 100;
 }
 
+/**
+ * Cost ÷ hours as a display rate. Derived money uses the shared Decimal rule
+ * (ROUND_HALF_UP) like every other amount — `Math.round` mis-rounds values
+ * such as 302.25 / 30 (= 10.075) to 10.07 where the money rule gives 10.08.
+ */
+function rateOf(cost: number, hours: number): number {
+	return hours > 0 ? toNumber(div(R(cost), hours).toDecimalPlaces(2)) : 0;
+}
+
 // ─── Pure helpers (unit-tested) ─────────────────────────────────────
 
 /**
@@ -1133,7 +1142,7 @@ export function buildMonthlyAllocationRows(
 				project_code: destination.project_code,
 				project_name: destination.project_name,
 				client_name: destination.client_name,
-				hourly_rate: share.hours > 0 ? round2(share.amount / share.hours) : 0,
+				hourly_rate: rateOf(share.amount, share.hours),
 				hours: share.hours,
 				cost: share.amount,
 				recorded_cost: recorded ? share.amount : 0,
@@ -1196,7 +1205,7 @@ export function buildMonthlyAllocationEmployeeRows(
 		return {
 			...rest,
 			project_count: _projects.size,
-			hourly_rate: rest.hours > 0 ? round2(rest.cost / rest.hours) : 0,
+			hourly_rate: rateOf(rest.cost, rest.hours),
 		};
 	});
 	result.sort((a, b) => a.employee_name.localeCompare(b.employee_name));
@@ -1309,7 +1318,8 @@ export interface FYAllocationRow {
 	total_cost: number;
 	recorded_cost: number;
 	estimated_cost: number;
-	blended_rate: number;
+	/** Display rate the FY table and workbook read (`blended` for the row). */
+	hourly_rate: number;
 }
 
 /**
@@ -1356,7 +1366,7 @@ export function buildFYAllocationRows(
 						total_cost: 0,
 						recorded_cost: 0,
 						estimated_cost: 0,
-						blended_rate: 0,
+						hourly_rate: 0,
 					};
 					grouped.set(groupKey, row);
 				}
@@ -1386,8 +1396,7 @@ export function buildFYAllocationRows(
 	);
 	rows.forEach((row, index) => {
 		row.sr_no = index + 1;
-		row.blended_rate =
-			row.total_hours > 0 ? round2(row.total_cost / row.total_hours) : 0;
+		row.hourly_rate = rateOf(row.total_cost, row.total_hours);
 	});
 	return rows;
 }
@@ -1611,8 +1620,7 @@ export function buildFYAllocationEmployeeRows(
 		return {
 			...rest,
 			project_count: _projects.size,
-			hourly_rate:
-				rest.total_hours > 0 ? round2(rest.total_cost / rest.total_hours) : 0,
+			hourly_rate: rateOf(rest.total_cost, rest.total_hours),
 		};
 	});
 	result.sort((a, b) => a.employee_name.localeCompare(b.employee_name));

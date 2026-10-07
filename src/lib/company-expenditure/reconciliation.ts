@@ -387,13 +387,32 @@ function payrollAggregates(
 	const hoursByProject = new Map<number, number>();
 	const employeesByProject = new Map<number, Set<number>>();
 	const recordedEmployeesByProject = new Map<number, Set<number>>();
-	const identityByProject = new Map<
+	// Frozen recorded identity and live estimated identity are collected
+	// separately: a recorded share's snapshotted name must survive a later
+	// Project rename, while an estimate-only Project still states its real
+	// code/name instead of an internal id.
+	const recordedIdentityByProject = new Map<
+		number,
+		{ project_code: string; project_name: string; client_name: string | null }
+	>();
+	const estimatedIdentityByProject = new Map<
 		number,
 		{ project_code: string; project_name: string; client_name: string | null }
 	>();
 	for (const employee of payroll.employees) {
 		for (const share of employee.shares) {
 			if (share.project_id === null) continue;
+			const identity =
+				share.project_code || share.project_name
+					? {
+							project_code: share.project_code ?? `#${share.project_id}`,
+							project_name:
+								share.project_name ??
+								share.project_code ??
+								`Project #${share.project_id}`,
+							client_name: share.client_name,
+						}
+					: null;
 			if (employee.recorded_amount !== null) {
 				const recordedEmployees =
 					recordedEmployeesByProject.get(share.project_id) ?? new Set<number>();
@@ -403,23 +422,17 @@ function payrollAggregates(
 					share.project_id,
 					rounded((recordedByProject.get(share.project_id) ?? 0) + share.amount)
 				);
-				if (share.project_code || share.project_name) {
-					identityByProject.set(share.project_id, {
-						project_code: share.project_code ?? `#${share.project_id}`,
-						project_name:
-							share.project_name ??
-							share.project_code ??
-							`Project #${share.project_id}`,
-						client_name: share.client_name,
-					});
+				if (identity) recordedIdentityByProject.set(share.project_id, identity);
+			} else {
+				if (employee.estimated_amount !== null) {
+					estimatedByProject.set(
+						share.project_id,
+						rounded(
+							(estimatedByProject.get(share.project_id) ?? 0) + share.amount
+						)
+					);
 				}
-			} else if (employee.estimated_amount !== null) {
-				estimatedByProject.set(
-					share.project_id,
-					rounded(
-						(estimatedByProject.get(share.project_id) ?? 0) + share.amount
-					)
-				);
+				if (identity) estimatedIdentityByProject.set(share.project_id, identity);
 			}
 		}
 		for (const line of employee.hours_by_project) {
@@ -438,8 +451,13 @@ function payrollAggregates(
 		estimatedByProject,
 		hoursByProject,
 		employeesByProject,
+		// Frozen recorded identity wins where both exist; estimated identity
+		// fills the estimate-only Projects the review flagged.
+		identityByProject: new Map([
+			...estimatedIdentityByProject,
+			...recordedIdentityByProject,
+		]),
 		recordedEmployeesByProject,
-		identityByProject,
 	};
 }
 
@@ -486,7 +504,7 @@ function projectRows(
 					: []),
 			]),
 		].sort();
-		const frozenIdentity = aggregates.identityByProject.get(id);
+		const payrollIdentity = aggregates.identityByProject.get(id);
 		for (const currency of currencies) {
 			const currencyRecords = projectRecords.filter(
 				(record) => currencyCodeOf(record.currency) === currency
@@ -540,13 +558,14 @@ function projectRows(
 			rows.push({
 				project_id: id,
 				project_code:
-					frozenIdentity?.project_code ?? sample?.projectCode ?? `#${id}`,
+					payrollIdentity?.project_code ?? sample?.projectCode ?? `#${id}`,
 				project_name:
-					frozenIdentity?.project_name ??
+					payrollIdentity?.project_name ??
 					sample?.projectName ??
 					sample?.projectCode ??
 					`Project #${id}`,
-				client_name: frozenIdentity?.client_name ?? sample?.clientName ?? null,
+				client_name:
+					payrollIdentity?.client_name ?? sample?.clientName ?? null,
 				currency,
 				conversion_status: unsupported
 					? 'unsupported'
