@@ -1319,7 +1319,7 @@ export default function ExpenditureView({
 				</ul>
 				<p className="mt-2 text-[11px] text-gray-500">
 					Cost to date is cumulative recognized cost through{' '}
-					{formatDate(data.comparison.cost_to_date_through)}, the window's last
+					{formatDate(data.comparison.cost_to_date_through)}, the window&apos;s last
 					day.
 				</p>
 			</div>
