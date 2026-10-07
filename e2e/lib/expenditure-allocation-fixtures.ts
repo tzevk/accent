@@ -332,7 +332,6 @@ export const ALLOCATION_EXPECTED = {
 			p2Hours: 16,
 			shares: { p1: 501.15, p2: 801.85 },
 			rates: { p1: 50.12, p2: 50.12 },
-			naiveP1Rate: 50.11,
 			payStream: 'payroll',
 		},
 		/** The legacy row (41,600 gross, stored Basic 24,960) is the only pricing. */

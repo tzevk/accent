@@ -47,6 +47,9 @@ import {
  */
 export default async function globalSetup(): Promise<void> {
 	try {
+		// Payroll generation includes other fixture rosters. Remove its guarded
+		// month-owned slips before any roster cleanup deletes their employees.
+		await cleanupExpenditureAllocationFixtures();
 		await cleanupFixtures();
 		await cleanupAttendanceFixtures();
 		await cleanupUtilizationFixtures();
@@ -55,7 +58,6 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupOtherExpenseFixtures();
 		await cleanupPettyCashFixtures();
 		await cleanupSupplierInvoiceFixtures();
-		await cleanupExpenditureAllocationFixtures();
 		await cleanupExpenditureCurrencyFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the

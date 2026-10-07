@@ -19,11 +19,11 @@ import { ensurePermission } from '@/utils/api-permissions';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 import { logActivity } from '@/utils/activity-logger';
 import { CostError, executeSupplierCommand } from '@/lib/company-expenditure';
+import { splitInput } from '../../input';
 import type {
 	CostCommandName,
 	SupplierCommandInput,
 	SupplierInvoicePatch,
-	SupplierSplitInput,
 } from '@/lib/company-expenditure';
 
 export const runtime = 'nodejs';
@@ -38,28 +38,6 @@ const COMMANDS: CostCommandName[] = [
 ];
 
 const APPROVAL_COMMANDS: CostCommandName[] = ['recognize', 'reject', 'cancel'];
-
-function splitInput(split: Record<string, unknown>): SupplierSplitInput {
-	return {
-		servicePeriodStart:
-			split.service_period_start === undefined
-				? undefined
-				: (split.service_period_start as string | null),
-		servicePeriodEnd:
-			split.service_period_end === undefined
-				? undefined
-				: (split.service_period_end as string | null),
-		amount:
-			split.amount === undefined
-				? undefined
-				: (split.amount as number | string | null),
-		taxAmount:
-			split.tax_amount === undefined
-				? undefined
-				: (split.tax_amount as number | string | null),
-		note: split.note === undefined ? undefined : (split.note as string | null),
-	};
-}
 
 /** Map the HTTP (snake_case) patch onto the module's field names. */
 function commandPatch(

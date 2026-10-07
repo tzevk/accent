@@ -120,21 +120,21 @@ const FX_UNSUPPORTED = {
  */
 const FX_SPLIT = {
 	number: 'E2E-SINV-9005',
-	monthA: '2020-08',
-	monthB: '2020-09',
+	monthA: '2020-11',
+	monthB: '2020-12',
 	rate: 1.5,
-	rateDate: '2020-08-05',
+	rateDate: '2020-11-05',
 	evidenceReference: 'E2E-SINV-FX-9005',
 	slices: [
 		{
-			start: '2020-08-01',
-			end: '2020-08-31',
+			start: '2020-11-01',
+			end: '2020-11-30',
 			amount: '33.33',
 			converted: 50.0,
 		},
 		{
-			start: '2020-09-01',
-			end: '2020-09-30',
+			start: '2020-12-01',
+			end: '2020-12-31',
 			amount: '66.67',
 			converted: 100.01,
 		},
@@ -1493,9 +1493,7 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 			refusedWithoutFreshTriple: 'conversion_evidence_required',
 			repricedWithFreshTriple: repricedRow[0],
 			sameCurrencyPairCleared: clearedRow[0],
-			journalRecorded: pairJournal[0].snapshot.includes(
-				'"conversion_pair_changed":true'
-			),
+			journal: pairJournal[0],
 		},
 		refusals: {
 			notApplicable: 'conversion_not_applicable',
@@ -1574,7 +1572,7 @@ test('reconciles a converted multi-period invoice by per-slice rounding', async 
 		data: {
 			invoice_number: FX_SPLIT.number,
 			vendor_name: 'E2E Supplier Vendor fx-split',
-			invoice_date: '2020-08-05',
+			invoice_date: `${FX_SPLIT.monthA}-05`,
 			subtotal: 100,
 			tax_amount: 0,
 			total: 100,

@@ -1225,7 +1225,7 @@ test('keeps order money and its client rollup at cent precision', async ({
 	const linked = await dbOrder(CREATED_ORDERS.centsClient.number);
 	expect(Number(linked.client_invoiced_value)).toBe(66666.66);
 	// 250000.75 − 2 × 33333.33, stated independently of the module's math.
-	const remaining = 184034.09;
+	const remaining = 183334.09;
 	const balance = await apiJson<{
 		success: boolean;
 		data: { remaining_balance: number | null };

@@ -9,6 +9,7 @@ import { logActivity } from '@/utils/activity-logger';
 import { R, sub, gte, gt, toNumber } from '@/lib/money';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
 import { CostError, initializeSupplierCost } from '@/lib/company-expenditure';
+import { splitInput } from './input';
 
 const TABLE = 'purchase_invoices';
 
@@ -264,7 +265,9 @@ export async function POST(request) {
 							submit:
 								body.submit === true ||
 								body.recognition_state === 'pending_evidence',
-							splits: Array.isArray(body.splits) ? body.splits : null,
+							splits: Array.isArray(body.splits)
+								? body.splits.map((split) => splitInput(split ?? {}))
+								: null,
 						},
 						{ id: user?.id || null }
 					);

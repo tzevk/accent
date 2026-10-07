@@ -1259,3 +1259,16 @@ This preserves native identifier comparison rules and permits column-to-column j
 It does not change source documents, amounts, or native primary keys.
 The isolated E2E database applies the migration successfully.
 Native source, event, and period-charge joins execute without collation errors.
+
+### Priority real-app verification
+
+The allocation, order, supplier-invoice, and payroll-only budget flows pass all 49 Playwright checks.
+The run uses `accent_crm_dev_muse_e2e_expenditure` and independent MySQL assertions.
+Artifacts: `expenditure-payroll-allocation.json`, `order-classification.json`, `supplier-invoice-recognition.json`, and `payroll-only-cost-budget.json`.
+Supplier entry and versioned commands share the HTTP service-period slice mapper.
+Entry preserves both service-period dates and each slice's tax and amount.
+Conversion history checks stored currency, rate, and evidence instead of serialized JSON wording.
+The conversion-rounding fixture uses November and December 2020, separate from the shuffled-slice case.
+The allocation financial-year check uses FY 2025–26 for February and March 2026.
+The order balance example is 250000.75 minus two invoices of 33333.33: 183334.09.
+Global setup removes guarded allocation-month slips before deleting any fixture employee roster.
