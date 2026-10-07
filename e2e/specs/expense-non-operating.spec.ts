@@ -524,18 +524,17 @@ test('excludes non-operating balances from Company Incurred Cost and shows them 
       WHERE isDelete = 0 AND recognition_state = 'recognized'
         AND cost_nature <> 'operating'
         AND recognition_period BETWEEN ? AND ?
-      GROUP BY cost_nature
-      ORDER BY cost_nature`,
+      GROUP BY cost_nature`,
 		[`${SOURCE_MONTH}-01`, `${SOURCE_MONTH}-31`]
 	);
 	expect(
-		stored.map((row) => [row.nature, Number(row.total)])
-	).toEqual([
-		['advance', NON_OPERATING.advance],
-		['capital', NON_OPERATING.capitalRecognized],
-		['deposit', NON_OPERATING.deposit],
-		['prepayment', NON_OPERATING.prepayment],
-	]);
+		Object.fromEntries(stored.map((row) => [row.nature, Number(row.total)]))
+	).toEqual({
+		advance: NON_OPERATING.advance,
+		capital: NON_OPERATING.capitalRecognized,
+		deposit: NON_OPERATING.deposit,
+		prepayment: NON_OPERATING.prepayment,
+	});
 
 	artifact.july = {
 		incurredCost: data.company.incurred_cost,
