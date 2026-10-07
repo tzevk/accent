@@ -414,8 +414,8 @@ export async function findPettyCashSpendByAmount(
 	const found = await rows<Record<string, unknown>>(
 		`SELECT id, transaction_number, cost_uid, entry_kind, recognition_state,
             financial_version, cost_classification, project_id, recognition_period,
-            debit_amount, credit_amount, source_voucher_id, linked_cost_uid,
-            evidence_reference, notes
+            period_basis, debit_amount, credit_amount, source_voucher_id,
+            linked_cost_uid, evidence_reference, notes
        FROM petty_cash_expenses
       WHERE isDelete = 0 AND entry_kind = 'spend' AND debit_amount = ?
       ORDER BY created_at DESC
