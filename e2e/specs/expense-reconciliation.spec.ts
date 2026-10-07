@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { readArtifact, writeArtifact } from '../lib/artifacts';
+import { trackArtifactOutcome } from '../lib/artifact-outcome';
 import { exec, rows } from '../lib/db';
 import { E2E_ENV } from '../lib/env';
 import {
@@ -225,7 +226,10 @@ const evidence: Record<string, unknown> = { ok: true, month: MONTH };
 /** Ids this spec records through the app, so the run leaves nothing behind. */
 const created: Array<{ id: number; cost_uid: string; where: string }> = [];
 
+const outcome = trackArtifactOutcome();
+
 function publish(): void {
+	evidence.ok = outcome.ok;
 	writeArtifact('expense-reconciliation', {
 		...evidence,
 		fixtureScope: {

@@ -18,6 +18,7 @@ import { test, expect } from '@playwright/test';
 import type { Page, APIRequestContext } from '@playwright/test';
 import { rows } from '../lib/db';
 import { readArtifact, writeArtifact } from '../lib/artifacts';
+import { parseJsonColumn } from '../lib/json-column';
 import {
 	PETTY_CASH_LATER_MONTH,
 	PETTY_CASH_MONTH,
@@ -1138,7 +1139,7 @@ test('captures and versions foreign-currency conversion evidence on petty cash',
       WHERE cost_uid = ? AND version = 2`,
 		[String(recognizedF.cost_uid)]
 	);
-	const snapshot = JSON.parse(recognizedEvent.snapshot) as Record<
+	const snapshot = parseJsonColumn(recognizedEvent.snapshot) as Record<
 		string,
 		unknown
 	>;

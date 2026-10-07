@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { readArtifact, writeArtifact } from '../lib/artifacts';
+import { trackArtifactOutcome } from '../lib/artifact-outcome';
 import { exec, rows } from '../lib/db';
 import {
 	ACCRUAL_FINAL_MONTH,
@@ -141,7 +142,10 @@ const createdReplacements: Array<{
 	where: string;
 }> = [];
 
+const outcome = trackArtifactOutcome();
+
 function publish(): void {
+	evidence.ok = outcome.ok;
 	writeArtifact('cost-accruals', {
 		...evidence,
 		fixtureScope: {
