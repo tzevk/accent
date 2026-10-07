@@ -196,6 +196,7 @@ export interface ReconstructionCommandResult extends PayrollReconstructionSummar
 /* ── reads ─────────────────────────────────────────────────────────── */
 
 const PROPOSAL_COLUMNS = `p.id, p.proposal_uid, p.payroll_slip_id, p.month, p.employee_id,
+       p.employee_code, p.employee_name, p.pay_stream,
        p.financial_version, p.status, p.recorded_employer_cost, p.currency,
        p.total_logged_hours, p.project_hours, p.no_project_hours,
        p.rounding_adjustment, p.evidence, p.missing_evidence, p.evidence_reference,
