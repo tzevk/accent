@@ -228,7 +228,9 @@ async function spendRow(id: string): Promise<Record<string, unknown>> {
 		`SELECT id, transaction_number, cost_uid, entry_kind, recognition_state,
             financial_version, cost_classification, project_id, recognition_period,
             period_basis, debit_amount, credit_amount, source_voucher_id,
-            linked_cost_uid, recognized_amount, evidence_reference, notes, isDelete
+            linked_cost_uid, recognized_amount, evidence_reference, notes, isDelete,
+            currency, reporting_currency, conversion_rate, conversion_date,
+            conversion_evidence_reference, converted_amount
        FROM petty_cash_expenses WHERE id = ?`,
 		[id]
 	);
@@ -1102,13 +1104,14 @@ test('captures and versions foreign-currency conversion evidence on petty cash',
 	const spendFId = String((spendF.body.data as Record<string, unknown>).id);
 	spends.spendF = await spendRow(spendFId);
 	expect(spends.spendF.currency).toBe('USD');
-	expect(spends.spendF.conversion_rate).toBe(EXPECTED.fxRate);
+	// The stored DECIMAL(20,10) rate keeps its numeric value, not its textual
+	// scale, so the read-back compares numerically (the #319 rate contract).
+	expect(Number(spends.spendF.conversion_rate)).toBe(Number(EXPECTED.fxRate));
 	expect(spends.spendF.conversion_date).toBe(`${LATER_MONTH}-08`);
 	expect(spends.spendF.conversion_evidence_reference).toBe(
 		`${PETTY_CASH_PREFIX}-FX-1`
 	);
 	expect(spends.spendF.converted_amount).toBeNull();
-	expect(Number(spends.spendF.conversion_rate)).toBe(Number(EXPECTED.fxRate));
 
 	// The register edit path refuses the conversion fields; they change only
 	// through the versioned update command.
