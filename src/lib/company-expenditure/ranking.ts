@@ -240,7 +240,12 @@ export function windowSupport(
 	const endMonth = monthOfDate(record.servicePeriodEnd);
 	// Both endpoints, in the window's own month and inside its elapsed days: a
 	// span that starts in an earlier month or crosses the cutoff is unproven.
-	if (start === null || end === null || startMonth !== month || endMonth !== month) {
+	if (
+		start === null ||
+		end === null ||
+		startMonth !== month ||
+		endMonth !== month
+	) {
 		return 'unproven';
 	}
 	if (start > days) return 'out';
@@ -396,14 +401,11 @@ function currencyComparison(
 			? 'unproven'
 			: changeStateFor(currentCost, priorCost),
 		unproven_records: currentUnproven.length + priorUnproven.length,
-		unproven_cost:
-			[...currentUnproven, ...priorUnproven].some(
-				(record) => confirmedAmount(record) === null
-			)
-				? null
-				: sumMoney(
-						[...currentUnproven, ...priorUnproven].map(confirmedAmount)
-					),
+		unproven_cost: [...currentUnproven, ...priorUnproven].some(
+			(record) => confirmedAmount(record) === null
+		)
+			? null
+			: sumMoney([...currentUnproven, ...priorUnproven].map(confirmedAmount)),
 		// The window's own categorization, from the same records, so a reader can
 		// see which direct-cost category moved the comparison.
 		groups: GROUP_KEYS.map((key) => {
@@ -615,7 +617,11 @@ export function buildPeriodComparison(
 			amount: only?.prior_late_cost ?? null,
 		});
 	}
-	if (!input.priorMonthRecords.some((record) => record.nature === 'operating' && isConfirmed(record.state))) {
+	if (
+		!input.priorMonthRecords.some(
+			(record) => record.nature === 'operating' && isConfirmed(record.state)
+		)
+	) {
 		disclosures.push({
 			code: 'no_prior_period_evidence',
 			label: 'No recognized cost in the prior month',
@@ -667,7 +673,8 @@ export function buildPeriodComparison(
 		});
 	}
 	const unknownPrior = input.rows.filter(
-		(row) => row.previous_period_cost === null && row.change_state !== 'unproven'
+		(row) =>
+			row.previous_period_cost === null && row.change_state !== 'unproven'
 	);
 	if (unknownPrior.length > 0) {
 		disclosures.push({

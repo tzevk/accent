@@ -1232,9 +1232,7 @@ test('captures and versions foreign-currency conversion evidence on petty cash',
 	}
 	const stillUsd = await spendRow(spendF2Id);
 	expect(stillUsd.currency).toBe('USD');
-	expect(Number(stillUsd.conversion_rate)).toBe(
-		Number(EXPECTED.fxRateUpdated)
-	);
+	expect(Number(stillUsd.conversion_rate)).toBe(Number(EXPECTED.fxRateUpdated));
 	expect(stillUsd.converted_amount).toBeNull();
 
 	// The corrected spend recognizes once, with the new converted figure.
