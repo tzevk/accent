@@ -34,13 +34,17 @@ import {
  * newly guarded ones are swept.
  *
  * The finance sweep sends a deliberately invalid request, so most mutating
- * methods come back 400 from the handler's own validation. Four POSTs have no
- * validation branch and would otherwise write to the real tables
- * (`admin/material-requisitions`, `projects/[id]/{invoice,purchase-order,
- * quotation}`): those use a namespaced payload addressed at a project id no
- * real project uses, and every row the sweep creates is purged by the spec —
- * before the sweep (in case a previous run crashed) and again at the end,
- * where the artifact records the observed counts.
+ * methods come back 400 from the handler's own validation. Three POSTs have
+ * no validation branch and would otherwise write to the real tables
+ * (`admin/material-requisitions`, `projects/[id]/{invoice,quotation}`);
+ * those use a namespaced payload addressed at a project id no real project
+ * uses. The fourth, `projects/[id]/purchase-order`, now creates a canonical
+ * order (#310): its handler validates the body, and `createOrder` requires
+ * an existing Project, so the sweep seeds a namespaced Project
+ * (`E2E-SEC-AG-P1`) and addresses that route at it with a valid payload.
+ * Every row the sweep creates is purged by the spec — before the sweep (in
+ * case a previous run crashed) and again at the end, where the artifact
+ * records the observed counts.
  *
  * Rate-limit budget: the `auth` category allows 10 logins/15 min per platform
  * IP (shared with every other spec), so this file logs in exactly twice — the
@@ -88,6 +92,26 @@ interface GuardedRoute {
 
 /** A project id no real project uses; sweep rows for it are purged. */
 const SWEEP_PROJECT_ID = 999999999;
+
+/**
+ * The purchase-order sweep POST creates a canonical order scoped to the
+ * Project in its path (#310), and `createOrder` validates that the Project
+ * exists — so the sweep seeds this namespaced Project and addresses the
+ * route at its real id. `{sweepOrderProjectId}` in a route path resolves
+ * to it once `beforeAll` has seeded it.
+ */
+const SWEEP_PROJECT_CODE = 'E2E-SEC-AG-P1';
+
+/** The seeded sweep Project's real id; resolved in `beforeAll`. */
+let sweepOrderProjectId = 0;
+
+/** Resolve a route path's `{sweepOrderProjectId}` placeholder. */
+function routePath(route: GuardedRoute): string {
+	return route.path.replace(
+		'{sweepOrderProjectId}',
+		String(sweepOrderProjectId)
+	);
+}
 
 /** Every row the finance sweep may write is namespaced `E2E-SEC-AG-`. */
 const SWEEP_PREFIX = 'E2E-SEC-AG-';
@@ -187,21 +211,24 @@ const GUARDED_ROUTES: readonly GuardedRoute[] = [
 		},
 	},
 	{
+		// #310: the Project tab's order surface now creates a canonical
+		// order; `createOrder` requires an existing Project, so the path
+		// addresses the seeded sweep Project (see `routePath`).
 		source: 'src/app/api/projects/[id]/purchase-order/route.js',
-		path: `/api/projects/${SWEEP_PROJECT_ID}/purchase-order`,
+		path: '/api/projects/{sweepOrderProjectId}/purchase-order',
 		methods: ['GET', 'POST'],
 		financeBody: {
-			po_number: `${SWEEP_PREFIX}PO-1`,
-			po_date: '2019-01-01',
-			client_name: 'E2E Security',
-			vendor_name: 'E2E Security',
-			delivery_date: '2019-01-31',
-			scope_of_work: 'e2e/specs/security/auth-guards.spec.ts',
+			direction: 'supplier',
+			order_number: `${SWEEP_PREFIX}PO-1`,
+			counterparty_name: 'E2E Security',
+			currency: 'INR',
+			amount_basis: 'gross',
 			gross_amount: 1,
-			gst_percentage: 18,
-			gst_amount: 0,
+			tax_amount: 0,
 			net_amount: 1,
-			payment_terms: 'e2e/specs/security/auth-guards.spec.ts',
+			order_date: '2019-01-01',
+			status: 'draft',
+			firmness: 'unknown',
 			remarks: 'e2e/specs/security/auth-guards.spec.ts',
 		},
 	},
@@ -287,7 +314,7 @@ const statuses = new Map<string, RouteStatus>();
 const evidence: SweepEvidence = {};
 
 function statusRow(route: GuardedRoute, method: Method): RouteStatus {
-	const key = `${method} ${route.path}`;
+	const key = `${method} ${routePath(route)}`;
 	let row = statuses.get(key);
 	if (!row) {
 		row = { route: key, source: route.source };
@@ -362,7 +389,7 @@ async function sweep(
 				await call(
 					identity,
 					method,
-					route.path,
+					routePath(route),
 					field === 'finance' ? route.financeBody : undefined
 				)
 			).status();
@@ -383,9 +410,30 @@ async function purgeSweepRows(): Promise<Record<string, number>> {
 			SWEEP_PROJECT_ID,
 		])
 	).affectedRows;
+	// The purchase-order sweep used to write `project_purchase_orders`;
+	// #310 removed that write path, so the legacy table stays empty.
+	// The canonical order and its journal are purged by number prefix
+	// (the seeded Project's id is only known once it exists).
 	purged.projectPurchaseOrders = (
 		await exec('DELETE FROM project_purchase_orders WHERE project_id = ?', [
 			SWEEP_PROJECT_ID,
+		])
+	).affectedRows;
+	purged.orderEvents = (
+		await exec(
+			`DELETE FROM order_events WHERE order_uid IN
+         (SELECT order_uid FROM orders WHERE order_number LIKE ?)`,
+			[`${SWEEP_PREFIX}%`]
+		)
+	).affectedRows;
+	purged.orders = (
+		await exec('DELETE FROM orders WHERE order_number LIKE ?', [
+			`${SWEEP_PREFIX}%`,
+		])
+	).affectedRows;
+	purged.sweepProjects = (
+		await exec('DELETE FROM projects WHERE project_code = ?', [
+			SWEEP_PROJECT_CODE,
 		])
 	).affectedRows;
 	purged.projectQuotations = (
@@ -427,6 +475,15 @@ test.beforeAll(async ({ playwright }) => {
 	// Rows can survive a crashed or interrupted earlier run; clear them before
 	// the sweep so an insert never collides with its own leftovers.
 	evidence.preSweepPurge = await purgeSweepRows();
+	// The purchase-order sweep creates a canonical order scoped to the
+	// Project in its path, and `createOrder` validates that the Project
+	// exists — so the sweep carries its own namespaced Project.
+	const project = await exec(
+		`INSERT INTO projects (project_code, project_title, name, client_name, status, isDelete)
+       VALUES (?, ?, NULL, ?, 'ONGOING', 0)`,
+		[SWEEP_PROJECT_CODE, 'E2E Security Auth Guards Project', 'E2E Security']
+	);
+	sweepOrderProjectId = project.insertId;
 	anonymous = {
 		context: await anonymousContext(playwright, E2E_ENV.baseURL),
 		forwardedFor: PLATFORM_IPS.anonymous,
@@ -717,8 +774,8 @@ test('writes the security-auth-guards artifact', async () => {
 		)
 		.map((row) => row.route);
 
-	// The four unvalidated POSTs wrote through the finance session; prove it in
-	// the database, then purge every row this spec created.
+	// The sweep's mutating POSTs wrote through the finance session;
+	// prove it in the database, then purge every row this spec created.
 	const created = {
 		projectInvoices: Number(
 			(
@@ -728,11 +785,12 @@ test('writes the security-auth-guards artifact', async () => {
 				)
 			)[0].n
 		),
-		projectPurchaseOrders: Number(
+		orders: Number(
 			(
 				await rows<{ n: number }>(
-					'SELECT COUNT(*) AS n FROM project_purchase_orders WHERE project_id = ?',
-					[SWEEP_PROJECT_ID]
+					`SELECT COUNT(*) AS n FROM orders
+            WHERE project_id = ? AND order_number LIKE ?`,
+					[sweepOrderProjectId, `${SWEEP_PREFIX}%`]
 				)
 			)[0].n
 		),
@@ -763,12 +821,20 @@ test('writes the security-auth-guards artifact', async () => {
           (SELECT COUNT(*) FROM project_invoices WHERE project_id = ?) +
           (SELECT COUNT(*) FROM project_purchase_orders WHERE project_id = ?) +
           (SELECT COUNT(*) FROM project_quotations WHERE project_id = ?) +
-          (SELECT COUNT(*) FROM material_requisitions WHERE requisition_number LIKE ?) AS n`,
+           (SELECT COUNT(*) FROM material_requisitions WHERE requisition_number LIKE ?) +
+           (SELECT COUNT(*) FROM orders WHERE project_id = ? AND order_number LIKE ?) +
+           (SELECT COUNT(*) FROM order_events WHERE order_uid IN
+             (SELECT order_uid FROM orders WHERE order_number LIKE ?)) +
+           (SELECT COUNT(*) FROM projects WHERE project_code = ?) AS n`,
 				[
 					SWEEP_PROJECT_ID,
 					SWEEP_PROJECT_ID,
 					SWEEP_PROJECT_ID,
 					`${SWEEP_PREFIX}%`,
+					sweepOrderProjectId,
+					`${SWEEP_PREFIX}%`,
+					`${SWEEP_PREFIX}%`,
+					SWEEP_PROJECT_CODE,
 				]
 			)
 		)[0].n
@@ -798,10 +864,10 @@ test('writes the security-auth-guards artifact', async () => {
 	expect(breaches, 'per-route contract breaches').toEqual([]);
 	expect(
 		created,
-		'the four unvalidated POSTs wrote through the finance role'
+		'the sweep mutating POSTs wrote through the finance role'
 	).toEqual({
 		projectInvoices: 1,
-		projectPurchaseOrders: 1,
+		orders: 1,
 		projectQuotations: 1,
 		materialRequisitions: 1,
 	});
