@@ -862,9 +862,12 @@ test('cancelling a replaced invoice restores the estimate atomically', async ({
 	expect(repricing.status()).toBe(409);
 	const repricingBody = await repricing.json();
 	expect(repricingBody.code).toBe('cost_recognized');
+	// i1 stays at version 1: replacements guard the invoice version but only
+	// ever bump the accrual row, so the pin must match the seeded version for
+	// the command-allowed check (422) to run instead of the version check.
 	const updateCommand = await invoiceCommand(request, seeded.invoiceIds.i1, {
 		command: 'update',
-		expected_version: 2,
+		expected_version: 1,
 		patch: { gross_amount: 1 },
 	});
 	expect(updateCommand.status).toBe(422);
@@ -910,12 +913,15 @@ test('replacement commands are version-checked, non-duplicating, and race-safe',
 	expect(activeRows.length).toBe(1);
 
 	// An invoice already superseding one accrual cannot silently supersede a
-	// second one.
-	const crossLink = await accrualReplacement(request, seeded.accrualIds.a2, {
+	// second one. a6 is the target (recognized, 20000 remaining, version 1):
+	// a2 is fully replaced (remaining 0), so pairing with a2 would stop at
+	// the remaining-estimate guard instead of the cross-link guard. i1 stays
+	// at version 1 (replacements only bump the accrual row).
+	const crossLink = await accrualReplacement(request, seeded.accrualIds.a6, {
 		invoice_id: seeded.invoiceIds.i1,
 		final: false,
-		expected_accrual_version: 2,
-		expected_invoice_version: 2,
+		expected_accrual_version: 1,
+		expected_invoice_version: 1,
 	});
 	expect(crossLink.status, JSON.stringify(crossLink.body)).toBe(409);
 	expect(crossLink.body.code).toBe('invoice_already_replacement');
