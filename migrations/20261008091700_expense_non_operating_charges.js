@@ -36,7 +36,7 @@ const NATURES = [
 
 const BASES = ['consumption', 'depreciation', 'amortization'];
 
-exports.up = async function up(knex) {
+export async function up(knex) {
 	if (!(await knex.schema.hasColumn('expenses', 'cost_nature'))) {
 		await knex.schema.alterTable('expenses', (table) => {
 			table.enu('cost_nature', NATURES).notNullable().defaultTo('operating');
@@ -98,9 +98,9 @@ exports.up = async function up(knex) {
 			});
 		});
 	}
-};
+}
 
-exports.down = async function down(knex) {
+export async function down(knex) {
 	if (await knex.schema.hasTable(EVENT_TABLE)) {
 		await knex.schema.dropTable(EVENT_TABLE);
 	}
@@ -113,4 +113,4 @@ exports.down = async function down(knex) {
 			table.dropColumn('cost_nature');
 		});
 	}
-};
+}

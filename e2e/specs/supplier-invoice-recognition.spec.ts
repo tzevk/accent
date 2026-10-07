@@ -34,7 +34,7 @@ import {
 
 test.use({
 	storageState: 'e2e/.auth/admin-report.json',
-	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.33' },
+	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.73' },
 });
 test.describe.configure({ mode: 'serial', timeout: 120_000 });
 

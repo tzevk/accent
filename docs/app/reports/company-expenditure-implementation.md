@@ -662,6 +662,15 @@ The payroll snapshot evidence includes the stored month and money columns.
 Namespaced fixtures identify test records; names alone do not exclude them from
 the current report. Keep this verification database separate from business data.
 
+Knex migrations use ESM `export async function up` and `down`; the bootstrap
+imports each migration before applying it.
+Financial report fixture readers need `reports:read`, `other_expenses:read`,
+and `payroll:read`. The budget editor has these read privileges and
+`other_expenses:update`, but no approval privilege.
+Each feature uses distinct trusted-IP identities for login rate limits.
+Supplier invoice fixtures use `198.18.0.71`–`.73`; payroll allocation fixtures
+keep `198.18.0.31`–`.33`.
+
 ## Supplier invoice recognition (#311)
 
 One supplier liability is one `purchase_invoices` row carrying `cost_uid` and the
