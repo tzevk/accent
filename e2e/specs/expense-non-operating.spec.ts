@@ -1232,15 +1232,18 @@ test('records a non-operating item through the report and excludes it until cons
 	expect(Number(uiCharges[0].amount)).toBe(UI_CHARGE.amount);
 	expect(uiCharges[0].basis).toBe(UI_CHARGE.basis);
 
-	// A register edit cannot reclassify the item: nature is a versioned
-	// financial field, changed only through the command path.
+	// A register edit cannot reclassify the item: the advance is recognized
+	// cost by now, so the recognized-cost guard answers first with 409
+	// cost_recognized (contract:
+	// docs/app/reports/company-expenditure-implementation.md: a register
+	// edit of a recognized row is 409; 422 financial_fields_versioned is
+	// the answer while the row is still open). The guard writes nothing.
 	const registerEdit = await request.put(`/api/admin/expenses/${createdId}`, {
 		data: { cost_nature: 'capital' },
 	});
-	expect(registerEdit.status()).toBe(422);
+	expect(registerEdit.status()).toBe(409);
 	const refusal = await registerEdit.json();
-	expect(refusal.code).toBe('financial_fields_versioned');
-	expect(refusal.fields).toContain('cost_nature');
+	expect(refusal.code).toBe('cost_recognized');
 	const unchanged = await rows<{ cost_nature: string; notes: string | null }>(
 		`SELECT cost_nature, notes FROM expenses WHERE id = ?`,
 		[createdId]
@@ -1253,7 +1256,7 @@ test('records a non-operating item through the report and excludes it until cons
 		nature: UI_EXPENSE.nature,
 		recognized: UI_EXPENSE.gross,
 		charge: UI_CHARGE,
-		registerRefusal: { status: registerEdit.status(), fields: refusal.fields },
+		registerRefusal: { status: registerEdit.status(), code: refusal.code },
 	};
 });
 
