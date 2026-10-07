@@ -1074,9 +1074,14 @@ test('links a client invoice to a canonical client order, never a supplier order
 	expect(Number(fabricated[0].n)).toBe(0);
 
 	// Editing the invoice adjusts the linked order's rollup by the difference.
+	// The register's PUT is a full replace, exactly as the edit form sends it:
+	// the invoice number and date travel with every edit, so the request
+	// carries the whole invoice input, not only the changed fields.
 	await apiJson(
 		await request.put(`/api/admin/invoices/${invoiceId}`, {
 			data: {
+				invoice_number: INVOICE_LINK.number,
+				invoice_date: `${MONTH}-20`,
 				client_name: INVOICE_LINK.client,
 				order_uid: clientUid,
 				po_number: CREATED_ORDERS.client.number,
