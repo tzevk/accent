@@ -1171,7 +1171,9 @@ export async function fetchOrder(
 export async function syncLegacyOrderMappings(
 	db: SqlConnection
 ): Promise<void> {
-	const statements: Array<[string, string[]]> = [
+	const statements: Array<
+		[string, string, Array<string | number | boolean | null>]
+	> = [
 		[
 			`purchase_orders`,
 			`INSERT INTO order_legacy_mappings
@@ -1225,9 +1227,9 @@ export async function syncLegacyOrderMappings(
 			[],
 		],
 	];
-	for (const [, sql] of statements) {
+	for (const [, sql, params] of statements) {
 		try {
-			await db.execute(sql);
+			await db.execute(sql, params);
 		} catch (error) {
 			// A concurrent sync may have inserted the same copy first (1062).
 			const code = (error as { errno?: number; code?: string })?.errno;

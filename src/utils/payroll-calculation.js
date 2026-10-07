@@ -179,6 +179,10 @@ const integerValue = (value, fallback) => {
  * live in `salary_structures`. Canonical `employee_salary_profile` always
  * wins; do not extend this mapping. See docs/adr/0001.
  * CTC is intentionally not considered when selecting Gross.
+ * @param {object|null} canonicalProfile - An `employee_salary_profile` row,
+ *   or null when none covers the month.
+ * @param {object|null} legacyProfile - A `salary_structures` row, or null
+ *   when none covers the month.
  */
 export function normalizeSalaryProfile(
 	canonicalProfile = null,

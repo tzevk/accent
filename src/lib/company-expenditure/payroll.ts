@@ -172,7 +172,7 @@ export function allocateEmployerCost(
 	}
 
 	let roundingAdjustment = R(0);
-	const shares = merged.map((line, index) => {
+	const shares: PayrollProjectShare[] = merged.map((line, index) => {
 		roundingAdjustment = add(roundingAdjustment, applied[index]);
 		return {
 			project_id: line.project_id,
