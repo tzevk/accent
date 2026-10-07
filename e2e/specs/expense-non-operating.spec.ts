@@ -1048,8 +1048,19 @@ test('captures and cancels a period charge through the report controls', async (
 	);
 	expect(Number(duplicates[0].records)).toBe(0);
 
-	// Cancel through the control: the balance comes back and the journal keeps
-	// both entries.
+	// Cancel through the control in the charge's own month: an item lists
+	// only the charges dated in the reported month, while consumed_to_date
+	// and remaining stay to-date. The ad-hoc charge is therefore absent here
+	// and cancelled from its own month's view. The balance comes back and
+	// the journal keeps both entries.
+	await expect(
+		advance.locator(
+			`[data-testid="period-charge"][data-charge-uid="${uiChargeUid}"]`
+		)
+	).toHaveCount(0);
+	await openExpenditure(page, labelOf(AD_HOC_MONTH));
+	await expect(advance).toBeVisible();
+	await expect(advance).toHaveAttribute('data-remaining', '35000');
 	const chargeRow = advance.locator(
 		`[data-testid="period-charge"][data-charge-uid="${uiChargeUid}"]`
 	);
