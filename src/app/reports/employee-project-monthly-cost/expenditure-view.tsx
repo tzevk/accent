@@ -205,6 +205,26 @@ interface PayrollShareRow {
 	basis: string;
 }
 
+interface PayrollReconstructionRow {
+	proposal_uid: string;
+	financial_version: number;
+	status: string;
+	recorded_employer_cost: number;
+	currency: string;
+	total_logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	rounding_adjustment: number;
+	missing_evidence: Array<{ code: string; detail: string }>;
+	proposed_by_name: string | null;
+	proposed_at: string | null;
+	reviewed_by_name: string | null;
+	reviewed_at: string | null;
+	review_reason: string | null;
+	evidence_reference: string | null;
+	shares: PayrollShareRow[];
+}
+
 interface PayrollEmployeeRow {
 	employee_id: number;
 	employee_code: string;
@@ -228,6 +248,8 @@ interface PayrollEmployeeRow {
 		month: string;
 	};
 	shares: PayrollShareRow[];
+	/** #308: the slip's latest reconstruction proposal, or null. */
+	reconstruction: PayrollReconstructionRow | null;
 }
 
 interface PayrollSummaryRow {
@@ -426,6 +448,17 @@ export interface ExpenditureViewProps {
 	canEditCost: boolean;
 	/** `other_expenses:approve` — may recognize, reject, or cancel a cost. */
 	canRecognize: boolean;
+	/**
+	 * #308: the financial read gate (`reports:read` + `other_expenses:read` +
+	 * `payroll:read`, or super admin) **and** `other_expenses:update` — may
+	 * propose a historical allocation reconstruction.
+	 */
+	canProposeReconstruction: boolean;
+	/**
+	 * #308: the financial read gate **and** `other_expenses:approve` — may
+	 * approve or reject a reconstruction proposal.
+	 */
+	canReviewReconstruction: boolean;
 }
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
@@ -587,6 +620,8 @@ export default function ExpenditureView({
 	canRecord,
 	canEditCost,
 	canRecognize,
+	canProposeReconstruction,
+	canReviewReconstruction,
 }: ExpenditureViewProps) {
 	const queryClient = useQueryClient();
 	const [projectFilter, setProjectFilter] = useState('all');
@@ -600,6 +635,7 @@ export default function ExpenditureView({
 		command: 'recognize' | 'reject' | 'cancel';
 	} | null>(null);
 	const [expandedEmployee, setExpandedEmployee] = useState<number | null>(null);
+	const [reconstructionReason, setReconstructionReason] = useState('');
 	const [chargeTarget, setChargeTarget] = useState<NonOperatingItemRow | null>(
 		null
 	);
@@ -678,6 +714,47 @@ export default function ExpenditureView({
 		staleTime: 15_000,
 	});
 	const payrollEmployees = payrollQuery.data?.data.employees ?? [];
+
+	// #308: reconstruction commands ride the report's own routes. The server
+	// enforces the financial read gate + operation privilege; the controls
+	// below render only under the same conjunction.
+	const proposeReconstruction = useMutation({
+		mutationFn: (slipId: number) =>
+			apiPost(
+				'/api/reports/employee-project-monthly-cost/payroll/reconstruction',
+				{ month, payroll_slip_id: slipId }
+			),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
+				queryKey: ['expenditure-payroll', month],
+			});
+			void queryClient.invalidateQueries({ queryKey: ['expenditure'] });
+		},
+	});
+	const reviewReconstruction = useMutation({
+		mutationFn: (input: {
+			proposalUid: string;
+			command: 'approve' | 'reject';
+			expectedVersion: number;
+			reason?: string;
+		}) =>
+			apiPost(
+				`/api/reports/employee-project-monthly-cost/payroll/reconstruction/${input.proposalUid}`,
+				{
+					command: input.command,
+					expected_version: input.expectedVersion,
+					reason: input.reason || undefined,
+				}
+			),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({
+				queryKey: ['expenditure-payroll', month],
+			});
+			void queryClient.invalidateQueries({ queryKey: ['expenditure'] });
+		},
+	});
+	const reconstructionError =
+		proposeReconstruction.error ?? reviewReconstruction.error;
 
 	const data = reconciliationQuery.data?.data ?? null;
 	const queue = queueQuery.data?.data?.records ?? [];
@@ -2382,6 +2459,7 @@ export default function ExpenditureView({
 								)}
 							{payrollEmployees.map((employee) => {
 								const expanded = expandedEmployee === employee.employee_id;
+								const reconstruction = employee.reconstruction;
 								return (
 									<Fragment key={employee.employee_id}>
 										<tr
@@ -2427,6 +2505,124 @@ export default function ExpenditureView({
 														</div>
 													</div>
 												</div>
+												{/* #308: reconstruction state and its review controls. Pending
+												    and rejected proposals are shown as proposals, never as
+												    recorded cost; the controls render only under the same
+												    read-gate + operation-privilege conjunction the routes
+												    enforce. */}
+												{(reconstruction ||
+													(employee.allocation_missing &&
+														canProposeReconstruction)) && (
+													<div className="mt-1 flex flex-wrap items-center gap-1.5">
+														{reconstruction && (
+															<span
+																data-testid={
+																	reconstruction.status === 'approved'
+																		? 'payroll-reconstruction-badge'
+																		: reconstruction.status === 'pending'
+																			? 'payroll-reconstruction-pending'
+																			: 'payroll-reconstruction-rejected'
+																}
+																data-status={reconstruction.status}
+																data-financial-version={String(
+																	reconstruction.financial_version
+																)}
+																className={
+																	reconstruction.status === 'approved'
+																		? 'rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-900'
+																		: reconstruction.status === 'pending'
+																			? 'rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900'
+																			: 'rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-900'
+																}
+															>
+																{reconstruction.status === 'approved'
+																	? 'Reconstructed'
+																	: reconstruction.status === 'pending'
+																		? `Reconstruction v${reconstruction.financial_version} · Awaiting review`
+																		: `Reconstruction v${reconstruction.financial_version} · Rejected`}
+															</span>
+														)}
+														{reconstruction?.status === 'pending' &&
+															canReviewReconstruction && (
+																<>
+																	<input
+																		data-testid="payroll-reconstruction-reason"
+																		value={reconstructionReason}
+																		onChange={(event) =>
+																			setReconstructionReason(event.target.value)
+																		}
+																		placeholder="Review reason (optional)"
+																		className="w-44 rounded border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-700"
+																	/>
+																	<button
+																		type="button"
+																		data-testid="payroll-reconstruction-approve"
+																		disabled={reviewReconstruction.isPending}
+																		onClick={() =>
+																			reviewReconstruction.mutate({
+																				proposalUid:
+																					reconstruction.proposal_uid,
+																				command: 'approve',
+																				expectedVersion:
+																					reconstruction.financial_version,
+																				reason: reconstructionReason,
+																			})
+																		}
+																		className="rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+																	>
+																		Approve
+																	</button>
+																	<button
+																		type="button"
+																		data-testid="payroll-reconstruction-reject"
+																		disabled={reviewReconstruction.isPending}
+																		onClick={() =>
+																			reviewReconstruction.mutate({
+																				proposalUid:
+																					reconstruction.proposal_uid,
+																				command: 'reject',
+																				expectedVersion:
+																					reconstruction.financial_version,
+																				reason: reconstructionReason,
+																			})
+																		}
+																		className="rounded border border-rose-300 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+																	>
+																		Reject
+																	</button>
+																</>
+															)}
+														{!reconstruction &&
+															employee.allocation_missing &&
+															canProposeReconstruction && (
+																<button
+																	type="button"
+																	data-testid="payroll-reconstruction-propose"
+																	disabled={
+																		proposeReconstruction.isPending ||
+																		employee.source.payroll_slip_id === null
+																	}
+																	onClick={() => {
+																		if (
+																			employee.source.payroll_slip_id !== null
+																		) {
+																			proposeReconstruction.mutate(
+																				employee.source.payroll_slip_id
+																			);
+																		}
+																	}}
+																	className="rounded border border-[#64126D] px-1.5 py-0.5 text-[10px] font-medium text-[#64126D] hover:bg-[#64126D]/5 disabled:opacity-60"
+																>
+																	Propose reconstruction
+																</button>
+															)}
+													</div>
+												)}
+												{reconstructionError && (
+													<div className="mt-0.5 text-[10px] text-rose-600">
+														{errorMessage(reconstructionError)}
+													</div>
+												)}
 											</td>
 											<td className="px-3 py-2 text-xs capitalize text-gray-600">
 												{employee.pay_stream}
@@ -2551,6 +2747,125 @@ export default function ExpenditureView({
 															))}
 														</tbody>
 													</table>
+													{/* #308: reconstruction evidence, distinct from an original
+													    finalization-time snapshot: what was reconstructed,
+													    from which evidence, when, by whom, and what stays
+													    limited. A pending proposal states its proposed shares
+													    and never claims they are recorded cost. */}
+													{reconstruction && (
+														<div
+															data-testid="payroll-reconstruction-evidence"
+															data-status={reconstruction.status}
+															data-financial-version={String(
+																reconstruction.financial_version
+															)}
+															data-reconstructed-at={
+																reconstruction.proposed_at ?? ''
+															}
+															data-proposed-by={
+																reconstruction.proposed_by_name ?? ''
+															}
+															data-reviewed-at={
+																reconstruction.reviewed_at ?? ''
+															}
+															data-reviewed-by={
+																reconstruction.reviewed_by_name ?? ''
+															}
+															data-missing-evidence={reconstruction.missing_evidence
+																.map((entry) => entry.code)
+																.join(',')}
+															className="mt-2 rounded border border-amber-200 bg-amber-50/60 px-2 py-1.5"
+														>
+															<p className="text-[11px] font-semibold text-amber-900">
+																Reconstruction evidence — reconstructed, not the
+																original finalization-time attribution
+															</p>
+															<p className="text-[11px] text-amber-900/80">
+																Proposed{' '}
+																{reconstruction.proposed_at ?? '—'} by{' '}
+																{reconstruction.proposed_by_name ?? 'unknown'} ·{' '}
+																{reconstruction.status === 'pending'
+																	? 'awaiting review'
+																	: `${reconstruction.status} on ${
+																			reconstruction.reviewed_at ?? '—'
+																		} by ${
+																			reconstruction.reviewed_by_name ?? 'unknown'
+																		}`}
+																{reconstruction.review_reason
+																	? ` · ${reconstruction.review_reason}`
+																	: ''}
+															</p>
+															<p className="text-[11px] text-amber-900/80">
+																Recorded employer cost{' '}
+																{formatCurrencyIn(
+																	reconstruction.recorded_employer_cost,
+																	data.payroll.currency
+																)}{' '}
+																against{' '}
+																{formatNumber(
+																	reconstruction.total_logged_hours
+																)}{' '}
+																Logged Hours; this evidence was not stored at the
+																slip&apos;s original finalization.
+															</p>
+															{reconstruction.missing_evidence.length > 0 && (
+																<ul className="mt-1 list-disc pl-4 text-[11px] text-amber-900">
+																	{reconstruction.missing_evidence.map((entry) => (
+																		<li key={entry.code}>{entry.detail}</li>
+																	))}
+																</ul>
+															)}
+															{reconstruction.status === 'pending' &&
+																reconstruction.shares.length > 0 && (
+																	<div className="mt-1">
+																		<p className="text-[11px] font-medium text-amber-900">
+																			Proposed shares (not recorded until approved)
+																		</p>
+																		<table className="w-full text-xs">
+																			<tbody>
+																				{reconstruction.shares.map(
+																					(share, index) => (
+																						<tr
+																							key={`${share.project_id ?? share.basis}-${index}`}
+																							data-testid="payroll-reconstruction-share-row"
+																							data-project-code={
+																								share.project_code ?? ''
+																							}
+																							data-hours={String(share.hours)}
+																							data-amount={String(share.amount)}
+																							data-adjustment={String(
+																								share.rounding_adjustment
+																							)}
+																							data-basis={share.basis}
+																							className="text-amber-900"
+																						>
+																							<td className="py-0.5 pr-3">
+																								{share.project_id === null
+																									? share.basis === 'no_project'
+																										? 'No project'
+																										: 'No logged hours'
+																									: `${share.project_code} — ${
+																											share.project_name ?? ''
+																										}`}
+																							</td>
+																							<td className="py-0.5 pr-3 text-right tabular-nums">
+																								{formatNumber(share.hours)} h
+																							</td>
+																							<td className="py-0.5 text-right tabular-nums font-medium">
+																								{formatCurrencyIn(
+																									share.amount,
+																									data.payroll.currency
+																								)}
+																							</td>
+																						</tr>
+																					)
+																				)}
+																			</tbody>
+																		</table>
+																	</div>
+																)}
+														</div>
+													)}
 												</td>
 											</tr>
 										)}

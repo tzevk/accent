@@ -1,4 +1,4 @@
-# Company Project Expenditure — Implementation (tickets #306, #311, #316, #317, #319, #321)
+# Company Project Expenditure — Implementation (tickets #306, #307, #308, #311, #316, #317, #319, #321)
 
 ## Overview
 
@@ -437,6 +437,64 @@ finalized month without a frozen allocation (`payroll_allocation_missing`), and
 an unfinalized or ungenerated month (`payroll_not_finalized` /
 `payroll_not_generated`) are coverage notices; No project and No logged hours
 amounts are disclosed as info notices. A finalized zero stays a known zero.
+
+## Reviewed allocation reconstruction (#308)
+
+Implemented in `reconstruction.ts` (ADR-0016); the consumer contract for the
+later allocation slices (#309 revisions, #322 close, #324 export) is published
+outside the repo at `C:/Files/OCDSE/Work/expenditure-reconstruction-contract.md`.
+
+**The rule.** An already-finalized Payroll Slip without saved allocation shares
+is rebuilt **once** from its recorded `employer_cost` and the available monthly
+Logged Hours — the same `allocateEmployerCost` rule and the same canonical
+month-hours loader #307 freezes with. The current Salary Profile never prices a
+reconstruction; it only contributes the `pay_stream` metadata observed at
+proposal time, labelled as such (`pay_stream_source`). Missing evidence never
+invents Project attribution: with no eligible Logged Hours the whole recorded
+cost freezes as one `no_logged_hours` share (`timesheet_missing`), and hours
+without a reliable Project stay in the denominator as `no_project`
+(`hours_without_project`).
+
+**Proposal before freeze.** A reconstruction is a proposal until an authorized
+reviewer approves it; unreviewed data never becomes the current allocation
+header.
+
+| Table                                              | Meaning                                                                                                                                                                                                                                   |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `payroll_allocation_reconstruction_proposals`      | One proposal per Payroll Slip and `financial_version`: recorded cost, denominator hours, evidence and missing-evidence snapshots, actor, reconstruction time, review decision, `frozen_allocation_id`                                       |
+| `payroll_allocation_reconstruction_shares`         | The proposed destinations, same shape as the allocation shares; approval copies these exact rows, so what the reviewer saw is what freezes                                                                                                |
+
+Approval writes the reviewed figures into `payroll_employee_allocations` with
+`kind = 'reconstruction'` (`version = MAX(version)+1`, one journal row per
+version) and appends a `reconstructed` row to `payroll_allocation_events`
+carrying the proposal uid, reconstruction time/actor, reviewer, evidence, and
+limitations. The commands never write `payroll_slips` or `payroll_runs`, so a
+reconstruction changes no slip, payment status, or payroll-run state.
+
+**Commands.** `POST …/payroll/reconstruction` (`{ month, payroll_slip_id,
+evidence_reference? }`) proposes; `POST …/payroll/reconstruction/{uid}`
+(`{ command: approve|reject, expected_version, reason? }`) reviews. One pending
+proposal per slip, one allocation per slip, `expected_version` on every review,
+and the slip row locked before a version is minted — repeated or concurrent
+commands are refused (`reconstruction_pending`, `allocation_exists`,
+`already_reviewed`, `version_conflict`, `run_not_locked`, `month_mismatch`,
+`slip_not_found`) with no partial write. An existing reviewed allocation is
+never replaced. Both routes require the financial read gate (super admin, or
+`reports:read` + `other_expenses:read` + `payroll:read`) **and** the operation
+privilege (`other_expenses:update` to propose, `other_expenses:approve` to
+review); the UI renders the same conjunction.
+
+**Report contract.** The payroll drilldown rows gain `reconstruction` — the
+slip's latest proposal with `proposal_uid`, `financial_version`, `status`,
+proposed/reviewed actor names and times, `review_reason`, `missing_evidence`,
+`evidence`, and its `shares`. A pending or rejected proposal is shown beside
+the row as a proposal (the row keeps `allocation_missing`, its recorded amount
+stays null); an approved proposal attaches only while its freeze is the current
+recorded allocation, and the row shows a distinct "Reconstructed" badge with
+the evidence panel — never presented as the original finalization-time
+attribution. New coverage codes: `payroll_reconstruction_pending` and
+`payroll_reconstructed` (info); the `payroll_allocation_missing` warning stays
+for slips still without an applicable allocation.
 
 ## Coverage: what the total does not include
 

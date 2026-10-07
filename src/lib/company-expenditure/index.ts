@@ -113,7 +113,13 @@ import {
 	loadPayrollAllocationMonths,
 	loadPayrollDrilldown,
 	loadPayrollMonth,
+	registerReconstructionSummaryReader,
 } from './payroll';
+import {
+	loadReconstructionSummaries,
+	proposeAllocationReconstruction,
+	reviewAllocationReconstruction,
+} from './reconstruction';
 import {
 	PETTY_CASH_COST_SOURCE,
 	loadPettyCashProjectCostBefore,
@@ -290,6 +296,17 @@ export type {
 	PayrollMonthInterpretation,
 } from './payroll';
 export {
+	loadReconstructionSummaries,
+	proposeAllocationReconstruction,
+	reviewAllocationReconstruction,
+} from './reconstruction';
+export type {
+	ProposeReconstructionInput,
+	ReconstructionAllocationRef,
+	ReconstructionCommandResult,
+	ReconstructionReviewInput,
+} from './reconstruction';
+export {
 	CHARGE_BASIS_LABELS,
 	COST_NATURES,
 	NATURE_LABELS,
@@ -368,7 +385,11 @@ export type {
 	PayrollHourLine,
 	PayrollPayStream,
 	PayrollProjectShare,
+	PayrollReconstructionEvidence,
+	PayrollReconstructionLimitation,
+	PayrollReconstructionSummary,
 	PayrollShareBasis,
+	ReconstructionLimitationCode,
 	PeriodBasis,
 	PettyCashCurrencySummary,
 	PettyCashSummary,
@@ -402,6 +423,10 @@ const pool: SqlConnection = {
 // The supplier source registers its adapter so a `cost_uid` can resolve to a
 // purchase invoice from anywhere in the module.
 registerCostSource(SUPPLIER_INVOICE_ADAPTER);
+
+// #308: the reconstruction module teaches the month read to join each slip's
+// latest reconstruction proposal without a payroll — reconstruction cycle.
+registerReconstructionSummaryReader(loadReconstructionSummaries);
 
 
 /** Today's calendar month, from the server clock. */
