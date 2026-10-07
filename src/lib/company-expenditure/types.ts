@@ -911,6 +911,65 @@ export interface PayrollHourLine {
 	hours: number;
 }
 
+/** Evidence limitation codes a reconstruction records (#308). */
+export type ReconstructionLimitationCode =
+	| 'timesheet_missing'
+	| 'hours_without_project';
+
+/** One stated limitation of a reconstruction's historical evidence. */
+export interface PayrollReconstructionLimitation {
+	code: ReconstructionLimitationCode;
+	detail: string;
+}
+
+/**
+ * What a reconstruction rests on: the recorded employer cost and the
+ * available monthly Logged Hours — never the current Salary Profile.
+ */
+export interface PayrollReconstructionEvidence {
+	source_table: string;
+	source_field: string;
+	month: string;
+	employee_id: number;
+	payroll_slip_id: number;
+	recorded_employer_cost: number;
+	currency: string;
+	total_logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	destinations: number;
+	/** Where the proposal-time pay stream metadata was observed. */
+	pay_stream_source: string;
+}
+
+/**
+ * One Payroll Slip's latest reconstruction proposal, as the report states it
+ * (#308): the reviewed or pending figures, the evidence, the limitations, the
+ * actor and decision, and the financial version review commands must expect.
+ */
+export interface PayrollReconstructionSummary {
+	proposal_uid: string;
+	financial_version: number;
+	status: 'pending' | 'approved' | 'rejected';
+	recorded_employer_cost: number;
+	currency: string;
+	total_logged_hours: number;
+	project_hours: number;
+	no_project_hours: number;
+	rounding_adjustment: number;
+	evidence: PayrollReconstructionEvidence;
+	missing_evidence: PayrollReconstructionLimitation[];
+	proposed_by: number | null;
+	proposed_by_name: string | null;
+	proposed_at: string | null;
+	reviewed_by: number | null;
+	reviewed_by_name: string | null;
+	reviewed_at: string | null;
+	review_reason: string | null;
+	evidence_reference: string | null;
+	shares: PayrollProjectShare[];
+}
+
 /** One Employee's employee-cost position for a month. */
 export interface PayrollEmployeeCost {
 	employee_id: number;
@@ -944,6 +1003,13 @@ export interface PayrollEmployeeCost {
 	shares: PayrollProjectShare[];
 	/** Every Logged Hour of the month, by Project, independent of pricing. */
 	hours_by_project: PayrollHourLine[];
+	/**
+	 * The slip's latest reconstruction proposal (#308): pending and rejected
+	 * proposals are visible beside the row, and an approved one is attached
+	 * only while its frozen allocation is the current recorded version.
+	 * Pending proposals are never counted as recorded cost.
+	 */
+	reconstruction: PayrollReconstructionSummary | null;
 }
 
 /** The month's employee-cost position, stated in the reporting currency. */

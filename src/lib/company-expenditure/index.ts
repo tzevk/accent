@@ -113,7 +113,13 @@ import {
 	loadPayrollAllocationMonths,
 	loadPayrollDrilldown,
 	loadPayrollMonth,
+	registerReconstructionSummaryReader,
 } from './payroll';
+import {
+	loadReconstructionSummaries,
+	proposeAllocationReconstruction,
+	reviewAllocationReconstruction,
+} from './reconstruction';
 import {
 	PETTY_CASH_COST_SOURCE,
 	loadPettyCashProjectCostBefore,
@@ -290,6 +296,17 @@ export type {
 	PayrollMonthInterpretation,
 } from './payroll';
 export {
+	loadReconstructionSummaries,
+	proposeAllocationReconstruction,
+	reviewAllocationReconstruction,
+} from './reconstruction';
+export type {
+	ProposeReconstructionInput,
+	ReconstructionAllocationRef,
+	ReconstructionCommandResult,
+	ReconstructionReviewInput,
+} from './reconstruction';
+export {
 	CHARGE_BASIS_LABELS,
 	COST_NATURES,
 	NATURE_LABELS,
@@ -368,7 +385,11 @@ export type {
 	PayrollHourLine,
 	PayrollPayStream,
 	PayrollProjectShare,
+	PayrollReconstructionEvidence,
+	PayrollReconstructionLimitation,
+	PayrollReconstructionSummary,
 	PayrollShareBasis,
+	ReconstructionLimitationCode,
 	PeriodBasis,
 	PettyCashCurrencySummary,
 	PettyCashSummary,
@@ -403,6 +424,9 @@ const pool: SqlConnection = {
 // purchase invoice from anywhere in the module.
 registerCostSource(SUPPLIER_INVOICE_ADAPTER);
 
+// #308: the reconstruction module teaches the month read to join each slip's
+// latest reconstruction proposal without a payroll — reconstruction cycle.
+registerReconstructionSummaryReader(loadReconstructionSummaries);
 
 /** Today's calendar month, from the server clock. */
 export function currentMonth(): string {
@@ -600,10 +624,7 @@ export async function fetchCompanyReconciliation(
 		previousOtherExpenseProjectCost,
 		previousPettyCashProjectCost,
 		previousPayrollCost,
-	].reduce(
-		mergeProjectCostMaps,
-		new Map<number, Map<string, number | null>>()
-	);
+	].reduce(mergeProjectCostMaps, new Map<number, Map<string, number | null>>());
 	// Cost to Date is cumulative across the same sources: every month before
 	// the reported one, recognized operating Project cost plus approved period
 	// charges (the direct loader covers both), each source in its own currency.
@@ -613,10 +634,7 @@ export async function fetchCompanyReconciliation(
 		otherExpenseCostBefore,
 		pettyCashCostBefore,
 		payrollCostBefore,
-	].reduce(
-		mergeProjectCostMaps,
-		new Map<number, Map<string, number | null>>()
-	);
+	].reduce(mergeProjectCostMaps, new Map<number, Map<string, number | null>>());
 	// A budget is read when it covers the month or belongs to a Project the
 	// month has a row for, so an approved budget for another period is stated
 	// as such instead of the Project reading as unbudgeted.
