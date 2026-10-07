@@ -1266,6 +1266,22 @@ test('ranks, compares, and drills down through the real report controls', async 
 	);
 	await expect(
 		deltaRow.locator('[data-testid="project-change"]')
+	).toHaveAttribute('data-value', String(EXPECTED.delta.priorMonthChange));
+	await expect(
+		deltaRow.locator('[data-testid="project-change"]')
+	).toHaveAttribute('data-percent', String(EXPECTED.delta.priorMonthPercent));
+	// The change cell shows both by contract (ticket #320: absolute change
+	// plus supported percentage change): the amount in `project-change` and
+	// the percent beside it in the same cell. Prior here is the known 4000,
+	// so 100.00% is supported (parent #304 withholds percent only on a zero
+	// or unknown prior).
+	await expect(
+		deltaRow.locator('[data-testid="project-change"]')
+	).toContainText('4,000');
+	await expect(
+		deltaRow
+			.locator('[data-testid="project-change"]')
+			.locator('xpath=ancestor::td[1]')
 	).toContainText('100.00%');
 	// Every prior amount is known once the whole prior month is in, so no row
 	// is left out of the increase ordering.
