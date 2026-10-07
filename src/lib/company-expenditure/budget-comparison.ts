@@ -56,6 +56,8 @@ export interface BudgetComparisonRow {
 	record_count?: number | null;
 	/** Supported approved period charges among those items (#317). */
 	period_charge_count?: number | null;
+	/** Employees with recorded frozen cost shares, including confirmed zero. */
+	recorded_employee_count?: number | null;
 }
 
 export interface BudgetComparisonInput {
@@ -182,8 +184,12 @@ function evaluateRow(
 	// variance over a zero that is not confirmed, so that stays explicit.
 	const periodCharges = Number(row.period_charge_count ?? 0);
 	const statedConfirmed = Number(row.record_count ?? 0);
+	const recordedEmployees = Number(row.recorded_employee_count ?? 0);
 	const supportsIncurred =
-		confirmedRecords > 0 || statedConfirmed > 0 || periodCharges > 0;
+		confirmedRecords > 0 ||
+		statedConfirmed > 0 ||
+		periodCharges > 0 ||
+		recordedEmployees > 0;
 
 	const flagged = candidates.map((budget) => ({
 		budget,
@@ -218,7 +224,6 @@ function evaluateRow(
 		currency: row.currency,
 		incurred_cost: row.incurred_cost,
 		confirmed_records: confirmedRecords,
-		period_charges: row.period_charge_count,
 		pending_records: pendingRecords,
 		period_charges: periodCharges,
 		candidates: candidateList,
@@ -243,7 +248,7 @@ function evaluateRow(
 	if (compatible.length > 1 && !supportsIncurred) {
 		return incompatible(
 			'unsupported_incurred_cost',
-			`No confirmed Incurred Project Cost is recorded for ${row.project_code} in ${row.currency} for ${month} — neither a confirmed direct cost nor a supported approved period charge — and ${compatible.length} approved budgets cover it (${compatible
+			`No confirmed Incurred Project Cost is recorded for ${row.project_code} in ${row.currency} for ${month}. No direct cost, approved period charge, or recorded employee allocation supports a comparison. ${compatible.length} approved budgets cover this month (${compatible
 				.map((item) => item.budget.budget_uid)
 				.join(', ')}), so no variance is stated.${pendingNote(pendingRecords)}`
 		);
@@ -265,7 +270,7 @@ function evaluateRow(
 		if (!supportsIncurred) {
 			return incompatible(
 				'unsupported_incurred_cost',
-				`${describe(toBudgetCandidate(budget))} covers ${row.project_code} in ${row.currency} for ${month}, but no confirmed Incurred Project Cost is recorded — neither a confirmed direct cost nor a supported approved period charge — so no variance is stated against a zero that is not confirmed.${pendingNote(pendingRecords)}`,
+				`${describe(toBudgetCandidate(budget))} covers ${row.project_code} in ${row.currency} for ${month}. No direct cost, approved period charge, or recorded employee allocation confirms Incurred Project Cost. No variance is stated.${pendingNote(pendingRecords)}`,
 				toBudgetCandidate(budget)
 			);
 		}
@@ -394,7 +399,6 @@ export function buildBudgetSection(
 			confirmed_records: 0,
 			period_charges: 0,
 			pending_records: 0,
-			period_charges: 0,
 			outcome: 'no_incurred_cost',
 			budget: approved.length > 0 ? toBudgetCandidate(approved[0]) : null,
 			candidates: projectBudgets.map(toBudgetCandidate),

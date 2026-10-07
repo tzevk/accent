@@ -1123,3 +1123,15 @@ hand-computed fixture amounts:
 - `src/app/api/admin/expenses/[id]/charges/route.ts`,
   `src/app/api/admin/expenses/[id]/charges/[chargeUid]/route.ts`
 - `e2e/specs/expense-non-operating.spec.ts`
+
+### Payroll-only budget comparisons (#307 / #321)
+
+Frozen employee allocations support a monthly cost budget comparison.
+This includes a recorded zero allocation.
+Estimated employee cost does not support a comparison.
+The report carries `recorded_employee_count` separately from employees with Logged Hours.
+Expense record counts remain expense-only.
+
+`e2e/specs/payroll-only-cost-budget.spec.ts` covers positive and recorded-zero payroll-only Projects.
+It checks budget approval, report values, payroll storage, and the browser comparison.
+Its archived payroll fixtures use June 2017 in the dedicated expenditure database.
