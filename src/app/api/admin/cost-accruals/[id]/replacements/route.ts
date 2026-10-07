@@ -78,6 +78,8 @@ export async function POST(
 			);
 		}
 
+		const optionalText = (value: unknown): string | null =>
+			value === undefined || value === null ? null : String(value);
 		const result = await executeAccrualReplacement(
 			{
 				accrualId,
@@ -87,19 +89,10 @@ export async function POST(
 					body.replaced_amount === undefined
 						? null
 						: (body.replaced_amount as number | string | null),
-				differenceReason:
-					body.difference_reason === undefined
-						? null
-						: String(body.difference_reason),
-				differencePeriod:
-					body.difference_period === undefined
-						? null
-						: String(body.difference_period),
-				evidenceReference:
-					body.evidence_reference === undefined
-						? null
-						: String(body.evidence_reference),
-				reason: body.reason === undefined ? null : String(body.reason),
+				differenceReason: optionalText(body.difference_reason),
+				differencePeriod: optionalText(body.difference_period),
+				evidenceReference: optionalText(body.evidence_reference),
+				reason: optionalText(body.reason),
 				expectedAccrualVersion,
 				expectedInvoiceVersion,
 			},
