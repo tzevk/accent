@@ -1706,7 +1706,7 @@ export async function loadSupplierInvoiceDetail(
             CASE WHEN pp.vendor_invoice_number = i.source_reference
                  THEN 'vendor_invoice_number' ELSE 'invoice_number' END AS match_basis
        FROM payment_payables pp
-       JOIN purchase_invoices i ON i.id = ?
+       JOIN purchase_invoices i ON i.id = ? AND i.isDelete = 0
       WHERE pp.isDelete = 0 AND pp.cost_uid IS NULL
         AND pp.vendor_invoice_number IS NOT NULL AND pp.vendor_invoice_number <> ''
         AND (pp.vendor_invoice_number = i.source_reference

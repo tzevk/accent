@@ -44,6 +44,7 @@ import {
 	buildRevisionPayload,
 	fetchCompanyReconciliation,
 	fetchExpenditureMonths,
+	fetchOrders,
 	isCurrencyCode,
 	loadCloseSnapshot,
 	loadRevisionCandidates,
@@ -222,11 +223,18 @@ export async function GET(request: Request) {
 			} finally {
 				await closeDb.release();
 			}
+			const clientOrders = await fetchOrders({
+				direction: 'client',
+				...(projectId ? { projectId } : {}),
+				limit: 200,
+			});
 			return NextResponse.json({
 				success: true,
 				data,
 				close,
 				revisions,
+				client_orders: clientOrders.orders,
+				client_order_totals: clientOrders.totals,
 				view: 'expenditure',
 			});
 		}

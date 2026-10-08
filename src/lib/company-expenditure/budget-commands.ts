@@ -369,7 +369,7 @@ export async function executeBudgetCommand(
 		// no pair of commands can lock Project and budget rows in opposite
 		// orders. Precedent: the Project quotation route locks the same row.
 		await db.execute(
-			`SELECT project_id FROM projects WHERE project_id = ? FOR UPDATE`,
+			`SELECT project_id FROM projects WHERE project_id = ? AND isDelete = 0 FOR UPDATE`,
 			[target.projectId]
 		);
 		const row = await loadBudgetForUpdate(db, id);

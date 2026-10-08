@@ -726,7 +726,7 @@ export default function OrdersPage() {
 							type="submit"
 							data-testid="order-create-submit"
 							disabled={submitting}
-							className="rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+							className="rounded-lg bg-[#64126D] hover:bg-[#52105a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
 						>
 							Record order
 						</button>
@@ -1529,7 +1529,7 @@ function ReviewRow({ item, canonicalOrders, resolvedMappings, onResolved }) {
 							data-testid="review-submit"
 							onClick={submit}
 							disabled={busy}
-							className="rounded bg-purple-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+							className="rounded bg-[#64126D] hover:bg-[#52105a] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
 						>
 							Record decision
 						</button>
