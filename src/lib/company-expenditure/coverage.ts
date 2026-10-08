@@ -59,9 +59,9 @@ export const SOURCE_COVERAGE: readonly SourceCoverageDeclaration[] = [
 	{
 		code: 'cash_and_payments_not_incorporated',
 		label: 'Cash paid',
-		status: 'not_incorporated',
+		status: 'wired',
 		detail:
-			'Dated outward settlements and advances are not linked yet, so no company cash-paid figure is presented. Petty-cash funding and spending are incorporated separately (#316).',
+			'Dated outward cash paid is the month\u2019s supported third-party movements: recorded settlements, native payroll payouts, and dated petty-cash spending (#318). Bank-into-float funding is one internal movement shown apart from paid; client receipts, internal transfers, and undated balances are disclosed, never counted.',
 	},
 	{
 		code: 'petty_cash_source',

@@ -47,6 +47,7 @@ import type {
 	SupplierCommitmentSection,
 } from '@/lib/company-expenditure';
 import BudgetSection, { type BudgetSectionPayload } from './budget-section';
+import CashSection, { type CashSectionPayload } from './cash-section';
 
 interface GroupRow {
 	key: string;
@@ -415,6 +416,8 @@ interface ReconciliationPayload {
 		unknown_currency: { count: number };
 	};
 	budgets: BudgetSectionPayload;
+	/** Dated outward cash paid (#318), outside incurred cost. */
+	cash: CashSectionPayload;
 	project_options: Array<{
 		project_id: number;
 		project_code: string;
@@ -468,6 +471,12 @@ export interface ExpenditureViewProps {
 	 * conjunction regardless of what renders.
 	 */
 	canRevise: boolean;
+	/**
+	 * Financial read gate + `other_expenses:update` — may record an outward
+	 * cash settlement (#318). The server enforces the same conjunction
+	 * regardless of what renders.
+	 */
+	canRecordSettlement: boolean;
 }
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
@@ -632,6 +641,7 @@ export default function ExpenditureView({
 	canProposeReconstruction,
 	canReviewReconstruction,
 	canRevise,
+	canRecordSettlement,
 }: ExpenditureViewProps) {
 	const queryClient = useQueryClient();
 	const [projectFilter, setProjectFilter] = useState('all');
@@ -3280,6 +3290,15 @@ export default function ExpenditureView({
 				projectOptions={data.project_options}
 				canManage={canEditCost}
 				canApprove={canRecognize}
+			/>
+
+			{/* Dated outward cash paid (#318). Its own section: a payment never
+			    enters the cost totals above, funding sits outside paid, and
+			    legacy gaps are disclosed, never counted. */}
+			<CashSection
+				month={month}
+				section={data.cash}
+				canRecord={canRecordSettlement}
 			/>
 
 			<p className="mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed text-gray-500">

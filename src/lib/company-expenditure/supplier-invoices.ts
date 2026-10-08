@@ -329,6 +329,10 @@ export const SUPPLIER_INVOICE_ADAPTER: CostSourceAdapter = {
 			classification:
 				(s(row, 'cost_classification') as CostClassification | null) ?? null,
 			project_id: num(row, 'project_id'),
+			// Supplier invoices carry no nature of their own: they are
+			// operating cost by construction (the module hardcodes the same
+			// nature on their CostRecords).
+			nature: 'operating',
 		};
 	},
 	/**

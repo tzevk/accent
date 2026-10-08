@@ -52,6 +52,11 @@
  *       { id, command, expectedVersion, reason?, evidenceReference?, patch? },
  *       actor
  *     )
+ *     recordSettlement(input, actor, { connection? })
+ *       Record one dated outward cash movement against a cost or payroll slip
+ *       identity; a manual payment never restates a native payout (#318).
+ *     executeSettlementCommand({ id|uid, command, expectedVersion, patch?, reason? }, actor)
+ *       Correct (`update`) or reverse (`cancel`) a recorded settlement.
  *
  * Invariants the module guarantees to every caller:
  *  - confirmed cost is `recognition_state = 'recognized'` and nothing else;
@@ -140,6 +145,7 @@ import {
 	loadAccrualMonths,
 	loadAccrualProjectCostBefore,
 } from './accruals';
+import { loadCashSection, loadSettlementMonths } from './cash';
 export {
 	captureAccrualCost,
 	executeAccrualCommand,
@@ -242,6 +248,31 @@ export type {
 	CapturePeriodChargeInput,
 	PeriodChargeCommandInput,
 } from './charges';
+export {
+	executeSettlementCommand,
+	loadCashSection,
+	loadSettlementCandidates,
+	loadSettlementEvents,
+	loadSettlementGuardRow,
+	loadSettlementMonths,
+	recordSettlement,
+	settlementRegisterRefusal,
+} from './cash';
+export type {
+	CashMovementJson,
+	CashMovementKind,
+	CashMovementSource,
+	CashSection,
+	CashTargetJson,
+	RegisterRefusal as SettlementRegisterRefusal,
+	SettlementCandidateCost,
+	SettlementCandidateSlip,
+	SettlementCommandInput,
+	SettlementEvent,
+	SettlementGuardRow,
+	SettlementInput,
+	SettlementRecord,
+} from './cash';
 
 export {
 	createOrder,
@@ -553,6 +584,9 @@ export async function fetchExpenditureMonths(): Promise<string[]> {
 		// yet) must stay reachable through the month controls.
 		...orders,
 		...accrual,
+		// A settlement-only month (cash paid with no cost of its own) must
+		// stay reachable the same way (#318).
+		...(await loadSettlementMonths(pool)),
 	]);
 	months.add(current);
 	return [...months].sort().reverse();
@@ -767,6 +801,9 @@ export async function fetchCompanyReconciliation(
 		{ month },
 		{ connection: db }
 	);
+	// Dated outward cash paid (#318): settlements, native payouts, and petty
+	// spending with funding apart, on the same connection.
+	const cash = await loadCashSection(db, month);
 
 	return buildReconciliation({
 		month,
@@ -784,6 +821,7 @@ export async function fetchCompanyReconciliation(
 		projectFilter: request.projectId ?? null,
 		projectOptions,
 		supplierCommitment,
+		cash,
 		availableMonths: [
 			...new Set([
 				...directMonths,

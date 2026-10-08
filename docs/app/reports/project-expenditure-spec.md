@@ -123,6 +123,7 @@ Keep Employee Utilization as a workforce report. Expand the employee-project cos
 - Petty-cash funding is not expense recognition. The voucher and its mirrored funding credit represent one cash funding event. Actual spending creates or settles its underlying expense once.
 - Client payment entries are receipts, not expenditure. Outward settlements and advances need dated evidence and links. Cumulative paid amounts without payment dates cannot establish monthly cash paid.
 - Keep outward bank/cash movement separate from internal transfers, funding credits, and settlements of already recognized cost. Disclose incomplete payment coverage. Do not fabricate a monthly cash total from status flags or current balances.
+- Dated outward cash paid (#318) is the month's recorded settlements plus native payroll payouts (mark-paid `payment_status='paid'` with a real `payment_date`) plus dated petty-cash spending, each counted once by canonical movement identity. A manual settlement never restates a native movement. Bank-into-float funding is one internal movement per voucher shown outside paid. Withholdings and deductions are settlement destinations against the same liability, never cost reductions. Client receipts, internal transfers, undated balances, and unlinked free-text rows are disclosed as legacy evidence, never counted.
 
 ### Tax, currency, assets, and completeness
 

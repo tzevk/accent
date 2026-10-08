@@ -160,6 +160,14 @@ _Avoid_: Sort order, Priority, Importance
 The portion of a supplier order not yet recognized as incurred cost. Paying a supplier invoice does not itself create another incurred cost.
 _Avoid_: Unpaid invoice balance, Client PO balance, Cash paid
 
+**Outward Cash Paid**:
+Dated supported third-party money out in a month (`cash` on the reconciliation): recorded settlements, native payroll payouts, and dated petty-cash spending, each counted once by canonical movement identity (`settle:<uid>`, `payroll:<slipId>`, `petty:<rowId>`). Bank-into-float funding is one internal movement per voucher (`fund:<voucherId>`) shown outside paid. Client receipts, internal transfers, undated balances, and unlinked free-text rows are disclosed as legacy evidence, never counted.
+_Avoid_: Company Incurred Cost, Funding, Client receipts, Current balance
+
+**Outward Settlement**:
+One dated outward movement against a canonical cost or payroll slip identity (`financial_settlements`, idempotent `settle-<uuid>`), with amount, currency, cash date, reference, destination, actor, and version. Withholdings and deductions remit against the same liability without reducing its cost. A manual settlement never restates a native movement (payroll payout, petty spend, funding). Corrections are versioned commands with history, never edits or deletes.
+_Avoid_: Second expense, Payroll payout (when meaning the native one), Funding
+
 **Petty Cash Funding**:
 Cash moved into the petty-cash float — one cash voucher (`cash_vouchers`) and its mirrored credit row in `petty_cash_expenses` are one funding event. Cash movement only: neither the voucher total nor the mirrored credit is operating cost. The pair carries a funding-event identity (`fund-<voucher>`, never a Cost Identity), and repeat mirroring updates that one row.
 _Avoid_: Petty cash expense, Petty cash cost, Advance

@@ -19,6 +19,7 @@
 
 import { add, R } from '@/lib/money';
 import { buildBudgetSection } from './budget-comparison';
+import type { CashSection } from './cash';
 import type { SupplierCommitmentSection } from './commitments';
 import type { SourceCoverageDeclaration } from './coverage';
 import {
@@ -883,6 +884,50 @@ function pettyCashNotices(summary: PettyCashSummary): CoverageNotice[] {
 	return notices;
 }
 
+/**
+ * The outward-cash disclosures (#318). Each legacy gap states itself only
+ * while it holds rows; a month with no legacy evidence carries no notice.
+ */
+function cashNotices(section: CashSection): CoverageNotice[] {
+	const notices: CoverageNotice[] = [];
+	if (section.legacy.outward_unlinked.count > 0) {
+		notices.push({
+			code: 'cash_legacy_unlinked',
+			label: 'Legacy outward payments without a canonical link',
+			detail: `${section.legacy.outward_unlinked.count} legacy payment record(s) name no cost identity and carry no settlement date, so they are disclosed here and never enter cash paid.`,
+			severity: 'warning',
+		});
+	}
+	if (section.legacy.undated_balances.count > 0) {
+		notices.push({
+			code: 'cash_undated_balances',
+			label: 'Paid balances without a usable payment date',
+			detail: `${section.legacy.undated_balances.count} payable balance(s) state paid money with no payment date, so no historical cash month is inferred for them.`,
+			severity: 'warning',
+		});
+	}
+	if (
+		section.legacy.client_receipts.count > 0 ||
+		section.legacy.internal_transfers.count > 0
+	) {
+		notices.push({
+			code: 'cash_receipts_excluded',
+			label: 'Client receipts and internal transfers excluded',
+			detail: `${section.legacy.client_receipts.count} client receipt(s) and ${section.legacy.internal_transfers.count} internal transfer(s) dated in this month are money in or own-account movement, never outward cash paid.`,
+			severity: 'warning',
+		});
+	}
+	if (section.unresolved_targets.count > 0) {
+		notices.push({
+			code: 'cash_unresolved_targets',
+			label: 'Cash movements whose target no longer resolves',
+			detail: `${section.unresolved_targets.count} movement(s) name a cost or slip that no longer resolves, so their cover cannot be stated.`,
+			severity: 'warning',
+		});
+	}
+	return notices;
+}
+
 /** Approved charges counted as cost: their source is still confirmed cost. */
 function countedChargesOf(charges: PeriodCharge[]): PeriodCharge[] {
 	return charges.filter(
@@ -1148,6 +1193,13 @@ export interface ReconciliationInput {
 	 * cost reconciliation; funding never enters the company totals.
 	 */
 	pettyCash: PettyCashSummary;
+	/**
+	 * Dated outward cash paid for the same month (#318), stated beside the
+	 * cost reconciliation; a payment never creates cost. Required: the real
+	 * `fetchCompanyReconciliation` always loads the complete section, and no
+	 * caller constructs a reconciliation without it.
+	 */
+	cash: CashSection;
 	/** Requested reporting basis; absent means the company reporting currency. */
 	reportingCurrency?: string | null;
 	/** Recorded employee cost and estimates (ADR-0016) for the month. */
@@ -1467,6 +1519,7 @@ export function buildReconciliation(
 		}),
 		...payroll.coverage,
 		...pettyCashNotices(input.pettyCash),
+		...cashNotices(input.cash),
 	];
 
 	// Rows are built company-wide first: the ranking, the comparison's
@@ -1619,5 +1672,9 @@ export function buildReconciliation(
 		// consumed by recognized cost, with its explicit exceptions. Never part
 		// of `company`, `projects`, or `evidence`.
 		supplier_commitment: input.supplierCommitment,
+		// Dated outward cash paid (#318): settlements, native payouts, and
+		// petty spending, with funding apart and legacy gaps disclosed. Never
+		// part of `company`, `projects`, or `evidence`.
+		cash: input.cash,
 	};
 }

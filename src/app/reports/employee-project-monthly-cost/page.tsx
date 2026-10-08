@@ -597,6 +597,18 @@ export default function EmployeeProjectMonthlyCostPage() {
 			can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ) &&
 			can(RESOURCES.PAYROLL, PERMISSIONS.READ) &&
 			can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE));
+	// Recording an outward cash settlement (#318) moves money: the financial
+	// read gate plus the cost update privilege. The server enforces the same
+	// conjunction.
+	const canRecordSettlement =
+		isSuperAdmin ||
+		(!!can &&
+			!!RESOURCES &&
+			!!PERMISSIONS &&
+			can(RESOURCES.REPORTS, PERMISSIONS.READ) &&
+			can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ) &&
+			can(RESOURCES.PAYROLL, PERMISSIONS.READ) &&
+			can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.UPDATE));
 	// The expenditure view reads the direct-expense ledger, so it needs that
 	// source's read privilege as well as reports:read. Without it the tab is
 	// not offered and the report opens on the employee-cost views; the server
@@ -846,6 +858,7 @@ export default function EmployeeProjectMonthlyCostPage() {
 					canProposeReconstruction={canEditCost}
 					canReviewReconstruction={canRecognizeCost}
 					canRevise={canReviseAllocation}
+					canRecordSettlement={canRecordSettlement}
 				/>
 			);
 		}
