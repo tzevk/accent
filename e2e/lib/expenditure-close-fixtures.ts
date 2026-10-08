@@ -491,7 +491,7 @@ async function registerCostIdentity(
 		`INSERT INTO financial_cost_links
          (cost_uid, source_table, source_id, role, basis, review_state)
        VALUES (?, ?, ?, 'cost', 'system', 'confirmed')`,
-		[costUid, String(sourceId)]
+		[costUid, sourceTable, String(sourceId)]
 	);
 	await exec(
 		`INSERT INTO financial_cost_events
@@ -500,6 +500,7 @@ async function registerCostIdentity(
        VALUES (?, ?, ?, 1, 'recorded', NULL, ?, ?, ?)`,
 		[
 			costUid,
+			sourceTable,
 			sourceId,
 			`E2E fixture ${costUid}`,
 			`${CLOSE_PREFIX} evidence`,

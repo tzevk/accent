@@ -221,7 +221,7 @@ export default async function globalSetup(): Promise<void> {
 
 		const cash = await seedCashFixtures();
 		console.log(
-			`[e2e] cash settlement fixtures seeded for 2018-10, 2018-11 and 2018-12 ` +
+			`[e2e] cash settlement fixtures seeded for 2023-01, 2023-02 and 2023-03 ` +
 				`(${Object.keys(cash.projects).length} projects, slip #${cash.slipId})`
 		);
 
