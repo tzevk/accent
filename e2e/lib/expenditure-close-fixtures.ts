@@ -191,6 +191,12 @@ export const CLOSE_CLERK = {
 		'payroll:create',
 		'payroll:update',
 		'purchase_orders:update',
+		// The direct-cost register route (`PUT/DELETE /api/admin/expenses/:id`)
+		// gates on `proposals:update`/`proposals:delete` (pre-existing, not
+		// this ticket's to change). The clerk carries both so the register
+		// refusal tests reach the close guard instead of the auth gate.
+		'proposals:update',
+		'proposals:delete',
 	],
 	ip: '198.18.0.119',
 } as const;
@@ -807,7 +813,9 @@ export async function seedCloseFixtures(): Promise<SeededClose> {
 				clerkUserId,
 				row.employee,
 				row.project,
-				`e2e-322-activity-${row.id}`,
+				// activity_id is varchar(36): keep the fixture namespace but
+				// shorten '-assign-' to '-act-' so the value fits.
+				row.id.replace('-assign-', '-act-'),
 				JSON.stringify(row.rows),
 				row.assignedDate,
 			]

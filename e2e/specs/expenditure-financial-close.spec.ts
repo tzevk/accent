@@ -133,8 +133,8 @@ async function readReport(
 		currency: string | null;
 		incurred_cost: number | null;
 		currency_totals: Array<{ currency: string; incurred_cost: number }>;
+		groups: Array<{ key: string; amount: number }>;
 	};
-	groups: Array<{ key: string; amount: number }>;
 	projects: Array<{
 		project_code: string;
 		currency: string;
@@ -153,8 +153,8 @@ async function readReport(
 				currency: string | null;
 				incurred_cost: number | null;
 				currency_totals: Array<{ currency: string; incurred_cost: number }>;
+				groups: Array<{ key: string; amount: number }>;
 			};
-			groups: Array<{ key: string; amount: number }>;
 			projects: Array<{
 				project_code: string;
 				currency: string;
@@ -303,7 +303,7 @@ test('reviews the complete January month: reconciled, no blockers', async () => 
 	const report = await readReport(clerk, CLOSE_MONTH);
 	expect(report.company.incurred_cost).toBe(janIncurred);
 	const groups = Object.fromEntries(
-		report.groups.map((entry) => [entry.key, entry.amount])
+		report.company.groups.map((entry) => [entry.key, entry.amount])
 	);
 	expect(
 		(groups.incurred_project_cost ?? 0) +
@@ -573,12 +573,15 @@ test('finalizes February payroll without closing the month', async () => {
 	expect(data.payroll.recorded_total).toBe(slipCost);
 
 	// Payroll finalization freezes attribution but leaves the month open:
-	// supplier cost in the finalized month stays writable.
-	const update = await clerk.post(COMMANDS(seeded.expenseIds.d3), {
+	// a cost in the finalized month stays writable through the command path.
+	// d2 is the month's draft cost (d3 is recognized, which the state machine
+	// categorically refuses to update), so the update carries a real patch.
+	const update = await clerk.post(COMMANDS(seeded.expenseIds.d2), {
 		data: {
 			command: 'update',
 			expected_version: 1,
-			evidence_reference: `${CLOSE_PREFIX}-EVID-D3`,
+			evidence_reference: `${CLOSE_PREFIX}-EVID-D2`,
+			patch: { evidenceReference: `${CLOSE_PREFIX}-EVID-D2` },
 		},
 	});
 	expect(update.status(), await update.text()).toBe(200);
@@ -600,12 +603,15 @@ test('refuses to close incomplete February with its blockers', async () => {
 	const body = (await response.json()) as {
 		success: boolean;
 		code: string;
-		review: CloseReview;
+		blockers: BlockEntry[];
 	};
 	expect(body.success).toBe(false);
 	expect(body.code).toBe('close_blocked');
-	expect(blockerCodes(body.review)).toContain('records_awaiting_recognition');
-	expect(blockerCodes(body.review)).toContain('currency_conversion_missing');
+	// The refusal carries the blockers at top level (the route spreads the
+	// error detail); there is no `review` wrapper on this response.
+	const codes = body.blockers.map((entry) => entry.code);
+	expect(codes).toContain('records_awaiting_recognition');
+	expect(codes).toContain('currency_conversion_missing');
 
 	const snapshots = await rows<{ month: string }>(
 		`SELECT month FROM financial_close_snapshots
@@ -613,7 +619,7 @@ test('refuses to close incomplete February with its blockers', async () => {
 		[OPEN_MONTH]
 	);
 	expect(snapshots).toHaveLength(0);
-	evidence.febBlockers = blockerCodes(body.review);
+	evidence.febBlockers = codes;
 });
 
 test('refuses to close the empty March month', async () => {
@@ -624,12 +630,13 @@ test('refuses to close the empty March month', async () => {
 	const body = (await response.json()) as {
 		success: boolean;
 		code: string;
-		review: CloseReview;
+		blockers: BlockEntry[];
 	};
 	expect(body.success).toBe(false);
 	expect(body.code).toBe('close_blocked');
 	// An empty store is not proof of zero expenditure.
-	expect(blockerCodes(body.review)).toContain('no_recognized_cost');
+	const codes = body.blockers.map((entry) => entry.code);
+	expect(codes).toContain('no_recognized_cost');
 });
 
 test('outsider gets no close access and changes nothing', async () => {
