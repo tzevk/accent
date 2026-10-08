@@ -26,7 +26,24 @@ import {
 	buildMonthlyWorkbookBuffer,
 	fileBaseForFYExcel,
 	fileBaseForMonthlyExcel,
+	buildExpenditureWorkbookBuffer,
+	fileBaseForExpenditureExcel,
 } from '@/app/reports/employee-project-monthly-cost/excel-template';
+import { canReadFinancialSources } from '../financial-read-gate';
+import {
+	dayOfDate,
+	buildClosePayload,
+	buildRevisionPayload,
+	fetchCompanyReconciliation,
+	fetchOrders,
+	isCurrencyCode,
+	loadCloseSnapshot,
+	loadRevisionCandidates,
+	loadRevisionHistory,
+	reviewReconciliation,
+} from '@/lib/company-expenditure';
+import type { ClosePayload, RevisionPayload } from '@/lib/company-expenditure';
+import { dbConnect } from '@/utils/database';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -68,6 +85,145 @@ export async function GET(request: Request) {
 		const monthParam = url.searchParams.get('month');
 		const viewParam = (url.searchParams.get('view') || '').toLowerCase();
 
+		// Company expenditure export (ticket #324)
+		if (viewParam === 'expenditure') {
+			if (!canReadFinancialSources(user)) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'You do not have permission to view company expenditure',
+					},
+					{ status: 403 }
+				);
+			}
+			if (!monthParam || !/^\d{4}-\d{2}$/.test(monthParam)) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'Valid month (YYYY-MM) is required for the expenditure view',
+					},
+					{ status: 400 }
+				);
+			}
+			const projectIdParam = url.searchParams.get('project_id');
+			let projectId: number | null = null;
+			if (projectIdParam) {
+				projectId = Number(projectIdParam);
+				if (!Number.isInteger(projectId) || projectId <= 0) {
+					return NextResponse.json(
+						{ success: false, error: 'Valid project_id is required' },
+						{ status: 400 }
+					);
+				}
+			}
+			const asOfParam = url.searchParams.get('as_of');
+			let asOf: string | null = null;
+			if (asOfParam !== null) {
+				if (dayOfDate(asOfParam) === null) {
+					return NextResponse.json(
+						{
+							success: false,
+							error: 'Valid as_of date (YYYY-MM-DD) is required',
+							code: 'invalid_as_of',
+						},
+						{ status: 400 }
+					);
+				}
+				if (asOfParam.slice(0, 7) !== monthParam) {
+					return NextResponse.json(
+						{
+							success: false,
+							error: 'as_of must fall inside the reported month',
+							code: 'as_of_outside_month',
+						},
+						{ status: 400 }
+					);
+				}
+				asOf = asOfParam;
+			}
+			const reportingCurrencyParam = url.searchParams.get('reporting_currency');
+			const reportingCurrency = reportingCurrencyParam
+				? reportingCurrencyParam.trim().toUpperCase()
+				: null;
+			if (reportingCurrency !== null && !isCurrencyCode(reportingCurrency)) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'Valid reporting_currency (three-letter code) is required',
+						code: 'invalid_reporting_currency',
+					},
+					{ status: 400 }
+				);
+			}
+
+			const data = await fetchCompanyReconciliation({
+				month: monthParam,
+				projectId,
+				asOf,
+				reportingCurrency,
+			});
+
+			let close: ClosePayload | null = null;
+			let revisions: RevisionPayload | null = null;
+			const closeDb = await dbConnect();
+			try {
+				const snapshot = await loadCloseSnapshot(closeDb, monthParam);
+				close = buildClosePayload(
+					monthParam,
+					snapshot,
+					reviewReconciliation(data)
+				);
+				const [revisionHistory, revisionCandidates] = await Promise.all([
+					loadRevisionHistory(closeDb, monthParam),
+					loadRevisionCandidates(closeDb, monthParam),
+				]);
+				revisions = buildRevisionPayload({
+					month: monthParam,
+					snapshot,
+					reconciliation: data,
+					candidates: revisionCandidates,
+					revisions: revisionHistory,
+				});
+			} finally {
+				await closeDb.release();
+			}
+
+			const clientOrders = await fetchOrders({
+				direction: 'client',
+				...(projectId ? { projectId } : {}),
+			});
+
+			const buffer = await buildExpenditureWorkbookBuffer({
+				reconciliation: data,
+				close,
+				revisions,
+				asOf,
+				clientOrders: clientOrders.orders.map((o) => ({
+					orderNumber: o.orderNumber,
+					counterpartyName: o.counterpartyName,
+					projectCode: o.projectCode,
+					projectName: o.projectName,
+					orderDate: o.orderDate,
+					currency: o.currency,
+					grossAmount: o.grossAmount,
+					netAmount: o.netAmount,
+					clientInvoicedValue: o.clientInvoicedValue,
+					clientRemainingValue: o.clientRemainingValue,
+					status: o.status,
+				})),
+			});
+
+			return new Response(new Uint8Array(buffer), {
+				status: 200,
+				headers: {
+					'Content-Type':
+						'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+					'Content-Disposition': `attachment; filename="${fileBaseForExpenditureExcel(data, projectId)}"`,
+					'Cache-Control': 'no-store',
+				},
+			});
+		}
+
 		// Legacy per-employee export
 		if (employeeIdParam) {
 			const employeeId = Number(employeeIdParam);
@@ -104,7 +260,7 @@ export async function GET(request: Request) {
 		}
 
 		// Monthly company export
-		if (viewParam === 'monthly' || monthParam) {
+		if (viewParam === 'monthly' || (!viewParam && monthParam)) {
 			const month = monthParam || '';
 			if (!month || !/^\d{4}-\d{2}$/.test(month)) {
 				return NextResponse.json(

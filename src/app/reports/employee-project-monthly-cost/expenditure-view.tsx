@@ -25,6 +25,7 @@ import {
 	BanknotesIcon,
 	ChevronDownIcon,
 	ChevronRightIcon,
+	DocumentArrowDownIcon,
 	ExclamationTriangleIcon,
 	InformationCircleIcon,
 	PlusIcon,
@@ -675,6 +676,50 @@ export default function ExpenditureView({
 	);
 	const [cancelChargeTarget, setCancelChargeTarget] =
 		useState<PeriodChargeJson | null>(null);
+	const [exporting, setExporting] = useState(false);
+
+	const handleExport = async () => {
+		setExporting(true);
+		try {
+			const params = new URLSearchParams({
+				view: 'expenditure',
+				month,
+			});
+			if (projectFilter && projectFilter !== 'all') {
+				params.set('project_id', projectFilter);
+			}
+			if (reportingCurrency) {
+				params.set('reporting_currency', reportingCurrency);
+			}
+			const url = `/api/reports/employee-project-monthly-cost/download?${params.toString()}`;
+			const response = await fetch(url, { credentials: 'include' });
+			if (!response.ok) {
+				const msg = await response.text().catch(() => '');
+				throw new Error(
+					`Export failed (${response.status})${msg ? `: ${msg}` : ''}`
+				);
+			}
+			const blob = await response.blob();
+			const disposition = response.headers.get('Content-Disposition') || '';
+			const match = disposition.match(/filename="?([^";]+)"?/i);
+			const filename =
+				match?.[1] ||
+				`Company_Expenditure_${month}${projectFilter && projectFilter !== 'all' ? `_Project_${projectFilter}` : ''}.xlsx`;
+			const objectUrl = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = objectUrl;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+		} catch (e) {
+			console.error(e);
+			alert(e instanceof Error ? e.message : 'Failed to export report');
+		} finally {
+			setExporting(false);
+		}
+	};
 
 	const reconciliationQuery = useQuery<{
 		data: ReconciliationPayload;
@@ -1127,6 +1172,18 @@ export default function ExpenditureView({
 							className={`h-4 w-4 ${reconciliationQuery.isFetching ? 'animate-spin' : ''}`}
 						/>
 						Refresh
+					</button>
+					<button
+						type="button"
+						data-testid="expenditure-export-button"
+						onClick={handleExport}
+						disabled={exporting}
+						className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+					>
+						<DocumentArrowDownIcon
+							className={`h-4 w-4 ${exporting ? 'animate-bounce' : ''}`}
+						/>
+						{exporting ? 'Exporting…' : 'Export Excel'}
 					</button>
 					{canRecord && (
 						<button

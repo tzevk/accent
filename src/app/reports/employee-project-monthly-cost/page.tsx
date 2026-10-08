@@ -667,9 +667,11 @@ export default function EmployeeProjectMonthlyCostPage() {
 		setExporting(true);
 		try {
 			const url =
-				viewMode === 'monthly'
-					? `/api/reports/employee-project-monthly-cost/download?view=monthly&month=${selectedMonth}`
-					: `/api/reports/employee-project-monthly-cost/download?view=fy&fy=${selectedFy}`;
+				viewMode === 'expenditure'
+					? `/api/reports/employee-project-monthly-cost/download?view=expenditure&month=${selectedMonth}`
+					: viewMode === 'monthly'
+						? `/api/reports/employee-project-monthly-cost/download?view=monthly&month=${selectedMonth}`
+						: `/api/reports/employee-project-monthly-cost/download?view=fy&fy=${selectedFy}`;
 			const response = await fetch(url, { credentials: 'include' });
 			if (!response.ok) {
 				const msg = await response.text().catch(() => '');
@@ -682,9 +684,11 @@ export default function EmployeeProjectMonthlyCostPage() {
 			const match = disposition.match(/filename="?([^";]+)"?/i);
 			const filename =
 				match?.[1] ||
-				(viewMode === 'monthly'
-					? `Company_Cost_${selectedMonth}.xlsx`
-					: `Company_Cost_FY${selectedFy}.xlsx`);
+				(viewMode === 'expenditure'
+					? `Company_Expenditure_${selectedMonth}.xlsx`
+					: viewMode === 'monthly'
+						? `Company_Cost_${selectedMonth}.xlsx`
+						: `Company_Cost_FY${selectedFy}.xlsx`);
 			const objectUrl = URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = objectUrl;

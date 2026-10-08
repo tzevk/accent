@@ -1473,3 +1473,36 @@ The conversion-rounding fixture uses November and December 2020, separate from t
 The allocation financial-year check uses FY 2025–26 for February and March 2026.
 The order balance example is 250000.75 minus two invoices of 33333.33: 183334.09.
 Global setup removes guarded allocation-month slips before deleting any fixture employee roster.
+
+### Version-matched expenditure evidence export (#324)
+
+Ticket #324 delivers the authorized Excel evidence export for expenditure reconciliation.
+The export downloads from `GET /api/reports/employee-project-monthly-cost/download?view=expenditure`.
+It accepts `month`, optional `project_id`, `as_of`, and `reporting_currency`.
+The endpoint enforces the `canReadFinancialSources` permission gate.
+Super administrators and users with reports, expenses, and payroll read privileges can access it.
+Unauthorized requests receive 403 Forbidden without leaking financial figures.
+
+The workbook contains five distinct sheets matching the web reconciliation:
+
+1. `Company Reconciliation`: Company-wide totals, group breakdown, currency subtotals, and filtered project subtotal.
+2. `Project Detail`: Individual project incurred cost, logged hours, conversion status, and evidence state.
+3. `Budgets & Commitments`: Approved cost budgets, supplier orders, and commercial client orders.
+4. `Cash Paid`: Outward cash movements, payment settlements, destinations, and payment references.
+5. `Revisions & Close`: Month close status, frozen snapshot metadata, and post-close revision events.
+
+Missing or unconvertible amounts render as "Missing / Unconverted" or "—".
+They never appear as zeroes.
+Project filters narrow project details while preserving unfiltered company reconciliation totals.
+Commercial client orders display an explicit warning banner stating they are context only and not revenue or profit.
+The UI expenditure view includes an Export Excel button in the control toolbar.
+
+#### Files (#324)
+
+- `src/app/reports/employee-project-monthly-cost/excel-template.ts` (builder + sheet formatters)
+- `src/app/api/reports/employee-project-monthly-cost/download/route.ts` (authorized download handler)
+- `src/app/reports/employee-project-monthly-cost/expenditure-view.tsx` (export button and handler)
+- `src/app/reports/employee-project-monthly-cost/page.tsx` (viewMode export support)
+- `docs/adr/0026-version-matched-expenditure-excel-export.md`
+- `e2e/lib/expenditure-excel-fixtures.ts`
+- `e2e/specs/expenditure-excel-export.spec.ts`
