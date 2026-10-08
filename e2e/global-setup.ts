@@ -25,6 +25,10 @@ import {
 	seedCloseFixtures,
 } from './lib/expenditure-close-fixtures';
 import {
+	cleanupFinancialRevisionFixtures,
+	seedFinancialRevisionFixtures,
+} from './lib/expenditure-revision-fixtures';
+import {
 	cleanupExpenditureFixtures,
 	seedExpenditureFixtures,
 } from './lib/expenditure-fixtures';
@@ -102,6 +106,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupAccrualConsumptionFixtures();
 		await cleanupCashFixtures();
 		await cleanupCloseFixtures();
+		await cleanupFinancialRevisionFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
 		// trusted IP header; browser sign-ins carry no such header, so they land
@@ -253,6 +258,13 @@ export default async function globalSetup(): Promise<void> {
 			`[e2e] financial-close fixtures seeded for 2021-01 and 2021-02 ` +
 				`(${Object.keys(close.projects).length} projects, ` +
 				`close clerk #${close.clerkUserId})`
+		);
+
+		const financialRevision = await seedFinancialRevisionFixtures();
+		console.log(
+			`[e2e] financial-revision fixtures seeded for 2021-04 and 2021-05 ` +
+				`(${Object.keys(financialRevision.projects).length} projects, ` +
+				`revise clerk #${financialRevision.clerkUserId})`
 		);
 	} finally {
 		await closeDb();
