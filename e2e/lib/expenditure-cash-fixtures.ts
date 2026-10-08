@@ -277,6 +277,19 @@ export async function cleanupCashFixtures(): Promise<number> {
 			`DELETE FROM payroll_runs WHERE month = 3 AND year = 2023 AND run_number = 1`
 		)
 	).affectedRows;
+	// Slips of our own employees in any month, before the employee delete:
+	// inert gate slips from other fixtures' months survive the month-scoped
+	// delete above, and an aborted run leaves them behind to trip the
+	// employee delete (FK). Namespace-scoped, so no real data is touched.
+	removed += (
+		await exec(
+			`DELETE FROM payroll_slips
+        WHERE employee_id IN (
+          SELECT id FROM employees WHERE employee_id LIKE ?
+        )`,
+			[`${CASH_PREFIX}%`]
+		)
+	).affectedRows;
 	removed += (
 		await exec(`DELETE FROM employees WHERE employee_id LIKE ?`, [
 			`${CASH_PREFIX}%`,

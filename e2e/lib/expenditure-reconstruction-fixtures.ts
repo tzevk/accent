@@ -494,6 +494,18 @@ export async function cleanupExpenditureReconstructionFixtures(): Promise<void> 
 		[RECONSTRUCTION_USERNAME]
 	);
 	await exec(`DELETE FROM users WHERE username = ?`, [RECONSTRUCTION_USERNAME]);
+	// Slips of our own employees in any month, before the employee delete
+	// below: inert gate slips written for them by other fixtures' months
+	// survive month-scoped deletes, and an aborted run leaves them behind to
+	// trip the employee delete (FK). Namespace-scoped to our own codes, so
+	// no real payroll data is touched.
+	await exec(
+		`DELETE FROM payroll_slips
+      WHERE employee_id IN (
+        SELECT id FROM employees WHERE employee_id IN (${placeholders})
+      )`,
+		employeeCodes
+	);
 	await exec(
 		`DELETE FROM employees WHERE employee_id IN (${placeholders})`,
 		employeeCodes
