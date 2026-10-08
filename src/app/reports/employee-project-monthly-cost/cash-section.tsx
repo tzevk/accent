@@ -162,7 +162,11 @@ export default function CashSection({
 			};
 			return body.data.candidates;
 		},
-		enabled: canRecord,
+		// Only fetch the target picker when the form is actually opened. Fetching
+		// on every view mount added one API request per report load for every
+		// authorized reader, which pushed other report flows past the shared
+		// `api` rate limit.
+		enabled: canRecord && formOpen,
 	});
 
 	const candidates = candidatesQuery.data;
