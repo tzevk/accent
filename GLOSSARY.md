@@ -266,3 +266,7 @@ _Avoid_: Payroll finalization, Locked run, Frozen estimate
 **Financial Revision**:
 An authorized correction to a closed financial month (`financial_revision_events`, `rev-<uuid>` or a caller-supplied key) carrying the target cost or settlement, the operation (correct or reverse), the version read, the frozen closed version targeted, a reason, an evidence reference, the actor, and the timestamp, with the prior and new figures preserved. A revision runs through the source's own command path, carries linked order consumptions forward in the same transaction, and never rewrites the frozen close. Payroll attribution keeps its allocation revision contract instead.
 _Avoid_: Edit, Reversal without reason, Rewriting history
+
+**Version-Matched Expenditure Evidence Export**:
+An authorized multi-sheet Excel workbook export (`GET /api/reports/employee-project-monthly-cost/download?view=expenditure`) containing version-matched audit evidence for company and project expenditure reconciliation. It delivers five sheets: Company Reconciliation, Project Detail, Budgets & Commitments, Cash Paid, and Revisions & Close. The export matches the web report calculations, distinguishes missing data from zero, keeps company reconciliation totals intact when filtered by project, and displays commercial client orders with an explicit non-revenue non-profit disclaimer.
+_Avoid_: Unverified export, Filtered company total, Ad-hoc spreadsheet
