@@ -258,3 +258,7 @@ _Avoid_: Login (the act, not the state), Token (the credential, not the identity
 **Public endpoint**:
 An API endpoint that deliberately answers without a Session — exactly: login, logout, the session probe, the attendance webhook (authenticated by its own Bearer secret), and the minimal health probe. Everything else requires a Session and a permission check.
 _Avoid_: Unauthenticated route, Anonymous API, Open endpoint
+
+**Financial Close**:
+A reviewed company financial month saved with immutable closed figures (`financial_close_snapshots`, `close-<uuid>`). The close freezes the month's Company Incurred Cost, source and Project identities, allocation and financial versions, classification, currency and tax basis, and evidence states exactly as the report stated them. Unresolved cost exceptions, unwired sources, unsupported commitments, and an empty month block the close; pending payroll, partial cash cover, and legacy cash gaps are disclosed warnings. Once closed, ordinary writes to the month are refused (`409 month_closed`); only explicit revisions can change closed figures. Payroll finalization freezes attribution but never closes the month.
+_Avoid_: Payroll finalization, Locked run, Frozen estimate
