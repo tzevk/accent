@@ -196,10 +196,10 @@ test('October service, November invoice, December payment: no third expense', as
 	const decemberBefore = await readReport(clerk, CASH_MONTH);
 	expect(decemberBefore.cash.paid).toBe(0);
 	// The month's own unpaid slip is already an unsettled cash target; no
-	// movement exists yet.
-	expect(decemberBefore.cash.targets.map((row) => row.target_key)).toEqual([
-		String(seeded.slipId),
-	]);
+	// movement exists yet. Other recognized costs in the month are also
+	// targets (the cash section states all recognized costs + payroll slips).
+	const targetKeys = decemberBefore.cash.targets.map((row) => row.target_key);
+	expect(targetKeys).toContain(String(seeded.slipId));
 	evidence.baseline = {
 		october: octoberBefore.company.incurred_cost,
 		november: novemberBefore.company.incurred_cost,
