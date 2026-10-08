@@ -36,12 +36,7 @@ export type CostSource =
  * and disclosed rather than guessed into operating cost.
  */
 export type CostNature =
-	| 'operating'
-	| 'advance'
-	| 'deposit'
-	| 'prepayment'
-	| 'capital'
-	| 'unresolved';
+	'operating' | 'advance' | 'deposit' | 'prepayment' | 'capital' | 'unresolved';
 
 /** Which approved basis a period charge draws down its source balance under. */
 export type PeriodChargeBasis = 'consumption' | 'depreciation' | 'amortization';
@@ -50,11 +45,7 @@ export type PeriodChargeState = 'approved' | 'cancelled';
 
 /** Confirmed cost is `recognized` and nothing else. */
 export type RecognitionState =
-	| 'draft'
-	| 'pending_evidence'
-	| 'recognized'
-	| 'rejected'
-	| 'cancelled';
+	'draft' | 'pending_evidence' | 'recognized' | 'rejected' | 'cancelled';
 
 /** How the Recognition Period was established. */
 export type PeriodBasis =
@@ -68,24 +59,14 @@ export type PeriodBasis =
 	| 'unresolved';
 
 export type TaxTreatment =
-	| 'none'
-	| 'recoverable'
-	| 'non_recoverable'
-	| 'unresolved';
+	'none' | 'recoverable' | 'non_recoverable' | 'unresolved';
 
 /** The treatment actually applied to the amount, given the stored evidence. */
 export type EffectiveTaxTreatment =
-	| 'none'
-	| 'recoverable'
-	| 'non_recoverable'
-	| 'unresolved';
+	'none' | 'recoverable' | 'non_recoverable' | 'unresolved';
 
 export type CostCommandName =
-	| 'update'
-	| 'submit'
-	| 'recognize'
-	| 'reject'
-	| 'cancel';
+	'update' | 'submit' | 'recognize' | 'reject' | 'cancel';
 
 /**
  * The journal's own vocabulary (`financial_cost_events.command`): the command
@@ -917,6 +898,62 @@ export interface CompanyReconciliation {
 	available_months: string[];
 }
 
+/** The close state of one company financial month (ticket #322). */
+export type CloseStatus = 'open' | 'closed';
+
+/**
+ * One frozen month: the immutable figures the month closed with plus the
+ * closure review. The snapshot is the `CompanyReconciliation` the close
+ * read inside its own transaction, so the frozen totals, source and
+ * Project identities, allocation and financial versions, classification,
+ * currency and tax basis, and evidence states are exactly what the report
+ * stated when the month closed.
+ */
+export interface CloseSnapshot {
+	month: string;
+	close_uid: string;
+	financial_version: number;
+	status: 'closed';
+	snapshot: CompanyReconciliation | null;
+	reviewed_by: number | null;
+	reviewed_at: string | null;
+	review_reason: string | null;
+	evidence_reference: string | null;
+	created_by: number | null;
+	created_at: string;
+}
+
+/** One finding of the close review: a blocker or a disclosed warning. */
+export interface CloseBlocker {
+	code: string;
+	label: string;
+	detail: string;
+	severity: 'error' | 'warning';
+}
+
+/** Whether a month can close, and what the review found. */
+export interface CloseReviewResult {
+	can_close: boolean;
+	blockers: CloseBlocker[];
+	warnings: CloseBlocker[];
+}
+
+/** The input the close command carries: the month and the version it read. */
+export interface CloseCommandInput {
+	month: string;
+	expectedVersion: number;
+	reason?: string | null;
+	evidenceReference?: string | null;
+}
+
+/** The row one accepted close wrote (or the one a repeat reads back). */
+export interface CloseCommandResult {
+	month: string;
+	close_uid: string;
+	financial_version: number;
+	status: 'closed';
+}
+
 export type PayrollPayStream = 'payroll' | 'contract';
 
 /** How an employee's cost is known this month. */
@@ -957,8 +994,7 @@ export interface PayrollHourLine {
 
 /** Evidence limitation codes a reconstruction records (#308). */
 export type ReconstructionLimitationCode =
-	| 'timesheet_missing'
-	| 'hours_without_project';
+	'timesheet_missing' | 'hours_without_project';
 
 /** One stated limitation of a reconstruction's historical evidence. */
 export interface PayrollReconstructionLimitation {
@@ -1339,17 +1375,10 @@ export function isCostBudgetScope(value: unknown): value is CostBudgetScope {
  * its approval evidence, version, and journal.
  */
 export type CostBudgetState =
-	| 'draft'
-	| 'submitted'
-	| 'approved'
-	| 'superseded'
-	| 'withdrawn';
+	'draft' | 'submitted' | 'approved' | 'superseded' | 'withdrawn';
 
 export type CostBudgetCommandName =
-	| 'update'
-	| 'submit'
-	| 'approve'
-	| 'withdraw';
+	'update' | 'submit' | 'approve' | 'withdraw';
 
 /** The journal's vocabulary (`project_cost_budget_events.command`). */
 export type CostBudgetJournalCommand =

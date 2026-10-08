@@ -44,6 +44,7 @@ import type {
 	OrderStatus,
 } from './orders';
 import { mapOrderRow, OrderError } from './orders';
+import { closeRefusalForMonth } from './close';
 import type { SqlConnection } from './records';
 import { num, s } from './records';
 import type { CostSliceReference } from './sources';
@@ -251,6 +252,26 @@ function money(value: number | null): number | null {
 function firstOfMonth(value: string): string | null {
 	if (!/^\d{4}-\d{2}/.test(value)) return null;
 	return `${value.slice(0, 7)}-01`;
+}
+
+/**
+ * Throw `409 month_closed` as an `OrderError` (the class the consumption
+ * routes map) when the month is closed; pass open months. Every
+ * consumption month a command touches is checked before any write (#322).
+ */
+async function assertOrderMonthOpen(
+	db: SqlConnection,
+	month: string | null | undefined
+): Promise<void> {
+	const refusal = await closeRefusalForMonth(db, month);
+	if (refusal) {
+		throw new OrderError(
+			refusal.code,
+			refusal.message,
+			refusal.status,
+			refusal.detail ?? {}
+		);
+	}
 }
 
 function shiftMonth(month: string, delta: number): string {
@@ -664,6 +685,9 @@ export async function recordOrderConsumption(
 				{ field: 'recognized_period' }
 			);
 		}
+		// A closed consumption month refuses the command before any lock
+		// or write (#322).
+		await assertOrderMonthOpen(db, period);
 		const expectedOrderVersion = Number(input.expectedOrderVersion);
 		if (!Number.isInteger(expectedOrderVersion) || expectedOrderVersion < 1) {
 			throw new OrderError(
@@ -799,6 +823,11 @@ export async function recordOrderConsumption(
 				422,
 				{ order_currency: order.currency, cost_currency: head.currency }
 			);
+		}
+		// Consuming a slice whose month is closed would rewrite that
+		// month's commitment evidence (#322).
+		for (const slice of slices) {
+			await assertOrderMonthOpen(db, slice.recognition_period);
 		}
 
 		const periodSlice = periodSliceAmount(slices, period, taxBasis);
@@ -1008,6 +1037,9 @@ export async function releaseOrderConsumption(
 			);
 		}
 		const row = mapConsumptionRow(rows[0]);
+		// Releasing a consumption restates the commitment of its month: a
+		// closed consumption month refuses before any write (#322).
+		await assertOrderMonthOpen(db, row.recognizedPeriod);
 		if (row.state !== 'active') {
 			throw new OrderError(
 				'consumption_already_released',

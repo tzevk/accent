@@ -39,6 +39,7 @@ import {
 	resolveConversion,
 } from './currency';
 import { CostError } from './errors';
+import { assertMonthOpen } from './close';
 import { writeCostEvent, JOURNAL_COMMAND } from './journal';
 import {
 	evaluateCost,
@@ -830,6 +831,9 @@ export async function captureAccrualCost(
 			servicePeriodEnd,
 		});
 		const state: RecognitionState = input.submit ? 'pending_evidence' : 'draft';
+		// A closed recognition month refuses the capture before the number
+		// is minted, so a refusal writes nothing (#322).
+		await assertMonthOpen(db, period);
 		const costUid = `cost-${randomUUID()}`;
 		const accrualNumber = await nextAccrualNumber(db);
 		const [inserted] = (await db.execute(
@@ -950,6 +954,9 @@ export async function executeAccrualCommand(
 		if (!row) {
 			throw new CostError('not_found', 'Cost accrual not found', 404);
 		}
+		// A closed recognition month refuses the command before the state
+		// check, the row update, and the journal append (#322).
+		await assertMonthOpen(db, s(row, 'recognition_period'));
 		const state = (s(row, 'recognition_state', 'draft') ??
 			'draft') as RecognitionState;
 		const version = Number(num(row, 'financial_version') ?? 1);
@@ -1183,6 +1190,9 @@ export async function executeAccrualCommand(
 					basis: (s(row, 'period_basis', 'unresolved') ??
 						'unresolved') as PeriodBasis,
 				};
+		// A patch that would move the accrual into a closed month is
+		// refused with the same guard (#322).
+		await assertMonthOpen(db, resolved.period);
 
 		const financial = {
 			...merged,
@@ -1502,6 +1512,17 @@ export async function executeAccrualReplacement(
 		const differencePeriod =
 			dateOrNull(input.differencePeriod) ??
 			(differenceAmount !== 0 ? replacementPeriod : null);
+		// A replacement rewrites the accrual's remaining estimate and
+		// records evidence in the replacement month: every month it touches
+		// must be open (#322).
+		for (const period of [
+			s(accrual, 'recognition_period'),
+			invoicePeriod,
+			replacementPeriod,
+			differencePeriod,
+		]) {
+			await assertMonthOpen(db, period);
+		}
 		const isFinal = replacedDecimal.eq(remainingDecimal);
 		const remainingAfter = toNumber(
 			sub(remainingDecimal, replacedDecimal).toDecimalPlaces(2)
@@ -1640,6 +1661,9 @@ export async function releaseAccrualReplacementsForInvoice(
 		const replaced = num(row, 'replaced_amount') ?? 0;
 		const accrual = await loadAccrualForUpdate(db, accrualId);
 		if (!accrual) continue;
+		// Restoring the estimate rewrites the accrual's month: a closed
+		// accrual month refuses the whole cancellation (#322).
+		await assertMonthOpen(db, s(accrual, 'recognition_period'));
 		const version = Number(num(accrual, 'financial_version') ?? 1);
 		const remaining = num(accrual, 'recognized_amount');
 		const restored =

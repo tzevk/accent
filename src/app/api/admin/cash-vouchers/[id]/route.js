@@ -3,9 +3,32 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import {
 	ensureFundingMirror,
+	isMonthClosed,
 	loadVoucherGuard,
 	voucherRegisterRefusal,
 } from '@/lib/company-expenditure';
+
+/**
+ * A closed funding month freezes its vouchers (#322): the funding movement
+ * is dated cash evidence, so the voucher edit and delete paths refuse
+ * instead of restating it.
+ */
+async function voucherMonthClosed(db, voucherDate) {
+	const period = String(voucherDate ?? '').slice(0, 7);
+	return /^\d{4}-\d{2}$/.test(period) && (await isMonthClosed(db, period));
+}
+
+function monthClosedResponse() {
+	return NextResponse.json(
+		{
+			success: false,
+			error:
+				'This financial month is closed. Ordinary writes are blocked; change closed figures through the financial revision workflow instead.',
+			code: 'month_closed',
+		},
+		{ status: 409 }
+	);
+}
 
 /**
  * GET /api/admin/cash-vouchers/[id]
@@ -181,6 +204,15 @@ export async function PUT(request, { params }) {
 				guard,
 				total_amount === undefined ? null : Number(total_amount || 0)
 			);
+			// A closed funding month is the terminal freeze: its refusal is
+			// the operative one, ahead of the funding-floor hook (#322).
+			if (
+				(await voucherMonthClosed(db, guard.voucher_date)) ||
+				(await voucherMonthClosed(db, voucher_date))
+			) {
+				await db.execute('ROLLBACK');
+				return monthClosedResponse();
+			}
 			if (refusal) {
 				await db.execute('ROLLBACK');
 				return NextResponse.json(
@@ -329,6 +361,12 @@ export async function DELETE(request, { params }) {
 				);
 			}
 			const refusal = voucherRegisterRefusal(guard);
+			// A closed funding month is the terminal freeze: its refusal is
+			// the operative one, ahead of the funding hook (#322).
+			if (await voucherMonthClosed(db, guard.voucher_date)) {
+				await db.execute('ROLLBACK');
+				return monthClosedResponse();
+			}
 			if (refusal) {
 				await db.execute('ROLLBACK');
 				return NextResponse.json(

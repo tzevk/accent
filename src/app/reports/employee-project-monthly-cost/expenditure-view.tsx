@@ -48,6 +48,7 @@ import type {
 } from '@/lib/company-expenditure';
 import BudgetSection, { type BudgetSectionPayload } from './budget-section';
 import CashSection, { type CashSectionPayload } from './cash-section';
+import CloseSection from './close-section';
 
 interface GroupRow {
 	key: string;
@@ -477,6 +478,8 @@ export interface ExpenditureViewProps {
 	 * regardless of what renders.
 	 */
 	canRecordSettlement: boolean;
+	/** Financial read gate + `other_expenses:update` — may close the month. */
+	canCloseMonth: boolean;
 }
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
@@ -642,6 +645,7 @@ export default function ExpenditureView({
 	canReviewReconstruction,
 	canRevise,
 	canRecordSettlement,
+	canCloseMonth,
 }: ExpenditureViewProps) {
 	const queryClient = useQueryClient();
 	const [projectFilter, setProjectFilter] = useState('all');
@@ -3300,6 +3304,11 @@ export default function ExpenditureView({
 				section={data.cash}
 				canRecord={canRecordSettlement}
 			/>
+
+			{/* Financial close (#322). Its own section: an open month states
+			    its review, a closed month states its frozen totals, and the
+			    close command freezes the month against ordinary writes. */}
+			<CloseSection month={month} canClose={canCloseMonth} />
 
 			<p className="mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed text-gray-500">
 				<BanknotesIcon className="h-3 w-3" />

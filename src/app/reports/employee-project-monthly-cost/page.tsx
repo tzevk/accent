@@ -609,6 +609,10 @@ export default function EmployeeProjectMonthlyCostPage() {
 			can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ) &&
 			can(RESOURCES.PAYROLL, PERMISSIONS.READ) &&
 			can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.UPDATE));
+	// Closing a reviewed financial month (#322) freezes it: the financial
+	// read gate plus the cost update privilege. The server enforces the same
+	// conjunction.
+	const canCloseMonth = canRecordSettlement;
 	// The expenditure view reads the direct-expense ledger, so it needs that
 	// source's read privilege as well as reports:read. Without it the tab is
 	// not offered and the report opens on the employee-cost views; the server
@@ -859,6 +863,7 @@ export default function EmployeeProjectMonthlyCostPage() {
 					canReviewReconstruction={canRecognizeCost}
 					canRevise={canReviseAllocation}
 					canRecordSettlement={canRecordSettlement}
+					canCloseMonth={canCloseMonth}
 				/>
 			);
 		}

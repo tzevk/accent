@@ -29,6 +29,7 @@ import { withTransaction } from '@/utils/database';
 import { add, gte, R, sub, toNumber } from '@/lib/money';
 import type { CommandOptions, CostActor } from './commands';
 import { CostError } from './errors';
+import { assertMonthOpen } from './close';
 import { currencyCodeOf } from './currency';
 import { PAYROLL_CURRENCY } from './payroll';
 import { monthBounds, num, s, type DbRow, type SqlConnection } from './records';
@@ -36,16 +37,9 @@ import { linkCostReference, resolveCostReference } from './sources';
 import type { CostNature } from './types';
 
 export type CashMovementKind =
-	| 'payment'
-	| 'withholding'
-	| 'deduction'
-	| 'payroll_payout'
-	| 'petty_spend';
+	'payment' | 'withholding' | 'deduction' | 'payroll_payout' | 'petty_spend';
 export type CashMovementSource =
-	| 'settlement'
-	| 'payroll'
-	| 'petty_cash'
-	| 'funding';
+	'settlement' | 'payroll' | 'petty_cash' | 'funding';
 
 export interface CashMovementJson {
 	source: CashMovementSource;
@@ -255,14 +249,11 @@ function mapSettlementRow(row: DbRow): SettlementRecord {
 		id: Number(num(row, 'id') ?? 0),
 		settlement_uid: s(row, 'settlement_uid', '') ?? '',
 		target_kind: (s(row, 'target_kind', 'cost') ?? 'cost') as
-			| 'cost'
-			| 'payroll',
+			'cost' | 'payroll',
 		target_cost_uid: s(row, 'target_cost_uid'),
 		payroll_slip_id: num(row, 'payroll_slip_id'),
 		movement_kind: (s(row, 'movement_kind', 'payment') ?? 'payment') as
-			| 'payment'
-			| 'withholding'
-			| 'deduction',
+			'payment' | 'withholding' | 'deduction',
 		amount: num(row, 'amount') ?? 0,
 		currency: s(row, 'currency', 'INR') ?? 'INR',
 		settled_on: (s(row, 'settled_on') ?? '').slice(0, 10),
@@ -270,8 +261,7 @@ function mapSettlementRow(row: DbRow): SettlementRecord {
 		destination: s(row, 'destination'),
 		evidence_reference: s(row, 'evidence_reference'),
 		status: (s(row, 'status', 'recorded') ?? 'recorded') as
-			| 'recorded'
-			| 'cancelled',
+			'recorded' | 'cancelled',
 		financial_version: Number(num(row, 'financial_version') ?? 1),
 		created_by: num(row, 'created_by'),
 	};
@@ -401,6 +391,9 @@ export async function recordSettlement(
 				{ field: 'settled_on' }
 			);
 		}
+		// A closed cash month refuses the movement before the target
+		// resolves, so a refusal writes nothing (#322).
+		await assertMonthOpen(db, settledOn);
 		const costUid = text(input.targetCostUid, 64);
 		const slipId =
 			input.payrollSlipId === null || input.payrollSlipId === undefined
@@ -675,6 +668,9 @@ export async function executeSettlementCommand(
 			);
 		}
 		const current = mapSettlementRow(rows[0]);
+		// A closed cash month refuses the command before any version
+		// check, update, or journal append (#322).
+		await assertMonthOpen(db, current.settled_on);
 		if (current.status === 'cancelled') {
 			throw new CostError(
 				'settlement_cancelled',
@@ -753,6 +749,9 @@ export async function executeSettlementCommand(
 					{ field: 'settled_on' }
 				);
 			}
+			// Moving a settlement into a closed cash month is refused with
+			// the same guard (#322).
+			await assertMonthOpen(db, settledOn);
 			const target = await resolveTarget(db, {
 				targetKind: current.target_kind,
 				costUid: current.target_cost_uid ?? '',
@@ -850,9 +849,7 @@ export async function loadSettlementEvents(
 	return rows.map((row) => ({
 		version: Number(num(row, 'version') ?? 0),
 		command: (s(row, 'command', 'recorded') ?? 'recorded') as
-			| 'recorded'
-			| 'updated'
-			| 'cancelled',
+			'recorded' | 'updated' | 'cancelled',
 		actor_user_id: num(row, 'actor_user_id'),
 		reason: s(row, 'reason'),
 		evidence_reference: s(row, 'evidence_reference'),
@@ -878,8 +875,7 @@ export async function loadSettlementGuardRow(
 		id: Number(num(row, 'id') ?? 0),
 		settlement_uid: s(row, 'settlement_uid', '') ?? '',
 		status: (s(row, 'status', 'recorded') ?? 'recorded') as
-			| 'recorded'
-			| 'cancelled',
+			'recorded' | 'cancelled',
 		financial_version: Number(num(row, 'financial_version') ?? 1),
 		settled_on: (s(row, 'settled_on') ?? '').slice(0, 10),
 	};

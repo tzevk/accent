@@ -37,6 +37,7 @@ import {
 	resolveConversion,
 } from './currency';
 import { CostError } from './errors';
+import { assertMonthOpen } from './close';
 import {
 	evaluateCost,
 	firstOfMonth,
@@ -669,6 +670,9 @@ export async function initializeSupplierCost(
 	const state: RecognitionState = input.submit ? 'pending_evidence' : 'draft';
 	const splits = normalizeSplits(input.splits);
 	const costUid = `cost-${randomUUID()}`;
+	//Initializing a cost identity in a closed month would post recognized
+	// cost there on the next command: refuse before any write (#322).
+	await assertMonthOpen(db, period);
 	const netAmount =
 		grossAmount === null
 			? null
@@ -807,6 +811,9 @@ export async function executeSupplierCommand(
 		if (!row) {
 			throw new CostError('not_found', 'Supplier invoice not found', 404);
 		}
+		// A closed recognition month refuses the command before the state
+		// check, the row update, and the journal append (#322).
+		await assertMonthOpen(db, s(row, 'recognition_period'));
 		const state = (s(row, 'recognition_state', 'draft') ??
 			'draft') as RecognitionState;
 		const version = Number(num(row, 'financial_version') ?? 1);
@@ -1015,6 +1022,9 @@ export async function executeSupplierCommand(
 					basis: (s(row, 'period_basis', 'unresolved') ??
 						'unresolved') as PeriodBasis,
 				};
+		// A patch that would move the invoice into a closed month is refused
+		// with the same guard (#322).
+		await assertMonthOpen(db, resolved.period);
 
 		let effectiveSplits =
 			patch.splits !== undefined ? normalizeSplits(patch.splits) : null;
