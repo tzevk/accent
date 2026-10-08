@@ -37,7 +37,8 @@ import {
 	resolveConversion,
 } from './currency';
 import { CostError } from './errors';
-import { assertMonthOpen } from './close';
+import { assertMonthOpen, assertMonthOpenOrRevision } from './close';
+import type { ClosedRevision } from './close';
 import {
 	evaluateCost,
 	firstOfMonth,
@@ -804,7 +805,7 @@ export async function initializeSupplierCost(
 export async function executeSupplierCommand(
 	input: SupplierCommandInput,
 	actor: { id: number | null },
-	options?: { connection?: SqlConnection }
+	options?: { connection?: SqlConnection; revision?: ClosedRevision | null }
 ): Promise<SupplierCommandResult> {
 	const run = async (db: SqlConnection): Promise<SupplierCommandResult> => {
 		const row = await loadInvoiceForUpdate(db, input.id);
@@ -812,8 +813,15 @@ export async function executeSupplierCommand(
 			throw new CostError('not_found', 'Supplier invoice not found', 404);
 		}
 		// A closed recognition month refuses the command before the state
-		// check, the row update, and the journal append (#322).
-		await assertMonthOpen(db, s(row, 'recognition_period'));
+		// check, the row update, and the journal append (#322) — unless the
+		// validated revision workflow carries it (#323).
+		const rowPeriod = s(row, 'recognition_period');
+		await assertMonthOpenOrRevision(
+			db,
+			rowPeriod,
+			options?.revision,
+			rowPeriod
+		);
 		const state = (s(row, 'recognition_state', 'draft') ??
 			'draft') as RecognitionState;
 		const version = Number(num(row, 'financial_version') ?? 1);
@@ -825,7 +833,17 @@ export async function executeSupplierCommand(
 				{ current_version: version }
 			);
 		}
-		const target = nextState(state, input.command);
+		// A revision corrects a recognized invoice in place: recognized
+		// stays recognized, so its amount, period, and classification can
+		// be corrected without cancelling the history first (#323). The
+		// ordinary state machine below it is untouched.
+		const revisionUpdate =
+			(options?.revision ?? null) !== null &&
+			state === 'recognized' &&
+			input.command === 'update';
+		const target = revisionUpdate
+			? 'recognized'
+			: nextState(state, input.command);
 		if (!target) {
 			throw new CostError(
 				'command_not_allowed',
@@ -1023,8 +1041,13 @@ export async function executeSupplierCommand(
 						'unresolved') as PeriodBasis,
 				};
 		// A patch that would move the invoice into a closed month is refused
-		// with the same guard (#322).
-		await assertMonthOpen(db, resolved.period);
+		// with the same guard (#322) — or carried by the revision (#323).
+		await assertMonthOpenOrRevision(
+			db,
+			resolved.period,
+			options?.revision,
+			rowPeriod
+		);
 
 		let effectiveSplits =
 			patch.splits !== undefined ? normalizeSplits(patch.splits) : null;
@@ -1114,6 +1137,48 @@ export async function executeSupplierCommand(
 					);
 				}
 			}
+		}
+
+		if (revisionUpdate) {
+			// A split invoice states its slices apart from its header: a
+			// revision that touches slice figures must re-state the slices
+			// with them, and slice restatement travels through the ordinary
+			// command path instead of a closed-month revision.
+			const storedSplits = await loadSplitRows(db, input.id);
+			if (storedSplits.length > 0) {
+				const touchesSlices =
+					patch.grossAmount !== undefined ||
+					patch.taxAmount !== undefined ||
+					patch.withholdingTaxAmount !== undefined ||
+					patch.servicePeriodStart !== undefined ||
+					patch.servicePeriodEnd !== undefined ||
+					patch.billDate !== undefined ||
+					patch.currency !== undefined ||
+					patch.splits !== undefined;
+				if (touchesSlices) {
+					throw new CostError(
+						'revision_splits_unsupported',
+						'A split invoice correction re-states its slices through the ordinary command path, not a closed-month revision',
+						422
+					);
+				}
+			}
+			const blockers = recognitionBlockers({
+				grossAmount: merged.grossAmount,
+				classification: merged.classification,
+				projectId: merged.projectId,
+				recognitionPeriod: resolved.period,
+				currency: merged.currency,
+			});
+			if (blockers.length > 0) {
+				throw new CostError(
+					'revision_not_recognizable',
+					'The revised figures cannot stay confirmed cost',
+					422,
+					{ missing: blockers }
+				);
+			}
+			recognizedAmount = evaluateCost(financial).recognizedAmount;
 		}
 
 		const nextVersion = version + 1;
@@ -1281,6 +1346,14 @@ export async function executeSupplierCommand(
 				tax_treatment: merged.taxTreatment,
 				recognized_amount: recognizedAmount,
 				state: target,
+				...(options?.revision
+					? {
+							revision: {
+								revision_uid: options.revision.revisionUid,
+								close_uid: options.revision.closeUid,
+							},
+						}
+					: {}),
 			},
 		});
 

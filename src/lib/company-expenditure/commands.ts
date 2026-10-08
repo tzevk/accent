@@ -23,7 +23,8 @@ import { add, sub, R, toNumber } from '@/lib/money';
 import { withTransaction } from '@/utils/database';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
 import { CostError } from './errors';
-import { assertMonthOpen } from './close';
+import { assertMonthOpen, assertMonthOpenOrRevision } from './close';
+import type { ClosedRevision } from './close';
 import {
 	convertToReporting,
 	currencyCodeOf,
@@ -69,6 +70,13 @@ export interface CostActor {
 export interface CommandOptions {
 	/** Use the caller's connection/transaction instead of opening one. */
 	connection?: SqlConnection;
+	/**
+	 * Correct a closed month through the authorized revision workflow
+	 * (#323). Present only when `revisions.ts` validated the revision;
+	 * ordinary callers never set it, so the closed-period guard is
+	 * unchanged for them.
+	 */
+	revision?: ClosedRevision | null;
 }
 
 /**
@@ -458,12 +466,17 @@ export async function executeCommand(
 			throw new CostError('not_found', 'Cost not found', 404);
 		}
 		// A closed recognition month refuses the command before the state
-		// check, the row update, and the journal append (#322).
-		await assertMonthOpen(
-			db,
+		// check, the row update, and the journal append (#322) — unless the
+		// validated revision workflow carries it (#323).
+		const rowPeriod =
 			row.recognition_period === null || row.recognition_period === undefined
 				? null
-				: String(row.recognition_period)
+				: String(row.recognition_period);
+		await assertMonthOpenOrRevision(
+			db,
+			rowPeriod,
+			options?.revision,
+			rowPeriod
 		);
 		const state = String(row.recognition_state ?? 'draft') as RecognitionState;
 		const version = Number(row.financial_version ?? 1);
@@ -475,7 +488,17 @@ export async function executeCommand(
 				{ current_version: version }
 			);
 		}
-		const target = nextState(state, input.command);
+		// A revision corrects a recognized cost in place: recognized stays
+		// recognized, so its amount, period, and classification can be
+		// corrected without cancelling the history first (#323). The
+		// ordinary state machine below it is untouched.
+		const revisionUpdate =
+			(options?.revision ?? null) !== null &&
+			state === 'recognized' &&
+			input.command === 'update';
+		const target = revisionUpdate
+			? 'recognized'
+			: nextState(state, input.command);
 		if (!target) {
 			throw new CostError(
 				'command_not_allowed',
@@ -661,8 +684,13 @@ export async function executeCommand(
 					basis: existingBasis,
 				};
 		// A patch that would move the cost into a closed month is refused
-		// with the same guard (#322).
-		await assertMonthOpen(db, resolved.period);
+		// with the same guard (#322) — or carried by the revision (#323).
+		await assertMonthOpenOrRevision(
+			db,
+			resolved.period,
+			options?.revision,
+			rowPeriod
+		);
 
 		const financial = {
 			...merged,
@@ -678,7 +706,8 @@ export async function executeCommand(
 				? null
 				: Number(row.recognized_amount);
 		const recognizedAt: string | null = (row.recognized_at ?? null) as
-			string | null;
+			| string
+			| null;
 		let recognizedBy: number | null =
 			row.recognized_by === null || row.recognized_by === undefined
 				? null
@@ -702,6 +731,27 @@ export async function executeCommand(
 			}
 			recognizedAmount = evaluateCost(financial).recognizedAmount;
 			recognizedBy = actor.id;
+		}
+		if (revisionUpdate) {
+			// A revision corrects confirmed cost: the corrected figures must
+			// still be recognizable, or the cost would silently stop being
+			// cost while reading as recognized.
+			const blockers = recognitionBlockers({
+				grossAmount: merged.grossAmount,
+				classification: merged.classification,
+				projectId: merged.projectId,
+				recognitionPeriod: resolved.period,
+				currency: merged.currency,
+			});
+			if (blockers.length > 0) {
+				throw new CostError(
+					'revision_not_recognizable',
+					'The revised figures cannot stay confirmed cost',
+					422,
+					{ missing: blockers }
+				);
+			}
+			recognizedAmount = evaluateCost(financial).recognizedAmount;
 		}
 		// A cancellation stops the cost counting as confirmed cost (the state
 		// filter does that) without erasing the recorded amount: the row and its
@@ -802,6 +852,14 @@ export async function executeCommand(
 				recognized_amount: recognizedAmount,
 				converted_amount: convertedAmount,
 				state: target,
+				...(options?.revision
+					? {
+							revision: {
+								revision_uid: options.revision.revisionUid,
+								close_uid: options.revision.closeUid,
+							},
+						}
+					: {}),
 			},
 		});
 

@@ -44,7 +44,10 @@ import type {
 	OrderStatus,
 } from './orders';
 import { mapOrderRow, OrderError } from './orders';
+import { CostError } from './errors';
 import { closeRefusalForMonth } from './close';
+import { assertMonthOpenOrRevision } from './close';
+import type { ClosedRevision } from './close';
 import type { SqlConnection } from './records';
 import { num, s } from './records';
 import type { CostSliceReference } from './sources';
@@ -278,6 +281,52 @@ async function assertOrderMonthOpen(
 			refusal.status,
 			refusal.detail ?? {}
 		);
+	}
+}
+
+/**
+ * The consumption commands' half of the revision contract (#323): without a
+ * revision the check is `assertOrderMonthOpen`; with one, a closed month
+ * passes only when it is the revision's own source month. A `CostError`
+ * from the shared guard becomes the `OrderError` the consumption routes
+ * map, with its code, status, and detail intact.
+ */
+export interface ConsumptionRevisionOptions extends OrderOptions {
+	/**
+	 * Carry or release a consumption inside the authorized revision
+	 * workflow. Only `revisions.ts` sets it; the order record/update paths
+	 * never see it.
+	 */
+	revision?: ClosedRevision | null;
+	/** The closed month the revised cost belongs to (defaults to the revision's). */
+	sourceMonth?: string | null;
+}
+
+async function assertOrderMonthOpenOrRevision(
+	db: SqlConnection,
+	month: string | null | undefined,
+	options?: ConsumptionRevisionOptions | null,
+	sourceMonth?: string | null | undefined
+): Promise<void> {
+	const revision = options?.revision ?? null;
+	if (!revision) return assertOrderMonthOpen(db, month);
+	try {
+		await assertMonthOpenOrRevision(
+			db,
+			month,
+			revision,
+			sourceMonth ?? options?.sourceMonth ?? revision.sourceMonth
+		);
+	} catch (error) {
+		if (error instanceof CostError) {
+			throw new OrderError(
+				error.code,
+				error.message,
+				error.status,
+				(error.detail ?? {}) as Record<string, unknown>
+			);
+		}
+		throw error;
 	}
 }
 
@@ -684,7 +733,7 @@ async function advanceOrderVersion(
 export async function recordOrderConsumption(
 	input: RecordOrderConsumptionInput,
 	actor: OrderActor,
-	options?: OrderOptions
+	options?: ConsumptionRevisionOptions
 ): Promise<RecordOrderConsumptionResult> {
 	const period = firstOfMonth(String(input.recognizedPeriod ?? ''));
 	const taxBasis = input.taxBasis;
@@ -706,8 +755,9 @@ export async function recordOrderConsumption(
 			);
 		}
 		// A closed consumption month refuses the command before any lock
-		// or write (#322).
-		await assertOrderMonthOpen(db, period);
+		// or write (#322) — unless the validated revision workflow carries
+		// it (#323).
+		await assertOrderMonthOpenOrRevision(db, period, options);
 		const expectedOrderVersion = Number(input.expectedOrderVersion);
 		if (!Number.isInteger(expectedOrderVersion) || expectedOrderVersion < 1) {
 			throw new OrderError(
@@ -845,9 +895,13 @@ export async function recordOrderConsumption(
 			);
 		}
 		// Consuming a slice whose month is closed would rewrite that
-		// month's commitment evidence (#322).
+		// month's commitment evidence (#322) — unless the revision carries it.
 		for (const slice of slices) {
-			await assertOrderMonthOpen(db, slice.recognition_period);
+			await assertOrderMonthOpenOrRevision(
+				db,
+				slice.recognition_period,
+				options
+			);
 		}
 
 		const periodSlice = periodSliceAmount(slices, period, taxBasis);
@@ -1016,7 +1070,7 @@ async function findActiveSliceConsumption(
 export async function releaseOrderConsumption(
 	input: ReleaseOrderConsumptionInput,
 	actor: OrderActor,
-	options?: OrderOptions
+	options?: ConsumptionRevisionOptions
 ): Promise<RecordOrderConsumptionResult> {
 	return inTransaction(options, async (db) => {
 		const expectedVersion = Number(input.expectedVersion);
@@ -1058,8 +1112,9 @@ export async function releaseOrderConsumption(
 		}
 		const row = mapConsumptionRow(rows[0]);
 		// Releasing a consumption restates the commitment of its month: a
-		// closed consumption month refuses before any write (#322).
-		await assertOrderMonthOpen(db, row.recognizedPeriod);
+		// closed consumption month refuses before any write (#322) — unless
+		// the validated revision workflow carries it (#323).
+		await assertOrderMonthOpenOrRevision(db, row.recognizedPeriod, options);
 		if (row.state !== 'active') {
 			throw new OrderError(
 				'consumption_already_released',

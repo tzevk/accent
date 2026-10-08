@@ -428,6 +428,7 @@ export type {
 } from './allocation-revisions';
 export {
 	assertMonthOpen,
+	assertMonthOpenOrRevision,
 	buildClosePayload,
 	closeRefusalForMonth,
 	executeCloseCommand,
@@ -437,7 +438,12 @@ export {
 	reviewClose,
 	reviewReconciliation,
 } from './close';
-export type { ClosePayload } from './close';
+export type { ClosePayload, ClosedRevision } from './close';
+export {
+	executeRevision,
+	loadRevisionCandidates,
+	loadRevisionHistory,
+} from './revisions';
 export {
 	CHARGE_BASIS_LABELS,
 	COST_NATURES,
@@ -545,6 +551,13 @@ export type {
 	RecordedCost,
 	ReconciliationProjectRow,
 	ReconciliationSourceSummary,
+	RevisionCandidate,
+	RevisionCommandInput,
+	RevisionCommandResult,
+	RevisionConsumptionStep,
+	RevisionFigures,
+	RevisionHistoryEntry,
+	RevisionTargetKind,
 	TaxTreatment,
 } from './types';
 
