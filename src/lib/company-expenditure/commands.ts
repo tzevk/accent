@@ -23,6 +23,7 @@ import { add, sub, R, toNumber } from '@/lib/money';
 import { withTransaction } from '@/utils/database';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
 import { CostError } from './errors';
+import { assertMonthOpen } from './close';
 import {
 	convertToReporting,
 	currencyCodeOf,
@@ -277,6 +278,9 @@ export async function recordCost(
 	for (let attempt = 1; ; attempt++) {
 		try {
 			return await inTransaction(options, async (db) => {
+				// A closed recognition month refuses the record before the
+				// number is minted, so a refusal writes nothing (#322).
+				await assertMonthOpen(db, period);
 				const costUid = mintCostUid();
 				const expenseNumber =
 					text(input.expenseNumber, 50) ?? (await nextExpenseNumber(db));
@@ -453,6 +457,14 @@ export async function executeCommand(
 		if (!row) {
 			throw new CostError('not_found', 'Cost not found', 404);
 		}
+		// A closed recognition month refuses the command before the state
+		// check, the row update, and the journal append (#322).
+		await assertMonthOpen(
+			db,
+			row.recognition_period === null || row.recognition_period === undefined
+				? null
+				: String(row.recognition_period)
+		);
 		const state = String(row.recognition_state ?? 'draft') as RecognitionState;
 		const version = Number(row.financial_version ?? 1);
 		if (version !== input.expectedVersion) {
@@ -648,6 +660,9 @@ export async function executeCommand(
 					period: (row.recognition_period ?? null) as string | null,
 					basis: existingBasis,
 				};
+		// A patch that would move the cost into a closed month is refused
+		// with the same guard (#322).
+		await assertMonthOpen(db, resolved.period);
 
 		const financial = {
 			...merged,
@@ -663,8 +678,7 @@ export async function executeCommand(
 				? null
 				: Number(row.recognized_amount);
 		const recognizedAt: string | null = (row.recognized_at ?? null) as
-			| string
-			| null;
+			string | null;
 		let recognizedBy: number | null =
 			row.recognized_by === null || row.recognized_by === undefined
 				? null

@@ -34,6 +34,7 @@ import {
 	isRetryableNumberError,
 } from '@/utils/db-number-retry';
 import { CostError } from './errors';
+import { assertMonthOpen } from './close';
 import {
 	CLASSIFICATIONS,
 	TAX_TREATMENTS,
@@ -186,8 +187,7 @@ export function mapPettyCashRow(row: DbRow): CostRecord {
 		recognitionPeriod: s(row, 'recognition_period'),
 		periodBasis:
 			(s(row, 'period_basis', 'unresolved') as
-				| CostRecord['periodBasis']
-				| undefined) ?? 'unresolved',
+				CostRecord['periodBasis'] | undefined) ?? 'unresolved',
 		recognizedAmount: num(row, 'recognized_amount'),
 	};
 	return {
@@ -1255,6 +1255,10 @@ export async function recordPettyCashSpend(
 	for (let attempt = 1; ; attempt++) {
 		try {
 			return await inTransaction(options, async (db) => {
+				// The spend is dated cash movement and future cost at once:
+				// both months must be open before any write (#322).
+				await assertMonthOpen(db, transactionDate);
+				await assertMonthOpen(db, period);
 				// Reliable references only: the voucher must exist, and a link to
 				// another cost must resolve to a real cost identity. A failed
 				// resolution is never treated as a new cost.
@@ -1657,6 +1661,16 @@ export async function executePettyCashCommand(
 				409
 			);
 		}
+		// The spend is dated cash movement and cost at once: both months
+		// must be open before any state check, update, or journal append
+		// (#322).
+		await assertMonthOpen(db, dateOrNull(row.transaction_date));
+		await assertMonthOpen(
+			db,
+			row.recognition_period === null || row.recognition_period === undefined
+				? null
+				: String(row.recognition_period)
+		);
 		const costUid = text(row.cost_uid, 64);
 		if (!costUid) {
 			throw new CostError(
@@ -1838,6 +1852,9 @@ export async function executePettyCashCommand(
 					period: (row.recognition_period ?? null) as string | null,
 					basis: existingBasis,
 				};
+		// A patch that would move the spend into a closed month is refused
+		// with the same guard (#322).
+		await assertMonthOpen(db, resolved.period);
 
 		// A linked receipt settles one existing cost. The reference must resolve
 		// whenever it is set or relied on; a broken link never becomes a new cost.
@@ -1901,8 +1918,7 @@ export async function executePettyCashCommand(
 		let recognizedAmount: number | null = num(row, 'recognized_amount');
 		let recognizedBy: number | null = num(row, 'recognized_by');
 		const recognizedAt: string | null = (row.recognized_at ?? null) as
-			| string
-			| null;
+			string | null;
 
 		if (input.command === 'recognize') {
 			const blockers = recognitionBlockers({

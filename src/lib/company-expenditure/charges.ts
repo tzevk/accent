@@ -24,6 +24,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { CostError, inTransaction, type CommandOptions } from './commands';
+import { assertMonthOpen } from './close';
 import {
 	chargePeriodDate,
 	PERIOD_CHARGE_BASES,
@@ -214,6 +215,9 @@ export async function capturePeriodCharge(
 	const currency = text(input.currency, 3)?.toUpperCase() ?? null;
 
 	return inTransaction(options, async (db) => {
+		// A closed charge month refuses the capture before the source is
+		// locked, so a refusal writes nothing (#322).
+		await assertMonthOpen(db, period);
 		const source = await loadChargeSourceForUpdate(db, input.sourceId);
 		if (!source) {
 			throw new CostError('not_found', 'Cost not found', 404);
@@ -344,7 +348,7 @@ export async function cancelPeriodCharge(
 	}
 	return inTransaction(options, async (db) => {
 		const [rows] = (await db.execute(
-			`SELECT charge_uid, state, financial_version, evidence_reference,
+			`SELECT charge_uid, charge_period, state, financial_version, evidence_reference,
               source_cost_uid
          FROM expense_period_charges
         WHERE charge_uid = ?
@@ -355,6 +359,14 @@ export async function cancelPeriodCharge(
 		if (!row) {
 			throw new CostError('not_found', 'Period charge not found', 404);
 		}
+		// Cancelling a charge restates its month: a closed charge month
+		// refuses before any write (#322).
+		await assertMonthOpen(
+			db,
+			row.charge_period === null || row.charge_period === undefined
+				? null
+				: String(row.charge_period)
+		);
 		const version = Number(row.financial_version ?? 1);
 		if (version !== input.expectedVersion) {
 			throw new CostError(

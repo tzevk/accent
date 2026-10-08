@@ -7,7 +7,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
-import { CostError } from '@/lib/company-expenditure';
+import { CostError, isMonthClosed } from '@/lib/company-expenditure';
 
 const TABLE = 'other_expenses';
 
@@ -74,18 +74,19 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : 'Unexpected error';
 }
 
-/** The row's recognition state, or null when it does not exist. */
+/** The row's recognition state and period, or null when it does not exist. */
 async function loadRecognitionState(
 	db: PoolConnection,
 	id: string
 ): Promise<{
 	recognition_state: string;
+	recognition_period: string | null;
 	has_recognized_history: boolean;
 } | null> {
 	// `financial_cost_events.source_id` is INT: an other-expense journal row is
 	// keyed by the register's numeric `row_no`, not by its UUID.
 	const [rows] = await db.execute(
-		`SELECT e.recognition_state,
+		`SELECT e.recognition_state, e.recognition_period,
             EXISTS(
               SELECT 1 FROM financial_cost_events ev
                WHERE ev.source_table = 'other_expenses' AND ev.source_id = e.row_no
@@ -97,14 +98,40 @@ async function loadRecognitionState(
 	);
 	const found = rows as Array<{
 		recognition_state: string;
+		recognition_period: string | null;
 		has_recognized_history: number;
 	}>;
 	if (found.length === 0) return null;
 	// MySQL reports EXISTS() as 0/1; the callers read a real boolean.
 	return {
 		recognition_state: found[0].recognition_state,
+		recognition_period: found[0].recognition_period,
 		has_recognized_history: Number(found[0].has_recognized_history) !== 0,
 	};
+}
+
+/**
+ * A closed financial month freezes every entry in it (#322): the register
+ * edit and delete paths refuse instead of mutating closed cost with no
+ * version and no journal entry.
+ */
+async function monthClosedResponse(
+	db: PoolConnection,
+	state: { recognition_period: string | null }
+) {
+	const period = String(state.recognition_period ?? '').slice(0, 7);
+	if (/^\d{4}-\d{2}$/.test(period) && (await isMonthClosed(db, period))) {
+		return NextResponse.json(
+			{
+				success: false,
+				error:
+					'This financial month is closed. Ordinary writes are blocked; change closed figures through the financial revision workflow instead.',
+				code: 'month_closed',
+			},
+			{ status: 409 }
+		);
+	}
+	return null;
 }
 
 export async function GET(
@@ -164,6 +191,10 @@ export async function PUT(
 				{ status: 404 }
 			);
 		}
+		// A closed financial month is the terminal freeze: its refusal is
+		// the operative one, ahead of the recognition-state guard (#322).
+		const editClosed = await monthClosedResponse(db, state);
+		if (editClosed) return editClosed;
 		if (state.recognition_state === 'recognized') {
 			return NextResponse.json(
 				{
@@ -266,6 +297,10 @@ export async function DELETE(
 		// Ordinary deletion cannot remove confirmed cost, and cannot erase the
 		// history of a cost that was once recognized either: the supported
 		// correction is the versioned cancellation, which keeps the row.
+		// A closed financial month is the terminal freeze: its refusal is
+		// the operative one, ahead of the history guards (#322).
+		const deleteClosed = await monthClosedResponse(db, state);
+		if (deleteClosed) return deleteClosed;
 		if (state.recognition_state === 'recognized') {
 			return NextResponse.json(
 				{

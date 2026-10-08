@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 import type Decimal from 'decimal.js';
 import { add, R, sub, toNumber } from '@/lib/money';
 import { query, withTransaction } from '@/utils/database';
+import { closeRefusalForMonth } from './close';
 import type { SqlConnection } from './records';
 
 export interface OrderActor {
@@ -61,11 +62,7 @@ export class OrderError extends Error {
 
 export type OrderDirection = 'client' | 'supplier';
 export type OrderStatus =
-	| 'draft'
-	| 'pending'
-	| 'approved'
-	| 'completed'
-	| 'cancelled';
+	'draft' | 'pending' | 'approved' | 'completed' | 'cancelled';
 export type OrderFirmness = 'firm' | 'cancellable' | 'unknown';
 export type OrderAmountBasis = 'gross' | 'net' | 'unknown';
 
@@ -75,15 +72,9 @@ export type LegacyOrderStore =
 	| 'project_purchase_orders'
 	| 'project_invoices';
 export type LegacyReviewState =
-	| 'pending'
-	| 'resolved'
-	| 'duplicate'
-	| 'insufficient';
+	'pending' | 'resolved' | 'duplicate' | 'insufficient';
 export type LegacyOrderDecision =
-	| 'classify'
-	| 'link'
-	| 'duplicate'
-	| 'insufficient';
+	'classify' | 'link' | 'duplicate' | 'insufficient';
 
 export interface OrderRecord {
 	/** Numeric row id — the entity id documents attach to. */
@@ -496,8 +487,7 @@ export function mapOrderRow(row: DbRow): OrderRecord {
 		remarks: s(row, 'remarks'),
 		financialVersion: num(row, 'financial_version') ?? 1,
 		createdFrom: (s(row, 'created_from', 'entry') ?? 'entry') as
-			| 'entry'
-			| 'legacy_review',
+			'entry' | 'legacy_review',
 		originMappingId: num(row, 'origin_mapping_id'),
 		createdBy: num(row, 'created_by'),
 		createdAt: timestamp(row.created_at),
@@ -876,6 +866,28 @@ export async function updateOrder(
 				409,
 				{ currentVersion: current.financialVersion }
 			);
+		}
+		// The update restates the commitment every consumption month reads:
+		// a consumption in a closed month refuses the update (#322). An
+		// order with no consumption restates nothing closed.
+		const [consumptions] = (await db.execute(
+			`SELECT DISTINCT recognized_period FROM order_consumptions
+       WHERE order_uid = ?`,
+			[input.orderUid]
+		)) as [DbRow[], unknown];
+		for (const entry of consumptions) {
+			const refusal = await closeRefusalForMonth(
+				db,
+				s(entry, 'recognized_period')
+			);
+			if (refusal) {
+				throw new OrderError(
+					refusal.code,
+					'This order has consumption in a closed financial month. Ordinary writes are blocked; change closed figures through the financial revision workflow instead.',
+					refusal.status,
+					refusal.detail ?? {}
+				);
+			}
 		}
 
 		const patch = input.patch ?? {};

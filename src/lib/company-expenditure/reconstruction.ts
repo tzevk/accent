@@ -27,6 +27,7 @@ import { add, R, toNumber } from '@/lib/money';
 import type { CommandOptions, CostActor } from './commands';
 import { inTransaction } from './commands';
 import { CostError } from './errors';
+import { assertMonthOpen } from './close';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
 import { text } from './fields';
 import {
@@ -397,6 +398,9 @@ export async function proposeAllocationReconstruction(
 					409
 				);
 			}
+			// A proposal in a closed month could never be approved, and its
+			// review would restate closed figures: refuse it here (#322).
+			await assertMonthOpen(db, month);
 			if (!isLockedStatus(basis.runStatus)) {
 				throw new CostError(
 					'run_not_locked',
@@ -626,6 +630,9 @@ export async function reviewAllocationReconstruction(
 
 		const slipId = Number(num(row, 'payroll_slip_id') ?? 0);
 		const monthDay = (str(row, 'month') ?? '').slice(0, 10);
+		// Approving freezes an allocation for the slip's month: a closed
+		// month refuses before any write (#322).
+		await assertMonthOpen(db, monthDay);
 		// Same serialization point every allocation writer uses.
 		const slipRows = await readRows(
 			db,

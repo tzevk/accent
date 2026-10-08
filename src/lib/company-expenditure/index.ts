@@ -427,6 +427,16 @@ export type {
 	ReviseAllocationInput,
 } from './allocation-revisions';
 export {
+	assertMonthOpen,
+	closeRefusalForMonth,
+	executeCloseCommand,
+	isMonthClosed,
+	loadCloseSnapshot,
+	monthOfPeriod,
+	reviewClose,
+	reviewReconciliation,
+} from './close';
+export {
 	CHARGE_BASIS_LABELS,
 	COST_NATURES,
 	NATURE_LABELS,
@@ -457,6 +467,12 @@ export type {
 	BudgetOutcome,
 	BudgetSection,
 	ChangeState,
+	CloseBlocker,
+	CloseCommandInput,
+	CloseCommandResult,
+	CloseReviewResult,
+	CloseSnapshot,
+	CloseStatus,
 	CompanyConversion,
 	CompanyReconciliation,
 	ComparisonBasis,

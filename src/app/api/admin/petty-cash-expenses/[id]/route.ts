@@ -7,6 +7,7 @@ import {
 import { dbConnect } from '@/utils/database';
 import { logActivity } from '@/utils/activity-logger';
 import {
+	isMonthClosed,
 	loadPettyCashGuardRow,
 	pettyCashRegisterRefusal,
 } from '@/lib/company-expenditure';
@@ -64,17 +65,46 @@ async function refuseProtectedEntry(
 			{ status: 404 }
 		);
 	}
+	// A closed financial month is the terminal freeze: its refusal is the
+	// operative one, ahead of the register history hook (#322).
+	const [dateRows] = (await db.execute(
+		`SELECT recognition_period, transaction_date FROM ${TABLE}
+      WHERE id = ? AND isDelete = 0`,
+		[id]
+	)) as [
+		Array<{ recognition_period: unknown; transaction_date: unknown }>,
+		unknown,
+	];
+	for (const value of [
+		dateRows[0]?.recognition_period,
+		dateRows[0]?.transaction_date,
+	]) {
+		const period = String(value ?? '').slice(0, 7);
+		if (/^\d{4}-\d{2}$/.test(period) && (await isMonthClosed(db, period))) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'This financial month is closed. Ordinary writes are blocked; change closed figures through the financial revision workflow instead.',
+					code: 'month_closed',
+				},
+				{ status: 409 }
+			);
+		}
+	}
 	const refusal = pettyCashRegisterRefusal(row, operation);
-	if (!refusal) return null;
-	return NextResponse.json(
-		{
-			success: false,
-			error: refusal.message,
-			code: refusal.code,
-			...refusal.detail,
-		},
-		{ status: refusal.status }
-	);
+	if (refusal) {
+		return NextResponse.json(
+			{
+				success: false,
+				error: refusal.message,
+				code: refusal.code,
+				...refusal.detail,
+			},
+			{ status: refusal.status }
+		);
+	}
+	return null;
 }
 
 export async function GET(

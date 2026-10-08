@@ -21,6 +21,10 @@ import {
 	seedCashFixtures,
 } from './lib/expenditure-cash-fixtures';
 import {
+	cleanupCloseFixtures,
+	seedCloseFixtures,
+} from './lib/expenditure-close-fixtures';
+import {
 	cleanupExpenditureFixtures,
 	seedExpenditureFixtures,
 } from './lib/expenditure-fixtures';
@@ -97,6 +101,7 @@ export default async function globalSetup(): Promise<void> {
 		await cleanupCostAccrualFixtures();
 		await cleanupAccrualConsumptionFixtures();
 		await cleanupCashFixtures();
+		await cleanupCloseFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
 		// trusted IP header; browser sign-ins carry no such header, so they land
@@ -241,6 +246,13 @@ export default async function globalSetup(): Promise<void> {
 				`and ${accrualConsumption.nextMonth} ` +
 				`(${Object.keys(accrualConsumption.accrualIds).length} linked accruals, ` +
 				`${Object.keys(accrualConsumption.invoiceIds).length} transfer invoices)`
+		);
+
+		const close = await seedCloseFixtures();
+		console.log(
+			`[e2e] financial-close fixtures seeded for 2021-01 and 2021-02 ` +
+				`(${Object.keys(close.projects).length} projects, ` +
+				`close clerk #${close.clerkUserId})`
 		);
 	} finally {
 		await closeDb();

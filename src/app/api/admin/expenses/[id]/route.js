@@ -6,6 +6,7 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
+import { isMonthClosed } from '@/lib/company-expenditure';
 
 const TABLE = 'expenses';
 
@@ -37,17 +38,32 @@ const FINANCIAL_FIELDS = [
  * Confirmed cost is frozen here: an edit or a soft delete through the register
  * would change recognized cost with no version and no journal entry. The
  * recognition workflow is the way to change it (cancel it, then record the
- * correction), so these paths refuse instead of mutating it silently.
+ * correction), so these paths refuse instead of mutating it silently. A
+ * closed financial month freezes every row in it the same way (#322).
  */
 async function refuseRecognizedCostEdit(db, id) {
 	const [rows] = await db.execute(
-		`SELECT recognition_state FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
+		`SELECT recognition_state, recognition_period FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
 		[id]
 	);
 	if (rows.length === 0) {
 		return NextResponse.json(
 			{ success: false, error: 'Expense not found' },
 			{ status: 404 }
+		);
+	}
+	// A closed financial month is the terminal freeze: its refusal is the
+	// operative one, ahead of the recognition-state history guard (#322).
+	const period = String(rows[0].recognition_period ?? '').slice(0, 7);
+	if (/^\d{4}-\d{2}$/.test(period) && (await isMonthClosed(db, period))) {
+		return NextResponse.json(
+			{
+				success: false,
+				error:
+					'This financial month is closed. Ordinary writes are blocked; change closed figures through the financial revision workflow instead.',
+				code: 'month_closed',
+			},
+			{ status: 409 }
 		);
 	}
 	if (rows[0].recognition_state === 'recognized') {

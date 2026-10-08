@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto';
 import { add, sub, R, toNumber } from '@/lib/money';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
 import { CostError } from './errors';
+import { assertMonthOpen } from './close';
 import type { CommandOptions, CostActor } from './commands';
 import { inTransaction } from './commands';
 import {
@@ -1087,6 +1088,9 @@ export async function captureOtherExpense(
 	for (let attempt = 1; ; attempt++) {
 		try {
 			return await inTransaction(options, async (db) => {
+				// A closed recognition month refuses the capture before the
+				// voucher number is minted, so a refusal writes nothing (#322).
+				await assertMonthOpen(db, period);
 				const id = randomUUID();
 				const costUid = `cost-${randomUUID()}`;
 				const voucherNumber =
@@ -1324,6 +1328,9 @@ export async function executeOtherExpenseCommand(
 			);
 		}
 		const current = asRow(row);
+		// A closed recognition month refuses the write before any version
+		// check, link change, or journal append (#322).
+		await assertMonthOpen(db, current.recognition_period);
 		if (current.financial_version !== input.expected_version) {
 			throw new CostError(
 				'version_conflict',
@@ -1511,6 +1518,9 @@ export async function executeOtherExpenseCommand(
 		const resolved = datesChanged
 			? resolveRecognitionPeriod(merged)
 			: { period: current.recognition_period, basis: current.period_basis };
+		// A patch that would move the entry into a closed month is refused
+		// with the same guard (#322).
+		await assertMonthOpen(db, resolved.period);
 
 		let recognizedAmount = current.recognized_amount;
 		let recognizedBy = current.recognized_by;
@@ -1689,6 +1699,9 @@ export async function resolveOtherExpenseCopy(
 		const row = await loadRowForUpdate(db, keyOf(input.id));
 		if (!row) throw new CostError('not_found', 'Other expense not found', 404);
 		const current = asRow(row);
+		// A closed recognition month refuses the write before any version
+		// check, link change, or journal append (#322).
+		await assertMonthOpen(db, current.recognition_period);
 		if (current.financial_version !== input.expected_version) {
 			throw new CostError(
 				'version_conflict',

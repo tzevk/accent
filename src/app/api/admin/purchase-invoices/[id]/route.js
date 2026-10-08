@@ -6,9 +6,26 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
-import { loadSupplierInvoiceDetail } from '@/lib/company-expenditure';
+import {
+	isMonthClosed,
+	loadSupplierInvoiceDetail,
+} from '@/lib/company-expenditure';
 
 const TABLE = 'purchase_invoices';
+
+/**
+ * A closed financial month freezes every invoice in it (#322): the
+ * register edit and delete paths refuse instead of mutating closed cost
+ * with no version and no journal entry.
+ */
+async function invoiceMonthClosed(db, id) {
+	const [rows] = await db.execute(
+		`SELECT recognition_period FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
+		[id]
+	);
+	const period = String(rows[0]?.recognition_period ?? '').slice(0, 7);
+	return /^\d{4}-\d{2}$/.test(period) && (await isMonthClosed(db, period));
+}
 
 export async function GET(request, { params }) {
 	const authResult = await ensurePermission(
@@ -81,6 +98,19 @@ export async function PUT(request, { params }) {
 			return NextResponse.json(
 				{ success: false, error: 'Purchase invoice not found' },
 				{ status: 404 }
+			);
+		}
+		// A closed financial month is the terminal freeze: its refusal is
+		// the operative one, ahead of the recognition-state guard (#322).
+		if (await invoiceMonthClosed(db, id)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'This financial month is closed. Ordinary writes are blocked; change closed figures through the financial revision workflow instead.',
+					code: 'month_closed',
+				},
+				{ status: 409 }
 			);
 		}
 		if (stateRows[0].recognition_state === 'recognized') {
@@ -210,6 +240,19 @@ export async function DELETE(request, { params }) {
 			return NextResponse.json(
 				{ success: false, error: 'Purchase invoice not found' },
 				{ status: 404 }
+			);
+		}
+		// A closed financial month is the terminal freeze: its refusal is
+		// the operative one, ahead of the recognition-state guard (#322).
+		if (await invoiceMonthClosed(db, id)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'This financial month is closed. Ordinary writes are blocked; change closed figures through the financial revision workflow instead.',
+					code: 'month_closed',
+				},
+				{ status: 409 }
 			);
 		}
 		if (stateRows[0].recognition_state === 'recognized') {
