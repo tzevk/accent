@@ -20,25 +20,26 @@ type PlaywrightApi = PlaywrightWorkerArgs['playwright'];
  *   settlements         `financial_settlements` rows whose `reference`,
  *                       `destination`, or `evidence_reference` starts with
  *                       `E2E-EXP-318`, plus their links and journal rows
- *   payroll             employee `E2E-EXP-318-E1`, run 12/2018, slips of
- *                       `2018-12-01`
+ *   payroll             employee `E2E-EXP-318-E1`, run 3/2023, slips of
+ *                       `2023-03-01`
  *   petty rows/vouchers `E2E-EXP-318` notes/text, voucher `E2E-EXP-318-*`
  *   legacy/receipt rows  `E2E-EXP-318` vendor/payee/client/transaction text
  *   users/roles         `e2e_318_*`
- *   months              **2018-10 / 2018-11 / 2018-12** — reserved for #318
- *                       (utilization fixtures log attendance hours in these
- *                       months for other employees, but no other slice writes
- *                       financial rows here)
- *   trusted IPs         **198.18.0.113** (spec), **.114** (clerk),
- *                       **.115** (outsider) — reserved for #318
+ *   months              **2023-01 / 2023-02 / 2023-03** — reserved for #318
+ *                       for cash: no other slice writes settlement, payroll,
+ *                       petty-cash, or legacy receipt rows there, and #320's
+ *                       day-less period charges recognize in their own months,
+ *                       so cash only ever compares its own before/after cost
+ *   trusted IPs         **198.18.0.115** (spec), **.116** (clerk),
+ *                       **.117** (outsider) — reserved for #318
  *
  * Other tickets must not read, mutate, or clean these rows, must not use these
  * months for financial fixtures, and must not reuse those trusted IPs.
  */
 
-export const CASH_SERVICE_MONTH = '2018-10';
-export const CASH_INVOICE_MONTH = '2018-11';
-export const CASH_MONTH = '2018-12';
+export const CASH_SERVICE_MONTH = '2023-01';
+export const CASH_INVOICE_MONTH = '2023-02';
+export const CASH_MONTH = '2023-03';
 export const CASH_PREFIX = 'E2E-EXP-318';
 export const CASH_COST_PREFIX = 'e2e-318-cost-';
 export const CASH_VENDOR = 'E2E-EXP-318 Vendor';
@@ -58,26 +59,26 @@ export const CASH_PROJECTS = {
 
 export type CashProjectKey = keyof typeof CASH_PROJECTS;
 
-/** September-service analogue: served in October, invoiced in November. */
+/** Prior-month service analogue: served in January, invoiced in February. */
 export const CASH_INVOICE_A = {
 	invoiceNumber: 'E2E-EXP-318-INV-A',
 	costUid: 'e2e-318-cost-inv-a',
 	grossAmount: '15000.00',
-	serviceStart: '2018-10-05',
-	serviceEnd: '2018-10-25',
-	invoiceDate: '2018-11-03',
-	recognitionMonth: '2018-10',
+	serviceStart: '2023-01-05',
+	serviceEnd: '2023-01-25',
+	invoiceDate: '2023-02-03',
+	recognitionMonth: '2023-01',
 } as const;
 
-/** The partial/final invoice: served and invoiced in November. */
+/** The partial/final invoice: served and invoiced in February. */
 export const CASH_INVOICE_B = {
 	invoiceNumber: 'E2E-EXP-318-INV-B',
 	costUid: 'e2e-318-cost-inv-b',
 	grossAmount: '10000.00',
-	serviceStart: '2018-11-02',
-	serviceEnd: '2018-11-20',
-	invoiceDate: '2018-11-22',
-	recognitionMonth: '2018-11',
+	serviceStart: '2023-02-02',
+	serviceEnd: '2023-02-20',
+	invoiceDate: '2023-02-22',
+	recognitionMonth: '2023-02',
 } as const;
 
 /** A non-operating advance: payment is cash movement, never operating cost. */
@@ -85,8 +86,8 @@ export const CASH_ADVANCE = {
 	expenseNumber: 'E2E-EXP-318-ADV-1',
 	costUid: 'e2e-318-cost-adv-1',
 	amount: '5000.00',
-	billDate: '2018-11-10',
-	recognitionMonth: '2018-11',
+	billDate: '2023-02-10',
+	recognitionMonth: '2023-02',
 } as const;
 
 /** The payroll slip the native mark-paid control pays out. */
@@ -95,7 +96,7 @@ export const CASH_SLIP = {
 	firstName: 'E2E',
 	lastName: 'Cash One',
 	email: 'e2e.318.cash.one@accent.test',
-	month: '2018-12-01',
+	month: '2023-03-01',
 	gross: '50000.00',
 	basic: '30000.00',
 	hra: '10000.00',
@@ -105,21 +106,21 @@ export const CASH_SLIP = {
 	totalDeductions: '2000.00',
 	netPay: '48000.00',
 	employerCost: '55000.00',
-	paymentDate: '2018-12-20',
+	paymentDate: '2023-03-20',
 	paymentReference: 'E2E-EXP-318-NEFT-PAY',
 } as const;
 
 /** Bank-into-float funding the cash section shows apart from outward paid. */
 export const CASH_FUNDING = {
 	voucherNumber: 'E2E-EXP-318-CV-1',
-	voucherDate: '2018-12-10',
+	voucherDate: '2023-03-10',
 	amount: '1000.00',
 } as const;
 
 /** Third-party spending out of the float: the outward movement. */
 export const CASH_SPEND = {
 	amount: '800.00',
-	transactionDate: '2018-12-12',
+	transactionDate: '2023-03-12',
 } as const;
 
 /**
@@ -142,7 +143,7 @@ export const CASH_CLERK = {
 		'payroll:update',
 		'petty_cash_expenses:create',
 	],
-	ip: '198.18.0.114',
+	ip: '198.18.0.116',
 } as const;
 
 /** An authenticated user with report access but no source privilege. */
@@ -154,11 +155,11 @@ export const CASH_OUTSIDER = {
 	roleCode: 'e2e_318_no_cash',
 	roleName: 'E2E No Cash',
 	permissions: ['reports:read'],
-	ip: '198.18.0.115',
+	ip: '198.18.0.117',
 } as const;
 
 /** The spec's own rate-limit identity. */
-export const CASH_SPEC_IP = '198.18.0.113';
+export const CASH_SPEC_IP = '198.18.0.115';
 
 export interface SeededCash {
 	projects: Record<CashProjectKey, number>;
@@ -266,14 +267,14 @@ export async function cleanupCashFixtures(): Promise<number> {
 	removed += (
 		await exec(
 			`DELETE FROM payroll_slips
-        WHERE month IN ('2018-10-01', '2018-11-01', '2018-12-01')
+        WHERE month IN ('2023-01-01', '2023-02-01', '2023-03-01')
           AND employee_id IN (SELECT id FROM employees WHERE employee_id LIKE ?)`,
 			[`${CASH_PREFIX}%`]
 		)
 	).affectedRows;
 	removed += (
 		await exec(
-			`DELETE FROM payroll_runs WHERE month = 12 AND year = 2018 AND run_number = 1`
+			`DELETE FROM payroll_runs WHERE month = 3 AND year = 2023 AND run_number = 1`
 		)
 	).affectedRows;
 	removed += (
@@ -386,11 +387,11 @@ export async function seedCashFixtures(): Promise<SeededCash> {
           financial_version, recognized_by, recognized_at, currency, withholding_tax_amount)
        VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, 0, 0, 'unpaid', 'approved', ?, ?, ?, NULL, 0,
                ?, 'project', 'recognized', ?, 'service_period', ?, ?, 'none', NULL,
-               ?, ?, ?, 1, NULL, '2018-11-25 09:00:00', 'INR', 0)`,
+               ?, ?, ?, 1, NULL, '2023-02-25 09:00:00', 'INR', 0)`,
 			[
 				invoice.invoiceNumber,
 				invoice.invoiceDate,
-				'2018-12-15',
+				'2023-03-15',
 				CASH_VENDOR,
 				`E2E-EXP-318 supplier invoice ${key}`,
 				invoice.grossAmount,
@@ -449,7 +450,7 @@ export async function seedCashFixtures(): Promise<SeededCash> {
         recognized_by, recognized_at)
        VALUES (?, ?, 'E2E Cash Advance', 'E2E Sub Category', ?, ?, ?, 0, ?, 'INR', 'bank', ?, NULL, 0, 0, ?, NULL, ?, 'approved',
                NULL, 0, ?, 'project', 'advance', 'recognized', ?, 'service_period', ?, ?, 'none', NULL,
-               ?, ?, ?, 1, NULL, '2018-11-11 09:00:00')`,
+               ?, ?, ?, 1, NULL, '2023-02-11 09:00:00')`,
 		[
 			advance.expenseNumber,
 			advance.billDate,
@@ -482,14 +483,14 @@ export async function seedCashFixtures(): Promise<SeededCash> {
 	const employeeInserted = await exec(
 		`INSERT INTO employees
          (employee_id, first_name, last_name, email, status, employee_type, joining_date, isDelete)
-       VALUES (?, ?, ?, ?, 'active', 'Payroll', '2018-01-01', 0)`,
+       VALUES (?, ?, ?, ?, 'active', 'Payroll', '2023-01-01', 0)`,
 		[slip.employeeCode, slip.firstName, slip.lastName, slip.email]
 	);
 	await exec(
 		`INSERT INTO payroll_runs
          (month, year, run_number, status, total_employees, total_gross,
           total_deductions, total_net_pay, total_employer_contribution)
-       VALUES (12, 2018, 1, 'finalized', 1, ?, ?, ?, ?)`,
+       VALUES (3, 2023, 1, 'finalized', 1, ?, ?, ?, ?)`,
 		[slip.gross, slip.totalDeductions, slip.netPay, slip.employerCost]
 	);
 	const slipInserted = await exec(
@@ -497,7 +498,7 @@ export async function seedCashFixtures(): Promise<SeededCash> {
          (month, employee_id, gross, basic, hra, conveyance, call_allowance,
           other_allowances, total_earnings, pf_employee, pt, total_deductions,
           net_pay, employer_cost, payment_status)
-       VALUES ('2018-12-01', ?, ?, ?, ?, ?, ?, 0, ?, 1800.00, 200.00, ?, ?, ?, 'pending')`,
+       VALUES ('2023-03-01', ?, ?, ?, ?, ?, ?, 0, ?, 1800.00, 200.00, ?, ?, ?, 'pending')`,
 		[
 			employeeInserted.insertId,
 			slip.gross,
@@ -518,7 +519,7 @@ export async function seedCashFixtures(): Promise<SeededCash> {
 		`INSERT INTO payment_payables
          (reference_number, vendor_name, invoice_date, invoice_amount, paid_amount,
           balance_due, currency, status, paid_date, notes, isDelete)
-       VALUES ('E2E-EXP-318-PP-1', ?, '2018-11-20', 5000.00, 3000.00, 2000.00,
+       VALUES ('E2E-EXP-318-PP-1', ?, '2023-02-20', 5000.00, 3000.00, 2000.00,
                'INR', 'paid', NULL, 'E2E-EXP-318 undated legacy balance', 0)`,
 		[`${CASH_PREFIX} Legacy Vendor`]
 	);
@@ -526,8 +527,8 @@ export async function seedCashFixtures(): Promise<SeededCash> {
 		`INSERT INTO payment_issues
          (payee_name, invoice_number, invoice_date, invoice_amount, amount,
           net_amount, issue_date, status, notes, isDelete)
-       VALUES (?, 'E2E-EXP-318-ISS-1', '2018-12-04', 2000.00, 2000.00, 1500.00,
-               '2018-12-05', 'full', 'E2E-EXP-318 free-text legacy issue', 0)`,
+       VALUES (?, 'E2E-EXP-318-ISS-1', '2023-03-04', 2000.00, 2000.00, 1500.00,
+               '2023-03-05', 'full', 'E2E-EXP-318 free-text legacy issue', 0)`,
 		[`${CASH_PREFIX} Legacy Payee`]
 	);
 
@@ -537,23 +538,23 @@ export async function seedCashFixtures(): Promise<SeededCash> {
 		`INSERT INTO payment_entries
          (id, company_name, receipt_no, receipt_date, amount, payment_date,
           invoice_no, net_amount, isDelete)
-       VALUES ('e2e-318-rc-1', ?, 'E2E-EXP-318-RC-1', '2018-12-08', 9000.00,
-               '2018-12-08', 'E2E-EXP-318-CINV-1', 9000.00, 0)`,
+       VALUES ('e2e-318-rc-1', ?, 'E2E-EXP-318-RC-1', '2023-03-08', 9000.00,
+               '2023-03-08', 'E2E-EXP-318-CINV-1', 9000.00, 0)`,
 		[`${CASH_PREFIX} Client Co`]
 	);
 	await exec(
 		`INSERT INTO payment_receivables
          (reference_number, client_name, invoice_date, invoice_amount, paid_amount,
           balance_due, currency, status, received_date, isDelete)
-       VALUES ('E2E-EXP-318-PR-1', ?, '2018-12-01', 6000.00, 4000.00, 2000.00,
-               'INR', 'partial', '2018-12-09', 0)`,
+       VALUES ('E2E-EXP-318-PR-1', ?, '2023-03-01', 6000.00, 4000.00, 2000.00,
+               'INR', 'partial', '2023-03-09', 0)`,
 		[`${CASH_PREFIX} Client`]
 	);
 	await exec(
 		`INSERT INTO invoices
          (invoice_number, client_name, invoice_date, total, net_amount,
           amount_paid, balance_due, status, isDelete)
-       VALUES ('E2E-EXP-318-CINV-1', ?, '2018-12-10', 10000.00, 10000.00,
+       VALUES ('E2E-EXP-318-CINV-1', ?, '2023-03-10', 10000.00, 10000.00,
                7000.00, 3000.00, 'partially_paid', 0)`,
 		[`${CASH_PREFIX} Client`]
 	);
@@ -562,7 +563,7 @@ export async function seedCashFixtures(): Promise<SeededCash> {
          (transaction_id, description, category, type, amount, account_from,
           account_to, transaction_date, status)
        VALUES ('E2E-EXP-318-T1', 'E2E-EXP-318 own-account transfer', 'E2E Transfer',
-               'transfer', 6000.00, 'E2E Current', 'E2E Petty Float', '2018-12-11', 'completed')`,
+               'transfer', 6000.00, 'E2E Current', 'E2E Petty Float', '2023-03-11', 'completed')`,
 		[]
 	);
 

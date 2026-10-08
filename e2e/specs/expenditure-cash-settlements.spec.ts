@@ -9,9 +9,10 @@
  * controls drive the native movements, the browser drives the report cash
  * control, and the database is read back independently.
  *
- * The namespace and the months (2018-10, 2018-11, 2018-12) belong to this spec
- * alone (`e2e/lib/expenditure-cash-fixtures.ts`); 2019-01/02 belong to #306 and
- * 2019-10/11/12 to #319.
+ * The namespace and the months (2023-01, 2023-02, 2023-03) belong to this
+ * spec alone (`e2e/lib/expenditure-cash-fixtures.ts`); 2019-01/02 belong to
+ * #306 and 2019-10/11/12 to #319. Every cost assertion here is a before/after
+ * of this spec's own rows and never an absolute company total.
  */
 
 import { test, expect } from '@playwright/test';
@@ -39,7 +40,7 @@ test.use({
 	storageState: 'e2e/.auth/admin-report.json',
 	// This spec's own rate-limit identity, set through the proxy's trusted
 	// header (ADR-0013), so a combined run cannot exhaust the shared budget.
-	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.113' },
+	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.115' },
 });
 test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
@@ -189,21 +190,23 @@ test('clerk and outsider sign in through the real login', async ({
 	};
 });
 
-test('October service, November invoice, December payment: no third expense', async () => {
+test('January service, February invoice, March payment: no third expense', async () => {
 	// Baselines before any cash movement exists.
-	const octoberBefore = await readReport(clerk, '2018-10');
-	const novemberBefore = await readReport(clerk, '2018-11');
-	const decemberBefore = await readReport(clerk, CASH_MONTH);
-	expect(decemberBefore.cash.paid).toBe(0);
+	const serviceMonthBefore = await readReport(clerk, '2023-01');
+	const invoiceMonthBefore = await readReport(clerk, '2023-02');
+	const paymentMonthBefore = await readReport(clerk, CASH_MONTH);
+	expect(paymentMonthBefore.cash.paid).toBe(0);
 	// The month's own unpaid slip is already an unsettled cash target; no
 	// movement exists yet. Other recognized costs in the month are also
 	// targets (the cash section states all recognized costs + payroll slips).
-	const targetKeys = decemberBefore.cash.targets.map((row) => row.target_key);
+	const targetKeys = paymentMonthBefore.cash.targets.map(
+		(row) => row.target_key
+	);
 	expect(targetKeys).toContain(String(seeded.slipId));
 	evidence.baseline = {
-		october: octoberBefore.company.incurred_cost,
-		november: novemberBefore.company.incurred_cost,
-		december: decemberBefore.company.incurred_cost,
+		serviceMonth: serviceMonthBefore.company.incurred_cost,
+		invoiceMonth: invoiceMonthBefore.company.incurred_cost,
+		paymentMonth: paymentMonthBefore.company.incurred_cost,
 	};
 
 	const recorded = await clerk.post(REGISTER, {
@@ -212,7 +215,7 @@ test('October service, November invoice, December payment: no third expense', as
 			target_cost_uid: CASH_INVOICE_A.costUid,
 			amount: WORTH.invoiceA,
 			currency: 'INR',
-			settled_on: '2018-12-15',
+			settled_on: '2023-03-15',
 			reference: 'E2E-EXP-318-NEFT-A',
 			destination: 'E2E-EXP-318 Vendor',
 			evidence_reference: 'E2E-EXP-318-UTR-A',
@@ -228,19 +231,19 @@ test('October service, November invoice, December payment: no third expense', as
 		id: created.id,
 	};
 
-	// The payment changed no incurred cost: October still carries the 15000
-	// of served cost, and December cost is what it was before the payment.
-	const octoberAfter = await readReport(clerk, '2018-10');
-	const decemberAfter = await readReport(clerk, CASH_MONTH);
-	expect(octoberAfter.company.incurred_cost).toBe(
-		octoberBefore.company.incurred_cost
+	// The payment changed no incurred cost: January still carries the 15000
+	// of served cost, and March cost is what it was before the payment.
+	const serviceMonthAfter = await readReport(clerk, '2023-01');
+	const paymentMonthAfter = await readReport(clerk, CASH_MONTH);
+	expect(serviceMonthAfter.company.incurred_cost).toBe(
+		serviceMonthBefore.company.incurred_cost
 	);
-	expect(decemberAfter.company.incurred_cost).toBe(
-		decemberBefore.company.incurred_cost
+	expect(paymentMonthAfter.company.incurred_cost).toBe(
+		paymentMonthBefore.company.incurred_cost
 	);
-	expect(decemberAfter.cash.paid).toBe(WORTH.invoiceA);
-	expect(decemberAfter.cash.currency).toBe('INR');
-	const rowA = target(decemberAfter.cash, CASH_INVOICE_A.costUid);
+	expect(paymentMonthAfter.cash.paid).toBe(WORTH.invoiceA);
+	expect(paymentMonthAfter.cash.currency).toBe('INR');
+	const rowA = target(paymentMonthAfter.cash, CASH_INVOICE_A.costUid);
 	expect(rowA.state).toBe('settled');
 	expect(rowA.liability).toBe(WORTH.invoiceA);
 	expect(rowA.remaining).toBe(0);
@@ -282,7 +285,7 @@ test('supplier partial then final settlement states partial then settled', async
 			target_cost_uid: CASH_INVOICE_B.costUid,
 			amount: 4000,
 			currency: 'INR',
-			settled_on: '2018-12-16',
+			settled_on: '2023-03-16',
 			reference: 'E2E-EXP-318-NEFT-B1',
 			destination: 'E2E-EXP-318 Vendor',
 		},
@@ -304,7 +307,7 @@ test('supplier partial then final settlement states partial then settled', async
 			target_cost_uid: CASH_INVOICE_B.costUid,
 			amount: 5000,
 			currency: 'INR',
-			settled_on: '2018-12-18',
+			settled_on: '2023-03-18',
 			reference: 'E2E-EXP-318-NEFT-B2',
 			destination: 'E2E-EXP-318 Vendor',
 		},
@@ -330,7 +333,7 @@ test('withheld amounts are settlement destinations, never cost reductions', asyn
 			movement_kind: 'withholding',
 			amount: WORTH.tds,
 			currency: 'INR',
-			settled_on: '2018-12-18',
+			settled_on: '2023-03-18',
 			reference: 'E2E-EXP-318-TDS-B',
 			destination: 'Income Tax Department - TDS',
 		},
@@ -340,7 +343,7 @@ test('withheld amounts are settlement destinations, never cost reductions', asyn
 	// The native payroll payout through the real mark-paid control.
 	const markPaid = await clerk.post('/api/payroll/runs/mark-paid', {
 		data: {
-			month: '2018-12-01',
+			month: '2023-03-01',
 			payment_date: CASH_SLIP.paymentDate,
 			payment_reference: CASH_SLIP.paymentReference,
 		},
@@ -355,7 +358,7 @@ test('withheld amounts are settlement destinations, never cost reductions', asyn
 			movement_kind: 'deduction',
 			amount: WORTH.deduction,
 			currency: 'INR',
-			settled_on: '2018-12-21',
+			settled_on: '2023-03-21',
 			reference: 'E2E-EXP-318-EPFO',
 			destination: 'EPFO',
 		},
@@ -400,8 +403,8 @@ test('withheld amounts are settlement destinations, never cost reductions', asyn
 });
 
 test('advance settlement states its nature apart from operating cost', async () => {
-	const decemberBefore = await readReport(clerk, CASH_MONTH);
-	const paidBefore = decemberBefore.cash.paid ?? 0;
+	const paymentMonthBefore = await readReport(clerk, CASH_MONTH);
+	const paidBefore = paymentMonthBefore.cash.paid ?? 0;
 
 	const recorded = await clerk.post(REGISTER, {
 		data: {
@@ -409,21 +412,21 @@ test('advance settlement states its nature apart from operating cost', async () 
 			target_cost_uid: CASH_ADVANCE.costUid,
 			amount: WORTH.advance,
 			currency: 'INR',
-			settled_on: '2018-12-17',
+			settled_on: '2023-03-17',
 			reference: 'E2E-EXP-318-NEFT-ADV',
 			destination: 'E2E-EXP-318 Vendor',
 		},
 	});
 	expect(recorded.status()).toBe(201);
 
-	const decemberAfter = await readReport(clerk, CASH_MONTH);
-	expect((decemberAfter.cash.paid ?? 0) - paidBefore).toBe(WORTH.advance);
-	const advanceRow = target(decemberAfter.cash, CASH_ADVANCE.costUid);
+	const paymentMonthAfter = await readReport(clerk, CASH_MONTH);
+	expect((paymentMonthAfter.cash.paid ?? 0) - paidBefore).toBe(WORTH.advance);
+	const advanceRow = target(paymentMonthAfter.cash, CASH_ADVANCE.costUid);
 	expect(advanceRow.nature).toBe('advance');
 	expect(advanceRow.state).toBe('settled');
 	// Operating cost is untouched: the advance was never expensed by payment.
-	expect(decemberAfter.company.incurred_cost).toBe(
-		decemberBefore.company.incurred_cost
+	expect(paymentMonthAfter.company.incurred_cost).toBe(
+		paymentMonthBefore.company.incurred_cost
 	);
 	evidence.advance = {
 		nature: advanceRow.nature,
@@ -486,7 +489,7 @@ test('manual restatements of native movements are refused', async () => {
 			payroll_slip_id: seeded.slipId,
 			amount: 100,
 			currency: 'INR',
-			settled_on: '2018-12-22',
+			settled_on: '2023-03-22',
 			reference: 'E2E-EXP-318-DUP-PAY',
 		},
 	});
@@ -503,7 +506,7 @@ test('manual restatements of native movements are refused', async () => {
 			target_cost_uid: spendCostUid,
 			amount: 100,
 			currency: 'INR',
-			settled_on: '2018-12-22',
+			settled_on: '2023-03-22',
 			reference: 'E2E-EXP-318-DUP-PETTY',
 		},
 	});
@@ -519,7 +522,7 @@ test('manual restatements of native movements are refused', async () => {
 		target_cost_uid: CASH_INVOICE_A.costUid,
 		amount: 10,
 		currency: 'INR',
-		settled_on: '2018-12-23',
+		settled_on: '2023-03-23',
 		reference: 'E2E-EXP-318-IDEM',
 		settlement_uid: uid,
 	};
@@ -545,7 +548,7 @@ test('manual restatements of native movements are refused', async () => {
 			movement_kind: 'deduction',
 			amount: 50,
 			currency: 'INR',
-			settled_on: '2018-12-23',
+			settled_on: '2023-03-23',
 			reference: 'E2E-EXP-318-EPFO-2',
 			destination: 'EPFO',
 		},
@@ -618,7 +621,7 @@ test('authorization: outsider reads nothing and writes nothing', async () => {
 			target_cost_uid: CASH_INVOICE_A.costUid,
 			amount: 5,
 			currency: 'INR',
-			settled_on: '2018-12-24',
+			settled_on: '2023-03-24',
 			reference: 'E2E-EXP-318-OUTSIDER',
 		},
 	});
@@ -639,7 +642,7 @@ test('validation refuses unknown targets, mismatched currency, bad input', async
 			target_cost_uid: 'e2e-318-no-such-cost',
 			amount: 5,
 			currency: 'INR',
-			settled_on: '2018-12-24',
+			settled_on: '2023-03-24',
 			reference: 'E2E-EXP-318-UNKNOWN',
 		},
 	});
@@ -654,7 +657,7 @@ test('validation refuses unknown targets, mismatched currency, bad input', async
 			target_cost_uid: CASH_INVOICE_A.costUid,
 			amount: 5,
 			currency: 'USD',
-			settled_on: '2018-12-24',
+			settled_on: '2023-03-24',
 			reference: 'E2E-EXP-318-FX',
 		},
 	});
@@ -669,7 +672,7 @@ test('validation refuses unknown targets, mismatched currency, bad input', async
 			target_cost_uid: CASH_INVOICE_A.costUid,
 			amount: 0,
 			currency: 'INR',
-			settled_on: '2018-12-24',
+			settled_on: '2023-03-24',
 			reference: 'E2E-EXP-318-ZERO',
 		},
 	});
@@ -698,10 +701,8 @@ test('browser records a settlement through the report cash control, then cancels
 	await page.getByRole('tab', { name: 'Expenditure', exact: true }).click();
 	await expect(page.getByTestId('expenditure-view')).toBeVisible();
 	await page.getByLabel('Month', { exact: true }).click();
-	await page.getByPlaceholder('Search...').fill('December 2018');
-	await page
-		.getByRole('button', { name: 'December 2018', exact: true })
-		.click();
+	await page.getByPlaceholder('Search...').fill('March 2023');
+	await page.getByRole('button', { name: 'March 2023', exact: true }).click();
 	await expect(page.getByTestId('expenditure-view')).toHaveAttribute(
 		'data-month',
 		CASH_MONTH
@@ -713,7 +714,7 @@ test('browser records a settlement through the report cash control, then cancels
 		.getByTestId('cash-target-select')
 		.selectOption(`cost:${CASH_ADVANCE.costUid}`);
 	await page.getByTestId('cash-amount-input').fill('100');
-	await page.getByTestId('cash-date-input').fill('2018-12-26');
+	await page.getByTestId('cash-date-input').fill('2023-03-26');
 	await page.getByTestId('cash-reference-input').fill('E2E-EXP-318-BROWSER');
 	await page.getByTestId('cash-record-button').click();
 	await expect(page.getByText('E2E-EXP-318-BROWSER')).toBeVisible();
@@ -760,7 +761,7 @@ test('concurrent commands: one wins, one is stale, one journal row', async () =>
 			target_cost_uid: CASH_INVOICE_A.costUid,
 			amount: 25,
 			currency: 'INR',
-			settled_on: '2018-12-27',
+			settled_on: '2023-03-27',
 			reference: 'E2E-EXP-318-RACE',
 		},
 	});
@@ -802,17 +803,17 @@ test('concurrent commands: one wins, one is stale, one journal row', async () =>
 });
 
 test('incurred cost, commitments, and payroll rows are unchanged by cash', async () => {
-	const october = await readReport(clerk, '2018-10');
-	const november = await readReport(clerk, '2018-11');
-	const december = await readReport(clerk, CASH_MONTH);
+	const serviceMonth = await readReport(clerk, '2023-01');
+	const invoiceMonth = await readReport(clerk, '2023-02');
+	const paymentMonth = await readReport(clerk, CASH_MONTH);
 	const baseline = evidence.baseline as {
-		october: number | null;
-		november: number | null;
-		december: number | null;
+		serviceMonth: number | null;
+		invoiceMonth: number | null;
+		paymentMonth: number | null;
 	};
-	expect(october.company.incurred_cost).toBe(baseline.october);
-	expect(november.company.incurred_cost).toBe(baseline.november);
-	expect(december.company.incurred_cost).toBe(baseline.december);
+	expect(serviceMonth.company.incurred_cost).toBe(baseline.serviceMonth);
+	expect(invoiceMonth.company.incurred_cost).toBe(baseline.invoiceMonth);
+	expect(paymentMonth.company.incurred_cost).toBe(baseline.paymentMonth);
 	// Only namespaced costs exist: the two invoices and the advance.
 	const costLinks = await rows<{ count: number }>(
 		`SELECT COUNT(*) AS count FROM financial_cost_links
@@ -820,15 +821,15 @@ test('incurred cost, commitments, and payroll rows are unchanged by cash', async
 	);
 	expect(costLinks[0].count).toBe(3);
 	evidence.final = {
-		paid: december.cash.paid,
-		targets: december.cash.targets.length,
+		paid: paymentMonth.cash.paid,
+		targets: paymentMonth.cash.targets.length,
 	};
 });
 
 test('coverage declares cash paid as wired, not outstanding', async () => {
-	const december = await readReport(clerk, CASH_MONTH);
+	const paymentMonth = await readReport(clerk, CASH_MONTH);
 	const codes = new Map(
-		december.coverage.map((row) => [row.code, row.severity])
+		paymentMonth.coverage.map((row) => [row.code, row.severity])
 	);
 	// The outstanding declaration flipped to wired: no notice names it.
 	expect(codes.get('cash_and_payments_not_incorporated')).toBeUndefined();
