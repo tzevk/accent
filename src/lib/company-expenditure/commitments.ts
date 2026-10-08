@@ -181,6 +181,13 @@ export interface CommitmentException {
 	currency: string | null;
 	basis: CommitmentBasis | null;
 	detail: string;
+	/**
+	 * Months whose close this exception can block: the affected orders'
+	 * order/eligible/ended months. Empty means the exception is not
+	 * attributable to any month (e.g. directionless legacy copies), so it
+	 * is disclosed but never blocks a close (#322).
+	 */
+	months: string[];
 }
 
 /** One supplier order behind the section, stated at the selected month. */
@@ -288,6 +295,19 @@ function monthRange(start: string, end: string): string[] {
 		current = shiftMonth(current, 1);
 	}
 	return months;
+}
+
+/** Months an order's exception can block: its order/eligible/ended months. */
+function timelineMonths(timeline: OrderTimeline): string[] {
+	const months: string[] = [];
+	const orderMonth =
+		timeline.order.orderDate && /^\d{4}-\d{2}/.test(timeline.order.orderDate)
+			? timeline.order.orderDate.slice(0, 7)
+			: null;
+	if (orderMonth) months.push(orderMonth);
+	if (timeline.eligibleAt) months.push(timeline.eligibleAt.slice(0, 7));
+	if (timeline.endedAt) months.push(timeline.endedAt.slice(0, 7));
+	return [...new Set(months)];
 }
 
 /** One order journal row with its recorded status, as the timeline reads it. */
@@ -1357,6 +1377,7 @@ export async function fetchSupplierCommitmentRollforward(
 			currency: string | null;
 			basis: CommitmentBasis | null;
 			detail: string;
+			months: string[];
 		}
 	>();
 	const addException = (
@@ -1364,7 +1385,8 @@ export async function fetchSupplierCommitmentRollforward(
 		value: number | null,
 		currency: string | null,
 		basis: CommitmentBasis | null,
-		detail: string
+		detail: string,
+		months: string[] = []
 	): void => {
 		const key = `${code}|${currency ?? ''}|${basis ?? ''}`;
 		const entry = exceptionBuckets.get(key) ?? {
@@ -1374,10 +1396,14 @@ export async function fetchSupplierCommitmentRollforward(
 			currency,
 			basis,
 			detail,
+			months: [] as string[],
 		};
 		entry.count += 1;
 		if (value !== null) entry.value = toNumber(add(R(entry.value), R(value)));
 		else entry.value = Number.NaN;
+		for (const month of months) {
+			if (!entry.months.includes(month)) entry.months.push(month);
+		}
 		exceptionBuckets.set(key, entry);
 	};
 
@@ -1405,7 +1431,8 @@ export async function fetchSupplierCommitmentRollforward(
 				stated,
 				order.currency,
 				basis,
-				'Supplier order awaiting approval: never in the supported commitment.'
+				'Supplier order awaiting approval: never in the supported commitment.',
+				timelineMonths(timeline)
 			);
 			continue;
 		}
@@ -1415,7 +1442,8 @@ export async function fetchSupplierCommitmentRollforward(
 				null,
 				order.currency,
 				null,
-				'No supported tax basis: the value stays unknown, never zero.'
+				'No supported tax basis: the value stays unknown, never zero.',
+				timelineMonths(timeline)
 			);
 			continue;
 		}
@@ -1425,7 +1453,8 @@ export async function fetchSupplierCommitmentRollforward(
 				null,
 				order.currency,
 				basis,
-				'Supported basis without a recorded value: unknown, never zero.'
+				'Supported basis without a recorded value: unknown, never zero.',
+				timelineMonths(timeline)
 			);
 			continue;
 		}
@@ -1435,7 +1464,8 @@ export async function fetchSupplierCommitmentRollforward(
 				stated,
 				order.currency,
 				basis,
-				'No journal act proves the eligibility or cancellation date; the value stays out of the month buckets.'
+				'No journal act proves the eligibility or cancellation date; the value stays out of the month buckets.',
+				timelineMonths(timeline)
 			);
 			continue;
 		}
@@ -1446,7 +1476,8 @@ export async function fetchSupplierCommitmentRollforward(
 				stated,
 				order.currency,
 				basis,
-				'No recorded eligibility act: never in the supported commitment.'
+				'No recorded eligibility act: never in the supported commitment.',
+				timelineMonths(timeline)
 			);
 			continue;
 		}
@@ -1456,7 +1487,8 @@ export async function fetchSupplierCommitmentRollforward(
 				stated,
 				order.currency,
 				basis,
-				'A recorded basis change: the current basis is stated and earlier values are not reconstructed.'
+				'A recorded basis change: the current basis is stated and earlier values are not reconstructed.',
+				timelineMonths(timeline)
 			);
 		}
 		const entry: BucketOrder = {
@@ -1487,7 +1519,8 @@ export async function fetchSupplierCommitmentRollforward(
 							effectiveThroughMonth(uid, shiftMonth(key, -1)),
 						entry.currency,
 						entry.basis,
-						"Consumption dated before the order's eligibility month: folded into that month, never clamped."
+						"Consumption dated before the order's eligibility month: folded into that month, never clamped.",
+						[entry.eligibleMonth, key]
 					);
 					break;
 				}
@@ -1646,6 +1679,7 @@ export async function fetchSupplierCommitmentRollforward(
 				currency: entry.currency,
 				basis: entry.basis,
 				detail: entry.detail,
+				months: [...entry.months].sort(),
 			}))
 			.sort((left, right) => left.code.localeCompare(right.code)),
 		orders: monthRows,

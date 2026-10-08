@@ -92,7 +92,18 @@ export async function loadCloseSnapshot(
 	if (!row) return null;
 	let snapshot: CompanyReconciliation | null = null;
 	if (row.snapshot !== null && row.snapshot !== undefined) {
-		snapshot = JSON.parse(String(row.snapshot)) as CompanyReconciliation;
+		// The driver usually returns LONGTEXT as a string, but it has been
+		// observed returning the JSON snapshot already parsed (plain object).
+		// Accept both shapes rather than assuming one.
+		if (typeof row.snapshot === 'string') {
+			snapshot = JSON.parse(row.snapshot) as CompanyReconciliation;
+		} else if (typeof Buffer !== 'undefined' && Buffer.isBuffer(row.snapshot)) {
+			snapshot = JSON.parse(
+				row.snapshot.toString('utf8')
+			) as CompanyReconciliation;
+		} else if (typeof row.snapshot === 'object') {
+			snapshot = row.snapshot as CompanyReconciliation;
+		}
 	}
 	return {
 		month: String(row.month ?? month),
@@ -224,6 +235,14 @@ export function reviewReconciliation(
 	}
 	for (const exception of reconciliation.supplier_commitment.exceptions) {
 		if ((exception.orderCount ?? 0) > 0) {
+			// Only the closing month's own exceptions block it. An order from
+			// another period (or a directionless legacy copy attributable to
+			// no month) stays disclosed in the section but cannot hold an
+			// unrelated month's close hostage.
+			const blocksMonth = (exception.months ?? []).includes(
+				reconciliation.month
+			);
+			if (!blocksMonth) continue;
 			blockers.push({
 				code: 'supplier_commitment_unresolved',
 				label: 'Supplier commitment has unresolved exceptions',
