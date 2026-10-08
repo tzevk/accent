@@ -41,7 +41,7 @@
 const COST_COLUMNS = [
 	{
 		name: 'cost_uid',
-		ddl: 'VARCHAR(64) NULL COMMENT \'Stable cost identity shared with source references\'',
+		ddl: "VARCHAR(64) NULL COMMENT 'Stable cost identity shared with source references'",
 	},
 	{
 		name: 'cost_classification',
@@ -71,7 +71,7 @@ const COST_COLUMNS = [
 	{ name: 'evidence_reference', ddl: 'VARCHAR(500) NULL' },
 	{
 		name: 'financial_version',
-		ddl: 'INT NOT NULL DEFAULT 1 COMMENT \'Version the next financial command must present\'',
+		ddl: "INT NOT NULL DEFAULT 1 COMMENT 'Version the next financial command must present'",
 	},
 	{ name: 'recognized_by', ddl: 'INT NULL' },
 	{ name: 'recognized_at', ddl: 'DATETIME NULL' },
@@ -114,7 +114,7 @@ export async function up(knex) {
 			 LIMIT 1`,
 			[column]
 		);
-		if (rows.length && rows[0].is_nullable === 'NO') {
+		if (rows.length && (rows[0].is_nullable || rows[0].IS_NULLABLE) === 'NO') {
 			await knex.raw(
 				`ALTER TABLE \`expenses\` MODIFY COLUMN \`${column}\` DECIMAL(15,2) NULL DEFAULT NULL`
 			);

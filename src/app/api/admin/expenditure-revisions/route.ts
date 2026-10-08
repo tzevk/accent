@@ -32,6 +32,7 @@ import { dbConnect, withTransaction } from '@/utils/database';
 import {
 	CostError,
 	OrderError,
+	buildRevisionPayload,
 	executeRevision,
 	fetchCompanyReconciliation,
 	loadCloseSnapshot,
@@ -122,24 +123,13 @@ export async function GET(request: Request) {
 		);
 		return NextResponse.json({
 			success: true,
-			data: {
+			data: buildRevisionPayload({
 				month,
-				status: snapshot ? 'closed' : 'open',
-				close_uid: snapshot?.close_uid ?? null,
-				close_version: snapshot?.financial_version ?? 0,
-				prior: snapshot
-					? {
-							incurred_cost: snapshot.snapshot?.company.incurred_cost ?? null,
-							currency: snapshot.snapshot?.company.currency ?? null,
-						}
-					: null,
-				current: {
-					incurred_cost: reconciliation.company.incurred_cost,
-					currency: reconciliation.company.currency,
-				},
+				snapshot,
+				reconciliation,
 				candidates,
 				revisions,
-			},
+			}),
 		});
 	} catch (error: unknown) {
 		if (error instanceof CostError || error instanceof OrderError) {

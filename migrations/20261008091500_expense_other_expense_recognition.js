@@ -155,7 +155,10 @@ export async function up(knex) {
         WHERE table_schema = DATABASE() AND table_name = 'other_expenses' AND column_name = ? LIMIT 1`,
 			[name]
 		);
-		if (rows.length > 0 && rows[0].is_nullable === 'NO') {
+		if (
+			rows.length > 0 &&
+			(rows[0].is_nullable || rows[0].IS_NULLABLE) === 'NO'
+		) {
 			await knex.raw(
 				`ALTER TABLE \`other_expenses\` MODIFY COLUMN \`${name}\` DECIMAL(15,2) NULL`
 			);

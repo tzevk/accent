@@ -45,6 +45,7 @@ import type {
 	CostNature,
 	CostRecordJson,
 	PeriodChargeJson,
+	RevisionPayload,
 	SupplierCommitmentSection,
 } from '@/lib/company-expenditure';
 import BudgetSection, { type BudgetSectionPayload } from './budget-section';
@@ -678,6 +679,7 @@ export default function ExpenditureView({
 	const reconciliationQuery = useQuery<{
 		data: ReconciliationPayload;
 		close?: ClosePayload | null;
+		revisions?: RevisionPayload | null;
 	}>({
 		queryKey: ['expenditure', month, projectFilter, reportingCurrency],
 		queryFn: () =>
@@ -3331,8 +3333,14 @@ export default function ExpenditureView({
 			{/* Financial revisions (#323). Its own section: a closed month
 			    states its frozen prior totals beside the live updated totals,
 			    and the revision command corrects or reverses closed figures
-			    with a reason and evidence while preserving both. */}
-			<RevisionSection month={month} canRevise={canReviseClosed} />
+			    with a reason and evidence while preserving both. The revision
+			    state rides on the reconciliation response (same pattern as the
+			    close section), never a second per-mount request. */}
+			<RevisionSection
+				month={month}
+				canRevise={canReviseClosed}
+				initialRevisions={reconciliationQuery.data?.revisions ?? null}
+			/>
 
 			<p className="mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed text-gray-500">
 				<BanknotesIcon className="h-3 w-3" />

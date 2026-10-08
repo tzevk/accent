@@ -39,14 +39,24 @@ if (!process.env.E2E_DB_NAME) {
 	);
 }
 
+const e2eHost = process.env.E2E_DB_HOST || required('DB_HOST');
+const e2ePort = Number(process.env.E2E_DB_PORT || process.env.DB_PORT || 3306);
+const e2eSslMode =
+	process.env.E2E_DB_SSL_MODE ||
+	process.env.DB_SSL_MODE ||
+	(e2eHost.includes('.aivencloud.com') ? 'require' : 'off');
+const ssl =
+	e2eSslMode === 'require' ? { rejectUnauthorized: false } : undefined;
+
 export const E2E_ENV = {
 	port,
 	baseURL: `http://localhost:${port}`,
 	db: {
-		host: required('DB_HOST'),
-		port: Number(process.env.DB_PORT || 3306),
+		host: e2eHost,
+		port: e2ePort,
 		name: dbName,
-		user: process.env.E2E_DB_USER || required('DEV_DB_USER'),
-		password: process.env.E2E_DB_PASSWORD || required('DEV_DB_PASSWORD'),
+		user: process.env.E2E_DB_USER ?? required('DEV_DB_USER'),
+		password: process.env.E2E_DB_PASSWORD ?? required('DEV_DB_PASSWORD'),
+		ssl,
 	},
 };

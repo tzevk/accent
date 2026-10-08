@@ -3,7 +3,7 @@ import {
 	seedAttendanceFixtures,
 } from './lib/attendance-fixtures';
 import { deleteArtifact } from './lib/artifacts';
-import { closeDb, exec, rows } from './lib/db';
+import { closeDb, exec, pingDb, rows } from './lib/db';
 import {
 	cleanupExpenditureCurrencyFixtures,
 	seedExpenditureCurrencyFixtures,
@@ -83,6 +83,8 @@ import {
  */
 export default async function globalSetup(): Promise<void> {
 	try {
+		await pingDb();
+
 		// Payroll generation includes other fixture rosters. Remove its guarded
 		// month-owned slips before any roster cleanup deletes their employees.
 		// The revision cleanup runs first on purpose: its inert gate slips

@@ -711,12 +711,12 @@ export async function cleanupSupplierInvoiceFixtures(): Promise<number> {
 		invoiceParams
 	);
 	await exec(
-		`DELETE FROM payment_payables WHERE id IN (${payableSelector})`,
+		`DELETE FROM payment_payables WHERE reference_number LIKE ? OR vendor_invoice_number LIKE ?`,
 		payableParams
 	);
 	removed += (
 		await exec(
-			`DELETE FROM purchase_invoices WHERE id IN (${invoiceSelector})`,
+			`DELETE FROM purchase_invoices WHERE invoice_number LIKE ? OR vendor_name LIKE ?`,
 			invoiceParams
 		)
 	).affectedRows;

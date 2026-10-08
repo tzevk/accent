@@ -41,13 +41,16 @@ import {
 import {
 	dayOfDate,
 	buildClosePayload,
+	buildRevisionPayload,
 	fetchCompanyReconciliation,
 	fetchExpenditureMonths,
 	isCurrencyCode,
 	loadCloseSnapshot,
+	loadRevisionCandidates,
+	loadRevisionHistory,
 	reviewReconciliation,
 } from '@/lib/company-expenditure';
-import type { ClosePayload } from '@/lib/company-expenditure';
+import type { ClosePayload, RevisionPayload } from '@/lib/company-expenditure';
 import { dbConnect } from '@/utils/database';
 
 export const runtime = 'nodejs';
@@ -193,6 +196,7 @@ export async function GET(request: Request) {
 			// built (no recompute), plus one indexed snapshot row. The gate
 			// above is exactly the close read gate, so nothing new leaks.
 			let close: ClosePayload | null = null;
+			let revisions: RevisionPayload | null = null;
 			const closeDb = await dbConnect();
 			try {
 				const snapshot = await loadCloseSnapshot(closeDb, monthParam);
@@ -201,6 +205,20 @@ export async function GET(request: Request) {
 					snapshot,
 					reviewReconciliation(data)
 				);
+				// The revision section rides on this response too, for the same
+				// reason: one fewer per-mount request against the shared `api`
+				// budget. History and candidates are month-bounded reads.
+				const [revisionHistory, revisionCandidates] = await Promise.all([
+					loadRevisionHistory(closeDb, monthParam),
+					loadRevisionCandidates(closeDb, monthParam),
+				]);
+				revisions = buildRevisionPayload({
+					month: monthParam,
+					snapshot,
+					reconciliation: data,
+					candidates: revisionCandidates,
+					revisions: revisionHistory,
+				});
 			} finally {
 				await closeDb.release();
 			}
@@ -208,6 +226,7 @@ export async function GET(request: Request) {
 				success: true,
 				data,
 				close,
+				revisions,
 				view: 'expenditure',
 			});
 		}

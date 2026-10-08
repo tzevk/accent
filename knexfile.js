@@ -18,6 +18,7 @@ export default {
 		client: 'mysql2',
 		connection: {
 			host: process.env.DB_HOST,
+			port: Number(process.env.DB_PORT || 3306),
 			user: process.env.DEV_DB_USER,
 			password: process.env.DEV_DB_PASSWORD,
 			database: process.env.DEV_DB_NAME,
@@ -30,6 +31,7 @@ export default {
 		client: 'mysql2',
 		connection: {
 			host: process.env.DB_HOST,
+			port: Number(process.env.DB_PORT || 3306),
 			user: process.env.STAGING_DB_USER,
 			password: process.env.STAGING_DB_PASSWORD,
 			database: process.env.STAGING_DB_NAME,
@@ -42,6 +44,7 @@ export default {
 		client: 'mysql2',
 		connection: {
 			host: process.env.DB_HOST,
+			port: Number(process.env.DB_PORT || 3306),
 			user: process.env.PROD_DB_USER,
 			password: process.env.PROD_DB_PASSWORD,
 			database: process.env.PROD_DB_NAME,

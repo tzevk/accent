@@ -53,6 +53,7 @@ import { executeSettlementCommand } from './cash';
 import { recordOrderConsumption, releaseOrderConsumption } from './commitments';
 import type { SqlConnection } from './records';
 import type {
+	CompanyReconciliation,
 	CostPatch,
 	RevisionCandidate,
 	RevisionCommandInput,
@@ -1146,4 +1147,56 @@ export async function loadRevisionCandidates(
 	return candidates.sort((a, b) =>
 		a.number < b.number ? -1 : a.number > b.number ? 1 : 0
 	);
+}
+
+/**
+ * The revision state as the report and the revision route publish it: the
+ * month's open/closed status, the frozen close it targets, the frozen prior
+ * totals beside the live updated totals, the revisable candidates, and every
+ * accepted revision. One builder serves both publishers so the two responses
+ * cannot drift.
+ */
+export interface RevisionPayload {
+	month: string;
+	status: 'open' | 'closed';
+	close_uid: string | null;
+	close_version: number;
+	prior: {
+		incurred_cost: number | null;
+		currency: string | null;
+	} | null;
+	current: {
+		incurred_cost: number | null;
+		currency: string | null;
+	};
+	candidates: RevisionCandidate[];
+	revisions: RevisionHistoryEntry[];
+}
+
+export function buildRevisionPayload(input: {
+	month: string;
+	snapshot: CloseSnapshot | null;
+	reconciliation: CompanyReconciliation;
+	candidates: RevisionCandidate[];
+	revisions: RevisionHistoryEntry[];
+}): RevisionPayload {
+	const { month, snapshot, reconciliation, candidates, revisions } = input;
+	return {
+		month,
+		status: snapshot ? 'closed' : 'open',
+		close_uid: snapshot?.close_uid ?? null,
+		close_version: snapshot?.financial_version ?? 0,
+		prior: snapshot
+			? {
+					incurred_cost: snapshot.snapshot?.company.incurred_cost ?? null,
+					currency: snapshot.snapshot?.company.currency ?? null,
+				}
+			: null,
+		current: {
+			incurred_cost: reconciliation.company.incurred_cost,
+			currency: reconciliation.company.currency,
+		},
+		candidates,
+		revisions,
+	};
 }

@@ -12,42 +12,36 @@
  * Linked order consumptions follow the revised slices in the same
  * transaction; the section only presents the outcome.
  *
- * Unlike the close state (which rides the reconciliation response), the
- * revision history and candidates are their own resource: this section
- * fetches `/api/admin/expenditure-revisions?month=` for the month it
- * renders. The server owns every invariant; this file only presents them
- * and calls the revision route.
+ * The revision state arrives on the reconciliation response (the same
+ * pattern as the close section): the report route attaches it, so this
+ * section never fires a second per-mount request for what the page already
+ * holds.
  */
 
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
 	ChevronDownIcon,
 	ChevronRightIcon,
 	PencilSquareIcon,
 } from '@heroicons/react/24/outline';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiPost } from '@/lib/api-client';
 import { formatCurrencyIn } from '@/lib/format';
 import type {
 	RevisionCandidate,
-	RevisionHistoryEntry,
+	RevisionPayload,
 } from '@/lib/company-expenditure';
-
-export interface RevisionSectionPayload {
-	month: string;
-	status: 'open' | 'closed';
-	close_uid: string | null;
-	close_version: number;
-	prior: { incurred_cost: number | null; currency: string | null } | null;
-	current: { incurred_cost: number | null; currency: string | null };
-	candidates: RevisionCandidate[];
-	revisions: RevisionHistoryEntry[];
-}
 
 export interface RevisionSectionProps {
 	month: string;
 	/** Financial read gate + `other_expenses:update` — may revise the month. */
 	canRevise: boolean;
+	/**
+	 * The revision state from the reconciliation response. Null while the
+	 * parent's reconciliation is still loading; the section never fetches
+	 * on its own.
+	 */
+	initialRevisions: RevisionPayload | null;
 }
 
 function errorMessage(error: unknown): string {
@@ -71,6 +65,7 @@ function money(value: number | null, currency: string | null): string {
 export default function RevisionSection({
 	month,
 	canRevise,
+	initialRevisions,
 }: RevisionSectionProps) {
 	const queryClient = useQueryClient();
 	const [expanded, setExpanded] = useState(true);
@@ -82,18 +77,7 @@ export default function RevisionSection({
 	const [evidenceValue, setEvidenceValue] = useState('');
 	const [formError, setFormError] = useState<string | null>(null);
 
-	const historyQuery = useQuery<{ data: RevisionSectionPayload }>({
-		queryKey: ['expenditure-revisions', month],
-		queryFn: () =>
-			apiGet('/api/admin/expenditure-revisions', { month }) as Promise<{
-				data: RevisionSectionPayload;
-			}>,
-		enabled: !!month,
-		refetchOnWindowFocus: false,
-		staleTime: 15_000,
-	});
-
-	const data = historyQuery.data?.data ?? null;
+	const data = initialRevisions;
 	const candidates = data?.candidates ?? [];
 	const selected =
 		candidates.find((candidate) => candidate.uid === targetUid) ?? null;
@@ -131,9 +115,8 @@ export default function RevisionSection({
 			setReasonValue('');
 			setEvidenceValue('');
 			setFormError(null);
-			void queryClient.invalidateQueries({
-				queryKey: ['expenditure-revisions', month],
-			});
+			// Revision state rides the reconciliation response: refetching
+			// it brings the fresh history, candidates, and totals.
 			void queryClient.invalidateQueries({ queryKey: ['expenditure'] });
 		},
 		onError: (error: unknown) => {

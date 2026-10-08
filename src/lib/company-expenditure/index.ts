@@ -440,10 +440,12 @@ export {
 } from './close';
 export type { ClosePayload, ClosedRevision } from './close';
 export {
+	buildRevisionPayload,
 	executeRevision,
 	loadRevisionCandidates,
 	loadRevisionHistory,
 } from './revisions';
+export type { RevisionPayload } from './revisions';
 export {
 	CHARGE_BASIS_LABELS,
 	COST_NATURES,

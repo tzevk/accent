@@ -402,7 +402,7 @@ export async function cleanupAccrualConsumptionFixtures(): Promise<number> {
 
 	removed += (
 		await exec(
-			`DELETE FROM cost_accruals WHERE id IN (${accrualSelector})`,
+			`DELETE FROM cost_accruals WHERE accrual_number LIKE ? OR description LIKE ? OR vendor_name LIKE ?`,
 			accrualParams
 		)
 	).affectedRows;
@@ -415,7 +415,7 @@ export async function cleanupAccrualConsumptionFixtures(): Promise<number> {
 	).affectedRows;
 	removed += (
 		await exec(
-			`DELETE FROM purchase_invoices WHERE id IN (${invoiceSelector})`,
+			`DELETE FROM purchase_invoices WHERE invoice_number LIKE ? OR vendor_name LIKE ?`,
 			invoiceParams
 		)
 	).affectedRows;
