@@ -41,6 +41,7 @@ import {
 	financialYearOf,
 } from '@/lib/company-expenditure/ranking';
 import type {
+	ClosePayload,
 	CostNature,
 	CostRecordJson,
 	PeriodChargeJson,
@@ -666,7 +667,10 @@ export default function ExpenditureView({
 	const [cancelChargeTarget, setCancelChargeTarget] =
 		useState<PeriodChargeJson | null>(null);
 
-	const reconciliationQuery = useQuery<{ data: ReconciliationPayload }>({
+	const reconciliationQuery = useQuery<{
+		data: ReconciliationPayload;
+		close?: ClosePayload | null;
+	}>({
 		queryKey: ['expenditure', month, projectFilter, reportingCurrency],
 		queryFn: () =>
 			apiGet('/api/reports/employee-project-monthly-cost', {
@@ -3307,8 +3311,14 @@ export default function ExpenditureView({
 
 			{/* Financial close (#322). Its own section: an open month states
 			    its review, a closed month states its frozen totals, and the
-			    close command freezes the month against ordinary writes. */}
-			<CloseSection month={month} canClose={canCloseMonth} />
+			    close command freezes the month against ordinary writes. The
+			    close state rides on the reconciliation response (same pattern
+			    as the cash section), never a second per-mount request. */}
+			<CloseSection
+				month={month}
+				canClose={canCloseMonth}
+				initialClose={reconciliationQuery.data?.close ?? null}
+			/>
 
 			<p className="mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed text-gray-500">
 				<BanknotesIcon className="h-3 w-3" />

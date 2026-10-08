@@ -428,6 +428,7 @@ export type {
 } from './allocation-revisions';
 export {
 	assertMonthOpen,
+	buildClosePayload,
 	closeRefusalForMonth,
 	executeCloseCommand,
 	isMonthClosed,
@@ -436,6 +437,7 @@ export {
 	reviewClose,
 	reviewReconciliation,
 } from './close';
+export type { ClosePayload } from './close';
 export {
 	CHARGE_BASIS_LABELS,
 	COST_NATURES,

@@ -40,10 +40,15 @@ import {
 } from '@/app/reports/employee-project-monthly-cost/data-source';
 import {
 	dayOfDate,
+	buildClosePayload,
 	fetchCompanyReconciliation,
 	fetchExpenditureMonths,
 	isCurrencyCode,
+	loadCloseSnapshot,
+	reviewReconciliation,
 } from '@/lib/company-expenditure';
+import type { ClosePayload } from '@/lib/company-expenditure';
+import { dbConnect } from '@/utils/database';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -183,7 +188,28 @@ export async function GET(request: Request) {
 				asOf,
 				reportingCurrency,
 			});
-			return NextResponse.json({ success: true, data, view: 'expenditure' });
+			// The close section rides on this response instead of a second
+			// per-mount request: the review is pure over the object just
+			// built (no recompute), plus one indexed snapshot row. The gate
+			// above is exactly the close read gate, so nothing new leaks.
+			let close: ClosePayload | null = null;
+			const closeDb = await dbConnect();
+			try {
+				const snapshot = await loadCloseSnapshot(closeDb, monthParam);
+				close = buildClosePayload(
+					monthParam,
+					snapshot,
+					reviewReconciliation(data)
+				);
+			} finally {
+				await closeDb.release();
+			}
+			return NextResponse.json({
+				success: true,
+				data,
+				close,
+				view: 'expenditure',
+			});
 		}
 
 		// Meta-only request for the filter bar.

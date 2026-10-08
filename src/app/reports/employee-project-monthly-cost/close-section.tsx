@@ -4,85 +4,55 @@
  * The isolated financial-close section of the company expenditure report
  * (#322).
  *
- * It renders the month's close status from the close route — open with its
- * review (blockers and warnings), or closed with its frozen totals and
- * closure review — and offers the close command to operators with close
- * access. Closing freezes the month: every ordinary write to its costs,
- * accruals, settlements, allocations, and classifications is refused with
- * `409 month_closed`, and only explicit revisions can change closed
- * figures. The server owns those invariants; this file only presents them
- * and calls the close route.
+ * It renders the month's close status — open with its review (blockers and
+ * warnings), or closed with its frozen totals and closure review — and offers
+ * the close command to operators with close access. Closing freezes the
+ * month: every ordinary write to its costs, accruals, settlements,
+ * allocations, and classifications is refused with `409 month_closed`, and
+ * only explicit revisions can change closed figures. The server owns those
+ * invariants; this file only presents them and calls the close route.
+ *
+ * The close state arrives on the reconciliation response (the same pattern
+ * as the cash section's `section` prop): the report route attaches it, so
+ * this section never fires a second per-mount request for what the page
+ * already holds.
  */
 
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
 	BanknotesIcon,
 	ChevronDownIcon,
 	ChevronRightIcon,
 } from '@heroicons/react/24/outline';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiPost } from '@/lib/api-client';
 import { formatCurrencyIn } from '@/lib/format';
-
-interface CloseFinding {
-	code: string;
-	label: string;
-	detail: string;
-	severity: 'error' | 'warning';
-}
-
-interface ClosePayload {
-	month: string;
-	status: 'open' | 'closed';
-	financial_version: number;
-	close_uid: string | null;
-	review: {
-		can_close: boolean;
-		blockers: CloseFinding[];
-		warnings: CloseFinding[];
-	};
-	snapshot: {
-		month: string;
-		company: {
-			currency: string | null;
-			incurred_cost: number | null;
-			currency_totals: Array<{
-				currency: string;
-				incurred_cost: number;
-			}>;
-		};
-	} | null;
-	reviewed_by: number | null;
-	reviewed_at: string | null;
-	review_reason: string | null;
-	evidence_reference: string | null;
-	created_at: string | null;
-}
+import type { ClosePayload } from '@/lib/company-expenditure';
 
 export interface CloseSectionProps {
 	month: string;
 	/** Financial read gate + `other_expenses:update` — may close the month. */
 	canClose: boolean;
+	/**
+	 * The close state from the reconciliation response. Null while the
+	 * parent's reconciliation is still loading; the section never fetches
+	 * on its own.
+	 */
+	initialClose: ClosePayload | null;
 }
 
-export default function CloseSection({ month, canClose }: CloseSectionProps) {
+export default function CloseSection({
+	month,
+	canClose,
+	initialClose,
+}: CloseSectionProps) {
 	const queryClient = useQueryClient();
 	const [expanded, setExpanded] = useState(true);
 	const [reasonValue, setReasonValue] = useState('');
 	const [evidenceValue, setEvidenceValue] = useState('');
 	const [formError, setFormError] = useState<string | null>(null);
 
-	const closeQuery = useQuery({
-		queryKey: ['financial-close', month],
-		queryFn: async () => {
-			const body = (await apiGet(
-				`/api/admin/expenditure-close?month=${month}`
-			)) as { data: ClosePayload };
-			return body.data;
-		},
-	});
-
-	const data = closeQuery.data;
+	const data = initialClose;
 
 	const closeMutation = useMutation({
 		mutationFn: async () =>
@@ -96,9 +66,8 @@ export default function CloseSection({ month, canClose }: CloseSectionProps) {
 			setReasonValue('');
 			setEvidenceValue('');
 			setFormError(null);
-			void queryClient.invalidateQueries({
-				queryKey: ['financial-close', month],
-			});
+			// The close state rides on the reconciliation response, so
+			// refetching it brings the fresh status, version, and snapshot.
 			void queryClient.invalidateQueries({ queryKey: ['expenditure'] });
 		},
 		onError: (error: unknown) => {
@@ -136,11 +105,7 @@ export default function CloseSection({ month, canClose }: CloseSectionProps) {
 					data-testid="financial-close-status"
 					className="ml-auto text-sm font-semibold"
 				>
-					{closeQuery.isPending
-						? 'Loading…'
-						: data?.status === 'closed'
-							? 'Closed'
-							: 'Open'}
+					{!data ? 'Loading…' : data.status === 'closed' ? 'Closed' : 'Open'}
 				</span>
 			</button>
 			<p className="mt-1 text-[11px] text-gray-500">
@@ -148,17 +113,6 @@ export default function CloseSection({ month, canClose }: CloseSectionProps) {
 				totals. Closed figures are immutable: ordinary writes are refused and
 				only explicit revisions can change them.
 			</p>
-
-			{closeQuery.isError && (
-				<p
-					data-testid="financial-close-error"
-					className="mt-2 text-xs text-rose-700"
-				>
-					{closeQuery.error instanceof Error
-						? closeQuery.error.message
-						: 'Failed to load the close status'}
-				</p>
-			)}
 
 			{expanded && data && (
 				<div className="mt-3 space-y-4">

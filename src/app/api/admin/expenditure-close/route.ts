@@ -23,6 +23,7 @@ import { logActivity } from '@/utils/activity-logger';
 import { dbConnect, withTransaction } from '@/utils/database';
 import {
 	CostError,
+	buildClosePayload,
 	executeCloseCommand,
 	loadCloseSnapshot,
 	reviewClose,
@@ -102,19 +103,7 @@ export async function GET(request: Request) {
 		]);
 		return NextResponse.json({
 			success: true,
-			data: {
-				month,
-				status: snapshot ? 'closed' : 'open',
-				financial_version: snapshot?.financial_version ?? 0,
-				close_uid: snapshot?.close_uid ?? null,
-				review,
-				snapshot: snapshot?.snapshot ?? null,
-				reviewed_by: snapshot?.reviewed_by ?? null,
-				reviewed_at: snapshot?.reviewed_at ?? null,
-				review_reason: snapshot?.review_reason ?? null,
-				evidence_reference: snapshot?.evidence_reference ?? null,
-				created_at: snapshot?.created_at ?? null,
-			},
+			data: buildClosePayload(month, snapshot, review),
 		});
 	} catch (error: unknown) {
 		if (error instanceof CostError) return costErrorResponse(error);

@@ -308,6 +308,46 @@ export async function reviewClose(
 }
 
 /**
+ * The close state as the report and the close route publish it: the month's
+ * status, the version a close must present, the review, and — once closed —
+ * the frozen snapshot with its closure review. One builder serves both
+ * publishers so the two responses cannot drift.
+ */
+export interface ClosePayload {
+	month: string;
+	status: 'open' | 'closed';
+	financial_version: number;
+	close_uid: string | null;
+	review: CloseReviewResult;
+	snapshot: CompanyReconciliation | null;
+	reviewed_by: number | null;
+	reviewed_at: string | null;
+	review_reason: string | null;
+	evidence_reference: string | null;
+	created_at: string | null;
+}
+
+export function buildClosePayload(
+	month: string,
+	snapshot: CloseSnapshot | null,
+	review: CloseReviewResult
+): ClosePayload {
+	return {
+		month,
+		status: snapshot ? 'closed' : 'open',
+		financial_version: snapshot?.financial_version ?? 0,
+		close_uid: snapshot?.close_uid ?? null,
+		review,
+		snapshot: snapshot?.snapshot ?? null,
+		reviewed_by: snapshot?.reviewed_by ?? null,
+		reviewed_at: snapshot?.reviewed_at ?? null,
+		review_reason: snapshot?.review_reason ?? null,
+		evidence_reference: snapshot?.evidence_reference ?? null,
+		created_at: snapshot?.created_at ?? null,
+	};
+}
+
+/**
  * Close a month: version-checked, atomic, one coherent snapshot. The
  * expected version is `0` while the month is open and the snapshot's
  * version afterwards; a stale version, a competing close, and a blocked
