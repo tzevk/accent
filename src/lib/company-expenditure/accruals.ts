@@ -39,7 +39,8 @@ import {
 	resolveConversion,
 } from './currency';
 import { CostError } from './errors';
-import { assertMonthOpen } from './close';
+import { assertMonthOpen, assertMonthOpenOrRevision } from './close';
+import type { ClosedRevision } from './close';
 import { writeCostEvent, JOURNAL_COMMAND } from './journal';
 import {
 	evaluateCost,
@@ -947,7 +948,7 @@ export async function captureAccrualCost(
 export async function executeAccrualCommand(
 	input: AccrualCommandInput,
 	actor: { id: number | null },
-	options?: { connection?: SqlConnection }
+	options?: { connection?: SqlConnection; revision?: ClosedRevision | null }
 ): Promise<CostCommandResult> {
 	const run = async (db: SqlConnection): Promise<CostCommandResult> => {
 		const row = await loadAccrualForUpdate(db, input.id);
@@ -955,8 +956,15 @@ export async function executeAccrualCommand(
 			throw new CostError('not_found', 'Cost accrual not found', 404);
 		}
 		// A closed recognition month refuses the command before the state
-		// check, the row update, and the journal append (#322).
-		await assertMonthOpen(db, s(row, 'recognition_period'));
+		// check, the row update, and the journal append (#322) — unless the
+		// validated revision workflow carries it (#323).
+		const rowPeriod = s(row, 'recognition_period');
+		await assertMonthOpenOrRevision(
+			db,
+			rowPeriod,
+			options?.revision,
+			rowPeriod
+		);
 		const state = (s(row, 'recognition_state', 'draft') ??
 			'draft') as RecognitionState;
 		const version = Number(num(row, 'financial_version') ?? 1);
@@ -968,7 +976,17 @@ export async function executeAccrualCommand(
 				{ current_version: version }
 			);
 		}
-		const target = nextState(state, input.command);
+		// A revision corrects a recognized accrual in place: recognized
+		// stays recognized, so its amount, period, and classification can
+		// be corrected without cancelling the history first (#323). The
+		// ordinary state machine below it is untouched.
+		const revisionUpdate =
+			(options?.revision ?? null) !== null &&
+			state === 'recognized' &&
+			input.command === 'update';
+		const target = revisionUpdate
+			? 'recognized'
+			: nextState(state, input.command);
 		if (!target) {
 			throw new CostError(
 				'command_not_allowed',
@@ -1191,8 +1209,13 @@ export async function executeAccrualCommand(
 						'unresolved') as PeriodBasis,
 				};
 		// A patch that would move the accrual into a closed month is
-		// refused with the same guard (#322).
-		await assertMonthOpen(db, resolved.period);
+		// refused with the same guard (#322) — or carried by the revision (#323).
+		await assertMonthOpenOrRevision(
+			db,
+			resolved.period,
+			options?.revision,
+			rowPeriod
+		);
 
 		const financial = {
 			...merged,
@@ -1242,6 +1265,27 @@ export async function executeAccrualCommand(
 			}
 			recognizedAmount = evaluateCost(financial).recognizedAmount;
 			recognizedBy = actor.id;
+		}
+		if (revisionUpdate) {
+			// A revision corrects confirmed cost: the corrected figures
+			// must still be recognizable, or the accrual would silently
+			// stop being cost while reading as recognized.
+			const revisionBlockers = recognitionBlockers({
+				grossAmount: merged.grossAmount,
+				classification: merged.classification,
+				projectId: merged.projectId,
+				recognitionPeriod: resolved.period,
+				currency: merged.currency,
+			});
+			if (revisionBlockers.length > 0) {
+				throw new CostError(
+					'revision_not_recognizable',
+					'The revised figures cannot stay confirmed cost',
+					422,
+					{ missing: revisionBlockers }
+				);
+			}
+			recognizedAmount = evaluateCost(financial).recognizedAmount;
 		}
 
 		const nextVersion = version + 1;
@@ -1335,6 +1379,14 @@ export async function executeAccrualCommand(
 				recognized_amount: recognizedAmount,
 				replaced_amount: num(row, 'replaced_amount') ?? 0,
 				state: target,
+				...(options?.revision
+					? {
+							revision: {
+								revision_uid: options.revision.revisionUid,
+								close_uid: options.revision.closeUid,
+							},
+						}
+					: {}),
 			},
 		});
 

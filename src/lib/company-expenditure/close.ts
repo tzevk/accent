@@ -175,6 +175,59 @@ export async function assertMonthOpen(
 	}
 }
 
+/**
+ * A correction to a closed month, carrying the frozen close it targets.
+ * Only `revisions.ts` builds one (from a validated revision command); the
+ * source executors receive it through their options and never mint it.
+ */
+export interface ClosedRevision {
+	/** The frozen snapshot's UID the revision targets. */
+	closeUid: string;
+	/** The revision's own stable identity (`rev-<uuid>` or the caller's key). */
+	revisionUid: string;
+	/** The closed month the target belongs to (`YYYY-MM`). */
+	sourceMonth: string;
+}
+
+/**
+ * The guard every revision-aware write path uses instead of
+ * `assertMonthOpen`. Without a revision the behavior is identical to
+ * `assertMonthOpen`; with one, an open month still passes (a period move
+ * into an open month is ordinary evidence there), while a closed month
+ * passes only when it is the revision's own source month and the close UID
+ * still matches the frozen snapshot. A move into another closed month, or
+ * onto a close that moved on, is refused before any write.
+ */
+export async function assertMonthOpenOrRevision(
+	db: SqlConnection,
+	month: string | null | undefined,
+	revision?: ClosedRevision | null,
+	sourceMonth?: string | null | undefined
+): Promise<void> {
+	if (!revision) return assertMonthOpen(db, month);
+	const period = monthOfPeriod(month);
+	if (!period) return;
+	if (!(await isMonthClosed(db, period))) return;
+	const source = monthOfPeriod(sourceMonth ?? revision.sourceMonth);
+	if (period !== source) {
+		throw new CostError(
+			'revision_month_mismatch',
+			'A revision cannot move figures into another closed month; correct that month through its own revision instead',
+			409,
+			{ month: period, source_month: source ?? null }
+		);
+	}
+	const snapshot = await loadCloseSnapshot(db, period);
+	if (!snapshot || snapshot.close_uid !== revision.closeUid) {
+		throw new CostError(
+			'stale_version',
+			'The close moved on since it was read',
+			409,
+			{ current_version: snapshot?.financial_version ?? 0 }
+		);
+	}
+}
+
 /** Coverage notices that mean the month's figures are incomplete. */
 const BLOCKER_NOTICES = new Set([
 	'no_recognized_cost',

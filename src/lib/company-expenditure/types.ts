@@ -36,7 +36,12 @@ export type CostSource =
  * and disclosed rather than guessed into operating cost.
  */
 export type CostNature =
-	'operating' | 'advance' | 'deposit' | 'prepayment' | 'capital' | 'unresolved';
+	| 'operating'
+	| 'advance'
+	| 'deposit'
+	| 'prepayment'
+	| 'capital'
+	| 'unresolved';
 
 /** Which approved basis a period charge draws down its source balance under. */
 export type PeriodChargeBasis = 'consumption' | 'depreciation' | 'amortization';
@@ -45,7 +50,11 @@ export type PeriodChargeState = 'approved' | 'cancelled';
 
 /** Confirmed cost is `recognized` and nothing else. */
 export type RecognitionState =
-	'draft' | 'pending_evidence' | 'recognized' | 'rejected' | 'cancelled';
+	| 'draft'
+	| 'pending_evidence'
+	| 'recognized'
+	| 'rejected'
+	| 'cancelled';
 
 /** How the Recognition Period was established. */
 export type PeriodBasis =
@@ -59,14 +68,24 @@ export type PeriodBasis =
 	| 'unresolved';
 
 export type TaxTreatment =
-	'none' | 'recoverable' | 'non_recoverable' | 'unresolved';
+	| 'none'
+	| 'recoverable'
+	| 'non_recoverable'
+	| 'unresolved';
 
 /** The treatment actually applied to the amount, given the stored evidence. */
 export type EffectiveTaxTreatment =
-	'none' | 'recoverable' | 'non_recoverable' | 'unresolved';
+	| 'none'
+	| 'recoverable'
+	| 'non_recoverable'
+	| 'unresolved';
 
 export type CostCommandName =
-	'update' | 'submit' | 'recognize' | 'reject' | 'cancel';
+	| 'update'
+	| 'submit'
+	| 'recognize'
+	| 'reject'
+	| 'cancel';
 
 /**
  * The journal's own vocabulary (`financial_cost_events.command`): the command
@@ -954,6 +973,124 @@ export interface CloseCommandResult {
 	status: 'closed';
 }
 
+/**
+ * What a financial revision may target (ticket #323). Payroll attribution
+ * is deliberately absent: it keeps its allocation revision contract, which
+ * never rewrites a Payroll Slip.
+ */
+export type RevisionTargetKind =
+	| 'direct'
+	| 'supplier'
+	| 'accrual'
+	| 'settlement';
+
+/** The old and new figures one revision preserves. */
+export interface RevisionFigures {
+	amount: number | null;
+	currency: string | null;
+	/** Null for settlements, which carry no classification. */
+	classification: string | null;
+	/** The period the figures count in (`YYYY-MM-DD` form). */
+	period: string | null;
+	state: string | null;
+	/**
+	 * The Project labels the figures were stated with, reconstructed from
+	 * the frozen close when the live master is renamed or soft-deleted.
+	 */
+	project_code: string | null;
+	project_name: string | null;
+	/** The native number (expense, invoice, accrual) or settlement reference. */
+	source_label: string | null;
+}
+
+/** The input one revision command carries. */
+export interface RevisionCommandInput {
+	targetKind: RevisionTargetKind | string;
+	/** The native row id, or the stable cost/settlement UID. */
+	id?: number | null;
+	uid?: string | null;
+	command: 'update' | 'cancel';
+	/** The target's version the caller read. */
+	expectedVersion: number;
+	/** The frozen closed version the caller targets. */
+	targetCloseVersion: number;
+	reason?: string | null;
+	evidenceReference?: string | null;
+	/** The source command's patch vocabulary (per target kind). */
+	patch?: Record<string, unknown>;
+	/** Optional idempotency key; a repeat returns the existing result. */
+	revisionUid?: string | null;
+}
+
+/** One consumption the revision carried or released with the cost. */
+export interface RevisionConsumptionStep {
+	consumption_id: number;
+	action: 'carried' | 'released';
+}
+
+/** The row one accepted revision wrote (or the one a repeat reads back). */
+export interface RevisionCommandResult {
+	/** The `financial_revision_events` row id (for activity logging). */
+	id: number;
+	revision_uid: string;
+	month: string;
+	close_uid: string;
+	close_version: number;
+	target_kind: RevisionTargetKind;
+	target_uid: string;
+	target_label: string | null;
+	command: 'updated' | 'cancelled';
+	prior_version: number;
+	new_version: number;
+	prior_figures: RevisionFigures;
+	new_figures: RevisionFigures;
+	/** True when the key was already applied and nothing was rewritten. */
+	repeated: boolean;
+	consumptions: RevisionConsumptionStep[];
+}
+
+/** One entry of a closed month's revision history, oldest first. */
+export interface RevisionHistoryEntry {
+	/** The `financial_revision_events` row id. */
+	id: number;
+	revision_uid: string;
+	month: string;
+	close_uid: string;
+	close_version: number;
+	target_kind: 'cost' | 'settlement';
+	target_uid: string;
+	target_label: string | null;
+	/** The native store the target lives in (cost kind by table). */
+	source_table: string;
+	command: 'updated' | 'cancelled';
+	prior_version: number;
+	new_version: number;
+	prior_figures: RevisionFigures;
+	new_figures: RevisionFigures;
+	reason: string | null;
+	evidence_reference: string | null;
+	actor_user_id: number | null;
+	actor_name: string | null;
+	created_at: string;
+}
+
+/** One cost or settlement a revision control can offer for a month. */
+export interface RevisionCandidate {
+	kind: RevisionTargetKind;
+	id: number;
+	uid: string;
+	number: string;
+	amount: number | null;
+	currency: string | null;
+	classification: string | null;
+	period: string | null;
+	state: string;
+	version: number;
+	project_code: string | null;
+	project_name: string | null;
+	has_consumption: boolean;
+}
+
 export type PayrollPayStream = 'payroll' | 'contract';
 
 /** How an employee's cost is known this month. */
@@ -994,7 +1131,8 @@ export interface PayrollHourLine {
 
 /** Evidence limitation codes a reconstruction records (#308). */
 export type ReconstructionLimitationCode =
-	'timesheet_missing' | 'hours_without_project';
+	| 'timesheet_missing'
+	| 'hours_without_project';
 
 /** One stated limitation of a reconstruction's historical evidence. */
 export interface PayrollReconstructionLimitation {
@@ -1375,10 +1513,17 @@ export function isCostBudgetScope(value: unknown): value is CostBudgetScope {
  * its approval evidence, version, and journal.
  */
 export type CostBudgetState =
-	'draft' | 'submitted' | 'approved' | 'superseded' | 'withdrawn';
+	| 'draft'
+	| 'submitted'
+	| 'approved'
+	| 'superseded'
+	| 'withdrawn';
 
 export type CostBudgetCommandName =
-	'update' | 'submit' | 'approve' | 'withdraw';
+	| 'update'
+	| 'submit'
+	| 'approve'
+	| 'withdraw';
 
 /** The journal's vocabulary (`project_cost_budget_events.command`). */
 export type CostBudgetJournalCommand =

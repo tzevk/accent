@@ -50,6 +50,7 @@ import type {
 import BudgetSection, { type BudgetSectionPayload } from './budget-section';
 import CashSection, { type CashSectionPayload } from './cash-section';
 import CloseSection from './close-section';
+import RevisionSection from './revision-section';
 
 interface GroupRow {
 	key: string;
@@ -481,6 +482,12 @@ export interface ExpenditureViewProps {
 	canRecordSettlement: boolean;
 	/** Financial read gate + `other_expenses:update` — may close the month. */
 	canCloseMonth: boolean;
+	/**
+	 * Financial read gate + `other_expenses:update` — may revise a closed
+	 * month (#323). The server enforces the same conjunction (and
+	 * `other_expenses:approve` for reversals) regardless of what renders.
+	 */
+	canReviseClosed: boolean;
 }
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
@@ -647,6 +654,7 @@ export default function ExpenditureView({
 	canRevise,
 	canRecordSettlement,
 	canCloseMonth,
+	canReviseClosed,
 }: ExpenditureViewProps) {
 	const queryClient = useQueryClient();
 	const [projectFilter, setProjectFilter] = useState('all');
@@ -3319,6 +3327,12 @@ export default function ExpenditureView({
 				canClose={canCloseMonth}
 				initialClose={reconciliationQuery.data?.close ?? null}
 			/>
+
+			{/* Financial revisions (#323). Its own section: a closed month
+			    states its frozen prior totals beside the live updated totals,
+			    and the revision command corrects or reverses closed figures
+			    with a reason and evidence while preserving both. */}
+			<RevisionSection month={month} canRevise={canReviseClosed} />
 
 			<p className="mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed text-gray-500">
 				<BanknotesIcon className="h-3 w-3" />

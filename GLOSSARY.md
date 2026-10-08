@@ -262,3 +262,7 @@ _Avoid_: Unauthenticated route, Anonymous API, Open endpoint
 **Financial Close**:
 A reviewed company financial month saved with immutable closed figures (`financial_close_snapshots`, `close-<uuid>`). The close freezes the month's Company Incurred Cost, source and Project identities, allocation and financial versions, classification, currency and tax basis, and evidence states exactly as the report stated them. Unresolved cost exceptions, unwired sources, unsupported commitments, and an empty month block the close; pending payroll, partial cash cover, and legacy cash gaps are disclosed warnings. Once closed, ordinary writes to the month are refused (`409 month_closed`); only explicit revisions can change closed figures. Payroll finalization freezes attribution but never closes the month.
 _Avoid_: Payroll finalization, Locked run, Frozen estimate
+
+**Financial Revision**:
+An authorized correction to a closed financial month (`financial_revision_events`, `rev-<uuid>` or a caller-supplied key) carrying the target cost or settlement, the operation (correct or reverse), the version read, the frozen closed version targeted, a reason, an evidence reference, the actor, and the timestamp, with the prior and new figures preserved. A revision runs through the source's own command path, carries linked order consumptions forward in the same transaction, and never rewrites the frozen close. Payroll attribution keeps its allocation revision contract instead.
+_Avoid_: Edit, Reversal without reason, Rewriting history
