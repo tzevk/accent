@@ -289,6 +289,13 @@ export default function Sidebar() {
 								pathname === '/tickets' || pathname.startsWith('/tickets/')
 							}
 						/>
+						{/* Timesheet - the signed-in employee's own read-only month */}
+						<NavRow
+							icon={CalendarDaysIcon}
+							label="Timesheet"
+							href="/user/timesheet"
+							active={pathname.startsWith('/user/timesheet')}
+						/>
 						{/* Ticket Management - admin only */}
 						{isAdmin && (
 							<NavRow
