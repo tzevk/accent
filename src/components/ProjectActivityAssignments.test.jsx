@@ -215,11 +215,11 @@ describe('ProjectActivityAssignments', () => {
 		expect(screen.getAllByText('P-001').length).toBe(2);
 		expect(screen.getAllByText('P-002').length).toBe(1);
 		expect(
-			screen.getAllByRole('link', { name: 'View details for Alpha Plant' })
+			screen.getAllByRole('link', { name: 'Open documents for Alpha Plant' })
 		).toHaveLength(2);
 		expect(
-			screen.getAllByRole('link', { name: 'View details for Alpha Plant' })[0]
-		).toHaveAttribute('href', '/projects/1');
+			screen.getAllByRole('link', { name: 'Open documents for Alpha Plant' })[0]
+		).toHaveAttribute('href', '/projects/1?tab=upload_documents');
 
 		// Project Name column is hidden — names should not appear as table cells
 		expect(screen.queryByText('Alpha Plant')).not.toBeInTheDocument();
@@ -294,9 +294,9 @@ describe('ProjectActivityAssignments', () => {
 		expect(screen.getByText('P-003 – Gamma Bridge')).toBeInTheDocument();
 		expect(
 			screen.getByRole('link', {
-				name: 'View project details for Gamma Bridge',
+				name: 'Open documents for Gamma Bridge',
 			})
-		).toHaveAttribute('href', '/projects/3');
+		).toHaveAttribute('href', '/projects/3?tab=upload_documents');
 	});
 	it('shows accessible projects when no activity rows exist', () => {
 		render(
@@ -319,9 +319,9 @@ describe('ProjectActivityAssignments', () => {
 		expect(screen.getByText('P-004 – Delta Warehouse')).toBeInTheDocument();
 		expect(
 			screen.getByRole('link', {
-				name: 'View project details for Delta Warehouse',
+				name: 'Open documents for Delta Warehouse',
 			})
-		).toHaveAttribute('href', '/projects/4');
+		).toHaveAttribute('href', '/projects/4?tab=upload_documents');
 	});
 
 	it('renders nothing when API returns 401/403 (no access)', async () => {
