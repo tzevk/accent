@@ -103,12 +103,15 @@ export default function LiveMonitoringUserPage() {
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
 			<Navbar />
-			<main className="px-6 pb-8 max-w-full mx-auto w-full">
+			{/* The dashboard's own content column is this route's main landmark,
+			    so the wrapper is a plain div — a second <main> here would put
+			    two landmarks on one page. */}
+			<div className="px-6 pb-8 max-w-full mx-auto w-full">
 				<UserDashboard
 					verifiedUser={selectedUser}
 					backTo="/admin/live-monitoring"
 				/>
-			</main>
+			</div>
 		</div>
 	);
 }

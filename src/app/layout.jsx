@@ -8,6 +8,7 @@ import AutoRefresh from '@/components/AutoRefresh';
 import QueryProvider from '@/components/providers/QueryProvider';
 import { SessionProvider } from '@/context/SessionContext';
 import { SpellCheckProvider } from '@/hooks/useSpellCheck';
+import SkipToMainLink from '@/components/SkipToMainLink';
 
 const geistSans = Geist({
 	variable: '--font-geist-sans',
@@ -34,6 +35,9 @@ export default function RootLayout({ children }) {
 				<QueryProvider>
 					<SessionProvider>
 						<SpellCheckProvider>
+							{/* First focusable element on the page: the skip link
+							    precedes the sidebar and the navigation. */}
+							<SkipToMainLink />
 							<Sidebar />
 							<AuthGate />
 							<ActivityTracker />
