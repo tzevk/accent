@@ -44,8 +44,10 @@ export async function POST(req) {
 			status: 'success',
 		}).catch(console.error);
 
-		// End work session
-		endUserSession(userId).catch(console.error);
+		// End work session — the shared close path, marked as a real logout so
+		// the Punch Out tile can tell it apart from a sweep- or beacon-stamped
+		// end (ticket #331).
+		endUserSession(userId, { endSource: 'logout' }).catch(console.error);
 	}
 
 	const res = NextResponse.json({
