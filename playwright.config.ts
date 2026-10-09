@@ -57,6 +57,10 @@ export default defineConfig({
 			PROD_DB_NAME: E2E_ENV.db.name,
 			PROD_DB_USER: E2E_ENV.db.user,
 			PROD_DB_PASSWORD: E2E_ENV.db.password,
+			DB_SSL_MODE:
+				process.env.E2E_DB_SSL_MODE ||
+				process.env.DB_SSL_MODE ||
+				(E2E_ENV.db.host.includes('.aivencloud.com') ? 'require' : 'off'),
 		},
 	},
 });

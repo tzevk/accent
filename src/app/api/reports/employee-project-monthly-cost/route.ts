@@ -1,24 +1,35 @@
 /**
  * GET /api/reports/employee-project-monthly-cost
  *
- * Company-wide monthly project-cost view across all employees and all projects
- * (hours from user_activity_assignments daily_entries, hourly cost from
- * employee_salary_profile). Supports two viewing modes plus legacy per-employee.
+ * Company expenditure report. Leads with the direct-cost reconciliation and
+ * keeps the employee-cost views beside it.
  *
- * Without params              → meta (months, financial years, employees) for filter bar
- * ?view=monthly&month=YYYY-MM → company total for single month (breakdowns per employee/project)
- * ?view=fy&fy=YYYY            → FY matrix (Apr–Mar) with monthly company totals
- * ?employee_id=&fy=YYYY       → legacy per-employee FY matrix (backward compat)
+ * Without params                       → meta (months, expenditure months, FYs, employees)
+ * ?view=expenditure&month=YYYY-MM[&project_id=][&as_of=YYYY-MM-DD]
+ *                                      → Company Incurred Cost, its Project/Overhead/
+ *                                        Unallocated reconciliation, the comparable-period
+ *                                        comparison, both Project rankings, evidence
+ *                                        states, and coverage (src/lib/company-expenditure).
+ *                                        `as_of` identifies the comparable period inside
+ *                                        the month and defaults to today.
+ * ?view=monthly&month=YYYY-MM          → employee-cost estimate for one month
+ * ?view=fy&fy=YYYY                     → employee-cost FY matrix (Apr–Mar)
+ * ?employee_id=&fy=YYYY                → legacy per-employee FY matrix (backward compat)
  *
- * Access: same gate as the other report routes — super admins, users with
- * reports:read, or users holding the `project_activities` report field permission.
+ * Access: super admins, or `reports:read` **and** `other_expenses:read` —
+ * the expenditure reconciliation reads the direct-expense ledger, so report
+ * access alone must not expose its rows or aggregates (existing source
+ * authorization, parent spec §149). The `project_activities` field grant no
+ * longer opens this report (ticket #306): Project Activity access alone must
+ * not reveal company expenditure. Entry, recognition, and drilldown follow the
+ * same rule; the expenditure routes are gated in the same way. The
+ * employee-cost views keep their `reports:read` gate.
  */
 
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
-import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 import {
 	fetchCompanyCostMeta,
 	fetchEmployeeCostMeta,
@@ -27,6 +38,21 @@ import {
 	fetchMonthlyCompanyCost,
 	getFinancialYear,
 } from '@/app/reports/employee-project-monthly-cost/data-source';
+import {
+	dayOfDate,
+	buildClosePayload,
+	buildRevisionPayload,
+	fetchCompanyReconciliation,
+	fetchExpenditureMonths,
+	fetchOrders,
+	isCurrencyCode,
+	loadCloseSnapshot,
+	loadRevisionCandidates,
+	loadRevisionHistory,
+	reviewReconciliation,
+} from '@/lib/company-expenditure';
+import type { ClosePayload, RevisionPayload } from '@/lib/company-expenditure';
+import { dbConnect } from '@/utils/database';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,9 +74,24 @@ export async function GET(request: Request) {
 			RESOURCES.REPORTS,
 			PERMISSIONS.READ
 		);
-		const hasFieldPermission = hasProjectActivitiesFieldPermission(user);
+		// The direct-expense ledger is the source of the expenditure
+		// reconciliation, so its read privilege is required as well: a report
+		// reader without source access gets neither rows nor aggregates.
+		const hasExpenseSourceRead =
+			isSuperAdmin ||
+			hasPermission(user, RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ);
+		// Since #307 the reconciliation also carries recorded Payroll Slip
+		// employer cost, so the payroll source privilege is part of the same
+		// gate. The employee-cost views keep their existing reports:read
+		// contract; only the financial reconciliation and its drilldowns are
+		// source-gated.
+		const hasPayrollSourceRead =
+			isSuperAdmin || hasPermission(user, RESOURCES.PAYROLL, PERMISSIONS.READ);
 
-		if (!isSuperAdmin && !hasReportsPermission && !hasFieldPermission) {
+		// Financial access: a reporting privilege, never Project Activity access
+		// alone. The expenditure reconciliation names suppliers, amounts, and
+		// evidence, so the old `project_activities` field grant is not enough.
+		if (!isSuperAdmin && !hasReportsPermission) {
 			return NextResponse.json(
 				{
 					success: false,
@@ -68,11 +109,147 @@ export async function GET(request: Request) {
 		const monthParam = url.searchParams.get('month');
 		const viewParam = url.searchParams.get('view');
 
+		// Company expenditure reconciliation (direct cost), leading view.
+		if ((viewParam || '').toLowerCase() === 'expenditure') {
+			if (!hasExpenseSourceRead || !hasPayrollSourceRead) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'You do not have permission to view company expenditure',
+					},
+					{ status: 403 }
+				);
+			}
+			if (!monthParam || !/^\d{4}-\d{2}$/.test(monthParam)) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'Valid month (YYYY-MM) is required for the expenditure view',
+					},
+					{ status: 400 }
+				);
+			}
+			const projectIdParam = url.searchParams.get('project_id');
+			let projectId: number | null = null;
+			if (projectIdParam) {
+				projectId = Number(projectIdParam);
+				if (!Number.isInteger(projectId) || projectId <= 0) {
+					return NextResponse.json(
+						{ success: false, error: 'Valid project_id is required' },
+						{ status: 400 }
+					);
+				}
+			}
+			// The comparable period is identified by the date the month is
+			// measured to. It must be a real date inside the reported month:
+			// a month is never compared against a window it does not have.
+			const asOfParam = url.searchParams.get('as_of');
+			let asOf: string | null = null;
+			if (asOfParam !== null) {
+				if (dayOfDate(asOfParam) === null) {
+					return NextResponse.json(
+						{
+							success: false,
+							error: 'Valid as_of date (YYYY-MM-DD) is required',
+							code: 'invalid_as_of',
+						},
+						{ status: 400 }
+					);
+				}
+				if (asOfParam.slice(0, 7) !== monthParam) {
+					return NextResponse.json(
+						{
+							success: false,
+							error: 'as_of must fall inside the reported month',
+							code: 'as_of_outside_month',
+						},
+						{ status: 400 }
+					);
+				}
+				asOf = asOfParam;
+			}
+			// The reporting basis is part of the request; absent means the
+			// company reporting currency. Only costs with matching stored
+			// conversion evidence are stated in it. The shared validator owns
+			// the three-letter rule, so route and module cannot drift.
+			const reportingCurrencyParam = url.searchParams.get('reporting_currency');
+			const reportingCurrency = reportingCurrencyParam
+				? reportingCurrencyParam.trim().toUpperCase()
+				: null;
+			if (reportingCurrency !== null && !isCurrencyCode(reportingCurrency)) {
+				return NextResponse.json(
+					{
+						success: false,
+						error: 'Valid reporting_currency (three-letter code) is required',
+						code: 'invalid_reporting_currency',
+					},
+					{ status: 400 }
+				);
+			}
+			const data = await fetchCompanyReconciliation({
+				month: monthParam,
+				projectId,
+				asOf,
+				reportingCurrency,
+			});
+			// The close section rides on this response instead of a second
+			// per-mount request: the review is pure over the object just
+			// built (no recompute), plus one indexed snapshot row. The gate
+			// above is exactly the close read gate, so nothing new leaks.
+			let close: ClosePayload | null = null;
+			let revisions: RevisionPayload | null = null;
+			const closeDb = await dbConnect();
+			try {
+				const snapshot = await loadCloseSnapshot(closeDb, monthParam);
+				close = buildClosePayload(
+					monthParam,
+					snapshot,
+					reviewReconciliation(data)
+				);
+				// The revision section rides on this response too, for the same
+				// reason: one fewer per-mount request against the shared `api`
+				// budget. History and candidates are month-bounded reads.
+				const [revisionHistory, revisionCandidates] = await Promise.all([
+					loadRevisionHistory(closeDb, monthParam),
+					loadRevisionCandidates(closeDb, monthParam),
+				]);
+				revisions = buildRevisionPayload({
+					month: monthParam,
+					snapshot,
+					reconciliation: data,
+					candidates: revisionCandidates,
+					revisions: revisionHistory,
+				});
+			} finally {
+				await closeDb.release();
+			}
+			const clientOrders = await fetchOrders({
+				direction: 'client',
+				...(projectId ? { projectId } : {}),
+				limit: 200,
+			});
+			return NextResponse.json({
+				success: true,
+				data,
+				close,
+				revisions,
+				client_orders: clientOrders.orders,
+				client_order_totals: clientOrders.totals,
+				view: 'expenditure',
+			});
+		}
+
 		// Meta-only request for the filter bar.
 		if (!employeeIdParam && !fyParam && !monthParam && !viewParam) {
-			const [companyMeta, legacyMeta] = await Promise.all([
+			const [companyMeta, legacyMeta, expenditureMonths] = await Promise.all([
 				fetchCompanyCostMeta(),
 				fetchEmployeeCostMeta(),
+				// The months that carry direct cost or recorded employee cost
+				// are themselves source data: only a caller holding both source
+				// read privileges sees them.
+				hasExpenseSourceRead && hasPayrollSourceRead
+					? fetchExpenditureMonths()
+					: Promise.resolve<string[]>([]),
 			]);
 			// Merge so old and new clients both work; new UI reads months/fy, old reads employees
 			const meta = {
@@ -80,6 +257,7 @@ export async function GET(request: Request) {
 				employees: legacyMeta.employees,
 				financial_years: companyMeta.financial_years,
 				current_fy: companyMeta.current_fy,
+				expenditure_months: expenditureMonths,
 			};
 			return NextResponse.json({ success: true, meta });
 		}

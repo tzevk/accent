@@ -179,6 +179,10 @@ const integerValue = (value, fallback) => {
  * live in `salary_structures`. Canonical `employee_salary_profile` always
  * wins; do not extend this mapping. See docs/adr/0001.
  * CTC is intentionally not considered when selecting Gross.
+ * @param {object|null} canonicalProfile - An `employee_salary_profile` row,
+ *   or null when none covers the month.
+ * @param {object|null} legacyProfile - A `salary_structures` row, or null
+ *   when none covers the month.
  */
 export function normalizeSalaryProfile(
 	canonicalProfile = null,
@@ -738,12 +742,14 @@ export function calculatePayroll(
 	const gratuity = money(
 		pctOf(decimal(basic), PAYROLL_CONFIG.GRATUITY_PERCENT, 0)
 	);
+	// Employer contributions are genuine employer costs only. Bonus is
+	// employee earnings — already inside totalEarnings — so including it here
+	// charged the same bonus a second time into employer cost (issue #305).
 	const totalEmployerContributions = money(
 		add(
 			pfEmployer,
 			esicEmployer,
 			mlwfEmployer,
-			bonus,
 			insurance,
 			gratuity,
 			pfAdmin,

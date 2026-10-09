@@ -167,8 +167,10 @@ const reportsMenuConfig = [
 		name: 'Employee Project Monthly Cost',
 		href: '/reports/employee-project-monthly-cost',
 		icon: BanknotesIcon,
+		// Financial report: gated on the reporting privilege, not the
+		// `project_activities` grant, so Project Activity access alone cannot
+		// reveal company expenditure (ticket #306).
 		resource: 'reports',
-		reportField: 'project_activities', // reuse so existing grants cover the new report
 	},
 	{
 		name: 'Employee Utilization',
@@ -282,17 +284,12 @@ const adminMenuGroups = [
 	},
 	{
 		key: 'purchase-orders',
-		name: 'Purchase Orders',
+		name: 'Orders',
 		icon: ClipboardDocumentCheckIcon,
 		items: [
 			{
-				name: 'Purchase Order (Incoming)',
-				href: '/admin/purchase-order',
-				icon: ClipboardDocumentCheckIcon,
-			},
-			{
-				name: 'Purchase Order (Outgoing)',
-				href: '/admin/outgoing-purchase-order',
+				name: 'Client & Supplier Orders',
+				href: '/admin/orders',
 				icon: ClipboardDocumentCheckIcon,
 			},
 		],
@@ -328,6 +325,11 @@ const adminMenuGroups = [
 			{
 				name: 'Other Expenses',
 				href: '/admin/other-expenses',
+				icon: WalletIcon,
+			},
+			{
+				name: 'Cost Accrual',
+				href: '/admin/cost-accrual',
 				icon: WalletIcon,
 			},
 			{

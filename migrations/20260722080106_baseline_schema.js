@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS \`account_transactions\` (
   `);
 	await knex.raw(`
 CREATE TABLE IF NOT EXISTS \`activities_master\` (
-  \`id\` char(36) NOT NULL DEFAULT uuid(),
+  \`id\` char(36) NOT NULL DEFAULT (uuid()),
   \`function_id\` char(36) DEFAULT NULL,
   \`activity_name\` varchar(100) NOT NULL,
   \`created_at\` timestamp NULL DEFAULT current_timestamp(),
@@ -526,7 +526,7 @@ CREATE TABLE IF NOT EXISTS \`daily_work_hours\` (
   `);
 	await knex.raw(`
 CREATE TABLE IF NOT EXISTS \`department_master\` (
-  \`id\` char(36) NOT NULL DEFAULT uuid(),
+  \`id\` char(36) NOT NULL DEFAULT (uuid()),
   \`department_name\` varchar(100) NOT NULL,
   \`created_at\` timestamp NULL DEFAULT current_timestamp(),
   PRIMARY KEY (\`id\`),
@@ -983,7 +983,7 @@ CREATE TABLE IF NOT EXISTS \`follow_ups\` (
   `);
 	await knex.raw(`
 CREATE TABLE IF NOT EXISTS \`functions_master\` (
-  \`id\` char(36) NOT NULL DEFAULT uuid(),
+  \`id\` char(36) NOT NULL DEFAULT (uuid()),
   \`function_name\` varchar(100) NOT NULL,
   \`status\` enum('active','inactive') DEFAULT 'active',
   \`description\` text DEFAULT NULL,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/utils/database';
+import { withTransaction } from '@/utils/database';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -19,6 +19,7 @@ import {
 	PAYROLL_AUDIT_ENTITY,
 	recordPayrollAudit,
 } from '@/app/api/payroll/_lib/payroll-audit';
+import { freezeMonthAllocations } from '@/lib/company-expenditure';
 
 /** "Asha Rao (EMP011), Ravi Kumar (EMP012)" — the people a refusal names. */
 const nameList = (employees) =>
@@ -41,6 +42,12 @@ const nameList = (employees) =>
  * but no Payroll Slip (press Generate again), and active Payroll/Contract
  * employees with no Salary Profile at all (fix master data — Generate cannot
  * compute a slip for them).
+ *
+ * The whole write is one transaction: the run's `draft → finalized` transition,
+ * its audit entry, and the recorded employer-cost allocation of every slip
+ * (ADR-0016, #307) commit or roll back together. A concurrent finalize loses on
+ * the `status = 'draft'` guard and writes nothing, so allocations can neither
+ * duplicate nor land without the lock that freezes them.
  */
 export async function POST(request) {
 	// RBAC check
@@ -52,7 +59,6 @@ export async function POST(request) {
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
 
-	let db;
 	try {
 		const { month } = await request.json();
 		const period = payrollPeriod(month);
@@ -64,75 +70,79 @@ export async function POST(request) {
 			);
 		}
 
-		db = await dbConnect();
-
-		const run = await findPayrollRun(db, period);
-		if (!run) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: `No Payroll Run exists for ${formatMonth(month)}. Generate Payroll Slips for the month first.`,
-				},
-				{ status: 404 }
-			);
-		}
-
-		if (isRunLocked(run)) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: `The Payroll Run for ${formatMonth(month)} is already finalized.`,
-				},
-				{ status: 409 }
-			);
-		}
-
-		const missing = await findEmployeesMissingSlips(db, period.month);
-		const withoutProfiles = await findEmployeesWithoutProfiles(
-			db,
-			period.month
-		);
-
-		if (missing.length > 0 || withoutProfiles.length > 0) {
-			const problems = [];
-			if (missing.length > 0) {
-				problems.push(
-					`${missing.length} employee${
-						missing.length === 1 ? ' has' : 's have'
-					} no Payroll Slip — ${nameList(missing)}`
-				);
-			}
-			if (withoutProfiles.length > 0) {
-				problems.push(
-					`${withoutProfiles.length} Payroll/Contract employee${
-						withoutProfiles.length === 1 ? ' has' : 's have'
-					} no Salary Profile for the month and cannot be paid — ${nameList(
-						withoutProfiles
-					)}`
-				);
-			}
-
-			return NextResponse.json(
-				{
-					success: false,
-					error: `Cannot finalize ${formatMonth(
-						month
-					)}: ${problems.join('; ')}`,
-					missing_employees: missing,
-					employees_without_profiles: withoutProfiles,
-				},
-				{ status: 409 }
-			);
-		}
-
-		const summary = await summarizeMonthSlips(db, period.month);
 		const finalizedBy = authResult.user?.id ?? null;
 
-		// `AND status = 'draft'` makes the transition atomic: if a concurrent
-		// request finalized this run first, this matches no row and we report the
-		// conflict instead of overwriting its finalized_by/at and totals.
-		const [result] = await db.execute(
-			`UPDATE payroll_runs
+		const outcome = await withTransaction(async (db) => {
+			const run = await findPayrollRun(db, period);
+			if (!run) {
+				return {
+					status: 404,
+					body: {
+						success: false,
+						error: `No Payroll Run exists for ${formatMonth(
+							month
+						)}. Generate Payroll Slips for the month first.`,
+					},
+				};
+			}
+
+			if (isRunLocked(run)) {
+				return {
+					status: 409,
+					body: {
+						success: false,
+						error: `The Payroll Run for ${formatMonth(
+							month
+						)} is already finalized.`,
+					},
+				};
+			}
+
+			const missing = await findEmployeesMissingSlips(db, period.month);
+			const withoutProfiles = await findEmployeesWithoutProfiles(
+				db,
+				period.month
+			);
+
+			if (missing.length > 0 || withoutProfiles.length > 0) {
+				const problems = [];
+				if (missing.length > 0) {
+					problems.push(
+						`${missing.length} employee${
+							missing.length === 1 ? ' has' : 's have'
+						} no Payroll Slip — ${nameList(missing)}`
+					);
+				}
+				if (withoutProfiles.length > 0) {
+					problems.push(
+						`${withoutProfiles.length} Payroll/Contract employee${
+							withoutProfiles.length === 1 ? ' has' : 's have'
+						} no Salary Profile for the month and cannot be paid — ${nameList(
+							withoutProfiles
+						)}`
+					);
+				}
+
+				return {
+					status: 409,
+					body: {
+						success: false,
+						error: `Cannot finalize ${formatMonth(
+							month
+						)}: ${problems.join('; ')}`,
+						missing_employees: missing,
+						employees_without_profiles: withoutProfiles,
+					},
+				};
+			}
+
+			const summary = await summarizeMonthSlips(db, period.month);
+
+			// `AND status = 'draft'` makes the transition atomic: if a concurrent
+			// request finalized this run first, this matches no row and we report the
+			// conflict instead of overwriting its finalized_by/at and totals.
+			const [result] = await db.execute(
+				`UPDATE payroll_runs
           SET status = 'finalized',
               finalized_by = ?,
               finalized_at = NOW(),
@@ -142,64 +152,80 @@ export async function POST(request) {
               total_net_pay = ?,
               total_employer_contribution = ?
         WHERE id = ? AND status = 'draft'`,
-			[
-				finalizedBy,
-				summary.headcount,
-				summary.total_gross,
-				summary.total_deductions,
-				summary.total_net_pay,
-				summary.total_employer_contribution,
-				run.id,
-			]
-		);
-
-		if (result.affectedRows === 0) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: `The Payroll Run for ${formatMonth(
-						period.month
-					)} was finalized by another request.`,
-				},
-				{ status: 409 }
+				[
+					finalizedBy,
+					summary.headcount,
+					summary.total_gross,
+					summary.total_deductions,
+					summary.total_net_pay,
+					summary.total_employer_contribution,
+					run.id,
+				]
 			);
-		}
 
-		// The month is now locked, so who locked it and on what numbers is the
-		// entry a dispute starts from.
-		await recordPayrollAudit(db, {
-			entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_RUN,
-			entityId: run.id,
-			action: PAYROLL_AUDIT_ACTION.FINALIZE,
-			payrollRunId: run.id,
-			month: period.monthNumber,
-			year: period.year,
-			performedBy: finalizedBy,
-			oldValues: { status: 'draft' },
-			newValues: {
-				status: 'finalized',
-				total_employees: summary.headcount,
-				total_gross: summary.total_gross,
-				total_deductions: summary.total_deductions,
-				total_net_pay: summary.total_net_pay,
-				total_employer_contribution: summary.total_employer_contribution,
-			},
+			if (result.affectedRows === 0) {
+				return {
+					status: 409,
+					body: {
+						success: false,
+						error: `The Payroll Run for ${formatMonth(
+							period.month
+						)} was finalized by another request.`,
+					},
+				};
+			}
+
+			// Freeze the recorded employer-cost allocation of every Payroll Slip
+			// in the same transaction that locked the run (#307, ADR-0016).
+			const freeze = await freezeMonthAllocations(
+				db,
+				period.month,
+				finalizedBy
+			);
+
+			// The month is now locked, so who locked it and on what numbers is the
+			// entry a dispute starts from.
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_RUN,
+				entityId: run.id,
+				action: PAYROLL_AUDIT_ACTION.FINALIZE,
+				payrollRunId: run.id,
+				month: period.monthNumber,
+				year: period.year,
+				performedBy: finalizedBy,
+				oldValues: { status: 'draft' },
+				newValues: {
+					status: 'finalized',
+					total_employees: summary.headcount,
+					total_gross: summary.total_gross,
+					total_deductions: summary.total_deductions,
+					total_net_pay: summary.total_net_pay,
+					total_employer_contribution: summary.total_employer_contribution,
+				},
+			});
+
+			return {
+				status: 200,
+				body: {
+					success: true,
+					message: `Payroll Run for ${formatMonth(month)} finalized — ${summary.headcount} employees locked`,
+					data: {
+						...run,
+						status: 'finalized',
+						finalized_by: finalizedBy,
+						total_employees: summary.headcount,
+						total_gross: summary.total_gross,
+						total_deductions: summary.total_deductions,
+						total_net_pay: summary.total_net_pay,
+						total_employer_contribution: summary.total_employer_contribution,
+						employee_allocations: freeze.allocations,
+						employee_allocation_total: freeze.total,
+					},
+				},
+			};
 		});
 
-		return NextResponse.json({
-			success: true,
-			message: `Payroll Run for ${formatMonth(month)} finalized — ${summary.headcount} employees locked`,
-			data: {
-				...run,
-				status: 'finalized',
-				finalized_by: finalizedBy,
-				total_employees: summary.headcount,
-				total_gross: summary.total_gross,
-				total_deductions: summary.total_deductions,
-				total_net_pay: summary.total_net_pay,
-				total_employer_contribution: summary.total_employer_contribution,
-			},
-		});
+		return NextResponse.json(outcome.body, { status: outcome.status });
 	} catch (error) {
 		console.error('POST /api/payroll/runs/finalize error:', error);
 		return NextResponse.json(
@@ -210,13 +236,5 @@ export async function POST(request) {
 			},
 			{ status: 500 }
 		);
-	} finally {
-		if (db) {
-			try {
-				db.release();
-			} catch {
-				// Ignore release errors
-			}
-		}
 	}
 }

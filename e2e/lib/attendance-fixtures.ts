@@ -635,9 +635,17 @@ export async function cleanupAttendanceFixtures(): Promise<number> {
 
 	// Children before parents, so foreign keys never block a delete: punch,
 	// attendance and profile rows reference the employees, and assignments
-	// reference both the employees and the fixture user.
+	// reference both the employees and the fixture user. Other fixtures'
+	// inert gate slips can reference these employees too (the revision and
+	// allocation fixtures write zero slips for every uncovered E2E roster so
+	// their own months can finalize); the payroll_slips FK would block the
+	// employee delete below, so they go first.
 	if (employeeIds.length) {
 		const placeholders = employeeIds.map(() => '?').join(', ');
+		await exec(
+			`DELETE FROM payroll_slips WHERE employee_id IN (${placeholders})`,
+			employeeIds
+		);
 		await exec(
 			`DELETE FROM attendance_logs WHERE employee_id IN (${placeholders})`,
 			employeeIds
@@ -665,6 +673,22 @@ export async function cleanupAttendanceFixtures(): Promise<number> {
 	await exec(`DELETE FROM attendance_logs WHERE employee_code LIKE ?`, [
 		`${ATTENDANCE_UNMAPPED_CODE_PREFIX}%`,
 	]);
+	// Roster-code logs are keyed by smartoffice code, not employee id: when a
+	// run aborts (or employees were removed first), the id-based deletes
+	// above match nothing and the unique key collides on re-seed. The code
+	// prefix catches them with or without the employee rows; E2E codes are
+	// fixture-reserved by convention.
+	await exec(`DELETE FROM attendance_logs WHERE employee_code LIKE ?`, [
+		`${ATTENDANCE_SMARTOFFICE_PREFIX}%`,
+	]);
+	// Dangling attendance rows (no employee left to join) are aborted-run
+	// leftovers by definition; bound to the fixture month for safety.
+	await exec(
+		`DELETE FROM employee_attendance
+      WHERE attendance_date LIKE ?
+        AND employee_id NOT IN (SELECT id FROM employees)`,
+		[`${ATTENDANCE_MONTH}%`]
+	);
 	// The user before the employees it was seeded beside; its assignments are
 	// already gone, so the assignment FK cannot bite.
 	await exec(`DELETE FROM users WHERE username = ?`, [ATTENDANCE_USERNAME]);

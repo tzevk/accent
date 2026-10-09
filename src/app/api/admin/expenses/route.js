@@ -6,23 +6,53 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
-import { isRetryableNumberError } from '@/utils/db-number-retry';
+import { CostError, recordCost } from '@/lib/company-expenditure';
 
 const TABLE = 'expenses';
 
-// Expense numbers are EXP-#####. The read runs inside the caller's transaction
-// with a row lock (FOR UPDATE) on the newest row so concurrent POSTs serialize
-// behind it; the unique active expense-number index is the backstop.
-async function nextNumber(db) {
-	const [rows] = await db.execute(
-		`SELECT expense_number FROM ${TABLE} WHERE expense_number LIKE 'EXP-%' AND isDelete = 0 ORDER BY id DESC LIMIT 1 FOR UPDATE`
-	);
-	let next = 1;
-	if (rows.length > 0) {
-		const match = /EXP-(\d+)/.exec(rows[0].expense_number || '');
-		if (match) next = parseInt(match[1], 10) + 1;
-	}
-	return `EXP-${String(next).padStart(5, '0')}`;
+/** Map the request body onto the module's record input (camelCase). */
+function toRecordInput(body) {
+	return {
+		expenseNumber: body.expense_number ?? null,
+		expenseDate: body.expense_date ?? null,
+		category: body.category ?? null,
+		subCategory: body.sub_category ?? null,
+		description: body.description ?? null,
+		vendorName: body.vendor_name ?? null,
+		notes: body.notes ?? null,
+		amount: body.amount ?? null,
+		taxAmount: body.tax_amount ?? null,
+		grossAmount: body.total_amount ?? body.gross_amount,
+		currency: body.currency ?? null,
+		// Currency conversion evidence (#319).
+		reportingCurrency: body.reporting_currency ?? null,
+		conversionRate: body.conversion_rate ?? null,
+		conversionDate: body.conversion_date ?? null,
+		conversionEvidenceReference: body.conversion_evidence_reference ?? null,
+		paymentMode: body.payment_mode ?? null,
+		paymentReference: body.payment_reference ?? null,
+		paidTo: body.paid_to ?? null,
+		paidBy: body.paid_by ?? null,
+		receiptUrl: body.receipt_url ?? null,
+		isBillable: body.is_billable ? 1 : 0,
+		isReimbursable: body.is_reimbursable ? 1 : 0,
+		department: body.department ?? null,
+		operationalStatus: body.status ?? null,
+		projectId: body.project_id ?? null,
+		// Financial recognition fields (#306).
+		classification: body.cost_classification ?? null,
+		// What the spend is (#317): operating cost by default, or an advance,
+		// deposit, prepayment, capital item, or explicitly unresolved treatment.
+		nature: body.cost_nature ?? undefined,
+		servicePeriodStart: body.service_period_start ?? null,
+		servicePeriodEnd: body.service_period_end ?? null,
+		billDate: body.bill_date ?? null,
+		taxTreatment: body.tax_treatment ?? undefined,
+		taxEvidenceReference: body.tax_evidence_reference ?? null,
+		sourceReference: body.source_reference ?? null,
+		evidenceReference: body.evidence_reference ?? null,
+		submit: body.submit === true || body.recognition_state === 'pending_evidence',
+	};
 }
 
 export async function GET(request) {
@@ -127,7 +157,6 @@ export async function POST(request) {
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
 
-	let db;
 	try {
 		const body = await request.json();
 		const user = authResult.user;
@@ -139,97 +168,33 @@ export async function POST(request) {
 			);
 		}
 
-		db = await dbConnect();
-
-		const amount = Number(body.amount ?? 0);
-		const taxAmount = Number(body.tax_amount ?? 0);
-		const totalAmount = body.total_amount ?? amount + taxAmount;
-
-		// Number generation and INSERT are one transaction so concurrent POSTs
-		// cannot mint the same EXP number; the unique active-number index makes a
-		// lost race a duplicate-key error, which retries from a fresh read.
-		let expenseNumber;
-		let result;
-		for (let attempt = 1; ; attempt++) {
-			await db.beginTransaction();
-			try {
-				expenseNumber = body.expense_number || (await nextNumber(db));
-
-				[result] = await db.execute(
-					`INSERT INTO ${TABLE}
-				(expense_number, expense_date, category, sub_category, description, vendor_name,
-				 amount, tax_amount, total_amount, currency, payment_mode, payment_reference,
-				 paid_to, paid_by, receipt_url, is_billable, is_reimbursable,
-				 project_id, department, notes, status, created_by)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					[
-						expenseNumber,
-						body.expense_date || null,
-						body.category,
-						body.sub_category || null,
-						body.description || null,
-						body.vendor_name || null,
-						amount,
-						taxAmount,
-						totalAmount,
-						body.currency || 'INR',
-						body.payment_mode || 'bank',
-						body.payment_reference || null,
-						body.paid_to || null,
-						body.paid_by || user?.id || null,
-						body.receipt_url || null,
-						body.is_billable ? 1 : 0,
-						body.is_reimbursable ? 1 : 0,
-						body.project_id || null,
-						body.department || null,
-						body.notes || null,
-						body.status || 'submitted',
-						user?.id || null,
-					]
-				);
-
-				await db.commit();
-				break;
-			} catch (error) {
-				await db.rollback();
-				if (
-					!body.expense_number &&
-					isRetryableNumberError(error) &&
-					attempt < 5
-				) {
-					await new Promise((resolve) => setTimeout(resolve, 15 * attempt));
-					continue;
-				}
-				throw error;
-			}
-		}
-
-		// The logger checks out its own pooled connection; holding this one while
-		// it waits can starve the pool when several creates run concurrently.
-		// Release first; the `finally` stays as the error-path guard.
-		await db.release();
-		db = null;
+		// One write path: the module mints the number and the cost identity,
+		// applies the recognition-period and tax rules, and journals the row.
+		const recorded = await recordCost(toRecordInput(body), {
+			id: user?.id ?? null,
+		});
 
 		await logActivity({
 			userId: user?.id,
 			actionType: 'create',
 			resourceType: 'expense',
-			resourceId: result.insertId,
-			description: `Created expense ${expenseNumber} for ${body.category}`,
+			resourceId: recorded.id,
+			description: `Created expense ${recorded.expense_number} for ${body.category}`,
 			request,
 		});
 
-		return NextResponse.json({
-			success: true,
-			data: { id: result.insertId, expense_number: expenseNumber },
-		});
+		return NextResponse.json({ success: true, data: recorded });
 	} catch (error) {
+		if (error instanceof CostError) {
+			return NextResponse.json(
+				{ success: false, error: error.message, code: error.code, ...error.detail },
+				{ status: error.status }
+			);
+		}
 		console.error('Error creating expense:', error);
 		return NextResponse.json(
 			{ success: false, error: error.message },
 			{ status: 500 }
 		);
-	} finally {
-		if (db) await db.end();
 	}
 }

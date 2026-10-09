@@ -6,8 +6,79 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
+import { isMonthClosed } from '@/lib/company-expenditure';
 
 const TABLE = 'expenses';
+
+/**
+ * The financial fields of a direct cost — the ones the versioned command path
+ * owns. The register edit path must not rewrite them: it carries no
+ * `financial_version` and appends no journal entry, so an edit here would
+ * change the amount a later `recognize` confirms while every command still
+ * sees the old version. Operational fields (vendor, payment, description,
+ * notes, category, and the register's own `status`) stay editable here.
+ */
+const FINANCIAL_FIELDS = [
+	'expense_date',
+	'amount',
+	'tax_amount',
+	'total_amount',
+	'currency',
+	'reporting_currency',
+	'conversion_rate',
+	'conversion_date',
+	'conversion_evidence_reference',
+	'project_id',
+	// #317: the spend's nature decides whether the amount is cost or a balance
+	// consumed across periods, so it is a versioned financial field too.
+	'cost_nature',
+];
+
+/**
+ * Confirmed cost is frozen here: an edit or a soft delete through the register
+ * would change recognized cost with no version and no journal entry. The
+ * recognition workflow is the way to change it (cancel it, then record the
+ * correction), so these paths refuse instead of mutating it silently. A
+ * closed financial month freezes every row in it the same way (#322).
+ */
+async function refuseRecognizedCostEdit(db, id) {
+	const [rows] = await db.execute(
+		`SELECT recognition_state, recognition_period FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
+		[id]
+	);
+	if (rows.length === 0) {
+		return NextResponse.json(
+			{ success: false, error: 'Expense not found' },
+			{ status: 404 }
+		);
+	}
+	// A closed financial month is the terminal freeze: its refusal is the
+	// operative one, ahead of the recognition-state history guard (#322).
+	const period = String(rows[0].recognition_period ?? '').slice(0, 7);
+	if (/^\d{4}-\d{2}$/.test(period) && (await isMonthClosed(db, period))) {
+		return NextResponse.json(
+			{
+				success: false,
+				error:
+					'This financial month is closed. Ordinary writes are blocked; change closed figures through the financial revision workflow instead.',
+				code: 'month_closed',
+			},
+			{ status: 409 }
+		);
+	}
+	if (rows[0].recognition_state === 'recognized') {
+		return NextResponse.json(
+			{
+				success: false,
+				error:
+					'This expense is recognized cost. Cancel it with a versioned command before changing or removing it.',
+				code: 'cost_recognized',
+			},
+			{ status: 409 }
+		);
+	}
+	return null;
+}
 
 export async function GET(request, { params }) {
 	const authResult = await ensurePermission(
@@ -60,16 +131,30 @@ export async function PUT(request, { params }) {
 
 		db = await dbConnect();
 
+		const refusal = await refuseRecognizedCostEdit(db, id);
+		if (refusal) return refusal;
+
+		const attemptedFinancialFields = FINANCIAL_FIELDS.filter(
+			(field) => body[field] !== undefined
+		);
+		if (attemptedFinancialFields.length > 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'Amount, tax, total, currency, reporting currency, conversion evidence, expense date, project, and nature are versioned financial fields. Change them through POST /api/admin/expenses/{id}/commands with command "update" and the current expected_version.',
+					code: 'financial_fields_versioned',
+					fields: attemptedFinancialFields,
+				},
+				{ status: 422 }
+			);
+		}
+
 		const fields = [
-			'expense_date',
 			'category',
 			'sub_category',
 			'description',
 			'vendor_name',
-			'amount',
-			'tax_amount',
-			'total_amount',
-			'currency',
 			'payment_mode',
 			'payment_reference',
 			'paid_to',
@@ -77,7 +162,6 @@ export async function PUT(request, { params }) {
 			'receipt_url',
 			'is_billable',
 			'is_reimbursable',
-			'project_id',
 			'department',
 			'notes',
 			'status',
@@ -146,6 +230,10 @@ export async function DELETE(request, { params }) {
 		const { id } = await params;
 		const user = authResult.user;
 		db = await dbConnect();
+
+		const refusal = await refuseRecognizedCostEdit(db, id);
+		if (refusal) return refusal;
+
 		const [result] = await db.execute(
 			`UPDATE ${TABLE} SET isDelete = 1, deleted_at = NOW(), deleted_by = ? WHERE id = ? AND isDelete = 0`,
 			[user?.id ?? null, id]

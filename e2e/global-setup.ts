@@ -3,8 +3,75 @@ import {
 	seedAttendanceFixtures,
 } from './lib/attendance-fixtures';
 import { deleteArtifact } from './lib/artifacts';
-import { closeDb, exec, rows } from './lib/db';
+import { closeDb, exec, pingDb, rows } from './lib/db';
+import {
+	cleanupExpenditureCurrencyFixtures,
+	seedExpenditureCurrencyFixtures,
+} from './lib/expenditure-currency-fixtures';
+import {
+	cleanupCostAccrualFixtures,
+	seedCostAccrualFixtures,
+} from './lib/cost-accrual-fixtures';
+import {
+	cleanupAccrualConsumptionFixtures,
+	seedAccrualConsumptionFixtures,
+} from './lib/accrual-consumption-fixtures';
+import {
+	cleanupCashFixtures,
+	seedCashFixtures,
+} from './lib/expenditure-cash-fixtures';
+import {
+	cleanupCloseFixtures,
+	seedCloseFixtures,
+} from './lib/expenditure-close-fixtures';
+import {
+	cleanupFinancialRevisionFixtures,
+	seedFinancialRevisionFixtures,
+} from './lib/expenditure-revision-fixtures';
+import {
+	cleanupExpenditureFixtures,
+	seedExpenditureFixtures,
+} from './lib/expenditure-fixtures';
+import {
+	ALLOCATION_ESTIMATE_MONTH,
+	ALLOCATION_MONTH,
+	cleanupExpenditureAllocationFixtures,
+	seedExpenditureAllocationFixtures,
+} from './lib/expenditure-allocation-fixtures';
+import {
+	RECONSTRUCTION_MONTH,
+	RECONSTRUCTION_PENDING_MONTH,
+	cleanupExpenditureReconstructionFixtures,
+	seedExpenditureReconstructionFixtures,
+} from './lib/expenditure-reconstruction-fixtures';
+import {
+	REVISION_MONTH,
+	REVISION_PAID_MONTH,
+	cleanupExpenditureAllocationRevisionFixtures,
+	seedExpenditureAllocationRevisionFixtures,
+} from './lib/expenditure-allocation-revision-fixtures';
+import {
+	cleanupOtherExpenseFixtures,
+	seedOtherExpenseFixtures,
+} from './lib/other-expense-fixtures';
 import { cleanupFixtures, E2E_MONTH, seedFixtures } from './lib/fixtures';
+import {
+	cleanupPettyCashFixtures,
+	seedPettyCashFixtures,
+} from './lib/petty-cash-fixtures';
+import {
+	ORDER_PROJECT,
+	cleanupOrderFixtures,
+	seedOrderFixtures,
+} from './lib/order-fixtures';
+import {
+	cleanupOrderConsumptionFixtures,
+	seedOrderConsumptionFixtures,
+} from './lib/order-consumption-fixtures';
+import {
+	cleanupSupplierInvoiceFixtures,
+	seedSupplierInvoiceFixtures,
+} from './lib/supplier-invoice-fixtures';
 import {
 	cleanupUtilizationFixtures,
 	seedUtilizationFixtures,
@@ -16,9 +83,32 @@ import {
  */
 export default async function globalSetup(): Promise<void> {
 	try {
+		await pingDb();
+
+		// Payroll generation includes other fixture rosters. Remove its guarded
+		// month-owned slips before any roster cleanup deletes their employees.
+		// The revision cleanup runs first on purpose: its inert gate slips
+		// cover every `E2E-%` roster in 2018-03/04, so clearing them before
+		// the allocation cleanup deletes `E2E-ALLOC-%` employees keeps the
+		// payroll_slips FK from blocking that delete.
+		await cleanupExpenditureAllocationRevisionFixtures();
+		await cleanupExpenditureAllocationFixtures();
+		await cleanupExpenditureReconstructionFixtures();
 		await cleanupFixtures();
 		await cleanupAttendanceFixtures();
 		await cleanupUtilizationFixtures();
+		await cleanupOrderFixtures();
+		await cleanupOrderConsumptionFixtures();
+		await cleanupExpenditureFixtures();
+		await cleanupOtherExpenseFixtures();
+		await cleanupPettyCashFixtures();
+		await cleanupSupplierInvoiceFixtures();
+		await cleanupExpenditureCurrencyFixtures();
+		await cleanupCostAccrualFixtures();
+		await cleanupAccrualConsumptionFixtures();
+		await cleanupCashFixtures();
+		await cleanupCloseFixtures();
+		await cleanupFinancialRevisionFixtures();
 
 		// The proxy counts `auth` requests in MySQL fixed windows keyed by the
 		// trusted IP header; browser sign-ins carry no such header, so they land
@@ -51,7 +141,9 @@ export default async function globalSetup(): Promise<void> {
 		const seeded = await seedFixtures();
 		console.log(
 			`[e2e] fixtures seeded for ${E2E_MONTH} (admin #${seeded.adminUserId}, ` +
-				`worker employee #${seeded.workerEmployeeId}, zero-hours employee #${seeded.zeroHoursEmployeeId})`
+				`worker employee #${seeded.workerEmployeeId}, zero-hours employee #${seeded.zeroHoursEmployeeId}, ` +
+				`bonus employees #${seeded.bonusEmployeeId}/#${seeded.zeroBonusEmployeeId}/#${seeded.contractBonusEmployeeId}/#${seeded.lateBonusEmployeeId}, ` +
+				`preview employee #${seeded.previewBonusEmployeeId})`
 		);
 
 		const attendance = await seedAttendanceFixtures();
@@ -74,6 +166,107 @@ export default async function globalSetup(): Promise<void> {
 				`${utilization.screenTimeDays} screen-time days, ` +
 				`${utilization.holidays} optional holiday, ` +
 				`${utilization.profiles} salary profiles)`
+		);
+
+		const expenditure = await seedExpenditureFixtures();
+		console.log(
+			`[e2e] expenditure fixtures seeded for ${expenditure.month}, ${expenditure.nextMonth}, ` +
+				`and ${expenditure.budgetMonth} (${expenditure.costs} direct costs, ` +
+				`${expenditure.budgets} cost budgets, ` +
+				`${Object.keys(expenditure.projects).length} projects)`
+		);
+
+		const otherExpenses = await seedOtherExpenseFixtures();
+		console.log(
+			`[e2e] other-expense fixtures seeded for ${otherExpenses.month} ` +
+				`(project ${otherExpenses.projectId}, target ${otherExpenses.targetCostUid})`
+		);
+		const pettyCash = await seedPettyCashFixtures();
+		console.log(
+			`[e2e] petty-cash fixtures seeded for ${pettyCash.month} and ${pettyCash.laterMonth} ` +
+				`(${Object.keys(pettyCash.projects).length} projects, target cost ${pettyCash.targetCostUid})`
+		);
+		const supplier = await seedSupplierInvoiceFixtures();
+		console.log(
+			`[e2e] supplier invoice fixtures seeded for ${supplier.month}, ` +
+				`${supplier.invoiceMonth} and ${supplier.laterMonth} ` +
+				`(${supplier.invoices} invoices, ` +
+				`${Object.keys(supplier.projects).length} projects, ` +
+				`${Object.keys(supplier.payableIds).length} payables)`
+		);
+		const allocation = await seedExpenditureAllocationFixtures();
+		console.log(
+			`[e2e] allocation fixtures seeded for ${ALLOCATION_MONTH} and ${ALLOCATION_ESTIMATE_MONTH} ` +
+				`(${Object.keys(allocation.employeeIds).length} employees, ` +
+				`${Object.keys(allocation.projectIds).length} projects)`
+		);
+		const reconstruction = await seedExpenditureReconstructionFixtures();
+		console.log(
+			`[e2e] reconstruction fixtures seeded for ${RECONSTRUCTION_MONTH} and ${RECONSTRUCTION_PENDING_MONTH} ` +
+				`(${Object.keys(reconstruction.employeeIds).length} employees, ` +
+				`${Object.keys(reconstruction.projectIds).length} projects)`
+		);
+		const revision = await seedExpenditureAllocationRevisionFixtures();
+		console.log(
+			`[e2e] allocation revision fixtures seeded for ${REVISION_MONTH} and ${REVISION_PAID_MONTH} ` +
+				`(${Object.keys(revision.employeeIds).length} employees, ` +
+				`${Object.keys(revision.projectIds).length} projects)`
+		);
+		const currency = await seedExpenditureCurrencyFixtures();
+		console.log(
+			`[e2e] expenditure currency fixtures seeded for ${currency.months.join(', ')} ` +
+				`(${currency.costs} direct costs, ` +
+				`${Object.keys(currency.projects).length} projects)`
+		);
+
+		const accruals = await seedCostAccrualFixtures();
+		console.log(
+			`[e2e] cost accrual fixtures seeded for ${accruals.month}, ` +
+				`${accruals.partialMonth} and ${accruals.finalMonth} ` +
+				`(${accruals.accruals} accruals, ${accruals.invoices} replacement invoices)`
+		);
+
+		const cash = await seedCashFixtures();
+		console.log(
+			`[e2e] cash settlement fixtures seeded for 2023-01, 2023-02 and 2023-03 ` +
+				`(${Object.keys(cash.projects).length} projects, slip #${cash.slipId})`
+		);
+
+		const orders = await seedOrderFixtures();
+		console.log(
+			`[e2e] order fixtures seeded for ${orders.month} ` +
+				`(project ${ORDER_PROJECT.code} #${orders.projectId}, ` +
+				`${Object.keys(orders.legacy).length} legacy copies)`
+		);
+
+		const consumption = await seedOrderConsumptionFixtures();
+		console.log(
+			`[e2e] order-consumption fixtures seeded for ${consumption.month}, ` +
+				`${consumption.nextMonth} and ${consumption.laterMonth} ` +
+				`(${Object.keys(consumption.orderUids).length} orders, ` +
+				`${Object.keys(consumption.invoiceIds).length} recognized invoices)`
+		);
+
+		const accrualConsumption = await seedAccrualConsumptionFixtures();
+		console.log(
+			`[e2e] accrual-consumption fixtures seeded for ${accrualConsumption.month} ` +
+				`and ${accrualConsumption.nextMonth} ` +
+				`(${Object.keys(accrualConsumption.accrualIds).length} linked accruals, ` +
+				`${Object.keys(accrualConsumption.invoiceIds).length} transfer invoices)`
+		);
+
+		const close = await seedCloseFixtures();
+		console.log(
+			`[e2e] financial-close fixtures seeded for 2021-01 and 2021-02 ` +
+				`(${Object.keys(close.projects).length} projects, ` +
+				`close clerk #${close.clerkUserId})`
+		);
+
+		const financialRevision = await seedFinancialRevisionFixtures();
+		console.log(
+			`[e2e] financial-revision fixtures seeded for 2021-04 and 2021-05 ` +
+				`(${Object.keys(financialRevision.projects).length} projects, ` +
+				`revise clerk #${financialRevision.clerkUserId})`
 		);
 	} finally {
 		await closeDb();

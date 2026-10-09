@@ -5,7 +5,7 @@
  * Simple CRUD for vendor invoices (vendor, amounts, payment/status tracking).
  */
 
-import { Suspense, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -18,6 +18,7 @@ import type {
 import {
 	DocumentTextIcon,
 	PaperAirplaneIcon,
+	CheckBadgeIcon,
 	CheckCircleIcon,
 	ExclamationCircleIcon,
 	PlusIcon,
@@ -45,6 +46,7 @@ import { Input, Select as _Select } from '@/components/ui/form-fields';
 import { apiGet, apiDelete } from '@/lib/api-client';
 import { formatCurrency, formatDate } from '@/lib/format';
 import ResourceFormModal from '@/components/admin/ResourceFormModal';
+import SupplierRecognitionDialog from './SupplierRecognitionDialog';
 import type {
 	ModalMode,
 	ApiListResponse,
@@ -117,6 +119,24 @@ const schema = z.object({
 	status: z
 		.enum(['draft', 'pending', 'approved', 'paid', 'overdue', 'cancelled'])
 		.optional(),
+	// Financial identity/recognition fields — the shared expenditure module
+	// owns their storage; the register captures them at entry.
+	cost_classification: z.string().nullable().optional(),
+	project_id: z.union([z.string(), z.number()]).nullable().optional(),
+	service_period_start: z.string().nullable().optional(),
+	service_period_end: z.string().nullable().optional(),
+	currency: z.string().optional(),
+	tax_treatment: z
+		.enum(['none', 'recoverable', 'non_recoverable', 'unresolved'])
+		.optional(),
+	tax_evidence_reference: z.string().nullable().optional(),
+	source_reference: z.string().nullable().optional(),
+	evidence_reference: z.string().nullable().optional(),
+	withholding_tax_amount: z.coerce.number().min(0).optional(),
+	reporting_currency: z.string().nullable().optional(),
+	conversion_rate: z.coerce.number().optional(),
+	conversion_date: z.string().nullable().optional(),
+	conversion_evidence_reference: z.string().nullable().optional(),
 });
 
 const defaultValues = {
@@ -147,6 +167,20 @@ const defaultValues = {
 	terms: '',
 	attachment_url: '',
 	status: 'draft',
+	cost_classification: '',
+	project_id: '',
+	service_period_start: '',
+	service_period_end: '',
+	currency: 'INR',
+	tax_treatment: 'unresolved',
+	tax_evidence_reference: '',
+	source_reference: '',
+	evidence_reference: '',
+	withholding_tax_amount: 0,
+	reporting_currency: '',
+	conversion_rate: '',
+	conversion_date: '',
+	conversion_evidence_reference: '',
 };
 
 const formFields: FormField[] = [
@@ -227,7 +261,162 @@ const formFields: FormField[] = [
 	{ name: 'notes', label: 'Notes', type: 'textarea', fullWidth: true },
 	{ name: 'terms', label: 'Terms', type: 'textarea', fullWidth: true },
 	{ name: 'attachment_url', label: 'Attachment URL', fullWidth: true },
+	// Financial identity and recognition evidence. The destination is
+	// deliberate: Project, Company Overhead, Unallocated Cost, or explicitly
+	// not yet classified.
+	{
+		name: 'cost_classification',
+		label: 'Cost destination',
+		type: 'select',
+		placeholder: 'Not yet classified (unresolved)',
+		hint: 'Project, Company Overhead, or Unallocated Cost; leave blank while unresolved.',
+		options: [
+			{ value: 'project', label: 'Project' },
+			{ value: 'company_overhead', label: 'Company Overhead' },
+			{ value: 'unallocated', label: 'Unallocated Cost' },
+		],
+	},
+	{
+		name: 'project_id',
+		label: 'Project',
+		type: 'searchableSelect',
+		placeholder: 'Select project…',
+		searchableEndpoint: '/api/admin/purchase-invoices/options',
+		searchableValueKey: 'project_id',
+		searchableLabelFn: (item) =>
+			`${String(item.project_code ?? '')} — ${String(item.project_name ?? '')}`,
+		dependentOn: {
+			field: 'cost_classification',
+			values: ['project'],
+			clearFields: ['project_id'],
+		},
+	},
+	{
+		name: 'service_period_start',
+		label: 'Service period start',
+		type: 'date',
+		hint: 'Received-work period; the invoice date is only a fallback.',
+	},
+	{ name: 'service_period_end', label: 'Service period end', type: 'date' },
+	{
+		name: 'currency',
+		label: 'Currency',
+		type: 'select',
+		options: [
+			{ value: 'INR', label: 'INR' },
+			{ value: 'USD', label: 'USD' },
+			{ value: 'EUR', label: 'EUR' },
+			{ value: 'GBP', label: 'GBP' },
+			{ value: 'AED', label: 'AED' },
+			{ value: 'SGD', label: 'SGD' },
+		],
+	},
+	{
+		name: 'tax_treatment',
+		label: 'Tax treatment',
+		type: 'select',
+		hint: 'Recoverable tax needs its evidence; otherwise the gross stays in cost.',
+		options: [
+			{ value: 'none', label: 'No tax' },
+			{ value: 'recoverable', label: 'Recoverable' },
+			{ value: 'non_recoverable', label: 'Non-recoverable' },
+			{ value: 'unresolved', label: 'Unresolved' },
+		],
+	},
+	{ name: 'tax_evidence_reference', label: 'Tax evidence reference' },
+	{ name: 'source_reference', label: 'Supplier document number' },
+	{ name: 'evidence_reference', label: 'Evidence reference' },
+	{
+		name: 'withholding_tax_amount',
+		label: 'Withholding tax (TDS)',
+		type: 'number',
+		step: '0.01',
+		hint: 'Settlement only — never reduces incurred cost.',
+	},
+	{
+		name: 'reporting_currency',
+		label: 'Reporting currency',
+		type: 'select',
+		placeholder: 'Company default',
+		hint: 'Target for conversion evidence; blank keeps the company default.',
+		options: [
+			{ value: 'INR', label: 'INR' },
+			{ value: 'USD', label: 'USD' },
+			{ value: 'EUR', label: 'EUR' },
+			{ value: 'GBP', label: 'GBP' },
+			{ value: 'AED', label: 'AED' },
+			{ value: 'SGD', label: 'SGD' },
+		],
+	},
+	{
+		name: 'conversion_rate',
+		label: 'Conversion rate',
+		type: 'number',
+		step: '0.0000000001',
+		hint: 'Original → reporting rate; needs its date and reference too.',
+	},
+	{ name: 'conversion_date', label: 'Conversion rate date', type: 'date' },
+	{
+		name: 'conversion_evidence_reference',
+		label: 'Conversion evidence reference',
+		hint: 'Where the rate came from (contract, bank advice…).',
+	},
 ];
+
+/**
+ * Fields the register must not change after entry: financial identity and the
+ * recognized amount are versioned and go through the recognition dialog's
+ * commands, never the CRUD form.
+ */
+const VERSIONED_FIELDS: Record<string, true> = {
+	invoice_date: true,
+	subtotal: true,
+	tax_rate: true,
+	tax_amount: true,
+	cgst_amount: true,
+	sgst_amount: true,
+	igst_amount: true,
+	discount: true,
+	total: true,
+	status: true,
+	cost_classification: true,
+	project_id: true,
+	service_period_start: true,
+	service_period_end: true,
+	currency: true,
+	tax_treatment: true,
+	tax_evidence_reference: true,
+	source_reference: true,
+	evidence_reference: true,
+	withholding_tax_amount: true,
+	reporting_currency: true,
+	conversion_rate: true,
+	conversion_date: true,
+	conversion_evidence_reference: true,
+};
+
+/**
+ * Create-time transform: an empty conversion rate means "no conversion
+ * evidence", not a zero rate. Anything partially entered is left for the
+ * server to refuse explicitly (`conversion_evidence_incomplete`), so a
+ * half-filled triple is never silently dropped.
+ */
+function stripEmptyConversion(
+	values: Record<string, unknown>
+): Record<string, unknown> {
+	const next = { ...values };
+	const hasDate = Boolean(next.conversion_date);
+	const hasReference =
+		typeof next.conversion_evidence_reference === 'string' &&
+		next.conversion_evidence_reference.trim().length > 0;
+	const rate = Number(next.conversion_rate ?? 0);
+	if (!hasDate && !hasReference && (!Number.isFinite(rate) || rate <= 0)) {
+		delete next.conversion_rate;
+		delete next.conversion_date;
+		delete next.conversion_evidence_reference;
+	}
+	return next;
+}
 
 const columns: Column[] = [
 	{
@@ -336,6 +525,26 @@ function PurchaseInvoicePageInner() {
 		mode: ModalMode;
 		row: Record<string, unknown> | null;
 	}>({ mode: null, row: null });
+	const [recognitionRow, setRecognitionRow] = useState<Record<
+		string,
+		unknown
+	> | null>(null);
+
+	// Edit mode shows the versioned fields disabled: the register's PUT refuses
+	// them, and their real write path is the recognition dialog's commands.
+	const editFormFields = useMemo(
+		() =>
+			formFields.map((field) =>
+				VERSIONED_FIELDS[field.name]
+					? {
+							...field,
+							disabled: true,
+							hint: 'Versioned — change it through Recognition.',
+						}
+					: field
+			),
+		[]
+	);
 
 	const listQuery = useQuery<ApiListResponse>({
 		queryKey: ['purchase-invoices', { search, status: statusFilter, page }],
@@ -502,6 +711,14 @@ function PurchaseInvoicePageInner() {
 												<TableCell className="text-center">
 													<div className="inline-flex items-center gap-1">
 														<button
+															onClick={() => setRecognitionRow(row)}
+															data-testid={`recognition-open-${String(row.invoice_number ?? '')}`}
+															className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+															title="Recognition"
+														>
+															<CheckBadgeIcon className="h-4 w-4" />
+														</button>
+														<button
 															onClick={() => openView(row)}
 															className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
 															title="View"
@@ -550,13 +767,33 @@ function PurchaseInvoicePageInner() {
 					endpoint="/api/admin/purchase-invoices"
 					defaultValues={defaultValues}
 					zodSchema={schema}
-					formFields={formFields}
+					formFields={modalState.mode === 'edit' ? editFormFields : formFields}
+					transformSubmit={
+						modalState.mode === 'edit'
+							? (values) => {
+									const next = { ...values };
+									for (const key of Object.keys(next)) {
+										if (VERSIONED_FIELDS[key]) delete next[key];
+									}
+									return next;
+								}
+							: stripEmptyConversion
+					}
 					vendorListEndpoint="/api/vendors"
 					onClose={closeModal}
 					onSaved={() => {
 						closeModal();
 						listQuery.refetch();
 					}}
+				/>
+			) : null}
+
+			{recognitionRow ? (
+				<SupplierRecognitionDialog
+					invoiceId={Number(recognitionRow.id)}
+					invoiceNumber={String(recognitionRow.invoice_number ?? '')}
+					onClose={() => setRecognitionRow(null)}
+					onChanged={() => listQuery.refetch()}
 				/>
 			) : null}
 		</div>

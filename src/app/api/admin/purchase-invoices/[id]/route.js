@@ -6,8 +6,26 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
+import {
+	isMonthClosed,
+	loadSupplierInvoiceDetail,
+} from '@/lib/company-expenditure';
 
 const TABLE = 'purchase_invoices';
+
+/**
+ * A closed financial month freezes every invoice in it (#322): the
+ * register edit and delete paths refuse instead of mutating closed cost
+ * with no version and no journal entry.
+ */
+async function invoiceMonthClosed(db, id) {
+	const [rows] = await db.execute(
+		`SELECT recognition_period FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
+		[id]
+	);
+	const period = String(rows[0]?.recognition_period ?? '').slice(0, 7);
+	return /^\d{4}-\d{2}$/.test(period) && (await isMonthClosed(db, period));
+}
 
 export async function GET(request, { params }) {
 	const authResult = await ensurePermission(
@@ -32,7 +50,19 @@ export async function GET(request, { params }) {
 				{ status: 404 }
 			);
 		}
-		return NextResponse.json({ success: true, data: rows[0] });
+		// The financial detail the recognition dialog reads: service-period
+		// slices, the confirmed source links, and the preserved candidate
+		// mappings awaiting a document-backed decision.
+		const detail = await loadSupplierInvoiceDetail(db, Number(id));
+		return NextResponse.json({
+			success: true,
+			data: {
+				...rows[0],
+				splits: detail?.splits ?? [],
+				links: detail?.links ?? [],
+				link_candidates: detail?.link_candidates ?? [],
+			},
+		});
 	} catch (error) {
 		return NextResponse.json(
 			{ success: false, error: error.message },
@@ -60,8 +90,73 @@ export async function PUT(request, { params }) {
 
 		db = await dbConnect();
 
-		const fields = [
+		const [stateRows] = await db.execute(
+			`SELECT recognition_state FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
+			[id]
+		);
+		if (stateRows.length === 0) {
+			return NextResponse.json(
+				{ success: false, error: 'Purchase invoice not found' },
+				{ status: 404 }
+			);
+		}
+		// A closed financial month is the terminal freeze: its refusal is
+		// the operative one, ahead of the recognition-state guard (#322).
+		if (await invoiceMonthClosed(db, id)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'This financial month is closed. Ordinary writes are blocked; change closed figures through the financial revision workflow instead.',
+					code: 'month_closed',
+				},
+				{ status: 409 }
+			);
+		}
+		if (stateRows[0].recognition_state === 'recognized') {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'This invoice is recognized cost. Change it through the versioned command path, not the register.',
+					code: 'cost_recognized',
+				},
+				{ status: 409 }
+			);
+		}
+		const versionedFields = [
 			'invoice_date',
+			'subtotal',
+			'tax_rate',
+			'tax_amount',
+			'cgst_amount',
+			'sgst_amount',
+			'igst_amount',
+			'discount',
+			'total',
+			'project_id',
+			'currency',
+			'withholding_tax_amount',
+			'po_id',
+			'status',
+		];
+		const attempted = versionedFields.filter(
+			(field) => body[field] !== undefined
+		);
+		if (attempted.length > 0) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'These are versioned financial fields. Change them through POST /api/admin/purchase-invoices/{id}/commands with command "update" and the current expected_version.',
+					code: 'financial_fields_versioned',
+					fields: attempted,
+				},
+				{ status: 422 }
+			);
+		}
+
+		const fields = [
 			'due_date',
 			'vendor_name',
 			'vendor_email',
@@ -71,24 +166,13 @@ export async function PUT(request, { params }) {
 			'vendor_pan',
 			'po_number',
 			'po_date',
-			'po_id',
 			'description',
-			'subtotal',
-			'tax_rate',
-			'tax_amount',
-			'cgst_amount',
-			'sgst_amount',
-			'igst_amount',
-			'discount',
-			'total',
 			'amount_paid',
 			'balance_due',
 			'payment_status',
 			'notes',
 			'terms',
 			'attachment_url',
-			'status',
-			'project_id',
 		];
 		const setClauses = [];
 		const values = [];
@@ -148,6 +232,40 @@ export async function DELETE(request, { params }) {
 		const { id } = await params;
 		const user = authResult.user;
 		db = await dbConnect();
+		const [stateRows] = await db.execute(
+			`SELECT recognition_state FROM ${TABLE} WHERE id = ? AND isDelete = 0`,
+			[id]
+		);
+		if (stateRows.length === 0) {
+			return NextResponse.json(
+				{ success: false, error: 'Purchase invoice not found' },
+				{ status: 404 }
+			);
+		}
+		// A closed financial month is the terminal freeze: its refusal is
+		// the operative one, ahead of the recognition-state guard (#322).
+		if (await invoiceMonthClosed(db, id)) {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'This financial month is closed. Ordinary writes are blocked; change closed figures through the financial revision workflow instead.',
+					code: 'month_closed',
+				},
+				{ status: 409 }
+			);
+		}
+		if (stateRows[0].recognition_state === 'recognized') {
+			return NextResponse.json(
+				{
+					success: false,
+					error:
+						'Recognized cost cannot be deleted. Cancel it through the versioned command path so its history stays.',
+					code: 'cost_recognized',
+				},
+				{ status: 409 }
+			);
+		}
 		const [result] = await db.execute(
 			`UPDATE ${TABLE} SET isDelete = 1, deleted_at = NOW(), deleted_by = ? WHERE id = ? AND isDelete = 0`,
 			[user?.id ?? null, id]

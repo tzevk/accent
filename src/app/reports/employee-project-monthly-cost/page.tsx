@@ -19,10 +19,10 @@ import {
 } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
 import SearchableSelect from '@/components/ui/searchable-select';
+import ExpenditureView from './expenditure-view';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { formatNumber, formatCurrency } from '@/lib/format';
-import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 
 interface FinancialYearOption {
 	year: number;
@@ -35,6 +35,8 @@ interface CompanyCostMeta {
 	months: string[];
 	latest_month: string | null;
 	current_month: string;
+	/** Months with direct cost recorded, newest first (expenditure view). */
+	expenditure_months?: string[];
 	employees?: unknown[];
 }
 
@@ -185,7 +187,7 @@ interface FYResponse {
 	error?: string;
 }
 
-type ViewMode = 'monthly' | 'fy';
+type ViewMode = 'expenditure' | 'monthly' | 'fy';
 type BreakdownTab = 'detailed' | 'byEmployee' | 'byProject';
 type Metric = 'hours' | 'cost';
 
@@ -495,12 +497,16 @@ export default function EmployeeProjectMonthlyCostPage() {
 			field_permissions?: unknown;
 		} | null;
 		can: (resource: string, permission: string) => boolean;
-		RESOURCES: { REPORTS: string };
-		PERMISSIONS: { READ: string };
+		RESOURCES: {
+			REPORTS: string;
+			OTHER_EXPENSES: string;
+			PAYROLL: string;
+		};
+		PERMISSIONS: { READ: string; UPDATE: string };
 		loading: boolean;
 	};
 
-	const [viewMode, setViewMode] = useState<ViewMode>('monthly');
+	const [viewMode, setViewMode] = useState<ViewMode>('expenditure');
 	const [selectedMonth, setSelectedMonth] = useState('');
 	const [selectedFy, setSelectedFy] = useState('');
 	const [metric, setMetric] = useState<Metric>('cost');
@@ -521,12 +527,16 @@ export default function EmployeeProjectMonthlyCostPage() {
 
 	useEffect(() => {
 		if (!meta) return;
-		if (!selectedMonth && meta.latest_month)
-			setSelectedMonth(meta.latest_month);
-		else if (!selectedMonth && meta.current_month)
-			setSelectedMonth(meta.current_month);
+		// Company expenditure opens on the current month, so current cost
+		// growth is what the reader sees first; the employee-cost views keep
+		// opening on the latest month that has data.
+		const preferredMonth =
+			viewMode === 'expenditure'
+				? (meta.current_month ?? meta.latest_month)
+				: (meta.latest_month ?? meta.current_month);
+		if (!selectedMonth && preferredMonth) setSelectedMonth(preferredMonth);
 		if (!selectedFy && meta.current_fy) setSelectedFy(String(meta.current_fy));
-	}, [meta, selectedMonth, selectedFy]);
+	}, [meta, selectedMonth, selectedFy, viewMode]);
 
 	const monthlyQuery = useQuery<MonthlyResponse>({
 		queryKey: [
@@ -565,8 +575,69 @@ export default function EmployeeProjectMonthlyCostPage() {
 		!!RESOURCES &&
 		!!PERMISSIONS &&
 		can(RESOURCES.REPORTS, PERMISSIONS.READ);
-	const hasFieldPermission = hasProjectActivitiesFieldPermission(user);
-	const hasAccess = isSuperAdmin || hasReportsPermission || hasFieldPermission;
+	// Financial access is the reporting privilege. Project Activity access alone
+	// must not reveal company expenditure, so the field grant is not accepted
+	// here (server routes enforce the same rule).
+	const hasAccess = isSuperAdmin || hasReportsPermission;
+	const canRecordCost =
+		isSuperAdmin || (!!can && can('other_expenses', 'create'));
+	const canRecognizeCost =
+		isSuperAdmin || (!!can && can('other_expenses', 'approve'));
+	const canEditCost =
+		isSuperAdmin || (!!can && can('other_expenses', 'update'));
+	// The Project Cost Allocation Revision (#309) is a versioned financial
+	// command: the payroll drilldown's read gate plus the payroll write
+	// privilege. The server enforces the same conjunction.
+	const canReviseAllocation =
+		isSuperAdmin ||
+		(!!can &&
+			!!RESOURCES &&
+			!!PERMISSIONS &&
+			can(RESOURCES.REPORTS, PERMISSIONS.READ) &&
+			can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ) &&
+			can(RESOURCES.PAYROLL, PERMISSIONS.READ) &&
+			can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE));
+	// Recording an outward cash settlement (#318) moves money: the financial
+	// read gate plus the cost update privilege. The server enforces the same
+	// conjunction.
+	const canRecordSettlement =
+		isSuperAdmin ||
+		(!!can &&
+			!!RESOURCES &&
+			!!PERMISSIONS &&
+			can(RESOURCES.REPORTS, PERMISSIONS.READ) &&
+			can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ) &&
+			can(RESOURCES.PAYROLL, PERMISSIONS.READ) &&
+			can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.UPDATE));
+	// Closing a reviewed financial month (#322) freezes it: the financial
+	// read gate plus the cost update privilege. The server enforces the same
+	// conjunction.
+	const canCloseMonth = canRecordSettlement;
+	// Revising a closed financial month (#323) corrects it: the same
+	// conjunction as closing. The server enforces the update privilege for
+	// corrections and the approve privilege for reversals.
+	const canReviseClosed = canRecordSettlement;
+	// The expenditure view reads the direct-expense ledger, so it needs that
+	// source's read privilege as well as reports:read. Without it the tab is
+	// not offered and the report opens on the employee-cost views; the server
+	// refuses the expenditure endpoints either way. While auth is still
+	// loading, assume allowed so the default tab does not flicker.
+	const canReadExpenseSource =
+		authLoading || isSuperAdmin || (!!can && can('other_expenses', 'read'));
+	// Since #307 the reconciliation carries recorded Payroll Slip employer
+	// cost, so the payroll source privilege joins the same gate.
+	const canReadPayrollSource =
+		authLoading || isSuperAdmin || (!!can && can('payroll', 'read'));
+
+	useEffect(() => {
+		if (
+			!authLoading &&
+			(!canReadExpenseSource || !canReadPayrollSource) &&
+			viewMode === 'expenditure'
+		) {
+			setViewMode('monthly');
+		}
+	}, [authLoading, canReadExpenseSource, canReadPayrollSource, viewMode]);
 	const error =
 		activeQuery.error?.message ||
 		(activeQuery.data as unknown as { error?: string })?.error ||
@@ -579,14 +650,28 @@ export default function EmployeeProjectMonthlyCostPage() {
 		[months]
 	);
 
+	// The expenditure picker lists the months that carry direct cost, plus the
+	// current selection so switching views never strands it.
+	const expenditureMonthOptions = useMemo(() => {
+		const list = new Set<string>(meta?.expenditure_months ?? []);
+		if (meta?.current_month) list.add(meta.current_month);
+		if (selectedMonth) list.add(selectedMonth);
+		return [...list]
+			.sort()
+			.reverse()
+			.map((m) => ({ value: m, label: monthLabel(m) }));
+	}, [meta, selectedMonth]);
+
 	const handlePrint = () => window.print();
 	const handleExport = async () => {
 		setExporting(true);
 		try {
 			const url =
-				viewMode === 'monthly'
-					? `/api/reports/employee-project-monthly-cost/download?view=monthly&month=${selectedMonth}`
-					: `/api/reports/employee-project-monthly-cost/download?view=fy&fy=${selectedFy}`;
+				viewMode === 'expenditure'
+					? `/api/reports/employee-project-monthly-cost/download?view=expenditure&month=${selectedMonth}`
+					: viewMode === 'monthly'
+						? `/api/reports/employee-project-monthly-cost/download?view=monthly&month=${selectedMonth}`
+						: `/api/reports/employee-project-monthly-cost/download?view=fy&fy=${selectedFy}`;
 			const response = await fetch(url, { credentials: 'include' });
 			if (!response.ok) {
 				const msg = await response.text().catch(() => '');
@@ -599,9 +684,11 @@ export default function EmployeeProjectMonthlyCostPage() {
 			const match = disposition.match(/filename="?([^";]+)"?/i);
 			const filename =
 				match?.[1] ||
-				(viewMode === 'monthly'
-					? `Company_Cost_${selectedMonth}.xlsx`
-					: `Company_Cost_FY${selectedFy}.xlsx`);
+				(viewMode === 'expenditure'
+					? `Company_Expenditure_${selectedMonth}.xlsx`
+					: viewMode === 'monthly'
+						? `Company_Cost_${selectedMonth}.xlsx`
+						: `Company_Cost_FY${selectedFy}.xlsx`);
 			const objectUrl = URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = objectUrl;
@@ -751,7 +838,7 @@ export default function EmployeeProjectMonthlyCostPage() {
 			<div className="min-h-screen bg-white">
 				<Navbar />
 				<div className="flex min-h-[50vh] items-center justify-center">
-					<div className="text-center">
+					<div className="text-center" data-testid="access-denied">
 						<XMarkIcon className="mx-auto mb-2 h-8 w-8 text-red-500" />
 						<h2 className="text-lg font-bold text-gray-800">Access Denied</h2>
 						<p className="text-sm text-gray-500">
@@ -764,6 +851,31 @@ export default function EmployeeProjectMonthlyCostPage() {
 	}
 
 	const renderContent = () => {
+		if (
+			viewMode === 'expenditure' &&
+			canReadExpenseSource &&
+			canReadPayrollSource
+		) {
+			return (
+				<ExpenditureView
+					month={selectedMonth}
+					monthOptions={expenditureMonthOptions}
+					onMonthChange={setSelectedMonth}
+					canRecord={canRecordCost}
+					canEditCost={canEditCost}
+					canRecognize={canRecognizeCost}
+					// #308: reaching this view already proves the financial read
+					// gate (reports + both source reads, above); the reconstruction
+					// controls add the operation privilege the routes enforce.
+					canProposeReconstruction={canEditCost}
+					canReviewReconstruction={canRecognizeCost}
+					canRevise={canReviseAllocation}
+					canRecordSettlement={canRecordSettlement}
+					canCloseMonth={canCloseMonth}
+					canReviseClosed={canReviseClosed}
+				/>
+			);
+		}
 		if (error) {
 			return (
 				<div className="px-4 py-10 text-center text-sm text-red-600">
@@ -1425,11 +1537,12 @@ export default function EmployeeProjectMonthlyCostPage() {
 								<span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#64126D]/10 text-[#64126D]">
 									<CurrencyRupeeIcon className="h-4 w-4" />
 								</span>
-								Employee Project Monthly Cost
+								Company Project Expenditure
 							</h1>
 							<p className="mt-0.5 text-xs text-gray-500">
-								Total cost to company across all projects &amp; all employees —
-								monthly and financial-year views
+								Company Incurred Cost reconciled to Incurred Project Cost,
+								Company Overhead, and Unallocated Cost — with the employee-cost
+								and financial-year views alongside
 							</p>
 						</div>
 						<div
@@ -1437,6 +1550,18 @@ export default function EmployeeProjectMonthlyCostPage() {
 							aria-label="Report view"
 							className="inline-flex self-start rounded-xl border border-gray-200/80 bg-gray-100/90 p-1 shadow-inner sm:self-auto"
 						>
+							{canReadExpenseSource && canReadPayrollSource && (
+								<button
+									type="button"
+									role="tab"
+									aria-selected={viewMode === 'expenditure'}
+									onClick={() => setViewMode('expenditure')}
+									className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === 'expenditure' ? 'bg-[#64126D] text-white shadow' : 'text-gray-600 hover:text-[#64126D]'}`}
+								>
+									<BanknotesIcon className="h-3.5 w-3.5" />
+									Expenditure
+								</button>
+							)}
 							<button
 								type="button"
 								role="tab"
@@ -1459,127 +1584,133 @@ export default function EmployeeProjectMonthlyCostPage() {
 							</button>
 						</div>
 					</div>
-					<div className="mt-3 flex flex-wrap items-center gap-2">
-						{viewMode === 'monthly' ? (
-							<div className="w-full max-w-[260px]">
-								<SearchableSelect
-									options={monthOptions}
-									value={selectedMonth}
-									onChange={(v) => setSelectedMonth(String(v))}
-									placeholder={months.length ? 'Select month…' : 'No months'}
-								/>
-							</div>
-						) : (
-							<select
-								value={selectedFy}
-								onChange={(e) => setSelectedFy(e.target.value)}
-								className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-purple-500"
-								title="Financial year (Apr–Mar)"
-							>
-								{financialYears.map((fy) => (
-									<option key={fy.year} value={String(fy.year)}>
-										{fy.label}
-									</option>
-								))}
-							</select>
-						)}
-						<div className="relative flex-1 min-w-[180px] max-w-sm">
-							<input
-								type="text"
-								value={search}
-								onChange={(e) => setSearch(e.target.value)}
-								placeholder="Search employee, project, client…"
-								className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-transparent focus:ring-2 focus:ring-purple-500"
-							/>
-						</div>
-						{viewMode === 'fy' && (
-							<div
-								role="tablist"
-								aria-label="Metric"
-								className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1"
-							>
-								{(['hours', 'cost'] as Metric[]).map((m) => (
-									<button
-										key={m}
-										type="button"
-										role="tab"
-										aria-selected={metric === m}
-										onClick={() => setMetric(m)}
-										className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold ${metric === m ? 'bg-white shadow text-[#64126D]' : 'text-gray-600'}`}
+					{viewMode !== 'expenditure' && (
+						<>
+							<div className="mt-3 flex flex-wrap items-center gap-2">
+								{viewMode === 'monthly' ? (
+									<div className="w-full max-w-[260px]">
+										<SearchableSelect
+											options={monthOptions}
+											value={selectedMonth}
+											onChange={(v) => setSelectedMonth(String(v))}
+											placeholder={
+												months.length ? 'Select month…' : 'No months'
+											}
+										/>
+									</div>
+								) : (
+									<select
+										value={selectedFy}
+										onChange={(e) => setSelectedFy(e.target.value)}
+										className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-purple-500"
+										title="Financial year (Apr–Mar)"
 									>
-										{m === 'hours' ? (
-											<ClockIcon className="h-3 w-3" />
+										{financialYears.map((fy) => (
+											<option key={fy.year} value={String(fy.year)}>
+												{fy.label}
+											</option>
+										))}
+									</select>
+								)}
+								<div className="relative flex-1 min-w-[180px] max-w-sm">
+									<input
+										type="text"
+										value={search}
+										onChange={(e) => setSearch(e.target.value)}
+										placeholder="Search employee, project, client…"
+										className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-transparent focus:ring-2 focus:ring-purple-500"
+									/>
+								</div>
+								{viewMode === 'fy' && (
+									<div
+										role="tablist"
+										aria-label="Metric"
+										className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1"
+									>
+										{(['hours', 'cost'] as Metric[]).map((m) => (
+											<button
+												key={m}
+												type="button"
+												role="tab"
+												aria-selected={metric === m}
+												onClick={() => setMetric(m)}
+												className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold ${metric === m ? 'bg-white shadow text-[#64126D]' : 'text-gray-600'}`}
+											>
+												{m === 'hours' ? (
+													<ClockIcon className="h-3 w-3" />
+												) : (
+													<BanknotesIcon className="h-3 w-3" />
+												)}
+												{m === 'hours' ? 'Hours' : 'Cost'}
+											</button>
+										))}
+									</div>
+								)}
+								<div className="ml-auto flex items-center gap-2">
+									<button
+										type="button"
+										onClick={() => activeQuery.refetch()}
+										disabled={isLoading}
+										className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+									>
+										<ArrowPathIcon
+											className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}
+										/>
+										Refresh
+									</button>
+									<button
+										type="button"
+										onClick={handleExport}
+										disabled={exporting || isLoading}
+										className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+									>
+										{exporting ? (
+											<ArrowPathIcon className="h-4 w-4 animate-spin" />
 										) : (
-											<BanknotesIcon className="h-3 w-3" />
+											<DocumentArrowDownIcon className="h-4 w-4" />
 										)}
-										{m === 'hours' ? 'Hours' : 'Cost'}
+										Excel
+									</button>
+									<button
+										type="button"
+										onClick={handlePrint}
+										className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-white hover:bg-gray-900"
+									>
+										<PrinterIcon className="h-4 w-4" />
+										Print
+									</button>
+								</div>
+							</div>
+							<div className="mt-3 flex items-center gap-1.5 border-b border-gray-200">
+								{(
+									['detailed', 'byEmployee', 'byProject'] as BreakdownTab[]
+								).map((tab) => (
+									<button
+										key={tab}
+										type="button"
+										onClick={() => setBreakdown(tab)}
+										className={`rounded-t-lg border-b-2 px-3 py-1.5 text-xs font-semibold ${breakdown === tab ? 'border-[#64126D] bg-[#64126D]/5 text-[#64126D]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+									>
+										{tab === 'detailed'
+											? viewMode === 'monthly'
+												? 'Project Wise'
+												: 'Detailed (Emp × Project)'
+											: tab === 'byEmployee'
+												? 'By Employee'
+												: viewMode === 'monthly'
+													? 'Project Summary'
+													: 'By Project'}
 									</button>
 								))}
+								<span className="ml-auto hidden text-xs text-gray-400 sm:inline">
+									Generated {generatedAt}
+								</span>
 							</div>
-						)}
-						<div className="ml-auto flex items-center gap-2">
-							<button
-								type="button"
-								onClick={() => activeQuery.refetch()}
-								disabled={isLoading}
-								className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-							>
-								<ArrowPathIcon
-									className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}
-								/>
-								Refresh
-							</button>
-							<button
-								type="button"
-								onClick={handleExport}
-								disabled={exporting || isLoading}
-								className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-							>
-								{exporting ? (
-									<ArrowPathIcon className="h-4 w-4 animate-spin" />
-								) : (
-									<DocumentArrowDownIcon className="h-4 w-4" />
-								)}
-								Excel
-							</button>
-							<button
-								type="button"
-								onClick={handlePrint}
-								className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-white hover:bg-gray-900"
-							>
-								<PrinterIcon className="h-4 w-4" />
-								Print
-							</button>
-						</div>
-					</div>
-					<div className="mt-3 flex items-center gap-1.5 border-b border-gray-200">
-						{(['detailed', 'byEmployee', 'byProject'] as BreakdownTab[]).map(
-							(tab) => (
-								<button
-									key={tab}
-									type="button"
-									onClick={() => setBreakdown(tab)}
-									className={`rounded-t-lg border-b-2 px-3 py-1.5 text-xs font-semibold ${breakdown === tab ? 'border-[#64126D] bg-[#64126D]/5 text-[#64126D]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-								>
-									{tab === 'detailed'
-										? viewMode === 'monthly'
-											? 'Project Wise'
-											: 'Detailed (Emp × Project)'
-										: tab === 'byEmployee'
-											? 'By Employee'
-											: viewMode === 'monthly'
-												? 'Project Summary'
-												: 'By Project'}
-								</button>
-							)
-						)}
-						<span className="ml-auto hidden text-xs text-gray-400 sm:inline">
-							Generated {generatedAt}
-						</span>
-					</div>
+						</>
+					)}
 				</div>
 				<div
-					className={`mx-auto mb-2 hidden max-w-[1600px] ${viewMode === 'fy' || breakdown !== 'detailed' ? 'print:block' : ''}`}
+					className={`mx-auto mb-2 hidden max-w-[1600px] ${viewMode !== 'expenditure' && (viewMode === 'fy' || breakdown !== 'detailed') ? 'print:block' : ''}`}
 				>
 					<div className="border-b-2 border-[#64126d] pb-1">
 						<h2 className="text-base font-bold text-[#4A1254]">
@@ -1723,14 +1854,18 @@ export default function EmployeeProjectMonthlyCostPage() {
 				<div className="epc-sheet mx-auto max-w-[1600px] overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm print:overflow-visible print:rounded-none print:border-none print:shadow-none">
 					{renderContent()}
 				</div>
-				<p className="mx-auto mt-2 max-w-[1600px] text-[10px] leading-relaxed text-gray-400 print:hidden">
-					Hours are summed from daily activity logs per project; cost = payroll
-					hourly rate in force that month × hours logged that month
-					(hourly/daily rate when set, else gross salary ÷ standard working days
-					× hours per day). Monthly view shows total cost to company for the
-					selected month; FY view shows Apr–Mar matrix with company monthly
-					totals.
-				</p>
+				{viewMode !== 'expenditure' && (
+					<p className="mx-auto mt-2 max-w-[1600px] text-[10px] leading-relaxed text-gray-400 print:hidden">
+						Hours are summed from daily activity logs per project; cost =
+						payroll hourly rate in force that month × hours logged that month
+						(hourly/daily rate when set, else gross salary ÷ standard working
+						days × hours per day). Monthly view shows total cost to company for
+						the selected month; FY view shows Apr–Mar matrix with company
+						monthly totals. These employee-cost views are estimates until a
+						month&apos;s payroll is finalized; the Expenditure view carries the
+						recognized company cost.
+					</p>
+				)}
 			</main>
 		</div>
 	);

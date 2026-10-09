@@ -92,6 +92,113 @@ _Avoid_: Attendance %, Allocation %, Productivity
 CTC-based monthly price of an Employee — `employee_salary_profile.employer_cost` (stored CTC), falling back to `gross_salary` then `gross`. Profile picked by `pickActiveProfile` (effective-range cover, else latest active). In the Employee Utilization report a month the employment window only partly covers is pro-rated by employed working days ÷ the month's working days, 2dp — a full-month window reproduces the full CTC, and the row is marked partial ("Partial (window)") with the covered dates.
 _Avoid_: Gross, Salary (ambiguous), Hourly rate
 
+**Company Incurred Cost**:
+Operating cost recognized for the company in a period, whether paid or unpaid. Includes direct Project costs, Company Overhead, and Unallocated Cost, each counted once.
+_Avoid_: Cash paid, Sum of Project totals, PO value
+
+**Company Overhead**:
+Shared operating cost deliberately classified as not directly attributable to one Project. Distinct from a cost whose Project is unknown.
+_Avoid_: Unallocated Cost, Bench Cost, Missing project
+
+**Unallocated Cost**:
+Recognized cost awaiting reliable classification as a direct Project cost or Company Overhead. Includes Unallocated Employee Cost and non-employee cost awaiting classification.
+_Avoid_: Company Overhead, Bench Cost, Zero cost
+
+**Cost Accrual**:
+Estimated cost for goods or services already received but not yet invoiced. The related invoice replaces the estimate rather than creating a second cost.
+_Avoid_: Supplier commitment, Advance, Forecast cost
+
+**Cost Identity**:
+The stable `cost_uid` of one underlying cost, minted when the cost is captured and carried by every later source reference, command, and revision. One underlying cost has one identity whichever workflow recorded it; the expense number stays a display and search reference.
+_Avoid_: Expense number (when meaning identity), Row id, Document number
+
+**Non-operating Item**:
+A recorded spend whose nature is an advance, deposit, prepayment, or capital item (`expenses.cost_nature`), rather than operating cost. Its payment or invoice is a balance, not Company Incurred Cost; it is shown separately with its identity, amount, currency/tax basis, evidence, and unconsumed amount. A treatment that is still undecided stays explicitly unresolved and is also excluded from operating cost.
+_Avoid_: Operating cost, Fixed asset register, Capitalization decision
+
+**Period Charge**:
+An approved, evidenced consumption, depreciation, or amortization of a Non-operating Item's supported balance, dated in its own month (`expense_period_charges`). Only an approved charge becomes Company Incurred Cost, in that month, with the item's destination and currency. One item month and basis holds one approved charge, and the approved charges never exceed the item's confirmed balance; cancelling a charge is reasoned, versioned, and restores the balance.
+_Avoid_: Depreciation schedule, Automatic amortization, Payment
+
+**Recognition Period**:
+The month a cost belongs to (`recognition_period`, as its first day), with `period_basis` saying how it was established. It comes from the received-work/service period, or from the bill date as a disclosed fallback; an order date or a payment date never sets it.
+_Avoid_: Invoice month, Payment month, Accounting period
+
+**Recognition State**:
+A direct cost's financial state — `draft`, `pending_evidence`, `recognized`, `rejected`, or `cancelled`. Only `recognized` is confirmed cost, and only an authorized recognize command sets it. It is not the expense register's `status`, so approving a register row does not create cost.
+_Avoid_: Expense status, Approval status, Paid
+
+**Supplier Cost**:
+The recognized cost of one supplier invoice — the single liability for the goods or services received. A payable follow-up, a receipt copy, or a later payment references this one cost; none of them creates another. Its gross liability, transaction currency, tax treatment, and evidence stay on the invoice, and its Recognition Period comes from the service period (the invoice date only as a disclosed fallback).
+_Avoid_: Payable amount, Payment, Receipt copy
+
+**Service-Period Slice**:
+One received-work period's share of a supplier invoice that covers several periods (`supplier_invoice_periods`). The slices total the invoice gross exactly, each month counts only its own slice, and recognition is refused while they do not total it. A slice is never a second cost.
+_Avoid_: Partial invoice, Split payment, Duplicate invoice
+
+**Financial Cost Link**:
+A durable, reviewed mapping from a foreign row (payable, receipt copy, settlement, funding event) to a cost's `cost_uid`, held in `financial_cost_links` with a role, a basis, and a review state. Only confirmed links are authoritative; a text candidate stays pending review and never merges identity or totals.
+_Avoid_: Duplicate expense, Auto-match, Journal entry
+
+**Incurred Project Cost**:
+Employee cost and non-employee expenses recognized for a Project in a period, whether paid or unpaid. Excludes unfulfilled supplier commitments and client order value.
+_Avoid_: Cash paid, PO value, Total committed exposure
+
+**Comparable Period**:
+The prior period a month is measured against. A month that has fully elapsed is compared with the whole prior month — so June against May includes 31 May even though June has 30 days. An unfinished month is compared over equivalent elapsed service periods: the first N days of both months, where N is the day the month is measured to (`as_of`, today by default) and the prior window is clamped to the prior month's length — a clamped window is disclosed as unequal. A cost is inside the window only when its received-work period is fully dated and wholly inside it — start and end in the window's own month, with the end on or before the window's last day; a period crossing the cutoff, a period starting in the prior month, and a bill-date-only period are unproven: never prorated, never counted by their first day, and the change they would distort is withheld (`unproven`, disclosed as `window_evidence_unproven`). Approved period charges and recorded employee cost are day-less monthly cost the window cannot place either, so they are disclosed as `dayless_monthly_cost_unproven` and withhold the change. Late entries (entered after the window closed), backdated recognition, and unequal coverage between the two windows are disclosed with the comparison, and a Project with no prior-period record has an unknown prior amount, never a zero.
+_Avoid_: Prior month (when the window may be partial), Budget, Full prior period
+
+**Cost to Date**:
+Cumulative confirmed cost of every month before the reported one plus the reported window, so it is stated through the window's last day rather than the month's. A contributing unknown amount makes it unknown (`null`), not zero.
+_Avoid_: Lifetime cost, Total commitment, Budget consumed
+
+**Project Cost Ranking**:
+The report's two orderings of the same Project rows inside one currency: largest monthly incurred cost, and largest change against the Comparable Period. A row whose comparison amount is unknown is not placed by increase — it is reported as unranked with its reason. Ties share a position.
+_Avoid_: Sort order, Priority, Importance
+
+**Outstanding Supplier Commitment**:
+The portion of a supplier order not yet recognized as incurred cost. Paying a supplier invoice does not itself create another incurred cost.
+_Avoid_: Unpaid invoice balance, Client PO balance, Cash paid
+
+**Outward Cash Paid**:
+Dated supported third-party money out in a month (`cash` on the reconciliation): recorded settlements, native payroll payouts, and dated petty-cash spending, each counted once by canonical movement identity (`settle:<uid>`, `payroll:<slipId>`, `petty:<rowId>`). Bank-into-float funding is one internal movement per voucher (`fund:<voucherId>`) shown outside paid. Client receipts, internal transfers, undated balances, and unlinked free-text rows are disclosed as legacy evidence, never counted.
+_Avoid_: Company Incurred Cost, Funding, Client receipts, Current balance
+
+**Outward Settlement**:
+One dated outward movement against a canonical cost or payroll slip identity (`financial_settlements`, idempotent `settle-<uuid>`), with amount, currency, cash date, reference, destination, actor, and version. Withholdings and deductions remit against the same liability without reducing its cost. A manual settlement never restates a native movement (payroll payout, petty spend, funding). Corrections are versioned commands with history, never edits or deletes.
+_Avoid_: Second expense, Payroll payout (when meaning the native one), Funding
+
+**Petty Cash Funding**:
+Cash moved into the petty-cash float — one cash voucher (`cash_vouchers`) and its mirrored credit row in `petty_cash_expenses` are one funding event. Cash movement only: neither the voucher total nor the mirrored credit is operating cost. The pair carries a funding-event identity (`fund-<voucher>`, never a Cost Identity), and repeat mirroring updates that one row.
+_Avoid_: Petty cash expense, Petty cash cost, Advance
+
+**Petty Cash Spend**:
+Actual petty-cash spending — one debit row in `petty_cash_expenses` with its own Cost Identity, Recognition Period, approval state, and Project / Company Overhead / Unallocated classification. Spending creates cost once; a receipt already linked to another cost (`linked_cost_uid`) settles that cost instead of creating a second one, and missing voucher or Project linkage stays disclosed rather than inferred from free text.
+_Avoid_: Petty cash funding (the voucher side), Cash balance, Payment
+
+**Remaining Supported Funding**:
+Petty-cash funding dated in a period minus the spending drawn from vouchers in that period. Spending with no voucher linkage is cost but reduces no funding; unspent funding is never operating cost.
+_Avoid_: Petty cash balance, Cash in hand, Unspent expense
+**Order**:
+A client or supplier commitment with one **explicit** direction — `client` or `supplier` — stored in `orders`, identified by `order_uid`, and carrying its counterparty, Project, currency, tax/amount basis, order date, source document, status, and firm/cancellable evidence. The order number is a display and search attribute, never the identity: the same number may name two different orders.
+_Avoid_: Purchase order (when direction is unknown), PO, Commitment
+
+**Client Order**:
+An Order with direction `client` — commercial context for a Project. Its value is never incurred cost, supplier commitment, or recognized revenue; a client invoice may reference one, and its invoiced value rolls up on the order.
+_Avoid_: Sales order (when meaning an Order), Client PO value, Revenue
+
+**Supplier Order**:
+An Order with direction `supplier`. Its value is an Outstanding Supplier Commitment, not incurred cost; recognized goods or services consume it.
+_Avoid_: Purchase order (when direction is unknown), Supplier cost, Expense
+
+**Order Identity**:
+The stable `order_uid` minted when one underlying order is captured; every later reference — invoices, documents, consumption — carries it. The document number stays a display and search attribute.
+_Avoid_: PO number (when meaning identity), Row id, Document number
+
+**Legacy Order Copy**:
+An order representation left in a pre-canonical store (`purchase_orders`, `outgoing_purchase_orders`, `project_purchase_orders`, or a `project_invoices` row with `tab_type = 'purchase_order'`). It carries no reliable direction, so it is queued in `order_legacy_mappings` until a document-backed, versioned review classifies, links, or marks it a duplicate representation. Table names, counterparty text, and client-invoice links are not direction evidence, and a shared document number is not proof of one order.
+_Avoid_: Duplicate order (when unresolved), Old PO, Archived order
+
 **Project Employee Cost**:
 The share of an Employee's recorded monthly payroll employer cost, including earnings and employer contributions, attributed to a Project by its share of the Employee's Logged Hours. Excludes project expenses and supplier costs; it is not a measure of cash paid.
 _Avoid_: Total project expenditure, Total project cost, Project payments
@@ -103,6 +210,10 @@ _Avoid_: Bench Cost, Zero project cost, Missing salary
 **Project Cost Allocation Revision**:
 An explicit correction to how finalized employee payroll cost is attributed to Projects. Preserves the previous attribution and the reason for the correction; it does not itself change the employee's payroll cost.
 _Avoid_: Payroll correction, Timesheet edit, Payroll regeneration
+
+**Project Cost Allocation Reconstruction**:
+A one-time rebuild of a finalized Payroll Slip's Project attribution from its recorded employer cost and the available monthly Logged Hours, for slips that predate saved allocations. Stored as a proposal until a reviewer approves it; the result is labelled reconstructed and never presented as the original finalization-time attribution.
+_Avoid_: Payroll repricing, Salary Profile estimate, Original allocation
 
 **Bench Cost**:
 `monthly_cost − Hourly Rate × logged_hours` — Monthly Cost (pro-rated for a partial window, see above) minus the utilized figure, priced with the same CTC ÷ Basis Hours rate a Payroll Slip pays with (ADR-0010), so the report reconciles with the slips. The utilized figure plus Bench Cost foots to Monthly Cost per row and in totals (overload may read negative); a row without a covering Salary Profile shows blank cost, never zero.
@@ -147,3 +258,15 @@ _Avoid_: Login (the act, not the state), Token (the credential, not the identity
 **Public endpoint**:
 An API endpoint that deliberately answers without a Session — exactly: login, logout, the session probe, the attendance webhook (authenticated by its own Bearer secret), and the minimal health probe. Everything else requires a Session and a permission check.
 _Avoid_: Unauthenticated route, Anonymous API, Open endpoint
+
+**Financial Close**:
+A reviewed company financial month saved with immutable closed figures (`financial_close_snapshots`, `close-<uuid>`). The close freezes the month's Company Incurred Cost, source and Project identities, allocation and financial versions, classification, currency and tax basis, and evidence states exactly as the report stated them. Unresolved cost exceptions, unwired sources, unsupported commitments, and an empty month block the close; pending payroll, partial cash cover, and legacy cash gaps are disclosed warnings. Once closed, ordinary writes to the month are refused (`409 month_closed`); only explicit revisions can change closed figures. Payroll finalization freezes attribution but never closes the month.
+_Avoid_: Payroll finalization, Locked run, Frozen estimate
+
+**Financial Revision**:
+An authorized correction to a closed financial month (`financial_revision_events`, `rev-<uuid>` or a caller-supplied key) carrying the target cost or settlement, the operation (correct or reverse), the version read, the frozen closed version targeted, a reason, an evidence reference, the actor, and the timestamp, with the prior and new figures preserved. A revision runs through the source's own command path, carries linked order consumptions forward in the same transaction, and never rewrites the frozen close. Payroll attribution keeps its allocation revision contract instead.
+_Avoid_: Edit, Reversal without reason, Rewriting history
+
+**Version-Matched Expenditure Evidence Export**:
+An authorized multi-sheet Excel workbook export (`GET /api/reports/employee-project-monthly-cost/download?view=expenditure`) containing version-matched audit evidence for company and project expenditure reconciliation. It delivers five sheets: Company Reconciliation, Project Detail, Budgets & Commitments, Cash Paid, and Revisions & Close. The export matches the web report calculations, distinguishes missing data from zero, keeps company reconciliation totals intact when filtered by project, and displays commercial client orders with an explicit non-revenue non-profit disclaimer.
+_Avoid_: Unverified export, Filtered company total, Ad-hoc spreadsheet
