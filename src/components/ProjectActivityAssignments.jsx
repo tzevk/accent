@@ -34,7 +34,7 @@ const getStatusBadge = (status) =>
 
 /**
  * Project navigation vocabulary — one link pattern for every Project name on
- * the dashboard (ticket #333; #341 reuses it for the remaining project links).
+ * the dashboard (tickets #333 and #341).
  *
  * The link deep-links to the project's documents tab, the icon is decorative
  * (`aria-hidden`), and the accessible name is carried by the link itself
@@ -43,9 +43,18 @@ const getStatusBadge = (status) =>
  */
 const PROJECT_DOCUMENTS_LABEL = 'Open documents for';
 
-/** Tooltip and accessible name for a Project name link. */
-function projectDocumentsName(projectLabel) {
-	return `${PROJECT_DOCUMENTS_LABEL} ${projectLabel}`;
+/**
+ * Tooltip and accessible name for a Project name link.
+ *
+ * The project a link names is read here in one fallback order — the project
+ * name, then its code, then its id — and both render sites pass the same
+ * project shape, so one project carries one accessible name wherever the
+ * dashboard links to it (#341).
+ */
+function projectDocumentsName(project) {
+	const label =
+		project?.project_name || project?.project_code || project?.project_id || '';
+	return `${PROJECT_DOCUMENTS_LABEL} ${label}`;
 }
 
 /** Project page URL that opens the documents tab (read by the page itself). */
@@ -908,12 +917,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 														</p>
 														<ul className="space-y-2">
 															{assignableProjects.map((p) => {
-																const projectLabel =
-																	p.project_name ||
-																	p.project_code ||
-																	p.project_id;
 																const documentsName =
-																	projectDocumentsName(projectLabel);
+																	projectDocumentsName(p);
 																const documentCount =
 																	projectDocumentCount(
 																		documentCounts,
@@ -1165,6 +1170,13 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 								const isRemarkDirty =
 									currentRemark !== originalRemark &&
 									remarkStatusForKey !== 'saving';
+								// The one project navigation name: this project reads
+								// the same here as in the assigned-projects list.
+								const documentsName = projectDocumentsName({
+									project_id: activity.project_id,
+									project_code,
+									project_name,
+								});
 
 								return (
 									<tr
@@ -1177,12 +1189,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 										<td className="py-1 px-2 text-center align-middle">
 											<Link
 												href={projectDocumentsHref(activity.project_id)}
-												aria-label={projectDocumentsName(
-													project_name || project_code || activity.project_id
-												)}
-												title={projectDocumentsName(
-													project_name || project_code || activity.project_id
-												)}
+												aria-label={documentsName}
+												title={documentsName}
 												className="inline-flex max-w-full items-center gap-1 font-mono text-[10px] text-[#4A1254] leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 											>
 												<span className="break-words">{project_code || '–'}</span>
