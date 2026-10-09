@@ -732,6 +732,15 @@ textarea::placeholder {
 	[class*='blobFloat'] {
 		animation: none !important;
 	}
+
+	/* Dashboard motion (ticket #335): elements that carry animation opt in
+	   with data-motion, so this one block — never a second guard — stills the
+	   attendance tiles' pulse dots, the idle warning's clock icon and both
+	   warning overlays' scale-in entrance. The overlays keep their final,
+	   fully visible state. */
+	[data-motion] {
+		animation: none !important;
+	}
 }
 
 /* Rich text content styles for TipTap editor output */
