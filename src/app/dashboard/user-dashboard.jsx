@@ -10,6 +10,7 @@ import React, {
 	Suspense,
 } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { fetchJSON } from '@/utils/http';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -862,6 +863,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									<h2 className="text-xs xl:text-sm font-semibold text-gray-800 tracking-wide uppercase">
 										Today&apos;s Attendance
 									</h2>
+									<Link
+										href="/user/timesheet"
+										className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-[#64126D]/40 hover:text-[#64126D] transition-colors"
+									>
+										<CalendarDaysIcon className="h-3.5 w-3.5" aria-hidden />
+										Timesheet
+									</Link>
 								</div>
 								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-8">
 									{/* Punch In */}
