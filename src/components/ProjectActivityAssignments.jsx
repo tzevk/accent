@@ -176,7 +176,7 @@ function FullCellValue({ id, value, shown }) {
 			id={id}
 			data-testid="truncated-cell-value"
 			hidden={!shown}
-			className="mt-0.5 block w-full rounded border border-purple-200 bg-purple-50/70 px-1 py-0.5 text-left text-[11px] font-normal normal-case leading-snug text-[#4A1254] shadow-sm"
+			className="mt-0.5 block w-full rounded border border-purple-200 bg-purple-50/70 px-1 py-0.5 text-left text-xs font-normal leading-snug text-[#4A1254] shadow-sm"
 		>
 			{value}
 		</span>

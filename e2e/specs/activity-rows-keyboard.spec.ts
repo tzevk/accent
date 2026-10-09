@@ -76,9 +76,12 @@ async function openDashboard(page: Page): Promise<void> {
 		sessionStorage.setItem(`activity_reminder_${today}`, '1');
 	});
 	await page.goto('/user/dashboard');
-	// The Activity cell value carries its own text as its pointer title, which
-	// names the row without matching the full-value reveal inside it.
-	await expect(page.getByTitle(TRUNCATED_ACTIVITY)).toBeVisible();
+	// The activity section is lazy and its route compiles on the first hit of a
+	// dev server, so the seeded row is waited for with room to appear.
+	await expect(
+		page.locator('tbody tr').filter({ hasText: TRUNCATED_CODE }),
+		'the seeded activity rows render'
+	).toHaveCount(1, { timeout: 60_000 });
 	const remindLater = page.getByRole('button', { name: 'Remind Later' });
 	if (await remindLater.isVisible()) {
 		await remindLater.click();
