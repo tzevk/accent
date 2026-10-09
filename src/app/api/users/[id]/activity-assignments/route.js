@@ -83,6 +83,79 @@ async function getSafeTicketCategory(connection) {
 	}
 }
 
+/** Length of a projects JSON list column (`documents_received_list` …). */
+function jsonListLength(value) {
+	if (!value) return 0;
+	try {
+		const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+		return Array.isArray(parsed) ? parsed.length : 0;
+	} catch {
+		return 0;
+	}
+}
+
+/**
+ * Per-project document count across the three stores the Project page reads:
+ * uploaded files (`entity_documents`), library documents (`project_documents`)
+ * and the listed received/issued documents held in the projects JSON columns.
+ * Returns `{ [projectId]: count }` with every requested project present, so a
+ * project with no documents counts zero instead of going missing.
+ */
+async function fetchProjectDocumentCounts(db, projectIds) {
+	const counts = {};
+	const ids = [
+		...new Set(
+			(projectIds || [])
+				.map((value) => Number(value))
+				.filter((value) => Number.isFinite(value) && value > 0)
+		),
+	];
+	for (const id of ids) counts[id] = 0;
+	if (ids.length === 0) return counts;
+
+	const placeholders = ids.map(() => '?').join(', ');
+	const readRows = async (sql) => {
+		const result = await db.execute(sql, ids);
+		return result?.[0] || [];
+	};
+	const add = (projectId, count) => {
+		const key = Number(projectId);
+		if (key in counts) counts[key] += Number(count) || 0;
+	};
+
+	for (const row of await readRows(
+		`SELECT entity_id AS project_id, COUNT(*) AS n
+       FROM entity_documents
+       WHERE entity_type = 'project' AND entity_id IN (${placeholders})
+       GROUP BY entity_id`
+	)) {
+		add(row.project_id, row.n);
+	}
+
+	for (const row of await readRows(
+		`SELECT project_id, COUNT(*) AS n
+       FROM project_documents
+       WHERE status = 'active' AND project_id IN (${placeholders})
+       GROUP BY project_id`
+	)) {
+		add(row.project_id, row.n);
+	}
+
+	for (const row of await readRows(
+		`SELECT project_id, documents_received_list, documents_issued_list
+       FROM projects
+       WHERE isDelete = 0 AND project_id IN (${placeholders})`
+	)) {
+		add(
+			row.project_id,
+			jsonListLength(row.documents_received_list) +
+				jsonListLength(row.documents_issued_list)
+		);
+	}
+
+	return counts;
+}
+
 /**
  * GET /api/users/[id]/activity-assignments
  * Fetch all activity assignments for a user from project_activities_list
@@ -303,6 +376,19 @@ export async function GET(request, { params }) {
 			console.error('Failed to load team projects:', err.message);
 		}
 
+		// Per-project document counts from all three stores. Auxiliary to the
+		// payload: a count that cannot be read leaves the project icon-free,
+		// it never fails the assignment list.
+		let documentCounts = {};
+		try {
+			documentCounts = await fetchProjectDocumentCounts(db, [
+				...assignments.map((a) => a.project_id),
+				...accessibleProjects.map((p) => p.project_id),
+			]);
+		} catch (err) {
+			console.error('Failed to count project documents:', err.message);
+		}
+
 		db.release();
 
 		const response = NextResponse.json({
@@ -311,6 +397,7 @@ export async function GET(request, { params }) {
 				assignments,
 				emptyProjects,
 				accessibleProjects,
+				documentCounts,
 				stats,
 			},
 		});
