@@ -25,7 +25,7 @@ import {
 	CheckCircleIcon,
 	ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
-import { PROJECT_TABS, TAB_ALIASES } from '@/lib/project-tabs';
+import { PROJECT_TABS, TAB_ALIASES, resolveTabId } from '@/lib/project-tabs';
 import { sanitizeHtml } from '@/lib/sanitize';
 import dynamic from 'next/dynamic';
 const ProjectActivityTab = dynamic(
@@ -73,6 +73,7 @@ const EMPLOYEE_TAB_IDS = [
 	'project_team',
 	'documents_received',
 	'documents_issued',
+	'upload_documents',
 	'assumption',
 	'discussion',
 	'query_log',
@@ -280,6 +281,10 @@ export default function ProjectViewPage() {
 	const id = params?.id;
 	const { user: sessionUser, can, RESOURCES, PERMISSIONS } = useSession();
 	const [activeTab, setActiveTab] = useState('project_details');
+	// Deep link: `/projects/<id>?tab=<tab id>` opens that tab straight away.
+	// Read after mount so the server markup stays the default tab, and keep the
+	// URL's choice so a session load that flips the workspace cannot clobber it.
+	const tabFromUrlRef = useRef(null);
 	const tabRefs = useRef({});
 	const {
 		data: projectData,
@@ -352,10 +357,14 @@ export default function ProjectViewPage() {
 			return;
 		}
 		// When the workspace flips (session loads), reset to that mode's
-		// default tab instead of keeping a leftover default.
+		// default tab instead of keeping a leftover default. A tab named in the
+		// URL is a deliberate deep link and wins over the default.
 		if (isEmployeeRef.current !== isEmployeeWorkspace) {
 			isEmployeeRef.current = isEmployeeWorkspace;
-			setActiveTab(isEmployeeWorkspace ? 'scope' : 'project_details');
+			setActiveTab(
+				tabFromUrlRef.current ||
+					(isEmployeeWorkspace ? 'scope' : 'project_details')
+			);
 			return;
 		}
 		if (!visibleTabs.some((tab) => tab.id === activeTab)) {
@@ -365,6 +374,17 @@ export default function ProjectViewPage() {
 			);
 		}
 	}, [activeTab, isEmployeeWorkspace, visibleTabs]);
+
+	// Declared after the tab resolution effect so the URL's tab is the state
+	// update that survives the first render's default.
+	useEffect(() => {
+		const requested = resolveTabId(
+			new URLSearchParams(window.location.search).get('tab')
+		);
+		if (!requested) return;
+		tabFromUrlRef.current = requested;
+		setActiveTab(requested);
+	}, []);
 
 	const meetingDocuments = useMemo(() => {
 		if (!project) return [];

@@ -463,6 +463,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							accessibleProjects:
 								activityRes.value.data.accessibleProjects || [],
 							emptyProjects: activityRes.value.data.emptyProjects || [],
+							documentCounts: activityRes.value.data.documentCounts || {},
 							stats:
 								activityRes.value.data.stats || prev.activityAssignments.stats,
 						},
