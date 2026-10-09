@@ -183,7 +183,15 @@ function SortHeader({ label, sortKey, sort, onSort }) {
 	);
 }
 
-export default function ProjectActivityAssignments({ userId, preloadedData }) {
+export default function ProjectActivityAssignments({
+	userId,
+	preloadedData,
+	// The dashboard already loaded this data and reported a failure itself
+	// (#340). The section then stays out of the way: no second fetch, no
+	// "no access" silence, since the reader is looking at the dashboard's
+	// error line instead.
+	fetchFailed = false,
+}) {
 	const [assignments, setAssignments] = useState([]);
 	const [emptyProjects, setEmptyProjects] = useState([]);
 	const [accessibleProjects, setAccessibleProjects] = useState([]);
@@ -301,9 +309,9 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
 	// Only fetch if no preloaded data provided
 	useEffect(() => {
-		if (!userId || preloadedData) return;
+		if (!userId || preloadedData || fetchFailed) return;
 		loadAssignments();
-	}, [userId, preloadedData]);
+	}, [userId, preloadedData, fetchFailed]);
 
 	// Load discipline/activity/sub-activity dropdown options
 	useEffect(() => {
@@ -516,6 +524,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			});
 		}
 	};
+
+	// The dashboard's own fetch failed and its error line is on screen (#340):
+	// stay silent instead of guessing at a second load. Checked before the
+	// spinner, because with no self-fetch there is no load to wait for.
+	if (fetchFailed) return null;
 
 	if (loading) {
 		return (

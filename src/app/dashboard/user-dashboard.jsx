@@ -49,6 +49,18 @@ const EXPECTED_WORK_MINS = (() => {
 	return outH * 60 + outM - (inH * 60 + inM) - LUNCH_BREAK_MINS;
 })();
 
+// A tile with no recorded value shows a plain dash. A bare `--:--` read as a
+// broken fetch, so a day that recorded nothing now says so in words (#340).
+const NO_VALUE = '–';
+
+// Tier-1 load states (#340), one per source. A failed fetch must stay
+// distinguishable from a day that recorded nothing, so the two are never
+// collapsed into one "no data" shape.
+const LOAD_PENDING = 'loading';
+const LOAD_OK = 'ok';
+const LOAD_EMPTY = 'empty';
+const LOAD_ERROR = 'error';
+
 // Check if a time string (HH:MM) is outside the fixed shift window
 function isOvertime(timeStr) {
 	if (!timeStr) return false;
@@ -202,6 +214,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	const { user: contextUser } = useSessionRBAC();
 	const user = verifiedUser || contextUser;
 	const [loading, setLoading] = useState(true);
+	// How today's attendance and the project assignments finished loading
+	// (#340): 'loading' → 'ok' | 'empty' | 'error'. The tiles read this to tell
+	// a day that recorded nothing from a fetch that failed, and each state gets
+	// its own line — never one shared "no data" rendering.
+	const [attendanceLoad, setAttendanceLoad] = useState(LOAD_PENDING);
+	const [assignmentsLoad, setAssignmentsLoad] = useState(LOAD_PENDING);
 	const [statsReady, setStatsReady] = useState(false);
 	const [todoPanelOpen, setTodoPanelOpen] = useState(false);
 	const [showActivityReminder, setShowActivityReminder] = useState(false);
@@ -446,15 +464,24 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 				if (signal.aborted) return;
 
-				if (
-					attendanceRes.status === 'fulfilled' &&
-					attendanceRes.value?.success
-				) {
-					setAttendance(attendanceRes.value.data);
+				// A failed fetch and a day that recorded nothing are different
+				// facts, so each source is named as one of them (#340).
+				const attendanceOk =
+					attendanceRes.status === 'fulfilled' && attendanceRes.value?.success;
+				if (attendanceOk) {
+					const day = attendanceRes.value.data;
+					setAttendance(day);
+					setAttendanceLoad(
+						day?.loginTime || day?.logoutTime ? LOAD_OK : LOAD_EMPTY
+					);
+				} else {
+					setAttendanceLoad(LOAD_ERROR);
 				}
 
 				let assignmentsList = [];
-				if (activityRes.status === 'fulfilled' && activityRes.value?.success) {
+				const assignmentsOk =
+					activityRes.status === 'fulfilled' && activityRes.value?.success;
+				if (assignmentsOk) {
 					assignmentsList = activityRes.value.data.assignments || [];
 					setModuleAssignments((prev) => ({
 						...prev,
@@ -486,6 +513,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							sessionStorage.setItem(reminderKey, '1');
 						}
 					}
+					setAssignmentsLoad(LOAD_OK);
+				} else {
+					setAssignmentsLoad(LOAD_ERROR);
 				}
 
 				// First paint is ready
@@ -616,7 +646,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 	// ── Memoized helpers ──
 	const formatTime = useCallback((time) => {
-		if (!time) return '--:--';
+		if (!time) return NO_VALUE;
 		if (typeof time === 'string' && time.includes(':')) {
 			const [hours, minutes] = time.split(':');
 			const h = parseInt(hours);
@@ -900,7 +930,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							</div>
 
 							{/* ── Attendance ── */}
-							<div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 xl:p-4">
+							<div
+								data-testid="attendance-card"
+								className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 xl:p-4"
+							>
 								<div className="flex items-center gap-2 mb-3 xl:mb-4">
 									<div className="w-1 h-4 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
 									<h2 className="text-xs xl:text-sm font-semibold text-gray-800 tracking-wide uppercase">
@@ -914,6 +947,37 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										Timesheet
 									</Link>
 								</div>
+								{/* The day's own state (#340): a fetch that failed names
+								    the next step in a live error line; a day with nothing
+								    recorded is named as recorded, in plain neutral text.
+								    One or the other, never both, never neither — and the
+								    error line has no timer, so a slow reader keeps it. */}
+								{attendanceLoad === LOAD_ERROR && (
+									<div
+										data-testid="attendance-fetch-error"
+										data-state="error"
+										role="alert"
+										className="mb-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-snug text-red-700"
+									>
+										<ExclamationTriangleIcon
+											className="mt-0.5 h-4 w-4 shrink-0 text-red-700"
+											aria-hidden
+										/>
+										<p>
+											Attendance could not load. Refresh the page, or tell
+											support if it stays broken.
+										</p>
+									</div>
+								)}
+								{attendanceLoad === LOAD_EMPTY && (
+									<p
+										data-testid="attendance-empty-state"
+										data-state="empty"
+										className="mb-3 text-xs leading-snug text-gray-600"
+									>
+										Nothing recorded yet today.
+									</p>
+								)}
 								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-8">
 									{/* Punch In */}
 									<div className="group relative rounded-xl border border-green-200 bg-gradient-to-br from-green-50 via-white to-emerald-50 p-3 hover:shadow-lg hover:border-green-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
@@ -940,7 +1004,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											>
 												{attendance.loginTime
 													? formatTime(attendance.loginTime)
-													: '--:--'}
+													: NO_VALUE}
 											</p>
 										</div>
 									</div>
@@ -963,7 +1027,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											>
 												{attendance.logoutTime
 													? formatTime(attendance.logoutTime)
-													: '--:--'}
+													: NO_VALUE}
 												{attendance.logoutTime &&
 													isOvertime(attendance.logoutTime) && (
 														<span className="ml-1 text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
@@ -1034,7 +1098,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													>
 														{hasLogin
 															? `${liveTotalTime.hrs}h ${liveTotalTime.mins}m`
-															: '--:--'}
+															: NO_VALUE}
 														{hasLogin && isComplete && (
 															<span className="ml-1 text-[9px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full align-middle">
 																✓
@@ -1312,6 +1376,26 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 							{/* ── Project Activity Assignments — lazy-loaded ── */}
 							<div data-section="project-activities">
+								{/* The assignments fetch failed (#340): the line names the
+								    next step, and the section keeps quiet rather than
+								    retrying behind the reader's back. */}
+								{assignmentsLoad === LOAD_ERROR && (
+									<div
+										data-testid="assignments-fetch-error"
+										data-state="error"
+										role="alert"
+										className="mb-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-snug text-red-700"
+									>
+										<ExclamationTriangleIcon
+											className="mt-0.5 h-4 w-4 shrink-0 text-red-700"
+											aria-hidden
+										/>
+										<p>
+											Project activities could not load. Refresh the page, or tell
+											support if it stays broken.
+										</p>
+									</div>
+								)}
 								{user?.id && (
 									<Suspense fallback={<SectionSkeleton h="h-48" />}>
 										<ProjectActivityAssignments
@@ -1321,6 +1405,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													? moduleAssignments.activityAssignments
 													: null
 											}
+											/* The dashboard already reported the failure, so the
+											   section must not fetch again and must not render the
+											   "no access" silence it reserves for real denials. */
+											fetchFailed={assignmentsLoad === LOAD_ERROR}
 										/>
 									</Suspense>
 								)}
