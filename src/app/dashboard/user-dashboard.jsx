@@ -859,8 +859,11 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					</div>
 				)}
 
-				{/* Main Content */}
-				<div
+				{/* Main Content — this column is the page's main landmark, so
+				    the shared skip link has one target to move focus to. */}
+				<main
+					id="main-content"
+					tabIndex={-1}
 					className={`flex-1 min-w-0 transition-[margin] duration-200 ${todoPanelOpen ? 'sm:ml-72' : 'ml-0'}`}
 				>
 					<div className="px-2 sm:px-3 lg:px-4 py-2">
@@ -1412,7 +1415,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							</div>
 						</div>
 					</div>
-				</div>
+				</main>
 			</div>
 		</div>
 	);
