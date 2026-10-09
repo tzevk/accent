@@ -309,25 +309,33 @@ async function newPage(): Promise<Page> {
 }
 
 /**
- * The dashboard's activity reminder opens over the page while the employee has
- * pending assignments for today. Dismiss it before touching anything under it.
+ * Click a dashboard control while the activity reminder flaps over the page:
+ * try the click, dismiss the reminder when it blocks, and keep trying. The
+ * reminder is the dashboard's own overlay, not part of this flow.
  */
-async function dismissActivityReminder(page: Page): Promise<void> {
+async function clickThroughReminder(
+	page: Page,
+	target: Locator
+): Promise<void> {
 	const remindLater = page.getByRole('button', { name: 'Remind Later' });
-	try {
-		await remindLater.waitFor({ state: 'visible', timeout: 5_000 });
-		await remindLater.click();
-		await remindLater.waitFor({ state: 'hidden', timeout: 5_000 });
-	} catch {
-		// No reminder this run — nothing to dismiss.
+	for (let attempt = 0; attempt < 40; attempt++) {
+		try {
+			await target.click({ timeout: 3_000 });
+			return;
+		} catch {
+			if (await remindLater.isVisible().catch(() => false)) {
+				await remindLater.click().catch(() => {});
+			}
+			await page.waitForTimeout(250);
+		}
 	}
+	throw new Error('The dashboard link stayed blocked by the activity reminder');
 }
 
 test.describe('self-service timesheet', () => {
 	test('the dashboard carries the Timesheet link and the page defaults to the current month', async () => {
 		const page = await newPage();
 		await page.goto('/user/dashboard');
-		await dismissActivityReminder(page);
 
 		// One link in the dashboard's attendance area, beside the figures it
 		// explains.
@@ -335,7 +343,7 @@ test.describe('self-service timesheet', () => {
 			`h2:has-text("Today's Attendance") + a[href="/user/timesheet"]`
 		);
 		await expect(dashboardLink).toBeVisible();
-		await dashboardLink.click();
+		await clickThroughReminder(page, dashboardLink);
 		await page.waitForURL('**/user/timesheet');
 
 		// The same destination sits in the user-area navigation.
