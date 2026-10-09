@@ -35,7 +35,7 @@
  */
 
 import { query } from '@/utils/database';
-import { computeTimePresent } from '@/lib/time-present';
+import { computeDayPunchSpans } from '@/lib/time-present';
 import { hoursByDateForMonth } from '@/lib/logged-hours';
 import {
 	buildLoggedHoursIdentifierMap,
@@ -661,22 +661,21 @@ export async function fetchAttendanceData(options: {
 		// Punch this employee already owns.
 		const ownPunches = buckets.get(String(member.id)) ?? [];
 
+		// The day walk's wide view: hours, the refused-merge flag and the
+		// day's own punch count in one pass, so the report never holds a
+		// second punch calculator. A punch consumed as the previous day's
+		// merge tail still counts on its own date, and the padded days feed
+		// the merge walk without ever reaching a cell or the row total.
 		const hoursByDate = new Map<string, number | null>();
 		const refusedDates = new Set<string>();
-		for (const day of computeTimePresent(ownPunches)) {
-			hoursByDate.set(day.date, day.hours);
-			if (day.mergeRefused) refusedDates.add(day.date);
-		}
-
-		// Month-dated own Punches only: a continuation Punch consumed by the
-		// previous day's merge still counts on its own date, and the padded
-		// days never reach a cell or the row total.
 		const punchesByDate = new Map<string, number>();
 		let punchCount = 0;
-		for (const punch of ownPunches) {
-			if (punch.date.slice(0, 7) !== month) continue;
-			punchesByDate.set(punch.date, (punchesByDate.get(punch.date) ?? 0) + 1);
-			punchCount += 1;
+		for (const span of computeDayPunchSpans(ownPunches)) {
+			hoursByDate.set(span.date, span.hours);
+			if (span.mergeRefused) refusedDates.add(span.date);
+			if (span.date.slice(0, 7) !== month) continue;
+			punchesByDate.set(span.date, span.punchCount);
+			punchCount += span.punchCount;
 		}
 
 		const logged = loggedByEmployee.get(member.id) ?? {};
