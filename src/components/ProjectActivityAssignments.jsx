@@ -5,6 +5,7 @@ import { fetchJSON } from '@/utils/http';
 import Link from 'next/link';
 import {
 	ClipboardDocumentListIcon,
+	DocumentIcon,
 	PlusIcon,
 	CheckIcon,
 	XMarkIcon,
@@ -30,6 +31,57 @@ const STATUS_BADGE_CLASSES = {
 
 const getStatusBadge = (status) =>
 	STATUS_BADGE_CLASSES[status] || 'bg-gray-100 text-gray-600 border-gray-200';
+
+/**
+ * Project navigation vocabulary — one link pattern for every Project name on
+ * the dashboard (tickets #333 and #341).
+ *
+ * The link deep-links to the project's documents tab, the icon is decorative
+ * (`aria-hidden`), and the accessible name is carried by the link itself
+ * together with the tooltip text, so the Project name stays one
+ * keyboard-reachable control instead of two.
+ */
+const PROJECT_DOCUMENTS_LABEL = 'Open documents for';
+
+/**
+ * Tooltip and accessible name for a Project name link.
+ *
+ * The project a link names is read here in one fallback order — the project
+ * name, then its code, then its id — and both render sites pass the same
+ * project shape, so one project carries one accessible name wherever the
+ * dashboard links to it (#341).
+ */
+function projectDocumentsName(project) {
+	const label =
+		project?.project_name || project?.project_code || project?.project_id || '';
+	return `${PROJECT_DOCUMENTS_LABEL} ${label}`;
+}
+
+/** Project page URL that opens the documents tab (read by the page itself). */
+function projectDocumentsHref(projectId) {
+	return `/projects/${projectId}?tab=upload_documents`;
+}
+
+/** Per-project document count from the activity-assignments payload. */
+function projectDocumentCount(documentCounts, projectId) {
+	const count = documentCounts?.[String(projectId)];
+	return typeof count === 'number' && count > 0 ? count : 0;
+}
+
+/**
+ * Decorative document marker rendered inside a Project name link. Returns
+ * nothing when the project has no documents, so the icon never appears on an
+ * empty project.
+ */
+function DocumentCountMarker({ count, className = 'h-3.5 w-3.5' }) {
+	if (count <= 0) return null;
+	return (
+		<DocumentIcon
+			className={`${className} shrink-0 text-[#64126D]`}
+			aria-hidden="true"
+		/>
+	);
+}
 
 /**
  * Textarea that grows with its content so users always see what they type.
@@ -140,10 +192,20 @@ function SortHeader({ label, sortKey, sort, onSort }) {
 	);
 }
 
-export default function ProjectActivityAssignments({ userId, preloadedData }) {
+export default function ProjectActivityAssignments({
+	userId,
+	preloadedData,
+	// The dashboard already loaded this data and reported a failure itself
+	// (#340). The section then stays out of the way: no second fetch, no
+	// "no access" silence, since the reader is looking at the dashboard's
+	// error line instead.
+	fetchFailed = false,
+}) {
 	const [assignments, setAssignments] = useState([]);
 	const [emptyProjects, setEmptyProjects] = useState([]);
 	const [accessibleProjects, setAccessibleProjects] = useState([]);
+	// Per-project document counts keyed by project id (all three document stores).
+	const [documentCounts, setDocumentCounts] = useState({});
 	const [loading, setLoading] = useState(true);
 	const [hasAccess, setHasAccess] = useState(true);
 	const [remarkValues, setRemarkValues] = useState({});
@@ -249,15 +311,16 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			setAssignments(preloadedData.assignments || []);
 			setAccessibleProjects(preloadedData.accessibleProjects || []);
 			setEmptyProjects(preloadedData.emptyProjects || []);
+			setDocumentCounts(preloadedData.documentCounts || {});
 			setLoading(false);
 		}
 	}, [preloadedData]);
 
 	// Only fetch if no preloaded data provided
 	useEffect(() => {
-		if (!userId || preloadedData) return;
+		if (!userId || preloadedData || fetchFailed) return;
 		loadAssignments();
-	}, [userId, preloadedData]);
+	}, [userId, preloadedData, fetchFailed]);
 
 	// Load discipline/activity/sub-activity dropdown options
 	useEffect(() => {
@@ -285,6 +348,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 				setAccessibleProjects(res.data.accessibleProjects || []);
 				setAssignments(res.data.assignments || []);
 				setEmptyProjects(res.data.emptyProjects || []);
+				setDocumentCounts(res.data.documentCounts || {});
 			} else {
 				setHasAccess(false);
 			}
@@ -469,6 +533,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			});
 		}
 	};
+
+	// The dashboard's own fetch failed and its error line is on screen (#340):
+	// stay silent instead of guessing at a second load. Checked before the
+	// spinner, because with no self-fetch there is no load to wait for.
+	if (fetchFailed) return null;
 
 	if (loading) {
 		return (
@@ -861,10 +930,13 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 														</p>
 														<ul className="space-y-2">
 															{assignableProjects.map((p) => {
-																const projectLabel =
-																	p.project_name ||
-																	p.project_code ||
-																	p.project_id;
+																const documentsName =
+																	projectDocumentsName(p);
+																const documentCount =
+																	projectDocumentCount(
+																		documentCounts,
+																		p.project_id
+																	);
 																return (
 																	<li
 																		key={p.project_id}
@@ -876,11 +948,13 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 																				: p.project_name || p.project_id}
 																		</span>
 																		<Link
-																			href={`/projects/${p.project_id}`}
-																			aria-label={`View project details for ${projectLabel}`}
-																			className="shrink-0 text-xs font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+																			href={projectDocumentsHref(p.project_id)}
+																			aria-label={documentsName}
+																			title={documentsName}
+																			className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 																		>
-																			View project details
+																			Open documents
+																			<DocumentCountMarker count={documentCount} />
 																		</Link>
 																	</li>
 																);
@@ -1109,6 +1183,13 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 								const isRemarkDirty =
 									currentRemark !== originalRemark &&
 									remarkStatusForKey !== 'saving';
+								// The one project navigation name: this project reads
+								// the same here as in the assigned-projects list.
+								const documentsName = projectDocumentsName({
+									project_id: activity.project_id,
+									project_code,
+									project_name,
+								});
 
 								return (
 									<tr
@@ -1120,12 +1201,19 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 										{/* Project Number */}
 										<td className="py-1 px-2 text-center align-middle">
 											<Link
-												href={`/projects/${activity.project_id}`}
-												aria-label={`View details for ${project_name || project_code || activity.project_id}`}
-												className="font-mono text-[10px] text-[#4A1254] block break-words leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-												title={project_code || '–'}
+												href={projectDocumentsHref(activity.project_id)}
+												aria-label={documentsName}
+												title={documentsName}
+												className="inline-flex max-w-full items-center gap-1 font-mono text-[10px] text-[#4A1254] leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 											>
-												{project_code || '–'}
+												<span className="break-words">{project_code || '–'}</span>
+												<DocumentCountMarker
+													count={projectDocumentCount(
+														documentCounts,
+														activity.project_id
+													)}
+													className="h-3 w-3"
+												/>
 											</Link>
 										</td>
 										{/* Discipline */}
