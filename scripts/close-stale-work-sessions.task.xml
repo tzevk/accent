@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+	<RegistrationInfo>
+		<Description>Ends Work Sessions whose owner's presence heartbeat has been silent for ten minutes, stamping the end at that last heartbeat and refreshing the daily work-minutes figure (ticket #331).</Description>
+	</RegistrationInfo>
+	<Triggers>
+		<TimeTrigger>
+			<Repetition>
+				<Interval>PT5M</Interval>
+			</Repetition>
+			<StartBoundary>2020-01-01T00:00:00</StartBoundary>
+			<Enabled>true</Enabled>
+		</TimeTrigger>
+	</Triggers>
+	<Principals>
+		<Principal id="Author">
+			<UserId>__PRINCIPAL_USER__</UserId>
+			<LogonType>__PRINCIPAL_LOGON__</LogonType>
+			<RunLevel>__PRINCIPAL_RUNLEVEL__</RunLevel>
+		</Principal>
+	</Principals>
+	<Settings>
+		<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+		<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+		<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+		<StartWhenAvailable>true</StartWhenAvailable>
+		<ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+		<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+		<IdleSettings>
+			<StopOnIdleEnd>false</StopOnIdleEnd>
+			<RestartOnIdle>false</RestartOnIdle>
+		</IdleSettings>
+	</Settings>
+	<Actions Context="Author">
+		<Exec>
+			<Command>__NODE_EXE__</Command>
+			<Arguments>__SWEEP_MJS__</Arguments>
+			<WorkingDirectory>__SWEEP_DIR__</WorkingDirectory>
+		</Exec>
+	</Actions>
+</Task>

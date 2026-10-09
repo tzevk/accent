@@ -216,6 +216,34 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		return () => window.removeEventListener('toggleTodoPanel', handler);
 	}, []);
 
+	// ── Page-close beacon: end this Work Session when the tab or window goes
+	// away without a Sign out (#331). `pagehide` fires on a real unload (tab
+	// close, window close, navigating away) and never on in-app client
+	// navigation, so moving around the app keeps the session open. The endpoint
+	// ends the caller's own session from the session cookie, so an admin's
+	// live-monitoring view of another user never ends anyone else's session —
+	// and this listener is not even attached there.
+	const isOwnDashboard =
+		!verifiedUser || verifiedUser.id === (contextUser?.id ?? null);
+
+	useEffect(() => {
+		if (!isOwnDashboard) return;
+
+		const sendCloseBeacon = () => {
+			try {
+				navigator.sendBeacon(
+					'/api/work-sessions/close',
+					new Blob([JSON.stringify({ closedAt: new Date().toISOString() })], {
+						type: 'application/json',
+					})
+				);
+			} catch {}
+		};
+
+		window.addEventListener('pagehide', sendCloseBeacon);
+		return () => window.removeEventListener('pagehide', sendCloseBeacon);
+	}, [isOwnDashboard]);
+
 	// Idle monitoring
 	const {
 		idleSeconds,
@@ -248,6 +276,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		outTime: null,
 		loginTime: null,
 		logoutTime: null,
+		endSource: null,
 		currentMonth: '',
 		daysInMonth: 0,
 		daysPresent: 0,
@@ -896,7 +925,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.outTime ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.logoutTime ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
 												</div>
@@ -917,6 +946,14 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 														</span>
 													)}
 											</p>
+											{attendance.logoutTime &&
+												(attendance.endSource === 'sweep' ||
+													attendance.endSource === 'beacon') && (
+													<p className="mt-1 text-xs leading-snug text-gray-500">
+														No logout recorded — ended from your last
+														activity.
+													</p>
+												)}
 										</div>
 									</div>
 									{/* Total Time */}

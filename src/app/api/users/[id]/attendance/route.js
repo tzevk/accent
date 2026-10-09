@@ -2,6 +2,7 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { isWeeklyOff } from '@/utils/weekly-off';
+import { hasColumn } from '@/utils/schema-cache';
 
 /**
  * GET /api/users/[id]/attendance
@@ -48,6 +49,7 @@ export async function GET(request, { params }) {
 			idleTime: 0,
 			loginTime: null,
 			logoutTime: null,
+			endSource: null,
 			currentMonth: now.toLocaleString('default', {
 				month: 'long',
 				year: 'numeric',
@@ -198,9 +200,19 @@ export async function GET(request, { params }) {
 				}
 			}
 
-			// Get latest ended session_end as logout time
+			// Get latest ended session_end as logout time. `end_source` says how
+			// that end was recorded: a real logout, the page-close beacon, or the
+			// sweep (ticket #331 — the Punch Out tile discloses an inferred end).
+			// NULL is a row written before the column existed: a pre-existing
+			// end, never an inferred one.
+			const hasEndSource = await hasColumn(
+				db,
+				'user_work_sessions',
+				'end_source'
+			);
 			const [lastSession] = await db.execute(
-				`SELECT session_end FROM user_work_sessions
+				`SELECT session_end${hasEndSource ? ', end_source' : ''}
+         FROM user_work_sessions
          WHERE user_id = ? AND DATE(session_start) = CURDATE() AND status = 'ended' AND session_end IS NOT NULL
          ORDER BY session_end DESC LIMIT 1`,
 				[requestedUserId]
@@ -208,6 +220,9 @@ export async function GET(request, { params }) {
 			if (lastSession.length > 0 && lastSession[0].session_end) {
 				const se = new Date(lastSession[0].session_end);
 				attendanceData.logoutTime = se.toTimeString().slice(0, 5);
+				attendanceData.endSource = hasEndSource
+					? (lastSession[0].end_source ?? null)
+					: null;
 			}
 		} catch (loginErr) {
 			console.log('Login/logout time fetch skipped:', loginErr.message);
