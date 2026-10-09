@@ -52,14 +52,14 @@ const PROJECT_DOCUMENTS_LABEL = 'Open documents for';
 /**
  * Tooltip and accessible name for a Project name link.
  *
- * The project a link names is read here in one fallback order — the project
- * name, then its code, then its id — and both render sites pass the same
- * project shape, so one project carries one accessible name wherever the
- * dashboard links to it (#341).
+ * The project a link names is read by `projectLinkName` — one fallback order,
+ * the project name, then its code, then its id — and both render sites pass
+ * the same project shape, so one project carries one accessible name wherever
+ * the dashboard links to it (#341; the label itself is read by the helper
+ * ticket #334 added, which both surfaces' names flow through).
  */
 function projectDocumentsName(project) {
-	const label =
-		project?.project_name || project?.project_code || project?.project_id || '';
+	const label = projectLinkName(project) || '';
 	return `${PROJECT_DOCUMENTS_LABEL} ${label}`;
 }
 
@@ -87,6 +87,17 @@ function DocumentCountMarker({ count, className = 'h-3.5 w-3.5' }) {
 			aria-hidden="true"
 		/>
 	);
+}
+
+/**
+ * How a project navigation link names the project it opens, in one pattern at
+ * every place the dashboard renders that link (ticket #334): the Project's
+ * name, else its code, else its id. The action wording stays with
+ * `projectDocumentsName`, so a screen-reader link list hears one destination
+ * per project instead of two differently worded links that open it.
+ */
+function projectLinkName(project) {
+	return project?.project_name || project?.project_code || project?.project_id;
 }
 
 /**
@@ -224,12 +235,7 @@ function ActivityTextValue({ value, className = '' }) {
  * whole code instead of the ellipsised one. `documentsName` is the one project
  * navigation vocabulary the row and the assigned-projects list already share.
  */
-function ProjectNumberValue({
-	projectId,
-	documentsName,
-	code,
-	documentCount,
-}) {
+function ProjectNumberValue({ projectId, documentsName, code, documentCount }) {
 	const ref = useRef(null);
 	const codeText = code || '–';
 	const truncated = useIsTruncated(ref, codeText);
@@ -1085,13 +1091,11 @@ export default function ProjectActivityAssignments({
 														</p>
 														<ul className="space-y-2">
 															{assignableProjects.map((p) => {
-																const documentsName =
-																	projectDocumentsName(p);
-																const documentCount =
-																	projectDocumentCount(
-																		documentCounts,
-																		p.project_id
-																	);
+																const documentsName = projectDocumentsName(p);
+																const documentCount = projectDocumentCount(
+																	documentCounts,
+																	p.project_id
+																);
 																return (
 																	<li
 																		key={p.project_id}
@@ -1109,7 +1113,9 @@ export default function ProjectActivityAssignments({
 																			className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 																		>
 																			Open documents
-																			<DocumentCountMarker count={documentCount} />
+																			<DocumentCountMarker
+																				count={documentCount}
+																			/>
 																		</Link>
 																	</li>
 																);
