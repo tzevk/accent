@@ -75,6 +75,17 @@ function DocumentCountMarker({ count, className = 'h-3.5 w-3.5' }) {
 }
 
 /**
+ * How a project navigation link names the project it opens, in one pattern at
+ * every place the dashboard renders that link (ticket #334): the Project's
+ * name, else its code, else its id. The action wording stays with
+ * `projectDocumentsName`, so a screen-reader link list hears one destination
+ * per project instead of two differently worded links that open it.
+ */
+function projectLinkName(project) {
+	return project?.project_name || project?.project_code || project?.project_id;
+}
+
+/**
  * Textarea that grows with its content so users always see what they type.
  * Starts at one row to match table density, expands as the user types, and
  * scrolls internally once it reaches its max height (set via className).
@@ -921,12 +932,10 @@ export default function ProjectActivityAssignments({
 														</p>
 														<ul className="space-y-2">
 															{assignableProjects.map((p) => {
-																const projectLabel =
-																	p.project_name ||
-																	p.project_code ||
-																	p.project_id;
 																const documentsName =
-																	projectDocumentsName(projectLabel);
+																	projectDocumentsName(
+																		projectLinkName(p)
+																	);
 																const documentCount =
 																	projectDocumentCount(
 																		documentCounts,
@@ -1191,10 +1200,18 @@ export default function ProjectActivityAssignments({
 											<Link
 												href={projectDocumentsHref(activity.project_id)}
 												aria-label={projectDocumentsName(
-													project_name || project_code || activity.project_id
+													projectLinkName({
+														project_code,
+														project_name,
+														project_id: activity.project_id,
+													})
 												)}
 												title={projectDocumentsName(
-													project_name || project_code || activity.project_id
+													projectLinkName({
+														project_code,
+														project_name,
+														project_id: activity.project_id,
+													})
 												)}
 												className="inline-flex max-w-full items-center gap-1 font-mono text-[10px] text-[#4A1254] leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 											>

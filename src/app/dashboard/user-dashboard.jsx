@@ -297,6 +297,15 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		loginTime: null,
 		logoutTime: null,
 		endSource: null,
+		// The day's Punches, resolved server-side with the linked Employee
+		// (ticket #334): the device is the value on the Punch In / Punch Out
+		// tiles, and `punchEmployeeId` null means the account has no linked
+		// Employee record at all.
+		punchInTime: null,
+		punchOutTime: null,
+		punchCount: 0,
+		punchComputable: false,
+		punchEmployeeId: null,
 		currentMonth: '',
 		daysInMonth: 0,
 		daysPresent: 0,
@@ -601,7 +610,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	// ── Poll attendance data (especially idle time) every 2 minutes ──
 	useEffect(() => {
 		const userId = verifiedUser?.id || user?.id;
-		if (!userId || attendance.logoutTime) return; // Don't poll if logged out
+		// Only a real logout ends the day. A beacon or sweep end is an inferred
+		// one (ticket #331), so the poll keeps running — a punch the device
+		// pushes late still has to reach the tile (ticket #334).
+		const hasRealLogout =
+			!!attendance.logoutTime &&
+			(attendance.endSource === 'logout' || attendance.endSource == null);
+		if (!userId || hasRealLogout) return; // Don't poll if logged out
 
 		let retryCount = 0;
 		const maxRetries = 3;
@@ -613,12 +628,23 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 			isPolling = true;
 			try {
-				const res = await fetchJSON(`/api/users/${userId}/attendance`);
+				// `no-store`: the endpoint answers with a 30-second cache header,
+				// which would otherwise serve the poll the page-load response.
+				const res = await fetchJSON(`/api/users/${userId}/attendance`, {
+					cache: 'no-store',
+				});
 				if (res?.success) {
-					// Only update idle time to avoid disrupting other fields
+					// Only the figures the poll exists to refresh, so nothing
+					// else on the card is disrupted mid-render.
 					setAttendance((prev) => ({
 						...prev,
 						idleTime: res.data.idleTime || prev.idleTime,
+						punchInTime: res.data.punchInTime ?? prev.punchInTime,
+						punchOutTime: res.data.punchOutTime ?? prev.punchOutTime,
+						punchCount: res.data.punchCount ?? prev.punchCount,
+						punchComputable: res.data.punchComputable ?? prev.punchComputable,
+						punchEmployeeId:
+							res.data.punchEmployeeId ?? prev.punchEmployeeId,
 					}));
 					retryCount = 0; // Reset retry count on success
 				}
@@ -642,7 +668,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 			clearInterval(pollInterval);
 			clearTimeout(initialPoll);
 		};
-	}, [verifiedUser?.id, user?.id, attendance.logoutTime]);
+	}, [
+		verifiedUser?.id,
+		user?.id,
+		attendance.logoutTime,
+		attendance.endSource,
+	]);
 
 	// ── Memoized helpers ──
 	const formatTime = useCallback((time) => {
@@ -654,6 +685,26 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		}
 		return time;
 	}, []);
+
+	// ── The day's Punches on the tiles (ticket #334) ──
+	// A computable punch pair makes the device the value and the session times
+	// the sub-line; without one the sign-in or logout stays the value and the
+	// sub-line says which gap the device left. A punch never moves a work
+	// figure, so Total Time keeps reading the session times.
+	const punchPair = attendance.punchComputable === true;
+	const punchLinked = attendance.punchEmployeeId != null;
+	const punchInValue = punchPair
+		? attendance.punchInTime
+		: attendance.loginTime;
+	const punchOutValue = punchPair
+		? attendance.punchOutTime
+		: attendance.logoutTime;
+	/** Why a tile is showing a session time instead of a punch, if it is. */
+	const punchFallbackNote = !punchLinked
+		? 'No Employee record is linked to this account, so no punch can exist.'
+		: !punchPair
+			? 'The device recorded no punch pair for the day.'
+			: null;
 
 	// ── Loading state ──
 	if (loading) {
@@ -985,11 +1036,11 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.loginTime ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${punchInValue ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<ArrowRightStartOnRectangleIcon className="h-4 w-4" />
 												</div>
-												{attendance.loginTime && (
+												{punchInValue && (
 													<div
 														data-motion="pulse"
 														className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300"
@@ -1000,12 +1051,27 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 												Punch In
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${attendance.loginTime ? (isLateLogin(attendance.loginTime) ? 'text-red-600' : 'text-gray-900') : 'text-gray-400'}`}
+												className={`text-base font-extrabold leading-tight tracking-tight ${punchInValue ? (isLateLogin(punchInValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-400'}`}
 											>
-												{attendance.loginTime
-													? formatTime(attendance.loginTime)
+												{punchInValue
+													? formatTime(punchInValue)
 													: NO_VALUE}
+												{punchInValue && isLateLogin(punchInValue) && (
+													<span className="ml-1 text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
+														Late
+													</span>
+												)}
 											</p>
+											{punchPair && attendance.loginTime && (
+												<p className="mt-1 text-xs leading-snug text-gray-500">
+													Signed in {formatTime(attendance.loginTime)}
+												</p>
+											)}
+											{punchFallbackNote && (
+												<p className="mt-1 text-xs leading-snug text-gray-500">
+													{punchFallbackNote}
+												</p>
+											)}
 										</div>
 									</div>
 									{/* Punch Out */}
@@ -1014,7 +1080,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.logoutTime ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${punchOutValue ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
 												</div>
@@ -1023,26 +1089,39 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 												Punch Out
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${attendance.logoutTime ? (isOvertime(attendance.logoutTime) ? 'text-red-600' : 'text-gray-900') : 'text-gray-400'}`}
+												className={`text-base font-extrabold leading-tight tracking-tight ${punchOutValue ? (isOvertime(punchOutValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-400'}`}
 											>
-												{attendance.logoutTime
-													? formatTime(attendance.logoutTime)
+												{punchOutValue
+													? formatTime(punchOutValue)
 													: NO_VALUE}
-												{attendance.logoutTime &&
-													isOvertime(attendance.logoutTime) && (
-														<span className="ml-1 text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
-															OT
-														</span>
-													)}
-											</p>
-											{attendance.logoutTime &&
-												(attendance.endSource === 'sweep' ||
-													attendance.endSource === 'beacon') && (
-													<p className="mt-1 text-xs leading-snug text-gray-500">
-														No logout recorded — ended from your last
-														activity.
-													</p>
+												{punchOutValue && isOvertime(punchOutValue) && (
+													<span className="ml-1 text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
+														OT
+													</span>
 												)}
+											</p>
+											{punchPair && attendance.logoutTime && (
+												<p className="mt-1 text-xs leading-snug text-gray-500">
+													{attendance.endSource === 'sweep' ||
+													attendance.endSource === 'beacon'
+														? 'Session ended'
+														: 'Logged out'}{' '}
+													{formatTime(attendance.logoutTime)}
+												</p>
+											)}
+											{attendance.logoutTime &&
+											(attendance.endSource === 'sweep' ||
+												attendance.endSource === 'beacon') && (
+												<p className="mt-1 text-xs leading-snug text-gray-500">
+													No logout recorded — ended from your last
+													activity.
+												</p>
+											)}
+										{punchFallbackNote && (
+											<p className="mt-1 text-xs leading-snug text-gray-500">
+												{punchFallbackNote}
+											</p>
+										)}
 										</div>
 									</div>
 									{/* Total Time */}
