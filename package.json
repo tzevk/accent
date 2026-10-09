@@ -12,6 +12,7 @@
 		"security:poc-reruns": "node scripts/security-poc-reruns.mjs",
 		"security:scrub": "node scripts/scrub-stored-html.mjs",
 		"security:preflight": "node scripts/predeploy-check.mjs",
+		"sweep:work-sessions": "node scripts/close-stale-work-sessions.mjs",
 		"test": "vitest",
 		"test:ui": "vitest --ui",
 		"test:run": "vitest run",

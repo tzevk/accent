@@ -10,6 +10,7 @@ import React, {
 	Suspense,
 } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { fetchJSON } from '@/utils/http';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -185,6 +186,7 @@ const IdleBadge = memo(function IdleBadge({ idleSeconds }) {
 			}`}
 		>
 			<span
+				data-motion="pulse"
 				className={`w-2 h-2 rounded-full ${idleSeconds > 60 ? 'bg-red-400 animate-pulse' : idleSeconds > 30 ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`}
 			/>
 			{idleSeconds > 30 ? `Idle: ${fmtIdle(idleSeconds)}` : 'Active'}
@@ -215,6 +217,34 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		window.addEventListener('toggleTodoPanel', handler);
 		return () => window.removeEventListener('toggleTodoPanel', handler);
 	}, []);
+
+	// ── Page-close beacon: end this Work Session when the tab or window goes
+	// away without a Sign out (#331). `pagehide` fires on a real unload (tab
+	// close, window close, navigating away) and never on in-app client
+	// navigation, so moving around the app keeps the session open. The endpoint
+	// ends the caller's own session from the session cookie, so an admin's
+	// live-monitoring view of another user never ends anyone else's session —
+	// and this listener is not even attached there.
+	const isOwnDashboard =
+		!verifiedUser || verifiedUser.id === (contextUser?.id ?? null);
+
+	useEffect(() => {
+		if (!isOwnDashboard) return;
+
+		const sendCloseBeacon = () => {
+			try {
+				navigator.sendBeacon(
+					'/api/work-sessions/close',
+					new Blob([JSON.stringify({ closedAt: new Date().toISOString() })], {
+						type: 'application/json',
+					})
+				);
+			} catch {}
+		};
+
+		window.addEventListener('pagehide', sendCloseBeacon);
+		return () => window.removeEventListener('pagehide', sendCloseBeacon);
+	}, [isOwnDashboard]);
 
 	// Idle monitoring
 	const {
@@ -248,6 +278,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		outTime: null,
 		loginTime: null,
 		logoutTime: null,
+		endSource: null,
 		currentMonth: '',
 		daysInMonth: 0,
 		daysPresent: 0,
@@ -629,7 +660,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					aria-modal="true"
 					aria-labelledby="activity-reminder-title"
 				>
-					<div className="mx-4 max-w-lg w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]">
+					<div
+						data-motion="scale-in"
+						className="mx-4 max-w-lg w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]"
+					>
 						<div className="bg-gradient-to-r from-orange-500 to-red-500 px-6 py-4 flex items-center gap-3">
 							<div className="w-11 h-11 rounded-full bg-white/25 flex items-center justify-center shrink-0">
 								<ExclamationCircleIcon className="h-7 w-7 text-white" />
@@ -725,7 +759,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					aria-modal="true"
 					aria-labelledby="idle-warning-title"
 				>
-					<div className="mx-4 max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]">
+					<div
+						data-motion="scale-in"
+						className="mx-4 max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]"
+					>
 						<div className="bg-gradient-to-r from-amber-400 to-amber-500 px-6 py-4 flex items-center gap-3">
 							<div className="w-11 h-11 rounded-full bg-white/25 flex items-center justify-center shrink-0">
 								<ExclamationTriangleIcon className="h-7 w-7 text-white" />
@@ -747,7 +784,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 								report.
 							</p>
 							<div className="mt-4 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-								<ClockIcon className="h-5 w-5 text-amber-600 shrink-0 animate-pulse" />
+								<ClockIcon
+									data-motion="pulse"
+									className="h-5 w-5 text-amber-600 shrink-0 animate-pulse"
+								/>
 								<div>
 									<p className="text-xs font-medium text-amber-700">
 										Current idle duration
@@ -863,6 +903,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									<h2 className="text-xs xl:text-sm font-semibold text-gray-800 tracking-wide uppercase">
 										Today&apos;s Attendance
 									</h2>
+									<Link
+										href="/user/timesheet"
+										className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-[#64126D]/40 hover:text-[#64126D] transition-colors"
+									>
+										<CalendarDaysIcon className="h-3.5 w-3.5" aria-hidden />
+										Timesheet
+									</Link>
 								</div>
 								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-8">
 									{/* Punch In */}
@@ -876,7 +923,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													<ArrowRightStartOnRectangleIcon className="h-4 w-4" />
 												</div>
 												{attendance.loginTime && (
-													<div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
+													<div
+														data-motion="pulse"
+														className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300"
+													/>
 												)}
 											</div>
 											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
@@ -897,7 +947,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.outTime ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.logoutTime ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
 												</div>
@@ -918,6 +968,14 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 														</span>
 													)}
 											</p>
+											{attendance.logoutTime &&
+												(attendance.endSource === 'sweep' ||
+													attendance.endSource === 'beacon') && (
+													<p className="mt-1 text-xs leading-snug text-gray-500">
+														No logout recorded — ended from your last
+														activity.
+													</p>
+												)}
 										</div>
 									</div>
 									{/* Total Time */}
@@ -960,6 +1018,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 														</div>
 														{hasLogin && (
 															<div
+																data-motion="pulse"
 																className={`w-2 h-2 rounded-full animate-pulse shadow-sm ${isComplete ? 'bg-green-500 shadow-green-300' : 'bg-red-500 shadow-red-300'}`}
 															/>
 														)}
@@ -1152,6 +1211,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 															<ComputerDesktopIcon className="h-4 w-4" />
 														</div>
 														<div
+															data-motion="pulse"
 															className={`w-2 h-2 rounded-full shadow-sm ${effectiveIdleSecs > 1800 ? 'bg-red-500 shadow-red-300' : effectiveIdleSecs > 300 ? 'bg-amber-500 shadow-amber-300' : 'bg-emerald-500 shadow-emerald-300'} animate-pulse`}
 														/>
 													</div>
