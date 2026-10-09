@@ -3,6 +3,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { readArtifact, writeArtifact } from '../lib/artifacts';
 import { trackArtifactOutcome } from '../lib/artifact-outcome';
 import { exec, rows } from '../lib/db';
+import { apiGet, apiPost, apiPut } from '../lib/rate-limit-pacing';
 import {
 	SUPPLIER_API_INVOICE,
 	SUPPLIER_INVOICE_MONTH,
@@ -35,9 +36,22 @@ import {
 
 test.use({
 	storageState: 'e2e/.auth/admin-report.json',
+	// This spec's browser identity, set through the proxy's trusted header
+	// (ADR-0013), so a combined run cannot exhaust the shared budget.
+	// `API_HEADERS` below gives the same session a second identity for the
+	// direct API calls: one in-memory `api` budget (120/min) per identity
+	// cannot cover both the five page loads and the API context.
 	extraHTTPHeaders: { 'x-vercel-forwarded-for': '198.18.0.73' },
 });
 test.describe.configure({ mode: 'serial', timeout: 120_000 });
+
+/**
+ * The direct API calls' rate-limit identity, distinct from the browser one
+ * above. The report pages this spec drives spend one `api` budget between
+ * their shell and their own queries, so sharing an identity with the
+ * `request` fixture would 429 the reconciliation read at the end of the file.
+ */
+const API_HEADERS = { 'x-vercel-forwarded-for': '198.18.0.74' } as const;
 
 const MONTH = SUPPLIER_MONTH;
 const INVOICE_MONTH = SUPPLIER_INVOICE_MONTH;
@@ -355,8 +369,10 @@ async function reconciliation(
 	month: string
 ): Promise<ReconciliationData> {
 	const params = new URLSearchParams({ view: 'expenditure', month });
-	const response = await request.get(
-		`/api/reports/employee-project-monthly-cost?${params.toString()}`
+	const response = await apiGet(
+		request,
+		`/api/reports/employee-project-monthly-cost?${params.toString()}`,
+		API_HEADERS
 	);
 	expect(response.status(), await response.text()).toBe(200);
 	const body = await response.json();
@@ -370,8 +386,10 @@ async function drilldown(
 	params: Record<string, string>
 ): Promise<DrilldownData> {
 	const query = new URLSearchParams(params).toString();
-	const response = await request.get(
-		`/api/reports/employee-project-monthly-cost/expenses?${query}`
+	const response = await apiGet(
+		request,
+		`/api/reports/employee-project-monthly-cost/expenses?${query}`,
+		API_HEADERS
 	);
 	expect(response.status(), await response.text()).toBe(200);
 	const body = await response.json();
@@ -416,7 +434,11 @@ async function supplierDetail(
 		}>;
 	};
 }> {
-	const response = await request.get(`/api/admin/purchase-invoices/${id}`);
+	const response = await apiGet(
+		request,
+		`/api/admin/purchase-invoices/${id}`,
+		API_HEADERS
+	);
 	expect(response.status(), await response.text()).toBe(200);
 	const body = await response.json();
 	expect(body.success).toBe(true);
@@ -428,9 +450,11 @@ async function command(
 	id: number,
 	payload: Record<string, unknown>
 ): Promise<{ status: number; body: Record<string, unknown> }> {
-	const response = await request.post(
+	const response = await apiPost(
+		request,
 		`/api/admin/purchase-invoices/${id}/commands`,
-		{ data: payload }
+		payload,
+		API_HEADERS
 	);
 	return { status: response.status(), body: await response.json() };
 }
@@ -652,8 +676,10 @@ test('splits one invoice across service periods without repeating it', async ({
 	request,
 }) => {
 	// Create through the authenticated register API, as an operator would.
-	const created = await request.post('/api/admin/purchase-invoices', {
-		data: {
+	const created = await apiPost(
+		request,
+		'/api/admin/purchase-invoices',
+		{
 			invoice_number: API_INVOICE.number,
 			vendor_name: 'E2E Supplier Vendor api',
 			invoice_date: '2020-04-20',
@@ -670,7 +696,8 @@ test('splits one invoice across service periods without repeating it', async ({
 			evidence_reference: 'E2E-SINV-GRN-9002',
 			withholding_tax_amount: 0,
 		},
-	});
+		API_HEADERS
+	);
 	expect(created.status(), await created.text()).toBe(200);
 	const createdBody = await created.json();
 	const id = Number(createdBody.data.id);
@@ -866,8 +893,10 @@ test('freezes reverse-order and same-period splits onto their own rows', async (
 			month: '2020-08',
 		},
 	] as const;
-	const created = await request.post('/api/admin/purchase-invoices', {
-		data: {
+	const created = await apiPost(
+		request,
+		'/api/admin/purchase-invoices',
+		{
 			invoice_number: 'E2E-SINV-9006',
 			vendor_name: 'E2E Supplier Vendor shuffled',
 			invoice_date: '2020-09-05',
@@ -884,7 +913,8 @@ test('freezes reverse-order and same-period splits onto their own rows', async (
 			evidence_reference: 'E2E-SINV-GRN-9006',
 			withholding_tax_amount: 0,
 		},
-	});
+		API_HEADERS
+	);
 	expect(created.status(), await created.text()).toBe(200);
 	const createdBody = await created.json();
 	const id = Number(createdBody.data.id);
@@ -996,14 +1026,17 @@ test('keeps a March service in March when invoiced in April and paid in May', as
 
 	// Pay the payable in May; the settlement is not another expense.
 	const payableId = seeded.payableIds.septemberPayable;
-	const paid = await request.put(`/api/admin/payment-payables/${payableId}`, {
-		data: {
+	const paid = await apiPut(
+		request,
+		`/api/admin/payment-payables/${payableId}`,
+		{
 			paid_amount: 50000,
 			balance_due: 0,
 			status: 'paid',
 			paid_date: `${LATER_MONTH}-08`,
 		},
-	});
+		API_HEADERS
+	);
 	expect(paid.status(), await paid.text()).toBe(200);
 
 	const marchAfter = await reconciliation(request, MONTH);
@@ -1115,8 +1148,10 @@ test('links payable follow-ups and a receipt reference to one supplier cost', as
 
 	// A payable created with an explicit invoice reference migrates to the
 	// authoritative cost, and the register refuses ad-hoc link rewrites.
-	const createdPayable = await request.post('/api/admin/payment-payables', {
-		data: {
+	const createdPayable = await apiPost(
+		request,
+		'/api/admin/payment-payables',
+		{
 			vendor_name: 'E2E Supplier Vendor linked note',
 			vendor_invoice_number: invoice.sourceReference,
 			purchase_invoice_id: invoiceId,
@@ -1124,7 +1159,8 @@ test('links payable follow-ups and a receipt reference to one supplier cost', as
 			balance_due: 12000,
 			status: 'pending',
 		},
-	});
+		API_HEADERS
+	);
 	expect(createdPayable.status(), await createdPayable.text()).toBe(200);
 	const createdPayableBody = await createdPayable.json();
 	expect(createdPayableBody.data.cost_uid).toBe(invoice.costUid);
@@ -1133,9 +1169,11 @@ test('links payable follow-ups and a receipt reference to one supplier cost', as
 		where: 'api',
 	});
 
-	const refusedRewrite = await request.put(
+	const refusedRewrite = await apiPut(
+		request,
 		`/api/admin/payment-payables/${createdPayableBody.data.id}`,
-		{ data: { purchase_invoice_id: null } }
+		{ purchase_invoice_id: null },
+		API_HEADERS
 	);
 	expect(refusedRewrite.status()).toBe(422);
 	const refusedBody = await refusedRewrite.json();
@@ -1229,8 +1267,10 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 }) => {
 	// Capture through the register API with the full original → reporting
 	// evidence triple. The invoice is USD; its reporting target is INR.
-	const created = await request.post('/api/admin/purchase-invoices', {
-		data: {
+	const created = await apiPost(
+		request,
+		'/api/admin/purchase-invoices',
+		{
 			invoice_number: FX_INVOICE.number,
 			vendor_name: 'E2E Supplier Vendor fx',
 			invoice_date: '2020-06-05',
@@ -1251,7 +1291,8 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 			conversion_date: FX_INVOICE.rateDate,
 			conversion_evidence_reference: FX_INVOICE.evidenceReference,
 		},
-	});
+		API_HEADERS
+	);
 	expect(created.status(), await created.text()).toBe(200);
 	const createdBody = await created.json();
 	const id = Number(createdBody.data.id);
@@ -1286,8 +1327,10 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 	expect(persisted[0].converted_amount).toBeNull();
 
 	// A contradictory or partial triple is refused and changes nothing.
-	const notApplicable = await request.post('/api/admin/purchase-invoices', {
-		data: {
+	const notApplicable = await apiPost(
+		request,
+		'/api/admin/purchase-invoices',
+		{
 			invoice_number: 'E2E-SINV-9004-BAD',
 			vendor_name: 'E2E Supplier Vendor fx',
 			total: 100,
@@ -1297,7 +1340,8 @@ test('captures and versions conversion evidence on a native supplier invoice', a
 			conversion_date: FX_INVOICE.rateDate,
 			conversion_evidence_reference: 'E2E-SINV-FX-BAD',
 		},
-	});
+		API_HEADERS
+	);
 	expect(notApplicable.status()).toBe(422);
 	expect((await notApplicable.json()).code).toBe('conversion_not_applicable');
 	const partial = await command(request, id, {
@@ -1514,8 +1558,10 @@ test('states a foreign supplier cost without evidence as unsupported', async ({
 }) => {
 	// A USD invoice recognized without conversion evidence: it keeps its own
 	// currency total and is never given a guessed reporting-currency figure.
-	const created = await request.post('/api/admin/purchase-invoices', {
-		data: {
+	const created = await apiPost(
+		request,
+		'/api/admin/purchase-invoices',
+		{
 			invoice_number: FX_UNSUPPORTED.number,
 			vendor_name: 'E2E Supplier Vendor fx-unsupported',
 			invoice_date: '2020-07-06',
@@ -1530,7 +1576,8 @@ test('states a foreign supplier cost without evidence as unsupported', async ({
 			source_reference: FX_UNSUPPORTED.sourceReference,
 			evidence_reference: 'E2E-SINV-GRN-9005',
 		},
-	});
+		API_HEADERS
+	);
 	expect(created.status(), await created.text()).toBe(200);
 	const createdBody = await created.json();
 	const id = Number(createdBody.data.id);
@@ -1574,8 +1621,10 @@ test('reconciles a converted multi-period invoice by per-slice rounding', async 
 	request,
 }) => {
 	// Capture a USD invoice with two service-period slices and full evidence.
-	const created = await request.post('/api/admin/purchase-invoices', {
-		data: {
+	const created = await apiPost(
+		request,
+		'/api/admin/purchase-invoices',
+		{
 			invoice_number: FX_SPLIT.number,
 			vendor_name: 'E2E Supplier Vendor fx-split',
 			invoice_date: `${FX_SPLIT.monthA}-05`,
@@ -1603,7 +1652,8 @@ test('reconciles a converted multi-period invoice by per-slice rounding', async 
 				note: `E2E slice ${slice.start}`,
 			})),
 		},
-	});
+		API_HEADERS
+	);
 	expect(created.status(), await created.text()).toBe(200);
 	const createdBody = await created.json();
 	const id = Number(createdBody.data.id);

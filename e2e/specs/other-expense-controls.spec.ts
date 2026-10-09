@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
-import type { APIRequestContext, APIResponse, Page } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 import { writeArtifact } from '../lib/artifacts';
 import { trackArtifactOutcome } from '../lib/artifact-outcome';
 import { rows } from '../lib/db';
+import { apiDelete, apiGet, apiPost } from '../lib/rate-limit-pacing';
 import { loginExpenditureReportOnlyReader } from '../lib/expenditure-fixtures';
 import {
 	OTHER_EXPENSE_MONTH,
@@ -279,82 +280,6 @@ function group(data: ReconciliationData, key: string): number {
 
 function inr(data: ReconciliationData) {
 	return data.company.currency_totals.find((row) => row.currency === 'INR');
-}
-
-/** Sleep without pulling a timer helper into the spec. */
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Seconds the guard names until the window ends (`Retry-After`), bounded so a
- * surprising header cannot stall the spec past its own timeout.
- */
-function retryAfterMs(response: APIResponse): number {
-	const seconds = Number(response.headers()['retry-after']);
-	if (!Number.isFinite(seconds) || seconds <= 0) return 1_000;
-	return Math.min(seconds * 1_000, 65_000);
-}
-
-/**
- * The spec shares one in-memory `api` budget (120/min) between its API context
- * and its browser pages (same session + trusted-header identity,
- * `198.18.0.22`), so a burst of register/report traffic can 429 a later call
- * (trace: `x-ratelimit-limit: 120`, `retry-after: 60`). Wait out exactly the
- * window the guard names and retry; any other status returns at once, so
- * business refusals (403/409/422) still assert strictly. Rate limits stay as
- * they are — the spec paces itself instead.
- */
-async function apiGet(
-	request: APIRequestContext,
-	url: string,
-	retries = 2
-): Promise<APIResponse> {
-	let response = await request.get(url);
-	for (
-		let attempt = 0;
-		response.status() === 429 && attempt < retries;
-		attempt += 1
-	) {
-		await sleep(retryAfterMs(response));
-		response = await request.get(url);
-	}
-	return response;
-}
-
-async function apiPost(
-	request: APIRequestContext,
-	url: string,
-	data: Record<string, unknown>,
-	retries = 2
-): Promise<APIResponse> {
-	let response = await request.post(url, { data });
-	for (
-		let attempt = 0;
-		response.status() === 429 && attempt < retries;
-		attempt += 1
-	) {
-		await sleep(retryAfterMs(response));
-		response = await request.post(url, { data });
-	}
-	return response;
-}
-
-async function apiDelete(
-	request: APIRequestContext,
-	url: string,
-	retries = 2
-): Promise<APIResponse> {
-	let response = await request.delete(url);
-	for (
-		let attempt = 0;
-		response.status() === 429 && attempt < retries;
-		attempt += 1
-	) {
-		await sleep(retryAfterMs(response));
-		response = await request.delete(url);
-	}
-	return response;
 }
 
 /** Record a standalone cost and return the captured row. */
