@@ -493,5 +493,8 @@ test.describe.serial('project documents affordance', () => {
 			withParam: 'upload_documents',
 			withoutParam: 'scope',
 		};
+
+		// Every assertion in this spec passed; the artifact says so.
+		artifactOk = true;
 	});
 });
