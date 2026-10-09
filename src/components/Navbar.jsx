@@ -27,6 +27,11 @@ import {
 	ClipboardDocumentCheckIcon,
 	ClipboardDocumentListIcon,
 	FingerPrintIcon,
+	ChatBubbleLeftRightIcon,
+	TicketIcon,
+	BuildingOfficeIcon,
+	BuildingLibraryIcon,
+	TagIcon,
 } from '@heroicons/react/24/outline';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { clearSessionCache } from '@/context/SessionContext';
@@ -52,6 +57,78 @@ const navigationConfig = [
 		href: '/projects',
 		icon: BriefcaseIcon,
 		resource: 'projects',
+	},
+];
+
+// Sidebar pages surfaced in the mobile menu (the sidebar is hidden below 640px)
+const mobilePagesConfig = [
+	{ name: 'Messages', href: '/messages', icon: ChatBubbleLeftRightIcon },
+	{ name: 'Support Tickets', href: '/tickets', icon: TicketIcon },
+	{
+		name: 'Employees',
+		href: '/employees',
+		icon: UserGroupIcon,
+		resource: 'employees',
+	},
+	{
+		name: 'User Master',
+		href: '/masters/users',
+		icon: ShieldCheckIcon,
+		resource: 'users',
+	},
+	{
+		name: 'Activity Master',
+		href: '/masters/activities',
+		icon: DocumentTextIcon,
+		resource: 'activities',
+	},
+	{
+		name: 'Software Master',
+		href: '/masters/software',
+		icon: DocumentTextIcon,
+		resource: 'activities',
+	},
+	{
+		name: 'Deliverables Master',
+		href: '/masters/deliverables',
+		icon: DocumentTextIcon,
+		resource: 'deliverables',
+	},
+	{
+		name: 'Deliverable Category Master',
+		href: '/masters/deliverable-categories',
+		icon: DocumentTextIcon,
+		resource: 'deliverables',
+	},
+	{
+		name: 'Company Master',
+		href: '/company',
+		icon: BuildingOfficeIcon,
+		resource: 'companies',
+	},
+	{
+		name: 'Vendor Master',
+		href: '/vendors',
+		icon: BuildingOfficeIcon,
+		resource: 'vendors',
+	},
+	{
+		name: 'Bank Master',
+		href: '/masters/banks',
+		icon: BuildingLibraryIcon,
+		resource: 'companies',
+	},
+	{
+		name: 'Description Master',
+		href: '/masters/descriptions',
+		icon: DocumentTextIcon,
+		resource: 'companies',
+	},
+	{
+		name: 'Expense Category Master',
+		href: '/masters/categories',
+		icon: TagIcon,
+		resource: 'companies',
 	},
 ];
 
@@ -350,6 +427,22 @@ export default function Navbar() {
 		});
 	}, [user, userLoading, can, PERMISSIONS]);
 
+	// Mobile-only page list — mirrors the sidebar, which is hidden below 640px
+	const mobilePageItems = useMemo(() => {
+		if (userLoading || !user) return [];
+		return mobilePagesConfig.filter(
+			(item) => !item.resource || can(item.resource, PERMISSIONS.READ)
+		);
+	}, [user, userLoading, can, PERMISSIONS]);
+
+	const [mobileTasksOpen, setMobileTasksOpen] = useState(false);
+	useEffect(() => {
+		try {
+			if (localStorage.getItem('todoPanelOpen') === 'true')
+				setMobileTasksOpen(true);
+		} catch {}
+	}, []);
+
 	// Admin menu visibility: super admins, or anyone holding admin:read. The
 	// group definitions above are the single source of what the menu contains.
 	const showAdminMenu = useMemo(() => {
@@ -447,7 +540,7 @@ export default function Navbar() {
 				<div className="px-4 sm:px-6 lg:px-8 xl:px-10">
 					<div className="flex justify-between items-center h-16">
 						{/* Logo */}
-						<div className="flex items-center">
+						<div className="flex items-center shrink-0">
 							<Link
 								href="/dashboard"
 								className="flex-shrink-0 flex items-center group"
@@ -463,7 +556,7 @@ export default function Navbar() {
 						</div>
 
 						{/* Desktop Navigation */}
-						<div className="hidden md:flex items-center space-x-2 xl:space-x-3">
+						<div className="hidden xl:flex items-center space-x-2 xl:space-x-3">
 							{navigation.map((item) => {
 								const Icon = item.icon;
 								const isActive = pathname === item.href;
@@ -719,17 +812,19 @@ export default function Navbar() {
 								<NotificationsBell />
 							</div>
 							{/* User Profile Display */}
-							<div className="hidden md:flex items-center space-x-3">
+							<div className="hidden xl:flex items-center space-x-3 shrink-0">
 								<div className="flex items-center space-x-2 px-3 py-2 rounded-xl text-white/90">
 									<UserCircleIcon className="h-6 w-6" />
-									<div className="flex flex-col min-w-[60px]">
+									<div className="flex flex-col min-w-[60px] max-w-[150px]">
 										{userLoading && !displayName ? (
 											<span className="h-4 w-20 bg-white/20 rounded animate-pulse" />
 										) : (
-											<span className="text-sm font-medium">{displayName}</span>
+											<span className="text-sm font-medium truncate">
+												{displayName}
+											</span>
 										)}
 										{displayEmail && (
-											<span className="text-xs text-white/60">
+											<span className="text-xs text-white/60 truncate">
 												{displayEmail}
 											</span>
 										)}
@@ -748,7 +843,10 @@ export default function Navbar() {
 							{/* Mobile menu button */}
 							<button
 								onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-								className="md:hidden p-2 rounded-xl text-white/90 hover:text-white hover:bg-white/10 transition-all duration-200"
+								aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
+								aria-expanded={isMobileMenuOpen}
+								aria-controls="mobile-nav-menu"
+								className="xl:hidden p-2 rounded-xl text-white/90 hover:text-white hover:bg-white/10 transition-all duration-200"
 							>
 								{isMobileMenuOpen ? (
 									<XMarkIcon className="h-6 w-6" />
@@ -763,7 +861,8 @@ export default function Navbar() {
 				{/* Mobile Navigation Menu */}
 				{isMobileMenuOpen && (
 					<div
-						className="md:hidden border-t border-white/20 anim-slide-up"
+						id="mobile-nav-menu"
+						className="xl:hidden max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-white/20 anim-slide-up"
 						style={{
 							background: `linear-gradient(135deg, #64126D 0%, #86288F 100%)`,
 							filter: isWindows ? 'saturate(1.06) brightness(1.05)' : undefined,
@@ -789,6 +888,102 @@ export default function Navbar() {
 									</Link>
 								);
 							})}
+
+							{/* Pages — mirrors the sidebar, which is hidden below 640px */}
+							<div className="pt-2 mt-2 border-t border-white/10 space-y-1">
+								<p className="px-4 py-2 text-xs font-semibold text-white/60 uppercase tracking-wider">
+									Pages
+								</p>
+								<Link
+									href="/dashboard"
+									className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[.98] ${
+										pathname === '/dashboard'
+											? 'bg-white/20 text-white'
+											: 'text-white/90 hover:bg-white/10 hover:text-white'
+									}`}
+								>
+									<HomeIcon className="h-5 w-5" />
+									<span>Dashboard</span>
+								</Link>
+								{mobilePageItems.map((item) => {
+									const Icon = item.icon;
+									const isActive = pathname === item.href;
+									return (
+										<Link
+											key={item.href}
+											href={item.href}
+											className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[.98] ${
+												isActive
+													? 'bg-white/20 text-white'
+													: 'text-white/90 hover:bg-white/10 hover:text-white'
+											}`}
+										>
+											<Icon className="h-5 w-5" />
+											<span>{item.name}</span>
+										</Link>
+									);
+								})}
+								<button
+									onClick={() => {
+										const next = !mobileTasksOpen;
+										setMobileTasksOpen(next);
+										try {
+											localStorage.setItem('todoPanelOpen', String(next));
+										} catch {}
+										window.dispatchEvent(
+											new CustomEvent('toggleTodoPanel', {
+												detail: { open: next },
+											})
+										);
+										setIsMobileMenuOpen(false);
+									}}
+									className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
+										mobileTasksOpen
+											? 'bg-white/20 text-white'
+											: 'text-white/90 hover:bg-white/10 hover:text-white'
+									}`}
+								>
+									<ClipboardDocumentListIcon className="h-5 w-5" />
+									<span>Tasks</span>
+								</button>
+								{showAdminMenu && (
+									<>
+										<Link
+											href="/masters/holidays"
+											className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[.98] ${
+												pathname.startsWith('/masters/holidays')
+													? 'bg-white/20 text-white'
+													: 'text-white/90 hover:bg-white/10 hover:text-white'
+											}`}
+										>
+											<CalendarDaysIcon className="h-5 w-5" />
+											<span>Holiday Master</span>
+										</Link>
+										<Link
+											href="/masters/accounts/account-heads"
+											className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[.98] ${
+												pathname.startsWith('/masters/accounts')
+													? 'bg-white/20 text-white'
+													: 'text-white/90 hover:bg-white/10 hover:text-white'
+											}`}
+										>
+											<BanknotesIcon className="h-5 w-5" />
+											<span>Account Head Master</span>
+										</Link>
+										<Link
+											href="/admin/tickets"
+											className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[.98] ${
+												pathname === '/admin/tickets'
+													? 'bg-white/20 text-white'
+													: 'text-white/90 hover:bg-white/10 hover:text-white'
+											}`}
+										>
+											<TicketIcon className="h-5 w-5" />
+											<span>Manage Tickets</span>
+										</Link>
+									</>
+								)}
+							</div>
 
 							{/* Reports Section on Mobile */}
 							{showReportsMenu && (
@@ -880,7 +1075,7 @@ export default function Navbar() {
 			{/* Overlay for mobile menu */}
 			{isMobileMenuOpen && (
 				<div
-					className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden anim-fade-in"
+					className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 xl:hidden anim-fade-in"
 					onClick={() => setIsMobileMenuOpen(false)}
 				/>
 			)}
