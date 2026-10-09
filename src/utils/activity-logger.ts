@@ -355,42 +355,10 @@ async function updateWorkSession(
 	}
 }
 
-/**
- * End user session (call on logout)
- */
-export async function endUserSession(userId: number): Promise<void> {
-	let db;
-	try {
-		db = await dbConnect();
-
-		// End active sessions
-		await db.execute(
-			`UPDATE user_work_sessions 
-       SET session_end = CURRENT_TIMESTAMP,
-           duration_minutes = TIMESTAMPDIFF(MINUTE, session_start, CURRENT_TIMESTAMP),
-           status = 'ended'
-       WHERE user_id = ? AND status = 'active'`,
-			[userId]
-		);
-
-		// Update daily summary with total work minutes
-		await db.execute(
-			`UPDATE user_daily_summary uds
-       JOIN (
-         SELECT user_id, DATE(session_start) as work_date, SUM(duration_minutes) as total_minutes
-         FROM user_work_sessions
-         WHERE user_id = ? AND DATE(session_start) = CURDATE() AND status = 'ended'
-         GROUP BY user_id, DATE(session_start)
-       ) ws ON uds.user_id = ws.user_id AND uds.date = ws.work_date
-       SET uds.total_work_minutes = ws.total_minutes`,
-			[userId]
-		);
-	} catch (error) {
-		console.error('Error ending user session:', error);
-	} finally {
-		if (db) await db.end();
-	}
-}
+// `endUserSession` lives in ./work-session-close.js — the single close path the
+// logout, the page-close beacon and the stale-session sweep all share. It stays
+// exported from here because that is where its callers import it from.
+export { endUserSession, WORK_SESSION_END_SOURCES } from './work-session-close.js';
 
 // ─── Status queries ─────────────────────────────────────────────────
 
