@@ -32,9 +32,11 @@ artifacts/security-scrub-dry-run.json`).
 
 Route and page behaviour has no committed automated proof. The old doctrine made
 E2E the sole verification mechanism and forbade route, page, and component
-tests; both rules are gone. Until a policy is agreed, verify flows by driving the
-running app and record the observation in the ticket. Do not fill the gap with
-mock tests.
+tests; both rules are gone. The replacement policy is now recorded in
+`AGENTS.md` under **Testing Notes**: unit tests are the default, behaviour worth
+proving but not pure logic moves into a shared module (precedent: #330's
+punch-span helper), and E2E is reserved for critical user journeys and runs on
+GitHub Actions only.
 
 ## Reading older documents
 

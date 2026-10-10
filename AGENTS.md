@@ -56,9 +56,9 @@ Use simplified technical English, about 80% of ASD-STE100.
 - Dev: `npm run dev` (Turbopack default). Build/Start: `npm run build` (strict) then `npm run start`.
 - Lint: `npm run lint` (ESLint 9 flat, `src` + `scripts` only). Format: `npm run format` (Prettier: tabs, width 2, single-quote); pre-commit runs `lint-staged: prettier --write` via Husky v9.
 - Typecheck: `npx tsc --noEmit` (no npm script).
-- Test (watch) `npm test`; Test (once) `npm run test:run`; Coverage `npm run test:coverage`; single file `npx vitest run src/lib/money.test.ts`; single name `npx vitest run -t "ensurePermission"`.
+- Test (watch) `npm test`; Test (once) `npm run test:run`; Coverage `npm run test:coverage`; single file `npx vitest run src/lib/money.test.ts`; single name `npx vitest run -t "ensurePermission"`. `npm run verify` = `lint` + `tsc --noEmit` + `test:run` — the one command a subagent runs.
 - Migrations: `npm run migrate` / `migrate:status` / `migrate:rollback` / `migrate:make -- <name>` — prod DB: `migrate:prod` (+ `:status` / `:rollback`); plain `npm run migrate` targets **dev** only.
-- Order that matters: `lint` → `npx tsc --noEmit` → `npm run test:run` before pushing; `npm run build:prod` is the final gate (plain `npm run build` inherits `NODE_ENV=development` from `.env` and fails static prerendering).
+- Order that matters: `npm run verify` before pushing; `npm run build:prod` is the final gate (plain `npm run build` inherits `NODE_ENV=development` from `.env` and fails static prerendering).
 
 ## Architecture Gotchas
 
@@ -92,10 +92,41 @@ Use simplified technical English, about 80% of ASD-STE100.
 
 ## Testing Notes
 
-- **No browser/E2E harness is committed.** It was removed on 2026-10-10 (`git tag e2e-v1` holds the Playwright specs, the fixture modules, `playwright.config.ts`, the bootstrap script, and the E2E workflow). Route and page behaviour therefore has no automated proof today — that is an open gap, not licence for mock-echo tests.
-- Automated coverage is the vitest suites beside the code (`src/**/*.test.*`): money/Decimal (`money`, payroll per ADR-0010), leave/date/sandwich/week-off math, payroll config & statutory math, RBAC/authz decisions (sec04/05/07), sanitization, Punch/Time-Present math, and report data-source aggregation. Keep them green; extend only in kind (pure logic, no I/O).
-- Add a unit test only _before_ the implementation, only for logic with no I/O, and only after enumerating its failure modes. Never test wiring, mock echoes, forwarding, or source text.
-- Route/page behaviour is verified by driving the running app yourself (`npm run dev` + the flow, or a throwaway script). Record what you observed in the ticket; do not add committed tests for it until a harness policy is agreed.
+### Layers, cheapest first
+
+- **Unit tests** (`src/**/*.test.*`, vitest) — the default. Pure logic only: no DB, no network, no `fetch`. Write them _before_ the implementation, and only after enumerating the failure modes.
+- **No integration layer exists.** There is no React Testing Library setup, and the route/page/component mock suites were purged on 2026-09-27 — do not recreate them. When behaviour is worth proving but is not pure logic, extract the decision into a shared module (precedent: #330's punch-span helper) and test that module.
+- **E2E (Playwright)** — reserved for **critical user journeys only**: sign-in, one representative CRUD flow, one financial flow. A ticket that touches no critical journey ships with no E2E spec.
+
+Before writing a test at a higher layer, ask whether the same assertion is possible at a lower one. If it is, write it there. A spec file over 200 lines is the signal that the coverage belongs at a lower layer — and a second spec for the same feature area means the coverage should move down.
+
+### When a browser spec is written
+
+- State the behaviour and why a browser is needed before writing any code.
+- One behaviour per test. An omnibus test has many reasons to fail and hides which one broke.
+- Select by `getByRole` / `getByLabel` / `data-testid`. A selector that breaks when the UI is restyled without a behaviour change is the wrong selector.
+- Namespace data per run (`E2E-<issue>-` + a suffix) and clean it in `afterAll`.
+- Assert what the API returns **and** what landed in the database with an independent client, so a mock cannot hide a broken write.
+
+### Subagent and CI rules
+
+- Subagents run `npm run verify`. They do **not** run `next build`, `tsc --noEmit` alone, `playwright test`, or `npm run e2e`. A failing `verify` is the subagent's only signal; E2E is never it.
+- Subagents do **not** start a dev server. The orchestrator starts one shared server and exports `E2E_BASE_URL` if a browser run is ever genuinely required.
+- **E2E runs on GitHub Actions only.** The full suite is a merge gate on the integration tip, not a per-ticket check. A PR carries at most the smoke spec.
+- `git merge` is a shell command, not a delegated task. The orchestrator performs merges.
+
+### Forbidden
+
+- `test.describe.configure({ mode: 'serial' })` or `fullyParallel: false` — tests that must run in order are one test.
+- `page.waitForTimeout(...)` — wait on a locator assertion or a response instead.
+- Hardcoded or shared test data.
+- A committed route, page, or component test that mocks its own dependencies and asserts the mock answered.
+
+### Status
+
+No browser harness is committed. The old 41 specs, the fixture modules, `playwright.config.ts`, the bootstrap script, and the E2E workflow were removed on 2026-10-10 and sit at tag `e2e-v1`; `docs/explanations/E2E_HARNESS_REMOVAL.md` records that. Route and page behaviour has no committed proof until a harness lands — an open gap, not licence for mock-echo tests.
+
+- Automated coverage is the vitest suites beside the code: money/Decimal (`money`, payroll per ADR-0010), leave/date/sandwich/week-off math, payroll config & statutory math, RBAC/authz decisions (sec04/05/07), sanitization, Punch/Time-Present math, and report data-source aggregation. Keep them green; extend only in kind.
 - Config: Vitest `jsdom`, `globals: true`, `setupFiles: vitest.setup.ts` (`@testing-library/jest-dom`), include `src/**/*.test.{js,jsx,ts,tsx}` (colocated), alias `@` → `src` (`vitest.config.ts`); run once with `npm run test:run`.
 - The surviving payroll API suites mock `@/utils/database` + dynamic `await import` of the route (mock-hoisting order matters; DB mocks return `[rows, fields]`). Shared helpers: `src/app/api/payroll/{test-perms,audit-rows}.ts`.
 - The Attendance report's page-decision suites (cell-status/roster/unmapped-codes) were deleted with #288 and are not to be recreated. Their behaviour used to be proven by `e2e/specs/attendance-report.spec.ts`, which no longer exists (tag `e2e-v1`).

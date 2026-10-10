@@ -17,6 +17,7 @@
 		"test:ui": "vitest --ui",
 		"test:run": "vitest run",
 		"test:coverage": "vitest run --coverage",
+		"verify": "npm run lint && npx tsc --noEmit && npm run test:run",
 		"build:prod": "cross-env NODE_ENV=production next build",
 		"prepare": "husky",
 		"format": "prettier --write .",
