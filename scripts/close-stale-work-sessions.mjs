@@ -40,8 +40,8 @@
  *
  * Usage (run from the repo root; `.env` supplies the credentials):
  *   node scripts/close-stale-work-sessions.mjs
- * Environment: E2E_DB_NAME wins when set (the E2E harness points the script at
- * its isolated database); otherwise DEV_DB_*, or STAGING_/PROD_* per NODE_ENV.
+ * Environment: DEV_DB_* (the app's own development database), plus the shared
+ * DB_HOST and DB_PORT.
  */
 import 'dotenv/config';
 import mysql from 'mysql2/promise';
@@ -53,17 +53,14 @@ const STALE_MINUTES = 10;
 /** How the closed rows are marked, for the tile's disclosure. */
 const END_SOURCE = 'sweep';
 
-/**
- * Database this run sweeps: the harness's isolated database when it asks for
- * one, otherwise the app's own DEV_* resolution.
- */
+/** The database this run sweeps: the app's own DEV_* dev database. */
 function resolveTarget() {
-	const database = process.env.E2E_DB_NAME || process.env.DEV_DB_NAME;
-	const user = process.env.E2E_DB_USER || process.env.DEV_DB_USER;
-	const password = process.env.E2E_DB_PASSWORD || process.env.DEV_DB_PASSWORD;
+	const database = process.env.DEV_DB_NAME;
+	const user = process.env.DEV_DB_USER;
+	const password = process.env.DEV_DB_PASSWORD;
 	if (!database || !user) {
 		throw new Error(
-			'Set E2E_DB_NAME/DEV_DB_NAME (and the matching user) — this script needs a database to sweep.'
+			'Set DEV_DB_NAME/DEV_DB_USER (and DEV_DB_PASSWORD) — this script needs a database to sweep.'
 		);
 	}
 	return {
@@ -81,16 +78,6 @@ function resolveTarget() {
 async function main() {
 	const target = resolveTarget();
 
-	// The shared close path builds its pool from the app's own DEV_* env, so
-	// point it at the database this run sweeps. That has to happen before the
-	// module is loaded — a top-level import is hoisted above this assignment —
-	// which is why this is a dynamic import and not a static one. The pool is
-	// created lazily on first use, so setting the env here is enough.
-	if (process.env.E2E_DB_NAME && process.env.DEV_DB_NAME !== target.database) {
-		process.env.DEV_DB_NAME = target.database;
-		process.env.DEV_DB_USER = target.user;
-		process.env.DEV_DB_PASSWORD = target.password;
-	}
 	const { endUserSession } = await import('../src/utils/work-session-close.js');
 
 	const pool = mysql.createPool(target);
