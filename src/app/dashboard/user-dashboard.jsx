@@ -53,7 +53,8 @@ const EXPECTED_WORK_MINS = (() => {
 
 // A tile with no recorded value shows a plain dash. A bare `--:--` read as a
 // broken fetch, so a day that recorded nothing now says so in words (#340).
-const NO_VALUE = '–';
+// One "no value" character repository-wide: src/lib/format.js returns '—'.
+const NO_VALUE = '—';
 
 // Tier-1 load states (#340), one per source. A failed fetch must stay
 // distinguishable from a day that recorded nothing, so the two are never
@@ -529,8 +530,16 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 				if (attendanceOk) {
 					const day = attendanceRes.value.data;
 					setAttendance(day);
+					// Everything the payload's day can carry decides whether the
+					// day recorded something: the session times and the device's
+					// own punches (#334). A punch-only day is not an empty day.
 					setAttendanceLoad(
-						day?.loginTime || day?.logoutTime ? LOAD_OK : LOAD_EMPTY
+						day?.loginTime ||
+							day?.logoutTime ||
+							day?.punchInTime ||
+							day?.punchOutTime
+							? LOAD_OK
+							: LOAD_EMPTY
 					);
 				} else {
 					setAttendanceLoad(LOAD_ERROR);
@@ -656,15 +665,21 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		return () => ac.abort();
 	}, [verifiedUser?.id, user?.id]);
 
+	// ── Did the day's end come from inference rather than choice? (#331) ──
+	// A sweep or beacon end is an inference about presence: the sweep stamps
+	// the last heartbeat, the beacon a close the browser had to time. A logout
+	// — or no end at all — is the user's own choice. One named test, used by
+	// the poll's stop condition below and the Punch Out tile's disclosure.
+	const endWasInferred =
+		attendance.endSource === 'sweep' || attendance.endSource === 'beacon';
+
 	// ── Poll attendance data (especially idle time) every 2 minutes ──
 	useEffect(() => {
 		const userId = verifiedUser?.id || user?.id;
 		// Only a real logout ends the day. A beacon or sweep end is an inferred
 		// one (ticket #331), so the poll keeps running — a punch the device
 		// pushes late still has to reach the tile (ticket #334).
-		const hasRealLogout =
-			!!attendance.logoutTime &&
-			(attendance.endSource === 'logout' || attendance.endSource == null);
+		const hasRealLogout = !!attendance.logoutTime && !endWasInferred;
 		if (!userId || hasRealLogout) return; // Don't poll if logged out
 
 		let retryCount = 0;
@@ -1139,20 +1154,15 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											</p>
 											{punchPair && attendance.logoutTime && (
 												<p className="mt-1 text-xs leading-snug text-gray-500">
-													{attendance.endSource === 'sweep' ||
-													attendance.endSource === 'beacon'
-														? 'Session ended'
-														: 'Logged out'}{' '}
+													{endWasInferred ? 'Session ended' : 'Logged out'}{' '}
 													{formatTime(attendance.logoutTime)}
 												</p>
 											)}
-											{attendance.logoutTime &&
-												(attendance.endSource === 'sweep' ||
-													attendance.endSource === 'beacon') && (
-													<p className="mt-1 text-xs leading-snug text-gray-500">
-														No logout recorded — ended from your last activity.
-													</p>
-												)}
+											{attendance.logoutTime && endWasInferred && (
+												<p className="mt-1 text-xs leading-snug text-gray-500">
+													No logout recorded — ended from your last activity.
+												</p>
+											)}
 											{punchFallbackNote && (
 												<p className="mt-1 text-xs leading-snug text-gray-500">
 													{punchFallbackNote}
