@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { logActivity, endUserSession } from '@/utils/activity-logger';
+import { logActivity } from '@/utils/activity-logger';
+import { endUserSession } from '@/utils/work-session-close';
 import { invalidateUserCache } from '@/utils/api-permissions';
 import { cookies } from 'next/headers';
 import { dbConnect } from '@/utils/database';

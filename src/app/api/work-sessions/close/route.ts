@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-import { endUserSession } from '@/utils/activity-logger';
+import { endUserSession } from '@/utils/work-session-close';
 
 /**
  * POST /api/work-sessions/close
