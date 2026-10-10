@@ -253,7 +253,7 @@ function ProjectNumberValue({ projectId, documentsName, code, documentCount }) {
 				aria-label={documentsName}
 				title={documentsName}
 				aria-describedby={truncated ? fullValueId : undefined}
-				className="inline-flex max-w-full items-center gap-1 font-mono text-[10px] text-[#4A1254] leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+				className="inline-flex max-w-full items-center gap-1 font-mono text-xs text-[#4A1254] leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 			>
 				<span
 					ref={ref}
@@ -344,7 +344,7 @@ function SortHeader({ label, sortKey, sort, onSort }) {
 			>
 				<span>{label}</span>
 				{isActive ? (
-					<span className="text-[8px]">{arrow}</span>
+					<span className="text-xs leading-none">{arrow}</span>
 				) : (
 					<ArrowsUpDownIcon className="w-3 h-3 opacity-50" />
 				)}
@@ -904,7 +904,7 @@ export default function ProjectActivityAssignments({
 					<div>
 						<label
 							htmlFor="activity-start-date"
-							className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1"
+							className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1"
 						>
 							From
 						</label>
@@ -920,7 +920,7 @@ export default function ProjectActivityAssignments({
 					<div>
 						<label
 							htmlFor="activity-end-date"
-							className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1"
+							className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1"
 						>
 							To
 						</label>
@@ -972,7 +972,7 @@ export default function ProjectActivityAssignments({
 							Clear
 						</button>
 					)}
-					<span className="ml-auto text-[11px] text-gray-500">
+					<span className="ml-auto text-xs text-gray-500">
 						{flatRows.length}
 						{flatRows.length !== baseRows.length
 							? ` of ${baseRows.length}`

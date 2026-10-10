@@ -415,7 +415,7 @@ export default function TodoList() {
 												<div className="flex items-center flex-wrap gap-1.5 mt-1">
 													{/* Priority */}
 													<span
-														className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${PRIORITY_COLORS[todo.priority]}`}
+														className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border ${PRIORITY_COLORS[todo.priority]}`}
 													>
 														<FlagIcon className="h-3 w-3 mr-0.5" />
 														{PRIORITY_LABELS[todo.priority]}
@@ -427,7 +427,7 @@ export default function TodoList() {
 															const dueInfo = formatDueDate(todo.due_date);
 															return dueInfo ? (
 																<span
-																	className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${dueInfo.class}`}
+																	className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${dueInfo.class}`}
 																>
 																	<CalendarIcon className="h-3 w-3 mr-0.5" />
 																	{dueInfo.text}
