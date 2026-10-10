@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/utils/api-permissions';
 import { isWeeklyOff } from '@/utils/weekly-off';
 import { hasColumn } from '@/utils/schema-cache';
 import { computeDayPunchSpan } from '@/lib/time-present';
+import { linkedEmployeeId } from '@/app/api/me/_lib/session-employee';
 
 const DAY_MS = 86_400_000;
 
@@ -250,14 +251,8 @@ export async function GET(request, { params }) {
 			// account's own `users.employee_id` → `employees.id` link. No
 			// client-side employee lookup exists, so the admin
 			// live-monitoring view of another user's dashboard keeps working.
-			const [linked] = await db.execute(
-				`SELECT employee_id FROM users WHERE id = ? LIMIT 1`,
-				[requestedUserId]
-			);
-			const employeeId =
-				linked.length > 0 && linked[0].employee_id != null
-					? Number(linked[0].employee_id)
-					: null;
+			const linkedId = await linkedEmployeeId(db, requestedUserId);
+			const employeeId = linkedId != null ? Number(linkedId) : null;
 			attendanceData.punchEmployeeId = employeeId;
 
 			// One day of padding either side — the Attendance report's own rule:
