@@ -94,11 +94,12 @@ Use simplified technical English, about 80% of ASD-STE100.
 
 ### Layers, cheapest first
 
-- **Unit tests** (`src/**/*.test.*`, vitest) — the default. Pure logic only: no DB, no network, no `fetch`. Write them _before_ the implementation, and only after enumerating the failure modes.
-- **No integration layer exists.** There is no React Testing Library setup, and the route/page/component mock suites were purged on 2026-09-27 — do not recreate them. When behaviour is worth proving but is not pure logic, extract the decision into a shared module (precedent: #330's punch-span helper) and test that module.
-- **E2E (Playwright)** — reserved for **critical user journeys only**: sign-in, one representative CRUD flow, one financial flow. A ticket that touches no critical journey ships with no E2E spec.
+- **Pure logic** (27 suites) — no DB, no network, no `fetch`. Write them _before_ the implementation, and only after enumerating the failure modes.
+- **Component render tests** (9 suites, React Testing Library over jsdom) — the default for dashboard and UI behaviour. Render the real component with real payload shapes, query by role or label, assert the accessible name, the focus stop, the empty state. No route handler is faked and no source is pinned: the rendered DOM is the evidence.
+- **Route tests** (38 suites, mock `@/utils/database`) — API contract, status codes, authorization decisions.
+- **E2E (Playwright)** — **critical user journeys only**: sign-in, one representative CRUD flow, one financial flow. Runs on GitHub Actions. A ticket that touches no critical journey ships with no E2E spec.
 
-Before writing a test at a higher layer, ask whether the same assertion is possible at a lower one. If it is, write it there. A spec file over 200 lines is the signal that the coverage belongs at a lower layer — and a second spec for the same feature area means the coverage should move down.
+Before writing a test at a higher layer, ask whether a lower one can hold the assertion. If it can, write it there. A spec file over 200 lines means the coverage belongs at a lower layer, and a second spec for the same feature area means it should move down.
 
 ### When a browser spec is written
 
