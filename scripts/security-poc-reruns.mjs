@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Re-runs the piolium audit PoCs against a local production build and records
- * the evidence in `e2e/artifacts/security-poc-reruns.json` (ADR-evidence for
+ * the evidence in `artifacts/security-poc-reruns.json` (ADR-evidence for
  * issue #254, story 40: "before and after are evidenced, not asserted").
  *
  * The audit bundle (`piolium/`) is gitignored, so it is absent in CI. When the
@@ -9,7 +9,7 @@
  * exits 0 without writing an artifact.
  *
  * Usage:
- *   npm run build:e2e            # once, if .next is missing/stale
+ *   npm run build:prod            # once, if .next is missing/stale
  *   node scripts/security-poc-reruns.mjs
  *
  * Environment: the same `.env` as the app. The server runs on POC_PORT (3122)
@@ -26,7 +26,7 @@ const PORT = Number(process.env.POC_PORT || 3122);
 const BASE_URL = `http://localhost:${PORT}`;
 const ROOT = process.cwd();
 const FINDINGS = path.join(ROOT, 'piolium', 'findings');
-const ARTIFACT_DIR = path.join(ROOT, 'e2e', 'artifacts');
+const ARTIFACT_DIR = path.join(ROOT, 'artifacts');
 const ARTIFACT = path.join(ARTIFACT_DIR, 'security-poc-reruns.json');
 
 /** Run a command synchronously and capture everything for the artifact. */
@@ -71,11 +71,12 @@ async function waitForHealth(timeoutMs = 60_000) {
 
 const missing = [];
 if (!existsSync(FINDINGS)) missing.push('piolium/findings');
-if (!existsSync(path.join(ROOT, '.next', 'BUILD_ID'))) missing.push('.next build');
+if (!existsSync(path.join(ROOT, '.next', 'BUILD_ID')))
+	missing.push('.next build');
 if (missing.length > 0) {
 	console.log(
 		`[poc-reruns] skipped: ${missing.join(', ')} missing. ` +
-			'The audit bundle is not committed; run `npm run build:e2e` first, then ' +
+			'The audit bundle is not committed; run `npm run build:prod` first, then ' +
 			're-run this script where `piolium/` exists.'
 	);
 	process.exit(0);
@@ -102,7 +103,12 @@ const serverEnv = {
 };
 const server = spawn(
 	process.execPath,
-	[path.join(ROOT, 'node_modules', 'next', 'dist', 'bin', 'next'), 'start', '-p', String(PORT)],
+	[
+		path.join(ROOT, 'node_modules', 'next', 'dist', 'bin', 'next'),
+		'start',
+		'-p',
+		String(PORT),
+	],
 	{
 		cwd: ROOT,
 		env: serverEnv,
@@ -128,11 +134,7 @@ try {
 			'C1-forged-session-master-data-access',
 			'poc.py'
 		);
-		const c2 = path.join(
-			FINDINGS,
-			'C2-active-users-cookie-forgery',
-			'poc.py'
-		);
+		const c2 = path.join(FINDINGS, 'C2-active-users-cookie-forgery', 'poc.py');
 		const h1 = path.join(
 			FINDINGS,
 			'H1-stored-xss-weak-sanitize-bypass',

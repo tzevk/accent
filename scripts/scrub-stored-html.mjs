@@ -20,7 +20,7 @@
  *   node scripts/scrub-stored-html.mjs --apply                    # dev write
  *   node scripts/scrub-stored-html.mjs --apply --backup dump.json # backup first
  *   node scripts/scrub-stored-html.mjs --target=prod              # PROD_DB_*
- *   node scripts/scrub-stored-html.mjs --artifact e2e/artifacts/security-scrub-dry-run.json
+ *   node scripts/scrub-stored-html.mjs --artifact artifacts/security-scrub-dry-run.json
  *                                                    # record the run summary
  *
  * Columns — enumerated from the code on 2026-09-28 (rich text only):
@@ -312,10 +312,7 @@ try {
 				);
 				continue;
 			}
-			const conditions = [
-				`\`${column}\` IS NOT NULL`,
-				`\`${column}\` <> ''`,
-			];
+			const conditions = [`\`${column}\` IS NOT NULL`, `\`${column}\` <> ''`];
 			if (softDeleteTables.has(table)) conditions.push('isDelete = 0');
 			const [rows] = await connection.query(
 				`SELECT \`${pk}\` AS id, \`${column}\` AS value FROM \`${table}\` WHERE ${conditions.join(' AND ')}`
@@ -359,7 +356,13 @@ try {
 					);
 				}
 			}
-			report.push({ table, column, scanned: rows.length, changed, skippedCells });
+			report.push({
+				table,
+				column,
+				scanned: rows.length,
+				changed,
+				skippedCells,
+			});
 			console.log(
 				`[scrub] ${table}.${column} scanned=${rows.length} changed=${changed}` +
 					(skippedCells > 0 ? ` skipped=${skippedCells}` : '')

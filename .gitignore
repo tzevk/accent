@@ -13,12 +13,8 @@
 # testing
 /coverage
 
-# Playwright E2E runtime output
-/e2e/.auth/
-/e2e/artifacts/
-/playwright-report/
-/test-results/
-/blob-report/
+# security/ops run artifacts (predeploy, PoC re-runs, scrub dry run)
+/artifacts
 
 # next.js
 /.next/

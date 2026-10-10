@@ -47,6 +47,7 @@ Verify a finding against current code before treating it as open or resolved.
 - [DDL and soft-delete audit](explanations/DDL_AND_SOFT_DELETE_AUDIT.md)
 - [Responsive audit](explanations/RESPONSIVE_AUDIT.md)
 - [Changes summary](explanations/CHANGES_SUMMARY.md)
+- [E2E harness removal](explanations/E2E_HARNESS_REMOVAL.md)
 
 ## Plans and follow-ups
 
@@ -60,7 +61,6 @@ Use the [issue tracker workflow](agents/issue-tracker.md) to check current task 
 - [Next.js 16 upgrade follow-ups](todo/NEXT16_UPGRADE_FOLLOWUPS.md)
 - [Live monitoring presence](todo/LIVE_MONITORING_PRESENCE.md)
 - [Resource page decoupling](todo/RESOURCE_PAGE_DECOUPLING.md)
-- [E2E dev-loop research](todo/E2E_DEV_LOOP_RESEARCH.md)
 - [Monthly company and project expenditure design](app/reports/project-expenditure-design.md)
 - [Monthly company and project expenditure specification](app/reports/project-expenditure-spec.md) — [implementation issue #304](https://github.com/tzevk/accent/issues/304)
 
