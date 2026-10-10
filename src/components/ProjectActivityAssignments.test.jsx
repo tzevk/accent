@@ -308,6 +308,80 @@ describe('ProjectActivityAssignments', () => {
 		expect(screen.getByText('P-004 – Delta Warehouse')).toBeInTheDocument();
 	});
 
+	it('names every project navigation link with one pattern on both surfaces', () => {
+		// One activity row per project keeps one Project Number link per project
+		// in the table. The same projects then reach the empty state's
+		// assigned-projects picker through `accessibleProjects`.
+		const linkProjects = [
+			{ project_id: 11, project_name: 'Harbour Depot', project_code: 'P-010' },
+			{ project_id: 12, project_name: 'Ion Mill', project_code: 'P-011' },
+		];
+		const linkRows = linkProjects.map((project, index) => ({
+			project_status: 'Active',
+			project_start_date: '2026-01-01',
+			project_end_date: '2026-12-31',
+			activity_id: `act-link-${index}`,
+			activity_name: `Link Activity ${index}`,
+			discipline: 'Mechanical',
+			sub_activity_name: '',
+			default_manhours: 0,
+			planned_hours: 4,
+			actual_hours: 0,
+			due_date: currentMonthDate,
+			status: 'Not Started',
+			...project,
+		}));
+
+		// Reads the accessible name of every link the rendered surface carries.
+		// The name comes from the rendered DOM — the link's own label or its
+		// title — and reading the link back by that name has to find the same
+		// element, so the accessible name really is what the DOM carries.
+		const readLinkNames = () =>
+			screen.getAllByRole('link').map((link) => {
+				const name =
+					link.getAttribute('aria-label') || link.getAttribute('title');
+				expect(name).toMatch(/^Open documents for \S/);
+				expect(screen.getByRole('link', { name })).toBe(link);
+				return name;
+			});
+
+		const rows = render(
+			<ProjectActivityAssignments
+				userId={42}
+				preloadedData={{ assignments: linkRows, emptyProjects: [] }}
+			/>
+		);
+
+		const rowNames = readLinkNames();
+		// The label names the destination and carries the project it opens, so
+		// the link list stays distinguishable project by project.
+		for (const project of linkProjects) {
+			expect(rowNames).toContain(`Open documents for ${project.project_name}`);
+		}
+		// The click wording alone is never the accessible name.
+		expect(
+			screen.queryByRole('link', { name: 'Open documents' })
+		).not.toBeInTheDocument();
+		rows.unmount();
+
+		render(
+			<ProjectActivityAssignments
+				userId={42}
+				preloadedData={{
+					assignments: [],
+					emptyProjects: [],
+					accessibleProjects: linkProjects,
+				}}
+			/>
+		);
+
+		const pickerNames = readLinkNames();
+		expect(pickerNames).toEqual(rowNames);
+		expect(
+			screen.queryByRole('link', { name: 'Open documents' })
+		).not.toBeInTheDocument();
+	});
+
 	it('renders nothing when API returns 401/403 (no access)', async () => {
 		const noAccessFetch = vi.fn().mockResolvedValue({
 			status: 403,
