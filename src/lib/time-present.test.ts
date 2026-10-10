@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
 	bucketPunchesByEmployeeDay,
+	computeDayPunchSpan,
+	computeDayPunchSpans,
 	computeTimePresent,
 	computeTimePresentForDays,
+	MAX_MERGED_SPAN_HOURS,
 } from '@/lib/time-present';
 
 /** The calculator reads only these two fields; anything else is ignored. */
@@ -11,9 +14,20 @@ const punch = (employee_code: string, log_date: string) => ({
 	log_date,
 });
 
+/**
+ * A row as the Attendance report reads one: the Employee stamped at ingest
+ * (the only attribution the span helpers pool by), plus its device code.
+ */
+const stamped = (
+	employee_code: string,
+	employee_id: number,
+	log_date: string
+) => ({ employee_code, employee_id, log_date });
+
 const DAY_1 = '2026-09-01';
 const DAY_2 = '2026-09-02';
 const DAY_3 = '2026-09-03';
+const DAY_4 = '2026-09-04';
 
 describe('computeTimePresent — the odd-Punch defect this ticket exists to fix', () => {
 	it('reads 09:02 / 12:10 / 18:41 as first to last, not 3.13', () => {
@@ -443,5 +457,251 @@ describe('computeTimePresentForDays', () => {
 
 	it('reports nothing for an empty map', () => {
 		expect(computeTimePresentForDays(new Map())).toEqual([]);
+	});
+});
+
+describe('computeDayPunchSpan — one Employee-day\u2019s clock endpoints (ticket #330)', () => {
+	it("returns the day\u2019s first punch, last punch and punch count", () => {
+		const rows = [
+			stamped('102', 102, `${DAY_1} 09:00:00`),
+			stamped('102', 102, `${DAY_1} 12:30:00`),
+			stamped('102', 102, `${DAY_1} 17:30:00`),
+			// Another Employee punching through the same device: not this day's.
+			stamped('102', 103, `${DAY_1} 10:00:00`),
+		];
+
+		const span = computeDayPunchSpan(rows, { date: DAY_1, employeeId: 102 });
+
+		expect(span).toEqual({
+			date: DAY_1,
+			// 09:00 → 17:30 = 8h30m = 8.5h, first to last.
+			hours: 8.5,
+			merged: false,
+			mergeRefused: false,
+			punchCount: 3,
+			// Endpoints are the first and last rows, never a middle punch.
+			firstPunch: rows[0],
+			lastPunch: rows[2],
+			computable: true,
+		});
+	});
+
+	it('reads a single-punch day as uncomputable, never as a zero-length span', () => {
+		const rows = [stamped('106', 106, `${DAY_1} 09:20:00`)];
+
+		const span = computeDayPunchSpan(rows, { date: DAY_1, employeeId: 106 });
+
+		expect(span).toEqual({
+			date: DAY_1,
+			hours: null,
+			merged: false,
+			mergeRefused: false,
+			punchCount: 1,
+			firstPunch: rows[0],
+			lastPunch: rows[0],
+			computable: false,
+		});
+		expect(span.hours).not.toBe(0);
+	});
+
+	it('joins a next-day punch only inside MAX_MERGED_SPAN_HOURS of the day\u2019s first punch', () => {
+		// 22:00 → 06:30 next morning is 8.5h from the first punch and strictly
+		// after the day's last (only) punch, so the night shift is one span.
+		const rows = [
+			stamped('107', 107, `${DAY_1} 22:00:00`),
+			stamped('107', 107, `${DAY_2} 06:30:00`),
+		];
+
+		const day1 = computeDayPunchSpan(rows, { date: DAY_1, employeeId: 107 });
+
+		expect(day1).toEqual({
+			date: DAY_1,
+			hours: 8.5,
+			merged: true,
+			mergeRefused: false,
+			// The joined punch is not this day's own row, so it is not counted here.
+			punchCount: 1,
+			firstPunch: rows[0],
+			lastPunch: rows[1],
+			computable: true,
+		});
+
+		// The joined punch was consumed: no punch is counted twice.
+		const day2 = computeDayPunchSpan(rows, { date: DAY_2, employeeId: 107 });
+		expect(day2).toEqual({
+			date: DAY_2,
+			hours: null,
+			merged: false,
+			mergeRefused: false,
+			// It still counts on its own date, though it holds no punch of its own.
+			punchCount: 1,
+			firstPunch: null,
+			lastPunch: null,
+			computable: false,
+		});
+	});
+
+	it('refuses a would-be merge past MAX_MERGED_SPAN_HOURS and invents nothing', () => {
+		// 22:00 → 10:00:01 next morning is 12h00m01s from the first punch.
+		const rows = [
+			stamped('108', 108, `${DAY_1} 22:00:00`),
+			stamped('108', 108, `${DAY_2} 10:00:01`),
+		];
+
+		const span = computeDayPunchSpan(rows, { date: DAY_1, employeeId: 108 });
+
+		expect(span).toEqual({
+			date: DAY_1,
+			hours: null,
+			merged: false,
+			mergeRefused: true,
+			punchCount: 1,
+			firstPunch: rows[0],
+			// No tail joined, so the day's own punch stays the last one.
+			lastPunch: rows[0],
+			computable: false,
+		});
+		expect(span.hours).not.toBe(12);
+	});
+
+	it('merges at exactly MAX_MERGED_SPAN_HOURS from the day\u2019s first punch', () => {
+		// 22:00 → 10:00 next morning is exactly 12h, so the merge stands.
+		const rows = [
+			stamped('108', 108, `${DAY_1} 22:00:00`),
+			stamped('108', 108, `${DAY_2} 10:00:00`),
+		];
+
+		const span = computeDayPunchSpan(rows, { date: DAY_1, employeeId: 108 });
+
+		expect(span.hours).toBe(MAX_MERGED_SPAN_HOURS);
+		expect(span.merged).toBe(true);
+		expect(span.mergeRefused).toBe(false);
+		expect(span.lastPunch).toEqual(rows[1]);
+	});
+
+	it('pools a day\u2019s punches by the Employee stamped at ingest, not the device code', () => {
+		// Employee 42 punched on DEV-1, then was re-enrolled onto DEV-2: the
+		// punch recorded under the code the Employee left still belongs to
+		// that Employee, and DEV-1's other cardholder keeps their own day.
+		const rows = [
+			stamped('DEV-1', 42, `${DAY_1} 09:00:00`),
+			stamped('DEV-2', 42, `${DAY_1} 17:30:00`),
+			stamped('DEV-1', 77, `${DAY_1} 10:15:00`),
+		];
+
+		const span = computeDayPunchSpan(rows, { date: DAY_1, employeeId: 42 });
+
+		expect(span.punchCount).toBe(2);
+		expect(span.firstPunch).toEqual(rows[0]);
+		expect(span.lastPunch).toEqual(rows[1]);
+		expect(span.hours).toBe(8.5);
+
+		const other = computeDayPunchSpan(rows, { date: DAY_1, employeeId: 77 });
+		expect(other.punchCount).toBe(1);
+		expect(other.firstPunch).toEqual(rows[2]);
+		// One punch of its own: uncomputable, not zero.
+		expect(other.hours).toBeNull();
+
+		// A punch with no stamped Employee belongs to no Employee's day.
+		const unmapped = computeDayPunchSpan(
+			[punch('DEV-9', `${DAY_1} 09:00:00`), punch('DEV-9', `${DAY_1} 17:00:00`)],
+			{ date: DAY_1, employeeId: 42 }
+		);
+		expect(unmapped.punchCount).toBe(0);
+		expect(unmapped.firstPunch).toBeNull();
+	});
+});
+
+describe('computeDayPunchSpans — the wide view of the same walk', () => {
+	it('returns every employee-day ordered by employee then date, keeping a day a merge emptied', () => {
+		const rows = [
+			stamped('DEV-2', 42, `${DAY_2} 06:30:00`),
+			stamped('DEV-1', 42, `${DAY_1} 22:00:00`),
+			stamped('DEV-3', 77, `${DAY_1} 08:45:00`),
+		];
+
+		expect(computeDayPunchSpans(rows)).toEqual([
+			{
+				date: DAY_1,
+				hours: 8.5,
+				merged: true,
+				mergeRefused: false,
+				punchCount: 1,
+				firstPunch: rows[1],
+				lastPunch: rows[0],
+				computable: true,
+			},
+			{
+				// The morning punch became DAY_1's tail: no punch of its own
+				// left, but its one punch still counts on its own date.
+				date: DAY_2,
+				hours: null,
+				merged: false,
+				mergeRefused: false,
+				punchCount: 1,
+				firstPunch: null,
+				lastPunch: null,
+				computable: false,
+			},
+			{
+				date: DAY_1,
+				hours: null,
+				merged: false,
+				mergeRefused: false,
+				punchCount: 1,
+				firstPunch: rows[2],
+				lastPunch: rows[2],
+				computable: false,
+			},
+		]);
+	});
+});
+
+describe('punchCount is report-invariant', () => {
+	it('punchCount equals the number of raw rows carrying that date, so the Attendance report can count punches from the span instead of from raw rows', () => {
+		// A window the way the Attendance report pads one: two employees,
+		// several days, one cross-midnight merge, an unmapped-free row set and
+		// one Employee who never punched on DAY_2.
+		const rows = [
+			// Employee 42: an ordinary day, a lone punch, then a night shift
+			// whose morning tail merges into the day the shift began.
+			stamped('DEV-1', 42, `${DAY_1} 09:00:00`),
+			stamped('DEV-1', 42, `${DAY_1} 18:00:00`),
+			stamped('DEV-2', 42, `${DAY_2} 09:15:00`),
+			stamped('DEV-2', 42, `${DAY_3} 22:00:00`),
+			stamped('DEV-1', 42, `${DAY_4} 06:30:00`),
+			// Employee 77: three punches one day, none the next.
+			stamped('DEV-3', 77, `${DAY_1} 08:30:00`),
+			stamped('DEV-3', 77, `${DAY_1} 12:00:00`),
+			stamped('DEV-3', 77, `${DAY_1} 16:45:00`),
+		];
+		expect(rows).toHaveLength(8);
+
+		// Hand-derived from the rows above, not from the calculator.
+		const rawRowsPerDay: [employeeId: number, date: string, rawRows: number][] = [
+			[42, DAY_1, 2],
+			[42, DAY_2, 1],
+			[42, DAY_3, 1],
+			// The punch DAY_3's merge consumed still counts on its own date.
+			[42, DAY_4, 1],
+			[77, DAY_1, 3],
+			// Never punched that day.
+			[77, DAY_2, 0],
+		];
+
+		for (const [employeeId, date, rawRows] of rawRowsPerDay) {
+			const span = computeDayPunchSpan(rows, { date, employeeId });
+			// The invariance that lets
+			// src/app/reports/attendance-report/data-source.ts count a cell's
+			// punches from `span.punchCount` instead of from raw rows without
+			// moving the report's figures.
+			expect(span.punchCount).toBe(rawRows);
+		}
+
+		// Summed over the whole window the counts are still every raw row:
+		// no punch lost, none counted twice.
+		let total = 0;
+		for (const span of computeDayPunchSpans(rows)) total += span.punchCount;
+		expect(total).toBe(rows.length);
 	});
 });
