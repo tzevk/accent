@@ -1284,7 +1284,7 @@ export default function ProjectActivityAssignments({
 													status: e.target.value,
 												}))
 											}
-											className="w-full px-0.5 py-0.5 text-[10px] border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+											className="w-full px-0.5 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 											title="Status"
 										>
 											<option value="Not Started">Not Started</option>
@@ -1452,7 +1452,7 @@ export default function ProjectActivityAssignments({
 															due_date: e.target.value,
 														}))
 													}
-													className="px-1 py-0.5 text-[10px] border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+													className="px-1 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 												/>
 											) : (
 												<span className="text-[#4A1254]">
@@ -1471,7 +1471,7 @@ export default function ProjectActivityAssignments({
 															status: e.target.value,
 														}))
 													}
-													className="w-full px-0.5 py-0.5 text-[10px] border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+													className="w-full px-0.5 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 												>
 													<option value="Not Started">Not Started</option>
 													<option value="In Progress">In Progress</option>

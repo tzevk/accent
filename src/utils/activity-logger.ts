@@ -355,11 +355,6 @@ async function updateWorkSession(
 	}
 }
 
-// `endUserSession` lives in ./work-session-close.js — the single close path the
-// logout, the page-close beacon and the stale-session sweep all share. It stays
-// exported from here because that is where its callers import it from.
-export { endUserSession, WORK_SESSION_END_SOURCES } from './work-session-close.js';
-
 // ─── Status queries ─────────────────────────────────────────────────
 
 export interface ActivityLogFilter {
