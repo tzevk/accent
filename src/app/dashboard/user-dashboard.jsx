@@ -237,7 +237,8 @@ const AnalogClock = memo(function AnalogClock() {
 const IdleBadge = memo(function IdleBadge({ idleSeconds }) {
 	return (
 		<div
-			className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold backdrop-blur-sm transition-colors duration-200 ${
+			data-testid="idle-badge"
+			className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold tabular-nums backdrop-blur-sm transition-colors duration-200 ${
 				idleSeconds > 60
 					? 'bg-red-500/20 text-red-100 ring-1 ring-red-400/30'
 					: idleSeconds > 30
@@ -785,7 +786,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 						data-motion="scale-in"
 						className="mx-4 max-w-lg w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]"
 					>
-						<div className="bg-gradient-to-r from-orange-500 to-red-500 px-6 py-4 flex items-center gap-3">
+						<div className="bg-gradient-to-r from-orange-700 to-red-700 px-6 py-4 flex items-center gap-3">
 							<div className="w-11 h-11 rounded-full bg-white/25 flex items-center justify-center shrink-0">
 								<ExclamationCircleIcon className="h-7 w-7 text-white" />
 							</div>
@@ -796,7 +797,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 								>
 									Activity Update Required
 								</h2>
-								<p className="text-xs text-white/80">
+								<p
+									data-testid="reminder-subtitle"
+									className="text-xs text-white"
+								>
 									You have pending entries for today
 								</p>
 							</div>
@@ -825,12 +829,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											<p className="text-xs font-semibold text-gray-900 truncate">
 												{a.activity_name}
 											</p>
-											<p className="text-[10px] text-gray-500 truncate">
+											<p className="text-xs text-gray-500 truncate">
 												{a.project_name} &middot; {a.project_code}
 											</p>
 										</div>
 										<span
-											className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border ${
+											className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${
 												a.status === 'In Progress'
 													? 'bg-blue-50 text-blue-700 border-blue-200'
 													: a.status === 'Completed'
@@ -843,7 +847,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									</div>
 								))}
 								{pendingActivities.length > 10 && (
-									<p className="text-xs text-gray-400 text-center">
+									<p className="text-xs text-gray-500 text-center">
 										+{pendingActivities.length - 10} more
 									</p>
 								)}
@@ -988,7 +992,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										) : null}
 										<div className="min-w-0">
 											<nav
-												className="text-[11px] xl:text-xs text-white/60 mb-0.5"
+												className="text-xs text-white/60 mb-0.5"
 												aria-label="Breadcrumb"
 											>
 												<ol className="inline-flex items-center gap-1">
@@ -1082,15 +1086,16 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													/>
 												)}
 											</div>
-											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 												Punch In
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${punchInValue ? (isLateLogin(punchInValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-400'}`}
+												data-testid="punch-in-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${punchInValue ? (isLateLogin(punchInValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-500'}`}
 											>
 												{punchInValue ? formatTime(punchInValue) : NO_VALUE}
 												{punchInValue && isLateLogin(punchInValue) && (
-													<span className="ml-1 text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
+													<span className="ml-1 text-xs font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
 														Late
 													</span>
 												)}
@@ -1118,15 +1123,16 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													<ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
 												</div>
 											</div>
-											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 												Punch Out
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${punchOutValue ? (isOvertime(punchOutValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-400'}`}
+												data-testid="punch-out-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${punchOutValue ? (isOvertime(punchOutValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-500'}`}
 											>
 												{punchOutValue ? formatTime(punchOutValue) : NO_VALUE}
 												{punchOutValue && isOvertime(punchOutValue) && (
-													<span className="ml-1 text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
+													<span className="ml-1 text-xs font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
 														OT
 													</span>
 												)}
@@ -1199,28 +1205,30 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 															/>
 														)}
 													</div>
-													<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+													<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 														Total Time
 													</p>
 													<p
-														className={`text-base font-extrabold leading-tight tracking-tight ${!hasLogin ? 'text-gray-400' : isComplete ? 'text-green-700' : 'text-red-600'}`}
+														data-testid="total-time-figure"
+														className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${!hasLogin ? 'text-gray-500' : isComplete ? 'text-green-700' : 'text-red-600'}`}
 													>
 														{hasLogin
 															? `${liveTotalTime.hrs}h ${liveTotalTime.mins}m`
 															: NO_VALUE}
 														{hasLogin && isComplete && (
-															<span className="ml-1 text-[9px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full align-middle">
+															<span className="ml-1 text-xs font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full align-middle">
 																✓
 															</span>
 														)}
 													</p>
 													{hasLogin && (
 														<p
-															className={`text-[10px] mt-1 font-medium leading-snug ${isComplete ? 'text-green-600' : 'text-red-500'}`}
+															data-testid="total-time-breakdown"
+															className={`text-xs mt-1 font-medium leading-snug tabular-nums ${isComplete ? 'text-green-600' : 'text-red-700'}`}
 														>
 															{liveTotalTime.elapsedHrs}h{' '}
 															{liveTotalTime.elapsedMins}m
-															<span className="text-red-500 font-bold">
+															<span className="text-red-700 font-bold">
 																{' '}
 																−{' '}
 																{liveTotalTime.idleHrs > 0
@@ -1228,11 +1236,14 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 																	: ''}
 																{liveTotalTime.idleMins}m
 															</span>
-															<span className="text-gray-400"> idle</span>
+															<span className="text-gray-500"> idle</span>
 														</p>
 													)}
 													{hasLogin && !isComplete && (
-														<p className="text-[9px] text-red-500 mt-0.5 font-semibold">
+														<p
+															data-testid="total-time-remaining"
+															className="text-xs text-red-700 mt-0.5 font-semibold tabular-nums"
+														>
 															{Math.floor(
 																(EXPECTED_WORK_MINS - totalMins) / 60
 															) > 0
@@ -1256,14 +1267,18 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													<CalendarDaysIcon className="h-4 w-4" />
 												</div>
 											</div>
-											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 												Present
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-400'}`}
+												data-testid="present-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
 												{attendance.daysPresent}
-												<span className="text-sm font-semibold text-gray-400 ml-0.5">
+												<span
+													data-testid="present-denominator"
+													className="text-sm font-semibold text-gray-500 ml-0.5"
+												>
 													/ {attendance.daysInMonth}
 												</span>
 											</p>
@@ -1282,10 +1297,11 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									{/* Leave Days — click to open full Leave Management */}
 									<button
 										type="button"
+										data-testid="leave-tile"
 										onClick={() => router.push('/user/leaves')}
 										aria-label="Open leave management — view balances and apply for leave"
 										title="View balances and apply for leave"
-										className="group relative rounded-xl text-left border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-yellow-50 p-3 cursor-pointer hover:shadow-lg hover:border-amber-400 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]/50 focus-visible:ring-offset-1"
+										className="group relative rounded-xl text-left border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-yellow-50 p-3 cursor-pointer hover:shadow-lg hover:border-amber-400 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-1"
 									>
 										<div className="absolute top-0 right-0 w-20 h-20 bg-amber-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
 										<div className="relative">
@@ -1296,22 +1312,29 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													<CalendarIcon className="h-4 w-4" />
 												</div>
 											</div>
-											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 												Leaves
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-400'}`}
+												data-testid="leave-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
 												{attendance.leaves.used}
-												<span className="text-sm font-semibold text-gray-400 ml-0.5">
+												<span
+													data-testid="leave-denominator"
+													className="text-sm font-semibold text-gray-500 ml-0.5"
+												>
 													/ {attendance.leaves.total}
 												</span>
 											</p>
-											<p className="text-[11px] text-amber-700 font-semibold mt-1.5 flex items-center gap-1">
+											<p
+												data-testid="leave-balance"
+												className="text-xs text-amber-700 font-semibold mt-1.5 flex items-center gap-1 tabular-nums"
+											>
 												<span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />{' '}
 												{attendance.leaves.balance} remaining
 											</p>
-											<p className="mt-1.5 pt-1.5 border-t border-amber-200/60 -mx-px flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#64126D] transition-colors duration-150 group-hover:text-[#4a0d52]">
+											<p className="mt-1.5 pt-1.5 border-t border-amber-200/60 -mx-px flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#64126D] transition-colors duration-150 group-hover:text-[#4a0d52]">
 												View &amp; apply
 												<ArrowRightIcon className="h-2.5 w-2.5 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
 											</p>
@@ -1328,18 +1351,19 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													<FireIcon className="h-4 w-4" />
 												</div>
 											</div>
-											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 												Overtime
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-400'}`}
+												data-testid="overtime-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
 												{attendance.overtimeHours}
-												<span className="text-sm font-semibold text-gray-400 ml-0.5">
+												<span className="text-sm font-semibold text-gray-500 ml-0.5">
 													h
 												</span>
 											</p>
-											<p className="text-[11px] text-gray-500 mt-1.5 font-medium">
+											<p className="text-xs text-gray-500 mt-1.5 font-medium">
 												this month
 											</p>
 										</div>
@@ -1391,11 +1415,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 															className={`w-2 h-2 rounded-full shadow-sm ${effectiveIdleSecs > 1800 ? 'bg-red-500 shadow-red-300' : effectiveIdleSecs > 300 ? 'bg-amber-500 shadow-amber-300' : 'bg-emerald-500 shadow-emerald-300'} animate-pulse`}
 														/>
 													</div>
-													<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+													<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 														Idle
 													</p>
 													<p
-														className={`text-base font-extrabold leading-tight tracking-tight ${
+														data-testid="idle-figure"
+														className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${
 															effectiveIdleSecs > 1800
 																? 'text-red-800'
 																: effectiveIdleSecs > 300
@@ -1408,7 +1433,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 															: fmtIdle(effectiveIdleSecs)}
 													</p>
 													<p
-														className={`text-[11px] mt-1.5 font-semibold flex items-center gap-1 ${effectiveIdleSecs > 1800 ? 'text-red-600' : effectiveIdleSecs > 300 ? 'text-amber-600' : 'text-emerald-600'}`}
+														data-testid="idle-caption"
+														className={`text-xs mt-1.5 font-semibold flex items-center gap-1 tabular-nums ${effectiveIdleSecs > 1800 ? 'text-red-600' : effectiveIdleSecs > 300 ? 'text-amber-600' : 'text-emerald-600'}`}
 													>
 														<span
 															className={`w-1.5 h-1.5 rounded-full inline-block ${effectiveIdleSecs > 1800 ? 'bg-red-500' : effectiveIdleSecs > 300 ? 'bg-amber-500' : 'bg-emerald-500'}`}
@@ -1455,14 +1481,14 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 																		deadline.title ||
 																		'Activity'}
 																</p>
-																<p className="text-[10px] text-gray-500 truncate">
+																<p className="text-xs text-gray-500 truncate">
 																	{deadline.project_title ||
 																		deadline.project_code ||
 																		''}
 																</p>
 															</div>
 															<span
-																className={`ml-1.5 px-1.5 py-0.5 text-[10px] font-medium rounded ${
+																className={`ml-1.5 px-1.5 py-0.5 text-xs font-medium rounded ${
 																	deadline.days_remaining <= 1
 																		? 'bg-red-100 text-red-700'
 																		: deadline.days_remaining <= 3
