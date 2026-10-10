@@ -3,7 +3,9 @@
 import React, {
 	useState,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
+	useRef,
 	useCallback,
 	memo,
 	lazy,
@@ -96,6 +98,52 @@ function fmtIdle(seconds) {
 // ── Section skeleton for Suspense fallbacks ──
 function SectionSkeleton({ h = 'h-32' }) {
 	return <div className={`${h} bg-gray-100/60 rounded-xl animate-pulse`} />;
+}
+
+// ── Warning overlay shell (native dialog semantics) ──
+// The platform owns the dialog behaviour the overlays used to fake:
+// focus moves in when the dialog opens, the page behind it goes inert so
+// tabbing never leaves the overlay, Escape closes it and focus returns to
+// the control that was focused when it opened. Nothing here traps focus.
+// Each overlay mounts only while it is open, so the dialog is shown with
+// showModal() on mount and closed again when React unmounts it — closing the
+// element (not dropping it) is what returns focus to the opening control.
+function WarningDialog({ labelledBy, onClose, children }) {
+	const dialogRef = useRef(null);
+	// Held in a ref so this effect depends on nothing: the parent re-renders
+	// on every clock tick and idle poll, and a fresh callback identity would
+	// close and reopen the overlay along with it.
+	const onCloseRef = useRef(onClose);
+	onCloseRef.current = onClose;
+
+	useLayoutEffect(() => {
+		const node = dialogRef.current;
+		if (!node) return;
+		const handleClose = () => {
+			// React's development StrictMode runs this mount twice, and the
+			// close it queues from the first teardown lands after the dialog is
+			// open again. A close the user caused always arrives with the
+			// dialog already closed, so an open dialog here is our own.
+			if (node.open) return;
+			onCloseRef.current();
+		};
+		node.showModal();
+		node.addEventListener('close', handleClose);
+		return () => {
+			node.removeEventListener('close', handleClose);
+			if (node.open) node.close();
+		};
+	}, []);
+
+	return (
+		<dialog
+			ref={dialogRef}
+			aria-labelledby={labelledBy}
+			className="fixed inset-0 z-50 m-0 flex h-full max-h-none max-w-none w-full items-center justify-center border-0 bg-black/40 p-0 backdrop-blur-sm"
+		>
+			{children}
+		</dialog>
+	);
 }
 
 // ── AnalogClock: isolated 1-second interval — re-renders itself only ──
@@ -729,11 +777,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 			{/* Activity Reminder Modal */}
 			{showActivityReminder && pendingActivities.length > 0 && (
-				<div
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-					role="dialog"
-					aria-modal="true"
-					aria-labelledby="activity-reminder-title"
+				<WarningDialog
+					labelledBy="activity-reminder-title"
+					onClose={() => setShowActivityReminder(false)}
 				>
 					<div
 						data-motion="scale-in"
@@ -823,17 +869,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							</button>
 						</div>
 					</div>
-				</div>
+				</WarningDialog>
 			)}
 
 			{/* Idle Warning Modal */}
 			{isIdle && !dismissed && (
-				<div
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-					role="dialog"
-					aria-modal="true"
-					aria-labelledby="idle-warning-title"
-				>
+				<WarningDialog labelledBy="idle-warning-title" onClose={dismiss}>
 					<div
 						data-motion="scale-in"
 						className="mx-4 max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]"
@@ -891,7 +932,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							</button>
 						</div>
 					</div>
-				</div>
+				</WarningDialog>
 			)}
 
 			<div className="flex pt-2 sm:pl-0">
