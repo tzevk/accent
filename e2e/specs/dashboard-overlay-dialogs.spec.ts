@@ -323,9 +323,13 @@ test.describe('the warning overlays as native dialogs', () => {
 			await expect(
 				page.locator('[data-section="project-activities"]')
 			).toHaveCount(1);
+			// The reminder's own one-per-day suppression is recorded, so it
+			// stays dismissed for the rest of the session.
+			const today = new Date().toISOString().split('T')[0];
 			expect(
-				await page.evaluate(() =>
-					sessionStorage.getItem('activity_reminder_2026-10-09')
+				await page.evaluate(
+					(key) => sessionStorage.getItem(`activity_reminder_${key}`),
+					today
 				)
 			).toBe('1');
 			expect(await backgroundCanTakeFocus(page)).toBe(true);
