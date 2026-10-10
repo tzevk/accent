@@ -132,10 +132,13 @@ async function fetchProjectDocumentCounts(db, projectIds) {
 		add(row.project_id, row.n);
 	}
 
+	// The library store is counted the way the Project page lists it —
+	// every `project_documents` row for the project, no status filter (the
+	// table has no `isDelete` column either).
 	for (const row of await readRows(
 		`SELECT project_id, COUNT(*) AS n
        FROM project_documents
-       WHERE status = 'active' AND project_id IN (${placeholders})
+       WHERE project_id IN (${placeholders})
        GROUP BY project_id`
 	)) {
 		add(row.project_id, row.n);
