@@ -45,6 +45,7 @@ export default function ViewQuotationPage() {
 	const source = searchParams.get('source') || 'project';
 
 	const [loading, setLoading] = useState(true);
+	const [downloading, setDownloading] = useState(false);
 	const [quotation, setQuotation] = useState({
 		quotation_number: '',
 		quotation_date: '',
@@ -188,12 +189,36 @@ export default function ViewQuotationPage() {
 		}
 	}, [authLoading, user, id, fetchQuotation]);
 
-	// Download/Print quotation
-	const handleDownload = () => {
-		window.open(
-			`/api/admin/quotations/download?id=${id}&source=${source}`,
-			'_blank'
-		);
+	// Download/Print quotation. Fetch + blob instead of window.open: a popup
+	// can be blocked or redirected (an expired session answers with the
+	// sign-in page), and both look like "nothing happened" to the user.
+	const handleDownload = async () => {
+		setDownloading(true);
+		try {
+			const res = await fetch(
+				`/api/admin/quotations/download?id=${id}&source=${source}`
+			);
+			const contentType = res.headers.get('content-type') || '';
+			if (!res.ok || !contentType.includes('application/pdf')) {
+				const detail = contentType.includes('application/json')
+					? ((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`)
+					: `HTTP ${res.status} (received ${contentType || 'no content-type'})`;
+				throw new Error(detail);
+			}
+			const blob = await res.blob();
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = `${quotation.quotation_number || 'quotation'}.pdf`;
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			URL.revokeObjectURL(url);
+		} catch (error) {
+			alert(`Could not generate the PDF: ${error.message}`);
+		} finally {
+			setDownloading(false);
+		}
 	};
 
 	if (authLoading || loading) {
@@ -239,10 +264,20 @@ export default function ViewQuotationPage() {
 						<div className="flex items-center gap-3">
 							<button
 								onClick={handleDownload}
-								className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
+								disabled={downloading}
+								className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
 							>
-								<PrinterIcon className="h-5 w-5" />
-								Print
+								{downloading ? (
+									<>
+										<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600" />
+										Generating…
+									</>
+								) : (
+									<>
+										<PrinterIcon className="h-5 w-5" />
+										Print
+									</>
+								)}
 							</button>
 						</div>
 					</div>
