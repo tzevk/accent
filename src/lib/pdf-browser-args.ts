@@ -6,9 +6,11 @@
  * runner shows exactly that and aborts with SIGABRT, which broke the three
  * PDF assertions in CI.
  *
- * The Vercel path is untouched: it launches with `@sparticuz/chromium.args`,
- * which already carry the container-safe flags. Windows/macOS keep Chrome's
- * default sandbox.
+ * The Vercel branch of the quotation download route is separate: it launches
+ * `@sparticuz/chromium.args` through `puppeteer.defaultArgs` with
+ * `headless: 'shell'` (the documented serverless usage) and Chromium's
+ * graphics mode disabled — so this helper covers local and CI launches only.
+ * Windows/macOS keep Chrome's default sandbox.
  */
 export function localPdfBrowserArgs(): string[] {
 	// Containers have a small /dev/shm; Chrome needs this everywhere headless.
