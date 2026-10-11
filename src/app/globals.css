@@ -73,12 +73,8 @@
 	--color-foreground: var(--foreground);
 }
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		--background: #0a0a0a;
-		--foreground: #ededed;
-	}
-}
+/* Light-only app: backgrounds are forced white below, so a dark-mode foreground
+   here would render near-invisible text on white. */
 
 body {
 	background: var(--background);

@@ -21,7 +21,8 @@ import {
 	ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '@/lib/format';
-import { R, add, mul, pctOf, toNumber } from '@/lib/money';
+import { mul, toNumber } from '@/lib/money';
+import { computeQuotationTotals } from '@/lib/quotation-totals';
 
 export default function EditQuotationPage() {
 	const params = useParams();
@@ -309,19 +310,14 @@ export default function EditQuotationPage() {
 			}
 
 			// Recalculate totals
-			const grossAmount = toNumber(
-				newItems.reduce((sum, item) => add(sum, item.amount || 0), R(0))
-			);
-			const gstPct = prev.gst_percentage || 18;
-			const gstAmount = toNumber(pctOf(grossAmount, gstPct));
-			const netAmount = toNumber(add(grossAmount, gstAmount));
+			const totals = computeQuotationTotals(newItems, prev.gst_percentage);
 
 			return {
 				...prev,
 				scope_items: newItems,
-				gross_amount: grossAmount.toFixed(2),
-				gst_amount: gstAmount.toFixed(2),
-				net_amount: netAmount.toFixed(2),
+				gross_amount: totals.gross.toFixed(2),
+				gst_amount: totals.gst.toFixed(2),
+				net_amount: totals.net.toFixed(2),
 			};
 		});
 	};
@@ -350,18 +346,13 @@ export default function EditQuotationPage() {
 			const newItems = prev.scope_items
 				.filter((_, i) => i !== index)
 				.map((item, i) => ({ ...item, sr_no: i + 1 }));
-			const grossAmount = toNumber(
-				newItems.reduce((sum, item) => add(sum, item.amount || 0), R(0))
-			);
-			const gstPct = prev.gst_percentage || 18;
-			const gstAmount = toNumber(pctOf(grossAmount, gstPct));
-			const netAmount = toNumber(add(grossAmount, gstAmount));
+			const totals = computeQuotationTotals(newItems, prev.gst_percentage);
 			return {
 				...prev,
 				scope_items: newItems,
-				gross_amount: grossAmount.toFixed(2),
-				gst_amount: gstAmount.toFixed(2),
-				net_amount: netAmount.toFixed(2),
+				gross_amount: totals.gross.toFixed(2),
+				gst_amount: totals.gst.toFixed(2),
+				net_amount: totals.net.toFixed(2),
 			};
 		});
 	};
@@ -507,6 +498,12 @@ export default function EditQuotationPage() {
 			</div>
 		);
 	}
+
+	// Live CGST/SGST split for the totals section (gross/GST/net rows read state).
+	const totals = computeQuotationTotals(
+		quotation.scope_items,
+		quotation.gst_percentage
+	);
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
@@ -807,7 +804,7 @@ export default function EditQuotationPage() {
 							</div>
 
 							{/* Totals Section */}
-							{/* <div className="border border-gray-300 mb-4">
+							<div className="border border-gray-300 mb-4">
 								<div className="flex justify-end">
 									<div className="w-80">
 										<div className="flex border-b border-gray-300">
@@ -829,15 +826,15 @@ export default function EditQuotationPage() {
 													onChange={(e) => {
 														const type = e.target.value;
 														setQuotation((prev) => {
-															const gross = R(prev.gross_amount || 0);
-															const gstPct =
-																parseFloat(prev.gst_percentage) || 0;
-															const gstAmt = pctOf(gross, gstPct);
+															const totals = computeQuotationTotals(
+																prev.scope_items,
+																prev.gst_percentage
+															);
 															return {
 																...prev,
 																gst_type: type,
-																gst_amount: gstAmt.toFixed(2),
-																net_amount: gross.add(gstAmt).toFixed(2),
+																gst_amount: totals.gst.toFixed(2),
+																net_amount: totals.net.toFixed(2),
 															};
 														});
 													}}
@@ -859,15 +856,20 @@ export default function EditQuotationPage() {
 														name="gst_percentage"
 														value={quotation.gst_percentage}
 														onChange={(e) => {
-															const gstPct = parseFloat(e.target.value) || 0;
-															const gross = R(quotation.gross_amount || 0);
-															const gstAmt = pctOf(gross, gstPct);
-															setQuotation((prev) => ({
-																...prev,
-																gst_percentage: gstPct,
-																gst_amount: gstAmt.toFixed(2),
-																net_amount: gross.add(gstAmt).toFixed(2),
-															}));
+															// Keep the raw text so decimals like "2.5" survive typing.
+															const raw = e.target.value;
+															setQuotation((prev) => {
+																const totals = computeQuotationTotals(
+																	prev.scope_items,
+																	raw
+																);
+																return {
+																	...prev,
+																	gst_percentage: raw,
+																	gst_amount: totals.gst.toFixed(2),
+																	net_amount: totals.net.toFixed(2),
+																};
+															});
 														}}
 														className="w-12 px-1 py-0.5 text-sm text-center border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
 													/>
@@ -883,9 +885,7 @@ export default function EditQuotationPage() {
 														{(parseFloat(quotation.gst_percentage) || 0) / 2}%:
 													</div>
 													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
-														{formatCurrency(
-															mul(quotation.gst_amount || 0, 0.5).toNumber()
-														)}
+														{formatCurrency(toNumber(totals.cgst))}
 													</div>
 												</div>
 												<div className="flex border-b border-gray-300 bg-gray-50/30">
@@ -894,9 +894,7 @@ export default function EditQuotationPage() {
 														{(parseFloat(quotation.gst_percentage) || 0) / 2}%:
 													</div>
 													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
-														{formatCurrency(
-															mul(quotation.gst_amount || 0, 0.5).toNumber()
-														)}
+														{formatCurrency(toNumber(totals.sgst))}
 													</div>
 												</div>
 											</>
@@ -911,9 +909,17 @@ export default function EditQuotationPage() {
 											</div>
 										)}
 
+										<div className="flex bg-purple-50">
+											<div className="flex-1 p-2 border-r border-gray-300 font-bold text-sm text-right">
+												Net Amount:
+											</div>
+											<div className="w-32 p-2 text-right font-bold text-purple-700">
+												{formatCurrency(quotation.net_amount)}
+											</div>
+										</div>
 									</div>
 								</div>
-							</div> */}
+							</div>
 
 							{/* Amount in Words */}
 							<div className="border border-gray-300 mb-4">
