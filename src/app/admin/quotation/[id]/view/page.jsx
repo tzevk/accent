@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
@@ -11,16 +11,38 @@ import {
 	PrinterIcon,
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '@/lib/format';
+import { sanitizeHtml } from '@/lib/sanitize';
+
+// Renders stored tiptap rich text (same pattern as the project pages — P0.1
+// sanitized at render time per ADR-0012); plain text falls back to pre-wrap.
+function HtmlContent({ html, className = '' }) {
+	if (!html) return null;
+	if (/<[^>]+>/.test(html)) {
+		return (
+			<div
+				className={`text-sm text-gray-700 leading-relaxed rich-text-content ${className}`}
+				dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
+			/>
+		);
+	}
+	return (
+		<p
+			className={`text-sm text-gray-700 whitespace-pre-wrap leading-relaxed ${className}`}
+		>
+			{html}
+		</p>
+	);
+}
 
 export default function ViewQuotationPage() {
 	const params = useParams();
 	const router = useRouter();
+	const searchParams = useSearchParams();
 	const { user, loading: authLoading } = useSessionRBAC();
 	const id = params?.id;
-	const source =
-		typeof window !== 'undefined'
-			? new URLSearchParams(window.location.search).get('source') || 'project'
-			: 'project';
+	// Router state, not window.location: the stale URL made the first fetch
+	// hit the wrong table (a 404 in the logs) before the correct one.
+	const source = searchParams.get('source') || 'project';
 
 	const [loading, setLoading] = useState(true);
 	const [quotation, setQuotation] = useState({
@@ -332,8 +354,8 @@ export default function ViewQuotationPage() {
 												<td className="p-2 border-r border-b border-gray-300 text-center text-sm">
 													{item.sr_no}
 												</td>
-												<td className="p-2 border-r border-b border-gray-300 text-sm whitespace-pre-line">
-													{item.description}
+												<td className="p-2 border-r border-b border-gray-300 text-sm">
+													<HtmlContent html={item.description} />
 												</td>
 												<td className="p-2 border-r border-b border-gray-300 text-sm text-center">
 													{item.qty}
@@ -429,8 +451,8 @@ export default function ViewQuotationPage() {
 								<div className="p-3 bg-gray-50 font-semibold text-sm border-b border-gray-300">
 									General Terms and conditions
 								</div>
-								<div className="p-3 text-sm whitespace-pre-line">
-									{quotation.terms_and_conditions}
+								<div className="p-3">
+									<HtmlContent html={quotation.terms_and_conditions} />
 								</div>
 							</div>
 
@@ -451,9 +473,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Scope of Work:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_scope_of_work}
-											</div>
+											<HtmlContent html={quotation.annexure_scope_of_work} />
 										</div>
 									</div>
 
@@ -466,9 +486,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Input Document:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_input_document}
-											</div>
+											<HtmlContent html={quotation.annexure_input_document} />
 										</div>
 									</div>
 
@@ -481,9 +499,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Deliverables:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_deliverables}
-											</div>
+											<HtmlContent html={quotation.annexure_deliverables} />
 										</div>
 									</div>
 
@@ -496,9 +512,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Software:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_software}
-											</div>
+											<HtmlContent html={quotation.annexure_software} />
 										</div>
 									</div>
 
@@ -511,9 +525,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Duration:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_duration}
-											</div>
+											<HtmlContent html={quotation.annexure_duration} />
 										</div>
 									</div>
 
@@ -526,9 +538,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Site Visit:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_site_visit}
-											</div>
+											<HtmlContent html={quotation.annexure_site_visit} />
 										</div>
 									</div>
 
@@ -541,9 +551,9 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Quotation Validity:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_quotation_validity}
-											</div>
+											<HtmlContent
+												html={quotation.annexure_quotation_validity}
+											/>
 										</div>
 									</div>
 
@@ -556,9 +566,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Mode of Delivery:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_mode_of_delivery}
-											</div>
+											<HtmlContent html={quotation.annexure_mode_of_delivery} />
 										</div>
 									</div>
 
@@ -571,9 +579,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Revision:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_revision}
-											</div>
+											<HtmlContent html={quotation.annexure_revision} />
 										</div>
 									</div>
 
@@ -586,9 +592,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Exclusions:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_exclusions}
-											</div>
+											<HtmlContent html={quotation.annexure_exclusions} />
 										</div>
 									</div>
 
@@ -601,9 +605,9 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Billing & Payment Terms:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_billing_payment_terms}
-											</div>
+											<HtmlContent
+												html={quotation.annexure_billing_payment_terms}
+											/>
 										</div>
 									</div>
 
@@ -616,9 +620,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Confidentiality:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_confidentiality}
-											</div>
+											<HtmlContent html={quotation.annexure_confidentiality} />
 										</div>
 									</div>
 
@@ -631,9 +633,7 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Codes & Standards:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_codes_standards}
-											</div>
+											<HtmlContent html={quotation.annexure_codes_standards} />
 										</div>
 									</div>
 
@@ -646,9 +646,9 @@ export default function ViewQuotationPage() {
 											<label className="block text-sm font-semibold mb-1">
 												Dispute Resolution:
 											</label>
-											<div className="text-sm whitespace-pre-line">
-												{quotation.annexure_dispute_resolution}
-											</div>
+											<HtmlContent
+												html={quotation.annexure_dispute_resolution}
+											/>
 										</div>
 									</div>
 								</div>

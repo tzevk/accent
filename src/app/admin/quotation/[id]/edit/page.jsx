@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
@@ -27,16 +27,15 @@ import { computeQuotationTotals } from '@/lib/quotation-totals';
 export default function EditQuotationPage() {
 	const params = useParams();
 	const router = useRouter();
+	const searchParams = useSearchParams();
 	const { user, loading: authLoading } = useSessionRBAC();
 	const id = params?.id;
 	const isNew = id === 'new';
+	// Read from router state, not window.location: on a soft navigation the
+	// location still holds the previous URL, and the default then fired a
+	// request against the wrong table (a 404 in the logs).
 	const source =
-		typeof window !== 'undefined'
-			? new URLSearchParams(window.location.search).get('source') ||
-				(isNew ? 'quotations' : 'project')
-			: isNew
-				? 'quotations'
-				: 'project';
+		searchParams.get('source') || (isNew ? 'quotations' : 'project');
 
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);

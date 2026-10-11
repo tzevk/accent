@@ -132,8 +132,10 @@ export default function RichTextEditor({
 		},
 		editorProps: {
 			attributes: {
+				// Padding and the minimum height live on the editable element
+				// itself, so the whole painted box is one click target.
 				class:
-					'rich-text-content max-w-none focus:outline-none min-h-full cursor-text',
+					'rich-text-content max-w-none focus:outline-none cursor-text p-3 min-h-[150px]',
 			},
 		},
 	});
@@ -202,7 +204,7 @@ export default function RichTextEditor({
 				)}
 
 				{/* Editor Content */}
-				<div className="p-3 min-h-[150px]">
+				<div>
 					<EditorContent editor={editor} placeholder={placeholder} />
 				</div>
 			</div>

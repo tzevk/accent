@@ -49,6 +49,10 @@ export async function GET(request) {
 			);
 		}
 
+		console.log(
+			`[quotation-pdf] start id=${id} source=${source} isVercel=${process.env.VERCEL === '1'} cwd=${process.cwd()}`
+		);
+
 		connection = await dbConnect();
 
 		let quotationData = null;
@@ -307,10 +311,17 @@ export async function GET(request) {
 			quotationData = rows[0];
 		}
 
+		console.log(
+			`[quotation-pdf] data loaded source=${source} number=${quotationData?.quotation_number ?? 'n/a'}`
+		);
+
 		const logoDataUri = await getAccentLogoDataUri(new URL(request.url).origin);
 		const html = generateQuotationHTML(quotationData, source).replace(
 			'/accent-logo.png',
 			logoDataUri
+		);
+		console.log(
+			`[quotation-pdf] html built bytes=${html.length} logo=${logoDataUri.startsWith('data:') ? 'data-uri' : logoDataUri}`
 		);
 		const filename = `${sanitizeFileName(
 			quotationData.quotation_number || 'quotation'
@@ -327,6 +338,7 @@ export async function GET(request) {
 
 		const isVercel = process.env.VERCEL === '1';
 		if (isVercel) {
+			console.log('[quotation-pdf] launching chromium (@sparticuz)');
 			// WebGL never helps a 2D print render; disabling graphics the
 			// documented way keeps the swiftshader/angle acceleration flags
 			// out of the arg list. Must happen before chromium.args is read.
@@ -345,6 +357,12 @@ export async function GET(request) {
 				if (!vercelArgs.includes(required)) vercelArgs.push(required);
 			}
 			try {
+				const extractStart = Date.now();
+				const executablePath = await chromium.executablePath();
+				console.log(
+					`[quotation-pdf] chromium extracted to ${executablePath} in ${Date.now() - extractStart}ms`
+				);
+				const launchStart = Date.now();
 				browser = await puppeteer.launch({
 					// defaultArgs is async in puppeteer 25 — it must be awaited
 					// or launch receives a Promise and throws on .filter().
@@ -353,9 +371,12 @@ export async function GET(request) {
 						headless: 'shell',
 					}),
 					defaultViewport: viewport,
-					executablePath: await chromium.executablePath(),
+					executablePath,
 					headless: 'shell',
 				});
+				console.log(
+					`[quotation-pdf] browser launched in ${Date.now() - launchStart}ms (${vercelArgs.length} args)`
+				);
 			} catch (error) {
 				// Separate an inflate/launch failure from the render pipeline
 				// so deployments can tell "Chromium never started" (cold-start
@@ -385,6 +406,7 @@ export async function GET(request) {
 		await page.setContent(html, {
 			waitUntil: 'networkidle0',
 		});
+		console.log('[quotation-pdf] html rendered in browser');
 		const imageReadyExpression = [
 			'Array.from(document.images).every(function (image) {',
 			'  return image.complete',
@@ -397,7 +419,10 @@ export async function GET(request) {
 		].join(' ');
 		await page
 			.waitForFunction(imageReadyExpression, { timeout: 5000 })
-			.catch(() => {});
+			.then(() => console.log('[quotation-pdf] images ready'))
+			.catch(() =>
+				console.log('[quotation-pdf] image wait timed out; continuing')
+			);
 
 		const pdf = await page.pdf({
 			format: 'A4',
@@ -411,6 +436,7 @@ export async function GET(request) {
 				left: '15mm',
 			},
 		});
+		console.log(`[quotation-pdf] pdf rendered bytes=${pdf.length}`);
 
 		return new Response(Buffer.from(pdf), {
 			status: 200,
@@ -445,8 +471,12 @@ async function getAccentLogoDataUri(origin) {
 	try {
 		const logoPath = join(process.cwd(), 'public', 'accent-logo.png');
 		const logoBuffer = await readFile(logoPath);
+		console.log(`[quotation-pdf] logo read from disk: ${logoPath}`);
 		return `data:image/png;base64,${logoBuffer.toString('base64')}`;
-	} catch {
+	} catch (err) {
+		console.log(
+			`[quotation-pdf] logo disk read failed (${err?.code || err?.message || err}); falling back to ${origin}/accent-logo.png`
+		);
 		return `${origin}/accent-logo.png`;
 	}
 }

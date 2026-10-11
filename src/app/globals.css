@@ -829,16 +829,11 @@ textarea::placeholder {
 	margin-bottom: 0;
 }
 
-/* TipTap ProseMirror fills its container so the whole area is clickable */
-.rich-text-content .ProseMirror {
-	min-height: inherit;
-	height: 100%;
-}
-
+/* TipTap's editable element sizes itself (padding + min-height come from
+   editorProps in RichTextEditor.jsx). Do not size .ProseMirror from here:
+   an unlayered min-height/height beats Tailwind utilities in the cascade. */
 .ProseMirror {
 	outline: none;
-	min-height: inherit;
-	height: 100%;
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {
