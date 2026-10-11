@@ -13,6 +13,8 @@ import {
 import { formatCurrency } from '@/lib/format';
 
 export const runtime = 'nodejs';
+// Cold invocations must inflate ~50 MB of Chromium first — beyond Vercel's 10–15 s default.
+export const maxDuration = 60;
 
 function generateInvoiceHTML(data) {
 	const formatDate = (dateStr) => {
@@ -521,12 +523,47 @@ export async function GET(request) {
 
 		const isVercel = process.env.VERCEL === '1';
 		if (isVercel) {
-			browser = await puppeteer.launch({
-				args: chromium.args,
-				defaultViewport: viewport,
-				executablePath: await chromium.executablePath(),
-				headless: true,
-			});
+			// WebGL never helps a 2D print render; disabling graphics the
+			// documented way keeps the swiftshader/angle acceleration flags
+			// out of the arg list. Must happen before chromium.args is read.
+			chromium.setGraphicsMode = false;
+			// Launch exactly as the README prescribes for serverless: pass
+			// chromium.args through puppeteer.defaultArgs with headless:
+			// 'shell'. The bundled headless_shell binary does not support the
+			// "new" headless mode (README FAQ), which is what puppeteer 25
+			// would pass for headless: true. --no-sandbox ships with the
+			// package list and --disable-dev-shm-usage with puppeteer's own
+			// defaults; both are re-ensured here (mirroring
+			// src/lib/pdf-browser-args.ts) so a small container /dev/shm can
+			// never break the launch.
+			const vercelArgs = [...chromium.args];
+			for (const required of ['--disable-dev-shm-usage', '--no-sandbox']) {
+				if (!vercelArgs.includes(required)) vercelArgs.push(required);
+			}
+			try {
+				browser = await puppeteer.launch({
+					args: await puppeteer.defaultArgs({
+						args: vercelArgs,
+						headless: 'shell',
+					}),
+					defaultViewport: viewport,
+					executablePath: await chromium.executablePath(),
+					headless: 'shell',
+				});
+			} catch (error) {
+				// Separate an inflate/launch failure from the render pipeline
+				// so deployments can tell "Chromium never started" (cold-start
+				// budget, missing br files) from "PDF generation failed".
+				// The stack trace is logged, never sent back to the client.
+				// browser is unassigned here, and the outer `finally`
+				// (below) still closes the browser when there is one and
+				// ends the DB connection either way.
+				console.error('Error launching PDF browser on Vercel:', error);
+				return NextResponse.json(
+					{ success: false, message: 'Failed to launch the PDF browser' },
+					{ status: 500 }
+				);
+			}
 		} else {
 			browser = await puppeteer.launch({
 				args: localPdfBrowserArgs(),

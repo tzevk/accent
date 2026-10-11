@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import fs from 'node:fs';
-import puppeteer from 'puppeteer';
+import puppeteer, { type Browser } from 'puppeteer';
 import chromium from '@sparticuz/chromium';
 import { buildReceiptHTML, ReceiptData } from '@/utils/buildReceiptHTML';
 import { blockNonLocalRequests } from '@/lib/pdf-request-guard';
 import { localPdfBrowserArgs } from '@/lib/pdf-browser-args';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -13,6 +13,8 @@ import {
 } from '@/utils/api-permissions';
 
 export const runtime = 'nodejs';
+// Cold invocations must inflate ~50 MB of Chromium first — beyond Vercel's 10–15 s default.
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest): Promise<Response> {
 	const authResult: any = await ensurePermission(
@@ -45,21 +47,54 @@ export async function POST(req: NextRequest): Promise<Response> {
 			? WINDOWS_CHROME
 			: undefined;
 
-	const browser = await puppeteer.launch(
-		isVercel
-			? {
-					args: chromium.args,
-					defaultViewport: viewport,
-					executablePath: await chromium.executablePath(),
-					headless: true,
-				}
-			: {
-					args: localPdfBrowserArgs(),
-					headless: true,
-					defaultViewport: viewport,
-					...(localChromePath ? { executablePath: localChromePath } : {}),
-				}
-	);
+	let browser: Browser | undefined;
+	if (isVercel) {
+		// WebGL never helps a 2D print render; disabling graphics the
+		// documented way keeps the swiftshader/angle acceleration flags
+		// out of the arg list. Must happen before chromium.args is read.
+		chromium.setGraphicsMode = false;
+		// Launch as the README prescribes for serverless: pass
+		// chromium.args through puppeteer.defaultArgs with headless:
+		// 'shell'. The bundled headless_shell binary does not support
+		// the "new" headless mode, which is what puppeteer 25 would
+		// pass for headless: true. --no-sandbox ships with the package
+		// list and --disable-dev-shm-usage with puppeteer's own
+		// defaults; both are re-ensured here (mirroring
+		// src/lib/pdf-browser-args.ts) so a small container /dev/shm
+		// can never break the launch.
+		const vercelArgs = [...chromium.args];
+		for (const required of ['--disable-dev-shm-usage', '--no-sandbox']) {
+			if (!vercelArgs.includes(required)) vercelArgs.push(required);
+		}
+		try {
+			browser = await puppeteer.launch({
+				args: await puppeteer.defaultArgs({
+					args: vercelArgs,
+					headless: 'shell',
+				}),
+				defaultViewport: viewport,
+				executablePath: await chromium.executablePath(),
+				headless: 'shell',
+			});
+		} catch (error) {
+			// Separate an inflate/launch failure from the render pipeline:
+			// "Chromium never started" (cold-start budget, missing br
+			// files) vs "PDF generation failed". The stack trace is
+			// logged, never sent back to the client.
+			console.error('Error launching PDF browser on Vercel:', error);
+			return NextResponse.json(
+				{ success: false, error: 'Failed to launch the PDF browser' },
+				{ status: 500 }
+			);
+		}
+	} else {
+		browser = await puppeteer.launch({
+			args: localPdfBrowserArgs(),
+			headless: true,
+			defaultViewport: viewport,
+			...(localChromePath ? { executablePath: localChromePath } : {}),
+		});
+	}
 
 	const page = await browser.newPage();
 

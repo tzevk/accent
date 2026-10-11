@@ -346,7 +346,9 @@ export async function GET(request) {
 			}
 			try {
 				browser = await puppeteer.launch({
-					args: puppeteer.defaultArgs({
+					// defaultArgs is async in puppeteer 25 — it must be awaited
+					// or launch receives a Promise and throws on .filter().
+					args: await puppeteer.defaultArgs({
 						args: vercelArgs,
 						headless: 'shell',
 					}),
