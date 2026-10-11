@@ -45,6 +45,7 @@ const employeeTabs = [
 	'Project Team',
 	'Input Document',
 	'Deliverables',
+	'Upload Documents',
 	'Assumption',
 	'Discussion',
 	'Query Log',
@@ -77,7 +78,7 @@ describe('employee project workspace', () => {
 		});
 	});
 
-	it('shows the exact nine employee tabs without admin controls', async () => {
+	it('shows the exact ten employee tabs without admin controls', async () => {
 		useSWR.mockReturnValue({
 			data: {
 				success: true,

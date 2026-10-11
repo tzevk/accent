@@ -162,6 +162,7 @@ Keep Employee Utilization as a workforce report. Expand the employee-project cos
 ## Testing Decisions
 
 - The user confirms the existing real-app Playwright and MySQL end-to-end seam. This is the sole primary feature verification seam. Exercise the authenticated application and its real request interfaces, then verify persisted financial evidence independently.
+  - **2026-10-10:** the Playwright seam no longer exists — the harness was removed (see `docs/explanations/E2E_HARNESS_REMOVAL.md`). The intent stands: exercise the authenticated app and its real request interfaces against a real database, and verify persisted financial evidence independently. Do it by driving a running instance; there is no committed runner.
 - Extend the established namespaced fixture approach and dedicated database safety checks. Do not alter real operational Projects, payroll months, supplier records, or financial closes. Cleanup and reruns must stay isolated and deterministic.
 - Prior art is the Payroll Money flow for independent payroll calculations and persisted verification, Employee Utilization for report/drilldown/Excel behavior, Soft Delete for historical removal behavior, and security flows for authorization outcomes.
 - Test the whole expenditure workflow: source capture, recognition, order consumption, allocation, reconciliation, financial close, revisions, report output, and Excel download. Do not add mocked route-handler, page, or component tests, source-text pins, or tests of forwarding/wiring.

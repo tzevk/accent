@@ -3,13 +3,16 @@
 import React, {
 	useState,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
+	useRef,
 	useCallback,
 	memo,
 	lazy,
 	Suspense,
 } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { fetchJSON } from '@/utils/http';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -30,6 +33,7 @@ import {
 } from '@heroicons/react/24/outline';
 import LeaveLoginToast from '@/components/LeaveLoginToast';
 import { useIdleMonitor } from '@/hooks/useIdleMonitor';
+import { EXPECTED_WORK_MINS, isLateLogin, isOvertime } from '@/lib/shift-times';
 
 // ── Lazy-load heavy components (code-split, only fetched when needed) ──
 const TodoList = lazy(() => import('@/components/TodoList'));
@@ -37,39 +41,19 @@ const ProjectActivityAssignments = lazy(
 	() => import('@/components/ProjectActivityAssignments')
 );
 
-// ── Fixed shift times ──
-const FIXED_IN_TIME = '09:00'; // 9:00 AM
-const FIXED_OUT_TIME = '17:30'; // 5:30 PM
-const LUNCH_BREAK_MINS = 60; // 1 PM to 2 PM
-// Expected work = (out - in) - lunch = (17:30 - 09:00) - 1h = 7h 30m = 450 min
-const EXPECTED_WORK_MINS = (() => {
-	const [inH, inM] = FIXED_IN_TIME.split(':').map(Number);
-	const [outH, outM] = FIXED_OUT_TIME.split(':').map(Number);
-	return outH * 60 + outM - (inH * 60 + inM) - LUNCH_BREAK_MINS;
-})();
+// ── Shift times and the tile remarks (src/lib/shift-times.ts) ──
+// A tile with no recorded value shows a plain dash. A bare `--:--` read as a
+// broken fetch, so a day that recorded nothing now says so in words (#340).
+// One "no value" character repository-wide: src/lib/format.js returns '—'.
+const NO_VALUE = '—';
 
-// Check if a time string (HH:MM) is outside the fixed shift window
-function isOvertime(timeStr) {
-	if (!timeStr) return false;
-	const t = typeof timeStr === 'string' ? timeStr : timeStr.toString();
-	if (!t.includes(':')) return false;
-	const [h, m] = t.split(':').map(Number);
-	const mins = h * 60 + (m || 0);
-	const [inH, inM] = FIXED_IN_TIME.split(':').map(Number);
-	const [outH, outM] = FIXED_OUT_TIME.split(':').map(Number);
-	return mins < inH * 60 + inM || mins > outH * 60 + outM;
-}
-
-// Check if login/in time is after the fixed in time (late arrival)
-function isLateLogin(timeStr) {
-	if (!timeStr) return false;
-	const t = typeof timeStr === 'string' ? timeStr : timeStr.toString();
-	if (!t.includes(':')) return false;
-	const [h, m] = t.split(':').map(Number);
-	const mins = h * 60 + (m || 0);
-	const [inH, inM] = FIXED_IN_TIME.split(':').map(Number);
-	return mins > inH * 60 + inM;
-}
+// Tier-1 load states (#340), one per source. A failed fetch must stay
+// distinguishable from a day that recorded nothing, so the two are never
+// collapsed into one "no data" shape.
+const LOAD_PENDING = 'loading';
+const LOAD_OK = 'ok';
+const LOAD_EMPTY = 'empty';
+const LOAD_ERROR = 'error';
 
 // ── Shared idle-time formatter ──
 function fmtIdle(seconds) {
@@ -83,6 +67,52 @@ function fmtIdle(seconds) {
 // ── Section skeleton for Suspense fallbacks ──
 function SectionSkeleton({ h = 'h-32' }) {
 	return <div className={`${h} bg-gray-100/60 rounded-xl animate-pulse`} />;
+}
+
+// ── Warning overlay shell (native dialog semantics) ──
+// The platform owns the dialog behaviour the overlays used to fake:
+// focus moves in when the dialog opens, the page behind it goes inert so
+// tabbing never leaves the overlay, Escape closes it and focus returns to
+// the control that was focused when it opened. Nothing here traps focus.
+// Each overlay mounts only while it is open, so the dialog is shown with
+// showModal() on mount and closed again when React unmounts it — closing the
+// element (not dropping it) is what returns focus to the opening control.
+function WarningDialog({ labelledBy, onClose, children }) {
+	const dialogRef = useRef(null);
+	// Held in a ref so this effect depends on nothing: the parent re-renders
+	// on every clock tick and idle poll, and a fresh callback identity would
+	// close and reopen the overlay along with it.
+	const onCloseRef = useRef(onClose);
+	onCloseRef.current = onClose;
+
+	useLayoutEffect(() => {
+		const node = dialogRef.current;
+		if (!node) return;
+		const handleClose = () => {
+			// React's development StrictMode runs this mount twice, and the
+			// close it queues from the first teardown lands after the dialog is
+			// open again. A close the user caused always arrives with the
+			// dialog already closed, so an open dialog here is our own.
+			if (node.open) return;
+			onCloseRef.current();
+		};
+		node.showModal();
+		node.addEventListener('close', handleClose);
+		return () => {
+			node.removeEventListener('close', handleClose);
+			if (node.open) node.close();
+		};
+	}, []);
+
+	return (
+		<dialog
+			ref={dialogRef}
+			aria-labelledby={labelledBy}
+			className="fixed inset-0 z-50 m-0 flex h-full max-h-none max-w-none w-full items-center justify-center border-0 bg-black/40 p-0 backdrop-blur-sm"
+		>
+			{children}
+		</dialog>
+	);
 }
 
 // ── AnalogClock: isolated 1-second interval — re-renders itself only ──
@@ -176,7 +206,8 @@ const AnalogClock = memo(function AnalogClock() {
 const IdleBadge = memo(function IdleBadge({ idleSeconds }) {
 	return (
 		<div
-			className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold backdrop-blur-sm transition-colors duration-200 ${
+			data-testid="idle-badge"
+			className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold tabular-nums backdrop-blur-sm transition-colors duration-200 ${
 				idleSeconds > 60
 					? 'bg-red-500/20 text-red-100 ring-1 ring-red-400/30'
 					: idleSeconds > 30
@@ -185,6 +216,7 @@ const IdleBadge = memo(function IdleBadge({ idleSeconds }) {
 			}`}
 		>
 			<span
+				data-motion="pulse"
 				className={`w-2 h-2 rounded-full ${idleSeconds > 60 ? 'bg-red-400 animate-pulse' : idleSeconds > 30 ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`}
 			/>
 			{idleSeconds > 30 ? `Idle: ${fmtIdle(idleSeconds)}` : 'Active'}
@@ -200,6 +232,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	const { user: contextUser } = useSessionRBAC();
 	const user = verifiedUser || contextUser;
 	const [loading, setLoading] = useState(true);
+	// How today's attendance and the project assignments finished loading
+	// (#340): 'loading' → 'ok' | 'empty' | 'error'. The tiles read this to tell
+	// a day that recorded nothing from a fetch that failed, and each state gets
+	// its own line — never one shared "no data" rendering.
+	const [attendanceLoad, setAttendanceLoad] = useState(LOAD_PENDING);
+	const [assignmentsLoad, setAssignmentsLoad] = useState(LOAD_PENDING);
 	const [statsReady, setStatsReady] = useState(false);
 	const [todoPanelOpen, setTodoPanelOpen] = useState(false);
 	const [showActivityReminder, setShowActivityReminder] = useState(false);
@@ -215,6 +253,34 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		window.addEventListener('toggleTodoPanel', handler);
 		return () => window.removeEventListener('toggleTodoPanel', handler);
 	}, []);
+
+	// ── Page-close beacon: end this Work Session when the tab or window goes
+	// away without a Sign out (#331). `pagehide` fires on a real unload (tab
+	// close, window close, navigating away) and never on in-app client
+	// navigation, so moving around the app keeps the session open. The endpoint
+	// ends the caller's own session from the session cookie, so an admin's
+	// live-monitoring view of another user never ends anyone else's session —
+	// and this listener is not even attached there.
+	const isOwnDashboard =
+		!verifiedUser || verifiedUser.id === (contextUser?.id ?? null);
+
+	useEffect(() => {
+		if (!isOwnDashboard) return;
+
+		const sendCloseBeacon = () => {
+			try {
+				navigator.sendBeacon(
+					'/api/work-sessions/close',
+					new Blob([JSON.stringify({ closedAt: new Date().toISOString() })], {
+						type: 'application/json',
+					})
+				);
+			} catch {}
+		};
+
+		window.addEventListener('pagehide', sendCloseBeacon);
+		return () => window.removeEventListener('pagehide', sendCloseBeacon);
+	}, [isOwnDashboard]);
 
 	// Idle monitoring
 	const {
@@ -248,6 +314,16 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		outTime: null,
 		loginTime: null,
 		logoutTime: null,
+		endSource: null,
+		// The day's Punches, resolved server-side with the linked Employee
+		// (ticket #334): the device is the value on the Punch In / Punch Out
+		// tiles, and `punchEmployeeId` null means the account has no linked
+		// Employee record at all.
+		punchInTime: null,
+		punchOutTime: null,
+		punchCount: 0,
+		punchComputable: false,
+		punchEmployeeId: null,
 		currentMonth: '',
 		daysInMonth: 0,
 		daysPresent: 0,
@@ -415,15 +491,32 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 				if (signal.aborted) return;
 
-				if (
-					attendanceRes.status === 'fulfilled' &&
-					attendanceRes.value?.success
-				) {
-					setAttendance(attendanceRes.value.data);
+				// A failed fetch and a day that recorded nothing are different
+				// facts, so each source is named as one of them (#340).
+				const attendanceOk =
+					attendanceRes.status === 'fulfilled' && attendanceRes.value?.success;
+				if (attendanceOk) {
+					const day = attendanceRes.value.data;
+					setAttendance(day);
+					// Everything the payload's day can carry decides whether the
+					// day recorded something: the session times and the device's
+					// own punches (#334). A punch-only day is not an empty day.
+					setAttendanceLoad(
+						day?.loginTime ||
+							day?.logoutTime ||
+							day?.punchInTime ||
+							day?.punchOutTime
+							? LOAD_OK
+							: LOAD_EMPTY
+					);
+				} else {
+					setAttendanceLoad(LOAD_ERROR);
 				}
 
 				let assignmentsList = [];
-				if (activityRes.status === 'fulfilled' && activityRes.value?.success) {
+				const assignmentsOk =
+					activityRes.status === 'fulfilled' && activityRes.value?.success;
+				if (assignmentsOk) {
 					assignmentsList = activityRes.value.data.assignments || [];
 					setModuleAssignments((prev) => ({
 						...prev,
@@ -432,6 +525,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							accessibleProjects:
 								activityRes.value.data.accessibleProjects || [],
 							emptyProjects: activityRes.value.data.emptyProjects || [],
+							documentCounts: activityRes.value.data.documentCounts || {},
 							stats:
 								activityRes.value.data.stats || prev.activityAssignments.stats,
 						},
@@ -454,6 +548,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							sessionStorage.setItem(reminderKey, '1');
 						}
 					}
+					setAssignmentsLoad(LOAD_OK);
+				} else {
+					setAssignmentsLoad(LOAD_ERROR);
 				}
 
 				// First paint is ready
@@ -536,10 +633,22 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		return () => ac.abort();
 	}, [verifiedUser?.id, user?.id]);
 
+	// ── Did the day's end come from inference rather than choice? (#331) ──
+	// A sweep or beacon end is an inference about presence: the sweep stamps
+	// the last heartbeat, the beacon a close the browser had to time. A logout
+	// — or no end at all — is the user's own choice. One named test, used by
+	// the poll's stop condition below and the Punch Out tile's disclosure.
+	const endWasInferred =
+		attendance.endSource === 'sweep' || attendance.endSource === 'beacon';
+
 	// ── Poll attendance data (especially idle time) every 2 minutes ──
 	useEffect(() => {
 		const userId = verifiedUser?.id || user?.id;
-		if (!userId || attendance.logoutTime) return; // Don't poll if logged out
+		// Only a real logout ends the day. A beacon or sweep end is an inferred
+		// one (ticket #331), so the poll keeps running — a punch the device
+		// pushes late still has to reach the tile (ticket #334).
+		const hasRealLogout = !!attendance.logoutTime && !endWasInferred;
+		if (!userId || hasRealLogout) return; // Don't poll if logged out
 
 		let retryCount = 0;
 		const maxRetries = 3;
@@ -551,12 +660,22 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 			isPolling = true;
 			try {
-				const res = await fetchJSON(`/api/users/${userId}/attendance`);
+				// `no-store`: the endpoint answers with a 30-second cache header,
+				// which would otherwise serve the poll the page-load response.
+				const res = await fetchJSON(`/api/users/${userId}/attendance`, {
+					cache: 'no-store',
+				});
 				if (res?.success) {
-					// Only update idle time to avoid disrupting other fields
+					// Only the figures the poll exists to refresh, so nothing
+					// else on the card is disrupted mid-render.
 					setAttendance((prev) => ({
 						...prev,
 						idleTime: res.data.idleTime || prev.idleTime,
+						punchInTime: res.data.punchInTime ?? prev.punchInTime,
+						punchOutTime: res.data.punchOutTime ?? prev.punchOutTime,
+						punchCount: res.data.punchCount ?? prev.punchCount,
+						punchComputable: res.data.punchComputable ?? prev.punchComputable,
+						punchEmployeeId: res.data.punchEmployeeId ?? prev.punchEmployeeId,
 					}));
 					retryCount = 0; // Reset retry count on success
 				}
@@ -580,11 +699,11 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 			clearInterval(pollInterval);
 			clearTimeout(initialPoll);
 		};
-	}, [verifiedUser?.id, user?.id, attendance.logoutTime]);
+	}, [verifiedUser?.id, user?.id, attendance.logoutTime, attendance.endSource]);
 
 	// ── Memoized helpers ──
 	const formatTime = useCallback((time) => {
-		if (!time) return '--:--';
+		if (!time) return NO_VALUE;
 		if (typeof time === 'string' && time.includes(':')) {
 			const [hours, minutes] = time.split(':');
 			const h = parseInt(hours);
@@ -592,6 +711,26 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		}
 		return time;
 	}, []);
+
+	// ── The day's Punches on the tiles (ticket #334) ──
+	// A computable punch pair makes the device the value and the session times
+	// the sub-line; without one the sign-in or logout stays the value and the
+	// sub-line says which gap the device left. A punch never moves a work
+	// figure, so Total Time keeps reading the session times.
+	const punchPair = attendance.punchComputable === true;
+	const punchLinked = attendance.punchEmployeeId != null;
+	const punchInValue = punchPair
+		? attendance.punchInTime
+		: attendance.loginTime;
+	const punchOutValue = punchPair
+		? attendance.punchOutTime
+		: attendance.logoutTime;
+	/** Why a tile is showing a session time instead of a punch, if it is. */
+	const punchFallbackNote = !punchLinked
+		? 'No Employee record is linked to this account, so no punch can exist.'
+		: !punchPair
+			? 'The device recorded no punch pair for the day.'
+			: null;
 
 	// ── Loading state ──
 	if (loading) {
@@ -622,14 +761,15 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 			{/* Activity Reminder Modal */}
 			{showActivityReminder && pendingActivities.length > 0 && (
-				<div
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-					role="dialog"
-					aria-modal="true"
-					aria-labelledby="activity-reminder-title"
+				<WarningDialog
+					labelledBy="activity-reminder-title"
+					onClose={() => setShowActivityReminder(false)}
 				>
-					<div className="mx-4 max-w-lg w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]">
-						<div className="bg-gradient-to-r from-orange-500 to-red-500 px-6 py-4 flex items-center gap-3">
+					<div
+						data-motion="scale-in"
+						className="mx-4 max-w-lg w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]"
+					>
+						<div className="bg-gradient-to-r from-orange-700 to-red-700 px-6 py-4 flex items-center gap-3">
 							<div className="w-11 h-11 rounded-full bg-white/25 flex items-center justify-center shrink-0">
 								<ExclamationCircleIcon className="h-7 w-7 text-white" />
 							</div>
@@ -640,7 +780,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 								>
 									Activity Update Required
 								</h2>
-								<p className="text-xs text-white/80">
+								<p
+									data-testid="reminder-subtitle"
+									className="text-xs text-white"
+								>
 									You have pending entries for today
 								</p>
 							</div>
@@ -669,12 +812,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											<p className="text-xs font-semibold text-gray-900 truncate">
 												{a.activity_name}
 											</p>
-											<p className="text-[10px] text-gray-500 truncate">
+											<p className="text-xs text-gray-500 truncate">
 												{a.project_name} &middot; {a.project_code}
 											</p>
 										</div>
 										<span
-											className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border ${
+											className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${
 												a.status === 'In Progress'
 													? 'bg-blue-50 text-blue-700 border-blue-200'
 													: a.status === 'Completed'
@@ -687,7 +830,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									</div>
 								))}
 								{pendingActivities.length > 10 && (
-									<p className="text-xs text-gray-400 text-center">
+									<p className="text-xs text-gray-500 text-center">
 										+{pendingActivities.length - 10} more
 									</p>
 								)}
@@ -713,18 +856,16 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							</button>
 						</div>
 					</div>
-				</div>
+				</WarningDialog>
 			)}
 
 			{/* Idle Warning Modal */}
 			{isIdle && !dismissed && (
-				<div
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-					role="dialog"
-					aria-modal="true"
-					aria-labelledby="idle-warning-title"
-				>
-					<div className="mx-4 max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]">
+				<WarningDialog labelledBy="idle-warning-title" onClose={dismiss}>
+					<div
+						data-motion="scale-in"
+						className="mx-4 max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]"
+					>
 						<div className="bg-gradient-to-r from-amber-400 to-amber-500 px-6 py-4 flex items-center gap-3">
 							<div className="w-11 h-11 rounded-full bg-white/25 flex items-center justify-center shrink-0">
 								<ExclamationTriangleIcon className="h-7 w-7 text-white" />
@@ -746,7 +887,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 								report.
 							</p>
 							<div className="mt-4 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-								<ClockIcon className="h-5 w-5 text-amber-600 shrink-0 animate-pulse" />
+								<ClockIcon
+									data-motion="pulse"
+									className="h-5 w-5 text-amber-600 shrink-0 animate-pulse"
+								/>
 								<div>
 									<p className="text-xs font-medium text-amber-700">
 										Current idle duration
@@ -775,7 +919,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							</button>
 						</div>
 					</div>
-				</div>
+				</WarningDialog>
 			)}
 
 			<div className="flex pt-2 sm:pl-0">
@@ -788,8 +932,11 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					</div>
 				)}
 
-				{/* Main Content */}
-				<div
+				{/* Main Content — this column is the page's main landmark, so
+				    the shared skip link has one target to move focus to. */}
+				<main
+					id="main-content"
+					tabIndex={-1}
 					className={`flex-1 min-w-0 transition-[margin] duration-200 ${todoPanelOpen ? 'sm:ml-72' : 'ml-0'}`}
 				>
 					<div className="px-2 sm:px-3 lg:px-4 py-2">
@@ -828,7 +975,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										) : null}
 										<div className="min-w-0">
 											<nav
-												className="text-[11px] xl:text-xs text-white/60 mb-0.5"
+												className="text-xs text-white/60 mb-0.5"
 												aria-label="Breadcrumb"
 											>
 												<ol className="inline-flex items-center gap-1">
@@ -856,13 +1003,54 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 							</div>
 
 							{/* ── Attendance ── */}
-							<div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 xl:p-4">
+							<div
+								data-testid="attendance-card"
+								className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 xl:p-4"
+							>
 								<div className="flex items-center gap-2 mb-3 xl:mb-4">
 									<div className="w-1 h-4 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
 									<h2 className="text-xs xl:text-sm font-semibold text-gray-800 tracking-wide uppercase">
 										Today&apos;s Attendance
 									</h2>
+									<Link
+										href="/user/timesheet"
+										className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-[#64126D]/40 hover:text-[#64126D] transition-colors"
+									>
+										<CalendarDaysIcon className="h-3.5 w-3.5" aria-hidden />
+										Timesheet
+									</Link>
 								</div>
+								{/* The day's own state (#340): a fetch that failed names
+								    the next step in a live error line; a day with nothing
+								    recorded is named as recorded, in plain neutral text.
+								    One or the other, never both, never neither — and the
+								    error line has no timer, so a slow reader keeps it. */}
+								{attendanceLoad === LOAD_ERROR && (
+									<div
+										data-testid="attendance-fetch-error"
+										data-state="error"
+										role="alert"
+										className="mb-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-snug text-red-700"
+									>
+										<ExclamationTriangleIcon
+											className="mt-0.5 h-4 w-4 shrink-0 text-red-700"
+											aria-hidden
+										/>
+										<p>
+											Attendance could not load. Refresh the page, or tell
+											support if it stays broken.
+										</p>
+									</div>
+								)}
+								{attendanceLoad === LOAD_EMPTY && (
+									<p
+										data-testid="attendance-empty-state"
+										data-state="empty"
+										className="mb-3 text-xs leading-snug text-gray-600"
+									>
+										Nothing recorded yet today.
+									</p>
+								)}
 								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-8">
 									{/* Punch In */}
 									<div className="group relative rounded-xl border border-green-200 bg-gradient-to-br from-green-50 via-white to-emerald-50 p-3 hover:shadow-lg hover:border-green-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
@@ -870,24 +1058,41 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.loginTime ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${punchInValue ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<ArrowRightStartOnRectangleIcon className="h-4 w-4" />
 												</div>
-												{attendance.loginTime && (
-													<div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
+												{punchInValue && (
+													<div
+														data-motion="pulse"
+														className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300"
+													/>
 												)}
 											</div>
-											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 												Punch In
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${attendance.loginTime ? (isLateLogin(attendance.loginTime) ? 'text-red-600' : 'text-gray-900') : 'text-gray-400'}`}
+												data-testid="punch-in-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${punchInValue ? (isLateLogin(punchInValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-500'}`}
 											>
-												{attendance.loginTime
-													? formatTime(attendance.loginTime)
-													: '--:--'}
+												{punchInValue ? formatTime(punchInValue) : NO_VALUE}
+												{punchInValue && isLateLogin(punchInValue) && (
+													<span className="ml-1 text-xs font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
+														Late
+													</span>
+												)}
 											</p>
+											{punchPair && attendance.loginTime && (
+												<p className="mt-1 text-xs leading-snug text-gray-500">
+													Signed in {formatTime(attendance.loginTime)}
+												</p>
+											)}
+											{punchFallbackNote && (
+												<p className="mt-1 text-xs leading-snug text-gray-500">
+													{punchFallbackNote}
+												</p>
+											)}
 										</div>
 									</div>
 									{/* Punch Out */}
@@ -896,27 +1101,41 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.outTime ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${punchOutValue ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
 												</div>
 											</div>
-											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 												Punch Out
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${attendance.logoutTime ? (isOvertime(attendance.logoutTime) ? 'text-red-600' : 'text-gray-900') : 'text-gray-400'}`}
+												data-testid="punch-out-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${punchOutValue ? (isOvertime(punchOutValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-500'}`}
 											>
-												{attendance.logoutTime
-													? formatTime(attendance.logoutTime)
-													: '--:--'}
-												{attendance.logoutTime &&
-													isOvertime(attendance.logoutTime) && (
-														<span className="ml-1 text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
-															OT
-														</span>
-													)}
+												{punchOutValue ? formatTime(punchOutValue) : NO_VALUE}
+												{punchOutValue && isOvertime(punchOutValue) && (
+													<span className="ml-1 text-xs font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
+														OT
+													</span>
+												)}
 											</p>
+											{punchPair && attendance.logoutTime && (
+												<p className="mt-1 text-xs leading-snug text-gray-500">
+													{endWasInferred ? 'Session ended' : 'Logged out'}{' '}
+													{formatTime(attendance.logoutTime)}
+												</p>
+											)}
+											{attendance.logoutTime && endWasInferred && (
+												<p className="mt-1 text-xs leading-snug text-gray-500">
+													No logout recorded — ended from your last activity.
+												</p>
+											)}
+											{punchFallbackNote && (
+												<p className="mt-1 text-xs leading-snug text-gray-500">
+													{punchFallbackNote}
+												</p>
+											)}
 										</div>
 									</div>
 									{/* Total Time */}
@@ -959,32 +1178,35 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 														</div>
 														{hasLogin && (
 															<div
+																data-motion="pulse"
 																className={`w-2 h-2 rounded-full animate-pulse shadow-sm ${isComplete ? 'bg-green-500 shadow-green-300' : 'bg-red-500 shadow-red-300'}`}
 															/>
 														)}
 													</div>
-													<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+													<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 														Total Time
 													</p>
 													<p
-														className={`text-base font-extrabold leading-tight tracking-tight ${!hasLogin ? 'text-gray-400' : isComplete ? 'text-green-700' : 'text-red-600'}`}
+														data-testid="total-time-figure"
+														className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${!hasLogin ? 'text-gray-500' : isComplete ? 'text-green-700' : 'text-red-600'}`}
 													>
 														{hasLogin
 															? `${liveTotalTime.hrs}h ${liveTotalTime.mins}m`
-															: '--:--'}
+															: NO_VALUE}
 														{hasLogin && isComplete && (
-															<span className="ml-1 text-[9px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full align-middle">
+															<span className="ml-1 text-xs font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full align-middle">
 																✓
 															</span>
 														)}
 													</p>
 													{hasLogin && (
 														<p
-															className={`text-[10px] mt-1 font-medium leading-snug ${isComplete ? 'text-green-600' : 'text-red-500'}`}
+															data-testid="total-time-breakdown"
+															className={`text-xs mt-1 font-medium leading-snug tabular-nums ${isComplete ? 'text-green-600' : 'text-red-700'}`}
 														>
 															{liveTotalTime.elapsedHrs}h{' '}
 															{liveTotalTime.elapsedMins}m
-															<span className="text-red-500 font-bold">
+															<span className="text-red-700 font-bold">
 																{' '}
 																−{' '}
 																{liveTotalTime.idleHrs > 0
@@ -992,11 +1214,14 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 																	: ''}
 																{liveTotalTime.idleMins}m
 															</span>
-															<span className="text-gray-400"> idle</span>
+															<span className="text-gray-500"> idle</span>
 														</p>
 													)}
 													{hasLogin && !isComplete && (
-														<p className="text-[9px] text-red-500 mt-0.5 font-semibold">
+														<p
+															data-testid="total-time-remaining"
+															className="text-xs text-red-700 mt-0.5 font-semibold tabular-nums"
+														>
 															{Math.floor(
 																(EXPECTED_WORK_MINS - totalMins) / 60
 															) > 0
@@ -1020,14 +1245,18 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													<CalendarDaysIcon className="h-4 w-4" />
 												</div>
 											</div>
-											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 												Present
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-400'}`}
+												data-testid="present-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
 												{attendance.daysPresent}
-												<span className="text-sm font-semibold text-gray-400 ml-0.5">
+												<span
+													data-testid="present-denominator"
+													className="text-sm font-semibold text-gray-500 ml-0.5"
+												>
 													/ {attendance.daysInMonth}
 												</span>
 											</p>
@@ -1046,10 +1275,11 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									{/* Leave Days — click to open full Leave Management */}
 									<button
 										type="button"
+										data-testid="leave-tile"
 										onClick={() => router.push('/user/leaves')}
 										aria-label="Open leave management — view balances and apply for leave"
 										title="View balances and apply for leave"
-										className="group relative rounded-xl text-left border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-yellow-50 p-3 cursor-pointer hover:shadow-lg hover:border-amber-400 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]/50 focus-visible:ring-offset-1"
+										className="group relative rounded-xl text-left border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-yellow-50 p-3 cursor-pointer hover:shadow-lg hover:border-amber-400 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-1"
 									>
 										<div className="absolute top-0 right-0 w-20 h-20 bg-amber-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
 										<div className="relative">
@@ -1060,22 +1290,29 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													<CalendarIcon className="h-4 w-4" />
 												</div>
 											</div>
-											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 												Leaves
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-400'}`}
+												data-testid="leave-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
 												{attendance.leaves.used}
-												<span className="text-sm font-semibold text-gray-400 ml-0.5">
+												<span
+													data-testid="leave-denominator"
+													className="text-sm font-semibold text-gray-500 ml-0.5"
+												>
 													/ {attendance.leaves.total}
 												</span>
 											</p>
-											<p className="text-[11px] text-amber-700 font-semibold mt-1.5 flex items-center gap-1">
+											<p
+												data-testid="leave-balance"
+												className="text-xs text-amber-700 font-semibold mt-1.5 flex items-center gap-1 tabular-nums"
+											>
 												<span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />{' '}
 												{attendance.leaves.balance} remaining
 											</p>
-											<p className="mt-1.5 pt-1.5 border-t border-amber-200/60 -mx-px flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#64126D] transition-colors duration-150 group-hover:text-[#4a0d52]">
+											<p className="mt-1.5 pt-1.5 border-t border-amber-200/60 -mx-px flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#64126D] transition-colors duration-150 group-hover:text-[#4a0d52]">
 												View &amp; apply
 												<ArrowRightIcon className="h-2.5 w-2.5 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
 											</p>
@@ -1092,18 +1329,19 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													<FireIcon className="h-4 w-4" />
 												</div>
 											</div>
-											<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 												Overtime
 											</p>
 											<p
-												className={`text-base font-extrabold leading-tight tracking-tight ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-400'}`}
+												data-testid="overtime-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
 												{attendance.overtimeHours}
-												<span className="text-sm font-semibold text-gray-400 ml-0.5">
+												<span className="text-sm font-semibold text-gray-500 ml-0.5">
 													h
 												</span>
 											</p>
-											<p className="text-[11px] text-gray-500 mt-1.5 font-medium">
+											<p className="text-xs text-gray-500 mt-1.5 font-medium">
 												this month
 											</p>
 										</div>
@@ -1151,14 +1389,16 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 															<ComputerDesktopIcon className="h-4 w-4" />
 														</div>
 														<div
+															data-motion="pulse"
 															className={`w-2 h-2 rounded-full shadow-sm ${effectiveIdleSecs > 1800 ? 'bg-red-500 shadow-red-300' : effectiveIdleSecs > 300 ? 'bg-amber-500 shadow-amber-300' : 'bg-emerald-500 shadow-emerald-300'} animate-pulse`}
 														/>
 													</div>
-													<p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
+													<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
 														Idle
 													</p>
 													<p
-														className={`text-base font-extrabold leading-tight tracking-tight ${
+														data-testid="idle-figure"
+														className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${
 															effectiveIdleSecs > 1800
 																? 'text-red-800'
 																: effectiveIdleSecs > 300
@@ -1171,7 +1411,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 															: fmtIdle(effectiveIdleSecs)}
 													</p>
 													<p
-														className={`text-[11px] mt-1.5 font-semibold flex items-center gap-1 ${effectiveIdleSecs > 1800 ? 'text-red-600' : effectiveIdleSecs > 300 ? 'text-amber-600' : 'text-emerald-600'}`}
+														data-testid="idle-caption"
+														className={`text-xs mt-1.5 font-semibold flex items-center gap-1 tabular-nums ${effectiveIdleSecs > 1800 ? 'text-red-600' : effectiveIdleSecs > 300 ? 'text-amber-600' : 'text-emerald-600'}`}
 													>
 														<span
 															className={`w-1.5 h-1.5 rounded-full inline-block ${effectiveIdleSecs > 1800 ? 'bg-red-500' : effectiveIdleSecs > 300 ? 'bg-amber-500' : 'bg-emerald-500'}`}
@@ -1218,14 +1459,14 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 																		deadline.title ||
 																		'Activity'}
 																</p>
-																<p className="text-[10px] text-gray-500 truncate">
+																<p className="text-xs text-gray-500 truncate">
 																	{deadline.project_title ||
 																		deadline.project_code ||
 																		''}
 																</p>
 															</div>
 															<span
-																className={`ml-1.5 px-1.5 py-0.5 text-[10px] font-medium rounded ${
+																className={`ml-1.5 px-1.5 py-0.5 text-xs font-medium rounded ${
 																	deadline.days_remaining <= 1
 																		? 'bg-red-100 text-red-700'
 																		: deadline.days_remaining <= 3
@@ -1248,6 +1489,26 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 							{/* ── Project Activity Assignments — lazy-loaded ── */}
 							<div data-section="project-activities">
+								{/* The assignments fetch failed (#340): the line names the
+								    next step, and the section keeps quiet rather than
+								    retrying behind the reader's back. */}
+								{assignmentsLoad === LOAD_ERROR && (
+									<div
+										data-testid="assignments-fetch-error"
+										data-state="error"
+										role="alert"
+										className="mb-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-snug text-red-700"
+									>
+										<ExclamationTriangleIcon
+											className="mt-0.5 h-4 w-4 shrink-0 text-red-700"
+											aria-hidden
+										/>
+										<p>
+											Project activities could not load. Refresh the page, or
+											tell support if it stays broken.
+										</p>
+									</div>
+								)}
 								{user?.id && (
 									<Suspense fallback={<SectionSkeleton h="h-48" />}>
 										<ProjectActivityAssignments
@@ -1257,13 +1518,17 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													? moduleAssignments.activityAssignments
 													: null
 											}
+											/* The dashboard already reported the failure, so the
+											   section must not fetch again and must not render the
+											   "no access" silence it reserves for real denials. */
+											fetchFailed={assignmentsLoad === LOAD_ERROR}
 										/>
 									</Suspense>
 								)}
 							</div>
 						</div>
 					</div>
-				</div>
+				</main>
 			</div>
 		</div>
 	);

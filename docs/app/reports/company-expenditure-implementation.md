@@ -895,6 +895,10 @@ Use an isolated database for repeatable verification:
 npx cross-env E2E_DB_NAME=accent_crm_dev_muse_e2e_expenditure npm run e2e
 ```
 
+> **2026-10-10:** this command no longer works. The E2E harness was removed
+> (`docs/explanations/E2E_HARNESS_REMOVAL.md`; the specs are at tag `e2e-v1`).
+> The passage below records how the flows were proven at the time.
+
 For the ticket slices, select `expense-reconciliation.spec.ts`,
 `payroll-bonus.spec.ts`, and `petty-cash-funding.spec.ts` after the production
 build; `expense-non-operating.spec.ts` adds the non-operating balances and their

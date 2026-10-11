@@ -16,7 +16,7 @@
  * Nothing is written; run it against production with the PROD_DB_* values:
  *
  *   node scripts/predeploy-check.mjs --target=prod
- *   node scripts/predeploy-check.mjs --target=prod --artifact e2e/artifacts/predeploy-prod.json
+ *   node scripts/predeploy-check.mjs --target=prod --artifact artifacts/predeploy-prod.json
  */
 import 'dotenv/config';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -44,7 +44,11 @@ const NUMBER_TARGETS = [
 		column: 'quotation_number',
 		active: '(isDelete = 0 OR isDelete IS NULL)',
 	},
-	{ table: 'outgoing_purchase_orders', column: 'sr_no', active: 'isDelete = 0' },
+	{
+		table: 'outgoing_purchase_orders',
+		column: 'sr_no',
+		active: 'isDelete = 0',
+	},
 	{ table: 'leads', column: 'lead_id', active: 'isDelete = 0' },
 ];
 
@@ -326,7 +330,10 @@ try {
 	if (report.migrationWeight.length > 0) {
 		console.log(
 			`[preflight] migration weight: ${report.migrationWeight
-				.map((row) => `${row.table_name}≈${row.approx_rows ?? 0} rows/${row.mb ?? 0}MB`)
+				.map(
+					(row) =>
+						`${row.table_name}≈${row.approx_rows ?? 0} rows/${row.mb ?? 0}MB`
+				)
 				.join(', ')}`
 		);
 	}
@@ -373,7 +380,11 @@ try {
 		await writeFile(
 			artifactPath,
 			`${JSON.stringify(
-				{ flow: 'security-preflight', ...report, ok: report.blockers.length === 0 },
+				{
+					flow: 'security-preflight',
+					...report,
+					ok: report.blockers.length === 0,
+				},
 				null,
 				2
 			)}\n`

@@ -10,6 +10,7 @@ const mockDbConnect = vi.fn().mockResolvedValue(mockDb);
 
 const mockRevokeSession = vi.fn();
 const mockInvalidateUserCache = vi.fn();
+const mockEndUserSession = vi.fn().mockResolvedValue(undefined);
 
 // Cookie jar controlled per-test; logout reads it via next/headers cookies().
 let cookieValue: string | undefined = 'raw-token';
@@ -31,7 +32,9 @@ vi.mock('@/utils/api-permissions', () => ({
 }));
 vi.mock('@/utils/activity-logger', () => ({
 	logActivity: vi.fn().mockResolvedValue(undefined),
-	endUserSession: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('@/utils/work-session-close', () => ({
+	endUserSession: mockEndUserSession,
 }));
 
 const { POST: routePOST } = await import('@/app/api/logout/route');
@@ -61,6 +64,9 @@ describe('POST /api/logout — cache invalidation on revocation', () => {
 		expect(mockRevokeSession).toHaveBeenCalledWith(mockDb, 'raw-token');
 		expect(mockInvalidateUserCache).toHaveBeenCalledTimes(1);
 		expect(mockInvalidateUserCache).toHaveBeenCalledWith(7);
+		// Logout is a chosen end: the Punch Out tile tells it apart from a
+		// sweep- or beacon-stamped one by this source (ticket #331).
+		expect(mockEndUserSession).toHaveBeenCalledWith(7, { endSource: 'logout' });
 		const json = await res.json();
 		expect(json.success).toBe(true);
 	});

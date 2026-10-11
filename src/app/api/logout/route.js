@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { logActivity, endUserSession } from '@/utils/activity-logger';
+import { logActivity } from '@/utils/activity-logger';
+import { endUserSession } from '@/utils/work-session-close';
 import { invalidateUserCache } from '@/utils/api-permissions';
 import { cookies } from 'next/headers';
 import { dbConnect } from '@/utils/database';
@@ -44,8 +45,10 @@ export async function POST(req) {
 			status: 'success',
 		}).catch(console.error);
 
-		// End work session
-		endUserSession(userId).catch(console.error);
+		// End work session — the shared close path, marked as a real logout so
+		// the Punch Out tile can tell it apart from a sweep- or beacon-stamped
+		// end (ticket #331).
+		endUserSession(userId, { endSource: 'logout' }).catch(console.error);
 	}
 
 	const res = NextResponse.json({

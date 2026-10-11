@@ -153,6 +153,36 @@ body,
 	box-shadow: none;
 }
 
+/* Skip link — the page's first focusable element (SkipToMainLink, mounted by
+   the root layout before the sidebar and the navigation). It stays off-screen
+   until it takes focus, then sits below the fixed header and above it in
+   stacking order (the header is z-50). */
+.skip-link {
+	position: fixed;
+	top: 72px; /* below the 64px fixed header */
+	left: 8px;
+	z-index: 60;
+	padding: 8px 14px;
+	border-radius: 8px;
+	background: #64126d;
+	color: #fff;
+	font-size: 14px;
+	font-weight: 600;
+	text-decoration: none;
+	box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.25);
+	transform: translateX(-200%);
+}
+.skip-link:focus {
+	transform: translateX(0);
+}
+
+/* The Navbar is fixed at the top and 64px tall (h-16). Reserving that band in
+   the scroll port keeps a focused or anchor-targeted element from being
+   scrolled under the header. */
+html {
+	scroll-padding-top: 64px;
+}
+
 /* Seam guard: overlay a 2px strip on the sidebar's right edge to mask transient gaps */
 .group\/sidebar {
 	position: fixed;
@@ -730,6 +760,15 @@ textarea::placeholder {
 	}
 
 	[class*='blobFloat'] {
+		animation: none !important;
+	}
+
+	/* Dashboard motion (ticket #335): elements that carry animation opt in
+	   with data-motion, so this one block — never a second guard — stills the
+	   attendance tiles' pulse dots, the idle warning's clock icon and both
+	   warning overlays' scale-in entrance. The overlays keep their final,
+	   fully visible state. */
+	[data-motion] {
 		animation: none !important;
 	}
 }

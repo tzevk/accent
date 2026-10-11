@@ -1,10 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, {
+	useState,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useId,
+} from 'react';
 import { fetchJSON } from '@/utils/http';
 import Link from 'next/link';
 import {
 	ClipboardDocumentListIcon,
+	DocumentIcon,
 	PlusIcon,
 	CheckIcon,
 	XMarkIcon,
@@ -32,6 +39,68 @@ const getStatusBadge = (status) =>
 	STATUS_BADGE_CLASSES[status] || 'bg-gray-100 text-gray-600 border-gray-200';
 
 /**
+ * Project navigation vocabulary — one link pattern for every Project name on
+ * the dashboard (tickets #333 and #341).
+ *
+ * The link deep-links to the project's documents tab, the icon is decorative
+ * (`aria-hidden`), and the accessible name is carried by the link itself
+ * together with the tooltip text, so the Project name stays one
+ * keyboard-reachable control instead of two.
+ */
+const PROJECT_DOCUMENTS_LABEL = 'Open documents for';
+
+/**
+ * Tooltip and accessible name for a Project name link.
+ *
+ * The project a link names is read by `projectLinkName` — one fallback order,
+ * the project name, then its code, then its id — and both render sites pass
+ * the same project shape, so one project carries one accessible name wherever
+ * the dashboard links to it (#341; the label itself is read by the helper
+ * ticket #334 added, which both surfaces' names flow through).
+ */
+function projectDocumentsName(project) {
+	const label = projectLinkName(project) || '';
+	return `${PROJECT_DOCUMENTS_LABEL} ${label}`;
+}
+
+/** Project page URL that opens the documents tab (read by the page itself). */
+function projectDocumentsHref(projectId) {
+	return `/projects/${projectId}?tab=upload_documents`;
+}
+
+/** Per-project document count from the activity-assignments payload. */
+function projectDocumentCount(documentCounts, projectId) {
+	const count = documentCounts?.[String(projectId)];
+	return typeof count === 'number' && count > 0 ? count : 0;
+}
+
+/**
+ * Decorative document marker rendered inside a Project name link. Returns
+ * nothing when the project has no documents, so the icon never appears on an
+ * empty project.
+ */
+function DocumentCountMarker({ count, className = 'h-3.5 w-3.5' }) {
+	if (count <= 0) return null;
+	return (
+		<DocumentIcon
+			className={`${className} shrink-0 text-[#64126D]`}
+			aria-hidden="true"
+		/>
+	);
+}
+
+/**
+ * How a project navigation link names the project it opens, in one pattern at
+ * every place the dashboard renders that link (ticket #334): the Project's
+ * name, else its code, else its id. The action wording stays with
+ * `projectDocumentsName`, so a screen-reader link list hears one destination
+ * per project instead of two differently worded links that open it.
+ */
+function projectLinkName(project) {
+	return project?.project_name || project?.project_code || project?.project_id;
+}
+
+/**
  * Textarea that grows with its content so users always see what they type.
  * Starts at one row to match table density, expands as the user types, and
  * scrolls internally once it reaches its max height (set via className).
@@ -55,6 +124,150 @@ function AutoGrowTextarea({ value, className = '', ...props }) {
 			{...props}
 			className={`w-full resize-none overflow-y-auto rounded border leading-5 transition-[border-color,box-shadow] duration-150 focus:outline-none ${className}`}
 		/>
+	);
+}
+
+/**
+ * Whether an element's rendered text is cut off by its own box.
+ *
+ * The measurement is the rendered overflow itself — `scrollWidth` past
+ * `clientWidth` on the element that carries the ellipsis — taken after layout
+ * and repeated whenever the box changes, because the table re-cuts its fixed
+ * columns on resize and when the lazy section first mounts, and webfonts change
+ * the text width without resizing the box. A value that fits measures false, so
+ * no affordance is ever built for it. Layout does not run under jsdom (every
+ * width reads zero), which is the right answer there too.
+ */
+function useIsTruncated(ref, value) {
+	const [truncated, setTruncated] = useState(false);
+
+	useLayoutEffect(() => {
+		const element = ref.current;
+		if (!element) return;
+
+		const measure = () =>
+			setTruncated(element.scrollWidth - element.clientWidth > 1);
+		measure();
+
+		let active = true;
+		document.fonts?.ready.then(
+			() => {
+				if (active) measure();
+			},
+			() => {}
+		);
+
+		if (typeof ResizeObserver === 'undefined') {
+			return () => {
+				active = false;
+			};
+		}
+		const observer = new ResizeObserver(measure);
+		observer.observe(element);
+		return () => {
+			active = false;
+			observer.disconnect();
+		};
+	}, [ref, value]);
+
+	return truncated;
+}
+
+/**
+ * The full value of a truncated cell, rendered while the cell holds focus.
+ *
+ * The value is real text in the page — never only a `title` — shown as a note
+ * under the clipped line, and it doubles as the focused element's accessible
+ * description, so a screen reader gets it too. The ellipsis and the pointer
+ * tooltip stay exactly where they were.
+ */
+function FullCellValue({ id, value, shown }) {
+	return (
+		<span
+			id={id}
+			data-testid="truncated-cell-value"
+			hidden={!shown}
+			className="mt-0.5 block w-full rounded border border-purple-200 bg-purple-50/70 px-1 py-0.5 text-left text-xs font-normal leading-snug text-[#4A1254] shadow-sm"
+		>
+			{value}
+		</span>
+	);
+}
+
+/**
+ * One plain activity-table value — Discipline, Activity, Sub Activity.
+ *
+ * Only a value the rendered box actually cuts off becomes focusable and carries
+ * its full text, so a row whose values fit renders exactly as it did before:
+ * the same text, the same tooltip, no tab stop, no extra element.
+ */
+function ActivityTextValue({ value, className = '' }) {
+	const ref = useRef(null);
+	const truncated = useIsTruncated(ref, value);
+	const [focused, setFocused] = useState(false);
+
+	return (
+		<span
+			className="block"
+			onFocus={() => setFocused(true)}
+			onBlur={() => setFocused(false)}
+		>
+			<span
+				ref={ref}
+				data-truncated={truncated ? 'true' : undefined}
+				tabIndex={truncated ? 0 : undefined}
+				title={value}
+				className={`block truncate leading-tight ${className}`}
+			>
+				{value}
+			</span>
+			{truncated && <FullCellValue value={value} shown={focused} />}
+		</span>
+	);
+}
+
+/**
+ * The Project Number cell: the documents link, its decorative document marker
+ * and the full code for a keyboard user.
+ *
+ * The link stays the cell's only control — the marker is decorative — and the
+ * revealed code is the link's description, so tabbing onto the link exposes the
+ * whole code instead of the ellipsised one. `documentsName` is the one project
+ * navigation vocabulary the row and the assigned-projects list already share.
+ */
+function ProjectNumberValue({ projectId, documentsName, code, documentCount }) {
+	const ref = useRef(null);
+	const codeText = code || '–';
+	const truncated = useIsTruncated(ref, codeText);
+	const [focused, setFocused] = useState(false);
+	const fullValueId = useId();
+
+	return (
+		<span
+			className="block"
+			onFocus={() => setFocused(true)}
+			onBlur={() => setFocused(false)}
+		>
+			<Link
+				href={projectDocumentsHref(projectId)}
+				aria-label={documentsName}
+				title={documentsName}
+				aria-describedby={truncated ? fullValueId : undefined}
+				className="inline-flex max-w-full items-center gap-1 font-mono text-xs text-[#4A1254] leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+			>
+				<span
+					ref={ref}
+					data-truncated={truncated ? 'true' : undefined}
+					className="block min-w-0 truncate"
+				>
+					{codeText}
+				</span>
+				<DocumentCountMarker count={documentCount} className="h-3 w-3" />
+			</Link>
+			{truncated && (
+				<FullCellValue id={fullValueId} value={codeText} shown={focused} />
+			)}
+		</span>
 	);
 }
 
@@ -131,7 +344,7 @@ function SortHeader({ label, sortKey, sort, onSort }) {
 			>
 				<span>{label}</span>
 				{isActive ? (
-					<span className="text-[8px]">{arrow}</span>
+					<span className="text-xs leading-none">{arrow}</span>
 				) : (
 					<ArrowsUpDownIcon className="w-3 h-3 opacity-50" />
 				)}
@@ -140,10 +353,20 @@ function SortHeader({ label, sortKey, sort, onSort }) {
 	);
 }
 
-export default function ProjectActivityAssignments({ userId, preloadedData }) {
+export default function ProjectActivityAssignments({
+	userId,
+	preloadedData,
+	// The dashboard already loaded this data and reported a failure itself
+	// (#340). The section then stays out of the way: no second fetch, no
+	// "no access" silence, since the reader is looking at the dashboard's
+	// error line instead.
+	fetchFailed = false,
+}) {
 	const [assignments, setAssignments] = useState([]);
 	const [emptyProjects, setEmptyProjects] = useState([]);
 	const [accessibleProjects, setAccessibleProjects] = useState([]);
+	// Per-project document counts keyed by project id (all three document stores).
+	const [documentCounts, setDocumentCounts] = useState({});
 	const [loading, setLoading] = useState(true);
 	const [hasAccess, setHasAccess] = useState(true);
 	const [remarkValues, setRemarkValues] = useState({});
@@ -249,15 +472,16 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			setAssignments(preloadedData.assignments || []);
 			setAccessibleProjects(preloadedData.accessibleProjects || []);
 			setEmptyProjects(preloadedData.emptyProjects || []);
+			setDocumentCounts(preloadedData.documentCounts || {});
 			setLoading(false);
 		}
 	}, [preloadedData]);
 
 	// Only fetch if no preloaded data provided
 	useEffect(() => {
-		if (!userId || preloadedData) return;
+		if (!userId || preloadedData || fetchFailed) return;
 		loadAssignments();
-	}, [userId, preloadedData]);
+	}, [userId, preloadedData, fetchFailed]);
 
 	// Load discipline/activity/sub-activity dropdown options
 	useEffect(() => {
@@ -285,6 +509,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 				setAccessibleProjects(res.data.accessibleProjects || []);
 				setAssignments(res.data.assignments || []);
 				setEmptyProjects(res.data.emptyProjects || []);
+				setDocumentCounts(res.data.documentCounts || {});
 			} else {
 				setHasAccess(false);
 			}
@@ -469,6 +694,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 			});
 		}
 	};
+
+	// The dashboard's own fetch failed and its error line is on screen (#340):
+	// stay silent instead of guessing at a second load. Checked before the
+	// spinner, because with no self-fetch there is no load to wait for.
+	if (fetchFailed) return null;
 
 	if (loading) {
 		return (
@@ -674,7 +904,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 					<div>
 						<label
 							htmlFor="activity-start-date"
-							className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1"
+							className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1"
 						>
 							From
 						</label>
@@ -690,7 +920,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 					<div>
 						<label
 							htmlFor="activity-end-date"
-							className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1"
+							className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1"
 						>
 							To
 						</label>
@@ -742,7 +972,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 							Clear
 						</button>
 					)}
-					<span className="ml-auto text-[11px] text-gray-500">
+					<span className="ml-auto text-xs text-gray-500">
 						{flatRows.length}
 						{flatRows.length !== baseRows.length
 							? ` of ${baseRows.length}`
@@ -861,10 +1091,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 														</p>
 														<ul className="space-y-2">
 															{assignableProjects.map((p) => {
-																const projectLabel =
-																	p.project_name ||
-																	p.project_code ||
-																	p.project_id;
+																const documentsName = projectDocumentsName(p);
+																const documentCount = projectDocumentCount(
+																	documentCounts,
+																	p.project_id
+																);
 																return (
 																	<li
 																		key={p.project_id}
@@ -876,11 +1107,15 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 																				: p.project_name || p.project_id}
 																		</span>
 																		<Link
-																			href={`/projects/${p.project_id}`}
-																			aria-label={`View project details for ${projectLabel}`}
-																			className="shrink-0 text-xs font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+																			href={projectDocumentsHref(p.project_id)}
+																			aria-label={documentsName}
+																			title={documentsName}
+																			className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 																		>
-																			View project details
+																			Open documents
+																			<DocumentCountMarker
+																				count={documentCount}
+																			/>
 																		</Link>
 																	</li>
 																);
@@ -1049,7 +1284,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 													status: e.target.value,
 												}))
 											}
-											className="w-full px-0.5 py-0.5 text-[10px] border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+											className="w-full px-0.5 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 											title="Status"
 										>
 											<option value="Not Started">Not Started</option>
@@ -1109,6 +1344,13 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 								const isRemarkDirty =
 									currentRemark !== originalRemark &&
 									remarkStatusForKey !== 'saving';
+								// The one project navigation name: this project reads
+								// the same here as in the assigned-projects list.
+								const documentsName = projectDocumentsName({
+									project_id: activity.project_id,
+									project_code,
+									project_name,
+								});
 
 								return (
 									<tr
@@ -1119,41 +1361,36 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 									>
 										{/* Project Number */}
 										<td className="py-1 px-2 text-center align-middle">
-											<Link
-												href={`/projects/${activity.project_id}`}
-												aria-label={`View details for ${project_name || project_code || activity.project_id}`}
-												className="font-mono text-[10px] text-[#4A1254] block break-words leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-												title={project_code || '–'}
-											>
-												{project_code || '–'}
-											</Link>
+											<ProjectNumberValue
+												projectId={activity.project_id}
+												documentsName={documentsName}
+												code={project_code}
+												documentCount={projectDocumentCount(
+													documentCounts,
+													activity.project_id
+												)}
+											/>
 										</td>
 										{/* Discipline */}
 										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className="text-[#4A1254] block break-words leading-tight"
-												title={activity.discipline}
-											>
-												{activity.discipline}
-											</span>
+											<ActivityTextValue
+												value={activity.discipline}
+												className="text-[#4A1254]"
+											/>
 										</td>
 										{/* Activity */}
 										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className="font-semibold text-[#4A1254] block break-words leading-tight"
-												title={activity.activity_name}
-											>
-												{activity.activity_name}
-											</span>
+											<ActivityTextValue
+												value={activity.activity_name}
+												className="font-semibold text-[#4A1254]"
+											/>
 										</td>
 										{/* Sub Activity */}
 										<td className="py-1 px-2 text-center align-middle">
-											<span
-												className="text-[#4A1254] block break-words leading-tight"
-												title={activity.sub_activity_name || '–'}
-											>
-												{activity.sub_activity_name || '–'}
-											</span>
+											<ActivityTextValue
+												value={activity.sub_activity_name || '–'}
+												className="text-[#4A1254]"
+											/>
 										</td>
 										{/* Default MH */}
 										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
@@ -1215,7 +1452,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 															due_date: e.target.value,
 														}))
 													}
-													className="px-1 py-0.5 text-[10px] border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+													className="px-1 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 												/>
 											) : (
 												<span className="text-[#4A1254]">
@@ -1234,7 +1471,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 															status: e.target.value,
 														}))
 													}
-													className="w-full px-0.5 py-0.5 text-[10px] border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+													className="w-full px-0.5 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 												>
 													<option value="Not Started">Not Started</option>
 													<option value="In Progress">In Progress</option>

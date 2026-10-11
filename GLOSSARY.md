@@ -270,3 +270,26 @@ _Avoid_: Edit, Reversal without reason, Rewriting history
 **Version-Matched Expenditure Evidence Export**:
 An authorized multi-sheet Excel workbook export (`GET /api/reports/employee-project-monthly-cost/download?view=expenditure`) containing version-matched audit evidence for company and project expenditure reconciliation. It delivers five sheets: Company Reconciliation, Project Detail, Budgets & Commitments, Cash Paid, and Revisions & Close. The export matches the web report calculations, distinguishes missing data from zero, keeps company reconciliation totals intact when filtered by project, and displays commercial client orders with an explicit non-revenue non-profit disclaimer.
 _Avoid_: Unverified export, Filtered company total, Ad-hoc spreadsheet
+
+**Work Session**:
+A User's system-observed presence span on one day — opened by the day's first login
+activity event and closed by an explicit logout, or by the staleness sweep that stamps
+the last heartbeat when the User goes silent. It is not a Session (the authenticated
+login itself, which revocation acts on) and not Time Present (the device-measured span),
+and a User can hold more than one on a day.
+_Avoid_: Session (the login, not the span), Punch (a device event), Shift
+
+**Timesheet**:
+An Employee's month view of worked hours — hours from the Attendance Record's status
+(`P` = 8h, `HD` = 4h) plus Logged Hours from Project Activity Assignments daily entries,
+with worked-hours overtime counting every minute past 8 (ADR-0006). It carries no punch
+times; Punches feed Time Present and the Attendance Record's times instead.
+_Avoid_: Attendance Record (the daily cell), Logged Hours (the project effort it
+includes), Payable OT (the paid variant)
+
+**Project Document**:
+A document belonging to a Project, held in one of three stores: an uploaded file, a
+planning-library document chosen from a master list, or a received/issued document
+recorded as a text list. A Project's document count spans all three stores, while a
+Project name that opens documents opens that Project's uploaded files.
+_Avoid_: Attachment, Project file, Scan
