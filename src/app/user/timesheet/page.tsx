@@ -124,16 +124,9 @@ function UserTimesheetPageInner() {
 							/>
 						) : (
 							<div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/60 shadow-sm p-3 sm:p-4 xl:p-5">
-								<div className="mb-4">
-									<h2 className="text-lg font-bold text-gray-900">
-										My Timesheet
-									</h2>
-									<p className="text-sm text-gray-500 mt-0.5">
-										Your hours for one month, read-only. A present day counts 8
-										hours and a half day 4, with Logged Hours from your project
-										assignments beside them.
-									</p>
-								</div>
+								<h2 className="mb-4 text-lg font-bold text-gray-900">
+									My Timesheet
+								</h2>
 
 								{loadError ? (
 									<div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 flex items-center gap-2 text-sm text-red-700">

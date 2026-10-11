@@ -33,6 +33,7 @@ import {
 } from '@heroicons/react/24/outline';
 import LeaveLoginToast from '@/components/LeaveLoginToast';
 import { useIdleMonitor } from '@/hooks/useIdleMonitor';
+import { EXPECTED_WORK_MINS, isLateLogin, isOvertime } from '@/lib/shift-times';
 
 // ── Lazy-load heavy components (code-split, only fetched when needed) ──
 const TodoList = lazy(() => import('@/components/TodoList'));
@@ -40,17 +41,7 @@ const ProjectActivityAssignments = lazy(
 	() => import('@/components/ProjectActivityAssignments')
 );
 
-// ── Fixed shift times ──
-const FIXED_IN_TIME = '09:00'; // 9:00 AM
-const FIXED_OUT_TIME = '17:30'; // 5:30 PM
-const LUNCH_BREAK_MINS = 60; // 1 PM to 2 PM
-// Expected work = (out - in) - lunch = (17:30 - 09:00) - 1h = 7h 30m = 450 min
-const EXPECTED_WORK_MINS = (() => {
-	const [inH, inM] = FIXED_IN_TIME.split(':').map(Number);
-	const [outH, outM] = FIXED_OUT_TIME.split(':').map(Number);
-	return outH * 60 + outM - (inH * 60 + inM) - LUNCH_BREAK_MINS;
-})();
-
+// ── Shift times and the tile remarks (src/lib/shift-times.ts) ──
 // A tile with no recorded value shows a plain dash. A bare `--:--` read as a
 // broken fetch, so a day that recorded nothing now says so in words (#340).
 // One "no value" character repository-wide: src/lib/format.js returns '—'.
@@ -63,29 +54,6 @@ const LOAD_PENDING = 'loading';
 const LOAD_OK = 'ok';
 const LOAD_EMPTY = 'empty';
 const LOAD_ERROR = 'error';
-
-// Check if a time string (HH:MM) is outside the fixed shift window
-function isOvertime(timeStr) {
-	if (!timeStr) return false;
-	const t = typeof timeStr === 'string' ? timeStr : timeStr.toString();
-	if (!t.includes(':')) return false;
-	const [h, m] = t.split(':').map(Number);
-	const mins = h * 60 + (m || 0);
-	const [inH, inM] = FIXED_IN_TIME.split(':').map(Number);
-	const [outH, outM] = FIXED_OUT_TIME.split(':').map(Number);
-	return mins < inH * 60 + inM || mins > outH * 60 + outM;
-}
-
-// Check if login/in time is after the fixed in time (late arrival)
-function isLateLogin(timeStr) {
-	if (!timeStr) return false;
-	const t = typeof timeStr === 'string' ? timeStr : timeStr.toString();
-	if (!t.includes(':')) return false;
-	const [h, m] = t.split(':').map(Number);
-	const mins = h * 60 + (m || 0);
-	const [inH, inM] = FIXED_IN_TIME.split(':').map(Number);
-	return mins > inH * 60 + inM;
-}
 
 // ── Shared idle-time formatter ──
 function fmtIdle(seconds) {
