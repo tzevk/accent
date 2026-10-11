@@ -456,7 +456,11 @@ export default function EditQuotationPage() {
 			const res = await fetch(url, {
 				method,
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(quotation),
+				body: JSON.stringify({
+					...quotation,
+					// The rate input keeps raw text while typing; store a number.
+					gst_percentage: parseFloat(quotation.gst_percentage) || 0,
+				}),
 			});
 			const data = await res.json();
 			if (data.success) {
@@ -811,16 +815,20 @@ export default function EditQuotationPage() {
 											<div className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right">
 												Gross Amount:
 											</div>
-											<div className="w-32 p-2 text-right font-medium">
+											<div className="w-32 p-2 text-right font-medium tabular-nums">
 												{formatCurrency(quotation.gross_amount)}
 											</div>
 										</div>
 										<div className="flex border-b border-gray-300">
-											<div className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right">
+											<label
+												htmlFor="quotation-gst-type"
+												className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right"
+											>
 												GST Type:
-											</div>
+											</label>
 											<div className="w-32 p-2">
 												<select
+													id="quotation-gst-type"
 													name="gst_type"
 													value={quotation.gst_type || 'cgst_sgst'}
 													onChange={(e) => {
@@ -846,12 +854,16 @@ export default function EditQuotationPage() {
 											</div>
 										</div>
 										<div className="flex border-b border-gray-300">
-											<div className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right">
+											<label
+												htmlFor="quotation-gst-rate"
+												className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right"
+											>
 												GST Rate:
-											</div>
+											</label>
 											<div className="w-32 p-2">
 												<div className="flex items-center justify-end">
 													<input
+														id="quotation-gst-rate"
 														type="number"
 														name="gst_percentage"
 														value={quotation.gst_percentage}
@@ -871,7 +883,7 @@ export default function EditQuotationPage() {
 																};
 															});
 														}}
-														className="w-12 px-1 py-0.5 text-sm text-center border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+														className="w-12 px-1 py-0.5 text-sm text-center tabular-nums border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
 													/>
 													<span className="ml-1 text-sm">%</span>
 												</div>
@@ -884,7 +896,7 @@ export default function EditQuotationPage() {
 														CGST @{' '}
 														{(parseFloat(quotation.gst_percentage) || 0) / 2}%:
 													</div>
-													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
+													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium tabular-nums">
 														{formatCurrency(toNumber(totals.cgst))}
 													</div>
 												</div>
@@ -893,7 +905,7 @@ export default function EditQuotationPage() {
 														SGST @{' '}
 														{(parseFloat(quotation.gst_percentage) || 0) / 2}%:
 													</div>
-													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
+													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium tabular-nums">
 														{formatCurrency(toNumber(totals.sgst))}
 													</div>
 												</div>
@@ -903,7 +915,7 @@ export default function EditQuotationPage() {
 												<div className="flex-1 p-2 border-r border-gray-300 text-xs text-gray-500 text-right">
 													IGST @ {quotation.gst_percentage}%:
 												</div>
-												<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
+												<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium tabular-nums">
 													{formatCurrency(quotation.gst_amount)}
 												</div>
 											</div>
@@ -913,7 +925,7 @@ export default function EditQuotationPage() {
 											<div className="flex-1 p-2 border-r border-gray-300 font-bold text-sm text-right">
 												Net Amount:
 											</div>
-											<div className="w-32 p-2 text-right font-bold text-purple-700">
+											<div className="w-32 p-2 text-right font-bold text-purple-700 tabular-nums">
 												{formatCurrency(quotation.net_amount)}
 											</div>
 										</div>
