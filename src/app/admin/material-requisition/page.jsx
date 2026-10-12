@@ -24,6 +24,7 @@ export default function MaterialRequisitionPage() {
 
 	const [requisitions, setRequisitions] = useState([]);
 	const [loading, setLoading] = useState(true);
+	const [printingId, setPrintingId] = useState(null);
 	const [pagination, setPagination] = useState({
 		page: 1,
 		limit: 20,
@@ -35,6 +36,45 @@ export default function MaterialRequisitionPage() {
 	const [searchTerm, setSearchTerm] = useState('');
 	const [statusFilter, setStatusFilter] = useState('all');
 	const [departmentFilter, setDepartmentFilter] = useState('all');
+
+	// Fetch the printable requisition HTML and print it from a full-screen
+	// iframe. The old window.open produced no request at all when the
+	// browser blocked the popup — the user saw nothing happen.
+	const handlePrintRequisition = async (req) => {
+		setPrintingId(req.id);
+		try {
+			const res = await fetch(
+				`/api/admin/material-requisitions/download?id=${req.id}`
+			);
+			const contentType = res.headers.get('content-type') || '';
+			if (!res.ok || contentType.includes('application/json')) {
+				const detail = contentType.includes('application/json')
+					? ((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`)
+					: `HTTP ${res.status}`;
+				throw new Error(detail);
+			}
+			const html = await res.text();
+			const iframe = document.createElement('iframe');
+			iframe.style.cssText =
+				'position:fixed;top:0;left:0;width:100%;height:100%;border:0;background:#fff;z-index:9999;';
+			// Attach before writing: the load event can fire as soon as the
+			// written document parses.
+			iframe.onload = () => {
+				iframe.contentWindow.focus();
+				iframe.contentWindow.print();
+				setTimeout(() => iframe.remove(), 1000);
+			};
+			document.body.appendChild(iframe);
+			const doc = iframe.contentDocument;
+			doc.open();
+			doc.write(html);
+			doc.close();
+		} catch (error) {
+			alert(`Could not open the requisition for printing: ${error.message}`);
+		} finally {
+			setPrintingId(null);
+		}
+	};
 
 	// Stats
 	const [stats, setStats] = useState({
@@ -369,16 +409,16 @@ export default function MaterialRequisitionPage() {
 																<EyeIcon className="h-5 w-5" />
 															</button>
 															<button
-																onClick={() =>
-																	window.open(
-																		`/api/admin/material-requisitions/download?id=${req.id}`,
-																		'_blank'
-																	)
-																}
-																className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-																title="Download PDF"
+																onClick={() => handlePrintRequisition(req)}
+																disabled={printingId === req.id}
+																className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+																title="Print requisition"
 															>
-																<ArrowDownTrayIcon className="h-5 w-5" />
+																{printingId === req.id ? (
+																	<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600" />
+																) : (
+																	<ArrowDownTrayIcon className="h-5 w-5" />
+																)}
 															</button>
 															<button
 																onClick={() =>

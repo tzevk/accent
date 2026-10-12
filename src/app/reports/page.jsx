@@ -667,7 +667,12 @@ export default function ReportsPage() {
 		if (!printContent) return;
 
 		const printWindow = window.open('', '_blank');
-		if (!printWindow) return;
+		if (!printWindow) {
+			alert(
+				'Your browser blocked the print window. Allow pop-ups for this site and try again.'
+			);
+			return;
+		}
 
 		const doc = printWindow.document;
 		const slip = slipOverride || selectedSlip || {};

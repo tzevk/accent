@@ -22,6 +22,26 @@ const nextConfig: NextConfig = {
 		'pizzip',
 	],
 
+	// The four PDF routes launch @sparticuz/chromium. The package's JS
+	// resolves from node_modules on Vercel, but it locates its Brotli packs
+	// (bin/chromium.br, bin/swiftshader.tar.br) by relative path at runtime,
+	// and the file tracer drops them because no import graph reaches those
+	// files — the launch then fails with
+	// 'The input directory "/var/task/node_modules/@sparticuz/chromium/bin"
+	// does not exist'. Force-include the package for those routes only.
+	outputFileTracingIncludes: {
+		'/api/admin/quotations/download': [
+			'./node_modules/@sparticuz/chromium/**/*',
+		],
+		'/api/admin/invoices/download': ['./node_modules/@sparticuz/chromium/**/*'],
+		'/api/admin/payment-entries/get-receipt-pdf': [
+			'./node_modules/@sparticuz/chromium/**/*',
+		],
+		'/api/reports/project-activities/download': [
+			'./node_modules/@sparticuz/chromium/**/*',
+		],
+	},
+
 	// Enable compression
 	compress: true,
 

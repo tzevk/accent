@@ -25,6 +25,7 @@ export default function InvoicePage() {
 
 	const [invoices, setInvoices] = useState([]);
 	const [loading, setLoading] = useState(true);
+	const [downloadingId, setDownloadingId] = useState(null);
 	const [stats, setStats] = useState({
 		total: 0,
 		draft: 0,
@@ -126,9 +127,34 @@ export default function InvoicePage() {
 		});
 	};
 
-	// Handle download - opens printable invoice in new tab
-	const handleDownload = (invoice) => {
-		window.open(`/api/admin/invoices/download?id=${invoice.id}`, '_blank');
+	// Handle download - fetches the PDF and saves it as a file. Fetch + blob
+	// instead of window.open: a blocked or redirected popup looks like
+	// "nothing happened" to the user.
+	const handleDownload = async (invoice) => {
+		setDownloadingId(invoice.id);
+		try {
+			const res = await fetch(`/api/admin/invoices/download?id=${invoice.id}`);
+			const contentType = res.headers.get('content-type') || '';
+			if (!res.ok || !contentType.includes('application/pdf')) {
+				const detail = contentType.includes('application/json')
+					? ((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`)
+					: `HTTP ${res.status} (received ${contentType || 'no content-type'})`;
+				throw new Error(detail);
+			}
+			const blob = await res.blob();
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = `${invoice.invoice_number || 'invoice'}.pdf`;
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			URL.revokeObjectURL(url);
+		} catch (error) {
+			alert(`Could not generate the PDF: ${error.message}`);
+		} finally {
+			setDownloadingId(null);
+		}
 	};
 
 	// Handle edit
@@ -461,10 +487,15 @@ export default function InvoicePage() {
 													</button>
 													<button
 														onClick={() => handleDownload(invoice)}
-														className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+														disabled={downloadingId === invoice.id}
+														className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 														title="Download PDF"
 													>
-														<ArrowDownTrayIcon className="h-5 w-5" />
+														{downloadingId === invoice.id ? (
+															<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600" />
+														) : (
+															<ArrowDownTrayIcon className="h-5 w-5" />
+														)}
 													</button>
 													<button
 														onClick={() => handleDelete(invoice)}

@@ -16,6 +16,14 @@ import {
 
 export const runtime = 'nodejs';
 
+// Vercel applies its own default execution budget (10–15 s) on top of the
+// plan limit. A cold invocation must first inflate the ~50 MB Chromium
+// Brotli pack into /tmp and only then render an A4 document, which does not
+// fit inside the platform default — the browser launch is cut off and the
+// request dies with the generic 500. 60 s covers the cold inflate plus a
+// full render; warm renders still finish in under a second.
+export const maxDuration = 60;
+
 // GET - Download quotation as PDF
 export async function GET(request) {
 	// RBAC check
@@ -40,6 +48,10 @@ export async function GET(request) {
 				{ status: 400 }
 			);
 		}
+
+		console.log(
+			`[quotation-pdf] start id=${id} source=${source} isVercel=${process.env.VERCEL === '1'} cwd=${process.cwd()}`
+		);
 
 		connection = await dbConnect();
 
@@ -299,10 +311,17 @@ export async function GET(request) {
 			quotationData = rows[0];
 		}
 
+		console.log(
+			`[quotation-pdf] data loaded source=${source} number=${quotationData?.quotation_number ?? 'n/a'}`
+		);
+
 		const logoDataUri = await getAccentLogoDataUri(new URL(request.url).origin);
 		const html = generateQuotationHTML(quotationData, source).replace(
 			'/accent-logo.png',
 			logoDataUri
+		);
+		console.log(
+			`[quotation-pdf] html built bytes=${html.length} logo=${logoDataUri.startsWith('data:') ? 'data-uri' : logoDataUri}`
 		);
 		const filename = `${sanitizeFileName(
 			quotationData.quotation_number || 'quotation'
@@ -319,12 +338,59 @@ export async function GET(request) {
 
 		const isVercel = process.env.VERCEL === '1';
 		if (isVercel) {
-			browser = await puppeteer.launch({
-				args: chromium.args,
-				defaultViewport: viewport,
-				executablePath: await chromium.executablePath(),
-				headless: true,
-			});
+			console.log('[quotation-pdf] launching chromium (@sparticuz)');
+			// WebGL never helps a 2D print render; disabling graphics the
+			// documented way keeps the swiftshader/angle acceleration flags
+			// out of the arg list. Must happen before chromium.args is read.
+			chromium.setGraphicsMode = false;
+			// Launch exactly as the README prescribes for serverless: pass
+			// chromium.args through puppeteer.defaultArgs with headless:
+			// 'shell'. The bundled headless_shell binary does not support the
+			// "new" headless mode (README FAQ), which is what puppeteer 25
+			// would pass for headless: true. --no-sandbox ships with the
+			// package list and --disable-dev-shm-usage with puppeteer's own
+			// defaults; both are re-ensured here (mirroring
+			// src/lib/pdf-browser-args.ts) so a small container /dev/shm can
+			// never break the launch.
+			const vercelArgs = [...chromium.args];
+			for (const required of ['--disable-dev-shm-usage', '--no-sandbox']) {
+				if (!vercelArgs.includes(required)) vercelArgs.push(required);
+			}
+			try {
+				const extractStart = Date.now();
+				const executablePath = await chromium.executablePath();
+				console.log(
+					`[quotation-pdf] chromium extracted to ${executablePath} in ${Date.now() - extractStart}ms`
+				);
+				const launchStart = Date.now();
+				browser = await puppeteer.launch({
+					// defaultArgs is async in puppeteer 25 — it must be awaited
+					// or launch receives a Promise and throws on .filter().
+					args: await puppeteer.defaultArgs({
+						args: vercelArgs,
+						headless: 'shell',
+					}),
+					defaultViewport: viewport,
+					executablePath,
+					headless: 'shell',
+				});
+				console.log(
+					`[quotation-pdf] browser launched in ${Date.now() - launchStart}ms (${vercelArgs.length} args)`
+				);
+			} catch (error) {
+				// Separate an inflate/launch failure from the render pipeline
+				// so deployments can tell "Chromium never started" (cold-start
+				// budget, missing br files) from "PDF generation failed".
+				// The stack trace is logged, never sent back to the client.
+				// browser is unassigned here, and the outer `finally`
+				// (below) still closes the browser when there is one and
+				// ends the DB connection either way.
+				console.error('Error launching PDF browser on Vercel:', error);
+				return NextResponse.json(
+					{ success: false, error: 'Failed to launch the PDF browser' },
+					{ status: 500 }
+				);
+			}
 		} else {
 			// Use puppeteer's bundled Chromium – no executablePath needed
 			browser = await puppeteer.launch({
@@ -340,6 +406,7 @@ export async function GET(request) {
 		await page.setContent(html, {
 			waitUntil: 'networkidle0',
 		});
+		console.log('[quotation-pdf] html rendered in browser');
 		const imageReadyExpression = [
 			'Array.from(document.images).every(function (image) {',
 			'  return image.complete',
@@ -352,7 +419,10 @@ export async function GET(request) {
 		].join(' ');
 		await page
 			.waitForFunction(imageReadyExpression, { timeout: 5000 })
-			.catch(() => {});
+			.then(() => console.log('[quotation-pdf] images ready'))
+			.catch(() =>
+				console.log('[quotation-pdf] image wait timed out; continuing')
+			);
 
 		const pdf = await page.pdf({
 			format: 'A4',
@@ -366,6 +436,7 @@ export async function GET(request) {
 				left: '15mm',
 			},
 		});
+		console.log(`[quotation-pdf] pdf rendered bytes=${pdf.length}`);
 
 		return new Response(Buffer.from(pdf), {
 			status: 200,
@@ -400,8 +471,12 @@ async function getAccentLogoDataUri(origin) {
 	try {
 		const logoPath = join(process.cwd(), 'public', 'accent-logo.png');
 		const logoBuffer = await readFile(logoPath);
+		console.log(`[quotation-pdf] logo read from disk: ${logoPath}`);
 		return `data:image/png;base64,${logoBuffer.toString('base64')}`;
-	} catch {
+	} catch (err) {
+		console.log(
+			`[quotation-pdf] logo disk read failed (${err?.code || err?.message || err}); falling back to ${origin}/accent-logo.png`
+		);
 		return `${origin}/accent-logo.png`;
 	}
 }

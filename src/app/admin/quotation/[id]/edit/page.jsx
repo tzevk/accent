@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
@@ -21,24 +21,25 @@ import {
 	ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '@/lib/format';
-import { R, add, mul, pctOf, toNumber } from '@/lib/money';
+import { mul, toNumber } from '@/lib/money';
+import { computeQuotationTotals } from '@/lib/quotation-totals';
 
 export default function EditQuotationPage() {
 	const params = useParams();
 	const router = useRouter();
+	const searchParams = useSearchParams();
 	const { user, loading: authLoading } = useSessionRBAC();
 	const id = params?.id;
 	const isNew = id === 'new';
+	// Read from router state, not window.location: on a soft navigation the
+	// location still holds the previous URL, and the default then fired a
+	// request against the wrong table (a 404 in the logs).
 	const source =
-		typeof window !== 'undefined'
-			? new URLSearchParams(window.location.search).get('source') ||
-				(isNew ? 'quotations' : 'project')
-			: isNew
-				? 'quotations'
-				: 'project';
+		searchParams.get('source') || (isNew ? 'quotations' : 'project');
 
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
+	const [downloading, setDownloading] = useState(false);
 	const [companies, setCompanies] = useState([]);
 	const [selectedCompanyId, setSelectedCompanyId] = useState('');
 	const [quotation, setQuotation] = useState({
@@ -309,19 +310,14 @@ export default function EditQuotationPage() {
 			}
 
 			// Recalculate totals
-			const grossAmount = toNumber(
-				newItems.reduce((sum, item) => add(sum, item.amount || 0), R(0))
-			);
-			const gstPct = prev.gst_percentage || 18;
-			const gstAmount = toNumber(pctOf(grossAmount, gstPct));
-			const netAmount = toNumber(add(grossAmount, gstAmount));
+			const totals = computeQuotationTotals(newItems, prev.gst_percentage);
 
 			return {
 				...prev,
 				scope_items: newItems,
-				gross_amount: grossAmount.toFixed(2),
-				gst_amount: gstAmount.toFixed(2),
-				net_amount: netAmount.toFixed(2),
+				gross_amount: totals.gross.toFixed(2),
+				gst_amount: totals.gst.toFixed(2),
+				net_amount: totals.net.toFixed(2),
 			};
 		});
 	};
@@ -350,18 +346,13 @@ export default function EditQuotationPage() {
 			const newItems = prev.scope_items
 				.filter((_, i) => i !== index)
 				.map((item, i) => ({ ...item, sr_no: i + 1 }));
-			const grossAmount = toNumber(
-				newItems.reduce((sum, item) => add(sum, item.amount || 0), R(0))
-			);
-			const gstPct = prev.gst_percentage || 18;
-			const gstAmount = toNumber(pctOf(grossAmount, gstPct));
-			const netAmount = toNumber(add(grossAmount, gstAmount));
+			const totals = computeQuotationTotals(newItems, prev.gst_percentage);
 			return {
 				...prev,
 				scope_items: newItems,
-				gross_amount: grossAmount.toFixed(2),
-				gst_amount: gstAmount.toFixed(2),
-				net_amount: netAmount.toFixed(2),
+				gross_amount: totals.gross.toFixed(2),
+				gst_amount: totals.gst.toFixed(2),
+				net_amount: totals.net.toFixed(2),
 			};
 		});
 	};
@@ -465,7 +456,11 @@ export default function EditQuotationPage() {
 			const res = await fetch(url, {
 				method,
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(quotation),
+				body: JSON.stringify({
+					...quotation,
+					// The rate input keeps raw text while typing; store a number.
+					gst_percentage: parseFloat(quotation.gst_percentage) || 0,
+				}),
 			});
 			const data = await res.json();
 			if (data.success) {
@@ -486,12 +481,35 @@ export default function EditQuotationPage() {
 		}
 	};
 
-	// Download/Print quotation
-	const handleDownload = () => {
-		window.open(
-			`/api/admin/quotations/download?id=${id}&source=${source}`,
-			'_blank'
-		);
+	// Download/Print quotation. Fetch + blob instead of window.open: a
+	// blocked or redirected popup looks like "nothing happened".
+	const handleDownload = async () => {
+		setDownloading(true);
+		try {
+			const res = await fetch(
+				`/api/admin/quotations/download?id=${id}&source=${source}`
+			);
+			const contentType = res.headers.get('content-type') || '';
+			if (!res.ok || !contentType.includes('application/pdf')) {
+				const detail = contentType.includes('application/json')
+					? ((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`)
+					: `HTTP ${res.status} (received ${contentType || 'no content-type'})`;
+				throw new Error(detail);
+			}
+			const blob = await res.blob();
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = `${quotation.quotation_number || 'quotation'}.pdf`;
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			URL.revokeObjectURL(url);
+		} catch (error) {
+			alert(`Could not generate the PDF: ${error.message}`);
+		} finally {
+			setDownloading(false);
+		}
 	};
 
 	if (authLoading || loading) {
@@ -507,6 +525,12 @@ export default function EditQuotationPage() {
 			</div>
 		);
 	}
+
+	// Live CGST/SGST split for the totals section (gross/GST/net rows read state).
+	const totals = computeQuotationTotals(
+		quotation.scope_items,
+		quotation.gst_percentage
+	);
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
@@ -540,10 +564,20 @@ export default function EditQuotationPage() {
 							{!isNew && (
 								<button
 									onClick={handleDownload}
-									className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
+									disabled={downloading}
+									className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
 								>
-									<PrinterIcon className="h-5 w-5" />
-									Preview & Print
+									{downloading ? (
+										<>
+											<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600" />
+											Generating…
+										</>
+									) : (
+										<>
+											<PrinterIcon className="h-5 w-5" />
+											Preview & Print
+										</>
+									)}
 								</button>
 							)}
 							<button
@@ -807,37 +841,41 @@ export default function EditQuotationPage() {
 							</div>
 
 							{/* Totals Section */}
-							{/* <div className="border border-gray-300 mb-4">
+							<div className="border border-gray-300 mb-4">
 								<div className="flex justify-end">
 									<div className="w-80">
 										<div className="flex border-b border-gray-300">
 											<div className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right">
 												Gross Amount:
 											</div>
-											<div className="w-32 p-2 text-right font-medium">
+											<div className="w-32 p-2 text-right font-medium tabular-nums">
 												{formatCurrency(quotation.gross_amount)}
 											</div>
 										</div>
 										<div className="flex border-b border-gray-300">
-											<div className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right">
+											<label
+												htmlFor="quotation-gst-type"
+												className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right"
+											>
 												GST Type:
-											</div>
+											</label>
 											<div className="w-32 p-2">
 												<select
+													id="quotation-gst-type"
 													name="gst_type"
 													value={quotation.gst_type || 'cgst_sgst'}
 													onChange={(e) => {
 														const type = e.target.value;
 														setQuotation((prev) => {
-															const gross = R(prev.gross_amount || 0);
-															const gstPct =
-																parseFloat(prev.gst_percentage) || 0;
-															const gstAmt = pctOf(gross, gstPct);
+															const totals = computeQuotationTotals(
+																prev.scope_items,
+																prev.gst_percentage
+															);
 															return {
 																...prev,
 																gst_type: type,
-																gst_amount: gstAmt.toFixed(2),
-																net_amount: gross.add(gstAmt).toFixed(2),
+																gst_amount: totals.gst.toFixed(2),
+																net_amount: totals.net.toFixed(2),
 															};
 														});
 													}}
@@ -849,27 +887,36 @@ export default function EditQuotationPage() {
 											</div>
 										</div>
 										<div className="flex border-b border-gray-300">
-											<div className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right">
+											<label
+												htmlFor="quotation-gst-rate"
+												className="flex-1 p-2 border-r border-gray-300 bg-gray-50 font-semibold text-sm text-right"
+											>
 												GST Rate:
-											</div>
+											</label>
 											<div className="w-32 p-2">
 												<div className="flex items-center justify-end">
 													<input
+														id="quotation-gst-rate"
 														type="number"
 														name="gst_percentage"
 														value={quotation.gst_percentage}
 														onChange={(e) => {
-															const gstPct = parseFloat(e.target.value) || 0;
-															const gross = R(quotation.gross_amount || 0);
-															const gstAmt = pctOf(gross, gstPct);
-															setQuotation((prev) => ({
-																...prev,
-																gst_percentage: gstPct,
-																gst_amount: gstAmt.toFixed(2),
-																net_amount: gross.add(gstAmt).toFixed(2),
-															}));
+															// Keep the raw text so decimals like "2.5" survive typing.
+															const raw = e.target.value;
+															setQuotation((prev) => {
+																const totals = computeQuotationTotals(
+																	prev.scope_items,
+																	raw
+																);
+																return {
+																	...prev,
+																	gst_percentage: raw,
+																	gst_amount: totals.gst.toFixed(2),
+																	net_amount: totals.net.toFixed(2),
+																};
+															});
 														}}
-														className="w-12 px-1 py-0.5 text-sm text-center border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+														className="w-12 px-1 py-0.5 text-sm text-center tabular-nums border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
 													/>
 													<span className="ml-1 text-sm">%</span>
 												</div>
@@ -882,10 +929,8 @@ export default function EditQuotationPage() {
 														CGST @{' '}
 														{(parseFloat(quotation.gst_percentage) || 0) / 2}%:
 													</div>
-													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
-														{formatCurrency(
-															mul(quotation.gst_amount || 0, 0.5).toNumber()
-														)}
+													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium tabular-nums">
+														{formatCurrency(toNumber(totals.cgst))}
 													</div>
 												</div>
 												<div className="flex border-b border-gray-300 bg-gray-50/30">
@@ -893,10 +938,8 @@ export default function EditQuotationPage() {
 														SGST @{' '}
 														{(parseFloat(quotation.gst_percentage) || 0) / 2}%:
 													</div>
-													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
-														{formatCurrency(
-															mul(quotation.gst_amount || 0, 0.5).toNumber()
-														)}
+													<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium tabular-nums">
+														{formatCurrency(toNumber(totals.sgst))}
 													</div>
 												</div>
 											</>
@@ -905,15 +948,23 @@ export default function EditQuotationPage() {
 												<div className="flex-1 p-2 border-r border-gray-300 text-xs text-gray-500 text-right">
 													IGST @ {quotation.gst_percentage}%:
 												</div>
-												<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium">
+												<div className="w-32 p-2 text-right text-xs text-gray-600 font-medium tabular-nums">
 													{formatCurrency(quotation.gst_amount)}
 												</div>
 											</div>
 										)}
 
+										<div className="flex bg-purple-50">
+											<div className="flex-1 p-2 border-r border-gray-300 font-bold text-sm text-right">
+												Net Amount:
+											</div>
+											<div className="w-32 p-2 text-right font-bold text-purple-700 tabular-nums">
+												{formatCurrency(quotation.net_amount)}
+											</div>
+										</div>
 									</div>
 								</div>
-							</div> */}
+							</div>
 
 							{/* Amount in Words */}
 							<div className="border border-gray-300 mb-4">
