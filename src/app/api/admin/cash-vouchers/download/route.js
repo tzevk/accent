@@ -331,7 +331,6 @@ export async function GET(request) {
 
     .ledger-table {
       width: 100%;
-      height: 100%;
       border-collapse: collapse;
       table-layout: fixed;
       border: none;
@@ -355,11 +354,6 @@ export async function GET(request) {
 
     .ledger-table th:last-child {
       border-right: none;
-    }
-
-    /* Balanced variable row distribution */
-    .ledger-table tbody {
-      height: 100%;
     }
 
     .ledger-table td {
