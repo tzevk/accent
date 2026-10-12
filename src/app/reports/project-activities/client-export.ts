@@ -1,12 +1,10 @@
 /**
  * Client-side download helpers for the Project Activities report.
  *
- * PDF: the server returns Content-Disposition: inline, so opening in a new
- *      tab lets the browser render the PDF.  We hit the URL directly to keep
- *      the UX snappy (the user sees a loading indicator in the tab title).
- * Excel: the server returns Content-Disposition: attachment with a
- *      filename.  We fetch the blob and trigger a download so the filename
- *      is preserved and the user can continue working in the tab.
+ * Both formats fetch the response and save it as a file, so the filename
+ * from Content-Disposition survives and no popup is involved — the PDF
+ * used to open with window.open, which produced no request at all when
+ * the browser blocked the popup. Excel kept the same behavior.
  */
 
 export type ExportFormat = 'pdf' | 'excel';
@@ -37,12 +35,6 @@ export async function downloadReport(
 			? `${base}${buildParams(filters)}`
 			: `${base}/excel${buildParams(filters)}`;
 
-	if (format === 'pdf') {
-		// Inline PDF — let the browser render in a new tab.
-		window.open(url, '_blank', 'noopener,noreferrer');
-		return;
-	}
-
 	const res = await fetch(url, { credentials: 'include' });
 	if (!res.ok) {
 		const message = await res.text().catch(() => '');
@@ -54,7 +46,7 @@ export async function downloadReport(
 	const objectUrl = URL.createObjectURL(blob);
 	const disposition = res.headers.get('Content-Disposition') || '';
 	const match = disposition.match(/filename="?([^";]+)"?/i);
-	const filename = match?.[1] || `project-activities-${Date.now()}.xlsx`;
+	const filename = match?.[1] || `project-activities-${format}-${Date.now()}`;
 
 	const a = document.createElement('a');
 	a.href = objectUrl;

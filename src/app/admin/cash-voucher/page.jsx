@@ -25,6 +25,7 @@ export default function CashVoucherPage() {
 
 	const [vouchers, setVouchers] = useState([]);
 	const [loading, setLoading] = useState(true);
+	const [printingId, setPrintingId] = useState(null);
 	const [pagination, setPagination] = useState({
 		page: 1,
 		limit: 20,
@@ -36,6 +37,45 @@ export default function CashVoucherPage() {
 	const [searchTerm, setSearchTerm] = useState('');
 	const [typeFilter, setTypeFilter] = useState('all');
 	const [statusFilter, setStatusFilter] = useState('all');
+
+	// Fetch the printable voucher HTML and print it from a full-screen
+	// iframe. The old window.open produced no request at all when the
+	// browser blocked the popup — the user saw nothing happen.
+	const handlePrintVoucher = async (voucher) => {
+		setPrintingId(voucher.id);
+		try {
+			const res = await fetch(
+				`/api/admin/cash-vouchers/download?id=${voucher.id}`
+			);
+			const contentType = res.headers.get('content-type') || '';
+			if (!res.ok || contentType.includes('application/json')) {
+				const detail = contentType.includes('application/json')
+					? ((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`)
+					: `HTTP ${res.status}`;
+				throw new Error(detail);
+			}
+			const html = await res.text();
+			const iframe = document.createElement('iframe');
+			iframe.style.cssText =
+				'position:fixed;top:0;left:0;width:100%;height:100%;border:0;background:#fff;z-index:9999;';
+			// Attach before writing: the load event can fire as soon as the
+			// written document parses.
+			iframe.onload = () => {
+				iframe.contentWindow.focus();
+				iframe.contentWindow.print();
+				setTimeout(() => iframe.remove(), 1000);
+			};
+			document.body.appendChild(iframe);
+			const doc = iframe.contentDocument;
+			doc.open();
+			doc.write(html);
+			doc.close();
+		} catch (error) {
+			alert(`Could not open the voucher for printing: ${error.message}`);
+		} finally {
+			setPrintingId(null);
+		}
+	};
 
 	// Stats
 	const [stats, setStats] = useState({
@@ -369,16 +409,16 @@ export default function CashVoucherPage() {
 												<td className="px-6 py-4">
 													<div className="flex items-center justify-center gap-1">
 														<button
-															onClick={() =>
-																window.open(
-																	`/api/admin/cash-vouchers/download?id=${voucher.id}`,
-																	'_blank'
-																)
-															}
-															className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-															title="Download PDF"
+															onClick={() => handlePrintVoucher(voucher)}
+															disabled={printingId === voucher.id}
+															className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+															title="Print voucher"
 														>
-															<ArrowDownTrayIcon className="h-5 w-5" />
+															{printingId === voucher.id ? (
+																<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600" />
+															) : (
+																<ArrowDownTrayIcon className="h-5 w-5" />
+															)}
 														</button>
 														<button
 															onClick={() =>
