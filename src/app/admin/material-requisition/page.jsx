@@ -37,9 +37,11 @@ export default function MaterialRequisitionPage() {
 	const [statusFilter, setStatusFilter] = useState('all');
 	const [departmentFilter, setDepartmentFilter] = useState('all');
 
-	// Fetch the printable requisition HTML and print it from a full-screen
-	// iframe. The old window.open produced no request at all when the
-	// browser blocked the popup — the user saw nothing happen.
+	// Fetch the printable requisition HTML and open it in a real tab. Fetch
+	// + anchor is used instead of window.open because an anchor click is
+	// never popup-blocked, and instead of a doc-written iframe because
+	// printing an iframe produced a blank page in Chrome. The tab
+	// auto-prints on load.
 	const handlePrintRequisition = async (req) => {
 		setPrintingId(req.id);
 		try {
@@ -53,22 +55,20 @@ export default function MaterialRequisitionPage() {
 					: `HTTP ${res.status}`;
 				throw new Error(detail);
 			}
-			const html = await res.text();
-			const iframe = document.createElement('iframe');
-			iframe.style.cssText =
-				'position:fixed;top:0;left:0;width:100%;height:100%;border:0;background:#fff;z-index:9999;';
-			// Attach before writing: the load event can fire as soon as the
-			// written document parses.
-			iframe.onload = () => {
-				iframe.contentWindow.focus();
-				iframe.contentWindow.print();
-				setTimeout(() => iframe.remove(), 1000);
-			};
-			document.body.appendChild(iframe);
-			const doc = iframe.contentDocument;
-			doc.open();
-			doc.write(html);
-			doc.close();
+			const html = (await res.text()).replace(
+				'</body>',
+				'<script>window.addEventListener("load", function () { window.print(); });</script></body>'
+			);
+			const blob = new Blob([html], { type: 'text/html' });
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.target = '_blank';
+			link.rel = 'noopener';
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			setTimeout(() => URL.revokeObjectURL(url), 60000);
 		} catch (error) {
 			alert(`Could not open the requisition for printing: ${error.message}`);
 		} finally {

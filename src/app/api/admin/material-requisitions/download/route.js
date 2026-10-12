@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { dbConnect } from '@/utils/database';
 import { escapeHtml } from '@/lib/escape-html';
 import {
@@ -59,6 +61,18 @@ export async function GET(request) {
 				year: 'numeric',
 			});
 		};
+
+		// Inline the logo as a data URI: the print tab opens as a blob URL,
+		// where a root-relative /accent-logo.png no longer resolves.
+		let logoDataUri = '/accent-logo.png';
+		try {
+			const logoBuffer = await readFile(
+				join(process.cwd(), 'public', 'accent-logo.png')
+			);
+			logoDataUri = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+		} catch {
+			// Fall back to the URL for same-origin opens (dev, direct tab).
+		}
 
 		// Generate HTML for printing
 		const html = `
@@ -236,7 +250,7 @@ export async function GET(request) {
       <div class="container">
         <div class="header">
           <div class="logo-section">
-            <img src="/accent-logo.png" alt="Accent Logo" class="logo" />
+            <img src="${logoDataUri}" alt="Accent Logo" class="logo" />
             <div class="company-name">
               <h2>ACCENT</h2>
               <p>TECHNO SOLUTIONS</p>

@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { dbConnect } from '@/utils/database';
 import { escapeHtml } from '@/lib/escape-html';
 import {
@@ -72,7 +74,12 @@ export async function GET(request) {
 		};
 
 		const actualItems = lineItems.length > 0 ? lineItems : [];
-		const totalRowsNeeded = 5;
+		// Ruled rows: one line each, 5.5mm tall; the fixed blocks (header
+		// grid, meta, total, signatures) measure 33mm and the table header
+		// 9.8mm, so 19 rows fill the 148.5mm half-page envelope with no
+		// dead gap. Vouchers with more items grow the envelope instead of
+		// clipping (print overflow is visible).
+		const totalRowsNeeded = 19;
 		const emptyRowsNeeded = Math.max(0, totalRowsNeeded - actualItems.length);
 
 		const lineItemsHtml = actualItems
@@ -105,6 +112,18 @@ export async function GET(request) {
 			)
 			.join('');
 
+		// Inline the logo as a data URI: the print tab opens as a blob URL,
+		// where a root-relative /accent-logo.png no longer resolves.
+		let logoDataUri = '/accent-logo.png';
+		try {
+			const logoBuffer = await readFile(
+				join(process.cwd(), 'public', 'accent-logo.png')
+			);
+			logoDataUri = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+		} catch {
+			// Fall back to the URL for same-origin opens (dev, direct tab).
+		}
+
 		const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -115,32 +134,6 @@ export async function GET(request) {
     @page {
       size: A4 portrait;
       margin: 0; /* Print margins neutralized to delegate absolute layout to the viewport container */
-    }
-    
-    @media print {
-      html, body {
-        height: 100%;
-        overflow: hidden;
-      }
-      body {
-        background-color: #ffffff;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-        margin: 0 !important;
-        padding: 0 !important;
-      }
-      .no-print { 
-        display: none !important; 
-      }
-      .voucher {
-        border: 2px solid #000000 !important;
-      }
-      th, .total-title-cell, .title-banner-pane {
-        background-color: #f2f2f2 !important;
-      }
-      .meta-row.hidden-field {
-        display: none !important;
-      }
     }
 
     body {
@@ -309,6 +302,10 @@ export async function GET(request) {
 
     .ledger-table {
       width: 100%;
+      /* Fill the flex body so the ruled rows absorb the slack and the total
+         row sits directly above the signature row — no dead gap. With 19
+         ruled rows the stretch is ~5.5mm per row, not the 21mm it was with
+         five. A longer voucher compresses the rows instead of clipping. */
       height: 100%;
       border-collapse: collapse;
       table-layout: fixed;
@@ -317,6 +314,12 @@ export async function GET(request) {
 
     .ledger-table thead {
       flex-shrink: 0;
+    }
+
+    /* Rows distribute evenly over the table's stretched height, so the ruled
+       lines fill the half-page envelope with no gap above the totals. */
+    .ledger-table tbody {
+      height: 100%;
     }
 
     .ledger-table th {
@@ -333,11 +336,6 @@ export async function GET(request) {
 
     .ledger-table th:last-child {
       border-right: none;
-    }
-
-    /* Balanced variable row distribution */
-    .ledger-table tbody {
-      height: 100%;
     }
 
     .ledger-table td {
@@ -458,6 +456,49 @@ export async function GET(request) {
       font-size: 12px;
     }
   </style>
+
+  <!-- Print overrides live last so they beat the base .voucher rule in the
+       cascade: an earlier @media print block was silently overridden by
+       height: 47vh, which resolved against the A4 page box and left long
+       vouchers clipped by overflow: hidden. -->
+  <style>
+    @media print {
+      html, body {
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        background-color: #ffffff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .voucher {
+        border: 2px solid #000000 !important;
+        /* Half an A4 page (297mm / 2), independent of the viewport. It is a
+           floor, not a cap: a voucher with more items than the ruled rows
+           grows the envelope instead of clipping. */
+        height: auto;
+        min-height: 148.5mm;
+        overflow: visible;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .voucher-body {
+        overflow: visible;
+      }
+      th, .total-title-cell, .title-banner-pane {
+        background-color: #f2f2f2 !important;
+      }
+      .meta-row.hidden-field {
+        display: none !important;
+      }
+    }
+  </style>
 </head>
 <body>
 
@@ -472,7 +513,7 @@ export async function GET(request) {
     <div class="header-split-grid">
       <div class="company-pane-flex">
         <div class="logo-left-node">
-          <img src="/accent-logo.png" alt="Company Logo" />
+          <img src="${logoDataUri}" alt="Company Logo" />
         </div>
         <div class="text-right-node">
           <h2 class="company-title">Accent Techno Solutions Pvt. Ltd.</h2>
