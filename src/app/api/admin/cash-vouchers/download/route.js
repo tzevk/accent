@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { dbConnect } from '@/utils/database';
 import { escapeHtml } from '@/lib/escape-html';
 import {
@@ -105,6 +107,18 @@ export async function GET(request) {
 			)
 			.join('');
 
+		// Inline the logo as a data URI: the print tab opens as a blob URL,
+		// where a root-relative /accent-logo.png no longer resolves.
+		let logoDataUri = '/accent-logo.png';
+		try {
+			const logoBuffer = await readFile(
+				join(process.cwd(), 'public', 'accent-logo.png')
+			);
+			logoDataUri = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+		} catch {
+			// Fall back to the URL for same-origin opens (dev, direct tab).
+		}
+
 		const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -134,6 +148,14 @@ export async function GET(request) {
       }
       .voucher {
         border: 2px solid #000000 !important;
+        /* Exactly half an A4 page (297mm / 2), independent of the viewport —
+           the 47vh on screen does not translate to a predictable printed
+           height. */
+        height: 148.5mm;
+        min-height: 148.5mm;
+        max-height: 148.5mm;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }
       th, .total-title-cell, .title-banner-pane {
         background-color: #f2f2f2 !important;
@@ -472,7 +494,7 @@ export async function GET(request) {
     <div class="header-split-grid">
       <div class="company-pane-flex">
         <div class="logo-left-node">
-          <img src="/accent-logo.png" alt="Company Logo" />
+          <img src="${logoDataUri}" alt="Company Logo" />
         </div>
         <div class="text-right-node">
           <h2 class="company-title">Accent Techno Solutions Pvt. Ltd.</h2>
