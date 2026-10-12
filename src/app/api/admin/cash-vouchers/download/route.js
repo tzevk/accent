@@ -302,6 +302,11 @@ export async function GET(request) {
 
     .ledger-table {
       width: 100%;
+      /* Fill the flex body so the ruled rows absorb the slack and the total
+         row sits directly above the signature row — no dead gap. With 19
+         ruled rows the stretch is ~5.5mm per row, not the 21mm it was with
+         five. A longer voucher compresses the rows instead of clipping. */
+      height: 100%;
       border-collapse: collapse;
       table-layout: fixed;
       border: none;
@@ -309,6 +314,12 @@ export async function GET(request) {
 
     .ledger-table thead {
       flex-shrink: 0;
+    }
+
+    /* Rows distribute evenly over the table's stretched height, so the ruled
+       lines fill the half-page envelope with no gap above the totals. */
+    .ledger-table tbody {
+      height: 100%;
     }
 
     .ledger-table th {
