@@ -74,7 +74,12 @@ export async function GET(request) {
 		};
 
 		const actualItems = lineItems.length > 0 ? lineItems : [];
-		const totalRowsNeeded = 5;
+		// Ruled rows: one line each, 5.5mm tall; the fixed blocks (header
+		// grid, meta, total, signatures) measure 33mm and the table header
+		// 9.8mm, so 19 rows fill the 148.5mm half-page envelope with no
+		// dead gap. Vouchers with more items grow the envelope instead of
+		// clipping (print overflow is visible).
+		const totalRowsNeeded = 19;
 		const emptyRowsNeeded = Math.max(0, totalRowsNeeded - actualItems.length);
 
 		const lineItemsHtml = actualItems
@@ -129,40 +134,6 @@ export async function GET(request) {
     @page {
       size: A4 portrait;
       margin: 0; /* Print margins neutralized to delegate absolute layout to the viewport container */
-    }
-    
-    @media print {
-      html, body {
-        height: 100%;
-        overflow: hidden;
-      }
-      body {
-        background-color: #ffffff;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-        margin: 0 !important;
-        padding: 0 !important;
-      }
-      .no-print { 
-        display: none !important; 
-      }
-      .voucher {
-        border: 2px solid #000000 !important;
-        /* Exactly half an A4 page (297mm / 2), independent of the viewport —
-           the 47vh on screen does not translate to a predictable printed
-           height. */
-        height: 148.5mm;
-        min-height: 148.5mm;
-        max-height: 148.5mm;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      th, .total-title-cell, .title-banner-pane {
-        background-color: #f2f2f2 !important;
-      }
-      .meta-row.hidden-field {
-        display: none !important;
-      }
     }
 
     body {
@@ -472,6 +443,49 @@ export async function GET(request) {
       left: 5px;
       top: -9px;
       font-size: 12px;
+    }
+  </style>
+
+  <!-- Print overrides live last so they beat the base .voucher rule in the
+       cascade: an earlier @media print block was silently overridden by
+       height: 47vh, which resolved against the A4 page box and left long
+       vouchers clipped by overflow: hidden. -->
+  <style>
+    @media print {
+      html, body {
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        background-color: #ffffff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .voucher {
+        border: 2px solid #000000 !important;
+        /* Half an A4 page (297mm / 2), independent of the viewport. It is a
+           floor, not a cap: a voucher with more items than the ruled rows
+           grows the envelope instead of clipping. */
+        height: auto;
+        min-height: 148.5mm;
+        overflow: visible;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .voucher-body {
+        overflow: visible;
+      }
+      th, .total-title-cell, .title-banner-pane {
+        background-color: #f2f2f2 !important;
+      }
+      .meta-row.hidden-field {
+        display: none !important;
+      }
     }
   </style>
 </head>
