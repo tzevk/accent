@@ -141,8 +141,10 @@ function BandChip({ band, logged }) {
 }
 
 /**
- * The week-over-week change on a lifetime count: sign plus arrow plus colour,
- * and a true zero renders as 0 rather than hiding.
+ * The 7-day-over-previous-7 change on a lifetime count: sign plus arrow plus
+ * colour, and a true zero renders as 0 rather than hiding. The delta is a
+ * rolling 7-day change whatever window the rest of the page shows, so the
+ * label names that window instead of claiming the page's month or week.
  */
 function DeltaChip({ delta }) {
 	const tone =
@@ -160,7 +162,7 @@ function DeltaChip({ delta }) {
 			<span className="tabular-nums">
 				{delta > 0 ? `+${groupedCount(delta)}` : groupedCount(delta)}
 			</span>
-			this week
+			in the last 7 days
 		</span>
 	);
 }
@@ -541,8 +543,17 @@ export default function AdminDashboard() {
 									key={option.value}
 									type="button"
 									aria-pressed={activeWindow === option.value}
-									onClick={() => setActiveWindow(option.value)}
-									className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D] ${
+									disabled={loading}
+									onClick={() => {
+										// Re-clicking the active window changes nothing, so only a
+										// real switch flips loading: that render already disables
+										// the toggle, which keeps a fast double-click from firing
+										// two fetches and letting the stale response land last.
+										if (option.value === activeWindow) return;
+										setLoading(true);
+										setActiveWindow(option.value);
+									}}
+									className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D] disabled:cursor-not-allowed disabled:opacity-60 ${
 										activeWindow === option.value
 											? 'bg-[#64126D] text-white'
 											: 'text-gray-700 hover:bg-purple-50'
