@@ -71,6 +71,15 @@
 	/* Optional color aliases if referenced */
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
+	/* Admin dashboard chart series (ADR-0028): one token per series, read via
+	   var() from recharts so a restyle is a single edit here. Status colours
+	   sit at the 600 level to hold 4.5:1 against the white card (ADR-0027). */
+	--chart-logged: #64126d; /* Logged Hours bars, brand primary */
+	--chart-capacity: #64748b; /* Capacity dashed reference line */
+	--chart-pending: #d97706; /* proposals: pending */
+	--chart-approved: #059669; /* proposals: approved */
+	--chart-draft: #2563eb; /* proposals: draft */
+	--chart-rejected: #e11d48; /* proposals: rejected */
 }
 
 /* Light-only app: backgrounds are forced white below, so a dark-mode foreground
