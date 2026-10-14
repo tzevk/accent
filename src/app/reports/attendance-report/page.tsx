@@ -33,8 +33,9 @@ import {
 import { aggregateUnmappedCodes } from './unmapped-codes';
 import RosterDisclosureCard from '@/components/RosterDisclosure';
 import UnmappedCodesStrip from './UnmappedCodesStrip';
-import TimePresentNote from './TimePresentNote';
+import InOutNote from './InOutNote';
 import CellPunchModal, { CellPunchTrigger } from './CellPunchModal';
+import { pluralNoun } from './plural-noun';
 
 // ─── Client-safe API types ──────────────────────────────────────────
 
@@ -57,18 +58,26 @@ const MONTH_RE = /^\d{4}-(?:0[1-9]|1[0-2])$/;
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-/** Uncomputable Time Present: shown as an em dash, never as 0. */
+/**
+ * The Out on a day with no second endpoint. The report never invents a
+ * checkout the device did not record.
+ */
 const EM_DASH = '—';
 
 /**
- * The two figures, deliberately far apart in weight and hue: Logged Hours is
- * the credited, canonical number (emerald, lighter), Time Present is the
- * measurement (purple, bold). Nothing in the grid lets the reader take one for
- * the other.
+ * The two labelled times — the day's First Punch and Last Punch (ADR-0029).
+ * Each line carries its own visible label, so the reader sorts the cell's
+ * figures without relying on colour alone.
+ */
+const TIMES_CLASS = 'text-[11px] font-medium tabular-nums text-purple-800';
+
+/**
+ * Logged Hours is the credited, canonical figure (emerald), far apart in
+ * weight and hue from the measured times above it (purple). Nothing in the
+ * grid lets the reader take one for the other.
  */
 const LOGGED_HOURS_CLASS =
 	'text-[12px] font-medium tabular-nums text-emerald-700';
-const TIME_PRESENT_CLASS = 'text-[12px] font-bold tabular-nums text-purple-800';
 const NO_FIGURE_CLASS = 'text-[12px] tabular-nums text-gray-500';
 
 /**
@@ -106,12 +115,16 @@ function employeeInitials(name: string | null): string {
 
 /**
  * One matrix cell: the authored Attendance Record badge — or, on a muted
- * Weekly Off / holiday, the words for it — then Logged Hours and Time Present
- * side by side. Presentation only — `cell` is already resolved by
+ * Weekly Off / holiday, the words for it — then the day's In and Out times,
+ * then Logged Hours. Presentation only — `cell` is already resolved by
  * `resolveAttendanceCell`, so no rule is re-derived here.
  *
- * The compact visual is restated once as sr-only prose: the measures are
- * named, and a muted day is never left to the grey background alone.
+ * The compact visual is restated once as sr-only prose: the times lead it
+ * with the same labels the cell shows, a next-day Out says so in words, an
+ * em dash is explained rather than read as an error, and a muted day is never
+ * left to the grey background alone. The root carries the cell's minimum
+ * height (WCAG 2.5.8 wants a 24px target, and the drill-down button wraps
+ * this content).
  */
 function CellContent({ cell }: { cell: AttendanceCell }) {
 	// Blank, not zero: a day with neither figure says nothing at all.
@@ -119,13 +132,27 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 	// Muted = a Weekly Off or holiday with no logged hours and no punches.
 	const mutedLabel = cell.holiday ? 'Holiday' : 'Weekly Off';
 
+	// The visible label leads each time: "In 09:00", "Out 17:30". A lone Punch
+	// has no second endpoint yet, and a merged Out belongs to the next day.
+	const times = [
+		cell.inLabel ? `In ${cell.inLabel}.` : '',
+		cell.outLabel === EM_DASH
+			? `Out ${EM_DASH}: no second endpoint yet.`
+			: cell.outLabel
+				? `Out ${cell.outLabel}${cell.outIsNextDay ? ' on the next day' : ''}.`
+				: '',
+	]
+		.filter(Boolean)
+		.join(' ');
+
 	const description = [
+		times,
 		`${cell.date}.`,
 		cell.hasLoggedHours
 			? `Logged Hours ${formatNumber(cell.loggedHours)}.`
 			: 'Logged Hours: none.',
 		cell.statusLabel ? `Authored status: ${cell.statusLabel}.` : '',
-		`${cell.punchCount} ${cell.punchCount === 1 ? 'punch' : 'punches'}.`,
+		`${cell.punchCount} ${pluralNoun(cell.punchCount, 'punch', 'punches')}.`,
 		cell.muted ? `${mutedLabel} with no hours and no punches.` : '',
 	]
 		.filter(Boolean)
@@ -134,7 +161,7 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 	return (
 		<span
 			title={description}
-			className={`flex flex-col items-center gap-0.5 px-0.5 py-1${
+			className={`flex min-h-6 flex-col items-center gap-0.5 px-0 py-1${
 				cell.muted ? ' text-gray-500' : ''
 			}`}
 		>
@@ -143,16 +170,30 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 				<span
 					data-status-code={cell.statusCode ?? undefined}
 					aria-hidden="true"
-					className={`max-w-full rounded px-1 py-px text-[10px] font-semibold leading-[1.2] ${CELL_TONE_CLASSES[cell.statusTone ?? 'slate']}`}
+					className={`max-w-full rounded px-1 py-px text-[11px] font-semibold leading-[1.2] ${CELL_TONE_CLASSES[cell.statusTone ?? 'slate']}`}
 				>
 					{cell.statusLabel}
 				</span>
 			) : cell.muted ? (
 				<span
 					aria-hidden="true"
-					className="text-[10px] font-medium leading-tight text-gray-500"
+					className="text-[11px] font-medium leading-tight text-gray-500"
 				>
 					{mutedLabel}
+				</span>
+			) : null}
+			{/* One labelled line per time: the words In and Out carry the
+			    meaning, so colour is never the only discriminator. */}
+			{cell.inLabel ? (
+				<span className="text-[11px] leading-tight" aria-hidden="true">
+					<span className="text-gray-500">In</span>{' '}
+					<span className={TIMES_CLASS}>{cell.inLabel}</span>
+				</span>
+			) : null}
+			{cell.outLabel ? (
+				<span className="text-[11px] leading-tight" aria-hidden="true">
+					<span className="text-gray-500">Out</span>{' '}
+					<span className={TIMES_CLASS}>{cell.outLabel}</span>
 				</span>
 			) : null}
 			{showFigures ? (
@@ -171,8 +212,10 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 	);
 }
 
+// The month input is a real control: gray-500 gives its white background a
+// 4.83:1 boundary, where gray-300 sat at 1.47:1.
 const controlClass =
-	'h-9 rounded-md border border-gray-300 bg-white px-3 text-sm text-black focus:border-transparent focus:outline-none focus:ring-2 focus:ring-purple-500';
+	'h-9 rounded-md border border-gray-500 bg-white px-3 text-sm text-black focus:border-transparent focus:outline-none focus:ring-2 focus:ring-purple-500';
 
 // ─── Page ───────────────────────────────────────────────────────────
 
@@ -390,7 +433,7 @@ export default function AttendanceReportPage() {
 										Attendance Report
 									</h1>
 									<p className="text-sm text-purple-200">
-										Logged hours and time present per employee
+										Logged hours and in/out times per employee
 										{monthHeading ? ` · ${monthHeading}` : ''}
 									</p>
 								</div>
@@ -571,9 +614,9 @@ export default function AttendanceReportPage() {
 									</p>
 									<p className="text-xs text-gray-500">
 										{unmapped.total_punches}{' '}
-										{unmapped.total_punches === 1 ? 'punch' : 'punches'} in this
-										month could not be matched to an employee, and no active
-										payroll employee is on the roster.
+										{pluralNoun(unmapped.total_punches, 'punch', 'punches')} in
+										this month could not be matched to an employee, and no
+										active payroll employee is on the roster.
 									</p>
 								</div>
 							) : (
@@ -596,35 +639,30 @@ export default function AttendanceReportPage() {
 										>
 											<span className="inline-flex items-center gap-1.5">
 												<span
-													className="h-2.5 w-2.5 rounded-sm bg-emerald-500"
+													className="h-2.5 w-2.5 rounded-sm bg-emerald-700"
 													aria-hidden="true"
 												/>
 												<span className={LOGGED_HOURS_CLASS}>Logged Hours</span>
 												<span>
-													— billed effort: the canonical numerator payroll
+													: billed effort, the canonical numerator payroll
 													prices
 												</span>
 											</span>
-											<span className="inline-flex items-center gap-1.5">
-												<span
-													className="h-2.5 w-2.5 rounded-sm bg-purple-700"
-													aria-hidden="true"
-												/>
-												<span className={TIME_PRESENT_CLASS}>Time Present</span>
-												<span>
-													— the measured first-to-last span of the day&apos;s
-													punches; never credited
-												</span>
+											<span>
+												In and Out: the day&apos;s first and last punch times;
+												never credited
 											</span>
 											<span>
-												{`An em dash (${EM_DASH}) marks an uncomputable span — never 0. Click a cell for its punches.`}
+												{`An em dash (${EM_DASH}) marks no second endpoint yet, never 0. Click a cell for its punches.`}
 											</span>
 										</div>
 									</div>
 
 									{/* Month matrix: employees down, days across */}
 									<div className="anim-fade-in overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-										<p className="border-b border-gray-100 bg-gray-50/60 px-4 py-2 text-[11px] text-gray-600 sm:hidden">
+										{/* The cue shows whenever the matrix renders: the
+										    table overflows from 640px up, not only below it. */}
+										<p className="border-b border-gray-100 bg-gray-50/60 px-4 py-2 text-[11px] text-gray-600">
 											Scroll sideways for the rest of the month →
 										</p>
 										<div
@@ -635,7 +673,7 @@ export default function AttendanceReportPage() {
 										>
 											<table className="w-full text-[12px]">
 												<caption className="sr-only">
-													Logged hours and time present hours per employee for{' '}
+													Logged hours and in/out times per employee for{' '}
 													{monthHeading}
 												</caption>
 												<thead>
@@ -656,7 +694,7 @@ export default function AttendanceReportPage() {
 																<span className="block text-[11px] leading-tight text-gray-700">
 																	{column.day}
 																</span>
-																<span className="block text-[9px] font-medium leading-tight text-gray-500">
+																<span className="block text-[11px] font-medium leading-tight text-gray-500">
 																	{column.weekday}
 																</span>
 															</th>
@@ -667,11 +705,11 @@ export default function AttendanceReportPage() {
 													{rows.map(({ employee, cellsByDate }) => (
 														<tr
 															key={employee.id}
-															className="border-b border-gray-100 last:border-0 hover:bg-purple-50/40"
+															className="group border-b border-gray-100 last:border-0 hover:bg-purple-50/40"
 														>
 															<th
 																scope="row"
-																className="sticky left-0 z-10 max-w-[240px] bg-white px-4 py-2 text-left font-normal"
+																className="sticky left-0 z-10 max-w-[240px] bg-white px-4 py-2 text-left font-normal group-hover:bg-purple-50/40"
 															>
 																<span className="flex items-center gap-2.5">
 																	<span
@@ -703,6 +741,10 @@ export default function AttendanceReportPage() {
 																	status: cell?.status ?? null,
 																	loggedHours: cell?.logged_hours ?? null,
 																	punchCount: cell?.punch_count ?? 0,
+																	firstPunch: cell?.first_punch ?? null,
+																	lastPunch: cell?.last_punch ?? null,
+																	lastPunchNextDay:
+																		cell?.last_punch_next_day ?? false,
 																	nonOptionalHolidays,
 																	optionalHolidays,
 																});
@@ -726,6 +768,8 @@ export default function AttendanceReportPage() {
 																				: 'none'
 																		}
 																		data-punch-count={resolved.punchCount}
+																		data-in-label={resolved.inLabel}
+																		data-out-label={resolved.outLabel}
 																		className={`px-1 py-1 text-center align-top${
 																			resolved.muted ? ' bg-gray-50' : ''
 																		}`}
@@ -760,9 +804,9 @@ export default function AttendanceReportPage() {
 										</div>
 									</div>
 
-									{/* The two facts the grid cannot show: the merge rule, and
-									    what a half day does to Time Present */}
-									<TimePresentNote className="mt-3" />
+									{/* The facts the grid cannot show: a lone Punch is not
+									    a span, and the cross-midnight merge rule */}
+									<InOutNote className="mt-3" />
 								</div>
 							)}
 
