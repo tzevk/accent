@@ -131,11 +131,7 @@ function getRateLimitCategory(pathname: string): RateLimitCategory {
 	if (pathname.startsWith('/api/session')) {
 		return 'session';
 	}
-	if (
-		pathname.includes('dashboard-stats') ||
-		pathname.includes('manhours-stats') ||
-		pathname.startsWith('/api/analytics')
-	) {
+	if (pathname.startsWith('/api/admin/dashboard-summary')) {
 		return 'dashboard';
 	}
 	if (

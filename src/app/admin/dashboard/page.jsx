@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import Link from 'next/link';
 import { fetchJSON } from '@/utils/http';
 import { useSession } from '@/context/SessionContext';
+import { formatDate, formatNumber } from '@/lib/format.js';
 import {
 	UserGroupIcon,
 	DocumentTextIcon,
@@ -18,12 +19,426 @@ import {
 	ExclamationTriangleIcon,
 	PlayIcon,
 	EyeIcon,
-	ChartBarIcon,
-	ArrowTrendingUpIcon,
-	CalendarDaysIcon,
-	UsersIcon,
+	ArrowPathIcon,
+	ArrowUpIcon,
+	ArrowDownIcon,
 } from '@heroicons/react/24/outline';
 import UpcomingFollowups from '@/components/dashboard/UpcomingFollowups';
+import LoggedHoursTrend from '@/components/dashboard/LoggedHoursTrend';
+import ProjectsChart from '@/components/dashboard/ProjectsChart';
+import SalesAnalytics from '@/components/dashboard/SalesAnalytics';
+
+/**
+ * The payload's shape is `DashboardSummary` from `@/lib/dashboard-summary`
+ * (ADR-0028) — the same module the route imports, so the client and the
+ * server cannot drift. A `.jsx` page carries the type in JSDoc rather than an
+ * import the transpiler would have to elide.
+ *
+ * @typedef {import('@/lib/dashboard-summary').DashboardSummary} DashboardSummary
+ * @typedef {import('@/lib/dashboard-summary').DashboardWindow} DashboardWindow
+ */
+
+/** Counts are whole numbers; `formatNumber` prints their 2dp tail. */
+function groupedCount(value) {
+	return formatNumber(value).replace(/\.00$/, '');
+}
+
+const WINDOW_OPTIONS = [
+	{ value: 'month', label: 'This month' },
+	{ value: 'week', label: 'Last 7 days' },
+];
+
+const KPI_CARDS = [
+	{
+		key: 'leads',
+		title: 'Total leads',
+		hint: 'View leads',
+		href: '/leads',
+		Icon: UserGroupIcon,
+	},
+	{
+		key: 'proposals',
+		title: 'Proposals',
+		hint: 'View proposals',
+		href: '/proposals',
+		Icon: DocumentTextIcon,
+	},
+	{
+		key: 'companies',
+		title: 'Companies',
+		hint: 'View companies',
+		href: '/company',
+		Icon: BuildingOfficeIcon,
+	},
+	{
+		key: 'projects',
+		title: 'Projects',
+		hint: 'View projects',
+		href: '/projects',
+		Icon: FolderIcon,
+	},
+];
+
+/**
+ * Utilization bands on the same thresholds the Employee Utilization report
+ * uses (ADR-0028). The row bands arrive on the payload; the totals carry only
+ * a percent, so this derives theirs rather than inventing a second reading.
+ */
+function bandForPercent(percent) {
+	if (percent === null || percent === undefined || !Number.isFinite(percent))
+		return null;
+	if (percent < 80) return 'under';
+	if (percent <= 100) return 'healthy';
+	return 'over';
+}
+
+const BAND_CHIP = {
+	under: {
+		label: 'Under',
+		className: 'bg-amber-100 text-amber-800',
+		Icon: ArrowDownIcon,
+	},
+	healthy: {
+		label: 'Healthy',
+		className: 'bg-green-100 text-green-800',
+		Icon: CheckCircleIcon,
+	},
+	over: {
+		label: 'Over',
+		className: 'bg-red-100 text-red-800',
+		Icon: ArrowUpIcon,
+	},
+};
+
+/**
+ * A band reading as a chip: the word and the icon carry the meaning, so the
+ * colour is a third cue rather than the only one (ADR-0027).
+ */
+function BandChip({ band, logged }) {
+	if (logged === 0) {
+		return (
+			<span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+				No hours logged
+			</span>
+		);
+	}
+	if (!band) {
+		return (
+			<span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+				No capacity
+			</span>
+		);
+	}
+	const { label, className, Icon } = BAND_CHIP[band];
+	return (
+		<span
+			className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${className}`}
+		>
+			<Icon className="h-3.5 w-3.5" aria-hidden="true" />
+			{label}
+		</span>
+	);
+}
+
+/**
+ * The 7-day-over-previous-7 change on a lifetime count: sign plus arrow plus
+ * colour, and a true zero renders as 0 rather than hiding. The delta is a
+ * rolling 7-day change whatever window the rest of the page shows, so the
+ * label names that window instead of claiming the page's month or week.
+ */
+function DeltaChip({ delta }) {
+	const tone =
+		delta > 0
+			? 'bg-green-50 text-green-700'
+			: delta < 0
+				? 'bg-red-50 text-red-700'
+				: 'bg-gray-50 text-gray-600';
+	const Arrow = delta > 0 ? ArrowUpIcon : delta < 0 ? ArrowDownIcon : null;
+	return (
+		<span
+			className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}
+		>
+			{Arrow && <Arrow className="h-3.5 w-3.5" aria-hidden="true" />}
+			<span className="tabular-nums">
+				{delta > 0 ? `+${groupedCount(delta)}` : groupedCount(delta)}
+			</span>
+			in the last 7 days
+		</span>
+	);
+}
+
+function KpiSkeleton() {
+	return (
+		<div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:gap-6">
+			{[...Array(4)].map((_, index) => (
+				<div
+					key={index}
+					className="rounded-xl border border-purple-200 bg-white p-5 xl:p-6"
+				>
+					<div
+						data-motion
+						className="mb-3 h-10 w-10 animate-pulse rounded-lg bg-gray-100 xl:h-12 xl:w-12"
+					/>
+					<div
+						data-motion
+						className="mb-2 h-4 w-24 animate-pulse rounded bg-gray-100"
+					/>
+					<div
+						data-motion
+						className="h-8 w-16 animate-pulse rounded bg-gray-100"
+					/>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function UtilizationSkeleton() {
+	return (
+		<div className="mb-6 rounded-xl border border-purple-200 bg-white p-6 xl:mb-8">
+			<div
+				data-motion
+				className="mb-4 h-5 w-40 animate-pulse rounded bg-gray-100"
+			/>
+			<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+				{[...Array(3)].map((_, index) => (
+					<div
+						key={index}
+						data-motion
+						className="h-24 animate-pulse rounded-lg bg-gray-100"
+					/>
+				))}
+			</div>
+			<div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-2">
+				{[...Array(2)].map((_, column) => (
+					<div key={column} className="space-y-2">
+						<div
+							data-motion
+							className="h-4 w-32 animate-pulse rounded bg-gray-100"
+						/>
+						{[...Array(5)].map((_, row) => (
+							<div
+								key={row}
+								data-motion
+								className="h-8 animate-pulse rounded bg-gray-100"
+							/>
+						))}
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
+/** Four lifetime CRM counts, each with its week-over-week change. */
+function KpiCards({ kpis }) {
+	return (
+		<div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:mb-8 xl:gap-6">
+			{KPI_CARDS.map((card) => {
+				const kpi = kpis[card.key];
+				return (
+					<Link
+						key={card.key}
+						href={card.href}
+						className="group block rounded-xl border border-purple-200 bg-white p-5 transition-all hover:border-purple-400 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D] xl:p-6"
+					>
+						<div className="mb-3 flex items-start justify-between gap-2">
+							<span className="flex h-10 w-10 items-center justify-center rounded-lg border border-purple-200 xl:h-12 xl:w-12">
+								<card.Icon
+									className="h-5 w-5 text-[#64126D] xl:h-6 xl:w-6"
+									aria-hidden="true"
+								/>
+							</span>
+							<DeltaChip delta={kpi.delta} />
+						</div>
+						<div className="mb-1 text-xs font-medium tracking-wider text-gray-500 xl:text-sm">
+							{card.title}
+						</div>
+						<div className="text-2xl font-bold tabular-nums text-gray-900 xl:text-3xl">
+							{groupedCount(kpi.total)}
+						</div>
+						<div className="mt-2 text-xs text-[#64126D] group-hover:underline xl:text-sm">
+							{card.hint} <span aria-hidden="true">→</span>
+						</div>
+					</Link>
+				);
+			})}
+		</div>
+	);
+}
+
+/** One utilization figure row: the name, its hours, and its band reading. */
+function UtilizationRowLine({ row }) {
+	return (
+		<li className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
+			{/* Below sm the name takes its own line so a long name can never be
+			    squeezed to nothing by the metrics beside it; above it the row
+			    truncates the name and the full value stays reachable through the
+			    accessible name and the title. */}
+			<span
+				title={row.name}
+				className="w-full min-w-0 text-sm font-medium text-gray-700 sm:w-auto sm:flex-1 sm:truncate"
+			>
+				{row.name}
+			</span>
+			<span className="flex shrink-0 items-center gap-2">
+				<span className="text-sm tabular-nums text-gray-700">
+					{formatNumber(row.logged)} h
+				</span>
+				{row.percent === null ? null : (
+					<span className="text-sm font-semibold tabular-nums text-gray-900">
+						{formatNumber(row.percent)}%
+					</span>
+				)}
+				<BandChip band={row.band} logged={row.logged} />
+			</span>
+		</li>
+	);
+}
+
+/**
+ * The Utilization block: the window's totals, the five lowest and five highest
+ * readings on the roster, and — behind a native `<details>` — the exclusions
+ * the roster selector made, so the totals and the lists reconcile.
+ */
+function UtilizationSection({ utilization, period, window }) {
+	const { totals, rows } = utilization;
+	const lowest = rows.slice(0, 5);
+	const highest = rows.length > 5 ? rows.slice(-5) : [];
+	const band = bandForPercent(totals.percent);
+
+	return (
+		<div className="mb-6 rounded-xl border border-purple-200 bg-white p-6 xl:mb-8">
+			<div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+				<div>
+					<h2 className="text-lg font-semibold text-gray-900">Utilization</h2>
+					<p className="mt-0.5 text-sm text-gray-500">
+						{period.label} · {formatDate(period.start)} –{' '}
+						{formatDate(period.end)}
+					</p>
+				</div>
+				<Link
+					href="/reports/employee-utilization"
+					className="inline-flex items-center rounded text-sm font-medium text-[#64126D] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D]"
+				>
+					View full Utilization report <span aria-hidden="true">→</span>
+				</Link>
+			</div>
+
+			<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+				<div className="rounded-lg border border-gray-200 p-4">
+					<div className="mb-1 flex items-center gap-2">
+						<ClockIcon className="h-4 w-4 text-[#64126D]" aria-hidden="true" />
+						<span className="text-xs font-medium text-gray-500">
+							Logged Hours
+						</span>
+					</div>
+					<p className="text-2xl font-bold tabular-nums text-gray-900">
+						{formatNumber(totals.logged)}
+					</p>
+					{totals.logged === 0 && (
+						<p className="mt-1 text-xs text-gray-500">No hours logged</p>
+					)}
+				</div>
+				<div className="rounded-lg border border-gray-200 p-4">
+					<div className="mb-1 flex items-center gap-2">
+						<ClockIcon className="h-4 w-4 text-[#64126D]" aria-hidden="true" />
+						<span className="text-xs font-medium text-gray-500">Capacity</span>
+					</div>
+					<p className="text-2xl font-bold tabular-nums text-gray-900">
+						{formatNumber(totals.capacity)}
+					</p>
+					<p className="mt-1 text-xs text-gray-500">
+						{groupedCount(totals.headcount)} on the roster
+					</p>
+				</div>
+				<div className="rounded-lg border border-gray-200 p-4">
+					<div className="mb-1 flex items-center justify-between gap-2">
+						<span className="text-xs font-medium text-gray-500">
+							Utilization
+						</span>
+						<BandChip band={band} logged={totals.logged} />
+					</div>
+					<p className="text-2xl font-bold tabular-nums text-gray-900">
+						{totals.percent === null ? '—' : `${formatNumber(totals.percent)}%`}
+					</p>
+					{totals.logged === 0 && (
+						<p className="mt-1 text-xs text-gray-500">No hours logged</p>
+					)}
+				</div>
+			</div>
+
+			{window === 'month' && (
+				<p className="mt-3 text-xs text-gray-500">
+					Figures cover the full calendar month, including timesheet entries
+					dated later in the month — the same reading as the Utilization report.
+				</p>
+			)}
+
+			<div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-2">
+				<div>
+					<h3 className="mb-1 text-sm font-semibold text-gray-700">
+						Lowest utilization
+					</h3>
+					<ul className="divide-y divide-gray-100">
+						{lowest.map((row) => (
+							<UtilizationRowLine key={row.employeeId} row={row} />
+						))}
+					</ul>
+				</div>
+				<div>
+					<h3 className="mb-1 text-sm font-semibold text-gray-700">
+						Highest utilization
+					</h3>
+					{highest.length > 0 ? (
+						<ul className="divide-y divide-gray-100">
+							{highest.map((row) => (
+								<UtilizationRowLine key={row.employeeId} row={row} />
+							))}
+						</ul>
+					) : (
+						<p className="py-2 text-sm text-gray-500">
+							The roster&rsquo;s whole reading is the lowest list —{' '}
+							{groupedCount(rows.length)} employees have a utilization reading.
+						</p>
+					)}
+				</div>
+			</div>
+
+			<details className="mt-5 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+				<summary className="cursor-pointer text-sm font-medium text-gray-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D]">
+					Roster exclusions and coverage
+				</summary>
+				<dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+					<div className="flex justify-between gap-3 text-sm">
+						<dt className="text-gray-600">On the roster</dt>
+						<dd className="font-medium tabular-nums text-gray-900">
+							{groupedCount(totals.headcount)}
+						</dd>
+					</div>
+					<div className="flex justify-between gap-3 text-sm">
+						<dt className="text-gray-600">Excluded by the roster selector</dt>
+						<dd className="font-medium tabular-nums text-gray-900">
+							{groupedCount(totals.excluded)}
+						</dd>
+					</div>
+					<div className="flex justify-between gap-3 text-sm">
+						<dt className="text-gray-600">No capacity basis</dt>
+						<dd className="font-medium tabular-nums text-gray-900">
+							{groupedCount(totals.noCapacity)}
+						</dd>
+					</div>
+					<div className="flex justify-between gap-3 text-sm">
+						<dt className="text-gray-600">Logged no hours</dt>
+						<dd className="font-medium tabular-nums text-gray-900">
+							{groupedCount(totals.noLogged)}
+						</dd>
+					</div>
+				</dl>
+			</details>
+		</div>
+	);
+}
 
 /**
  * Admin Dashboard - Protected route
@@ -38,266 +453,50 @@ export default function AdminDashboard() {
 	// Protection state
 	const [isAuthorized, setIsAuthorized] = useState(false);
 
-	// Dashboard data states
-	const [stats, setStats] = useState({
-		leads: {
-			total_leads: 0,
-			under_discussion: 0,
-			proposal_sent: 0,
-			closed_won: 0,
-		},
-		proposals: { total: 0, pending: 0, approved: 0, draft: 0 },
-		companies: { total: 0 },
-		projects: { total: 0, in_progress: 0, completed: 0 },
-	});
+	// Dashboard data states — one payload, one fetch (ADR-0028).
+	/** @type {[DashboardWindow, (value: DashboardWindow) => void]} */
+	const [activeWindow, setActiveWindow] = useState('month');
+	/** @type {[DashboardSummary | null, (value: DashboardSummary | null) => void]} */
+	const [summary, setSummary] = useState(null);
 	const [loading, setLoading] = useState(true);
-	const [deltas, setDeltas] = useState({
-		leads: 0,
-		proposals: 0,
-		companies: 0,
-		projects: 0,
-	});
-	const [manhours, setManhours] = useState({
-		estimated: 0,
-		actual: 0,
-		byProject: [],
-		weeklyTrend: [],
-	});
-	const [analytics, setAnalytics] = useState({
-		funnel: { new: 0, discussion: 0, proposal: 0, won: 0, lost: 0 },
-		topCities: [],
-		series: { leads: [], proposals: [], companies: [], projects: [] },
-		activity: { followupsThisWeek: 0, followupsPrevWeek: 0 },
-	});
+	const [error, setError] = useState(null);
 
-	// Check authorization and start fetching data as soon as possible
+	const loadSummary = useCallback(async (activeWindow, refresh = false) => {
+		setLoading(true);
+		setError(null);
+		try {
+			const url = `/api/admin/dashboard-summary?window=${activeWindow}${refresh ? '&nocache=1' : ''}`;
+			const res = refresh
+				? await fetchJSON(url, { cache: 'no-store' })
+				: await fetchJSON(url);
+			setSummary(res.data);
+		} catch (err) {
+			setError(
+				err instanceof Error
+					? err.message
+					: 'Unable to load the dashboard summary.'
+			);
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+
+	// Authorize once the session answers, then read the summary for the
+	// active window — a window change is a new read of the same route.
 	useEffect(() => {
-		// If session context already has user data (from cache), use it immediately
-		if (user && authenticated) {
-			const isSuperAdmin =
-				user.is_super_admin === true || user.is_super_admin === 1;
-			if (isSuperAdmin) {
-				setIsAuthorized(true);
-				fetchStats();
-				return;
-			} else {
-				// Not super admin - redirect
-				router.replace('/user/dashboard');
-				return;
-			}
-		}
-
-		// Wait for session to load
 		if (sessionLoading) return;
+		if (!authenticated || !user) return;
 
-		// Session loaded but not authenticated - let middleware handle redirect
-		if (!authenticated || !user) {
-			return;
-		}
-
-		// Check if super admin
 		const isSuperAdmin =
 			user.is_super_admin === true || user.is_super_admin === 1;
-
 		if (!isSuperAdmin) {
-			// NOT authorized - redirect to user dashboard
 			router.replace('/user/dashboard');
 			return;
 		}
 
-		// Authorized - immediately start fetching data
 		setIsAuthorized(true);
-		fetchStats();
-	}, [sessionLoading, authenticated, user, router]);
-
-	const fetchStats = async () => {
-		try {
-			setLoading(true);
-
-			// Use optimized dashboard-stats API with parallel queries
-			// This replaces 6+ sequential API calls with 2 parallel calls
-			const [dashboardRes, manhoursRes] = await Promise.all([
-				fetchJSON('/api/admin/dashboard-stats'),
-				fetchJSON('/api/admin/manhours-stats'),
-			]);
-
-			if (dashboardRes.success && dashboardRes.data) {
-				const {
-					stats: apiStats,
-					deltas: apiDeltas,
-					series,
-					activity,
-				} = dashboardRes.data;
-
-				setStats({
-					leads: apiStats.leads,
-					proposals: apiStats.proposals,
-					companies: apiStats.companies,
-					projects: apiStats.projects,
-				});
-
-				setDeltas(apiDeltas);
-
-				setAnalytics((prev) => ({
-					...prev,
-					series,
-					activity,
-				}));
-
-				// Log performance improvement
-				if (dashboardRes.data._meta?.queryTimeMs) {
-					console.log(
-						`Dashboard stats loaded in ${dashboardRes.data._meta.queryTimeMs}ms`
-					);
-				}
-			}
-
-			if (manhoursRes.success && manhoursRes.data) {
-				setManhours({
-					estimated: manhoursRes.data.estimated,
-					actual: manhoursRes.data.actual,
-					byProject: manhoursRes.data.byProject,
-					weeklyTrend: manhoursRes.data.weeklyTrend,
-				});
-
-				if (manhoursRes.data._meta?.queryTimeMs) {
-					console.log(
-						`Manhours stats loaded in ${manhoursRes.data._meta.queryTimeMs}ms`
-					);
-				}
-			}
-		} catch (error) {
-			console.error('Error fetching stats:', error);
-
-			// Fallback to individual API calls if optimized endpoint fails
-			try {
-				console.log('Falling back to individual API calls...');
-				await fetchStatsFallback();
-			} catch (fallbackError) {
-				console.error('Fallback also failed:', fallbackError);
-			}
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	// Fallback function for backward compatibility
-	const fetchStatsFallback = async () => {
-		const [leadsData, proposalsData, companiesData, projectsData] =
-			await Promise.all([
-				fetchJSON('/api/leads?limit=1').catch(() => ({ success: false })),
-				fetchJSON('/api/proposals').catch(() => ({ success: false, data: [] })),
-				fetchJSON('/api/companies').catch(() => ({ success: false, data: [] })),
-				fetchJSON('/api/projects').catch(() => ({ success: false, data: [] })),
-			]);
-
-		const proposals = proposalsData.proposals || proposalsData.data || [];
-		const projects = projectsData.data || [];
-
-		setStats({
-			leads: leadsData.data?.stats || {
-				total_leads: 0,
-				under_discussion: 0,
-				active_leads: 0,
-				closed_won: 0,
-			},
-			proposals: {
-				total: proposals.length,
-				pending: proposals.filter((p) => p.status === 'pending').length,
-				approved: proposals.filter((p) => p.status === 'approved').length,
-				draft: proposals.filter((p) => p.status === 'draft').length,
-			},
-			companies: { total: companiesData.data?.length || 0 },
-			projects: {
-				total: projects.length,
-				in_progress: projects.filter((p) => p.status === 'in-progress').length,
-				completed: projects.filter((p) => p.status === 'completed').length,
-			},
-		});
-	};
-
-	const fmtNum = new Intl.NumberFormat('en-IN');
-
-	// Simple clean sparkline - no gradient
-	const Sparkline = ({ values = [], color = '#64126D' }) => {
-		const w = 80,
-			h = 32,
-			pad = 4;
-
-		// No data - show flat dashed line
-		if (!values || values.length === 0 || values.every((v) => v === 0)) {
-			return (
-				<svg width={w} height={h} className="opacity-40">
-					<line
-						x1={pad}
-						y1={h / 2}
-						x2={w - pad}
-						y2={h / 2}
-						stroke="#9ca3af"
-						strokeWidth="1.5"
-						strokeDasharray="3,3"
-					/>
-				</svg>
-			);
-		}
-
-		// All same values - show flat line
-		const min = Math.min(...values);
-		const max = Math.max(...values);
-		if (min === max) {
-			return (
-				<svg width={w} height={h}>
-					<line
-						x1={pad}
-						y1={h / 2}
-						x2={w - pad}
-						y2={h / 2}
-						stroke={color}
-						strokeWidth="2"
-						strokeLinecap="round"
-					/>
-					<circle cx={w - pad} cy={h / 2} r="3" fill={color} />
-				</svg>
-			);
-		}
-
-		const range = max - min;
-		const step = (w - pad * 2) / (values.length - 1);
-
-		// Calculate Y positions - higher values should be at TOP (lower Y)
-		const points = values.map((v, i) => {
-			const x = pad + i * step;
-			// Normalize: 0 = bottom, 1 = top
-			const normalized = (v - min) / range;
-			// Y coordinate: top of chart is pad, bottom is h-pad
-			const y = h - pad - normalized * (h - pad * 2);
-			return { x, y, v };
-		});
-
-		const linePath = points
-			.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
-			.join(' ');
-
-		return (
-			<svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-				<path
-					d={linePath}
-					fill="none"
-					stroke={color}
-					strokeWidth="2"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-				/>
-				{/* Last point dot */}
-				<circle
-					cx={points[points.length - 1].x}
-					cy={points[points.length - 1].y}
-					r="3"
-					fill={color}
-				/>
-			</svg>
-		);
-	};
+		loadSummary(activeWindow);
+	}, [sessionLoading, authenticated, user, router, activeWindow, loadSummary]);
 
 	// PROTECTION: While checking, show ONLY loader - no admin UI
 	if (sessionLoading || !isAuthorized) {
@@ -314,12 +513,20 @@ export default function AdminDashboard() {
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
 			<Navbar />
 
-			<main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 xl:py-8 max-w-full mx-auto">
+			<main
+				className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 xl:py-8 max-w-full mx-auto"
+				aria-busy={loading}
+			>
+				{/* A stable live region so each read is announced once. */}
+				<p role="status" className="sr-only">
+					{loading ? 'Loading dashboard summary' : ''}
+				</p>
+
 				{/* Header */}
-				<div className="mb-6 xl:mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+				<div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between xl:mb-8">
 					<div>
 						<nav
-							className="text-xs xl:text-sm text-gray-500 mb-1"
+							className="mb-1 text-xs text-gray-500 xl:text-sm"
 							aria-label="Breadcrumb"
 						>
 							<ol className="inline-flex items-center gap-2">
@@ -328,303 +535,113 @@ export default function AdminDashboard() {
 								<li className="text-gray-700">Admin Dashboard</li>
 							</ol>
 						</nav>
-						<h1 className="text-3xl xl:text-4xl font-bold text-gray-900">
+						<h1 className="text-3xl font-bold text-gray-900 xl:text-4xl">
 							Admin Dashboard
 						</h1>
 					</div>
-				</div>
-
-				{/* Executive KPI Cards */}
-				<div className="grid grid-cols-1 gap-4 xl:gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-6 xl:mb-8">
-					{[
-						{
-							title: 'TOTAL LEADS',
-							value: stats.leads.total_leads,
-							hint: 'View leads',
-							href: '/leads',
-							delta: deltas.leads,
-							Icon: UserGroupIcon,
-							series: analytics.series.leads,
-						},
-						{
-							title: 'PROPOSALS',
-							value: stats.proposals.total,
-							hint: 'View Proposals',
-							href: '/proposals',
-							delta: deltas.proposals,
-							Icon: DocumentTextIcon,
-							series: analytics.series.proposals,
-						},
-						{
-							title: 'COMPANIES',
-							value: stats.companies.total,
-							hint: 'View Companies',
-							href: '/company',
-							delta: deltas.companies,
-							Icon: BuildingOfficeIcon,
-							series: analytics.series.companies,
-						},
-						{
-							title: 'PROJECTS',
-							value: stats.projects.total,
-							hint: 'View Projects',
-							href: '/projects',
-							delta: deltas.projects,
-							Icon: FolderIcon,
-							series: analytics.series.projects,
-						},
-					].map((card) => (
-						<Link
-							key={card.title}
-							href={card.href}
-							className="block bg-white rounded-xl border border-purple-200 p-5 xl:p-6 hover:border-purple-400 hover:shadow-md transition-all group"
+					<div className="flex flex-wrap items-center gap-2">
+						<div
+							role="group"
+							aria-label="Dashboard window"
+							className="inline-flex rounded-lg border border-purple-200 bg-white p-1"
 						>
-							<div className="flex items-start justify-between mb-3">
-								<div className="w-10 h-10 xl:w-12 xl:h-12 bg-white border border-purple-200 rounded-lg flex items-center justify-center">
-									<card.Icon className="h-5 w-5 xl:h-6 xl:w-6 text-[#64126D]" />
-								</div>
-								<Sparkline values={card.series} />
-							</div>
-							<div className="text-xs xl:text-sm font-medium text-gray-500 tracking-wider mb-1">
-								{card.title}
-							</div>
-							<div className="flex items-end justify-between">
-								<span className="text-2xl xl:text-3xl font-bold text-gray-900">
-									{fmtNum.format(card.value)}
-								</span>
-								{card.delta !== 0 && (
-									<span
-										className={`text-xs xl:text-sm font-medium ${card.delta > 0 ? 'text-green-600' : 'text-red-600'}`}
-									>
-										{card.delta > 0 ? '+' : ''}
-										{card.delta} this week
-									</span>
-								)}
-							</div>
-							<div className="text-xs xl:text-sm text-[#64126D] mt-2 group-hover:underline">
-								{card.hint} →
-							</div>
-						</Link>
-					))}
+							{WINDOW_OPTIONS.map((option) => (
+								<button
+									key={option.value}
+									type="button"
+									aria-pressed={activeWindow === option.value}
+									disabled={loading}
+									onClick={() => {
+										// Re-clicking the active window changes nothing, so only a
+										// real switch flips loading: that render already disables
+										// the toggle, which keeps a fast double-click from firing
+										// two fetches and letting the stale response land last.
+										if (option.value === activeWindow) return;
+										setLoading(true);
+										setActiveWindow(option.value);
+									}}
+									className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D] disabled:cursor-not-allowed disabled:opacity-60 ${
+										activeWindow === option.value
+											? 'bg-[#64126D] text-white'
+											: 'text-gray-700 hover:bg-purple-50'
+									}`}
+								>
+									{option.label}
+								</button>
+							))}
+						</div>
+						<button
+							type="button"
+							onClick={() => loadSummary(activeWindow, true)}
+							disabled={loading}
+							className="inline-flex items-center gap-2 rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm font-medium text-[#64126D] transition-colors hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D] disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							<ArrowPathIcon
+								data-motion
+								className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+								aria-hidden="true"
+							/>
+							Refresh
+						</button>
+					</div>
 				</div>
 
-				{/* Manhours Analytics Section */}
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 xl:gap-8 mb-6 xl:mb-8">
-					{/* Manhours Overview Card */}
-					<div className="bg-white rounded-xl border border-purple-200 p-6">
-						<div className="flex items-center justify-between mb-4">
-							<h3 className="text-lg font-semibold text-gray-900">
-								Manhours Overview
-							</h3>
-							<ChartBarIcon className="h-5 w-5 text-[#64126D]" />
-						</div>
-
-						<div className="space-y-4">
-							{/* Estimated vs Actual Summary */}
-							<div className="grid grid-cols-2 gap-4">
-								<div className="bg-purple-50 rounded-lg p-4">
-									<div className="flex items-center gap-2 mb-1">
-										<ClockIcon className="h-4 w-4 text-purple-500" />
-										<span className="text-xs font-medium text-purple-600">
-											Estimated
-										</span>
-									</div>
-									<p className="text-2xl font-bold text-purple-700">
-										{fmtNum.format(manhours.estimated)}
-									</p>
-									<p className="text-xs text-purple-500">hours planned</p>
-								</div>
-								<div className="bg-green-50 rounded-lg p-4">
-									<div className="flex items-center gap-2 mb-1">
-										<CheckCircleIcon className="h-4 w-4 text-green-500" />
-										<span className="text-xs font-medium text-green-600">
-											Actual
-										</span>
-									</div>
-									<p className="text-2xl font-bold text-green-700">
-										{fmtNum.format(manhours.actual)}
-									</p>
-									<p className="text-xs text-green-500">hours logged</p>
-								</div>
-							</div>
-
-							{/* Efficiency Indicator */}
-							<div className="border-t border-gray-100 pt-4">
-								<div className="flex items-center justify-between mb-2">
-									<span className="text-sm text-gray-600">
-										Utilization Rate
-									</span>
-									<span
-										className={`text-sm font-semibold ${
-											manhours.estimated > 0
-												? manhours.actual / manhours.estimated <= 1
-													? 'text-green-600'
-													: 'text-orange-600'
-												: 'text-gray-400'
-										}`}
-									>
-										{manhours.estimated > 0
-											? `${Math.round((manhours.actual / manhours.estimated) * 100)}%`
-											: 'N/A'}
-									</span>
-								</div>
-								<div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-									<div
-										className={`h-full rounded-full transition-all ${
-											manhours.estimated > 0
-												? manhours.actual / manhours.estimated <= 1
-													? 'bg-green-500'
-													: 'bg-orange-500'
-												: 'bg-gray-300'
-										}`}
-										style={{
-											width:
-												manhours.estimated > 0
-													? `${Math.min((manhours.actual / manhours.estimated) * 100, 100)}%`
-													: '0%',
-										}}
-									/>
-								</div>
-								<p className="text-xs text-gray-500 mt-2">
-									{manhours.estimated > 0 &&
-									manhours.actual > manhours.estimated
-										? `${Math.round(manhours.actual - manhours.estimated)} hours over budget`
-										: manhours.estimated > 0
-											? `${Math.round(manhours.estimated - manhours.actual)} hours remaining`
-											: 'No estimates set'}
+				{error && (
+					<div
+						role="alert"
+						className="mb-6 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3"
+					>
+						<div className="flex items-start gap-2">
+							<ExclamationTriangleIcon
+								className="mt-0.5 h-5 w-5 shrink-0 text-red-700"
+								aria-hidden="true"
+							/>
+							<div>
+								<p className="text-sm font-semibold text-red-900">
+									Unable to load the dashboard summary
 								</p>
+								<p className="mt-0.5 text-sm text-red-800">{error}</p>
 							</div>
 						</div>
+						<button
+							type="button"
+							onClick={() => loadSummary(activeWindow, true)}
+							className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-800 transition-colors hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+						>
+							Try again
+						</button>
 					</div>
+				)}
 
-					{/* Weekly Hours Trend */}
-					<div className="bg-white rounded-xl border border-purple-200 p-6">
-						<div className="flex items-center justify-between mb-4">
-							<h3 className="text-lg font-semibold text-gray-900">
-								Weekly Hours Trend
-							</h3>
-							<ArrowTrendingUpIcon className="h-5 w-5 text-[#64126D]" />
-						</div>
+				{/* CRM counts */}
+				{summary ? <KpiCards kpis={summary.kpis} /> : <KpiSkeleton />}
 
-						{manhours.weeklyTrend.length > 0 ? (
-							<>
-								<div className="flex items-end justify-center gap-4 h-32 mb-4">
-									{manhours.weeklyTrend.map((week, i) => {
-										const maxHours = Math.max(
-											...manhours.weeklyTrend.map((w) => w.hours),
-											1
-										);
-										const heightPercent = (week.hours / maxHours) * 100;
-										const isCurrentWeek = i === manhours.weeklyTrend.length - 1;
-										return (
-											<div
-												key={i}
-												className="flex flex-col items-center gap-1 flex-1"
-											>
-												<span className="text-xs font-medium text-gray-700">
-													{week.hours}h
-												</span>
-												<div
-													className={`w-full max-w-[40px] rounded-t-lg transition-all ${
-														isCurrentWeek ? 'bg-[#64126D]' : 'bg-purple-200'
-													}`}
-													style={{ height: `${Math.max(heightPercent, 8)}%` }}
-												/>
-												<span className="text-xs text-gray-500">
-													{week.week}
-												</span>
-											</div>
-										);
-									})}
-								</div>
-								<div className="border-t border-gray-100 pt-3 flex items-center justify-between">
-									<span className="text-xs text-gray-500">Last 4 weeks</span>
-									<span className="text-xs font-medium text-[#64126D]">
-										Avg:{' '}
-										{Math.round(
-											manhours.weeklyTrend.reduce(
-												(sum, w) => sum + w.hours,
-												0
-											) / manhours.weeklyTrend.length
-										)}
-										h/week
-									</span>
-								</div>
-							</>
-						) : (
-							<div className="flex flex-col items-center justify-center h-32 text-gray-400">
-								<CalendarDaysIcon className="h-10 w-10 mb-2" />
-								<p className="text-sm">No data available</p>
-							</div>
-						)}
-					</div>
+				{/* Utilization */}
+				{summary ? (
+					<UtilizationSection
+						utilization={summary.utilization}
+						period={summary.period}
+						window={activeWindow}
+					/>
+				) : (
+					<UtilizationSkeleton />
+				)}
 
-					{/* Top Projects by Hours */}
-					<div className="bg-white rounded-xl border border-purple-200 p-6">
-						<div className="flex items-center justify-between mb-4">
-							<h3 className="text-lg font-semibold text-gray-900">
-								Top Projects by Hours
-							</h3>
-							<FolderIcon className="h-5 w-5 text-[#64126D]" />
-						</div>
-
-						{manhours.byProject.length > 0 ? (
-							<div className="space-y-3">
-								{manhours.byProject.slice(0, 5).map((project, i) => {
-									const maxHours = Math.max(
-										...manhours.byProject.map((p) => p.actual),
-										1
-									);
-									return (
-										<div key={i} className="group">
-											<div className="flex items-center justify-between mb-1">
-												<span
-													className="text-sm font-medium text-gray-700 truncate max-w-[150px]"
-													title={project.name}
-												>
-													{project.name}
-												</span>
-												<span className="text-sm font-semibold text-[#64126D]">
-													{project.actual}h
-												</span>
-											</div>
-											<div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-												<div
-													className="h-full bg-gradient-to-r from-purple-400 to-[#64126D] rounded-full transition-all group-hover:from-purple-500 group-hover:to-purple-700"
-													style={{
-														width: `${(project.actual / maxHours) * 100}%`,
-													}}
-												/>
-											</div>
-											{project.estimated > 0 && (
-												<div className="flex items-center justify-between mt-1">
-													<span className="text-xs text-gray-400">
-														Est: {project.estimated}h
-													</span>
-													<span
-														className={`text-xs font-medium ${
-															project.actual <= project.estimated
-																? 'text-green-500'
-																: 'text-orange-500'
-														}`}
-													>
-														{project.actual <= project.estimated
-															? `${Math.round(100 - (project.actual / project.estimated) * 100)}% under`
-															: `${Math.round((project.actual / project.estimated - 1) * 100)}% over`}
-													</span>
-												</div>
-											)}
-										</div>
-									);
-								})}
-							</div>
-						) : (
-							<div className="flex flex-col items-center justify-center h-32 text-gray-400">
-								<UsersIcon className="h-10 w-10 mb-2" />
-								<p className="text-sm">No project hours logged</p>
-							</div>
-						)}
-					</div>
+				{/* Charts: trend, projects, sales */}
+				<div className="mb-6 grid grid-cols-1 gap-6 xl:mb-8 xl:gap-8 lg:grid-cols-3">
+					<LoggedHoursTrend
+						points={summary ? summary.trend : []}
+						window={activeWindow}
+						loading={!summary}
+					/>
+					<ProjectsChart
+						projects={summary ? summary.projects : []}
+						loading={!summary}
+					/>
+					<SalesAnalytics
+						sales={summary ? summary.sales : null}
+						loading={!summary}
+					/>
 				</div>
 
 				{/* Follow-ups Section */}

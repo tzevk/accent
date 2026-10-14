@@ -100,6 +100,7 @@ import {
 	selectPayrollRoster,
 	type RosterDisclosure,
 	type RosterEmployeeInput,
+	type RosterMember,
 } from '@/lib/payroll-roster';
 import { query } from '@/utils/database';
 import { dbNum, dbStr, type DbRow } from './db-values';
@@ -842,6 +843,13 @@ export interface UtilizationData {
 	 * each with capacity-weighted utilization and the priced Bench Cost total.
 	 */
 	trend: TrendPoint[];
+	/**
+	 * The month's Logged-versus-Capacity buckets: ISO weeks over the whole
+	 * month, on the month's whole roster, so they foot to the payload's
+	 * totals. The admin dashboard's trend chart reads this; the report page
+	 * reads `trend` above.
+	 */
+	hours_trend: UtilizationBucketPoint[];
 	/** What the month's roster filter dropped, and why; null when it dropped nobody. */
 	disclosure: RosterDisclosure | null;
 	/**
@@ -1264,6 +1272,12 @@ interface UtilizationMonthScope {
 	holidays: ReadonlySet<string>;
 	attendanceByEmployee: Map<number, UtilizationAttendance[]>;
 	loggedEntriesByEmployee: Map<number, LoggedEntry[]>;
+	/**
+	 * Capacity clamp for a view narrower than the whole month (the range
+	 * fetch), omitted for a whole-month view. Days outside it credit no
+	 * capacity, so each row's employment window narrows to the intersection.
+	 */
+	capacityWindow?: CapacityWindow;
 }
 
 /** One month's roster and rows — the per-month view every lens reads. */
@@ -1273,24 +1287,63 @@ interface UtilizationMonthView {
 	disclosure: RosterDisclosure | null;
 }
 
+/** One month's Payroll roster, with what the selector left out. */
+interface UtilizationMonthRoster {
+	members: RosterMember[];
+	disclosure: RosterDisclosure | null;
+}
+
+/** Narrow a lower window bound down to a clamp day; `null` stays open. */
+function clampStart(
+	start: string | null,
+	clamp: string | null | undefined
+): string | null {
+	if (clamp === undefined || clamp === null) return start;
+	if (start === null) return clamp;
+	return start > clamp ? start : clamp;
+}
+
+/** Narrow an upper window bound down to a clamp day; `null` stays open. */
+function clampEnd(
+	end: string | null,
+	clamp: string | null | undefined
+): string | null {
+	if (clamp === undefined || clamp === null) return end;
+	if (end === null) return clamp;
+	return end < clamp ? end : clamp;
+}
+
 /**
- * Build one month's view: the month-scoped Payroll roster (the shared selector
- * resolves each employee's window against the month), one row per member with
- * that month's attendance, holidays, Logged Hours and effective-dated profile
- * — the same pipeline the viewed month always ran, so a trailing or trend
- * month reads exactly as it would if it were viewed.
+ * Select the month-scoped Payroll roster for one month: every lens reads the
+ * same selector, so a month's membership never differs between the report, a
+ * trailing cell and the dashboard's range.
  */
-function buildMonthView(
-	month: string,
+function selectMonthRoster(
 	employees: UtilizationEmployee[],
-	salaryGrouped: Map<number, SalaryProfile[]>,
-	scope: UtilizationMonthScope
-): UtilizationMonthView {
+	month: string
+): UtilizationMonthRoster {
 	const { roster, disclosure } = selectPayrollRoster(
 		employees.map(toRosterInput),
 		{ month }
 	);
-	const rows = roster.map((member) => {
+	return { members: roster, disclosure };
+}
+
+/**
+ * Build one month's view from a roster the caller selected: one row per member
+ * with that month's attendance, holidays, Logged Hours and effective-dated
+ * profile — the same pipeline the viewed month always ran, so a trailing or
+ * trend month reads exactly as it would if it were viewed. A caller that reads
+ * several months off one roster (the dashboard's range) passes the same roster
+ * to every month, so the row set cannot change between segments.
+ */
+function buildMonthView(
+	month: string,
+	salaryGrouped: Map<number, SalaryProfile[]>,
+	scope: UtilizationMonthScope,
+	roster: UtilizationMonthRoster
+): UtilizationMonthView {
+	const rows = roster.members.map((member) => {
 		// Logged Hours arrive pre-parsed (one already-parsed payload) and
 		// already scoped to the month, so six months cost one parse per
 		// assignment instead of one per month.
@@ -1301,8 +1354,14 @@ function buildMonthView(
 			employee_name: member.name,
 			department: member.department ?? null,
 			month,
-			employment_start: member.employment_start ?? null,
-			employment_end: member.employment_end ?? null,
+			employment_start: clampStart(
+				member.employment_start ?? null,
+				scope.capacityWindow?.start
+			),
+			employment_end: clampEnd(
+				member.employment_end ?? null,
+				scope.capacityWindow?.end
+			),
 			daily_entries: [entries],
 			attendance: scope.attendanceByEmployee.get(member.id) ?? [],
 			holidays: scope.holidays,
@@ -1312,40 +1371,51 @@ function buildMonthView(
 	return {
 		rows,
 		rowByEmployee: new Map(rows.map((row) => [row.employee_id, row])),
-		disclosure,
+		disclosure: roster.disclosure,
 	};
 }
 
-/**
- * Full team payload for one month: one row per employee on the month-scoped
- * Payroll roster, with capacity and Monthly Cost pro-rated to each row's
- * resolved employment window, sorted by flag band then bench cost descending,
- * plus the roster's exclusion disclosure. Optional flag narrows to one band.
- * Returns null for an invalid month.
- *
- * The same call also drives the lenses: every row carries its trailing window
- * (the viewed month and the two before it) and the chronic verdict, and the
- * payload carries the six-month team trend. Attendance, holidays and Logged
- * Hours are loaded once for the six-month span and every month is derived
- * from that single load.
- */
-export async function fetchUtilizationData(
-	month: string,
-	flag: UtilizationBand | null = null
-): Promise<UtilizationData | null> {
-	if (!isValidUtilizationMonth(month)) return null;
-	if (flag !== null && !isValidUtilizationFlag(flag)) return null;
+// ─── Shared span load ────────────────────────────────────────────────
 
-	const span = trendMonths(month);
-	const spanSet = new Set(span);
-	const spanStart = `${span[0]}-01`;
-	const spanEnd = `${month}-${String(daysInMonth(month)).padStart(2, '0')}`;
+/**
+ * Everything one span of months loads once, before any view is built.
+ *
+ * A span is a run of contiguous months, oldest first. The directory and the
+ * salary profiles are loaded whole (neither is date-scoped); holidays,
+ * attendance and Logged Hours are loaded for the span's calendar bounds and
+ * bucketed back per month, so any number of months costs one query per source.
+ */
+interface UtilizationSpanLoad {
+	employees: UtilizationEmployee[];
+	salaryGrouped: Map<number, SalaryProfile[]>;
+	/** Active NON-optional holidays, per span month. */
+	holidaysByMonth: Map<string, Set<string>>;
+	/** Attendance, per span month then per employee. */
+	attendanceByMonth: Map<string, Map<number, UtilizationAttendance[]>>;
+	/** Parsed Logged Hours entries, per span month then per employee. */
+	entriesByMonth: Map<string, Map<number, LoggedEntry[]>>;
+}
+
+/**
+ * Load one span of months. `months` is non-empty and contiguous, oldest first.
+ *
+ * The employees' Logged Hours evidence bounds are filled here, from the
+ * payloads already in hand, because the employment window's fallback reads
+ * them before a month can be selected.
+ */
+async function loadUtilizationSpan(
+	months: readonly string[]
+): Promise<UtilizationSpanLoad> {
+	const monthSet = new Set(months);
+	const spanStart = `${months[0]}-01`;
+	const lastMonth = months[months.length - 1];
+	const spanEnd = `${lastMonth}-${String(daysInMonth(lastMonth)).padStart(2, '0')}`;
 
 	const employees = await loadUtilizationEmployees();
-	const [{ userToEmployee, userKeyToEmployee }, salaryGrouped] =
+	const [salaryGrouped, { userToEmployee, userKeyToEmployee }] =
 		await Promise.all([
-			loadUtilizationUserMaps(employees),
 			loadSalaryProfilesGrouped(),
+			loadUtilizationUserMaps(employees),
 		]);
 
 	// Capacity and the rate's Basis Hours consume the active NON-optional
@@ -1367,7 +1437,7 @@ export async function fetchUtilizationData(
 			if (dbNum(r, 'is_optional', 0) === 1) continue;
 			const date = dbStr(r, 'date');
 			const dateMonth = date.slice(0, 7);
-			if (!spanSet.has(dateMonth)) continue;
+			if (!monthSet.has(dateMonth)) continue;
 			const set = holidaysByMonth.get(dateMonth) ?? new Set<string>();
 			set.add(date);
 			holidaysByMonth.set(dateMonth, set);
@@ -1395,7 +1465,7 @@ export async function fetchUtilizationData(
 			const date = dbStr(r, 'date');
 			if (!empId || !date) continue;
 			const dateMonth = date.slice(0, 7);
-			if (!spanSet.has(dateMonth)) continue;
+			if (!monthSet.has(dateMonth)) continue;
 			const byEmployee =
 				attendanceByMonth.get(dateMonth) ??
 				new Map<number, UtilizationAttendance[]>();
@@ -1450,10 +1520,10 @@ export async function fetchUtilizationData(
 	// The Logged Hours evidence bounds come from the payloads already in hand:
 	// the earliest and latest day an employee logged anything, which the
 	// employment window falls back to when the record has no joining/exit date.
-	// The same pass buckets the parsed entries by month for the span, so six
-	// months of per-row sums cost one parse per payload, not one per month.
+	// The same pass buckets the parsed entries by month for the span, so a
+	// span of any length costs one parse per payload, not one per month.
 	const employeeById = new Map(employees.map((emp) => [emp.id, emp]));
-	const loggedEntriesByMonth = new Map<string, Map<number, LoggedEntry[]>>();
+	const entriesByMonth = new Map<string, Map<number, LoggedEntry[]>>();
 	for (const [empId, payloads] of entriesByEmployee) {
 		const employee = employeeById.get(empId);
 		if (!employee) continue;
@@ -1476,17 +1546,424 @@ export async function fetchUtilizationData(
 			}
 			for (const entry of parseDailyEntries(payload)) {
 				const entryMonth = entry.date.slice(0, 7);
-				if (!spanSet.has(entryMonth)) continue;
+				if (!monthSet.has(entryMonth)) continue;
 				const byEmployee =
-					loggedEntriesByMonth.get(entryMonth) ??
-					new Map<number, LoggedEntry[]>();
+					entriesByMonth.get(entryMonth) ?? new Map<number, LoggedEntry[]>();
 				const arr = byEmployee.get(empId) || [];
 				arr.push(entry);
 				byEmployee.set(empId, arr);
-				loggedEntriesByMonth.set(entryMonth, byEmployee);
+				entriesByMonth.set(entryMonth, byEmployee);
 			}
 		}
 	}
+
+	return {
+		employees,
+		salaryGrouped,
+		holidaysByMonth,
+		attendanceByMonth,
+		entriesByMonth,
+	};
+}
+
+// ─── Range lens: a window shorter than a month ──────────────────────
+
+/** How a window's Logged-versus-Capacity trend buckets its days. */
+export type UtilizationTrendBucket = 'day' | 'iso-week';
+
+/** One bucket of a window's Logged-versus-Capacity trend. */
+export interface UtilizationBucketPoint {
+	/** Bucket start, `YYYY-MM-DD`. */
+	label: string;
+	logged: number;
+	capacity: number;
+	/**
+	 * The bucket has not finished: it holds today, or its ISO week runs past
+	 * the window's end. The chart marks it in progress.
+	 */
+	partial: boolean;
+}
+
+/** Today as `YYYY-MM-DD` on the server's own calendar. */
+function todayIso(): string {
+	const now = new Date();
+	const month = String(now.getMonth() + 1).padStart(2, '0');
+	const day = String(now.getDate()).padStart(2, '0');
+	return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/** Every day from `start` to `end`, both inclusive, oldest first. */
+function eachDay(start: string, end: string): string[] {
+	const days: string[] = [];
+	// UTC midnight keeps the arithmetic exact: no DST gap, no timezone shift.
+	const cursor = new Date(`${start}T00:00:00Z`);
+	const last = new Date(`${end}T00:00:00Z`);
+	while (cursor <= last) {
+		days.push(cursor.toISOString().slice(0, 10));
+		cursor.setUTCDate(cursor.getUTCDate() + 1);
+	}
+	return days;
+}
+
+/**
+ * The Monday of the ISO week holding `day`. ISO weeks start on Monday and the
+ * weekday is read in UTC, so the answer never shifts with the server's
+ * timezone.
+ */
+function isoWeekStart(day: string): string {
+	const date = new Date(`${day}T00:00:00Z`);
+	date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+	return date.toISOString().slice(0, 10);
+}
+
+/** The Sunday that ends the ISO week holding `day`. */
+function isoWeekEnd(day: string): string {
+	const monday = new Date(`${isoWeekStart(day)}T00:00:00Z`);
+	monday.setUTCDate(monday.getUTCDate() + 6);
+	return monday.toISOString().slice(0, 10);
+}
+
+/** A real calendar day, `YYYY-MM-DD`. */
+function isValidDay(value: string): boolean {
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+	const [year, month, date] = value.split('-').map(Number);
+	return (
+		new Date(Date.UTC(year, month - 1, date)).toISOString().slice(0, 10) ===
+		value
+	);
+}
+
+/** The months a day range spans, oldest first. */
+function monthsFromTo(firstMonth: string, lastMonth: string): string[] {
+	const months: string[] = [];
+	for (
+		let month = firstMonth;
+		month <= lastMonth;
+		month = shiftMonth(month, 1)
+	) {
+		months.push(month);
+	}
+	return months;
+}
+
+/** Keep only the entries inside `[start, end]`, keyed by employee. */
+function entriesInWindow(
+	byEmployee: Map<number, LoggedEntry[]>,
+	start: string,
+	end: string
+): Map<number, LoggedEntry[]> {
+	const scoped = new Map<number, LoggedEntry[]>();
+	if (start > end) return scoped;
+	for (const [empId, entries] of byEmployee) {
+		const kept = entries.filter(
+			(entry) => entry.date >= start && entry.date <= end
+		);
+		if (kept.length > 0) scoped.set(empId, kept);
+	}
+	return scoped;
+}
+
+/**
+ * Sum two segments of one employee's range row. The hours are the range's
+ * Logged Hours and capacity on the report's capacity calendar, the percent
+ * and band are recomputed from the sums, and the costs are the segments'
+ * pro-rated costs added — a range's cost is whole only when every segment of
+ * it is priced, because the profile covering one month need not cover the
+ * next.
+ */
+function mergeRangeRow(
+	base: UtilizationRow,
+	segment: UtilizationRow
+): UtilizationRow {
+	const logged = round2(
+		toNumber(add(R(base.logged_hours), R(segment.logged_hours)))
+	);
+	const capacity = round2(
+		toNumber(add(R(base.capacity_hours), R(segment.capacity_hours)))
+	);
+	const percent = utilizationPercent(logged, capacity);
+	const priced =
+		base.cost_status === 'priced' && segment.cost_status === 'priced';
+	return {
+		...base,
+		capacity_hours: capacity,
+		logged_hours: logged,
+		utilization_percent: percent,
+		utilization_band: bandForUtilization(percent),
+		// Zero Logged Hours is missing evidence, exactly as in the month row.
+		state: logged === 0 ? 'no_time_logged' : null,
+		monthly_cost: priced
+			? round2(
+					toNumber(add(R(base.monthly_cost ?? 0), R(segment.monthly_cost ?? 0)))
+				)
+			: null,
+		fractional_cost: priced
+			? round2(
+					toNumber(
+						add(R(base.fractional_cost ?? 0), R(segment.fractional_cost ?? 0))
+					)
+				)
+			: null,
+		bench_cost: priced
+			? round2(
+					toNumber(add(R(base.bench_cost ?? 0), R(segment.bench_cost ?? 0)))
+				)
+			: null,
+		cost_status: priced ? 'priced' : 'no-profile',
+	};
+}
+
+/**
+ * Build a window's Logged-versus-Capacity buckets on the same calendar the
+ * rows use, so the buckets always foot to the window's totals: each row's
+ * capacity over the bucket is its employment window narrowed to the bucket's
+ * days, and the buckets tile the window day for day.
+ *
+ * A bucket always holds whole days of exactly one month — a day bucket is one
+ * day, and an ISO-week bucket is clipped to the window, which for the month
+ * lens is one calendar month.
+ */
+function buildHoursTrend(input: {
+	bucket: UtilizationTrendBucket;
+	/** Window start, `YYYY-MM-DD`, inclusive. */
+	start: string;
+	/** Window end, `YYYY-MM-DD`, inclusive. */
+	end: string;
+	/** The days whose Logged Hours count. */
+	loggedWindow: CapacityWindow;
+	/** The window's roster rows; each carries its resolved employment window. */
+	rows: readonly UtilizationRow[];
+	load: UtilizationSpanLoad;
+}): UtilizationBucketPoint[] {
+	const today = todayIso();
+	const loggedStart = input.loggedWindow.start ?? input.start;
+	const loggedEnd = input.loggedWindow.end ?? input.end;
+	const points: UtilizationBucketPoint[] = [];
+	// Days arrive oldest first, and the days of one bucket are contiguous, so
+	// the bucket's key marks where the previous one ended.
+	let bucketKey = '';
+	let bucket: string[] = [];
+	const pushBucket = () => {
+		if (bucket.length === 0) return;
+		const bucketStart = bucket[0];
+		const bucketEnd = bucket[bucket.length - 1];
+		const bucketMonth = bucketStart.slice(0, 7);
+		const entriesByEmployee =
+			input.load.entriesByMonth.get(bucketMonth) ??
+			new Map<number, LoggedEntry[]>();
+		const attendanceByEmployee =
+			input.load.attendanceByMonth.get(bucketMonth) ??
+			new Map<number, UtilizationAttendance[]>();
+		const holidays =
+			input.load.holidaysByMonth.get(bucketMonth) ?? new Set<string>();
+
+		let logged = R(0);
+		let capacity = R(0);
+		for (const row of input.rows) {
+			for (const entry of entriesByEmployee.get(row.employee_id) ?? []) {
+				if (entry.date < bucketStart || entry.date > bucketEnd) continue;
+				if (entry.date < loggedStart || entry.date > loggedEnd) continue;
+				logged = add(logged, entry.hours);
+			}
+			capacity = add(
+				capacity,
+				buildCapacity(
+					bucketMonth,
+					attendanceByEmployee.get(row.employee_id) ?? [],
+					holidays,
+					{
+						start: clampStart(row.employment_start, bucketStart),
+						end: clampEnd(row.employment_end, bucketEnd),
+					}
+				).capacity_hours
+			);
+		}
+		// A day bucket ends with its own day; an ISO-week bucket ends on its
+		// Sunday, which the window end can cut short.
+		const naturalEnd =
+			input.bucket === 'day' ? bucketStart : isoWeekEnd(bucketEnd);
+		points.push({
+			label: bucketStart,
+			logged: round2(toNumber(logged)),
+			capacity: round2(toNumber(capacity)),
+			partial:
+				(bucketStart <= today && today <= bucketEnd) || bucketEnd < naturalEnd,
+		});
+	};
+	for (const day of eachDay(input.start, input.end)) {
+		const key = input.bucket === 'day' ? day : isoWeekStart(day);
+		if (bucket.length > 0 && key !== bucketKey) {
+			pushBucket();
+			bucket = [];
+		}
+		bucketKey = key;
+		bucket.push(day);
+	}
+	pushBucket();
+	return points;
+}
+
+/** One window's team utilization, read on the same pipeline as the month. */
+export interface UtilizationRangeData {
+	/** The months the window spans, oldest first. */
+	months: string[];
+	/** The days whose Logged Hours count. */
+	logged_start: string;
+	logged_end: string;
+	/** The days credited capacity. */
+	capacity_start: string;
+	capacity_end: string;
+	rows: UtilizationRow[];
+	totals: UtilizationTotals;
+	/** What the roster selector left out, and why; null when nobody. */
+	disclosure: RosterDisclosure | null;
+	/** Logged versus Capacity by day over the window. */
+	hours_trend: UtilizationBucketPoint[];
+}
+
+/**
+ * Team utilization for a range of days: the range's end month's Payroll
+ * roster, read over the range on the same pipeline the month report runs, so
+ * a short window cannot disagree with the month it reaches into.
+ *
+ * The range is split by calendar month and each segment reuses
+ * `selectPayrollRoster` + `buildTeamRow` for its month, sharing the one
+ * loader; the roster itself is selected once for the range's end month, so a
+ * leaver whose employment window ended before that month is off every
+ * segment — the disclosure counts them, exactly as the month report would.
+ * Rows merge per employee: Logged Hours and capacity are the sums of the
+ * segments, the percent and band are recomputed from those sums.
+ *
+ * `loggedStart`/`loggedEnd` bound the days whose hours count;
+ * `capacityStart`/`capacityEnd` bound the days credited capacity. The two are
+ * separate because a caller may want one window's hours against another's
+ * capacity, and each segment clamps itself to its own pair.
+ *
+ * Returns null when either range is not a pair of real days in order.
+ */
+export async function fetchUtilizationRangeData(
+	loggedStart: string,
+	loggedEnd: string,
+	capacityStart: string,
+	capacityEnd: string
+): Promise<UtilizationRangeData | null> {
+	if (
+		!isValidDay(loggedStart) ||
+		!isValidDay(loggedEnd) ||
+		loggedStart > loggedEnd
+	) {
+		return null;
+	}
+	if (
+		!isValidDay(capacityStart) ||
+		!isValidDay(capacityEnd) ||
+		capacityStart > capacityEnd
+	) {
+		return null;
+	}
+
+	const start = loggedStart < capacityStart ? loggedStart : capacityStart;
+	const end = loggedEnd > capacityEnd ? loggedEnd : capacityEnd;
+	const endMonth = end.slice(0, 7);
+	const months = monthsFromTo(start.slice(0, 7), endMonth);
+
+	const load = await loadUtilizationSpan(months);
+	const roster = selectMonthRoster(load.employees, endMonth);
+	const rosterById = new Map(
+		roster.members.map((member) => [member.id, member])
+	);
+
+	const merged = new Map<number, UtilizationRow>();
+	for (const month of months) {
+		const monthFirst = `${month}-01`;
+		const monthLast = `${month}-${String(daysInMonth(month)).padStart(2, '0')}`;
+		const view = buildMonthView(
+			month,
+			load.salaryGrouped,
+			{
+				holidays: load.holidaysByMonth.get(month) ?? new Set<string>(),
+				attendanceByEmployee: load.attendanceByMonth.get(month) ?? new Map(),
+				loggedEntriesByEmployee: entriesInWindow(
+					load.entriesByMonth.get(month) ?? new Map(),
+					loggedStart > monthFirst ? loggedStart : monthFirst,
+					loggedEnd < monthLast ? loggedEnd : monthLast
+				),
+				capacityWindow: { start: capacityStart, end: capacityEnd },
+			},
+			roster
+		);
+		for (const row of view.rows) {
+			const existing = merged.get(row.employee_id);
+			merged.set(
+				row.employee_id,
+				existing ? mergeRangeRow(existing, row) : row
+			);
+		}
+	}
+
+	// The segment rows carry their capacity-clamped window; the merged row
+	// carries the roster's resolved window, so the range's own extent is what
+	// `is_partial_window` measures against.
+	const rows = [...merged.values()].map((row) => {
+		const member = rosterById.get(row.employee_id);
+		const employmentStart = member?.employment_start ?? null;
+		const employmentEnd = member?.employment_end ?? null;
+		return {
+			...row,
+			month: endMonth,
+			employment_start: employmentStart,
+			employment_end: employmentEnd,
+			is_partial_window:
+				(employmentStart !== null && employmentStart > start) ||
+				(employmentEnd !== null && employmentEnd < end),
+			// A range has no month history to read a trailing window from.
+			trailing: [],
+			chronic_under: false,
+		};
+	});
+
+	return {
+		months,
+		logged_start: loggedStart,
+		logged_end: loggedEnd,
+		capacity_start: capacityStart,
+		capacity_end: capacityEnd,
+		rows,
+		totals: buildUtilizationTotals(rows),
+		disclosure: roster.disclosure,
+		hours_trend: buildHoursTrend({
+			bucket: 'day',
+			start,
+			end,
+			loggedWindow: { start: loggedStart, end: loggedEnd },
+			rows,
+			load,
+		}),
+	};
+}
+
+/**
+ * Full team payload for one month: one row per employee on the month-scoped
+ * Payroll roster, with capacity and Monthly Cost pro-rated to each row's
+ * resolved employment window, sorted by flag band then bench cost descending,
+ * plus the roster's exclusion disclosure. Optional flag narrows to one band.
+ * Returns null for an invalid month.
+ *
+ * The same call also drives the lenses: every row carries its trailing window
+ * (the viewed month and the two before it) and the chronic verdict, and the
+ * payload carries the six-month team trend. Attendance, holidays and Logged
+ * Hours are loaded once for the six-month span and every month is derived
+ * from that single load.
+ */
+export async function fetchUtilizationData(
+	month: string,
+	flag: UtilizationBand | null = null
+): Promise<UtilizationData | null> {
+	if (!isValidUtilizationMonth(month)) return null;
+	if (flag !== null && !isValidUtilizationFlag(flag)) return null;
+
+	const span = trendMonths(month);
+	const load = await loadUtilizationSpan(span);
 
 	// One view per span month — the same pipeline the viewed month runs, so a
 	// trailing cell is exactly the value the row would show if that month were
@@ -1495,12 +1972,18 @@ export async function fetchUtilizationData(
 	for (const spanMonth of span) {
 		views.set(
 			spanMonth,
-			buildMonthView(spanMonth, employees, salaryGrouped, {
-				holidays: holidaysByMonth.get(spanMonth) ?? new Set<string>(),
-				attendanceByEmployee: attendanceByMonth.get(spanMonth) ?? new Map(),
-				loggedEntriesByEmployee:
-					loggedEntriesByMonth.get(spanMonth) ?? new Map(),
-			})
+			buildMonthView(
+				spanMonth,
+				load.salaryGrouped,
+				{
+					holidays: load.holidaysByMonth.get(spanMonth) ?? new Set<string>(),
+					attendanceByEmployee:
+						load.attendanceByMonth.get(spanMonth) ?? new Map(),
+					loggedEntriesByEmployee:
+						load.entriesByMonth.get(spanMonth) ?? new Map(),
+				},
+				selectMonthRoster(load.employees, spanMonth)
+			)
 		);
 	}
 
@@ -1530,6 +2013,20 @@ export async function fetchUtilizationData(
 		buildTrendPoint(spanMonth, views.get(spanMonth)!.rows)
 	);
 
+	// The month's Logged-versus-Capacity buckets: ISO weeks over the whole
+	// month on the viewed month's whole roster, unfiltered like the rollup, so
+	// they foot to the month's totals.
+	const monthFirst = `${month}-01`;
+	const monthLast = `${month}-${String(daysInMonth(month)).padStart(2, '0')}`;
+	const hoursTrend = buildHoursTrend({
+		bucket: 'iso-week',
+		start: monthFirst,
+		end: monthLast,
+		loggedWindow: { start: monthFirst, end: monthLast },
+		rows,
+		load,
+	});
+
 	const sorted = sortUtilizationRows(rows);
 	const filtered =
 		flag !== null ? sorted.filter((r) => r.utilization_band === flag) : sorted;
@@ -1544,6 +2041,7 @@ export async function fetchUtilizationData(
 		// and the department table can never disagree.
 		totals: buildUtilizationTotals(filtered, rows),
 		trend,
+		hours_trend: hoursTrend,
 		disclosure: viewed.disclosure,
 		// The month's rollup reads the roster BEFORE the band filter.
 		departments: buildDepartmentSummary(rows),

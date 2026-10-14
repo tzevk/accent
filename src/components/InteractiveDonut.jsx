@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, memo } from 'react';
+import { useMemo, memo, useSyncExternalStore } from 'react';
 import {
 	PieChart,
 	Pie,
@@ -10,10 +10,31 @@ import {
 	ResponsiveContainer,
 } from 'recharts';
 
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+const subscribeReducedMotion = (onChange) => {
+	const query = window.matchMedia(REDUCED_MOTION_QUERY);
+	query.addEventListener('change', onChange);
+	return () => query.removeEventListener('change', onChange);
+};
+
+const readReducedMotion = () => window.matchMedia(REDUCED_MOTION_QUERY).matches;
+
+// Recharts animates with JavaScript, which no CSS media query reaches, so the
+// preference is read and the animation is switched off rather than stilled.
+const getServerReducedMotion = () => false;
+
+/**
+ * A slice with no colour of its own falls back to the neutral capacity token,
+ * never to a hex: the callers map every status onto a `--chart-*` token, so
+ * this only guards a caller that forgot its palette.
+ */
+const FALLBACK_SLICE_COLOUR = 'var(--chart-capacity)';
+
 function InteractiveDonutBase({
 	data = [],
-	innerRadius = 60,
-	outerRadius = 85,
+	innerRadius = 72,
+	outerRadius = 100,
 	colors = [],
 	totalLabel = 'Total',
 	showLegend = false,
@@ -22,23 +43,16 @@ function InteractiveDonutBase({
 	animationDuration = 450,
 	animationEasing = 'ease-out',
 	valueFormatter,
+	centerValue,
 }) {
-	const palette = useMemo(
-		() =>
-			colors.length
-				? colors
-				: ['#FBBF24', '#10B981', '#60A5FA', '#F87171', '#A78BFA'],
-		[colors]
-	);
-
 	const chartData = useMemo(
 		() =>
 			(data || []).map((d, i) => ({
 				name: d.name || d.label || `Item ${i + 1}`,
 				value: Number(d.value) || 0,
-				fill: d.color || palette[i % palette.length],
+				fill: d.color || colors[i % colors.length] || FALLBACK_SLICE_COLOUR,
 			})),
-		[data, palette]
+		[data, colors]
 	);
 
 	const total = useMemo(
@@ -46,7 +60,18 @@ function InteractiveDonutBase({
 		[chartData]
 	);
 
-	const fmt = typeof valueFormatter === 'function' ? valueFormatter : (v) => v;
+	const fmt = typeof valueFormatter === 'function' ? valueFormatter : String;
+
+	// The centre can read a total the slice sum cannot show (a proposal total
+	// that includes statuses the donut does not chart), so it arrives already
+	// formatted and the tooltip formatter is not applied to it.
+	const centre = centerValue === undefined ? fmt(total) : centerValue;
+
+	const reducedMotion = useSyncExternalStore(
+		subscribeReducedMotion,
+		readReducedMotion,
+		getServerReducedMotion
+	);
 
 	return (
 		<div
@@ -62,7 +87,7 @@ function InteractiveDonutBase({
 						paddingAngle={2}
 						cornerRadius={8}
 						dataKey="value"
-						isAnimationActive
+						isAnimationActive={!reducedMotion}
 						animationBegin={animationBegin}
 						animationDuration={animationDuration}
 						animationEasing={animationEasing}
@@ -85,8 +110,12 @@ function InteractiveDonutBase({
 			{/* Premium center label */}
 			{!showTotalBelow && (
 				<div className="pointer-events-none select-none absolute inset-0 flex items-center justify-center">
-					<div className="text-center">
-						<div className="text-2xl font-bold text-gray-900">{fmt(total)}</div>
+					<div className="px-2 text-center">
+						{/* text-lg, not text-2xl: a crore-scale rupee total overflows
+						    the hole at 24px, and the label must stay readable. */}
+						<div className="text-lg font-bold whitespace-nowrap text-gray-900">
+							{centre}
+						</div>
 						<div className="text-xs text-gray-500 -mt-0.5">{totalLabel}</div>
 					</div>
 				</div>
@@ -94,9 +123,7 @@ function InteractiveDonutBase({
 			{showTotalBelow && (
 				<div className="text-center -mt-6">
 					<span className="text-sm text-gray-600">{totalLabel}: </span>
-					<span className="text-sm font-semibold text-[#64126D]">
-						{fmt(total)}
-					</span>
+					<span className="text-sm font-semibold text-[#64126D]">{centre}</span>
 				</div>
 			)}
 		</div>
@@ -114,6 +141,14 @@ function areEqual(prev, next) {
 		prev.showTotalBelow !== next.showTotalBelow
 	)
 		return false;
+	if (prev.centerValue !== next.centerValue) return false;
+	// The palette feeds the fill of an uncoloured slice, so a colour change
+	// without a data change must still re-render. Compare the joined string:
+	// callers rebuild the array inline, and identity would defeat the memo.
+	const prevColors = prev.colors || [];
+	const nextColors = next.colors || [];
+	if (prevColors.length !== nextColors.length) return false;
+	if (prevColors.join() !== nextColors.join()) return false;
 	const a = prev.data || [];
 	const b = next.data || [];
 	if (a.length !== b.length) return false;

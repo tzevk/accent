@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
 	STANDARD_WORKING_HOURS,
 	HALF_DAY_HOURS,
@@ -21,6 +21,7 @@ import {
 	sortUtilizationRows,
 	monthLabel,
 	trendMonths,
+	fetchUtilizationRangeData,
 } from '@/app/reports/employee-utilization/data-source';
 import type { SalaryProfile } from '@/app/reports/manhours-billing/data-source';
 import {
@@ -35,6 +36,115 @@ import {
 	intersectsEmploymentWindow,
 	resolveEmploymentWindow,
 } from '@/lib/payroll-roster';
+
+// ─── Range lens fixtures (the admin dashboard's week window) ──────────
+
+// The shared loaders are the only thing the range lens reads from the DB, and
+// the pure suites above never call them, so one hoisted mock covers both.
+const { mockRangeQuery } = vi.hoisted(() => ({ mockRangeQuery: vi.fn() }));
+
+vi.mock('@/utils/database', () => ({
+	query: (...args: unknown[]) => mockRangeQuery(...args),
+}));
+
+/** April 2026: 30 days, Sundays 5/12/19/26, Saturdays 4/11/18/25 (2nd = 11, 4th = 25). */
+const APRIL = '2026-04';
+
+const rangeEmployees = [
+	{
+		id: 11,
+		employee_id: 'R-001',
+		name: 'Rita Fernandes',
+		email: 'rita@accent.test',
+		username: 'rita',
+		department: 'Civil',
+		employee_type: 'Payroll',
+		status: 'active',
+		joining_date: '2024-01-01',
+		hire_date: null,
+		exit_date: '2030-01-01',
+	},
+	// Joins mid-May: on May's roster, but with no capacity before the 15th.
+	{
+		id: 12,
+		employee_id: 'R-002',
+		name: 'Samir Das',
+		email: 'samir@accent.test',
+		username: 'samir',
+		department: 'Civil',
+		employee_type: 'Payroll',
+		status: 'active',
+		joining_date: '2026-05-15',
+		hire_date: null,
+		exit_date: '2030-01-01',
+	},
+	// Joins in June: off May's roster entirely, so absent from the range.
+	{
+		id: 13,
+		employee_id: 'R-003',
+		name: 'Tara Bose',
+		email: 'tara@accent.test',
+		username: 'tara',
+		department: 'Civil',
+		employee_type: 'Payroll',
+		status: 'active',
+		joining_date: '2026-06-01',
+		hire_date: null,
+		exit_date: '2030-01-01',
+	},
+	{
+		id: 14,
+		employee_id: 'R-004',
+		name: 'Uday Rao',
+		email: 'uday@accent.test',
+		username: 'uday',
+		department: 'Civil',
+		employee_type: 'Contract',
+		status: 'active',
+		joining_date: '2024-01-01',
+		hire_date: null,
+		exit_date: '2030-01-01',
+	},
+];
+
+/** One holiday in each month of the range, so the per-month split shows. */
+const rangeHolidays = [
+	{ date: '2026-04-29', is_optional: 0 },
+	{ date: '2026-05-06', is_optional: 0 },
+];
+
+const rangeAssignments = [
+	{
+		user_id: 11,
+		employee_id: 11,
+		daily_entries: entries({
+			'2026-04-28': 8,
+			'2026-05-01': 16,
+			'2026-05-15': 40,
+		}),
+	},
+	{
+		user_id: 12,
+		employee_id: 12,
+		daily_entries: entries({ '2026-04-29': 4, '2026-05-16': 20 }),
+	},
+];
+
+function mockRangeDb() {
+	mockRangeQuery.mockImplementation((sql: string) => {
+		if (sql.includes('FROM employees'))
+			return Promise.resolve([rangeEmployees]);
+		if (sql.includes('FROM employee_salary_profile'))
+			return Promise.resolve([[]]);
+		if (sql.includes('FROM holiday_master'))
+			return Promise.resolve([rangeHolidays]);
+		if (sql.includes('FROM employee_attendance')) return Promise.resolve([[]]);
+		if (sql.includes('FROM user_activity_assignments'))
+			return Promise.resolve([rangeAssignments]);
+		if (sql.includes('FROM users')) return Promise.resolve([[]]);
+		return Promise.resolve([[]]);
+	});
+}
 
 // May 2026: 31 days. Sundays 3/10/17/24/31, Saturdays 2/9/16/23/30.
 // Scheduled weekly offs: 5 Sundays + 2nd Sat (9th) + 4th Sat (23rd) = 7.
@@ -1593,5 +1703,170 @@ describe('resolveEmploymentWindow evidence extrema', () => {
 		});
 		expect(window.start).toBe('2026-09-01');
 		expect(window.start_source).toBe('attendance');
+	});
+});
+
+describe('fetchUtilizationRangeData', () => {
+	beforeEach(() => {
+		mockRangeQuery.mockReset();
+		mockRangeDb();
+	});
+
+	it('rejects a range that is not a pair of real days in order', async () => {
+		expect(
+			await fetchUtilizationRangeData(
+				'2026-05-32',
+				'2026-05-19',
+				'2026-05-04',
+				'2026-05-19'
+			)
+		).toBeNull();
+		expect(
+			await fetchUtilizationRangeData(
+				'2026-05-19',
+				'2026-05-04',
+				'2026-05-04',
+				'2026-05-19'
+			)
+		).toBeNull();
+		expect(
+			await fetchUtilizationRangeData(
+				'2026-05-04',
+				'2026-05-19',
+				'2026-05-20',
+				'2026-05-19'
+			)
+		).toBeNull();
+	});
+
+	it('reads a range inside one month as that month segment reads it', async () => {
+		const range = await fetchUtilizationRangeData(
+			'2026-05-04',
+			'2026-05-19',
+			'2026-05-04',
+			'2026-05-19'
+		);
+
+		expect(range).not.toBeNull();
+		expect(range!.months).toEqual(['2026-05']);
+		expect(range!.logged_start).toBe('2026-05-04');
+		expect(range!.logged_end).toBe('2026-05-19');
+
+		const rowById = new Map(range!.rows.map((row) => [row.employee_id, row]));
+		// May's roster holds Rita and Samir: Tara joins in June and Uday is a
+		// Contract employee.
+		expect([...rowById.keys()].sort()).toEqual([11, 12]);
+		expect(range!.totals.employee_count).toBe(2);
+		expect(range!.disclosure?.excluded_count).toBe(1);
+
+		// 13 working days fall in [05-04, 05-19]; the 06 holiday removes one.
+		const segment = buildCapacity(MAY, [], new Set(['2026-05-06']), {
+			start: '2026-05-04',
+			end: '2026-05-19',
+		});
+		expect(segment.capacity_hours).toBe(96);
+
+		const rita = rowById.get(11)!;
+		expect(rita.capacity_hours).toBe(96);
+		expect(rita.logged_hours).toBe(40);
+		expect(rita.utilization_percent).toBe(utilizationPercent(40, 96));
+		expect(rita.utilization_band).toBe(
+			bandForUtilization(rita.utilization_percent)
+		);
+
+		// Samir's window opens on the 15th, so his capacity starts there.
+		const samir = rowById.get(12)!;
+		expect(samir.capacity_hours).toBe(32);
+		expect(samir.logged_hours).toBe(20);
+		expect(samir.utilization_percent).toBe(62.5);
+		expect(samir.utilization_band).toBe('under');
+
+		expect(range!.totals.logged_hours).toBe(60);
+		expect(range!.totals.capacity_hours).toBe(128);
+	});
+
+	it('sums both segments when the range crosses two months', async () => {
+		const range = await fetchUtilizationRangeData(
+			'2026-04-27',
+			'2026-05-03',
+			'2026-04-27',
+			'2026-05-03'
+		);
+
+		expect(range).not.toBeNull();
+		expect(range!.months).toEqual(['2026-04', '2026-05']);
+
+		const rowById = new Map(range!.rows.map((row) => [row.employee_id, row]));
+		// Samir's capacity is clamped to an empty window: he has hours logged
+		// in April, so he reads as no-capacity rather than vanishing.
+		expect([...rowById.keys()].sort()).toEqual([11, 12]);
+
+		// Each month's segment on its own calendar, then added.
+		const april = buildCapacity(APRIL, [], new Set(['2026-04-29']), {
+			start: '2026-04-27',
+			end: '2026-04-30',
+		});
+		const may = buildCapacity(MAY, [], new Set(['2026-05-06']), {
+			start: '2026-05-01',
+			end: '2026-05-03',
+		});
+		expect(april.capacity_hours).toBe(24);
+		expect(may.capacity_hours).toBe(16);
+
+		const rita = rowById.get(11)!;
+		expect(rita.capacity_hours).toBe(april.capacity_hours + may.capacity_hours);
+		// 8h on 04-28 and 16h on 05-01 count; the 15th is outside the range.
+		expect(rita.logged_hours).toBe(24);
+		expect(rita.utilization_percent).toBe(60);
+		expect(rita.utilization_band).toBe('under');
+
+		const samir = rowById.get(12)!;
+		expect(samir.capacity_hours).toBe(0);
+		expect(samir.logged_hours).toBe(4);
+		expect(samir.utilization_percent).toBeNull();
+		expect(samir.utilization_band).toBeNull();
+
+		expect(range!.totals.logged_hours).toBe(28);
+		expect(range!.totals.capacity_hours).toBe(40);
+		// The no-log count is month-wide in the report; here it is the range's
+		// own rows that logged nothing.
+		expect(range!.totals.no_logged_count).toBe(0);
+		// The one no-capacity row is counted by the caller, not hidden here.
+		expect(
+			range!.rows.filter((row) => row.utilization_percent === null)
+		).toHaveLength(1);
+	});
+
+	it('keeps the daily trend footing to the range totals', async () => {
+		const range = await fetchUtilizationRangeData(
+			'2026-04-27',
+			'2026-05-03',
+			'2026-04-27',
+			'2026-05-03'
+		);
+
+		const trend = range!.hours_trend;
+		expect(trend.map((point) => point.label)).toEqual([
+			'2026-04-27',
+			'2026-04-28',
+			'2026-04-29',
+			'2026-04-30',
+			'2026-05-01',
+			'2026-05-02',
+			'2026-05-03',
+		]);
+		// The range ended in the past, so no bucket is unfinished.
+		expect(trend.every((point) => point.partial)).toBe(false);
+		// The 29th is a holiday and the 3rd a Sunday: no capacity on either.
+		expect(trend[2].capacity).toBe(0);
+		expect(trend[6].capacity).toBe(0);
+		expect(trend[1].logged).toBe(8);
+		expect(trend[4].logged).toBe(16);
+		expect(trend.reduce((sum, point) => sum + point.logged, 0)).toBe(
+			range!.totals.logged_hours
+		);
+		expect(trend.reduce((sum, point) => sum + point.capacity, 0)).toBe(
+			range!.totals.capacity_hours
+		);
 	});
 });
