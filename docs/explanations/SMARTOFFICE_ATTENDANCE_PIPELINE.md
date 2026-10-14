@@ -133,10 +133,11 @@ direction}`; Bearer auth (`SMARTOFFICE_WEBHOOK_SECRET`); upsert into
    the log alone. See its README for setup.
 3. **Report** — `src/app/reports/attendance-report/` (page + data-source).
    A month matrix: employees down the left, days of the selected month across
-   the top, one cell per employee-day carrying that day's Time Present hours
-   (`—` where the day is uncomputable, never `0`). `GET /api/reports/attendance-report?month=YYYY-MM`
-   returns the day list, the cells and month-wide punch stats; no `month`
-   returns filter-bar meta. Punches are attributed to the employee stamped at
+   the top, one cell per employee-day carrying the day's In and Out times:
+   the First Punch and Last Punch, sliced to 'HH:MM' from the presence walk,
+   with the Out as an em dash when the day has no second endpoint.
+   `GET /api/reports/attendance-report?month=YYYY-MM` returns the day list,
+   the cells and month-wide punch stats; no `month` returns filter-bar meta. Punches are attributed to the employee stamped at
    ingest (`attendance_logs.employee_id`), never re-derived from the device
    code. The punch fetch pads one day either side of the month so a shift
    crossing a month boundary still merges on the day it began — the padded

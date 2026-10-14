@@ -125,79 +125,16 @@ describe('cellEndpointsFromSpan', () => {
 		});
 	});
 
-	it('drops Out when a lone Punch leaves no second endpoint', () => {
+	it('nulls the Out when the walk reports the day uncomputable', () => {
+		// The module's own projection: `computable: false` drops the second
+		// endpoint to null even when the day still held a Last Punch. Which day
+		// shapes are uncomputable (a lone Punch, a refused merge) is the walk's
+		// decision, covered in @/lib/time-present.test.ts; this maps that flag
+		// to the null alone.
 		expect(
-			cellEndpointsFromSpan(
-				daySpan({
-					hours: null,
-					computable: false,
-					punchCount: 1,
-					firstPunch: punch('2026-08-14 08:15:00'),
-					lastPunch: punch('2026-08-14 08:15:00'),
-				})
-			)
+			cellEndpointsFromSpan(daySpan({ computable: false, hours: null }))
 		).toEqual({
-			first_punch: '08:15',
-			last_punch: null,
-			last_punch_next_day: false,
-		});
-	});
-
-	it('drops Out when a merge left the day one surviving Punch', () => {
-		// The 13th held 00:30 and 09:00, and the 12th's merge consumed 00:30.
-		// Two Punches of its own, one endpoint: the em dash still applies.
-		expect(
-			cellEndpointsFromSpan(
-				daySpan({
-					date: '2026-08-13',
-					hours: null,
-					computable: false,
-					punchCount: 2,
-					firstPunch: punch('2026-08-13 09:00:00'),
-					lastPunch: punch('2026-08-13 09:00:00'),
-				})
-			)
-		).toEqual({
-			first_punch: '09:00',
-			last_punch: null,
-			last_punch_next_day: false,
-		});
-	});
-
-	it('drops both times when the day only Punch became a merge tail', () => {
-		expect(
-			cellEndpointsFromSpan(
-				daySpan({
-					hours: null,
-					computable: false,
-					punchCount: 1,
-					firstPunch: null,
-					lastPunch: null,
-				})
-			)
-		).toEqual({
-			first_punch: null,
-			last_punch: null,
-			last_punch_next_day: false,
-		});
-	});
-
-	it('drops Out on a refused cross-midnight merge', () => {
-		// The refusal leaves the day its single Punch: In stands, Out is the
-		// em dash, and no marker is carried.
-		expect(
-			cellEndpointsFromSpan(
-				daySpan({
-					hours: null,
-					mergeRefused: true,
-					computable: false,
-					punchCount: 1,
-					firstPunch: punch('2026-08-15 06:00:00'),
-					lastPunch: punch('2026-08-15 06:00:00'),
-				})
-			)
-		).toEqual({
-			first_punch: '06:00',
+			first_punch: '09:07',
 			last_punch: null,
 			last_punch_next_day: false,
 		});

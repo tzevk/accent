@@ -126,7 +126,7 @@ const MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
 function AttendancePageInner() {
 	const searchParams = useSearchParams();
-	// Deep link from the Attendance report's Time Present note
+	// Deep link from the Attendance report's cell drill-down modal
 	// (`/employees/attendance?employee_id=<employees.id>&month=YYYY-MM`).
 	// Both values are only seeds; the pickers stay authoritative afterwards.
 	// Read defensively: the hook yields no query object when the page renders

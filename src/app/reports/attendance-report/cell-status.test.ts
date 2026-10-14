@@ -25,6 +25,7 @@ describe('resolveAttendanceCell: the In and Out labels', () => {
 		expect(cell.inLabel).toBe('09:00');
 		expect(cell.outLabel).toBe('17:30');
 		expect(cell.outIsNextDay).toBe(false);
+		expect(cell.outIsSecondEndpoint).toBe(true);
 	});
 
 	it('shows the next day clock as the Out when a night shift merged', () => {
@@ -39,6 +40,7 @@ describe('resolveAttendanceCell: the In and Out labels', () => {
 		expect(cell.inLabel).toBe('22:00');
 		expect(cell.outLabel).toBe('00:30');
 		expect(cell.outIsNextDay).toBe(true);
+		expect(cell.outIsSecondEndpoint).toBe(true);
 	});
 
 	it('shows one Punch as the In and the em dash as the Out', () => {
@@ -47,6 +49,7 @@ describe('resolveAttendanceCell: the In and Out labels', () => {
 		);
 		expect(cell.inLabel).toBe('09:00');
 		expect(cell.outLabel).toBe('—');
+		expect(cell.outIsSecondEndpoint).toBe(false);
 	});
 
 	it('shows no times on a day whose only Punch became the previous tail', () => {
@@ -56,6 +59,7 @@ describe('resolveAttendanceCell: the In and Out labels', () => {
 		expect(cell.inLabel).toBe('');
 		expect(cell.outLabel).toBe('');
 		expect(cell.outIsNextDay).toBe(false);
+		expect(cell.outIsSecondEndpoint).toBe(false);
 	});
 
 	it('shows one Punch and no Out on a day whose merge was refused', () => {

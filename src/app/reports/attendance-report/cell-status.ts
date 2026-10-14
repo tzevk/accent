@@ -26,7 +26,9 @@
  * one presence walk in `@/lib/time-present`. This module owns the three
  * display rules for them, so the page never re-derives a time. A day with no
  * Punch of its own shows neither line. A day with a First Punch and no Last
- * Punch shows In and the em dash, because one Punch is never a span.
+ * Punch shows In and the em dash, because one Punch is never a span. Whether
+ * the Out is a real second endpoint is reported on `outIsSecondEndpoint`, so
+ * a caller branches on that flag and never inspects the em dash itself.
  *
  * This module is pure: same input, same output, no mutation of the caller.
  */
@@ -199,6 +201,12 @@ export interface AttendanceCell {
 	 * no second endpoint, or blank when there is no In to pair it with.
 	 */
 	outLabel: string;
+	/**
+	 * True when the Out is a real second endpoint (the day's Last Punch),
+	 * false when it is the em dash or blank. Callers branch on this instead
+	 * of comparing the label against the em dash.
+	 */
+	outIsSecondEndpoint: boolean;
 	/** True when the Out belongs to the next calendar day. */
 	outIsNextDay: boolean;
 	/** `isWeeklyOff(date)` (ADR-0004). */
@@ -231,7 +239,9 @@ function toFiniteNumber(value: unknown): number | null {
  * Time rules: the endpoints arrive already decided by the presence walk, so
  * this function only formats them. A day with no First Punch shows no In and
  * no Out, however many punch rows it counts. A day with a First Punch takes
- * the Last Punch as its Out, or the em dash when there is none.
+ * the Last Punch as its Out, or the em dash when there is none. The
+ * `outIsSecondEndpoint` flag distinguishes a real Out from the em dash, so the
+ * page branches on it and never tests the em dash itself.
  */
 export function resolveAttendanceCell(
 	input: AttendanceCellInput
@@ -247,10 +257,14 @@ export function resolveAttendanceCell(
 	const hasPunches = punchCount > 0;
 
 	const firstPunch = input.firstPunch ?? null;
+	const lastPunch = input.lastPunch ?? null;
 	// A day with no Punch of its own has neither endpoint, however many rows
 	// it counts. A day with one has no second endpoint, never an invented one.
 	const inLabel = firstPunch == null ? '' : firstPunch;
-	const outLabel = firstPunch == null ? '' : (input.lastPunch ?? EM_DASH);
+	const outLabel = firstPunch == null ? '' : (lastPunch ?? EM_DASH);
+	// The Out is a real second endpoint only when the walk reported a Last
+	// Punch; the em dash is this module's own marker for its absence.
+	const outIsSecondEndpoint = firstPunch != null && lastPunch != null;
 
 	const weeklyOff = isWeeklyOff(date);
 	// An optional holiday is a working day (payroll treats it as such for Basis
@@ -278,6 +292,7 @@ export function resolveAttendanceCell(
 		hasPunches,
 		inLabel,
 		outLabel,
+		outIsSecondEndpoint,
 		outIsNextDay: input.lastPunchNextDay === true,
 		weeklyOff,
 		holiday,
