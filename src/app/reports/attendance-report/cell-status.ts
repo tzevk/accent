@@ -21,11 +21,24 @@
  * `getHolidaysForMonth(month, false)`). An optional holiday is a working day;
  * when a caller passes one anyway, it is excluded rather than trusted.
  *
+ * The measured Punch evidence arrives as two clock endpoints, not a duration:
+ * In is the day's First Punch and Out is its Last Punch, both taken from the
+ * one presence walk in `@/lib/time-present`. This module owns the three
+ * display rules for them, so the page never re-derives a time. A day with no
+ * Punch of its own shows neither line. A day with a First Punch and no Last
+ * Punch shows In and the em dash, because one Punch is never a span.
+ *
  * This module is pure: same input, same output, no mutation of the caller.
  */
 
 import { PAID_LEAVE_CODES, UNPAID_CODES } from '@/lib/attendance-summary';
 import { isWeeklyOff } from '@/utils/weekly-off';
+
+/**
+ * The Out on a day with no second endpoint. The report never invents a
+ * checkout the device did not record.
+ */
+const EM_DASH = '—';
 
 // ─── Badge tones ────────────────────────────────────────────────────
 
@@ -142,10 +155,19 @@ export interface AttendanceCellInput {
 	loggedHours?: number | string | null;
 	/** Number of punch rows on the day. 0 or absent = none. */
 	punchCount?: number | string | null;
-	/** Time Present hours; null means UNCOMPUTABLE (render as em dash). */
-	timePresentHours?: number | null;
-	/** True when Time Present refused to merge the day's punches. */
-	mergeRefused?: boolean | null;
+	/**
+	 * The day's First Punch, 'HH:MM', from the presence walk's span view.
+	 * Null means the day holds no Punch of its own, because its only Punch
+	 * became the previous day's merge tail.
+	 */
+	firstPunch?: string | null;
+	/**
+	 * The day's Last Punch, 'HH:MM'. Null when the walk reports no second
+	 * endpoint, so a lone Punch never gets an invented Out.
+	 */
+	lastPunch?: string | null;
+	/** True when the Last Punch belongs to the next calendar day. */
+	lastPunchNextDay?: boolean | null;
 	/** Active NON-OPTIONAL `holiday_master` dates for the month. */
 	nonOptionalHolidays?: HolidayDateSource;
 	/** Optional holidays — never non-working, even if also passed above. */
@@ -167,10 +189,18 @@ export interface AttendanceCell {
 	hasLoggedHours: boolean;
 	punchCount: number;
 	hasPunches: boolean;
-	/** null = uncomputable; the page renders an em dash, never 0. */
-	timePresentHours: number | null;
-	timePresentComputable: boolean;
-	mergeRefused: boolean;
+	/**
+	 * The day's First Punch as a display label, or blank when the day holds
+	 * no Punch of its own.
+	 */
+	inLabel: string;
+	/**
+	 * The day's Last Punch as a display label, the em dash when the day has
+	 * no second endpoint, or blank when there is no In to pair it with.
+	 */
+	outLabel: string;
+	/** True when the Out belongs to the next calendar day. */
+	outIsNextDay: boolean;
 	/** `isWeeklyOff(date)` (ADR-0004). */
 	weeklyOff: boolean;
 	/** Date is an active non-optional holiday and not an optional one. */
@@ -194,9 +224,14 @@ function toFiniteNumber(value: unknown): number | null {
  * Decide how one cell renders. Pure: reads only its input, mutates nothing.
  *
  * Muting rule: a Weekly Off or non-optional holiday is muted only when the day
- * has no logged hours and no punches. Punches are counted, never inferred —
- * `mergeRefused` / uncomputable Time Present is a statement ABOUT those
- * punches, so on its own it is never evidence that punches exist.
+ * has no logged hours and no punches. Punches are counted, never inferred: a
+ * day with rows but no First Punch of its own still counts as a day with
+ * Punches.
+ *
+ * Time rules: the endpoints arrive already decided by the presence walk, so
+ * this function only formats them. A day with no First Punch shows no In and
+ * no Out, however many punch rows it counts. A day with a First Punch takes
+ * the Last Punch as its Out, or the em dash when there is none.
  */
 export function resolveAttendanceCell(
 	input: AttendanceCellInput
@@ -211,7 +246,11 @@ export function resolveAttendanceCell(
 	const hasLoggedHours = loggedHours > 0;
 	const hasPunches = punchCount > 0;
 
-	const timePresentHours = toFiniteNumber(input.timePresentHours);
+	const firstPunch = input.firstPunch ?? null;
+	// A day with no Punch of its own has neither endpoint, however many rows
+	// it counts. A day with one has no second endpoint, never an invented one.
+	const inLabel = firstPunch == null ? '' : firstPunch;
+	const outLabel = firstPunch == null ? '' : (input.lastPunch ?? EM_DASH);
 
 	const weeklyOff = isWeeklyOff(date);
 	// An optional holiday is a working day (payroll treats it as such for Basis
@@ -237,9 +276,9 @@ export function resolveAttendanceCell(
 		hasLoggedHours,
 		punchCount,
 		hasPunches,
-		timePresentHours,
-		timePresentComputable: timePresentHours != null,
-		mergeRefused: input.mergeRefused === true,
+		inLabel,
+		outLabel,
+		outIsNextDay: input.lastPunchNextDay === true,
 		weeklyOff,
 		holiday,
 		nonWorking,

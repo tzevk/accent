@@ -110,9 +110,8 @@ function employeeInitials(name: string | null): string {
  * side by side. Presentation only — `cell` is already resolved by
  * `resolveAttendanceCell`, so no rule is re-derived here.
  *
- * The compact visual is restated once as sr-only prose: both measures are
- * named, an uncomputable span is said to be uncomputable, and a muted day is
- * never left to the grey background alone.
+ * The compact visual is restated once as sr-only prose: the measures are
+ * named, and a muted day is never left to the grey background alone.
  */
 function CellContent({ cell }: { cell: AttendanceCell }) {
 	// Blank, not zero: a day with neither figure says nothing at all.
@@ -125,11 +124,6 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 		cell.hasLoggedHours
 			? `Logged Hours ${formatNumber(cell.loggedHours)}.`
 			: 'Logged Hours: none.',
-		cell.mergeRefused
-			? 'Time Present uncomputable: the cross-midnight merge was refused.'
-			: cell.timePresentComputable
-				? `Time Present ${formatNumber(cell.timePresentHours)} hours.`
-				: 'Time Present uncomputable.',
 		cell.statusLabel ? `Authored status: ${cell.statusLabel}.` : '',
 		`${cell.punchCount} ${cell.punchCount === 1 ? 'punch' : 'punches'}.`,
 		cell.muted ? `${mutedLabel} with no hours and no punches.` : '',
@@ -170,16 +164,6 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 						}
 					>
 						{cell.hasLoggedHours ? formatNumber(cell.loggedHours) : ' '}
-					</span>
-					<span
-						data-testid="cell-time-present"
-						className={
-							cell.timePresentComputable ? TIME_PRESENT_CLASS : NO_FIGURE_CLASS
-						}
-					>
-						{cell.timePresentComputable
-							? formatNumber(cell.timePresentHours)
-							: EM_DASH}
 					</span>
 				</span>
 			) : null}
@@ -719,8 +703,6 @@ export default function AttendanceReportPage() {
 																	status: cell?.status ?? null,
 																	loggedHours: cell?.logged_hours ?? null,
 																	punchCount: cell?.punch_count ?? 0,
-																	timePresentHours: cell?.hours ?? null,
-																	mergeRefused: cell?.merge_refused ?? false,
 																	nonOptionalHolidays,
 																	optionalHolidays,
 																});
@@ -737,11 +719,6 @@ export default function AttendanceReportPage() {
 																		data-date={column.date}
 																		data-muted={
 																			resolved.muted ? 'true' : 'false'
-																		}
-																		data-time-present-state={
-																			resolved.timePresentComputable
-																				? 'computable'
-																				: 'uncomputable'
 																		}
 																		data-logged-hours-state={
 																			resolved.hasLoggedHours
