@@ -120,7 +120,7 @@ export default function LoggedHoursTrend({
 						No logged hours in this window
 					</p>
 					<p className="mt-1 text-sm text-gray-500">
-						Buckets appear once timesheets are approved for {windowLabel}.
+						Buckets appear once team members log hours for {windowLabel}.
 					</p>
 				</div>
 			) : (
@@ -128,7 +128,7 @@ export default function LoggedHoursTrend({
 					<p className="sr-only">
 						Logged hours and capacity per bucket: {bucketsReadout}.
 					</p>
-					<div className="h-72">
+					<div className="h-72 overflow-hidden">
 						<ResponsiveContainer width="100%" height="100%">
 							<ComposedChart
 								data={data}

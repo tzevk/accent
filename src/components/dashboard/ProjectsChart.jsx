@@ -106,7 +106,7 @@ export default function ProjectsChart({ projects = [], loading = false }) {
 				</p>
 			</div>
 
-			<div className="h-80">
+			<div className="h-80 overflow-hidden">
 				{data.length === 0 ? (
 					<div className="flex h-full flex-col items-center justify-center text-center">
 						<p className="font-medium text-gray-700">

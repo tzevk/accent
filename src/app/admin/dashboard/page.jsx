@@ -270,8 +270,15 @@ function KpiCards({ kpis }) {
 /** One utilization figure row: the name, its hours, and its band reading. */
 function UtilizationRowLine({ row }) {
 	return (
-		<li className="flex items-center justify-between gap-3 py-2">
-			<span className="truncate text-sm font-medium text-gray-700">
+		<li className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
+			{/* Below sm the name takes its own line so a long name can never be
+			    squeezed to nothing by the metrics beside it; above it the row
+			    truncates the name and the full value stays reachable through the
+			    accessible name and the title. */}
+			<span
+				title={row.name}
+				className="w-full min-w-0 text-sm font-medium text-gray-700 sm:w-auto sm:flex-1 sm:truncate"
+			>
 				{row.name}
 			</span>
 			<span className="flex shrink-0 items-center gap-2">
