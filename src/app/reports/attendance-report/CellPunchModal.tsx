@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/cn.js';
 import type { PunchDirection } from '@/lib/punch';
+import { pluralNoun } from './plural-noun';
 
 // ─── Props ──────────────────────────────────────────────────────────
 
@@ -172,7 +173,7 @@ export function CellPunchTrigger({
 	className,
 }: CellPunchTriggerProps) {
 	const name = employee.name || employee.code;
-	const punchNoun = punchCount === 1 ? 'punch' : 'punches';
+	const punchNoun = pluralNoun(punchCount, 'punch', 'punches');
 	// The em dash leads: the accessible-name algorithm strips a node's leading
 	// space, which would otherwise weld the hours to the sentence.
 	const description = `— Show ${punchCount} ${punchNoun} for ${name} on ${dayLabel(date)}`;
@@ -185,7 +186,7 @@ export function CellPunchTrigger({
 			title={`${punchCount} ${punchNoun} · ${name} · ${dayLabel(date)}`}
 			onClick={onOpen}
 			className={cn(
-				'w-full rounded-md text-left transition-colors hover:bg-purple-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]/40',
+				'w-full rounded-md text-left transition-colors hover:bg-purple-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]',
 				className
 			)}
 		>
@@ -275,7 +276,7 @@ export default function CellPunchModal({
 
 	const name = employee.name || employee.code;
 	const total = rows.length;
-	const totalNoun = total === 1 ? 'punch' : 'punches';
+	const totalNoun = pluralNoun(total, 'punch', 'punches');
 	// The caption states exactly what the table below shows.
 	const caption =
 		total === 0
@@ -283,6 +284,8 @@ export default function CellPunchModal({
 			: activeDevice === ALL_DEVICES
 				? `Showing all ${total} ${totalNoun} from all devices`
 				: `Showing ${visibleRows.length} of ${total} ${totalNoun} from device ${activeDevice}`;
+	// The screen-reader caption reads the rows on screen, not the day's total.
+	const rowNoun = pluralNoun(visibleRows.length, 'raw punch', 'raw punches');
 
 	const href = gridHref(employee.id, month);
 	const title = `${name} — punches on ${dayLabel(date)}`;
@@ -300,7 +303,7 @@ export default function CellPunchModal({
 							data-testid="cell-punch-grid-link"
 							href={href}
 							title={`Credited hours for ${name} in ${month}`}
-							className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]/40"
+							className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 						>
 							{GRID_LINK_LABEL}
 							<ArrowTopRightOnSquareIcon
@@ -334,7 +337,7 @@ export default function CellPunchModal({
 							onChange={(event) => setDevice(event.target.value)}
 							disabled={devices.length === 0}
 							aria-describedby={deviceCaptionId}
-							className="h-8 w-48 rounded-md border border-gray-300 bg-white px-2 text-xs font-normal normal-case tracking-normal text-gray-800 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
+							className="h-8 w-48 rounded-md border border-gray-500 bg-white px-2 text-xs font-normal normal-case tracking-normal text-gray-800 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
 						>
 							<option value={ALL_DEVICES}>All devices</option>
 							{devices.map((serial) => (
@@ -377,9 +380,8 @@ export default function CellPunchModal({
 						<div className="overflow-x-auto">
 							<table className="w-full text-left text-[13px]">
 								<caption className="sr-only">
-									{visibleRows.length} raw punch
-									{visibleRows.length === 1 ? '' : 'es'} for {name} (
-									{employee.code}) on {dayLabel(date)}. {caption}.
+									{visibleRows.length} {rowNoun} for {name} ({employee.code}) on{' '}
+									{dayLabel(date)}. {caption}.
 								</caption>
 								<thead>
 									<tr className="border-b border-gray-200 bg-gray-50/80 text-[11px] uppercase tracking-wider text-gray-500">

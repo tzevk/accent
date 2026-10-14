@@ -3,6 +3,7 @@
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/cn.js';
 import type { UnmappedCodeCount } from './unmapped-codes';
+import { pluralNoun } from './plural-noun';
 
 export interface UnmappedCodesStripProps {
 	/** Per-code counts, already sorted; from `aggregateUnmappedCodes`. */
@@ -37,8 +38,8 @@ export default function UnmappedCodesStrip({
 
 	const total =
 		totalPunches ?? codes.reduce((acc, code) => acc + code.punch_count, 0);
-	const codeNoun = codes.length === 1 ? 'code' : 'codes';
-	const punchNoun = total === 1 ? 'Punch' : 'Punches';
+	const codeNoun = pluralNoun(codes.length, 'code', 'codes');
+	const punchNoun = pluralNoun(total, 'Punch', 'Punches');
 
 	return (
 		<div
@@ -72,7 +73,7 @@ export default function UnmappedCodesStrip({
 								<code className="font-semibold">{code.employee_code}</code>
 								<span className="ml-1 text-amber-700">
 									{code.punch_count}{' '}
-									{code.punch_count === 1 ? 'Punch' : 'Punches'}
+									{pluralNoun(code.punch_count, 'Punch', 'Punches')}
 								</span>
 							</li>
 						))}
