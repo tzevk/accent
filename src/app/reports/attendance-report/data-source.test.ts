@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildStats } from '@/app/reports/attendance-report/data-source';
+import {
+	buildStats,
+	cellEndpointsFromSpan,
+} from '@/app/reports/attendance-report/data-source';
+import type { DayPunchSpan, PunchLike } from '@/lib/time-present';
 
 // Punch direction utilities live in @/lib/punch — covered by
 // src/lib/punch.test.ts; the attendance webhook imports resolveDirection
@@ -50,6 +54,152 @@ describe('buildStats', () => {
 			distinct_days: 0,
 			distinct_employees: 0,
 			distinct_devices: 0,
+		});
+	});
+});
+
+// One walked day in the shape @/lib/time-present's span view returns it.
+// What the walk decides is that own suite's subject; these cases cover only
+// how a walked day becomes the cell's three endpoint fields.
+function daySpan(over: Partial<DayPunchSpan>): DayPunchSpan {
+	return {
+		date: '2026-08-12',
+		hours: 8,
+		merged: false,
+		mergeRefused: false,
+		punchCount: 2,
+		firstPunch: punch('2026-08-12 09:07:43'),
+		lastPunch: punch('2026-08-12 17:22:05'),
+		computable: true,
+		...over,
+	};
+}
+
+function punch(log_date: string): PunchLike {
+	return { employee_code: '102', log_date };
+}
+
+describe('cellEndpointsFromSpan', () => {
+	it("slices 'HH:MM' out of each endpoint's device timestamp", () => {
+		expect(cellEndpointsFromSpan(daySpan({}))).toEqual({
+			first_punch: '09:07',
+			last_punch: '17:22',
+			last_punch_next_day: false,
+		});
+	});
+
+	it('keeps both clock edges exact at the ends of a day', () => {
+		// The cut is a slice, not a parse, so midnight and the last minute
+		// survive it whole.
+		expect(
+			cellEndpointsFromSpan(
+				daySpan({
+					firstPunch: punch('2026-08-12 00:00:12'),
+					lastPunch: punch('2026-08-12 23:59:59'),
+				})
+			)
+		).toEqual({
+			first_punch: '00:00',
+			last_punch: '23:59',
+			last_punch_next_day: false,
+		});
+	});
+
+	it('flags an Out that belongs to the next calendar day', () => {
+		// #348's worked example: In 22:00 on the 12th, Out 00:30 on the 13th.
+		// The walk reports this day with punchCount 1, so the punch count
+		// cannot decide whether a second endpoint exists.
+		expect(
+			cellEndpointsFromSpan(
+				daySpan({
+					merged: true,
+					punchCount: 1,
+					firstPunch: punch('2026-08-12 22:00:11'),
+					lastPunch: punch('2026-08-13 00:30:44'),
+				})
+			)
+		).toEqual({
+			first_punch: '22:00',
+			last_punch: '00:30',
+			last_punch_next_day: true,
+		});
+	});
+
+	it('drops Out when a lone Punch leaves no second endpoint', () => {
+		expect(
+			cellEndpointsFromSpan(
+				daySpan({
+					hours: null,
+					computable: false,
+					punchCount: 1,
+					firstPunch: punch('2026-08-14 08:15:00'),
+					lastPunch: punch('2026-08-14 08:15:00'),
+				})
+			)
+		).toEqual({
+			first_punch: '08:15',
+			last_punch: null,
+			last_punch_next_day: false,
+		});
+	});
+
+	it('drops Out when a merge left the day one surviving Punch', () => {
+		// The 13th held 00:30 and 09:00, and the 12th's merge consumed 00:30.
+		// Two Punches of its own, one endpoint: the em dash still applies.
+		expect(
+			cellEndpointsFromSpan(
+				daySpan({
+					date: '2026-08-13',
+					hours: null,
+					computable: false,
+					punchCount: 2,
+					firstPunch: punch('2026-08-13 09:00:00'),
+					lastPunch: punch('2026-08-13 09:00:00'),
+				})
+			)
+		).toEqual({
+			first_punch: '09:00',
+			last_punch: null,
+			last_punch_next_day: false,
+		});
+	});
+
+	it('drops both times when the day only Punch became a merge tail', () => {
+		expect(
+			cellEndpointsFromSpan(
+				daySpan({
+					hours: null,
+					computable: false,
+					punchCount: 1,
+					firstPunch: null,
+					lastPunch: null,
+				})
+			)
+		).toEqual({
+			first_punch: null,
+			last_punch: null,
+			last_punch_next_day: false,
+		});
+	});
+
+	it('drops Out on a refused cross-midnight merge', () => {
+		// The refusal leaves the day its single Punch: In stands, Out is the
+		// em dash, and no marker is carried.
+		expect(
+			cellEndpointsFromSpan(
+				daySpan({
+					hours: null,
+					mergeRefused: true,
+					computable: false,
+					punchCount: 1,
+					firstPunch: punch('2026-08-15 06:00:00'),
+					lastPunch: punch('2026-08-15 06:00:00'),
+				})
+			)
+		).toEqual({
+			first_punch: '06:00',
+			last_punch: null,
+			last_punch_next_day: false,
 		});
 	});
 });
