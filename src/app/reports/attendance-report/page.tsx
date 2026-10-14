@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
+	ArrowDownLeftIcon,
 	ArrowPathIcon,
+	ArrowUpRightIcon,
 	CalendarDaysIcon,
 	ExclamationTriangleIcon,
 	FingerPrintIcon,
@@ -132,14 +134,15 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 	// Muted = a Weekly Off or holiday with no logged hours and no punches.
 	const mutedLabel = cell.holiday ? 'Holiday' : 'Weekly Off';
 
-	// The visible label leads each time: "In 09:00", "Out 17:30". A lone Punch
-	// has no second endpoint yet, and a merged Out belongs to the next day.
+	// The cell shows a direction icon for each time; this prose restates them
+	// as the words In and Out for a screen reader. A lone Punch has no second
+	// endpoint yet, and a merged Out belongs to the next day.
 	const times = [
 		cell.inLabel ? `In ${cell.inLabel}.` : '',
-		cell.outLabel === EM_DASH
-			? `Out ${EM_DASH}: no second endpoint yet.`
+		cell.outIsSecondEndpoint
+			? `Out ${cell.outLabel}${cell.outIsNextDay ? ' on the next day' : ''}.`
 			: cell.outLabel
-				? `Out ${cell.outLabel}${cell.outIsNextDay ? ' on the next day' : ''}.`
+				? `Out ${EM_DASH}: no second endpoint yet.`
 				: '',
 	]
 		.filter(Boolean)
@@ -182,17 +185,24 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 					{mutedLabel}
 				</span>
 			) : null}
-			{/* One labelled line per time: the words In and Out carry the
-			    meaning, so colour is never the only discriminator. */}
+			{/* One line per time, led by a direction icon rather than colour:
+			    the same IN/OUT icons the cell drill-down modal uses, so the
+			    cue is not hue alone and the line still fits the column. */}
 			{cell.inLabel ? (
-				<span className="text-[11px] leading-tight" aria-hidden="true">
-					<span className="text-gray-500">In</span>{' '}
+				<span className="flex items-center leading-tight" aria-hidden="true">
+					<ArrowDownLeftIcon
+						className="h-2.5 w-2.5 shrink-0 text-gray-500"
+						aria-hidden="true"
+					/>
 					<span className={TIMES_CLASS}>{cell.inLabel}</span>
 				</span>
 			) : null}
 			{cell.outLabel ? (
-				<span className="text-[11px] leading-tight" aria-hidden="true">
-					<span className="text-gray-500">Out</span>{' '}
+				<span className="flex items-center leading-tight" aria-hidden="true">
+					<ArrowUpRightIcon
+						className="h-2.5 w-2.5 shrink-0 text-gray-500"
+						aria-hidden="true"
+					/>
 					<span className={TIMES_CLASS}>{cell.outLabel}</span>
 				</span>
 			) : null}
@@ -433,7 +443,7 @@ export default function AttendanceReportPage() {
 										Attendance Report
 									</h1>
 									<p className="text-sm text-purple-200">
-										Logged hours and in/out times per employee
+										Logged hours and First Punch / Last Punch per employee
 										{monthHeading ? ` · ${monthHeading}` : ''}
 									</p>
 								</div>
@@ -631,7 +641,7 @@ export default function AttendanceReportPage() {
 											data-devices={deviceCount}
 											className="text-xs tabular-nums text-gray-600"
 										>
-											{`${totalPunches} punches · ${mappedPunches} mapped (${mappedPercent}%) · ${unmappedPunches} unmapped · ${deviceCount} devices`}
+											{`${totalPunches} ${pluralNoun(totalPunches, 'punch', 'punches')} · ${mappedPunches} mapped (${mappedPercent}%) · ${unmappedPunches} unmapped · ${deviceCount} ${pluralNoun(deviceCount, 'device', 'devices')}`}
 										</p>
 										<div
 											data-testid="figures-legend"
@@ -649,8 +659,23 @@ export default function AttendanceReportPage() {
 												</span>
 											</span>
 											<span>
-												In and Out: the day&apos;s first and last punch times;
-												never credited
+												<span className="inline-flex items-center gap-1">
+													<ArrowDownLeftIcon
+														className="h-2.5 w-2.5 text-gray-500"
+														aria-hidden="true"
+													/>
+													In
+												</span>{' '}
+												and{' '}
+												<span className="inline-flex items-center gap-1">
+													<ArrowUpRightIcon
+														className="h-2.5 w-2.5 text-gray-500"
+														aria-hidden="true"
+													/>
+													Out
+												</span>
+												: the day&apos;s first and last punch times; never
+												credited
 											</span>
 											<span>
 												{`An em dash (${EM_DASH}) marks no second endpoint yet, never 0. Click a cell for its punches.`}
@@ -673,7 +698,8 @@ export default function AttendanceReportPage() {
 										>
 											<table className="w-full text-[12px]">
 												<caption className="sr-only">
-													Logged hours and in/out times per employee for{' '}
+													Logged hours and First Punch / Last Punch per employee
+													for{' '}
 													{monthHeading}
 												</caption>
 												<thead>
