@@ -13,16 +13,18 @@ import {
  *
  * The Attendance report is a month matrix: Smart Office biometric Punches
  * from `attendance_logs`, attributed to the Employee stamped on the row at
- * ingest and bucketed per Employee per day. Each cell carries the day's Time
- * Present hours (first Punch of the day → last, with the bounded
- * cross-midnight merge) and the canonical Logged Hours, alongside the
- * Attendance Record status and the day's Punch count.
+ * ingest and bucketed per Employee per day. Each cell carries the day's two
+ * clock endpoints, First Punch and Last Punch, sliced to 'HH:MM' from the
+ * direction-agnostic presence walk (first Punch of the day to last, pooled
+ * across devices, with the bounded cross-midnight merge), and the canonical
+ * Logged Hours, alongside the Attendance Record status and the day's Punch
+ * count.
  *
  * Without params    → meta: the latest month with logs, for the month picker.
  * ?month=YYYY-MM    → the month matrix: the month's day list, one row per
- *                     Payroll employee with a cell per day (Time Present +
- *                     Logged Hours + Attendance Record status + Punch
- *                     count), the month's stats, the roster disclosure,
+ *                     Payroll employee with a cell per day (First Punch +
+ *                     Last Punch + Logged Hours + Attendance Record status +
+ *                     Punch count), the month's stats, the roster disclosure,
  *                     holidays, the distinct device serials, and the
  *                     month-scoped Punch list the drill-down reads.
  *

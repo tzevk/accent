@@ -696,7 +696,7 @@ export async function fetchAttendanceData(options: {
 		fetchLoggedHoursByEmployee(roster, directory, month),
 	]);
 
-	// Time Present buckets over the padded set: the padded head lets the
+	// The endpoint walk runs over the padded set: the padded head lets the
 	// previous month's last day consume this month's first-day continuation
 	// Punch, and the padded tail does the same for the month's last day.
 	const buckets = punchBucketsByEmployee(paddedPunches);
