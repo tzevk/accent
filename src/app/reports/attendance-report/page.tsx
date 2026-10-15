@@ -28,7 +28,7 @@ import type {
 	ArStats,
 } from './data-source';
 import { REPORT_WORKPLACE } from './workplace';
-import { hasTodayColumn, preScrollLeft, todayDate } from './scroll-to-today';
+import { preScrollLeft, todaysColumn } from './scroll-to-today';
 import {
 	CELL_TONE_CLASSES,
 	resolveAttendanceCell,
@@ -83,6 +83,30 @@ const TIMES_CLASS = 'text-[11px] font-medium tabular-nums text-purple-800';
 const LOGGED_HOURS_CLASS =
 	'text-[12px] font-medium tabular-nums text-emerald-700';
 const NO_FIGURE_CLASS = 'text-[12px] tabular-nums text-gray-500';
+
+/**
+ * Today's column: the one hue in this grid that carries no other meaning.
+ * Emerald is the credited Logged Hours figure, purple is the punch times, and
+ * the AGENTS.md status palette (slate, amber, green, red, blue, orange) is
+ * already spoken for by the cell badges — blue is Weekly Off, so a blue "today"
+ * would contradict that column. Sky is the project's in-house third hue (the
+ * expenses pages use it) and is unused here, so today reads on its own. Sky
+ * sits 19° from blue and 52–79° from the purple and emerald figures, so it is
+ * its own colour under the 15° rule.
+ *
+ * Every pair below is measured from the Tailwind v4 oklch ramp, not by eye:
+ * the day number 7.3:1 and the weekday 5.7:1 on the sky-200 header, the bar
+ * 4.2:1 as a graphic, the legend swatch 5.6:1 on white. The colour is never
+ * the only cue either: the header also carries `aria-current="date"`, an
+ * sr-only "today", and the bar, so the marking survives greyscale,
+ * forced-colors and colour-blind reading.
+ */
+const TODAY_HEADER_CLASS = 'bg-sky-200';
+const TODAY_DAY_CLASS = 'font-bold text-sky-900';
+const TODAY_WEEKDAY_CLASS = 'text-sky-800';
+const TODAY_BAR_CLASS =
+	'mx-auto mt-0.5 block h-0.5 w-4 rounded-full bg-sky-700';
+const TODAY_SWATCH_CLASS = 'h-2.5 w-2.5 rounded-sm bg-sky-700';
 
 /**
  * A matrix column: the day-of-month number and its weekday, both read off
@@ -289,6 +313,13 @@ export default function AttendanceReportPage() {
 	const data = dataQuery.data?.data ?? null;
 	const stats: ArStats | null = data?.stats ?? null;
 
+	// Today's column in the rendered month, or null when the month does not
+	// hold today — the default month is the latest one with logs, which is
+	// often last month. One answer, read by both the open position below and
+	// the column's today styling, so the column under the reader's eye is
+	// always the one wearing the colour.
+	const todayColumn = useMemo(() => todaysColumn(data?.days ?? []), [data]);
+
 	// Open the matrix on today: the first day column after the sticky Employee
 	// column. Measured from the rendered rects because a day column's width is
 	// content-driven, applied by setting `scrollLeft` so focus never moves, and
@@ -307,16 +338,14 @@ export default function AttendanceReportPage() {
 		if (openedMonthRef.current === month) return;
 		openedMonthRef.current = month;
 
-		const today = todayDate();
-		if (!hasTodayColumn(today, days)) {
-			// A month that does not hold today — the report's default month is
-			// the latest one with logs — opens at its first day, and a switch
-			// back from a scrolled month must not keep the old position.
+		if (!todayColumn) {
+			// A month that does not hold today opens at its first day, and a
+			// switch back from a scrolled month must not keep the old position.
 			region.scrollLeft = 0;
 			return;
 		}
 		const column = region.querySelector<HTMLElement>(
-			`th[data-date="${today}"]`
+			`th[data-date="${todayColumn}"]`
 		);
 		if (!column) return;
 
@@ -325,7 +354,7 @@ export default function AttendanceReportPage() {
 			region.getBoundingClientRect().left -
 			stickyHeader.getBoundingClientRect().width;
 		region.scrollLeft = preScrollLeft(distance, region.scrollLeft);
-	}, [data, month]);
+	}, [data, month, todayColumn]);
 
 	// The month arrives already split into cells; a date → cell lookup per row
 	// keeps a cell a single map read.
@@ -720,6 +749,13 @@ export default function AttendanceReportPage() {
 											<span>
 												{`An em dash (${EM_DASH}) marks no second endpoint yet, never 0. Click a cell for its punches.`}
 											</span>
+											<span className="inline-flex items-center gap-1.5">
+												<span
+													className={TODAY_SWATCH_CLASS}
+													aria-hidden="true"
+												/>
+												Today: the ongoing day, where the matrix opens
+											</span>
 										</div>
 									</div>
 
@@ -751,22 +787,53 @@ export default function AttendanceReportPage() {
 														>
 															Employee
 														</th>
-														{columns.map((column) => (
-															<th
-																key={column.date}
-																scope="col"
-																data-date={column.date}
-																title={column.date}
-																className="min-w-[56px] px-1 py-1.5 text-center font-semibold"
-															>
-																<span className="block text-[11px] leading-tight text-gray-700">
-																	{column.day}
-																</span>
-																<span className="block text-[11px] font-medium leading-tight text-gray-500">
-																	{column.weekday}
-																</span>
-															</th>
-														))}
+														{columns.map((column) => {
+															const isToday = column.date === todayColumn;
+															return (
+																<th
+																	key={column.date}
+																	scope="col"
+																	data-date={column.date}
+																	data-today={isToday ? 'true' : undefined}
+																	aria-current={isToday ? 'date' : undefined}
+																	title={column.date}
+																	className={`min-w-[56px] px-1 py-1.5 text-center font-semibold${
+																		isToday ? ` ${TODAY_HEADER_CLASS}` : ''
+																	}`}
+																>
+																	<span
+																		className={`block text-[11px] leading-tight ${
+																			isToday
+																				? TODAY_DAY_CLASS
+																				: 'text-gray-700'
+																		}`}
+																	>
+																		{column.day}
+																		{isToday ? (
+																			<span className="sr-only"> today</span>
+																		) : null}
+																	</span>
+																	<span
+																		className={`block text-[11px] font-medium leading-tight ${
+																			isToday
+																				? TODAY_WEEKDAY_CLASS
+																				: 'text-gray-500'
+																		}`}
+																	>
+																		{column.weekday}
+																	</span>
+																	{/* The bar is the colour-independent cue: it survives
+																	    greyscale, forced-colors and colour-blind reading,
+																	    alongside `aria-current="date"` and the sr-only word. */}
+																	{isToday ? (
+																		<span
+																			className={TODAY_BAR_CLASS}
+																			aria-hidden="true"
+																		/>
+																	) : null}
+																</th>
+															);
+														})}
 													</tr>
 												</thead>
 												<tbody>

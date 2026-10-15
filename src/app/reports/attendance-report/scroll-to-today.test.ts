@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { hasTodayColumn, preScrollLeft, todayDate } from './scroll-to-today';
+import { preScrollLeft, todayDate, todaysColumn } from './scroll-to-today';
+
+describe('todaysColumn', () => {
+	const days = ['2026-10-01', '2026-10-15', '2026-10-31'];
+
+	it('names the column for today', () => {
+		// The same answer drives the open scroll position and the today
+		// colour, so a month holding today must resolve to exactly that date.
+		expect(todaysColumn(days, '2026-10-15')).toBe('2026-10-15');
+	});
+
+	it('is null for a month that does not hold today', () => {
+		// The report defaults to the latest month with logs, which is often
+		// last month — such a month opens at its first day, with no today
+		// colour anywhere in the grid.
+		expect(todaysColumn(days, '2026-09-30')).toBeNull();
+		expect(todaysColumn(days, '2026-11-01')).toBeNull();
+	});
+
+	it('is null before any month has loaded', () => {
+		expect(todaysColumn([], '2026-10-15')).toBeNull();
+	});
+});
 
 describe('preScrollLeft', () => {
 	it('puts today just right of the sticky Employee column', () => {
@@ -19,21 +41,6 @@ describe('preScrollLeft', () => {
 		// sticky column): leaving the matrix at its first day is correct.
 		expect(preScrollLeft(-80, 0)).toBe(0);
 		expect(preScrollLeft(-80, 300)).toBe(220);
-	});
-});
-
-describe('hasTodayColumn', () => {
-	const days = ['2026-10-01', '2026-10-15', '2026-10-31'];
-
-	it('is true when today is a column of the month', () => {
-		expect(hasTodayColumn('2026-10-15', days)).toBe(true);
-	});
-
-	it('is false for a month that does not hold today', () => {
-		// The report defaults to the latest month with logs, which is often
-		// last month — such a month opens at its first day instead.
-		expect(hasTodayColumn('2026-09-30', days)).toBe(false);
-		expect(hasTodayColumn('2026-11-01', days)).toBe(false);
 	});
 });
 

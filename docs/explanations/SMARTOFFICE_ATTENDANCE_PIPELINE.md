@@ -140,7 +140,9 @@ direction}`; Bearer auth (`SMARTOFFICE_WEBHOOK_SECRET`); upsert into
    Employee column, so the reader lands on today beside the name — and at the
    month's first day when the selected month does not hold today, which is the
    common case because the page defaults to the latest month with logs
-   (`scroll-to-today.ts`).
+   (`scroll-to-today.ts`). That column also carries the today colour — sky,
+   the one hue in this grid with no other meaning, with `aria-current="date"`
+   and a bar under the day number so the marking never rests on colour alone.
    `GET /api/reports/attendance-report?month=YYYY-MM` returns the day list,
    the cells and month-wide punch stats; no `month` returns filter-bar meta. Punches are attributed to the employee stamped at
    ingest (`attendance_logs.employee_id`), never re-derived from the device
