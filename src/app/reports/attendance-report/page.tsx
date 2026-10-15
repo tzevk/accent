@@ -1,9 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
+	ArrowDownLeftIcon,
 	ArrowPathIcon,
+	ArrowUpRightIcon,
 	CalendarDaysIcon,
 	ExclamationTriangleIcon,
 	FingerPrintIcon,
@@ -25,6 +27,8 @@ import type {
 	ArMonthPunch,
 	ArStats,
 } from './data-source';
+import { REPORT_WORKPLACE } from './workplace';
+import { preScrollLeft, todaysColumn } from './scroll-to-today';
 import {
 	CELL_TONE_CLASSES,
 	resolveAttendanceCell,
@@ -33,8 +37,9 @@ import {
 import { aggregateUnmappedCodes } from './unmapped-codes';
 import RosterDisclosureCard from '@/components/RosterDisclosure';
 import UnmappedCodesStrip from './UnmappedCodesStrip';
-import TimePresentNote from './TimePresentNote';
+import InOutNote from './InOutNote';
 import CellPunchModal, { CellPunchTrigger } from './CellPunchModal';
+import { pluralNoun } from './plural-noun';
 
 // ─── Client-safe API types ──────────────────────────────────────────
 
@@ -57,19 +62,60 @@ const MONTH_RE = /^\d{4}-(?:0[1-9]|1[0-2])$/;
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-/** Uncomputable Time Present: shown as an em dash, never as 0. */
+/**
+ * The Out on a day with no second endpoint. The report never invents a
+ * checkout the device did not record.
+ */
 const EM_DASH = '—';
 
 /**
- * The two figures, deliberately far apart in weight and hue: Logged Hours is
- * the credited, canonical number (emerald, lighter), Time Present is the
- * measurement (purple, bold). Nothing in the grid lets the reader take one for
- * the other.
+ * The two labelled times — the day's First Punch and Last Punch (ADR-0029).
+ * Each line carries its own visible label, so the reader sorts the cell's
+ * figures without relying on colour alone.
+ */
+const TIMES_CLASS = 'text-[11px] font-medium tabular-nums text-purple-800';
+
+/**
+ * Logged Hours is the credited, canonical figure (emerald), far apart in
+ * weight and hue from the measured times above it (purple). Nothing in the
+ * grid lets the reader take one for the other.
  */
 const LOGGED_HOURS_CLASS =
 	'text-[12px] font-medium tabular-nums text-emerald-700';
-const TIME_PRESENT_CLASS = 'text-[12px] font-bold tabular-nums text-purple-800';
 const NO_FIGURE_CLASS = 'text-[12px] tabular-nums text-gray-500';
+
+/**
+ * Today's column: the one hue in this grid that carries no other meaning.
+ * Emerald is the credited Logged Hours figure, purple is the punch times, and
+ * the AGENTS.md status palette (slate, amber, green, red, blue, orange) is
+ * already spoken for by the cell badges — blue is Weekly Off, so a blue "today"
+ * would contradict that column. Sky is the project's in-house third hue (the
+ * expenses pages use it) and is unused here, so today reads on its own. Sky
+ * sits 19° from blue and 52–79° from the purple and emerald figures, so it is
+ * its own colour under the 15° rule.
+ *
+ * Every pair below is measured from the Tailwind v4 oklch ramp, not by eye:
+ * the day number 7.3:1 and the weekday 5.7:1 on the sky-200 header, the bar
+ * 4.2:1 as a graphic, the legend swatch 5.6:1 on white. The colour is never
+ * the only cue either: the header also carries `aria-current="date"`, an
+ * sr-only "today", and the bar, so the marking survives greyscale,
+ * forced-colors and colour-blind reading.
+ */
+const TODAY_HEADER_CLASS = 'bg-sky-200';
+const TODAY_DAY_CLASS = 'font-bold text-sky-900';
+const TODAY_WEEKDAY_CLASS = 'text-sky-800';
+const TODAY_BAR_CLASS =
+	'mx-auto mt-0.5 block h-0.5 w-4 rounded-full bg-sky-700';
+const TODAY_SWATCH_CLASS = 'h-2.5 w-2.5 rounded-sm bg-sky-700';
+/**
+ * The today track down the body: translucent on purpose. Row hover paints
+ * `hover:bg-purple-50/40` on the row and only reads through transparent
+ * cells, so an opaque tint here would punch a gap in the hover band on this
+ * column. At 70% the purple still lands on top and the column reads as one
+ * band. A muted day keeps its grey instead — grey says "not a working day",
+ * and that meaning outranks the track.
+ */
+const TODAY_CELL_CLASS = 'bg-sky-50/70';
 
 /**
  * A matrix column: the day-of-month number and its weekday, both read off
@@ -106,13 +152,16 @@ function employeeInitials(name: string | null): string {
 
 /**
  * One matrix cell: the authored Attendance Record badge — or, on a muted
- * Weekly Off / holiday, the words for it — then Logged Hours and Time Present
- * side by side. Presentation only — `cell` is already resolved by
+ * Weekly Off / holiday, the words for it — then the day's In and Out times,
+ * then Logged Hours. Presentation only — `cell` is already resolved by
  * `resolveAttendanceCell`, so no rule is re-derived here.
  *
- * The compact visual is restated once as sr-only prose: both measures are
- * named, an uncomputable span is said to be uncomputable, and a muted day is
- * never left to the grey background alone.
+ * The compact visual is restated once as sr-only prose: the times lead it
+ * with the same labels the cell shows, a next-day Out says so in words, an
+ * em dash is explained rather than read as an error, and a muted day is never
+ * left to the grey background alone. The root carries the cell's minimum
+ * height (WCAG 2.5.8 wants a 24px target, and the drill-down button wraps
+ * this content).
  */
 function CellContent({ cell }: { cell: AttendanceCell }) {
 	// Blank, not zero: a day with neither figure says nothing at all.
@@ -120,18 +169,28 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 	// Muted = a Weekly Off or holiday with no logged hours and no punches.
 	const mutedLabel = cell.holiday ? 'Holiday' : 'Weekly Off';
 
+	// The cell shows a direction icon for each time; this prose restates them
+	// as the words In and Out for a screen reader. A lone Punch has no second
+	// endpoint yet, and a merged Out belongs to the next day.
+	const times = [
+		cell.inLabel ? `In ${cell.inLabel}.` : '',
+		cell.outIsSecondEndpoint
+			? `Out ${cell.outLabel}${cell.outIsNextDay ? ' on the next day' : ''}.`
+			: cell.outLabel
+				? `Out ${EM_DASH}: no second endpoint yet.`
+				: '',
+	]
+		.filter(Boolean)
+		.join(' ');
+
 	const description = [
+		times,
 		`${cell.date}.`,
 		cell.hasLoggedHours
 			? `Logged Hours ${formatNumber(cell.loggedHours)}.`
 			: 'Logged Hours: none.',
-		cell.mergeRefused
-			? 'Time Present uncomputable: the cross-midnight merge was refused.'
-			: cell.timePresentComputable
-				? `Time Present ${formatNumber(cell.timePresentHours)} hours.`
-				: 'Time Present uncomputable.',
 		cell.statusLabel ? `Authored status: ${cell.statusLabel}.` : '',
-		`${cell.punchCount} ${cell.punchCount === 1 ? 'punch' : 'punches'}.`,
+		`${cell.punchCount} ${pluralNoun(cell.punchCount, 'punch', 'punches')}.`,
 		cell.muted ? `${mutedLabel} with no hours and no punches.` : '',
 	]
 		.filter(Boolean)
@@ -140,7 +199,7 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 	return (
 		<span
 			title={description}
-			className={`flex flex-col items-center gap-0.5 px-0.5 py-1${
+			className={`flex min-h-6 flex-col items-center gap-0.5 px-0 py-1${
 				cell.muted ? ' text-gray-500' : ''
 			}`}
 		>
@@ -149,16 +208,37 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 				<span
 					data-status-code={cell.statusCode ?? undefined}
 					aria-hidden="true"
-					className={`max-w-full rounded px-1 py-px text-[10px] font-semibold leading-[1.2] ${CELL_TONE_CLASSES[cell.statusTone ?? 'slate']}`}
+					className={`max-w-full rounded px-1 py-px text-[11px] font-semibold leading-[1.2] ${CELL_TONE_CLASSES[cell.statusTone ?? 'slate']}`}
 				>
 					{cell.statusLabel}
 				</span>
 			) : cell.muted ? (
 				<span
 					aria-hidden="true"
-					className="text-[10px] font-medium leading-tight text-gray-500"
+					className="text-[11px] font-medium leading-tight text-gray-500"
 				>
 					{mutedLabel}
+				</span>
+			) : null}
+			{/* One line per time, led by a direction icon rather than colour:
+			    the same IN/OUT icons the cell drill-down modal uses, so the
+			    cue is not hue alone and the line still fits the column. */}
+			{cell.inLabel ? (
+				<span className="flex items-center leading-tight" aria-hidden="true">
+					<ArrowDownLeftIcon
+						className="h-2.5 w-2.5 shrink-0 text-gray-500"
+						aria-hidden="true"
+					/>
+					<span className={TIMES_CLASS}>{cell.inLabel}</span>
+				</span>
+			) : null}
+			{cell.outLabel ? (
+				<span className="flex items-center leading-tight" aria-hidden="true">
+					<ArrowUpRightIcon
+						className="h-2.5 w-2.5 shrink-0 text-gray-500"
+						aria-hidden="true"
+					/>
+					<span className={TIMES_CLASS}>{cell.outLabel}</span>
 				</span>
 			) : null}
 			{showFigures ? (
@@ -171,24 +251,16 @@ function CellContent({ cell }: { cell: AttendanceCell }) {
 					>
 						{cell.hasLoggedHours ? formatNumber(cell.loggedHours) : ' '}
 					</span>
-					<span
-						data-testid="cell-time-present"
-						className={
-							cell.timePresentComputable ? TIME_PRESENT_CLASS : NO_FIGURE_CLASS
-						}
-					>
-						{cell.timePresentComputable
-							? formatNumber(cell.timePresentHours)
-							: EM_DASH}
-					</span>
 				</span>
 			) : null}
 		</span>
 	);
 }
 
+// The month input is a real control: gray-500 gives its white background a
+// 4.83:1 boundary, where gray-300 sat at 1.47:1.
 const controlClass =
-	'h-9 rounded-md border border-gray-300 bg-white px-3 text-sm text-black focus:border-transparent focus:outline-none focus:ring-2 focus:ring-purple-500';
+	'h-9 rounded-md border border-gray-500 bg-white px-3 text-sm text-black focus:border-transparent focus:outline-none focus:ring-2 focus:ring-purple-500';
 
 // ─── Page ───────────────────────────────────────────────────────────
 
@@ -249,6 +321,49 @@ export default function AttendanceReportPage() {
 
 	const data = dataQuery.data?.data ?? null;
 	const stats: ArStats | null = data?.stats ?? null;
+
+	// Today's column in the rendered month, or null when the month does not
+	// hold today — the default month is the latest one with logs, which is
+	// often last month. One answer, read by both the open position below and
+	// the column's today styling, so the column under the reader's eye is
+	// always the one wearing the colour.
+	const todayColumn = useMemo(() => todaysColumn(data?.days ?? []), [data]);
+
+	// Open the matrix on today: the first day column after the sticky Employee
+	// column. Measured from the rendered rects because a day column's width is
+	// content-driven, applied by setting `scrollLeft` so focus never moves, and
+	// applied once per month — a refetch of the same month must not drag a
+	// reader back from a day they scrolled to themselves.
+	const scrollRegionRef = useRef<HTMLDivElement>(null);
+	const employeeHeaderRef = useRef<HTMLTableCellElement>(null);
+	const openedMonthRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		const region = scrollRegionRef.current;
+		const stickyHeader = employeeHeaderRef.current;
+		const days = data?.days ?? [];
+		if (!region || !stickyHeader || days.length === 0) return;
+		// The month has no rendered matrix yet, or it is already open.
+		if (openedMonthRef.current === month) return;
+		openedMonthRef.current = month;
+
+		if (!todayColumn) {
+			// A month that does not hold today opens at its first day, and a
+			// switch back from a scrolled month must not keep the old position.
+			region.scrollLeft = 0;
+			return;
+		}
+		const column = region.querySelector<HTMLElement>(
+			`th[data-date="${todayColumn}"]`
+		);
+		if (!column) return;
+
+		const distance =
+			column.getBoundingClientRect().left -
+			region.getBoundingClientRect().left -
+			stickyHeader.getBoundingClientRect().width;
+		region.scrollLeft = preScrollLeft(distance, region.scrollLeft);
+	}, [data, month, todayColumn]);
 
 	// The month arrives already split into cells; a date → cell lookup per row
 	// keeps a cell a single map read.
@@ -406,7 +521,7 @@ export default function AttendanceReportPage() {
 										Attendance Report
 									</h1>
 									<p className="text-sm text-purple-200">
-										Logged hours and time present per employee
+										Logged hours and First Punch / Last Punch per employee
 										{monthHeading ? ` · ${monthHeading}` : ''}
 									</p>
 								</div>
@@ -587,9 +702,9 @@ export default function AttendanceReportPage() {
 									</p>
 									<p className="text-xs text-gray-500">
 										{unmapped.total_punches}{' '}
-										{unmapped.total_punches === 1 ? 'punch' : 'punches'} in this
-										month could not be matched to an employee, and no active
-										payroll employee is on the roster.
+										{pluralNoun(unmapped.total_punches, 'punch', 'punches')} in
+										this month could not be matched to an employee, and no
+										active payroll employee is on the roster.
 									</p>
 								</div>
 							) : (
@@ -604,7 +719,7 @@ export default function AttendanceReportPage() {
 											data-devices={deviceCount}
 											className="text-xs tabular-nums text-gray-600"
 										>
-											{`${totalPunches} punches · ${mappedPunches} mapped (${mappedPercent}%) · ${unmappedPunches} unmapped · ${deviceCount} devices`}
+											{`${totalPunches} ${pluralNoun(totalPunches, 'punch', 'punches')} · ${mappedPunches} mapped (${mappedPercent}%) · ${unmappedPunches} unmapped · ${deviceCount} ${pluralNoun(deviceCount, 'device', 'devices')}`}
 										</p>
 										<div
 											data-testid="figures-legend"
@@ -612,38 +727,56 @@ export default function AttendanceReportPage() {
 										>
 											<span className="inline-flex items-center gap-1.5">
 												<span
-													className="h-2.5 w-2.5 rounded-sm bg-emerald-500"
+													className="h-2.5 w-2.5 rounded-sm bg-emerald-700"
 													aria-hidden="true"
 												/>
 												<span className={LOGGED_HOURS_CLASS}>Logged Hours</span>
 												<span>
-													— billed effort: the canonical numerator payroll
+													: billed effort, the canonical numerator payroll
 													prices
 												</span>
 											</span>
-											<span className="inline-flex items-center gap-1.5">
-												<span
-													className="h-2.5 w-2.5 rounded-sm bg-purple-700"
-													aria-hidden="true"
-												/>
-												<span className={TIME_PRESENT_CLASS}>Time Present</span>
-												<span>
-													— the measured first-to-last span of the day&apos;s
-													punches; never credited
+											<span>
+												<span className="inline-flex items-center gap-1">
+													<ArrowDownLeftIcon
+														className="h-2.5 w-2.5 text-gray-500"
+														aria-hidden="true"
+													/>
+													In
+												</span>{' '}
+												and{' '}
+												<span className="inline-flex items-center gap-1">
+													<ArrowUpRightIcon
+														className="h-2.5 w-2.5 text-gray-500"
+														aria-hidden="true"
+													/>
+													Out
 												</span>
+												: the day&apos;s first and last punch times; never
+												credited
 											</span>
 											<span>
-												{`An em dash (${EM_DASH}) marks an uncomputable span — never 0. Click a cell for its punches.`}
+												{`An em dash (${EM_DASH}) marks no second endpoint yet, never 0. Click a cell for its punches.`}
+											</span>
+											<span className="inline-flex items-center gap-1.5">
+												<span
+													className={TODAY_SWATCH_CLASS}
+													aria-hidden="true"
+												/>
+												Today: the ongoing day, where the matrix opens
 											</span>
 										</div>
 									</div>
 
 									{/* Month matrix: employees down, days across */}
 									<div className="anim-fade-in overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-										<p className="border-b border-gray-100 bg-gray-50/60 px-4 py-2 text-[11px] text-gray-600 sm:hidden">
-											Scroll sideways for the rest of the month →
+										{/* The cue shows whenever the matrix renders: the
+										    table overflows from 640px up, not only below it. */}
+										<p className="border-b border-gray-100 bg-gray-50/60 px-4 py-2 text-[11px] text-gray-600">
+											Scroll sideways for earlier or later days →
 										</p>
 										<div
+											ref={scrollRegionRef}
 											role="region"
 											aria-label={`Attendance matrix for ${monthHeading || month}`}
 											tabIndex={0}
@@ -651,43 +784,76 @@ export default function AttendanceReportPage() {
 										>
 											<table className="w-full text-[12px]">
 												<caption className="sr-only">
-													Logged hours and time present hours per employee for{' '}
-													{monthHeading}
+													Logged hours and First Punch / Last Punch per employee
+													for {monthHeading}
 												</caption>
 												<thead>
 													<tr className="border-b border-gray-200 bg-gray-50/80 text-[10px] uppercase tracking-wider text-gray-600">
 														<th
+															ref={employeeHeaderRef}
 															scope="col"
 															className="sticky left-0 z-10 bg-gray-50/95 px-4 py-2 text-left font-semibold"
 														>
 															Employee
 														</th>
-														{columns.map((column) => (
-															<th
-																key={column.date}
-																scope="col"
-																title={column.date}
-																className="min-w-[56px] px-1 py-1.5 text-center font-semibold"
-															>
-																<span className="block text-[11px] leading-tight text-gray-700">
-																	{column.day}
-																</span>
-																<span className="block text-[9px] font-medium leading-tight text-gray-500">
-																	{column.weekday}
-																</span>
-															</th>
-														))}
+														{columns.map((column) => {
+															const isToday = column.date === todayColumn;
+															return (
+																<th
+																	key={column.date}
+																	scope="col"
+																	data-date={column.date}
+																	data-today={isToday ? 'true' : undefined}
+																	aria-current={isToday ? 'date' : undefined}
+																	title={column.date}
+																	className={`min-w-[56px] px-1 py-1.5 text-center font-semibold${
+																		isToday ? ` ${TODAY_HEADER_CLASS}` : ''
+																	}`}
+																>
+																	<span
+																		className={`block text-[11px] leading-tight ${
+																			isToday
+																				? TODAY_DAY_CLASS
+																				: 'text-gray-700'
+																		}`}
+																	>
+																		{column.day}
+																		{isToday ? (
+																			<span className="sr-only"> today</span>
+																		) : null}
+																	</span>
+																	<span
+																		className={`block text-[11px] font-medium leading-tight ${
+																			isToday
+																				? TODAY_WEEKDAY_CLASS
+																				: 'text-gray-500'
+																		}`}
+																	>
+																		{column.weekday}
+																	</span>
+																	{/* The bar is the colour-independent cue: it survives
+																	    greyscale, forced-colors and colour-blind reading,
+																	    alongside `aria-current="date"` and the sr-only word. */}
+																	{isToday ? (
+																		<span
+																			className={TODAY_BAR_CLASS}
+																			aria-hidden="true"
+																		/>
+																	) : null}
+																</th>
+															);
+														})}
 													</tr>
 												</thead>
 												<tbody>
 													{rows.map(({ employee, cellsByDate }) => (
 														<tr
 															key={employee.id}
-															className="border-b border-gray-100 last:border-0 hover:bg-purple-50/40"
+															className="group border-b border-gray-100 last:border-0 hover:bg-purple-50/40"
 														>
 															<th
 																scope="row"
-																className="sticky left-0 z-10 max-w-[240px] bg-white px-4 py-2 text-left font-normal"
+																className="sticky left-0 z-10 max-w-[240px] bg-white px-4 py-2 text-left font-normal group-hover:bg-purple-50"
 															>
 																<span className="flex items-center gap-2.5">
 																	<span
@@ -704,7 +870,12 @@ export default function AttendanceReportPage() {
 																			{employee.employee_id
 																				? `${employee.employee_id} · `
 																				: ''}
-																			{employee.punch_count} punches
+																			{employee.punch_count}{' '}
+																			{pluralNoun(
+																				employee.punch_count,
+																				'punch',
+																				'punches'
+																			)}
 																			{employee.smartoffice_code
 																				? ''
 																				: ' · no device code'}
@@ -714,13 +885,16 @@ export default function AttendanceReportPage() {
 															</th>
 															{columns.map((column) => {
 																const cell = cellsByDate.get(column.date);
+																const isToday = column.date === todayColumn;
 																const resolved = resolveAttendanceCell({
 																	date: column.date,
 																	status: cell?.status ?? null,
 																	loggedHours: cell?.logged_hours ?? null,
 																	punchCount: cell?.punch_count ?? 0,
-																	timePresentHours: cell?.hours ?? null,
-																	mergeRefused: cell?.merge_refused ?? false,
+																	firstPunch: cell?.first_punch ?? null,
+																	lastPunch: cell?.last_punch ?? null,
+																	lastPunchNextDay:
+																		cell?.last_punch_next_day ?? false,
 																	nonOptionalHolidays,
 																	optionalHolidays,
 																});
@@ -738,19 +912,21 @@ export default function AttendanceReportPage() {
 																		data-muted={
 																			resolved.muted ? 'true' : 'false'
 																		}
-																		data-time-present-state={
-																			resolved.timePresentComputable
-																				? 'computable'
-																				: 'uncomputable'
-																		}
 																		data-logged-hours-state={
 																			resolved.hasLoggedHours
 																				? 'present'
 																				: 'none'
 																		}
 																		data-punch-count={resolved.punchCount}
+																		data-in-label={resolved.inLabel}
+																		data-out-label={resolved.outLabel}
+																		data-today={isToday ? 'true' : undefined}
 																		className={`px-1 py-1 text-center align-top${
-																			resolved.muted ? ' bg-gray-50' : ''
+																			resolved.muted
+																				? ' bg-gray-50'
+																				: isToday
+																					? ` ${TODAY_CELL_CLASS}`
+																					: ''
 																		}`}
 																	>
 																		<CellPunchTrigger
@@ -783,9 +959,9 @@ export default function AttendanceReportPage() {
 										</div>
 									</div>
 
-									{/* The two facts the grid cannot show: the merge rule, and
-									    what a half day does to Time Present */}
-									<TimePresentNote className="mt-3" />
+									{/* The facts the grid cannot show: a lone Punch is not
+									    a span, and the cross-midnight merge rule */}
+									<InOutNote className="mt-3" />
 								</div>
 							)}
 
@@ -793,6 +969,7 @@ export default function AttendanceReportPage() {
 							    and why — kept at the foot of the page */}
 							<RosterDisclosureCard
 								disclosure={data?.disclosure ?? null}
+								workplace={REPORT_WORKPLACE}
 								className="mt-4"
 							/>
 						</div>

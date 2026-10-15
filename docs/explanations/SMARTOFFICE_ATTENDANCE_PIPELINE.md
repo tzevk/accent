@@ -133,10 +133,21 @@ direction}`; Bearer auth (`SMARTOFFICE_WEBHOOK_SECRET`); upsert into
    the log alone. See its README for setup.
 3. **Report** — `src/app/reports/attendance-report/` (page + data-source).
    A month matrix: employees down the left, days of the selected month across
-   the top, one cell per employee-day carrying that day's Time Present hours
-   (`—` where the day is uncomputable, never `0`). `GET /api/reports/attendance-report?month=YYYY-MM`
-   returns the day list, the cells and month-wide punch stats; no `month`
-   returns filter-bar meta. Punches are attributed to the employee stamped at
+   the top, one cell per employee-day carrying the day's In and Out times:
+   the First Punch and Last Punch, sliced to 'HH:MM' from the presence walk,
+   with the Out as an em dash when the day has no second endpoint. The matrix
+   opens scrolled to today's column — the first day column after the sticky
+   Employee column, so the reader lands on today beside the name — and at the
+   month's first day when the selected month does not hold today, which is the
+   common case because the page defaults to the latest month with logs
+   (`scroll-to-today.ts`). That column also carries the today colour — sky,
+   the one hue in this grid with no other meaning, with `aria-current="date"`
+   and a bar under the day number so the marking never rests on colour alone.
+   The tint runs down the body too, translucent so the row hover still lands
+   on top of it; a muted day (Weekly Off or holiday) keeps its grey, because
+   grey says "not a working day" and that outranks the track.
+   `GET /api/reports/attendance-report?month=YYYY-MM` returns the day list,
+   the cells and month-wide punch stats; no `month` returns filter-bar meta. Punches are attributed to the employee stamped at
    ingest (`attendance_logs.employee_id`), never re-derived from the device
    code. The punch fetch pads one day either side of the month so a shift
    crossing a month boundary still merges on the day it began — the padded

@@ -9,14 +9,24 @@
  *  - **Logged Hours** — the canonical numerator from `@/lib/logged-hours`
  *    (`hoursByDateForMonth`, uncapped per ADR-0010). This is the same module
  *    payroll prices, so the figures equal payroll's exactly.
- *  - **Time Present** — a measured span from `@/lib/time-present`
- *    (first punch of the day → last, direction-agnostic, pooled across
- *    devices, with the bounded cross-midnight merge of issue #281).
+ *  - **First Punch and Last Punch** — the day's clock endpoints, sliced to
+ *    'HH:MM' from the device timestamps of the Punches `@/lib/time-present`
+ *    walked (first punch of the day → last, direction-agnostic, pooled
+ *    across devices, with the bounded cross-midnight merge of issue #281). A
+ *    merged endpoint can carry the next calendar day's clock, which the cell
+ *    reports on `last_punch_next_day`.
  *
  * The roster comes from `@/lib/payroll-roster` (`selectPayrollRoster`): the
  * report filters on the Employee record, payroll filters on
  * `salary_profile.salary_type`, and the accepted divergence is reported on
  * `ArData.disclosure` rather than hidden.
+ *
+ * The report covers one workplace (`REPORT_WORKPLACE`) and nobody who has
+ * already left. An active Status outlives the person, so the exit date is
+ * read alongside it. Every employee the filter drops is named on the
+ * disclosure, with the reason that actually applied — Employee Type before
+ * Workplace, so a non-Payroll employee is never reported as being at the
+ * wrong branch.
  *
  * A Punch belongs to the Employee stamped on `attendance_logs.employee_id` at
  * ingest — the Device Code a row carries is display metadata, so a
@@ -35,7 +45,8 @@
  */
 
 import { query } from '@/utils/database';
-import { computeDayPunchSpans } from '@/lib/time-present';
+import { REPORT_WORKPLACE } from './workplace';
+import { computeDayPunchSpans, type DayPunchSpan } from '@/lib/time-present';
 import { hoursByDateForMonth } from '@/lib/logged-hours';
 import {
 	buildLoggedHoursIdentifierMap,
@@ -97,23 +108,27 @@ export interface ArMonthPunch extends ArPunch {
 export interface ArCell {
 	/** 'YYYY-MM-DD' */
 	date: string;
+	/** First Punch of the day as 'HH:MM'; null when the day holds no Punch of its own */
+	first_punch: string | null;
 	/**
-	 * Time Present hours, or null when the day is uncomputable — no punches, a
-	 * lone punch with no partner, or a refused cross-midnight merge. Never 0:
-	 * zero would read as "was there and left instantly" (ADR / @/lib/time-present).
+	 * Last Punch of the day as 'HH:MM', or null when the day has no second
+	 * endpoint: a lone Punch, a refused cross-midnight merge, or a day left
+	 * with one surviving Punch after a merge consumed its tail. The value can
+	 * carry the next calendar day's clock on a merged day (#348).
 	 */
-	hours: number | null;
+	last_punch: string | null;
+	/** True when `last_punch` belongs to the day after this cell's own date. */
+	last_punch_next_day: boolean;
 	/**
 	 * Canonical Logged Hours for the day, uncapped (ADR-0010), or null when
-	 * nothing was logged. Independent of `hours` — never derived from it.
+	 * nothing was logged. Independent of the Punch endpoints — never derived
+	 * from them.
 	 */
 	logged_hours: number | null;
 	/** Authored `employee_attendance.status` for the employee-day, if any. */
 	status: string | null;
 	/** `attendance_logs` rows recorded for this employee-day. */
 	punch_count: number;
-	/** Time Present refused to merge the next day's punch into this day. */
-	merge_refused: boolean;
 }
 
 /** One Employee down the left of the matrix. */
@@ -219,6 +234,48 @@ export function buildStats(punches: ArPunch[]): ArStats {
 		distinct_days: days.size,
 		distinct_employees: employees.size,
 		distinct_devices: devices.size,
+	};
+}
+
+/** One walked day's clock endpoints, as the cell carries them. */
+export interface ArCellEndpoints {
+	/** 'HH:MM' of the day's First Punch, or null when the day holds no Punch */
+	first_punch: string | null;
+	/** 'HH:MM' of the day's Last Punch, or null when the day has no second one */
+	last_punch: string | null;
+	/** True when `last_punch` carries the next calendar day's clock. */
+	last_punch_next_day: boolean;
+}
+
+/** A day the walk never reported: no endpoints of its own. */
+const noCellEndpoints: ArCellEndpoints = {
+	first_punch: null,
+	last_punch: null,
+	last_punch_next_day: false,
+};
+
+/**
+ * One walked day's clock endpoints, as the matrix carries them. Pure: reads
+ * only the span `@/lib/time-present` already decided, so the report holds no
+ * second punch calculator.
+ *
+ * `first_punch` is null only on a day the merge emptied, which holds no Punch
+ * of its own. `last_punch` is null exactly when the walk reports the day
+ * uncomputable — a lone Punch, a refused cross-midnight merge, or a day left
+ * with one surviving Punch after the previous day consumed its tail — because
+ * that flag is the walk's own "no second endpoint" decision (#348). The Punch
+ * count cannot decide it: a merged day and a lone Punch both report one.
+ */
+export function cellEndpointsFromSpan(span: DayPunchSpan): ArCellEndpoints {
+	const lastPunch = span.computable ? span.lastPunch : null;
+	return {
+		first_punch: span.firstPunch
+			? span.firstPunch.log_date.slice(11, 16) // 'HH:MM'
+			: null,
+		last_punch: lastPunch ? lastPunch.log_date.slice(11, 16) : null,
+		last_punch_next_day: lastPunch
+			? lastPunch.log_date.slice(0, 10) > span.date
+			: false,
 	};
 }
 
@@ -333,6 +390,8 @@ interface DirectoryRow {
 	employee_id: string;
 	name: string;
 	department: string | null;
+	workplace: string | null;
+	exit_date: string | null;
 	smartoffice_code: string | null;
 	employee_type: string | null;
 	status: string;
@@ -350,7 +409,8 @@ async function fetchEmployeeDirectory(): Promise<DirectoryRow[]> {
 	const [rows] = (await query(
 		`SELECT id, employee_id,
 		        CONCAT_WS(' ', first_name, last_name) AS name,
-		        department, smartoffice_code, employee_type, status, isDelete,
+		        department, workplace, exit_date, smartoffice_code,
+		        employee_type, status, isDelete,
 		        email, username
 		 FROM employees`
 	)) as [DbRow[], unknown];
@@ -360,6 +420,8 @@ async function fetchEmployeeDirectory(): Promise<DirectoryRow[]> {
 		employee_id: s(row, 'employee_id'),
 		name: s(row, 'name') || `Employee ${s(row, 'id')}`,
 		department: s(row, 'department') || null,
+		workplace: s(row, 'workplace') || null,
+		exit_date: s(row, 'exit_date') || null,
 		smartoffice_code: s(row, 'smartoffice_code') || null,
 		employee_type: s(row, 'employee_type') || null,
 		status: s(row, 'status'),
@@ -376,6 +438,8 @@ function toRosterInput(row: DirectoryRow): RosterEmployeeInput {
 		employee_id: row.employee_id,
 		name: row.name,
 		department: row.department,
+		workplace: row.workplace,
+		exit_date: row.exit_date,
 		smartoffice_code: row.smartoffice_code,
 		employee_type: row.employee_type,
 		status: row.status,
@@ -636,8 +700,17 @@ export async function fetchAttendanceData(options: {
 		(punch) => punch.date.slice(0, 7) === month
 	);
 
+	// The roster this report covers: one workplace, and nobody who has left.
+	// `excludeExited` reads the exit date rather than trusting a Status that
+	// outlives the person, and `today` is supplied here so the shared module
+	// stays pure.
 	const { roster, disclosure } = selectPayrollRoster(
-		directory.map(toRosterInput)
+		directory.map(toRosterInput),
+		{
+			workplace: REPORT_WORKPLACE,
+			excludeExited: true,
+			today: new Date().toISOString().slice(0, 10),
+		}
 	);
 	const memberIds = roster.map((member) => member.id);
 
@@ -647,7 +720,7 @@ export async function fetchAttendanceData(options: {
 		fetchLoggedHoursByEmployee(roster, directory, month),
 	]);
 
-	// Time Present buckets over the padded set: the padded head lets the
+	// The endpoint walk runs over the padded set: the padded head lets the
 	// previous month's last day consume this month's first-day continuation
 	// Punch, and the padded tail does the same for the month's last day.
 	const buckets = punchBucketsByEmployee(paddedPunches);
@@ -661,21 +734,19 @@ export async function fetchAttendanceData(options: {
 		// Punch this employee already owns.
 		const ownPunches = buckets.get(String(member.id)) ?? [];
 
-		// The day walk's wide view: hours, the refused-merge flag and the
-		// day's own punch count in one pass, so the report never holds a
-		// second punch calculator. A punch consumed as the previous day's
-		// merge tail still counts on its own date, and the padded days feed
-		// the merge walk without ever reaching a cell or the row total.
-		const hoursByDate = new Map<string, number | null>();
-		const refusedDates = new Set<string>();
+		// The day walk's wide view: the day's own punch count and its clock
+		// endpoints in one pass, so the report never holds a second punch
+		// calculator. A punch consumed as the previous day's merge tail still
+		// counts on its own date, and the padded days feed the merge walk
+		// without ever reaching a cell or the row total.
 		const punchesByDate = new Map<string, number>();
+		const endpointsByDate = new Map<string, ArCellEndpoints>();
 		let punchCount = 0;
 		for (const span of computeDayPunchSpans(ownPunches)) {
-			hoursByDate.set(span.date, span.hours);
-			if (span.mergeRefused) refusedDates.add(span.date);
 			if (span.date.slice(0, 7) !== month) continue;
 			punchesByDate.set(span.date, span.punchCount);
 			punchCount += span.punchCount;
+			endpointsByDate.set(span.date, cellEndpointsFromSpan(span));
 		}
 
 		const logged = loggedByEmployee.get(member.id) ?? {};
@@ -691,11 +762,11 @@ export async function fetchAttendanceData(options: {
 			// row of blanks rather than a silently absent person.
 			cells: calendar.days.map((date) => ({
 				date,
-				hours: hoursByDate.get(date) ?? null,
+				...noCellEndpoints,
+				...endpointsByDate.get(date),
 				logged_hours: logged[date] ?? null,
 				status: statusByEmployeeDay.get(`${member.id}|${date}`) ?? null,
 				punch_count: punchesByDate.get(date) ?? 0,
-				merge_refused: refusedDates.has(date),
 			})),
 		};
 	});
