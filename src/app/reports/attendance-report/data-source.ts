@@ -45,6 +45,7 @@
  */
 
 import { query } from '@/utils/database';
+import { REPORT_WORKPLACE } from './workplace';
 import { computeDayPunchSpans, type DayPunchSpan } from '@/lib/time-present';
 import { hoursByDateForMonth } from '@/lib/logged-hours';
 import {
@@ -61,16 +62,6 @@ import {
 } from '@/lib/payroll-roster';
 
 // ─── Public types ───────────────────────────────────────────────────
-
-/**
- * The one workplace this report covers: the Mumbai branch.
- *
- * Matched on `employees.workplace`, trimmed and case-folded, so "mumbai",
- * "Mumbai " and "MUMBAI" all resolve. An employee with no workplace recorded
- * is not at Mumbai and is excluded — the disclosure card names them. Change
- * this one constant to retarget the report to another branch.
- */
-export const REPORT_WORKPLACE = 'Mumbai';
 
 /** The punch fields the month's stats strip reads. */
 export interface ArPunch {

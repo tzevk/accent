@@ -19,15 +19,15 @@ import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { formatMonth, formatNumber } from '@/lib/format';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
-import {
-	REPORT_WORKPLACE,
-	type ArCell,
-	type ArData,
-	type ArMatrixRow,
-	type ArMeta,
-	type ArMonthPunch,
-	type ArStats,
+import type {
+	ArCell,
+	ArData,
+	ArMatrixRow,
+	ArMeta,
+	ArMonthPunch,
+	ArStats,
 } from './data-source';
+import { REPORT_WORKPLACE } from './workplace';
 import {
 	CELL_TONE_CLASSES,
 	resolveAttendanceCell,

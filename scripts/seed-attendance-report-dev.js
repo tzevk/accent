@@ -87,7 +87,7 @@ const UNMAPPED_SERIAL = 'BB00000000000003';
 
 /**
  * The workplace the report covers. Must match `REPORT_WORKPLACE` in
- * `src/app/reports/attendance-report/data-source.ts`, or the report filters
+ * `src/app/reports/attendance-report/workplace.ts`, or the report filters
  * every seeded employee out and shows an empty grid.
  */
 const WORKPLACE = 'Mumbai';
