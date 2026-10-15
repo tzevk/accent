@@ -55,10 +55,10 @@ Use simplified technical English, about 80% of ASD-STE100.
 
 - Dev: `npm run dev` (Turbopack default). Build/Start: `npm run build` (strict) then `npm run start`.
 - Lint: `npm run lint` (ESLint 9 flat, `src` + `scripts` only). Format: `npm run format` (Prettier: tabs, width 2, single-quote); pre-commit runs `lint-staged: prettier --write` via Husky v9.
-- Typecheck: `npx tsc --noEmit` (no npm script).
-- Test (watch) `npm test`; Test (once) `npm run test:run`; Coverage `npm run test:coverage`; single file `npx vitest run src/lib/money.test.ts`; single name `npx vitest run -t "ensurePermission"`. `npm run verify` = `lint` + `tsc --noEmit` + `test:run` — the one command a subagent runs.
+- Typecheck: `npm run build:prod` (Turbopack, ~30s). It checks types **and** the client bundle — a client component importing a server module fails here and nowhere else, and `tsc --noEmit` is blind to that shape. Plain `npm run build` fails prerender because `.env` sets `NODE_ENV=development`; `build:prod` is the only working `next build`.
+- Test (watch) `npm test`; Test (once) `npm run test:run`; Coverage `npm run test:coverage`; single file `npx vitest run src/lib/money.test.ts`; single name `npx vitest run -t "ensurePermission"`. `npm run verify` = `lint` + `build:prod` + `test:run` — the one command a subagent runs, and the gate before pushing.
 - Migrations: `npm run migrate` / `migrate:status` / `migrate:rollback` / `migrate:make -- <name>` — prod DB: `migrate:prod` (+ `:status` / `:rollback`); plain `npm run migrate` targets **dev** only.
-- Order that matters: `npm run verify` before pushing; `npm run build:prod` is the final gate (plain `npm run build` inherits `NODE_ENV=development` from `.env` and fails static prerendering).
+- Order that matters: `npm run verify` before pushing. The build inside it is the typecheck and the client-bundle check, so there is no separate build step before a push.
 
 ## Architecture Gotchas
 
@@ -111,7 +111,7 @@ Before writing a test at a higher layer, ask whether a lower one can hold the as
 
 ### Subagent and CI rules
 
-- Subagents run `npm run verify`. They do **not** run `next build`, `tsc --noEmit` alone, `playwright test`, or `npm run e2e`. A failing `verify` is the subagent's only signal; E2E is never it.
+- Subagents run `npm run verify`, which now includes `next build`. They do **not** run `next build` or `tsc --noEmit` standalone, `playwright test`, or `npm run e2e`. A failing `verify` is the subagent's only signal; E2E is never it.
 - Subagents do **not** start a dev server. The orchestrator starts one shared server and exports `E2E_BASE_URL` if a browser run is ever genuinely required.
 - **E2E runs on GitHub Actions only.** The full suite is a merge gate on the integration tip, not a per-ticket check. A PR carries at most the smoke spec.
 - `git merge` is a shell command, not a delegated task. The orchestrator performs merges.
