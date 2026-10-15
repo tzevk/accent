@@ -107,6 +107,15 @@ const TODAY_WEEKDAY_CLASS = 'text-sky-800';
 const TODAY_BAR_CLASS =
 	'mx-auto mt-0.5 block h-0.5 w-4 rounded-full bg-sky-700';
 const TODAY_SWATCH_CLASS = 'h-2.5 w-2.5 rounded-sm bg-sky-700';
+/**
+ * The today track down the body: translucent on purpose. Row hover paints
+ * `hover:bg-purple-50/40` on the row and only reads through transparent
+ * cells, so an opaque tint here would punch a gap in the hover band on this
+ * column. At 70% the purple still lands on top and the column reads as one
+ * band. A muted day keeps its grey instead — grey says "not a working day",
+ * and that meaning outranks the track.
+ */
+const TODAY_CELL_CLASS = 'bg-sky-50/70';
 
 /**
  * A matrix column: the day-of-month number and its weekday, both read off
@@ -876,6 +885,7 @@ export default function AttendanceReportPage() {
 															</th>
 															{columns.map((column) => {
 																const cell = cellsByDate.get(column.date);
+																const isToday = column.date === todayColumn;
 																const resolved = resolveAttendanceCell({
 																	date: column.date,
 																	status: cell?.status ?? null,
@@ -910,8 +920,13 @@ export default function AttendanceReportPage() {
 																		data-punch-count={resolved.punchCount}
 																		data-in-label={resolved.inLabel}
 																		data-out-label={resolved.outLabel}
+																		data-today={isToday ? 'true' : undefined}
 																		className={`px-1 py-1 text-center align-top${
-																			resolved.muted ? ' bg-gray-50' : ''
+																			resolved.muted
+																				? ' bg-gray-50'
+																				: isToday
+																					? ` ${TODAY_CELL_CLASS}`
+																					: ''
 																		}`}
 																	>
 																		<CellPunchTrigger

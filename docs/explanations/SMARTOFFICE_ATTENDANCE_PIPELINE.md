@@ -143,6 +143,9 @@ direction}`; Bearer auth (`SMARTOFFICE_WEBHOOK_SECRET`); upsert into
    (`scroll-to-today.ts`). That column also carries the today colour — sky,
    the one hue in this grid with no other meaning, with `aria-current="date"`
    and a bar under the day number so the marking never rests on colour alone.
+   The tint runs down the body too, translucent so the row hover still lands
+   on top of it; a muted day (Weekly Off or holiday) keeps its grey, because
+   grey says "not a working day" and that outranks the track.
    `GET /api/reports/attendance-report?month=YYYY-MM` returns the day list,
    the cells and month-wide punch stats; no `month` returns filter-bar meta. Punches are attributed to the employee stamped at
    ingest (`attendance_logs.employee_id`), never re-derived from the device
