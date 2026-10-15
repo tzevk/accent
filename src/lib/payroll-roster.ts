@@ -7,8 +7,10 @@
  * never the Salary Type. Two readers share this module:
  *
  * - The **Attendance report** selects the roster as of today: live,
- *   `status = 'active'`, `employee_type = 'Payroll'`. Someone who never punched
- *   still gets a row — the report is the full roster, not the punch log.
+ *   `status = 'active'`, `employee_type = 'Payroll'`, and not already exited.
+ *   It also narrows to one workplace through the `workplace` option. Someone
+ *   who never punched still gets a row — the report is the full roster, not
+ *   the punch log.
  * - The **Employee Utilization report** selects the roster for a viewed month
  *   through the optional `month` option: live, `employee_type = 'Payroll'`,
  *   and the employment window intersects the month. Status no longer
@@ -62,6 +64,14 @@ export interface RosterEmployeeInput {
 	/** `employees.isDelete` — 1 removes the person from the directory. */
 	isDelete: number;
 	/**
+	 * `employees.workplace` — the branch the employee belongs to. Null and
+	 * blank both mean "no workplace recorded". An optional `workplace` filter
+	 * in the options keeps only one branch.
+	 */
+	workplace?: string | null;
+	/** `employees.exit_date` — the day the employee left, when recorded. */
+	exit_date?: string | null;
+	/**
 	 * Whether a row exists in `employee_salary_profile`. Accepted and
 	 * **ignored** — see the module note on the deliberate payroll divergence.
 	 */
@@ -75,8 +85,7 @@ export interface RosterEmployeeInput {
 	joining_date?: string | null;
 	/** `employees.hire_date` — second choice for the window's start. */
 	hire_date?: string | null;
-	/** `employees.exit_date` — first choice for the window's end. */
-	exit_date?: string | null;
+	/** `employees.exit_date` — already declared above; month mode reads it. */
 	/** Earliest `employee_attendance.attendance_date`, when recorded. */
 	first_attendance_date?: string | null;
 	/** Latest `employee_attendance.attendance_date`, when recorded. */
@@ -113,8 +122,16 @@ export interface RosterMember {
  * `not_payroll_type` — still active staff whose Employee Type is not Payroll.
  * `terminated` — the Status is not Active (terminated, inactive); they are no
  * longer on the active roster at all. Directory mode only.
+ * `exited` — the Status still says Active but the recorded exit date is on or
+ * before the as-of date, so the person has already left.
+ * `not_workplace` — a `workplace` filter is applied and this employee belongs
+ * to a different branch, or to none.
  */
-export type RosterExclusionReason = 'not_payroll_type' | 'terminated';
+export type RosterExclusionReason =
+	| 'not_payroll_type'
+	| 'terminated'
+	| 'exited'
+	| 'not_workplace';
 
 /** One line of the disclosure: a reason, the value that caused it, a count. */
 export interface RosterExclusionBucket {
@@ -133,6 +150,12 @@ export interface ExcludedEmployee {
 	employee_type: RosterEmployeeType | string | null;
 	status: string;
 	reason: RosterExclusionReason;
+	/**
+	 * The stored value behind the reason: the Employee Type, the Status, the
+	 * Workplace the employee belongs to instead, or the exit date. Null means
+	 * nothing was recorded for that column.
+	 */
+	value: string | null;
 }
 
 /**
@@ -175,11 +198,46 @@ export interface SelectPayrollRosterOptions {
 	 * directory rule the Attendance report has always used.
 	 */
 	month?: string;
+	/**
+	 * Keep only employees whose `workplace` matches, ignoring case and
+	 * surrounding space. Blank keeps every workplace. A workplace nobody holds
+	 * selects nobody, and the disclosure says so.
+	 */
+	workplace?: string;
+	/**
+	 * Drop an employee whose recorded `exit_date` is on or before `today`.
+	 * A Status of Active outlives the person who left, so the date is the
+	 * honest signal. Off by default so an existing caller's behaviour never
+	 * moves.
+	 */
+	excludeExited?: boolean;
+	/**
+	 * `YYYY-MM-DD` the exit date is compared against. Required by
+	 * `excludeExited`, which is why the module reads no clock.
+	 */
+	today?: string;
+}
+
+/** Normalised workplace: trimmed and case-folded, so "mumbai" matches "Mumbai". */
+function workplaceKey(value: string | null | undefined): string {
+	return String(value ?? '')
+		.trim()
+		.toLowerCase();
 }
 
 /** The filter, worded for the screen, in one place so it cannot drift. */
 export const ROSTER_FILTER_DESCRIPTION =
 	'isDelete = 0, Status = Active, and Employee Type = Payroll';
+
+/**
+ * The workplace clause of the filter sentence, or '' when no filter is set.
+ * Appended to `ROSTER_FILTER_DESCRIPTION` so the screen states the branch it
+ * is filtering on.
+ */
+export function rosterWorkplaceClause(workplace?: string): string {
+	const wanted = workplaceKey(workplace);
+	return wanted ? `, and Workplace is ${workplace}` : '';
+}
 
 /** The month-scoped filter, worded for the screen. */
 export const ROSTER_MONTH_FILTER_DESCRIPTION =
@@ -446,12 +504,20 @@ function byCodeThenName(
 	return a.id - b.id;
 }
 
-/** Reason first (type before status), then the value, NULL employee_type last. */
+/** Bucket order on screen: Employee Type first, then every other reason. */
+const BUCKET_REASON_ORDER: Record<RosterExclusionReason, number> = {
+	not_payroll_type: 0,
+	terminated: 1,
+	exited: 2,
+	not_workplace: 3,
+};
+
 function byReasonThenValue(
 	a: RosterExclusionBucket,
 	b: RosterExclusionBucket
 ): number {
-	if (a.reason !== b.reason) return a.reason === 'not_payroll_type' ? -1 : 1;
+	if (a.reason !== b.reason)
+		return BUCKET_REASON_ORDER[a.reason] - BUCKET_REASON_ORDER[b.reason];
 	if (a.value === b.value) return 0;
 	if (a.value === null) return 1;
 	if (b.value === null) return -1;
@@ -478,7 +544,8 @@ function toMember(
 
 function toExcluded(
 	employee: RosterEmployeeInput,
-	reason: RosterExclusionReason
+	reason: RosterExclusionReason,
+	value?: string | null
 ): ExcludedEmployee {
 	return {
 		id: employee.id,
@@ -487,6 +554,9 @@ function toExcluded(
 		employee_type: employee.employee_type ?? null,
 		status: employee.status,
 		reason,
+		// The stored value that caused the drop: the Employee Type, the Status,
+		// the Workplace, or the exit date. Absent means "nothing recorded".
+		value: value ?? null,
 	};
 }
 
@@ -515,6 +585,7 @@ export function selectPayrollRoster(
 	let consideredCount = 0;
 	let excludedTypeCount = 0;
 	let excludedStatusCount = 0;
+	const wantedWorkplace = workplaceKey(options.workplace);
 
 	for (const employee of employees) {
 		// isDelete = 1 means the person is gone from the employee directory
@@ -542,13 +613,38 @@ export function selectPayrollRoster(
 
 		consideredCount++;
 		if (employee.status !== 'active') {
-			excluded.push(toExcluded(employee, 'terminated'));
+			excluded.push(toExcluded(employee, 'terminated', employee.status));
 			excludedStatusCount++;
 			continue;
 		}
+		// A Status of Active outlives the person who left. The recorded exit
+		// date is the honest signal, so it comes before every other rule.
+		const exitedOn = dayOf(employee.exit_date);
+		if (
+			options.excludeExited === true &&
+			exitedOn != null &&
+			exitedOn <= (options.today ?? '')
+		) {
+			excluded.push(toExcluded(employee, 'exited', exitedOn));
+			continue;
+		}
+		// Employee Type is the roster's own switch, so it is named before the
+		// workplace narrowing. Reporting "another Workplace" for someone who
+		// was never in scope would read as the wrong reason.
 		if (employee.employee_type !== PAYROLL_EMPLOYEE_TYPE) {
-			excluded.push(toExcluded(employee, 'not_payroll_type'));
+			excluded.push(
+				toExcluded(employee, 'not_payroll_type', employee.employee_type)
+			);
 			excludedTypeCount++;
+			continue;
+		}
+		if (
+			wantedWorkplace &&
+			workplaceKey(employee.workplace) !== wantedWorkplace
+		) {
+			excluded.push(
+				toExcluded(employee, 'not_workplace', employee.workplace ?? null)
+			);
 			continue;
 		}
 		roster.push(toMember(employee));
@@ -560,12 +656,11 @@ export function selectPayrollRoster(
 
 	const counts = new Map<string, RosterExclusionBucket>();
 	for (const employee of excluded) {
-		// A wrong type is explained by the type; a non-active status is
-		// explained by the status, whatever the employee's type happens to be.
-		const value =
-			employee.reason === 'not_payroll_type'
-				? employee.employee_type
-				: employee.status;
+		// Each reason is explained by its own recorded value, carried from the
+		// exclusion itself: the Employee Type, the Status, the Workplace, or
+		// the exit date. Nothing is re-derived here, so a value read once
+		// cannot be read twice differently.
+		const value = employee.value;
 		const key = `${employee.reason} ${value ?? ''}`;
 		const bucket = counts.get(key);
 		if (bucket) {

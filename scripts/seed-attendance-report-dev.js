@@ -86,6 +86,13 @@ const UNMAPPED_CODE = 'SO-999';
 const UNMAPPED_SERIAL = 'BB00000000000003';
 
 /**
+ * The workplace the report covers. Must match `REPORT_WORKPLACE` in
+ * `src/app/reports/attendance-report/data-source.ts`, or the report filters
+ * every seeded employee out and shows an empty grid.
+ */
+const WORKPLACE = 'Mumbai';
+
+/**
  * Holidays for the seeded month. Non-optional days are excluded from working
  * days and mute; an optional holiday is a working day and must not.
  */
@@ -101,12 +108,48 @@ const HOLIDAYS = [
  * Keyed by `employees.employee_id`.
  */
 const AUTHORED_STATUSES = [
-	{ employee: 'EMP-002', date: `${MONTH}-10`, status: 'HD', in: '09:20', out: '13:40' },
-	{ employee: 'EMP-002', date: `${MONTH}-17`, status: 'PL', in: null, out: null },
-	{ employee: 'EMP-002', date: `${MONTH}-22`, status: 'A', in: null, out: null },
-	{ employee: 'E2E-EMP-0001', date: `${MONTH}-13`, status: 'WO', in: null, out: null },
-	{ employee: 'E2E-EMP-0002', date: `${MONTH}-15`, status: 'SL', in: null, out: null },
-	{ employee: 'E2E-ALLOC-06', date: `${MONTH}-23`, status: 'LWP', in: null, out: null },
+	{
+		employee: 'EMP-002',
+		date: `${MONTH}-10`,
+		status: 'HD',
+		in: '09:20',
+		out: '13:40',
+	},
+	{
+		employee: 'EMP-002',
+		date: `${MONTH}-17`,
+		status: 'PL',
+		in: null,
+		out: null,
+	},
+	{
+		employee: 'EMP-002',
+		date: `${MONTH}-22`,
+		status: 'A',
+		in: null,
+		out: null,
+	},
+	{
+		employee: 'E2E-EMP-0001',
+		date: `${MONTH}-13`,
+		status: 'WO',
+		in: null,
+		out: null,
+	},
+	{
+		employee: 'E2E-EMP-0002',
+		date: `${MONTH}-15`,
+		status: 'SL',
+		in: null,
+		out: null,
+	},
+	{
+		employee: 'E2E-ALLOC-06',
+		date: `${MONTH}-23`,
+		status: 'LWP',
+		in: null,
+		out: null,
+	},
 ];
 
 /**
@@ -279,7 +322,9 @@ async function main() {
 	const monthStart = `${MONTH}-01`;
 	const spanStart = new Date(`${monthStart}T00:00:00Z`);
 	spanStart.setUTCDate(spanStart.getUTCDate() - 1);
-	const spanEnd = new Date(Date.UTC(Number(MONTH.slice(0, 4)), Number(MONTH.slice(5, 7)), 1));
+	const spanEnd = new Date(
+		Date.UTC(Number(MONTH.slice(0, 4)), Number(MONTH.slice(5, 7)), 1)
+	);
 	const from = spanStart.toISOString().slice(0, 19).replace('T', ' ');
 	const to = spanEnd.toISOString().slice(0, 19).replace('T', ' ');
 	const days = daysInMonth(MONTH);
@@ -289,14 +334,16 @@ async function main() {
 
 		// 1. The roster the report filters on.
 		const [roster] = await connection.execute(
-			`SELECT id, employee_id, smartoffice_code,
+			`SELECT id, employee_id, smartoffice_code, workplace,
 			        CONCAT_WS(' ', first_name, last_name) AS name
 			   FROM employees
 			  WHERE isDelete = 0 AND status = 'active' AND employee_type = 'Payroll'
 			  ORDER BY id`
 		);
 		if (roster.length === 0) {
-			throw new Error('No Payroll employees on the roster. Nothing to seed against.');
+			throw new Error(
+				'No Payroll employees on the roster. Nothing to seed against.'
+			);
 		}
 
 		const enrolled = [];
@@ -321,6 +368,12 @@ async function main() {
 					[code, employee.id]
 				);
 			}
+			// The report covers one workplace. Without this the report filters
+			// every seeded employee out and shows an empty grid.
+			await connection.execute(
+				'UPDATE employees SET workplace = ?, updated_at = NOW() WHERE id = ?',
+				[WORKPLACE, employee.id]
+			);
 		}
 
 		// 2. Punches. Delete first, so a re-run is a fresh month.
@@ -336,7 +389,11 @@ async function main() {
 		const punchRows = [];
 		for (const employee of enrolled) {
 			punchRows.push(
-				...buildPunches(employee, PUNCH_PLAN[employee.employee_id] ?? DEFAULT_PLAN, days)
+				...buildPunches(
+					employee,
+					PUNCH_PLAN[employee.employee_id] ?? DEFAULT_PLAN,
+					days
+				)
 			);
 		}
 
@@ -490,13 +547,17 @@ async function main() {
 
 		console.log(`\nSeeded ${target.database} for ${MONTH}.`);
 		console.log(
-			`Roster: ${enrolled.length} Payroll employees, ${punchRows.length} Punches (${punchRows.length - 4} mapped, 4 unmapped).`
+			`Roster: ${enrolled.length} Payroll employees at ${WORKPLACE}, ${punchRows.length} Punches (${punchRows.length - 4} mapped, 4 unmapped).`
 		);
 		console.log(
 			`Deleted ${deleted.affectedRows} Punches and ${removedActivity.affectedRows} Logged Hours rows from the window.`
 		);
-		console.log(`Holidays: ${HOLIDAYS.length}. Authored statuses: ${AUTHORED_STATUSES.length}. Logged Hours rows: ${loggedHoursRows}.`);
-		console.log(`Cleaned ${removedStatuses.affectedRows} old status rows in the month.`);
+		console.log(
+			`Holidays: ${HOLIDAYS.length}. Authored statuses: ${AUTHORED_STATUSES.length}. Logged Hours rows: ${loggedHoursRows}.`
+		);
+		console.log(
+			`Cleaned ${removedStatuses.affectedRows} old status rows in the month.`
+		);
 		console.log('\nEmployee            code  punches  Logged Hours');
 		for (const employee of enrolled) {
 			const punches = byEmployee.get(employee.smartoffice_code)?.length ?? 0;
@@ -514,7 +575,9 @@ async function main() {
 		console.log(`  no device direction on ${MONTH}-03 and ${MONTH}-04`);
 		console.log(`  two devices on ${MONTH}-08`);
 		console.log(`  worked holidays and Sundays, so they do not mute`);
-		console.log(`  ${UNMAPPED_CODE} Punches on ${MONTH}-07 and ${MONTH}-21, amber strip`);
+		console.log(
+			`  ${UNMAPPED_CODE} Punches on ${MONTH}-07 and ${MONTH}-21, amber strip`
+		);
 		console.log(`  HD / PL / A / WO / SL / LWP badges`);
 		console.log(
 			`\nOpen the Attendance Report and it defaults to ${MONTH}. Undo is in the rollback lines below.`
@@ -525,6 +588,11 @@ async function main() {
 				`  UPDATE employees SET smartoffice_code = NULL WHERE id = ${employee.id};`
 			);
 		}
+		console.log(
+			`  -- restore the workplace you had before this seed:\n  UPDATE employees SET workplace = NULL WHERE id IN (${enrolled
+				.map((employee) => employee.id)
+				.join(', ')});`
+		);
 		console.log(
 			`  DELETE FROM attendance_logs WHERE log_date >= '${from}' AND log_date < '${to}';`
 		);

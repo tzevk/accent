@@ -21,6 +21,13 @@
  * `salary_profile.salary_type`, and the accepted divergence is reported on
  * `ArData.disclosure` rather than hidden.
  *
+ * The report covers one workplace (`REPORT_WORKPLACE`) and nobody who has
+ * already left. An active Status outlives the person, so the exit date is
+ * read alongside it. Every employee the filter drops is named on the
+ * disclosure, with the reason that actually applied — Employee Type before
+ * Workplace, so a non-Payroll employee is never reported as being at the
+ * wrong branch.
+ *
  * A Punch belongs to the Employee stamped on `attendance_logs.employee_id` at
  * ingest — the Device Code a row carries is display metadata, so a
  * re-enrolment or code correction changes future matches only and never
@@ -54,6 +61,16 @@ import {
 } from '@/lib/payroll-roster';
 
 // ─── Public types ───────────────────────────────────────────────────
+
+/**
+ * The one workplace this report covers: the Mumbai branch.
+ *
+ * Matched on `employees.workplace`, trimmed and case-folded, so "mumbai",
+ * "Mumbai " and "MUMBAI" all resolve. An employee with no workplace recorded
+ * is not at Mumbai and is excluded — the disclosure card names them. Change
+ * this one constant to retarget the report to another branch.
+ */
+export const REPORT_WORKPLACE = 'Mumbai';
 
 /** The punch fields the month's stats strip reads. */
 export interface ArPunch {
@@ -382,6 +399,8 @@ interface DirectoryRow {
 	employee_id: string;
 	name: string;
 	department: string | null;
+	workplace: string | null;
+	exit_date: string | null;
 	smartoffice_code: string | null;
 	employee_type: string | null;
 	status: string;
@@ -399,7 +418,8 @@ async function fetchEmployeeDirectory(): Promise<DirectoryRow[]> {
 	const [rows] = (await query(
 		`SELECT id, employee_id,
 		        CONCAT_WS(' ', first_name, last_name) AS name,
-		        department, smartoffice_code, employee_type, status, isDelete,
+		        department, workplace, exit_date, smartoffice_code,
+		        employee_type, status, isDelete,
 		        email, username
 		 FROM employees`
 	)) as [DbRow[], unknown];
@@ -409,6 +429,8 @@ async function fetchEmployeeDirectory(): Promise<DirectoryRow[]> {
 		employee_id: s(row, 'employee_id'),
 		name: s(row, 'name') || `Employee ${s(row, 'id')}`,
 		department: s(row, 'department') || null,
+		workplace: s(row, 'workplace') || null,
+		exit_date: s(row, 'exit_date') || null,
 		smartoffice_code: s(row, 'smartoffice_code') || null,
 		employee_type: s(row, 'employee_type') || null,
 		status: s(row, 'status'),
@@ -425,6 +447,8 @@ function toRosterInput(row: DirectoryRow): RosterEmployeeInput {
 		employee_id: row.employee_id,
 		name: row.name,
 		department: row.department,
+		workplace: row.workplace,
+		exit_date: row.exit_date,
 		smartoffice_code: row.smartoffice_code,
 		employee_type: row.employee_type,
 		status: row.status,
@@ -685,8 +709,17 @@ export async function fetchAttendanceData(options: {
 		(punch) => punch.date.slice(0, 7) === month
 	);
 
+	// The roster this report covers: one workplace, and nobody who has left.
+	// `excludeExited` reads the exit date rather than trusting a Status that
+	// outlives the person, and `today` is supplied here so the shared module
+	// stays pure.
 	const { roster, disclosure } = selectPayrollRoster(
-		directory.map(toRosterInput)
+		directory.map(toRosterInput),
+		{
+			workplace: REPORT_WORKPLACE,
+			excludeExited: true,
+			today: new Date().toISOString().slice(0, 10),
+		}
 	);
 	const memberIds = roster.map((member) => member.id);
 

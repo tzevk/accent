@@ -19,13 +19,14 @@ import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { formatMonth, formatNumber } from '@/lib/format';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
-import type {
-	ArCell,
-	ArData,
-	ArMatrixRow,
-	ArMeta,
-	ArMonthPunch,
-	ArStats,
+import {
+	REPORT_WORKPLACE,
+	type ArCell,
+	type ArData,
+	type ArMatrixRow,
+	type ArMeta,
+	type ArMonthPunch,
+	type ArStats,
 } from './data-source';
 import {
 	CELL_TONE_CLASSES,
@@ -699,8 +700,7 @@ export default function AttendanceReportPage() {
 											<table className="w-full text-[12px]">
 												<caption className="sr-only">
 													Logged hours and First Punch / Last Punch per employee
-													for{' '}
-													{monthHeading}
+													for {monthHeading}
 												</caption>
 												<thead>
 													<tr className="border-b border-gray-200 bg-gray-50/80 text-[10px] uppercase tracking-wider text-gray-600">
@@ -840,6 +840,7 @@ export default function AttendanceReportPage() {
 							    and why — kept at the foot of the page */}
 							<RosterDisclosureCard
 								disclosure={data?.disclosure ?? null}
+								workplace={REPORT_WORKPLACE}
 								className="mt-4"
 							/>
 						</div>

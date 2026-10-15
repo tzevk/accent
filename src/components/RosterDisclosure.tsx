@@ -6,6 +6,7 @@ import {
 	ROSTER_MEMBERSHIP_NOTE,
 	ROSTER_MONTH_FILTER_DESCRIPTION,
 	ROSTER_MONTH_MEMBERSHIP_NOTE,
+	rosterWorkplaceClause,
 	type RosterDisclosure as RosterDisclosureData,
 } from '@/lib/payroll-roster';
 
@@ -13,6 +14,11 @@ export interface RosterDisclosureProps {
 	/** `selectPayrollRoster(...).disclosure` — null renders nothing at all. */
 	disclosure: RosterDisclosureData | null;
 	className?: string;
+	/**
+	 * The workplace the report is scoped to, so the filter sentence names it.
+	 * Blank omits the clause entirely.
+	 */
+	workplace?: string;
 	/**
 	 * Which roster rule the strip describes:
 	 * - `directory` (default) — the Attendance report's as-of-today filter and
@@ -45,6 +51,7 @@ function groupedCount(value: number): string {
 export default function RosterDisclosure({
 	disclosure,
 	className,
+	workplace,
 	scope = 'directory',
 }: RosterDisclosureProps) {
 	if (!disclosure || disclosure.excluded_count === 0) return null;
@@ -76,7 +83,7 @@ export default function RosterDisclosure({
 					This report covers every employee where{' '}
 					{monthScope
 						? ROSTER_MONTH_FILTER_DESCRIPTION
-						: ROSTER_FILTER_DESCRIPTION}
+						: `${ROSTER_FILTER_DESCRIPTION}${rosterWorkplaceClause(workplace)}`}
 					.
 				</span>
 			</p>
@@ -96,16 +103,19 @@ export default function RosterDisclosure({
 				data-testid="roster-disclosure-breakdown"
 				className="mt-1.5 flex flex-wrap gap-1.5"
 			>
-				{disclosure.buckets.map((bucket) => (
-					<li
-						key={`${bucket.reason}-${bucket.value ?? 'none'}`}
-						data-testid="roster-disclosure-bucket"
-						data-reason={bucket.reason}
-						data-value={bucket.value ?? ''}
-						className="rounded-full border border-blue-200 bg-white/80 px-2 py-0.5 text-[11px] font-medium text-blue-800"
-					>
-						{monthScope || bucket.reason === 'not_payroll_type' ? (
-							<>
+				{disclosure.buckets.map((bucket) => {
+					// One label per reason, written once. The month-scoped
+					// reader has only ever had one reason, so it keeps the
+					// short form that already reads well.
+					if (monthScope || bucket.reason === 'not_payroll_type') {
+						return (
+							<li
+								key={`${bucket.reason}-${bucket.value ?? 'none'}`}
+								data-testid="roster-disclosure-bucket"
+								data-reason={bucket.reason}
+								data-value={bucket.value ?? ''}
+								className="rounded-full border border-blue-200 bg-white/80 px-2 py-0.5 text-[11px] font-medium text-blue-800"
+							>
 								{groupedCount(bucket.count)}{' '}
 								{bucket.value === null
 									? monthScope
@@ -114,14 +124,48 @@ export default function RosterDisclosure({
 									: monthScope
 										? bucket.value
 										: `with Employee Type ${bucket.value}`}
-							</>
-						) : (
-							<>
-								{groupedCount(bucket.count)} not Active (Status {bucket.value})
-							</>
-						)}
-					</li>
-				))}
+							</li>
+						);
+					}
+					if (bucket.reason === 'exited') {
+						return (
+							<li
+								key={`${bucket.reason}-${bucket.value ?? 'none'}`}
+								data-testid="roster-disclosure-bucket"
+								data-reason={bucket.reason}
+								data-value={bucket.value ?? ''}
+								className="rounded-full border border-blue-200 bg-white/80 px-2 py-0.5 text-[11px] font-medium text-blue-800"
+							>
+								{groupedCount(bucket.count)} who have already left
+							</li>
+						);
+					}
+					if (bucket.reason === 'not_workplace') {
+						return (
+							<li
+								key={`${bucket.reason}-${bucket.value ?? 'none'}`}
+								data-testid="roster-disclosure-bucket"
+								data-reason={bucket.reason}
+								data-value={bucket.value ?? ''}
+								className="rounded-full border border-blue-200 bg-white/80 px-2 py-0.5 text-[11px] font-medium text-blue-800"
+							>
+								{groupedCount(bucket.count)} at another Workplace
+								{bucket.value === null ? '' : ` (${bucket.value})`}
+							</li>
+						);
+					}
+					return (
+						<li
+							key="terminated"
+							data-testid="roster-disclosure-bucket"
+							data-reason="terminated"
+							data-value={bucket.value ?? ''}
+							className="rounded-full border border-blue-200 bg-white/80 px-2 py-0.5 text-[11px] font-medium text-blue-800"
+						>
+							{groupedCount(bucket.count)} not Active (Status {bucket.value})
+						</li>
+					);
+				})}
 			</ul>
 
 			<details data-testid="roster-disclosure-list" className="mt-1.5">
@@ -156,7 +200,13 @@ export default function RosterDisclosure({
 									? employee.employee_type === null
 										? 'no Employee Type set'
 										: `Employee Type ${employee.employee_type}`
-									: `Status ${employee.status}`}
+									: employee.reason === 'exited'
+										? `left on ${employee.value}`
+										: employee.reason === 'not_workplace'
+											? employee.value === null
+												? 'no Workplace set'
+												: `at ${employee.value}`
+											: `Status ${employee.status}`}
 							</span>
 						</li>
 					))}

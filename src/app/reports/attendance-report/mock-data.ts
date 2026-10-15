@@ -334,6 +334,7 @@ const MOCK_DISCLOSURE: RosterDisclosure = {
 			employee_type: 'Contract',
 			status: 'active',
 			reason: 'not_payroll_type',
+			value: 'Contract',
 		},
 	],
 };
