@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
 	ArrowDownLeftIcon,
@@ -28,6 +28,7 @@ import type {
 	ArStats,
 } from './data-source';
 import { REPORT_WORKPLACE } from './workplace';
+import { hasTodayColumn, preScrollLeft, todayDate } from './scroll-to-today';
 import {
 	CELL_TONE_CLASSES,
 	resolveAttendanceCell,
@@ -287,6 +288,44 @@ export default function AttendanceReportPage() {
 
 	const data = dataQuery.data?.data ?? null;
 	const stats: ArStats | null = data?.stats ?? null;
+
+	// Open the matrix on today: the first day column after the sticky Employee
+	// column. Measured from the rendered rects because a day column's width is
+	// content-driven, applied by setting `scrollLeft` so focus never moves, and
+	// applied once per month — a refetch of the same month must not drag a
+	// reader back from a day they scrolled to themselves.
+	const scrollRegionRef = useRef<HTMLDivElement>(null);
+	const employeeHeaderRef = useRef<HTMLTableCellElement>(null);
+	const openedMonthRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		const region = scrollRegionRef.current;
+		const stickyHeader = employeeHeaderRef.current;
+		const days = data?.days ?? [];
+		if (!region || !stickyHeader || days.length === 0) return;
+		// The month has no rendered matrix yet, or it is already open.
+		if (openedMonthRef.current === month) return;
+		openedMonthRef.current = month;
+
+		const today = todayDate();
+		if (!hasTodayColumn(today, days)) {
+			// A month that does not hold today — the report's default month is
+			// the latest one with logs — opens at its first day, and a switch
+			// back from a scrolled month must not keep the old position.
+			region.scrollLeft = 0;
+			return;
+		}
+		const column = region.querySelector<HTMLElement>(
+			`th[data-date="${today}"]`
+		);
+		if (!column) return;
+
+		const distance =
+			column.getBoundingClientRect().left -
+			region.getBoundingClientRect().left -
+			stickyHeader.getBoundingClientRect().width;
+		region.scrollLeft = preScrollLeft(distance, region.scrollLeft);
+	}, [data, month]);
 
 	// The month arrives already split into cells; a date → cell lookup per row
 	// keeps a cell a single map read.
@@ -689,9 +728,10 @@ export default function AttendanceReportPage() {
 										{/* The cue shows whenever the matrix renders: the
 										    table overflows from 640px up, not only below it. */}
 										<p className="border-b border-gray-100 bg-gray-50/60 px-4 py-2 text-[11px] text-gray-600">
-											Scroll sideways for the rest of the month →
+											Scroll sideways for earlier or later days →
 										</p>
 										<div
+											ref={scrollRegionRef}
 											role="region"
 											aria-label={`Attendance matrix for ${monthHeading || month}`}
 											tabIndex={0}
@@ -705,6 +745,7 @@ export default function AttendanceReportPage() {
 												<thead>
 													<tr className="border-b border-gray-200 bg-gray-50/80 text-[10px] uppercase tracking-wider text-gray-600">
 														<th
+															ref={employeeHeaderRef}
 															scope="col"
 															className="sticky left-0 z-10 bg-gray-50/95 px-4 py-2 text-left font-semibold"
 														>
@@ -714,6 +755,7 @@ export default function AttendanceReportPage() {
 															<th
 																key={column.date}
 																scope="col"
+																data-date={column.date}
 																title={column.date}
 																className="min-w-[56px] px-1 py-1.5 text-center font-semibold"
 															>
@@ -735,7 +777,7 @@ export default function AttendanceReportPage() {
 														>
 															<th
 																scope="row"
-																className="sticky left-0 z-10 max-w-[240px] bg-white px-4 py-2 text-left font-normal group-hover:bg-purple-50/40"
+																className="sticky left-0 z-10 max-w-[240px] bg-white px-4 py-2 text-left font-normal group-hover:bg-purple-50"
 															>
 																<span className="flex items-center gap-2.5">
 																	<span
@@ -752,7 +794,12 @@ export default function AttendanceReportPage() {
 																			{employee.employee_id
 																				? `${employee.employee_id} · `
 																				: ''}
-																			{employee.punch_count} punches
+																			{employee.punch_count}{' '}
+																			{pluralNoun(
+																				employee.punch_count,
+																				'punch',
+																				'punches'
+																			)}
 																			{employee.smartoffice_code
 																				? ''
 																				: ' · no device code'}
