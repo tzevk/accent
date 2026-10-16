@@ -593,6 +593,26 @@ describe('EmployeeHub', () => {
 			screen.getByRole('button', { name: 'Salary Structure (All Users)' })
 		).toBeEnabled();
 	});
+	it('exposes the full text of every truncating column', async () => {
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		const row = screen.getByText('ATS001').closest('tr');
+		expect(row).not.toBeNull();
+		const cells = within(row as HTMLElement).getAllByRole('cell');
+		expect(cells[0]).toHaveAttribute('title', 'ATS001');
+		expect(within(cells[1]).getByText('Alice Worker')).toHaveAttribute(
+			'title',
+			'Alice Worker'
+		);
+		expect(within(cells[1]).getByText('alice@example.com')).toHaveAttribute(
+			'title',
+			'alice@example.com'
+		);
+		expect(cells[2]).toHaveAttribute('title', 'Engineering');
+		expect(cells[4]).toHaveAttribute('title', 'Developer');
+		expect(cells[5]).toHaveAttribute('title', 'Mumbai');
+	});
 
 	it('expands a Payroll row to the persisted salary figures with payroll:read', async () => {
 		rbacMock.payrollRead = true;
