@@ -36,7 +36,6 @@ export default function ContractPage() {
 	const [actionError, setActionError] = useState('');
 
 	const form = useEmployeeForm({
-		employeeType: 'Contract',
 		onSaved: async () => {
 			await Promise.all([directory.refresh(), directory.refreshAll()]);
 			setMode('list');

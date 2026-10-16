@@ -95,14 +95,12 @@ export const DEFAULT_EMPLOYEE_FORM_DATA: EmployeeFormData = {
 };
 
 export function createEmployeeFormData(
-	employee?: Record<string, unknown> | null,
-	employeeType?: string | null
+	employee?: Record<string, unknown> | null
 ): EmployeeFormData {
 	const source = employee || {};
 	return {
 		...DEFAULT_EMPLOYEE_FORM_DATA,
 		...source,
-		...(employeeType && !employee ? { employee_type: employeeType } : {}),
 		hire_date: toDateInput(source.hire_date),
 		joining_date: toDateInput(source.joining_date),
 		dob: toDateInput(source.dob),
