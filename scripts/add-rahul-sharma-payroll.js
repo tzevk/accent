@@ -1,4 +1,5 @@
-// Adds Rahul Sharma to the Payroll employees list (src/app/employees/payroll).
+// Adds Rahul Sharma to the Payroll employees list (merged employee hub,
+// /employees?type=Payroll).
 // - If an active employee named "Rahul Sharma" already exists, updates its
 //   employee_type to 'Payroll'.
 // - Otherwise inserts a new Payroll employee with an auto-generated ATS id,
