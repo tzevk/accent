@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
 	ChevronLeftIcon,
@@ -30,10 +30,16 @@ import { formatDate } from '@/lib/format';
  * into the shared employee editor.
  */
 export default function ContractPage() {
-	const directory = useEmployeeDirectory('Contract');
+	const directory = useEmployeeDirectory();
+	const { setFilter } = directory;
 	const [mode, setMode] = useState<'list' | 'edit' | 'view'>('list');
 	const [actionMessage, setActionMessage] = useState('');
 	const [actionError, setActionError] = useState('');
+
+	// Route-owned type filter until this page merges into the employee hub.
+	useEffect(() => {
+		setFilter('employeeType', 'Contract');
+	}, [setFilter]);
 
 	const form = useEmployeeForm({
 		employeeType: 'Contract',
