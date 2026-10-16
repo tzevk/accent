@@ -16,6 +16,22 @@ vi.mock('@/components/AccessGuard', () => ({
 vi.mock('@/components/Navbar', () => ({
 	default: () => <nav>Navbar</nav>,
 }));
+const rbacMock = vi.hoisted(() => ({
+	payrollRead: false,
+	superAdmin: false,
+	payrollUpdate: false,
+}));
+vi.mock('@/utils/client-rbac', () => ({
+	useSessionRBAC: () => ({
+		user: { is_super_admin: rbacMock.superAdmin ? 1 : 0 },
+		can: (resource: string, permission: string) =>
+			resource === 'payroll' &&
+			((permission === 'read' && rbacMock.payrollRead) ||
+				(permission === 'update' && rbacMock.payrollUpdate)),
+		RESOURCES: { PAYROLL: 'payroll', EMPLOYEES: 'employees' },
+		PERMISSIONS: { UPDATE: 'update', READ: 'read' },
+	}),
+}));
 
 import EmployeeHub from '@/components/EmployeeHub';
 
@@ -77,7 +93,61 @@ const employees = [
 		hire_date: '2023-05-01T00:00:00.000Z',
 		status: 'active',
 	},
+	{
+		id: 4,
+		employee_id: 'ATS004',
+		first_name: 'Dave',
+		last_name: 'Payroll',
+		email: 'dave@example.com',
+		department: 'Engineering',
+		position: 'Engineer',
+		workplace: 'Mumbai',
+		status: 'active',
+		employee_type: 'Payroll',
+	},
 ];
+
+const savedProfile = {
+	id: 11,
+	employee_id: 1,
+	salary_type: 'monthly',
+	gross_salary: 50000,
+	other_allowances: 0,
+	pf_applicable: 1,
+	esic_applicable: 0,
+	pt_applicable: 1,
+	mlwf_applicable: 0,
+	retention_applicable: 0,
+	bonus_applicable: 0,
+	monthly_bonus: 0,
+	incentive_applicable: 0,
+	insurance_applicable: 0,
+	effective_from: '2026-01-01T00:00:00.000Z',
+	effective_to: null,
+	std_in_time: '09:00:00',
+	std_out_time: '17:30:00',
+	std_working_days: 26,
+	std_hours_per_day: 8,
+	pl_total: 21,
+	pl_used: 2,
+	pl_balance: 19,
+	loan_active: 1,
+	loan_amount_per_month: 1000,
+	loan_no_of_months: 10,
+	loan_total_amount: 10000,
+	advance_active: 0,
+	advance_amount: 0,
+	is_manual_override: 0,
+	basic: null,
+	da: null,
+	hra: null,
+	pf_employee: null,
+	net_pay: 42750,
+	total_earnings: 50000,
+	total_deductions: 7250,
+	employer_cost: 56000,
+	lumpsum_description: null,
+};
 
 function response(body: unknown, ok = true) {
 	return Promise.resolve({ ok, json: async () => body });
@@ -86,8 +156,14 @@ function response(body: unknown, ok = true) {
 describe('EmployeeHub', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		rbacMock.payrollRead = false;
+		rbacMock.superAdmin = false;
+		rbacMock.payrollUpdate = false;
 		window.history.pushState({}, '', '/employees');
 		vi.stubGlobal('fetch', fetchMock);
+		window.HTMLElement.prototype.scrollIntoView = vi.fn();
+		window.URL.createObjectURL = vi.fn(() => 'blob:mock');
+		window.URL.revokeObjectURL = vi.fn();
 		fetchMock.mockImplementation(
 			(input: RequestInfo | URL, init?: RequestInit) => {
 				const url = String(input);
@@ -120,6 +196,27 @@ describe('EmployeeHub', () => {
 						success: true,
 						data: [{ total_present: employeeId === '1' ? 5 : 1 }],
 						dayDetails: [],
+					});
+				}
+				if (url.startsWith('/api/payroll/salary-profile?employee_id=')) {
+					const employeeId = new URL(url, 'http://localhost').searchParams.get(
+						'employee_id'
+					);
+					return response({
+						success: true,
+						data: employeeId === '1' ? [savedProfile] : [],
+					});
+				}
+				if (url.startsWith('/api/payroll/salary-profile')) {
+					return response({ success: true, data: savedProfile });
+				}
+				if (url.startsWith('/api/payroll/schedules/current')) {
+					return response({ success: true, data: {} });
+				}
+				if (url.startsWith('/api/employees/salary-structure/export')) {
+					return Promise.resolve({
+						ok: true,
+						blob: async () => ({ size: 12 }) as Blob,
 					});
 				}
 				if (url === '/api/uploads' && init?.method === 'POST') {
@@ -370,5 +467,257 @@ describe('EmployeeHub', () => {
 
 		renderHub('?type=Contract');
 		expect(await screen.findByText('No Contract employees yet')).toBeVisible();
+	});
+
+	it('hides every pay affordance from a session without payroll:read', async () => {
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		expect(
+			screen.queryByRole('button', { name: 'Salary Structure (All Users)' })
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('button', {
+				name: /View salary profile for Alice Worker/,
+			})
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('button', {
+				name: /View salary profile for Bob Builder/,
+			})
+		).not.toBeInTheDocument();
+
+		fireEvent.click(screen.getByRole('button', { name: 'Edit Alice Worker' }));
+		const nav = await screen.findByRole('navigation', {
+			name: 'Employee Sections',
+		});
+		expect(
+			within(nav).queryByRole('button', { name: 'Salary Profile' })
+		).not.toBeInTheDocument();
+
+		fireEvent.click(screen.getByRole('button', { name: 'Select Bob Builder' }));
+		expect(
+			within(nav).queryByRole('button', { name: 'Contract Pay' })
+		).not.toBeInTheDocument();
+
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Select Carol Director' })
+		);
+		expect(
+			within(nav).queryByRole('button', { name: 'Salary Profile' })
+		).not.toBeInTheDocument();
+		expect(
+			within(nav).queryByRole('button', { name: 'Contract Pay' })
+		).not.toBeInTheDocument();
+
+		await waitFor(() => {
+			expect(
+				fetchMock.mock.calls.some(([url]) =>
+					String(url).includes('/api/payroll/salary-profile')
+				)
+			).toBe(false);
+		});
+	});
+
+	it('exports the all-users salary structure for payroll:read holders', async () => {
+		rbacMock.payrollRead = true;
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Salary Structure (All Users)' })
+		);
+		expect(
+			await screen.findByText('All-users salary structure Excel downloaded')
+		).toBeVisible();
+
+		const exportCalls = fetchMock.mock.calls.filter(([url]) =>
+			String(url).startsWith('/api/employees/salary-structure/export')
+		);
+		expect(exportCalls.length).toBe(1);
+		expect(
+			screen.getByRole('button', { name: 'Salary Structure (All Users)' })
+		).toBeEnabled();
+	});
+
+	it('reports all-users salary structure export failures', async () => {
+		rbacMock.payrollRead = true;
+		fetchMock.mockImplementation((input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.startsWith('/api/employees/list')) {
+				return response({
+					success: true,
+					employees,
+					departments: ['Engineering', 'Operations'],
+					workplaces: ['Mumbai', 'Malvan'],
+					pagination: { total: 1, totalRecords: 2, limit: 100 },
+				});
+			}
+			if (url.startsWith('/api/employees/salary-structure/export')) {
+				return response({ error: 'Export failed: rate limited' }, false);
+			}
+			return Promise.reject(new Error(`Unexpected request: ${url}`));
+		});
+
+		renderHub();
+		await screen.findByText('Alice Worker');
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Salary Structure (All Users)' })
+		);
+
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'Export failed: rate limited'
+		);
+		expect(
+			screen.getByRole('button', { name: 'Salary Structure (All Users)' })
+		).toBeEnabled();
+	});
+
+	it('expands a Payroll row to the persisted salary figures with payroll:read', async () => {
+		rbacMock.payrollRead = true;
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		// The expand control renders on Payroll rows only.
+		expect(
+			screen.queryByRole('button', {
+				name: /View salary profile for Bob Builder/,
+			})
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('button', {
+				name: /View salary profile for Carol Director/,
+			})
+		).not.toBeInTheDocument();
+
+		fireEvent.click(
+			screen.getByRole('button', {
+				name: /View salary profile for Alice Worker/,
+			})
+		);
+		const panel = await screen.findByTestId('inline-salary-1');
+		expect(within(panel).getByText('₹42,750.00')).toBeVisible(); // persisted net pay
+		expect(within(panel).getByText('₹50,000.00')).toBeVisible(); // persisted earnings
+		expect(within(panel).getAllByText('₹56,000.00').length).toBeGreaterThan(0); // persisted CTC (tile + employer column)
+		expect(within(panel).getAllByText('₹1,000.00').length).toBeGreaterThan(0); // loan EMI
+		expect(
+			within(panel).getByText('Total Employer Contributions')
+		).toBeVisible();
+		expect(within(panel).getByText(/Effective:/)).toBeVisible();
+		expect(within(panel).getByText(/Privilege Leave:/)).toBeVisible();
+
+		const profileCalls = fetchMock.mock.calls.filter(([url]) =>
+			String(url).startsWith('/api/payroll/salary-profile?employee_id=')
+		);
+		expect(profileCalls.length).toBe(1);
+		expect(String(profileCalls[0][0])).toContain('employee_id=1');
+
+		// One row expands at a time; a Payroll row without a profile offers the editor.
+		fireEvent.click(
+			screen.getByRole('button', {
+				name: /View salary profile for Dave Payroll/,
+			})
+		);
+		expect(
+			await screen.findByText('No salary profile found for this employee.')
+		).toBeVisible();
+		expect(screen.queryByTestId('inline-salary-1')).not.toBeInTheDocument();
+	});
+
+	it('offers the Salary Profile tab only in edit mode for a Payroll employee', async () => {
+		rbacMock.payrollRead = true;
+		rbacMock.superAdmin = true;
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		fireEvent.click(screen.getByRole('button', { name: 'View Alice Worker' }));
+		const viewNav = await screen.findByRole('navigation', {
+			name: 'Employee Sections',
+		});
+		expect(
+			within(viewNav).queryByRole('button', { name: 'Salary Profile' })
+		).not.toBeInTheDocument();
+
+		fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+		const nav = await screen.findByRole('navigation', {
+			name: 'Employee Sections',
+		});
+		fireEvent.click(
+			within(nav).getByRole('button', { name: 'Salary Profile' })
+		);
+
+		const grossInput = await screen.findByLabelText('Gross Salary *');
+		await waitFor(() => expect(grossInput).toHaveValue(50000));
+		expect(screen.getByText('Total Earnings')).toBeVisible();
+		expect(screen.getByText('Net Pay')).toBeVisible();
+		expect(screen.getAllByText('₹1,000.00').length).toBeGreaterThan(0);
+	});
+
+	it('offers the Contract Pay tab only in edit mode for a Contract employee', async () => {
+		rbacMock.payrollRead = true;
+		renderHub();
+		await screen.findByText('Bob Builder');
+
+		fireEvent.click(screen.getByRole('button', { name: 'View Bob Builder' }));
+		const viewNav = await screen.findByRole('navigation', {
+			name: 'Employee Sections',
+		});
+		expect(
+			within(viewNav).queryByRole('button', { name: 'Contract Pay' })
+		).not.toBeInTheDocument();
+
+		fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+		const nav = await screen.findByRole('navigation', {
+			name: 'Employee Sections',
+		});
+		expect(
+			within(nav).queryByRole('button', { name: 'Salary Profile' })
+		).not.toBeInTheDocument();
+		fireEvent.click(within(nav).getByRole('button', { name: 'Contract Pay' }));
+
+		expect(
+			await screen.findByRole('heading', { name: 'Contract Pay' })
+		).toBeVisible();
+		expect(screen.getByText('Salary Type: Contract')).toBeVisible();
+	});
+
+	it('offers no pay tab when editing an employee with no pay Employee Type', async () => {
+		rbacMock.payrollRead = true;
+		renderHub();
+		await screen.findByText('Carol Director');
+
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Edit Carol Director' })
+		);
+		const nav = await screen.findByRole('navigation', {
+			name: 'Employee Sections',
+		});
+		expect(
+			within(nav).queryByRole('button', { name: 'Salary Profile' })
+		).not.toBeInTheDocument();
+		expect(
+			within(nav).queryByRole('button', { name: 'Contract Pay' })
+		).not.toBeInTheDocument();
+	});
+
+	it('renders no payroll run actions even with payroll:read', async () => {
+		rbacMock.payrollRead = true;
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		expect(
+			screen.queryByRole('button', { name: 'Generate Payroll' })
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('button', { name: 'Salary Slip (PDF)' })
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('button', { name: 'Salary Sheet (Excel)' })
+		).not.toBeInTheDocument();
+
+		const runCalls = fetchMock.mock.calls.filter(([url]) =>
+			/^\/api\/payroll\/(generate|bulk-pdf|export-sheet)/.test(String(url))
+		);
+		expect(runCalls).toEqual([]);
 	});
 });

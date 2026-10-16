@@ -1,9 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import {
+	Fragment,
+	useCallback,
+	useEffect,
+	useState,
+	type ReactNode,
+} from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
 	ChevronLeftIcon,
 	ChevronRightIcon,
+	CurrencyRupeeIcon,
 	EyeIcon,
 	FunnelIcon,
 	MagnifyingGlassIcon,
@@ -15,13 +23,21 @@ import {
 import AccessGuard from '@/components/AccessGuard';
 import EmployeeAvatar from '@/components/employees/EmployeeAvatar';
 import EmployeeEditor from '@/components/employees/EmployeeEditor';
+import ContractPaySection from '@/components/employees/ContractPaySection';
+import InlineSalaryPanel from '@/components/employees/InlineSalaryPanel';
+import SalaryStructureExportButton from '@/components/employees/SalaryStructureExportButton';
+import SalaryProfileSection, {
+	type SalaryProfileRecord,
+} from '@/components/employees/SalaryProfileSection';
 import Navbar from '@/components/Navbar';
 import { formatDate } from '@/lib/format';
+import { apiGet } from '@/lib/api-client';
 import {
 	useEmployeeDirectory,
 	type EmployeeRecord,
 } from '@/hooks/useEmployeeDirectory';
 import { useEmployeeForm } from '@/hooks/useEmployeeForm';
+import { useSessionRBAC } from '@/utils/client-rbac';
 
 function employeeName(employee: EmployeeRecord): string {
 	return (
@@ -50,12 +66,65 @@ function statusBadgeClass(value: unknown): string {
 	);
 }
 
+/**
+ * Route-owned pay section for the editor, per selected employee: a Payroll
+ * employee gets the Salary Profile tab (overrides for a super admin or a
+ * payroll:update holder), a Contract employee gets the Contract Pay tab, and
+ * any other Employee Type gets no extra tab. The editor renders the section
+ * in edit mode only, so view mode keeps today's behavior.
+ */
+function paySectionFor(
+	employee: EmployeeRecord | null,
+	canOverride: boolean
+): { key: string; label: string; render: () => ReactNode } | undefined {
+	if (!employee) return undefined;
+	if (employee.employee_type === 'Payroll') {
+		return {
+			key: 'salary',
+			label: 'Salary Profile',
+			render: () => (
+				<SalaryProfileSection employee={employee} canOverride={canOverride} />
+			),
+		};
+	}
+	if (employee.employee_type === 'Contract') {
+		return {
+			key: 'contract',
+			label: 'Contract Pay',
+			render: () => <ContractPaySection employee={employee} />,
+		};
+	}
+	return undefined;
+}
+
 export default function EmployeeHub() {
 	const directory = useEmployeeDirectory();
 	const { setFilter, refresh, refreshAll } = directory;
+	const { user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
+	const canPayrollRead = can(RESOURCES.PAYROLL, PERMISSIONS.READ);
+	const canOverrideSalary = Boolean(
+		user?.is_super_admin || can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE)
+	);
 	const [mode, setMode] = useState<'list' | 'add' | 'edit' | 'view'>('list');
 	const [actionMessage, setActionMessage] = useState('');
 	const [actionError, setActionError] = useState('');
+	const [expandedSalaryId, setExpandedSalaryId] = useState<
+		number | string | null
+	>(null);
+
+	// One row expands at a time; the profile endpoint enforces payroll:read
+	// server-side (ADR-0019), so the query runs only for a granted session.
+	const inlineQuery = useQuery({
+		queryKey: ['salary-profile', expandedSalaryId],
+		queryFn: async () => {
+			const data = (await apiGet('/api/payroll/salary-profile', {
+				employee_id: expandedSalaryId,
+			})) as { success?: boolean; data?: SalaryProfileRecord[] };
+			return data.data?.[0] ?? null;
+		},
+		enabled: expandedSalaryId !== null && canPayrollRead,
+		staleTime: 0,
+	});
 
 	// Deep links (/employees?type=Payroll) seed the filter once on mount; later
 	// filter changes never write the URL.
@@ -123,6 +192,14 @@ export default function EmployeeHub() {
 		}
 	};
 
+	// Pay-flavored controls stay behind payroll:read (ADR-0019): the salary
+	// profile endpoint enforces the grant server-side with no employees
+	// fallback, so the hub never becomes a salary surface for an
+	// employees-only reader.
+	const extraSection = canPayrollRead
+		? paySectionFor(form.selectedEmployee, canOverrideSalary)
+		: undefined;
+
 	return (
 		<AccessGuard
 			resource="employees"
@@ -176,9 +253,13 @@ export default function EmployeeHub() {
 							onBack={showList}
 							onEdit={() => setMode('edit')}
 							workplaces={directory.workplaces}
+							extraSection={extraSection}
 						/>
 					) : (
 						<>
+							{/* Salary master data actions */}
+							{canPayrollRead && <SalaryStructureExportButton />}
+
 							<div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
 								<div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-7">
 									<label className="relative lg:col-span-2">
@@ -337,10 +418,8 @@ export default function EmployeeHub() {
 											</thead>
 											<tbody className="divide-y divide-gray-200 bg-white">
 												{directory.employees.map((employee) => (
-													<tr
-														key={String(employee.id)}
-														className="hover:bg-gray-50"
-													>
+													<Fragment key={String(employee.id)}>
+													<tr className="hover:bg-gray-50">
 														<td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-[#64126D]">
 															{employee.employee_id || '—'}
 														</td>
@@ -386,6 +465,25 @@ export default function EmployeeHub() {
 														</td>
 														<td className="whitespace-nowrap px-5 py-4 text-right">
 															<div className="flex justify-end gap-1">
+																{canPayrollRead &&
+																	employee.employee_type === 'Payroll' && (
+																		<button
+																			type="button"
+																			aria-label={`View salary profile for ${employeeName(employee)}`}
+																			onClick={() =>
+																				setExpandedSalaryId((current) =>
+																					current === employee.id ? null : employee.id
+																				)
+																			}
+																			className={`rounded-lg p-2 ${
+																				expandedSalaryId === employee.id
+																					? 'bg-[#64126D] text-white'
+																					: 'text-green-600 hover:bg-green-50'
+																			}`}
+																		>
+																			<CurrencyRupeeIcon className="h-4 w-4" />
+																		</button>
+																	)}
 																<button
 																	type="button"
 																	aria-label={`View ${employeeName(employee)}`}
@@ -413,6 +511,26 @@ export default function EmployeeHub() {
 															</div>
 														</td>
 													</tr>
+													{expandedSalaryId === employee.id && (
+														<tr className="bg-purple-50/50">
+															<td colSpan={9} className="px-6 py-4">
+																<InlineSalaryPanel
+																	employee={employee}
+																	profile={inlineQuery.data}
+																	loading={
+																		inlineQuery.isPending || inlineQuery.isFetching
+																	}
+																	error={
+																		inlineQuery.error instanceof Error
+																			? inlineQuery.error.message
+																			: ''
+																	}
+																	onOpenEditor={openEdit}
+																/>
+															</td>
+														</tr>
+													)}
+													</Fragment>
 												))}
 											</tbody>
 										</table>
