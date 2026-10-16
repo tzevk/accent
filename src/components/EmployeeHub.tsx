@@ -130,6 +130,10 @@ export default function EmployeeHub() {
 	const [expandedSalaryId, setExpandedSalaryId] = useState<
 		number | string | null
 	>(null);
+	// True when the editor was opened from a pay entry point (the inline
+	// panel's edit link), so it mounts on the pay tab instead of the first
+	// section. The editor unmounts per open, so each open sets its own value.
+	const [startOnPaySection, setStartOnPaySection] = useState(false);
 
 	// One row expands at a time; the profile endpoint enforces payroll:read
 	// server-side (ADR-0019), so the query runs only for a granted session.
@@ -167,22 +171,26 @@ export default function EmployeeHub() {
 
 	const showList = () => {
 		setMode('list');
+		setStartOnPaySection(false);
 		form.startNewEmployee();
 	};
 	const openAdd = () => {
 		form.startNewEmployee();
+		setStartOnPaySection(false);
 		setActionMessage('');
 		setActionError('');
 		setMode('add');
 	};
-	const openEdit = (employee: EmployeeRecord) => {
+	const openEdit = (employee: EmployeeRecord, onPaySection = false) => {
 		form.openEmployee(employee);
+		setStartOnPaySection(onPaySection);
 		setActionMessage('');
 		setActionError('');
 		setMode('edit');
 	};
 	const openView = (employee: EmployeeRecord) => {
 		form.openEmployee(employee);
+		setStartOnPaySection(false);
 		setActionMessage('');
 		setActionError('');
 		setMode('view');
@@ -272,6 +280,7 @@ export default function EmployeeHub() {
 							onEdit={() => setMode('edit')}
 							workplaces={directory.workplaces}
 							extraSection={extraSection}
+							startOnExtraSection={startOnPaySection}
 						/>
 					) : (
 						<>
@@ -554,7 +563,9 @@ export default function EmployeeHub() {
 																				? inlineQuery.error.message
 																				: ''
 																		}
-																		onOpenEditor={openEdit}
+																		onOpenEditor={(employee) =>
+																			openEdit(employee, true)
+																		}
 																	/>
 																</td>
 															</tr>

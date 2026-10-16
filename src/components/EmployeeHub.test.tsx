@@ -720,4 +720,50 @@ describe('EmployeeHub', () => {
 		);
 		expect(runCalls).toEqual([]);
 	});
+
+	it("opens the Salary Profile tab from the panel's edit link", async () => {
+		rbacMock.payrollRead = true;
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		fireEvent.click(
+			screen.getByRole('button', { name: /View salary profile for Alice/ })
+		);
+		fireEvent.click(
+			await screen.findByRole('button', { name: 'Edit Salary Profile →' })
+		);
+
+		// The salary agreement form is the active section, not Personal
+		// Information: its fields render without another click.
+		expect(await screen.findByLabelText('Gross Salary *')).toBeVisible();
+	});
+
+	it('opens the row edit on the first section, not the pay tab', async () => {
+		rbacMock.payrollRead = true;
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		openEmployee('Alice Worker', 'Edit');
+		await sectionRail();
+		// The tab exists in the rail, but the editor still starts on the
+		// employee's own fields.
+		expect(
+			await screen.findByRole('heading', { name: 'Personal Information' })
+		).toBeVisible();
+		expect(screen.queryByLabelText('Gross Salary *')).not.toBeInTheDocument();
+	});
+
+	it('opens the first section when view switches to edit', async () => {
+		rbacMock.payrollRead = true;
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		openEmployee('Alice Worker', 'View');
+		fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+		expect(
+			await screen.findByRole('heading', { name: 'Personal Information' })
+		).toBeVisible();
+		expect(screen.queryByLabelText('Gross Salary *')).not.toBeInTheDocument();
+	});
 });
