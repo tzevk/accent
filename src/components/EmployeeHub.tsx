@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
 	ChevronLeftIcon,
 	ChevronRightIcon,
@@ -52,10 +52,19 @@ function statusBadgeClass(value: unknown): string {
 
 export default function EmployeeHub() {
 	const directory = useEmployeeDirectory();
-	const { refresh, refreshAll } = directory;
+	const { setFilter, refresh, refreshAll } = directory;
 	const [mode, setMode] = useState<'list' | 'add' | 'edit' | 'view'>('list');
 	const [actionMessage, setActionMessage] = useState('');
 	const [actionError, setActionError] = useState('');
+
+	// Deep links (/employees?type=Payroll) seed the filter once on mount; later
+	// filter changes never write the URL.
+	useEffect(() => {
+		const seeded = new URLSearchParams(window.location.search).get('type');
+		if (seeded === 'Payroll' || seeded === 'Contract') {
+			setFilter('employeeType', seeded);
+		}
+	}, [setFilter]);
 
 	const handleSaved = useCallback(
 		async (_employee: EmployeeRecord, created: boolean) => {
@@ -171,7 +180,7 @@ export default function EmployeeHub() {
 					) : (
 						<>
 							<div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-								<div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-6">
+								<div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-7">
 									<label className="relative lg:col-span-2">
 										<span className="sr-only">Search employees</span>
 										<MagnifyingGlassIcon className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
@@ -242,6 +251,18 @@ export default function EmployeeHub() {
 										<option value="employed">Employed</option>
 										<option value="resigned">Resigned</option>
 									</select>
+									<select
+										aria-label="Employee Type filter"
+										value={directory.filters.employeeType}
+										onChange={(event) =>
+											setFilter('employeeType', event.target.value)
+										}
+										className="rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
+									>
+										<option value="">All Types</option>
+										<option value="Payroll">Payroll</option>
+										<option value="Contract">Contract</option>
+									</select>
 									<button
 										type="button"
 										onClick={() => {
@@ -276,7 +297,11 @@ export default function EmployeeHub() {
 								) : directory.employees.length === 0 ? (
 									<div className="p-10 text-center">
 										<UserGroupIcon className="mx-auto mb-3 h-12 w-12 text-gray-300" />
-										<p className="mb-4 text-gray-500">No employees yet</p>
+										<p className="mb-4 text-gray-500">
+											{directory.filters.employeeType
+												? `No ${directory.filters.employeeType} employees yet`
+												: 'No employees yet'}
+										</p>
 										<button
 											type="button"
 											onClick={openAdd}
@@ -294,6 +319,7 @@ export default function EmployeeHub() {
 														'Employee ID',
 														'Employee',
 														'Department',
+														'Employee Type',
 														'Position',
 														'Workplace',
 														'Hire Date',
@@ -338,6 +364,9 @@ export default function EmployeeHub() {
 														</td>
 														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
 															{String(employee.department || '—')}
+														</td>
+														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+															{String(employee.employee_type || '—')}
 														</td>
 														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
 															{String(employee.position || '—')}

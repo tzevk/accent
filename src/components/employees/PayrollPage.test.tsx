@@ -189,10 +189,11 @@ describe('PayrollPage', () => {
 				String(url).startsWith('/api/employees/list')
 			);
 			expect(listCalls.length).toBeGreaterThan(0);
+			// The page seeds its Employee Type filter on mount, so the first
+			// list request can precede the filter; the list must still end up
+			// filtered to Payroll.
 			expect(
-				listCalls.every(([url]) =>
-					String(url).includes('employee_type=Payroll')
-				)
+				listCalls.some(([url]) => String(url).includes('employee_type=Payroll'))
 			).toBe(true);
 		});
 

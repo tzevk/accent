@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,7 +19,8 @@ vi.mock('@/components/Navbar', () => ({
 
 import EmployeeHub from '@/components/EmployeeHub';
 
-function renderHub() {
+function renderHub(search = '') {
+	window.history.pushState({}, '', `/employees${search}`);
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false, gcTime: 0 } },
 	});
@@ -22,6 +29,15 @@ function renderHub() {
 			<EmployeeHub />
 		</QueryClientProvider>
 	);
+}
+
+function listEmployeeTypes() {
+	return fetchMock.mock.calls
+		.map(([url]) => String(url))
+		.filter((url) => url.startsWith('/api/employees/list'))
+		.map((url) =>
+			new URL(url, 'http://localhost').searchParams.get('employee_type')
+		);
 }
 
 const employees = [
@@ -49,6 +65,18 @@ const employees = [
 		status: 'active',
 		employee_type: 'Contract',
 	},
+	{
+		id: 3,
+		employee_id: 'ATS003',
+		first_name: 'Carol',
+		last_name: 'Director',
+		email: 'carol@example.com',
+		department: 'Finance',
+		position: 'Director',
+		workplace: 'Delhi',
+		hire_date: '2023-05-01T00:00:00.000Z',
+		status: 'active',
+	},
 ];
 
 function response(body: unknown, ok = true) {
@@ -58,6 +86,7 @@ function response(body: unknown, ok = true) {
 describe('EmployeeHub', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		window.history.pushState({}, '', '/employees');
 		vi.stubGlobal('fetch', fetchMock);
 		fetchMock.mockImplementation(
 			(input: RequestInfo | URL, init?: RequestInit) => {
@@ -135,6 +164,7 @@ describe('EmployeeHub', () => {
 					String(url).includes('/api/payroll/')
 				)
 			).toBe(false);
+			expect(listEmployeeTypes().every((type) => type === null)).toBe(true);
 		});
 	});
 
@@ -230,5 +260,115 @@ describe('EmployeeHub', () => {
 		await waitFor(() => {
 			expect(screen.getByText('1')).toBeVisible();
 		});
+	});
+
+	it('seeds the Employee Type filter from ?type=Payroll and lists that type', async () => {
+		renderHub('?type=Payroll');
+
+		await screen.findByText('Alice Worker');
+		await waitFor(() => {
+			expect(listEmployeeTypes()).toContain('Payroll');
+		});
+		expect(screen.getByLabelText('Employee Type filter')).toHaveValue(
+			'Payroll'
+		);
+		expect(window.location.search).toBe('?type=Payroll');
+	});
+
+	it('seeds the Employee Type filter from ?type=Contract and lists that type', async () => {
+		renderHub('?type=Contract');
+
+		await screen.findByText('Alice Worker');
+		await waitFor(() => {
+			expect(listEmployeeTypes()).toContain('Contract');
+		});
+		expect(screen.getByLabelText('Employee Type filter')).toHaveValue(
+			'Contract'
+		);
+	});
+
+	it('lists all employee types when ?type= is unknown', async () => {
+		renderHub('?type=Deputation');
+
+		await screen.findByText('Alice Worker');
+		await waitFor(() => {
+			expect(listEmployeeTypes().length).toBeGreaterThan(0);
+		});
+		expect(listEmployeeTypes().every((type) => type === null)).toBe(true);
+		expect(screen.getByLabelText('Employee Type filter')).toHaveValue('');
+	});
+
+	it('changes the list query without rewriting the URL when the filter changes', async () => {
+		renderHub('?type=Payroll');
+
+		await screen.findByText('Alice Worker');
+		fireEvent.change(screen.getByLabelText('Employee Type filter'), {
+			target: { value: 'Contract' },
+		});
+
+		await waitFor(() => {
+			expect(listEmployeeTypes()).toContain('Contract');
+		});
+		expect(screen.getByLabelText('Employee Type filter')).toHaveValue(
+			'Contract'
+		);
+		expect(window.location.search).toBe('?type=Payroll');
+
+		fireEvent.change(screen.getByLabelText('Employee Type filter'), {
+			target: { value: '' },
+		});
+		await waitFor(() => {
+			expect(listEmployeeTypes()).toContain(null);
+		});
+		expect(window.location.search).toBe('?type=Payroll');
+	});
+
+	it('renders the Employee Type column for every row', async () => {
+		renderHub();
+
+		await screen.findByText('Alice Worker');
+		expect(
+			screen.getByRole('columnheader', { name: 'Employee Type' })
+		).toBeVisible();
+		expect(
+			within(screen.getByRole('row', { name: /Alice Worker/ })).getByText(
+				'Payroll'
+			)
+		).toBeVisible();
+		expect(
+			within(screen.getByRole('row', { name: /Bob Builder/ })).getByText(
+				'Contract'
+			)
+		).toBeVisible();
+		expect(
+			within(screen.getByRole('row', { name: /Carol Director/ })).getByText('—')
+		).toBeVisible();
+	});
+
+	it('names the active Employee Type filter in the empty state', async () => {
+		fetchMock.mockImplementation((input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.startsWith('/api/employees/list')) {
+				return response({
+					success: true,
+					employees: [],
+					departments: [],
+					workplaces: [],
+					pagination: { total: 0, totalRecords: 0, limit: 100 },
+				});
+			}
+			return response({ success: true, data: [] });
+		});
+
+		const allTypes = renderHub();
+		expect(await screen.findByText('No employees yet')).toBeVisible();
+		allTypes.unmount();
+
+		const payroll = renderHub('?type=Payroll');
+		expect(await screen.findByText('No Payroll employees yet')).toBeVisible();
+		payroll.unmount();
+
+		renderHub('?type=Contract');
+		expect(await screen.findByText('No Contract employees yet')).toBeVisible();
 	});
 });

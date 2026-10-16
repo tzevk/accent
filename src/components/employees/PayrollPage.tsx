@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -334,8 +334,13 @@ interface PayrollMessage {
 }
 
 export default function PayrollPage() {
-	const directory = useEmployeeDirectory('Payroll');
+	const directory = useEmployeeDirectory();
+	const { setFilter } = directory;
 	const { user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
+	// Route-owned type filter until this page merges into the employee hub.
+	useEffect(() => {
+		setFilter('employeeType', 'Payroll');
+	}, [setFilter]);
 	const canOverrideSalary = Boolean(
 		user?.is_super_admin || can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE)
 	);
