@@ -355,7 +355,7 @@ export default function EmployeeHub() {
 										}
 										className="rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
 									>
-										<option value="">All Employment Status</option>
+										<option value="">Employment Status</option>
 										<option value="employed">Employed</option>
 										<option value="resigned">Resigned</option>
 									</select>
@@ -376,14 +376,16 @@ export default function EmployeeHub() {
 									</select>
 									<button
 										type="button"
+										aria-label="Clear all filters"
+										title="Clear all filters"
 										onClick={() => {
 											directory.clearFilters();
 											setActionMessage('');
 										}}
-										className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-3 text-gray-700 hover:bg-gray-50"
+										className="inline-flex items-center gap-2 rounded-xl border border-gray-300 px-4 py-3 text-gray-700 hover:bg-gray-50"
 									>
 										<FunnelIcon className="h-5 w-5" />
-										Clear Filters
+										<span className="truncate">Clear</span>
 									</button>
 								</div>
 							</div>
@@ -422,8 +424,19 @@ export default function EmployeeHub() {
 										</button>
 									</div>
 								) : (
-									<div className="overflow-x-auto">
-										<table className="min-w-full divide-y divide-gray-200">
+									<div className="overflow-x-auto max-xl:[scrollbar-width:thin] xl:overflow-visible">
+										<table className="w-full divide-y divide-gray-200 max-xl:min-w-[1024px] xl:table-fixed">
+											<colgroup className="hidden xl:table-column-group">
+												<col className="w-[124px]" />
+												<col />
+												<col className="w-[10%]" />
+												<col className="w-[104px]" />
+												<col className="w-[11%]" />
+												<col className="w-[10%]" />
+												<col className="w-[104px]" />
+												<col className="w-[92px]" />
+												<col className="w-[140px]" />
+											</colgroup>
 											<thead className="bg-gray-50">
 												<tr>
 													{[
@@ -439,7 +452,7 @@ export default function EmployeeHub() {
 													].map((heading) => (
 														<th
 															key={heading}
-															className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600"
+															className="truncate px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600"
 														>
 															{heading}
 														</th>
@@ -450,53 +463,79 @@ export default function EmployeeHub() {
 												{directory.employees.map((employee) => (
 													<Fragment key={String(employee.id)}>
 														<tr className="hover:bg-gray-50">
-															<td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-[#64126D]">
+															<td
+																className="max-w-0 truncate px-3 py-3 font-medium text-[#64126D]"
+																title={employee.employee_id || undefined}
+															>
 																{employee.employee_id || '—'}
 															</td>
-															<td className="whitespace-nowrap px-5 py-4">
-																<div className="flex items-center gap-3">
+															<td className="px-3 py-3">
+																<div className="flex items-center gap-2.5">
 																	<EmployeeAvatar
 																		src={employee.profile_photo_url}
 																		firstName={employee.first_name}
 																		lastName={employee.last_name}
-																		size={42}
+																		size={36}
 																	/>
-																	<div>
-																		<div className="text-sm font-medium text-gray-900">
+																	<div className="min-w-0">
+																		<div
+																			className="truncate text-sm font-medium text-gray-900"
+																			title={
+																				employeeName(employee) || undefined
+																			}
+																		>
 																			{employeeName(employee)}
 																		</div>
-																		<div className="text-sm text-gray-500">
+																		<div
+																			className="truncate text-sm text-gray-500"
+																			title={employee.email || undefined}
+																		>
 																			{employee.email || '—'}
 																		</div>
 																	</div>
 																</div>
 															</td>
-															<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+															<td
+																className="max-w-0 truncate px-3 py-3 text-sm text-gray-700"
+																title={
+																	String(employee.department || '') || undefined
+																}
+															>
 																{String(employee.department || '—')}
 															</td>
-															<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+															<td className="whitespace-nowrap px-3 py-3 text-sm text-gray-700">
 																{String(employee.employee_type || '—')}
 															</td>
-															<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+															<td
+																className="max-w-0 truncate px-3 py-3 text-sm text-gray-700"
+																title={
+																	String(employee.position || '') || undefined
+																}
+															>
 																{String(employee.position || '—')}
 															</td>
-															<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+															<td
+																className="max-w-0 truncate px-3 py-3 text-sm text-gray-700"
+																title={
+																	String(employee.workplace || '') || undefined
+																}
+															>
 																{String(employee.workplace || '—')}
 															</td>
-															<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+															<td className="whitespace-nowrap px-3 py-3 text-sm text-gray-700">
 																{formatDate(
 																	employee.hire_date as string | null
 																)}
 															</td>
-															<td className="whitespace-nowrap px-5 py-4">
+															<td className="whitespace-nowrap px-3 py-3">
 																<span
 																	className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(employee.status)}`}
 																>
 																	{String(employee.status || 'active')}
 																</span>
 															</td>
-															<td className="whitespace-nowrap px-5 py-4 text-right">
-																<div className="flex justify-end gap-1">
+															<td className="whitespace-nowrap px-3 py-3 text-right">
+																<div className="flex justify-end gap-0.5">
 																	{canPayrollRead &&
 																		employee.employee_type ===
 																			PAY_TYPES.salary && (
