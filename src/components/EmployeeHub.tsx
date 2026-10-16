@@ -67,6 +67,18 @@ function statusBadgeClass(value: unknown): string {
 }
 
 /**
+ * The Employee Types the hub serves pay sections for (ADR-0030). One place
+ * names both values, so the filter, the `?type=` deep link, the editor tab and
+ * the row expand control cannot drift apart.
+ */
+const PAY_TYPES = {
+	salary: 'Payroll',
+	contract: 'Contract',
+} as const;
+
+const PAY_TYPE_VALUES: readonly string[] = Object.values(PAY_TYPES);
+
+/**
  * Route-owned pay section for the editor, per selected employee: a Payroll
  * employee gets the Salary Profile tab (overrides for a super admin or a
  * payroll:update holder), a Contract employee gets the Contract Pay tab, and
@@ -78,7 +90,7 @@ function paySectionFor(
 	canOverride: boolean
 ): { key: string; label: string; render: () => ReactNode } | undefined {
 	if (!employee) return undefined;
-	if (employee.employee_type === 'Payroll') {
+	if (employee.employee_type === PAY_TYPES.salary) {
 		return {
 			key: 'salary',
 			label: 'Salary Profile',
@@ -87,7 +99,7 @@ function paySectionFor(
 			),
 		};
 	}
-	if (employee.employee_type === 'Contract') {
+	if (employee.employee_type === PAY_TYPES.contract) {
 		return {
 			key: 'contract',
 			label: 'Contract Pay',
@@ -100,8 +112,15 @@ function paySectionFor(
 export default function EmployeeHub() {
 	const directory = useEmployeeDirectory();
 	const { setFilter, refresh, refreshAll } = directory;
-	const { user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
-	const canPayrollRead = can(RESOURCES.PAYROLL, PERMISSIONS.READ);
+	const {
+		user,
+		can,
+		RESOURCES,
+		PERMISSIONS,
+		loading: rbacLoading,
+	} = useSessionRBAC();
+	const canPayrollRead =
+		!rbacLoading && can(RESOURCES.PAYROLL, PERMISSIONS.READ);
 	const canOverrideSalary = Boolean(
 		user?.is_super_admin || can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE)
 	);
@@ -130,9 +149,8 @@ export default function EmployeeHub() {
 	// filter changes never write the URL.
 	useEffect(() => {
 		const seeded = new URLSearchParams(window.location.search).get('type');
-		if (seeded === 'Payroll' || seeded === 'Contract') {
-			setFilter('employeeType', seeded);
-		}
+		const payType = PAY_TYPE_VALUES.find((type) => type === seeded);
+		if (payType) setFilter('employeeType', payType);
 	}, [setFilter]);
 
 	const handleSaved = useCallback(
@@ -341,8 +359,11 @@ export default function EmployeeHub() {
 										className="rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
 									>
 										<option value="">All Types</option>
-										<option value="Payroll">Payroll</option>
-										<option value="Contract">Contract</option>
+										{PAY_TYPE_VALUES.map((type) => (
+											<option key={type} value={type}>
+												{type}
+											</option>
+										))}
 									</select>
 									<button
 										type="button"
@@ -419,117 +440,125 @@ export default function EmployeeHub() {
 											<tbody className="divide-y divide-gray-200 bg-white">
 												{directory.employees.map((employee) => (
 													<Fragment key={String(employee.id)}>
-													<tr className="hover:bg-gray-50">
-														<td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-[#64126D]">
-															{employee.employee_id || '—'}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4">
-															<div className="flex items-center gap-3">
-																<EmployeeAvatar
-																	src={employee.profile_photo_url}
-																	firstName={employee.first_name}
-																	lastName={employee.last_name}
-																	size={42}
-																/>
-																<div>
-																	<div className="text-sm font-medium text-gray-900">
-																		{employeeName(employee)}
-																	</div>
-																	<div className="text-sm text-gray-500">
-																		{employee.email || '—'}
+														<tr className="hover:bg-gray-50">
+															<td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-[#64126D]">
+																{employee.employee_id || '—'}
+															</td>
+															<td className="whitespace-nowrap px-5 py-4">
+																<div className="flex items-center gap-3">
+																	<EmployeeAvatar
+																		src={employee.profile_photo_url}
+																		firstName={employee.first_name}
+																		lastName={employee.last_name}
+																		size={42}
+																	/>
+																	<div>
+																		<div className="text-sm font-medium text-gray-900">
+																			{employeeName(employee)}
+																		</div>
+																		<div className="text-sm text-gray-500">
+																			{employee.email || '—'}
+																		</div>
 																	</div>
 																</div>
-															</div>
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
-															{String(employee.department || '—')}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
-															{String(employee.employee_type || '—')}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
-															{String(employee.position || '—')}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
-															{String(employee.workplace || '—')}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
-															{formatDate(employee.hire_date as string | null)}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4">
-															<span
-																className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(employee.status)}`}
-															>
-																{String(employee.status || 'active')}
-															</span>
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-right">
-															<div className="flex justify-end gap-1">
-																{canPayrollRead &&
-																	employee.employee_type === 'Payroll' && (
-																		<button
-																			type="button"
-																			aria-label={`View salary profile for ${employeeName(employee)}`}
-																			onClick={() =>
-																				setExpandedSalaryId((current) =>
-																					current === employee.id ? null : employee.id
-																				)
-																			}
-																			className={`rounded-lg p-2 ${
-																				expandedSalaryId === employee.id
-																					? 'bg-[#64126D] text-white'
-																					: 'text-green-600 hover:bg-green-50'
-																			}`}
-																		>
-																			<CurrencyRupeeIcon className="h-4 w-4" />
-																		</button>
-																	)}
-																<button
-																	type="button"
-																	aria-label={`View ${employeeName(employee)}`}
-																	onClick={() => openView(employee)}
-																	className="rounded-lg p-2 text-purple-600 hover:bg-purple-50"
+															</td>
+															<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+																{String(employee.department || '—')}
+															</td>
+															<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+																{String(employee.employee_type || '—')}
+															</td>
+															<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+																{String(employee.position || '—')}
+															</td>
+															<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+																{String(employee.workplace || '—')}
+															</td>
+															<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
+																{formatDate(
+																	employee.hire_date as string | null
+																)}
+															</td>
+															<td className="whitespace-nowrap px-5 py-4">
+																<span
+																	className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(employee.status)}`}
 																>
-																	<EyeIcon className="h-4 w-4" />
-																</button>
-																<button
-																	type="button"
-																	aria-label={`Edit ${employeeName(employee)}`}
-																	onClick={() => openEdit(employee)}
-																	className="rounded-lg p-2 text-blue-600 hover:bg-blue-50"
-																>
-																	<PencilIcon className="h-4 w-4" />
-																</button>
-																<button
-																	type="button"
-																	aria-label={`Delete ${employeeName(employee)}`}
-																	onClick={() => void deleteEmployee(employee)}
-																	className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-																>
-																	<TrashIcon className="h-4 w-4" />
-																</button>
-															</div>
-														</td>
-													</tr>
-													{expandedSalaryId === employee.id && (
-														<tr className="bg-purple-50/50">
-															<td colSpan={9} className="px-6 py-4">
-																<InlineSalaryPanel
-																	employee={employee}
-																	profile={inlineQuery.data}
-																	loading={
-																		inlineQuery.isPending || inlineQuery.isFetching
-																	}
-																	error={
-																		inlineQuery.error instanceof Error
-																			? inlineQuery.error.message
-																			: ''
-																	}
-																	onOpenEditor={openEdit}
-																/>
+																	{String(employee.status || 'active')}
+																</span>
+															</td>
+															<td className="whitespace-nowrap px-5 py-4 text-right">
+																<div className="flex justify-end gap-1">
+																	{canPayrollRead &&
+																		employee.employee_type ===
+																			PAY_TYPES.salary && (
+																			<button
+																				type="button"
+																				aria-label={`View salary profile for ${employeeName(employee)}`}
+																				onClick={() =>
+																					setExpandedSalaryId((current) =>
+																						current === employee.id
+																							? null
+																							: employee.id
+																					)
+																				}
+																				className={`rounded-lg p-2 ${
+																					expandedSalaryId === employee.id
+																						? 'bg-[#64126D] text-white'
+																						: 'text-green-600 hover:bg-green-50'
+																				}`}
+																			>
+																				<CurrencyRupeeIcon className="h-4 w-4" />
+																			</button>
+																		)}
+																	<button
+																		type="button"
+																		aria-label={`View ${employeeName(employee)}`}
+																		onClick={() => openView(employee)}
+																		className="rounded-lg p-2 text-purple-600 hover:bg-purple-50"
+																	>
+																		<EyeIcon className="h-4 w-4" />
+																	</button>
+																	<button
+																		type="button"
+																		aria-label={`Edit ${employeeName(employee)}`}
+																		onClick={() => openEdit(employee)}
+																		className="rounded-lg p-2 text-blue-600 hover:bg-blue-50"
+																	>
+																		<PencilIcon className="h-4 w-4" />
+																	</button>
+																	<button
+																		type="button"
+																		aria-label={`Delete ${employeeName(employee)}`}
+																		onClick={() =>
+																			void deleteEmployee(employee)
+																		}
+																		className="rounded-lg p-2 text-red-600 hover:bg-red-50"
+																	>
+																		<TrashIcon className="h-4 w-4" />
+																	</button>
+																</div>
 															</td>
 														</tr>
-													)}
+														{expandedSalaryId === employee.id && (
+															<tr className="bg-purple-50/50">
+																<td colSpan={9} className="px-6 py-4">
+																	<InlineSalaryPanel
+																		employee={employee}
+																		profile={inlineQuery.data}
+																		loading={
+																			inlineQuery.isPending ||
+																			inlineQuery.isFetching
+																		}
+																		error={
+																			inlineQuery.error instanceof Error
+																				? inlineQuery.error.message
+																				: ''
+																		}
+																		onOpenEditor={openEdit}
+																	/>
+																</td>
+															</tr>
+														)}
 													</Fragment>
 												))}
 											</tbody>

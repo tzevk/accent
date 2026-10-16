@@ -5,7 +5,7 @@ import SalaryProfileSection, {
 	num,
 	type SalaryProfileRecord,
 } from '@/components/employees/SalaryProfileSection';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { add, sub, toNumber } from '@/lib/money';
 import type { EmployeeRecord } from '@/hooks/useEmployeeDirectory';
 
@@ -289,11 +289,9 @@ export default function InlineSalaryPanel({
 			<div className="flex items-center justify-between text-xs text-gray-500">
 				<span>
 					Effective:{' '}
-					{profile.effective_from
-						? new Date(profile.effective_from).toLocaleDateString('en-IN')
-						: 'N/A'}
+					{profile.effective_from ? formatDate(profile.effective_from) : 'N/A'}
 					{profile.effective_to
-						? ` → ${new Date(profile.effective_to).toLocaleDateString('en-IN')}`
+						? ` → ${formatDate(profile.effective_to)}`
 						: ' → Ongoing'}
 				</span>
 				<button

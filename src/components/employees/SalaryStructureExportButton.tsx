@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { DocumentArrowDownIcon } from '@heroicons/react/24/outline';
+import { downloadFile } from '@/lib/download';
 
 interface ExportMessage {
 	type: '' | 'success' | 'error';
@@ -25,24 +26,10 @@ export default function SalaryStructureExportButton() {
 		setExportingAllStructures(true);
 		setMessage({ type: '', text: '' });
 		try {
-			const res = await fetch('/api/employees/salary-structure/export');
-			if (!res.ok) {
-				const data: unknown = await res.json().catch(() => ({}));
-				const error =
-					typeof data === 'object' && data !== null && 'error' in data
-						? data.error
-						: null;
-				throw new Error(String(error ?? '') || 'Export failed');
-			}
-			const blob = await res.blob();
-			const objectUrl = window.URL.createObjectURL(blob);
-			const link = document.createElement('a');
-			link.href = objectUrl;
-			link.download = 'Salary_Structure_All_Users.xlsx';
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-			window.URL.revokeObjectURL(objectUrl);
+			await downloadFile(
+				'/api/employees/salary-structure/export',
+				'Salary_Structure_All_Users.xlsx'
+			);
 			setMessage({
 				type: 'success',
 				text: 'All-users salary structure Excel downloaded',
