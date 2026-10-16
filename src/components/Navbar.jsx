@@ -359,6 +359,18 @@ const adminMenuGroups = [
 				href: '/admin/payroll/rates/da',
 				icon: DocumentTextIcon,
 			},
+			{
+				// Issue #360: the salary-profiles and contract lists merged into
+				// the employee hub; both entries deep-link the filtered list.
+				name: 'Salary Profiles',
+				href: '/employees?type=Payroll',
+				icon: UserGroupIcon,
+			},
+			{
+				name: 'Contract Pay',
+				href: '/employees?type=Contract',
+				icon: BriefcaseIcon,
+			},
 		],
 	},
 	{
