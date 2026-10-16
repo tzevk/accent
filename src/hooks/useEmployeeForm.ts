@@ -26,7 +26,6 @@ export interface EmployeeOption {
 }
 
 export interface EmployeeFormOptions {
-	employeeType?: string | null;
 	onSaved?: (
 		employee: EmployeeRecord,
 		created: boolean
@@ -104,13 +103,12 @@ async function readJson(url: string): Promise<ApiResponse> {
 }
 
 export function useEmployeeForm({
-	employeeType = null,
 	onSaved,
 }: EmployeeFormOptions = {}): EmployeeFormBoundary {
 	const [selectedEmployee, setSelectedEmployee] =
 		useState<EmployeeRecord | null>(null);
 	const [formData, setFormData] = useState<EmployeeFormData>(() =>
-		createEmployeeFormData(null, employeeType)
+		createEmployeeFormData(null)
 	);
 	const [formError, setFormError] = useState('');
 	const [successMessage, setSuccessMessage] = useState('');
@@ -213,12 +211,12 @@ export function useEmployeeForm({
 
 	const startNewEmployee = useCallback(() => {
 		setSelectedEmployee(null);
-		setFormData(createEmployeeFormData(null, employeeType));
+		setFormData(createEmployeeFormData(null));
 		setFormError('');
 		setSuccessMessage('');
 		setProfileLocked(false);
 		setActiveSection('personal');
-	}, [employeeType]);
+	}, []);
 
 	const updateField = useCallback((field: string, value: EmployeeFormValue) => {
 		setFormData((current) => ({ ...current, [field]: value }));

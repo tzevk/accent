@@ -357,7 +357,6 @@ export default function PayrollPage() {
 	});
 
 	const form = useEmployeeForm({
-		employeeType: 'Payroll',
 		onSaved: async () => {
 			await Promise.all([directory.refresh(), directory.refreshAll()]);
 			setMode('list');

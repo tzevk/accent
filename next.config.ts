@@ -92,6 +92,19 @@ const nextConfig: NextConfig = {
 				destination: '/admin/payroll/rates/da',
 				permanent: true,
 			},
+			{
+				// Issue #360: the salary-profiles and contract lists merged into
+				// the employee hub. The Payroll group deep-links the filtered
+				// view, and these permanent redirects keep bookmarks working.
+				source: '/employees/payroll',
+				destination: '/employees?type=Payroll',
+				permanent: true,
+			},
+			{
+				source: '/employees/contract',
+				destination: '/employees?type=Contract',
+				permanent: true,
+			},
 		];
 	},
 

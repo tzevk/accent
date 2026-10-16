@@ -42,7 +42,6 @@ export default function ContractPage() {
 	}, [setFilter]);
 
 	const form = useEmployeeForm({
-		employeeType: 'Contract',
 		onSaved: async () => {
 			await Promise.all([directory.refresh(), directory.refreshAll()]);
 			setMode('list');
