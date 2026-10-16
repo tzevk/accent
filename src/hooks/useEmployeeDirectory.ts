@@ -20,6 +20,7 @@ export interface EmployeeFilters {
 	status: string;
 	workplace: string;
 	employmentStatus: string;
+	employeeType: string;
 }
 
 export interface EmployeePagination {
@@ -41,6 +42,7 @@ const EMPTY_FILTERS: EmployeeFilters = {
 	status: '',
 	workplace: '',
 	employmentStatus: '',
+	employeeType: '',
 };
 
 function sortEmployees(records: EmployeeRecord[]): EmployeeRecord[] {
@@ -60,7 +62,7 @@ function sortEmployees(records: EmployeeRecord[]): EmployeeRecord[] {
 	});
 }
 
-export function useEmployeeDirectory(employeeType?: string | null) {
+export function useEmployeeDirectory() {
 	const [filters, setFilters] = useState<EmployeeFilters>(EMPTY_FILTERS);
 	const [sidebarSearch, setSidebarSearch] = useState('');
 	const [page, setPage] = useState(1);
@@ -76,12 +78,12 @@ export function useEmployeeDirectory(employeeType?: string | null) {
 			...(filters.employmentStatus && {
 				employment_status: filters.employmentStatus,
 			}),
-			...(employeeType && { employee_type: employeeType }),
+			...(filters.employeeType && { employee_type: filters.employeeType }),
 		}),
-		[employeeType, filters, page]
+		[filters, page]
 	);
 	const listQuery = useQuery<EmployeeListResponse>({
-		queryKey: ['employees', employeeType || 'all', queryParams],
+		queryKey: ['employees', filters.employeeType || 'all', queryParams],
 		queryFn: () =>
 			apiGet(
 				'/api/employees/list',
@@ -89,12 +91,12 @@ export function useEmployeeDirectory(employeeType?: string | null) {
 			) as Promise<EmployeeListResponse>,
 	});
 	const allQuery = useQuery<EmployeeListResponse>({
-		queryKey: ['employees', 'all', employeeType || 'all'],
+		queryKey: ['employees', 'all', filters.employeeType || 'all'],
 		queryFn: () =>
 			apiGet('/api/employees/list', {
 				page: 1,
 				limit: 1000,
-				...(employeeType && { employee_type: employeeType }),
+				...(filters.employeeType && { employee_type: filters.employeeType }),
 			}) as Promise<EmployeeListResponse>,
 	});
 	const deleteMutation = useMutation({

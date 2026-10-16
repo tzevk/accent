@@ -1,9 +1,17 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import {
+	Fragment,
+	useCallback,
+	useEffect,
+	useState,
+	type ReactNode,
+} from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
 	ChevronLeftIcon,
 	ChevronRightIcon,
+	CurrencyRupeeIcon,
 	EyeIcon,
 	FunnelIcon,
 	MagnifyingGlassIcon,
@@ -15,13 +23,21 @@ import {
 import AccessGuard from '@/components/AccessGuard';
 import EmployeeAvatar from '@/components/employees/EmployeeAvatar';
 import EmployeeEditor from '@/components/employees/EmployeeEditor';
+import ContractPaySection from '@/components/employees/ContractPaySection';
+import InlineSalaryPanel from '@/components/employees/InlineSalaryPanel';
+import SalaryStructureExportButton from '@/components/employees/SalaryStructureExportButton';
+import SalaryProfileSection, {
+	type SalaryProfileRecord,
+} from '@/components/employees/SalaryProfileSection';
 import Navbar from '@/components/Navbar';
 import { formatDate } from '@/lib/format';
+import { apiGet } from '@/lib/api-client';
 import {
 	useEmployeeDirectory,
 	type EmployeeRecord,
 } from '@/hooks/useEmployeeDirectory';
 import { useEmployeeForm } from '@/hooks/useEmployeeForm';
+import { useSessionRBAC } from '@/utils/client-rbac';
 
 function employeeName(employee: EmployeeRecord): string {
 	return (
@@ -50,12 +66,96 @@ function statusBadgeClass(value: unknown): string {
 	);
 }
 
+/**
+ * The Employee Types the hub serves pay sections for (ADR-0030). One place
+ * names both values, so the filter, the `?type=` deep link, the editor tab and
+ * the row expand control cannot drift apart.
+ */
+const PAY_TYPES = {
+	salary: 'Payroll',
+	contract: 'Contract',
+} as const;
+
+const PAY_TYPE_VALUES: readonly string[] = Object.values(PAY_TYPES);
+
+/**
+ * Route-owned pay section for the editor, per selected employee: a Payroll
+ * employee gets the Salary Profile tab (overrides for a super admin or a
+ * payroll:update holder), a Contract employee gets the Contract Pay tab, and
+ * any other Employee Type gets no extra tab. The editor renders the section
+ * in edit mode only, so view mode keeps today's behavior.
+ */
+function paySectionFor(
+	employee: EmployeeRecord | null,
+	canOverride: boolean
+): { key: string; label: string; render: () => ReactNode } | undefined {
+	if (!employee) return undefined;
+	if (employee.employee_type === PAY_TYPES.salary) {
+		return {
+			key: 'salary',
+			label: 'Salary Profile',
+			render: () => (
+				<SalaryProfileSection employee={employee} canOverride={canOverride} />
+			),
+		};
+	}
+	if (employee.employee_type === PAY_TYPES.contract) {
+		return {
+			key: 'contract',
+			label: 'Contract Pay',
+			render: () => <ContractPaySection employee={employee} />,
+		};
+	}
+	return undefined;
+}
+
 export default function EmployeeHub() {
 	const directory = useEmployeeDirectory();
-	const { refresh, refreshAll } = directory;
+	const { setFilter, refresh, refreshAll } = directory;
+	const {
+		user,
+		can,
+		RESOURCES,
+		PERMISSIONS,
+		loading: rbacLoading,
+	} = useSessionRBAC();
+	const canPayrollRead =
+		!rbacLoading && can(RESOURCES.PAYROLL, PERMISSIONS.READ);
+	const canOverrideSalary = Boolean(
+		user?.is_super_admin || can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE)
+	);
 	const [mode, setMode] = useState<'list' | 'add' | 'edit' | 'view'>('list');
 	const [actionMessage, setActionMessage] = useState('');
 	const [actionError, setActionError] = useState('');
+	const [expandedSalaryId, setExpandedSalaryId] = useState<
+		number | string | null
+	>(null);
+	// True when the editor was opened from a pay entry point (the inline
+	// panel's edit link), so it mounts on the pay tab instead of the first
+	// section. The editor unmounts per open, so each open sets its own value.
+	const [startOnPaySection, setStartOnPaySection] = useState(false);
+
+	// One row expands at a time; the profile endpoint enforces payroll:read
+	// server-side (ADR-0019), so the query runs only for a granted session.
+	const inlineQuery = useQuery({
+		queryKey: ['salary-profile', expandedSalaryId],
+		queryFn: async () => {
+			const data = (await apiGet('/api/payroll/salary-profile', {
+				employee_id: expandedSalaryId,
+			})) as { success?: boolean; data?: SalaryProfileRecord[] };
+			return data.data?.[0] ?? null;
+		},
+		enabled: expandedSalaryId !== null && canPayrollRead,
+		staleTime: 0,
+	});
+
+	// Deep links (/employees?type=Payroll) seed the filter once on mount; later
+	// filter changes never write the URL.
+	useEffect(() => {
+		const seeded = new URLSearchParams(window.location.search).get('type');
+		const payType = PAY_TYPE_VALUES.find((type) => type === seeded);
+		if (payType) setFilter('employeeType', payType);
+	}, [setFilter]);
 
 	const handleSaved = useCallback(
 		async (_employee: EmployeeRecord, created: boolean) => {
@@ -71,22 +171,26 @@ export default function EmployeeHub() {
 
 	const showList = () => {
 		setMode('list');
+		setStartOnPaySection(false);
 		form.startNewEmployee();
 	};
 	const openAdd = () => {
 		form.startNewEmployee();
+		setStartOnPaySection(false);
 		setActionMessage('');
 		setActionError('');
 		setMode('add');
 	};
-	const openEdit = (employee: EmployeeRecord) => {
+	const openEdit = (employee: EmployeeRecord, onPaySection = false) => {
 		form.openEmployee(employee);
+		setStartOnPaySection(onPaySection);
 		setActionMessage('');
 		setActionError('');
 		setMode('edit');
 	};
 	const openView = (employee: EmployeeRecord) => {
 		form.openEmployee(employee);
+		setStartOnPaySection(false);
 		setActionMessage('');
 		setActionError('');
 		setMode('view');
@@ -113,6 +217,14 @@ export default function EmployeeHub() {
 			);
 		}
 	};
+
+	// Pay-flavored controls stay behind payroll:read (ADR-0019): the salary
+	// profile endpoint enforces the grant server-side with no employees
+	// fallback, so the hub never becomes a salary surface for an
+	// employees-only reader.
+	const extraSection = canPayrollRead
+		? paySectionFor(form.selectedEmployee, canOverrideSalary)
+		: undefined;
 
 	return (
 		<AccessGuard
@@ -167,11 +279,16 @@ export default function EmployeeHub() {
 							onBack={showList}
 							onEdit={() => setMode('edit')}
 							workplaces={directory.workplaces}
+							extraSection={extraSection}
+							startOnExtraSection={startOnPaySection}
 						/>
 					) : (
 						<>
+							{/* Salary master data actions */}
+							{canPayrollRead && <SalaryStructureExportButton />}
+
 							<div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-								<div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-6">
+								<div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-7">
 									<label className="relative lg:col-span-2">
 										<span className="sr-only">Search employees</span>
 										<MagnifyingGlassIcon className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
@@ -238,20 +355,37 @@ export default function EmployeeHub() {
 										}
 										className="rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
 									>
-										<option value="">All Employment Status</option>
+										<option value="">Employment Status</option>
 										<option value="employed">Employed</option>
 										<option value="resigned">Resigned</option>
 									</select>
+									<select
+										aria-label="Employee Type filter"
+										value={directory.filters.employeeType}
+										onChange={(event) =>
+											setFilter('employeeType', event.target.value)
+										}
+										className="rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
+									>
+										<option value="">All Types</option>
+										{PAY_TYPE_VALUES.map((type) => (
+											<option key={type} value={type}>
+												{type}
+											</option>
+										))}
+									</select>
 									<button
 										type="button"
+										aria-label="Clear all filters"
+										title="Clear all filters"
 										onClick={() => {
 											directory.clearFilters();
 											setActionMessage('');
 										}}
-										className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 px-4 py-3 text-gray-700 hover:bg-gray-50"
+										className="inline-flex items-center gap-2 rounded-xl border border-gray-300 px-4 py-3 text-gray-700 hover:bg-gray-50"
 									>
 										<FunnelIcon className="h-5 w-5" />
-										Clear Filters
+										<span className="truncate">Clear</span>
 									</button>
 								</div>
 							</div>
@@ -276,7 +410,11 @@ export default function EmployeeHub() {
 								) : directory.employees.length === 0 ? (
 									<div className="p-10 text-center">
 										<UserGroupIcon className="mx-auto mb-3 h-12 w-12 text-gray-300" />
-										<p className="mb-4 text-gray-500">No employees yet</p>
+										<p className="mb-4 text-gray-500">
+											{directory.filters.employeeType
+												? `No ${directory.filters.employeeType} employees yet`
+												: 'No employees yet'}
+										</p>
 										<button
 											type="button"
 											onClick={openAdd}
@@ -286,14 +424,26 @@ export default function EmployeeHub() {
 										</button>
 									</div>
 								) : (
-									<div className="overflow-x-auto">
-										<table className="min-w-full divide-y divide-gray-200">
+									<div className="overflow-x-auto max-xl:[scrollbar-width:thin] xl:overflow-visible">
+										<table className="w-full divide-y divide-gray-200 max-xl:min-w-[1024px] xl:table-fixed">
+											<colgroup className="hidden xl:table-column-group">
+												<col className="w-[124px]" />
+												<col />
+												<col className="w-[10%]" />
+												<col className="w-[104px]" />
+												<col className="w-[11%]" />
+												<col className="w-[10%]" />
+												<col className="w-[104px]" />
+												<col className="w-[92px]" />
+												<col className="w-[140px]" />
+											</colgroup>
 											<thead className="bg-gray-50">
 												<tr>
 													{[
 														'Employee ID',
 														'Employee',
 														'Department',
+														'Employee Type',
 														'Position',
 														'Workplace',
 														'Hire Date',
@@ -302,7 +452,7 @@ export default function EmployeeHub() {
 													].map((heading) => (
 														<th
 															key={heading}
-															className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600"
+															className="truncate px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600"
 														>
 															{heading}
 														</th>
@@ -311,79 +461,155 @@ export default function EmployeeHub() {
 											</thead>
 											<tbody className="divide-y divide-gray-200 bg-white">
 												{directory.employees.map((employee) => (
-													<tr
-														key={String(employee.id)}
-														className="hover:bg-gray-50"
-													>
-														<td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-[#64126D]">
-															{employee.employee_id || '—'}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4">
-															<div className="flex items-center gap-3">
-																<EmployeeAvatar
-																	src={employee.profile_photo_url}
-																	firstName={employee.first_name}
-																	lastName={employee.last_name}
-																	size={42}
-																/>
-																<div>
-																	<div className="text-sm font-medium text-gray-900">
-																		{employeeName(employee)}
-																	</div>
-																	<div className="text-sm text-gray-500">
-																		{employee.email || '—'}
+													<Fragment key={String(employee.id)}>
+														<tr className="hover:bg-gray-50">
+															<td
+																className="max-w-0 truncate px-3 py-3 font-medium text-[#64126D]"
+																title={employee.employee_id || undefined}
+															>
+																{employee.employee_id || '—'}
+															</td>
+															<td className="px-3 py-3">
+																<div className="flex items-center gap-2.5">
+																	<EmployeeAvatar
+																		src={employee.profile_photo_url}
+																		firstName={employee.first_name}
+																		lastName={employee.last_name}
+																		size={36}
+																	/>
+																	<div className="min-w-0">
+																		<div
+																			className="truncate text-sm font-medium text-gray-900"
+																			title={
+																				employeeName(employee) || undefined
+																			}
+																		>
+																			{employeeName(employee)}
+																		</div>
+																		<div
+																			className="truncate text-sm text-gray-500"
+																			title={employee.email || undefined}
+																		>
+																			{employee.email || '—'}
+																		</div>
 																	</div>
 																</div>
-															</div>
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
-															{String(employee.department || '—')}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
-															{String(employee.position || '—')}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
-															{String(employee.workplace || '—')}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
-															{formatDate(employee.hire_date as string | null)}
-														</td>
-														<td className="whitespace-nowrap px-5 py-4">
-															<span
-																className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(employee.status)}`}
+															</td>
+															<td
+																className="max-w-0 truncate px-3 py-3 text-sm text-gray-700"
+																title={
+																	String(employee.department || '') || undefined
+																}
 															>
-																{String(employee.status || 'active')}
-															</span>
-														</td>
-														<td className="whitespace-nowrap px-5 py-4 text-right">
-															<div className="flex justify-end gap-1">
-																<button
-																	type="button"
-																	aria-label={`View ${employeeName(employee)}`}
-																	onClick={() => openView(employee)}
-																	className="rounded-lg p-2 text-purple-600 hover:bg-purple-50"
+																{String(employee.department || '—')}
+															</td>
+															<td className="whitespace-nowrap px-3 py-3 text-sm text-gray-700">
+																{String(employee.employee_type || '—')}
+															</td>
+															<td
+																className="max-w-0 truncate px-3 py-3 text-sm text-gray-700"
+																title={
+																	String(employee.position || '') || undefined
+																}
+															>
+																{String(employee.position || '—')}
+															</td>
+															<td
+																className="max-w-0 truncate px-3 py-3 text-sm text-gray-700"
+																title={
+																	String(employee.workplace || '') || undefined
+																}
+															>
+																{String(employee.workplace || '—')}
+															</td>
+															<td className="whitespace-nowrap px-3 py-3 text-sm text-gray-700">
+																{formatDate(
+																	employee.hire_date as string | null
+																)}
+															</td>
+															<td className="whitespace-nowrap px-3 py-3">
+																<span
+																	className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(employee.status)}`}
 																>
-																	<EyeIcon className="h-4 w-4" />
-																</button>
-																<button
-																	type="button"
-																	aria-label={`Edit ${employeeName(employee)}`}
-																	onClick={() => openEdit(employee)}
-																	className="rounded-lg p-2 text-blue-600 hover:bg-blue-50"
-																>
-																	<PencilIcon className="h-4 w-4" />
-																</button>
-																<button
-																	type="button"
-																	aria-label={`Delete ${employeeName(employee)}`}
-																	onClick={() => void deleteEmployee(employee)}
-																	className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-																>
-																	<TrashIcon className="h-4 w-4" />
-																</button>
-															</div>
-														</td>
-													</tr>
+																	{String(employee.status || 'active')}
+																</span>
+															</td>
+															<td className="whitespace-nowrap px-3 py-3 text-right">
+																<div className="flex justify-end gap-0.5">
+																	{canPayrollRead &&
+																		employee.employee_type ===
+																			PAY_TYPES.salary && (
+																			<button
+																				type="button"
+																				aria-label={`View salary profile for ${employeeName(employee)}`}
+																				onClick={() =>
+																					setExpandedSalaryId((current) =>
+																						current === employee.id
+																							? null
+																							: employee.id
+																					)
+																				}
+																				className={`rounded-lg p-2 ${
+																					expandedSalaryId === employee.id
+																						? 'bg-[#64126D] text-white'
+																						: 'text-green-600 hover:bg-green-50'
+																				}`}
+																			>
+																				<CurrencyRupeeIcon className="h-4 w-4" />
+																			</button>
+																		)}
+																	<button
+																		type="button"
+																		aria-label={`View ${employeeName(employee)}`}
+																		onClick={() => openView(employee)}
+																		className="rounded-lg p-2 text-purple-600 hover:bg-purple-50"
+																	>
+																		<EyeIcon className="h-4 w-4" />
+																	</button>
+																	<button
+																		type="button"
+																		aria-label={`Edit ${employeeName(employee)}`}
+																		onClick={() => openEdit(employee)}
+																		className="rounded-lg p-2 text-blue-600 hover:bg-blue-50"
+																	>
+																		<PencilIcon className="h-4 w-4" />
+																	</button>
+																	<button
+																		type="button"
+																		aria-label={`Delete ${employeeName(employee)}`}
+																		onClick={() =>
+																			void deleteEmployee(employee)
+																		}
+																		className="rounded-lg p-2 text-red-600 hover:bg-red-50"
+																	>
+																		<TrashIcon className="h-4 w-4" />
+																	</button>
+																</div>
+															</td>
+														</tr>
+														{expandedSalaryId === employee.id && (
+															<tr className="bg-purple-50/50">
+																<td colSpan={9} className="px-6 py-4">
+																	<InlineSalaryPanel
+																		employee={employee}
+																		profile={inlineQuery.data}
+																		loading={
+																			inlineQuery.isPending ||
+																			inlineQuery.isFetching
+																		}
+																		error={
+																			inlineQuery.error instanceof Error
+																				? inlineQuery.error.message
+																				: ''
+																		}
+																		onOpenEditor={(employee) =>
+																			openEdit(employee, true)
+																		}
+																	/>
+																</td>
+															</tr>
+														)}
+													</Fragment>
 												))}
 											</tbody>
 										</table>

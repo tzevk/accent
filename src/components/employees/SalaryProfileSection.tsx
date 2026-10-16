@@ -8,7 +8,7 @@ import {
 	TrashIcon,
 } from '@heroicons/react/24/outline';
 import MonthlySalaryPreview from '@/components/MonthlySalaryPreview';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { mul, toNumber } from '@/lib/money';
 import type { EmployeeRecord } from '@/hooks/useEmployeeDirectory';
 import { usePayrollPreview } from '@/hooks/usePayrollPreview';
@@ -756,18 +756,10 @@ export default function SalaryProfileSection({
 											<p className="mt-2 text-xs text-gray-500">
 												<span className="font-medium">Effective:</span>{' '}
 												{profile.effective_from
-													? new Date(profile.effective_from).toLocaleDateString(
-															'en-IN'
-														)
+													? formatDate(profile.effective_from)
 													: '—'}
 												{profile.effective_to ? (
-													<>
-														{' '}
-														→{' '}
-														{new Date(profile.effective_to).toLocaleDateString(
-															'en-IN'
-														)}
-													</>
+													<> → {formatDate(profile.effective_to)}</>
 												) : (
 													<span className="font-medium text-green-600">
 														{' '}

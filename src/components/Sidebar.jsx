@@ -94,12 +94,6 @@ export default function Sidebar() {
 		adminRouteOverride ||
 		(!rbacLoading &&
 			(user?.is_super_admin || can(RESOURCES.USERS, PERMISSIONS.READ)));
-	// Salary Profiles is payroll data, so its nav entry follows the payroll
-	// grant the page and its APIs require — not the employees grant.
-	const canViewPayroll =
-		adminRouteOverride ||
-		(!rbacLoading &&
-			(user?.is_super_admin || can(RESOURCES.PAYROLL, PERMISSIONS.READ)));
 	const canViewActivities =
 		adminRouteOverride ||
 		(!rbacLoading &&
@@ -356,37 +350,9 @@ export default function Sidebar() {
 												}`}
 											>
 												<span className="hidden sidebar-open:inline">
-													Add Employee
+													Employees
 												</span>
 											</Link>
-											{canViewPayroll && (
-												<Link
-													href="/employees/payroll"
-													className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-														pathname === '/employees/payroll'
-															? 'bg-purple-100 text-[#64126D]'
-															: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-													}`}
-												>
-													<span className="hidden sidebar-open:inline">
-														Salary Profiles
-													</span>
-												</Link>
-											)}
-											{canViewPayroll && (
-												<Link
-													href="/employees/contract"
-													className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-														pathname === '/employees/contract'
-															? 'bg-purple-100 text-[#64126D]'
-															: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-													}`}
-												>
-													<span className="hidden sidebar-open:inline">
-														Contract
-													</span>
-												</Link>
-											)}
 											<Link
 												href="/employees/attendance"
 												className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${

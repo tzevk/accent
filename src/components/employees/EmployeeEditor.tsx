@@ -29,6 +29,12 @@ interface EmployeeEditorProps {
 		label: string;
 		render: () => ReactNode;
 	};
+	/**
+	 * Open with the route-owned section active instead of the first section.
+	 * The editor mounts fresh per open, so this reads once at mount; switching
+	 * employees in the sidebar still restarts on the first section.
+	 */
+	startOnExtraSection?: boolean;
 }
 
 function AttendancePanel({ form }: { form: EmployeeFormBoundary }) {
@@ -249,6 +255,7 @@ export default function EmployeeEditor({
 	onEdit,
 	workplaces,
 	extraSection,
+	startOnExtraSection,
 }: EmployeeEditorProps) {
 	const readOnly = mode === 'view' || form.profileLocked;
 	const title =
@@ -259,7 +266,9 @@ export default function EmployeeEditor({
 				: 'Edit Employee';
 	const name = `${form.formData.first_name} ${form.formData.last_name}`.trim();
 	const { activeSection, attendanceSummaryMonth, loadAttendance } = form;
-	const [extraActive, setExtraActive] = useState(false);
+	const [extraActive, setExtraActive] = useState(() =>
+		Boolean(startOnExtraSection && extraSection)
+	);
 	const extraUsable = Boolean(extraSection) && mode === 'edit';
 
 	useEffect(() => {
