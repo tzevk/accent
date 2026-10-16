@@ -362,14 +362,17 @@ const adminMenuGroups = [
 			{
 				// Issue #360: the salary-profiles and contract lists merged into
 				// the employee hub; both entries deep-link the filtered list.
+				// Gated on payroll:read like the hub surfaces they open.
 				name: 'Salary Profiles',
 				href: '/employees?type=Payroll',
 				icon: UserGroupIcon,
+				resource: 'payroll',
 			},
 			{
 				name: 'Contract Pay',
 				href: '/employees?type=Contract',
 				icon: BriefcaseIcon,
+				resource: 'payroll',
 			},
 		],
 	},
@@ -462,6 +465,20 @@ export default function Navbar() {
 		if (user.is_super_admin) return true;
 		return can(RESOURCES.ADMIN, PERMISSIONS.READ) || can('admin', 'read');
 	}, [user, userLoading, can, RESOURCES, PERMISSIONS]);
+
+	// Group items without a resource always show; an item naming one shows only
+	// for a holder, and a group left with no items is dropped from the menu.
+	const adminMenuGroupsToShow = useMemo(() => {
+		if (user?.is_super_admin) return adminMenuGroups;
+		return adminMenuGroups
+			.map((group) => ({
+				...group,
+				items: group.items.filter(
+					(item) => !item.resource || can(item.resource, PERMISSIONS.READ)
+				),
+			}))
+			.filter((group) => group.items.length > 0);
+	}, [user, can, PERMISSIONS]);
 
 	// Filter reports menu items based on permissions
 	const reportsMenuItems = useMemo(() => {
@@ -747,7 +764,7 @@ export default function Navbar() {
 															: 'rounded-xl w-56'
 													}`}
 												>
-													{adminMenuGroups.map((group) => {
+													{adminMenuGroupsToShow.map((group) => {
 														const GroupIcon = group.icon;
 														const isActive = activeAdminGroup === group.key;
 														const hasActiveChild = group.items.some(
@@ -785,7 +802,7 @@ export default function Navbar() {
 												{/* Right column - submenu for the hovered group (only shown when a group is active) */}
 												{activeAdminGroup && (
 													<div className="min-w-[240px] bg-white rounded-r-xl shadow-xl border border-gray-100 py-2">
-														{adminMenuGroups
+														{adminMenuGroupsToShow
 															.find((g) => g.key === activeAdminGroup)
 															?.items.map((item) => {
 																const ItemIcon = item.icon;
@@ -1030,7 +1047,7 @@ export default function Navbar() {
 									<p className="px-4 py-1 text-xs font-semibold text-white/60 uppercase tracking-wider">
 										Admin
 									</p>
-									{adminMenuGroups.map((group) => (
+									{adminMenuGroupsToShow.map((group) => (
 										<div key={group.key}>
 											<p className="px-4 py-1 text-[11px] font-semibold text-white/50 uppercase tracking-wider">
 												{group.name}

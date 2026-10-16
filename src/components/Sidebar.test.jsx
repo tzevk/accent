@@ -44,9 +44,10 @@ describe('Sidebar employee master children', () => {
 	it('keeps the attendance and leave children next to the hub link', () => {
 		renderSidebar();
 
-		expect(
-			screen.getByRole('link', { name: 'Attendance' })
-		).toHaveAttribute('href', '/employees/attendance');
+		expect(screen.getByRole('link', { name: 'Attendance' })).toHaveAttribute(
+			'href',
+			'/employees/attendance'
+		);
 		expect(
 			screen.getByRole('link', { name: 'Leave Requests' })
 		).toHaveAttribute('href', '/employees/leaves');
@@ -55,9 +56,7 @@ describe('Sidebar employee master children', () => {
 	it('drops the children that pointed at the merged pay routes', () => {
 		renderSidebar();
 
-		expect(
-			screen.queryByRole('link', { name: 'Salary Profiles' })
-		).toBeNull();
+		expect(screen.queryByRole('link', { name: 'Salary Profiles' })).toBeNull();
 		expect(screen.queryByRole('link', { name: 'Contract' })).toBeNull();
 	});
 });
