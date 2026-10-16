@@ -149,6 +149,36 @@ const savedProfile = {
 	lumpsum_description: null,
 };
 
+const bobContractProfile = {
+	id: 31,
+	employee_id: 2,
+	salary_type: 'contract',
+	contract_amount: 20000,
+	contract_duration: 'quarterly',
+	contract_end_date: '2026-09-30T00:00:00.000Z',
+	tds_percentage: 5,
+	gross_salary: 20000,
+	net_pay: 19000,
+	employer_cost: 20000,
+	effective_from: '2026-02-01T00:00:00.000Z',
+	effective_to: null,
+	std_in_time: '09:00:00',
+	std_out_time: '17:30:00',
+	std_working_days: 26,
+	pl_total: 0,
+	pl_used: 0,
+	pl_balance: 0,
+	loan_amount: 0,
+	loan_amount_per_month: 0,
+	loan_no_of_months: 0,
+	loan_total_amount: 0,
+	loan_active: 0,
+	advance_amount: 0,
+	advance_active: 0,
+	is_manual_override: 0,
+	lumpsum_description: null,
+};
+
 function response(body: unknown, ok = true) {
 	return Promise.resolve({ ok, json: async () => body });
 }
@@ -204,7 +234,12 @@ describe('EmployeeHub', () => {
 					);
 					return response({
 						success: true,
-						data: employeeId === '1' ? [savedProfile] : [],
+						data:
+							employeeId === '1'
+								? [savedProfile]
+								: employeeId === '2'
+									? [bobContractProfile]
+									: [],
 					});
 				}
 				if (url.startsWith('/api/payroll/salary-profile')) {
@@ -442,6 +477,17 @@ describe('EmployeeHub', () => {
 		).toBeVisible();
 	});
 
+	it('keeps the Employee Type select authoritative in the editor', async () => {
+		rbacMock.payrollRead = true;
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		fireEvent.click(screen.getByRole('button', { name: 'Edit Alice Worker' }));
+		// The directory grouping that decides which pay tab an employee
+		// offers stays editable master data on the one hub.
+		expect(await screen.findByLabelText('Employee Type')).toHaveValue('Payroll');
+	});
+
 	it('names the active Employee Type filter in the empty state', async () => {
 		fetchMock.mockImplementation((input: RequestInfo | URL) => {
 			const url = String(input);
@@ -648,9 +694,67 @@ describe('EmployeeHub', () => {
 
 		const grossInput = await screen.findByLabelText('Gross Salary *');
 		await waitFor(() => expect(grossInput).toHaveValue(50000));
+		expect(
+			screen.getByText('Derived from the effective payroll schedule')
+		).toBeVisible();
+		expect(screen.getByText('Basic')).toBeVisible();
 		expect(screen.getByText('Total Earnings')).toBeVisible();
 		expect(screen.getByText('Net Pay')).toBeVisible();
 		expect(screen.getAllByText('₹1,000.00').length).toBeGreaterThan(0);
+	});
+
+	it('persists explicit overrides and resets them to derived values', async () => {
+		rbacMock.payrollRead = true;
+		rbacMock.superAdmin = true;
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		fireEvent.click(screen.getByRole('button', { name: 'Edit Alice Worker' }));
+		const nav = await screen.findByRole('navigation', {
+			name: 'Employee Sections',
+		});
+		fireEvent.click(within(nav).getByRole('button', { name: 'Salary Profile' }));
+		const grossInput = await screen.findByLabelText('Gross Salary *');
+		await waitFor(() => expect(grossInput).toHaveValue(50000));
+
+		fireEvent.click(screen.getByRole('checkbox', { name: 'Enable overrides' }));
+		const pfInput = screen.getByLabelText('Employee PF override value');
+		fireEvent.change(pfInput, { target: { value: '999' } });
+		expect(pfInput).toHaveValue(999);
+
+		// Reset returns the component to its derived value.
+		fireEvent.click(
+			screen.getByRole('button', {
+				name: 'Reset Employee PF to derived value',
+			})
+		);
+
+		// Override again and save; the payload persists the exception.
+		fireEvent.change(pfInput, { target: { value: '888' } });
+		fireEvent.click(
+			screen.getByRole('button', { name: '+ Add New Salary Profile' })
+		);
+
+		await waitFor(() => {
+			const saveCall = fetchMock.mock.calls.find(
+				([url, init]) =>
+					String(url) === '/api/payroll/salary-profile' &&
+					init?.method === 'POST'
+			);
+			expect(saveCall).toBeTruthy();
+			const payload = JSON.parse(String(saveCall?.[1]?.body));
+			expect(payload.pf_employee).toBe(888);
+			expect(payload.is_manual_override).toBe(true);
+			expect(payload.basic).toBeNull();
+			expect(payload.da).toBeNull();
+			expect(payload.net_pay).toBe(
+				payload.total_earnings - payload.total_deductions
+			);
+			expect(payload.employee_id).toBe(1);
+		});
+		expect(
+			await screen.findByText('✓ New salary profile created!')
+		).toBeVisible();
 	});
 
 	it('offers the Contract Pay tab only in edit mode for a Contract employee', async () => {
@@ -679,6 +783,153 @@ describe('EmployeeHub', () => {
 			await screen.findByRole('heading', { name: 'Contract Pay' })
 		).toBeVisible();
 		expect(screen.getByText('Salary Type: Contract')).toBeVisible();
+	});
+
+	it('loads the saved contract agreement with its stored TDS rate', async () => {
+		rbacMock.payrollRead = true;
+		renderHub();
+		await screen.findByText('Bob Builder');
+
+		fireEvent.click(screen.getByRole('button', { name: 'Edit Bob Builder' }));
+		const nav = await screen.findByRole('navigation', {
+			name: 'Employee Sections',
+		});
+		fireEvent.click(within(nav).getByRole('button', { name: 'Contract Pay' }));
+
+		const amountInput = await screen.findByLabelText('Amount (₹) *');
+		await waitFor(() => expect(amountInput).toHaveValue(20000));
+		expect(screen.getByLabelText('Duration')).toHaveValue('quarterly');
+		expect(screen.getByLabelText('End Date')).toHaveValue('2026-09-30');
+		expect(screen.getByText(/TDS @ 5% = ₹1,000/)).toBeVisible();
+		expect(screen.getByText(/In-Hand CTC: ₹19,000/)).toBeVisible();
+
+		// Payroll-only Salary Profile controls stay off the Contract Pay tab.
+		expect(screen.queryByLabelText('Gross Salary *')).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('checkbox', { name: 'Enable overrides' })
+		).not.toBeInTheDocument();
+		expect(screen.queryByText('Basic')).not.toBeInTheDocument();
+	});
+
+	it('falls back to 10% TDS and persists the edited contract agreement', async () => {
+		rbacMock.payrollRead = true;
+		const defaultFetch = fetchMock.getMockImplementation();
+		fetchMock.mockImplementation(
+			(input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				if (url.startsWith('/api/payroll/salary-profile?employee_id=')) {
+					const employeeId = new URL(url, 'http://localhost').searchParams.get(
+						'employee_id'
+					);
+					return response({
+						success: true,
+						data:
+							employeeId === '2'
+								? [
+										{
+											...bobContractProfile,
+											contract_amount: 30000,
+											tds_percentage: null,
+											net_pay: 27000,
+										},
+									]
+								: [],
+					});
+				}
+				if (url.startsWith('/api/attendance/summary')) {
+					return response({
+						success: true,
+						data: [{ total_privilege_leave: 2 }],
+						dayDetails: [],
+					});
+				}
+				return defaultFetch?.(input, init);
+			}
+		);
+
+		renderHub();
+		await screen.findByText('Bob Builder');
+
+		fireEvent.click(screen.getByRole('button', { name: 'Edit Bob Builder' }));
+		const nav = await screen.findByRole('navigation', {
+			name: 'Employee Sections',
+		});
+		fireEvent.click(within(nav).getByRole('button', { name: 'Contract Pay' }));
+
+		const amountInput = await screen.findByLabelText('Amount (₹) *');
+		await waitFor(() => expect(amountInput).toHaveValue(30000));
+		// No explicit rate stored: the documented Contract fallback applies.
+		expect(screen.getByText(/TDS @ 10% = ₹3,000/)).toBeVisible();
+		expect(screen.getByText(/In-Hand CTC: ₹27,000/)).toBeVisible();
+
+		// Representative pay edit: new amount and duration persist as contract.
+		fireEvent.change(amountInput, { target: { value: '40000' } });
+		fireEvent.change(screen.getByLabelText('Duration'), {
+			target: { value: 'yearly' },
+		});
+		fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+		await waitFor(() => {
+			const saveCall = fetchMock.mock.calls.find(
+				([url, init]) =>
+					String(url) === '/api/payroll/salary-profile' &&
+					init?.method === 'POST'
+			);
+			expect(saveCall).toBeTruthy();
+			expect(JSON.parse(String(saveCall?.[1]?.body))).toMatchObject({
+				id: 31,
+				employee_id: 2,
+				salary_type: 'contract',
+				contract_amount: 40000,
+				contract_duration: 'yearly',
+				contract_end_date: '2026-09-30',
+				tds_percentage: 10,
+				gross_salary: 40000,
+				net_pay: 36000,
+				employer_cost: 40000,
+				// PL usage is synced from attendance before the save, as before.
+				pl_used: 2,
+			});
+		});
+		expect(await screen.findByText('✓ Salary profile updated!')).toBeVisible();
+	});
+
+	it('surfaces Contract Pay save failures scoped to the contract workflow', async () => {
+		rbacMock.payrollRead = true;
+		const defaultFetch = fetchMock.getMockImplementation();
+		fetchMock.mockImplementation(
+			(input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				if (url === '/api/payroll/salary-profile' && init?.method === 'POST') {
+					return response(
+						{ success: false, error: 'Duplicate effective date' },
+						false
+					);
+				}
+				return defaultFetch?.(input, init);
+			}
+		);
+
+		renderHub();
+		await screen.findByText('Bob Builder');
+
+		fireEvent.click(screen.getByRole('button', { name: 'Edit Bob Builder' }));
+		const nav = await screen.findByRole('navigation', {
+			name: 'Employee Sections',
+		});
+		fireEvent.click(within(nav).getByRole('button', { name: 'Contract Pay' }));
+		await waitFor(() =>
+			expect(screen.getByLabelText('Amount (₹) *')).toHaveValue(20000)
+		);
+
+		fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+		expect(
+			await screen.findByText(/Failed to save: Duplicate effective date/)
+		).toBeVisible();
+		expect(
+			screen.queryByText('✓ Salary profile updated!')
+		).not.toBeInTheDocument();
 	});
 
 	it('offers no pay tab when editing an employee with no pay Employee Type', async () => {
