@@ -155,16 +155,16 @@ PF … Deductions / Net Pay / Status` per row, totals in the footer, Payment
 
 ## When a number looks wrong
 
-| Symptom                                  | Cause                                                                             | Fix                                                                           |
-| ---------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| ₹0 net pay                               | No `daily_entries` hours in that month, or the login/employee link is missing     | Have the hours logged, then Reopen → delete the slip on `/reports` → Generate |
-| Rate differs from last month             | Basis Hours follow the month's working days                                       | Expected; compare `Hrs Logged × Rate/Hr` against Gross                        |
-| `Hrs Logged 0` / `Rate —` on an old slip | Slip generated before the hours basis existed (columns NULL)                      | Historical snapshot — leave it, or regenerate a draft month                   |
-| Gross ≠ CTC                              | Pay follows logged hours; CTC is the _full month_ equivalent (`full_month_gross`) | Expected                                                                      |
+| Symptom                                  | Cause                                                                               | Fix                                                                                         |
+| ---------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| ₹0 net pay                               | No `daily_entries` hours in that month, or the login/employee link is missing       | Have the hours logged, then Reopen → delete the slip on `/reports` → Generate               |
+| Rate differs from last month             | Basis Hours follow the month's working days                                         | Expected; compare `Hrs Logged × Rate/Hr` against Gross                                      |
+| `Hrs Logged 0` / `Rate —` on an old slip | Slip generated before the hours basis existed (columns NULL)                        | Historical snapshot — leave it, or regenerate a draft month                                 |
+| Gross ≠ CTC                              | Pay follows logged hours; CTC is the _full month_ equivalent (`full_month_gross`)   | Expected                                                                                    |
 | Employer cost counts a bonus twice       | A slip generated before the #305 correction stored the double count in its snapshot | Historical snapshot — correct it only via Reopen → delete the slip on `/reports` → Generate |
-| Finalize refuses                         | Missing slips and/or missing profiles, named in the error                         | Generate again / write the profile                                            |
-| Reopen refused                           | A slip in the month is paid, or you are not a super-admin                         | Corrections become next month's arrears                                       |
-| Slip deletion refused                    | The month's run is finalized/paid                                                 | Reopen first (super-admin)                                                    |
+| Finalize refuses                         | Missing slips and/or missing profiles, named in the error                           | Generate again / write the profile                                                          |
+| Reopen refused                           | A slip in the month is paid, or you are not a super-admin                           | Corrections become next month's arrears                                                     |
+| Slip deletion refused                    | The month's run is finalized/paid                                                   | Reopen first (super-admin)                                                                  |
 
 ## Where the code lives
 
