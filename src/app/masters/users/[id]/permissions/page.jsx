@@ -72,7 +72,7 @@ const MODULE_FIELDS = {
 						type: 'textarea',
 					},
 					enquiry_type: { label: 'Enquiry Type', type: 'select' },
-					enquiry_status: { label: 'Enquiry Status', type: 'select' },
+					enquiry_status: { label: 'Lead Stage', type: 'select' },
 					enquiry_date: { label: 'Enquiry Date', type: 'date' },
 					lead_source: { label: 'Lead Source', type: 'select' },
 					priority: { label: 'Priority', type: 'select' },
@@ -1388,7 +1388,7 @@ const MODULE_FIELDS = {
 
 // Define which modules have special permissions beyond standard CRUD
 const SPECIAL_PERMS = {
-	leads: ['convert'],
+	leads: ['assign', 'convert'],
 	proposals: ['convert', 'approve'],
 	projects: ['assign', 'close'],
 	activities: ['assign'],
