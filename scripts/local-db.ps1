@@ -4,13 +4,13 @@
 
 .DESCRIPTION
 	Production runs MariaDB 10.11.15, so local checks must run on MariaDB too.
-	This machine has one instance for that purpose: the Windows service
-	`MariaDB-accent-local` on 127.0.0.1:33369, with a data directory owned by
-	an administrator. The service is set to manual start, so it runs only while
-	a task needs it.
+	This machine has one instance for that purpose, owned by the current user
+	and listening on 127.0.0.1:33369. The instance runs as a plain background
+	process, so starting and stopping it never needs administrator rights and
+	never shows a consent prompt.
 
-	The service needs an elevated token to start or stop. This script performs
-	that elevation itself, so an agent never needs a visible dialog.
+	The instance lives in %LOCALAPPDATA%\AccentMariaDB. The MariaDB binaries
+	stay in their install location: C:\Program Files\MariaDB 10.11\bin.
 
 .EXAMPLE
 	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-db.ps1 start
@@ -27,27 +27,34 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$ServiceName = 'MariaDB-accent-local'
-$Client = 'C:\Program Files\MariaDB 10.11\bin\mariadb.exe'
+$Bin = 'C:\Program Files\MariaDB 10.11\bin'
+$Mysqld = Join-Path $Bin 'mysqld.exe'
+$Admin = Join-Path $Bin 'mariadb-admin.exe'
+$Client = Join-Path $Bin 'mariadb.exe'
+$Root = Join-Path $env:LOCALAPPDATA 'AccentMariaDB'
+$Data = Join-Path $Root 'data'
+$Ini = Join-Path $Root 'my.ini'
+$PidFile = Join-Path $Root 'mysqld.pid'
 
 function Test-PortOpen {
 	param([int]$PortNumber)
 	try {
-		$client = New-Object System.Net.Sockets.TcpClient
-		$task = $client.ConnectAsync('127.0.0.1', $PortNumber)
+		$tcp = New-Object System.Net.Sockets.TcpClient
+		$task = $tcp.ConnectAsync('127.0.0.1', $PortNumber)
 		if (-not $task.Wait(1500)) { return $false }
-		$client.Close()
+		$tcp.Close()
 		return $true
 	} catch {
 		return $false
 	}
 }
 
-function Invoke-Elevated {
-	param([string]$Command)
-	$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
-	$process = Start-Process powershell.exe -Verb RunAs -ArgumentList '-NoProfile', '-EncodedCommand', $encoded -Wait -PassThru
-	return $process.ExitCode
+function Get-ServerPid {
+	if (Test-Path $PidFile) {
+		$recorded = (Get-Content $PidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+		if ($recorded) { return [int]$recorded }
+	}
+	return $null
 }
 
 function Start-LocalDb {
@@ -55,47 +62,61 @@ function Start-LocalDb {
 		Write-Output "MariaDB already listening on 127.0.0.1:$Port"
 		return 0
 	}
-	$service = Get-Service $ServiceName -ErrorAction SilentlyContinue
-	if ($null -eq $service) {
-		Write-Output "Service $ServiceName not found. Start mysqld manually:"
-		Write-Output "  & 'C:\Program Files\MariaDB 10.11\bin\mysqld.exe' --defaults-file='C:\ProgramData\MariaDB\accent-local\my.ini'"
+	if (-not (Test-Path $Mysqld)) {
+		Write-Output "mysqld not found at $Mysqld"
 		return 1
 	}
-	$exit = Invoke-Elevated -Command "Start-Service -Name '$ServiceName'; Start-Sleep -Seconds 2"
-	Start-Sleep -Seconds 2
-	if (Test-PortOpen -PortNumber $Port) {
-		Write-Output "MariaDB started on 127.0.0.1:$Port"
-		return 0
+	if (-not (Test-Path $Ini)) {
+		Write-Output "config not found at $Ini"
+		return 1
 	}
-	Write-Output "MariaDB did not start (elevated exit $exit)"
+	$process = Start-Process -FilePath $Mysqld -ArgumentList "--defaults-file=$Ini" -WindowStyle Hidden -PassThru
+	$process.Id | Set-Content -Path $PidFile -Encoding ascii
+	$deadline = (Get-Date).AddSeconds(45)
+	while ((Get-Date) -lt $deadline) {
+		if (Test-PortOpen -PortNumber $Port) {
+			Write-Output "MariaDB started on 127.0.0.1:$Port (pid $($process.Id))"
+			return 0
+		}
+		Start-Sleep -Milliseconds 500
+	}
+	Write-Output "MariaDB did not become ready; see $(Join-Path $Root 'error.log')"
 	return 1
 }
 
 function Stop-LocalDb {
 	if (-not (Test-PortOpen -PortNumber $Port)) {
-		Write-Output "MariaDB already stopped"
+		Write-Output 'MariaDB already stopped'
 		return 0
 	}
-	$service = Get-Service $ServiceName -ErrorAction SilentlyContinue
-	if ($null -ne $service) {
-		Invoke-Elevated -Command "Stop-Service -Name '$ServiceName' -Force" | Out-Null
+	# Clean shutdown first, so InnoDB flushes and the data directory stays consistent.
+	if (Test-Path $Admin) {
+		& $Admin --host=127.0.0.1 --port=$Port --user=root shutdown 2>&1 | Out-Null
 	}
-	Start-Sleep -Seconds 2
+	$deadline = (Get-Date).AddSeconds(20)
+	while ((Get-Date) -lt $deadline) {
+		if (-not (Test-PortOpen -PortNumber $Port)) {
+			Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
+			Write-Output 'MariaDB stopped'
+			return 0
+		}
+		Start-Sleep -Milliseconds 500
+	}
+	$pidValue = Get-ServerPid
+	if ($pidValue) {
+		Stop-Process -Id $pidValue -Force -ErrorAction SilentlyContinue
+		Start-Sleep -Seconds 2
+	}
+	Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
 	if (Test-PortOpen -PortNumber $Port) {
 		Write-Output "MariaDB still listening on 127.0.0.1:$Port"
 		return 1
 	}
-	Write-Output "MariaDB stopped"
+	Write-Output 'MariaDB stopped'
 	return 0
 }
 
 function Show-LocalDbStatus {
-	$service = Get-Service $ServiceName -ErrorAction SilentlyContinue
-	if ($null -eq $service) {
-		Write-Output "service $ServiceName : not installed"
-	} else {
-		Write-Output ("service {0} : {1} ({2})" -f $service.Name, $service.Status, $service.StartType)
-	}
 	if (Test-PortOpen -PortNumber $Port) {
 		Write-Output "port $Port : open"
 		if (Test-Path $Client) {
@@ -105,6 +126,12 @@ function Show-LocalDbStatus {
 	} else {
 		Write-Output "port $Port : closed"
 	}
+	$pidValue = Get-ServerPid
+	if ($pidValue) {
+		$running = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+		if ($running) { Write-Output "process : pid $pidValue" }
+	}
+	Write-Output "instance : $Root"
 }
 
 switch ($Action) {
