@@ -369,7 +369,7 @@ export async function GET(request) {
 	// RBAC check
 	const authResult = await ensurePermission(
 		request,
-		RESOURCES.PROPOSALS,
+		RESOURCES.PURCHASE_ORDERS,
 		PERMISSIONS.READ
 	);
 	if (authResult instanceof Response) return authResult;

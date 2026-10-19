@@ -2,7 +2,7 @@
 
 ## Overview
 
-Orders are now recorded once, in one store, with an explicit direction:
+The canonical Orders screen records orders in one store, with an explicit direction:
 
 | Where                    | What                                                                                                                                                                                                                                                                    |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -65,12 +65,18 @@ Permissions: reads use `purchase_orders:read`; creation uses
 
 ## What the cutover changed
 
-- **Order entry** (`/admin/orders`) captures direction, counterparty, Project,
-  currency, tax/amount basis, order date, source document, status, and
-  firm/cancellable evidence. The four legacy screens
-  (`/admin/purchase-order`, its edit/view pages, and
-  `/admin/outgoing-purchase-order`) redirect there; their endpoints no longer
-  write.
+- **Canonical order entry** (`/admin/orders`) captures direction, counterparty,
+  Project, currency, tax/amount basis, order date, source document, status, and
+  firm/cancellable evidence.
+- **Purchase-order sections restored (2026-10-19):** the Admin menu again links
+  Purchase Order (Incoming) to `/admin/purchase-order` and Purchase Order
+  (Outgoing) to `/admin/outgoing-purchase-order`. These screens use the original
+  `purchase_orders` and `outgoing_purchase_orders` stores. Incoming edit/view
+  pages and both stores' write handlers are restored, not redirected to Orders.
+  No legacy rows are migrated, classified, or deleted by this restoration.
+  Canonical Orders, invoice references, and reporting remain unchanged; legacy
+  records still require evidence-backed review before canonical reporting uses
+  them.
 - **Project tabs** show the Project's canonical orders (client value and
   supplier order values side by side). The Project edit form no longer
   double-writes `project_purchase_orders` + `purchase_orders`, and the
