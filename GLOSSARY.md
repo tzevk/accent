@@ -297,3 +297,15 @@ planning-library document chosen from a master list, or a received/issued docume
 recorded as a text list. A Project's document count spans all three stores, while a
 Project name that opens documents opens that Project's uploaded files.
 _Avoid_: Attachment, Project file, Scan
+
+**Legacy Review**:
+A decision a permitted reviewer makes about a stored Lead value the cutover could not resolve from evidence: the stage label, the owner display name, or the canonical Proposal of an enquiry with several linked Proposals. The original value, the selected resolution, the reason, the reviewer, and the time are kept together (ADR-0031).
+_Avoid_: Data cleanup, Automatic mapping, Lead edit
+
+**Canonical Proposal**:
+The one Proposal that is authoritative for a Lead. Exactly one linked Proposal is evidence-backed; several linked Proposals stay linked and need a reviewer's choice. A canonical Proposal is never chosen by date or title, and choosing one never deletes the others.
+_Avoid_: Latest proposal, Preferred proposal, Duplicate cleanup
+
+**Stored-Value Inventory**:
+The record of what legacy Leads actually stored before mapping: every distinct stage label and owner name, how many Leads carry it, and whether it was auto-resolved, ambiguous, or unresolved. It exists so no value is classified without evidence (ADR-0031).
+_Avoid_: Migration log, Import report

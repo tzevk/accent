@@ -5,12 +5,9 @@ import {
 } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { logActivity } from '@/utils/activity-logger';
-import {
-	importLeads,
-	parseExplicitOwner,
-	LeadWorkflowError,
-	type ImportLeadRow,
-} from '@/server/leads/workflow';
+import { importLeads, type ImportLeadRow } from '@/server/leads/workflow';
+import { parseExplicitOwner } from '@/server/leads/shared';
+import { leadWorkflowFailure } from '@/app/api/leads/_lib/route-helpers';
 
 /**
  * Minimal quoted-CSV row parser (commas inside quotes stay in the field).
@@ -266,16 +263,6 @@ export async function POST(request: Request): Promise<Response> {
 			}${errors.length > 0 ? ` with ${errors.length} errors` : ''}`,
 		});
 	} catch (error) {
-		if (error instanceof LeadWorkflowError) {
-			return Response.json(
-				{ success: false, error: error.message, code: error.code },
-				{ status: error.status }
-			);
-		}
-		console.error('Import error:', error);
-		return Response.json(
-			{ success: false, error: 'Failed to import leads' },
-			{ status: 500 }
-		);
+		return leadWorkflowFailure(error, 'Failed to import leads');
 	}
 }

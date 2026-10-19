@@ -5,15 +5,16 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 
 ## Application guides
 
-| Task                                            | Guide                                                                                           |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Operate payroll and check employee entry points | [Payroll operator guide](app/payroll/operator-guide.md)                                         |
-| Understand project view and edit screens        | [Project view/edit conformity](app/projects/view-edit-conformity.md)                            |
-| Understand project manhours                     | [Project Manhours tab](app/projects/tabs/ProjectManhoursTab.md)                                 |
-| Understand the Timesheet report                 | [Timesheet implementation](app/reports/timesheet-implementation.md)                             |
-| Understand Manhours Billing                     | [Manhours Billing implementation](app/reports/manhours-billing-implementation.md)               |
-| Understand Client Balance                       | [Client Balance implementation](app/reports/client-balance-implementation.md)                   |
-| Understand project expenditure accounting       | [Project expenditure accounting (research note)](app/reports/project-expenditure-accounting.md) |
+| Task                                              | Guide                                                                                           |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Operate payroll and check employee entry points   | [Payroll operator guide](app/payroll/operator-guide.md)                                         |
+| Work Leads, ownership, and the legacy review flow | [Lead operator guide](app/leads/operator-guide.md)                                              |
+| Understand project view and edit screens          | [Project view/edit conformity](app/projects/view-edit-conformity.md)                            |
+| Understand project manhours                       | [Project Manhours tab](app/projects/tabs/ProjectManhoursTab.md)                                 |
+| Understand the Timesheet report                   | [Timesheet implementation](app/reports/timesheet-implementation.md)                             |
+| Understand Manhours Billing                       | [Manhours Billing implementation](app/reports/manhours-billing-implementation.md)               |
+| Understand Client Balance                         | [Client Balance implementation](app/reports/client-balance-implementation.md)                   |
+| Understand project expenditure accounting         | [Project expenditure accounting (research note)](app/reports/project-expenditure-accounting.md) |
 
 ## System explanations
 
@@ -36,6 +37,7 @@ Read the relevant record before changing its behavior.
 | Attendance and leave | [Leave overlaps](adr/0002-leave-overlaps-client-computed-report.md), [weekly off](adr/0004-unified-weekly-off-rule.md), [sandwich leave](adr/0005-sandwich-leave-warn-then-deduct.md), [payable overtime](adr/0006-payable-ot-gate-coexists-with-timesheet.md), [device punches](adr/0007-device-punches-override-stored-times.md), [two Punch Span implementations](adr/0015-two-punch-span-implementations.md) |
 | Reporting            | [Employee Utilization](adr/0003-employee-utilization-formula-and-source.md), [Project Employee Cost](adr/0016-project-employee-cost-from-recorded-payroll.md), [Incurred cost and commitments](adr/0017-project-incurred-cost-and-commitments-are-separate.md)                                                                                                                                                   |
 | Security             | [Session validation](adr/0011-session-validation-in-proxy-and-handlers.md), [rich-text trust boundary](adr/0012-rich-text-trust-boundary.md), [rate limits](adr/0013-rate-limit-identity-and-store.md), [public endpoint allowlist](adr/0014-unauthenticated-endpoint-allowlist.md)                                                                                                                              |
+| Leads                | [Legacy Lead review and the canonical Proposal](adr/0031-legacy-lead-review-and-canonical-proposal.md)                                                                                                                                                                                                                                                                                                           |
 
 ## Audit records and change history
 

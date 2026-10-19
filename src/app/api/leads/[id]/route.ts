@@ -5,28 +5,11 @@ import {
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
 import { hasPermission } from '@/utils/rbac';
+import { deleteLead, getLeadDetail, updateLead } from '@/server/leads/workflow';
 import {
-	deleteLead,
-	getLeadDetail,
-	updateLead,
-	LeadWorkflowError,
-} from '@/server/leads/workflow';
-
-function workflowFailure(error: unknown, fallback: string): Response {
-	if (error instanceof LeadWorkflowError) {
-		return Response.json(
-			{ success: false, error: error.message, code: error.code },
-			{ status: error.status }
-		);
-	}
-	console.error('Lead workflow error:', error);
-	return Response.json({ success: false, error: fallback }, { status: 500 });
-}
-
-function parseId(value: string): number | null {
-	const id = Number.parseInt(value, 10);
-	return Number.isInteger(id) && id > 0 ? id : null;
-}
+	leadWorkflowFailure,
+	parseLeadId,
+} from '@/app/api/leads/_lib/route-helpers';
 
 export async function GET(
 	request: Request,
@@ -40,7 +23,7 @@ export async function GET(
 	if (auth instanceof Response) return auth;
 
 	const { id } = await params;
-	const leadId = parseId(id);
+	const leadId = parseLeadId(id);
 	if (leadId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },
@@ -48,10 +31,15 @@ export async function GET(
 		);
 	}
 	try {
-		const lead = await getLeadDetail(leadId);
+		// Linked Proposal details are only exposed to a caller who may read
+		// Proposals. The review state itself stays visible either way.
+		const includeProposals =
+			auth.user.is_super_admin ||
+			hasPermission(auth.user, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+		const lead = await getLeadDetail(leadId, { includeProposals });
 		return Response.json({ success: true, data: lead });
 	} catch (error) {
-		return workflowFailure(error, 'Failed to fetch lead');
+		return leadWorkflowFailure(error, 'Failed to fetch lead');
 	}
 }
 
@@ -60,7 +48,7 @@ export async function PUT(
 	{ params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
 	const { id } = await params;
-	const leadId = parseId(id);
+	const leadId = parseLeadId(id);
 	if (leadId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },
@@ -139,7 +127,7 @@ export async function PUT(
 				: 'Lead updated successfully',
 		});
 	} catch (error) {
-		return workflowFailure(error, 'Failed to update lead');
+		return leadWorkflowFailure(error, 'Failed to update lead');
 	}
 }
 
@@ -155,7 +143,7 @@ export async function DELETE(
 	if (auth instanceof Response) return auth;
 
 	const { id } = await params;
-	const leadId = parseId(id);
+	const leadId = parseLeadId(id);
 	if (leadId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },
@@ -175,6 +163,6 @@ export async function DELETE(
 		}).catch((err) => console.error('Failed to log activity:', err));
 		return Response.json({ success: true, message: 'Lead marked as deleted' });
 	} catch (error) {
-		return workflowFailure(error, 'Failed to delete lead');
+		return leadWorkflowFailure(error, 'Failed to delete lead');
 	}
 }

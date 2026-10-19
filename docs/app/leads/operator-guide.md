@@ -52,6 +52,40 @@ The detail shows original legacy stage and owner values. Migration maps an owner
 
 **Potential duplicate leads** shows other active records with the same company and project description. Compare the enquiries before taking action. The system does not merge or delete them automatically. Different enquiries can share company and contact details without sharing a Lead identity.
 
+## Resolve legacy values
+
+The Lead cutover maps what the stored records support and leaves the rest visibly unresolved. Three things need a human decision:
+
+| Review item        | When it is open                                   | What you choose                      |
+| ------------------ | ------------------------------------------------- | ------------------------------------ |
+| Lead Stage         | the stored label is not a canonical stage         | the canonical stage                  |
+| Lead Owner         | the stored name matched no user, or more than one | an active user, or unassigned intake |
+| Canonical Proposal | several Proposals link to the enquiry             | the one authoritative Proposal       |
+
+Open **Leads**, tick **Needs review only**, and open a Lead. The **Legacy review** panel on the Lead detail page shows the original values, the linked Proposals, and the facts the old records never stored as unknown. The stage-entry date, the original author, and the call outcome are unknown for legacy records; the creation and update timestamps are record timestamps, not stage history.
+
+Resolve one item at a time: pick the value, write the reason, and select **Resolve**. The decision keeps the original value, the selected resolution, your name, and the time. Decisions are listed under **Review history** and stay there.
+
+Permissions follow the decision. A stage needs `leads:update`. An owner needs `leads:assign`. The canonical Proposal needs `leads:update` and `proposals:read`, because you have to be able to see the Proposals you choose between. A refused or invalid decision changes nothing.
+
+Two rules keep the cutover honest. Resolve the owner before an active stage, because a stage such as Qualified or Nurture needs a resolved owner. And a stage of **Converted** is never a review decision: conversion arrives through the linked Proposal handoff.
+
+A resolved Lead leaves the review queue and stays in every operational result, under its resolved stage. Nothing is deleted when you resolve an item. Duplicate Proposals and their references stay exactly as they are, and the choice of canonical Proposal is recorded next to them.
+
+## Keep one canonical Proposal per enquiry
+
+A Lead has one authoritative Proposal. A Proposal create or edit that would add a second link to an enquiry is refused, with the enquiry's existing Proposal named in the message. Use the linked Proposal, or resolve the legacy review to choose the canonical one.
+
+Re-saving a Proposal that keeps its link is not a new link and stays allowed. A Proposal that never had a link is unaffected. When a Proposal stops pointing at its enquiry, or is deleted, the enquiry recomputes its canonical Proposal from the Proposals that still link to it. The recorded decision stays in the review history.
+
+## Change notes — issue #370
+
+- Added a review flow for unresolved legacy stages, owner names, and duplicate Proposal links.
+- Added the canonical Proposal linkage, the per-dimension review state, and an append-only decision history with the reviewer, the reason, and the time.
+- Added the stored-value inventory of the legacy stage labels and owner names, with the count and the classification of each value.
+- Guarded the Proposal create and edit paths against a second authoritative Lead link, and stopped unrelated Proposal edits from clearing the Lead link.
+- Legacy facts the records never stored stay explicitly unknown. Record timestamps are never presented as stage history.
+
 ## Change notes — issue #369
 
 - Replaced display-name-only ownership with stable user references and transactional ownership history.

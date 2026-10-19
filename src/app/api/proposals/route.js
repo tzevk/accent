@@ -9,6 +9,11 @@ import {
 	sanitizeJsonStrings,
 	sanitizeOptionalRichText,
 } from '@/lib/sanitize-fields';
+import {
+	assertSingleAuthoritativeLeadLink,
+	refreshLeadProposalState,
+} from '@/server/leads/legacy-review';
+import { LeadWorkflowError, toNullableId } from '@/server/leads/shared';
 
 export async function GET(request) {
 	let pool;
@@ -44,6 +49,7 @@ export async function GET(request) {
 
 export async function POST(request) {
 	let pool;
+	let linkedTransaction = false;
 	try {
 		// RBAC: create proposals
 		const auth = await ensurePermission(
@@ -157,6 +163,13 @@ export async function POST(request) {
 
 		// Proposal ID is manual entry — use whatever was provided, or leave null
 		const proposal_id = custom_proposal_id || null;
+
+		// One enquiry has one canonical Proposal. A new link is refused when
+		// the enquiry already carries a linked Proposal, so a generic create
+		// cannot become a second authoritative link. The check and the insert
+		// share one transaction, and the enquiry row is locked for it, so two
+		// concurrent creates cannot both link the same enquiry.
+		const linkedLeadId = toNullableId(lead_id);
 
 		// Build columns and values explicitly to avoid column/value count mismatches
 		const columns = [
@@ -312,8 +325,8 @@ ATS is allowed to use the contract as a customer reference. However, no data or 
 			(priority || 'MEDIUM').toUpperCase(),
 			progress || 0,
 			notes || null,
-			lead_id || null,
-			lead_id || null, // enquiry_no will mirror lead_id on create
+			linkedLeadId,
+			linkedLeadId, // enquiry_no will mirror lead_id on create
 			project_id || null,
 		];
 
@@ -339,7 +352,25 @@ ATS is allowed to use the contract as a customer reference. However, no data or 
 		const placeholders = columns.map(() => '?').join(', ');
 		const sql = `INSERT INTO proposals (${columns.join(', ')}) VALUES (${placeholders})`;
 
+		if (linkedLeadId !== null) {
+			linkedTransaction = true;
+			await pool.beginTransaction();
+			try {
+				await assertSingleAuthoritativeLeadLink(pool, linkedLeadId, null);
+			} catch (error) {
+				await pool.rollback();
+				throw error;
+			}
+		}
+
 		const [result] = await pool.execute(sql, values);
+
+		// The enquiry records the canonical Proposal its live links allow.
+		if (linkedLeadId !== null) {
+			await refreshLeadProposalState(pool, linkedLeadId);
+			await pool.commit();
+			linkedTransaction = false;
+		}
 
 		const newProposal = {
 			id: result.insertId,
@@ -356,7 +387,7 @@ ATS is allowed to use the contract as a customer reference. However, no data or 
 			status: status || 'DRAFT',
 			target_date: target_date || due_date,
 			notes,
-			lead_id,
+			lead_id: linkedLeadId,
 			created_at: new Date().toISOString(),
 		};
 
@@ -367,6 +398,23 @@ ATS is allowed to use the contract as a customer reference. However, no data or 
 			message: 'Proposal created successfully',
 		});
 	} catch (error) {
+		if (linkedTransaction) {
+			try {
+				await pool.rollback();
+			} catch {
+				// the connection is released either way
+			}
+		}
+		if (error instanceof LeadWorkflowError) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code,
+				},
+				{ status: error.status }
+			);
+		}
 		console.error('Error creating proposal:', error);
 		return NextResponse.json(
 			{

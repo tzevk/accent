@@ -12,6 +12,49 @@ export function extractSessionCookie(setCookie: string | null): string | null {
 	return match ? match[1] : null;
 }
 
+const LeadReviewItemSchema = z.object({
+	type: z.string(),
+	label: z.string(),
+	original_value: z.string().nullable(),
+});
+
+const LeadReviewResolutionSchema = z.object({
+	id: z.number(),
+	review_type: z.string(),
+	original_value: z.string().nullable(),
+	resolved_value: z.string().nullable(),
+	resolved_reference: z.number().nullable(),
+	reason: z.string(),
+	resolution_source: z.string(),
+	reviewer_user_id: z.number().nullable(),
+	reviewer_name: z.string().nullable(),
+	resolved_at: z.string().nullable(),
+});
+
+const LinkedProposalSchema = z.object({
+	id: z.number(),
+	proposal_title: z.string().nullable(),
+	proposal_id: z.string().nullable(),
+	quotation_number: z.string().nullable(),
+	status: z.string().nullable(),
+	created_at: z.string().nullable(),
+	is_deleted: z.boolean(),
+	is_canonical: z.boolean(),
+});
+
+const LeadReviewStateSchema = z.object({
+	open_items: z.array(LeadReviewItemSchema),
+	resolutions: z.array(LeadReviewResolutionSchema),
+	linked_proposals: z.array(LinkedProposalSchema),
+	canonical_proposal_id: z.number().nullable(),
+	proposal_link_conflict: z.boolean(),
+	unknown_facts: z.object({
+		stage_entry_date: z.string(),
+		original_author: z.string(),
+		original_outcome: z.string(),
+	}),
+});
+
 const LeadDetailSchema = z
 	.object({
 		id: z.number(),
@@ -24,6 +67,8 @@ const LeadDetailSchema = z
 		legacy_stage: z.string().nullable(),
 		legacy_owner_name: z.string().nullable(),
 		legacy_review_required: z.boolean(),
+		canonical_proposal_id: z.number().nullable().optional(),
+		review: LeadReviewStateSchema.optional(),
 		follow_up_date: z.string().nullable().optional(),
 		duplicate_candidates: z
 			.array(
@@ -95,7 +140,33 @@ export interface DbLeadRow {
 	legacy_stage: string | null;
 	legacy_owner_name: string | null;
 	legacy_review_required: number | boolean | null;
+	legacy_stage_reviewed: number | boolean | null;
+	legacy_owner_reviewed: number | boolean | null;
+	legacy_proposal_reviewed: number | boolean | null;
+	legacy_proposal_conflict: number | boolean | null;
+	canonical_proposal_id: number | null;
 	follow_up_date: string | null;
+	isDelete: number | null;
+}
+
+export interface DbReviewRow {
+	id: number;
+	lead_id: number;
+	review_type: string;
+	original_value: string | null;
+	resolved_value: string | null;
+	resolved_reference: number | null;
+	reason: string;
+	resolution_source: string;
+	reviewer_user_id: number | null;
+	resolved_at: string;
+}
+
+export interface DbProposalRow {
+	id: number;
+	lead_id: number | null;
+	proposal_title: string | null;
+	status: string | null;
 	isDelete: number | null;
 }
 
@@ -121,6 +192,8 @@ export interface FixtureIdentity {
 export interface Reader {
 	leadRow: (id: number) => Promise<DbLeadRow | null>;
 	ownershipHistory: (leadId: number) => Promise<DbOwnershipRow[]>;
+	reviewRows: (leadId: number) => Promise<DbReviewRow[]>;
+	proposalRows: (leadId: number) => Promise<DbProposalRow[]>;
 	userByUsername: (username: string) => Promise<Record<string, unknown> | null>;
 	countLeadsByCompany: (companyName: string) => Promise<number>;
 }
@@ -157,6 +230,7 @@ export interface ScenarioContext {
 	assignee: FixtureIdentity;
 	readOnly: FixtureIdentity;
 	noAssign: FixtureIdentity;
+	proposer: FixtureIdentity;
 	trackLead: (id: number) => void;
 }
 

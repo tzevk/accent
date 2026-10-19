@@ -1,4 +1,5 @@
 import type { LeadStage } from '@/lib/lead-stages';
+import type { LeadReviewState } from '@/lib/lead-review';
 
 export interface DuplicateCandidate {
 	id: number;
@@ -30,6 +31,7 @@ export interface LeadListRow {
 	legacy_review_required: boolean;
 	legacy_stage: string | null;
 	legacy_owner_name: string | null;
+	canonical_proposal_id: number | null;
 	follow_up_date: string | null;
 	enquiry_date: string | null;
 	priority: string | null;
@@ -46,6 +48,7 @@ export interface LeadDetail extends LeadListRow {
 	notes: string | null;
 	duplicate_candidates: DuplicateCandidate[];
 	ownership_history: OwnershipHistoryEntry[];
+	review: LeadReviewState;
 }
 
 export interface LeadListStats {

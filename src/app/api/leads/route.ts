@@ -8,9 +8,9 @@ import { hasPermission } from '@/utils/rbac';
 import {
 	createLead,
 	listLeads,
-	LeadWorkflowError,
 	type LeadListFilters,
 } from '@/server/leads/workflow';
+import { leadWorkflowFailure } from '@/app/api/leads/_lib/route-helpers';
 
 function parseListFilters(request: Request): LeadListFilters {
 	const { searchParams } = new URL(request.url);
@@ -31,20 +31,6 @@ function parseListFilters(request: Request): LeadListFilters {
 		owner: searchParams.get('owner') || '',
 		review: searchParams.get('review') || '',
 	};
-}
-
-function workflowFailure(error: unknown): Response {
-	if (error instanceof LeadWorkflowError) {
-		return Response.json(
-			{ success: false, error: error.message, code: error.code },
-			{ status: error.status }
-		);
-	}
-	console.error('Lead workflow error:', error);
-	return Response.json(
-		{ success: false, error: 'Failed to process lead request' },
-		{ status: 500 }
-	);
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -72,7 +58,7 @@ export async function GET(request: Request): Promise<Response> {
 			},
 		});
 	} catch (error) {
-		return workflowFailure(error);
+		return leadWorkflowFailure(error, 'Failed to process lead request');
 	}
 }
 
@@ -137,6 +123,6 @@ export async function POST(request: Request): Promise<Response> {
 			message: 'Lead created successfully',
 		});
 	} catch (error) {
-		return workflowFailure(error);
+		return leadWorkflowFailure(error, 'Failed to process lead request');
 	}
 }

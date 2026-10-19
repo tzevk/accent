@@ -13,7 +13,7 @@ import { apiDelete } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import LeadStageBadge from '@/components/leads/LeadStageBadge';
-import LegacyReviewNotice from '@/components/leads/LegacyReviewNotice';
+import LegacyReviewPanel from '@/components/leads/LegacyReviewPanel';
 import DuplicateReview from '@/components/leads/DuplicateReview';
 import OwnershipHistory from '@/components/leads/OwnershipHistory';
 import LeadAssignForm from '@/components/leads/LeadAssignForm';
@@ -63,6 +63,10 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 		!rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.DELETE);
 	const canAssign =
 		!rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.ASSIGN);
+	// The canonical Proposal decision needs the Lead update right and the
+	// right to read the Proposals the decision is made between.
+	const canReviewProposal =
+		canEdit && can(RBAC_RESOURCES.PROPOSALS, RBAC_PERMISSIONS.READ);
 	const detailQuery = useLeadDetail(id, canView);
 	const ownersQuery = useLeadOwners(!rbacLoading && canAssign);
 	const deleteMutation = useMutation<{ success: boolean }, Error, void>({
@@ -186,7 +190,13 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 					<div className="h-full overflow-y-auto pb-8">
 						<div className="grid grid-cols-1 xl:grid-cols-3 gap-6 max-w-7xl">
 							<div className="xl:col-span-2 space-y-6">
-								<LegacyReviewNotice lead={lead} />
+								<LegacyReviewPanel
+									lead={lead}
+									owners={ownersQuery.data?.data ?? []}
+									canReviewStage={canEdit}
+									canReviewOwner={canAssign}
+									canReviewProposal={canReviewProposal}
+								/>
 								<div className="bg-white rounded-lg border border-gray-200 p-6">
 									<h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
 										<BuildingOfficeIcon className="h-5 w-5 mr-2 text-gray-500" />

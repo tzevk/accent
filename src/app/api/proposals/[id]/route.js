@@ -8,6 +8,11 @@ import {
 	sanitizeJsonStrings,
 	sanitizeOptionalRichText,
 } from '@/lib/sanitize-fields';
+import {
+	assertSingleAuthoritativeLeadLink,
+	refreshLeadProposalState,
+} from '@/server/leads/legacy-review';
+import { LeadWorkflowError, toNullableId } from '@/server/leads/shared';
 
 export async function GET(request, { params }) {
 	let pool;
@@ -691,6 +696,29 @@ export async function PUT(request, { params }) {
 		const { dbConnect } = await import('@/utils/database');
 		pool = await dbConnect();
 
+		// The Lead this Proposal currently points at, and the one the request
+		// asks for. A link may only move to an enquiry that has no other
+		// linked Proposal.
+		const [currentRows] = await pool.execute(
+			'SELECT lead_id FROM proposals WHERE id = ? AND isDelete = 0 LIMIT 1',
+			[id]
+		);
+		const previousLeadId = toNullableId(currentRows[0]?.lead_id);
+		const proposalId = Number.parseInt(id, 10);
+		const knownProposalId =
+			Number.isInteger(proposalId) && proposalId > 0 ? proposalId : null;
+		const leadLinkSupplied = Object.prototype.hasOwnProperty.call(
+			body,
+			'lead_id'
+		);
+		// A Lead id that is not a Lead id is not a link: it is stored as no
+		// link at all, never as a link to Lead 0.
+		const requestedLeadId = leadLinkSupplied
+			? toNullableId(body.lead_id)
+			: previousLeadId;
+		const leadLinkChanged =
+			leadLinkSupplied && requestedLeadId !== previousLeadId;
+
 		// Build the UPDATE dynamically so we only try to set columns that actually exist.
 		// TABLE_SCHEMA = DATABASE() resolves the connected schema directly: DB_NAME is not
 		// part of this app's env contract (the pool uses DEV_DB_* / STAGING_DB_* / PROD_DB_*),
@@ -760,7 +788,12 @@ export async function PUT(request, { params }) {
 		pushIf('due_date', body.due_date ?? body.target_date ?? null);
 		pushIf('target_date', body.target_date ?? body.due_date ?? null);
 		pushIf('notes', body.notes ?? null);
-		pushIf('lead_id', body.lead_id ?? null);
+		// The Lead link is only written when the request carries it. An
+		// unrelated edit must not silently drop the link of a Proposal that
+		// belongs to an enquiry.
+		if (leadLinkSupplied) {
+			pushIf('lead_id', requestedLeadId ?? null);
+		}
 
 		// Company/Industry/Contract fields
 		pushIf('company_id', body.company_id ?? null);
@@ -816,11 +849,18 @@ export async function PUT(request, { params }) {
 		pushIf('priority', body.priority ?? null);
 		pushIf('progress', body.progress ?? null);
 		pushIf('project_id', body.project_id ?? null);
-		// enquiry_no: prefer lead_id, then enquiry_no, then enquiry_number
-		pushIf(
-			'enquiry_no',
-			body.lead_id ?? body.enquiry_no ?? body.enquiry_number ?? null
-		);
+		// enquiry_no: prefer lead_id, then enquiry_no, then enquiry_number.
+		// Written only when the request carries one of them.
+		if (
+			leadLinkSupplied ||
+			Object.prototype.hasOwnProperty.call(body, 'enquiry_no') ||
+			Object.prototype.hasOwnProperty.call(body, 'enquiry_number')
+		) {
+			pushIf(
+				'enquiry_no',
+				body.lead_id ?? body.enquiry_no ?? body.enquiry_number ?? null
+			);
+		}
 
 		// Quotation / related fields
 		pushIf('client_name', body.client_name ?? body.client ?? null);
@@ -934,13 +974,45 @@ export async function PUT(request, { params }) {
 		const sql = `UPDATE proposals SET ${setParts.join(', ')} WHERE id = ? AND isDelete = 0`;
 		values.push(id);
 
-		const [result] = await pool.execute(sql, values);
+		await pool.beginTransaction();
+		try {
+			// The link check and the write share one transaction, and the
+			// enquiry row is locked for it.
+			if (leadLinkChanged && requestedLeadId !== null) {
+				await assertSingleAuthoritativeLeadLink(
+					pool,
+					requestedLeadId,
+					knownProposalId
+				);
+			}
 
-		if (result.affectedRows === 0) {
-			return NextResponse.json(
-				{ success: false, error: 'Proposal not found' },
-				{ status: 404 }
-			);
+			const [result] = await pool.execute(sql, values);
+
+			if (result.affectedRows === 0) {
+				await pool.rollback();
+				return NextResponse.json(
+					{ success: false, error: 'Proposal not found' },
+					{ status: 404 }
+				);
+			}
+
+			// The enquiry the Proposal left and the enquiry it joined both
+			// record the canonical Proposal their live links allow. The
+			// decision history stays.
+			if (leadLinkChanged && previousLeadId !== null) {
+				await refreshLeadProposalState(pool, previousLeadId);
+			}
+			if (
+				leadLinkSupplied &&
+				requestedLeadId !== null &&
+				knownProposalId !== null
+			) {
+				await refreshLeadProposalState(pool, requestedLeadId);
+			}
+			await pool.commit();
+		} catch (transactionError) {
+			await pool.rollback();
+			throw transactionError;
 		}
 
 		return NextResponse.json({
@@ -948,6 +1020,16 @@ export async function PUT(request, { params }) {
 			message: 'Proposal updated successfully',
 		});
 	} catch (error) {
+		if (error instanceof LeadWorkflowError) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: error.message,
+					code: error.code,
+				},
+				{ status: error.status }
+			);
+		}
 		console.error('Database error:', error);
 		return NextResponse.json(
 			{
@@ -979,6 +1061,14 @@ export async function DELETE(request, { params }) {
 		const { dbConnect } = await import('@/utils/database');
 		pool = await dbConnect();
 
+		// The enquiry the Proposal belongs to. Deleting the Proposal changes
+		// the enquiries canonical Proposal, so it is recomputed.
+		const [linkRows] = await pool.execute(
+			'SELECT lead_id FROM proposals WHERE id = ? AND isDelete = 0 LIMIT 1',
+			[id]
+		);
+		const linkedLeadId = toNullableId(linkRows[0]?.lead_id);
+
 		const [result] = await pool.execute(
 			'UPDATE proposals SET isDelete = 1 WHERE id = ?',
 			[id]
@@ -989,6 +1079,10 @@ export async function DELETE(request, { params }) {
 				{ success: false, error: 'Proposal not found' },
 				{ status: 404 }
 			);
+		}
+
+		if (linkedLeadId !== null) {
+			await refreshLeadProposalState(pool, linkedLeadId);
 		}
 
 		return NextResponse.json({

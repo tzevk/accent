@@ -1,6 +1,6 @@
-# Leads authenticated HTTP integration (issue #369)
+# Leads authenticated HTTP integration (issues #369 and #370)
 
-Repeatable proof for the create/import/assign/read slice. The command runs the
+Repeatable proof for the create/import/assign/read slice and the legacy review flow. The command runs the
 real Next server against a disposable migrated MariaDB database, logs in over
 real HTTP, and verifies persistence with an independent database reader. No
 test-only routes, no bypasses, no mocked database proof.
@@ -38,15 +38,19 @@ takes well under a minute.
    with the same name aborts the run; nothing is ever reused.
 3. Migrates everything before the explicit ticket-369 lead migration.
 4. Seeds run-namespaced users (`lit369-<timestamp>-creator`, `-assignee`,
-   `-readonly`, and `-noassign`, password `Lit369-pass!`), a duplicate-name
-   tie pair, and four representative pre-migration Lead rows.
-5. Applies the real ticket-369 lead migration over that evidence, then any
-   later migrations.
-6. Starts `next dev` on `LEADS_INTEGRATION_PORT` (default 31369) with all
+   `-readonly`, `-noassign`, and `-proposer`, password `Lit369-pass!`), a
+   duplicate-name tie pair, and four representative pre-migration Lead rows.
+5. Applies the real ticket-369 lead migration over that evidence.
+6. Seeds the legacy Proposals that link to two of those Leads: two on one
+   enquiry (the duplicate case) and one on another (the evidence-backed
+   case).
+7. Applies the real ticket-370 legacy review migration over the seeded
+   Proposals, then any later migrations.
+8. Starts `next dev` on `LEADS_INTEGRATION_PORT` (default 31369) with all
    database branches pinned to the disposable database.
-7. Logs each fixture user in through `POST /api/login` and keeps the real
+9. Logs each fixture user in through `POST /api/login` and keeps the real
    session cookies.
-8. Runs thirteen scenarios.
+10. Runs nineteen scenarios.
 
 ## Cleanup contract
 
@@ -59,21 +63,27 @@ a full pass, for manual browser follow-up.
 
 ## Scenarios
 
-| #   | Scenario                             | Proves                                                                                 |
-| --- | ------------------------------------ | -------------------------------------------------------------------------------------- |
-| 1   | creator-assignment                   | Manual create defaults owner to creator, starts at New                                 |
-| 2   | permitted-assignment                 | `leads:assign` reassignment records actor/time/prior owner                             |
-| 3   | denied-assignment-no-mutation        | Missing grant yields 403 and persists nothing; anonymous yields 401                    |
-| 4   | unassigned-import                    | Unknown-status CSV enters intake with review flag                                      |
-| 5   | owner-selected-import                | CSV with `owner_user_id` assigns that owner                                            |
-| 6   | import-owner-evidence-never-resolves | CSV owner column stays evidence; never auto-resolves                                   |
-| 7   | separate-enquiries                   | Same company, distinct needs stay separate Leads                                       |
-| 8   | duplicate-review                     | Same company + need surfaces candidates, never merges                                  |
-| 9   | durable-reads                        | A permitted non-owner edits; read-only users see durable values and consistent filters |
-| 10  | legacy-evidence                      | Unique name maps; unknown/duplicate names and odd stages keep originals with review    |
-| 11  | raw-import-evidence                  | Long legacy values and surrounding whitespace survive HTTP and database reads          |
-| 12  | invalid-import-owner                 | Malformed owner identifiers fail without saving any Lead                               |
-| 13  | active-import-requirements           | Active stages cannot bypass owner and next-action requirements                         |
+| #   | Scenario                             | Proves                                                                                    |
+| --- | ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 1   | creator-assignment                   | Manual create defaults owner to creator, starts at New                                    |
+| 2   | permitted-assignment                 | `leads:assign` reassignment records actor/time/prior owner                                |
+| 3   | denied-assignment-no-mutation        | Missing grant yields 403 and persists nothing; anonymous yields 401                       |
+| 4   | unassigned-import                    | Unknown-status CSV enters intake with review flag                                         |
+| 5   | owner-selected-import                | CSV with `owner_user_id` assigns that owner                                               |
+| 6   | import-owner-evidence-never-resolves | CSV owner column stays evidence; never auto-resolves                                      |
+| 7   | separate-enquiries                   | Same company, distinct needs stay separate Leads                                          |
+| 8   | duplicate-review                     | Same company + need surfaces candidates, never merges                                     |
+| 9   | durable-reads                        | A permitted non-owner edits; read-only users see durable values and consistent filters    |
+| 10  | legacy-evidence                      | Unique name maps; unknown/duplicate names and odd stages keep originals with review       |
+| 11  | raw-import-evidence                  | Long legacy values and surrounding whitespace survive HTTP and database reads             |
+| 12  | invalid-import-owner                 | Malformed owner identifiers fail without saving any Lead                                  |
+| 13  | active-import-requirements           | Active stages cannot bypass owner and next-action requirements                            |
+| 14  | legacy-review-queue                  | Unresolved stage, owner, and duplicate Proposal links stay visible with their evidence    |
+| 15  | legacy-review-denied                 | Missing grants yield 403 and anonymous yields 401; no decision is written                 |
+| 16  | legacy-review-invalid                | An active stage without an owner, a foreign Proposal, and a missing reason are refused    |
+| 17  | legacy-review-resolution             | A permitted reviewer resolves owner, stage, and canonical Proposal with a reason          |
+| 18  | proposal-link-guard                  | A second Proposal link to one enquiry is refused; existing links stay untouched           |
+| 19  | proposal-link-edit                   | A link move is guarded, an unrelated edit keeps the link, and a delete clears the pointer |
 
 Every scenario asserts both the HTTP response and the persisted row through
 the independent reader (`mysql2` connection owned by the harness, never the
@@ -111,17 +121,23 @@ which lives only in the workflow.
   `migrations/20261019120000_lead_owner_stable_reference.ts` explicitly. If the
   backend replaces it, update `LEAD_MIGRATION_FILE` in
   `scripts/leads-integration/runner.ts`.
+- `ticket-370 legacy review migration ... missing from migrations/`: the
+  harness pins `migrations/20261019130000_lead_legacy_review.ts` the same
+  way. Update `LEGACY_REVIEW_MIGRATION_FILE` in
+  `scripts/leads-integration/runner.ts`.
 - `refusing to reuse existing database ...`: drop the named database manually
   (or pick a fresh `INTEGRATION_DB_NAME`); the harness never reuses one.
 
 ## Verification record — 2026-10-19
 
 - Local environment: Windows, MariaDB 10.11.15 (matching production), Node 26.2.0. The CI job targets Node 24; CI execution is not claimed here.
-- `npm run test:integration:leads`: all thirteen scenarios pass against the real application and an independent database reader on MariaDB 10.11.
-- `npm run verify`: lint and production build pass; all 86 Vitest suites and 1,066 tests pass.
-- `npm run check:route-auth`: all 449 handlers authorize, with the existing eight allowlisted paths.
+- `npm run test:integration:leads`: all nineteen scenarios pass against the real application and an independent database reader on MariaDB 10.11.
+- `npm run verify`: lint and production build pass; all 88 Vitest suites and 1,082 tests pass.
+- `npm run check:route-auth`: all 450 handlers authorize, with the existing eight allowlisted paths.
 - The baseline migration applies unchanged on MariaDB 10.11 in about five seconds, so no reordering of the production snapshot was needed.
+- The ticket-370 migration runs over the seeded legacy Proposals: one enquiry with a single linked Proposal is auto-resolved and recorded, one with two stays a visible conflict with both Proposals and their links intact.
 - Browser smoke after the query cutover: keyboard creation, creator default, reassignment, history refresh, non-owner editing, next-action refusal, multipart import, intake filters, and original legacy detail.
+- Browser smoke of the legacy review: resolving a legacy owner and stage in the review panel, and the retained original values, the decision, the reviewer, and the time afterwards.
 - A read-only browser user sees no edit, delete, import, or assignment-directory controls.
-- Independent SQL reads confirm the browser's owner, stage, edited city, original import values, and ownership actors/times.
+- Independent SQL reads confirm the browser's owner, stage, edited city, original import values, ownership actors/times, and the recorded review decisions.
 - The command rejects a remote database host before opening a connection.

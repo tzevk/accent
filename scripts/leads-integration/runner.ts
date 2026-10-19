@@ -15,6 +15,8 @@ import {
 import type {
 	DbLeadRow,
 	DbOwnershipRow,
+	DbProposalRow,
+	DbReviewRow,
 	FixtureIdentity,
 	HttpResponse,
 	LoginHttpClient,
@@ -45,6 +47,15 @@ import {
 	legacyEvidenceScenario,
 	type LegacySeedRow,
 } from './scenarios/legacy.ts';
+import {
+	legacyReviewDeniedScenario,
+	legacyReviewInvalidScenario,
+	legacyReviewQueueScenario,
+	legacyReviewResolutionScenario,
+	proposalLinkEditScenario,
+	proposalLinkGuardScenario,
+	type LegacyReviewSeeds,
+} from './scenarios/legacy-review.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -71,6 +82,10 @@ const MIGRATIONS_DIR = join(process.cwd(), 'migrations');
 // Explicit ticket-369 cutover point: every earlier file migrates first, legacy
 // evidence is seeded, then this file maps it. Never rediscovered by pattern.
 const LEAD_MIGRATION_FILE = '20261019120000_lead_owner_stable_reference.ts';
+// Second cutover point: the legacy review migration inventories the stored
+// values, auto-resolves the evidence-backed cases, and leaves the ambiguous
+// ones for a reviewer. Never rediscovered by pattern.
+const LEGACY_REVIEW_MIGRATION_FILE = '20261019130000_lead_legacy_review.ts';
 
 function log(message: string): void {
 	process.stdout.write(`[leads-integration] ${message}\n`);
@@ -194,7 +209,37 @@ function makeReader(connection: Connection): Reader {
 			legacy_stage: nullableString(row.legacy_stage),
 			legacy_owner_name: nullableString(row.legacy_owner_name),
 			legacy_review_required: nullableFlag(row.legacy_review_required),
+			legacy_stage_reviewed: nullableFlag(row.legacy_stage_reviewed),
+			legacy_owner_reviewed: nullableFlag(row.legacy_owner_reviewed),
+			legacy_proposal_reviewed: nullableFlag(row.legacy_proposal_reviewed),
+			legacy_proposal_conflict: nullableFlag(row.legacy_proposal_conflict),
+			canonical_proposal_id: nullableNumber(row.canonical_proposal_id),
 			follow_up_date: nullableString(row.follow_up_date),
+			isDelete: nullableNumber(row.isDelete),
+		};
+	}
+
+	function toReviewRow(row: Record<string, unknown>): DbReviewRow {
+		return {
+			id: requiredNumber(row.id, 'lead_legacy_reviews.id'),
+			lead_id: requiredNumber(row.lead_id, 'lead_legacy_reviews.lead_id'),
+			review_type: String(row.review_type),
+			original_value: nullableString(row.original_value),
+			resolved_value: nullableString(row.resolved_value),
+			resolved_reference: nullableNumber(row.resolved_reference),
+			reason: String(row.reason),
+			resolution_source: String(row.resolution_source),
+			reviewer_user_id: nullableNumber(row.reviewer_user_id),
+			resolved_at: String(row.resolved_at),
+		};
+	}
+
+	function toProposalRow(row: Record<string, unknown>): DbProposalRow {
+		return {
+			id: requiredNumber(row.id, 'proposals.id'),
+			lead_id: nullableNumber(row.lead_id),
+			proposal_title: nullableString(row.proposal_title),
+			status: nullableString(row.status),
 			isDelete: nullableNumber(row.isDelete),
 		};
 	}
@@ -223,6 +268,20 @@ function makeReader(connection: Connection): Reader {
 				[leadId]
 			);
 			return rows.map(toOwnershipRow);
+		},
+		reviewRows: async (leadId) => {
+			const [rows] = await connection.execute(
+				'SELECT * FROM lead_legacy_reviews WHERE lead_id = ? ORDER BY id ASC',
+				[leadId]
+			);
+			return rows.map(toReviewRow);
+		},
+		proposalRows: async (leadId) => {
+			const [rows] = await connection.execute(
+				'SELECT id, lead_id, proposal_title, status, isDelete FROM proposals WHERE lead_id = ? ORDER BY id ASC',
+				[leadId]
+			);
+			return rows.map(toProposalRow);
 		},
 		userByUsername: async (username) =>
 			firstRow('SELECT * FROM users WHERE username = ? LIMIT 1', [username]),
@@ -326,6 +385,7 @@ interface FixtureIdentities {
 	assignee: FixtureIdentity;
 	readOnly: FixtureIdentity;
 	noAssign: FixtureIdentity;
+	proposer: FixtureIdentity;
 }
 
 function fixtureSpecs(runTag: string): FixtureSpec[] {
@@ -336,6 +396,9 @@ function fixtureSpecs(runTag: string): FixtureSpec[] {
 		'leads:delete',
 		'leads:import',
 		'leads:assign',
+		// Proposal read access lets the reviewer see the linked Proposals
+		// the canonical choice is made between.
+		'proposals:read',
 	];
 	return [
 		{
@@ -357,6 +420,17 @@ function fixtureSpecs(runTag: string): FixtureSpec[] {
 			key: 'noassign',
 			fullName: `${runTag} Editor`,
 			permissions: ['leads:read', 'leads:create', 'leads:update'],
+		},
+		{
+			key: 'proposer',
+			fullName: `${runTag} Proposer`,
+			permissions: [
+				'leads:read',
+				'proposals:read',
+				'proposals:create',
+				'proposals:update',
+				'proposals:delete',
+			],
 		},
 	];
 }
@@ -389,10 +463,10 @@ async function loginFixtureIdentities(
 			permissions: spec.permissions,
 		});
 	}
-	const [creator, assignee, readOnly, noAssign] = identities;
-	if (!creator || !assignee || !readOnly || !noAssign)
+	const [creator, assignee, readOnly, noAssign, proposer] = identities;
+	if (!creator || !assignee || !readOnly || !noAssign || !proposer)
 		fail('fixture login incomplete');
-	return { creator, assignee, readOnly, noAssign };
+	return { creator, assignee, readOnly, noAssign, proposer };
 }
 
 async function seedDuplicateNameTie(
@@ -482,6 +556,104 @@ async function seedLegacyRows(
 		});
 	}
 	return seeds;
+}
+
+interface LegacyProposalSeed {
+	leadId: number;
+	proposalIds: number[];
+}
+
+/**
+ * Legacy Proposals linked to the seeded legacy Leads, inserted before the
+ * legacy review migration runs. One enquiry carries two Proposals (the
+ * duplicate case that needs a reviewer) and one carries a single Proposal
+ * (the evidence-backed case the cutover may resolve on its own).
+ */
+async function seedLegacyProposals(
+	connection: Connection,
+	runTag: string,
+	seeds: LegacySeedRow[]
+): Promise<LegacyProposalSeed[]> {
+	const findSeed = (marker: LegacySeedRow['ownerMarker']): LegacySeedRow => {
+		const seed = seeds.find((candidate) => candidate.ownerMarker === marker);
+		if (!seed) fail(`legacy seed present for ${marker}`);
+		return seed;
+	};
+	const plan: Array<{
+		marker: LegacySeedRow['ownerMarker'];
+		titles: string[];
+	}> = [
+		{
+			marker: '__LABEL__',
+			titles: [
+				`${runTag} legacy proposal one`,
+				`${runTag} legacy proposal two`,
+			],
+		},
+		{
+			marker: '__UNKNOWN_NAME__',
+			titles: [`${runTag} legacy proposal single`],
+		},
+	];
+	const seeded: LegacyProposalSeed[] = [];
+	for (const entry of plan) {
+		const seed = findSeed(entry.marker);
+		const proposalIds: number[] = [];
+		for (const title of entry.titles) {
+			await connection.execute(
+				`INSERT INTO proposals (proposal_title, lead_id, status, isDelete)
+				 VALUES (?, ?, 'DRAFT', 0)`,
+				[title, seed.id]
+			);
+			const [rows] = await connection.execute(
+				'SELECT id FROM proposals WHERE lead_id = ? ORDER BY id DESC LIMIT 1',
+				[seed.id]
+			);
+			const [created] = rows;
+			if (!created) fail(`legacy proposal ${title} missing after insert`);
+			proposalIds.push(requiredNumber(created.id, 'proposals.id'));
+		}
+		seeded.push({ leadId: seed.id, proposalIds });
+	}
+	return seeded;
+}
+
+/**
+ * The legacy records the review scenarios work on: an evidence-backed
+ * mapping, an ambiguous owner name, an enquiry with two linked Proposals,
+ * and an enquiry with exactly one linked Proposal.
+ */
+function buildLegacyReviewSeeds(
+	legacySeeds: LegacySeedRow[],
+	legacyProposals: LegacyProposalSeed[]
+): LegacyReviewSeeds {
+	const byMarker = (marker: LegacySeedRow['ownerMarker']): LegacySeedRow => {
+		const seed = legacySeeds.find(
+			(candidate) => candidate.ownerMarker === marker
+		);
+		if (!seed) fail(`legacy seed present for ${marker}`);
+		return seed;
+	};
+	const proposalIdsFor = (leadId: number): number[] => {
+		const seeded = legacyProposals.find(
+			(candidate) => candidate.leadId === leadId
+		);
+		if (!seeded) fail(`legacy proposals seeded for lead ${leadId}`);
+		return seeded.proposalIds;
+	};
+	const conflict = byMarker('__LABEL__');
+	const single = byMarker('__UNKNOWN_NAME__');
+	const singleProposalIds = proposalIdsFor(single.id);
+	if (singleProposalIds.length !== 1)
+		fail('the single-link legacy lead carries exactly one Proposal');
+	return {
+		cleanLeadId: byMarker('__CLEAN_MAP__').id,
+		ambiguousOwnerLeadId: byMarker('__DUPLICATE_NAME__').id,
+		conflictLeadId: conflict.id,
+		conflictProposalIds: proposalIdsFor(conflict.id),
+		singleLinkLeadId: single.id,
+		singleLinkProposalId: singleProposalIds[0],
+	};
 }
 
 async function waitForHealth(
@@ -661,28 +833,42 @@ export async function runLeadsIntegration(
 
 		const seeder = await connectReader(resolved);
 		let legacySeeds: LegacySeedRow[] = [];
+		let legacyProposals: LegacyProposalSeed[] = [];
 		try {
 			const passwordHash = await hashFixturePassword(FIXTURE_PASSWORD);
 			await seedPreMigrationFixtures(seeder, runTag, passwordHash);
 			legacySeeds = await seedLegacyRows(seeder, runTag, `${runTag} Assignee`);
+
+			log(
+				`applying ticket-369 lead migration ${LEAD_MIGRATION_FILE} over seeded legacy evidence`
+			);
+			await knex.migrate.up({ name: LEAD_MIGRATION_FILE });
+
+			// The legacy Proposals exist before the review migration runs, so
+			// the cutover sees the duplicate links it has to keep visible.
+			legacyProposals = await seedLegacyProposals(seeder, runTag, legacySeeds);
+			log(
+				`applying legacy review migration ${LEGACY_REVIEW_MIGRATION_FILE} over the seeded legacy Proposals`
+			);
+			await knex.migrate.up({ name: LEGACY_REVIEW_MIGRATION_FILE });
+			await knex.migrate.latest();
 		} finally {
 			await seeder.end();
 		}
 
-		log(
-			`applying ticket-369 lead migration ${LEAD_MIGRATION_FILE} over seeded legacy evidence`
-		);
-		await knex.migrate.up({ name: LEAD_MIGRATION_FILE });
-		await knex.migrate.latest();
-
 		reader = await connectReader(resolved);
-		const [appliedRows] = await reader.execute(
-			'SELECT COUNT(*) AS total FROM knex_migrations WHERE name = ?',
-			[LEAD_MIGRATION_FILE]
-		);
-		const [applied] = appliedRows;
-		if (Number(applied?.total ?? 0) !== 1)
-			fail(`lead migration ${LEAD_MIGRATION_FILE} not recorded applied`);
+		for (const migration of [
+			LEAD_MIGRATION_FILE,
+			LEGACY_REVIEW_MIGRATION_FILE,
+		]) {
+			const [appliedRows] = await reader.execute(
+				'SELECT COUNT(*) AS total FROM knex_migrations WHERE name = ?',
+				[migration]
+			);
+			const [applied] = appliedRows;
+			if (Number(applied?.total ?? 0) !== 1)
+				fail(`migration ${migration} not recorded applied`);
+		}
 
 		const http = makeHttp(baseUrl);
 		server = startAppServer(resolved, port);
@@ -746,8 +932,39 @@ export async function runLeadsIntegration(
 			(ctx) => legacyEvidenceScenario(ctx, legacySeeds),
 			context
 		);
+		const reviewSeeds = buildLegacyReviewSeeds(legacySeeds, legacyProposals);
+		await runScenario(
+			'legacy-review-queue',
+			(ctx) => legacyReviewQueueScenario(ctx, reviewSeeds),
+			context
+		);
+		await runScenario(
+			'legacy-review-denied',
+			(ctx) => legacyReviewDeniedScenario(ctx, reviewSeeds),
+			context
+		);
+		await runScenario(
+			'legacy-review-invalid',
+			(ctx) => legacyReviewInvalidScenario(ctx, reviewSeeds),
+			context
+		);
+		await runScenario(
+			'legacy-review-resolution',
+			(ctx) => legacyReviewResolutionScenario(ctx, reviewSeeds),
+			context
+		);
+		await runScenario(
+			'proposal-link-guard',
+			(ctx) => proposalLinkGuardScenario(ctx, reviewSeeds),
+			context
+		);
+		await runScenario(
+			'proposal-link-edit',
+			(ctx) => proposalLinkEditScenario(ctx, reviewSeeds),
+			context
+		);
 		log(IBAND);
-		log(`PASS all 13 scenarios (${trackedLeads.length} leads created)`);
+		log(`PASS all 19 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other

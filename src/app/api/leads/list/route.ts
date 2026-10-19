@@ -4,11 +4,8 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-import {
-	listLeads,
-	LeadWorkflowError,
-	type LeadListFilters,
-} from '@/server/leads/workflow';
+import { listLeads, type LeadListFilters } from '@/server/leads/workflow';
+import { leadWorkflowFailure } from '@/app/api/leads/_lib/route-helpers';
 
 /**
  * GET /api/leads/list — workspace list with workspace filters.
@@ -62,16 +59,6 @@ export async function GET(request: Request): Promise<Response> {
 			_meta: { queryTimeMs: Date.now() - startTime },
 		});
 	} catch (error) {
-		if (error instanceof LeadWorkflowError) {
-			return NextResponse.json(
-				{ success: false, error: error.message, code: error.code },
-				{ status: error.status }
-			);
-		}
-		console.error('Leads list error:', error);
-		return NextResponse.json(
-			{ success: false, error: 'Failed to fetch leads' },
-			{ status: 500 }
-		);
+		return leadWorkflowFailure(error, 'Failed to fetch leads');
 	}
 }

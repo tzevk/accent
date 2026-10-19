@@ -13,7 +13,7 @@ import { apiDelete, apiPost, apiPut } from '@/lib/api-client';
 import { formatDate, formatDateInput } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import { isActiveLeadStage, LEAD_STAGES } from '@/lib/lead-stages';
-import LegacyReviewNotice from '@/components/leads/LegacyReviewNotice';
+import LegacyReviewPanel from '@/components/leads/LegacyReviewPanel';
 import OwnerSelect from '@/components/leads/OwnerSelect';
 import {
 	leadKeys,
@@ -21,6 +21,7 @@ import {
 	useFollowUpDetail,
 	useLeadDetail,
 	useLeadFollowUps,
+	useLeadOwners,
 	type FollowUpRow,
 } from '@/components/leads/queries';
 import type { LeadDetail } from '@/components/leads/types';
@@ -176,7 +177,12 @@ export default function EditLead({ params }: EditLeadProps) {
 		!rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.UPDATE);
 	const canAssign =
 		!rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.ASSIGN);
+	// The canonical Proposal decision needs the Lead update right and the
+	// right to read the Proposals the decision is made between.
+	const canReviewProposal =
+		canUpdate && can(RBAC_RESOURCES.PROPOSALS, RBAC_PERMISSIONS.READ);
 	const detailQuery = useLeadDetail(id, canView);
+	const ownersQuery = useLeadOwners(!rbacLoading && canAssign);
 	const companiesQuery = useCompanyDirectory(canView);
 	const lead = detailQuery.data?.data ?? null;
 	const companies = companiesQuery.data?.data ?? [];
@@ -500,7 +506,13 @@ export default function EditLead({ params }: EditLeadProps) {
 			<div className="flex-1 px-6 lg:px-8 xl:px-12 2xl:px-16 overflow-hidden">
 				<div className="h-full overflow-y-auto bg-white rounded-b-lg">
 					<div className="p-6 space-y-6">
-						<LegacyReviewNotice lead={lead} />
+						<LegacyReviewPanel
+							lead={lead}
+							owners={ownersQuery.data?.data ?? []}
+							canReviewStage={canUpdate}
+							canReviewOwner={canAssign}
+							canReviewProposal={canReviewProposal}
+						/>
 						{activeTab === 'details' ? (
 							<form onSubmit={handleSubmit}>
 								<div className="space-y-6">
