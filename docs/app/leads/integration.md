@@ -1,9 +1,13 @@
 # Leads authenticated HTTP integration (issue #369)
 
 Repeatable proof for the create/import/assign/read slice. The command runs the
-real Next server against a disposable migrated MySQL database, logs in over
+real Next server against a disposable migrated MariaDB database, logs in over
 real HTTP, and verifies persistence with an independent database reader. No
 test-only routes, no bypasses, no mocked database proof.
+
+**Production is MariaDB 10.11.15.** Run the harness against MariaDB, because
+MySQL accepts and rejects different SQL. The local instance and its start and
+stop commands are documented in `AGENTS.md` under "Local MariaDB for testing".
 
 ## Command
 
@@ -17,15 +21,15 @@ npm run test:integration:leads
 ```
 
 The database name must contain `integration` and match `^[A-Za-z0-9_]+$`. The
-host must be loopback (`127.0.0.1`, `::1`, or `localhost`) — remote MySQL is
-always refused. The harness also refuses targets that look like development,
+host must be loopback (`127.0.0.1`, `::1`, or `localhost`) — a remote database
+is always refused. The harness also refuses targets that look like development,
 staging, or production, or that match any configured branch database. Set the
 variables in your shell only; never add them to `.env`. See the
 `INTEGRATION_DB_*` block in `.env.example`.
 
-Expect the first run to take several minutes: the baseline migration builds
-the full schema (~2 minutes on MySQL 8.4), then the harness starts the server
-and runs thirteen scenarios.
+Expect the first run to build the full schema from the baseline migration, then
+start the server and run thirteen scenarios. On MariaDB 10.11 the whole run
+takes well under a minute.
 
 ## What the run does
 
@@ -88,9 +92,10 @@ with Ctrl+C, then drop the database manually. The port stays 31369 unless
 
 ## CI
 
-`checks.yml` runs the same command against a MySQL 8.4 service with an
-isolated `accent_integration_369` database. No secrets beyond the ephemeral
-service password, which lives only in the workflow.
+`checks.yml` runs the same command against a MariaDB 10.11 service, the
+engine production uses. The service creates no database, because the harness
+creates and drops its own. No secrets beyond the ephemeral service password,
+which lives only in the workflow.
 
 ## Troubleshooting
 
@@ -111,10 +116,11 @@ service password, which lives only in the workflow.
 
 ## Verification record — 2026-10-19
 
-- Local environment: Windows, MySQL 8.4.6, Node 26.2.0. The CI job targets Node 24; CI execution is not claimed here.
-- `npm run test:integration:leads`: all thirteen scenarios pass against the real application and an independent database reader.
+- Local environment: Windows, MariaDB 10.11.15 (matching production), Node 26.2.0. The CI job targets Node 24; CI execution is not claimed here.
+- `npm run test:integration:leads`: all thirteen scenarios pass against the real application and an independent database reader on MariaDB 10.11.
 - `npm run verify`: lint and production build pass; all 86 Vitest suites and 1,066 tests pass.
 - `npm run check:route-auth`: all 449 handlers authorize, with the existing eight allowlisted paths.
+- The baseline migration applies unchanged on MariaDB 10.11 in about five seconds, so no reordering of the production snapshot was needed.
 - Browser smoke after the query cutover: keyboard creation, creator default, reassignment, history refresh, non-owner editing, next-action refusal, multipart import, intake filters, and original legacy detail.
 - A read-only browser user sees no edit, delete, import, or assignment-directory controls.
 - Independent SQL reads confirm the browser's owner, stage, edited city, original import values, and ownership actors/times.

@@ -990,16 +990,17 @@ function buildOrderBy(sortBy: string, sortOrder: string): string {
 }
 
 /**
- * Strictly validated pagination literals. mysql2 prepared statements reject
- * bound LIMIT/OFFSET on MySQL 8.4 (ER_WRONG_ARGUMENTS), so the integers are
- * clamped in code and inlined — no user SQL can reach this string.
+ * Validated pagination values. Both are bound as parameters; the integers are
+ * clamped here so a request cannot ask for an unbounded page.
  */
-function buildLimitOffset(page: number, limit: number): string {
+function paginationValues(
+	page: number,
+	limit: number
+): { safeLimit: number; safeOffset: number } {
 	const safeLimit =
 		Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 20;
 	const safePage = Number.isInteger(page) && page > 0 ? page : 1;
-	const safeOffset = (safePage - 1) * safeLimit;
-	return `LIMIT ${safeLimit} OFFSET ${safeOffset}`;
+	return { safeLimit, safeOffset: (safePage - 1) * safeLimit };
 }
 
 /** Shared list query: same filters, same soft-delete, full-dataset stats. */
@@ -1012,7 +1013,10 @@ export async function listLeads(filters: LeadListFilters): Promise<{
 	try {
 		const { clause, params } = buildListWhere(filters);
 		const orderBy = buildOrderBy(filters.sortBy, filters.sortOrder);
-		const limitOffset = buildLimitOffset(filters.page, filters.limit);
+		const { safeLimit, safeOffset } = paginationValues(
+			filters.page,
+			filters.limit
+		);
 
 		const [countResult, leadsResult, statsResult] = await Promise.all([
 			db.execute(
@@ -1020,8 +1024,8 @@ export async function listLeads(filters: LeadListFilters): Promise<{
 				params
 			),
 			db.execute(
-				`SELECT ${LEAD_LIST_SELECT} ${LEAD_LIST_FROM} ${clause} ${orderBy} ${limitOffset}`,
-				params
+				`SELECT ${LEAD_LIST_SELECT} ${LEAD_LIST_FROM} ${clause} ${orderBy} LIMIT ? OFFSET ?`,
+				[...params, safeLimit, safeOffset]
 			),
 			db.execute(
 				`SELECT

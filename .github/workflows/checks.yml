@@ -23,14 +23,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
-      mysql:
-        image: mysql:8.4
+      # Production runs MariaDB 10.11, so the integration run uses the same
+      # engine. MySQL accepts and rejects different SQL.
+      mariadb:
+        image: mariadb:10.11
         env:
-          MYSQL_ROOT_PASSWORD: integration-root-pass
+          MARIADB_ROOT_PASSWORD: integration-root-pass
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pintegration-root-pass"
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -pintegration-root-pass"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10

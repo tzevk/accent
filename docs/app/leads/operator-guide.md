@@ -59,5 +59,4 @@ The detail shows original legacy stage and owner values. Migration maps an owner
 - Replaced conflicting Lead status lists with the canonical stage vocabulary.
 - Added unassigned intake, original legacy evidence, review indicators, and duplicate candidates.
 - Removed the client-side two-request conversion path. Ordinary field edits cannot simulate a Proposal handoff.
-- Added a repeatable isolated-MySQL HTTP integration command and CI job. See [integration guidance](integration.md).
-- Reordered unchanged baseline table creation so Proposals exist before the snapshot's Project foreign keys are resolved. Existing databases do not rerun this baseline.
+- Added a repeatable HTTP integration command and CI job that run against a disposable MariaDB database, the engine production uses. See [integration guidance](integration.md).
