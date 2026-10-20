@@ -280,7 +280,7 @@ export default function EditLead({ params }: EditLeadProps) {
 	return (
 		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
-			<div className="flex-shrink-0 pt-24 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4">
+			<div className="flex-shrink-0 pt-6 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4">
 				<div className="mb-6">
 					<div className="flex items-center space-x-4 mb-4">
 						<button
