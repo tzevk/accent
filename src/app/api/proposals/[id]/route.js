@@ -200,6 +200,18 @@ export async function POST(request, { params }) {
 			const push = (col, val) => {
 				if (existing.has(col)) {
 					let v = val;
+					// A number column never carries an empty string: the
+					// browser sends one for a field the user left blank, and
+					// MySQL refuses '' for a DECIMAL column. Such a field
+					// means "not stated", so it is written as NULL.
+					if (
+						v === '' &&
+						/^(decimal|numeric|int|integer|bigint|smallint|tinyint|float|double|real)$/.test(
+							colType[col] || ''
+						)
+					) {
+						v = null;
+					}
 					// If column has a max length and value is a string exceeding it, truncate to avoid Data truncated errors
 					const maxLen = colMaxLen[col];
 					if (
@@ -740,9 +752,32 @@ export async function PUT(request, { params }) {
 		// columns, so every pushIf no-op'd and saves failed with
 		// "No updatable columns found for proposals table".
 		const [cols] = await pool.execute(
-			`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proposals'`
+			`SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proposals'`
 		);
 		const existing = new Set(cols.map((c) => c.COLUMN_NAME));
+		// A number column never carries an empty string. The browser sends
+		// one for a field the user left blank, and MySQL refuses '' for a
+		// DECIMAL column: "Incorrect decimal value: '' for column
+		// proposals.value". Such a field means "not stated", so it is
+		// written as NULL.
+		const numberColumns = new Set(
+			cols
+				.filter((c) =>
+					[
+						'decimal',
+						'numeric',
+						'int',
+						'integer',
+						'bigint',
+						'smallint',
+						'tinyint',
+						'float',
+						'double',
+						'real',
+					].includes(String(c.DATA_TYPE || '').toLowerCase())
+				)
+				.map((c) => c.COLUMN_NAME)
+		);
 
 		// Helper to push if column exists (with dedup to avoid duplicate SET clauses)
 		const setParts = [];
@@ -760,6 +795,11 @@ export async function PUT(request, { params }) {
 					colName === 'internal_meeting_date' ||
 					colName === 'next_internal_meeting';
 				if ((isDateField || isDateMeetingField) && val === '') {
+					values.push(null);
+				} else if (
+					numberColumns.has(colName) &&
+					(val === '' || val === undefined)
+				) {
 					values.push(null);
 				} else if (
 					(isDateField || isDateMeetingField) &&
