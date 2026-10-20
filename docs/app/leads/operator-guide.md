@@ -256,6 +256,64 @@ the linked Proposal. A Lead without a resolved owner or stage says so and
 keeps its original value for review; nothing is guessed. Open a Lead to see
 its timeline, log work, and record the next action.
 
+## Convert a Lead into its Proposal
+
+A Qualified Lead becomes a Proposal with one action: **Convert to Proposal** on
+the Lead list or on the Lead detail page. The handoff creates the one
+canonical Proposal of the enquiry, marks the Lead **Converted**, records the
+conversion, and moves the scheduled Lead work to the Proposal. The action
+opens the Proposal of the enquiry, and a repeated action opens the same
+Proposal again.
+
+The Lead must be **Qualified** before it can be converted. Any other stage is
+refused, and the refusal names the required stage. The Lead also needs a named
+contact, a usable phone number or email address, a clear project need, and a
+resolved owner. Each missing item is refused with its own message, and the
+interface shows it against the field it belongs to. Budget and project timing
+are not Lead fields, so they never block a conversion.
+
+The handoff needs three permissions: `leads:convert`, `leads:update`, and
+`proposals:create`. A missing permission is refused before anything is
+written.
+
+What the handoff does to the records:
+
+- The Proposal carries the company, contact, and project evidence of the Lead,
+  and the canonical link to the enquiry. Its own status vocabulary is
+  untouched: **Converted** is a handoff, never a sale won.
+- The Lead is marked **Converted**, and the enquiry keeps the time and the
+  person of the conversion.
+- The conversion is recorded as evidence, and the stage history keeps the
+  change.
+- Every scheduled Lead task becomes one Proposal follow-up. The Lead task
+  keeps the link to its destination, and the Lead work queue no longer lists
+  it. The completed activities of the Lead stay with the Lead.
+- A Lead whose enquiry already carries a Proposal returns that Proposal and
+  writes nothing a second time. Two simultaneous actions still produce one
+  Proposal.
+
+An enquiry with several linked Proposals and no canonical choice is refused
+with a review conflict. Open the **Legacy review** panel and choose the
+canonical Proposal; the handoff never guesses one, and the prior alternatives
+stay exactly as they are.
+
+Generic Proposal create and edit requests cannot write the canonical Lead
+link. That link belongs to the handoff.
+
+## Change notes — issue #375
+
+- Added the Lead-to-Proposal handoff: one action on the Lead screens creates
+  the canonical Proposal, marks the Lead Converted, records the conversion,
+  and transfers the scheduled work.
+- Added the database-enforced canonical linkage, the conversion evidence
+  table, and the conversion marks on the enquiry.
+- Added the conversion refusals: a missing permission, a stage that is not
+  Qualified, a missing named contact, a missing phone number or email
+  address, a missing project need, a missing owner, and an unresolved
+  canonical Proposal.
+- Refused a client-supplied canonical Lead link on the Proposal create and
+  edit paths, and released the link when a Proposal is deleted.
+
 ## Change notes — issue #374
 
 - Added the Lead queues (My Leads, Unassigned, Due Today, Overdue,
