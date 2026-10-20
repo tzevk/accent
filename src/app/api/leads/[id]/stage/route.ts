@@ -4,13 +4,14 @@ import {
 	RESOURCES,
 } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
+import { hasPermission } from '@/utils/rbac';
 import {
 	applyLeadLifecycle,
 	type LeadLifecycleInput,
 } from '@/server/leads/lifecycle';
 import {
 	leadWorkflowFailure,
-	parseLeadId,
+	parseLeadTaskActivityId,
 } from '@/app/api/leads/_lib/route-helpers';
 
 /**
@@ -19,6 +20,11 @@ import {
  * Qualify, Nurture, Disqualify, or Reopen. The decision is a human one: the
  * author is the authenticated session, the request never names an actor, and
  * the server decides what the decision needs.
+ *
+ * The decision needs the Lead update right. A decision that also names an
+ * owner needs the Lead assign right, exactly like every other owner write
+ * of the Lead feature; without it the request is refused and nothing is
+ * written.
  *
  * The write is one transaction: the stage, the ownership change, the next
  * action, the cancelled work, and the stage history commit together or not
@@ -37,7 +43,7 @@ export async function POST(
 	if (auth instanceof Response) return auth;
 
 	const { id } = await params;
-	const leadId = parseLeadId(id);
+	const leadId = parseLeadTaskActivityId(id);
 	if (leadId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },
@@ -56,6 +62,20 @@ export async function POST(
 	}
 
 	const actorUserId = Number(auth.user.id);
+
+	// An owner write needs the assign right, exactly like every other owner
+	// write of the Lead feature. The refusal happens before the decision,
+	// so a request without the grant changes nothing.
+	if (
+		Object.hasOwn(data, 'owner_user_id') &&
+		!hasPermission(auth.user, RESOURCES.LEADS, PERMISSIONS.ASSIGN)
+	) {
+		return Response.json(
+			{ success: false, error: 'Forbidden: missing permission' },
+			{ status: 403 }
+		);
+	}
+
 	try {
 		const result = await applyLeadLifecycle(leadId, data, actorUserId);
 		void logActivity({

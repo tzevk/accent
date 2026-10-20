@@ -5,8 +5,12 @@ import { LeadWorkflowError } from '@/server/leads/shared';
  * response shape of a refused workflow action.
  */
 
-/** The numeric Lead id of a route path, or null when the path is not one. */
-export function parseLeadId(value: string): number | null {
+/**
+ * The numeric id of a Lead path segment, or null when the segment is not
+ * one. The Lead routes carry three kinds of numeric id in their paths: the
+ * Lead, the task, and the activity — one parser reads all three.
+ */
+export function parseLeadTaskActivityId(value: string): number | null {
 	const id = Number.parseInt(value, 10);
 	return Number.isInteger(id) && id > 0 ? id : null;
 }

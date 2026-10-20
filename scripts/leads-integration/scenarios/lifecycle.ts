@@ -902,3 +902,237 @@ export async function lifecycleUnauthorizedScenario(
 	assert.equal(anonymous.status, 401, `anonymous body: ${anonymous.text}`);
 	assert.equal((await context.reader.stageHistory(leadId)).length, 0);
 }
+
+/**
+ * A decision that names an owner needs the Lead assign right, exactly like
+ * every other owner write of the Lead feature. A request without the grant
+ * is refused and writes nothing.
+ */
+export async function ownerChangeNeedsAssignScenario(
+	context: ScenarioContext
+): Promise<void> {
+	const leadId = await createLead(
+		context,
+		{
+			company_name: `${context.runTag} Owner Grant Co`,
+			contact_name: 'Cleo Client',
+			contact_email: 'cleo@example.com',
+			project_description: 'A plant extension for the workshop',
+		},
+		context.assignee.sessionToken
+	);
+
+	// The editor may decide, but it may not hand the Lead to somebody else.
+	const denied = await decide(
+		context,
+		leadId,
+		{
+			action: 'Qualify',
+			owner_user_id: context.creator.id,
+			next_action: { scheduled_for: futureDate(4) },
+		},
+		context.noAssign.sessionToken
+	);
+	assert.equal(denied.status, 403, `denied body: ${denied.text}`);
+
+	const row = await readLeadRow(context, leadId);
+	assert.equal(row.enquiry_status, 'New', 'a refused decision changes nothing');
+	assert.equal(row.owner_user_id, context.assignee.id);
+	assert.equal(
+		(await context.reader.stageHistory(leadId)).length,
+		0,
+		'a refused decision writes no stage history'
+	);
+	assert.equal(
+		(await context.reader.ownershipHistory(leadId)).length,
+		1,
+		'a refused decision writes no ownership change'
+	);
+
+	// The same decision with the assign right succeeds.
+	const permitted = await decide(
+		context,
+		leadId,
+		{
+			action: 'Qualify',
+			owner_user_id: context.creator.id,
+			next_action: { scheduled_for: futureDate(4) },
+		},
+		context.assignee.sessionToken
+	);
+	assert.equal(permitted.status, 200, `permitted body: ${permitted.text}`);
+	const body = LifecycleEnvelopeSchema.parse(permitted.json()).data;
+	assert.equal(body.stage, 'Qualified');
+	assert.equal(body.owner_user_id, context.creator.id);
+}
+
+/**
+ * A generic edit never bypasses the explicit decisions: reaching Qualified
+ * or Nurture through a plain edit needs the same evidence the decision
+ * needs. A missing field is refused with its own code, and the stage
+ * history of the Lead stays empty.
+ */
+export async function genericStageChangeNeedsTheDecisionEvidenceScenario(
+	context: ScenarioContext
+): Promise<void> {
+	const cases: Array<{
+		company: string;
+		fixture: LeadFixture;
+		stage: string;
+		code: string;
+	}> = [
+		{
+			company: `${context.runTag} Generic No Contact Co`,
+			fixture: {
+				company_name: `${context.runTag} Generic No Contact Co`,
+				contact_name: null,
+				contact_email: 'cleo@example.com',
+				project_description: 'A plant extension for the workshop',
+			},
+			stage: 'Qualified',
+			code: 'contact_name_required',
+		},
+		{
+			company: `${context.runTag} Generic No Details Co`,
+			fixture: {
+				company_name: `${context.runTag} Generic No Details Co`,
+				contact_name: 'Cleo Client',
+				contact_email: null,
+				phone: null,
+				project_description: 'A plant extension for the workshop',
+			},
+			stage: 'Qualified',
+			code: 'contact_details_required',
+		},
+		{
+			company: `${context.runTag} Generic No Need Co`,
+			fixture: {
+				company_name: `${context.runTag} Generic No Need Co`,
+				contact_name: 'Cleo Client',
+				contact_email: 'cleo@example.com',
+				project_description: null,
+			},
+			stage: 'Nurture',
+			code: 'project_need_required',
+		},
+	];
+
+	for (const entry of cases) {
+		const leadId = await createLead(
+			context,
+			entry.fixture,
+			context.assignee.sessionToken
+		);
+		const response = await context.http.put(
+			`/api/leads/${leadId}`,
+			{ enquiry_status: entry.stage, follow_up_date: futureDate(4) },
+			context.assignee.sessionToken
+		);
+		assert.equal(
+			response.status,
+			422,
+			`${entry.code} status (body: ${response.text})`
+		);
+		assert.equal(
+			ErrorEnvelopeSchema.parse(response.json()).code,
+			entry.code,
+			'the refusal names the missing field'
+		);
+		const row = await readLeadRow(context, leadId);
+		assert.equal(
+			row.enquiry_status,
+			'New',
+			'a refused generic edit leaves the stage alone'
+		);
+		assert.equal(
+			(await context.reader.stageHistory(leadId)).length,
+			0,
+			'a refused generic edit writes no stage history'
+		);
+	}
+
+	// A generic edit that carries the evidence reaches the stage, and the
+	// stage change is on the timeline with the actor of the session.
+	const leadId = await createLead(
+		context,
+		{
+			company_name: `${context.runTag} Generic Evidence Co`,
+			contact_name: null,
+			contact_email: null,
+			project_description: null,
+		},
+		context.assignee.sessionToken
+	);
+	const qualified = await context.http.put(
+		`/api/leads/${leadId}`,
+		{
+			enquiry_status: 'Qualified',
+			contact_name: 'Cleo Client',
+			contact_email: 'cleo@example.com',
+			project_description: 'A plant extension for the workshop',
+			follow_up_date: futureDate(4),
+			reason: 'The client confirmed the need on the call.',
+		},
+		context.assignee.sessionToken
+	);
+	assert.equal(qualified.status, 200, `qualify body: ${qualified.text}`);
+	const row = await readLeadRow(context, leadId);
+	assert.equal(row.enquiry_status, 'Qualified');
+
+	const history = await context.reader.stageHistory(leadId);
+	assert.equal(history.length, 1, 'the stage change is recorded once');
+	assert.equal(history[0]?.from_stage, 'New');
+	assert.equal(history[0]?.to_stage, 'Qualified');
+	assert.equal(history[0]?.change_source, 'explicit');
+	assert.equal(history[0]?.actor_user_id, context.assignee.id);
+	assert.equal(
+		history[0]?.reason,
+		'The client confirmed the need on the call.',
+		'the reason of the change is kept'
+	);
+}
+
+/**
+ * A converted Lead takes no new Lead-side work: no scheduled next action,
+ * no activity, no lifecycle decision. The work continues on the linked
+ * Proposal.
+ */
+export async function convertedLeadRefusesLeadSideWorkScenario(
+	context: ScenarioContext,
+	seeds: LifecycleSeeds
+): Promise<void> {
+	const leadId = seeds.convertedLeadId;
+	assert.ok(leadId > 0, 'the converted lead is seeded');
+	const before = await readLeadRow(context, leadId);
+	assert.equal(before.enquiry_status, 'Converted');
+
+	const refused = await context.http.put(
+		`/api/leads/${leadId}`,
+		{ follow_up_date: futureDate(5) },
+		context.assignee.sessionToken
+	);
+	assert.equal(refused.status, 409, `refused body: ${refused.text}`);
+	assert.equal(
+		ErrorEnvelopeSchema.parse(refused.json()).code,
+		'lead_converted',
+		'a converted lead takes no Lead-side work'
+	);
+
+	const after = await readLeadRow(context, leadId);
+	assert.equal(after.enquiry_status, 'Converted');
+	assert.equal(
+		after.follow_up_date,
+		before.follow_up_date,
+		'no dated next action is written for a converted lead'
+	);
+	assert.equal(
+		(await context.reader.activityRows(leadId)).length,
+		0,
+		'no activity is written for a converted lead'
+	);
+	assert.equal(
+		(await context.reader.stageHistory(leadId)).length,
+		0,
+		'no stage change is written for a converted lead'
+	);
+}

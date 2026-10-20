@@ -9,6 +9,7 @@ import {
 } from '@/lib/lead-progress';
 import {
 	toNullableId,
+	toPercent,
 	trimOrNull,
 	type DbConnection,
 } from '@/server/leads/shared';
@@ -168,13 +169,6 @@ function decimalText(value: unknown): string | null {
 	return text === '' ? null : text;
 }
 
-/** A percentage of the Proposal or the Project, or null when it is unset. */
-function percentValue(value: unknown): number | null {
-	if (value === null || value === undefined) return null;
-	const number = Number(value);
-	return Number.isFinite(number) ? number : null;
-}
-
 /**
  * The downstream block of the Lead detail read.
  *
@@ -248,7 +242,7 @@ export async function getLeadProposalProgress(
 					id: Number(row.project_id),
 					title: trimOrNull(row.project_title) ?? trimOrNull(row.name),
 					status: trimOrNull(row.status),
-					progress: percentValue(row.progress),
+					progress: toPercent(row.progress),
 				};
 			}
 		}
@@ -257,7 +251,7 @@ export async function getLeadProposalProgress(
 			id: Number(proposal.id),
 			title: trimOrNull(proposal.proposal_title),
 			status: trimOrNull(proposal.status),
-			progress: percentValue(proposal.progress),
+			progress: toPercent(proposal.progress),
 			value:
 				decimalText(proposal.proposal_value) ?? decimalText(proposal.value),
 			currency: trimOrNull(proposal.currency),

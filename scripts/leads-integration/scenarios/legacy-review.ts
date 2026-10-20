@@ -707,3 +707,79 @@ export async function proposalLinkGuardScenario(
 		`standalone proposal body: ${standalone.text}`
 	);
 }
+
+/**
+ * A generic edit never closes a legacy review dimension. A stage or owner
+ * change on a Lead whose legacy value is still in review is refused and
+ * points at the review panel; the audited review action stays the only way
+ * to settle the value.
+ */
+export async function genericEditRefusesAnOpenReviewItemScenario(
+	context: ScenarioContext,
+	seeds: LegacyReviewSeeds
+): Promise<void> {
+	const leadId = seeds.ambiguousOwnerLeadId;
+	assert.ok(leadId > 0, 'the ambiguous owner lead is seeded');
+	const before = await context.reader.leadRow(leadId);
+	assert.ok(before, 'the lead with the open review item is stored');
+	assert.equal(before.enquiry_status, null, 'the stage is still unresolved');
+	assert.equal(before.owner_user_id, null, 'the owner is still unresolved');
+	assert.equal(Number(before.legacy_review_required), 1);
+	const ownershipBefore = (await context.reader.ownershipHistory(leadId))
+		.length;
+
+	// A generic stage change is refused.
+	const staged = await context.http.put(
+		`/api/leads/${leadId}`,
+		{ enquiry_status: 'Connected' },
+		context.assignee.sessionToken
+	);
+	assert.equal(staged.status, 409, `stage body: ${staged.text}`);
+	const stageError = ErrorEnvelopeSchema.parse(staged.json());
+	assert.equal(stageError.code, 'transition_unavailable');
+	assert.match(
+		stageError.error,
+		/review panel/i,
+		`the refusal points at the review panel: ${stageError.error}`
+	);
+
+	// A generic owner change is refused too.
+	const assigned = await context.http.put(
+		`/api/leads/${leadId}`,
+		{ owner_user_id: context.assignee.id },
+		context.assignee.sessionToken
+	);
+	assert.equal(assigned.status, 409, `owner body: ${assigned.text}`);
+	const ownerError = ErrorEnvelopeSchema.parse(assigned.json());
+	assert.equal(ownerError.code, 'transition_unavailable');
+	assert.match(
+		ownerError.error,
+		/review panel/i,
+		`the refusal points at the review panel: ${ownerError.error}`
+	);
+
+	// Nothing was written: the review item is still open.
+	const after = await context.reader.leadRow(leadId);
+	assert.ok(after);
+	assert.equal(after.enquiry_status, null, 'the stage stays unresolved');
+	assert.equal(after.owner_user_id, null, 'the owner stays unresolved');
+	assert.equal(Number(after.legacy_review_required), 1);
+	assert.equal(
+		(await context.reader.stageHistory(leadId)).length,
+		0,
+		'a refused generic edit writes no stage history'
+	);
+	assert.equal(
+		(await context.reader.ownershipHistory(leadId)).length,
+		ownershipBefore,
+		'a refused generic edit writes no ownership change'
+	);
+
+	// An edit that changes neither the stage nor the owner is still allowed.
+	const edited = await context.http.put(
+		`/api/leads/${leadId}`,
+		{ notes: `${context.runTag} note on the enquiry` },
+		context.assignee.sessionToken
+	);
+	assert.equal(edited.status, 200, `notes body: ${edited.text}`);
+}

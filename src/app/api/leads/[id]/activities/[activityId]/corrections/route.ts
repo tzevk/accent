@@ -11,7 +11,7 @@ import {
 } from '@/server/leads/corrections';
 import {
 	leadWorkflowFailure,
-	parseLeadId,
+	parseLeadTaskActivityId,
 } from '@/app/api/leads/_lib/route-helpers';
 
 /**
@@ -43,8 +43,8 @@ export async function POST(
 	if (auth instanceof Response) return auth;
 
 	const { id, activityId } = await params;
-	const leadId = parseLeadId(id);
-	const targetActivityId = parseLeadId(activityId);
+	const leadId = parseLeadTaskActivityId(id);
+	const targetActivityId = parseLeadTaskActivityId(activityId);
 	if (leadId === null || targetActivityId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },
@@ -105,8 +105,8 @@ export async function GET(
 	if (auth instanceof Response) return auth;
 
 	const { id, activityId } = await params;
-	const leadId = parseLeadId(id);
-	const targetActivityId = parseLeadId(activityId);
+	const leadId = parseLeadTaskActivityId(id);
+	const targetActivityId = parseLeadTaskActivityId(activityId);
 	if (leadId === null || targetActivityId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },

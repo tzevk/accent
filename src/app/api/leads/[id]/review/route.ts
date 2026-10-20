@@ -11,7 +11,7 @@ import {
 import { resolveLegacyReview } from '@/server/leads/legacy-review';
 import {
 	leadWorkflowFailure,
-	parseLeadId,
+	parseLeadTaskActivityId,
 } from '@/app/api/leads/_lib/route-helpers';
 
 /**
@@ -70,7 +70,7 @@ export async function POST(
 	}
 
 	const { id } = await params;
-	const leadId = parseLeadId(id);
+	const leadId = parseLeadTaskActivityId(id);
 	if (leadId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },

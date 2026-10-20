@@ -641,8 +641,15 @@ export async function noRegressionScenario(
 	const history = await context.reader.stageHistory(qualifiedId);
 	assert.equal(
 		history.length,
-		0,
-		'no stage change is written when the stage stays'
+		1,
+		'only the generic stage change is on the timeline; the routine log adds none'
+	);
+	assert.equal(history[0]?.from_stage, 'New');
+	assert.equal(history[0]?.to_stage, 'Qualified');
+	assert.equal(history[0]?.change_source, 'explicit');
+	assert.ok(
+		history[0]?.actor_user_id,
+		'the stage change names the actor of the session'
 	);
 
 	const disqualified = await context.http.post(

@@ -292,15 +292,18 @@ async function refreshReviewFlag(
 		`SELECT enquiry_status, owner_user_id, legacy_stage, legacy_owner_name,
         legacy_stage_reviewed, legacy_owner_reviewed, legacy_proposal_reviewed,
         legacy_proposal_conflict, canonical_proposal_id
-      FROM leads WHERE id = ? LIMIT 1`,
+      FROM leads
+      WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)
+      LIMIT 1`,
 		[leadId]
 	)) as unknown as [ReviewLeadRow[], unknown];
 	if (rows.length === 0) return false;
 	const required = legacyReviewRequired(toReviewState(rows[0]));
-	await db.execute('UPDATE leads SET legacy_review_required = ? WHERE id = ?', [
-		required ? 1 : 0,
-		leadId,
-	]);
+	await db.execute(
+		`UPDATE leads SET legacy_review_required = ?
+      WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
+		[required ? 1 : 0, leadId]
+	);
 	return required;
 }
 
@@ -501,7 +504,9 @@ export async function resolveLegacyReview(
 
 			const [stateRows] = (await db.execute(
 				`SELECT ${REVIEW_LEAD_COLUMNS}
-          FROM leads l WHERE l.id = ? LIMIT 1`,
+          FROM leads l
+          WHERE l.id = ? AND (l.isDelete = 0 OR l.isDelete IS NULL)
+          LIMIT 1`,
 				[leadId]
 			)) as unknown as [ReviewLeadRow[], unknown];
 			return {
@@ -595,7 +600,9 @@ export async function refreshLeadProposalState(
         (SELECT COUNT(*) FROM proposals p
           WHERE p.id = l.canonical_proposal_id
             AND p.lead_id = l.id AND p.isDelete = 0) AS canonical_live
-      FROM leads l WHERE l.id = ? LIMIT 1`,
+      FROM leads l
+      WHERE l.id = ? AND (l.isDelete = 0 OR l.isDelete IS NULL)
+      LIMIT 1`,
 		[leadId]
 	)) as unknown as [
 		{
@@ -618,7 +625,9 @@ export async function refreshLeadProposalState(
 			? singleId
 			: null;
 	await db.execute(
-		'UPDATE leads SET canonical_proposal_id = ?, legacy_proposal_conflict = ? WHERE id = ?',
+		`UPDATE leads
+      SET canonical_proposal_id = ?, legacy_proposal_conflict = ?
+      WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
 		[nextCanonical, liveCount > 1 ? 1 : 0, leadId]
 	);
 	await refreshReviewFlag(db, leadId);

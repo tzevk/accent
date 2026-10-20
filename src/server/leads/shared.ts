@@ -131,6 +131,17 @@ export function trimOrNull(value: unknown): string | null {
 	return text === '' ? null : text;
 }
 
+/**
+ * A percentage of a Proposal or a Project, or null when it is unset. The
+ * stored value may be a decimal or a string; an unusable value is never
+ * guessed, it stays unset.
+ */
+export function toPercent(value: unknown): number | null {
+	if (value === null || value === undefined) return null;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : null;
+}
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function normalizeEmail(value: unknown): string | null {

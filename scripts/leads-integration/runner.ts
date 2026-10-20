@@ -38,6 +38,7 @@ import {
 } from './scenarios/assignment.ts';
 import {
 	importOwnerEvidenceNeverResolvesScenario,
+	importRowNeedsTheDecisionEvidenceScenario,
 	ownerSelectedImportScenario,
 	unassignedImportScenario,
 	rawImportEvidenceScenario,
@@ -63,13 +64,16 @@ import {
 	type LifecycleSeeds,
 } from './scenarios/activities.ts';
 import {
+	convertedLeadRefusesLeadSideWorkScenario,
 	convertedLeadTakesNoDecisionScenario,
 	disqualifyCancelsOutstandingWorkScenario,
 	disqualifyWithoutReasonScenario,
 	genericPathsCannotDecideTheLifecycleScenario,
+	genericStageChangeNeedsTheDecisionEvidenceScenario,
 	lifecycleUnauthorizedScenario,
 	nurtureWithNextActionScenario,
 	nurtureWithoutNextActionScenario,
+	ownerChangeNeedsAssignScenario,
 	qualificationMissingFieldsScenario,
 	qualificationWithoutBudgetOrTimingScenario,
 	reopenMissingFieldsScenario,
@@ -80,6 +84,7 @@ import {
 	type LegacySeedRow,
 } from './scenarios/legacy.ts';
 import {
+	genericEditRefusesAnOpenReviewItemScenario,
 	legacyReviewDeniedScenario,
 	legacyReviewInvalidScenario,
 	legacyReviewQueueScenario,
@@ -110,15 +115,21 @@ import {
 	type QueueSeeds,
 } from './scenarios/queues.ts';
 import {
+	conversionBackfilledSourceLinkScenario,
 	conversionConcurrentScenario,
 	conversionConflictScenario,
+	conversionDescriptionIsSanitisedScenario,
 	conversionHandoffScenario,
+	conversionPermissionIsolationScenario,
 	conversionPermissionsScenario,
 	conversionQualificationScenario,
 	conversionReadAndQueueScenario,
+	conversionRepeatEndsTheTransactionScenario,
 	conversionRepeatScenario,
 	conversionRollbackScenario,
 	conversionStageRequiredScenario,
+	conversionTransferredWorkLinkScenario,
+	superAdminConversionScenario,
 	type ConversionSeeds,
 	type FailureInjection,
 } from './scenarios/conversion.ts';
@@ -131,6 +142,10 @@ import {
 	proposalProgressWorkOnProposalScenario,
 	type ProposalProgressSeeds,
 } from './scenarios/proposal-progress.ts';
+import {
+	softDeletedLeadKeepsItsProposalStateScenario,
+	type SoftDeleteSeed,
+} from './scenarios/soft-delete.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -161,6 +176,9 @@ const LEAD_MIGRATION_FILE = '20261019120000_lead_owner_stable_reference.ts';
 // values, auto-resolves the evidence-backed cases, and leaves the ambiguous
 // ones for a reviewer. Never rediscovered by pattern.
 const LEGACY_REVIEW_MIGRATION_FILE = '20261019130000_lead_legacy_review.ts';
+// Third cutover point: the activity log. The harness applies it on its own,
+// because the transferred work it has to backfill is seeded in between.
+const LEAD_ACTIVITIES_MIGRATION_FILE = '20261020120000_lead_activities.ts';
 
 function log(message: string): void {
 	process.stdout.write(`[leads-integration] ${message}\n`);
@@ -326,6 +344,7 @@ function makeReader(connection: Connection): Reader {
 			id: requiredNumber(row.id, 'proposals.id'),
 			lead_id: nullableNumber(row.lead_id),
 			proposal_title: nullableString(row.proposal_title),
+			description: nullableString(row.description),
 			status: nullableString(row.status),
 			progress: nullableString(row.progress),
 			proposal_value: nullableString(row.proposal_value),
@@ -438,6 +457,7 @@ function makeReader(connection: Connection): Reader {
 			description: nullableString(row.description),
 			status: nullableString(row.status),
 			created_by: nullableNumber(row.created_by),
+			source_lead_activity_id: nullableNumber(row.source_lead_activity_id),
 		};
 	}
 
@@ -464,14 +484,14 @@ function makeReader(connection: Connection): Reader {
 		},
 		proposalRows: async (leadId) => {
 			const [rows] = await connection.execute(
-				'SELECT id, lead_id, proposal_title, status, progress, proposal_value, value, currency, project_id, canonical_lead_id, isDelete FROM proposals WHERE lead_id = ? ORDER BY id ASC',
+				'SELECT id, lead_id, proposal_title, description, status, progress, proposal_value, value, currency, project_id, canonical_lead_id, isDelete FROM proposals WHERE lead_id = ? ORDER BY id ASC',
 				[leadId]
 			);
 			return rows.map(toProposalRow);
 		},
 		proposalRow: async (id) => {
 			const row = await firstRow(
-				'SELECT id, lead_id, proposal_title, status, progress, proposal_value, value, currency, project_id, canonical_lead_id, isDelete FROM proposals WHERE id = ? LIMIT 1',
+				'SELECT id, lead_id, proposal_title, description, status, progress, proposal_value, value, currency, project_id, canonical_lead_id, isDelete FROM proposals WHERE id = ? LIMIT 1',
 				[id]
 			);
 			return row ? toProposalRow(row) : null;
@@ -492,7 +512,7 @@ function makeReader(connection: Connection): Reader {
 		},
 		proposalFollowups: async (proposalId) => {
 			const [rows] = await connection.execute(
-				'SELECT id, proposal_id, follow_up_date, follow_up_type, description, status, created_by FROM proposal_followups WHERE proposal_id = ? ORDER BY id ASC',
+				'SELECT id, proposal_id, follow_up_date, follow_up_type, description, status, created_by, source_lead_activity_id FROM proposal_followups WHERE proposal_id = ? ORDER BY id ASC',
 				[proposalId]
 			);
 			return rows.map(toProposalFollowupRow);
@@ -500,6 +520,15 @@ function makeReader(connection: Connection): Reader {
 		countProposalFollowups: async () => {
 			const row = await firstRow(
 				'SELECT COUNT(*) AS total FROM proposal_followups',
+				[]
+			);
+			return Number(row?.total ?? 0);
+		},
+		countOpenTransactions: async () => {
+			const row = await firstRow(
+				`SELECT COUNT(*) AS total
+         FROM information_schema.innodb_trx
+         WHERE trx_rows_locked > 0`,
 				[]
 			);
 			return Number(row?.total ?? 0);
@@ -627,6 +656,8 @@ interface FixtureSpec {
 	key: string;
 	fullName: string;
 	permissions: string[];
+	/** A super admin bypasses every grant check. */
+	isSuperAdmin?: boolean;
 }
 
 function fixtureUsername(runTag: string, key: string): string {
@@ -643,13 +674,14 @@ async function seedFixtureUser(
 	const email = `${username}@example.com`;
 	await connection.execute(
 		`INSERT INTO users (username, password_hash, email, full_name, status, is_active, isDelete, permissions, is_super_admin)
-		 VALUES (?, ?, ?, ?, 'active', 1, 0, ?, 0)`,
+		 VALUES (?, ?, ?, ?, 'active', 1, 0, ?, ?)`,
 		[
 			username,
 			passwordHash,
 			email,
 			spec.fullName,
 			JSON.stringify(spec.permissions),
+			spec.isSuperAdmin ? 1 : 0,
 		]
 	);
 	const [rows] = await connection.execute(
@@ -714,6 +746,9 @@ interface FixtureIdentities {
 	readOnly: FixtureIdentity;
 	noAssign: FixtureIdentity;
 	proposer: FixtureIdentity;
+	superAdmin: FixtureIdentity;
+	convertOnly: FixtureIdentity;
+	updateOnly: FixtureIdentity;
 }
 
 function fixtureSpecs(runTag: string): FixtureSpec[] {
@@ -777,6 +812,28 @@ function fixtureSpecs(runTag: string): FixtureSpec[] {
 				'projects:read',
 			],
 		},
+		{
+			key: 'superadmin',
+			fullName: `${runTag} Super Admin`,
+			// No resource grant at all: the super-admin bypass is the
+			// established behaviour, and it has to be proven.
+			permissions: [],
+			isSuperAdmin: true,
+		},
+		{
+			key: 'convertonly',
+			fullName: `${runTag} Convert Only`,
+			// The Lead convert right and the right to create Proposals, but
+			// no Lead update right: the handoff needs both.
+			permissions: ['leads:read', 'leads:convert', 'proposals:create'],
+		},
+		{
+			key: 'updateonly',
+			fullName: `${runTag} Update Only`,
+			// The Lead update right and the right to create Proposals, but
+			// no Lead convert right: the handoff needs both.
+			permissions: ['leads:read', 'leads:update', 'proposals:create'],
+		},
 	];
 }
 
@@ -808,10 +865,37 @@ async function loginFixtureIdentities(
 			permissions: spec.permissions,
 		});
 	}
-	const [creator, assignee, readOnly, noAssign, proposer] = identities;
-	if (!creator || !assignee || !readOnly || !noAssign || !proposer)
+	const [
+		creator,
+		assignee,
+		readOnly,
+		noAssign,
+		proposer,
+		superAdmin,
+		convertOnly,
+		updateOnly,
+	] = identities;
+	if (
+		!creator ||
+		!assignee ||
+		!readOnly ||
+		!noAssign ||
+		!proposer ||
+		!superAdmin ||
+		!convertOnly ||
+		!updateOnly
+	)
 		fail('fixture login incomplete');
-	return { creator, assignee, readOnly, noAssign, proposer };
+	return {
+		creator,
+		assignee,
+		readOnly,
+		noAssign,
+		proposer,
+		superAdmin,
+		convertOnly,
+		updateOnly,
+	};
 }
 
 async function seedDuplicateNameTie(
@@ -1404,6 +1488,145 @@ async function seedLifecycleFixtures(
 }
 
 /**
+ * A soft-deleted enquiry with a canonical Proposal, a second linked
+ * Proposal, and an open legacy review item. A Proposal write may not
+ * rewrite the state of an enquiry that is not there any more.
+ */
+async function seedSoftDeletedLead(
+	connection: Connection,
+	runTag: string
+): Promise<SoftDeleteSeed> {
+	const companyName = `${runTag} Soft Deleted Co`;
+	await connection.execute(
+		`INSERT INTO leads (company_name, contact_name, enquiry_status,
+        legacy_stage, legacy_owner_name, legacy_stage_reviewed,
+        legacy_owner_reviewed, legacy_proposal_reviewed,
+        legacy_proposal_conflict, legacy_review_required, isDelete,
+        created_at, updated_at)
+     VALUES (?, 'Soft Deleted Contact', NULL, ?, NULL, 0, 0, 1, 1, 1, 1,
+       NOW(), NOW())`,
+		[companyName, `${runTag} legacy stage`]
+	);
+	const [leadRows] = await connection.execute(
+		'SELECT id FROM leads WHERE company_name = ? ORDER BY id DESC LIMIT 1',
+		[companyName]
+	);
+	const [createdLead] = leadRows;
+	if (!createdLead)
+		fail(`soft deleted seed ${companyName} missing after insert`);
+	const leadId = requiredNumber(createdLead.id, 'leads.id');
+
+	const proposalIds: number[] = [];
+	for (const title of ['canonical', 'second']) {
+		await connection.execute(
+			`INSERT INTO proposals (proposal_title, lead_id, status, isDelete,
+          created_at, updated_at)
+         VALUES (?, ?, 'DRAFT', 0, NOW(), NOW())`,
+			[`${runTag} soft deleted proposal ${title}`, leadId]
+		);
+		const [rows] = await connection.execute(
+			'SELECT id FROM proposals WHERE lead_id = ? ORDER BY id DESC LIMIT 1',
+			[leadId]
+		);
+		const [created] = rows;
+		if (!created) fail(`soft deleted proposal ${title} missing after insert`);
+		proposalIds.push(requiredNumber(created.id, 'proposals.id'));
+	}
+	const [canonicalProposalId, secondProposalId] = proposalIds;
+	if (!canonicalProposalId || !secondProposalId)
+		fail('the soft deleted proposal seed is incomplete');
+	await connection.execute(
+		'UPDATE leads SET canonical_proposal_id = ? WHERE id = ?',
+		[canonicalProposalId, leadId]
+	);
+	await connection.execute(
+		'UPDATE proposals SET canonical_lead_id = ? WHERE id = ?',
+		[leadId, canonicalProposalId]
+	);
+	return { leadId, canonicalProposalId, secondProposalId };
+}
+
+/**
+ * The transferred work of an earlier handoff: a Proposal follow-up that a
+ * Lead activity already points at. The source-link migration has to
+ * backfill this row, so it is seeded before that migration runs.
+ */
+interface TransferredWorkSeed {
+	proposalId: number;
+	followupId: number;
+	activityId: number;
+}
+
+async function seedTransferredWork(
+	connection: Connection,
+	runTag: string
+): Promise<TransferredWorkSeed> {
+	const companyName = `${runTag} Backfill Co`;
+	await connection.execute(
+		`INSERT INTO leads (company_name, contact_name, contact_email,
+        project_description, enquiry_status, isDelete, created_at, updated_at)
+     VALUES (?, 'Backfill Contact', 'backfill@example.com', ?, 'Qualified', 0,
+       NOW(), NOW())`,
+		[companyName, `${runTag} backfill need`]
+	);
+	const [leadRows] = await connection.execute(
+		'SELECT id FROM leads WHERE company_name = ? ORDER BY id DESC LIMIT 1',
+		[companyName]
+	);
+	const [createdLead] = leadRows;
+	if (!createdLead) fail(`backfill seed ${companyName} missing after insert`);
+	const leadId = requiredNumber(createdLead.id, 'leads.id');
+
+	await connection.execute(
+		`INSERT INTO proposals (proposal_title, lead_id, status, isDelete,
+        created_at, updated_at)
+     VALUES (?, ?, 'DRAFT', 0, NOW(), NOW())`,
+		[`${runTag} backfill proposal`, leadId]
+	);
+	const [proposalRows] = await connection.execute(
+		'SELECT id FROM proposals WHERE lead_id = ? ORDER BY id DESC LIMIT 1',
+		[leadId]
+	);
+	const [createdProposal] = proposalRows;
+	if (!createdProposal) fail('the backfill proposal is missing after insert');
+	const proposalId = requiredNumber(createdProposal.id, 'proposals.id');
+
+	await connection.execute(
+		`INSERT INTO proposal_followups (proposal_id, follow_up_date,
+        follow_up_type, description, status, created_by, created_at, updated_at)
+     VALUES (?, '2026-11-20', 'Call', ?, 'Scheduled', NULL, NOW(), NOW())`,
+		[proposalId, `${runTag} backfill transferred work`]
+	);
+	const [followupRows] = await connection.execute(
+		'SELECT id FROM proposal_followups WHERE proposal_id = ? AND description = ? LIMIT 1',
+		[proposalId, `${runTag} backfill transferred work`]
+	);
+	const [createdFollowup] = followupRows;
+	if (!createdFollowup) fail('the backfill follow-up is missing after insert');
+	const followupId = requiredNumber(
+		createdFollowup.id,
+		'proposal_followups.id'
+	);
+
+	await connection.execute(
+		`INSERT INTO lead_activities (lead_id, activity_type, status,
+        scheduled_for, next_action, created_by, recorded_at, created_at,
+        updated_at, isDelete, transferred_followup_id, transferred_at)
+     VALUES (?, 'Call', 'Scheduled', '2026-11-20', ?, NULL, NOW(), NOW(),
+       NOW(), 0, ?, NOW())`,
+		[leadId, `${runTag} backfill transferred work`, followupId]
+	);
+	const [activityRows] = await connection.execute(
+		'SELECT id FROM lead_activities WHERE transferred_followup_id = ? LIMIT 1',
+		[followupId]
+	);
+	const [createdActivity] = activityRows;
+	if (!createdActivity) fail('the backfill activity is missing after insert');
+	const activityId = requiredNumber(createdActivity.id, 'lead_activities.id');
+	return { proposalId, followupId, activityId };
+}
+
+/**
  * The deterministic database failure of the conversion proof.
  *
  * The trigger lives in the disposable integration database only and is
@@ -1638,6 +1861,16 @@ export async function runLeadsIntegration(
 			currentLeadId: 0,
 			projectLeadId: 0,
 		};
+		let softDeleteSeed: SoftDeleteSeed = {
+			leadId: 0,
+			canonicalProposalId: 0,
+			secondProposalId: 0,
+		};
+		let transferredWorkSeed: TransferredWorkSeed = {
+			proposalId: 0,
+			followupId: 0,
+			activityId: 0,
+		};
 		try {
 			const passwordHash = await hashFixturePassword(FIXTURE_PASSWORD);
 			await seedPreMigrationFixtures(seeder, runTag, passwordHash);
@@ -1660,6 +1893,14 @@ export async function runLeadsIntegration(
 				`applying legacy review migration ${LEGACY_REVIEW_MIGRATION_FILE} over the seeded legacy Proposals`
 			);
 			await knex.migrate.up({ name: LEGACY_REVIEW_MIGRATION_FILE });
+
+			// The activity log exists before the transferred work is seeded,
+			// so the source-link migration has a row to backfill.
+			log(
+				`applying the Lead activity migration ${LEAD_ACTIVITIES_MIGRATION_FILE}`
+			);
+			await knex.migrate.up({ name: LEAD_ACTIVITIES_MIGRATION_FILE });
+			transferredWorkSeed = await seedTransferredWork(seeder, runTag);
 			await knex.migrate.latest();
 			lifecycleSeeds = await seedLifecycleFixtures(
 				seeder,
@@ -1671,6 +1912,7 @@ export async function runLeadsIntegration(
 				runTag,
 				fixtureUsername(runTag, 'assignee')
 			);
+			softDeleteSeed = await seedSoftDeletedLead(seeder, runTag);
 			const downstream = await seedProposalProgressFixtures(
 				seeder,
 				runTag,
@@ -2023,8 +2265,69 @@ export async function runLeadsIntegration(
 			(ctx) => proposalProgressWorkOnProposalScenario(ctx, progressSeeds),
 			context
 		);
+		await runScenario(
+			'conversion-permission-isolation',
+			(ctx) => conversionPermissionIsolationScenario(ctx, conversionSeeds),
+			context
+		);
+		await runScenario(
+			'super-admin-conversion',
+			superAdminConversionScenario,
+			context
+		);
+		await runScenario(
+			'conversion-description-sanitised',
+			conversionDescriptionIsSanitisedScenario,
+			context
+		);
+		await runScenario(
+			'conversion-transferred-work-link',
+			conversionTransferredWorkLinkScenario,
+			context
+		);
+		await runScenario(
+			'conversion-backfilled-source-link',
+			(ctx) => conversionBackfilledSourceLinkScenario(ctx, transferredWorkSeed),
+			context
+		);
+		await runScenario(
+			'conversion-repeat-ends-the-transaction',
+			conversionRepeatEndsTheTransactionScenario,
+			context
+		);
+		await runScenario(
+			'converted-lead-refuses-lead-side-work',
+			(ctx) => convertedLeadRefusesLeadSideWorkScenario(ctx, lifecycleSeeds),
+			context
+		);
+		await runScenario(
+			'generic-stage-change-needs-the-decision-evidence',
+			genericStageChangeNeedsTheDecisionEvidenceScenario,
+			context
+		);
+		await runScenario(
+			'owner-change-needs-assign',
+			ownerChangeNeedsAssignScenario,
+			context
+		);
+		await runScenario(
+			'generic-edit-refuses-an-open-review-item',
+			(ctx) => genericEditRefusesAnOpenReviewItemScenario(ctx, reviewSeeds),
+			context
+		);
+		await runScenario(
+			'import-row-needs-the-decision-evidence',
+			importRowNeedsTheDecisionEvidenceScenario,
+			context
+		);
+		await runScenario(
+			'soft-deleted-lead-keeps-its-proposal-state',
+			(ctx) =>
+				softDeletedLeadKeepsItsProposalStateScenario(ctx, softDeleteSeed),
+			context
+		);
 		log(IBAND);
-		log(`PASS all 71 scenarios (${trackedLeads.length} leads created)`);
+		log(`PASS all 83 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other
