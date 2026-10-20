@@ -114,7 +114,7 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 
 	if (loading) {
 		return (
-			<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+			<div className="h-[calc(100vh-4rem)] bg-gray-50 flex flex-col overflow-hidden">
 				<Navbar />
 				<div className="flex-1 flex items-center justify-center">
 					<div className="text-center" role="status">
@@ -128,7 +128,7 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 
 	if (!lead || loadError) {
 		return (
-			<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+			<div className="h-[calc(100vh-4rem)] bg-gray-50 flex flex-col overflow-hidden">
 				<Navbar />
 				<div className="flex-1 flex items-center justify-center">
 					<div className="text-center">
@@ -154,7 +154,7 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 	}
 
 	return (
-		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+		<div className="h-[calc(100vh-4rem)] bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
 			<div className="flex-1 overflow-hidden">
 				{/* The container is a column: the header keeps its own height

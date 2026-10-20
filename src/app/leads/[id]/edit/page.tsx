@@ -235,7 +235,7 @@ export default function EditLead({ params }: EditLeadProps) {
 
 	if (loading) {
 		return (
-			<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+			<div className="h-[calc(100vh-4rem)] bg-gray-50 flex flex-col overflow-hidden">
 				<Navbar />
 				<div className="flex-1 flex items-center justify-center">
 					<div className="text-center" role="status">
@@ -249,7 +249,7 @@ export default function EditLead({ params }: EditLeadProps) {
 
 	if (!lead || loadError) {
 		return (
-			<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+			<div className="h-[calc(100vh-4rem)] bg-gray-50 flex flex-col overflow-hidden">
 				<Navbar />
 				<div className="flex-1 flex items-center justify-center">
 					<div className="text-center">
@@ -278,7 +278,7 @@ export default function EditLead({ params }: EditLeadProps) {
 	const activeStageSelected = isActiveLeadStage(stage);
 
 	return (
-		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+		<div className="h-[calc(100vh-4rem)] bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
 			<div className="flex-shrink-0 pt-6 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4">
 				<div className="mb-6">

@@ -986,7 +986,7 @@ export default function Leads() {
 
 	if (!rbacLoading && !canViewLeads) {
 		return (
-			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+			<div className="min-h-[calc(100vh-4rem)] bg-gradient-to-br from-gray-50 to-gray-100">
 				<Navbar />
 				<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-6 max-w-[1800px] mx-auto">
 					<div className="flex items-center justify-center h-[calc(100vh-120px)]">
@@ -1006,7 +1006,7 @@ export default function Leads() {
 	}
 
 	return (
-		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+		<div className="h-[calc(100vh-4rem)] bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
 			<div className="flex-shrink-0 pt-6 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4 max-w-[1920px] mx-auto w-full">
 				<div className="mb-6">

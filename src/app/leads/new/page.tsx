@@ -19,7 +19,7 @@ interface SessionUserShape {
 
 function LoadingFallback() {
 	return (
-		<div className="min-h-screen bg-gray-50 flex flex-col">
+		<div className="h-[calc(100vh-4rem)] bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
 			<div className="flex-1 flex items-center justify-center">
 				<LoadingSpinner
@@ -56,7 +56,7 @@ function NewLeadForm() {
 	if (rbacLoading) return <LoadingFallback />;
 
 	return (
-		<div className="min-h-screen bg-gray-50 flex flex-col">
+		<div className="h-[calc(100vh-4rem)] bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
 			<div className="flex-1 overflow-hidden">
 				<div className="h-full overflow-y-auto">
