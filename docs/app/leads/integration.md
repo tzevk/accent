@@ -29,7 +29,7 @@ variables in your shell only; never add them to `.env`. See the
 `INTEGRATION_DB_*` block in `.env.example`.
 
 Expect the first run to build the full schema from the baseline migration, then
-start the server and run fifty-six scenarios. On MariaDB 10.11 the whole run
+start the server and run sixty-five scenarios. On MariaDB 10.11 the whole run
 takes a few minutes.
 
 ## What the run does
@@ -51,7 +51,7 @@ takes a few minutes.
    database branches pinned to the disposable database.
 9. Logs each fixture user in through `POST /api/login` and keeps the real
    session cookies.
-10. Runs fifty-six scenarios.
+10. Runs sixty-five scenarios.
 
 ## Cleanup contract
 
@@ -122,6 +122,15 @@ a full pass, for manual browser follow-up.
 | 54  | empty-queue                               | An empty queue is an empty list, not an error                                                                                                                                          |
 | 55  | queue-filters                             | The owner, stage, and due-date filters work; both list routes read the same query; an unknown view is refused                                                                          |
 | 56  | deleted-leads-leave-the-queue             | A deleted Lead leaves the rows and the counters                                                                                                                                        |
+| 57  | conversion-permissions                    | Every missing grant is refused with 403, an anonymous request with 401, and nothing is written                                                                                         |
+| 58  | conversion-qualification                  | A missing contact, contact detail, project need, or owner is refused with its own code                                                                                                 |
+| 59  | conversion-stage-required                 | A Lead that is not Qualified is refused with 409 and the required stage named                                                                                                          |
+| 60  | conversion-handoff                        | One canonical Proposal, the Lead marked Converted, the evidence, the stage history, and the transferred work with a link in both directions                                            |
+| 61  | conversion-repeat                         | A repeated handoff returns the same Proposal and writes nothing a second time                                                                                                          |
+| 62  | conversion-concurrent                     | Two simultaneous handoffs produce one Proposal, one evidence row, and one destination task                                                                                             |
+| 63  | conversion-legacy-conflict                | An unresolved canonical Proposal is refused with a review conflict, and the alternatives stay                                                                                          |
+| 64  | conversion-rollback                       | A database failure during the handoff rolls the Lead, the Proposal, the task, and the history back; the retry creates nothing twice                                                    |
+| 65  | conversion-read-and-queue                 | The Lead reads as Converted, the transferred work left the Lead work queue, and the conversion is on the timeline                                                                      |
 
 Every scenario asserts both the HTTP response and the persisted row through
 the independent reader (`mysql2` connection owned by the harness, never the
@@ -169,7 +178,7 @@ which lives only in the workflow.
 ## Verification record — 2026-10-20
 
 - Local environment: Windows, MariaDB 10.11.15 (matching production), Node 26.2.0. The CI job targets Node 24; CI execution is not claimed here.
-- `npm run test:integration:leads`: all fifty-six scenarios pass against the real application and an independent database reader on MariaDB 10.11.
+- `npm run test:integration:leads`: all sixty-five scenarios pass against the real application and an independent database reader on MariaDB 10.11.
 - `npm run verify`: lint and production build pass; the Vitest suites and tests of the Lead feature pass with the rest of the repository.
 - `npm run check:route-auth`: every handler authorizes, with the existing allowlisted paths.
 - The baseline migration applies unchanged on MariaDB 10.11, so no reordering of the production snapshot was needed.
@@ -177,6 +186,7 @@ which lives only in the workflow.
 - The ticket-371 migration renames the legacy follow-up table to the activity log, keeps the legacy rows as evidence with an unknown author and outcome, and turns the legacy dated next actions into scheduled work.
 - The ticket-371 migration is idempotent (a second `up()` over the migrated schema changes no row) and reversible (`down()` recreates the legacy table and copies the rows back).
 - The scenarios spread their requests over the fixture sessions because the application rate-limits every session at 120 API requests a minute (ADR-0013).
+- The conversion rollback is proven with a MariaDB `BEFORE INSERT` trigger on `proposal_followups` that the harness arms and removes inside the disposable database. It fails the second follow-up insert, so the rollback has to undo a task that the failed transaction had already written. The retry afterwards creates one Proposal, one evidence row, and two destination tasks — never a duplicate.
 - Browser smoke of the activity log: keyboard-driven activity entry, the call outcome, the scheduled next action, the automatic New → Attempting Contact movement, the visible "A call needs its outcome." refusal, the chronological timeline, and "Last successful contact" still empty after a No Answer.
 - Browser smoke of the legacy review: resolving a legacy owner and stage in the review panel, and the retained original values, the decision, the reviewer, and the time afterwards.
 - A read-only browser user sees no edit, delete, import, or assignment-directory controls.
