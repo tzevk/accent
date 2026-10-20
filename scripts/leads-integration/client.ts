@@ -145,6 +145,8 @@ export interface DbLeadRow {
 	legacy_proposal_reviewed: number | boolean | null;
 	legacy_proposal_conflict: number | boolean | null;
 	canonical_proposal_id: number | null;
+	converted_at: string | null;
+	converted_by: number | null;
 	follow_up_date: string | null;
 	isDelete: number | null;
 }
@@ -167,7 +169,28 @@ export interface DbProposalRow {
 	lead_id: number | null;
 	proposal_title: string | null;
 	status: string | null;
+	canonical_lead_id: number | null;
 	isDelete: number | null;
+}
+
+/** One row of the conversion evidence. */
+export interface DbConversionRow {
+	id: number;
+	lead_id: number;
+	proposal_id: number;
+	converted_by: number | null;
+	converted_at: string | null;
+}
+
+/** One Proposal follow-up: the work that moved to the Proposal. */
+export interface DbProposalFollowupRow {
+	id: number;
+	proposal_id: number;
+	follow_up_date: string | null;
+	follow_up_type: string | null;
+	description: string | null;
+	status: string | null;
+	created_by: number | null;
 }
 
 export interface DbOwnershipRow {
@@ -195,6 +218,8 @@ export interface DbActivityRow {
 	recorded_at: string | null;
 	isDelete: number | null;
 	version: number | null;
+	transferred_followup_id: number | null;
+	transferred_at: string | null;
 }
 
 export interface DbCorrectionRow {
@@ -248,9 +273,16 @@ export interface Reader {
 	ownershipHistory: (leadId: number) => Promise<DbOwnershipRow[]>;
 	reviewRows: (leadId: number) => Promise<DbReviewRow[]>;
 	proposalRows: (leadId: number) => Promise<DbProposalRow[]>;
+	proposalRow: (id: number) => Promise<DbProposalRow | null>;
 	activityRows: (leadId: number) => Promise<DbActivityRow[]>;
 	correctionRows: (leadId: number) => Promise<DbCorrectionRow[]>;
 	stageHistory: (leadId: number) => Promise<DbStageHistoryRow[]>;
+	/** The conversion evidence of one enquiry. */
+	conversionRows: (leadId: number) => Promise<DbConversionRow[]>;
+	/** The Proposal work one Proposal inherited. */
+	proposalFollowups: (proposalId: number) => Promise<DbProposalFollowupRow[]>;
+	/** Every Proposal follow-up in the database, for the rollback proof. */
+	countProposalFollowups: () => Promise<number>;
 	userByUsername: (username: string) => Promise<Record<string, unknown> | null>;
 	countLeadsByCompany: (companyName: string) => Promise<number>;
 	/** The calendar day of the database, the date policy of the queues. */

@@ -178,6 +178,16 @@ export interface LeadLifecycleResponse {
 	};
 }
 
+/** The answer of the Lead-to-Proposal handoff. */
+export interface LeadConversionResponse {
+	success: boolean;
+	data: {
+		proposal_id: number;
+		proposal: Record<string, unknown>;
+		already_converted: boolean;
+	};
+}
+
 export interface LeadTaskResponse {
 	success: boolean;
 	data: {

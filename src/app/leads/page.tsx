@@ -28,6 +28,7 @@ import {
 } from '@/lib/lead-queues';
 import { cn } from '@/lib/cn';
 import LeadStageBadge from '@/components/leads/LeadStageBadge';
+import LeadConversionAction from '@/components/leads/LeadConversionAction';
 import LeadCreateForm from '@/components/leads/LeadCreateForm';
 import LeadImportForm from '@/components/leads/LeadImportForm';
 import {
@@ -137,6 +138,12 @@ export default function Leads() {
 		can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.CREATE);
 	const canAssign =
 		!rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.ASSIGN);
+	// The handoff needs the Lead convert right, the Lead update right, and
+	// the right to create Proposals. The server checks the same three.
+	const canConvert =
+		canUpdate &&
+		can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.CONVERT) &&
+		can(RBAC_RESOURCES.PROPOSALS, RBAC_PERMISSIONS.CREATE);
 
 	const [currentPage, setCurrentPage] = useState<number>(1);
 	const [searchTerm, setSearchTerm] = useState<string>('');
@@ -873,6 +880,13 @@ export default function Leads() {
 														>
 															<TrashIcon className="h-4 w-4" />
 														</button>
+													) : null}
+													{canConvert ? (
+														<LeadConversionAction
+															lead={lead}
+															canConvert={canConvert}
+															compact
+														/>
 													) : null}
 												</div>
 											</td>

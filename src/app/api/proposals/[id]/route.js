@@ -12,6 +12,8 @@ import {
 	assertSingleAuthoritativeLeadLink,
 	refreshLeadProposalState,
 } from '@/server/leads/legacy-review';
+import { syncCanonicalProposalLink } from '@/server/leads/conversion';
+import { LEAD_CONVERSION_MESSAGES } from '@/lib/lead-conversion';
 import { LeadWorkflowError, toNullableId } from '@/server/leads/shared';
 
 export async function GET(request, { params }) {
@@ -692,6 +694,18 @@ export async function PUT(request, { params }) {
 		const { id } = await params;
 		const body = await request.json();
 
+		// The canonical Lead link is not a client field: one enquiry has one
+		// canonical Proposal, and the Lead-to-Proposal handoff owns that
+		// link. A request that carries it is refused before anything is
+		// written.
+		if (Object.prototype.hasOwnProperty.call(body, 'canonical_lead_id')) {
+			throw new LeadWorkflowError(
+				'proposal_link_conflict',
+				LEAD_CONVERSION_MESSAGES.proposal_link_conflict,
+				409
+			);
+		}
+
 		// Get database connection
 		const { dbConnect } = await import('@/utils/database');
 		pool = await dbConnect();
@@ -1001,6 +1015,7 @@ export async function PUT(request, { params }) {
 			// decision history stays.
 			if (leadLinkChanged && previousLeadId !== null) {
 				await refreshLeadProposalState(pool, previousLeadId);
+				await syncCanonicalProposalLink(pool, previousLeadId);
 			}
 			if (
 				leadLinkSupplied &&
@@ -1008,6 +1023,7 @@ export async function PUT(request, { params }) {
 				knownProposalId !== null
 			) {
 				await refreshLeadProposalState(pool, requestedLeadId);
+				await syncCanonicalProposalLink(pool, requestedLeadId);
 			}
 			await pool.commit();
 		} catch (transactionError) {
@@ -1070,7 +1086,7 @@ export async function DELETE(request, { params }) {
 		const linkedLeadId = toNullableId(linkRows[0]?.lead_id);
 
 		const [result] = await pool.execute(
-			'UPDATE proposals SET isDelete = 1 WHERE id = ?',
+			'UPDATE proposals SET isDelete = 1, canonical_lead_id = NULL WHERE id = ?',
 			[id]
 		);
 
@@ -1083,6 +1099,7 @@ export async function DELETE(request, { params }) {
 
 		if (linkedLeadId !== null) {
 			await refreshLeadProposalState(pool, linkedLeadId);
+			await syncCanonicalProposalLink(pool, linkedLeadId);
 		}
 
 		return NextResponse.json({

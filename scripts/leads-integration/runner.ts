@@ -14,9 +14,11 @@ import {
 } from './support.ts';
 import type {
 	DbActivityRow,
+	DbConversionRow,
 	DbCorrectionRow,
 	DbLeadRow,
 	DbOwnershipRow,
+	DbProposalFollowupRow,
 	DbProposalRow,
 	DbReviewRow,
 	DbStageHistoryRow,
@@ -106,6 +108,19 @@ import {
 	untouchedQueueScenario,
 	type QueueSeeds,
 } from './scenarios/queues.ts';
+import {
+	conversionConcurrentScenario,
+	conversionConflictScenario,
+	conversionHandoffScenario,
+	conversionPermissionsScenario,
+	conversionQualificationScenario,
+	conversionReadAndQueueScenario,
+	conversionRepeatScenario,
+	conversionRollbackScenario,
+	conversionStageRequiredScenario,
+	type ConversionSeeds,
+	type FailureInjection,
+} from './scenarios/conversion.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -274,6 +289,8 @@ function makeReader(connection: Connection): Reader {
 			legacy_proposal_reviewed: nullableFlag(row.legacy_proposal_reviewed),
 			legacy_proposal_conflict: nullableFlag(row.legacy_proposal_conflict),
 			canonical_proposal_id: nullableNumber(row.canonical_proposal_id),
+			converted_at: nullableString(row.converted_at),
+			converted_by: nullableNumber(row.converted_by),
 			follow_up_date: nullableString(row.follow_up_date),
 			isDelete: nullableNumber(row.isDelete),
 		};
@@ -300,6 +317,7 @@ function makeReader(connection: Connection): Reader {
 			lead_id: nullableNumber(row.lead_id),
 			proposal_title: nullableString(row.proposal_title),
 			status: nullableString(row.status),
+			canonical_lead_id: nullableNumber(row.canonical_lead_id),
 			isDelete: nullableNumber(row.isDelete),
 		};
 	}
@@ -321,6 +339,8 @@ function makeReader(connection: Connection): Reader {
 			recorded_at: nullableString(row.recorded_at),
 			isDelete: nullableNumber(row.isDelete),
 			version: nullableNumber(row.version),
+			transferred_followup_id: nullableNumber(row.transferred_followup_id),
+			transferred_at: nullableString(row.transferred_at),
 		};
 	}
 
@@ -364,6 +384,36 @@ function makeReader(connection: Connection): Reader {
 		};
 	}
 
+	function toConversionRow(row: Record<string, unknown>): DbConversionRow {
+		return {
+			id: requiredNumber(row.id, 'lead_conversions.id'),
+			lead_id: requiredNumber(row.lead_id, 'lead_conversions.lead_id'),
+			proposal_id: requiredNumber(
+				row.proposal_id,
+				'lead_conversions.proposal_id'
+			),
+			converted_by: nullableNumber(row.converted_by),
+			converted_at: nullableString(row.converted_at),
+		};
+	}
+
+	function toProposalFollowupRow(
+		row: Record<string, unknown>
+	): DbProposalFollowupRow {
+		return {
+			id: requiredNumber(row.id, 'proposal_followups.id'),
+			proposal_id: requiredNumber(
+				row.proposal_id,
+				'proposal_followups.proposal_id'
+			),
+			follow_up_date: nullableString(row.follow_up_date),
+			follow_up_type: nullableString(row.follow_up_type),
+			description: nullableString(row.description),
+			status: nullableString(row.status),
+			created_by: nullableNumber(row.created_by),
+		};
+	}
+
 	return {
 		leadRow: async (id) => {
 			const row = await firstRow('SELECT * FROM leads WHERE id = ? LIMIT 1', [
@@ -387,10 +437,38 @@ function makeReader(connection: Connection): Reader {
 		},
 		proposalRows: async (leadId) => {
 			const [rows] = await connection.execute(
-				'SELECT id, lead_id, proposal_title, status, isDelete FROM proposals WHERE lead_id = ? ORDER BY id ASC',
+				'SELECT id, lead_id, proposal_title, status, canonical_lead_id, isDelete FROM proposals WHERE lead_id = ? ORDER BY id ASC',
 				[leadId]
 			);
 			return rows.map(toProposalRow);
+		},
+		proposalRow: async (id) => {
+			const row = await firstRow(
+				'SELECT id, lead_id, proposal_title, status, canonical_lead_id, isDelete FROM proposals WHERE id = ? LIMIT 1',
+				[id]
+			);
+			return row ? toProposalRow(row) : null;
+		},
+		conversionRows: async (leadId) => {
+			const [rows] = await connection.execute(
+				'SELECT id, lead_id, proposal_id, converted_by, converted_at FROM lead_conversions WHERE lead_id = ? ORDER BY id ASC',
+				[leadId]
+			);
+			return rows.map(toConversionRow);
+		},
+		proposalFollowups: async (proposalId) => {
+			const [rows] = await connection.execute(
+				'SELECT id, proposal_id, follow_up_date, follow_up_type, description, status, created_by FROM proposal_followups WHERE proposal_id = ? ORDER BY id ASC',
+				[proposalId]
+			);
+			return rows.map(toProposalFollowupRow);
+		},
+		countProposalFollowups: async () => {
+			const row = await firstRow(
+				'SELECT COUNT(*) AS total FROM proposal_followups',
+				[]
+			);
+			return Number(row?.total ?? 0);
 		},
 		activityRows: async (leadId) => {
 			const [rows] = await connection.execute(
@@ -612,9 +690,13 @@ function fixtureSpecs(runTag: string): FixtureSpec[] {
 		'leads:delete',
 		'leads:import',
 		'leads:assign',
+		// The Lead-to-Proposal handoff needs the Lead convert right, the
+		// Lead update right, and the right to create Proposals.
+		'leads:convert',
 		// Proposal read access lets the reviewer see the linked Proposals
 		// the canonical choice is made between.
 		'proposals:read',
+		'proposals:create',
 	];
 	return [
 		{
@@ -635,7 +717,14 @@ function fixtureSpecs(runTag: string): FixtureSpec[] {
 		{
 			key: 'noassign',
 			fullName: `${runTag} Editor`,
-			permissions: ['leads:read', 'leads:create', 'leads:update'],
+			// The Lead convert right without the right to create Proposals:
+			// the handoff refuses a missing grant.
+			permissions: [
+				'leads:read',
+				'leads:create',
+				'leads:update',
+				'leads:convert',
+			],
 		},
 		{
 			key: 'proposer',
@@ -933,6 +1022,251 @@ function buildQueueSeeds(
 	};
 }
 
+interface SeededActivity {
+	activity_type: string;
+	scheduled_for: string;
+	next_action: string;
+}
+
+interface SeededLeadFacts {
+	stage: string;
+	contact_name: string | null;
+	contact_email: string | null;
+	phone: string | null;
+	project_description: string | null;
+	owner_user_id: number | null;
+	scheduled: SeededActivity[];
+	completed: Array<{ activity_type: string; occurred_at: string }>;
+}
+
+/** A date the scheduled work of the seeded enquiries carries. */
+async function seededDate(
+	connection: Connection,
+	daysAhead: number
+): Promise<string> {
+	const [rows] = await connection.execute(
+		`SELECT DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL ? DAY), '%Y-%m-%d') AS date`,
+		[daysAhead]
+	);
+	const [row] = rows as Array<Record<string, unknown>>;
+	const value = row?.date;
+	if (typeof value !== 'string' || value === '') {
+		fail('the seeded date could not be read');
+	}
+	return value;
+}
+
+async function seedConversionLead(
+	connection: Connection,
+	runTag: string,
+	key: string,
+	facts: SeededLeadFacts
+): Promise<number> {
+	const companyName = `${runTag} ${key} Co`;
+	await connection.execute(
+		`INSERT INTO leads (company_name, contact_name, contact_email, phone,
+        project_description, enquiry_status, owner_user_id, follow_up_date,
+        isDelete, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())`,
+		[
+			companyName,
+			facts.contact_name,
+			facts.contact_email,
+			facts.phone,
+			facts.project_description,
+			facts.stage,
+			facts.owner_user_id,
+			facts.scheduled[0]?.scheduled_for ?? null,
+		]
+	);
+	const [rows] = await connection.execute(
+		'SELECT id FROM leads WHERE company_name = ? ORDER BY id DESC LIMIT 1',
+		[companyName]
+	);
+	const [created] = rows;
+	if (!created) fail(`conversion seed ${companyName} missing after insert`);
+	const leadId = requiredNumber(created.id, 'leads.id');
+	for (const task of facts.scheduled) {
+		await connection.execute(
+			`INSERT INTO lead_activities (lead_id, activity_type, status,
+          scheduled_for, next_action, notes, created_by, recorded_at,
+          created_at, updated_at, isDelete)
+         VALUES (?, ?, 'Scheduled', ?, ?, NULL, NULL, NOW(), NOW(), NOW(), 0)`,
+			[leadId, task.activity_type, task.scheduled_for, task.next_action]
+		);
+	}
+	for (const done of facts.completed) {
+		await connection.execute(
+			`INSERT INTO lead_activities (lead_id, activity_type, status,
+          occurred_at, completed_at, notes, created_by, recorded_at,
+          created_at, updated_at, isDelete)
+         VALUES (?, ?, 'Completed', ?, ?, NULL, NULL, NOW(), NOW(), NOW(), 0)`,
+			[leadId, done.activity_type, done.occurred_at, done.occurred_at]
+		);
+	}
+	return leadId;
+}
+
+async function seedConversionFixtures(
+	connection: Connection,
+	runTag: string,
+	ownerUsername: string
+): Promise<ConversionSeeds> {
+	const [userRows] = await connection.execute(
+		'SELECT id FROM users WHERE username = ? LIMIT 1',
+		[ownerUsername]
+	);
+	const [owner] = userRows;
+	if (!owner) fail(`fixture user ${ownerUsername} missing before seeding`);
+	const ownerUserId = Number(owner.id);
+	const taskDate = await seededDate(connection, 5);
+	const secondTaskDate = await seededDate(connection, 9);
+	const overdueDate = await seededDate(connection, -1);
+	const completedAt = await seededDate(connection, 3);
+
+	const qualified = {
+		stage: 'Qualified',
+		contact_name: 'Cleo Client',
+		contact_email: 'cleo@example.com',
+		phone: '+91 98765 43210',
+		project_description: 'A plant extension for the Chakan unit',
+		owner_user_id: ownerUserId,
+		scheduled: [
+			{
+				activity_type: 'Call',
+				scheduled_for: taskDate,
+				next_action: 'Call about the tender',
+			},
+		],
+		completed: [
+			{ activity_type: 'Meeting', occurred_at: `${completedAt} 10:00:00` },
+		],
+	};
+
+	const qualifiedLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'Convertible',
+		qualified
+	);
+	const repeatLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'Repeatable',
+		qualified
+	);
+	const concurrentLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'Concurrent',
+		qualified
+	);
+	const queueLeadId = await seedConversionLead(connection, runTag, 'Queued', {
+		...qualified,
+		// The oldest outstanding task, so it is the first entry of the
+		// Lead work queue the queue proof reads.
+		scheduled: [
+			{
+				activity_type: 'Call',
+				scheduled_for: overdueDate,
+				next_action: 'Call about the tender',
+			},
+		],
+	});
+	const rollbackLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'Rollback',
+		{
+			...qualified,
+			scheduled: [
+				{
+					activity_type: 'Call',
+					scheduled_for: taskDate,
+					next_action: 'Call about the tender',
+				},
+				{
+					activity_type: 'Email',
+					scheduled_for: secondTaskDate,
+					next_action: 'Send the revised quotation',
+				},
+			],
+		}
+	);
+	const noContactLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'No Contact',
+		{ ...qualified, contact_name: null }
+	);
+	const noDetailsLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'No Details',
+		{ ...qualified, contact_email: null, phone: null }
+	);
+	const noNeedLeadId = await seedConversionLead(connection, runTag, 'No Need', {
+		...qualified,
+		project_description: null,
+	});
+	const noOwnerLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'No Owner',
+		{ ...qualified, owner_user_id: null }
+	);
+	const notQualifiedLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'Not Qualified',
+		{ ...qualified, stage: 'Connected' }
+	);
+
+	// The unresolved legacy link: two Proposals point at the enquiry and no
+	// canonical choice was made.
+	const conflictLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'Conflict',
+		qualified
+	);
+	const conflictProposalIds: number[] = [];
+	for (const title of ['one', 'two']) {
+		await connection.execute(
+			`INSERT INTO proposals (proposal_title, lead_id, status, isDelete)
+         VALUES (?, ?, 'DRAFT', 0)`,
+			[`${runTag} legacy proposal ${title}`, conflictLeadId]
+		);
+		const [rows] = await connection.execute(
+			'SELECT id FROM proposals WHERE lead_id = ? ORDER BY id DESC LIMIT 1',
+			[conflictLeadId]
+		);
+		const [created] = rows;
+		if (!created) fail(`legacy proposal ${title} missing after insert`);
+		conflictProposalIds.push(requiredNumber(created.id, 'proposals.id'));
+	}
+	await connection.execute(
+		`UPDATE leads SET legacy_proposal_conflict = 1, legacy_proposal_reviewed = 0
+       WHERE id = ?`,
+		[conflictLeadId]
+	);
+
+	return {
+		qualifiedLeadId,
+		repeatLeadId,
+		concurrentLeadId,
+		rollbackLeadId,
+		queueLeadId,
+		noContactLeadId,
+		noDetailsLeadId,
+		noNeedLeadId,
+		noOwnerLeadId,
+		notQualifiedLeadId,
+		conflictLeadId,
+		conflictProposalIds,
+	};
+}
+
 /**
  * Two Leads in the stages the Lead API cannot create yet: a disqualified
  * and a converted Lead. The workflow must leave both alone, so the
@@ -973,6 +1307,38 @@ async function seedLifecycleFixtures(
 	return {
 		disqualifiedLeadId: seeded.disqualified ?? 0,
 		convertedLeadId: seeded.converted ?? 0,
+	};
+}
+
+/**
+ * The deterministic database failure of the conversion proof.
+ *
+ * The trigger lives in the disposable integration database only and is
+ * armed by the harness, never by the application: the production code has
+ * no control that can fail a conversion on purpose. The trigger refuses
+ * the second Proposal follow-up of a Proposal, so the handoff fails after
+ * the first task was already written: the rollback has to undo a task that
+ * was inserted inside the failed transaction.
+ */
+const FAILURE_TRIGGER = 'trg_leads_conversion_failure';
+
+function createFailureInjection(connection: Connection): FailureInjection {
+	return {
+		install: async () => {
+			await connection.query(`DROP TRIGGER IF EXISTS ${FAILURE_TRIGGER}`);
+			await connection.query(
+				`CREATE TRIGGER ${FAILURE_TRIGGER} BEFORE INSERT ON proposal_followups
+         FOR EACH ROW
+         BEGIN
+           IF (SELECT COUNT(*) FROM proposal_followups WHERE proposal_id = NEW.proposal_id) >= 1 THEN
+             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected conversion failure';
+           END IF;
+         END`
+			);
+		},
+		remove: async () => {
+			await connection.query(`DROP TRIGGER IF EXISTS ${FAILURE_TRIGGER}`);
+		},
 	};
 }
 
@@ -1159,6 +1525,20 @@ export async function runLeadsIntegration(
 			disqualifiedLeadId: 0,
 			convertedLeadId: 0,
 		};
+		let conversionSeeds: ConversionSeeds = {
+			qualifiedLeadId: 0,
+			repeatLeadId: 0,
+			concurrentLeadId: 0,
+			rollbackLeadId: 0,
+			queueLeadId: 0,
+			noContactLeadId: 0,
+			noDetailsLeadId: 0,
+			noNeedLeadId: 0,
+			noOwnerLeadId: 0,
+			notQualifiedLeadId: 0,
+			conflictLeadId: 0,
+			conflictProposalIds: [],
+		};
 		try {
 			const passwordHash = await hashFixturePassword(FIXTURE_PASSWORD);
 			await seedPreMigrationFixtures(seeder, runTag, passwordHash);
@@ -1183,6 +1563,11 @@ export async function runLeadsIntegration(
 			await knex.migrate.up({ name: LEGACY_REVIEW_MIGRATION_FILE });
 			await knex.migrate.latest();
 			lifecycleSeeds = await seedLifecycleFixtures(
+				seeder,
+				runTag,
+				fixtureUsername(runTag, 'assignee')
+			);
+			conversionSeeds = await seedConversionFixtures(
 				seeder,
 				runTag,
 				fixtureUsername(runTag, 'assignee')
@@ -1452,8 +1837,51 @@ export async function runLeadsIntegration(
 			deletedLeadsLeaveTheQueueScenario,
 			context
 		);
+		const failureInjection: FailureInjection = createFailureInjection(reader);
+		await runScenario(
+			'conversion-permissions',
+			(ctx) => conversionPermissionsScenario(ctx, conversionSeeds),
+			context
+		);
+		await runScenario(
+			'conversion-qualification',
+			(ctx) => conversionQualificationScenario(ctx, conversionSeeds),
+			context
+		);
+		await runScenario(
+			'conversion-stage-required',
+			(ctx) => conversionStageRequiredScenario(ctx, conversionSeeds),
+			context
+		);
+		await runScenario('conversion-handoff', conversionHandoffScenario, context);
+		await runScenario(
+			'conversion-repeat',
+			(ctx) => conversionRepeatScenario(ctx, conversionSeeds),
+			context
+		);
+		await runScenario(
+			'conversion-concurrent',
+			(ctx) => conversionConcurrentScenario(ctx, conversionSeeds),
+			context
+		);
+		await runScenario(
+			'conversion-legacy-conflict',
+			(ctx) => conversionConflictScenario(ctx, conversionSeeds),
+			context
+		);
+		await runScenario(
+			'conversion-rollback',
+			(ctx) =>
+				conversionRollbackScenario(ctx, conversionSeeds, failureInjection),
+			context
+		);
+		await runScenario(
+			'conversion-read-and-queue',
+			(ctx) => conversionReadAndQueueScenario(ctx, conversionSeeds),
+			context
+		);
 		log(IBAND);
-		log(`PASS all 56 scenarios (${trackedLeads.length} leads created)`);
+		log(`PASS all 65 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other

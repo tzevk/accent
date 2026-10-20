@@ -13,6 +13,8 @@ import {
 	assertSingleAuthoritativeLeadLink,
 	refreshLeadProposalState,
 } from '@/server/leads/legacy-review';
+import { syncCanonicalProposalLink } from '@/server/leads/conversion';
+import { LEAD_CONVERSION_MESSAGES } from '@/lib/lead-conversion';
 import { LeadWorkflowError, toNullableId } from '@/server/leads/shared';
 
 export async function GET(request) {
@@ -60,6 +62,18 @@ export async function POST(request) {
 		if (auth instanceof Response) return auth;
 
 		const data = await request.json();
+
+		// The canonical Lead link is not a client field: one enquiry has one
+		// canonical Proposal, and the Lead-to-Proposal handoff owns that
+		// link. A request that carries it is refused before anything is
+		// written.
+		if (Object.prototype.hasOwnProperty.call(data, 'canonical_lead_id')) {
+			throw new LeadWorkflowError(
+				'proposal_link_conflict',
+				LEAD_CONVERSION_MESSAGES.proposal_link_conflict,
+				409
+			);
+		}
 
 		// Extract fields matching new database schema
 		const {
@@ -368,6 +382,7 @@ ATS is allowed to use the contract as a customer reference. However, no data or 
 		// The enquiry records the canonical Proposal its live links allow.
 		if (linkedLeadId !== null) {
 			await refreshLeadProposalState(pool, linkedLeadId);
+			await syncCanonicalProposalLink(pool, linkedLeadId);
 			await pool.commit();
 			linkedTransaction = false;
 		}

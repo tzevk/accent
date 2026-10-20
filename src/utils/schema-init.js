@@ -222,6 +222,7 @@ async function doSchemaInit() {
 		// Proposal/project sub-tables
 		await Promise.all([
 			initProposalFollowupsTable(db),
+			initLeadConversionsTable(db),
 			initProjectFollowupsTable(db),
 			initProjectInvoicesTable(db),
 			initProjectPurchaseOrdersTable(db),
@@ -1103,6 +1104,8 @@ async function initLeadsTable(db) {
 
 	const alterStatements = [
 		'ALTER TABLE leads ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+		'ALTER TABLE leads ADD COLUMN converted_at DATETIME NULL DEFAULT NULL',
+		'ALTER TABLE leads ADD COLUMN converted_by INT NULL DEFAULT NULL',
 	];
 
 	for (const stmt of alterStatements) {
@@ -1599,6 +1602,7 @@ async function initProposalsTable(db) {
 		'ALTER TABLE proposals ADD COLUMN city VARCHAR(100)',
 		'ALTER TABLE proposals ADD COLUMN value DECIMAL(15,2)',
 		'ALTER TABLE proposals ADD COLUMN due_date DATE',
+		'ALTER TABLE proposals ADD COLUMN canonical_lead_id INT NULL DEFAULT NULL',
 	];
 
 	for (const stmt of alterStatements) {
@@ -1627,6 +1631,21 @@ async function initProposalsTable(db) {
 			!e.message?.includes('already exists')
 		) {
 			console.warn('Proposals index migration warning:', e.message || e);
+		}
+	}
+
+	// One enquiry has one canonical Proposal: the unique index over the
+	// canonical Lead link is what the database enforces.
+	try {
+		await db.execute(
+			'ALTER TABLE proposals ADD UNIQUE KEY uk_proposals_canonical_lead (canonical_lead_id)'
+		);
+	} catch (e) {
+		if (
+			!e.message?.includes('Duplicate key name') &&
+			!e.message?.includes('already exists')
+		) {
+			console.warn('Proposals canonical link index warning:', e.message || e);
 		}
 	}
 }
@@ -1869,6 +1888,25 @@ async function initLeadActivitiesTable(db) {
 			}
 		}
 	}
+}
+
+async function initLeadConversionsTable(db) {
+	// The conversion evidence: one row per Lead-to-Proposal handoff.
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS lead_conversions (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      lead_id INT NOT NULL,
+      proposal_id INT NOT NULL,
+      converted_by INT NULL,
+      converted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE RESTRICT,
+      FOREIGN KEY (proposal_id) REFERENCES proposals(id) ON DELETE RESTRICT,
+      FOREIGN KEY (converted_by) REFERENCES users(id) ON DELETE RESTRICT,
+      INDEX idx_lead_conversions_lead (lead_id),
+      INDEX idx_lead_conversions_proposal (proposal_id)
+    )
+  `);
 }
 
 async function initSoftwareCategoriesTable(db) {

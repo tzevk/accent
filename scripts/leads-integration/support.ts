@@ -166,6 +166,8 @@ export interface Connection {
 		sql: string,
 		params?: Array<string | number | null>
 	) => Promise<[Array<Record<string, unknown>>, unknown]>;
+	/** Text protocol: the DDL of the harness, such as the failure trigger. */
+	query: (sql: string) => Promise<unknown>;
 	end: () => Promise<void>;
 }
 

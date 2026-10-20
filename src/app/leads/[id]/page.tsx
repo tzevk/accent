@@ -19,6 +19,7 @@ import OwnershipHistory from '@/components/leads/OwnershipHistory';
 import LeadAssignForm from '@/components/leads/LeadAssignForm';
 import LeadActivityForm from '@/components/leads/LeadActivityForm';
 import LeadLifecycleActions from '@/components/leads/LeadLifecycleActions';
+import LeadConversionAction from '@/components/leads/LeadConversionAction';
 import LeadTimeline from '@/components/leads/LeadTimeline';
 import {
 	leadKeys,
@@ -70,6 +71,12 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 	// right to read the Proposals the decision is made between.
 	const canReviewProposal =
 		canEdit && can(RBAC_RESOURCES.PROPOSALS, RBAC_PERMISSIONS.READ);
+	// The handoff needs the Lead convert right, the Lead update right, and
+	// the right to create Proposals. The server checks the same three.
+	const canConvert =
+		canEdit &&
+		can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.CONVERT) &&
+		can(RBAC_RESOURCES.PROPOSALS, RBAC_PERMISSIONS.CREATE);
 	const detailQuery = useLeadDetail(id, canView);
 	const ownersQuery = useLeadOwners(!rbacLoading && canAssign);
 	const deleteMutation = useMutation<{ success: boolean }, Error, void>({
@@ -435,6 +442,8 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 									owners={ownersQuery.data?.data ?? []}
 									canDecide={canEdit}
 								/>
+
+								<LeadConversionAction lead={lead} canConvert={canConvert} />
 
 								<div className="bg-white rounded-lg border border-gray-200 p-6">
 									<h3 className="text-lg font-medium text-gray-900 mb-4">
