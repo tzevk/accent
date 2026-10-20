@@ -114,6 +114,53 @@ export interface LeadActivityResponse {
 	};
 }
 
+/** The values one correction speaks about. */
+export interface LeadCorrectionValues {
+	activity_type: string | null;
+	call_outcome: string | null;
+	reply_confirmed: boolean | null;
+	occurred_at: string | null;
+	notes: string | null;
+}
+
+/** One correction of one activity, with the values it kept and replaced. */
+export interface LeadActivityCorrection {
+	id: number;
+	activity_id: number;
+	reason: string;
+	previous_values: LeadCorrectionValues;
+	corrected_values: LeadCorrectionValues;
+	corrected_by: number | null;
+	actor_name: string | null;
+	corrected_at: string | null;
+}
+
+export interface LeadCorrectionResponse {
+	success: boolean;
+	data: {
+		activity_id: number;
+		version: number;
+		corrected_at: string;
+	};
+}
+
+export interface LeadCorrectionStateResponse {
+	success: boolean;
+	data: {
+		activity: {
+			id: number;
+			activity_type: string | null;
+			status: string | null;
+			call_outcome: string | null;
+			reply_confirmed: boolean | null;
+			occurred_at: string | null;
+			notes: string | null;
+			version: number;
+		};
+		corrections: LeadActivityCorrection[];
+	};
+}
+
 export interface LeadTaskResponse {
 	success: boolean;
 	data: {

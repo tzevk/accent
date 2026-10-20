@@ -1,6 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { useLeadTimeline } from '@/components/leads/queries';
+import { useSessionRBAC } from '@/utils/client-rbac';
+import {
+	RESOURCES as RBAC_RESOURCES,
+	PERMISSIONS as RBAC_PERMISSIONS,
+} from '@/utils/rbac';
+import ActivityCorrectionForm from '@/components/leads/ActivityCorrectionForm';
 import { formatDateTime } from '@/lib/format';
 
 interface LeadTimelineProps {
@@ -21,6 +28,12 @@ const STATUS_TONES: Record<string, string> = {
  */
 export default function LeadTimeline({ leadId, enabled }: LeadTimelineProps) {
 	const timelineQuery = useLeadTimeline(leadId, enabled);
+	const { loading: rbacLoading, can } = useSessionRBAC();
+	const canCorrect =
+		!rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.UPDATE);
+	const [correctingActivityId, setCorrectingActivityId] = useState<
+		number | null
+	>(null);
 	const entries = timelineQuery.data?.data.entries ?? [];
 	const loading = timelineQuery.isPending;
 	const loadError =
@@ -104,6 +117,33 @@ export default function LeadTimeline({ leadId, enabled }: LeadTimelineProps) {
 									? ' · outcome unknown'
 									: ''}
 							</p>
+							{canCorrect && entry.kind === 'activity' ? (
+								<button
+									type="button"
+									aria-label={`Correct activity: ${entry.title}`}
+									onClick={() =>
+										setCorrectingActivityId(
+											Number(entry.key.slice('activity:'.length))
+										)
+									}
+									className="mt-2 text-sm font-medium text-[#64126D] underline"
+								>
+									Correct activity
+								</button>
+							) : null}
+							{canCorrect &&
+							entry.kind === 'activity' &&
+							correctingActivityId ===
+								Number(entry.key.slice('activity:'.length)) ? (
+								<ActivityCorrectionForm
+									leadId={leadId}
+									activityId={Number(entry.key.slice('activity:'.length))}
+									onApplied={() => {
+										void timelineQuery.refetch();
+									}}
+									onCancel={() => setCorrectingActivityId(null)}
+								/>
+							) : null}
 						</li>
 					))}
 				</ol>

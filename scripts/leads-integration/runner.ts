@@ -14,6 +14,7 @@ import {
 } from './support.ts';
 import type {
 	DbActivityRow,
+	DbCorrectionRow,
 	DbLeadRow,
 	DbOwnershipRow,
 	DbProposalRow,
@@ -70,6 +71,15 @@ import {
 	proposalLinkGuardScenario,
 	type LegacyReviewSeeds,
 } from './scenarios/legacy-review.ts';
+import {
+	activityCorrectionScenario,
+	deniedCorrectionScenario,
+	legacyCorrectionProvenanceScenario,
+	missingReasonCorrectionScenario,
+	noDestructiveActivityPathScenario,
+	staleVersionCorrectionScenario,
+	unownedCorrectionRefusalScenario,
+} from './scenarios/corrections.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -284,6 +294,23 @@ function makeReader(connection: Connection): Reader {
 			created_by: nullableNumber(row.created_by),
 			recorded_at: nullableString(row.recorded_at),
 			isDelete: nullableNumber(row.isDelete),
+			version: nullableNumber(row.version),
+		};
+	}
+
+	function toCorrectionRow(row: Record<string, unknown>): DbCorrectionRow {
+		return {
+			id: requiredNumber(row.id, 'lead_activity_corrections.id'),
+			activity_id: requiredNumber(
+				row.activity_id,
+				'lead_activity_corrections.activity_id'
+			),
+			lead_id: requiredNumber(row.lead_id, 'lead_activity_corrections.lead_id'),
+			previous_values: String(row.previous_values ?? ''),
+			corrected_values: String(row.corrected_values ?? ''),
+			reason: String(row.reason ?? ''),
+			corrected_by: nullableNumber(row.corrected_by),
+			corrected_at: nullableString(row.corrected_at),
 		};
 	}
 
@@ -345,6 +372,13 @@ function makeReader(connection: Connection): Reader {
 				[leadId]
 			);
 			return rows.map(toActivityRow);
+		},
+		correctionRows: async (leadId) => {
+			const [rows] = await connection.execute(
+				'SELECT * FROM lead_activity_corrections WHERE lead_id = ? ORDER BY id ASC',
+				[leadId]
+			);
+			return rows.map(toCorrectionRow);
 		},
 		stageHistory: async (leadId) => {
 			const [rows] = await connection.execute(
@@ -1163,8 +1197,43 @@ export async function runLeadsIntegration(
 				),
 			context
 		);
+		await runScenario(
+			'activity-correction',
+			activityCorrectionScenario,
+			context
+		);
+		await runScenario('denied-correction', deniedCorrectionScenario, context);
+		await runScenario(
+			'missing-reason-correction',
+			missingReasonCorrectionScenario,
+			context
+		);
+		await runScenario(
+			'stale-version-correction',
+			staleVersionCorrectionScenario,
+			context
+		);
+		await runScenario(
+			'unowned-correction-refusal',
+			unownedCorrectionRefusalScenario,
+			context
+		);
+		await runScenario(
+			'legacy-correction-provenance',
+			(ctx) =>
+				legacyCorrectionProvenanceScenario(
+					ctx,
+					legacyScheduledLead ?? { id: 0, followUpDate: '' }
+				),
+			context
+		);
+		await runScenario(
+			'no-destructive-activity-path',
+			noDestructiveActivityPathScenario,
+			context
+		);
 		log(IBAND);
-		log(`PASS all 28 scenarios (${trackedLeads.length} leads created)`);
+		log(`PASS all 35 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other

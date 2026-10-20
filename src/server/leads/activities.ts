@@ -28,6 +28,7 @@ import {
 	toIsoDateTime,
 	toMysqlDateTime,
 } from '@/server/leads/activity-rows';
+import { getLeadCorrectionEntries } from '@/server/leads/corrections';
 
 /**
  * The Lead activity log (ticket #371).
@@ -736,6 +737,16 @@ export async function getLeadTimeline(
 					status === 'Scheduled' && scheduledFor
 						? `${scheduledFor}T00:00:00`
 						: (occurredAt ?? recordedAt ?? '9999-12-31T23:59:59'),
+			});
+		}
+
+		// The corrections of the Lead are their own entries: a corrected
+		// activity stays one activity, and the values it had before every
+		// correction stay visible next to it.
+		for (const entry of await getLeadCorrectionEntries(db, leadId)) {
+			entries.push({
+				entry,
+				sortTime: entry.recorded_at ?? '9999-12-31T23:59:59',
 			});
 		}
 

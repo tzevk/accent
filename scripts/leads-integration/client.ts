@@ -194,6 +194,18 @@ export interface DbActivityRow {
 	created_by: number | null;
 	recorded_at: string | null;
 	isDelete: number | null;
+	version: number | null;
+}
+
+export interface DbCorrectionRow {
+	id: number;
+	activity_id: number;
+	lead_id: number;
+	previous_values: string;
+	corrected_values: string;
+	reason: string;
+	corrected_by: number | null;
+	corrected_at: string | null;
 }
 
 export interface DbStageHistoryRow {
@@ -223,6 +235,7 @@ export interface Reader {
 	reviewRows: (leadId: number) => Promise<DbReviewRow[]>;
 	proposalRows: (leadId: number) => Promise<DbProposalRow[]>;
 	activityRows: (leadId: number) => Promise<DbActivityRow[]>;
+	correctionRows: (leadId: number) => Promise<DbCorrectionRow[]>;
 	stageHistory: (leadId: number) => Promise<DbStageHistoryRow[]>;
 	userByUsername: (username: string) => Promise<Record<string, unknown> | null>;
 	countLeadsByCompany: (companyName: string) => Promise<number>;
