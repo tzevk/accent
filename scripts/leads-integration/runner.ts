@@ -59,6 +59,19 @@ import {
 	type LifecycleSeeds,
 } from './scenarios/activities.ts';
 import {
+	convertedLeadTakesNoDecisionScenario,
+	disqualifyCancelsOutstandingWorkScenario,
+	disqualifyWithoutReasonScenario,
+	genericPathsCannotDecideTheLifecycleScenario,
+	lifecycleUnauthorizedScenario,
+	nurtureWithNextActionScenario,
+	nurtureWithoutNextActionScenario,
+	qualificationMissingFieldsScenario,
+	qualificationWithoutBudgetOrTimingScenario,
+	reopenMissingFieldsScenario,
+	reopenWithRequiredFieldsScenario,
+} from './scenarios/lifecycle.ts';
+import {
 	legacyEvidenceScenario,
 	type LegacySeedRow,
 } from './scenarios/legacy.ts';
@@ -1232,8 +1245,63 @@ export async function runLeadsIntegration(
 			noDestructiveActivityPathScenario,
 			context
 		);
+		await runScenario(
+			'qualification-missing-fields',
+			qualificationMissingFieldsScenario,
+			context
+		);
+		await runScenario(
+			'qualification-without-budget-or-timing',
+			qualificationWithoutBudgetOrTimingScenario,
+			context
+		);
+		await runScenario(
+			'nurture-with-next-action',
+			nurtureWithNextActionScenario,
+			context
+		);
+		await runScenario(
+			'nurture-without-next-action',
+			nurtureWithoutNextActionScenario,
+			context
+		);
+		await runScenario(
+			'disqualify-without-reason',
+			disqualifyWithoutReasonScenario,
+			context
+		);
+		await runScenario(
+			'disqualify-cancels-outstanding-work',
+			disqualifyCancelsOutstandingWorkScenario,
+			context
+		);
+		await runScenario(
+			'reopen-with-required-fields',
+			reopenWithRequiredFieldsScenario,
+			context
+		);
+		await runScenario(
+			'reopen-missing-fields',
+			reopenMissingFieldsScenario,
+			context
+		);
+		await runScenario(
+			'converted-lead-takes-no-decision',
+			(ctx) => convertedLeadTakesNoDecisionScenario(ctx, lifecycleSeeds),
+			context
+		);
+		await runScenario(
+			'generic-paths-cannot-decide-the-lifecycle',
+			genericPathsCannotDecideTheLifecycleScenario,
+			context
+		);
+		await runScenario(
+			'lifecycle-unauthorized',
+			lifecycleUnauthorizedScenario,
+			context
+		);
 		log(IBAND);
-		log(`PASS all 35 scenarios (${trackedLeads.length} leads created)`);
+		log(`PASS all 46 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other

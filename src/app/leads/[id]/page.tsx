@@ -18,6 +18,7 @@ import DuplicateReview from '@/components/leads/DuplicateReview';
 import OwnershipHistory from '@/components/leads/OwnershipHistory';
 import LeadAssignForm from '@/components/leads/LeadAssignForm';
 import LeadActivityForm from '@/components/leads/LeadActivityForm';
+import LeadLifecycleActions from '@/components/leads/LeadLifecycleActions';
 import LeadTimeline from '@/components/leads/LeadTimeline';
 import {
 	leadKeys,
@@ -428,6 +429,12 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 										</div>
 									</div>
 								</div>
+
+								<LeadLifecycleActions
+									lead={lead}
+									owners={ownersQuery.data?.data ?? []}
+									canDecide={canEdit}
+								/>
 
 								<div className="bg-white rounded-lg border border-gray-200 p-6">
 									<h3 className="text-lg font-medium text-gray-900 mb-4">

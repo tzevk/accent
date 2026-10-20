@@ -161,6 +161,15 @@ export interface LeadCorrectionStateResponse {
 	};
 }
 
+export interface LeadLifecycleResponse {
+	success: boolean;
+	data: {
+		stage: LeadStage;
+		next_action_date: string | null;
+		owner_user_id: number | null;
+	};
+}
+
 export interface LeadTaskResponse {
 	success: boolean;
 	data: {
