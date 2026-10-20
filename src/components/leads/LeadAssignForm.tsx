@@ -83,10 +83,10 @@ export default function LeadAssignForm({
 	return (
 		<form onSubmit={handleSubmit} className="space-y-3">
 			<div>
-				<label
-					htmlFor={`lead-owner-${lead.id}`}
-					className="block text-sm font-medium text-gray-700 mb-1"
-				>
+				{/* The card that holds this form already names it "Lead
+				    Owner"; a second visible label would repeat the heading
+				    word for word. The label stays for the association. */}
+				<label htmlFor={`lead-owner-${lead.id}`} className="sr-only">
 					Lead Owner
 				</label>
 				<OwnerSelect

@@ -210,7 +210,7 @@ export default function LegacyReviewPanel({
 												[item.type]: event.target.value,
 											}))
 										}
-										className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-accent-purple"
+										className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-[#64126D]"
 									>
 										<option value="">Choose a value</option>
 										{item.type === 'stage'
@@ -261,7 +261,7 @@ export default function LegacyReviewPanel({
 												[item.type]: event.target.value,
 											}))
 										}
-										className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple"
+										className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D]"
 									/>
 								</div>
 								<button

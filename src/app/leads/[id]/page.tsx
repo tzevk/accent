@@ -158,7 +158,9 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 			<Navbar />
 			<div className="flex-1 overflow-hidden">
 				<div className="h-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 max-w-[1800px] mx-auto w-full">
-					<div className="mb-6 flex items-center justify-between">
+					{/* The header wraps: on a phone the actions move under the
+					    title instead of running past the edge of the page. */}
+					<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
 						<div className="flex items-center space-x-4">
 							<button
 								type="button"
@@ -175,7 +177,7 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 								<p className="text-gray-600">Lead Details</p>
 							</div>
 						</div>
-						<div className="flex space-x-3">
+						<div className="flex shrink-0 space-x-3">
 							{canEdit ? (
 								<button
 									type="button"
@@ -343,10 +345,20 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 									<h3 className="text-lg font-medium text-gray-900 mb-4">
 										Log activity
 									</h3>
-									<LeadActivityForm
-										leadId={String(lead.id)}
-										canRecord={canEdit}
-									/>
+									{/* A converted Lead takes no Lead-side work: the form is
+									    not offered, so nobody fills it in only to be
+									    refused by the server. */}
+									{lead.enquiry_status === 'Converted' ? (
+										<p className="text-sm text-gray-600">
+											This lead is converted, so no new activity is recorded
+											here. The sales work continues on the linked proposal.
+										</p>
+									) : (
+										<LeadActivityForm
+											leadId={String(lead.id)}
+											canRecord={canEdit}
+										/>
+									)}
 								</div>
 								<LeadTimeline leadId={String(lead.id)} enabled={canView} />
 							</div>

@@ -413,7 +413,7 @@ export default function Leads() {
 						className="w-full flex items-center justify-between px-4 py-3 text-left"
 					>
 						<div className="flex items-center gap-2">
-							<DocumentTextIcon className="h-5 w-5 text-accent-purple" />
+							<DocumentTextIcon className="h-5 w-5 text-[#64126D]" />
 							<h3 className="text-base font-medium text-gray-900">
 								Import Leads
 							</h3>
@@ -442,8 +442,10 @@ export default function Leads() {
 			) : null}
 
 			<div className="bg-white rounded-lg border border-gray-200 p-4">
-				<div className="flex flex-col lg:flex-row gap-3 lg:items-end">
-					<div className="flex-1">
+				<div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+					{/* The search keeps a usable width: the filters wrap to the
+					    next row instead of squeezing it out of the row. */}
+					<div className="grow basis-64 min-w-[16rem]">
 						<label htmlFor="leads-search" className="sr-only">
 							Search leads
 						</label>
@@ -462,7 +464,7 @@ export default function Leads() {
 										setCurrentPage(1);
 									}
 								}}
-								className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+								className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
 							/>
 						</div>
 					</div>
@@ -480,7 +482,7 @@ export default function Leads() {
 								setStageFilter(event.target.value);
 								setCurrentPage(1);
 							}}
-							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
 						>
 							<option value="">All stages</option>
 							{LEAD_STAGES.map((stage) => (
@@ -505,7 +507,7 @@ export default function Leads() {
 								setOwnerFilter(event.target.value);
 								setCurrentPage(1);
 							}}
-							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
 						>
 							<option value="">All owners</option>
 							<option value="unassigned">Unassigned intake</option>
@@ -530,7 +532,7 @@ export default function Leads() {
 								setDueFilter(event.target.value as LeadDueFilter);
 								setCurrentPage(1);
 							}}
-							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
 						>
 							{LEAD_DUE_FILTERS.map((filter) => (
 								<option key={filter} value={filter}>
@@ -553,7 +555,7 @@ export default function Leads() {
 								setCityFilter(event.target.value);
 								setCurrentPage(1);
 							}}
-							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
 						>
 							<option value="">All Cities</option>
 							<option value="Mumbai">Mumbai</option>
@@ -578,7 +580,7 @@ export default function Leads() {
 								setSortBy(field);
 								setSortOrder(order);
 							}}
-							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
 						>
 							<option value="enquiry_date-desc">Date: Newest First</option>
 							<option value="enquiry_date-asc">Date: Oldest First</option>
@@ -627,7 +629,7 @@ export default function Leads() {
 			>
 				{loading ? (
 					<div className="p-8 text-center" role="status">
-						<div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-accent-purple"></div>
+						<div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#64126D]"></div>
 						<p className="mt-2 text-gray-600">Loading leads...</p>
 					</div>
 				) : loadError ? (
