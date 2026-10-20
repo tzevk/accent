@@ -300,6 +300,58 @@ stay exactly as they are.
 Generic Proposal create and edit requests cannot write the canonical Lead
 link. That link belongs to the handoff.
 
+## Follow the enquiry after the conversion
+
+A converted Lead keeps its own history and points at the Proposal that
+replaced it. The **Proposal progress** panel on the Lead detail shows:
+
+- the link to the canonical Proposal, its own status, its own progress, and
+  its value;
+- the next action of the Proposal, which is now the next action of the
+  enquiry: the sales work of a converted Lead continues on the Proposal;
+- the Project the Proposal links to, once the Proposal has become a Project.
+
+Four states stay apart, and each one says what it is:
+
+| State       | What it means                                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| No Proposal | The enquiry has no Proposal yet.                                                                                   |
+| Unresolved  | The enquiry carries several Proposals and no canonical choice. A reviewer picks one in the legacy review panel.    |
+| Restricted  | The reader may read Leads but not Proposals, so no Proposal title, status, value, or Project information is shown. |
+| Available   | The canonical Proposal and its current progress are shown.                                                         |
+
+The read permissions decide what is visible: `proposals:read` for the
+Proposal details, `projects:read` for the Project details. A reader with only
+`leads:read` sees the Lead, its history, and the restricted marker.
+
+The canonical link is the only source. No Proposal is matched by name, by
+the newest date, or by a second link; an unresolved link is never guessed.
+
+Converted is a handoff, never a sale won. The panel states the Proposal's
+own status and progress and renames nothing: Proposal approval, the
+Proposal-to-Project conversion, and revenue recognition keep their own
+rules. Price changes stay in the Proposal revision controls — the Lead side
+has no price change and offers no second conversion.
+
+## Change notes — issue #376
+
+- Added the downstream read of a converted Lead: the canonical Proposal, its
+  current status, progress, and value, its next action, and the Project it
+  later links to. The canonical link is the only source — no name match, no
+  newest-date guess, no second link.
+- Applied the Proposal and Project read permissions to the Lead detail read
+  and to the Lead list row: a reader with only `leads:read` gets the Lead,
+  its history, and a restricted marker, never a Proposal title, status,
+  value, or Project information.
+- Added the Proposal progress panel to the Lead detail, and the current
+  Proposal status and progress to the Lead list row.
+- Kept the next action of a converted Lead on its Proposal: the Lead refuses
+  new Lead-side sales work, and the panel names the Proposal's next action.
+- Converted still means a handoff: Proposal approval, the
+  Proposal-to-Project conversion, revenue recognition, and the Proposal
+  revision controls keep their own rules, and no second conversion is
+  offered.
+
 ## Change notes — issue #375
 
 - Added the Lead-to-Proposal handoff: one action on the Lead screens creates

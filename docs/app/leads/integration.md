@@ -29,7 +29,7 @@ variables in your shell only; never add them to `.env`. See the
 `INTEGRATION_DB_*` block in `.env.example`.
 
 Expect the first run to build the full schema from the baseline migration, then
-start the server and run sixty-five scenarios. On MariaDB 10.11 the whole run
+start the server and run seventy-one scenarios. On MariaDB 10.11 the whole run
 takes a few minutes.
 
 ## What the run does
@@ -51,7 +51,7 @@ takes a few minutes.
    database branches pinned to the disposable database.
 9. Logs each fixture user in through `POST /api/login` and keeps the real
    session cookies.
-10. Runs sixty-five scenarios.
+10. Runs seventy-one scenarios.
 
 ## Cleanup contract
 
@@ -131,6 +131,12 @@ a full pass, for manual browser follow-up.
 | 63  | conversion-legacy-conflict                | An unresolved canonical Proposal is refused with a review conflict, and the alternatives stay                                                                                          |
 | 64  | conversion-rollback                       | A database failure during the handoff rolls the Lead, the Proposal, the task, and the history back; the retry creates nothing twice                                                    |
 | 65  | conversion-read-and-queue                 | The Lead reads as Converted, the transferred work left the Lead work queue, and the conversion is on the timeline                                                                      |
+| 66  | proposal-progress-missing                 | An enquiry without a Proposal reports no downstream details, and the Lead itself stays readable                                                                                        |
+| 67  | proposal-progress-unresolved              | An enquiry with several linked Proposals and no canonical choice stays unresolved; no Proposal is guessed and the alternatives stay                                                    |
+| 68  | proposal-progress-current-state           | The current Proposal status, progress, and value reach the Lead detail read, the next action is the Proposal's, and the completed Lead history stays visible                           |
+| 69  | proposal-progress-project-link            | The later Project link resolves through the canonical link, and the Proposal and the Project name each other in the database                                                           |
+| 70  | proposal-progress-restricted              | A reader with only `leads:read` gets the Lead, its history, and the restricted marker, and no Proposal title, status, value, or Project information                                    |
+| 71  | proposal-progress-work-on-proposal        | The Lead refuses new Lead-side sales work, and the transferred task is Proposal work with the link in both directions                                                                  |
 
 Every scenario asserts both the HTTP response and the persisted row through
 the independent reader (`mysql2` connection owned by the harness, never the
@@ -178,7 +184,7 @@ which lives only in the workflow.
 ## Verification record — 2026-10-20
 
 - Local environment: Windows, MariaDB 10.11.15 (matching production), Node 26.2.0. The CI job targets Node 24; CI execution is not claimed here.
-- `npm run test:integration:leads`: all sixty-five scenarios pass against the real application and an independent database reader on MariaDB 10.11.
+- `npm run test:integration:leads`: all seventy-one scenarios pass against the real application and an independent database reader on MariaDB 10.11.
 - `npm run verify`: lint and production build pass; the Vitest suites and tests of the Lead feature pass with the rest of the repository.
 - `npm run check:route-auth`: every handler authorizes, with the existing allowlisted paths.
 - The baseline migration applies unchanged on MariaDB 10.11, so no reordering of the production snapshot was needed.
@@ -187,6 +193,7 @@ which lives only in the workflow.
 - The ticket-371 migration is idempotent (a second `up()` over the migrated schema changes no row) and reversible (`down()` recreates the legacy table and copies the rows back).
 - The scenarios spread their requests over the fixture sessions because the application rate-limits every session at 120 API requests a minute (ADR-0013).
 - The conversion rollback is proven with a MariaDB `BEFORE INSERT` trigger on `proposal_followups` that the harness arms and removes inside the disposable database. It fails the second follow-up insert, so the rollback has to undo a task that the failed transaction had already written. The retry afterwards creates one Proposal, one evidence row, and two destination tasks — never a duplicate.
+- The six downstream scenarios prove the current Proposal state and the later Project linkage through the canonical link, the completed Lead history, the restricted reader, and the Proposal work, against MariaDB 10.11.
 - Browser smoke of the activity log: keyboard-driven activity entry, the call outcome, the scheduled next action, the automatic New → Attempting Contact movement, the visible "A call needs its outcome." refusal, the chronological timeline, and "Last successful contact" still empty after a No Answer.
 - Browser smoke of the legacy review: resolving a legacy owner and stage in the review panel, and the retained original values, the decision, the reviewer, and the time afterwards.
 - A read-only browser user sees no edit, delete, import, or assignment-directory controls.
