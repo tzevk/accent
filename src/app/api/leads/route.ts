@@ -10,28 +10,8 @@ import {
 	listLeads,
 	type LeadListFilters,
 } from '@/server/leads/workflow';
+import { parseLeadListQuery } from '@/server/leads/queues';
 import { leadWorkflowFailure } from '@/app/api/leads/_lib/route-helpers';
-
-function parseListFilters(request: Request): LeadListFilters {
-	const { searchParams } = new URL(request.url);
-	return {
-		page: Math.max(
-			1,
-			Number.parseInt(searchParams.get('page') || '1', 10) || 1
-		),
-		limit: Math.min(
-			200,
-			Math.max(1, Number.parseInt(searchParams.get('limit') || '20', 10) || 20)
-		),
-		search: searchParams.get('search') || '',
-		status: searchParams.get('status') || '',
-		city: searchParams.get('city') || '',
-		sortBy: searchParams.get('sortBy') || 'created_at',
-		sortOrder: searchParams.get('sortOrder') || 'desc',
-		owner: searchParams.get('owner') || '',
-		review: searchParams.get('review') || '',
-	};
-}
 
 export async function GET(request: Request): Promise<Response> {
 	const auth = await ensurePermission(
@@ -42,7 +22,13 @@ export async function GET(request: Request): Promise<Response> {
 	if (auth instanceof Response) return auth;
 
 	try {
-		const filters = parseListFilters(request);
+		const { searchParams } = new URL(request.url);
+		const query = parseLeadListQuery(searchParams);
+		const filters: LeadListFilters = {
+			...query,
+			// The queue of the authenticated user, never a client-supplied id.
+			viewerUserId: Number(auth.user.id),
+		};
 		const { leads, stats, total } = await listLeads(filters);
 		return Response.json({
 			success: true,

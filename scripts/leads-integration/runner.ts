@@ -93,6 +93,18 @@ import {
 	staleVersionCorrectionScenario,
 	unownedCorrectionRefusalScenario,
 } from './scenarios/corrections.ts';
+import {
+	deletedLeadsLeaveTheQueueScenario,
+	dueQueueScenario,
+	emptyQueueScenario,
+	myLeadsQueueScenario,
+	noNextActionQueueScenario,
+	queueCountersScenario,
+	queueFiltersScenario,
+	unassignedQueueScenario,
+	untouchedQueueScenario,
+	type QueueSeeds,
+} from './scenarios/queues.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -409,6 +421,92 @@ function makeReader(connection: Connection): Reader {
 			);
 			return Number(row?.total ?? 0);
 		},
+		databaseToday: async () => {
+			const row = await firstRow(
+				"SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS today",
+				[]
+			);
+			return String(row?.today ?? '');
+		},
+		queueCounts: async (search, viewerUserId) => {
+			const { clause, params } = leadSearchClause(search);
+			const [rows] = await connection.execute(
+				`SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN l.owner_user_id = ? THEN 1 ELSE 0 END) AS my_leads,
+            SUM(CASE WHEN l.owner_user_id IS NULL THEN 1 ELSE 0 END) AS unassigned,
+            SUM(CASE WHEN EXISTS (
+              SELECT 1 FROM lead_activities a
+              WHERE a.lead_id = l.id AND a.status = 'Scheduled'
+                AND a.transferred_followup_id IS NULL
+                AND a.scheduled_for IS NOT NULL
+                AND (a.isDelete = 0 OR a.isDelete IS NULL)
+                AND a.scheduled_for = CURDATE()
+            ) THEN 1 ELSE 0 END) AS due_today,
+            SUM(CASE WHEN EXISTS (
+              SELECT 1 FROM lead_activities a
+              WHERE a.lead_id = l.id AND a.status = 'Scheduled'
+                AND a.transferred_followup_id IS NULL
+                AND a.scheduled_for IS NOT NULL
+                AND (a.isDelete = 0 OR a.isDelete IS NULL)
+                AND a.scheduled_for < CURDATE()
+            ) THEN 1 ELSE 0 END) AS overdue,
+            SUM(CASE WHEN NOT EXISTS (
+              SELECT 1 FROM lead_activities a
+              WHERE a.lead_id = l.id AND a.status = 'Completed'
+                AND a.activity_type IN ('Call', 'Email', 'Meeting')
+                AND (a.isDelete = 0 OR a.isDelete IS NULL)
+            ) THEN 1 ELSE 0 END) AS untouched,
+            SUM(CASE WHEN l.enquiry_status IN ('Attempting Contact', 'Connected', 'Qualified', 'Nurture')
+              AND NOT EXISTS (
+                SELECT 1 FROM lead_activities a
+                WHERE a.lead_id = l.id AND a.status = 'Scheduled'
+                  AND a.transferred_followup_id IS NULL
+                  AND a.scheduled_for IS NOT NULL
+                  AND (a.isDelete = 0 OR a.isDelete IS NULL)
+              ) THEN 1 ELSE 0 END) AS no_next_action
+          FROM leads l
+          WHERE (l.isDelete = 0 OR l.isDelete IS NULL) ${clause}`,
+				[viewerUserId, ...params]
+			);
+			const [row] = rows as Array<Record<string, unknown>>;
+			return {
+				total: Number(row?.total ?? 0),
+				my_leads: Number(row?.my_leads ?? 0),
+				unassigned: Number(row?.unassigned ?? 0),
+				due_today: Number(row?.due_today ?? 0),
+				overdue: Number(row?.overdue ?? 0),
+				untouched: Number(row?.untouched ?? 0),
+				no_next_action: Number(row?.no_next_action ?? 0),
+			};
+		},
+		countActiveLeads: async (search) => {
+			const { clause, params } = leadSearchClause(search);
+			const row = await firstRow(
+				`SELECT COUNT(*) AS total FROM leads l
+          WHERE (l.isDelete = 0 OR l.isDelete IS NULL) ${clause}`,
+				params
+			);
+			return Number(row?.total ?? 0);
+		},
+	};
+}
+
+/**
+ * The search of the Lead list, as the API reads it: the search term matches
+ * the Lead id, the company, the contact, the contact email, and the project
+ * description. The reader uses it to count the same dataset the API counts.
+ */
+function leadSearchClause(search: string): {
+	clause: string;
+	params: Array<string | number | null>;
+} {
+	if (!search) return { clause: '', params: [] };
+	const term = `%${search.toLowerCase()}%`;
+	return {
+		clause:
+			' AND (LOWER(l.lead_id) LIKE ? OR LOWER(l.company_name) LIKE ? OR LOWER(l.contact_name) LIKE ? OR LOWER(l.contact_email) LIKE ? OR LOWER(l.project_description) LIKE ?)',
+		params: [term, term, term, term, term],
 	};
 }
 
@@ -805,6 +903,32 @@ function buildLegacyReviewSeeds(
 		conflictProposalIds: proposalIdsFor(conflict.id),
 		singleLinkLeadId: single.id,
 		singleLinkProposalId: singleProposalIds[0],
+	};
+}
+
+/**
+ * The legacy records the queue scenarios work on: a Lead in an active stage
+ * without a dated next action, a Lead whose owner name could not be
+ * resolved (and whose stage could not be resolved either), and a Lead whose
+ * dated next action the cutover preserved.
+ */
+function buildQueueSeeds(
+	legacySeeds: LegacySeedRow[],
+	legacyScheduledLead: { id: number; followUpDate: string } | null
+): QueueSeeds {
+	const byMarker = (marker: LegacySeedRow['ownerMarker']): LegacySeedRow => {
+		const seed = legacySeeds.find(
+			(candidate) => candidate.ownerMarker === marker
+		);
+		if (!seed) fail(`legacy seed present for ${marker}`);
+		return seed;
+	};
+	const unresolved = byMarker('__UNKNOWN_NAME__');
+	return {
+		activeStageWithoutNextActionLeadId: byMarker('__CLEAN_MAP__').id,
+		unresolvedOwnerLeadId: unresolved.id,
+		unresolvedStageLeadId: unresolved.id,
+		scheduledLegacyLeadId: legacyScheduledLead?.id ?? 0,
 	};
 }
 
@@ -1300,8 +1424,30 @@ export async function runLeadsIntegration(
 			lifecycleUnauthorizedScenario,
 			context
 		);
+		const queueSeeds = buildQueueSeeds(legacySeeds, legacyScheduledLead);
+		await runScenario('my-leads-queue', myLeadsQueueScenario, context);
+		await runScenario(
+			'unassigned-queue',
+			(ctx) => unassignedQueueScenario(ctx, queueSeeds),
+			context
+		);
+		await runScenario('due-queue', dueQueueScenario, context);
+		await runScenario('untouched-queue', untouchedQueueScenario, context);
+		await runScenario(
+			'no-next-action-queue',
+			(ctx) => noNextActionQueueScenario(ctx, queueSeeds),
+			context
+		);
+		await runScenario('queue-counters', queueCountersScenario, context);
+		await runScenario('empty-queue', emptyQueueScenario, context);
+		await runScenario('queue-filters', queueFiltersScenario, context);
+		await runScenario(
+			'deleted-leads-leave-the-queue',
+			deletedLeadsLeaveTheQueueScenario,
+			context
+		);
 		log(IBAND);
-		log(`PASS all 46 scenarios (${trackedLeads.length} leads created)`);
+		log(`PASS all 55 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other

@@ -72,6 +72,14 @@ export interface LeadListStats {
 	stage_disqualified: number;
 	stage_converted: number;
 	stage_unresolved: number;
+	/** One counter per actionable queue, counted over the whole dataset. */
+	queue_all: number;
+	queue_my_leads: number;
+	queue_unassigned: number;
+	queue_due_today: number;
+	queue_overdue: number;
+	queue_untouched: number;
+	queue_no_next_action: number;
 }
 
 export interface LeadListResponse {
