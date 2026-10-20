@@ -43,7 +43,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Leads authenticated HTTP integration (issue #369)
+      - name: Leads authenticated HTTP integration (issue #368)
         env:
           INTEGRATION_DB_HOST: 127.0.0.1
           INTEGRATION_DB_PORT: 3306

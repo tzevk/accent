@@ -1,9 +1,10 @@
-# Leads authenticated HTTP integration (issues #369 and #370)
+# Leads authenticated HTTP integration (issue #368)
 
-Repeatable proof for the create/import/assign/read slice and the legacy review flow. The command runs the
-real Next server against a disposable migrated MariaDB database, logs in over
-real HTTP, and verifies persistence with an independent database reader. No
-test-only routes, no bypasses, no mocked database proof.
+Repeatable proof for the Lead workspace, the activity log, the corrections,
+the lifecycle decisions, the queues, and the legacy review flow. The command
+runs the real Next server against a disposable migrated MariaDB database, logs
+in over real HTTP, and verifies persistence with an independent database
+reader. No test-only routes, no bypasses, no mocked database proof.
 
 **Production is MariaDB 10.11.15.** Run the harness against MariaDB, because
 MySQL accepts and rejects different SQL. The local instance and its start and
@@ -28,8 +29,8 @@ variables in your shell only; never add them to `.env`. See the
 `INTEGRATION_DB_*` block in `.env.example`.
 
 Expect the first run to build the full schema from the baseline migration, then
-start the server and run thirteen scenarios. On MariaDB 10.11 the whole run
-takes well under a minute.
+start the server and run fifty-six scenarios. On MariaDB 10.11 the whole run
+takes a few minutes.
 
 ## What the run does
 
@@ -50,7 +51,7 @@ takes well under a minute.
    database branches pinned to the disposable database.
 9. Logs each fixture user in through `POST /api/login` and keeps the real
    session cookies.
-10. Runs nineteen scenarios.
+10. Runs fifty-six scenarios.
 
 ## Cleanup contract
 
@@ -63,27 +64,64 @@ a full pass, for manual browser follow-up.
 
 ## Scenarios
 
-| #   | Scenario                             | Proves                                                                                    |
-| --- | ------------------------------------ | ----------------------------------------------------------------------------------------- |
-| 1   | creator-assignment                   | Manual create defaults owner to creator, starts at New                                    |
-| 2   | permitted-assignment                 | `leads:assign` reassignment records actor/time/prior owner                                |
-| 3   | denied-assignment-no-mutation        | Missing grant yields 403 and persists nothing; anonymous yields 401                       |
-| 4   | unassigned-import                    | Unknown-status CSV enters intake with review flag                                         |
-| 5   | owner-selected-import                | CSV with `owner_user_id` assigns that owner                                               |
-| 6   | import-owner-evidence-never-resolves | CSV owner column stays evidence; never auto-resolves                                      |
-| 7   | separate-enquiries                   | Same company, distinct needs stay separate Leads                                          |
-| 8   | duplicate-review                     | Same company + need surfaces candidates, never merges                                     |
-| 9   | durable-reads                        | A permitted non-owner edits; read-only users see durable values and consistent filters    |
-| 10  | legacy-evidence                      | Unique name maps; unknown/duplicate names and odd stages keep originals with review       |
-| 11  | raw-import-evidence                  | Long legacy values and surrounding whitespace survive HTTP and database reads             |
-| 12  | invalid-import-owner                 | Malformed owner identifiers fail without saving any Lead                                  |
-| 13  | active-import-requirements           | Active stages cannot bypass owner and next-action requirements                            |
-| 14  | legacy-review-queue                  | Unresolved stage, owner, and duplicate Proposal links stay visible with their evidence    |
-| 15  | legacy-review-denied                 | Missing grants yield 403 and anonymous yields 401; no decision is written                 |
-| 16  | legacy-review-invalid                | An active stage without an owner, a foreign Proposal, and a missing reason are refused    |
-| 17  | legacy-review-resolution             | A permitted reviewer resolves owner, stage, and canonical Proposal with a reason          |
-| 18  | proposal-link-guard                  | A second Proposal link to one enquiry is refused; existing links stay untouched           |
-| 19  | proposal-link-edit                   | A link move is guarded, an unrelated edit keeps the link, and a delete clears the pointer |
+| #   | Scenario                                  | Proves                                                                                                                                                                                 |
+| --- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | creator-assignment                        | Manual create defaults owner to creator, starts at New                                                                                                                                 |
+| 2   | permitted-assignment                      | `leads:assign` reassignment records actor/time/prior owner                                                                                                                             |
+| 3   | denied-assignment-no-mutation             | Missing grant yields 403 and persists nothing; anonymous yields 401                                                                                                                    |
+| 4   | unassigned-import                         | Unknown-status CSV enters intake with review flag                                                                                                                                      |
+| 5   | owner-selected-import                     | CSV with `owner_user_id` assigns that owner                                                                                                                                            |
+| 6   | import-owner-evidence-never-resolves      | CSV owner column stays evidence; never auto-resolves                                                                                                                                   |
+| 7   | separate-enquiries                        | Same company, distinct needs stay separate Leads                                                                                                                                       |
+| 8   | duplicate-review                          | Same company + need surfaces candidates, never merges                                                                                                                                  |
+| 9   | durable-reads                             | A permitted non-owner edits; read-only users see durable values and consistent filters                                                                                                 |
+| 10  | legacy-evidence                           | Unique name maps; unknown/duplicate names and odd stages keep originals with review                                                                                                    |
+| 11  | raw-import-evidence                       | Long legacy values and surrounding whitespace survive HTTP and database reads                                                                                                          |
+| 12  | invalid-import-owner                      | Malformed owner identifiers fail without saving any Lead                                                                                                                               |
+| 13  | active-import-requirements                | Active stages cannot bypass owner and next-action requirements                                                                                                                         |
+| 14  | legacy-review-queue                       | Unresolved stage, owner, and duplicate Proposal links stay visible with their evidence                                                                                                 |
+| 15  | legacy-review-denied                      | Missing grants yield 403 and anonymous yields 401; no decision is written                                                                                                              |
+| 16  | legacy-review-invalid                     | An active stage without an owner, a foreign Proposal, and a missing reason are refused                                                                                                 |
+| 17  | legacy-review-resolution                  | A permitted reviewer resolves owner, stage, and canonical Proposal with a reason                                                                                                       |
+| 18  | proposal-link-guard                       | A second Proposal link to one enquiry is refused; existing links stay untouched                                                                                                        |
+| 19  | proposal-link-edit                        | A link move is guarded, an unrelated edit keeps the link, and a delete clears the pointer                                                                                              |
+| 20  | outreach-outcomes                         | No Answer then Connected: the first outreach moves New to Attempting Contact, a connected call moves it to Connected, and only the connected call advances the last successful contact |
+| 21  | email-reply-versus-sent                   | A sent email is an attempt, a confirmed reply is contact, and the two move the Lead differently                                                                                        |
+| 22  | note-only-logging                         | A note persists with its author and never moves the stage or writes stage history                                                                                                      |
+| 23  | owner-and-date-refusals                   | Outreach without an owner and a first outreach without a dated next action are refused, and the refusals persist nothing                                                               |
+| 24  | last-open-task-close                      | Closing the last scheduled action needs its replacement; a task of another Lead is not found and a closed task cannot be closed twice                                                  |
+| 25  | no-regression                             | Routine logging keeps Qualified, Disqualified, and Converted as they are, and editing the dated next action moves the scheduled row                                                    |
+| 26  | timeline-persistence                      | The timeline is chronological, separates completed from scheduled work, and survives a reload                                                                                          |
+| 27  | lead-work-queue                           | The cross-Lead work queue lists the outstanding scheduled work, soonest first                                                                                                          |
+| 28  | scheduled-task-completion                 | A scheduled note and a scheduled call close with their own evidence; a call still needs its outcome, and a missing reply flag is missing evidence, not a no                            |
+| 29  | legacy-activity-evidence                  | The legacy dated next action became scheduled work with an unknown author and kind, and the timeline says so                                                                           |
+| 30  | activity-correction                       | A correction keeps the previous values, the reason, the correcting user from the session, and the moment; the corrected activity counts once and the Lead keeps its stage              |
+| 31  | denied-correction                         | A user without the Lead update right may not correct an activity (403); the refusal writes nothing                                                                                     |
+| 32  | missing-reason-correction                 | A correction without a reason is refused with `reason_required`; an activity of another Lead is `activity_not_found`                                                                   |
+| 33  | stale-version-correction                  | A correction of an activity that moved on is refused with `correction_conflict`; the accepted correction and every intermediate version are kept                                       |
+| 34  | unowned-correction-refusal                | A correction may not turn a record into outreach on a Lead nobody owns; nothing is written                                                                                             |
+| 35  | legacy-correction-provenance              | Correcting a legacy row keeps its unknown author and unknown outcome; the correction row names the person who corrected it                                                             |
+| 36  | no-destructive-activity-path              | No route deletes a Lead activity, and cancelling the outstanding work keeps the activity and its correction history                                                                    |
+| 37  | qualification-missing-fields              | Each missing qualification field is refused with its own code, and nothing is written                                                                                                  |
+| 38  | qualification-without-budget-or-timing    | A Lead with a contact, usable contact details, and a project need qualifies without budget or timing                                                                                   |
+| 39  | nurture-with-next-action                  | Nurture needs a dated next action and records an explicit stage change                                                                                                                 |
+| 40  | nurture-without-next-action               | Nurture without a dated next action is refused and writes nothing                                                                                                                      |
+| 41  | disqualify-without-reason                 | A disqualification without a reason is refused and writes nothing                                                                                                                      |
+| 42  | disqualify-cancels-outstanding-work       | A disqualification cancels the outstanding work explicitly, keeps the recorded evidence, and leaves the work queue                                                                     |
+| 43  | reopen-with-required-fields               | A reopening with a reason, an owner, and a dated next action succeeds, and the earlier disqualification stays in the timeline                                                          |
+| 44  | reopen-missing-fields                     | A reopening without its reason, owner, or dated next action is refused, one field at a time                                                                                            |
+| 45  | converted-lead-takes-no-decision          | A converted Lead takes no lifecycle decision                                                                                                                                           |
+| 46  | generic-paths-cannot-decide-the-lifecycle | A generic edit and a CSV import cannot express a conversion or a disqualification                                                                                                      |
+| 47  | lifecycle-unauthorized                    | A missing grant yields 403 and anonymous yields 401; no decision is written                                                                                                            |
+| 48  | my-leads-queue                            | My Leads resolves to the authenticated owner; a client-supplied owner id never selects another person's queue                                                                          |
+| 49  | unassigned-queue                          | Unassigned holds the Leads without a resolved owner, including the legacy records whose owner name could not be resolved                                                               |
+| 50  | due-queue                                 | Due Today and Overdue read the outstanding scheduled work; completed and cancelled work is not outstanding; the date boundaries are the calendar days around today                     |
+| 51  | untouched-queue                           | A completed note is not outreach; a completed call is                                                                                                                                  |
+| 52  | no-next-action-queue                      | The active stages without a dated next action are queued, including the preserved legacy exceptions                                                                                    |
+| 53  | queue-counters                            | The counters cover the whole filtered dataset on every page and match the database                                                                                                     |
+| 54  | empty-queue                               | An empty queue is an empty list, not an error                                                                                                                                          |
+| 55  | queue-filters                             | The owner, stage, and due-date filters work; both list routes read the same query; an unknown view is refused                                                                          |
+| 56  | deleted-leads-leave-the-queue             | A deleted Lead leaves the rows and the counters                                                                                                                                        |
 
 Every scenario asserts both the HTTP response and the persisted row through
 the independent reader (`mysql2` connection owned by the harness, never the
@@ -128,15 +166,18 @@ which lives only in the workflow.
 - `refusing to reuse existing database ...`: drop the named database manually
   (or pick a fresh `INTEGRATION_DB_NAME`); the harness never reuses one.
 
-## Verification record — 2026-10-19
+## Verification record — 2026-10-20
 
 - Local environment: Windows, MariaDB 10.11.15 (matching production), Node 26.2.0. The CI job targets Node 24; CI execution is not claimed here.
-- `npm run test:integration:leads`: all nineteen scenarios pass against the real application and an independent database reader on MariaDB 10.11.
-- `npm run verify`: lint and production build pass; all 88 Vitest suites and 1,082 tests pass.
-- `npm run check:route-auth`: all 450 handlers authorize, with the existing eight allowlisted paths.
-- The baseline migration applies unchanged on MariaDB 10.11 in about five seconds, so no reordering of the production snapshot was needed.
+- `npm run test:integration:leads`: all fifty-six scenarios pass against the real application and an independent database reader on MariaDB 10.11.
+- `npm run verify`: lint and production build pass; the Vitest suites and tests of the Lead feature pass with the rest of the repository.
+- `npm run check:route-auth`: every handler authorizes, with the existing allowlisted paths.
+- The baseline migration applies unchanged on MariaDB 10.11, so no reordering of the production snapshot was needed.
 - The ticket-370 migration runs over the seeded legacy Proposals: one enquiry with a single linked Proposal is auto-resolved and recorded, one with two stays a visible conflict with both Proposals and their links intact.
-- Browser smoke after the query cutover: keyboard creation, creator default, reassignment, history refresh, non-owner editing, next-action refusal, multipart import, intake filters, and original legacy detail.
+- The ticket-371 migration renames the legacy follow-up table to the activity log, keeps the legacy rows as evidence with an unknown author and outcome, and turns the legacy dated next actions into scheduled work.
+- The ticket-371 migration is idempotent (a second `up()` over the migrated schema changes no row) and reversible (`down()` recreates the legacy table and copies the rows back).
+- The scenarios spread their requests over the fixture sessions because the application rate-limits every session at 120 API requests a minute (ADR-0013).
+- Browser smoke of the activity log: keyboard-driven activity entry, the call outcome, the scheduled next action, the automatic New → Attempting Contact movement, the visible "A call needs its outcome." refusal, the chronological timeline, and "Last successful contact" still empty after a No Answer.
 - Browser smoke of the legacy review: resolving a legacy owner and stage in the review panel, and the retained original values, the decision, the reviewer, and the time afterwards.
 - A read-only browser user sees no edit, delete, import, or assignment-directory controls.
 - Independent SQL reads confirm the browser's owner, stage, edited city, original import values, ownership actors/times, and the recorded review decisions.
