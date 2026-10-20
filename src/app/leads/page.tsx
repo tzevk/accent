@@ -818,18 +818,31 @@ export default function Leads() {
 											</td>
 											<td className="w-28 px-4 py-3">
 												{lead.canonical_proposal_id ? (
-													<button
-														type="button"
-														onClick={() =>
-															router.push(
-																`/proposals/${lead.canonical_proposal_id}`
-															)
-														}
-														className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
-														title="Open the linked Proposal"
-													>
-														Proposal #{lead.canonical_proposal_id}
-													</button>
+													<div>
+														<button
+															type="button"
+															onClick={() =>
+																router.push(
+																	`/proposals/${lead.canonical_proposal_id}`
+																)
+															}
+															className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+															title="Open the linked Proposal"
+														>
+															Proposal #{lead.canonical_proposal_id}
+														</button>
+														{lead.canonical_proposal_status ? (
+															<div className="text-xs text-gray-500">
+																{lead.canonical_proposal_status}
+															</div>
+														) : null}
+														{lead.canonical_proposal_progress ===
+														null ? null : (
+															<div className="text-xs text-gray-400">
+																{`${lead.canonical_proposal_progress}%`}
+															</div>
+														)}
+													</div>
 												) : (
 													<span className="text-sm text-gray-400">—</span>
 												)}

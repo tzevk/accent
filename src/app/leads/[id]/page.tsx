@@ -20,6 +20,7 @@ import LeadAssignForm from '@/components/leads/LeadAssignForm';
 import LeadActivityForm from '@/components/leads/LeadActivityForm';
 import LeadLifecycleActions from '@/components/leads/LeadLifecycleActions';
 import LeadConversionAction from '@/components/leads/LeadConversionAction';
+import LeadProposalProgressPanel from '@/components/leads/LeadProposalProgress';
 import LeadTimeline from '@/components/leads/LeadTimeline';
 import {
 	leadKeys,
@@ -132,7 +133,9 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 				<div className="flex-1 flex items-center justify-center">
 					<div className="text-center">
 						<h2 className="text-xl font-semibold text-gray-900">
-							Lead not found
+							{loadError
+								? 'Lead details could not be loaded'
+								: 'Lead not found'}
 						</h2>
 						<p className="mt-2 text-gray-600" role="alert">
 							{loadError ?? "The lead you're looking for doesn't exist."}
@@ -400,9 +403,11 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 												)}
 											</p>
 											<p className="text-xs text-gray-500 mt-0.5">
-												{lead.next_action_type
-													? `Next action: ${lead.next_action_type}`
-													: 'No next action scheduled'}
+												{lead.enquiry_status === 'Converted'
+													? 'The next action is on the Proposal'
+													: lead.next_action_type
+														? `Next action: ${lead.next_action_type}`
+														: 'No next action scheduled'}
 											</p>
 										</div>
 										<div>
@@ -436,6 +441,10 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 										</div>
 									</div>
 								</div>
+
+								<LeadProposalProgressPanel
+									progress={lead.proposal_progress ?? null}
+								/>
 
 								<LeadLifecycleActions
 									lead={lead}

@@ -32,11 +32,18 @@ export async function GET(
 	}
 	try {
 		// Linked Proposal details are only exposed to a caller who may read
-		// Proposals. The review state itself stays visible either way.
+		// Proposals, and the Project behind them only to a caller who may
+		// read Projects. The review state itself stays visible either way.
 		const includeProposals =
 			auth.user.is_super_admin ||
 			hasPermission(auth.user, RESOURCES.PROPOSALS, PERMISSIONS.READ);
-		const lead = await getLeadDetail(leadId, { includeProposals });
+		const includeProjects =
+			auth.user.is_super_admin ||
+			hasPermission(auth.user, RESOURCES.PROJECTS, PERMISSIONS.READ);
+		const lead = await getLeadDetail(leadId, {
+			includeProposals,
+			includeProjects,
+		});
 		return Response.json({ success: true, data: lead });
 	} catch (error) {
 		return leadWorkflowFailure(error, 'Failed to fetch lead');

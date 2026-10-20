@@ -169,7 +169,23 @@ export interface DbProposalRow {
 	lead_id: number | null;
 	proposal_title: string | null;
 	status: string | null;
+	progress: string | null;
+	proposal_value: string | null;
+	value: string | null;
+	currency: string | null;
+	project_id: number | null;
 	canonical_lead_id: number | null;
+	isDelete: number | null;
+}
+
+/** The Project a Proposal links to after its conversion. */
+export interface DbProjectRow {
+	project_id: number;
+	project_title: string | null;
+	name: string | null;
+	status: string | null;
+	progress: string | null;
+	proposal_id: number | null;
 	isDelete: number | null;
 }
 
@@ -274,6 +290,8 @@ export interface Reader {
 	reviewRows: (leadId: number) => Promise<DbReviewRow[]>;
 	proposalRows: (leadId: number) => Promise<DbProposalRow[]>;
 	proposalRow: (id: number) => Promise<DbProposalRow | null>;
+	/** The Project a Proposal links to, read straight from the database. */
+	projectRow: (id: number) => Promise<DbProjectRow | null>;
 	activityRows: (leadId: number) => Promise<DbActivityRow[]>;
 	correctionRows: (leadId: number) => Promise<DbCorrectionRow[]>;
 	stageHistory: (leadId: number) => Promise<DbStageHistoryRow[]>;

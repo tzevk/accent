@@ -6,6 +6,11 @@ import {
 	type LeadReviewState,
 } from '@/server/leads/legacy-review';
 import {
+	getLeadProposalProgress,
+	type LeadProposalReadOptions,
+} from '@/server/leads/progress';
+import type { LeadProposalProgress } from '@/lib/lead-progress';
+import {
 	ASSIGNABLE_USER_FILTER,
 	LeadWorkflowError,
 	assertOwnerAssignable,
@@ -88,7 +93,15 @@ export const LEAD_LIST_SELECT = `
   la.latest_activity_at,
   na.scheduled_for AS next_action_date,
   na.activity_type AS next_action_type,
-  COALESCE(la.activity_count, 0) AS activity_count,
+  COALESCE(la.activity_count, 0) AS activity_count
+`;
+
+/**
+ * The outcome of the latest completed outreach of the Lead. It is a
+ * correlated subquery, so it stays apart from the plain columns of the
+ * row.
+ */
+export const LEAD_LATEST_OUTCOME_SELECT = `
   (
     SELECT CASE
       WHEN a.activity_type = 'Email' AND a.reply_confirmed = 1
@@ -109,6 +122,22 @@ export const LEAD_LIST_SELECT = `
 export const LEAD_LIST_FROM = `
   FROM leads l
   LEFT JOIN users u ON u.id = l.owner_user_id AND ${ASSIGNABLE_USER_FILTER}
+`;
+
+/**
+ * The canonical Proposal of the enquiry, joined for the list row. The join
+ * uses the stored canonical pointer only, so the list never guesses a
+ * Proposal, and it never multiplies a row.
+ */
+export const LEAD_CANONICAL_PROPOSAL_SELECT = `
+  cp.status AS canonical_proposal_status,
+  cp.progress AS canonical_proposal_progress
+`;
+
+export const LEAD_CANONICAL_PROPOSAL_JOIN = `
+  LEFT JOIN proposals cp
+    ON cp.id = l.canonical_proposal_id
+   AND (cp.isDelete = 0 OR cp.isDelete IS NULL)
 `;
 
 /**
@@ -182,9 +211,19 @@ export interface LeadReadModel {
 	next_action_date: string | null;
 	next_action_type: string | null;
 	activity_count: number;
+	/** The current status of the canonical Proposal, for a reader who may read Proposals. */
+	canonical_proposal_status: string | null;
+	/** The current progress of the canonical Proposal, for a reader who may read Proposals. */
+	canonical_proposal_progress: number | null;
 	duplicate_candidates?: DuplicateCandidate[];
 	ownership_history?: LeadOwnershipHistoryEntry[];
 	review?: LeadReviewState;
+	/**
+	 * The downstream block of a converted Lead: the canonical Proposal, its
+	 * current progress, and the Project it later links to. The detail read
+	 * always fills it in; the list read leaves it out.
+	 */
+	proposal_progress?: LeadProposalProgress;
 }
 
 export interface LeadListFilters extends LeadListQuery {
@@ -230,12 +269,24 @@ type ExistingLeadRow = Record<string, unknown> & {
 	follow_up_date: string | null;
 };
 
+/** A percentage of a Proposal or a Project, or null when it is unset. */
+function toPercent(value: unknown): number | null {
+	if (value === null || value === undefined) return null;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : null;
+}
+
 /**
  * Serialize a DB lead row for list/detail reads. `assigned_to` is
  * deliberately excluded: `owner_user_id` is the authority and
- * `legacy_owner_name` carries the original evidence.
+ * `legacy_owner_name` carries the original evidence. The current state of
+ * the canonical Proposal is exposed to a reader who may read Proposals and
+ * to nobody else.
  */
-function serializeLead(row: LeadRow): LeadReadModel {
+function serializeLead(
+	row: LeadRow,
+	options: { includeProposals: boolean } = { includeProposals: false }
+): LeadReadModel {
 	const rest: Record<string, unknown> = { ...row };
 	delete rest.assigned_to;
 	delete rest.isDelete;
@@ -257,6 +308,12 @@ function serializeLead(row: LeadRow): LeadReadModel {
 		next_action_date: trimOrNull(row.next_action_date),
 		next_action_type: trimOrNull(row.next_action_type),
 		activity_count: Number(row.activity_count ?? 0),
+		canonical_proposal_status: options.includeProposals
+			? trimOrNull(row.canonical_proposal_status)
+			: null,
+		canonical_proposal_progress: options.includeProposals
+			? toPercent(row.canonical_proposal_progress)
+			: null,
 	} as LeadReadModel;
 }
 
@@ -957,7 +1014,10 @@ function paginationValues(
  * the selected queue. The queue counters read the same filters without the
  * selected queue, so every tab counts the dataset its table would show.
  */
-export async function listLeads(filters: LeadListFilters): Promise<{
+export async function listLeads(
+	filters: LeadListFilters,
+	options: { includeProposals: boolean } = { includeProposals: false }
+): Promise<{
 	leads: LeadReadModel[];
 	stats: LeadListStats;
 	total: number;
@@ -984,7 +1044,7 @@ export async function listLeads(filters: LeadListFilters): Promise<{
 					params
 				),
 				db.execute(
-					`SELECT ${LEAD_LIST_SELECT} ${LEAD_LIST_FROM} ${LEAD_WORK_JOIN} ${clause} ${orderBy} LIMIT ? OFFSET ?`,
+					`SELECT ${LEAD_LIST_SELECT}, ${LEAD_LATEST_OUTCOME_SELECT}, ${LEAD_CANONICAL_PROPOSAL_SELECT} ${LEAD_LIST_FROM} ${LEAD_CANONICAL_PROPOSAL_JOIN} ${LEAD_WORK_JOIN} ${clause} ${orderBy} LIMIT ? OFFSET ?`,
 					[...params, safeLimit, safeOffset]
 				),
 				db.execute(
@@ -1036,7 +1096,7 @@ export async function listLeads(filters: LeadListFilters): Promise<{
 			queue_no_next_action: Number(counterRow.queue_no_next_action) || 0,
 		};
 		return {
-			leads: leadRows.map(serializeLead),
+			leads: leadRows.map((row) => serializeLead(row, options)),
 			stats,
 			total: countRow.total,
 		};
@@ -1046,18 +1106,23 @@ export async function listLeads(filters: LeadListFilters): Promise<{
 }
 
 /**
- * Detail read: durable fields plus same-enquiry duplicate candidates and the
- * assignment audit. Candidates share company + project evidence but stay
- * separate leads — review only, never merged.
+ * Detail read: durable fields plus same-enquiry duplicate candidates, the
+ * assignment audit, and the downstream block of a converted Lead. Candidates
+ * share company + project evidence but stay separate leads — review only,
+ * never merged. The downstream details are read under the caller's Proposal
+ * and Project read permissions.
  */
 export async function getLeadDetail(
 	id: number,
-	options: { includeProposals: boolean } = { includeProposals: false }
+	options: LeadProposalReadOptions = {
+		includeProposals: false,
+		includeProjects: false,
+	}
 ): Promise<LeadReadModel> {
 	const db = (await dbConnect()) as unknown as DbConnection;
 	try {
 		const [rows] = (await db.execute(
-			`SELECT ${LEAD_LIST_SELECT} ${LEAD_LIST_FROM} ${LEAD_WORK_JOIN}
+			`SELECT ${LEAD_LIST_SELECT}, ${LEAD_LATEST_OUTCOME_SELECT} ${LEAD_LIST_FROM} ${LEAD_WORK_JOIN}
         WHERE l.id = ? AND ${LEAD_ACTIVE_FILTER}
         LIMIT 1`,
 			[id]
@@ -1105,6 +1170,7 @@ export async function getLeadDetail(
 		];
 		lead.duplicate_candidates = duplicateCandidates;
 		lead.review = await getLeadReviewState(id, options, db);
+		lead.proposal_progress = await getLeadProposalProgress(id, options, db);
 		lead.ownership_history = historyRows.map((row) => ({
 			id: row.id,
 			prior_owner_user_id: toNullableId(row.prior_owner_user_id),

@@ -1,8 +1,18 @@
 import type { LeadStage } from '@/lib/lead-stages';
 import type { LeadReviewState } from '@/lib/lead-review';
 import type { LeadTimelineEntry, LeadWorkSummary } from '@/lib/lead-activities';
+import type {
+	LeadProposalProgress,
+	LeadProjectLinkState,
+	LeadProposalLinkState,
+} from '@/lib/lead-progress';
 
 export type { LeadTimelineEntry, LeadWorkSummary };
+export type {
+	LeadProposalProgress,
+	LeadProjectLinkState,
+	LeadProposalLinkState,
+};
 
 export interface DuplicateCandidate {
 	id: number;
@@ -42,6 +52,10 @@ export interface LeadListRow {
 	next_action_date: string | null;
 	next_action_type: string | null;
 	activity_count: number;
+	/** The current status of the canonical Proposal, for a reader who may read Proposals. */
+	canonical_proposal_status: string | null;
+	/** The current progress of the canonical Proposal, for a reader who may read Proposals. */
+	canonical_proposal_progress: number | null;
 	enquiry_date: string | null;
 	priority: string | null;
 	lead_source: string | null;
@@ -58,6 +72,8 @@ export interface LeadDetail extends LeadListRow {
 	duplicate_candidates: DuplicateCandidate[];
 	ownership_history: OwnershipHistoryEntry[];
 	review: LeadReviewState;
+	/** The downstream block of a converted Lead: the Proposal and its Project. */
+	proposal_progress: LeadProposalProgress;
 }
 
 export interface LeadListStats {

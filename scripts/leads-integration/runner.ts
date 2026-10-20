@@ -20,6 +20,7 @@ import type {
 	DbOwnershipRow,
 	DbProposalFollowupRow,
 	DbProposalRow,
+	DbProjectRow,
 	DbReviewRow,
 	DbStageHistoryRow,
 	FixtureIdentity,
@@ -121,6 +122,15 @@ import {
 	type ConversionSeeds,
 	type FailureInjection,
 } from './scenarios/conversion.ts';
+import {
+	proposalProgressCurrentStateScenario,
+	proposalProgressMissingScenario,
+	proposalProgressProjectLinkScenario,
+	proposalProgressRestrictedScenario,
+	proposalProgressUnresolvedScenario,
+	proposalProgressWorkOnProposalScenario,
+	type ProposalProgressSeeds,
+} from './scenarios/proposal-progress.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -317,7 +327,24 @@ function makeReader(connection: Connection): Reader {
 			lead_id: nullableNumber(row.lead_id),
 			proposal_title: nullableString(row.proposal_title),
 			status: nullableString(row.status),
+			progress: nullableString(row.progress),
+			proposal_value: nullableString(row.proposal_value),
+			value: nullableString(row.value),
+			currency: nullableString(row.currency),
+			project_id: nullableNumber(row.project_id),
 			canonical_lead_id: nullableNumber(row.canonical_lead_id),
+			isDelete: nullableNumber(row.isDelete),
+		};
+	}
+
+	function toProjectRow(row: Record<string, unknown>): DbProjectRow {
+		return {
+			project_id: requiredNumber(row.project_id, 'projects.project_id'),
+			project_title: nullableString(row.project_title),
+			name: nullableString(row.name),
+			status: nullableString(row.status),
+			progress: nullableString(row.progress),
+			proposal_id: nullableNumber(row.proposal_id),
 			isDelete: nullableNumber(row.isDelete),
 		};
 	}
@@ -437,17 +464,24 @@ function makeReader(connection: Connection): Reader {
 		},
 		proposalRows: async (leadId) => {
 			const [rows] = await connection.execute(
-				'SELECT id, lead_id, proposal_title, status, canonical_lead_id, isDelete FROM proposals WHERE lead_id = ? ORDER BY id ASC',
+				'SELECT id, lead_id, proposal_title, status, progress, proposal_value, value, currency, project_id, canonical_lead_id, isDelete FROM proposals WHERE lead_id = ? ORDER BY id ASC',
 				[leadId]
 			);
 			return rows.map(toProposalRow);
 		},
 		proposalRow: async (id) => {
 			const row = await firstRow(
-				'SELECT id, lead_id, proposal_title, status, canonical_lead_id, isDelete FROM proposals WHERE id = ? LIMIT 1',
+				'SELECT id, lead_id, proposal_title, status, progress, proposal_value, value, currency, project_id, canonical_lead_id, isDelete FROM proposals WHERE id = ? LIMIT 1',
 				[id]
 			);
 			return row ? toProposalRow(row) : null;
+		},
+		projectRow: async (id) => {
+			const row = await firstRow(
+				'SELECT project_id, project_title, name, status, progress, proposal_id, isDelete FROM projects WHERE project_id = ? LIMIT 1',
+				[id]
+			);
+			return row ? toProjectRow(row) : null;
 		},
 		conversionRows: async (leadId) => {
 			const [rows] = await connection.execute(
@@ -735,6 +769,12 @@ function fixtureSpecs(runTag: string): FixtureSpec[] {
 				'proposals:create',
 				'proposals:update',
 				'proposals:delete',
+				// The Proposal-to-Project conversion is the app's own path
+				// to the later Project link, and it needs the approval right.
+				'proposals:approve',
+				// The Project read right lets the downstream scenarios read
+				// the Project the Proposal links to.
+				'projects:read',
 			],
 		},
 	];
@@ -1268,6 +1308,59 @@ async function seedConversionFixtures(
 }
 
 /**
+ * The enquiries the downstream scenarios work on: two qualified enquiries
+ * with the evidence a conversion needs, one scheduled task each, and one
+ * completed activity each. The handoff has work to move to the Proposal and
+ * history to keep on the Lead.
+ */
+async function seedProposalProgressFixtures(
+	connection: Connection,
+	runTag: string,
+	ownerUsername: string
+): Promise<{ currentLeadId: number; projectLeadId: number }> {
+	const [userRows] = await connection.execute(
+		'SELECT id FROM users WHERE username = ? LIMIT 1',
+		[ownerUsername]
+	);
+	const [owner] = userRows;
+	if (!owner) fail(`fixture user ${ownerUsername} missing before seeding`);
+	const ownerUserId = Number(owner.id);
+	const taskDate = await seededDate(connection, 6);
+	const completedAt = await seededDate(connection, 2);
+	const qualified = {
+		stage: 'Qualified',
+		contact_name: 'Cleo Client',
+		contact_email: 'cleo@example.com',
+		phone: '+91 98765 43210',
+		project_description: 'A plant extension for the Chakan unit',
+		owner_user_id: ownerUserId,
+		scheduled: [
+			{
+				activity_type: 'Call',
+				scheduled_for: taskDate,
+				next_action: 'Call about the tender',
+			},
+		],
+		completed: [
+			{ activity_type: 'Meeting', occurred_at: `${completedAt} 10:00:00` },
+		],
+	};
+	const currentLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'Progress Current',
+		qualified
+	);
+	const projectLeadId = await seedConversionLead(
+		connection,
+		runTag,
+		'Progress Project',
+		qualified
+	);
+	return { currentLeadId, projectLeadId };
+}
+
+/**
  * Two Leads in the stages the Lead API cannot create yet: a disqualified
  * and a converted Lead. The workflow must leave both alone, so the
  * scenarios need them as a starting point.
@@ -1539,6 +1632,12 @@ export async function runLeadsIntegration(
 			conflictLeadId: 0,
 			conflictProposalIds: [],
 		};
+		let progressSeeds: ProposalProgressSeeds = {
+			missingLeadId: 0,
+			unresolvedLeadId: 0,
+			currentLeadId: 0,
+			projectLeadId: 0,
+		};
 		try {
 			const passwordHash = await hashFixturePassword(FIXTURE_PASSWORD);
 			await seedPreMigrationFixtures(seeder, runTag, passwordHash);
@@ -1572,6 +1671,20 @@ export async function runLeadsIntegration(
 				runTag,
 				fixtureUsername(runTag, 'assignee')
 			);
+			const downstream = await seedProposalProgressFixtures(
+				seeder,
+				runTag,
+				fixtureUsername(runTag, 'assignee')
+			);
+			// An enquiry without a Proposal and an enquiry whose canonical
+			// Proposal is unresolved already exist among the conversion
+			// fixtures: neither carries a Proposal of its own.
+			progressSeeds = {
+				missingLeadId: conversionSeeds.notQualifiedLeadId,
+				unresolvedLeadId: conversionSeeds.conflictLeadId,
+				currentLeadId: downstream.currentLeadId,
+				projectLeadId: downstream.projectLeadId,
+			};
 		} finally {
 			await seeder.end();
 		}
@@ -1880,8 +1993,38 @@ export async function runLeadsIntegration(
 			(ctx) => conversionReadAndQueueScenario(ctx, conversionSeeds),
 			context
 		);
+		await runScenario(
+			'proposal-progress-missing',
+			(ctx) => proposalProgressMissingScenario(ctx, progressSeeds),
+			context
+		);
+		await runScenario(
+			'proposal-progress-unresolved',
+			(ctx) => proposalProgressUnresolvedScenario(ctx, progressSeeds),
+			context
+		);
+		await runScenario(
+			'proposal-progress-current-state',
+			(ctx) => proposalProgressCurrentStateScenario(ctx, progressSeeds),
+			context
+		);
+		await runScenario(
+			'proposal-progress-project-link',
+			(ctx) => proposalProgressProjectLinkScenario(ctx, progressSeeds),
+			context
+		);
+		await runScenario(
+			'proposal-progress-restricted',
+			(ctx) => proposalProgressRestrictedScenario(ctx, progressSeeds),
+			context
+		);
+		await runScenario(
+			'proposal-progress-work-on-proposal',
+			(ctx) => proposalProgressWorkOnProposalScenario(ctx, progressSeeds),
+			context
+		);
 		log(IBAND);
-		log(`PASS all 65 scenarios (${trackedLeads.length} leads created)`);
+		log(`PASS all 71 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other

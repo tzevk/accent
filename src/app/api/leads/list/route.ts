@@ -4,6 +4,7 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import { hasPermission } from '@/utils/rbac';
 import { listLeads, type LeadListFilters } from '@/server/leads/workflow';
 import { parseLeadListQuery } from '@/server/leads/queues';
 import { leadWorkflowFailure } from '@/app/api/leads/_lib/route-helpers';
@@ -31,7 +32,14 @@ export async function GET(request: Request): Promise<Response> {
 			// The queue of the authenticated user, never a client-supplied id.
 			viewerUserId: Number(auth.user.id),
 		};
-		const { leads, stats, total } = await listLeads(filters);
+		// The current state of the canonical Proposal reaches a reader who
+		// may read Proposals, and nobody else.
+		const includeProposals =
+			auth.user.is_super_admin ||
+			hasPermission(auth.user, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+		const { leads, stats, total } = await listLeads(filters, {
+			includeProposals,
+		});
 		return NextResponse.json({
 			success: true,
 			data: {
