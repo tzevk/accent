@@ -24,6 +24,7 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 - [Role-based access control (RBAC)](explanations/RBAC_PERMISSIONS_SYSTEM.md)
 - [Ticket system](explanations/TICKET_SYSTEM.md)
 - [Super-admin setup](explanations/SUPER_ADMIN_SETUP.md)
+- [Live monitoring open-source research](explanations/LIVE_MONITORING_OPEN_SOURCE_RESEARCH.md)
 
 ## Decisions and terminology
 

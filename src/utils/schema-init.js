@@ -199,6 +199,8 @@ async function doSchemaInit() {
 		// Tables depending on the above
 		await Promise.all([
 			initLeadActivitiesTable(db),
+			initLeadStageHistoryTable(db),
+			initLeadActivityCorrectionsTable(db),
 			initSoftwareCategoriesTable(db),
 			initSoftwaresTable(db),
 			initSoftwareVersionsTable(db),
@@ -1827,6 +1829,7 @@ async function initLeadActivitiesTable(db) {
       next_action VARCHAR(255),
       notes TEXT,
       created_by INT,
+      version INT NOT NULL DEFAULT 1,
       recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       legacy_type VARCHAR(50),
       legacy_scheduled_date DATE,
@@ -1854,6 +1857,7 @@ async function initLeadActivitiesTable(db) {
 		'ALTER TABLE lead_activities ADD COLUMN next_action VARCHAR(255)',
 		'ALTER TABLE lead_activities ADD COLUMN notes TEXT',
 		'ALTER TABLE lead_activities ADD COLUMN created_by INT',
+		'ALTER TABLE lead_activities ADD COLUMN version INT NOT NULL DEFAULT 1',
 		'ALTER TABLE lead_activities ADD COLUMN legacy_type VARCHAR(50)',
 		'ALTER TABLE lead_activities ADD COLUMN legacy_scheduled_date DATE',
 		'ALTER TABLE lead_activities ADD COLUMN transferred_followup_id INT',
@@ -1869,6 +1873,46 @@ async function initLeadActivitiesTable(db) {
 			}
 		}
 	}
+}
+
+async function initLeadStageHistoryTable(db) {
+	// Every stage change of a Lead, with the reason, the actor, and the time.
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS lead_stage_history (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      lead_id INT NOT NULL,
+      from_stage VARCHAR(32),
+      to_stage VARCHAR(32) NOT NULL,
+      change_source VARCHAR(16) NOT NULL,
+      reason TEXT,
+      actor_user_id INT,
+      recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE RESTRICT,
+      INDEX idx_lead_stage_history_lead (lead_id, recorded_at)
+    )
+  `);
+}
+
+async function initLeadActivityCorrectionsTable(db) {
+	// The append-only history of the corrections of a Lead activity.
+	await db.execute(`
+    CREATE TABLE IF NOT EXISTS lead_activity_corrections (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      activity_id INT NOT NULL,
+      lead_id INT NOT NULL,
+      previous_values TEXT NOT NULL,
+      corrected_values TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      corrected_by INT,
+      corrected_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (activity_id) REFERENCES lead_activities(id) ON DELETE RESTRICT,
+      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE RESTRICT,
+      INDEX idx_lead_activity_corrections_activity (activity_id),
+      INDEX idx_lead_activity_corrections_lead (lead_id)
+    )
+  `);
 }
 
 async function initSoftwareCategoriesTable(db) {
