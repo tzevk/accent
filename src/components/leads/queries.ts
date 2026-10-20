@@ -5,6 +5,7 @@ import { apiGet } from '@/lib/api-client';
 import type {
 	LeadDetailResponse,
 	LeadListResponse,
+	LeadTimelineResponse,
 	OwnersResponse,
 } from '@/components/leads/types';
 
@@ -25,35 +26,13 @@ interface CompanyDirectoryResponse {
 	data: CompanyDirectoryRow[];
 }
 
-export interface FollowUpRow {
-	id: number;
-	follow_up_date: string | null;
-	follow_up_type: string | null;
-	description: string | null;
-	status: string | null;
-	notes: string | null;
-	next_follow_up_date?: string | null;
-	next_action?: string | null;
-}
-
-interface FollowUpListResponse {
-	success: boolean;
-	data: FollowUpRow[];
-}
-
-interface FollowUpDetailResponse {
-	success: boolean;
-	data: FollowUpRow;
-}
-
 export const leadKeys = {
 	all: ['leads'] as const,
 	list: (params: Record<string, string>) => ['leads', params] as const,
 	detail: (id: string) => ['leads', id] as const,
 	owners: ['lead-owners'] as const,
 	companies: ['companies-all'] as const,
-	followUps: (leadId: number) => ['lead-followups', leadId] as const,
-	followUp: (followUpId: number) => ['lead-followup', followUpId] as const,
+	timeline: (leadId: string) => ['lead-timeline', leadId] as const,
 };
 
 export function useLeadList(params: Record<string, string>, enabled: boolean) {
@@ -90,22 +69,15 @@ export function useCompanyDirectory(enabled: boolean) {
 	});
 }
 
-export function useLeadFollowUps(leadId: number | null, enabled: boolean) {
-	return useQuery<FollowUpListResponse>({
-		queryKey: leadKeys.followUps(leadId ?? 0),
+/**
+ * The chronological Lead timeline: the activities, the stage changes, and
+ * the ownership changes of one Lead.
+ */
+export function useLeadTimeline(leadId: string | null, enabled: boolean) {
+	return useQuery<LeadTimelineResponse>({
+		queryKey: leadKeys.timeline(leadId ?? ''),
 		queryFn: () =>
-			apiGet<FollowUpListResponse>('/api/followups', {
-				lead_id: leadId ?? 0,
-			}),
-		enabled: enabled && leadId !== null,
-	});
-}
-
-export function useFollowUpDetail(followUpId: number | null) {
-	return useQuery<FollowUpDetailResponse>({
-		queryKey: leadKeys.followUp(followUpId ?? 0),
-		queryFn: () =>
-			apiGet<FollowUpDetailResponse>(`/api/followups/${followUpId ?? 0}`),
-		enabled: followUpId !== null,
+			apiGet<LeadTimelineResponse>(`/api/leads/${leadId ?? ''}/timeline`),
+		enabled: enabled && leadId !== null && leadId !== '',
 	});
 }

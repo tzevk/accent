@@ -10,13 +10,15 @@ import {
 	PERMISSIONS as RBAC_PERMISSIONS,
 } from '@/utils/rbac';
 import { apiDelete } from '@/lib/api-client';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import LeadStageBadge from '@/components/leads/LeadStageBadge';
 import LegacyReviewPanel from '@/components/leads/LegacyReviewPanel';
 import DuplicateReview from '@/components/leads/DuplicateReview';
 import OwnershipHistory from '@/components/leads/OwnershipHistory';
 import LeadAssignForm from '@/components/leads/LeadAssignForm';
+import LeadActivityForm from '@/components/leads/LeadActivityForm';
+import LeadTimeline from '@/components/leads/LeadTimeline';
 import {
 	leadKeys,
 	useLeadDetail,
@@ -326,6 +328,16 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 									history={lead.ownership_history ?? []}
 									ownerNameById={ownerNames}
 								/>
+								<div className="bg-white rounded-lg border border-gray-200 p-6">
+									<h3 className="text-lg font-medium text-gray-900 mb-4">
+										Log activity
+									</h3>
+									<LeadActivityForm
+										leadId={String(lead.id)}
+										canRecord={canEdit}
+									/>
+								</div>
+								<LeadTimeline leadId={String(lead.id)} enabled={canView} />
 							</div>
 
 							<div className="space-y-6">
@@ -375,7 +387,43 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 												Next follow-up
 											</p>
 											<p className="text-sm text-gray-900">
-												{formatDate(lead.follow_up_date)}
+												{formatDate(
+													lead.next_action_date ?? lead.follow_up_date
+												)}
+											</p>
+											<p className="text-xs text-gray-500 mt-0.5">
+												{lead.next_action_type
+													? `Next action: ${lead.next_action_type}`
+													: 'No next action scheduled'}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm font-medium text-gray-700 mb-1">
+												Last successful contact
+											</p>
+											<p className="text-sm text-gray-900">
+												{formatDateTime(lead.last_contact_at)}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm font-medium text-gray-700 mb-1">
+												Latest activity
+											</p>
+											<p className="text-sm text-gray-900">
+												{formatDateTime(lead.latest_activity_at)}
+											</p>
+											<p className="text-xs text-gray-500 mt-0.5">
+												{lead.latest_activity_outcome
+													? `Latest outcome: ${lead.latest_activity_outcome}`
+													: 'No outcome recorded yet'}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm font-medium text-gray-700 mb-1">
+												Completed activities
+											</p>
+											<p className="text-sm text-gray-900">
+												{lead.activity_count}
 											</p>
 										</div>
 									</div>

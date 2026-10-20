@@ -13,10 +13,12 @@ import {
 	runIdFromDate,
 } from './support.ts';
 import type {
+	DbActivityRow,
 	DbLeadRow,
 	DbOwnershipRow,
 	DbProposalRow,
 	DbReviewRow,
+	DbStageHistoryRow,
 	FixtureIdentity,
 	HttpResponse,
 	LoginHttpClient,
@@ -43,6 +45,18 @@ import {
 	durableReadsScenario,
 	separateEnquiriesScenario,
 } from './scenarios/reads.ts';
+import {
+	emailReplyVersusSentScenario,
+	lastOpenTaskCloseScenario,
+	leadWorkQueueScenario,
+	legacyActivityEvidenceScenario,
+	noteOnlyLoggingScenario,
+	noRegressionScenario,
+	outreachOutcomesScenario,
+	ownerAndDateRefusalScenario,
+	timelinePersistenceScenario,
+	type LifecycleSeeds,
+} from './scenarios/activities.ts';
 import {
 	legacyEvidenceScenario,
 	type LegacySeedRow,
@@ -164,6 +178,16 @@ function makeHttp(baseUrl: string): LoginHttpClient {
 				},
 				sessionToken
 			),
+		patch: (path, body, sessionToken) =>
+			request(
+				path,
+				{
+					method: 'PATCH',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(body),
+				},
+				sessionToken
+			),
 		delete: (path, sessionToken) =>
 			request(path, { method: 'DELETE' }, sessionToken),
 		login: async (username, password) => {
@@ -244,6 +268,38 @@ function makeReader(connection: Connection): Reader {
 		};
 	}
 
+	function toActivityRow(row: Record<string, unknown>): DbActivityRow {
+		return {
+			id: requiredNumber(row.id, 'lead_activities.id'),
+			lead_id: requiredNumber(row.lead_id, 'lead_activities.lead_id'),
+			activity_type: nullableString(row.activity_type),
+			status: nullableString(row.status),
+			call_outcome: nullableString(row.call_outcome),
+			reply_confirmed: nullableNumber(row.reply_confirmed),
+			scheduled_for: nullableString(row.scheduled_for),
+			occurred_at: nullableString(row.occurred_at),
+			completed_at: nullableString(row.completed_at),
+			next_action: nullableString(row.next_action),
+			notes: nullableString(row.notes),
+			created_by: nullableNumber(row.created_by),
+			recorded_at: nullableString(row.recorded_at),
+			isDelete: nullableNumber(row.isDelete),
+		};
+	}
+
+	function toStageHistoryRow(row: Record<string, unknown>): DbStageHistoryRow {
+		return {
+			id: requiredNumber(row.id, 'lead_stage_history.id'),
+			lead_id: requiredNumber(row.lead_id, 'lead_stage_history.lead_id'),
+			from_stage: nullableString(row.from_stage),
+			to_stage: nullableString(row.to_stage),
+			change_source: nullableString(row.change_source),
+			reason: nullableString(row.reason),
+			actor_user_id: nullableNumber(row.actor_user_id),
+			recorded_at: nullableString(row.recorded_at),
+		};
+	}
+
 	function toOwnershipRow(row: Record<string, unknown>): DbOwnershipRow {
 		return {
 			id: requiredNumber(row.id, 'lead_ownership_history.id'),
@@ -282,6 +338,20 @@ function makeReader(connection: Connection): Reader {
 				[leadId]
 			);
 			return rows.map(toProposalRow);
+		},
+		activityRows: async (leadId) => {
+			const [rows] = await connection.execute(
+				'SELECT * FROM lead_activities WHERE lead_id = ? ORDER BY id ASC',
+				[leadId]
+			);
+			return rows.map(toActivityRow);
+		},
+		stageHistory: async (leadId) => {
+			const [rows] = await connection.execute(
+				'SELECT * FROM lead_stage_history WHERE lead_id = ? ORDER BY id ASC',
+				[leadId]
+			);
+			return rows.map(toStageHistoryRow);
 		},
 		userByUsername: async (username) =>
 			firstRow('SELECT * FROM users WHERE username = ? LIMIT 1', [username]),
@@ -569,6 +639,41 @@ interface LegacyProposalSeed {
  * duplicate case that needs a reviewer) and one carries a single Proposal
  * (the evidence-backed case the cutover may resolve on its own).
  */
+/**
+ * A legacy Lead that carried a dated next action before the activity log
+ * existed. The cutover turns that date into real scheduled work whose
+ * author and outcome are unknown, and the timeline has to say so.
+ */
+async function seedLegacyScheduledLead(
+	connection: Connection,
+	runTag: string,
+	assigneeFullName: string
+): Promise<{ id: number; followUpDate: string }> {
+	const followUpDate = '2026-11-16';
+	const companyName = `${runTag} Legacy Scheduled Co`;
+	await connection.execute(
+		`INSERT INTO leads (company_name, contact_name, project_description, enquiry_status, assigned_to, follow_up_date, isDelete)
+		 VALUES (?, 'Legacy Contact', ?, 'Qualified', ?, ?, 0)`,
+		[
+			companyName,
+			`${runTag} legacy scheduled need`,
+			assigneeFullName,
+			followUpDate,
+		]
+	);
+	const [rows] = await connection.execute(
+		'SELECT id FROM leads WHERE company_name = ? ORDER BY id DESC LIMIT 1',
+		[companyName]
+	);
+	const [created] = rows;
+	if (!created)
+		fail(`legacy scheduled seed ${companyName} missing after insert`);
+	return {
+		id: requiredNumber(created.id, 'leads.id'),
+		followUpDate,
+	};
+}
+
 async function seedLegacyProposals(
 	connection: Connection,
 	runTag: string,
@@ -653,6 +758,49 @@ function buildLegacyReviewSeeds(
 		conflictProposalIds: proposalIdsFor(conflict.id),
 		singleLinkLeadId: single.id,
 		singleLinkProposalId: singleProposalIds[0],
+	};
+}
+
+/**
+ * Two Leads in the stages the Lead API cannot create yet: a disqualified
+ * and a converted Lead. The workflow must leave both alone, so the
+ * scenarios need them as a starting point.
+ */
+async function seedLifecycleFixtures(
+	connection: Connection,
+	runTag: string,
+	ownerUsername: string
+): Promise<LifecycleSeeds> {
+	const [userRows] = await connection.execute(
+		'SELECT id FROM users WHERE username = ? LIMIT 1',
+		[ownerUsername]
+	);
+	const [owner] = userRows;
+	if (!owner) fail(`fixture user ${ownerUsername} missing before seeding`);
+	const ownerUserId = Number(owner.id);
+	const stages: Array<[string, string]> = [
+		['Disqualified', 'disqualified'],
+		['Converted', 'converted'],
+	];
+	const seeded: Record<string, number> = {};
+	for (const [stage, key] of stages) {
+		const companyName = `${runTag} ${stage} Co`;
+		await connection.execute(
+			`INSERT INTO leads (company_name, enquiry_status, owner_user_id, isDelete, created_at, updated_at)
+			 VALUES (?, ?, ?, 0, NOW(), NOW())`,
+			[companyName, stage, ownerUserId]
+		);
+		const [rows] = await connection.execute(
+			'SELECT id FROM leads WHERE company_name = ? ORDER BY id DESC LIMIT 1',
+			[companyName]
+		);
+		const [created] = rows;
+		if (!created) fail(`lifecycle seed ${companyName} missing after insert`);
+		seeded[key] = requiredNumber(created.id, 'leads.id');
+	}
+	return {
+		disqualifiedLeadId: seeded.disqualified ?? 0,
+		convertedLeadId: seeded.converted ?? 0,
 	};
 }
 
@@ -834,10 +982,20 @@ export async function runLeadsIntegration(
 		const seeder = await connectReader(resolved);
 		let legacySeeds: LegacySeedRow[] = [];
 		let legacyProposals: LegacyProposalSeed[] = [];
+		let legacyScheduledLead: { id: number; followUpDate: string } | null = null;
+		let lifecycleSeeds: LifecycleSeeds = {
+			disqualifiedLeadId: 0,
+			convertedLeadId: 0,
+		};
 		try {
 			const passwordHash = await hashFixturePassword(FIXTURE_PASSWORD);
 			await seedPreMigrationFixtures(seeder, runTag, passwordHash);
 			legacySeeds = await seedLegacyRows(seeder, runTag, `${runTag} Assignee`);
+			legacyScheduledLead = await seedLegacyScheduledLead(
+				seeder,
+				runTag,
+				`${runTag} Assignee`
+			);
 
 			log(
 				`applying ticket-369 lead migration ${LEAD_MIGRATION_FILE} over seeded legacy evidence`
@@ -852,6 +1010,11 @@ export async function runLeadsIntegration(
 			);
 			await knex.migrate.up({ name: LEGACY_REVIEW_MIGRATION_FILE });
 			await knex.migrate.latest();
+			lifecycleSeeds = await seedLifecycleFixtures(
+				seeder,
+				runTag,
+				fixtureUsername(runTag, 'assignee')
+			);
 		} finally {
 			await seeder.end();
 		}
@@ -963,8 +1126,45 @@ export async function runLeadsIntegration(
 			(ctx) => proposalLinkEditScenario(ctx, reviewSeeds),
 			context
 		);
+		await runScenario('outreach-outcomes', outreachOutcomesScenario, context);
+		await runScenario(
+			'email-reply-versus-sent',
+			emailReplyVersusSentScenario,
+			context
+		);
+		await runScenario('note-only-logging', noteOnlyLoggingScenario, context);
+		await runScenario(
+			'owner-and-date-refusals',
+			ownerAndDateRefusalScenario,
+			context
+		);
+		await runScenario(
+			'last-open-task-close',
+			lastOpenTaskCloseScenario,
+			context
+		);
+		await runScenario(
+			'no-regression',
+			(ctx) => noRegressionScenario(ctx, lifecycleSeeds),
+			context
+		);
+		await runScenario(
+			'timeline-persistence',
+			timelinePersistenceScenario,
+			context
+		);
+		await runScenario('lead-work-queue', leadWorkQueueScenario, context);
+		await runScenario(
+			'legacy-activity-evidence',
+			(ctx) =>
+				legacyActivityEvidenceScenario(
+					ctx,
+					legacyScheduledLead ?? { id: 0, followUpDate: '' }
+				),
+			context
+		);
 		log(IBAND);
-		log(`PASS all 19 scenarios (${trackedLeads.length} leads created)`);
+		log(`PASS all 28 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other

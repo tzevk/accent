@@ -179,6 +179,34 @@ export interface DbOwnershipRow {
 	created_at: string;
 }
 
+export interface DbActivityRow {
+	id: number;
+	lead_id: number;
+	activity_type: string | null;
+	status: string | null;
+	call_outcome: string | null;
+	reply_confirmed: number | null;
+	scheduled_for: string | null;
+	occurred_at: string | null;
+	completed_at: string | null;
+	next_action: string | null;
+	notes: string | null;
+	created_by: number | null;
+	recorded_at: string | null;
+	isDelete: number | null;
+}
+
+export interface DbStageHistoryRow {
+	id: number;
+	lead_id: number;
+	from_stage: string | null;
+	to_stage: string | null;
+	change_source: string | null;
+	reason: string | null;
+	actor_user_id: number | null;
+	recorded_at: string | null;
+}
+
 export interface FixtureIdentity {
 	id: number;
 	username: string;
@@ -194,6 +222,8 @@ export interface Reader {
 	ownershipHistory: (leadId: number) => Promise<DbOwnershipRow[]>;
 	reviewRows: (leadId: number) => Promise<DbReviewRow[]>;
 	proposalRows: (leadId: number) => Promise<DbProposalRow[]>;
+	activityRows: (leadId: number) => Promise<DbActivityRow[]>;
+	stageHistory: (leadId: number) => Promise<DbStageHistoryRow[]>;
 	userByUsername: (username: string) => Promise<Record<string, unknown> | null>;
 	countLeadsByCompany: (companyName: string) => Promise<number>;
 }
@@ -206,6 +236,11 @@ export interface HttpClient {
 		sessionToken?: string
 	) => Promise<HttpResponse>;
 	put: (
+		path: string,
+		body: Record<string, unknown>,
+		sessionToken?: string
+	) => Promise<HttpResponse>;
+	patch: (
 		path: string,
 		body: Record<string, unknown>,
 		sessionToken?: string

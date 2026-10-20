@@ -26,6 +26,13 @@ import {
 	trimOrNull,
 	type DbConnection,
 } from '@/server/leads/shared';
+import {
+	earliestNextAction,
+	insertActivityRow,
+	syncFollowUpDateMirror,
+	toIsoDateTime,
+	writeLeadNextAction,
+} from '@/server/leads/activity-rows';
 
 /**
  * Cohesive server-side Lead workflow module for ticket #369.
@@ -74,12 +81,68 @@ export const LEAD_LIST_SELECT = `
   l.canonical_proposal_id,
   l.created_at,
   l.updated_at,
-  u.full_name AS owner_name
+  u.full_name AS owner_name,
+  la.last_contact_at,
+  la.latest_activity_at,
+  na.scheduled_for AS next_action_date,
+  na.activity_type AS next_action_type,
+  COALESCE(la.activity_count, 0) AS activity_count,
+  (
+    SELECT CASE
+      WHEN a.activity_type = 'Email' AND a.reply_confirmed = 1
+        THEN 'Reply confirmed'
+      ELSE a.call_outcome
+    END
+    FROM lead_activities a
+    WHERE a.lead_id = l.id
+      AND a.status = 'Completed'
+      AND (a.call_outcome IS NOT NULL
+        OR (a.activity_type = 'Email' AND a.reply_confirmed = 1))
+      AND (a.isDelete = 0 OR a.isDelete IS NULL)
+    ORDER BY a.occurred_at DESC, a.id DESC
+    LIMIT 1
+  ) AS latest_activity_outcome
 `;
 
 export const LEAD_LIST_FROM = `
   FROM leads l
   LEFT JOIN users u ON u.id = l.owner_user_id AND ${ASSIGNABLE_USER_FILTER}
+`;
+
+/**
+ * The Lead work summary joins. They aggregate the activity log, so they
+ * belong to the row reads only: the count and the statistics queries use
+ * `LEAD_LIST_FROM` alone and stay one row per Lead.
+ */
+export const LEAD_WORK_JOIN = `
+  LEFT JOIN (
+    SELECT lead_id,
+      MAX(CASE WHEN status = 'Completed'
+            AND ((activity_type = 'Call' AND call_outcome = 'Connected')
+              OR (activity_type = 'Email' AND reply_confirmed = 1))
+            THEN occurred_at END) AS last_contact_at,
+      MAX(CASE WHEN status = 'Completed' THEN occurred_at END) AS latest_activity_at,
+      SUM(CASE WHEN status = 'Completed' AND source_activity_id IS NULL
+            THEN 1 ELSE 0 END) AS activity_count
+    FROM lead_activities
+    WHERE (isDelete = 0 OR isDelete IS NULL)
+    GROUP BY lead_id
+  ) la ON la.lead_id = l.id
+  LEFT JOIN (
+    SELECT lead_id, scheduled_for, activity_type
+    FROM (
+      SELECT lead_id, scheduled_for, activity_type,
+        ROW_NUMBER() OVER (
+          PARTITION BY lead_id ORDER BY scheduled_for ASC, id ASC
+        ) AS position_in_lead
+      FROM lead_activities
+      WHERE status = 'Scheduled'
+        AND transferred_followup_id IS NULL
+        AND scheduled_for IS NOT NULL
+        AND (isDelete = 0 OR isDelete IS NULL)
+    ) ranked
+    WHERE position_in_lead = 1
+  ) na ON na.lead_id = l.id
 `;
 
 export const LEAD_ACTIVE_FILTER = '(l.isDelete = 0 OR l.isDelete IS NULL)';
@@ -111,6 +174,12 @@ export interface LeadReadModel {
 	legacy_stage: string | null;
 	canonical_proposal_id: number | null;
 	follow_up_date: string | null;
+	last_contact_at: string | null;
+	latest_activity_at: string | null;
+	latest_activity_outcome: string | null;
+	next_action_date: string | null;
+	next_action_type: string | null;
+	activity_count: number;
 	duplicate_candidates?: DuplicateCandidate[];
 	ownership_history?: LeadOwnershipHistoryEntry[];
 	review?: LeadReviewState;
@@ -176,6 +245,12 @@ function serializeLead(row: LeadRow): LeadReadModel {
 		legacy_stage: rawOrNull(row.legacy_stage),
 		canonical_proposal_id: toNullableId(row.canonical_proposal_id),
 		follow_up_date: trimOrNull(row.follow_up_date),
+		last_contact_at: toIsoDateTime(row.last_contact_at),
+		latest_activity_at: toIsoDateTime(row.latest_activity_at),
+		latest_activity_outcome: trimOrNull(row.latest_activity_outcome),
+		next_action_date: trimOrNull(row.next_action_date),
+		next_action_type: trimOrNull(row.next_action_type),
+		activity_count: Number(row.activity_count ?? 0),
 	} as LeadReadModel;
 }
 
@@ -194,6 +269,35 @@ function assertActiveStageRequirements(
 		);
 	}
 	if (!followUpDate) {
+		throw new LeadWorkflowError(
+			'next_action_required',
+			`${stage} leads require a dated next action`,
+			422
+		);
+	}
+}
+
+/**
+ * Active queue membership, evaluated against the Lead's outstanding work:
+ * the dated next action is a scheduled activity row, not a loose column
+ * value. A Lead whose scheduled work was closed has no next action.
+ */
+async function assertActiveStageWorkRequirements(
+	db: DbConnection,
+	stage: LeadStage,
+	ownerUserId: number | null,
+	leadId: number
+): Promise<void> {
+	if (!isActiveLeadStage(stage)) return;
+	if (ownerUserId === null) {
+		throw new LeadWorkflowError(
+			'owner_required',
+			`${stage} leads require a lead owner`,
+			422
+		);
+	}
+	const next = await earliestNextAction(db, leadId);
+	if (!next) {
 		throw new LeadWorkflowError(
 			'next_action_required',
 			`${stage} leads require a dated next action`,
@@ -353,6 +457,19 @@ export async function createLead(
 					ownerUserId,
 					actorUserId
 				);
+				// The dated next action of a new Lead is real work: it is a
+				// scheduled activity row, not only a column value.
+				const createdFollowUp = normalizeDate(input.follow_up_date);
+				if (createdFollowUp) {
+					await insertActivityRow(db, {
+						leadId: insertId,
+						activityType: 'Note',
+						status: 'Scheduled',
+						scheduledFor: createdFollowUp,
+						nextAction: 'Next follow-up',
+						createdBy: actorUserId,
+					});
+				}
 				await tx.commit();
 				break;
 			} catch (error) {
@@ -470,12 +587,18 @@ export async function updateLead(
 				nextStage = canonical;
 			}
 
+			// The dated next action of a Lead is a scheduled activity row, so
+			// a plain edit moves the Lead's outstanding work instead of
+			// writing a column value nothing else knows about.
 			const followUpProvided = Object.hasOwn(input, 'follow_up_date');
 			const nextFollowUp = followUpProvided
 				? normalizeDate(input.follow_up_date)
 				: trimOrNull(existing.follow_up_date);
+			if (followUpProvided) {
+				await writeLeadNextAction(db, id, nextFollowUp, actorUserId);
+			}
 			if (nextStage) {
-				assertActiveStageRequirements(nextStage, nextOwner, nextFollowUp);
+				await assertActiveStageWorkRequirements(db, nextStage, nextOwner, id);
 			}
 
 			const sets: string[] = [];
@@ -523,7 +646,6 @@ export async function updateLead(
 			if (Object.hasOwn(input, 'priority'))
 				push('priority', normalizePriority(input.priority));
 			if (Object.hasOwn(input, 'notes')) push('notes', trimOrNull(input.notes));
-			if (followUpProvided) push('follow_up_date', nextFollowUp);
 			if (ownerProvided) push('owner_user_id', nextOwner);
 			sets.push('updated_at = NOW()');
 
@@ -537,6 +659,8 @@ export async function updateLead(
 			if (ownerProvided && nextOwner !== priorOwner) {
 				await recordOwnershipChange(db, id, priorOwner, nextOwner, actorUserId);
 			}
+			// `leads.follow_up_date` is the mirror of the outstanding work.
+			await syncFollowUpDateMirror(db, id);
 			await tx.commit();
 
 			let ownerName: string | null = null;
@@ -711,6 +835,17 @@ export async function importLeads(
 					ownerUserId,
 					actorUserId
 				);
+				// The imported dated next action is real work too.
+				if (followUpDate) {
+					await insertActivityRow(db, {
+						leadId: result.insertId,
+						activityType: 'Note',
+						status: 'Scheduled',
+						scheduledFor: followUpDate,
+						nextAction: 'Next follow-up',
+						createdBy: actorUserId,
+					});
+				}
 				await tx.commit();
 				begun = false;
 				imported++;
@@ -840,7 +975,7 @@ export async function listLeads(filters: LeadListFilters): Promise<{
 				params
 			),
 			db.execute(
-				`SELECT ${LEAD_LIST_SELECT} ${LEAD_LIST_FROM} ${clause} ${orderBy} LIMIT ? OFFSET ?`,
+				`SELECT ${LEAD_LIST_SELECT} ${LEAD_LIST_FROM} ${LEAD_WORK_JOIN} ${clause} ${orderBy} LIMIT ? OFFSET ?`,
 				[...params, safeLimit, safeOffset]
 			),
 			db.execute(
@@ -899,7 +1034,7 @@ export async function getLeadDetail(
 	const db = (await dbConnect()) as unknown as DbConnection;
 	try {
 		const [rows] = (await db.execute(
-			`SELECT ${LEAD_LIST_SELECT} ${LEAD_LIST_FROM}
+			`SELECT ${LEAD_LIST_SELECT} ${LEAD_LIST_FROM} ${LEAD_WORK_JOIN}
         WHERE l.id = ? AND ${LEAD_ACTIVE_FILTER}
         LIMIT 1`,
 			[id]
@@ -958,6 +1093,62 @@ export async function getLeadDetail(
 					: trimOrNull(row.created_at),
 		}));
 		return lead;
+	} finally {
+		db.release?.();
+	}
+}
+
+/**
+ * The outstanding Lead work across Leads, soonest first: the scheduled
+ * rows that were neither completed, cancelled, nor transferred away. The
+ * dashboard follow-up widget reads this list.
+ */
+export async function listUpcomingLeadWork(limit: number): Promise<
+	Array<{
+		id: number;
+		lead_id: number;
+		company_name: string | null;
+		activity_type: string | null;
+		scheduled_for: string | null;
+		next_action: string | null;
+		status: string | null;
+	}>
+> {
+	const db = (await dbConnect()) as unknown as DbConnection;
+	try {
+		const [rows] = (await db.execute(
+			`SELECT a.id, a.lead_id, l.company_name, a.activity_type,
+              a.scheduled_for, a.next_action, a.status
+        FROM lead_activities a
+        JOIN leads l ON l.id = a.lead_id AND ${LEAD_ACTIVE_FILTER}
+        WHERE a.status = 'Scheduled'
+          AND a.transferred_followup_id IS NULL
+          AND a.scheduled_for IS NOT NULL
+          AND (a.isDelete = 0 OR a.isDelete IS NULL)
+        ORDER BY a.scheduled_for ASC, a.id ASC
+        LIMIT ?`,
+			[limit]
+		)) as unknown as [
+			{
+				id: number;
+				lead_id: number;
+				company_name: string | null;
+				activity_type: string | null;
+				scheduled_for: string | null;
+				next_action: string | null;
+				status: string | null;
+			}[],
+			unknown,
+		];
+		return rows.map((row) => ({
+			id: row.id,
+			lead_id: row.lead_id,
+			company_name: trimOrNull(row.company_name),
+			activity_type: trimOrNull(row.activity_type),
+			scheduled_for: trimOrNull(row.scheduled_for),
+			next_action: trimOrNull(row.next_action),
+			status: trimOrNull(row.status),
+		}));
 	} finally {
 		db.release?.();
 	}

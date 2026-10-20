@@ -32,7 +32,23 @@ export type LeadWorkflowErrorCode =
 	| 'review_item_not_open'
 	| 'reason_required'
 	| 'proposal_not_linked'
-	| 'proposal_link_conflict';
+	| 'proposal_link_conflict'
+	// Ticket #371 — the Lead activity log, the dated next actions, and the
+	// later lifecycle, correction, and conversion actions.
+	| 'activity_type_invalid'
+	| 'activity_outcome_invalid'
+	| 'activity_invalid'
+	| 'activity_not_found'
+	| 'task_not_found'
+	| 'lead_converted'
+	| 'contact_name_required'
+	| 'contact_details_required'
+	| 'project_need_required'
+	| 'lifecycle_not_allowed'
+	| 'correction_conflict'
+	| 'view_invalid'
+	| 'conversion_conflict'
+	| 'conversion_failed';
 
 export class LeadWorkflowError extends Error {
 	readonly code: LeadWorkflowErrorCode;
@@ -223,5 +239,38 @@ export async function recordOwnershipChange(
       (lead_id, prior_owner_user_id, owner_user_id, actor_user_id)
       VALUES (?, ?, ?, ?)`,
 		[leadId, priorOwnerUserId, ownerUserId, actorUserId]
+	);
+}
+
+/**
+ * The stage change audit (ticket #371). Every stage change — automatic,
+ * explicit, or the conversion handoff — writes one row, so the stage of a
+ * Lead can always be explained. The caller writes the Lead row and this row
+ * in the same transaction: a stage change without its history is never
+ * persisted.
+ */
+export async function recordStageChange(
+	db: DbConnection,
+	input: {
+		leadId: number;
+		fromStage: LeadStage | null;
+		toStage: LeadStage;
+		changeSource: 'automatic' | 'explicit' | 'conversion';
+		reason?: string | null;
+		actorUserId: number | null;
+	}
+): Promise<void> {
+	await db.execute(
+		`INSERT INTO lead_stage_history
+      (lead_id, from_stage, to_stage, change_source, reason, actor_user_id)
+      VALUES (?, ?, ?, ?, ?, ?)`,
+		[
+			input.leadId,
+			input.fromStage,
+			input.toStage,
+			input.changeSource,
+			input.reason ?? null,
+			input.actorUserId,
+		]
 	);
 }

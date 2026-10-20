@@ -91,7 +91,7 @@ async function ensureSoftDeleteColumns(db) {
 			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
 		},
 		{
-			table: 'follow_ups',
+			table: 'lead_activities',
 			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
 		},
 		{
@@ -198,7 +198,7 @@ async function doSchemaInit() {
 
 		// Tables depending on the above
 		await Promise.all([
-			initFollowUpsTable(db),
+			initLeadActivitiesTable(db),
 			initSoftwareCategoriesTable(db),
 			initSoftwaresTable(db),
 			initSoftwareVersionsTable(db),
@@ -1810,39 +1810,62 @@ async function initProjectMomDocumentsTable(db) {
   `);
 }
 
-async function initFollowUpsTable(db) {
+async function initLeadActivitiesTable(db) {
+	// The Lead activity log: one row per Lead work item. The dated next
+	// action of a Lead is a scheduled row here, never a loose column value.
 	await db.execute(`
-    CREATE TABLE IF NOT EXISTS follow_ups (
+    CREATE TABLE IF NOT EXISTS lead_activities (
       id INT PRIMARY KEY AUTO_INCREMENT,
-      lead_id INT,
-      follow_up_date DATE,
-      follow_up_type VARCHAR(100),
-      description TEXT,
-      notes TEXT,
-      status VARCHAR(50),
+      lead_id INT NOT NULL,
+      activity_type VARCHAR(16),
+      status VARCHAR(16) NOT NULL DEFAULT 'Scheduled',
+      call_outcome VARCHAR(16),
+      reply_confirmed TINYINT(1),
+      scheduled_for DATE,
+      occurred_at DATETIME,
+      completed_at DATETIME,
       next_action VARCHAR(255),
-      next_follow_up_date DATE,
+      notes TEXT,
       created_by INT,
-      isDelete TINYINT(1) DEFAULT 0,
+      recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      legacy_type VARCHAR(50),
+      legacy_scheduled_date DATE,
+      transferred_followup_id INT,
+      transferred_at DATETIME,
+      source_activity_id INT,
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE RESTRICT,
+      INDEX idx_lead_activities_lead (lead_id),
+      INDEX idx_lead_activities_status (status),
+      INDEX idx_lead_activities_scheduled (scheduled_for),
       INDEX idx_isDelete (isDelete)
     )
   `);
 
 	const alterStatements = [
-		'ALTER TABLE follow_ups ADD COLUMN description TEXT',
-		'ALTER TABLE follow_ups ADD COLUMN next_action VARCHAR(255)',
-		'ALTER TABLE follow_ups ADD COLUMN next_follow_up_date DATE',
-		'ALTER TABLE follow_ups ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
+		'ALTER TABLE lead_activities ADD COLUMN activity_type VARCHAR(16)',
+		'ALTER TABLE lead_activities ADD COLUMN call_outcome VARCHAR(16)',
+		'ALTER TABLE lead_activities ADD COLUMN reply_confirmed TINYINT(1)',
+		'ALTER TABLE lead_activities ADD COLUMN scheduled_for DATE',
+		'ALTER TABLE lead_activities ADD COLUMN occurred_at DATETIME',
+		'ALTER TABLE lead_activities ADD COLUMN completed_at DATETIME',
+		'ALTER TABLE lead_activities ADD COLUMN next_action VARCHAR(255)',
+		'ALTER TABLE lead_activities ADD COLUMN notes TEXT',
+		'ALTER TABLE lead_activities ADD COLUMN created_by INT',
+		'ALTER TABLE lead_activities ADD COLUMN legacy_type VARCHAR(50)',
+		'ALTER TABLE lead_activities ADD COLUMN legacy_scheduled_date DATE',
+		'ALTER TABLE lead_activities ADD COLUMN transferred_followup_id INT',
+		'ALTER TABLE lead_activities ADD COLUMN transferred_at DATETIME',
+		'ALTER TABLE lead_activities ADD COLUMN source_activity_id INT',
 	];
 	for (const stmt of alterStatements) {
 		try {
 			await db.execute(stmt);
 		} catch (e) {
 			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
-				console.warn('Follow-ups schema update warning:', e.message || e);
+				console.warn('Lead activities schema update warning:', e.message || e);
 			}
 		}
 	}

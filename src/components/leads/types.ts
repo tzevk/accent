@@ -1,5 +1,8 @@
 import type { LeadStage } from '@/lib/lead-stages';
 import type { LeadReviewState } from '@/lib/lead-review';
+import type { LeadTimelineEntry, LeadWorkSummary } from '@/lib/lead-activities';
+
+export type { LeadTimelineEntry, LeadWorkSummary };
 
 export interface DuplicateCandidate {
 	id: number;
@@ -33,6 +36,12 @@ export interface LeadListRow {
 	legacy_owner_name: string | null;
 	canonical_proposal_id: number | null;
 	follow_up_date: string | null;
+	last_contact_at: string | null;
+	latest_activity_at: string | null;
+	latest_activity_outcome: string | null;
+	next_action_date: string | null;
+	next_action_type: string | null;
+	activity_count: number;
 	enquiry_date: string | null;
 	priority: string | null;
 	lead_source: string | null;
@@ -87,6 +96,57 @@ export interface LeadDetailResponse {
 export interface OwnersResponse {
 	success: boolean;
 	data: Array<{ id: number; full_name: string }>;
+}
+
+export interface LeadTimelineResponse {
+	success: boolean;
+	data: {
+		entries: LeadTimelineEntry[];
+	};
+}
+
+export interface LeadActivityResponse {
+	success: boolean;
+	data: {
+		activity_id: number;
+		stage: LeadStage | null;
+		next_action_date: string | null;
+	};
+}
+
+export interface LeadTaskResponse {
+	success: boolean;
+	data: {
+		task_id: number;
+		next_action_date: string | null;
+	};
+}
+
+export interface LeadTaskUpdateResponse {
+	success: boolean;
+	data: {
+		task_id: number;
+		status: string;
+		next_action_date: string | null;
+	};
+}
+
+/** One outstanding scheduled piece of Lead work across every Lead. */
+export interface LeadWorkItem {
+	id: number;
+	lead_id: number;
+	company_name: string | null;
+	activity_type: string | null;
+	scheduled_for: string | null;
+	next_action: string | null;
+	status: string | null;
+}
+
+export interface LeadWorkQueueResponse {
+	success: boolean;
+	data: {
+		work: LeadWorkItem[];
+	};
 }
 
 export interface ImportResponse {
