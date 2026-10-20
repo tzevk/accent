@@ -78,6 +78,240 @@ A Lead has one authoritative Proposal. A Proposal create or edit that would add 
 
 Re-saving a Proposal that keeps its link is not a new link and stays allowed. A Proposal that never had a link is unaffected. When a Proposal stops pointing at its enquiry, or is deleted, the enquiry recomputes its canonical Proposal from the Proposals that still link to it. The recorded decision stays in the review history.
 
+## Record what happened
+
+Open the Lead detail and use the **Log activity** form. Choose the kind of
+work, when it happened, and any plain-text notes. A call also needs its
+outcome: Connected, No Answer, Busy, Voicemail, or Wrong Number. An email
+asks whether the client replied. A sent email is not a reply.
+
+Tick **Schedule the next action now** to date the next step in the same entry.
+The next action is scheduled work: it has a date, a kind, and an author.
+
+Recording needs `leads:update`. The signed-in user is the author; a request
+never names an author. Notes stay plain text.
+
+| Activity | What it records                             | What it needs                                     |
+| -------- | ------------------------------------------- | ------------------------------------------------- |
+| Call     | the call, with its outcome                  | one of the canonical outcomes                     |
+| Email    | the message, and whether the client replied | a confirmed reply is contact; a sent email is not |
+| Meeting  | the meeting                                 | —                                                 |
+| Note     | a plain-text note                           | —                                                 |
+
+A task status and a call outcome are different things. A scheduled task
+answers _is the work scheduled, completed, or cancelled_. A call outcome
+answers _what happened during the call_. A finished attempt can be **No
+Answer** and still be a completed call.
+
+### The stages that move by themselves
+
+| What you record               | Stage movement                        |
+| ----------------------------- | ------------------------------------- |
+| First call, email, or meeting | New → Attempting Contact              |
+| Connected call                | New or Attempting Contact → Connected |
+| Confirmed email reply         | New or Attempting Contact → Connected |
+| Note or scheduled task        | no stage change                       |
+
+Only these two movements happen on their own. A failed call is an attempt, not
+a disqualification. Qualified, Nurture, Disqualified, and Converted never move
+down. A Converted Lead takes no new Lead-side sales work: its follow-up
+belongs to the linked Proposal.
+
+### The dated next action
+
+Attempting Contact, Connected, Qualified, and Nurture need a dated next
+action. New, Disqualified, and Converted never need one.
+
+The check uses the stage the Lead has **after** the write, so the first
+outreach on a new Lead needs its next action in the same request. Closing the
+last scheduled action of such a Lead needs its replacement in the same
+request. A refused entry writes nothing: no activity, no next action, no
+stage change.
+
+### The Lead timeline
+
+The Lead detail shows one chronological history: the activities and the
+scheduled work, the stage changes, the owner changes, the corrections, and
+the conversion. Completed work and scheduled work are marked apart, and each
+entry carries when it happened, who recorded it, and when it was recorded.
+
+The summary next to it shows the owner, the stage, the source, the last
+successful contact, the latest outcome, the dated next action, and the linked
+Proposal. **Last successful contact** advances on a connected call or a
+confirmed email reply only: a failed attempt never counts as contact.
+
+Legacy records stay honest. The old records never stored the author or the
+call outcome, so the timeline shows them as unknown instead of guessing. The
+record's creation date is a record date; it is not a stage-entry date.
+
+## Correct a logged activity
+
+A logged activity can be wrong. Correct it from the Lead timeline: every
+logged activity has a **Correct activity** control for users with the Lead
+update right.
+
+- The form asks for the **Correction reason** — it is required, and a
+  correction without one is refused.
+- The form shows the current values. Change only what is wrong: the values
+  you leave alone stay as they are, and the corrected activity keeps its
+  author, its occurrence time, and its recording time.
+- After saving, the timeline shows a correction entry with the values before
+  the correction, the reason, who corrected it, and when. The activity
+  itself stays one entry: a corrected activity is still one activity in
+  every total.
+- If somebody corrected the same activity while you were writing, the save is
+  refused with a conflict message and a **Reload the activity** button. Their
+  correction is never overwritten.
+- A correction never changes the stage of the Lead and never counts as new
+  outreach. It also refuses to turn a record into outreach on a Lead that has
+  no owner.
+- Nothing is deleted. There is no delete for a Lead activity, and cancelling
+  scheduled work keeps it as evidence.
+- A legacy row keeps what it never knew: correcting it does not invent its
+  author or its call outcome. The correction itself names the person who
+  made it.
+
+## Decide the Lead stage explicitly
+
+Open the Lead detail and use **Lifecycle decisions**. The panel offers the
+decisions the current stage allows: **Qualify**, **Nurture**,
+**Disqualify**, and **Reopen**. Every decision needs `leads:update`, is
+recorded with its reason, its author, and the time, and appears in the Lead
+timeline.
+
+| Decision   | What it means                             | What it needs                                                                                                    |
+| ---------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Qualify    | the enquiry is suitable and ready         | a named contact, a usable phone number or email address, a clear project need, an owner, and a dated next action |
+| Nurture    | the enquiry is suitable but not ready now | an owner and a dated next action                                                                                 |
+| Disqualify | the enquiry will not proceed              | a reason                                                                                                         |
+| Reopen     | a disqualified enquiry comes back         | a reason, an owner, and a dated next action                                                                      |
+
+Budget and project timing are not Lead fields, so they never block a
+qualification.
+
+A refusal names the field that is missing: a missing contact name, missing
+contact details, a missing project need, a missing owner, a missing dated
+next action, or a missing reason. Fill the field in and decide again.
+
+**Disqualify** closes the Lead. Its outstanding scheduled work is cancelled,
+never deleted, and the Lead leaves the active work queue. Every recorded
+call, email, meeting, and note stays, and the reason of the decision stays in
+the stage history.
+
+**Reopen** applies to a disqualified Lead only. The reopened Lead returns to
+**Attempting Contact** with its owner and its dated next action. The earlier
+disqualification stays visible in the timeline.
+
+A **Converted** Lead takes no lifecycle decision. Routine sales work belongs
+to the linked Proposal. Generic edits and CSV imports cannot express these
+decisions either: a conversion or a disqualification arrives through its
+audited action only, and an import row that asks for one is refused without
+saving a Lead.
+
+Automatic activity updates never override a decision. A recorded call, email,
+or meeting never moves a Lead out of **Qualified**, **Nurture**, or
+**Disqualified**.
+
+## Work Leads through the queues
+
+Open **Leads**. The queue tabs above the table split the Leads into the work
+that needs attention. Each tab shows how many Leads it holds, counted over
+the whole filtered dataset and not over the visible page.
+
+| Queue          | Shows                                                                                           |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| All Leads      | every Lead the filters allow                                                                    |
+| My Leads       | the Leads you own                                                                               |
+| Unassigned     | the Leads without an owner, including the legacy records whose owner name could not be resolved |
+| Due Today      | the Leads with outstanding work dated today                                                     |
+| Overdue        | the Leads with outstanding work dated before today                                              |
+| Untouched      | the Leads without completed outreach; a note is not outreach                                    |
+| No Next Action | the Leads in an active stage without a dated next action                                        |
+
+**My Leads** always means the signed-in user. The server resolves the owner,
+so no request can open another person's queue. **Unassigned** never guesses an
+owner: a record whose owner name could not be resolved stays unassigned and
+says so.
+
+**Due Today** and **Overdue** read the outstanding scheduled work of the
+Lead. Work that was completed, cancelled, or moved to a Proposal is not
+outstanding and never stays in a due queue. The dates follow the application
+calendar day.
+
+**Untouched** means no completed call, email, or meeting. A note is not
+outreach, so a Lead with only notes stays in the queue.
+
+**No Next Action** holds the Leads in Attempting Contact, Connected,
+Qualified, or Nurture without a dated next action. Those stages need one, so
+every Lead in this queue needs a next action. New, Disqualified, and
+Converted Leads need none, and the preserved legacy records are included.
+
+Use the **Lead Owner**, **Lead Stage**, and **Next Action Date** filters to
+narrow the queues. The **Next Action Date** filter offers any date, due
+today, overdue, and the next seven days. The counters follow the filters,
+and a deleted Lead leaves both the rows and the totals.
+
+Every row shows the owner, the stage, the contact, the dated next action, and
+the linked Proposal. A Lead without a resolved owner or stage says so and
+keeps its original value for review; nothing is guessed. Open a Lead to see
+its timeline, log work, and record the next action.
+
+## Change notes — issue #374
+
+- Added the Lead queues (My Leads, Unassigned, Due Today, Overdue,
+  Untouched, No Next Action) with the owner, stage, and due-date filters.
+- Added full-dataset counters that reconcile with the table, the tabs, and
+  the pagination.
+- Replaced the two list-route filter parsers with one shared parser, and the
+  `status` filter with the `stage` filter.
+- The Lead workspace row now shows the owner, the stage, the contact, the
+  next action, and the linked Proposal, and states the unknown legacy values
+  instead of guessing them.
+- An unknown queue selection is refused with the `view_invalid` code instead
+  of quietly showing the wrong queue.
+
+## Change notes — issue #373
+
+- Added the explicit Qualify, Nurture, Disqualify, and Reopen decisions with
+  their own audited action, their field-level refusals, and the reason, the
+  author, and the time of every decision.
+- Added the qualification checks: a named contact, a usable phone number or
+  email address, and a clear project need. Budget and timing stay optional.
+- A disqualification now cancels the outstanding work explicitly and keeps
+  every recorded activity; a reopening needs a reason, an owner, and a dated
+  next action, and keeps the earlier disqualification visible.
+- Generic edits and CSV imports can no longer express a conversion or a
+  disqualification.
+
+## Change notes — issue #372
+
+- Added the correction of a logged activity with a required reason, the
+  previous values, the correcting user from the session, and the time.
+- The timeline shows a correction next to its activity; the corrected
+  activity stays one activity in every total.
+- A stale correction is refused with a conflict instead of overwriting
+  somebody else's accepted correction.
+- There is no delete path for a Lead activity, and cancelling scheduled work
+  keeps the activity and its correction history.
+
+## Change notes — issue #371
+
+- Added the Lead activity log: calls with structured outcomes, emails,
+  meetings, and plain-text notes, each with its occurrence time, its
+  recording time, and its authenticated author.
+- Separated the scheduled work from the completed activity: a task status
+  answers whether work is scheduled, completed, or cancelled, and a call
+  outcome answers what happened during the call.
+- Added dated next actions, including the rule that an active Lead keeps one
+  and that the last scheduled action needs a replacement.
+- Added the automatic, forward-only stage movement for the first outreach and
+  for a connected call or confirmed reply.
+- Added the chronological Lead timeline with stage changes, owner changes,
+  activities, scheduled work, and the legacy unknown markers.
+- Replaced the legacy per-Lead follow-up table and its writers with one
+  activity log, so no writer can bypass the owner, next-action, or stage
+  rules.
+
 ## Change notes — issue #370
 
 - Added a review flow for unresolved legacy stages, owner names, and duplicate Proposal links.
