@@ -333,6 +333,30 @@ Proposal-to-Project conversion, and revenue recognition keep their own
 rules. Price changes stay in the Proposal revision controls — the Lead side
 has no price change and offers no second conversion.
 
+## Change notes — issue #368 review fixes
+
+- A generic edit never bypasses the explicit decisions. Reaching **Qualified**
+  or **Nurture** through the edit screen or a CSV import needs the same
+  evidence a qualification needs: a named contact, a usable phone number or
+  email address, and a clear project need. A row without it is a row error,
+  not a saved Lead.
+- Every stage change is on the Lead timeline, with the person who made it and
+  the time. A decision that is not one of the explicit actions still has an
+  actor.
+- A stage or owner change on a Lead whose legacy value is still in review is
+  refused. The review panel is the only way to settle a legacy value, and
+  it keeps the original, the decision, the reviewer, and the time.
+- A **Converted** Lead takes no new Lead-side work. The edit screen no longer
+  offers a next action for it, and the server refuses one.
+- An owner change through the lifecycle action needs `leads:assign`, like
+  every other owner write.
+- The Proposal of a handoff carries the Lead's plain-text description through
+  the shared write-path sanitiser.
+- The transferred work names its source as well as its destination, so the
+  handoff is traceable from both sides.
+- A soft-deleted Lead keeps its state: editing or deleting one of its
+  Proposals no longer rewrites it.
+
 ## Change notes — issue #376
 
 - Added the downstream read of a converted Lead: the canonical Proposal, its
