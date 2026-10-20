@@ -785,6 +785,17 @@ export async function importLeads(
 				continue;
 			}
 			const followUpDate = normalizeDate(row.follow_up_date);
+			// Conversion and disqualification are audited decisions with a
+			// reason, an owner, and a dated next action. A CSV row cannot
+			// express them, so the row is refused instead of saved.
+			if (canonical === 'Converted' || canonical === 'Disqualified') {
+				errors.push(
+					canonical === 'Converted'
+						? `Row ${row.rowNumber}: Conversion arrives through the linked Proposal handoff, not a CSV import`
+						: `Row ${row.rowNumber}: Disqualification arrives through an audited decision with a reason, not a CSV import`
+				);
+				continue;
+			}
 			if (canonical !== null) {
 				try {
 					assertActiveStageRequirements(canonical, ownerUserId, followUpDate);
