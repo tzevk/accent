@@ -157,10 +157,15 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
 			<div className="flex-1 overflow-hidden">
-				<div className="h-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 max-w-[1800px] mx-auto w-full">
+				{/* The container is a column: the header keeps its own height
+				    and the scroll area takes the rest. A scroll area sized
+				    with h-full instead would ignore the header and reach
+				    past the bottom of the page, where its last rows can
+				    never be seen. */}
+				<div className="h-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 max-w-[1800px] mx-auto w-full flex flex-col">
 					{/* The header wraps: on a phone the actions move under the
 					    title instead of running past the edge of the page. */}
-					<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+					<div className="mb-6 flex shrink-0 flex-wrap items-start justify-between gap-3">
 						<div className="flex items-center space-x-4">
 							<button
 								type="button"
@@ -202,7 +207,7 @@ export default function LeadDetails({ params }: LeadDetailsProps) {
 						</div>
 					</div>
 
-					<div className="h-full overflow-y-auto pb-8">
+					<div className="flex-1 min-h-0 overflow-y-auto pb-8">
 						<div className="grid grid-cols-1 xl:grid-cols-3 gap-6 max-w-7xl">
 							<div className="xl:col-span-2 space-y-6">
 								<LegacyReviewPanel
