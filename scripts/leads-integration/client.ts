@@ -217,6 +217,20 @@ export interface FixtureIdentity {
 	permissions: string[];
 }
 
+/**
+ * The queue counts of the active Lead table, counted by the reader and not
+ * by the API: the scenarios compare the two.
+ */
+export interface DbQueueCounts {
+	total: number;
+	my_leads: number;
+	unassigned: number;
+	due_today: number;
+	overdue: number;
+	untouched: number;
+	no_next_action: number;
+}
+
 export interface Reader {
 	leadRow: (id: number) => Promise<DbLeadRow | null>;
 	ownershipHistory: (leadId: number) => Promise<DbOwnershipRow[]>;
@@ -226,6 +240,12 @@ export interface Reader {
 	stageHistory: (leadId: number) => Promise<DbStageHistoryRow[]>;
 	userByUsername: (username: string) => Promise<Record<string, unknown> | null>;
 	countLeadsByCompany: (companyName: string) => Promise<number>;
+	/** The calendar day of the database, the date policy of the queues. */
+	databaseToday: () => Promise<string>;
+	/** The queue counts of the active Leads matching the search term. */
+	queueCounts: (search: string, viewerUserId: number) => Promise<DbQueueCounts>;
+	/** The active Leads matching the search term, counted by the reader. */
+	countActiveLeads: (search: string) => Promise<number>;
 }
 
 export interface HttpClient {

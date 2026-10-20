@@ -1,7 +1,13 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type KeyboardEvent,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -12,15 +18,23 @@ import {
 import { apiDelete } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 import { LEAD_STAGES } from '@/lib/lead-stages';
+import {
+	LEAD_DUE_FILTERS,
+	LEAD_DUE_FILTER_LABELS,
+	LEAD_QUEUE_VIEWS,
+	LEAD_QUEUE_VIEW_LABELS,
+	type LeadDueFilter,
+	type LeadQueueView,
+} from '@/lib/lead-queues';
 import { cn } from '@/lib/cn';
 import LeadStageBadge from '@/components/leads/LeadStageBadge';
 import LeadCreateForm from '@/components/leads/LeadCreateForm';
 import LeadImportForm from '@/components/leads/LeadImportForm';
-import OwnerSelect from '@/components/leads/OwnerSelect';
 import {
 	leadKeys,
 	useCompanyDirectory,
 	useLeadList,
+	useLeadOwners,
 } from '@/components/leads/queries';
 import type { LeadListStats } from '@/components/leads/types';
 import {
@@ -39,6 +53,7 @@ import {
 	ChevronUpIcon,
 	FunnelIcon,
 	LockClosedIcon,
+	CalendarIcon,
 } from '@heroicons/react/24/outline';
 
 const PAGE_SIZE = 20;
@@ -54,6 +69,42 @@ const EMPTY_STATS: LeadListStats = {
 	stage_disqualified: 0,
 	stage_converted: 0,
 	stage_unresolved: 0,
+	queue_all: 0,
+	queue_my_leads: 0,
+	queue_unassigned: 0,
+	queue_due_today: 0,
+	queue_overdue: 0,
+	queue_untouched: 0,
+	queue_no_next_action: 0,
+};
+
+/** The counter of every queue, counted over the whole filtered dataset. */
+const QUEUE_COUNTER_KEYS: Record<LeadQueueView, keyof LeadListStats> = {
+	all: 'queue_all',
+	my_leads: 'queue_my_leads',
+	unassigned: 'queue_unassigned',
+	due_today: 'queue_due_today',
+	overdue: 'queue_overdue',
+	untouched: 'queue_untouched',
+	no_next_action: 'queue_no_next_action',
+};
+
+/** The stages that keep a Lead in the active work queue. */
+const ACTIVE_STAGES = [
+	'Attempting Contact',
+	'Connected',
+	'Qualified',
+	'Nurture',
+] as const;
+
+const STAGE_COUNTER_KEYS: Record<string, keyof LeadListStats> = {
+	New: 'stage_new',
+	'Attempting Contact': 'stage_attempting_contact',
+	Connected: 'stage_connected',
+	Qualified: 'stage_qualified',
+	Nurture: 'stage_nurture',
+	Disqualified: 'stage_disqualified',
+	Converted: 'stage_converted',
 };
 
 type TabId = 'list' | 'add';
@@ -90,8 +141,10 @@ export default function Leads() {
 	const [currentPage, setCurrentPage] = useState<number>(1);
 	const [searchTerm, setSearchTerm] = useState<string>('');
 	const [debouncedSearchTerm, setDebouncedSearchTerm] = useState<string>('');
-	const [statusFilter, setStatusFilter] = useState<string>('');
+	const [queue, setQueue] = useState<LeadQueueView>('all');
+	const [stageFilter, setStageFilter] = useState<string>('');
 	const [ownerFilter, setOwnerFilter] = useState<string>('');
+	const [dueFilter, setDueFilter] = useState<LeadDueFilter>('any');
 	const [reviewOnly, setReviewOnly] = useState<boolean>(false);
 	const [cityFilter, setCityFilter] = useState<string>('');
 	const [sortBy, setSortBy] = useState<string>('enquiry_date');
@@ -99,6 +152,9 @@ export default function Leads() {
 	const [activeTab, setActiveTab] = useState<TabId>('list');
 	const [showImport, setShowImport] = useState<boolean>(false);
 	const searchDebounceRef = useRef<number | undefined>(undefined);
+	const queueTabRefs = useRef<
+		Partial<Record<LeadQueueView, HTMLButtonElement | null>>
+	>({});
 
 	const listParams = useMemo<Record<string, string>>(
 		() => ({
@@ -106,8 +162,10 @@ export default function Leads() {
 			limit: String(PAGE_SIZE),
 			sortBy,
 			sortOrder,
+			view: queue,
+			due: dueFilter,
 			...(debouncedSearchTerm ? { search: debouncedSearchTerm } : {}),
-			...(statusFilter ? { status: statusFilter } : {}),
+			...(stageFilter ? { stage: stageFilter } : {}),
 			...(ownerFilter ? { owner: ownerFilter } : {}),
 			...(reviewOnly ? { review: '1' } : {}),
 			...(cityFilter ? { city: cityFilter } : {}),
@@ -115,7 +173,9 @@ export default function Leads() {
 		[
 			currentPage,
 			debouncedSearchTerm,
-			statusFilter,
+			queue,
+			dueFilter,
+			stageFilter,
 			ownerFilter,
 			reviewOnly,
 			cityFilter,
@@ -128,6 +188,7 @@ export default function Leads() {
 		activeTab === 'list' && canViewLeads
 	);
 	const companiesQuery = useCompanyDirectory(activeTab === 'add' && canCreate);
+	const ownersQuery = useLeadOwners(canAssign && canViewLeads);
 	const deleteMutation = useMutation<
 		{ success: boolean },
 		Error,
@@ -151,6 +212,7 @@ export default function Leads() {
 	const loadError =
 		listQuery.error instanceof Error ? listQuery.error.message : null;
 	const companies = companiesQuery.data?.data ?? [];
+	const owners = ownersQuery.data?.data ?? [];
 
 	useEffect(() => {
 		clearTimeout(searchDebounceRef.current);
@@ -166,13 +228,44 @@ export default function Leads() {
 	const clearFilters = (): void => {
 		setSearchTerm('');
 		setDebouncedSearchTerm('');
-		setStatusFilter('');
+		setQueue('all');
+		setStageFilter('');
 		setOwnerFilter('');
+		setDueFilter('any');
 		setReviewOnly(false);
 		setCityFilter('');
 		setSortBy('enquiry_date');
 		setSortOrder('desc');
 		setCurrentPage(1);
+	};
+
+	const selectQueue = (next: LeadQueueView): void => {
+		setQueue(next);
+		setCurrentPage(1);
+	};
+
+	/**
+	 * The queue tabs follow the ARIA tabs pattern: the arrow keys move
+	 * between the tabs, and the focused tab is the selected one.
+	 */
+	const handleQueueKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+		const index = LEAD_QUEUE_VIEWS.indexOf(queue);
+		let nextIndex = -1;
+		if (event.key === 'ArrowRight') {
+			nextIndex = (index + 1) % LEAD_QUEUE_VIEWS.length;
+		} else if (event.key === 'ArrowLeft') {
+			nextIndex =
+				(index - 1 + LEAD_QUEUE_VIEWS.length) % LEAD_QUEUE_VIEWS.length;
+		} else if (event.key === 'Home') {
+			nextIndex = 0;
+		} else if (event.key === 'End') {
+			nextIndex = LEAD_QUEUE_VIEWS.length - 1;
+		}
+		if (nextIndex < 0) return;
+		event.preventDefault();
+		const next = LEAD_QUEUE_VIEWS[nextIndex];
+		selectQueue(next);
+		queueTabRefs.current[next]?.focus();
 	};
 
 	const handleDeleteLead = (
@@ -195,8 +288,54 @@ export default function Leads() {
 			? sessionUser.full_name
 			: '';
 
+	const renderQueueTabs = () => (
+		<div
+			role="tablist"
+			aria-label="Lead queues"
+			onKeyDown={handleQueueKeyDown}
+			className="flex flex-wrap gap-2"
+		>
+			{LEAD_QUEUE_VIEWS.map((view) => {
+				const selected = view === queue;
+				return (
+					<button
+						key={view}
+						type="button"
+						role="tab"
+						id={`lead-queue-tab-${view}`}
+						aria-selected={selected}
+						aria-controls="lead-queue-panel"
+						tabIndex={selected ? 0 : -1}
+						ref={(element) => {
+							queueTabRefs.current[view] = element;
+						}}
+						onClick={() => selectQueue(view)}
+						className={cn(
+							'px-3 py-1.5 text-sm font-medium rounded-md border transition-colors',
+							selected
+								? 'border-[#64126D] bg-[#64126D] text-white'
+								: 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+						)}
+					>
+						{LEAD_QUEUE_VIEW_LABELS[view]}{' '}
+						<span
+							className={cn(
+								'ml-1 tabular-nums',
+								selected ? 'text-purple-100' : 'text-gray-500'
+							)}
+						>
+							({stats[QUEUE_COUNTER_KEYS[view]] ?? 0})
+						</span>
+					</button>
+				);
+			})}
+		</div>
+	);
+
 	const renderLeadsList = () => (
 		<div className="space-y-6">
+			{renderQueueTabs()}
+
 			<div
 				className="grid grid-cols-1 gap-6 sm:grid-cols-3"
 				aria-label="Lead counters"
@@ -207,7 +346,9 @@ export default function Leads() {
 							<UserGroupIcon className="h-5 w-5" />
 						</span>
 						<div className="ml-4">
-							<p className="text-sm font-medium text-black">Total Leads</p>
+							<p className="text-sm font-medium text-black">
+								Leads in this queue
+							</p>
 							<p className="text-2xl font-semibold text-gray-900">
 								{stats.total_leads || 0}
 							</p>
@@ -237,6 +378,24 @@ export default function Leads() {
 					</div>
 				</div>
 			</div>
+
+			<p className="text-sm text-gray-600">
+				Stages in this queue:{' '}
+				{LEAD_STAGES.map((stage) => (
+					<span key={stage} className="mr-3 inline-block">
+						{stage}{' '}
+						<span className="tabular-nums text-gray-900">
+							{stats[STAGE_COUNTER_KEYS[stage]] ?? 0}
+						</span>
+					</span>
+				))}
+				<span className="mr-3 inline-block">
+					Unresolved{' '}
+					<span className="tabular-nums text-gray-900">
+						{stats.stage_unresolved ?? 0}
+					</span>
+				</span>
+			</p>
 
 			{canImport ? (
 				<div className="bg-white rounded-lg border border-gray-200">
@@ -309,9 +468,9 @@ export default function Leads() {
 						</label>
 						<select
 							id="leads-stage-filter"
-							value={statusFilter}
+							value={stageFilter}
 							onChange={(event) => {
-								setStatusFilter(event.target.value);
+								setStageFilter(event.target.value);
 								setCurrentPage(1);
 							}}
 							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
@@ -343,31 +502,36 @@ export default function Leads() {
 						>
 							<option value="">All owners</option>
 							<option value="unassigned">Unassigned intake</option>
+							{owners.map((owner) => (
+								<option key={owner.id} value={String(owner.id)}>
+									{owner.full_name}
+								</option>
+							))}
 						</select>
 					</div>
-					{canAssign ? (
-						<div className="sm:w-52">
-							<label
-								htmlFor="leads-owner-picker"
-								className="block text-xs font-medium text-gray-600 mb-1"
-							>
-								Filter by owner
-							</label>
-							<OwnerSelect
-								id="leads-owner-picker"
-								value={
-									ownerFilter !== '' && ownerFilter !== 'unassigned'
-										? Number(ownerFilter)
-										: null
-								}
-								onChange={(next) => {
-									setOwnerFilter(next === null ? '' : String(next));
-									setCurrentPage(1);
-								}}
-								intakeLabel="All owners"
-							/>
-						</div>
-					) : null}
+					<div className="sm:w-48">
+						<label
+							htmlFor="leads-due-filter"
+							className="block text-xs font-medium text-gray-600 mb-1"
+						>
+							Next Action Date
+						</label>
+						<select
+							id="leads-due-filter"
+							value={dueFilter}
+							onChange={(event) => {
+								setDueFilter(event.target.value as LeadDueFilter);
+								setCurrentPage(1);
+							}}
+							className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+						>
+							{LEAD_DUE_FILTERS.map((filter) => (
+								<option key={filter} value={filter}>
+									{LEAD_DUE_FILTER_LABELS[filter]}
+								</option>
+							))}
+						</select>
+					</div>
 					<div className="sm:w-32">
 						<label
 							htmlFor="leads-city-filter"
@@ -448,7 +612,12 @@ export default function Leads() {
 				</div>
 			</div>
 
-			<div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+			<div
+				id="lead-queue-panel"
+				role="tabpanel"
+				aria-labelledby={`lead-queue-tab-${queue}`}
+				className="bg-white rounded-lg border border-gray-200 overflow-hidden"
+			>
 				{loading ? (
 					<div className="p-8 text-center" role="status">
 						<div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-accent-purple"></div>
@@ -474,7 +643,9 @@ export default function Leads() {
 					<div className="p-8 text-center">
 						<UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
 						<h3 className="mt-2 text-sm font-medium text-gray-900">
-							No leads found
+							{queue === 'all'
+								? 'No leads found'
+								: `No leads in ${LEAD_QUEUE_VIEW_LABELS[queue]}`}
 						</h3>
 						<p className="mt-1 text-sm text-gray-500">
 							Get started by adding leads manually or importing from CSV.
@@ -494,11 +665,17 @@ export default function Leads() {
 									<th className="w-56 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
 										Project Description
 									</th>
-									<th className="w-56 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+									<th className="w-48 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
 										Owner
 									</th>
 									<th className="w-32 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
 										Stage & Priority
+									</th>
+									<th className="w-44 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+										Next Action
+									</th>
+									<th className="w-28 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+										Proposal
 									</th>
 									<th className="w-28 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
 										Date & Source
@@ -509,129 +686,199 @@ export default function Leads() {
 								</tr>
 							</thead>
 							<tbody className="divide-y divide-gray-200">
-								{leads.map((lead, index) => (
-									<tr
-										key={lead.id}
-										className="hover:bg-gray-50 odd:bg-white even:bg-gray-50"
-									>
-										<td className="w-14 px-4 py-3 whitespace-nowrap">
-											<div className="text-sm font-medium text-gray-900">
-												{paginationTotal -
-													((currentPage - 1) * PAGE_SIZE + index)}
-											</div>
-										</td>
-										<td className="w-64 px-4 py-3">
-											<div>
-												<div className="text-sm font-medium text-gray-900 truncate">
-													{lead.company_name}
+								{leads.map((lead, index) => {
+									const stageIsActive = (
+										ACTIVE_STAGES as readonly string[]
+									).includes(lead.enquiry_status ?? '');
+									return (
+										<tr
+											key={lead.id}
+											className="hover:bg-gray-50 odd:bg-white even:bg-gray-50"
+										>
+											<td className="w-14 px-4 py-3 whitespace-nowrap">
+												<div className="text-sm font-medium text-gray-900">
+													{paginationTotal -
+														((currentPage - 1) * PAGE_SIZE + index)}
 												</div>
-												<div className="text-sm text-gray-500 truncate">
-													{lead.contact_name}
-												</div>
-												<div className="flex items-center mt-1 space-x-3">
-													{lead.contact_email ? (
-														<div className="flex items-center text-xs text-gray-400">
-															<EnvelopeIcon className="h-3 w-3 mr-1 flex-shrink-0" />
-															<span className="truncate max-w-[8rem]">
-																{lead.contact_email}
-															</span>
+											</td>
+											<td className="w-64 px-4 py-3">
+												<div>
+													<button
+														type="button"
+														onClick={() => router.push(`/leads/${lead.id}`)}
+														className="text-sm font-medium text-gray-900 truncate text-left hover:text-[#64126D] hover:underline"
+														title="Open the Lead timeline"
+													>
+														{lead.company_name}
+													</button>
+													{lead.lead_id ? (
+														<div className="text-xs text-gray-400">
+															{lead.lead_id}
 														</div>
 													) : null}
-													{lead.phone ? (
-														<div className="flex items-center text-xs text-gray-400">
-															<PhoneIcon className="h-3 w-3 mr-1 flex-shrink-0" />
-															<span className="truncate">{lead.phone}</span>
-														</div>
-													) : null}
-												</div>
-											</div>
-										</td>
-										<td className="w-56 px-4 py-3">
-											<div
-												className="text-sm text-gray-900 line-clamp-2"
-												title={lead.project_description || ''}
-											>
-												{lead.project_description || '-'}
-											</div>
-										</td>
-										<td className="w-56 px-4 py-3">
-											<div className="text-sm text-gray-900">
-												<div className="font-medium">
-													{lead.owner_name ?? 'Unassigned intake'}
-												</div>
-												{lead.legacy_review_required ? (
-													<span className="inline-flex mt-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs">
-														Needs review
-													</span>
-												) : null}
-											</div>
-										</td>
-										<td className="w-32 px-4 py-3 whitespace-nowrap">
-											<div className="space-y-1">
-												<LeadStageBadge stage={lead.enquiry_status} />
-												<div
-													className={cn(
-														'text-xs font-medium',
-														PRIORITY_TONES[
-															lead.priority?.toLowerCase() ?? ''
-														] ?? 'text-gray-500'
-													)}
-												>
-													{lead.priority} Priority
-												</div>
-											</div>
-										</td>
-										<td className="w-28 px-4 py-3 whitespace-nowrap">
-											<div className="text-sm text-gray-500 space-y-1">
-												<div>{formatDate(lead.enquiry_date)}</div>
-												{lead.lead_source ? (
-													<div className="text-xs text-gray-400 truncate">
-														via {lead.lead_source}
+													<div className="text-sm text-gray-500 truncate">
+														{lead.contact_name || 'No contact recorded'}
 													</div>
-												) : null}
-											</div>
-										</td>
-										<td className="w-40 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
-											<div className="flex items-center justify-center space-x-1">
-												<button
-													type="button"
-													onClick={() => router.push(`/leads/${lead.id}`)}
-													className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors"
-													title="View Details"
-													aria-label={`View lead ${lead.company_name ?? lead.id}`}
+													<div className="flex items-center mt-1 space-x-3">
+														{lead.contact_email ? (
+															<div className="flex items-center text-xs text-gray-400">
+																<EnvelopeIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+																<span className="truncate max-w-[8rem]">
+																	{lead.contact_email}
+																</span>
+															</div>
+														) : null}
+														{lead.phone ? (
+															<div className="flex items-center text-xs text-gray-400">
+																<PhoneIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+																<span className="truncate">{lead.phone}</span>
+															</div>
+														) : null}
+													</div>
+												</div>
+											</td>
+											<td className="w-56 px-4 py-3">
+												<div
+													className="text-sm text-gray-900 line-clamp-2"
+													title={lead.project_description || ''}
 												>
-													<EyeIcon className="h-4 w-4" />
-												</button>
-												{canUpdate ? (
+													{lead.project_description || '-'}
+												</div>
+											</td>
+											<td className="w-48 px-4 py-3">
+												<div className="text-sm text-gray-900">
+													<div className="font-medium truncate">
+														{lead.owner_name ?? 'Unassigned intake'}
+													</div>
+													{lead.owner_name ? null : lead.legacy_owner_name ? (
+														<span
+															className="inline-flex mt-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs"
+															title={`Legacy owner name: ${lead.legacy_owner_name}`}
+														>
+															Owner unresolved
+														</span>
+													) : null}
+													{lead.legacy_review_required ? (
+														<span className="inline-flex mt-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs">
+															Needs review
+														</span>
+													) : null}
+												</div>
+											</td>
+											<td className="w-32 px-4 py-3 whitespace-nowrap">
+												<div className="space-y-1">
+													<LeadStageBadge stage={lead.enquiry_status} />
+													{lead.legacy_stage ? (
+														<div
+															className="text-xs text-amber-700 truncate"
+															title={`Legacy stage: ${lead.legacy_stage}`}
+														>
+															Legacy: {lead.legacy_stage}
+														</div>
+													) : null}
+													<div
+														className={cn(
+															'text-xs font-medium',
+															PRIORITY_TONES[
+																lead.priority?.toLowerCase() ?? ''
+															] ?? 'text-gray-500'
+														)}
+													>
+														{lead.priority} Priority
+													</div>
+												</div>
+											</td>
+											<td className="w-44 px-4 py-3">
+												{lead.next_action_date ? (
+													<div className="text-sm text-gray-900">
+														<div className="flex items-center">
+															<CalendarIcon className="h-4 w-4 mr-1 text-gray-400 flex-shrink-0" />
+															<span>{formatDate(lead.next_action_date)}</span>
+														</div>
+														{lead.next_action_type ? (
+															<div className="text-xs text-gray-500">
+																{lead.next_action_type}
+															</div>
+														) : null}
+													</div>
+												) : stageIsActive ? (
+													<span className="inline-flex px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs">
+														No next action
+													</span>
+												) : (
+													<span className="text-sm text-gray-400">—</span>
+												)}
+											</td>
+											<td className="w-28 px-4 py-3">
+												{lead.canonical_proposal_id ? (
 													<button
 														type="button"
 														onClick={() =>
-															router.push(`/leads/${lead.id}/edit`)
+															router.push(
+																`/proposals/${lead.canonical_proposal_id}`
+															)
 														}
-														className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-full transition-colors"
-														title="Edit Lead"
-														aria-label={`Edit lead ${lead.company_name ?? lead.id}`}
+														className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+														title="Open the linked Proposal"
 													>
-														<PencilIcon className="h-4 w-4" />
+														Proposal #{lead.canonical_proposal_id}
 													</button>
-												) : null}
-												{canDelete ? (
+												) : (
+													<span className="text-sm text-gray-400">—</span>
+												)}
+											</td>
+											<td className="w-28 px-4 py-3 whitespace-nowrap">
+												<div className="text-sm text-gray-500 space-y-1">
+													<div>{formatDate(lead.enquiry_date)}</div>
+													{lead.lead_source ? (
+														<div className="text-xs text-gray-400 truncate">
+															via {lead.lead_source}
+														</div>
+													) : null}
+												</div>
+											</td>
+											<td className="w-40 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+												<div className="flex items-center justify-center space-x-1">
 													<button
 														type="button"
-														onClick={() =>
-															handleDeleteLead(lead.id, lead.company_name)
-														}
-														className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"
-														title="Delete Lead"
-														aria-label={`Delete lead ${lead.company_name ?? lead.id}`}
+														onClick={() => router.push(`/leads/${lead.id}`)}
+														className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors"
+														title="View Details"
+														aria-label={`View lead ${lead.company_name ?? lead.id}`}
 													>
-														<TrashIcon className="h-4 w-4" />
+														<EyeIcon className="h-4 w-4" />
 													</button>
-												) : null}
-											</div>
-										</td>
-									</tr>
-								))}
+													{canUpdate ? (
+														<button
+															type="button"
+															onClick={() =>
+																router.push(`/leads/${lead.id}/edit`)
+															}
+															className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-full transition-colors"
+															title="Edit Lead"
+															aria-label={`Edit lead ${lead.company_name ?? lead.id}`}
+														>
+															<PencilIcon className="h-4 w-4" />
+														</button>
+													) : null}
+													{canDelete ? (
+														<button
+															type="button"
+															onClick={() =>
+																handleDeleteLead(lead.id, lead.company_name)
+															}
+															className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"
+															title="Delete Lead"
+															aria-label={`Delete lead ${lead.company_name ?? lead.id}`}
+														>
+															<TrashIcon className="h-4 w-4" />
+														</button>
+													) : null}
+												</div>
+											</td>
+										</tr>
+									);
+								})}
 							</tbody>
 						</table>
 					</div>
@@ -738,7 +985,7 @@ export default function Leads() {
 						Leads Management
 					</h1>
 					<p className="text-gray-600 xl:text-lg">
-						Manage your leads through manual entry or CSV import
+						Work your Leads through the queues that need attention
 					</p>
 				</div>
 				<div
@@ -759,7 +1006,7 @@ export default function Leads() {
 						)}
 					>
 						<UserGroupIcon className="h-5 w-5 inline mr-2" />
-						All Leads ({stats.total_leads || 0})
+						Lead list ({stats.queue_all || 0})
 					</button>
 					<button
 						type="button"

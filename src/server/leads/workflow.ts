@@ -1,9 +1,5 @@
 import { dbConnect } from '@/utils/database';
-import {
-	isActiveLeadStage,
-	isLeadStage,
-	type LeadStage,
-} from '@/lib/lead-stages';
+import { isActiveLeadStage, type LeadStage } from '@/lib/lead-stages';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
 import {
 	getLeadReviewState,
@@ -33,6 +29,12 @@ import {
 	toIsoDateTime,
 	writeLeadNextAction,
 } from '@/server/leads/activity-rows';
+import {
+	buildBaseFilterClause,
+	buildQueueCondition,
+	buildQueueCounterSelect,
+	type LeadListQuery,
+} from '@/server/leads/queues';
 
 /**
  * Cohesive server-side Lead workflow module for ticket #369.
@@ -185,16 +187,12 @@ export interface LeadReadModel {
 	review?: LeadReviewState;
 }
 
-export interface LeadListFilters {
-	page: number;
-	limit: number;
-	search: string;
-	status: string;
-	city: string;
-	sortBy: string;
-	sortOrder: string;
-	owner: string;
-	review: string;
+export interface LeadListFilters extends LeadListQuery {
+	/**
+	 * The authenticated user. `my_leads` resolves to this id on the server,
+	 * so a client-supplied user id never selects another person's queue.
+	 */
+	viewerUserId: number | null;
 }
 
 export interface LeadListStats {
@@ -209,6 +207,14 @@ export interface LeadListStats {
 	stage_disqualified: number;
 	stage_converted: number;
 	stage_unresolved: number;
+	/** The queue counters: one count per actionable view of the list. */
+	queue_all: number;
+	queue_my_leads: number;
+	queue_unassigned: number;
+	queue_due_today: number;
+	queue_overdue: number;
+	queue_untouched: number;
+	queue_no_next_action: number;
 }
 
 // MySQL driver `execute()` row tuples for the queries issued below.
@@ -873,48 +879,27 @@ export async function importLeads(
 	}
 }
 
-function buildListWhere(filters: LeadListFilters): {
+/**
+ * The WHERE clause of the Lead list: the soft-delete rule, the shared
+ * filters, and the selected queue. The counters use the same filters
+ * without the queue, so a tab and its table always agree.
+ */
+function buildListWhere(
+	filters: LeadListFilters,
+	options: { includeQueue: boolean }
+): {
 	clause: string;
 	params: unknown[];
 } {
-	let clause = `WHERE ${LEAD_ACTIVE_FILTER}`;
-	const params: unknown[] = [];
-	if (filters.search) {
-		const term = `%${filters.search.toLowerCase()}%`;
-		clause +=
-			' AND (LOWER(l.lead_id) LIKE ? OR LOWER(l.company_name) LIKE ? OR LOWER(l.contact_name) LIKE ? OR LOWER(l.contact_email) LIKE ? OR LOWER(l.project_description) LIKE ?)';
-		params.push(term, term, term, term, term);
+	const base = buildBaseFilterClause(filters);
+	const parts = [LEAD_ACTIVE_FILTER, base.clause];
+	const params = [...base.params];
+	if (options.includeQueue) {
+		const queue = buildQueueCondition(filters.view, filters.viewerUserId);
+		parts.push(queue.clause);
+		params.push(...queue.params);
 	}
-	if (filters.status) {
-		if (isLeadStage(filters.status)) {
-			clause += ' AND l.enquiry_status = ?';
-			params.push(filters.status);
-		} else if (filters.status === 'Unresolved') {
-			clause += ' AND l.enquiry_status IS NULL';
-		} else {
-			// Unknown status values match nothing rather than leaking rows.
-			clause += ' AND 1 = 0';
-		}
-	}
-	if (filters.city) {
-		clause += ' AND l.city LIKE ?';
-		params.push(`%${filters.city}%`);
-	}
-	if (filters.owner === 'unassigned') {
-		clause += ' AND l.owner_user_id IS NULL';
-	} else if (filters.owner) {
-		const ownerId = toNullableId(filters.owner);
-		if (ownerId === null) {
-			clause += ' AND 1 = 0';
-		} else {
-			clause += ' AND l.owner_user_id = ?';
-			params.push(ownerId);
-		}
-	}
-	if (filters.review === '1') {
-		clause += ' AND l.legacy_review_required = 1';
-	}
-	return { clause, params };
+	return { clause: `WHERE ${parts.join(' AND ')}`, params };
 }
 
 function buildOrderBy(sortBy: string, sortOrder: string): string {
@@ -954,7 +939,13 @@ function paginationValues(
 	return { safeLimit, safeOffset: (safePage - 1) * safeLimit };
 }
 
-/** Shared list query: same filters, same soft-delete, full-dataset stats. */
+/**
+ * Shared list query: same filters, same soft-delete, full-dataset stats.
+ *
+ * The rows, the total, and the stage counters read the filtered dataset of
+ * the selected queue. The queue counters read the same filters without the
+ * selected queue, so every tab counts the dataset its table would show.
+ */
 export async function listLeads(filters: LeadListFilters): Promise<{
 	leads: LeadReadModel[];
 	stats: LeadListStats;
@@ -962,24 +953,31 @@ export async function listLeads(filters: LeadListFilters): Promise<{
 }> {
 	const db = (await dbConnect()) as unknown as DbConnection;
 	try {
-		const { clause, params } = buildListWhere(filters);
+		const { clause, params } = buildListWhere(filters, {
+			includeQueue: true,
+		});
+		const { clause: baseClause, params: baseParams } = buildListWhere(filters, {
+			includeQueue: false,
+		});
 		const orderBy = buildOrderBy(filters.sortBy, filters.sortOrder);
 		const { safeLimit, safeOffset } = paginationValues(
 			filters.page,
 			filters.limit
 		);
+		const counters = buildQueueCounterSelect(filters.viewerUserId);
 
-		const [countResult, leadsResult, statsResult] = await Promise.all([
-			db.execute(
-				`SELECT COUNT(*) as total ${LEAD_LIST_FROM} ${clause}`,
-				params
-			),
-			db.execute(
-				`SELECT ${LEAD_LIST_SELECT} ${LEAD_LIST_FROM} ${LEAD_WORK_JOIN} ${clause} ${orderBy} LIMIT ? OFFSET ?`,
-				[...params, safeLimit, safeOffset]
-			),
-			db.execute(
-				`SELECT
+		const [countResult, leadsResult, statsResult, counterResult] =
+			await Promise.all([
+				db.execute(
+					`SELECT COUNT(*) as total ${LEAD_LIST_FROM} ${clause}`,
+					params
+				),
+				db.execute(
+					`SELECT ${LEAD_LIST_SELECT} ${LEAD_LIST_FROM} ${LEAD_WORK_JOIN} ${clause} ${orderBy} LIMIT ? OFFSET ?`,
+					[...params, safeLimit, safeOffset]
+				),
+				db.execute(
+					`SELECT
             COUNT(*) as total_leads,
             SUM(CASE WHEN l.owner_user_id IS NULL THEN 1 ELSE 0 END) as unassigned_leads,
             SUM(CASE WHEN l.legacy_review_required = 1 THEN 1 ELSE 0 END) as needs_review_leads,
@@ -992,12 +990,19 @@ export async function listLeads(filters: LeadListFilters): Promise<{
             SUM(CASE WHEN l.enquiry_status = 'Converted' THEN 1 ELSE 0 END) as stage_converted,
             SUM(CASE WHEN l.enquiry_status IS NULL THEN 1 ELSE 0 END) as stage_unresolved
           ${LEAD_LIST_FROM} ${clause}`,
-				params
-			),
-		]);
+					params
+				),
+				db.execute(
+					`SELECT ${counters.select}
+          FROM leads l
+          ${baseClause}`,
+					[...counters.params, ...baseParams]
+				),
+			]);
 		const [[countRow]] = countResult as unknown as [CountRow[], unknown];
 		const [leadRows] = leadsResult as unknown as [LeadRow[], unknown];
 		const [[statsRow]] = statsResult as unknown as [StatsRow[], unknown];
+		const [[counterRow]] = counterResult as unknown as [StatsRow[], unknown];
 
 		const stats: LeadListStats = {
 			total_leads: Number(statsRow.total_leads) || 0,
@@ -1011,6 +1016,13 @@ export async function listLeads(filters: LeadListFilters): Promise<{
 			stage_disqualified: Number(statsRow.stage_disqualified) || 0,
 			stage_converted: Number(statsRow.stage_converted) || 0,
 			stage_unresolved: Number(statsRow.stage_unresolved) || 0,
+			queue_all: Number(counterRow.queue_all) || 0,
+			queue_my_leads: Number(counterRow.queue_my_leads) || 0,
+			queue_unassigned: Number(counterRow.queue_unassigned) || 0,
+			queue_due_today: Number(counterRow.queue_due_today) || 0,
+			queue_overdue: Number(counterRow.queue_overdue) || 0,
+			queue_untouched: Number(counterRow.queue_untouched) || 0,
+			queue_no_next_action: Number(counterRow.queue_no_next_action) || 0,
 		};
 		return {
 			leads: leadRows.map(serializeLead),
