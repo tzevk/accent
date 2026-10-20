@@ -553,12 +553,17 @@ export async function updateLeadTask(
 								: input.call_outcome
 						)
 					: null;
+			// A stored NULL means "no reply evidence", not "the client did not
+			// reply". Passing `false` for a missing value would refuse every
+			// non-email task with a reply-confirmed error.
 			const replyConfirmed =
 				status === 'Completed'
 					? parseReplyConfirmed(
 							activityType,
 							input.reply_confirmed === undefined
-								? task.reply_confirmed === 1
+								? task.reply_confirmed === null
+									? null
+									: task.reply_confirmed === 1
 								: input.reply_confirmed
 						)
 					: null;

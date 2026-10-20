@@ -879,3 +879,122 @@ export async function leadWorkQueueScenario(
 	);
 	assert.equal(unsupported.status, 400, `scope body: ${unsupported.text}`);
 }
+
+/**
+ * Closing a scheduled action of any kind.
+ *
+ * A stored reply flag of NULL means "no reply evidence", not "the client did
+ * not reply". Reading it as a false answer refused every non-email task with
+ * a reply-confirmed error, so the scheduled work of a Call, a Meeting or a
+ * Note could never be closed.
+ */
+export async function scheduledTaskCompletionScenario(
+	context: ScenarioContext
+): Promise<void> {
+	const leadId = await createLead(context, `${context.runTag} Closing Co`);
+
+	// A note schedules a note: neither of them needs a call outcome.
+	const noted = await context.http.post(
+		`/api/leads/${leadId}/activities`,
+		{
+			activity_type: 'Note',
+			notes: 'Left a message with the reception.',
+			next_action: {
+				activity_type: 'Note',
+				scheduled_for: futureDate(3),
+				next_action: 'Call back after the site visit',
+			},
+		},
+		context.creator.sessionToken
+	);
+	assert.equal(noted.status, 200, `note body: ${noted.text}`);
+
+	const noteTask = (await context.reader.activityRows(leadId)).find(
+		(row) => row.status === 'Scheduled'
+	);
+	assert.ok(noteTask, 'the next action is a scheduled row');
+
+	const closedNote = await context.http.patch(
+		`/api/leads/${leadId}/tasks/${String(noteTask.id)}`,
+		{ status: 'Completed' },
+		context.creator.sessionToken
+	);
+	assert.equal(
+		closedNote.status,
+		200,
+		`closing a note task body: ${closedNote.text}`
+	);
+	assert.equal(
+		TaskUpdateEnvelopeSchema.parse(closedNote.json()).data.status,
+		'Completed'
+	);
+	const noteRows = await context.reader.activityRows(leadId);
+	const closedRow = noteRows.find((row) => row.id === noteTask.id);
+	assert.equal(closedRow?.status, 'Completed');
+	assert.equal(closedRow?.call_outcome, null);
+	assert.equal(closedRow?.reply_confirmed, null);
+
+	// A call task still needs its outcome, and a call task closes with it.
+	const called = await context.http.post(
+		`/api/leads/${leadId}/activities`,
+		{
+			activity_type: 'Call',
+			call_outcome: 'No Answer',
+			next_action: {
+				activity_type: 'Call',
+				scheduled_for: futureDate(6),
+				next_action: 'Call the site manager',
+			},
+		},
+		context.creator.sessionToken
+	);
+	assert.equal(called.status, 200, `call body: ${called.text}`);
+
+	const callTask = (await context.reader.activityRows(leadId)).find(
+		(row) => row.status === 'Scheduled'
+	);
+	assert.ok(callTask, 'the call is scheduled');
+
+	const withoutOutcome = await context.http.patch(
+		`/api/leads/${leadId}/tasks/${String(callTask.id)}`,
+		{ status: 'Completed' },
+		context.creator.sessionToken
+	);
+	assert.equal(
+		withoutOutcome.status,
+		422,
+		`a call without an outcome body: ${withoutOutcome.text}`
+	);
+	assert.equal(
+		ErrorEnvelopeSchema.parse(withoutOutcome.json()).code,
+		'activity_outcome_invalid'
+	);
+
+	const withOutcome = await context.http.patch(
+		`/api/leads/${leadId}/tasks/${String(callTask.id)}`,
+		{
+			status: 'Completed',
+			call_outcome: 'Busy',
+			next_action: {
+				activity_type: 'Call',
+				scheduled_for: futureDate(8),
+				next_action: 'Call the site manager again',
+			},
+		},
+		context.creator.sessionToken
+	);
+	assert.equal(
+		withOutcome.status,
+		200,
+		`closing a call task body: ${withOutcome.text}`
+	);
+	const callRows = await context.reader.activityRows(leadId);
+	assert.equal(
+		callRows.find((row) => row.id === callTask.id)?.call_outcome,
+		'Busy'
+	);
+	assert.equal(
+		callRows.find((row) => row.id === callTask.id)?.reply_confirmed,
+		null
+	);
+}

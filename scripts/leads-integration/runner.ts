@@ -55,6 +55,7 @@ import {
 	noRegressionScenario,
 	outreachOutcomesScenario,
 	ownerAndDateRefusalScenario,
+	scheduledTaskCompletionScenario,
 	timelinePersistenceScenario,
 	type LifecycleSeeds,
 } from './scenarios/activities.ts';
@@ -1326,6 +1327,11 @@ export async function runLeadsIntegration(
 		);
 		await runScenario('lead-work-queue', leadWorkQueueScenario, context);
 		await runScenario(
+			'scheduled-task-completion',
+			scheduledTaskCompletionScenario,
+			context
+		);
+		await runScenario(
 			'legacy-activity-evidence',
 			(ctx) =>
 				legacyActivityEvidenceScenario(
@@ -1447,7 +1453,7 @@ export async function runLeadsIntegration(
 			context
 		);
 		log(IBAND);
-		log(`PASS all 55 scenarios (${trackedLeads.length} leads created)`);
+		log(`PASS all 56 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other
