@@ -19,6 +19,13 @@ interface OwnerSelectProps {
 	describedBy?: string;
 	intakeLabel?: string;
 	className?: string;
+	/**
+	 * The accessible name of the control. It is an attribute, not a second
+	 * visible label: a visually hidden label is positioned absolutely, and
+	 * an absolutely positioned label that sits outside a positioned ancestor
+	 * leaves the page at the bottom of the document.
+	 */
+	label?: string;
 }
 
 /**
@@ -33,6 +40,7 @@ export default function OwnerSelect({
 	describedBy,
 	intakeLabel = 'Unassigned intake',
 	className = '',
+	label,
 }: OwnerSelectProps) {
 	const ownersQuery = useQuery<OwnersResponse>({
 		queryKey: leadKeys.owners,
@@ -76,6 +84,7 @@ export default function OwnerSelect({
 			}}
 			disabled={disabled || loading}
 			aria-describedby={describedBy}
+			aria-label={label}
 			className={cn(
 				'w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm',
 				className

@@ -85,12 +85,13 @@ export default function LeadAssignForm({
 			<div>
 				{/* The card that holds this form already names it "Lead
 				    Owner"; a second visible label would repeat the heading
-				    word for word. The label stays for the association. */}
-				<label htmlFor={`lead-owner-${lead.id}`} className="sr-only">
-					Lead Owner
-				</label>
+				    word for word. The control carries the name as an
+				    attribute instead: a visually hidden label is positioned
+				    absolutely and would leave the page at the bottom of the
+				    document. */}
 				<OwnerSelect
 					id={`lead-owner-${lead.id}`}
+					label="Lead Owner"
 					value={ownerUserId}
 					onChange={(next) =>
 						setSelection({ value: next, baseOwner: serverOwner })
