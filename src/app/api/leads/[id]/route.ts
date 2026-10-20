@@ -8,7 +8,7 @@ import { hasPermission } from '@/utils/rbac';
 import { deleteLead, getLeadDetail, updateLead } from '@/server/leads/workflow';
 import {
 	leadWorkflowFailure,
-	parseLeadId,
+	parseLeadTaskActivityId,
 } from '@/app/api/leads/_lib/route-helpers';
 
 export async function GET(
@@ -23,7 +23,7 @@ export async function GET(
 	if (auth instanceof Response) return auth;
 
 	const { id } = await params;
-	const leadId = parseLeadId(id);
+	const leadId = parseLeadTaskActivityId(id);
 	if (leadId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },
@@ -55,7 +55,7 @@ export async function PUT(
 	{ params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
 	const { id } = await params;
-	const leadId = parseLeadId(id);
+	const leadId = parseLeadTaskActivityId(id);
 	if (leadId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },
@@ -150,7 +150,7 @@ export async function DELETE(
 	if (auth instanceof Response) return auth;
 
 	const { id } = await params;
-	const leadId = parseLeadId(id);
+	const leadId = parseLeadTaskActivityId(id);
 	if (leadId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },

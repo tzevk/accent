@@ -660,3 +660,326 @@ export async function conversionReadAndQueueScenario(
 		'the conversion is on the timeline of the Lead'
 	);
 }
+
+/** A date the scheduled work of a new enquiry can carry. */
+function futureDate(daysAhead: number): string {
+	const date = new Date();
+	date.setDate(date.getDate() + daysAhead);
+	const pad = (value: number): string => String(value).padStart(2, '0');
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
+ * A qualified enquiry with the evidence a conversion needs and one
+ * scheduled task for the handoff to move.
+ */
+async function createQualifiedLead(
+	context: ScenarioContext,
+	companyName: string,
+	projectDescription: string
+): Promise<number> {
+	const created = await context.http.post(
+		'/api/leads',
+		{
+			company_name: companyName,
+			contact_name: 'Cleo Client',
+			contact_email: 'cleo@example.com',
+			phone: '+91 98765 43210',
+			project_description: projectDescription,
+		},
+		context.assignee.sessionToken
+	);
+	assert.equal(created.status, 200, `create body: ${created.text}`);
+	const leadId = z
+		.object({ id: z.number() })
+		.parse(
+			z.object({ data: z.object({ id: z.number() }) }).parse(created.json())
+				.data
+		).id;
+	context.trackLead(leadId);
+
+	const qualified = await context.http.post(
+		`/api/leads/${leadId}/stage`,
+		{
+			action: 'Qualify',
+			next_action: {
+				activity_type: 'Call',
+				scheduled_for: futureDate(4),
+				next_action: 'Call about the tender',
+			},
+		},
+		context.assignee.sessionToken
+	);
+	assert.equal(qualified.status, 200, `qualify body: ${qualified.text}`);
+	return leadId;
+}
+
+/**
+ * The description of the canonical Proposal is an HTML-bound column, so
+ * the plain text of the Lead goes through the shared write-path sanitiser
+ * (ADR-0012). A payload in the project description never reaches the
+ * Proposal.
+ */
+export async function conversionDescriptionIsSanitisedScenario(
+	context: ScenarioContext
+): Promise<void> {
+	const leadId = await createQualifiedLead(
+		context,
+		`${context.runTag} Sanitised Co`,
+		'<img src=x onerror="alert(1)"><script>alert(2)</script>A plant extension for the Chakan unit'
+	);
+
+	const response = await convert(context, leadId, {
+		proposal_title: `${context.runTag} Sanitised Proposal`,
+	});
+	assert.equal(response.status, 200, `convert body: ${response.text}`);
+	const data = ConversionEnvelopeSchema.parse(response.json()).data;
+
+	const proposal = await context.reader.proposalRow(data.proposal_id);
+	assert.ok(proposal, 'the canonical Proposal is stored');
+	const description = proposal.description ?? '';
+	assert.ok(
+		!description.includes('<'),
+		`the stored description carries no markup: ${description}`
+	);
+	assert.ok(
+		!description.includes('onerror'),
+		`the stored description carries no event handler: ${description}`
+	);
+	assert.ok(
+		description.includes('A plant extension for the Chakan unit'),
+		`the plain text of the Lead survives: ${description}`
+	);
+}
+
+/**
+ * A repeated handoff ends its transaction. The connection goes back to the
+ * pool with the lock closed, and the other work on the same pool keeps
+ * running.
+ */
+export async function conversionRepeatEndsTheTransactionScenario(
+	context: ScenarioContext
+): Promise<void> {
+	// Its own enquiry: the repeat of an enquiry another scenario already
+	// converted would prove nothing about the transaction of the first
+	// handoff.
+	const leadId = await createQualifiedLead(
+		context,
+		`${context.runTag} Repeat Transaction Co`,
+		'A plant extension for the Chakan unit'
+	);
+
+	const first = await convert(context, leadId);
+	assert.equal(first.status, 200, `first body: ${first.text}`);
+	const firstData = ConversionEnvelopeSchema.parse(first.json()).data;
+	assert.equal(firstData.already_converted, false);
+
+	const second = await convert(context, leadId);
+	assert.equal(second.status, 200, `second body: ${second.text}`);
+	const secondData = ConversionEnvelopeSchema.parse(second.json()).data;
+	assert.equal(secondData.already_converted, true);
+	assert.equal(secondData.proposal_id, firstData.proposal_id);
+
+	// The repeat left no open transaction behind: the connection went back
+	// to the pool with the lock of the enquiry closed.
+	assert.equal(
+		await context.reader.countOpenTransactions(),
+		0,
+		'a repeated handoff leaves no open transaction behind'
+	);
+
+	// The other work of the pool keeps running.
+	const created = await context.http.post(
+		'/api/leads',
+		{
+			company_name: `${context.runTag} After Repeat Co`,
+			contact_name: 'Cleo Client',
+			contact_email: 'cleo@example.com',
+			project_description: 'A plant extension for the workshop',
+		},
+		context.assignee.sessionToken
+	);
+	assert.equal(created.status, 200, `create body: ${created.text}`);
+	const list = await context.http.get(
+		'/api/leads/list?search=After%20Repeat&limit=10',
+		context.readOnly.sessionToken
+	);
+	assert.equal(list.status, 200, `list body: ${list.text}`);
+	assert.equal(
+		await context.reader.countOpenTransactions(),
+		0,
+		'the other work of the pool leaves no open transaction behind'
+	);
+}
+
+/**
+ * The transferred work links in both directions: the source activity names
+ * its destination, and the destination names the Lead activity it came
+ * from.
+ */
+export async function conversionTransferredWorkLinkScenario(
+	context: ScenarioContext
+): Promise<void> {
+	const leadId = await createQualifiedLead(
+		context,
+		`${context.runTag} Two Way Link Co`,
+		'A plant extension for the Chakan unit'
+	);
+
+	const response = await convert(context, leadId, {
+		proposal_title: `${context.runTag} Two Way Link Proposal`,
+	});
+	assert.equal(response.status, 200, `convert body: ${response.text}`);
+	const data = ConversionEnvelopeSchema.parse(response.json()).data;
+
+	const activities = await context.reader.activityRows(leadId);
+	const scheduled = activities.filter(
+		(activity) => activity.status === 'Scheduled'
+	);
+	assert.equal(scheduled.length, 1, 'the enquiry had one scheduled task');
+	const source = scheduled[0];
+	assert.ok(
+		source?.transferred_followup_id,
+		'the source names its destination'
+	);
+
+	const followups = await context.reader.proposalFollowups(data.proposal_id);
+	assert.equal(followups.length, 1, 'the Proposal inherited one task');
+	assert.equal(
+		followups[0]?.id,
+		source.transferred_followup_id,
+		'the destination is the task the source names'
+	);
+	assert.equal(
+		followups[0]?.source_lead_activity_id,
+		source.id,
+		'the destination names the Lead activity it came from'
+	);
+}
+
+/**
+ * The migration backfills the rows that already carry a transferred work
+ * link: a Proposal follow-up a Lead activity already points at gets its
+ * source.
+ */
+export async function conversionBackfilledSourceLinkScenario(
+	context: ScenarioContext,
+	seed: { proposalId: number; followupId: number; activityId: number }
+): Promise<void> {
+	assert.ok(seed.proposalId > 0, 'the backfill Proposal is stored');
+	assert.ok(seed.followupId > 0, 'the backfill follow-up is stored');
+	assert.ok(seed.activityId > 0, 'the backfill activity is stored');
+	const followups = await context.reader.proposalFollowups(seed.proposalId);
+	const backfilled = followups.find(
+		(followup) => followup.id === seed.followupId
+	);
+	assert.ok(backfilled, 'the transferred work is stored');
+	assert.equal(
+		backfilled.source_lead_activity_id,
+		seed.activityId,
+		'the migration backfilled the source of the transferred work'
+	);
+}
+
+/**
+ * The super admin converts a Lead without the three grants and reads the
+ * downstream Proposal details.
+ */
+export async function superAdminConversionScenario(
+	context: ScenarioContext
+): Promise<void> {
+	const leadId = await createQualifiedLead(
+		context,
+		`${context.runTag} Super Admin Co`,
+		'A plant extension for the Chakan unit'
+	);
+
+	const response = await convert(
+		context,
+		leadId,
+		{ proposal_title: `${context.runTag} Super Admin Proposal` },
+		context.superAdmin.sessionToken
+	);
+	assert.equal(response.status, 200, `convert body: ${response.text}`);
+	const data = ConversionEnvelopeSchema.parse(response.json()).data;
+	assert.equal(data.already_converted, false);
+
+	// The super admin reads the downstream Proposal of the enquiry.
+	const detail = await context.http.get(
+		`/api/leads/${leadId}`,
+		context.superAdmin.sessionToken
+	);
+	assert.equal(detail.status, 200, `detail body: ${detail.text}`);
+	const lead = z
+		.object({
+			success: z.literal(true),
+			data: z.object({
+				enquiry_status: z.string().nullable(),
+				canonical_proposal_id: z.number().nullable(),
+				proposal_progress: z
+					.object({
+						state: z.string(),
+						proposal: z
+							.object({
+								id: z.number(),
+								title: z.string().nullable(),
+							})
+							.nullable(),
+					})
+					.nullable(),
+			}),
+		})
+		.parse(detail.json()).data;
+	assert.equal(lead.enquiry_status, 'Converted');
+	assert.equal(lead.canonical_proposal_id, data.proposal_id);
+	assert.equal(lead.proposal_progress?.state, 'available');
+	assert.equal(lead.proposal_progress?.proposal?.id, data.proposal_id);
+	assert.equal(
+		lead.proposal_progress?.proposal?.title,
+		`${context.runTag} Super Admin Proposal`
+	);
+}
+
+/**
+ * The handoff needs the Lead convert right, the Lead update right, and the
+ * right to create Proposals. Each grant is isolated: a user who has the
+ * other two is still refused, and the refusal writes nothing.
+ */
+export async function conversionPermissionIsolationScenario(
+	context: ScenarioContext,
+	seeds: ConversionSeeds
+): Promise<void> {
+	const leadId = seeds.qualifiedLeadId;
+
+	// The Lead convert right and the Proposal create right, no Lead update.
+	const withoutUpdate = await convert(
+		context,
+		leadId,
+		{},
+		context.convertOnly.sessionToken
+	);
+	assert.equal(withoutUpdate.status, 403, `denied body: ${withoutUpdate.text}`);
+
+	// The Lead update right and the Proposal create right, no Lead convert.
+	const withoutConvert = await convert(
+		context,
+		leadId,
+		{},
+		context.updateOnly.sessionToken
+	);
+	assert.equal(
+		withoutConvert.status,
+		403,
+		`denied body: ${withoutConvert.text}`
+	);
+
+	// Nothing was written by either refusal.
+	const proposals = await context.reader.proposalRows(leadId);
+	assert.equal(proposals.length, 0, 'a refused handoff creates no Proposal');
+	const conversions = await context.reader.conversionRows(leadId);
+	assert.equal(conversions.length, 0, 'a refused handoff records no evidence');
+	const row = await readLeadRow(context, leadId);
+	assert.equal(row.enquiry_status, 'Qualified');
+	assert.equal(row.canonical_proposal_id, null);
+	assert.equal(row.converted_at, null);
+}

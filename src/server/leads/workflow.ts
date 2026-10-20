@@ -1,10 +1,13 @@
 import { dbConnect } from '@/utils/database';
 import { isActiveLeadStage, type LeadStage } from '@/lib/lead-stages';
+import { openLegacyReviewItems } from '@/lib/lead-review';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
 import {
 	getLeadReviewState,
 	type LeadReviewState,
 } from '@/server/leads/legacy-review';
+import { assertQualificationFacts } from '@/server/leads/lifecycle';
+import { LEAD_LIFECYCLE_MESSAGES } from '@/lib/lead-lifecycle';
 import {
 	getLeadProposalProgress,
 	type LeadProposalReadOptions,
@@ -21,9 +24,11 @@ import {
 	parseExplicitOwner,
 	rawOrNull,
 	recordOwnershipChange,
+	recordStageChange,
 	requireDbTransaction,
 	resolveCanonicalStage,
 	toNullableId,
+	toPercent,
 	trimOrNull,
 	type DbConnection,
 } from '@/server/leads/shared';
@@ -267,14 +272,17 @@ type ExistingLeadRow = Record<string, unknown> & {
 	owner_user_id: number | null;
 	enquiry_status: string | null;
 	follow_up_date: string | null;
+	contact_name: string | null;
+	contact_email: string | null;
+	inquiry_email: string | null;
+	cc_emails: string | null;
+	phone: string | null;
+	project_description: string | null;
+	legacy_stage: string | null;
+	legacy_owner_name: string | null;
+	legacy_stage_reviewed: number | boolean | null;
+	legacy_owner_reviewed: number | boolean | null;
 };
-
-/** A percentage of a Proposal or a Project, or null when it is unset. */
-function toPercent(value: unknown): number | null {
-	if (value === null || value === undefined) return null;
-	const number = Number(value);
-	return Number.isFinite(number) ? number : null;
-}
 
 /**
  * Serialize a DB lead row for list/detail reads. `assigned_to` is
@@ -563,6 +571,17 @@ export interface UpdateLeadInput extends CreateLeadInput {
  * resulting state. Generic edits can never set Converted, leave Converted, or
  * enter/leave Disqualified — conversion, disqualification, and reopening are
  * later audited actions, safely refused here with 409.
+ *
+ * A generic edit never bypasses the explicit decisions:
+ * - reaching Qualified or Nurture needs the same evidence a qualification
+ *   needs (a named contact, a usable phone number or email address, a clear
+ *   project need) and the same owner and dated next action;
+ * - a stage or owner change on a Lead whose legacy value is still in review
+ *   is refused, because the review panel is the only way to settle it;
+ * - a converted Lead takes no new Lead-side work, so a scheduled next action
+ *   is refused;
+ * - every stage change writes the stage history row, so the timeline of the
+ *   Lead shows it.
  */
 export async function updateLead(
 	id: number,
@@ -579,7 +598,10 @@ export async function updateLead(
 		await tx.begin();
 		try {
 			const [existingRows] = (await db.execute(
-				`SELECT id, owner_user_id, enquiry_status, follow_up_date
+				`SELECT id, owner_user_id, enquiry_status, follow_up_date,
+          contact_name, contact_email, inquiry_email, cc_emails, phone,
+          project_description, legacy_stage, legacy_owner_name,
+          legacy_stage_reviewed, legacy_owner_reviewed
           FROM leads
           WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)
           FOR UPDATE`,
@@ -598,6 +620,30 @@ export async function updateLead(
 			if (ownerProvided && nextOwner !== null) {
 				await assertOwnerAssignable(db, nextOwner);
 			}
+
+			// A legacy value that nobody has decided yet is not a free field:
+			// the audited review action is the only way to settle it. A
+			// generic edit that changes the stage or the owner of such a Lead
+			// would close the review dimension without a decision, so it is
+			// refused and the review panel stays the only way through.
+			const openReviewItems = openLegacyReviewItems({
+				enquiry_status: existing.enquiry_status,
+				owner_user_id: priorOwner,
+				legacy_stage: rawOrNull(existing.legacy_stage),
+				legacy_owner_name: rawOrNull(existing.legacy_owner_name),
+				legacy_stage_reviewed:
+					existing.legacy_stage_reviewed === 1 ||
+					existing.legacy_stage_reviewed === true,
+				legacy_owner_reviewed:
+					existing.legacy_owner_reviewed === 1 ||
+					existing.legacy_owner_reviewed === true,
+				legacy_proposal_reviewed: true,
+				legacy_proposal_conflict: false,
+				canonical_proposal_id: null,
+			});
+			const stageOrOwnerInReview = openReviewItems.some(
+				(item) => item.type === 'stage' || item.type === 'owner'
+			);
 
 			const stageProvided = Object.hasOwn(input, 'enquiry_status');
 			const currentStage = resolveCanonicalStage(existing.enquiry_status);
@@ -654,6 +700,61 @@ export async function updateLead(
 			// a plain edit moves the Lead's outstanding work instead of
 			// writing a column value nothing else knows about.
 			const followUpProvided = Object.hasOwn(input, 'follow_up_date');
+
+			// A converted Lead takes no new Lead-side sales work: the work
+			// continues on the linked Proposal. A generic edit may still
+			// correct the contact details of the enquiry.
+			if (currentStage === 'Converted' && followUpProvided) {
+				throw new LeadWorkflowError(
+					'lead_converted',
+					LEAD_LIFECYCLE_MESSAGES.lead_converted,
+					409
+				);
+			}
+
+			// A stage or owner change on a Lead whose legacy value is still
+			// in review would close that review dimension without a
+			// decision. The review panel is the only way through.
+			const stageChanged = stageProvided && nextStage !== currentStage;
+			const ownerChanged = ownerProvided && nextOwner !== priorOwner;
+			if ((stageChanged || ownerChanged) && stageOrOwnerInReview) {
+				throw new LeadWorkflowError(
+					'transition_unavailable',
+					'This lead has an open legacy review item. Resolve the Lead Stage and the Lead Owner in the review panel before changing the stage or the owner.',
+					409
+				);
+			}
+
+			// A generic edit never bypasses the explicit decisions and their
+			// required fields: reaching Qualified or Nurture through a plain
+			// edit needs the same evidence a qualification needs. The
+			// evidence is the evidence of the Lead as this edit leaves it.
+			if (
+				stageChanged &&
+				(nextStage === 'Qualified' || nextStage === 'Nurture')
+			) {
+				assertQualificationFacts({
+					contactName: Object.hasOwn(input, 'contact_name')
+						? trimOrNull(input.contact_name)
+						: trimOrNull(existing.contact_name),
+					contactEmail: Object.hasOwn(input, 'contact_email')
+						? trimOrNull(input.contact_email)
+						: trimOrNull(existing.contact_email),
+					inquiryEmail: Object.hasOwn(input, 'inquiry_email')
+						? trimOrNull(input.inquiry_email)
+						: trimOrNull(existing.inquiry_email),
+					ccEmails: Object.hasOwn(input, 'cc_emails')
+						? trimOrNull(input.cc_emails)
+						: trimOrNull(existing.cc_emails),
+					phone: Object.hasOwn(input, 'phone')
+						? trimOrNull(input.phone)
+						: trimOrNull(existing.phone),
+					projectDescription: Object.hasOwn(input, 'project_description')
+						? trimOrNull(input.project_description)
+						: trimOrNull(existing.project_description),
+				});
+			}
+
 			const nextFollowUp = followUpProvided
 				? normalizeDate(input.follow_up_date)
 				: trimOrNull(existing.follow_up_date);
@@ -721,6 +822,19 @@ export async function updateLead(
 
 			if (ownerProvided && nextOwner !== priorOwner) {
 				await recordOwnershipChange(db, id, priorOwner, nextOwner, actorUserId);
+			}
+			// Every stage change is on the timeline: the generic path writes
+			// the same stage history the explicit decision writes, with the
+			// actor of the session and the reason the caller supplied.
+			if (stageChanged && nextStage !== null) {
+				await recordStageChange(db, {
+					leadId: id,
+					fromStage: currentStage,
+					toStage: nextStage,
+					changeSource: 'explicit',
+					reason: trimOrNull(input.reason),
+					actorUserId,
+				});
 			}
 			// `leads.follow_up_date` is the mirror of the outstanding work.
 			await syncFollowUpDateMirror(db, id);
@@ -803,9 +917,11 @@ const MAX_EVIDENCE_LENGTH = 65535;
  * raw stages keep the original as evidence with a review flag. Raw owner
  * evidence is never silently resolved to a user — authority comes only from
  * the selected owner. Active canonical stages share the manual owner +
- * dated-next-action validation; invalid active rows fail as row errors with
- * NO saved Lead. Each row commits in its own transaction so an audit-write
- * failure cannot leave a saved Lead behind a reported error.
+ * dated-next-action validation, and a row that asks for a stage which
+ * depends on the qualification also needs the same contact and project-need
+ * evidence the explicit decision needs; invalid rows fail as row errors
+ * with NO saved Lead. Each row commits in its own transaction so an
+ * audit-write failure cannot leave a saved Lead behind a reported error.
  */
 export async function importLeads(
 	rows: ImportLeadRow[],
@@ -862,6 +978,28 @@ export async function importLeads(
 			if (canonical !== null) {
 				try {
 					assertActiveStageRequirements(canonical, ownerUserId, followUpDate);
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : String(error);
+					errors.push(`Row ${row.rowNumber}: ${message}`);
+					continue;
+				}
+			}
+			// A CSV row that asks for a stage which depends on the
+			// qualification has to carry the same evidence the explicit
+			// decision needs: a named contact, a usable phone number or
+			// email address, and a clear project need. A row without it is
+			// a row error, never a saved Lead.
+			if (canonical === 'Qualified' || canonical === 'Nurture') {
+				try {
+					assertQualificationFacts({
+						contactName: trimOrNull(row.contact_name),
+						contactEmail: normalizeEmail(row.contact_email),
+						inquiryEmail: null,
+						ccEmails: null,
+						phone: trimOrNull(row.phone),
+						projectDescription: trimOrNull(row.project_description),
+					});
 				} catch (error) {
 					const message =
 						error instanceof Error ? error.message : String(error);

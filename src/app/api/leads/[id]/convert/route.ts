@@ -8,7 +8,7 @@ import { logActivity } from '@/utils/activity-logger';
 import { convertLead, type ConvertLeadInput } from '@/server/leads/conversion';
 import {
 	leadWorkflowFailure,
-	parseLeadId,
+	parseLeadTaskActivityId,
 } from '@/app/api/leads/_lib/route-helpers';
 
 /**
@@ -55,7 +55,7 @@ export async function POST(
 	if (proposalAuth instanceof Response) return proposalAuth;
 
 	const { id } = await params;
-	const leadId = parseLeadId(id);
+	const leadId = parseLeadTaskActivityId(id);
 	if (leadId === null) {
 		return Response.json(
 			{ success: false, error: 'Lead not found' },

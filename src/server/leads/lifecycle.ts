@@ -231,8 +231,23 @@ function assertDecisionAvailable(
 	}
 }
 
+/**
+ * The facts a Lead needs before it may reach a stage that depends on the
+ * qualification: a named contact, a usable phone number or email address,
+ * and a clear project need. The explicit decision and the generic edit
+ * apply the same rule, so neither path can reach a stage the other cannot.
+ */
+export interface LeadQualificationFacts {
+	contactName: string | null;
+	contactEmail: string | null;
+	inquiryEmail: string | null;
+	ccEmails: string | null;
+	phone: string | null;
+	projectDescription: string | null;
+}
+
 /** A usable phone number or email address: any one of them is enough. */
-function hasUsableContactDetails(lead: LeadLifecycleState): boolean {
+export function hasUsableContactDetails(lead: LeadQualificationFacts): boolean {
 	if (lead.phone !== null) return true;
 	if (normalizeEmail(lead.contactEmail) !== null) return true;
 	if (normalizeEmail(lead.inquiryEmail) !== null) return true;
@@ -249,7 +264,7 @@ function hasUsableContactDetails(lead: LeadLifecycleState): boolean {
  * number or email address, and a clear project need. Budget and timing are
  * not Lead fields, so they never block a qualification.
  */
-function assertQualificationFacts(lead: LeadLifecycleState): void {
+export function assertQualificationFacts(lead: LeadQualificationFacts): void {
 	if (lead.contactName === null) {
 		throw new LeadWorkflowError(
 			'contact_name_required',

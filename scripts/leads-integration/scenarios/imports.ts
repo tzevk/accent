@@ -44,6 +44,21 @@ async function importCsv(
 	return ImportResponseSchema.parse(response.json());
 }
 
+/**
+ * The import request: the CSV file and the owner the rows are saved for.
+ * The owner is authority, never a name column of the file.
+ */
+function importForm(
+	csv: string,
+	fileName: string,
+	ownerUserId: number
+): FormData {
+	const form = new FormData();
+	form.append('file', new File([csv], fileName, { type: 'text/csv' }));
+	form.append('owner_user_id', String(ownerUserId));
+	return form;
+}
+
 async function leadIdByCompany(
 	context: ScenarioContext,
 	companyName: string,
@@ -339,4 +354,88 @@ export async function activeImportRequirementsScenario(
 		`active intake without its required owner must fail: ${response.text}`
 	);
 	assert.equal(await context.reader.countLeadsByCompany(companyName), 0);
+}
+
+/**
+ * A CSV row that asks for a stage which depends on the qualification has to
+ * carry the same contact and project-need evidence the explicit decision
+ * needs. A row without it is a row error, never a saved Lead.
+ */
+export async function importRowNeedsTheDecisionEvidenceScenario(
+	context: ScenarioContext
+): Promise<void> {
+	const refusedCompany = `${context.runTag} Import Qualified Co`;
+	const refused = await context.http.post(
+		'/api/leads/import',
+		importForm(
+			buildCsv([
+				{
+					Company: refusedCompany,
+					'Contact Name': '',
+					Email: 'import@example.com',
+					'Project Description': `${context.runTag} import need`,
+					Status: 'Qualified',
+					'Next follow-up date': '2026-12-01',
+				},
+			]),
+			'import-qualified.csv',
+			context.assignee.id
+		),
+		context.creator.sessionToken
+	);
+	assert.equal(
+		refused.status,
+		400,
+		`a row without the evidence must fail: ${refused.text}`
+	);
+	const refusedBody = z
+		.object({
+			success: z.literal(false),
+			error: z.string(),
+			errors: z.array(z.string()).nullable(),
+		})
+		.parse(refused.json());
+	assert.match(
+		(refusedBody.errors ?? []).join(' | '),
+		/named contact/,
+		'the row error names the missing evidence'
+	);
+	assert.equal(
+		await context.reader.countLeadsByCompany(refusedCompany),
+		0,
+		'a refused row saves no lead'
+	);
+
+	// The same row with the evidence is a Lead.
+	const acceptedCompany = `${context.runTag} Import Evidenced Co`;
+	const accepted = await context.http.post(
+		'/api/leads/import',
+		importForm(
+			buildCsv([
+				{
+					Company: acceptedCompany,
+					'Contact Name': 'Imported Contact',
+					Email: 'import@example.com',
+					'Project Description': `${context.runTag} import need`,
+					Status: 'Qualified',
+					'Next follow-up date': '2026-12-01',
+				},
+			]),
+			'import-evidenced.csv',
+			context.assignee.id
+		),
+		context.creator.sessionToken
+	);
+	assert.equal(accepted.status, 200, `import body: ${accepted.text}`);
+	const acceptedBody = ImportResponseSchema.parse(accepted.json());
+	assert.equal(acceptedBody.imported, 1);
+	const leadId = await leadIdByCompany(
+		context,
+		acceptedCompany,
+		context.creator.sessionToken
+	);
+	const row = await context.reader.leadRow(leadId);
+	assert.ok(row, 'the imported lead persists');
+	assert.equal(row.enquiry_status, 'Qualified');
+	assert.equal(row.owner_user_id, context.assignee.id);
 }

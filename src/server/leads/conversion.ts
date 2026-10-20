@@ -1,4 +1,5 @@
 import { dbConnect } from '@/utils/database';
+import { sanitizeOptionalRichText } from '@/lib/sanitize-fields';
 import {
 	LEAD_CONVERSION_MESSAGES,
 	canConvertLead,
@@ -216,7 +217,9 @@ async function readCanonicalProposal(
           WHERE p.lead_id = l.id AND (p.isDelete = 0 OR p.isDelete IS NULL)) AS single_id,
         (SELECT COUNT(*) FROM proposals p
           WHERE p.lead_id = l.id AND (p.isDelete = 0 OR p.isDelete IS NULL)) AS live_count
-      FROM leads l WHERE l.id = ? LIMIT 1`,
+      FROM leads l
+      WHERE l.id = ? AND (l.isDelete = 0 OR l.isDelete IS NULL)
+      LIMIT 1`,
 		[leadId]
 	)) as unknown as [
 		{
@@ -313,7 +316,9 @@ async function createCanonicalProposal(
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, 0, NOW(), NOW())`,
 		[
 			proposalTitle,
-			trimOrNull(lead.project_description),
+			// The description is an HTML-bound column, so the Lead's plain
+			// text goes through the shared write-path sanitiser (ADR-0012).
+			sanitizeOptionalRichText(trimOrNull(lead.project_description)),
 			trimOrNull(lead.company_name),
 			trimOrNull(lead.contact_name),
 			contactEmail,
@@ -331,10 +336,12 @@ async function createCanonicalProposal(
 
 /**
  * The scheduled Lead work moves to the Proposal. Every outstanding
- * scheduled row becomes one Proposal follow-up, and the source row keeps
- * the link to its destination, so the handoff is traceable and every
- * source task has exactly one destination. The completed and cancelled
- * activities of the Lead stay where they are.
+ * scheduled row becomes one Proposal follow-up, and both rows keep the link
+ * to each other: the source activity names its destination, and the
+ * destination names the Lead activity it came from. The handoff is
+ * therefore traceable in both directions, and every source task has exactly
+ * one destination. The completed and cancelled activities of the Lead stay
+ * where they are.
  */
 async function transferScheduledWork(
 	db: DbConnection,
@@ -368,14 +375,15 @@ async function transferScheduledWork(
 		const [inserted] = (await db.execute(
 			`INSERT INTO proposal_followups (
         proposal_id, follow_up_date, follow_up_type, description, status,
-        created_by, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'Scheduled', ?, NOW(), NOW())`,
+        created_by, source_lead_activity_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'Scheduled', ?, ?, NOW(), NOW())`,
 			[
 				proposalId,
 				String(row.scheduled_for).slice(0, 10),
 				leadConversionFollowUpType(row.activity_type),
 				leadConversionFollowUpDescription(row.next_action, row.notes),
 				actorUserId,
+				row.id,
 			]
 		)) as unknown as [{ insertId: number }, unknown];
 		await db.execute(
@@ -397,6 +405,9 @@ async function transferScheduledWork(
  * enquiry: exactly one live Proposal of an enquiry carries the link, and
  * every other Proposal of that enquiry carries none. A Proposal that no
  * longer links to the enquiry never keeps a claim on it.
+ *
+ * A soft-deleted enquiry is not there any more: its state and the pointers
+ * of its Proposals stay exactly as they are.
  */
 export async function syncCanonicalProposalLink(
 	db: DbConnection,
@@ -404,10 +415,14 @@ export async function syncCanonicalProposalLink(
 ): Promise<void> {
 	const [rows] = (await db.execute(
 		`SELECT l.canonical_proposal_id AS canonical_id
-      FROM leads l WHERE l.id = ? LIMIT 1`,
+      FROM leads l
+      WHERE l.id = ? AND (l.isDelete = 0 OR l.isDelete IS NULL)
+      LIMIT 1`,
 		[leadId]
 	)) as unknown as [{ canonical_id: number | null }[], unknown];
-	const canonicalId = toNullableId(rows[0]?.canonical_id);
+	const row = rows[0];
+	if (!row) return;
+	const canonicalId = toNullableId(row.canonical_id);
 	await db.execute(
 		`UPDATE proposals SET canonical_lead_id = NULL
       WHERE canonical_lead_id = ?
@@ -466,6 +481,11 @@ export async function convertLead(
 				canonicalId !== null &&
 				linked.some((proposal) => proposal.id === canonicalId);
 			if (canonicalId !== null && canonicalIsLive) {
+				// The repeat path changes nothing, so the transaction ends
+				// with a commit before the answer is read. The connection
+				// is released with the lock closed, not with an open
+				// transaction.
+				await tx.commit();
 				return {
 					proposal_id: canonicalId,
 					proposal: await readProposal(db, canonicalId),
@@ -474,7 +494,9 @@ export async function convertLead(
 			}
 			if (linked.length === 1) {
 				// Exactly one live Proposal links to the enquiry: it is the
-				// evidence-backed canonical one.
+				// evidence-backed canonical one. The repeat path changes
+				// nothing either, so the transaction ends here too.
+				await tx.commit();
 				return {
 					proposal_id: linked[0].id,
 					proposal: await readProposal(db, linked[0].id),
@@ -518,7 +540,7 @@ export async function convertLead(
               converted_at = NOW(),
               converted_by = ?,
               updated_at = NOW()
-          WHERE id = ?`,
+          WHERE id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
 				[proposalId, actorUserId, leadId]
 			);
 

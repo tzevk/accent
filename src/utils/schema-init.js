@@ -91,7 +91,7 @@ async function ensureSoftDeleteColumns(db) {
 			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
 		},
 		{
-			table: 'lead_activities',
+			table: 'follow_ups',
 			def: 'isDelete TINYINT(1) NOT NULL DEFAULT 0',
 		},
 		{
@@ -198,9 +198,7 @@ async function doSchemaInit() {
 
 		// Tables depending on the above
 		await Promise.all([
-			initLeadActivitiesTable(db),
-			initLeadStageHistoryTable(db),
-			initLeadActivityCorrectionsTable(db),
+			initFollowUpsTable(db),
 			initSoftwareCategoriesTable(db),
 			initSoftwaresTable(db),
 			initSoftwareVersionsTable(db),
@@ -224,7 +222,6 @@ async function doSchemaInit() {
 		// Proposal/project sub-tables
 		await Promise.all([
 			initProposalFollowupsTable(db),
-			initLeadConversionsTable(db),
 			initProjectFollowupsTable(db),
 			initProjectInvoicesTable(db),
 			initProjectPurchaseOrdersTable(db),
@@ -1106,8 +1103,6 @@ async function initLeadsTable(db) {
 
 	const alterStatements = [
 		'ALTER TABLE leads ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
-		'ALTER TABLE leads ADD COLUMN converted_at DATETIME NULL DEFAULT NULL',
-		'ALTER TABLE leads ADD COLUMN converted_by INT NULL DEFAULT NULL',
 	];
 
 	for (const stmt of alterStatements) {
@@ -1604,7 +1599,6 @@ async function initProposalsTable(db) {
 		'ALTER TABLE proposals ADD COLUMN city VARCHAR(100)',
 		'ALTER TABLE proposals ADD COLUMN value DECIMAL(15,2)',
 		'ALTER TABLE proposals ADD COLUMN due_date DATE',
-		'ALTER TABLE proposals ADD COLUMN canonical_lead_id INT NULL DEFAULT NULL',
 	];
 
 	for (const stmt of alterStatements) {
@@ -1633,21 +1627,6 @@ async function initProposalsTable(db) {
 			!e.message?.includes('already exists')
 		) {
 			console.warn('Proposals index migration warning:', e.message || e);
-		}
-	}
-
-	// One enquiry has one canonical Proposal: the unique index over the
-	// canonical Lead link is what the database enforces.
-	try {
-		await db.execute(
-			'ALTER TABLE proposals ADD UNIQUE KEY uk_proposals_canonical_lead (canonical_lead_id)'
-		);
-	} catch (e) {
-		if (
-			!e.message?.includes('Duplicate key name') &&
-			!e.message?.includes('already exists')
-		) {
-			console.warn('Proposals canonical link index warning:', e.message || e);
 		}
 	}
 }
@@ -1831,126 +1810,42 @@ async function initProjectMomDocumentsTable(db) {
   `);
 }
 
-async function initLeadActivitiesTable(db) {
-	// The Lead activity log: one row per Lead work item. The dated next
-	// action of a Lead is a scheduled row here, never a loose column value.
+async function initFollowUpsTable(db) {
 	await db.execute(`
-    CREATE TABLE IF NOT EXISTS lead_activities (
+    CREATE TABLE IF NOT EXISTS follow_ups (
       id INT PRIMARY KEY AUTO_INCREMENT,
-      lead_id INT NOT NULL,
-      activity_type VARCHAR(16),
-      status VARCHAR(16) NOT NULL DEFAULT 'Scheduled',
-      call_outcome VARCHAR(16),
-      reply_confirmed TINYINT(1),
-      scheduled_for DATE,
-      occurred_at DATETIME,
-      completed_at DATETIME,
-      next_action VARCHAR(255),
+      lead_id INT,
+      follow_up_date DATE,
+      follow_up_type VARCHAR(100),
+      description TEXT,
       notes TEXT,
+      status VARCHAR(50),
+      next_action VARCHAR(255),
+      next_follow_up_date DATE,
       created_by INT,
-      version INT NOT NULL DEFAULT 1,
-      recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      legacy_type VARCHAR(50),
-      legacy_scheduled_date DATE,
-      transferred_followup_id INT,
-      transferred_at DATETIME,
-      source_activity_id INT,
-      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      isDelete TINYINT(1) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE RESTRICT,
-      INDEX idx_lead_activities_lead (lead_id),
-      INDEX idx_lead_activities_status (status),
-      INDEX idx_lead_activities_scheduled (scheduled_for),
+      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
       INDEX idx_isDelete (isDelete)
     )
   `);
 
 	const alterStatements = [
-		'ALTER TABLE lead_activities ADD COLUMN activity_type VARCHAR(16)',
-		'ALTER TABLE lead_activities ADD COLUMN call_outcome VARCHAR(16)',
-		'ALTER TABLE lead_activities ADD COLUMN reply_confirmed TINYINT(1)',
-		'ALTER TABLE lead_activities ADD COLUMN scheduled_for DATE',
-		'ALTER TABLE lead_activities ADD COLUMN occurred_at DATETIME',
-		'ALTER TABLE lead_activities ADD COLUMN completed_at DATETIME',
-		'ALTER TABLE lead_activities ADD COLUMN next_action VARCHAR(255)',
-		'ALTER TABLE lead_activities ADD COLUMN notes TEXT',
-		'ALTER TABLE lead_activities ADD COLUMN created_by INT',
-		'ALTER TABLE lead_activities ADD COLUMN version INT NOT NULL DEFAULT 1',
-		'ALTER TABLE lead_activities ADD COLUMN legacy_type VARCHAR(50)',
-		'ALTER TABLE lead_activities ADD COLUMN legacy_scheduled_date DATE',
-		'ALTER TABLE lead_activities ADD COLUMN transferred_followup_id INT',
-		'ALTER TABLE lead_activities ADD COLUMN transferred_at DATETIME',
-		'ALTER TABLE lead_activities ADD COLUMN source_activity_id INT',
+		'ALTER TABLE follow_ups ADD COLUMN description TEXT',
+		'ALTER TABLE follow_ups ADD COLUMN next_action VARCHAR(255)',
+		'ALTER TABLE follow_ups ADD COLUMN next_follow_up_date DATE',
+		'ALTER TABLE follow_ups ADD COLUMN isDelete TINYINT(1) DEFAULT 0',
 	];
 	for (const stmt of alterStatements) {
 		try {
 			await db.execute(stmt);
 		} catch (e) {
 			if (e.errno !== 1060 && !e.message?.includes('Duplicate column name')) {
-				console.warn('Lead activities schema update warning:', e.message || e);
+				console.warn('Follow-ups schema update warning:', e.message || e);
 			}
 		}
 	}
-}
-
-async function initLeadConversionsTable(db) {
-	// The conversion evidence: one row per Lead-to-Proposal handoff.
-	await db.execute(`
-    CREATE TABLE IF NOT EXISTS lead_conversions (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      lead_id INT NOT NULL,
-      proposal_id INT NOT NULL,
-      converted_by INT NULL,
-      converted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE RESTRICT,
-      FOREIGN KEY (proposal_id) REFERENCES proposals(id) ON DELETE RESTRICT,
-      FOREIGN KEY (converted_by) REFERENCES users(id) ON DELETE RESTRICT,
-      INDEX idx_lead_conversions_lead (lead_id),
-      INDEX idx_lead_conversions_proposal (proposal_id)
-    )
-  `);
-}
-
-async function initLeadStageHistoryTable(db) {
-	// Every stage change of a Lead, with the reason, the actor, and the time.
-	await db.execute(`
-    CREATE TABLE IF NOT EXISTS lead_stage_history (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      lead_id INT NOT NULL,
-      from_stage VARCHAR(32),
-      to_stage VARCHAR(32) NOT NULL,
-      change_source VARCHAR(16) NOT NULL,
-      reason TEXT,
-      actor_user_id INT,
-      recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE RESTRICT,
-      INDEX idx_lead_stage_history_lead (lead_id, recorded_at)
-    )
-  `);
-}
-
-async function initLeadActivityCorrectionsTable(db) {
-	// The append-only history of the corrections of a Lead activity.
-	await db.execute(`
-    CREATE TABLE IF NOT EXISTS lead_activity_corrections (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      activity_id INT NOT NULL,
-      lead_id INT NOT NULL,
-      previous_values TEXT NOT NULL,
-      corrected_values TEXT NOT NULL,
-      reason TEXT NOT NULL,
-      corrected_by INT,
-      corrected_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (activity_id) REFERENCES lead_activities(id) ON DELETE RESTRICT,
-      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE RESTRICT,
-      INDEX idx_lead_activity_corrections_activity (activity_id),
-      INDEX idx_lead_activity_corrections_lead (lead_id)
-    )
-  `);
 }
 
 async function initSoftwareCategoriesTable(db) {

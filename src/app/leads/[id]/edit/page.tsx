@@ -222,7 +222,12 @@ export default function EditLead({ params }: EditLeadProps) {
 		};
 		if (ownerChanged) payload.owner_user_id = ownerUserId;
 		if (!locked && stage !== currentStage) payload.enquiry_status = stage;
-		if (formData.follow_up_date !== formatDateInput(lead.follow_up_date)) {
+		// A converted Lead takes no new Lead-side work: the work continues
+		// on the linked Proposal, so the next action is not offered here.
+		if (
+			currentStage !== 'Converted' &&
+			formData.follow_up_date !== formatDateInput(lead.follow_up_date)
+		) {
 			payload.follow_up_date = formData.follow_up_date;
 		}
 		updateMutation.mutate(payload);
@@ -702,29 +707,48 @@ export default function EditLead({ params }: EditLeadProps) {
 											/>
 										</div>
 										<div>
-											<label
-												htmlFor="lead-edit-followup"
-												className={labelClass}
-											>
-												Next follow-up date
-											</label>
-											<input
-												id="lead-edit-followup"
-												type="date"
-												name="follow_up_date"
-												value={formData.follow_up_date}
-												onChange={(event) =>
-													setField('follow_up_date', event.target.value)
-												}
-												aria-describedby="lead-edit-followup-help"
-												className={inputClass}
-											/>
-											<p
-												id="lead-edit-followup-help"
-												className="text-xs text-gray-500 mt-1"
-											>
-												Required for active stages. Unchanged values stay valid.
-											</p>
+											{lead.enquiry_status === 'Converted' ? (
+												<>
+													<span className={labelClass}>
+														Next follow-up date
+													</span>
+													<p
+														id="lead-edit-followup-help"
+														className="text-xs text-gray-500 mt-1"
+													>
+														This lead is converted. The work continues on the
+														linked proposal, so no new next action is scheduled
+														here.
+													</p>
+												</>
+											) : (
+												<>
+													<label
+														htmlFor="lead-edit-followup"
+														className={labelClass}
+													>
+														Next follow-up date
+													</label>
+													<input
+														id="lead-edit-followup"
+														type="date"
+														name="follow_up_date"
+														value={formData.follow_up_date}
+														onChange={(event) =>
+															setField('follow_up_date', event.target.value)
+														}
+														aria-describedby="lead-edit-followup-help"
+														className={inputClass}
+													/>
+													<p
+														id="lead-edit-followup-help"
+														className="text-xs text-gray-500 mt-1"
+													>
+														Required for active stages. Unchanged values stay
+														valid.
+													</p>
+												</>
+											)}
 										</div>
 									</div>
 									<div className="grid grid-cols-1 md:grid-cols-2 gap-4">

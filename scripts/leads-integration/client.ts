@@ -168,6 +168,7 @@ export interface DbProposalRow {
 	id: number;
 	lead_id: number | null;
 	proposal_title: string | null;
+	description: string | null;
 	status: string | null;
 	progress: string | null;
 	proposal_value: string | null;
@@ -207,6 +208,8 @@ export interface DbProposalFollowupRow {
 	description: string | null;
 	status: string | null;
 	created_by: number | null;
+	/** The Lead activity this follow-up came from. */
+	source_lead_activity_id: number | null;
 }
 
 export interface DbOwnershipRow {
@@ -301,6 +304,11 @@ export interface Reader {
 	proposalFollowups: (proposalId: number) => Promise<DbProposalFollowupRow[]>;
 	/** Every Proposal follow-up in the database, for the rollback proof. */
 	countProposalFollowups: () => Promise<number>;
+	/**
+	 * The open transactions that hold a row lock. A released connection
+	 * with an open transaction would show up here.
+	 */
+	countOpenTransactions: () => Promise<number>;
 	userByUsername: (username: string) => Promise<Record<string, unknown> | null>;
 	countLeadsByCompany: (companyName: string) => Promise<number>;
 	/** The calendar day of the database, the date policy of the queues. */
@@ -349,6 +357,12 @@ export interface ScenarioContext {
 	readOnly: FixtureIdentity;
 	noAssign: FixtureIdentity;
 	proposer: FixtureIdentity;
+	/** A super admin: no resource grant at all, every check bypassed. */
+	superAdmin: FixtureIdentity;
+	/** The Lead convert right and the Proposal create right, no Lead update. */
+	convertOnly: FixtureIdentity;
+	/** The Lead update right and the Proposal create right, no Lead convert. */
+	updateOnly: FixtureIdentity;
 	trackLead: (id: number) => void;
 }
 
