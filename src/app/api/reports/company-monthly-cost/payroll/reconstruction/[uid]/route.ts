@@ -1,5 +1,5 @@
 /**
- * POST /api/reports/employee-project-monthly-cost/payroll/reconstruction/{uid}
+ * POST /api/reports/company-monthly-cost/payroll/reconstruction/{uid}
  *
  * Review one reconstruction proposal (#308, ADR-0016): approve freezes the
  * reviewed figures as the Payroll Slip's Project allocation (appending a

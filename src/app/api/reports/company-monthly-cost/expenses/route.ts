@@ -1,5 +1,5 @@
 /**
- * GET /api/reports/employee-project-monthly-cost/expenses
+ * GET /api/reports/company-monthly-cost/expenses
  *
  * Source drilldown for the company expenditure reconciliation: the direct
  * cost records behind a month's figures, with their cost identity, evidence

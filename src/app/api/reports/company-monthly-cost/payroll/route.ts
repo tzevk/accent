@@ -1,5 +1,5 @@
 /**
- * GET /api/reports/employee-project-monthly-cost/payroll
+ * GET /api/reports/company-monthly-cost/payroll
  *
  * The employee-cost drilldown behind the company expenditure reconciliation:
  * one row per Employee with recorded employer cost, Payroll-based estimates,

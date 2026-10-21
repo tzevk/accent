@@ -2,7 +2,7 @@
 
 The client needs to control monthly expenditure across project-based work. They need to identify expensive Projects, explain monthly increases, and understand money already committed to suppliers.
 
-The current Employee Utilization report answers workforce questions. The Employee Project Monthly Cost report estimates employee cost from Salary Profiles and Logged Hours. Neither establishes complete company expenditure. Supplier costs, other expenses, Company Overhead, missing project allocations, and financial period controls are not reconciled together.
+The current Employee Utilization report answers workforce questions. The Company Monthly Cost report estimates employee cost from Salary Profiles and Logged Hours. Neither establishes complete company expenditure. Supplier costs, other expenses, Company Overhead, missing project allocations, and financial period controls are not reconciled together.
 
 Summing orders, invoices, expenses, and payments would count the same cost repeatedly. Client order value can also be mistaken for supplier cost. Missing records currently risk appearing as zero expenditure.
 

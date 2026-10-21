@@ -164,8 +164,8 @@ const reportsMenuConfig = [
 		reportField: 'project_activities', // reuse so existing grants cover the new report
 	},
 	{
-		name: 'Employee Project Monthly Cost',
-		href: '/reports/employee-project-monthly-cost',
+		name: 'Company Monthly Cost',
+		href: '/reports/company-monthly-cost',
 		icon: BanknotesIcon,
 		// Financial report: gated on the reporting privilege, not the
 		// `project_activities` grant, so Project Activity access alone cannot

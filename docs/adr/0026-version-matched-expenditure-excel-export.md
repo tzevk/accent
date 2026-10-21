@@ -19,5 +19,5 @@ They provide context only and never represent revenue or profit.
 The export endpoint requires the `canReadFinancialSources` permission check.
 Super administrators and users with `reports:read`, `other_expenses:read`, and `payroll:read` can download it.
 Unauthorized requests return a 403 Forbidden response without leaking data.
-The implementation lives in `src/app/reports/employee-project-monthly-cost/excel-template.ts`.
-The download route lives in `src/app/api/reports/employee-project-monthly-cost/download/route.ts`.
+The implementation lives in `src/app/reports/company-monthly-cost/excel/expenditure.ts`.
+The download route lives in `src/app/api/reports/company-monthly-cost/download/route.ts`.

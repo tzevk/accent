@@ -15,7 +15,7 @@ import {
 	MOCK_SEPTEMBER_HOURS,
 	MOCK_OCTOBER_HOURS,
 	MOCK_AUGUST_HOURS,
-} from '@/app/reports/employee-project-monthly-cost/mock-data';
+} from '@/app/reports/company-monthly-cost/employee-cost-mock-data';
 
 /**
  * The fixture's promises, held. Structural first (details and aggregates
