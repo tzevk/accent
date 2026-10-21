@@ -645,18 +645,21 @@ export async function updateLead(
 				(item) => item.type === 'stage' || item.type === 'owner'
 			);
 
-			const stageProvided = Object.hasOwn(input, 'enquiry_status');
+			// A request that carries no stage at all, or an empty one, asks
+			// for no stage change. Only a stage the user actually chose may
+			// move the Lead, so a stale client that sends an empty field
+			// saves the rest of the edit instead of failing it.
+			const stageRaw = input.enquiry_status;
+			const stageEmpty =
+				stageRaw === null ||
+				stageRaw === undefined ||
+				(typeof stageRaw === 'string' && stageRaw.trim() === '');
+			const stageProvided =
+				Object.hasOwn(input, 'enquiry_status') && !stageEmpty;
 			const currentStage = resolveCanonicalStage(existing.enquiry_status);
 			let nextStage = currentStage;
 			if (stageProvided) {
 				const raw = input.enquiry_status;
-				if (raw === null || (typeof raw === 'string' && raw.trim() === '')) {
-					throw new LeadWorkflowError(
-						'stage_unknown',
-						'Lead stage must be a canonical stage',
-						422
-					);
-				}
 				const canonical = resolveCanonicalStage(raw);
 				if (!canonical) {
 					throw new LeadWorkflowError(

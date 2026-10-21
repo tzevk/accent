@@ -782,4 +782,29 @@ export async function genericEditRefusesAnOpenReviewItemScenario(
 		context.assignee.sessionToken
 	);
 	assert.equal(edited.status, 200, `notes body: ${edited.text}`);
+
+	// A client that sends an empty stage — a stale bundle that had no value
+	// for the unresolved stage — saves the rest of the edit and leaves the
+	// stage where it is. It is not asked to clear a stage it never chose.
+	const emptyStage = await context.http.put(
+		`/api/leads/${leadId}`,
+		{
+			notes: `${context.runTag} note with an empty stage`,
+			enquiry_status: '',
+		},
+		context.assignee.sessionToken
+	);
+	assert.equal(emptyStage.status, 200, `empty stage body: ${emptyStage.text}`);
+	const afterEmptyStage = await context.reader.leadRow(leadId);
+	assert.ok(afterEmptyStage);
+	assert.equal(
+		afterEmptyStage.enquiry_status,
+		null,
+		'the stage stays unresolved'
+	);
+	assert.equal(
+		afterEmptyStage.follow_up_date,
+		after?.follow_up_date,
+		'the rest of the edit is saved and the work is untouched'
+	);
 }

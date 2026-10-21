@@ -284,6 +284,13 @@ export default function EditLead({ params }: EditLeadProps) {
 	const stageLocked =
 		lead.enquiry_status === 'Converted' ||
 		lead.enquiry_status === 'Disqualified';
+	// A Lead whose stage still waits for a decision cannot take a stage
+	// edit: the review panel is the only way to settle a legacy value. The
+	// control says so instead of offering a choice the server refuses.
+	const stageInReview = (lead.review?.open_items ?? []).some(
+		(item) => item.type === 'stage'
+	);
+	const stageReadOnly = stageLocked || stageInReview;
 	const activeStageSelected = isActiveLeadStage(stage);
 	// What this Lead needs before it can be saved. The company name always
 	// does; an active stage also needs an owner and a dated next action, and
@@ -670,12 +677,16 @@ export default function EditLead({ params }: EditLeadProps) {
 											<label htmlFor="lead-edit-stage" className={labelClass}>
 												Lead Stage
 											</label>
-											{stageLocked ? (
+											{stageReadOnly ? (
 												<>
 													<input
 														id="lead-edit-stage"
 														type="text"
-														value={lead.enquiry_status ?? ''}
+														value={
+															stageInReview
+																? (lead.legacy_stage ?? 'Needs review')
+																: (lead.enquiry_status ?? '')
+														}
 														readOnly
 														disabled
 														aria-describedby="lead-edit-stage-help"
@@ -685,8 +696,9 @@ export default function EditLead({ params }: EditLeadProps) {
 														id="lead-edit-stage-help"
 														className="text-xs text-gray-500 mt-1"
 													>
-														This stage is read-only here. Ordinary contact and
-														owner edits are still allowed.
+														{stageInReview
+															? 'This Lead waits for a decision on its stage. Settle it in the Legacy review panel above; the original value is kept there.'
+															: 'This stage is read-only here. Ordinary contact and owner edits are still allowed.'}
 													</p>
 												</>
 											) : (
