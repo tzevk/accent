@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -20,6 +21,11 @@ import {
 import Navbar from '@/components/Navbar';
 import SearchableSelect from '@/components/ui/searchable-select';
 import ExpenditureView from './expenditure-view';
+import {
+	mockFyResponse,
+	mockMetaResponse,
+	mockMonthResponse,
+} from './mock-data';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { formatNumber, formatCurrency } from '@/lib/format';
@@ -485,6 +491,20 @@ const epcPrintStyles = `
 }`;
 
 export default function EmployeeProjectMonthlyCostPage() {
+	return (
+		<Suspense
+			fallback={
+				<div className="flex min-h-[50vh] items-center justify-center text-sm text-gray-500">
+					Loading…
+				</div>
+			}
+		>
+			<EmployeeProjectMonthlyCostInner />
+		</Suspense>
+	);
+}
+
+function EmployeeProjectMonthlyCostInner() {
 	const {
 		user,
 		can,
@@ -506,7 +526,12 @@ export default function EmployeeProjectMonthlyCostPage() {
 		loading: boolean;
 	};
 
-	const [viewMode, setViewMode] = useState<ViewMode>('expenditure');
+	const searchParams = useSearchParams();
+	const sampleMode = searchParams?.get('sample') === '1';
+
+	const [viewMode, setViewMode] = useState<ViewMode>(
+		sampleMode ? 'monthly' : 'expenditure'
+	);
 	const [selectedMonth, setSelectedMonth] = useState('');
 	const [selectedFy, setSelectedFy] = useState('');
 	const [metric, setMetric] = useState<Metric>('cost');
@@ -516,7 +541,10 @@ export default function EmployeeProjectMonthlyCostPage() {
 
 	const metaQuery = useQuery<MetaResponse>({
 		queryKey: ['reports', 'employee-project-monthly-cost', 'meta'],
-		queryFn: () => apiGet('/api/reports/employee-project-monthly-cost'),
+		queryFn: () =>
+			sampleMode
+				? Promise.resolve(mockMetaResponse() as MetaResponse)
+				: apiGet('/api/reports/employee-project-monthly-cost'),
 		refetchOnWindowFocus: false,
 		staleTime: 5 * 60_000,
 	});
@@ -546,9 +574,11 @@ export default function EmployeeProjectMonthlyCostPage() {
 			selectedMonth,
 		],
 		queryFn: () =>
-			apiGet(
-				`/api/reports/employee-project-monthly-cost?view=monthly&month=${selectedMonth}`
-			),
+			sampleMode
+				? Promise.resolve(mockMonthResponse(selectedMonth) as MonthlyResponse)
+				: apiGet(
+						`/api/reports/employee-project-monthly-cost?view=monthly&month=${selectedMonth}`
+					),
 		enabled: viewMode === 'monthly' && !!selectedMonth,
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
@@ -557,9 +587,11 @@ export default function EmployeeProjectMonthlyCostPage() {
 	const fyQuery = useQuery<FYResponse>({
 		queryKey: ['reports', 'employee-project-monthly-cost', 'fy', selectedFy],
 		queryFn: () =>
-			apiGet(
-				`/api/reports/employee-project-monthly-cost?view=fy&fy=${selectedFy}`
-			),
+			sampleMode
+				? Promise.resolve(mockFyResponse(Number(selectedFy)) as FYResponse)
+				: apiGet(
+						`/api/reports/employee-project-monthly-cost?view=fy&fy=${selectedFy}`
+					),
 		enabled: viewMode === 'fy' && !!selectedFy,
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
@@ -664,7 +696,10 @@ export default function EmployeeProjectMonthlyCostPage() {
 
 	const handlePrint = () => window.print();
 	const handleExport = async () => {
-		setExporting(true);
+		if (sampleMode) {
+			alert('Sample data is for preview only — Excel export is disabled.');
+			return;
+		}
 		try {
 			const url =
 				viewMode === 'expenditure'
@@ -1544,6 +1579,15 @@ export default function EmployeeProjectMonthlyCostPage() {
 								Company Overhead, and Unallocated Cost — with the employee-cost
 								and financial-year views alongside
 							</p>
+							{sampleMode && (
+								<p
+									data-testid="sample-data-banner"
+									className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800"
+								>
+									Sample data — preview only, not company figures. Monthly and
+									Financial Year views use fixtures; Expenditure stays live.
+								</p>
+							)}
 						</div>
 						<div
 							role="tablist"
@@ -1661,7 +1705,12 @@ export default function EmployeeProjectMonthlyCostPage() {
 									<button
 										type="button"
 										onClick={handleExport}
-										disabled={exporting || isLoading}
+										disabled={exporting || isLoading || sampleMode}
+										title={
+											sampleMode
+												? 'Excel export is disabled for sample data'
+												: undefined
+										}
 										className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
 									>
 										{exporting ? (

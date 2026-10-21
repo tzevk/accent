@@ -319,6 +319,10 @@ _Avoid_: Edit, Reversal without reason, Rewriting history
 An authorized multi-sheet Excel workbook export (`GET /api/reports/employee-project-monthly-cost/download?view=expenditure`) containing version-matched audit evidence for company and project expenditure reconciliation. It delivers five sheets: Company Reconciliation, Project Detail, Budgets & Commitments, Cash Paid, and Revisions & Close. The export matches the web report calculations, distinguishes missing data from zero, keeps company reconciliation totals intact when filtered by project, and displays commercial client orders with an explicit non-revenue non-profit disclaimer.
 _Avoid_: Unverified export, Filtered company total, Ad-hoc spreadsheet
 
+**CRM Presence**:
+A User's recently reported activity and availability within Accent. It does not establish attendance, Logged Hours, or productivity.
+_Avoid_: Employee presence, Productivity, Time Present
+
 **Work Session**:
 A User's system-observed presence span on one day — opened by the day's first login
 activity event and closed by an explicit logout, or by the staleness sweep that stamps
