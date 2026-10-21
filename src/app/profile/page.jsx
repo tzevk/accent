@@ -93,7 +93,7 @@ export default function ProfilePage() {
 			<Navbar />
 
 			<div className="flex-1 overflow-hidden">
-				<div className="h-full px-6 lg:px-8 pt-22 max-w-5xl mx-auto w-full">
+				<div className="h-full px-6 lg:px-8 pt-6 max-w-5xl mx-auto w-full">
 					<div className="mb-6 flex items-center justify-between">
 						<div>
 							<h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
