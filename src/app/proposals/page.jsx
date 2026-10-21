@@ -206,7 +206,7 @@ export default function Proposals() {
 		return (
 			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
 				<Navbar />
-				<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-20 max-w-[1800px] mx-auto">
+				<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-6 max-w-[1800px] mx-auto">
 					<div className="flex items-center justify-center h-[calc(100vh-120px)]">
 						<div className="text-center">
 							<LockClosedIcon className="h-16 w-16 text-gray-400 mx-auto" />
@@ -228,7 +228,7 @@ export default function Proposals() {
 			<Navbar />
 
 			{/* Fixed header section */}
-			<div className="flex-shrink-0 pt-24 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4 max-w-[1920px] mx-auto w-full">
+			<div className="flex-shrink-0 pt-6 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4 max-w-[1920px] mx-auto w-full">
 				<div className="mb-6">
 					<h1 className="text-3xl xl:text-4xl font-bold text-black mb-2">
 						Proposals Management

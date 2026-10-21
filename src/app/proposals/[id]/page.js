@@ -940,9 +940,12 @@ export default function ProposalPage() {
 		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
 			<Navbar />
 			<div className="flex-1 overflow-hidden">
-				<div className="h-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 max-w-[1800px] mx-auto w-full">
+				{/* The container is a column: the header keeps its own height
+				    and the content takes the rest, so the page scrolls to its
+				    end instead of running past the bottom of the window. */}
+				<div className="h-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-6 max-w-[1800px] mx-auto w-full flex flex-col">
 					{/* Header */}
-					<div className="mb-6">
+					<div className="mb-6 shrink-0">
 						<div className="flex items-center justify-between">
 							<div className="flex items-center space-x-3">
 								<button
@@ -1144,7 +1147,7 @@ export default function ProposalPage() {
 					</div>
 
 					{/* Content */}
-					<div className="h-full overflow-y-auto pb-8">
+					<div className="flex-1 min-h-0 overflow-y-auto pb-8">
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 							{/* Proposal Information */}
 							<div className="bg-white rounded-lg border border-gray-200 p-6">

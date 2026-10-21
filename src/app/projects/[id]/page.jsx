@@ -747,7 +747,11 @@ export default function ProjectViewPage() {
 			<div className="min-h-screen bg-gray-50 flex flex-col">
 				<Navbar />
 				<div className="flex-1 flex flex-col items-center justify-center text-sm text-gray-500 space-y-3 pt-16">
-					<p>{error?.message || error || 'Project not found'}</p>
+					<p>
+						{typeof error === 'string' && error
+							? error
+							: (error?.message ?? 'Project not found')}
+					</p>
 					<Link
 						href="/projects"
 						className="px-4 py-2 text-xs rounded-md bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors"
