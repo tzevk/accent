@@ -30,11 +30,16 @@ export async function apiGet(url, params) {
 }
 
 export async function apiSend(url, method, body) {
+	const multipart = body instanceof FormData;
 	const res = await fetch(url, {
 		method,
 		credentials: 'include',
-		headers: { 'Content-Type': 'application/json' },
-		body: body === undefined ? undefined : JSON.stringify(body),
+		headers: multipart ? undefined : { 'Content-Type': 'application/json' },
+		body: multipart
+			? body
+			: body === undefined
+				? undefined
+				: JSON.stringify(body),
 	});
 	if (!res.ok) {
 		throw new Error(await parseError(res));

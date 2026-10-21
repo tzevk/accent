@@ -18,3 +18,37 @@ jobs:
       - run: npm ci
       - name: Every API handler authorizes (ADR-0011)
         run: node scripts/check-route-auth.mjs
+
+  leads-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      # Production runs MariaDB 10.11, so the integration run uses the same
+      # engine. MySQL accepts and rejects different SQL.
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: integration-root-pass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -pintegration-root-pass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Leads authenticated HTTP integration (issue #368)
+        env:
+          INTEGRATION_DB_HOST: 127.0.0.1
+          INTEGRATION_DB_PORT: 3306
+          INTEGRATION_DB_NAME: accent_integration_369
+          INTEGRATION_DB_USER: root
+          INTEGRATION_DB_PASSWORD: integration-root-pass
+          LEADS_INTEGRATION_PORT: 31369
+        run: npm run test:integration:leads

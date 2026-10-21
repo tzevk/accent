@@ -8,45 +8,42 @@ import {
 	UserIcon,
 	CalendarDaysIcon,
 	ChatBubbleLeftRightIcon,
-	ClockIcon,
-	CheckCircleIcon,
 	ArrowRightIcon,
 } from '@heroicons/react/24/outline';
 
+/**
+ * The Lead work queue: the outstanding scheduled work of every Lead, soonest
+ * first. The rows come from the Lead activity log, so a scheduled item and a
+ * completed one never look the same.
+ */
 export default function UpcomingFollowups({ limit = 10 }) {
-	const [followups, setFollowups] = useState([]);
+	const [work, setWork] = useState([]);
 	const [loading, setLoading] = useState(true);
+	const [failed, setFailed] = useState(false);
 
-	const fetchFollowups = useCallback(async () => {
+	const fetchWork = useCallback(async () => {
 		try {
 			setLoading(true);
-			const res = await fetch('/api/followups');
+			setFailed(false);
+			const res = await fetch(`/api/leads/work?scope=upcoming&limit=${limit}`);
 			const data = await res.json();
 
-			if (data.success && data.data) {
-				setFollowups(data.data);
+			if (data.success && data.data && Array.isArray(data.data.work)) {
+				setWork(data.data.work);
+			} else {
+				setFailed(true);
 			}
 		} catch (error) {
-			console.error('Error fetching follow-ups:', error);
+			console.error('Error fetching lead work:', error);
+			setFailed(true);
 		} finally {
 			setLoading(false);
 		}
-	}, []);
+	}, [limit]);
 
 	useEffect(() => {
-		fetchFollowups();
-	}, [fetchFollowups]);
-
-	const getFilteredFollowups = () => {
-		// Sort by date (most recent first)
-		const sorted = [...followups].sort((a, b) => {
-			const dateA = new Date(a.follow_up_date);
-			const dateB = new Date(b.follow_up_date);
-			return dateB - dateA;
-		});
-
-		return sorted.slice(0, limit);
-	};
+		fetchWork();
+	}, [fetchWork]);
 
 	const getTypeIcon = (type) => {
 		const t = (type || '').toLowerCase();
@@ -56,20 +53,8 @@ export default function UpcomingFollowups({ limit = 10 }) {
 		return ChatBubbleLeftRightIcon;
 	};
 
-	const getStatusColor = (status, followupDate) => {
-		const now = new Date();
-		now.setHours(0, 0, 0, 0);
-		const date = new Date(followupDate);
-		date.setHours(0, 0, 0, 0);
-
-		if (status === 'Completed')
-			return 'bg-green-100 text-green-700 border-green-200';
-		if (date.getTime() === now.getTime())
-			return 'bg-orange-100 text-orange-700 border-orange-200'; // Today
-		return 'bg-blue-100 text-blue-700 border-blue-200';
-	};
-
 	const getDateLabel = (dateStr) => {
+		if (!dateStr) return 'No date';
 		const now = new Date();
 		now.setHours(0, 0, 0, 0);
 		const date = new Date(dateStr);
@@ -96,14 +81,6 @@ export default function UpcomingFollowups({ limit = 10 }) {
 			year: 'numeric',
 		});
 	};
-
-	// Calculate stats
-	const stats = {
-		total: followups.length,
-		completed: followups.filter((f) => f.status === 'Completed').length,
-	};
-
-	const filteredFollowups = getFilteredFollowups();
 
 	if (loading) {
 		return (
@@ -138,17 +115,23 @@ export default function UpcomingFollowups({ limit = 10 }) {
 							<h3 className="text-lg font-semibold text-gray-900">
 								Follow-ups
 							</h3>
-							<p className="text-sm text-gray-500">
-								{stats.total} total • {stats.completed} completed
-							</p>
+							<p className="text-sm text-gray-500">{work.length} scheduled</p>
 						</div>
 					</div>
 				</div>
 			</div>
 
-			{/* Follow-ups List */}
+			{/* Lead work */}
 			<div className="divide-y divide-gray-100">
-				{filteredFollowups.length === 0 ? (
+				{failed ? (
+					<div className="px-6 py-12 text-center" role="alert">
+						<ChatBubbleLeftRightIcon className="h-12 w-12 mx-auto mb-3 text-red-300" />
+						<p className="text-red-700 font-medium">
+							The follow-up list could not be loaded
+						</p>
+						<p className="text-sm text-gray-500 mt-1">Try again in a moment.</p>
+					</div>
+				) : work.length === 0 ? (
 					<div className="px-6 py-12 text-center">
 						<ChatBubbleLeftRightIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
 						<p className="text-gray-500 font-medium">No follow-ups found</p>
@@ -157,15 +140,15 @@ export default function UpcomingFollowups({ limit = 10 }) {
 						</p>
 					</div>
 				) : (
-					filteredFollowups.map((followup) => {
-						const TypeIcon = getTypeIcon(followup.follow_up_type);
-						const dateLabel = getDateLabel(followup.follow_up_date);
+					work.map((item) => {
+						const TypeIcon = getTypeIcon(item.activity_type);
+						const dateLabel = getDateLabel(item.scheduled_for);
 						const isToday = dateLabel === 'Today';
 
 						return (
 							<Link
-								key={followup.id}
-								href={`/leads/${followup.lead_id}/edit`}
+								key={item.id}
+								href={`/leads/${item.lead_id}`}
 								className={`block px-6 py-4 hover:bg-purple-50/40 transition-colors cursor-pointer ${
 									isToday ? 'bg-orange-50/30' : ''
 								}`}
@@ -189,43 +172,25 @@ export default function UpcomingFollowups({ limit = 10 }) {
 										<div className="flex items-start justify-between gap-3">
 											<div className="flex-1 min-w-0">
 												<p className="font-medium text-gray-900 truncate">
-													{followup.company_name || 'Unknown Company'}
+													{item.company_name || 'Unknown Company'}
 												</p>
 												<p className="text-sm text-gray-500 truncate">
-													{followup.contact_name && (
-														<span>{followup.contact_name} • </span>
-													)}
-													{followup.follow_up_type || 'Follow-up'}
+													{item.activity_type || 'Follow-up'}
 												</p>
 											</div>
 
 											{/* Date Badge */}
-											<span
-												className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${getStatusColor(
-													followup.status,
-													followup.follow_up_date
-												)}`}
-											>
-												{followup.status === 'Completed' && (
-													<CheckCircleIcon className="h-3 w-3 inline mr-1" />
-												)}
+											<span className="px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-blue-100 text-blue-700 border border-blue-200">
 												{dateLabel}
 											</span>
 										</div>
 
-										{/* Description */}
-										{followup.description && (
-											<p className="text-sm text-gray-600 mt-1 line-clamp-2">
-												{followup.description}
-											</p>
-										)}
-
 										{/* Next Action */}
-										{followup.next_action && (
+										{item.next_action && (
 											<div className="flex items-center gap-1.5 mt-2 text-xs text-purple-600">
 												<ArrowRightIcon className="h-3 w-3" />
 												<span className="font-medium">Next:</span>
-												<span className="truncate">{followup.next_action}</span>
+												<span className="truncate">{item.next_action}</span>
 											</div>
 										)}
 
@@ -233,12 +198,11 @@ export default function UpcomingFollowups({ limit = 10 }) {
 										<div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
 											<span className="flex items-center gap-1">
 												<CalendarDaysIcon className="h-3 w-3" />
-												{formatDate(followup.follow_up_date)}
+												{formatDate(item.scheduled_for)}
 											</span>
-											{followup.next_follow_up_date && (
+											{item.status && (
 												<span className="flex items-center gap-1">
-													<ClockIcon className="h-3 w-3" />
-													Next: {formatDate(followup.next_follow_up_date)}
+													{item.status}
 												</span>
 											)}
 										</div>
@@ -251,7 +215,7 @@ export default function UpcomingFollowups({ limit = 10 }) {
 			</div>
 
 			{/* Footer */}
-			{followups.length > limit && (
+			{work.length > limit && (
 				<div className="px-6 py-3 border-t border-gray-200 bg-gray-50 text-sm">
 					<Link
 						href="/leads"

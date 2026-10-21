@@ -211,3 +211,10 @@ vite.config.ts.timestamp-*
 
 # Pi agent runtime state (background task output, session scratch)
 .pi/
+
+# Local Chocolatey packaging environment (shims, helpers, bundled tools)
+# Local machine setup, not repository content.
+/config/
+/helpers/
+/redirects/
+/tools/

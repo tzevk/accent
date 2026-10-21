@@ -88,7 +88,9 @@ export async function GET(request) {
        FROM companies c
        -- leads table stores company_name (string) rather than a numeric company_id
        LEFT JOIN leads l ON l.company_name = c.company_name
-       LEFT JOIN follow_ups f ON f.lead_id = l.id
+       -- the Lead activity log replaces the legacy follow-ups table
+       LEFT JOIN lead_activities f ON f.lead_id = l.id
+         AND f.status = 'Scheduled' AND (f.isDelete = 0 OR f.isDelete IS NULL)
        WHERE c.isDelete = 0`;
 			if (search) {
 				sql += ` AND (LOWER(c.company_name) LIKE ? OR LOWER(c.company_id) LIKE ? OR LOWER(c.city) LIKE ? OR LOWER(c.contact_person) LIKE ? OR LOWER(c.industry) LIKE ?)`;

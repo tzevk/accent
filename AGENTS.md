@@ -1,6 +1,7 @@
 # Accent CRM — Agent Guide
 
 - Follow YAGNI and DRY.
+- Use subagents to Orchestrate and Parallelize tasks.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
@@ -136,6 +137,20 @@ No browser harness is committed. The old 41 specs, the fixture modules, `playwri
 
 - `knexfile.js` branches on `NODE_ENV` → `DEV_DB_*` / `STAGING_DB_*` / `PROD_DB_*`, plus a shared `DB_HOST`; `DB_PORT` is read by the app/proxy pools and scripts, but not by `knexfile.js`. Migrations are ESM `up(knex)/down(knex)` in `migrations/`.
 - `.env` is gitignored; `src/utils/database.js` runs `dotenv.config()` for scripts. Production `connectionLimit` stays `5` (below MySQL `max_user_connections`).
+
+### Local MariaDB for testing
+
+- **Production is MariaDB 10.11.15, not MySQL.** Test against MariaDB. MySQL accepts and rejects different SQL, so a MySQL-only pass is not evidence.
+- A local instance is installed: **MariaDB 10.11.15** at `127.0.0.1:33369`, user `root`, empty password, loopback only. Binaries: `C:\Program Files\MariaDB 10.11\bin`. Instance data: `%LOCALAPPDATA%\AccentMariaDB`.
+- The instance runs as a **background process owned by the current user**, not as a Windows service. Starting and stopping it never needs administrator rights and never shows a consent prompt. There is no service to install, and nothing starts with the machine.
+  - Start: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-db.ps1 start`
+  - Stop: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-db.ps1 stop`
+  - Status: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-db.ps1 status`
+  - Start the database when a task needs it, and stop it when the task ends. The helper shuts the server down cleanly, so the data directory stays consistent.
+- The integration harness creates and drops its own database, so it never touches the other schemas on this instance.
+  - `npm run test:integration:leads` with `INTEGRATION_DB_HOST=127.0.0.1`, `INTEGRATION_DB_PORT=33369`, `INTEGRATION_DB_USER=root`, `INTEGRATION_DB_PASSWORD=`, and an `INTEGRATION_DB_NAME` containing `integration`. See `docs/app/leads/integration.md`.
+- Point the app at this instance with explicit environment variables, never by editing `.env` (`.env` holds the real branch databases): `DB_HOST=127.0.0.1 DB_PORT=33369 DEV_DB_NAME=<local db> DEV_DB_USER=root DEV_DB_PASSWORD=`.
+- Never point tests at a development, staging, or production database. The harness refuses those targets by name.
 
 ## Agent skills
 

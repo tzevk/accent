@@ -4,6 +4,50 @@ Accent is a CRM and HR platform for leads, projects, and monthly payroll for pay
 
 ## Language
 
+**Lead**:
+One potential project enquiry from a person or company. Separate project needs are separate Leads, even when they share a company or contact.
+_Avoid_: Company, Contact, Customer
+
+**Lead Conversion**:
+The handoff of a Lead into a linked Proposal when that Proposal is created. Conversion does not mean the Proposal is accepted or a Project starts.
+_Avoid_: Sale won, Proposal acceptance, Project start
+
+**Qualified Lead**:
+A Lead with a named contact, a usable phone number or email address, and a clear project need. Confirmed budget and timing are not required for Lead Conversion.
+_Avoid_: Won lead, Converted lead
+
+**Lead Stage**:
+A Lead's qualification progress: New, Attempting Contact, Connected, Qualified, Nurture, Disqualified, or Converted. Proposal negotiations and sale outcomes are not Lead Stages.
+_Avoid_: Call outcome, Proposal stage
+
+**Nurture Lead**:
+A Lead that is not ready to proceed now but remains suitable for a future follow-up.
+_Avoid_: Lost lead, Disqualified lead
+
+**Disqualified Lead**:
+A Lead that is not suitable to proceed, with a recorded reason. One unanswered or failed call does not establish disqualification.
+_Avoid_: Failed call, Lost proposal
+
+**Lead Owner**:
+The one person accountable for a Lead and its next follow-up. Other permitted people can record activities; a Lead without an owner belongs to the intake queue.
+_Avoid_: Sole editor, Activity author
+
+**Lead Activity**:
+One recorded piece of work on a Lead: a call, an email, a meeting, or a note. An activity keeps the time it happened, the time it was recorded, and the person who recorded it. A scheduled next action is work, not an activity, until it happens.
+_Avoid_: Follow-up, Task, Timeline entry
+
+**Call Outcome**:
+What happened during a call: Connected, No Answer, Busy, Voicemail, or Wrong Number. It is not the status of the work and not the Lead Stage.
+_Avoid_: Task status, Lead Stage, Call note
+
+**Lead Next Action**:
+The dated next step of a Lead. Attempting Contact, Connected, Qualified, and Nurture need one; New, Disqualified, and Converted do not.
+_Avoid_: Follow-up date column, Reminder, Proposal revision
+
+**Lead Correction**:
+A recorded repair of a Lead activity. It keeps the previous values, the reason, the person who corrected it, and the time. A corrected activity stays one activity.
+_Avoid_: Edit, Deletion, Overwrite
+
 **Employee**:
 A person employed by the company, stored in `employees`. Linked to a `users` account via `employee_id` when they need system access.
 _Avoid_: User, Staff, Resource
@@ -275,6 +319,10 @@ _Avoid_: Edit, Reversal without reason, Rewriting history
 An authorized multi-sheet Excel workbook export (`GET /api/reports/employee-project-monthly-cost/download?view=expenditure`) containing version-matched audit evidence for company and project expenditure reconciliation. It delivers five sheets: Company Reconciliation, Project Detail, Budgets & Commitments, Cash Paid, and Revisions & Close. The export matches the web report calculations, distinguishes missing data from zero, keeps company reconciliation totals intact when filtered by project, and displays commercial client orders with an explicit non-revenue non-profit disclaimer.
 _Avoid_: Unverified export, Filtered company total, Ad-hoc spreadsheet
 
+**CRM Presence**:
+A User's recently reported activity and availability within Accent. It does not establish attendance, Logged Hours, or productivity.
+_Avoid_: Employee presence, Productivity, Time Present
+
 **Work Session**:
 A User's system-observed presence span on one day — opened by the day's first login
 activity event and closed by an explicit logout, or by the staleness sweep that stamps
@@ -297,3 +345,15 @@ planning-library document chosen from a master list, or a received/issued docume
 recorded as a text list. A Project's document count spans all three stores, while a
 Project name that opens documents opens that Project's uploaded files.
 _Avoid_: Attachment, Project file, Scan
+
+**Legacy Review**:
+A decision a permitted reviewer makes about a stored Lead value the cutover could not resolve from evidence: the stage label, the owner display name, or the canonical Proposal of an enquiry with several linked Proposals. The original value, the selected resolution, the reason, the reviewer, and the time are kept together (ADR-0031).
+_Avoid_: Data cleanup, Automatic mapping, Lead edit
+
+**Canonical Proposal**:
+The one Proposal that is authoritative for a Lead. Exactly one linked Proposal is evidence-backed; several linked Proposals stay linked and need a reviewer's choice. A canonical Proposal is never chosen by date or title, and choosing one never deletes the others.
+_Avoid_: Latest proposal, Preferred proposal, Duplicate cleanup
+
+**Stored-Value Inventory**:
+The record of what legacy Leads actually stored before mapping: every distinct stage label and owner name, how many Leads carry it, and whether it was auto-resolved, ambiguous, or unresolved. It exists so no value is classified without evidence (ADR-0031).
+_Avoid_: Migration log, Import report
