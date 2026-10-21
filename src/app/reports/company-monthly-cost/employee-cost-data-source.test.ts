@@ -6,7 +6,7 @@ import {
 	resolveHourlyRateOfFY,
 	type SalaryProfile,
 	type ProjectCostRow,
-} from '@/app/reports/employee-project-monthly-cost/data-source';
+} from '@/app/reports/company-monthly-cost/employee-cost-data-source';
 
 function profile(overrides: Partial<SalaryProfile> = {}): SalaryProfile {
 	return {

@@ -316,7 +316,7 @@ An authorized correction to a closed financial month (`financial_revision_events
 _Avoid_: Edit, Reversal without reason, Rewriting history
 
 **Version-Matched Expenditure Evidence Export**:
-An authorized multi-sheet Excel workbook export (`GET /api/reports/employee-project-monthly-cost/download?view=expenditure`) containing version-matched audit evidence for company and project expenditure reconciliation. It delivers five sheets: Company Reconciliation, Project Detail, Budgets & Commitments, Cash Paid, and Revisions & Close. The export matches the web report calculations, distinguishes missing data from zero, keeps company reconciliation totals intact when filtered by project, and displays commercial client orders with an explicit non-revenue non-profit disclaimer.
+An authorized multi-sheet Excel workbook export (`GET /api/reports/company-monthly-cost/download?view=expenditure`) containing version-matched audit evidence for company and project expenditure reconciliation. It delivers five sheets: Company Reconciliation, Project Detail, Budgets & Commitments, Cash Paid, and Revisions & Close. The export matches the web report calculations, distinguishes missing data from zero, keeps company reconciliation totals intact when filtered by project, and displays commercial client orders with an explicit non-revenue non-profit disclaimer.
 _Avoid_: Unverified export, Filtered company total, Ad-hoc spreadsheet
 
 **CRM Presence**:

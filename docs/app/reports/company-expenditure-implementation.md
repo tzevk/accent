@@ -2,7 +2,7 @@
 
 ## Overview
 
-The report at `/reports/employee-project-monthly-cost` now leads with **Company
+The report at `/reports/company-monthly-cost` now leads with **Company
 Incurred Cost** for a month, reconciled to **Incurred Project Cost**, **Company
 Overhead**, and **Unallocated Cost**. Each underlying direct cost is counted
 once. The employee-cost Monthly and Financial Year views read the same shared
@@ -32,10 +32,10 @@ Cost, the Project breakdown, or the evidence summary.
 ## Architecture
 
 ```
-Expenditure view (page.tsx → expenditure-view.tsx → budget-section.tsx)
-  ├─ GET  /api/reports/employee-project-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=]
-  ├─ GET  /api/reports/employee-project-monthly-cost/expenses?month=&state=&classification=&project_id=
-  ├─ GET  /api/reports/employee-project-monthly-cost/payroll?month=[&employee_id=]
+Expenditure view (page.tsx → expenditure/expenditure-view.tsx → expenditure/budget-section.tsx)
+  ├─ GET  /api/reports/company-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=]
+  ├─ GET  /api/reports/company-monthly-cost/expenses?month=&state=&classification=&project_id=
+  ├─ GET  /api/reports/company-monthly-cost/payroll?month=[&employee_id=]
   ├─ POST /api/admin/expenses                        (record a cost)
   ├─ POST /api/admin/expenses/{id}/commands          (submit | recognize | reject | cancel | update)
   ├─ GET  /api/admin/cost-budgets?project_id=        (budget versions of one Project)
@@ -160,7 +160,7 @@ instead of being cancelled and re-recorded.
 
 ## Report contract
 
-`GET /api/reports/employee-project-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=][&as_of=YYYY-MM-DD]`
+`GET /api/reports/company-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=][&as_of=YYYY-MM-DD]`
 returns `company` (currency, incurred cost, per-currency subtotals — each with
 its own incurred cost, gross liability, recoverable tax, and unresolved-tax
 gross — the three groups, gross liability, recoverable tax, unresolved tax,
@@ -525,7 +525,7 @@ versions are never updated or deleted; the selected version stays the highest
 `version`, exactly the read #307 already performs.
 
 **Command contract.**
-`POST /api/reports/employee-project-monthly-cost/payroll/revisions` — body
+`POST /api/reports/company-monthly-cost/payroll/revisions` — body
 `{ payroll_slip_id, expected_version, reason, evidence_reference,
 lines: [{ project_id, hours }] }`; `lines: []` states "no eligible hours" and
 must be sent explicitly. All checks run in one transaction: the slip row is
@@ -544,7 +544,7 @@ untouched, and no revision ever writes `payroll_slips`, `payroll_runs`, or
 payment state.
 
 **Read contract.** `GET
-/api/reports/employee-project-monthly-cost/payroll/revisions?payroll_slip_id=`
+/api/reports/company-monthly-cost/payroll/revisions?payroll_slip_id=`
 returns the slip's full history: every version with its kind, recorded employer
 cost, hours totals, shares, frozen actor/time, journal command, reason,
 evidence, `superseded_by`, and whether it still reconciles (`SUM(shares.amount)
@@ -1212,14 +1212,14 @@ End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
 - `src/lib/company-expenditure/{index,types,currency,recognition,reconciliation,records,commands,payroll,coverage,budget-records,budget-commands,budget-comparison}.ts`
 - `src/lib/company-expenditure/allocation-revisions.ts` (#309: the versioned
   revision command, the history read, and the registered financial-period guard seam)
-- `src/app/api/reports/employee-project-monthly-cost/payroll/revisions/route.ts`
+- `src/app/api/reports/company-monthly-cost/payroll/revisions/route.ts`
   (#309: GET history + POST authorized revision)
 - `src/lib/company-expenditure/{ranking,totals}.ts` (comparable period, both
   orderings, cost to date, per-Project evidence; shared money subtotals)
-- `src/app/api/reports/employee-project-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)
-- `src/app/api/reports/employee-project-monthly-cost/expenses/route.ts`
-- `src/app/api/reports/employee-project-monthly-cost/payroll/route.ts` (#307 drilldown)
-- `src/app/api/reports/employee-project-monthly-cost/download/route.ts` (tightened gate)
+- `src/app/api/reports/company-monthly-cost/route.ts` (expenditure view, meta months, tightened gate)
+- `src/app/api/reports/company-monthly-cost/expenses/route.ts`
+- `src/app/api/reports/company-monthly-cost/payroll/route.ts` (#307 drilldown)
+- `src/app/api/reports/company-monthly-cost/download/route.ts` (tightened gate)
 - `src/app/api/payroll/runs/finalize/route.js` (one transaction: lock, audit, allocation freeze)
 - `src/app/api/admin/expenses/route.js` (entry through the module)
 - `src/app/api/admin/expenses/[id]/commands/route.ts`
@@ -1232,7 +1232,7 @@ End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
   petty-cash commands)
 - `src/app/api/admin/cash-vouchers/{route.js,[id]/route.js}` (one funding
   mirror per voucher; funding floor; delete guards)
-- `src/app/reports/employee-project-monthly-cost/{page,expenditure-view}.tsx`
+- `src/app/reports/company-monthly-cost/page.tsx`, `src/app/reports/company-monthly-cost/expenditure/expenditure-view.tsx`
 - `src/app/admin/petty-cash-expenses/page.tsx` (register controls)
 - `src/lib/format.js` (`formatCurrencyIn`)
 - `src/components/Navbar.jsx` (financial gate)
@@ -1240,7 +1240,7 @@ End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
 - `e2e/lib/expenditure-fixtures.ts`, `e2e/specs/expense-reconciliation.spec.ts`, `e2e/global-setup.ts`
 - `e2e/lib/petty-cash-fixtures.ts`, `e2e/specs/petty-cash-funding.spec.ts`
 - `src/app/api/admin/cost-budgets/route.ts`, `.../[id]/route.ts`, `.../[id]/commands/route.ts` (#321)
-- `src/app/reports/employee-project-monthly-cost/{page,expenditure-view,budget-section}.tsx`
+- `src/app/reports/company-monthly-cost/page.tsx`, `src/app/reports/company-monthly-cost/expenditure/expenditure-view.tsx`, `src/app/reports/company-monthly-cost/expenditure/budget-section.tsx`
 - `src/lib/format.js` (`formatCurrencyIn`)
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
@@ -1481,7 +1481,7 @@ Global setup removes guarded allocation-month slips before deleting any fixture 
 ### Version-matched expenditure evidence export (#324)
 
 Ticket #324 delivers the authorized Excel evidence export for expenditure reconciliation.
-The export downloads from `GET /api/reports/employee-project-monthly-cost/download?view=expenditure`.
+The export downloads from `GET /api/reports/company-monthly-cost/download?view=expenditure`.
 It accepts `month`, optional `project_id`, `as_of`, and `reporting_currency`.
 The endpoint enforces the `canReadFinancialSources` permission gate.
 Super administrators and users with reports, expenses, and payroll read privileges can access it.
@@ -1503,10 +1503,10 @@ The UI expenditure view includes an Export Excel button in the control toolbar.
 
 #### Files (#324)
 
-- `src/app/reports/employee-project-monthly-cost/excel-template.ts` (builder + sheet formatters)
-- `src/app/api/reports/employee-project-monthly-cost/download/route.ts` (authorized download handler)
-- `src/app/reports/employee-project-monthly-cost/expenditure-view.tsx` (export button and handler)
-- `src/app/reports/employee-project-monthly-cost/page.tsx` (viewMode export support)
+- `src/app/reports/company-monthly-cost/excel/expenditure.ts` (builder + sheet formatters)
+- `src/app/api/reports/company-monthly-cost/download/route.ts` (authorized download handler)
+- `src/app/reports/company-monthly-cost/expenditure/expenditure-view.tsx` (export button and handler)
+- `src/app/reports/company-monthly-cost/page.tsx` (viewMode export support)
 - `docs/adr/0026-version-matched-expenditure-excel-export.md`
 - `e2e/lib/expenditure-excel-fixtures.ts`
 - `e2e/specs/expenditure-excel-export.spec.ts`

@@ -1,5 +1,5 @@
 /**
- * Employee Project Monthly Cost fixtures — a full month and FY of company
+ * Company Monthly Cost fixtures — a full month and FY of company
  * cost with no database.
  *
  * What this is for: rendering the Monthly and Financial Year views the way a
@@ -40,7 +40,7 @@ import type {
 	FYCompanyCostData,
 	MonthlyCompanyCostData,
 	MonthlyCompanyCostRow,
-} from './data-source';
+} from './employee-cost-data-source';
 
 // ─── Declaration ────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 /**
- * GET /api/reports/employee-project-monthly-cost
+ * GET /api/reports/company-monthly-cost
  *
  * Company expenditure report. Leads with the direct-cost reconciliation and
  * keeps the employee-cost views beside it.
@@ -37,7 +37,7 @@ import {
 	fetchFYCompanyCost,
 	fetchMonthlyCompanyCost,
 	getFinancialYear,
-} from '@/app/reports/employee-project-monthly-cost/data-source';
+} from '@/app/reports/company-monthly-cost/employee-cost-data-source';
 import {
 	dayOfDate,
 	buildClosePayload,

@@ -1,5 +1,5 @@
 /**
- * GET/POST /api/reports/employee-project-monthly-cost/payroll/revisions
+ * GET/POST /api/reports/company-monthly-cost/payroll/revisions
  *
  * The Project Cost Allocation Revision surface (#309, ADR-0016). GET reads one
  * Payroll Slip's full allocation version history — every frozen version, its

@@ -1,10 +1,10 @@
 /**
- * Server-side data fetch + pure transforms for the Employee Project Monthly Cost
- * report — company-wide view of monthly cost across all projects and all employees.
+ * Server-side data fetch + pure transforms for the Company Monthly Cost report's
+ * Monthly and Financial Year views — company-wide cost across all projects and employees.
  *
  * Shared by:
- *   - GET /api/reports/employee-project-monthly-cost          (JSON, route.ts)
- *   - GET /api/reports/employee-project-monthly-cost/download (Excel, download/route.ts)
+ *   - GET /api/reports/company-monthly-cost          (JSON, route.ts)
+ *   - GET /api/reports/company-monthly-cost/download (Excel, download/route.ts)
  *
  * Two viewing modes:
  * 1. Monthly (YYYY-MM): total cost to company for a single month, broken down
@@ -499,7 +499,6 @@ export interface EmployeeLookup {
 	department: string | null;
 	designation: string | null;
 }
-
 
 // ─── Server data fetch ──────────────────────────────────────────────
 

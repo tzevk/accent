@@ -562,12 +562,10 @@ export default function Sidebar() {
 								active={pathname.startsWith('/reports/manhours-billing')}
 							/>
 							<NavRow
-								icon={ClockIcon}
-								label="Employee Project Monthly Cost"
-								href="/reports/employee-project-monthly-cost"
-								active={pathname.startsWith(
-									'/reports/employee-project-monthly-cost'
-								)}
+								icon={BanknotesIcon}
+								label="Company Monthly Cost"
+								href="/reports/company-monthly-cost"
+								active={pathname.startsWith('/reports/company-monthly-cost')}
 							/>
 							<NavRow
 								icon={ChartBarSquareIcon}

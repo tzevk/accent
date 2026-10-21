@@ -1,5 +1,5 @@
 /**
- * POST /api/reports/employee-project-monthly-cost/payroll/reconstruction
+ * POST /api/reports/company-monthly-cost/payroll/reconstruction
  *
  * Propose a one-time historical reconstruction for a finalized Payroll Slip
  * that has no saved allocation shares (#308, ADR-0016). The proposal is built

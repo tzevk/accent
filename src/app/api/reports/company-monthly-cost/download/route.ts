@@ -1,7 +1,7 @@
 /**
- * GET /api/reports/employee-project-monthly-cost/download
+ * GET /api/reports/company-monthly-cost/download
  *
- * Server-side Excel export for the Employee Project Monthly Cost report.
+ * Server-side Excel export for the Company Monthly Cost report.
  * Same RBAC gate and query contract as the JSON route. Uses exceljs (in
  * next.config.ts serverExternalPackages, server-only). Supports:
  * - legacy: ?employee_id=&fy=YYYY
@@ -18,17 +18,23 @@ import {
 	fetchFYCompanyCost,
 	fetchMonthlyCompanyCost,
 	getFinancialYear,
-} from '@/app/reports/employee-project-monthly-cost/data-source';
+} from '@/app/reports/company-monthly-cost/employee-cost-data-source';
 import {
 	buildWorkbookBuffer as buildLegacyWorkbookBuffer,
 	fileBaseForExcel as fileBaseForLegacyExcel,
+} from '@/app/reports/company-monthly-cost/excel/legacy-fy';
+import {
 	buildFYWorkbookBuffer,
-	buildMonthlyWorkbookBuffer,
 	fileBaseForFYExcel,
+} from '@/app/reports/company-monthly-cost/excel/fy';
+import {
+	buildMonthlyWorkbookBuffer,
 	fileBaseForMonthlyExcel,
+} from '@/app/reports/company-monthly-cost/excel/monthly';
+import {
 	buildExpenditureWorkbookBuffer,
 	fileBaseForExpenditureExcel,
-} from '@/app/reports/employee-project-monthly-cost/excel-template';
+} from '@/app/reports/company-monthly-cost/excel/expenditure';
 import { canReadFinancialSources } from '../financial-read-gate';
 import {
 	dayOfDate,

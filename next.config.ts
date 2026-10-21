@@ -105,6 +105,25 @@ const nextConfig: NextConfig = {
 				destination: '/employees?type=Contract',
 				permanent: true,
 			},
+			{
+				// The Employee Project Monthly Cost report became the Company
+				// Monthly Cost report: it now leads with the company's total
+				// monthly cost reconciled across every cost source, so the old
+				// employee-and-project slug no longer describes it. The
+				// permanent redirect keeps bookmarks working.
+				source: '/reports/employee-project-monthly-cost',
+				destination: '/reports/company-monthly-cost',
+				permanent: true,
+			},
+			{
+				// The report's API moved with it. The wildcard carries the
+				// download, drilldown and command paths across, and a 308 keeps
+				// the method and body of a revision or reconstruction post
+				// intact.
+				source: '/api/reports/employee-project-monthly-cost/:path*',
+				destination: '/api/reports/company-monthly-cost/:path*',
+				permanent: true,
+			},
 		];
 	},
 
