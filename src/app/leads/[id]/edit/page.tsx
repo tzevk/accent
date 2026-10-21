@@ -70,6 +70,15 @@ const inputClass =
 	'w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
 
+/** The red asterisk the Lead forms use for a field that must be filled. */
+function RequiredMark() {
+	return (
+		<span className="text-red-500" aria-hidden="true">
+			*
+		</span>
+	);
+}
+
 function leadToForm(lead: LeadDetail): EditFormFields {
 	return {
 		lead_id: lead.lead_id || '',
@@ -276,6 +285,16 @@ export default function EditLead({ params }: EditLeadProps) {
 		lead.enquiry_status === 'Converted' ||
 		lead.enquiry_status === 'Disqualified';
 	const activeStageSelected = isActiveLeadStage(stage);
+	// What this Lead needs before it can be saved. The company name always
+	// does; an active stage also needs an owner and a dated next action, and
+	// the server refuses the save without them.
+	const ownerRequired = activeStageSelected && canAssign;
+	const dateRequired =
+		activeStageSelected && lead.enquiry_status !== 'Converted';
+	const requiredFields = ['Company Name'];
+	if (ownerRequired) requiredFields.push('Lead Owner');
+	if (dateRequired) requiredFields.push('Next follow-up date');
+	const ownerNeededElsewhere = activeStageSelected && !canAssign;
 
 	return (
 		<div className="h-[calc(100vh-4rem)] bg-gray-50 flex flex-col overflow-hidden">
@@ -310,6 +329,24 @@ export default function EditLead({ params }: EditLeadProps) {
 							canReviewProposal={canReviewProposal}
 						/>
 						<form onSubmit={handleSubmit}>
+							<div className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+								<p className="text-sm text-gray-700">
+									<span className="font-medium text-gray-900">
+										Fill in to save:
+									</span>{' '}
+									{requiredFields.join(', ')}.
+									{ownerNeededElsewhere ? (
+										<>
+											{' '}
+											An active stage also needs an owner, and setting one needs
+											the assignment permission.
+										</>
+									) : null}
+								</p>
+								<p className="text-sm text-gray-500">
+									<RequiredMark /> Required fields
+								</p>
+							</div>
 							<div className="space-y-6">
 								<section aria-label="Lead information">
 									<h3 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-blue-100">
@@ -333,7 +370,7 @@ export default function EditLead({ params }: EditLeadProps) {
 										</div>
 										<div>
 											<label htmlFor="lead-edit-company" className={labelClass}>
-												Company Name *
+												Company Name <RequiredMark />
 											</label>
 											<div className="relative">
 												<input
@@ -489,7 +526,7 @@ export default function EditLead({ params }: EditLeadProps) {
 										</div>
 										<div>
 											<label htmlFor="lead-edit-owner" className={labelClass}>
-												Lead Owner
+												Lead Owner {ownerRequired ? <RequiredMark /> : null}
 											</label>
 											{canAssign ? (
 												<>
@@ -499,12 +536,15 @@ export default function EditLead({ params }: EditLeadProps) {
 														onChange={setOwnerUserId}
 														disabled={saving}
 														describedBy="lead-edit-owner-help"
+														required={ownerRequired}
 													/>
 													<p
 														id="lead-edit-owner-help"
 														className="mt-1 text-xs text-gray-500"
 													>
-														Empty means unassigned intake.
+														{ownerRequired
+															? 'Required for an active stage. Empty means unassigned intake.'
+															: 'Empty means unassigned intake.'}
 													</p>
 												</>
 											) : (
@@ -727,7 +767,8 @@ export default function EditLead({ params }: EditLeadProps) {
 														htmlFor="lead-edit-followup"
 														className={labelClass}
 													>
-														Next follow-up date
+														Next follow-up date{' '}
+														{dateRequired ? <RequiredMark /> : null}
 													</label>
 													<input
 														id="lead-edit-followup"
@@ -738,14 +779,17 @@ export default function EditLead({ params }: EditLeadProps) {
 															setField('follow_up_date', event.target.value)
 														}
 														aria-describedby="lead-edit-followup-help"
+														aria-required={dateRequired || undefined}
+														required={dateRequired}
 														className={inputClass}
 													/>
 													<p
 														id="lead-edit-followup-help"
 														className="text-xs text-gray-500 mt-1"
 													>
-														Required for active stages. Unchanged values stay
-														valid.
+														{dateRequired
+															? 'Required for an active stage. Unchanged values stay valid.'
+															: 'Only an active stage needs one. Unchanged values stay valid.'}
 													</p>
 												</>
 											)}
