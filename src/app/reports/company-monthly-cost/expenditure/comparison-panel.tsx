@@ -139,71 +139,73 @@ export function ComparisonPanel({ data, clientOrders }: ComparisonPanelProps) {
 					</div>
 				</div>
 				{data.comparison.currency_totals.length > 0 && (
-					<table className="mt-2 w-full text-xs">
-						<caption className="sr-only">
-							Comparable window by currency and direct-cost category
-						</caption>
-						<thead className="text-left text-[10px] uppercase tracking-wide text-gray-500">
-							<tr>
-								<th scope="col">Currency</th>
-								<th scope="col" className="text-right">
-									This period
-								</th>
-								<th scope="col" className="text-right">
-									Prior period
-								</th>
-								<th scope="col" className="text-right">
-									Change
-								</th>
-								<th scope="col" className="text-right">
-									Incurred Project Cost
-								</th>
-								<th scope="col" className="text-right">
-									Company Overhead
-								</th>
-								<th scope="col" className="text-right">
-									Unallocated Cost
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							{data.comparison.currency_totals.map((row) => (
-								<tr
-									key={row.currency}
-									data-testid="comparison-currency-row"
-									data-currency={row.currency}
-									data-current={row.current_cost}
-									data-prior={row.prior_cost ?? ''}
-									data-dayless={row.dayless_cost}
-									data-dayless-count={row.dayless_records}
-								>
-									<td>{row.currency}</td>
-									<td className="text-right">
-										{formatCurrencyIn(row.current_cost, row.currency)}
-									</td>
-									<td className="text-right">
-										{row.prior_cost === null
-											? 'Unknown'
-											: formatCurrencyIn(row.prior_cost, row.currency)}
-									</td>
-									<td className="text-right">
-										{percentLabel(row.change_percent, row.change_state)}
-									</td>
-									{row.groups.map((group) => (
-										<td
-											key={group.key}
-											data-testid="comparison-category"
-											data-category={group.key}
-											data-amount={group.amount}
-											className="text-right"
-										>
-											{formatCurrencyIn(group.amount, row.currency)}
-										</td>
-									))}
+					<div className="overflow-x-auto">
+						<table className="mt-2 w-full min-w-[440px] text-xs">
+							<caption className="sr-only">
+								Comparable window by currency and direct-cost category
+							</caption>
+							<thead className="text-left text-[10px] uppercase tracking-wide text-gray-500">
+								<tr>
+									<th scope="col">Currency</th>
+									<th scope="col" className="text-right">
+										This period
+									</th>
+									<th scope="col" className="text-right">
+										Prior period
+									</th>
+									<th scope="col" className="text-right">
+										Change
+									</th>
+									<th scope="col" className="text-right">
+										Incurred Project Cost
+									</th>
+									<th scope="col" className="text-right">
+										Company Overhead
+									</th>
+									<th scope="col" className="text-right">
+										Unallocated Cost
+									</th>
 								</tr>
-							))}
-						</tbody>
-					</table>
+							</thead>
+							<tbody>
+								{data.comparison.currency_totals.map((row) => (
+									<tr
+										key={row.currency}
+										data-testid="comparison-currency-row"
+										data-currency={row.currency}
+										data-current={row.current_cost}
+										data-prior={row.prior_cost ?? ''}
+										data-dayless={row.dayless_cost}
+										data-dayless-count={row.dayless_records}
+									>
+										<td>{row.currency}</td>
+										<td className="text-right">
+											{formatCurrencyIn(row.current_cost, row.currency)}
+										</td>
+										<td className="text-right">
+											{row.prior_cost === null
+												? 'Unknown'
+												: formatCurrencyIn(row.prior_cost, row.currency)}
+										</td>
+										<td className="text-right">
+											{percentLabel(row.change_percent, row.change_state)}
+										</td>
+										{row.groups.map((group) => (
+											<td
+												key={group.key}
+												data-testid="comparison-category"
+												data-category={group.key}
+												data-amount={group.amount}
+												className="text-right"
+											>
+												{formatCurrencyIn(group.amount, row.currency)}
+											</td>
+										))}
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
 				)}
 				<ul className="mt-2 space-y-1">
 					{data.comparison.disclosures.map((entry, index) => (

@@ -211,7 +211,7 @@ export function RecognitionQueue({
 															</button>
 														</>
 													) : (
-														<span className="text-xs text-gray-400">
+														<span className="text-xs text-gray-600">
 															Recognition needs approval access
 														</span>
 													)}

@@ -156,7 +156,9 @@ export const PAYROLL_STATUS_LABELS: Record<string, string> = {
 	unknown: 'Unknown pricing',
 };
 export function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : 'Something went wrong';
+	return error instanceof Error
+		? error.message
+		: 'Something went wrong. Try again.';
 }
 
 /** Money whose original currency is unknown is never labelled as INR. */

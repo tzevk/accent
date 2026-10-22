@@ -548,7 +548,11 @@ export default function ExpenditureView({
 	if (reconciliationQuery.isError || !data) {
 		return (
 			<div data-testid="expenditure-view" className="p-6 text-sm text-rose-600">
-				{errorMessage(reconciliationQuery.error)}
+				<p>{errorMessage(reconciliationQuery.error)}</p>
+				<p className="mt-1 text-gray-600">
+					The company cost report could not be loaded. Check your connection and
+					try again, or pick another month.
+				</p>
 			</div>
 		);
 	}

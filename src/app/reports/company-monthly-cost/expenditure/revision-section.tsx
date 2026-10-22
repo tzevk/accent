@@ -26,11 +26,11 @@ import {
 	PencilSquareIcon,
 } from '@heroicons/react/24/outline';
 import { apiPost } from '@/lib/api-client';
-import { formatCurrencyIn } from '@/lib/format';
 import type {
 	RevisionCandidate,
 	RevisionPayload,
 } from '@/lib/company-expenditure';
+import { errorMessage, money } from './shared';
 
 export interface RevisionSectionProps {
 	month: string;
@@ -44,10 +44,6 @@ export interface RevisionSectionProps {
 	initialRevisions: RevisionPayload | null;
 }
 
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : 'Something went wrong';
-}
-
 function candidateLabel(candidate: RevisionCandidate): string {
 	const amount =
 		candidate.amount === null
@@ -55,11 +51,6 @@ function candidateLabel(candidate: RevisionCandidate): string {
 			: `${candidate.amount} ${candidate.currency ?? ''}`.trim();
 	const classification = candidate.classification ?? candidate.state;
 	return `${candidate.number} — ${amount} (${classification})`;
-}
-
-function money(value: number | null, currency: string | null): string {
-	if (value === null) return 'Unknown';
-	return formatCurrencyIn(value, currency ?? 'INR');
 }
 
 export default function RevisionSection({
