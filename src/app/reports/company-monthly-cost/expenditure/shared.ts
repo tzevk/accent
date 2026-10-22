@@ -169,3 +169,13 @@ export function formatSourceMoney(
 		? `${formatNumber(value)} (currency unknown)`
 		: formatCurrencyIn(value, currency);
 }
+
+/**
+ * A missing amount is unknown, never zero, and a multi-currency figure is
+ * not stated at all; both read as "Unknown" here rather than as a number.
+ */
+export function money(value: number | null, currency: string | null): string {
+	return value === null
+		? 'Unknown'
+		: formatCurrencyIn(value, currency ?? 'INR');
+}
