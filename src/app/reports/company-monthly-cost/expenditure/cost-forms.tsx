@@ -10,7 +10,7 @@
  */
 
 import { useState } from 'react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import Modal from '@/components/ui/modal';
 import SearchableSelect from '@/components/ui/searchable-select';
 import { formatCurrencyIn, formatDate } from '@/lib/format';
 import type {
@@ -120,30 +120,49 @@ export function CostForm({
 	};
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+		<Modal
+			open
+			onClose={onCancel}
+			title="Record cost"
+			size="lg"
+			footer={
+				<>
+					<button
+						type="button"
+						onClick={onCancel}
+						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						Close
+					</button>
+					<button
+						type="submit"
+						form="cost-form"
+						onClick={() => setSubmit(false)}
+						disabled={submitting}
+						className="rounded-lg border border-[#64126D] px-3 py-2 text-sm font-medium text-[#64126D] hover:bg-[#64126D]/5 disabled:opacity-50"
+					>
+						Save draft
+					</button>
+					<button
+						type="submit"
+						form="cost-form"
+						onClick={() => setSubmit(true)}
+						disabled={submitting}
+						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
+					>
+						Save and submit
+					</button>
+				</>
+			}
+		>
 			<form
+				id="cost-form"
 				data-testid="cost-form"
-				role="dialog"
-				aria-modal="true"
-				aria-label="Record cost"
-				className="mt-8 w-full max-w-3xl rounded-xl bg-white p-4 shadow-xl"
 				onSubmit={(event) => {
 					event.preventDefault();
 					onSubmit(buildPayload(submit));
 				}}
 			>
-				<div className="mb-3 flex items-center justify-between">
-					<h2 className="text-base font-semibold text-gray-900">Record cost</h2>
-					<button
-						type="button"
-						onClick={onCancel}
-						aria-label="Close"
-						className="rounded p-1 text-gray-500 hover:bg-gray-100"
-					>
-						<XMarkIcon className="h-4 w-4" />
-					</button>
-				</div>
-
 				<div className="grid gap-3 md:grid-cols-2">
 					<label className="text-sm">
 						<span className="mb-1 block font-medium text-gray-700">
@@ -415,34 +434,8 @@ export function CostForm({
 						{error}
 					</p>
 				)}
-
-				<div className="mt-3 flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={onCancel}
-						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-					>
-						Close
-					</button>
-					<button
-						type="submit"
-						onClick={() => setSubmit(false)}
-						disabled={submitting}
-						className="rounded-lg border border-[#64126D] px-3 py-2 text-sm font-medium text-[#64126D] hover:bg-[#64126D]/5 disabled:opacity-50"
-					>
-						Save draft
-					</button>
-					<button
-						type="submit"
-						onClick={() => setSubmit(true)}
-						disabled={submitting}
-						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
-					>
-						Save and submit
-					</button>
-				</div>
 			</form>
-		</div>
+		</Modal>
 	);
 }
 
@@ -575,38 +568,44 @@ export function CostEditDialog({
 	});
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+		<Modal
+			open
+			onClose={onCancel}
+			title="Correct cost"
+			size="lg"
+			footer={
+				<>
+					<button
+						type="button"
+						onClick={onCancel}
+						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						Close
+					</button>
+					<button
+						type="submit"
+						form="cost-edit-dialog"
+						disabled={submitting}
+						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
+					>
+						Save changes
+					</button>
+				</>
+			}
+		>
 			<form
+				id="cost-edit-dialog"
 				data-testid="cost-edit-dialog"
-				role="dialog"
-				aria-modal="true"
-				aria-label="Correct cost"
-				className="mt-8 w-full max-w-3xl rounded-xl bg-white p-4 shadow-xl"
 				onSubmit={(event) => {
 					event.preventDefault();
 					onSubmit(buildPatch());
 				}}
 			>
-				<div className="mb-3 flex items-start justify-between">
-					<div>
-						<h2 className="text-base font-semibold text-gray-900">
-							Correct cost
-						</h2>
-						<p className="text-xs text-gray-500">
-							{record.source_reference ?? record.expense_number} · version{' '}
-							{record.financial_version}. Saving applies a versioned `update`
-							with its own journal entry.
-						</p>
-					</div>
-					<button
-						type="button"
-						onClick={onCancel}
-						aria-label="Close"
-						className="rounded p-1 text-gray-500 hover:bg-gray-100"
-					>
-						<XMarkIcon className="h-4 w-4" />
-					</button>
-				</div>
+				<p className="mb-3 text-xs text-gray-500">
+					{record.source_reference ?? record.expense_number} · version{' '}
+					{record.financial_version}. Saving applies a versioned `update` with
+					its own journal entry.
+				</p>
 
 				<div className="grid gap-3 md:grid-cols-2">
 					<label className="text-sm">
@@ -867,25 +866,8 @@ export function CostEditDialog({
 						{error}
 					</p>
 				)}
-
-				<div className="mt-3 flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={onCancel}
-						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-					>
-						Close
-					</button>
-					<button
-						type="submit"
-						disabled={submitting}
-						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
-					>
-						Save changes
-					</button>
-				</div>
 			</form>
-		</div>
+		</Modal>
 	);
 }
 
@@ -916,19 +898,39 @@ export function CommandDialog({
 				: 'Cancel expense';
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+		<Modal
+			open
+			onClose={onCancel}
+			title={label}
+			size="sm"
+			footer={
+				<>
+					<button
+						type="button"
+						onClick={onCancel}
+						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						Close
+					</button>
+					<button
+						type="submit"
+						form="command-dialog"
+						disabled={submitting}
+						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
+					>
+						{label}
+					</button>
+				</>
+			}
+		>
 			<form
+				id="command-dialog"
 				data-testid="command-dialog"
-				role="dialog"
-				aria-modal="true"
-				aria-label={label}
-				className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl"
 				onSubmit={(event) => {
 					event.preventDefault();
 					onConfirm(reason);
 				}}
 			>
-				<h2 className="text-base font-semibold text-gray-900">{label}</h2>
 				<p className="mt-1 text-xs text-gray-600">
 					{record.source_reference ?? record.expense_number} ·{' '}
 					{STATE_LABELS[record.recognition_state] ?? record.recognition_state} ·
@@ -954,24 +956,8 @@ export function CommandDialog({
 						{error}
 					</p>
 				)}
-				<div className="mt-3 flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={onCancel}
-						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-					>
-						Close
-					</button>
-					<button
-						type="submit"
-						disabled={submitting}
-						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
-					>
-						{label}
-					</button>
-				</div>
 			</form>
-		</div>
+		</Modal>
 	);
 }
 
@@ -1014,13 +1000,34 @@ export function PeriodChargeDialog({
 			: formatCurrencyIn(item.remaining_amount, item.currency);
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+		<Modal
+			open
+			onClose={onCancel}
+			title="Capture period charge"
+			size="sm"
+			footer={
+				<>
+					<button
+						type="button"
+						onClick={onCancel}
+						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						Close
+					</button>
+					<button
+						type="submit"
+						form="period-charge-dialog"
+						disabled={submitting}
+						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
+					>
+						Save period charge
+					</button>
+				</>
+			}
+		>
 			<form
+				id="period-charge-dialog"
 				data-testid="period-charge-dialog"
-				role="dialog"
-				aria-modal="true"
-				aria-label="Capture period charge"
-				className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl"
 				onSubmit={(event) => {
 					event.preventDefault();
 					onSubmit({
@@ -1033,9 +1040,6 @@ export function PeriodChargeDialog({
 					});
 				}}
 			>
-				<h2 className="text-base font-semibold text-gray-900">
-					Capture period charge
-				</h2>
 				<p className="mt-1 text-xs text-gray-600">
 					{item.source_reference ?? item.expense_number} ·{' '}
 					{NATURE_LABELS[item.nature] ?? item.nature} · supported balance{' '}
@@ -1111,24 +1115,8 @@ export function PeriodChargeDialog({
 						{error}
 					</p>
 				)}
-				<div className="mt-3 flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={onCancel}
-						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-					>
-						Close
-					</button>
-					<button
-						type="submit"
-						disabled={submitting}
-						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
-					>
-						Save period charge
-					</button>
-				</div>
 			</form>
-		</div>
+		</Modal>
 	);
 }
 
@@ -1155,21 +1143,39 @@ export function ChargeCancelDialog({
 	const [reason, setReason] = useState('');
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+		<Modal
+			open
+			onClose={onCancel}
+			title="Cancel period charge"
+			size="sm"
+			footer={
+				<>
+					<button
+						type="button"
+						onClick={onCancel}
+						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						Close
+					</button>
+					<button
+						type="submit"
+						form="charge-cancel-dialog"
+						disabled={submitting}
+						className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+					>
+						Cancel charge
+					</button>
+				</>
+			}
+		>
 			<form
+				id="charge-cancel-dialog"
 				data-testid="charge-cancel-dialog"
-				role="dialog"
-				aria-modal="true"
-				aria-label="Cancel period charge"
-				className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl"
 				onSubmit={(event) => {
 					event.preventDefault();
 					onConfirm(reason);
 				}}
 			>
-				<h2 className="text-base font-semibold text-gray-900">
-					Cancel period charge
-				</h2>
 				<p className="mt-1 text-xs text-gray-600">
 					{charge.source_expense_number} ·{' '}
 					{CHARGE_BASIS_LABELS[charge.basis] ?? charge.basis} ·{' '}
@@ -1192,23 +1198,7 @@ export function ChargeCancelDialog({
 						{error}
 					</p>
 				)}
-				<div className="mt-3 flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={onCancel}
-						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-					>
-						Close
-					</button>
-					<button
-						type="submit"
-						disabled={submitting}
-						className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
-					>
-						Cancel charge
-					</button>
-				</div>
 			</form>
-		</div>
+		</Modal>
 	);
 }

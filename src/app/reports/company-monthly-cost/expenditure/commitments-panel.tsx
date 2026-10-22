@@ -91,38 +91,40 @@ export function CommitmentsPanel({
 									{money(total.consumptionInMonth, total.currency)}
 								</span>
 							</div>
-							<table className="mt-1 min-w-full text-[11px] text-gray-700">
-								<thead>
-									<tr className="text-left text-gray-500">
-										<th className="pr-2">Month</th>
-										<th className="pr-2">Opening</th>
-										<th className="pr-2">New</th>
-										<th className="pr-2">Consumption</th>
-										<th className="pr-2">Cancellation</th>
-										<th>Closing</th>
-									</tr>
-								</thead>
-								<tbody>
-									{total.months.map((row) => (
-										<tr key={row.month} data-testid="commitment-month">
-											<td className="pr-2">{row.month}</td>
-											<td className="pr-2">
-												{money(row.opening, total.currency)}
-											</td>
-											<td className="pr-2">
-												{money(row.newCommitment, total.currency)}
-											</td>
-											<td className="pr-2">
-												{money(row.consumption, total.currency)}
-											</td>
-											<td className="pr-2">
-												{money(row.cancellation, total.currency)}
-											</td>
-											<td>{money(row.closing, total.currency)}</td>
+							<div className="overflow-x-auto">
+								<table className="mt-1 w-full min-w-[400px] text-[11px] text-gray-700">
+									<thead>
+										<tr className="text-left text-gray-500">
+											<th className="pr-2">Month</th>
+											<th className="pr-2">Opening</th>
+											<th className="pr-2">New</th>
+											<th className="pr-2">Consumption</th>
+											<th className="pr-2">Cancellation</th>
+											<th>Closing</th>
 										</tr>
-									))}
-								</tbody>
-							</table>
+									</thead>
+									<tbody>
+										{total.months.map((row) => (
+											<tr key={row.month} data-testid="commitment-month">
+												<td className="pr-2">{row.month}</td>
+												<td className="pr-2">
+													{money(row.opening, total.currency)}
+												</td>
+												<td className="pr-2">
+													{money(row.newCommitment, total.currency)}
+												</td>
+												<td className="pr-2">
+													{money(row.consumption, total.currency)}
+												</td>
+												<td className="pr-2">
+													{money(row.cancellation, total.currency)}
+												</td>
+												<td>{money(row.closing, total.currency)}</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
 						</div>
 					))}
 					{data.supplier_commitment.totals.length === 0 && (

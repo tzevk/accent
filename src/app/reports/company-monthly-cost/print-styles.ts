@@ -34,11 +34,13 @@ export const cmcPrintStyles = `
 		box-shadow: none !important;
 	}
 	.cmc-sheet table {
+		min-width: 0 !important;
 		font-size: 7.5pt;
 	}
 	.cmc-sheet th,
 	.cmc-sheet td {
 		padding: 1.5px 3px !important;
+		overflow-wrap: break-word;
 	}
 	.cmc-sheet thead {
 		display: table-header-group;

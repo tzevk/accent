@@ -84,7 +84,7 @@ export function CompanyReconciliationPanel({
 									data.company.currency
 								)}
 					</p>
-					<p className="text-[10px] text-gray-500">
+					<p className="text-[10px] text-gray-600">
 						{data.company.record_count} recognized record(s)
 					</p>
 				</div>
@@ -104,7 +104,7 @@ export function CompanyReconciliationPanel({
 									data.company.currency
 								)}
 					</p>
-					<p className="text-[10px] text-gray-400">
+					<p className="text-[10px] text-gray-600">
 						{data.projects.length} project(s) with cost
 					</p>
 				</div>
@@ -124,7 +124,7 @@ export function CompanyReconciliationPanel({
 									data.company.currency
 								)}
 					</p>
-					<p className="text-[10px] text-gray-400">
+					<p className="text-[10px] text-gray-600">
 						Deliberately not attributable to one Project
 					</p>
 				</div>
@@ -144,7 +144,7 @@ export function CompanyReconciliationPanel({
 									data.company.currency
 								)}
 					</p>
-					<p className="text-[10px] text-gray-400">
+					<p className="text-[10px] text-gray-600">
 						Awaiting a Project or Overhead destination
 					</p>
 				</div>

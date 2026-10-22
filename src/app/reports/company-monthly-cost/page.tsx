@@ -529,7 +529,7 @@ function CompanyMonthlyCostInner() {
 						<div
 							role="tablist"
 							aria-label="Report view"
-							className="inline-flex self-start rounded-xl border border-gray-200/80 bg-gray-100/90 p-1 shadow-inner sm:self-auto"
+							className="inline-flex flex-wrap shrink-0 self-start rounded-xl border border-gray-200/80 bg-gray-100/90 p-1 shadow-inner sm:self-auto"
 						>
 							{canReadExpenseSource && canReadPayrollSource && (
 								<button

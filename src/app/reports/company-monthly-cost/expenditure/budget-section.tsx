@@ -19,11 +19,12 @@ import {
 	BanknotesIcon,
 	ChevronDownIcon,
 	ChevronRightIcon,
-	XMarkIcon,
 } from '@heroicons/react/24/outline';
+import Modal from '@/components/ui/modal';
 import SearchableSelect from '@/components/ui/searchable-select';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { formatCurrencyIn, formatDate } from '@/lib/format';
+import { errorMessage } from './shared';
 
 interface BudgetCandidateRow {
 	budget_id: number;
@@ -152,10 +153,7 @@ const SCOPE_LABELS: Record<string, string> = {
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
 
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : 'Something went wrong';
-}
-
+// Deliberately not ./shared's money: '—' for an absent amount, not 'Unknown'.
 function money(value: number | null, currency: string): string {
 	return value === null ? '—' : formatCurrencyIn(value, currency);
 }
@@ -184,13 +182,35 @@ function BudgetForm({
 	const [basisNote, setBasisNote] = useState('');
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+		<Modal
+			open
+			onClose={onCancel}
+			title={`Record cost budget for ${projectCode}`}
+			size="lg"
+			footer={
+				<>
+					<button
+						type="button"
+						onClick={onCancel}
+						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						Close
+					</button>
+					<button
+						type="submit"
+						form="budget-form"
+						data-testid="budget-form-submit"
+						disabled={submitting}
+						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
+					>
+						Record budget
+					</button>
+				</>
+			}
+		>
 			<form
+				id="budget-form"
 				data-testid="budget-form"
-				role="dialog"
-				aria-modal="true"
-				aria-label="Record cost budget"
-				className="mt-8 w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl"
 				onSubmit={(event) => {
 					event.preventDefault();
 					onSubmit({
@@ -203,19 +223,6 @@ function BudgetForm({
 					});
 				}}
 			>
-				<div className="mb-3 flex items-center justify-between">
-					<h2 className="text-base font-semibold text-gray-900">
-						Record cost budget for {projectCode}
-					</h2>
-					<button
-						type="button"
-						onClick={onCancel}
-						aria-label="Close"
-						className="rounded p-1 text-gray-500 hover:bg-gray-100"
-					>
-						<XMarkIcon className="h-4 w-4" />
-					</button>
-				</div>
 				<p className="mb-3 text-xs text-gray-600">
 					A recorded budget is a draft. It becomes an approved cost budget only
 					through Submit and Approve, and it is compared with Incurred Project
@@ -308,25 +315,8 @@ function BudgetForm({
 						{error}
 					</p>
 				)}
-				<div className="mt-3 flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={onCancel}
-						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-					>
-						Close
-					</button>
-					<button
-						type="submit"
-						data-testid="budget-form-submit"
-						disabled={submitting}
-						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
-					>
-						Record budget
-					</button>
-				</div>
 			</form>
-		</div>
+		</Modal>
 	);
 }
 
@@ -353,19 +343,39 @@ function CommandDialog({
 	const label = command === 'approve' ? 'Approve budget' : 'Withdraw budget';
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+		<Modal
+			open
+			onClose={onCancel}
+			title={label}
+			size="sm"
+			footer={
+				<>
+					<button
+						type="button"
+						onClick={onCancel}
+						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						Close
+					</button>
+					<button
+						type="submit"
+						form="budget-command-dialog"
+						disabled={submitting}
+						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
+					>
+						{label}
+					</button>
+				</>
+			}
+		>
 			<form
+				id="budget-command-dialog"
 				data-testid="budget-command-dialog"
-				role="dialog"
-				aria-modal="true"
-				aria-label={label}
-				className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl"
 				onSubmit={(event) => {
 					event.preventDefault();
 					onConfirm({ reason, evidence });
 				}}
 			>
-				<h2 className="text-base font-semibold text-gray-900">{label}</h2>
 				<p className="mt-1 text-xs text-gray-600">
 					{budget.budget_uid} · {money(budget.amount, budget.currency)} ·{' '}
 					{budget.period_start} to {budget.period_end} · version{' '}
@@ -409,24 +419,8 @@ function CommandDialog({
 						{error}
 					</p>
 				)}
-				<div className="mt-3 flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={onCancel}
-						className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-					>
-						Close
-					</button>
-					<button
-						type="submit"
-						disabled={submitting}
-						className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a] disabled:opacity-50"
-					>
-						{label}
-					</button>
-				</div>
 			</form>
-		</div>
+		</Modal>
 	);
 }
 
