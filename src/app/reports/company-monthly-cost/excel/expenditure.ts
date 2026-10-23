@@ -161,7 +161,9 @@ function budgetVariancePercent(
 	if (comparison.variance === null) return null;
 	const amount = comparison.budget?.amount ?? null;
 	if (amount === null || !gt(amount, 0)) return null;
-	return toNumber(mul(div(comparison.variance, amount), 100).toDecimalPlaces(2));
+	return toNumber(
+		mul(div(comparison.variance, amount), 100).toDecimalPlaces(2)
+	);
 }
 
 function renderVariancePercentCell(
@@ -461,11 +463,11 @@ function buildExpenditureReconciliationSheet(
 	const payrollRows: Array<[string, string]> = [
 		[
 			'Estimated payroll',
-			`${formatCurrencyIn(reconciliation.payroll.estimated_total, reconciliation.payroll.currency)} (${reconciliation.payroll.estimated_count} employee(s))`,
+			`${formatCurrencyIn(reconciliation.payroll.estimated_total, reconciliation.payroll.currency)} ${reconciliation.payroll.currency} (${reconciliation.payroll.estimated_count} employee(s))`,
 		],
 		[
 			'Recorded payroll (already in confirmed cost)',
-			`${formatCurrencyIn(reconciliation.payroll.recorded_total, reconciliation.payroll.currency)} (${reconciliation.payroll.recorded_count} recorded, ${reconciliation.payroll.known_zero_count} known zero)`,
+			`${formatCurrencyIn(reconciliation.payroll.recorded_total, reconciliation.payroll.currency)} ${reconciliation.payroll.currency} (${reconciliation.payroll.recorded_count} recorded, ${reconciliation.payroll.known_zero_count} known zero)`,
 		],
 		[
 			'Missing pricing (unknown, not zero)',
@@ -503,7 +505,6 @@ function buildExpenditureReconciliationSheet(
 		setFill(c, TINT_WARN_LIGHT);
 		box(c);
 	}
-
 
 	// Filtered Project Subtotal Table (if filter applied)
 	if (reconciliation.filtered_subtotal) {
@@ -687,8 +688,7 @@ function buildExpenditureReconciliationSheet(
 	ws.getRow(rNum).height = 20;
 
 	const cmp = reconciliation.comparison;
-	const currencySplit =
-		cmp.currency === null && cmp.currency_totals.length > 1;
+	const currencySplit = cmp.currency === null && cmp.currency_totals.length > 1;
 	const windowBasisLabel =
 		cmp.basis === 'equal_period'
 			? `Elapsed window to ${cmp.as_of}: current ${cmp.current_days} day(s), prior ${cmp.prior_days} day(s)`
@@ -696,7 +696,10 @@ function buildExpenditureReconciliationSheet(
 	const fullMonthLabel =
 		reconciliation.company.incurred_cost === null
 			? 'See currencies'
-			: formatCurrencyIn(reconciliation.company.incurred_cost, reconciliation.company.currency ?? 'INR');
+			: formatCurrencyIn(
+					reconciliation.company.incurred_cost,
+					reconciliation.company.currency ?? 'INR'
+				);
 
 	rNum++;
 	ws.mergeCells(rNum, 1, rNum, 10);
@@ -757,8 +760,14 @@ function buildExpenditureReconciliationSheet(
 		cmp.currency,
 		currencySplit
 	);
-	comparisonPercentCell(compRow.getCell(8), cmp.change_percent, cmp.change_state, currencySplit);
-	compRow.getCell(9).value = CHANGE_LABELS[cmp.change_state] ?? cmp.change_state;
+	comparisonPercentCell(
+		compRow.getCell(8),
+		cmp.change_percent,
+		cmp.change_state,
+		currencySplit
+	);
+	compRow.getCell(9).value =
+		CHANGE_LABELS[cmp.change_state] ?? cmp.change_state;
 	compRow.getCell(10).value = cmp.window_mismatch
 		? 'Unequal windows: prior month shorter'
 		: cmp.current_days === cmp.prior_days
@@ -827,7 +836,12 @@ function buildExpenditureReconciliationSheet(
 			} else {
 				renderValue(curRow.getCell(4), row.change_amount, '#,##0.00');
 			}
-			comparisonPercentCell(curRow.getCell(5), row.change_percent, row.change_state, false);
+			comparisonPercentCell(
+				curRow.getCell(5),
+				row.change_percent,
+				row.change_state,
+				false
+			);
 			curRow.getCell(6).value =
 				CHANGE_LABELS[row.change_state] ?? row.change_state;
 			renderValue(curRow.getCell(7), row.dayless_cost, '#,##0.00');
@@ -1079,7 +1093,8 @@ function buildExpenditureProjectDetailSheet(
 		} else {
 			row.getCell(15).value = 'Unavailable: no budget comparison';
 			row.getCell(16).value = 'No budget comparison';
-			row.getCell(17).value = `No budget comparison covers ${p.project_code} in ${p.currency} for ${reconciliation.month}; the standalone budget section stays the unmatched-comparison surface.`;
+			row.getCell(17).value =
+				`No budget comparison covers ${p.project_code} in ${p.currency} for ${reconciliation.month}; the standalone budget section stays the unmatched-comparison surface.`;
 		}
 
 		totalHours += p.logged_hours || 0;
@@ -1820,21 +1835,37 @@ function buildExpenditureRevisionsCloseSheet(
 	ws.getRow(rNum).height = 16;
 
 	const revisionContextRows: Array<[string, string]> = [
-		['Revision Status', revisions ? (revisions.status === 'closed' ? 'Closed' : 'Open') : 'Unavailable'],
-		['Close Version', revisions ? String(revisions.close_version) : 'Unavailable'],
+		[
+			'Revision Status',
+			revisions
+				? revisions.status === 'closed'
+					? 'Closed'
+					: 'Open'
+				: 'Unavailable',
+		],
+		[
+			'Close Version',
+			revisions ? String(revisions.close_version) : 'Unavailable',
+		],
 		[
 			'Frozen Prior Total',
 			revisions?.prior?.incurred_cost === null ||
 			revisions?.prior?.incurred_cost === undefined
 				? '—'
-				: formatCurrencyIn(revisions.prior.incurred_cost, revisions.prior.currency ?? 'INR'),
+				: formatCurrencyIn(
+						revisions.prior.incurred_cost,
+						revisions.prior.currency ?? 'INR'
+					),
 		],
 		[
 			'Live Current Total',
 			revisions?.current.incurred_cost === null ||
 			revisions?.current.incurred_cost === undefined
 				? '—'
-				: formatCurrencyIn(revisions.current.incurred_cost, revisions.current.currency ?? 'INR'),
+				: formatCurrencyIn(
+						revisions.current.incurred_cost,
+						revisions.current.currency ?? 'INR'
+					),
 		],
 	];
 	for (const [k, v] of revisionContextRows) {

@@ -106,7 +106,9 @@ export function CompanyReconciliationPanel({
 					</p>
 					<p
 						data-testid="kpi-project-count"
-						data-scoped={data.project_id === null ? '' : String(data.project_id)}
+						data-scoped={
+							data.project_id === null ? '' : String(data.project_id)
+						}
 						className="text-[10px] text-gray-600"
 					>
 						{data.project_id === null
@@ -169,7 +171,10 @@ export function CompanyReconciliationPanel({
 					Estimated payroll
 				</p>
 				<p className="mt-0.5 text-lg font-bold text-gray-900">
-					{formatCurrencyIn(data.payroll.estimated_total, data.payroll.currency)}
+					{formatCurrencyIn(
+						data.payroll.estimated_total,
+						data.payroll.currency
+					)}
 				</p>
 				<p className="text-[10px] text-gray-600">
 					Recorded{' '}

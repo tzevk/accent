@@ -437,13 +437,11 @@ describe('ProjectBreakdown budget variance', () => {
 			/>
 		);
 		const row = screen.getByTestId('expenditure-project-row');
-		expect(
-			within(row).getByTestId('project-incurred-cost')
-		).toHaveTextContent('₹16,000.00');
-		const cells = within(row).getAllByRole('cell');
-		const budget = cells.find((cell) =>
-			within(cell).queryByText('₹10,000.00')
+		expect(within(row).getByTestId('project-incurred-cost')).toHaveTextContent(
+			'₹16,000.00'
 		);
+		const cells = within(row).getAllByRole('cell');
+		const budget = cells.find((cell) => within(cell).queryByText('₹10,000.00'));
 		expect(budget).toBeDefined();
 		const variance = cells.find((cell) =>
 			within(cell).queryByText('Overspent', { exact: false })
@@ -455,9 +453,7 @@ describe('ProjectBreakdown budget variance', () => {
 
 	it('keeps an incompatible-currency budget unavailable without a variance', () => {
 		const month = data();
-		month.projects = [
-			projectRow({ project_id: 61, project_code: 'P61' }),
-		];
+		month.projects = [projectRow({ project_id: 61, project_code: 'P61' })];
 		month.budgets = {
 			...month.budgets,
 			comparisons: [
@@ -515,9 +511,7 @@ describe('ProjectBreakdown budget variance', () => {
 			/>
 		);
 		const row = screen.getByTestId('expenditure-project-row');
-		expect(
-			within(row).getByText('Different currency')
-		).toBeInTheDocument();
+		expect(within(row).getByText('Different currency')).toBeInTheDocument();
 		expect(within(row).getByText('Unavailable')).toBeInTheDocument();
 		expect(
 			within(row).queryByText('Overspent', { exact: false })
@@ -526,9 +520,7 @@ describe('ProjectBreakdown budget variance', () => {
 
 	it('keeps an incompatible-period budget unavailable without a variance', () => {
 		const month = data();
-		month.projects = [
-			projectRow({ project_id: 61, project_code: 'P61' }),
-		];
+		month.projects = [projectRow({ project_id: 61, project_code: 'P61' })];
 		month.budgets = {
 			...month.budgets,
 			comparisons: [
@@ -586,9 +578,7 @@ describe('ProjectBreakdown budget variance', () => {
 			/>
 		);
 		const row = screen.getByTestId('expenditure-project-row');
-		expect(
-			within(row).getByText('Different period')
-		).toBeInTheDocument();
+		expect(within(row).getByText('Different period')).toBeInTheDocument();
 		expect(within(row).getByText('Unavailable')).toBeInTheDocument();
 		expect(
 			within(row).queryByText('Remaining', { exact: false })
@@ -1036,9 +1026,7 @@ describe('DecisionView review summary', () => {
 			name: /Financial close: open/,
 		});
 		await user.click(link);
-		expect(
-			screen.getByTestId('financial-close-blockers')
-		).toBeInTheDocument();
+		expect(screen.getByTestId('financial-close-blockers')).toBeInTheDocument();
 		const section = screen.getByTestId('decision-section-close');
 		expect(
 			within(section).getByRole('heading', { name: 'Financial close' })
@@ -1077,9 +1065,9 @@ describe('DecisionView review summary', () => {
 		props.queueError = new Error('queue offline');
 		renderDecision(props);
 		const review = screen.getByRole('region', { name: 'Review summary' });
-		expect(
-			within(review).getByRole('alert')
-		).toHaveTextContent('queue offline');
+		expect(within(review).getByRole('alert')).toHaveTextContent(
+			'queue offline'
+		);
 		expect(
 			within(review).queryByRole('link', { name: /unconfirmed record/ })
 		).not.toBeInTheDocument();
@@ -1307,9 +1295,7 @@ describe('DecisionView keyboard and separation', () => {
 		link.focus();
 		expect(link).toHaveFocus();
 		await user.keyboard('{Enter}');
-		expect(
-			screen.getByTestId('financial-revision-totals')
-		).toBeInTheDocument();
+		expect(screen.getByTestId('financial-revision-totals')).toBeInTheDocument();
 		const section = screen.getByTestId('decision-section-revision');
 		expect(
 			within(section).getByRole('heading', { name: 'Financial revisions' })
@@ -1402,7 +1388,6 @@ describe('DecisionView keyboard and separation', () => {
 			within(budgetSection).getByRole('row', { name: /Project Seventy/ })
 		).toBeInTheDocument();
 	});
-
 });
 
 describe('DecisionView company summary composition', () => {
@@ -1410,12 +1395,10 @@ describe('DecisionView company summary composition', () => {
 		const month = data();
 		renderDecision(decisionProps({ month }));
 		const summary = screen.getByTestId('decision-summary');
-		expect(
-			within(summary).getByTestId('kpi-incurred-cost')
-		).toHaveTextContent('₹22,000.00');
-		expect(
-			within(summary).getByTestId('comparison-panel')
-		).toBeInTheDocument();
+		expect(within(summary).getByTestId('kpi-incurred-cost')).toHaveTextContent(
+			'₹22,000.00'
+		);
+		expect(within(summary).getByTestId('comparison-panel')).toBeInTheDocument();
 		expect(
 			within(summary).getByTestId('decision-close-context')
 		).toBeInTheDocument();
@@ -1510,4 +1493,4 @@ describe('DecisionView company summary composition', () => {
 			screen.queryByText('1 project(s) with cost')
 		).not.toBeInTheDocument();
 	});
-	});
+});

@@ -151,8 +151,8 @@ export function ProjectBreakdown({
 		<div className="mt-3 overflow-x-auto rounded-xl border border-gray-200 bg-white">
 			<p className="border-b border-gray-200 px-3 py-2 text-xs text-gray-600">
 				Remaining or overspent is the approved monthly cost budget minus
-				confirmed monthly Incurred Project Cost: a positive amount is
-				remaining, a negative amount is overspent.
+				confirmed monthly Incurred Project Cost: a positive amount is remaining,
+				a negative amount is overspent.
 			</p>
 			<table className="w-full min-w-[1080px] text-sm">
 				<caption className="sr-only">
@@ -388,7 +388,9 @@ export function ProjectBreakdown({
 												<td
 													data-testid="project-budget-variance"
 													data-variance={comparison?.variance ?? ''}
-													data-percent={percent === null ? '' : percent.toString()}
+													data-percent={
+														percent === null ? '' : percent.toString()
+													}
 													data-over-budget={
 														comparison?.over_budget === null ||
 														comparison?.over_budget === undefined
@@ -400,7 +402,9 @@ export function ProjectBreakdown({
 													{compared !== null ? (
 														<>
 															<p>
-																{compared.overBudget === true ? 'Overspent ' : 'Remaining '}
+																{compared.overBudget === true
+																	? 'Overspent '
+																	: 'Remaining '}
 																{formatCurrencyIn(
 																	Math.abs(compared.variance),
 																	project.currency

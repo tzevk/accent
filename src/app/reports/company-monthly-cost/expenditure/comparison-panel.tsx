@@ -26,7 +26,9 @@ export interface ComparisonPanelProps {
 	clientOrders: ClientOrderRow[];
 }
 
-export function ComparisonSummary({ data }: Pick<ComparisonPanelProps, 'data'>) {
+export function ComparisonSummary({
+	data,
+}: Pick<ComparisonPanelProps, 'data'>) {
 	// A month whose cost spans currencies has no single comparison figure; the
 	// per-currency table in the supporting detail states each one, so the
 	// headline says so instead of calling a known, currency-split amount
@@ -36,129 +38,129 @@ export function ComparisonSummary({ data }: Pick<ComparisonPanelProps, 'data'>) 
 		data.comparison.currency_totals.length > 1;
 
 	return (
-	<section
-		aria-label={`Comparable period — ${data.month_label} against ${data.comparison.prior_month_label}`}
-		data-testid="comparison-panel"
-		data-basis={data.comparison.basis}
-		data-as-of={data.comparison.as_of}
-		data-current-days={data.comparison.current_days}
-		data-prior-days={data.comparison.prior_days}
-		className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
-	>
-		<div className="flex flex-wrap items-baseline justify-between gap-2">
-			<p className="text-xs font-semibold text-gray-700">
-				Comparable period — {data.month_label} against{' '}
-				{data.comparison.prior_month_label}
-			</p>
-			<p className="text-[11px] text-gray-500">
-				{data.comparison.unfinished
-					? `Measured to ${data.comparison.as_of}: both periods cover their first ${data.comparison.current_days} day(s).`
-					: `Full month compared with the full prior month (measured to ${data.comparison.as_of}).`}
-			</p>
-		</div>
-		{data.comparison.unfinished &&
-			data.company.incurred_cost !== null &&
-			data.company.currency !== null &&
-			data.comparison.currency !== null &&
-			data.comparison.current_cost !== null &&
-			data.comparison.current_cost !== data.company.incurred_cost && (
-				<p
-					data-testid="comparison-scope-bases"
-					className="mt-2 text-[11px] text-gray-600"
-				>
-					Full-month Company Incurred Cost:{' '}
-					{formatCurrencyIn(
-						data.company.incurred_cost,
-						data.company.currency
-					)}{' '}
-					· First {data.comparison.current_days} day(s) of this period:{' '}
-					{formatCurrencyIn(
-						data.comparison.current_cost,
-						data.comparison.currency
-					)}
+		<section
+			aria-label={`Comparable period — ${data.month_label} against ${data.comparison.prior_month_label}`}
+			data-testid="comparison-panel"
+			data-basis={data.comparison.basis}
+			data-as-of={data.comparison.as_of}
+			data-current-days={data.comparison.current_days}
+			data-prior-days={data.comparison.prior_days}
+			className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
+		>
+			<div className="flex flex-wrap items-baseline justify-between gap-2">
+				<p className="text-xs font-semibold text-gray-700">
+					Comparable period — {data.month_label} against{' '}
+					{data.comparison.prior_month_label}
 				</p>
-			)}
-		<div className="mt-2 grid gap-3 sm:grid-cols-4">
-			<div>
-				<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+				<p className="text-[11px] text-gray-500">
 					{data.comparison.unfinished
-						? `First ${data.comparison.current_days} day(s)`
-						: 'This period'}
-				</p>
-				<p
-					data-testid="comparison-current"
-					data-value={data.comparison.current_cost ?? ''}
-					data-currency={data.comparison.currency ?? ''}
-					className="text-base font-bold text-gray-900"
-				>
-					{data.comparison.currency !== null
-						? formatCurrencyIn(
-								data.comparison.current_cost ?? 0,
-								data.comparison.currency
-							)
-						: data.comparison.currency_totals.length === 0
-							? 'No cost recorded'
-							: 'See currencies'}
+						? `Measured to ${data.comparison.as_of}: both periods cover their first ${data.comparison.current_days} day(s).`
+						: `Full month compared with the full prior month (measured to ${data.comparison.as_of}).`}
 				</p>
 			</div>
-			<div>
-				<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
-					Prior period
-				</p>
-				<p
-					data-testid="comparison-prior"
-					data-value={data.comparison.prior_cost ?? ''}
-					className="text-base font-bold text-gray-900"
-				>
-					{data.comparison.prior_cost === null
-						? currencySplitScope
+			{data.comparison.unfinished &&
+				data.company.incurred_cost !== null &&
+				data.company.currency !== null &&
+				data.comparison.currency !== null &&
+				data.comparison.current_cost !== null &&
+				data.comparison.current_cost !== data.company.incurred_cost && (
+					<p
+						data-testid="comparison-scope-bases"
+						className="mt-2 text-[11px] text-gray-600"
+					>
+						Full-month Company Incurred Cost:{' '}
+						{formatCurrencyIn(
+							data.company.incurred_cost,
+							data.company.currency
+						)}{' '}
+						· First {data.comparison.current_days} day(s) of this period:{' '}
+						{formatCurrencyIn(
+							data.comparison.current_cost,
+							data.comparison.currency
+						)}
+					</p>
+				)}
+			<div className="mt-2 grid gap-3 sm:grid-cols-4">
+				<div>
+					<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+						{data.comparison.unfinished
+							? `First ${data.comparison.current_days} day(s)`
+							: 'This period'}
+					</p>
+					<p
+						data-testid="comparison-current"
+						data-value={data.comparison.current_cost ?? ''}
+						data-currency={data.comparison.currency ?? ''}
+						className="text-base font-bold text-gray-900"
+					>
+						{data.comparison.currency !== null
+							? formatCurrencyIn(
+									data.comparison.current_cost ?? 0,
+									data.comparison.currency
+								)
+							: data.comparison.currency_totals.length === 0
+								? 'No cost recorded'
+								: 'See currencies'}
+					</p>
+				</div>
+				<div>
+					<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+						Prior period
+					</p>
+					<p
+						data-testid="comparison-prior"
+						data-value={data.comparison.prior_cost ?? ''}
+						className="text-base font-bold text-gray-900"
+					>
+						{data.comparison.prior_cost === null
+							? currencySplitScope
+								? 'See currencies'
+								: 'Unknown'
+							: formatCurrencyIn(
+									data.comparison.prior_cost,
+									data.comparison.currency
+								)}
+					</p>
+				</div>
+				<div>
+					<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+						Absolute change
+					</p>
+					<p
+						data-testid="comparison-change"
+						data-value={data.comparison.change_amount ?? ''}
+						className="text-base font-bold text-gray-900"
+					>
+						{data.comparison.change_amount === null
+							? currencySplitScope
+								? 'See currencies'
+								: 'Unknown'
+							: formatCurrencyIn(
+									data.comparison.change_amount,
+									data.comparison.currency
+								)}
+					</p>
+				</div>
+				<div>
+					<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+						Percentage change
+					</p>
+					<p
+						data-testid="comparison-percent"
+						data-value={data.comparison.change_percent ?? ''}
+						data-state={data.comparison.change_state}
+						className="text-base font-bold text-gray-900"
+					>
+						{currencySplitScope
 							? 'See currencies'
-							: 'Unknown'
-						: formatCurrencyIn(
-								data.comparison.prior_cost,
-								data.comparison.currency
-							)}
-				</p>
+							: percentLabel(
+									data.comparison.change_percent,
+									data.comparison.change_state
+								)}
+					</p>
+				</div>
 			</div>
-			<div>
-				<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
-					Absolute change
-				</p>
-				<p
-					data-testid="comparison-change"
-					data-value={data.comparison.change_amount ?? ''}
-					className="text-base font-bold text-gray-900"
-				>
-					{data.comparison.change_amount === null
-						? currencySplitScope
-							? 'See currencies'
-							: 'Unknown'
-						: formatCurrencyIn(
-								data.comparison.change_amount,
-								data.comparison.currency
-							)}
-				</p>
-			</div>
-			<div>
-				<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
-					Percentage change
-				</p>
-				<p
-					data-testid="comparison-percent"
-					data-value={data.comparison.change_percent ?? ''}
-					data-state={data.comparison.change_state}
-					className="text-base font-bold text-gray-900"
-				>
-					{currencySplitScope
-						? 'See currencies'
-						: percentLabel(
-								data.comparison.change_percent,
-								data.comparison.change_state
-							)}
-				</p>
-			</div>
-		</div>
-	</section>
+		</section>
 	);
 }
 
@@ -182,73 +184,73 @@ export function ComparisonDetail({ data }: Pick<ComparisonPanelProps, 'data'>) {
 			</p>
 			{data.comparison.currency_totals.length > 0 && (
 				<div className="overflow-x-auto">
-				<table className="mt-2 w-full min-w-[440px] text-xs">
-					<caption className="sr-only">
-						Comparable window by currency and direct-cost category
-					</caption>
-					<thead className="text-left text-[10px] uppercase tracking-wide text-gray-500">
-						<tr>
-							<th scope="col">Currency</th>
-							<th scope="col" className="text-right">
-								This period
-							</th>
-							<th scope="col" className="text-right">
-								Prior period
-							</th>
-							<th scope="col" className="text-right">
-								Change
-							</th>
-							<th scope="col" className="text-right">
-								Incurred Project Cost
-							</th>
-							<th scope="col" className="text-right">
-								Company Overhead
-							</th>
-							<th scope="col" className="text-right">
-								Unallocated Cost
-							</th>
-						</tr>
-					</thead>
-					<tbody>
-					{data.comparison.currency_totals.map((row) => (
-						<tr
-							key={row.currency}
-							data-testid="comparison-currency-row"
-							data-currency={row.currency}
-							data-current={row.current_cost}
-							data-prior={row.prior_cost ?? ''}
-							data-dayless={row.dayless_cost}
-							data-dayless-count={row.dayless_records}
-						>
-							<td>{row.currency}</td>
-							<td className="text-right">
-								{formatCurrencyIn(row.current_cost, row.currency)}
-							</td>
-							<td className="text-right">
-								{row.prior_cost === null
-									? 'Unknown'
-									: formatCurrencyIn(row.prior_cost, row.currency)}
-							</td>
-							<td className="text-right">
-								{percentLabel(row.change_percent, row.change_state)}
-							</td>
-							{row.groups.map((group) => (
-								<td
-									key={group.key}
-									data-testid="comparison-category"
-									data-category={group.key}
-									data-amount={group.amount}
-									className="text-right"
+					<table className="mt-2 w-full min-w-[440px] text-xs">
+						<caption className="sr-only">
+							Comparable window by currency and direct-cost category
+						</caption>
+						<thead className="text-left text-[10px] uppercase tracking-wide text-gray-500">
+							<tr>
+								<th scope="col">Currency</th>
+								<th scope="col" className="text-right">
+									This period
+								</th>
+								<th scope="col" className="text-right">
+									Prior period
+								</th>
+								<th scope="col" className="text-right">
+									Change
+								</th>
+								<th scope="col" className="text-right">
+									Incurred Project Cost
+								</th>
+								<th scope="col" className="text-right">
+									Company Overhead
+								</th>
+								<th scope="col" className="text-right">
+									Unallocated Cost
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							{data.comparison.currency_totals.map((row) => (
+								<tr
+									key={row.currency}
+									data-testid="comparison-currency-row"
+									data-currency={row.currency}
+									data-current={row.current_cost}
+									data-prior={row.prior_cost ?? ''}
+									data-dayless={row.dayless_cost}
+									data-dayless-count={row.dayless_records}
 								>
-									{formatCurrencyIn(group.amount, row.currency)}
-								</td>
+									<td>{row.currency}</td>
+									<td className="text-right">
+										{formatCurrencyIn(row.current_cost, row.currency)}
+									</td>
+									<td className="text-right">
+										{row.prior_cost === null
+											? 'Unknown'
+											: formatCurrencyIn(row.prior_cost, row.currency)}
+									</td>
+									<td className="text-right">
+										{percentLabel(row.change_percent, row.change_state)}
+									</td>
+									{row.groups.map((group) => (
+										<td
+											key={group.key}
+											data-testid="comparison-category"
+											data-category={group.key}
+											data-amount={group.amount}
+											className="text-right"
+										>
+											{formatCurrencyIn(group.amount, row.currency)}
+										</td>
+									))}
+								</tr>
 							))}
-						</tr>
-					))}
-				</tbody>
-			</table>
-		</div>
-		)}
+						</tbody>
+					</table>
+				</div>
+			)}
 			<ul className="mt-2 space-y-1">
 				{data.comparison.disclosures.map((entry, index) => (
 					<li
@@ -260,9 +262,7 @@ export function ComparisonDetail({ data }: Pick<ComparisonPanelProps, 'data'>) {
 						data-amount={entry.amount ?? ''}
 						data-severity={entry.severity}
 						className={`flex items-start gap-1.5 text-[11px] leading-relaxed ${
-							entry.severity === 'warning'
-								? 'text-amber-800'
-								: 'text-gray-500'
+							entry.severity === 'warning' ? 'text-amber-800' : 'text-gray-500'
 						}`}
 					>
 						{entry.severity === 'warning' ? (
@@ -383,65 +383,65 @@ export function CompanyCurrencySubtotals({
 							: 'border-amber-200 bg-amber-50'
 					}`}
 				>
-				<p
-					className={`text-xs font-semibold ${companyStated ? 'text-gray-700' : 'text-amber-900'}`}
-				>
-					{companyStated
-						? `Each currency is converted into ${reportingCurrencyCode} at the rate recorded with its cost.`
-						: `Some currencies have no supported conversion to ${reportingCurrencyCode} yet. Their amounts stay in their own currency and no combined total is shown.`}
-				</p>
-				<table className="mt-2 w-full text-xs">
-					<thead>
-						<tr className="text-left text-gray-600">
-							<th className="py-1 pr-3 font-medium">Currency</th>
-							<th className="py-1 pr-3 font-medium">Incurred Project Cost</th>
-							<th className="py-1 pr-3 font-medium">Company Overhead</th>
-							<th className="py-1 pr-3 font-medium">Unallocated Cost</th>
-							<th className="py-1 pr-3 font-medium">Total</th>
-							<th className="py-1 pr-3 font-medium">
-								Reporting ({reportingCurrencyCode})
-							</th>
-						</tr>
-					</thead>
-					<tbody>
-						{data.company.currency_totals.map((row) => (
-							<tr
-								key={row.currency}
-								data-testid="currency-total-row"
-								data-conversion-status={row.reporting.status}
-							>
-								<td className="py-1 pr-3 font-semibold">{row.currency}</td>
-								<td className="py-1 pr-3">
-									{formatCurrencyIn(row.incurred_project_cost, row.currency)}
-								</td>
-								<td className="py-1 pr-3">
-									{formatCurrencyIn(row.company_overhead, row.currency)}
-								</td>
-								<td className="py-1 pr-3">
-									{formatCurrencyIn(row.unallocated_cost, row.currency)}
-								</td>
-								<td className="py-1 pr-3 font-semibold">
-									{formatCurrencyIn(row.incurred_cost, row.currency)}
-								</td>
-								<td
-									data-testid="currency-reporting-row"
-									data-currency={row.currency}
-									data-status={row.reporting.status}
-									className="py-1 pr-3 font-semibold"
-								>
-									{row.reporting.incurred_cost === null
-										? `No rate to ${reportingCurrencyCode}`
-										: formatCurrencyIn(
-												row.reporting.incurred_cost,
-												reportingCurrencyCode
-											)}
-								</td>
+					<p
+						className={`text-xs font-semibold ${companyStated ? 'text-gray-700' : 'text-amber-900'}`}
+					>
+						{companyStated
+							? `Each currency is converted into ${reportingCurrencyCode} at the rate recorded with its cost.`
+							: `Some currencies have no supported conversion to ${reportingCurrencyCode} yet. Their amounts stay in their own currency and no combined total is shown.`}
+					</p>
+					<table className="mt-2 w-full text-xs">
+						<thead>
+							<tr className="text-left text-gray-600">
+								<th className="py-1 pr-3 font-medium">Currency</th>
+								<th className="py-1 pr-3 font-medium">Incurred Project Cost</th>
+								<th className="py-1 pr-3 font-medium">Company Overhead</th>
+								<th className="py-1 pr-3 font-medium">Unallocated Cost</th>
+								<th className="py-1 pr-3 font-medium">Total</th>
+								<th className="py-1 pr-3 font-medium">
+									Reporting ({reportingCurrencyCode})
+								</th>
 							</tr>
-						))}
-					</tbody>
-				</table>
-			</div>
-		)}
-	</>
+						</thead>
+						<tbody>
+							{data.company.currency_totals.map((row) => (
+								<tr
+									key={row.currency}
+									data-testid="currency-total-row"
+									data-conversion-status={row.reporting.status}
+								>
+									<td className="py-1 pr-3 font-semibold">{row.currency}</td>
+									<td className="py-1 pr-3">
+										{formatCurrencyIn(row.incurred_project_cost, row.currency)}
+									</td>
+									<td className="py-1 pr-3">
+										{formatCurrencyIn(row.company_overhead, row.currency)}
+									</td>
+									<td className="py-1 pr-3">
+										{formatCurrencyIn(row.unallocated_cost, row.currency)}
+									</td>
+									<td className="py-1 pr-3 font-semibold">
+										{formatCurrencyIn(row.incurred_cost, row.currency)}
+									</td>
+									<td
+										data-testid="currency-reporting-row"
+										data-currency={row.currency}
+										data-status={row.reporting.status}
+										className="py-1 pr-3 font-semibold"
+									>
+										{row.reporting.incurred_cost === null
+											? `No rate to ${reportingCurrencyCode}`
+											: formatCurrencyIn(
+													row.reporting.incurred_cost,
+													reportingCurrencyCode
+												)}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			)}
+		</>
 	);
 }

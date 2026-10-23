@@ -168,11 +168,7 @@ function DecisionSection({
 	// the review link already reveals the inner toggle too.
 	if (id === 'close' || id === 'revision') {
 		return (
-			<section
-				id={SECTION_ANCHORS[id]}
-				aria-label={title}
-				data-testid={testId}
-			>
+			<section id={SECTION_ANCHORS[id]} aria-label={title} data-testid={testId}>
 				{children}
 			</section>
 		);
@@ -321,8 +317,7 @@ export function DecisionView(props: DecisionViewProps) {
 								</p>
 								{close.status === 'closed' && (
 									<p className="mt-1 text-[11px] text-gray-500">
-										Figures are frozen; later corrections arrive as
-										revisions.
+										Figures are frozen; later corrections arrive as revisions.
 									</p>
 								)}
 							</>
@@ -371,12 +366,11 @@ export function DecisionView(props: DecisionViewProps) {
 					</li>
 					<li data-testid="decision-review-unusable-budget">
 						<DecisionLink section="budget">
-							{unusableBudgetProjects.size} project(s) without a usable
-							budget comparison
+							{unusableBudgetProjects.size} project(s) without a usable budget
+							comparison
 						</DecisionLink>{' '}
 						<span className="text-gray-500">
-							(missing, unapproved, incompatible, ambiguous, or unconfirmed
-							cost
+							(missing, unapproved, incompatible, ambiguous, or unconfirmed cost
 							{scoped ? ', filtered project detail' : ''})
 						</span>
 					</li>
@@ -401,8 +395,8 @@ export function DecisionView(props: DecisionViewProps) {
 					</li>
 					<li data-testid="decision-review-payroll">
 						<DecisionLink section="payroll">
-							Payroll: estimated {payrollEstimate} ·{' '}
-							{payrollNotices.length} coverage notice(s)
+							Payroll: estimated {payrollEstimate} · {payrollNotices.length}{' '}
+							coverage notice(s)
 						</DecisionLink>{' '}
 						<span className="text-gray-500">
 							(estimate excluded from confirmed cost
@@ -415,8 +409,8 @@ export function DecisionView(props: DecisionViewProps) {
 					<li data-testid="decision-review-evidence">
 						<DecisionLink section="recognition">
 							{data.evidence.pending_evidence.count} pending record(s) ·{' '}
-							{data.evidence.draft.count} draft(s) ·{' '}
-							{coverageNotices.length} coverage notice(s)
+							{data.evidence.draft.count} draft(s) · {coverageNotices.length}{' '}
+							coverage notice(s)
 						</DecisionLink>{' '}
 						<span className="text-gray-500">
 							(separate categories; one record can appear in more than one)

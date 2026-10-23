@@ -29,6 +29,29 @@ Project Cost only when Project, currency, scope, and period match. A budget is
 never a cost: it appears in its own section and never changes Company Incurred
 Cost, the Project breakdown, or the evidence summary.
 
+### Company-first decision view (#382)
+
+The company position uses the existing reconciliation and Comparable Period payloads.
+The full-month headline stays separate from an unfinished month's elapsed-window comparison.
+Estimated payroll stays outside confirmed cost and retains its own currency.
+Recorded payroll, known-zero employees, and missing pricing remain distinct.
+Financial Close and Financial Revision keep frozen and current figures separate.
+Missing close information means unavailable, not open or ready to close.
+
+The review summary links to existing project, payroll, recognition, budget, close, and revision sections.
+Links reveal collapsed sections and move keyboard focus to their headings.
+Project budget categories count each Project once within each category.
+Categories can overlap; the report does not invent a unique issue total.
+Project-scoped budget categories identify their scope; company totals stay unfiltered.
+Loading or failed recognition data never becomes a clean zero.
+Read-only reviewers receive evidence and navigation, not financial write controls.
+
+Project detail uses existing approved monthly budget comparisons beside confirmed cost.
+Remaining or overspent budget means approved budget minus confirmed monthly Incurred Project Cost.
+Only a valid comparison with a positive budget has a percentage.
+Missing, unapproved, incompatible, ambiguous, and zero-budget states retain their reasons.
+Budget-only Projects remain in the standalone budget section, not the cost rankings.
+
 ## Architecture
 
 ```
@@ -1502,8 +1525,8 @@ Unauthorized requests receive 403 Forbidden without leaking financial figures.
 
 The workbook contains five distinct sheets matching the web reconciliation:
 
-1. `Company Reconciliation`: Company-wide totals, group breakdown, currency subtotals, and filtered project subtotal.
-2. `Project Detail`: Individual project incurred cost, logged hours, conversion status, and evidence state.
+1. `Company Reconciliation`: Company totals, reconciliation groups, separate payroll estimates, coverage, and Comparable Period bases.
+2. `Project Detail`: Project cost, logged hours, evidence, and supported monthly budgets, variance, and percentages.
 3. `Budgets & Commitments`: Approved cost budgets, supplier orders, and commercial client orders.
 4. `Cash Paid`: Outward cash movements, payment settlements, destinations, and payment references.
 5. `Revisions & Close`: Month close status, frozen snapshot metadata, and post-close revision events.
@@ -1513,6 +1536,16 @@ They never appear as zeroes.
 Project filters narrow project details while preserving unfiltered company reconciliation totals.
 Commercial client orders display an explicit warning banner stating they are context only and not revenue or profit.
 The UI expenditure view includes an Export Excel button in the control toolbar.
+The workbook preserves native currencies when the requested reporting currency lacks conversion evidence.
+An unavailable percentage never replaces a supported absolute budget variance.
+Missing close information remains unavailable; frozen prior and revised current totals remain distinct.
+
+The #382 smoke check uses disposable local MariaDB 10.11.15 data, not a branch database.
+It exercises month selection, project filtering, estimate separation, an incompatible budget, and keyboard review links.
+It also checks read-only source drill-down and a closed month's later revision.
+Four actual workbooks cover INR, unsupported USD, project-filtered detail, and a revised closed month.
+Their values and qualifications are checked against the matching authorized report payloads.
+No browser harness or E2E suite is added for this change.
 
 #### Files (#324)
 

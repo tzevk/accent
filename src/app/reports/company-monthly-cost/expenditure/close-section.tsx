@@ -102,7 +102,9 @@ export default function CloseSection({
 					<ChevronRightIcon className="h-4 w-4" />
 				)}
 				<BanknotesIcon className="h-4 w-4" />
-				<h3 data-decision-focus className="text-sm font-semibold">Financial close</h3>
+				<h3 data-decision-focus className="text-sm font-semibold">
+					Financial close
+				</h3>
 				<span
 					data-testid="financial-close-status"
 					className="ml-auto text-sm font-semibold"

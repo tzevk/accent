@@ -134,7 +134,9 @@ export default function RevisionSection({
 					<ChevronRightIcon className="h-4 w-4" />
 				)}
 				<PencilSquareIcon className="h-4 w-4" />
-				<h3 data-decision-focus className="text-sm font-semibold">Financial revisions</h3>
+				<h3 data-decision-focus className="text-sm font-semibold">
+					Financial revisions
+				</h3>
 				<span
 					data-testid="financial-revision-status"
 					className="ml-auto text-sm font-semibold"
