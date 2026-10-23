@@ -3,7 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CompanyReconciliationPanel } from './company-reconciliation';
-import { ComparisonPanel } from './comparison-panel';
+import {
+	ComparisonDetail,
+	ComparisonSummary,
+	CompanyCurrencySubtotals,
+} from './comparison-panel';
 import { ProjectBreakdown } from './project-breakdown';
 import { DecisionView } from './decision-view';
 import type { DecisionViewProps } from './decision-view';
@@ -219,7 +223,7 @@ describe('CompanyReconciliationPanel estimate separation', () => {
 	});
 });
 
-describe('ComparisonPanel comparison scope', () => {
+describe('ComparisonSummary comparison scope', () => {
 	it('identifies full-month and elapsed-window amounts as separate bases', () => {
 		const month = data();
 		month.company.incurred_cost = 22000;
@@ -253,7 +257,7 @@ describe('ComparisonPanel comparison scope', () => {
 		render(
 			<>
 				<CompanyReconciliationPanel data={month} />
-				<ComparisonPanel data={month} clientOrders={[]} />
+				<ComparisonSummary data={month} />
 			</>
 		);
 		expect(screen.getByTestId('kpi-incurred-cost')).toHaveTextContent(
@@ -293,7 +297,7 @@ describe('ComparisonPanel comparison scope', () => {
 				},
 			],
 		};
-		render(<ComparisonPanel data={month} clientOrders={[]} />);
+		render(<ComparisonSummary data={month} />);
 		const panel = screen.getByTestId('comparison-panel');
 		expect(within(panel).getByTestId('comparison-prior')).toHaveTextContent(
 			'Unknown'
@@ -324,7 +328,7 @@ describe('ComparisonPanel comparison scope', () => {
 				},
 			],
 		};
-		render(<ComparisonPanel data={month} clientOrders={[]} />);
+		render(<ComparisonSummary data={month} />);
 		const panel = screen.getByTestId('comparison-panel');
 		expect(within(panel).getByTestId('comparison-prior')).toHaveTextContent(
 			'₹0.00'
@@ -1147,7 +1151,7 @@ describe('DecisionView payroll and currency coverage', () => {
 			name: /Payroll: estimated/,
 		});
 		expect(link).toHaveAttribute('href', '#decision-payroll');
-		expect(link).toHaveTextContent('INR 4955');
+		expect(link).toHaveTextContent('₹4,955.00');
 		const row = screen.getByTestId('decision-review-payroll');
 		expect(row).toHaveTextContent('1 unknown pricing');
 	});
@@ -1199,7 +1203,7 @@ describe('DecisionView payroll and currency coverage', () => {
 		render(
 			<>
 				<CompanyReconciliationPanel data={month} />
-				<ComparisonPanel data={month} clientOrders={[]} />
+				<CompanyCurrencySubtotals data={month} />
 			</>
 		);
 		expect(screen.getByTestId('conversion-warning')).toBeInTheDocument();
@@ -1262,6 +1266,18 @@ describe('DecisionView payroll and currency coverage', () => {
 			],
 		};
 		renderDecision(props);
+		const summary = screen.getByTestId('decision-close-context');
+		expect(
+			within(summary).getByRole('link', { name: /Financial close: closed/ })
+		).toHaveAttribute('href', '#decision-close');
+		expect(
+			within(summary).getByRole('link', {
+				name: /Financial revisions: closed/,
+			})
+		).toHaveAttribute('href', '#decision-revision');
+		expect(
+			within(summary).getByText('1 revision(s)', { exact: false })
+		).toBeInTheDocument();
 		const review = screen.getByRole('region', { name: 'Review summary' });
 		expect(
 			within(review).getByRole('link', { name: /Financial close: closed/ })
@@ -1386,4 +1402,112 @@ describe('DecisionView keyboard and separation', () => {
 			within(budgetSection).getByRole('row', { name: /Project Seventy/ })
 		).toBeInTheDocument();
 	});
+
 });
+
+describe('DecisionView company summary composition', () => {
+	it('keeps the headline, comparable change, and close context together above the review', () => {
+		const month = data();
+		renderDecision(decisionProps({ month }));
+		const summary = screen.getByTestId('decision-summary');
+		expect(
+			within(summary).getByTestId('kpi-incurred-cost')
+		).toHaveTextContent('₹22,000.00');
+		expect(
+			within(summary).getByTestId('comparison-panel')
+		).toBeInTheDocument();
+		expect(
+			within(summary).getByTestId('decision-close-context')
+		).toBeInTheDocument();
+		const view = screen.getByTestId('decision-view');
+		const order = Array.from(
+			view.querySelectorAll(
+				'[data-testid="decision-summary"],[data-testid="decision-review"]'
+			)
+		).map((node) => node.getAttribute('data-testid'));
+		expect(order).toEqual(['decision-summary', 'decision-review']);
+	});
+
+	it('keeps the review above the verbose comparison detail', () => {
+		const month = data();
+		month.comparison = {
+			...month.comparison,
+			currency_totals: [
+				{
+					currency: 'INR',
+					current_cost: 22000,
+					prior_cost: 9000,
+					change_amount: 13000,
+					change_percent: 144.44,
+					change_state: 'increase',
+					dayless_cost: 0,
+					dayless_records: 0,
+					groups: [
+						{
+							key: 'incurred_project_cost',
+							label: 'Incurred Project Cost',
+							amount: 22000,
+							record_count: 2,
+						},
+					],
+				},
+			],
+		};
+		renderDecision(decisionProps({ month }));
+		const view = screen.getByTestId('decision-view');
+		const order = Array.from(
+			view.querySelectorAll(
+				'[data-testid="decision-review"],[data-testid="comparison-detail"]'
+			)
+		).map((node) => node.getAttribute('data-testid'));
+		expect(order).toEqual(['decision-review', 'comparison-detail']);
+		expect(screen.getByTestId('comparison-currency-row')).toHaveTextContent(
+			'INR'
+		);
+	});
+
+	it('shows missing close and revision context as unavailable near the summary', () => {
+		const month = data();
+		const props = decisionProps({ month, close: null, revisions: null });
+		props.closeLoading = true;
+		props.revisionsLoading = true;
+		renderDecision(props);
+		const summary = screen.getByTestId('decision-close-context');
+		expect(
+			within(summary).getByText('Financial close: unavailable')
+		).toBeInTheDocument();
+		expect(
+			within(summary).getByText('Financial revisions: unavailable')
+		).toBeInTheDocument();
+		expect(
+			within(summary).queryByRole('link', { name: /Financial close/ })
+		).not.toBeInTheDocument();
+	});
+
+	it('omits the project count beside company project cost under a project filter', () => {
+		const month = data();
+		month.project_id = 60;
+		month.projects = [projectRow({})];
+		month.filtered_subtotal = {
+			project_id: 60,
+			currency_totals: [
+				{
+					currency: 'INR',
+					incurred_cost: 16000,
+					comparison_cost: 16000,
+					cost_to_date: 16000,
+				},
+			],
+		};
+		renderDecision(decisionProps({ month }));
+		expect(screen.getByTestId('kpi-project-cost')).toHaveTextContent(
+			'₹22,000.00'
+		);
+		expect(screen.getByTestId('kpi-project-count')).toHaveTextContent(
+			'company cost stays unfiltered'
+		);
+		expect(
+			screen.queryByText('1 project(s) with cost')
+		).not.toBeInTheDocument();
+	});
+	});
