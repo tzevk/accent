@@ -165,12 +165,12 @@ export function CompanyReconciliationPanel({
 				data-currency={data.payroll.currency}
 				data-missing-pricing={data.payroll.missing_pricing_count}
 				data-recorded-total={data.payroll.recorded_total}
-				className="mb-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
+				className="mb-3 mt-4 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
 			>
 				<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
 					Estimated payroll
 				</p>
-				<p className="mt-0.5 text-lg font-bold text-gray-900">
+				<p className="mt-0.5 text-lg font-bold tabular-nums text-gray-900">
 					{formatCurrencyIn(
 						data.payroll.estimated_total,
 						data.payroll.currency

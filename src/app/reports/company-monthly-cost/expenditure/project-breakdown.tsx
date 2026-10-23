@@ -344,7 +344,7 @@ export function ProjectBreakdown({
 												<td
 													data-testid="project-budget"
 													data-outcome={comparisonState}
-													className="px-3 py-2 text-right text-gray-700"
+													className="px-3 py-2 text-right tabular-nums text-gray-700"
 												>
 													{compared !== null ? (
 														<>
@@ -397,7 +397,7 @@ export function ProjectBreakdown({
 															? ''
 															: String(comparison.over_budget)
 													}
-													className="px-3 py-2 text-right text-gray-700"
+													className="px-3 py-2 text-right tabular-nums text-gray-700"
 												>
 													{compared !== null ? (
 														<>

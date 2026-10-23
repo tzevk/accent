@@ -16,6 +16,7 @@
 
 import type { MouseEvent, ReactNode } from 'react';
 import { useState } from 'react';
+import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { formatCurrencyIn } from '@/lib/format';
 import type {
 	ClosePayload,
@@ -62,6 +63,9 @@ const SECTION_ANCHORS: Record<DecisionSectionId, string> = {
 	close: 'decision-close',
 	revision: 'decision-revision',
 };
+
+const QUEUE_RECOVERY_MESSAGE =
+	'Check your connection, then select Refresh to try again.';
 
 export interface DecisionViewProps {
 	/** The reconciled month, as the existing report publishes it. */
@@ -193,6 +197,11 @@ function DecisionSection({
 					onClick={onToggle}
 					className="flex w-full items-center gap-2 text-left"
 				>
+					{expanded ? (
+						<ChevronDownIcon className="h-4 w-4 shrink-0" />
+					) : (
+						<ChevronRightIcon className="h-4 w-4 shrink-0" />
+					)}
 					{title}
 				</button>
 			</h2>
@@ -223,7 +232,11 @@ function DecisionLink({
 		revealSection(section);
 	};
 	return (
-		<a href={`#${SECTION_ANCHORS[section]}`} onClick={onClick}>
+		<a
+			href={`#${SECTION_ANCHORS[section]}`}
+			onClick={onClick}
+			className="font-medium text-[#64126D] underline underline-offset-2"
+		>
 			{children}
 		</a>
 	);
@@ -384,7 +397,8 @@ export function DecisionView(props: DecisionViewProps) {
 						) : props.queueFailed ? (
 							<span role="alert">
 								Unconfirmed cost: unavailable
-								{props.queueError ? ` (${props.queueError.message})` : ''}
+								{props.queueError ? ` (${props.queueError.message})` : ''}.{' '}
+								{QUEUE_RECOVERY_MESSAGE}
 							</span>
 						) : (
 							<>
@@ -527,7 +541,8 @@ export function DecisionView(props: DecisionViewProps) {
 						className="mt-3 rounded-xl border border-rose-200 bg-white px-3 py-4 text-center text-xs text-rose-700"
 					>
 						Unconfirmed cost: unavailable
-						{props.queueError ? ` (${props.queueError.message})` : ''}
+						{props.queueError ? ` (${props.queueError.message})` : ''}.{' '}
+						{QUEUE_RECOVERY_MESSAGE}
 					</p>
 				) : (
 					<RecognitionQueue

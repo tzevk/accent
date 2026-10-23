@@ -40,11 +40,14 @@ Missing close information means unavailable, not open or ready to close.
 
 The review summary links to existing project, payroll, recognition, evidence, budget, close, and revision sections.
 Links reveal collapsed sections and move keyboard focus to their section heading or region.
+Collapsed section headings show a chevron, and review links stay visibly underlined.
+Estimated payroll has a separate visual group; new financial values use tabular numerals.
 The evidence link reaches the petty cash, tax, evidence, and coverage detail inside the decision evidence section.
 Project budget categories count each Project once within each category.
 Categories can overlap; the report does not invent a unique issue total.
 Project-scoped budget categories identify their scope; company totals stay unfiltered.
 Loading or failed recognition data stays loading or unavailable with its error detail in the recognition section, never a clean zero.
+Recognition errors direct reviewers to check their connection and use the existing Refresh control.
 Read-only reviewers receive evidence and navigation, not financial write controls.
 
 Project detail uses existing approved monthly budget comparisons beside confirmed cost.
