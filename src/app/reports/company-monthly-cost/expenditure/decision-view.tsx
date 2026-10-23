@@ -39,6 +39,7 @@ import { ProjectBreakdown } from './project-breakdown';
 import { PayrollSummary } from './payroll-summary';
 import { RecognitionQueue } from './recognition-queue';
 import type { CommandTarget } from './recognition-queue';
+import { BalancesPanel } from './balances-panel';
 import BudgetSection from './budget-section';
 import CloseSection from './close-section';
 import RevisionSection from './revision-section';
@@ -47,6 +48,7 @@ export type DecisionSectionId =
 	| 'project-detail'
 	| 'payroll'
 	| 'recognition'
+	| 'evidence'
 	| 'budget'
 	| 'close'
 	| 'revision';
@@ -55,6 +57,7 @@ const SECTION_ANCHORS: Record<DecisionSectionId, string> = {
 	'project-detail': 'decision-project-detail',
 	payroll: 'decision-payroll',
 	recognition: 'decision-recognition',
+	evidence: 'decision-evidence',
 	budget: 'decision-budget',
 	close: 'decision-close',
 	revision: 'decision-revision',
@@ -232,6 +235,7 @@ export function DecisionView(props: DecisionViewProps) {
 		'project-detail': true,
 		payroll: true,
 		recognition: true,
+		evidence: true,
 		budget: true,
 		close: true,
 		revision: true,
@@ -407,7 +411,7 @@ export function DecisionView(props: DecisionViewProps) {
 						</span>
 					</li>
 					<li data-testid="decision-review-evidence">
-						<DecisionLink section="recognition">
+						<DecisionLink section="evidence">
 							{data.evidence.pending_evidence.count} pending record(s) ·{' '}
 							{data.evidence.draft.count} draft(s) · {coverageNotices.length}{' '}
 							coverage notice(s)
@@ -513,15 +517,39 @@ export function DecisionView(props: DecisionViewProps) {
 				expanded={expanded.recognition}
 				onToggle={() => toggle('recognition')}
 			>
-				<RecognitionQueue
-					data={data}
-					queue={props.queue}
-					canEditCost={props.canEditCost}
-					canRecognize={props.canRecognize}
-					onCommandReset={props.onCommandReset}
-					onEditTargetChange={props.onEditTargetChange}
-					onCommandTargetChange={props.onCommandTargetChange}
-				/>
+				{props.queueLoading ? (
+					<p className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-4 text-center text-xs text-gray-500">
+						Unconfirmed cost: loading…
+					</p>
+				) : props.queueFailed ? (
+					<p
+						role="alert"
+						className="mt-3 rounded-xl border border-rose-200 bg-white px-3 py-4 text-center text-xs text-rose-700"
+					>
+						Unconfirmed cost: unavailable
+						{props.queueError ? ` (${props.queueError.message})` : ''}
+					</p>
+				) : (
+					<RecognitionQueue
+						data={data}
+						queue={props.queue}
+						canEditCost={props.canEditCost}
+						canRecognize={props.canRecognize}
+						onCommandReset={props.onCommandReset}
+						onEditTargetChange={props.onEditTargetChange}
+						onCommandTargetChange={props.onCommandTargetChange}
+					/>
+				)}
+			</DecisionSection>
+
+			<DecisionSection
+				id="evidence"
+				title="Evidence and coverage"
+				testId="decision-section-evidence"
+				expanded={expanded.evidence}
+				onToggle={() => toggle('evidence')}
+			>
+				<BalancesPanel data={data} />
 			</DecisionSection>
 
 			<DecisionSection
