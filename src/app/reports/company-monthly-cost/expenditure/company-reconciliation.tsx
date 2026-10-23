@@ -149,6 +149,38 @@ export function CompanyReconciliationPanel({
 					</p>
 				</div>
 			</div>
+			{/* Estimated payroll: beside confirmed cost, never inside it */}
+			<section
+				aria-label="Estimated payroll"
+				data-testid="decision-separate-payroll"
+				data-estimated-total={data.payroll.estimated_total}
+				data-currency={data.payroll.currency}
+				data-missing-pricing={data.payroll.missing_pricing_count}
+				data-recorded-total={data.payroll.recorded_total}
+				className="mb-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
+			>
+				<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+					Estimated payroll
+				</p>
+				<p className="mt-0.5 text-lg font-bold text-gray-900">
+					{formatCurrencyIn(data.payroll.estimated_total, data.payroll.currency)}
+				</p>
+				<p className="text-[10px] text-gray-600">
+					Recorded{' '}
+					{formatCurrencyIn(data.payroll.recorded_total, data.payroll.currency)}{' '}
+					· {data.payroll.known_zero_count} known-zero employee(s)
+				</p>
+				<p className="text-[10px] text-gray-600">
+					Payroll-based estimate only, excluded from Company Incurred Cost.
+				</p>
+				{data.payroll.missing_pricing_count > 0 && (
+					<p className="mt-1 text-[11px] text-amber-800">
+						Unknown pricing: {data.payroll.missing_pricing_count} employee(s)
+						have no Salary Profile covering this month, so their cost is
+						unknown, not zero.
+					</p>
+				)}
+			</section>
 		</>
 	);
 }

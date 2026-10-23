@@ -32,10 +32,7 @@ import type {
 	PeriodChargeJson,
 	RevisionPayload,
 } from '@/lib/company-expenditure';
-import BudgetSection from './budget-section';
 import CashSection from './cash-section';
-import CloseSection from './close-section';
-import RevisionSection from './revision-section';
 import {
 	ChargeCancelDialog,
 	CommandDialog,
@@ -53,14 +50,10 @@ import type {
 } from './types';
 import { errorMessage, rankMap } from './shared';
 import { Toolbar } from './toolbar';
-import { CompanyReconciliationPanel } from './company-reconciliation';
-import { ComparisonPanel } from './comparison-panel';
 import { BalancesPanel } from './balances-panel';
 import { CommitmentsPanel } from './commitments-panel';
 import { ClientOrdersPanel } from './client-orders-panel';
-import { ProjectBreakdown } from './project-breakdown';
-import { PayrollSummary } from './payroll-summary';
-import { RecognitionQueue } from './recognition-queue';
+import { DecisionView } from './decision-view';
 
 export interface ExpenditureViewProps {
 	month: string;
@@ -590,30 +583,14 @@ export default function ExpenditureView({
 				onRecordCost={() => setFormOpen(true)}
 			/>
 
-			<CompanyReconciliationPanel data={data} />
-
-			<ComparisonPanel data={data} clientOrders={clientOrders} />
-
-			<BalancesPanel data={data} />
-
-			<CommitmentsPanel
-				data={data}
-				canRecognize={canRecognize}
-				onChargeTargetChange={setChargeTarget}
-				onCancelChargeTargetChange={setCancelChargeTarget}
-				onChargeReset={() => chargeMutation.reset()}
-				onCancelChargeReset={() => cancelChargeMutation.reset()}
-			/>
-
-			{/* Project breakdown */}
-			<ClientOrdersPanel
-				clientOrders={clientOrders}
-				clientOrderTotals={clientOrderTotals}
-			/>
-
-			<ProjectBreakdown
+			<DecisionView
 				data={data}
 				month={month}
+				close={reconciliationQuery.data?.close ?? null}
+				closeLoading={reconciliationQuery.isLoading}
+				revisions={reconciliationQuery.data?.revisions ?? null}
+				revisionsLoading={reconciliationQuery.isLoading}
+				clientOrders={clientOrders}
 				clientOrdersByProject={clientOrdersByProject}
 				costRanks={costRanks}
 				increaseRanks={increaseRanks}
@@ -627,10 +604,6 @@ export default function ExpenditureView({
 				drilldownMonth={drilldownQuery.data?.data.month}
 				evidenceLoading={evidenceQuery.isLoading}
 				evidenceRecords={evidenceQuery.data?.data.records}
-			/>
-
-			<PayrollSummary
-				data={data}
 				payrollEmployees={payrollEmployees}
 				payrollLoading={payrollQuery.isLoading}
 				payrollFailed={payrollQuery.isError}
@@ -649,27 +622,34 @@ export default function ExpenditureView({
 				canProposeReconstruction={canProposeReconstruction}
 				canReviewReconstruction={canReviewReconstruction}
 				canRevise={canRevise}
-			/>
-
-			<RecognitionQueue
-				data={data}
-				queue={queue}
 				canEditCost={canEditCost}
 				canRecognize={canRecognize}
+				canCloseMonth={canCloseMonth}
+				canReviseClosed={canReviseClosed}
+				queue={queue}
+				queueLoading={queueQuery.isLoading}
+				queueFailed={queueQuery.isError}
+				queueError={queueQuery.error}
 				onCommandReset={() => commandMutation.reset()}
 				onEditTargetChange={setEditTarget}
 				onCommandTargetChange={setCommandTarget}
 			/>
 
-			{/* Approved cost budget (#321). Its own section: a budget never
-			    enters the cost totals above, and the comparison states its own
-			    basis, exclusions, and version history. */}
-			<BudgetSection
-				month={month}
-				section={data.budgets}
-				projectOptions={data.project_options}
-				canManage={canEditCost}
-				canApprove={canRecognize}
+			<BalancesPanel data={data} />
+
+			<CommitmentsPanel
+				data={data}
+				canRecognize={canRecognize}
+				onChargeTargetChange={setChargeTarget}
+				onCancelChargeTargetChange={setCancelChargeTarget}
+				onChargeReset={() => chargeMutation.reset()}
+				onCancelChargeReset={() => cancelChargeMutation.reset()}
+			/>
+
+			{/* Project breakdown */}
+			<ClientOrdersPanel
+				clientOrders={clientOrders}
+				clientOrderTotals={clientOrderTotals}
 			/>
 
 			{/* Dated outward cash paid (#318). Its own section: a payment never
@@ -681,28 +661,9 @@ export default function ExpenditureView({
 				canRecord={canRecordSettlement}
 			/>
 
-			{/* Financial close (#322). Its own section: an open month states
-			    its review, a closed month states its frozen totals, and the
-			    close command freezes the month against ordinary writes. The
-			    close state rides on the reconciliation response (same pattern
-			    as the cash section), never a second per-mount request. */}
-			<CloseSection
-				month={month}
-				canClose={canCloseMonth}
-				initialClose={reconciliationQuery.data?.close ?? null}
-			/>
-
-			{/* Financial revisions (#323). Its own section: a closed month
-			    states its frozen prior totals beside the live updated totals,
-			    and the revision command corrects or reverses closed figures
-			    with a reason and evidence while preserving both. The revision
-			    state rides on the reconciliation response (same pattern as the
-			    close section), never a second per-mount request. */}
-			<RevisionSection
-				month={month}
-				canRevise={canReviseClosed}
-				initialRevisions={reconciliationQuery.data?.revisions ?? null}
-			/>
+			{/* Financial close and revisions ride inside the decision composition
+			    above, from the same reconciliation response; their evidence
+			    contracts stay unchanged. */}
 
 			<p className="mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed text-gray-500">
 				<BanknotesIcon className="h-3 w-3" />
