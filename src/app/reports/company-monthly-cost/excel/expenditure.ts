@@ -133,6 +133,17 @@ function comparisonAmountLabel(
 }
 
 /**
+ * Map key for one Project/currency row's budget comparison. A Project can
+ * hold more than one currency in a month, and a comparison never crosses
+ * currencies, so both parts are required to reach the matching comparison.
+ */
+function budgetRowKey(
+	row: Pick<ProjectBudgetComparison, 'project_id' | 'currency'>
+): string {
+	return `${row.project_id}:${row.currency}`;
+}
+
+/**
  * Presentation-only budget variance percentage: approved budget minus
  * confirmed cost, stated as a share of a positive approved budget. Any other
  * shape (uncompared, missing variance, zero or negative budget) stays
@@ -1048,7 +1059,7 @@ function buildExpenditureProjectDetailSheet(
 		renderValue(row.getCell(10), p.cost_to_date, '#,##0.00');
 		row.getCell(11).value = p.evidence.state;
 		renderValue(row.getCell(12), p.record_count);
-		const budget = budgetByRow.get(`${p.project_id}:${p.currency}`) ?? null;
+		const budget = budgetByRow.get(budgetRowKey(p)) ?? null;
 		renderValue(row.getCell(13), budget?.budget?.amount ?? null, '#,##0.00');
 		renderValue(row.getCell(14), budget?.variance ?? null, '#,##0.00');
 		if (budget) {
