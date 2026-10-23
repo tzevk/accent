@@ -3,17 +3,20 @@
 /**
  * The company-first decision composition of the company expenditure report.
  *
- * It arranges the existing company headline, comparable-period, payroll,
- * review, budget, evidence, close, and revision panels in company-first
- * reading order. It computes no financial figure: every number arrives on the
- * existing reconciliation payload and every action stays in its existing
- * section. The review summary counts only what existing supported states
- * already state, and its links reveal the existing destination section and
- * move focus to it.
+ * It leads with the company summary — the existing company headline,
+ * comparable-period change, separate payroll estimate, and close/revision
+ * context — follows immediately with the compact review summary, and keeps
+ * the verbose comparison detail, filtered subtotal, currency subtotals, and
+ * existing operational sections below the review. It computes no financial
+ * figure: every number arrives on the existing reconciliation payload and
+ * every action stays in its existing section. The review summary counts only
+ * what existing supported states already state, and its links reveal the
+ * existing destination section and move focus to it.
  */
 
 import type { MouseEvent, ReactNode } from 'react';
 import { useState } from 'react';
+import { formatCurrencyIn } from '@/lib/format';
 import type {
 	ClosePayload,
 	CostRecordJson,
@@ -26,7 +29,12 @@ import type {
 	ReconciliationPayload,
 } from './types';
 import { CompanyReconciliationPanel } from './company-reconciliation';
-import { ComparisonPanel } from './comparison-panel';
+import {
+	ComparisonDetail,
+	ComparisonSummary,
+	CompanyCurrencySubtotals,
+	FilteredProjectSubtotal,
+} from './comparison-panel';
 import { ProjectBreakdown } from './project-breakdown';
 import { PayrollSummary } from './payroll-summary';
 import { RecognitionQueue } from './recognition-queue';
@@ -246,9 +254,13 @@ export function DecisionView(props: DecisionViewProps) {
 			.map((row) => row.project_id)
 	);
 	const scoped = data.project_id !== null;
-	const closeKnown = props.close !== null;
-	const revisionsKnown = props.revisions !== null;
-	const revisionCount = props.revisions?.revisions.length ?? 0;
+	const close = props.closeLoading ? null : props.close;
+	const revisions = props.revisionsLoading ? null : props.revisions;
+	const revisionCount = revisions?.revisions.length ?? 0;
+	const payrollEstimate = formatCurrencyIn(
+		data.payroll.estimated_total,
+		data.payroll.currency
+	);
 	const payrollNotices = data.coverage.filter(
 		(notice) =>
 			notice.code === 'payroll_not_generated' ||
@@ -273,8 +285,65 @@ export function DecisionView(props: DecisionViewProps) {
 
 	return (
 		<div data-testid="decision-view" data-month={data.month}>
-			<CompanyReconciliationPanel data={data} />
-			<ComparisonPanel data={data} clientOrders={props.clientOrders} />
+			<section
+				aria-label={`Company summary — ${data.month_label}`}
+				data-testid="decision-summary"
+				data-month={data.month}
+				data-scoped={scoped ? String(data.project_id) : ''}
+			>
+				<h2 className="sr-only">Company summary for {data.month_label}</h2>
+				<CompanyReconciliationPanel data={data} />
+				<div className="mt-3 grid gap-3 lg:grid-cols-[1fr_320px]">
+					<ComparisonSummary data={data} />
+					<div
+						data-testid="decision-close-context"
+						data-close-status={close === null ? '' : close.status}
+						data-revision-status={revisions === null ? '' : revisions.status}
+						className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
+					>
+						<h3 className="text-xs font-semibold text-gray-700">
+							Financial close
+						</h3>
+						{close === null ? (
+							<p className="mt-1 text-xs text-gray-700">
+								Financial close: unavailable
+							</p>
+						) : (
+							<>
+								<p className="mt-1 text-xs text-gray-700">
+									<DecisionLink section="close">
+										Financial close: {close.status}
+									</DecisionLink>{' '}
+									<span className="text-gray-500">
+										({close.review.blockers.length} blocker(s),{' '}
+										{close.review.warnings.length} warning(s))
+									</span>
+								</p>
+								{close.status === 'closed' && (
+									<p className="mt-1 text-[11px] text-gray-500">
+										Figures are frozen; later corrections arrive as
+										revisions.
+									</p>
+								)}
+							</>
+						)}
+						{revisions === null ? (
+							<p className="mt-2 text-xs text-gray-700">
+								Financial revisions: unavailable
+							</p>
+						) : (
+							<p className="mt-2 text-xs text-gray-700">
+								<DecisionLink section="revision">
+									Financial revisions: {revisions.status}
+								</DecisionLink>{' '}
+								<span className="text-gray-500">
+									({revisionCount} revision(s))
+								</span>
+							</p>
+						)}
+					</div>
+				</div>
+			</section>
 
 			{/* Compact review summary: existing supported states only */}
 			<section
@@ -283,7 +352,7 @@ export function DecisionView(props: DecisionViewProps) {
 				data-scoped={scoped ? String(data.project_id) : ''}
 				className="mt-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
 			>
-				<p className="text-xs font-semibold text-gray-700">Review summary</p>
+				<h2 className="text-xs font-semibold text-gray-700">Review summary</h2>
 				{scoped && (
 					<p className="mt-1 text-[11px] text-indigo-800">
 						Project detail is filtered to one Project; company totals and
@@ -332,8 +401,7 @@ export function DecisionView(props: DecisionViewProps) {
 					</li>
 					<li data-testid="decision-review-payroll">
 						<DecisionLink section="payroll">
-							Payroll: estimated{' '}
-							{data.payroll.currency} {data.payroll.estimated_total} ·{' '}
+							Payroll: estimated {payrollEstimate} ·{' '}
 							{payrollNotices.length} coverage notice(s)
 						</DecisionLink>{' '}
 						<span className="text-gray-500">
@@ -355,27 +423,27 @@ export function DecisionView(props: DecisionViewProps) {
 						</span>
 					</li>
 					<li data-testid="decision-review-close">
-						{props.closeLoading || !closeKnown ? (
+						{close === null ? (
 							'Financial close: unavailable'
 						) : (
 							<>
 								<DecisionLink section="close">
-									Financial close: {props.close.status}
+									Financial close: {close.status}
 								</DecisionLink>{' '}
 								<span className="text-gray-500">
-									({props.close.review.blockers.length} blocker(s),{' '}
-									{props.close.review.warnings.length} warning(s))
+									({close.review.blockers.length} blocker(s),{' '}
+									{close.review.warnings.length} warning(s))
 								</span>
 							</>
 						)}
 					</li>
 					<li data-testid="decision-review-revision">
-						{props.revisionsLoading || !revisionsKnown ? (
+						{revisions === null ? (
 							'Financial revisions: unavailable'
 						) : (
 							<>
 								<DecisionLink section="revision">
-									Financial revisions: {props.revisions.status}
+									Financial revisions: {revisions.status}
 								</DecisionLink>{' '}
 								<span className="text-gray-500">
 									({revisionCount} revision(s))
@@ -385,6 +453,10 @@ export function DecisionView(props: DecisionViewProps) {
 					</li>
 				</ul>
 			</section>
+
+			<ComparisonDetail data={data} />
+			<FilteredProjectSubtotal data={data} clientOrders={props.clientOrders} />
+			<CompanyCurrencySubtotals data={data} />
 
 			<DecisionSection
 				id="project-detail"

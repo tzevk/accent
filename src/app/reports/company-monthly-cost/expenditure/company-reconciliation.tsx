@@ -104,8 +104,14 @@ export function CompanyReconciliationPanel({
 									data.company.currency
 								)}
 					</p>
-					<p className="text-[10px] text-gray-600">
-						{data.projects.length} project(s) with cost
+					<p
+						data-testid="kpi-project-count"
+						data-scoped={data.project_id === null ? '' : String(data.project_id)}
+						className="text-[10px] text-gray-600"
+					>
+						{data.project_id === null
+							? `${data.projects.length} project(s) with cost`
+							: 'Project detail filtered; company cost stays unfiltered'}
 					</p>
 				</div>
 				<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
