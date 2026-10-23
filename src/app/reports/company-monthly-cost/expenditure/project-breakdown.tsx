@@ -12,9 +12,10 @@
  * context only, never revenue, profit or cost).
  */
 
-import { Fragment } from 'react';
+import { Fragment, useMemo } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { formatCurrencyIn, formatDate, formatNumber } from '@/lib/format';
+import { div, mul } from '@/lib/money';
 import type {
 	CostRecordJson,
 	PeriodChargeJson,
@@ -34,6 +35,18 @@ import {
 	formatSourceMoney,
 	percentLabel,
 } from './shared';
+
+const BUDGET_OUTCOME_LABELS: Record<string, string> = {
+	compared: 'Compared',
+	missing: 'No approved budget',
+	unapproved: 'Not approved',
+	incompatible_currency: 'Different currency',
+	incompatible_scope: 'Not a cost budget',
+	incompatible_period: 'Different period',
+	ambiguous: 'More than one match',
+	unsupported_incurred_cost: 'Cost not confirmed yet',
+	no_incurred_cost: 'No incurred cost recorded',
+};
 
 export interface ProjectBreakdownProps {
 	/** The reconciliation payload of the month under report. */
@@ -86,6 +99,13 @@ export function ProjectBreakdown({
 	evidenceRecords,
 }: ProjectBreakdownProps) {
 	const reportingCurrencyCode = data.company.reporting_currency;
+	const budgetByProjectCurrency = useMemo(() => {
+		const map = new Map<string, (typeof data.budgets.comparisons)[number]>();
+		for (const comparison of data.budgets.comparisons) {
+			map.set(`${comparison.project_id}:${comparison.currency}`, comparison);
+		}
+		return map;
+	}, [data]);
 	return (
 		<div className="mt-3 overflow-x-auto rounded-xl border border-gray-200 bg-white">
 			<table className="w-full min-w-[1080px] text-sm">
@@ -114,6 +134,12 @@ export function ProjectBreakdown({
 							Incurred cost
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
+							Approved budget
+						</th>
+						<th scope="col" className="px-3 py-2 text-right">
+							Remaining or overspent
+						</th>
+						<th scope="col" className="px-3 py-2 text-right">
 							{data.comparison.unfinished
 								? `First ${data.comparison.current_days} day(s)`
 								: 'This month'}
@@ -138,7 +164,7 @@ export function ProjectBreakdown({
 				<tbody>
 					{data.projects.length === 0 && (
 						<tr>
-							<td colSpan={12} className="px-3 py-4 text-center text-gray-500">
+							<td colSpan={14} className="px-3 py-4 text-center text-gray-500">
 								No Project-attributed cost in this month. Company Overhead and
 								Unallocated Cost stay in the reconciliation above.
 							</td>
@@ -238,9 +264,79 @@ export function ProjectBreakdown({
 											? '—'
 											: formatNumber(project.logged_hours)}
 									</td>
-									<td className="px-3 py-2 text-right font-semibold text-gray-900">
+									<td
+										data-testid="project-incurred-cost"
+										className="px-3 py-2 text-right font-semibold text-gray-900"
+									>
 										{formatCurrencyIn(project.incurred_cost, project.currency)}
 									</td>
+									{(() => {
+										const comparison = budgetByProjectCurrency.get(
+											`${project.project_id}:${project.currency}`
+										);
+										const basis =
+											comparison?.outcome === 'compared' &&
+											comparison.budget !== null &&
+											comparison.variance !== null
+												? comparison
+												: null;
+										const percent =
+											basis !== null && basis.budget.amount > 0
+												? mul(
+														div(basis.variance, basis.budget.amount),
+														100
+													).toDecimalPlaces(2)
+												: null;
+										return (
+											<>
+												<td
+													data-testid="project-budget"
+													data-outcome={comparison?.outcome ?? 'missing'}
+													className="px-3 py-2 text-right text-gray-700"
+												>
+													{basis !== null
+														? formatCurrencyIn(
+																basis.budget.amount,
+																project.currency
+															)
+														: (BUDGET_OUTCOME_LABELS[
+																comparison?.outcome ?? 'missing'
+															] ?? 'Unavailable')}
+												</td>
+												<td
+													data-testid="project-budget-variance"
+													data-variance={comparison?.variance ?? ''}
+													data-percent={percent === null ? '' : percent.toString()}
+													data-over-budget={
+														comparison?.over_budget === null ||
+														comparison?.over_budget === undefined
+															? ''
+															: String(comparison.over_budget)
+													}
+													className="px-3 py-2 text-right text-gray-700"
+												>
+													{basis !== null ? (
+														<>
+															<p>
+																{basis.over_budget ? 'Overspent ' : 'Remaining '}
+																{formatCurrencyIn(
+																	Math.abs(basis.variance),
+																	project.currency
+																)}
+															</p>
+															<p className="text-[11px] text-gray-500">
+																{percent === null
+																	? 'Percentage unavailable'
+																	: `${percent.toFixed(2)}%`}
+															</p>
+														</>
+													) : (
+														'Unavailable'
+													)}
+												</td>
+											</>
+										);
+									})()}
 									<td className="px-3 py-2 text-right text-gray-600">
 										{formatCurrencyIn(
 											project.comparison_cost,
@@ -338,7 +434,7 @@ export function ProjectBreakdown({
 									<tr
 										key={`${project.project_id}-${project.currency}-drilldown`}
 									>
-										<td colSpan={12} className="bg-gray-50/70 px-3 py-2">
+										<td colSpan={14} className="bg-gray-50/70 px-3 py-2">
 											<div
 												data-testid="project-drilldown"
 												data-currency={project.currency}

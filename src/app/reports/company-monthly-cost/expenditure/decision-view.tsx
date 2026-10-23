@@ -1,0 +1,506 @@
+'use client';
+
+/**
+ * The company-first decision composition of the company expenditure report.
+ *
+ * It arranges the existing company headline, comparable-period, payroll,
+ * review, budget, evidence, close, and revision panels in company-first
+ * reading order. It computes no financial figure: every number arrives on the
+ * existing reconciliation payload and every action stays in its existing
+ * section. The review summary counts only what existing supported states
+ * already state, and its links reveal the existing destination section and
+ * move focus to it.
+ */
+
+import type { MouseEvent, ReactNode } from 'react';
+import { useState } from 'react';
+import type {
+	ClosePayload,
+	CostRecordJson,
+	RevisionPayload,
+} from '@/lib/company-expenditure';
+import type {
+	ClientOrderRow,
+	DrilldownPayload,
+	PayrollDrilldownPayload,
+	ReconciliationPayload,
+} from './types';
+import { CompanyReconciliationPanel } from './company-reconciliation';
+import { ComparisonPanel } from './comparison-panel';
+import { ProjectBreakdown } from './project-breakdown';
+import { PayrollSummary } from './payroll-summary';
+import { RecognitionQueue } from './recognition-queue';
+import type { CommandTarget } from './recognition-queue';
+import BudgetSection from './budget-section';
+import CloseSection from './close-section';
+import RevisionSection from './revision-section';
+
+export type DecisionSectionId =
+	| 'project-detail'
+	| 'payroll'
+	| 'recognition'
+	| 'budget'
+	| 'close'
+	| 'revision';
+
+const SECTION_ANCHORS: Record<DecisionSectionId, string> = {
+	'project-detail': 'decision-project-detail',
+	payroll: 'decision-payroll',
+	recognition: 'decision-recognition',
+	budget: 'decision-budget',
+	close: 'decision-close',
+	revision: 'decision-revision',
+};
+
+export interface DecisionViewProps {
+	/** The reconciled month, as the existing report publishes it. */
+	data: ReconciliationPayload;
+	/** The month under report (`YYYY-MM`). */
+	month: string;
+	/** The close state from the reconciliation response, or null when absent. */
+	close: ClosePayload | null;
+	/** True while the reconciliation response is still missing close data. */
+	closeLoading: boolean;
+	/** The revision state from the reconciliation response, or null when absent. */
+	revisions: RevisionPayload | null;
+	/** True while the reconciliation response is still missing revision data. */
+	revisionsLoading: boolean;
+	/** Client orders, for the filtered Project and row context. */
+	clientOrders: ClientOrderRow[];
+	clientOrdersByProject: Map<number, ClientOrderRow[]>;
+	costRanks: Map<string, number>;
+	increaseRanks: Map<string, number>;
+	rankedRows: Array<{
+		row: ReconciliationPayload['projects'][number];
+		rank: number | null;
+	}>;
+	rankingMode: 'cost' | 'increase';
+	expandedProject: number | null;
+	onProjectExpand: (projectId: number | null) => void;
+	drilldownLoading: boolean;
+	drilldownRecords: CostRecordJson[] | undefined;
+	drilldownPeriodCharges: DrilldownPayload['period_charges'] | undefined;
+	drilldownMonth: string | undefined;
+	evidenceLoading: boolean;
+	evidenceRecords: CostRecordJson[] | undefined;
+	payrollEmployees: PayrollDrilldownPayload['employees'];
+	payrollLoading: boolean;
+	payrollFailed: boolean;
+	payrollError: Error | null;
+	proposeSubmitting: boolean;
+	reviewSubmitting: boolean;
+	onProposeReconstruction: (slipId: number) => void;
+	onReviewReconstruction: (input: {
+		proposalUid: string;
+		command: 'approve' | 'reject';
+		expectedVersion: number;
+		reason?: string;
+	}) => void;
+	reconstructionError: Error | null;
+	expandedEmployee: number | null;
+	onEmployeeExpand: (employeeId: number | null) => void;
+	reconstructionReason: string;
+	onReconstructionReasonChange: (reason: string) => void;
+	canProposeReconstruction: boolean;
+	canReviewReconstruction: boolean;
+	canRevise: boolean;
+	canEditCost: boolean;
+	canRecognize: boolean;
+	canCloseMonth: boolean;
+	canReviseClosed: boolean;
+	queue: CostRecordJson[];
+	queueLoading: boolean;
+	queueFailed: boolean;
+	queueError: Error | null;
+	onCommandReset: () => void;
+	onEditTargetChange: (target: CostRecordJson | null) => void;
+	onCommandTargetChange: (target: CommandTarget | null) => void;
+}
+
+function revealSection(id: DecisionSectionId): void {
+	if (typeof document === 'undefined') return;
+	const anchor = document.getElementById(SECTION_ANCHORS[id]);
+	if (!anchor) return;
+	const toggles = Array.from(
+		anchor.querySelectorAll<HTMLElement>(
+			'[data-decision-reveal="true"][aria-expanded="false"]'
+		)
+	);
+	for (const toggle of toggles) toggle.click();
+	const target =
+		anchor.querySelector<HTMLElement>('[data-decision-focus]') ??
+		(anchor.hasAttribute('data-decision-focus') ? anchor : null);
+	if (target) {
+		if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+		target.focus({ preventScroll: true });
+	}
+	if (typeof anchor.scrollIntoView === 'function') {
+		anchor.scrollIntoView({ block: 'start' });
+	}
+}
+
+function DecisionSection({
+	id,
+	title,
+	testId,
+	expanded,
+	onToggle,
+	children,
+}: {
+	id: DecisionSectionId;
+	title: string;
+	testId: string;
+	expanded: boolean;
+	onToggle: () => void;
+	children: ReactNode;
+}) {
+	const panelId = `${SECTION_ANCHORS[id]}-panel`;
+	// Close and revisions reuse their own module's collapse owner: a second
+	// wrapper toggle would duplicate the heading and the collapse state, and
+	// the review link already reveals the inner toggle too.
+	if (id === 'close' || id === 'revision') {
+		return (
+			<section
+				id={SECTION_ANCHORS[id]}
+				aria-label={title}
+				data-testid={testId}
+			>
+				{children}
+			</section>
+		);
+	}
+	return (
+		<section
+			id={SECTION_ANCHORS[id]}
+			aria-label={title}
+			data-testid={testId}
+			data-decision-focus
+			tabIndex={-1}
+		>
+			<h2 className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold">
+				<button
+					type="button"
+					data-decision-reveal="true"
+					aria-expanded={expanded}
+					aria-controls={panelId}
+					onClick={onToggle}
+					className="flex w-full items-center gap-2 text-left"
+				>
+					{title}
+				</button>
+			</h2>
+			{expanded && <div id={panelId}>{children}</div>}
+		</section>
+	);
+}
+
+function DecisionLink({
+	section,
+	children,
+}: {
+	section: DecisionSectionId;
+	children: ReactNode;
+}) {
+	const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
+		if (
+			event.defaultPrevented ||
+			event.button !== 0 ||
+			event.metaKey ||
+			event.altKey ||
+			event.ctrlKey ||
+			event.shiftKey
+		) {
+			return;
+		}
+		event.preventDefault();
+		revealSection(section);
+	};
+	return (
+		<a href={`#${SECTION_ANCHORS[section]}`} onClick={onClick}>
+			{children}
+		</a>
+	);
+}
+
+export function DecisionView(props: DecisionViewProps) {
+	const { data } = props;
+	const [expanded, setExpanded] = useState<Record<DecisionSectionId, boolean>>({
+		'project-detail': true,
+		payroll: true,
+		recognition: true,
+		budget: true,
+		close: true,
+		revision: true,
+	});
+	const toggle = (id: DecisionSectionId) =>
+		setExpanded((value) => ({ ...value, [id]: !value[id] }));
+
+	const overBudgetProjects = new Set(
+		data.budgets.comparisons
+			.filter((row) => row.outcome === 'compared' && row.over_budget === true)
+			.map((row) => row.project_id)
+	);
+	const unusableBudgetProjects = new Set(
+		data.budgets.comparisons
+			.filter((row) => row.outcome !== 'compared')
+			.map((row) => row.project_id)
+	);
+	const scoped = data.project_id !== null;
+	const closeKnown = props.close !== null;
+	const revisionsKnown = props.revisions !== null;
+	const revisionCount = props.revisions?.revisions.length ?? 0;
+	const payrollNotices = data.coverage.filter(
+		(notice) =>
+			notice.code === 'payroll_not_generated' ||
+			notice.code === 'payroll_not_finalized' ||
+			notice.code === 'payroll_slip_missing' ||
+			notice.code === 'payroll_pricing_missing' ||
+			notice.code === 'payroll_allocation_missing'
+	);
+	const coverageNotices = data.coverage.filter(
+		(notice) =>
+			notice.code !== 'payroll_not_generated' &&
+			notice.code !== 'payroll_not_finalized' &&
+			notice.code !== 'payroll_slip_missing' &&
+			notice.code !== 'payroll_pricing_missing' &&
+			notice.code !== 'payroll_allocation_missing' &&
+			notice.code !== 'payroll_reconstructed' &&
+			notice.code !== 'payroll_reconstruction_pending' &&
+			notice.code !== 'payroll_no_logged_hours' &&
+			notice.code !== 'payroll_no_project_hours' &&
+			notice.code !== 'payroll_allocation_revised'
+	);
+
+	return (
+		<div data-testid="decision-view" data-month={data.month}>
+			<CompanyReconciliationPanel data={data} />
+			<ComparisonPanel data={data} clientOrders={props.clientOrders} />
+
+			{/* Compact review summary: existing supported states only */}
+			<section
+				aria-label="Review summary"
+				data-testid="decision-review"
+				data-scoped={scoped ? String(data.project_id) : ''}
+				className="mt-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
+			>
+				<p className="text-xs font-semibold text-gray-700">Review summary</p>
+				{scoped && (
+					<p className="mt-1 text-[11px] text-indigo-800">
+						Project detail is filtered to one Project; company totals and
+						company review context below stay unfiltered.
+					</p>
+				)}
+				<ul className="mt-2 space-y-1 text-xs text-gray-700">
+					<li data-testid="decision-review-over-budget">
+						<DecisionLink section="project-detail">
+							{overBudgetProjects.size} project(s) over budget
+						</DecisionLink>{' '}
+						<span className="text-gray-500">
+							(valid approved monthly comparisons
+							{scoped ? ', filtered project detail' : ''})
+						</span>
+					</li>
+					<li data-testid="decision-review-unusable-budget">
+						<DecisionLink section="budget">
+							{unusableBudgetProjects.size} project(s) without a usable
+							budget comparison
+						</DecisionLink>{' '}
+						<span className="text-gray-500">
+							(missing, unapproved, incompatible, ambiguous, or unconfirmed
+							cost
+							{scoped ? ', filtered project detail' : ''})
+						</span>
+					</li>
+					<li data-testid="decision-review-queue">
+						{props.queueLoading ? (
+							'Unconfirmed cost: loading…'
+						) : props.queueFailed ? (
+							<span role="alert">
+								Unconfirmed cost: unavailable
+								{props.queueError ? ` (${props.queueError.message})` : ''}
+							</span>
+						) : (
+							<>
+								<DecisionLink section="recognition">
+									{props.queue.length} unconfirmed record(s)
+								</DecisionLink>{' '}
+								<span className="text-gray-500">
+									(drafts and pending evidence excluded from totals)
+								</span>
+							</>
+						)}
+					</li>
+					<li data-testid="decision-review-payroll">
+						<DecisionLink section="payroll">
+							Payroll: estimated{' '}
+							{data.payroll.currency} {data.payroll.estimated_total} ·{' '}
+							{payrollNotices.length} coverage notice(s)
+						</DecisionLink>{' '}
+						<span className="text-gray-500">
+							(estimate excluded from confirmed cost
+							{data.payroll.missing_pricing_count > 0
+								? `, ${data.payroll.missing_pricing_count} unknown pricing`
+								: ''}
+							)
+						</span>
+					</li>
+					<li data-testid="decision-review-evidence">
+						<DecisionLink section="recognition">
+							{data.evidence.pending_evidence.count} pending record(s) ·{' '}
+							{data.evidence.draft.count} draft(s) ·{' '}
+							{coverageNotices.length} coverage notice(s)
+						</DecisionLink>{' '}
+						<span className="text-gray-500">
+							(separate categories; one record can appear in more than one)
+						</span>
+					</li>
+					<li data-testid="decision-review-close">
+						{props.closeLoading || !closeKnown ? (
+							'Financial close: unavailable'
+						) : (
+							<>
+								<DecisionLink section="close">
+									Financial close: {props.close.status}
+								</DecisionLink>{' '}
+								<span className="text-gray-500">
+									({props.close.review.blockers.length} blocker(s),{' '}
+									{props.close.review.warnings.length} warning(s))
+								</span>
+							</>
+						)}
+					</li>
+					<li data-testid="decision-review-revision">
+						{props.revisionsLoading || !revisionsKnown ? (
+							'Financial revisions: unavailable'
+						) : (
+							<>
+								<DecisionLink section="revision">
+									Financial revisions: {props.revisions.status}
+								</DecisionLink>{' '}
+								<span className="text-gray-500">
+									({revisionCount} revision(s))
+								</span>
+							</>
+						)}
+					</li>
+				</ul>
+			</section>
+
+			<DecisionSection
+				id="project-detail"
+				title="Project detail"
+				testId="decision-section-project-detail"
+				expanded={expanded['project-detail']}
+				onToggle={() => toggle('project-detail')}
+			>
+				<ProjectBreakdown
+					data={data}
+					month={props.month}
+					clientOrdersByProject={props.clientOrdersByProject}
+					costRanks={props.costRanks}
+					increaseRanks={props.increaseRanks}
+					rankedRows={props.rankedRows}
+					rankingMode={props.rankingMode}
+					expandedProject={props.expandedProject}
+					onProjectExpand={props.onProjectExpand}
+					drilldownLoading={props.drilldownLoading}
+					drilldownRecords={props.drilldownRecords}
+					drilldownPeriodCharges={props.drilldownPeriodCharges}
+					drilldownMonth={props.drilldownMonth}
+					evidenceLoading={props.evidenceLoading}
+					evidenceRecords={props.evidenceRecords}
+				/>
+			</DecisionSection>
+
+			<DecisionSection
+				id="payroll"
+				title="Payroll detail"
+				testId="decision-section-payroll"
+				expanded={expanded.payroll}
+				onToggle={() => toggle('payroll')}
+			>
+				<PayrollSummary
+					data={data}
+					payrollEmployees={props.payrollEmployees}
+					payrollLoading={props.payrollLoading}
+					payrollFailed={props.payrollFailed}
+					payrollError={props.payrollError}
+					proposeSubmitting={props.proposeSubmitting}
+					reviewSubmitting={props.reviewSubmitting}
+					onProposeReconstruction={props.onProposeReconstruction}
+					onReviewReconstruction={props.onReviewReconstruction}
+					reconstructionError={props.reconstructionError}
+					expandedEmployee={props.expandedEmployee}
+					onEmployeeExpand={props.onEmployeeExpand}
+					reconstructionReason={props.reconstructionReason}
+					onReconstructionReasonChange={props.onReconstructionReasonChange}
+					canProposeReconstruction={props.canProposeReconstruction}
+					canReviewReconstruction={props.canReviewReconstruction}
+					canRevise={props.canRevise}
+				/>
+			</DecisionSection>
+
+			<DecisionSection
+				id="recognition"
+				title="Recognition queue"
+				testId="decision-section-recognition"
+				expanded={expanded.recognition}
+				onToggle={() => toggle('recognition')}
+			>
+				<RecognitionQueue
+					data={data}
+					queue={props.queue}
+					canEditCost={props.canEditCost}
+					canRecognize={props.canRecognize}
+					onCommandReset={props.onCommandReset}
+					onEditTargetChange={props.onEditTargetChange}
+					onCommandTargetChange={props.onCommandTargetChange}
+				/>
+			</DecisionSection>
+
+			<DecisionSection
+				id="budget"
+				title="Budget detail"
+				testId="decision-section-budget"
+				expanded={expanded.budget}
+				onToggle={() => toggle('budget')}
+			>
+				<BudgetSection
+					month={props.month}
+					section={data.budgets}
+					projectOptions={data.project_options}
+					canManage={props.canEditCost}
+					canApprove={props.canRecognize}
+				/>
+			</DecisionSection>
+
+			<DecisionSection
+				id="close"
+				title="Financial close"
+				testId="decision-section-close"
+				expanded={expanded.close}
+				onToggle={() => toggle('close')}
+			>
+				<CloseSection
+					month={props.month}
+					canClose={props.canCloseMonth}
+					initialClose={props.close}
+				/>
+			</DecisionSection>
+
+			<DecisionSection
+				id="revision"
+				title="Financial revisions"
+				testId="decision-section-revision"
+				expanded={expanded.revision}
+				onToggle={() => toggle('revision')}
+			>
+				<RevisionSection
+					month={props.month}
+					canRevise={props.canReviseClosed}
+					initialRevisions={props.revisions}
+				/>
+			</DecisionSection>
+		</div>
+	);
+}

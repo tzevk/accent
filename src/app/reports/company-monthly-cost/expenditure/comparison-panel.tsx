@@ -60,10 +60,34 @@ export function ComparisonPanel({ data, clientOrders }: ComparisonPanelProps) {
 							: `Full month compared with the full prior month (measured to ${data.comparison.as_of}).`}
 					</p>
 				</div>
+				{data.comparison.unfinished &&
+					data.company.incurred_cost !== null &&
+					data.company.currency !== null &&
+					data.comparison.currency !== null &&
+					data.comparison.current_cost !== null &&
+					data.comparison.current_cost !== data.company.incurred_cost && (
+						<p
+							data-testid="comparison-scope-bases"
+							className="mt-2 text-[11px] text-gray-600"
+						>
+							Full-month Company Incurred Cost:{' '}
+							{formatCurrencyIn(
+								data.company.incurred_cost,
+								data.company.currency
+							)}{' '}
+							· First {data.comparison.current_days} day(s) of this period:{' '}
+							{formatCurrencyIn(
+								data.comparison.current_cost,
+								data.comparison.currency
+							)}
+						</p>
+					)}
 				<div className="mt-2 grid gap-3 sm:grid-cols-4">
 					<div>
 						<p className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
-							This period
+							{data.comparison.unfinished
+								? `First ${data.comparison.current_days} day(s)`
+								: 'This period'}
 						</p>
 						<p
 							data-testid="comparison-current"
