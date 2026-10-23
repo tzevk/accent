@@ -169,6 +169,19 @@ evidence summary, the coverage notices, the Project options for the entry
 control, and the months that carry cost. The Project filter narrows `projects`,
 never `company`.
 
+The month picker needs no finalized payroll: it offers the calendar
+months of the current and the selected financial years (April–March)
+through the current month only — no future calendar month is generated — and
+keeps every month that carries cost, the current month, and the current
+selection however old or far ahead, newest first, with no lookback
+limit. A month opened before finalization states possible spending as a
+draft estimate, separate from confirmed cost: estimates never enter a
+confirmed total. Cost with no covering Salary Profile — logged hours or
+a zero-hour slip — is unknown, not zero (`payroll_pricing_missing`),
+and an unfinalized or ungenerated month says so
+(`payroll_not_finalized` / `payroll_not_generated`); a count of slips is
+never presented as confirmed cost.
+
 `as_of` identifies the comparable period: the date inside the reported month
 the month is measured to. It defaults to today, so a past month is compared in
 full and the current month over its elapsed days. A date that is not a real
