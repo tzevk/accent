@@ -4,7 +4,9 @@
  * The Project breakdown of the company expenditure report.
  *
  * One row per Project, ranked by the selected ordering: its incurred cost,
- * the comparable period beside it, the change between them, the cost to date,
+ * the approved monthly budget beside it with its approval and comparison
+ * state, the remaining or overspent variance on the same basis, the comparable
+ * period beside it, the change between them, the cost to date,
  * the reporting-currency figure, the cost still unconfirmed, and the evidence
  * state behind it. Expanding a row opens the source records recognized
  * against that Project, the evidence still unresolved, the approved period
@@ -12,9 +14,10 @@
  * context only, never revenue, profit or cost).
  */
 
-import { Fragment } from 'react';
+import { Fragment, useMemo } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { formatCurrencyIn, formatDate, formatNumber } from '@/lib/format';
+import { div, gt, isZero, mul } from '@/lib/money';
 import type {
 	CostRecordJson,
 	PeriodChargeJson,
@@ -34,6 +37,57 @@ import {
 	formatSourceMoney,
 	percentLabel,
 } from './shared';
+
+const BUDGET_OUTCOME_LABELS: Record<string, string> = {
+	compared: 'Compared',
+	missing: 'No approved budget',
+	unapproved: 'Not approved',
+	incompatible_currency: 'Different currency',
+	incompatible_scope: 'Not a cost budget',
+	incompatible_period: 'Different period',
+	ambiguous: 'More than one match',
+	unsupported_incurred_cost: 'Cost not confirmed yet',
+	no_incurred_cost: 'No incurred cost recorded',
+};
+
+/** One Project/currency row's budget comparison, as the payload states it. */
+type BudgetComparison = ReconciliationPayload['budgets']['comparisons'][number];
+
+/**
+ * Why one Project/currency row is or is not compared with an approved
+ * monthly budget, in one compact line beside the row amount (#382). Every
+ * branch reads the existing comparison outcome; nothing is inferred.
+ */
+function comparisonReason(
+	comparison: BudgetComparison | undefined,
+	monthLabel: string
+): string {
+	if (comparison === undefined) {
+		return `No approved cost budget recorded for this project, currency, and ${monthLabel}.`;
+	}
+	switch (comparison.outcome) {
+		case 'compared':
+			return 'Approved monthly budget compared with confirmed cost.';
+		case 'missing':
+			return `No approved cost budget recorded for this project, currency, and ${monthLabel}.`;
+		case 'unapproved':
+			return 'A budget covers this month but is not approved.';
+		case 'incompatible_currency':
+			return 'Approved budgets are stated in another currency; currencies are never converted.';
+		case 'incompatible_scope':
+			return 'The approved budget declares a commercial value, not a cost budget.';
+		case 'incompatible_period':
+			return 'The approved budget does not cover exactly this month.';
+		case 'ambiguous':
+			return 'More than one approved budget covers this month; no single budget is compared.';
+		case 'unsupported_incurred_cost':
+			return 'No confirmed cost is recorded, so no variance is stated.';
+		case 'no_incurred_cost':
+			return 'No incurred cost is recorded beside this budget.';
+		default:
+			return 'Budget comparison unavailable.';
+	}
+}
 
 export interface ProjectBreakdownProps {
 	/** The reconciliation payload of the month under report. */
@@ -86,8 +140,20 @@ export function ProjectBreakdown({
 	evidenceRecords,
 }: ProjectBreakdownProps) {
 	const reportingCurrencyCode = data.company.reporting_currency;
+	const budgetByProjectCurrency = useMemo(() => {
+		const map = new Map<string, (typeof data.budgets.comparisons)[number]>();
+		for (const comparison of data.budgets.comparisons) {
+			map.set(`${comparison.project_id}:${comparison.currency}`, comparison);
+		}
+		return map;
+	}, [data]);
 	return (
 		<div className="mt-3 overflow-x-auto rounded-xl border border-gray-200 bg-white">
+			<p className="border-b border-gray-200 px-3 py-2 text-xs text-gray-600">
+				Remaining or overspent is the approved monthly cost budget minus
+				confirmed monthly Incurred Project Cost: a positive amount is remaining,
+				a negative amount is overspent.
+			</p>
 			<table className="w-full min-w-[1080px] text-sm">
 				<caption className="sr-only">
 					Incurred Project Cost by Project for {data.month_label}, ordered by{' '}
@@ -114,6 +180,12 @@ export function ProjectBreakdown({
 							Incurred cost
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
+							Approved budget
+						</th>
+						<th scope="col" className="px-3 py-2 text-right">
+							Remaining or overspent
+						</th>
+						<th scope="col" className="px-3 py-2 text-right">
 							{data.comparison.unfinished
 								? `First ${data.comparison.current_days} day(s)`
 								: 'This month'}
@@ -138,7 +210,7 @@ export function ProjectBreakdown({
 				<tbody>
 					{data.projects.length === 0 && (
 						<tr>
-							<td colSpan={12} className="px-3 py-4 text-center text-gray-500">
+							<td colSpan={14} className="px-3 py-4 text-center text-gray-500">
 								No Project-attributed cost in this month. Company Overhead and
 								Unallocated Cost stay in the reconciliation above.
 							</td>
@@ -238,9 +310,119 @@ export function ProjectBreakdown({
 											? '—'
 											: formatNumber(project.logged_hours)}
 									</td>
-									<td className="px-3 py-2 text-right font-semibold text-gray-900">
+									<td
+										data-testid="project-incurred-cost"
+										className="px-3 py-2 text-right font-semibold text-gray-900"
+									>
 										{formatCurrencyIn(project.incurred_cost, project.currency)}
 									</td>
+									{(() => {
+										const comparison = budgetByProjectCurrency.get(
+											`${project.project_id}:${project.currency}`
+										);
+										const compared =
+											comparison?.outcome === 'compared' &&
+											comparison.budget !== null &&
+											comparison.variance !== null
+												? {
+														budgetAmount: comparison.budget.amount,
+														variance: comparison.variance,
+														overBudget: comparison.over_budget,
+													}
+												: null;
+										const percent =
+											compared !== null && gt(compared.budgetAmount, 0)
+												? mul(
+														div(compared.variance, compared.budgetAmount),
+														100
+													).toDecimalPlaces(2)
+												: null;
+										const comparisonState =
+											comparison === undefined ? 'missing' : comparison.outcome;
+										return (
+											<>
+												<td
+													data-testid="project-budget"
+													data-outcome={comparisonState}
+													className="px-3 py-2 text-right tabular-nums text-gray-700"
+												>
+													{compared !== null ? (
+														<>
+															<p>
+																{formatCurrencyIn(
+																	compared.budgetAmount,
+																	project.currency
+																)}
+															</p>
+															<p className="text-[11px] text-gray-500">
+																Approved · Compared
+															</p>
+															{isZero(compared.budgetAmount) && (
+																<p className="text-[11px] text-gray-500">
+																	Zero budget: percentage unavailable
+																</p>
+															)}
+														</>
+													) : (
+														<>
+															<p>
+																{BUDGET_OUTCOME_LABELS[comparisonState] ??
+																	'Unavailable'}
+															</p>
+															<p className="text-[11px] text-gray-500">
+																{comparisonReason(comparison, data.month_label)}
+															</p>
+															<details className="text-[11px]">
+																<summary className="cursor-pointer text-gray-500 underline">
+																	Why unavailable
+																</summary>
+																<p className="mt-0.5 text-gray-500">
+																	{comparison === undefined
+																		? `No approved cost budget is recorded for ${project.project_code} in ${project.currency} for ${data.month_label}.`
+																		: comparison.detail}
+																</p>
+															</details>
+														</>
+													)}
+												</td>
+												<td
+													data-testid="project-budget-variance"
+													data-variance={comparison?.variance ?? ''}
+													data-percent={
+														percent === null ? '' : percent.toString()
+													}
+													data-over-budget={
+														comparison?.over_budget === null ||
+														comparison?.over_budget === undefined
+															? ''
+															: String(comparison.over_budget)
+													}
+													className="px-3 py-2 text-right tabular-nums text-gray-700"
+												>
+													{compared !== null ? (
+														<>
+															<p>
+																{compared.overBudget === true
+																	? 'Overspent '
+																	: 'Remaining '}
+																{formatCurrencyIn(
+																	Math.abs(compared.variance),
+																	project.currency
+																)}
+															</p>
+															<p className="text-[11px] text-gray-500">
+																{percent === null
+																	? 'Percentage unavailable'
+																	: `${percent.toFixed(2)}%`}
+															</p>
+														</>
+													) : (
+														'Unavailable'
+													)}
+												</td>
+											</>
+										);
+									})()}
 									<td className="px-3 py-2 text-right text-gray-600">
 										{formatCurrencyIn(
 											project.comparison_cost,
@@ -338,7 +520,7 @@ export function ProjectBreakdown({
 									<tr
 										key={`${project.project_id}-${project.currency}-drilldown`}
 									>
-										<td colSpan={12} className="bg-gray-50/70 px-3 py-2">
+										<td colSpan={14} className="bg-gray-50/70 px-3 py-2">
 											<div
 												data-testid="project-drilldown"
 												data-currency={project.currency}

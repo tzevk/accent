@@ -1206,7 +1206,7 @@ export interface PayrollEmployeeCost {
 	no_logged_hours: boolean;
 	/** A covering Salary Profile exists but the month has no Payroll Slip. */
 	missing_slip: boolean;
-	/** Logged Hours exist but no Salary Profile covers the month. */
+	/** No Salary Profile covers the month: cost is unknown, including a slip-bearing row. */
 	missing_pricing: boolean;
 	/** The month is finalized but this slip has no frozen allocation. */
 	allocation_missing: boolean;

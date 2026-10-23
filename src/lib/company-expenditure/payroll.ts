@@ -791,7 +791,9 @@ export async function loadPayrollMonth(
 		}
 
 		const missingSlip = slip === null && profile !== null && runStatus !== null;
-		const missingPricing = slip === null && profile === null && loggedHours > 0;
+		// Unrecorded and unpriced stays unknown, never zero; recorded cost is final.
+		const missingPricing =
+			!recorded && profile === null && (slip !== null || loggedHours > 0);
 		const allocationMissing = slip !== null && locked && allocation === null;
 		// The slip's latest reconstruction proposal: pending and rejected
 		// proposals stay beside the row as proposals; an approved one attaches
@@ -979,7 +981,7 @@ function payrollNotices(
 		notices.push({
 			code: 'payroll_pricing_missing',
 			label: 'No Salary Profile covers this month',
-			detail: `${totals.missing_pricing_count} employee(s) logged hours without a Salary Profile for the month; their cost is unknown, not zero.`,
+			detail: `${totals.missing_pricing_count} employee(s) have no Salary Profile covering the month, so their cost is unknown, not zero; add the covering profile, then Generate and Finalize.`,
 			severity: 'warning',
 		});
 	}

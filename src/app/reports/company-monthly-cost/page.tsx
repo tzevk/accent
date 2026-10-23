@@ -39,7 +39,7 @@ import type {
 	ProjectWiseMonthlySection,
 	ViewMode,
 } from './types';
-import { monthLabel, projectKey } from './views/helpers';
+import { expenditureMonths, monthLabel, projectKey } from './views/helpers';
 import { MonthlyView } from './views/monthly-view';
 import { FyView } from './views/fy-view';
 
@@ -228,16 +228,14 @@ function CompanyMonthlyCostInner() {
 		[months]
 	);
 
-	// The expenditure picker lists the months that carry direct cost, plus the
-	// current selection so switching views never strands it.
+	// Source months plus the current/selected FY calendar months, generated
+	// through the current month only; the selection is always kept.
 	const expenditureMonthOptions = useMemo(() => {
-		const list = new Set<string>(meta?.expenditure_months ?? []);
-		if (meta?.current_month) list.add(meta.current_month);
-		if (selectedMonth) list.add(selectedMonth);
-		return [...list]
-			.sort()
-			.reverse()
-			.map((m) => ({ value: m, label: monthLabel(m) }));
+		return expenditureMonths({
+			sourceMonths: meta?.expenditure_months,
+			currentMonth: meta?.current_month,
+			selectedMonth,
+		}).map((m) => ({ value: m, label: monthLabel(m) }));
 	}, [meta, selectedMonth]);
 
 	const handlePrint = () => window.print();

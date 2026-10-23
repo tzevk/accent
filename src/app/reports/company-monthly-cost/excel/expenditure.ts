@@ -9,10 +9,15 @@
 
 import ExcelJS from 'exceljs';
 import type {
+	BudgetOutcome,
+	ChangeState,
 	CompanyReconciliation,
 	ClosePayload,
+	ProjectBudgetComparison,
 	RevisionPayload,
 } from '@/lib/company-expenditure';
+import { div, gt, mul, toNumber } from '@/lib/money';
+import { formatCurrencyIn } from '@/lib/format';
 import {
 	TINT_PURPLE_HDR,
 	TINT_PURPLE_SUB,
@@ -74,6 +79,125 @@ function renderValue(
 	}
 }
 
+const CHANGE_LABELS: Record<ChangeState, string> = {
+	no_prior: 'No prior month',
+	new: 'New cost',
+	increase: 'Increase',
+	decrease: 'Decrease',
+	unchanged: 'No change',
+	unproven: 'Window membership unproven',
+};
+
+const BUDGET_OUTCOME_LABELS: Record<BudgetOutcome, string> = {
+	compared: 'Compared',
+	missing: 'No approved budget',
+	unapproved: 'Not approved',
+	incompatible_currency: 'Different currency',
+	incompatible_scope: 'Not a cost budget',
+	incompatible_period: 'Different period',
+	ambiguous: 'More than one match',
+	unsupported_incurred_cost: 'Cost not confirmed yet',
+	no_incurred_cost: 'No incurred cost recorded',
+};
+
+function setPercentCell(cell: ExcelJS.Cell, percent: number): void {
+	cell.value = percent / 100;
+	cell.numFmt = '0.00%';
+}
+
+function comparisonPercentCell(
+	cell: ExcelJS.Cell,
+	percent: number | null,
+	state: ChangeState,
+	currencySplit: boolean
+): void {
+	if (currencySplit) {
+		cell.value = 'See currencies';
+		return;
+	}
+	if (percent !== null) {
+		setPercentCell(cell, percent);
+		return;
+	}
+	cell.value =
+		state === 'new'
+			? 'New cost, no percentage'
+			: state === 'no_prior'
+				? 'Prior amount unknown'
+				: (CHANGE_LABELS[state] ?? state);
+}
+
+function comparisonAmountLabel(
+	amount: number | null,
+	currency: string | null,
+	currencySplit: boolean
+): string {
+	if (currencySplit && currency === null) return 'See currencies';
+	if (amount === null) return 'Unknown';
+	return formatCurrencyIn(amount, currency ?? 'INR');
+}
+
+/**
+ * Map key for one Project/currency row's budget comparison. A Project can
+ * hold more than one currency in a month, and a comparison never crosses
+ * currencies, so both parts are required to reach the matching comparison.
+ */
+function budgetRowKey(
+	row: Pick<ProjectBudgetComparison, 'project_id' | 'currency'>
+): string {
+	return `${row.project_id}:${row.currency}`;
+}
+
+/**
+ * Presentation-only budget variance percentage: approved budget minus
+ * confirmed cost, stated as a share of a positive approved budget. Any other
+ * shape (uncompared, missing variance, zero or negative budget) stays
+ * unavailable. Shared Decimal operations only; no financial recalculation.
+ */
+function budgetVariancePercent(
+	comparison: ProjectBudgetComparison
+): number | null {
+	if (comparison.outcome !== 'compared') return null;
+	if (comparison.variance === null) return null;
+	const amount = comparison.budget?.amount ?? null;
+	if (amount === null || !gt(amount, 0)) return null;
+	return toNumber(
+		mul(div(comparison.variance, amount), 100).toDecimalPlaces(2)
+	);
+}
+
+function renderVariancePercentCell(
+	cell: ExcelJS.Cell,
+	comparison: ProjectBudgetComparison
+): void {
+	const percent = budgetVariancePercent(comparison);
+	if (percent === null) {
+		cell.value =
+			comparison.outcome === 'compared'
+				? 'Unavailable: budget is not positive'
+				: `Unavailable: ${BUDGET_OUTCOME_LABELS[comparison.outcome] ?? comparison.outcome}`;
+		return;
+	}
+	setPercentCell(cell, percent);
+}
+
+function budgetStatusLabel(comparison: ProjectBudgetComparison): string {
+	return (
+		`${BUDGET_OUTCOME_LABELS[comparison.outcome] ?? comparison.outcome}` +
+		(comparison.budget ? ` · ${comparison.budget.state}` : '')
+	);
+}
+
+function closeStatusLabel(close: ClosePayload | null): string {
+	if (!close) return 'Unavailable';
+	return close.status === 'closed' ? 'Closed' : 'Open';
+}
+
+function closeVersionLabel(close: ClosePayload | null): string {
+	if (!close) return 'Unavailable';
+	return String(close.financial_version);
+}
+
 function buildExpenditureReconciliationSheet(
 	wb: ExcelJS.Workbook,
 	input: ExpenditureExportInput
@@ -122,8 +246,8 @@ function buildExpenditureReconciliationSheet(
 		['Reporting Month', reconciliation.month_label || reconciliation.month],
 		['Reporting Cutoff / As Of', cutoff],
 		['Reporting Currency Basis', reconciliation.company.reporting_currency],
-		['Financial Close Status', close?.status === 'closed' ? 'Closed' : 'Open'],
-		['Financial Version', String(close?.financial_version ?? 0)],
+		['Financial Close Status', closeStatusLabel(close)],
+		['Financial Version', closeVersionLabel(close)],
 		['Close Snapshot UID', close?.close_uid || '—'],
 		[
 			'Filter Scope',
@@ -186,7 +310,7 @@ function buildExpenditureReconciliationSheet(
 	th1.height = 20;
 	const thCols1 = [
 		{ col: 1, label: 'Reconciliation Metric' },
-		{ col: 2, label: `Amount (${reconciliation.company.reporting_currency})` },
+		{ col: 2, label: 'Amount' },
 		{ col: 3, label: 'Original Currency' },
 		{ col: 4, label: 'Conversion / Treatment' },
 		{ col: 5, label: 'Confirmed Records' },
@@ -203,6 +327,12 @@ function buildExpenditureReconciliationSheet(
 		};
 	}
 
+	// `company.groups` is the reconciliation's own category breakdown: it is
+	// stated only when the whole month can be stated in one currency, and it
+	// stays absent otherwise. Never a partial reporting-currency sum.
+	const groupsByKey = new Map(
+		reconciliation.company.groups.map((group) => [group.key, group] as const)
+	);
 	const companyMetrics: Array<{
 		label: string;
 		amount: number | null;
@@ -223,54 +353,43 @@ function buildExpenditureReconciliationSheet(
 		},
 		{
 			label: '— Incurred Project Cost',
-			amount: reconciliation.company.currency_totals.reduce(
-				(sum, ct) => sum + (ct.reporting.incurred_project_cost ?? 0),
-				0
-			),
-			currency: reconciliation.company.reporting_currency,
+			amount: groupsByKey.get('incurred_project_cost')?.amount ?? null,
+			currency: reconciliation.company.currency,
 			treatment: 'Attributed to Projects',
-			records: reconciliation.projects.reduce((s, p) => s + p.record_count, 0),
+			records: groupsByKey.get('incurred_project_cost')?.record_count ?? '—',
 		},
 		{
 			label: '— Company Overhead',
-			amount: reconciliation.company.currency_totals.reduce(
-				(sum, ct) => sum + (ct.reporting.company_overhead ?? 0),
-				0
-			),
-			currency: reconciliation.company.reporting_currency,
+			amount: groupsByKey.get('company_overhead')?.amount ?? null,
+			currency: reconciliation.company.currency,
 			treatment: 'Unattributed General Overhead',
-			records: '—',
+			records: groupsByKey.get('company_overhead')?.record_count ?? '—',
 		},
 		{
 			label: '— Unallocated Cost',
-			amount: reconciliation.company.currency_totals.reduce(
-				(sum, ct) => sum + (ct.reporting.unallocated_cost ?? 0),
-				0
-			),
-			currency: reconciliation.company.reporting_currency,
+			amount: groupsByKey.get('unallocated_cost')?.amount ?? null,
+			currency: reconciliation.company.currency,
 			treatment: 'Unallocated Direct / Payroll Cost',
-			records: '—',
+			records: groupsByKey.get('unallocated_cost')?.record_count ?? '—',
 		},
 		{
 			label: 'Gross Supplier & Expense Liability',
 			amount: reconciliation.company.gross_liability,
-			currency: reconciliation.company.reporting_currency,
+			currency: reconciliation.company.currency,
 			treatment: 'Gross Liability Before Tax Deduction',
 			records: reconciliation.company.record_count,
 		},
 		{
 			label: 'Recoverable Tax',
 			amount: reconciliation.company.recoverable_tax,
-			currency: reconciliation.company.reporting_currency,
+			currency: reconciliation.company.currency,
 			treatment: 'Confirmed Recoverable Input Tax',
 			records: '—',
 		},
 		{
 			label: 'Unresolved Tax Gross',
 			amount: reconciliation.company.unresolved_tax.gross_amount,
-			currency:
-				reconciliation.company.unresolved_tax.currency ||
-				reconciliation.company.reporting_currency,
+			currency: reconciliation.company.unresolved_tax.currency,
 			treatment: 'Excluded Pending Confirmation',
 			records: reconciliation.company.unresolved_tax.count,
 		},
@@ -315,6 +434,76 @@ function buildExpenditureReconciliationSheet(
 		setFont(c5, { size: 9.5 });
 		c5.alignment = { vertical: 'middle', horizontal: 'right' };
 		box(c5);
+	}
+	// Section: Estimated Payroll (separate from confirmed cost)
+	rNum += 2;
+	ws.mergeCells(rNum, 1, rNum, 5);
+	const secPay = ws.getCell(rNum, 1);
+	secPay.value = 'Estimated Payroll — Separate From Confirmed Cost';
+	setFont(secPay, { bold: true, size: 10.5, color: 'FFFFFFFF' });
+	setFill(secPay, TINT_PURPLE_HDR);
+	ws.getRow(rNum).height = 20;
+
+	rNum++;
+	ws.mergeCells(rNum, 1, rNum, 5);
+	const paySub = ws.getCell(rNum, 1);
+	paySub.value =
+		'Payroll-based estimate for employees with no finalized allocation yet. Never part of Company Incurred Cost; no combined headline is stated.';
+	setFont(paySub, { size: 9, color: 'FF4B5563' });
+	ws.getRow(rNum).height = 16;
+
+	const payrollNotices = reconciliation.coverage.filter(
+		(notice) =>
+			notice.code === 'payroll_not_generated' ||
+			notice.code === 'payroll_not_finalized' ||
+			notice.code === 'payroll_pricing_missing' ||
+			notice.code === 'payroll_allocation_missing' ||
+			notice.code === 'payroll_slip_missing'
+	);
+	const payrollRows: Array<[string, string]> = [
+		[
+			'Estimated payroll',
+			`${formatCurrencyIn(reconciliation.payroll.estimated_total, reconciliation.payroll.currency)} ${reconciliation.payroll.currency} (${reconciliation.payroll.estimated_count} employee(s))`,
+		],
+		[
+			'Recorded payroll (already in confirmed cost)',
+			`${formatCurrencyIn(reconciliation.payroll.recorded_total, reconciliation.payroll.currency)} ${reconciliation.payroll.currency} (${reconciliation.payroll.recorded_count} recorded, ${reconciliation.payroll.known_zero_count} known zero)`,
+		],
+		[
+			'Missing pricing (unknown, not zero)',
+			`${reconciliation.payroll.missing_pricing_count} employee(s) with no covering Salary Profile`,
+		],
+		[
+			'Missing slips / allocations',
+			`${reconciliation.payroll.missing_slip_count} missing slip(s), ${reconciliation.payroll.allocation_missing_count} finalized slip(s) without a frozen allocation`,
+		],
+	];
+	for (const [k, v] of payrollRows) {
+		rNum++;
+		const row = ws.getRow(rNum);
+		row.height = 18;
+		const c1 = row.getCell(1);
+		c1.value = k;
+		setFont(c1, { bold: true, size: 9.5 });
+		setFill(c1, TINT_GRAY_LIGHT);
+		box(c1);
+		ws.mergeCells(rNum, 2, rNum, 5);
+		const c2 = row.getCell(2);
+		c2.value = v;
+		setFont(c2, { size: 9.5 });
+		setFill(c2, TINT_GRAY_LIGHT);
+		box(c2);
+	}
+	for (const notice of payrollNotices) {
+		rNum++;
+		ws.mergeCells(rNum, 1, rNum, 5);
+		const row = ws.getRow(rNum);
+		row.height = 18;
+		const c = row.getCell(1);
+		c.value = `${notice.label}. ${notice.detail}`;
+		setFont(c, { size: 9, color: 'FF92400E' });
+		setFill(c, TINT_WARN_LIGHT);
+		box(c);
 	}
 
 	// Filtered Project Subtotal Table (if filter applied)
@@ -487,25 +676,54 @@ function buildExpenditureReconciliationSheet(
 		}
 	}
 
-	// Section: Comparison against Prior Comparable Period
+	// Section: Comparison against Prior Comparable Period. The confirmed
+	// full-month total above is the headline; this section states the existing
+	// comparable-window measurement beside it with both bases explicit.
 	rNum += 2;
-	ws.mergeCells(rNum, 1, rNum, 6);
+	ws.mergeCells(rNum, 1, rNum, 10);
 	const secComp = ws.getCell(rNum, 1);
 	secComp.value = 'Comparison Against Prior Comparable Period';
 	setFont(secComp, { bold: true, size: 10.5, color: 'FFFFFFFF' });
 	setFill(secComp, TINT_PURPLE_HDR);
 	ws.getRow(rNum).height = 20;
 
+	const cmp = reconciliation.comparison;
+	const currencySplit = cmp.currency === null && cmp.currency_totals.length > 1;
+	const windowBasisLabel =
+		cmp.basis === 'equal_period'
+			? `Elapsed window to ${cmp.as_of}: current ${cmp.current_days} day(s), prior ${cmp.prior_days} day(s)`
+			: `Full month compared with the full prior month (measured to ${cmp.as_of})`;
+	const fullMonthLabel =
+		reconciliation.company.incurred_cost === null
+			? 'See currencies'
+			: formatCurrencyIn(
+					reconciliation.company.incurred_cost,
+					reconciliation.company.currency ?? 'INR'
+				);
+
+	rNum++;
+	ws.mergeCells(rNum, 1, rNum, 10);
+	const compSub = ws.getCell(rNum, 1);
+	compSub.value =
+		`Full-month Company Incurred Cost ${fullMonthLabel}; comparable window ${comparisonAmountLabel(cmp.current_cost, cmp.currency, currencySplit)}. ` +
+		`${windowBasisLabel}. Cost to date is cumulative through ${cmp.cost_to_date_through}.`;
+	setFont(compSub, { size: 9, color: 'FF4B5563' });
+	ws.getRow(rNum).height = 28;
+
 	rNum++;
 	const thComp = ws.getRow(rNum);
 	thComp.height = 20;
 	const compHeaders = [
 		'Prior Month',
-		'Elapsed Days',
-		'Prior Incurred Cost',
+		'Basis',
+		'Current Days',
+		'Prior Days',
+		'Window Current Cost',
+		'Window Prior Cost',
 		'Cost Change Amount',
 		'Cost Change %',
-		'Trend',
+		'State',
+		'Window',
 	];
 	compHeaders.forEach((label, idx) => {
 		const c = thComp.getCell(idx + 1);
@@ -515,32 +733,193 @@ function buildExpenditureReconciliationSheet(
 		box(c);
 		c.alignment = {
 			vertical: 'middle',
-			horizontal: [2, 3, 4, 5].includes(idx + 1) ? 'right' : 'left',
+			horizontal: [3, 4, 5, 6, 7, 8].includes(idx + 1) ? 'right' : 'left',
 		};
 	});
 
-	const cmp = reconciliation.comparison;
 	rNum++;
 	const compRow = ws.getRow(rNum);
 	compRow.height = 18;
-	compRow.getCell(1).value = cmp.prior_month || '—';
-	renderValue(compRow.getCell(2), cmp.elapsed_days);
-	renderValue(compRow.getCell(3), cmp.prior_cost, '#,##0.00');
-	renderValue(compRow.getCell(4), cmp.change_amount, '#,##0.00');
-	if (cmp.change_percent !== null && cmp.change_percent !== undefined) {
-		compRow.getCell(5).value = cmp.change_percent / 100;
-		compRow.getCell(5).numFmt = '0.00%';
-	} else {
-		compRow.getCell(5).value = '—';
-	}
-	compRow.getCell(6).value = cmp.change_state;
+	compRow.getCell(1).value = cmp.prior_month_label || cmp.prior_month || '—';
+	compRow.getCell(2).value =
+		cmp.basis === 'equal_period' ? 'Elapsed window' : 'Full month';
+	renderValue(compRow.getCell(3), cmp.current_days);
+	renderValue(compRow.getCell(4), cmp.prior_days);
+	compRow.getCell(5).value = comparisonAmountLabel(
+		cmp.current_cost,
+		cmp.currency,
+		currencySplit
+	);
+	compRow.getCell(6).value = comparisonAmountLabel(
+		cmp.prior_cost,
+		cmp.currency,
+		currencySplit
+	);
+	compRow.getCell(7).value = comparisonAmountLabel(
+		cmp.change_amount,
+		cmp.currency,
+		currencySplit
+	);
+	comparisonPercentCell(
+		compRow.getCell(8),
+		cmp.change_percent,
+		cmp.change_state,
+		currencySplit
+	);
+	compRow.getCell(9).value =
+		CHANGE_LABELS[cmp.change_state] ?? cmp.change_state;
+	compRow.getCell(10).value = cmp.window_mismatch
+		? 'Unequal windows: prior month shorter'
+		: cmp.current_days === cmp.prior_days
+			? 'Equal windows'
+			: cmp.basis === 'full_month'
+				? `Full month vs full month (${cmp.current_days} vs ${cmp.prior_days} days)`
+				: `Unequal windows (${cmp.current_days} vs ${cmp.prior_days} days)`;
 
-	for (let i = 1; i <= 6; i++) {
+	for (let i = 1; i <= 10; i++) {
 		const c = compRow.getCell(i);
 		setFont(c, { size: 9.5 });
 		box(c);
-		if ([2, 3, 4, 5].includes(i)) {
+		if ([3, 4, 5, 6, 7, 8].includes(i)) {
 			c.alignment = { vertical: 'middle', horizontal: 'right' };
+		}
+	}
+
+	if (cmp.currency_totals.length > 0) {
+		rNum += 2;
+		ws.mergeCells(rNum, 1, rNum, 10);
+		const secCmpCur = ws.getCell(rNum, 1);
+		secCmpCur.value = 'Comparable Window by Currency';
+		setFont(secCmpCur, { bold: true, size: 10, color: TINT_PURPLE_HDR });
+		ws.getRow(rNum).height = 18;
+
+		rNum++;
+		const thCmpCur = ws.getRow(rNum);
+		thCmpCur.height = 20;
+		const cmpCurHeaders = [
+			'Currency',
+			'Window Current Cost',
+			'Window Prior Cost',
+			'Change Amount',
+			'Change %',
+			'State',
+			'Dayless Cost Excluded',
+			'Unproven Cost',
+			'Late Cost',
+			'Disclosure Basis',
+		];
+		cmpCurHeaders.forEach((label, idx) => {
+			const c = thCmpCur.getCell(idx + 1);
+			c.value = label;
+			setFont(c, { bold: true, size: 9 });
+			setFill(c, TINT_PURPLE_SUB);
+			box(c);
+			c.alignment = {
+				vertical: 'middle',
+				horizontal: [2, 3, 4, 5, 7, 8, 9].includes(idx + 1) ? 'right' : 'left',
+			};
+		});
+
+		for (const row of cmp.currency_totals) {
+			rNum++;
+			const curRow = ws.getRow(rNum);
+			curRow.height = 18;
+			curRow.getCell(1).value = row.currency;
+			renderValue(curRow.getCell(2), row.current_cost, '#,##0.00');
+			if (row.prior_cost === null) {
+				curRow.getCell(3).value = 'Unknown';
+			} else {
+				renderValue(curRow.getCell(3), row.prior_cost, '#,##0.00');
+			}
+			if (row.change_amount === null) {
+				curRow.getCell(4).value = 'Unknown';
+			} else {
+				renderValue(curRow.getCell(4), row.change_amount, '#,##0.00');
+			}
+			comparisonPercentCell(
+				curRow.getCell(5),
+				row.change_percent,
+				row.change_state,
+				false
+			);
+			curRow.getCell(6).value =
+				CHANGE_LABELS[row.change_state] ?? row.change_state;
+			renderValue(curRow.getCell(7), row.dayless_cost, '#,##0.00');
+			if (row.unproven_cost === null) {
+				curRow.getCell(8).value = '—';
+			} else {
+				renderValue(curRow.getCell(8), row.unproven_cost, '#,##0.00');
+			}
+			renderValue(curRow.getCell(9), row.late_cost, '#,##0.00');
+			curRow.getCell(10).value =
+				`${row.unproven_records} unproven record(s), ${row.undated_records} undated, ` +
+				`${row.late_records} late current, ${row.prior_late_records} late prior, ` +
+				`${row.dayless_records} dayless excluded`;
+
+			for (let i = 1; i <= 10; i++) {
+				const c = curRow.getCell(i);
+				setFont(c, { size: 9.5 });
+				box(c);
+				if ([2, 3, 4, 5, 7, 8, 9].includes(i)) {
+					c.alignment = { vertical: 'middle', horizontal: 'right' };
+				}
+			}
+		}
+	}
+
+	if (cmp.disclosures.length > 0) {
+		rNum += 2;
+		ws.mergeCells(rNum, 1, rNum, 10);
+		const secCmpDis = ws.getCell(rNum, 1);
+		secCmpDis.value = 'Comparison Disclosures';
+		setFont(secCmpDis, { bold: true, size: 10, color: TINT_PURPLE_HDR });
+		ws.getRow(rNum).height = 18;
+
+		rNum++;
+		const thCmpDis = ws.getRow(rNum);
+		thCmpDis.height = 20;
+		const cmpDisHeaders = ['Code', 'Period', 'Severity', 'Amount', 'Detail'];
+		cmpDisHeaders.forEach((label, idx) => {
+			const c = thCmpDis.getCell(idx + 1);
+			c.value = label;
+			setFont(c, { bold: true, size: 9 });
+			setFill(c, TINT_PURPLE_SUB);
+			box(c);
+			c.alignment = {
+				vertical: 'middle',
+				horizontal: idx === 3 ? 'right' : 'left',
+			};
+		});
+
+		for (const entry of cmp.disclosures) {
+			rNum++;
+			ws.mergeCells(rNum, 5, rNum, 10);
+			const row = ws.getRow(rNum);
+			row.height = 18;
+			row.getCell(1).value = entry.code;
+			row.getCell(2).value = entry.period ?? 'Both periods';
+			row.getCell(3).value = entry.severity;
+			if (entry.amount === null) {
+				row.getCell(4).value = '—';
+			} else {
+				renderValue(row.getCell(4), entry.amount, '#,##0.00');
+			}
+			row.getCell(5).value =
+				`${entry.label}. ${entry.detail}` +
+				(entry.currency ? ` (${entry.currency})` : '');
+
+			for (let i = 1; i <= 10; i++) {
+				const c = row.getCell(i);
+				setFont(c, { size: 9 });
+				box(c);
+				if (i === 4) {
+					c.alignment = { vertical: 'middle', horizontal: 'right' };
+				}
+				if (i === 3) {
+					if (entry.severity === 'info') setFill(c, TINT_GREEN_LIGHT);
+					else if (entry.severity === 'warning') setFill(c, TINT_WARN_LIGHT);
+				}
+			}
 		}
 	}
 
@@ -615,6 +994,11 @@ function buildExpenditureProjectDetailSheet(
 		{ width: 18 }, // Cost to Date
 		{ width: 16 }, // Evidence State
 		{ width: 10 }, // Records
+		{ width: 20 }, // Approved Monthly Budget
+		{ width: 20 }, // Remaining / Overspent
+		{ width: 14 }, // Variance %
+		{ width: 22 }, // Budget State
+		{ width: 40 }, // Budget Reason
 	];
 
 	// Title
@@ -624,10 +1008,10 @@ function buildExpenditureProjectDetailSheet(
 	setFont(t, { bold: true, size: 13, color: TINT_PURPLE_HDR });
 	ws.getRow(1).height = 24;
 
-	ws.mergeCells(2, 1, 2, 8);
+	ws.mergeCells(2, 1, 2, 12);
 	const s = ws.getCell(2, 1);
 	s.value =
-		'Individual Project Incurred Cost, Logged Hours, Cost to Date, and Historical Evidence States';
+		'Individual Project Incurred Cost, Logged Hours, Cost to Date, Historical Evidence States, and the approved monthly budget comparison beside each cost row';
 	setFont(s, { size: 9.5, color: 'FF4B5563' });
 	ws.getRow(2).height = 18;
 
@@ -655,6 +1039,11 @@ function buildExpenditureProjectDetailSheet(
 		{ col: 10, label: 'Cost to Date', align: 'right' },
 		{ col: 11, label: 'Evidence State', align: 'center' },
 		{ col: 12, label: 'Records', align: 'right' },
+		{ col: 13, label: 'Approved Monthly Budget', align: 'right' },
+		{ col: 14, label: 'Remaining (+) / Overspent (−)', align: 'right' },
+		{ col: 15, label: 'Variance %', align: 'right' },
+		{ col: 16, label: 'Budget State', align: 'left' },
+		{ col: 17, label: 'Budget Reason', align: 'left' },
 	];
 
 	for (const h of cols) {
@@ -670,6 +1059,12 @@ function buildExpenditureProjectDetailSheet(
 	let totalHours = 0;
 	let totalConverted = 0;
 	let allConverted = true;
+	// Exact Project/currency/month/scope matches from the existing budget
+	// results only; no manufactured comparison or zero-cost row.
+	const budgetByRow = new Map<string, ProjectBudgetComparison>();
+	for (const comparison of reconciliation.budgets.comparisons) {
+		budgetByRow.set(budgetRowKey(comparison), comparison);
+	}
 
 	for (let idx = 0; idx < reconciliation.projects.length; idx++) {
 		const p = reconciliation.projects[idx];
@@ -688,6 +1083,19 @@ function buildExpenditureProjectDetailSheet(
 		renderValue(row.getCell(10), p.cost_to_date, '#,##0.00');
 		row.getCell(11).value = p.evidence.state;
 		renderValue(row.getCell(12), p.record_count);
+		const budget = budgetByRow.get(budgetRowKey(p)) ?? null;
+		renderValue(row.getCell(13), budget?.budget?.amount ?? null, '#,##0.00');
+		renderValue(row.getCell(14), budget?.variance ?? null, '#,##0.00');
+		if (budget) {
+			renderVariancePercentCell(row.getCell(15), budget);
+			row.getCell(16).value = budgetStatusLabel(budget);
+			row.getCell(17).value = budget.detail;
+		} else {
+			row.getCell(15).value = 'Unavailable: no budget comparison';
+			row.getCell(16).value = 'No budget comparison';
+			row.getCell(17).value =
+				`No budget comparison covers ${p.project_code} in ${p.currency} for ${reconciliation.month}; the standalone budget section stays the unmatched-comparison surface.`;
+		}
 
 		totalHours += p.logged_hours || 0;
 		if (p.converted_incurred_cost !== null) {
@@ -723,7 +1131,7 @@ function buildExpenditureProjectDetailSheet(
 		'#,##0.00'
 	);
 
-	for (let i = 1; i <= 12; i++) {
+	for (let i = 1; i <= 17; i++) {
 		const c = totRow.getCell(i);
 		setFont(c, { bold: true, size: 9.5 });
 		setFill(c, TINT_PURPLE_SUB);
@@ -758,9 +1166,11 @@ function buildExpenditureBudgetsCommitmentsSheet(
 		{ width: 18 },
 		{ width: 18 },
 		{ width: 18 },
-		{ width: 18 },
+		{ width: 14 },
+		{ width: 22 },
 		{ width: 14 },
 		{ width: 24 },
+		{ width: 40 },
 	];
 
 	// Title
@@ -772,7 +1182,7 @@ function buildExpenditureBudgetsCommitmentsSheet(
 
 	// Section 1: Approved Cost Budgets Comparison
 	let rNum = 3;
-	ws.mergeCells(rNum, 1, rNum, 8);
+	ws.mergeCells(rNum, 1, rNum, 10);
 	const s1 = ws.getCell(rNum, 1);
 	s1.value = 'Approved Cost Budgets Comparison';
 	setFont(s1, { bold: true, size: 11, color: 'FFFFFFFF' });
@@ -780,12 +1190,12 @@ function buildExpenditureBudgetsCommitmentsSheet(
 	ws.getRow(rNum).height = 20;
 
 	rNum++;
-	ws.mergeCells(rNum, 1, rNum, 8);
+	ws.mergeCells(rNum, 1, rNum, 10);
 	const s1sub = ws.getCell(rNum, 1);
 	s1sub.value =
-		'Budgets compared with Incurred Project Cost where scope, currency, and period match exactly. Budgets never enter company expenditure totals.';
+		'Budgets compared with Incurred Project Cost where scope, currency, and period match exactly. Variance is approved budget minus confirmed cost: positive means remaining, negative means overspent. Budgets never enter company expenditure totals.';
 	setFont(s1sub, { size: 9, color: 'FF4B5563' });
-	ws.getRow(rNum).height = 16;
+	ws.getRow(rNum).height = 28;
 
 	rNum++;
 	const thB = ws.getRow(rNum);
@@ -799,9 +1209,11 @@ function buildExpenditureBudgetsCommitmentsSheet(
 		'Approved Budget',
 		'Incurred Cost',
 		'Variance',
+		'Variance %',
 		'Status',
 		'Version',
 		'Reference',
+		'Reason',
 	];
 	bCols.forEach((label, idx) => {
 		const c = thB.getCell(idx + 1);
@@ -811,13 +1223,13 @@ function buildExpenditureBudgetsCommitmentsSheet(
 		box(c);
 		c.alignment = {
 			vertical: 'middle',
-			horizontal: [6, 7, 8].includes(idx + 1) ? 'right' : 'left',
+			horizontal: [6, 7, 8, 9].includes(idx + 1) ? 'right' : 'left',
 		};
 	});
 
 	if (reconciliation.budgets.comparisons.length === 0) {
 		rNum++;
-		ws.mergeCells(rNum, 1, rNum, 11);
+		ws.mergeCells(rNum, 1, rNum, 13);
 		const emptyB = ws.getCell(rNum, 1);
 		emptyB.value = 'No approved cost budgets matching this period.';
 		setFont(emptyB, { size: 9.5 });
@@ -836,15 +1248,17 @@ function buildExpenditureBudgetsCommitmentsSheet(
 			renderValue(row.getCell(6), bc.budget?.amount ?? null, '#,##0.00');
 			renderValue(row.getCell(7), bc.incurred_cost, '#,##0.00');
 			renderValue(row.getCell(8), bc.variance, '#,##0.00');
-			row.getCell(9).value = bc.outcome;
-			row.getCell(10).value = String(bc.budget?.financial_version ?? '—');
-			row.getCell(11).value = bc.budget?.approval_evidence_reference || '—';
+			renderVariancePercentCell(row.getCell(9), bc);
+			row.getCell(10).value = budgetStatusLabel(bc);
+			row.getCell(11).value = String(bc.budget?.financial_version ?? '—');
+			row.getCell(12).value = bc.budget?.approval_evidence_reference || '—';
+			row.getCell(13).value = bc.detail;
 
-			for (let i = 1; i <= 11; i++) {
+			for (let i = 1; i <= 13; i++) {
 				const c = row.getCell(i);
 				setFont(c, { size: 9.5 });
 				box(c);
-				if ([6, 7, 8].includes(i)) {
+				if ([6, 7, 8, 9].includes(i)) {
 					c.alignment = { vertical: 'middle', horizontal: 'right' };
 				}
 			}
@@ -1309,8 +1723,8 @@ function buildExpenditureRevisionsCloseSheet(
 	ws.getRow(rNum).height = 20;
 
 	const closeRows = [
-		['Close Status', close?.status === 'closed' ? 'Closed' : 'Open'],
-		['Financial Version', String(close?.financial_version ?? 0)],
+		['Close Status', closeStatusLabel(close)],
+		['Financial Version', closeVersionLabel(close)],
 		['Close Snapshot UID', close?.close_uid || '—'],
 		['Closed / Reviewed At', close?.reviewed_at || close?.created_at || '—'],
 		[
@@ -1412,12 +1826,65 @@ function buildExpenditureRevisionsCloseSheet(
 	rNum++;
 	ws.mergeCells(rNum, 1, rNum, 11);
 	const s2sub = ws.getCell(rNum, 1);
-	s2sub.value =
-		close?.status === 'closed'
+	s2sub.value = !revisions
+		? 'Revision context is unavailable for this export.'
+		: revisions.status === 'closed'
 			? 'Explicit versioned corrections recorded against the frozen closed financial month.'
 			: 'Month is open. Corrections travel through standard operational command paths.';
 	setFont(s2sub, { size: 9, color: 'FF4B5563' });
 	ws.getRow(rNum).height = 16;
+
+	const revisionContextRows: Array<[string, string]> = [
+		[
+			'Revision Status',
+			revisions
+				? revisions.status === 'closed'
+					? 'Closed'
+					: 'Open'
+				: 'Unavailable',
+		],
+		[
+			'Close Version',
+			revisions ? String(revisions.close_version) : 'Unavailable',
+		],
+		[
+			'Frozen Prior Total',
+			revisions?.prior?.incurred_cost === null ||
+			revisions?.prior?.incurred_cost === undefined
+				? '—'
+				: formatCurrencyIn(
+						revisions.prior.incurred_cost,
+						revisions.prior.currency ?? 'INR'
+					),
+		],
+		[
+			'Live Current Total',
+			revisions?.current.incurred_cost === null ||
+			revisions?.current.incurred_cost === undefined
+				? '—'
+				: formatCurrencyIn(
+						revisions.current.incurred_cost,
+						revisions.current.currency ?? 'INR'
+					),
+		],
+	];
+	for (const [k, v] of revisionContextRows) {
+		rNum++;
+		const row = ws.getRow(rNum);
+		row.height = 18;
+		const c1 = row.getCell(1);
+		c1.value = k;
+		setFont(c1, { bold: true, size: 9.5 });
+		setFill(c1, TINT_GRAY_LIGHT);
+		box(c1);
+		ws.mergeCells(rNum, 2, rNum, 4);
+		const c2 = row.getCell(2);
+		c2.value = v;
+		setFont(c2, { size: 9.5 });
+		setFill(c2, TINT_GRAY_LIGHT);
+		box(c2);
+	}
+	rNum++;
 
 	rNum++;
 	const thRev = ws.getRow(rNum);
