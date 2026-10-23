@@ -17,6 +17,7 @@ import type {
 	RevisionPayload,
 } from '@/lib/company-expenditure';
 import { div, gt, mul, toNumber } from '@/lib/money';
+import { formatCurrencyIn } from '@/lib/format';
 import {
 	TINT_PURPLE_HDR,
 	TINT_PURPLE_SUB,
@@ -99,6 +100,11 @@ const BUDGET_OUTCOME_LABELS: Record<BudgetOutcome, string> = {
 	no_incurred_cost: 'No incurred cost recorded',
 };
 
+function setPercentCell(cell: ExcelJS.Cell, percent: number): void {
+	cell.value = percent / 100;
+	cell.numFmt = '0.00%';
+}
+
 function comparisonPercentCell(
 	cell: ExcelJS.Cell,
 	percent: number | null,
@@ -110,8 +116,7 @@ function comparisonPercentCell(
 		return;
 	}
 	if (percent !== null) {
-		cell.value = percent / 100;
-		cell.numFmt = '0.00%';
+		setPercentCell(cell, percent);
 		return;
 	}
 	cell.value =
@@ -129,7 +134,7 @@ function comparisonAmountLabel(
 ): string {
 	if (currencySplit && currency === null) return 'See currencies';
 	if (amount === null) return 'Unknown';
-	return `${amount.toFixed(2)} ${currency ?? ''}`.trim();
+	return formatCurrencyIn(amount, currency ?? 'INR');
 }
 
 /**
@@ -171,8 +176,14 @@ function renderVariancePercentCell(
 				: `Unavailable: ${BUDGET_OUTCOME_LABELS[comparison.outcome] ?? comparison.outcome}`;
 		return;
 	}
-	cell.value = percent / 100;
-	cell.numFmt = '0.00%';
+	setPercentCell(cell, percent);
+}
+
+function budgetStatusLabel(comparison: ProjectBudgetComparison): string {
+	return (
+		`${BUDGET_OUTCOME_LABELS[comparison.outcome] ?? comparison.outcome}` +
+		(comparison.budget ? ` · ${comparison.budget.state}` : '')
+	);
 }
 
 function closeStatusLabel(close: ClosePayload | null): string {
@@ -297,7 +308,7 @@ function buildExpenditureReconciliationSheet(
 	th1.height = 20;
 	const thCols1 = [
 		{ col: 1, label: 'Reconciliation Metric' },
-		{ col: 2, label: `Amount (${reconciliation.company.reporting_currency})` },
+		{ col: 2, label: 'Amount' },
 		{ col: 3, label: 'Original Currency' },
 		{ col: 4, label: 'Conversion / Treatment' },
 		{ col: 5, label: 'Confirmed Records' },
@@ -317,12 +328,9 @@ function buildExpenditureReconciliationSheet(
 	// `company.groups` is the reconciliation's own category breakdown: it is
 	// stated only when the whole month can be stated in one currency, and it
 	// stays absent otherwise. Never a partial reporting-currency sum.
-	const groupAmount = (key: string): number | null =>
-		reconciliation.company.groups.find((group) => group.key === key)?.amount ??
-		null;
-	const groupRecords = (key: string): number | null =>
-		reconciliation.company.groups.find((group) => group.key === key)
-			?.record_count ?? null;
+	const groupsByKey = new Map(
+		reconciliation.company.groups.map((group) => [group.key, group] as const)
+	);
 	const companyMetrics: Array<{
 		label: string;
 		amount: number | null;
@@ -343,45 +351,43 @@ function buildExpenditureReconciliationSheet(
 		},
 		{
 			label: '— Incurred Project Cost',
-			amount: groupAmount('incurred_project_cost'),
+			amount: groupsByKey.get('incurred_project_cost')?.amount ?? null,
 			currency: reconciliation.company.currency,
 			treatment: 'Attributed to Projects',
-			records: groupRecords('incurred_project_cost') ?? '—',
+			records: groupsByKey.get('incurred_project_cost')?.record_count ?? '—',
 		},
 		{
 			label: '— Company Overhead',
-			amount: groupAmount('company_overhead'),
+			amount: groupsByKey.get('company_overhead')?.amount ?? null,
 			currency: reconciliation.company.currency,
 			treatment: 'Unattributed General Overhead',
-			records: groupRecords('company_overhead') ?? '—',
+			records: groupsByKey.get('company_overhead')?.record_count ?? '—',
 		},
 		{
 			label: '— Unallocated Cost',
-			amount: groupAmount('unallocated_cost'),
+			amount: groupsByKey.get('unallocated_cost')?.amount ?? null,
 			currency: reconciliation.company.currency,
 			treatment: 'Unallocated Direct / Payroll Cost',
-			records: groupRecords('unallocated_cost') ?? '—',
+			records: groupsByKey.get('unallocated_cost')?.record_count ?? '—',
 		},
 		{
 			label: 'Gross Supplier & Expense Liability',
 			amount: reconciliation.company.gross_liability,
-			currency: reconciliation.company.reporting_currency,
+			currency: reconciliation.company.currency,
 			treatment: 'Gross Liability Before Tax Deduction',
 			records: reconciliation.company.record_count,
 		},
 		{
 			label: 'Recoverable Tax',
 			amount: reconciliation.company.recoverable_tax,
-			currency: reconciliation.company.reporting_currency,
+			currency: reconciliation.company.currency,
 			treatment: 'Confirmed Recoverable Input Tax',
 			records: '—',
 		},
 		{
 			label: 'Unresolved Tax Gross',
 			amount: reconciliation.company.unresolved_tax.gross_amount,
-			currency:
-				reconciliation.company.unresolved_tax.currency ||
-				reconciliation.company.reporting_currency,
+			currency: reconciliation.company.unresolved_tax.currency,
 			treatment: 'Excluded Pending Confirmation',
 			records: reconciliation.company.unresolved_tax.count,
 		},
@@ -449,16 +455,17 @@ function buildExpenditureReconciliationSheet(
 			notice.code === 'payroll_not_generated' ||
 			notice.code === 'payroll_not_finalized' ||
 			notice.code === 'payroll_pricing_missing' ||
-			notice.code === 'payroll_allocation_missing'
+			notice.code === 'payroll_allocation_missing' ||
+			notice.code === 'payroll_slip_missing'
 	);
 	const payrollRows: Array<[string, string]> = [
 		[
 			'Estimated payroll',
-			`${reconciliation.payroll.estimated_total.toFixed(2)} ${reconciliation.payroll.currency} (${reconciliation.payroll.estimated_count} employee(s))`,
+			`${formatCurrencyIn(reconciliation.payroll.estimated_total, reconciliation.payroll.currency)} (${reconciliation.payroll.estimated_count} employee(s))`,
 		],
 		[
 			'Recorded payroll (already in confirmed cost)',
-			`${reconciliation.payroll.recorded_total.toFixed(2)} ${reconciliation.payroll.currency} (${reconciliation.payroll.recorded_count} recorded, ${reconciliation.payroll.known_zero_count} known zero)`,
+			`${formatCurrencyIn(reconciliation.payroll.recorded_total, reconciliation.payroll.currency)} (${reconciliation.payroll.recorded_count} recorded, ${reconciliation.payroll.known_zero_count} known zero)`,
 		],
 		[
 			'Missing pricing (unknown, not zero)',
@@ -689,7 +696,7 @@ function buildExpenditureReconciliationSheet(
 	const fullMonthLabel =
 		reconciliation.company.incurred_cost === null
 			? 'See currencies'
-			: `${reconciliation.company.incurred_cost.toFixed(2)} ${reconciliation.company.currency ?? ''}`.trim();
+			: formatCurrencyIn(reconciliation.company.incurred_cost, reconciliation.company.currency ?? 'INR');
 
 	rNum++;
 	ws.mergeCells(rNum, 1, rNum, 10);
@@ -754,7 +761,11 @@ function buildExpenditureReconciliationSheet(
 	compRow.getCell(9).value = CHANGE_LABELS[cmp.change_state] ?? cmp.change_state;
 	compRow.getCell(10).value = cmp.window_mismatch
 		? 'Unequal windows: prior month shorter'
-		: 'Equal windows';
+		: cmp.current_days === cmp.prior_days
+			? 'Equal windows'
+			: cmp.basis === 'full_month'
+				? `Full month vs full month (${cmp.current_days} vs ${cmp.prior_days} days)`
+				: `Unequal windows (${cmp.current_days} vs ${cmp.prior_days} days)`;
 
 	for (let i = 1; i <= 10; i++) {
 		const c = compRow.getCell(i);
@@ -880,9 +891,8 @@ function buildExpenditureReconciliationSheet(
 				renderValue(row.getCell(4), entry.amount, '#,##0.00');
 			}
 			row.getCell(5).value =
-				`${entry.label}. ${entry.detail} (${entry.count} record(s)` +
-				(entry.currency ? `, ${entry.currency}` : '') +
-				')';
+				`${entry.label}. ${entry.detail}` +
+				(entry.currency ? ` (${entry.currency})` : '');
 
 			for (let i = 1; i <= 10; i++) {
 				const c = row.getCell(i);
@@ -1064,9 +1074,7 @@ function buildExpenditureProjectDetailSheet(
 		renderValue(row.getCell(14), budget?.variance ?? null, '#,##0.00');
 		if (budget) {
 			renderVariancePercentCell(row.getCell(15), budget);
-			row.getCell(16).value =
-				`${BUDGET_OUTCOME_LABELS[budget.outcome] ?? budget.outcome}` +
-				(budget.budget ? ` · ${budget.budget.state}` : '');
+			row.getCell(16).value = budgetStatusLabel(budget);
 			row.getCell(17).value = budget.detail;
 		} else {
 			row.getCell(15).value = 'Unavailable: no budget comparison';
@@ -1226,9 +1234,7 @@ function buildExpenditureBudgetsCommitmentsSheet(
 			renderValue(row.getCell(7), bc.incurred_cost, '#,##0.00');
 			renderValue(row.getCell(8), bc.variance, '#,##0.00');
 			renderVariancePercentCell(row.getCell(9), bc);
-			row.getCell(10).value =
-				`${BUDGET_OUTCOME_LABELS[bc.outcome] ?? bc.outcome}` +
-				(bc.budget ? ` · ${bc.budget.state}` : '');
+			row.getCell(10).value = budgetStatusLabel(bc);
 			row.getCell(11).value = String(bc.budget?.financial_version ?? '—');
 			row.getCell(12).value = bc.budget?.approval_evidence_reference || '—';
 			row.getCell(13).value = bc.detail;
@@ -1821,14 +1827,14 @@ function buildExpenditureRevisionsCloseSheet(
 			revisions?.prior?.incurred_cost === null ||
 			revisions?.prior?.incurred_cost === undefined
 				? '—'
-				: `${revisions.prior.incurred_cost.toFixed(2)} ${revisions.prior.currency ?? ''}`.trim(),
+				: formatCurrencyIn(revisions.prior.incurred_cost, revisions.prior.currency ?? 'INR'),
 		],
 		[
 			'Live Current Total',
 			revisions?.current.incurred_cost === null ||
 			revisions?.current.incurred_cost === undefined
 				? '—'
-				: `${revisions.current.incurred_cost.toFixed(2)} ${revisions.current.currency ?? ''}`.trim(),
+				: formatCurrencyIn(revisions.current.incurred_cost, revisions.current.currency ?? 'INR'),
 		],
 	];
 	for (const [k, v] of revisionContextRows) {
