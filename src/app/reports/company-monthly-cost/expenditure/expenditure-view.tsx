@@ -50,7 +50,6 @@ import type {
 } from './types';
 import { errorMessage, rankMap } from './shared';
 import { Toolbar } from './toolbar';
-import { BalancesPanel } from './balances-panel';
 import { CommitmentsPanel } from './commitments-panel';
 import { ClientOrdersPanel } from './client-orders-panel';
 import { DecisionView } from './decision-view';
@@ -635,7 +634,8 @@ export default function ExpenditureView({
 				onCommandTargetChange={setCommandTarget}
 			/>
 
-			<BalancesPanel data={data} />
+			{/* Petty cash, tax, evidence, and coverage render inside the decision
+			    evidence section above, from the same reconciliation response. */}
 
 			<CommitmentsPanel
 				data={data}

@@ -1004,11 +1004,6 @@ describe('DecisionView review summary', () => {
 			within(review).getByRole('link', { name: '1 unconfirmed record(s)' })
 		).toHaveAttribute('href', '#decision-recognition');
 		expect(
-			within(review).getByRole('link', {
-				name: /1 pending record\(s\) · 1 draft\(s\)/,
-			})
-		).toHaveAttribute('href', '#decision-recognition');
-		expect(
 			within(review).queryByText('total issues', { exact: false })
 		).not.toBeInTheDocument();
 	});
@@ -1085,6 +1080,85 @@ describe('DecisionView review summary', () => {
 		expect(
 			within(review).queryByRole('link', { name: /unconfirmed record/ })
 		).not.toBeInTheDocument();
+	});
+
+	it('keeps a failed queue honest in the recognition section, never a clean zero', () => {
+		const month = data();
+		const props = decisionProps({ month, queue: [] });
+		props.queueLoading = false;
+		props.queueFailed = true;
+		props.queueError = new Error('queue offline');
+		renderDecision(props);
+		const section = screen.getByTestId('decision-section-recognition');
+		expect(within(section).getByRole('alert')).toHaveTextContent(
+			'queue offline'
+		);
+		expect(
+			within(section).queryByText('Nothing awaiting recognition', {
+				exact: false,
+			})
+		).not.toBeInTheDocument();
+	});
+
+	it('keeps a loading queue honest in the recognition section, never a clean zero', () => {
+		const month = data();
+		const props = decisionProps({ month, queue: [] });
+		props.queueLoading = true;
+		renderDecision(props);
+		const section = screen.getByTestId('decision-section-recognition');
+		expect(
+			within(section).getByText('Unconfirmed cost: loading', { exact: false })
+		).toBeInTheDocument();
+		expect(
+			within(section).queryByText('Nothing awaiting recognition', {
+				exact: false,
+			})
+		).not.toBeInTheDocument();
+	});
+
+	it('keeps a successfully loaded empty queue as an honest clean review', () => {
+		const month = data();
+		renderDecision(decisionProps({ month, queue: [] }));
+		const section = screen.getByTestId('decision-section-recognition');
+		expect(
+			within(section).getByText('Nothing awaiting recognition', {
+				exact: false,
+			})
+		).toBeInTheDocument();
+	});
+
+	it('reveals the evidence detail and focuses it from the evidence review link', async () => {
+		const user = userEvent.setup();
+		const month = data();
+		month.evidence = {
+			...month.evidence,
+			pending_evidence: { count: 1, currency: 'INR', amount: 1200 },
+		};
+		month.coverage = [
+			{
+				code: 'window_evidence_unproven',
+				label: 'Unproven comparison evidence',
+				detail: 'One record cannot be placed in the window.',
+				severity: 'warning',
+			},
+		];
+		renderDecision(decisionProps({ month }));
+		const review = screen.getByRole('region', { name: 'Review summary' });
+		const link = within(review).getByRole('link', {
+			name: /1 pending record\(s\) · 0 draft\(s\)/,
+		});
+		expect(link).toHaveAttribute('href', '#decision-evidence');
+		const section = screen.getByTestId('decision-section-evidence');
+		await user.click(
+			within(section).getByRole('button', { name: 'Evidence and coverage' })
+		);
+		expect(screen.queryByTestId('petty-cash-section')).not.toBeInTheDocument();
+		await user.click(link);
+		expect(screen.getByTestId('petty-cash-section')).toBeInTheDocument();
+		expect(within(section).getByTestId('coverage-notice')).toHaveTextContent(
+			'Unproven comparison evidence'
+		);
+		expect(section).toHaveFocus();
 	});
 
 	it('shows unavailable close data as unavailable, never as ready to close', () => {
