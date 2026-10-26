@@ -125,7 +125,7 @@ export function MonthlyView({
 							className="px-2 py-1.5 text-right text-[11px] uppercase text-[#4A1254]"
 						>
 							{data.payroll.missing_pricing_count > 0
-								? 'Available cost — partial'
+								? 'Employee cost — partial'
 								: 'Grand Total'}
 						</td>
 						<td className="px-2 py-1.5 text-right font-mono text-[#4A1254]">
@@ -221,7 +221,7 @@ export function MonthlyView({
 						className="px-2 py-1.5 text-right text-[11px] uppercase text-[#4A1254]"
 					>
 						{data.payroll.missing_pricing_count > 0
-							? 'Available cost — partial'
+							? 'Employee cost — partial'
 							: 'Grand Total'}
 					</td>
 					<td className="px-2 py-1.5 text-right font-mono text-[#4A1254]">

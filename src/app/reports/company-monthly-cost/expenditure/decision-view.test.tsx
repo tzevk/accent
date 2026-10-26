@@ -209,7 +209,7 @@ describe('CompanyReconciliationPanel available expenditure', () => {
 			known_zero_count: 2,
 		};
 		render(<CompanyReconciliationPanel data={month} />);
-		const estimate = screen.getByRole('region', { name: 'Estimated payroll' });
+		const estimate = screen.getByRole('region', { name: 'Salary estimate' });
 		expect(within(estimate).getByText('₹4,955.00')).toBeInTheDocument();
 		expect(
 			within(estimate).getByText('Recorded', { exact: false })
@@ -223,6 +223,15 @@ describe('CompanyReconciliationPanel available expenditure', () => {
 		expect(screen.getByTestId('kpi-confirmed-cost')).toHaveTextContent(
 			'₹22,000.00'
 		);
+	});
+
+	it('discloses salary estimates and missing employee costs without opening help', () => {
+		render(<CompanyReconciliationPanel data={data()} />);
+		const status = screen.getByRole('status');
+		expect(status).toHaveTextContent('Includes salary estimates');
+		expect(status).toHaveTextContent('1 employee cost missing');
+		expect(status).toBeVisible();
+		expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 	});
 });
 
@@ -1389,7 +1398,7 @@ describe('DecisionView keyboard and separation', () => {
 		const month = data();
 		month.payroll = { ...month.payroll, currency: 'USD', estimated_total: 60 };
 		render(<CompanyReconciliationPanel data={month} />);
-		const estimate = screen.getByRole('region', { name: 'Estimated payroll' });
+		const estimate = screen.getByRole('region', { name: 'Salary estimate' });
 		expect(within(estimate).getByText('$60.00')).toBeInTheDocument();
 		expect(screen.getByTestId('kpi-confirmed-cost')).toHaveTextContent(
 			'₹22,000.00'

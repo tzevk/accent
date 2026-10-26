@@ -159,16 +159,16 @@ export function ProjectBreakdown({
 	return (
 		<div className="mt-3 overflow-x-auto rounded-xl border border-gray-200 bg-white">
 			<p className="border-b border-gray-200 px-3 py-2 text-xs text-gray-600">
-				Available cost includes salary estimates. Budget variance, period
+				Monthly cost includes salary estimates. Budget variance, period
 				comparisons, and cost to date use confirmed cost only. Remaining or
 				overspent is the approved budget minus confirmed cost.
 			</p>
 			<table className="w-full min-w-[1080px] text-sm">
 				<caption className="sr-only">
-					Available monthly cost by Project for {data.month_label}, ordered by{' '}
+					Monthly cost by Project for {data.month_label}, ordered by{' '}
 					{rankingMode === 'increase'
 						? 'largest confirmed increase'
-						: 'largest available cost'}
+						: 'largest monthly cost'}
 				</caption>
 				<thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
 					<tr>
@@ -182,19 +182,19 @@ export function ProjectBreakdown({
 							Client
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
-							Available employee cost
+							Employee cost
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
 							Logged Hours
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
-							Available cost
+							Monthly cost
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
 							Approved budget
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
-							Remaining or overspent
+							Budget remaining / overspent — confirmed
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
 							{data.comparison.unfinished

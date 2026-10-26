@@ -23,6 +23,7 @@ import {
 	availableProjectCost,
 	availableReportingProjectCost,
 } from '@/lib/company-expenditure/available-cost';
+import { COST_DEFINITIONS, costStatusLabels } from '../expenditure/shared';
 import {
 	TINT_PURPLE_HDR,
 	TINT_PURPLE_SUB,
@@ -241,7 +242,7 @@ function buildExpenditureReconciliationSheet(
 	ws.mergeCells(2, 1, 2, 6);
 	const s = ws.getCell(2, 1);
 	s.value =
-		'Available monthly expenditure includes salary estimates. Confirmed cost remains separate for budgets, comparisons, and financial close.';
+		'Monthly expenditure includes salary estimates. Confirmed cost remains separate for budgets, comparisons, and financial close.';
 	setFont(s, { size: 9.5, color: 'FF4B5563' });
 	ws.getRow(2).height = 18;
 
@@ -305,7 +306,7 @@ function buildExpenditureReconciliationSheet(
 	rNum += 2;
 	ws.mergeCells(rNum, 1, rNum, 5);
 	const sec1 = ws.getCell(rNum, 1);
-	sec1.value = 'Available Expenditure & Confirmed Cost';
+	sec1.value = 'Monthly Expenditure & Confirmed Cost';
 	setFont(sec1, { bold: true, size: 11, color: 'FFFFFFFF' });
 	setFill(sec1, TINT_PURPLE_HDR);
 	ws.getRow(rNum).height = 22;
@@ -351,33 +352,37 @@ function buildExpenditureReconciliationSheet(
 		bold?: boolean;
 	}> = [
 		{
-			label: 'Available Monthly Expenditure',
+			label: COST_DEFINITIONS.monthly.label,
 			amount: available.amount,
 			currency: available.currency,
-			treatment: available.partial
-				? 'Partial; unpriced payroll excluded'
-				: available.estimated
-					? 'Includes salary estimates'
-					: 'Confirmed cost',
+			treatment:
+				costStatusLabels(
+					available,
+					reconciliation.payroll.unpriced_count,
+					reconciliation.company.incurred_cost
+				).join('; ') ||
+				(available.amount === null
+					? 'Currencies cannot be combined'
+					: 'No confirmed cost recorded'),
 			records: '—',
 			bold: true,
 		},
 		{
-			label: '— Available Project Cost',
+			label: `— ${COST_DEFINITIONS.project.label}`,
 			amount: available.project,
 			currency: available.currency,
 			treatment: 'Confirmed Project cost + estimated payroll shares',
 			records: '—',
 		},
 		{
-			label: '— Available Company Overhead',
+			label: `— ${COST_DEFINITIONS.overhead.label}`,
 			amount: available.overhead,
 			currency: available.currency,
 			treatment: 'Confirmed Company Overhead',
 			records: '—',
 		},
 		{
-			label: '— Available Unallocated Cost',
+			label: `— ${COST_DEFINITIONS.unallocated.label}`,
 			amount: available.unallocated,
 			currency: available.currency,
 			treatment: 'Confirmed unallocated cost + estimated unallocated payroll',
@@ -481,7 +486,7 @@ function buildExpenditureReconciliationSheet(
 	rNum += 2;
 	ws.mergeCells(rNum, 1, rNum, 5);
 	const secPay = ws.getCell(rNum, 1);
-	secPay.value = 'Estimated Payroll — Separate From Confirmed Cost';
+	secPay.value = 'Salary Estimate — Separate From Confirmed Cost';
 	setFont(secPay, { bold: true, size: 10.5, color: 'FFFFFFFF' });
 	setFill(secPay, TINT_PURPLE_HDR);
 	ws.getRow(rNum).height = 20;
@@ -490,7 +495,7 @@ function buildExpenditureReconciliationSheet(
 	ws.mergeCells(rNum, 1, rNum, 5);
 	const paySub = ws.getCell(rNum, 1);
 	paySub.value =
-		'Payroll estimates are included once in available expenditure when currencies match. They stay excluded from confirmed cost, budget variance, period comparisons, and financial close.';
+		'Salary estimates are included once in monthly expenditure when currencies match. They stay excluded from confirmed cost, budget variance, period comparisons, and financial close.';
 	setFont(paySub, { size: 9, color: 'FF4B5563' });
 	ws.getRow(rNum).height = 16;
 
@@ -504,7 +509,7 @@ function buildExpenditureReconciliationSheet(
 	);
 	const payrollRows: Array<[string, string]> = [
 		[
-			'Estimated payroll',
+			COST_DEFINITIONS.salaryEstimate.label,
 			`${formatCurrencyIn(reconciliation.payroll.estimated_total, reconciliation.payroll.currency)} ${reconciliation.payroll.currency} (${reconciliation.payroll.estimated_count} employee(s))`,
 		],
 		[
@@ -1056,7 +1061,7 @@ function buildExpenditureProjectDetailSheet(
 	ws.mergeCells(2, 1, 2, 12);
 	const s = ws.getCell(2, 1);
 	s.value =
-		'Available Project cost includes salary estimates. Budgets and cost to date use confirmed cost. Recorded and estimated payroll remain separate.';
+		'Monthly Project cost includes salary estimates. Budgets and cost to date use confirmed cost. Recorded and estimated payroll remain separate.';
 	setFont(s, { size: 9.5, color: 'FF4B5563' });
 	ws.getRow(2).height = 18;
 
@@ -1074,18 +1079,18 @@ function buildExpenditureProjectDetailSheet(
 		{ col: 4, label: 'Client Name', align: 'left' },
 		{ col: 5, label: 'Currency', align: 'center' },
 		{ col: 6, label: 'Logged Hours', align: 'right' },
-		{ col: 7, label: 'Available Cost (Orig)', align: 'right' },
+		{ col: 7, label: 'Monthly Cost (Orig)', align: 'right' },
 		{ col: 8, label: 'Conversion Status', align: 'center' },
 		{
 			col: 9,
-			label: `Available (${reconciliation.company.reporting_currency})`,
+			label: `Monthly Cost (${reconciliation.company.reporting_currency})`,
 			align: 'right',
 		},
 		{ col: 10, label: 'Confirmed Cost to Date', align: 'right' },
 		{ col: 11, label: 'Cost Basis / Evidence', align: 'center' },
 		{ col: 12, label: 'Records', align: 'right' },
 		{ col: 13, label: 'Approved Monthly Budget', align: 'right' },
-		{ col: 14, label: 'Remaining (+) / Overspent (−)', align: 'right' },
+		{ col: 14, label: COST_DEFINITIONS.budget.label, align: 'right' },
 		{ col: 15, label: 'Variance %', align: 'right' },
 		{ col: 16, label: 'Budget State', align: 'left' },
 		{ col: 17, label: 'Budget Reason', align: 'left' },

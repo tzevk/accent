@@ -513,8 +513,8 @@ function CompanyMonthlyCostInner() {
 								Company Monthly Cost
 							</h1>
 							<p className="mt-0.5 text-xs text-gray-500">
-								Available monthly expenditure, including salary estimates, with
-								confirmed cost and missing Salary Profiles shown separately
+								Monthly expenditure, including salary estimates, with confirmed
+								cost and missing Salary Profiles shown separately
 							</p>
 							{sampleMode && (
 								<p
@@ -726,9 +726,9 @@ function CompanyMonthlyCostInner() {
 								{monthlyData.payroll.missing_pricing_count} employee(s) have no
 								Salary Profile covering this month. Their hours and projects
 								stay visible. Their cost shows ₹0.00 as an unpriced placeholder,
-								not confirmed zero cost. Totals include available cost only and
-								may be understated. Add the covering Salary Profiles to price
-								the remaining work.
+								not confirmed zero cost. Totals include calculated costs only
+								and may be understated. Add the covering Salary Profiles to
+								price the remaining work.
 							</p>
 							<details className="mt-2">
 								<summary className="cursor-pointer font-medium underline underline-offset-2">
@@ -780,7 +780,7 @@ function CompanyMonthlyCostInner() {
 							<div className="flex items-center justify-between">
 								<p className="text-[11px] font-medium uppercase tracking-wide text-[#64126D]">
 									{monthlyData?.payroll.missing_pricing_count
-										? 'Available Cost'
+										? 'Employee cost — partial'
 										: 'Total Cost'}{' '}
 									({monthlyData?.month_label})
 								</p>

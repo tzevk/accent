@@ -164,7 +164,7 @@ export function ProjectWiseMonthlyReport({
 							className="border border-black px-2 py-3 text-right text-base font-bold"
 						>
 							{partial
-								? 'Available cost — partial'
+								? 'Employee cost — partial'
 								: 'Total Amount for All projects >>>'}
 						</td>
 						<td className="border border-black px-2 py-3 text-right text-base font-bold tabular-nums">

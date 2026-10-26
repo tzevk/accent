@@ -169,7 +169,7 @@ function buildMonthlyDetailedSheet(
 	totalRow.height = 20;
 	ws.mergeCells(rowNum, 1, rowNum, 5);
 	const lbl = totalRow.getCell(1);
-	lbl.value = `${data.payroll.missing_pricing_count > 0 ? 'Available cost — partial' : 'Grand Total — Company Cost'} for ${data.month_label}`;
+	lbl.value = `${data.payroll.missing_pricing_count > 0 ? 'Employee cost — partial' : 'Grand Total — Company Cost'} for ${data.month_label}`;
 	setFont(lbl, { bold: true, size: 10 });
 	lbl.alignment = { vertical: 'middle', horizontal: 'right' };
 	for (let c = 1; c <= 5; c++) box(totalRow.getCell(c));
@@ -334,7 +334,7 @@ function buildMonthlyByEmployeeSheet(
 	const l = tr.getCell(1);
 	l.value =
 		data.payroll.missing_pricing_count > 0
-			? 'Available cost — partial'
+			? 'Employee cost — partial'
 			: 'Grand Total';
 	setFont(l, { bold: true, size: 10 });
 	l.alignment = { vertical: 'middle', horizontal: 'right' };
@@ -486,7 +486,7 @@ function buildMonthlyByProjectSheet(
 	const l = tr.getCell(1);
 	l.value =
 		data.payroll.missing_pricing_count > 0
-			? 'Available cost — partial'
+			? 'Employee cost — partial'
 			: 'Grand Total';
 	setFont(l, { bold: true, size: 10 });
 	l.alignment = { vertical: 'middle', horizontal: 'right' };

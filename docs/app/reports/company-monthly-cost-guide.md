@@ -2,17 +2,17 @@
 
 Open `/reports/company-monthly-cost` and select **Company Expenditure**.
 This guide explains the current calculations and the October 2026 screenshot.
-The interface recommendations at the end are proposals, not implemented controls.
+The report and Excel export use the plain-language labels described below.
 
-## What “available cost” means
+## What monthly expenditure means
 
-**Available cost means the cost we can calculate from the records currently present.**
+**Monthly expenditure means the cost we can calculate from the records currently present.**
 It includes confirmed costs and salary estimates for payroll that is not yet recorded.
 It excludes employee costs that cannot be calculated.
 
 It does **not** mean available funds, remaining budget, cash paid, or the final salary bill.
-“Available” describes the data, not the company's money.
-That makes it a confusing label for end users.
+The earlier “Available cost” label described the data, not the company's money.
+The interface now uses **Monthly expenditure** instead.
 
 The main total follows this rule:
 
@@ -36,21 +36,21 @@ The report does not invent exchange rates to produce a combined total.
 
 ## Reading your October 2026 screenshot
 
-These are the screenshot's figures, not fixed report values.
+These are the screenshot's figures under their current labels, not fixed report values.
 
-| Figure                        |        Value | What it means                                                                               |
-| ----------------------------- | -----------: | ------------------------------------------------------------------------------------------- |
-| Available monthly expenditure | ₹2,53,827.00 | The calculable monthly total, including salary estimates.                                   |
-| Available Project Cost        | ₹1,86,275.00 | The part attributed to Projects.                                                            |
-| Company Overhead              |        ₹0.00 | No confirmed shared operating cost is included in this total.                               |
-| Available Unallocated Cost    |   ₹67,552.00 | The part not attributed to a Project or overhead.                                           |
-| Confirmed cost                |        ₹0.00 | No recognized operating cost or recorded payroll amount contributes to the confirmed total. |
-| Estimated payroll             | ₹2,53,827.00 | Salary estimates already included in the headline, not another amount to add.               |
-| Missing Salary Profiles       |  4 employees | Their unknown salary costs are excluded; their Logged Hours remain visible.                 |
+| Figure                  |        Value | What it means                                                                               |
+| ----------------------- | -----------: | ------------------------------------------------------------------------------------------- |
+| Monthly expenditure     | ₹2,53,827.00 | The calculable monthly total, including salary estimates.                                   |
+| Project cost            | ₹1,86,275.00 | The part attributed to Projects.                                                            |
+| Company overhead        |        ₹0.00 | No confirmed shared operating cost is included in this total.                               |
+| Unallocated cost        |   ₹67,552.00 | The part not attributed to a Project or overhead.                                           |
+| Confirmed cost          |        ₹0.00 | No recognized operating cost or recorded payroll amount contributes to the confirmed total. |
+| Salary estimate         | ₹2,53,827.00 | Salary estimates already included in the headline, not another amount to add.               |
+| Missing Salary Profiles |  4 employees | Their unknown salary costs are excluded; their Logged Hours remain visible.                 |
 
 **Here, the entire headline comes from estimated payroll.**
 The Project and Unallocated amounts divide that same payroll estimate.
-Do not add the Estimated payroll card to the headline again.
+Do not add the Salary estimate card to the headline again.
 Do not treat the partial total as a complete or final company cost.
 
 The screenshot does not identify which Employees produce the unallocated amount.
@@ -156,55 +156,59 @@ A missing or incompatible budget does not mean the Project has no cost.
 Controls depend on your permissions.
 Creating a cost budget does not create expenditure, recognize an expense, or finalize payroll.
 
-## Recommended end-user labels and help
+## End-user labels and help
 
-**Recommendation: clearer labels first; shadcn contextual help second.**
-Do not make the user discover the estimate basis or missing-profile warning by hovering.
-Keep **Includes salary estimates**, **Partial**, and the missing-Employee count visible beside the figures.
-Only show each status when it applies.
+The headline is **Monthly expenditure**.
+Its destination cards are **Project cost**, **Company overhead**, and **Unallocated cost**.
+The payroll breakdown is **Salary estimate**.
+Budget remaining or overspent explicitly states its **confirmed** cost basis.
+Excel uses the same labels and cost-basis qualifications.
 
-The following copy is proposed; the current page still uses the labels in the first column.
+The headline keeps these statuses visible without opening help:
 
-| Current label                 | Recommended label                        | Short explanation                                                                                   |
-| ----------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Available monthly expenditure | Monthly expenditure                      | Confirmed costs plus salary estimates. Excludes employee costs that cannot be calculated.           |
-| Available Project Cost        | Project cost                             | Cost attributed to Projects, including estimated salary shares.                                     |
-| Company Overhead              | Company overhead                         | Confirmed shared operating cost deliberately not charged to one Project.                            |
-| Available Unallocated Cost    | Unallocated cost                         | Cost without a Project or overhead destination, including unallocated payroll shares.               |
-| Estimated payroll             | Salary estimate                          | Payroll employer cost calculated from Salary Profiles, Logged Hours, and applicable payroll rules.  |
-| Confirmed                     | Confirmed cost                           | Recognized operating costs and recorded payroll allocations. Not the same as cash paid.             |
-| Partial total                 | Partial — employee costs missing         | Some employee costs cannot be calculated. Their costs are excluded, but their hours remain visible. |
-| Confirmed cost comparison     | Confirmed cost comparison                | Compares confirmed cost only. Salary estimates in the headline are excluded.                        |
-| Remaining or overspent        | Budget remaining / overspent — confirmed | Approved budget minus confirmed Project cost. Salary estimates are excluded.                        |
+- **Includes salary estimates** when the total includes estimates.
+- **Partial — N employee costs missing** when some employee costs cannot be calculated.
+- **Salary estimate shown separately** when currencies prevent a combined total.
+- **Confirmed cost** when supported confirmed cost exists, with no estimates or missing employee costs.
 
-### Tooltip or Popover?
+Estimate and partial statuses can appear together.
+Missing-profile explanations remain on the page.
+An entirely unpriced month keeps a qualified zero and Logged Hours.
 
-Use a **shadcn Popover** for the explanation a reader needs to understand a financial figure.
-A Popover opens through a button, so click, tap, and keyboard users can access the same explanation.
-A visible **How costs are calculated** button can hold the main explanation without adding help controls to every row.
-Longer explanations and navigation belong there, not inside a Tooltip.
+### How costs are calculated
 
-Use a **shadcn Tooltip** only for short, optional term definitions.
-Tooltip content opens on hover or keyboard focus; it is not a substitute for a reliable touch interaction.
-Do not combine Tooltip and Popover behavior on the same trigger.
-Do not add repeated focus stops to every numeric cell.
+Select **How costs are calculated** to open the calculation help.
+This Popover works through click, touch, or keyboard activation.
+It explains both reconciliation formulas and the main financial terms.
+It is read-only and does not create expenses, approve budgets, or finalize payroll.
 
-The project already uses Radix primitives for other controls.
-It has no shared shadcn Tooltip or Popover component or `components.json` configuration at this revision.
-Use the Radix-based shadcn variants rather than introducing another primitive library for this page.
-Adapt the help controls to the existing buttons, icons, and styling tokens.
+Press Tab from its close button to enter the **Cost definitions** reading area.
+Use Page Down or the arrow keys to read content that does not fit.
+Touch users can scroll the same area.
+Select **Close cost explanation** or press Escape to close it.
+Focus returns to **How costs are calculated**.
 
-For implementation and verification:
+### Short definitions
 
-- Keep missing-profile warnings, counts, and estimate status visible outside overlays.
-- Use a native button with a clear accessible name and visible keyboard focus.
-- For Tooltips, support hover and focus, keep focus on the trigger, and let Escape dismiss the content.
-- Keep hover content readable while the pointer moves onto it; do not dismiss it on a timer.
-- Keep links and other interactive controls out of Tooltips; use a Popover for those.
-- Verify click/tap, keyboard navigation, focus return, screen-reader descriptions, and the 320px layout.
-- Do not rely on the browser's `title` attribute as the only explanation.
+The information buttons beside the main cards and Salary estimate show optional Tooltips.
+They open on hover or keyboard focus and close with Escape.
+You can move the pointer onto a Tooltip to finish reading it.
+They contain no links or other controls.
+Critical cost status and missing-profile warnings never depend on these Tooltips.
 
-These are interface recommendations, not implemented help controls or completed accessibility checks.
+### Implementation and verification
+
+The shared Popover and Tooltip use the Radix-based shadcn composition.
+They match the existing buttons, Heroicons, and styling tokens.
+The Tooltip provider is scoped to the company summary, not the whole application.
+Definitions and exported labels come from the report's shared vocabulary.
+No `components.json` initialization or application-wide theme migration is required.
+
+Browser checks cover keyboard opening, focus indicators, keyboard scrolling, Escape, focus return, hoverable definitions, and native touch interaction.
+The help fits the 320px viewport and its long definitions remain scrollable.
+Checks also cover estimated/partial, entirely unpriced, uncombined-currency, and confirmed-only reporting states.
+Accessible names and descriptions are checked through the browser's accessibility tree.
+A real screen-reader session is not part of these checks.
 
 ## References
 

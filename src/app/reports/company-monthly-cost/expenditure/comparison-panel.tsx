@@ -59,8 +59,8 @@ export function ComparisonSummary({
 				</p>
 			</div>
 			<p className="mt-1 text-[11px] text-gray-600">
-				Salary estimates are excluded from both periods. Available monthly
-				expenditure above uses a different basis.
+				Salary estimates are excluded from both periods. Monthly expenditure
+				above uses a different basis.
 			</p>
 			{data.comparison.unfinished &&
 				data.company.incurred_cost !== null &&

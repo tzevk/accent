@@ -7,6 +7,9 @@
 
 import { formatCurrencyIn } from '@/lib/format';
 import { availableMonthlyCost } from '@/lib/company-expenditure/available-cost';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { CostHelp, CostLabel } from './cost-help';
+import { COST_DEFINITIONS, costStatusLabels } from './shared';
 import type { ReconciliationPayload } from './types';
 
 export interface CompanyReconciliationPanelProps {
@@ -18,6 +21,11 @@ export function CompanyReconciliationPanel({
 	data,
 }: CompanyReconciliationPanelProps) {
 	const available = availableMonthlyCost(data.company, data.payroll);
+	const statuses = costStatusLabels(
+		available,
+		data.payroll.unpriced_count,
+		data.company.incurred_cost
+	);
 	// A month is stated in the requested reporting currency only when every
 	// confirmed record is supported; otherwise its own currency subtotals are
 	// the whole answer and the warning below says so.
@@ -27,12 +35,14 @@ export function CompanyReconciliationPanel({
 	const statedCurrency = data.company.currency ?? reportingCurrencyCode;
 
 	return (
-		<>
-			<p className="mb-1 text-xs text-gray-500">
-				Available expenditure for {data.month_label}, stated in{' '}
-				{available.currency}. Includes confirmed cost and available salary
-				estimates. Project filters narrow the detail only.
-			</p>
+		<TooltipProvider delayDuration={300}>
+			<div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+				<p className="text-xs text-gray-500">
+					Monthly expenditure for {data.month_label}, stated in{' '}
+					{available.currency}. Project filters narrow the detail only.
+				</p>
+				<CostHelp />
+			</div>
 			<p
 				data-testid="conversion-status"
 				data-status={conversion.status}
@@ -67,26 +77,37 @@ export function CompanyReconciliationPanel({
 			<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
 				<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-3 shadow-sm">
 					<p className="text-[11px] font-medium uppercase tracking-wide text-[#64126D]">
-						Available monthly expenditure
+						<CostLabel term="monthly" />
 					</p>
 					<p
 						data-testid="kpi-available-cost"
 						data-amount={available.amount ?? ''}
-						className="mt-0.5 text-lg font-bold text-[#64126D]"
+						className="mt-0.5 text-lg font-bold tabular-nums text-[#64126D]"
 					>
 						{available.amount === null
 							? 'Not combinable'
 							: formatCurrencyIn(available.amount, available.currency)}
 					</p>
+					<div
+						role="status"
+						aria-atomic="true"
+						className="mt-1 flex flex-wrap gap-1 text-[10px]"
+					>
+						{statuses.map((status) => (
+							<span
+								key={status}
+								className={`rounded-full border px-2 py-0.5 font-medium ${
+									available.estimated || available.partial
+										? 'border-amber-200 bg-amber-50 text-amber-900'
+										: 'border-green-200 bg-green-50 text-green-900'
+								}`}
+							>
+								{status}
+							</span>
+						))}
+					</div>
 					<p className="text-[10px] text-gray-600">
-						{available.partial
-							? 'Partial total'
-							: available.estimated
-								? 'Includes salary estimates'
-								: 'Confirmed cost'}
-					</p>
-					<p className="text-[10px] text-gray-600">
-						Confirmed:{' '}
+						{COST_DEFINITIONS.confirmed.label}:{' '}
 						<span data-testid="kpi-confirmed-cost">
 							{data.company.incurred_cost === null && !companyStated
 								? 'Not combinable'
@@ -104,12 +125,12 @@ export function CompanyReconciliationPanel({
 				</div>
 				<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
 					<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-						Available project cost
+						<CostLabel term="project" />
 					</p>
 					<p
 						data-testid="kpi-project-cost"
 						data-amount={available.project ?? ''}
-						className="mt-0.5 text-lg font-bold text-gray-900"
+						className="mt-0.5 text-lg font-bold tabular-nums text-gray-900"
 					>
 						{available.project === null
 							? 'See currencies'
@@ -122,19 +143,21 @@ export function CompanyReconciliationPanel({
 						}
 						className="text-[10px] text-gray-600"
 					>
-						{data.project_id === null
-							? `${data.projects.length} project(s) with cost`
-							: 'Project detail filtered; company cost stays unfiltered'}
+						{data.project_id !== null
+							? 'Project detail filtered; company cost stays unfiltered'
+							: data.projects.length === 1
+								? '1 project row in detail'
+								: `${data.projects.length} project rows in detail`}
 					</p>
 				</div>
 				<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
 					<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-						Company Overhead
+						<CostLabel term="overhead" />
 					</p>
 					<p
 						data-testid="kpi-overhead"
 						data-amount={available.overhead ?? ''}
-						className="mt-0.5 text-lg font-bold text-gray-900"
+						className="mt-0.5 text-lg font-bold tabular-nums text-gray-900"
 					>
 						{available.overhead === null
 							? 'See currencies'
@@ -146,25 +169,25 @@ export function CompanyReconciliationPanel({
 				</div>
 				<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
 					<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-						Available unallocated cost
+						<CostLabel term="unallocated" />
 					</p>
 					<p
 						data-testid="kpi-unallocated"
 						data-amount={available.unallocated ?? ''}
-						className="mt-0.5 text-lg font-bold text-gray-900"
+						className="mt-0.5 text-lg font-bold tabular-nums text-gray-900"
 					>
 						{available.unallocated === null
 							? 'See currencies'
 							: formatCurrencyIn(available.unallocated, available.currency)}
 					</p>
 					<p className="text-[10px] text-gray-600">
-						Awaiting a Project or Overhead destination
+						No Project or overhead destination
 					</p>
 				</div>
 			</div>
 			{/* Payroll basis: estimates are included above, never in confirmed cost. */}
 			<section
-				aria-label="Estimated payroll"
+				aria-label={COST_DEFINITIONS.salaryEstimate.label}
 				data-testid="decision-separate-payroll"
 				data-estimated-total={data.payroll.estimated_total}
 				data-currency={data.payroll.currency}
@@ -173,7 +196,7 @@ export function CompanyReconciliationPanel({
 				className="mb-3 mt-4 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
 			>
 				<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-					Estimated payroll
+					<CostLabel term="salaryEstimate" />
 				</p>
 				<p className="mt-0.5 text-lg font-bold tabular-nums text-gray-900">
 					{formatCurrencyIn(
@@ -188,21 +211,20 @@ export function CompanyReconciliationPanel({
 				</p>
 				<p className="text-[10px] text-gray-600">
 					{available.estimate_currency_supported
-						? 'Included once in available expenditure above. Not part of confirmed expenditure.'
-						: 'Not combined with confirmed expenditure: the currencies have no supported conversion.'}
+						? 'Included once in monthly expenditure above. Not part of confirmed cost.'
+						: 'Shown separately: the currencies have no supported conversion.'}
 				</p>
 				{available.partial && (
-					<p role="status" className="mt-1 text-xs font-medium text-amber-800">
-						Partial expenditure: {data.payroll.unpriced_count} employee(s) have
-						no available payroll cost.{' '}
+					<p className="mt-1 text-xs font-medium text-amber-800">
+						Salary costs for {data.payroll.unpriced_count} employee(s) cannot be
+						calculated.{' '}
 						{data.payroll.missing_pricing_count > 0 &&
 							`${data.payroll.missing_pricing_count} have no Salary Profile covering this month. `}
-						Known costs and logged hours stay visible. Unpriced salaries are
-						excluded from the available totals; a displayed zero does not mean
-						their actual salary cost is zero.
+						Known costs and logged hours remain included. An unpriced zero does
+						not mean zero actual salary.
 					</p>
 				)}
 			</section>
-		</>
+		</TooltipProvider>
 	);
 }

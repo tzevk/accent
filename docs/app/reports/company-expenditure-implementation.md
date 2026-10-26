@@ -2,8 +2,8 @@
 
 ## Overview
 
-The report at `/reports/company-monthly-cost` leads with **Available monthly
-expenditure**: confirmed **Company Incurred Cost** plus available payroll estimates.
+The report at `/reports/company-monthly-cost` leads with **Monthly expenditure**:
+confirmed **Company Incurred Cost** plus calculated salary estimates.
 Project and Unallocated totals include their estimated payroll shares.
 Company Overhead keeps its confirmed basis.
 Each employee contributes recorded payroll or an estimate, never both.
@@ -14,7 +14,7 @@ and the corrected payroll calculation's estimate otherwise.
 Estimates never become recognized cost, budget variance, or frozen financial-close balances.
 
 For a plain-language explanation, read [How to read Company Monthly Cost](company-monthly-cost-guide.md).
-It explains the current figures, missing-data limits, and recommended end-user help.
+It explains the current figures, missing-data limits, and on-page end-user help.
 
 Ticket #306 delivers the first complete slice: capture a direct expense with a
 durable identity, recognize it into a month, reconcile it, and drill from a
@@ -39,8 +39,8 @@ Cost, the Project breakdown, or the evidence summary.
 ### Company-first decision view (#382)
 
 The company position uses the existing reconciliation and Comparable Period payloads.
-The available full-month headline stays separate from the explicitly confirmed elapsed-window comparison.
-Salary estimates enter available expenditure, not confirmed cost, and retain their own currency.
+The full-month headline stays separate from the explicitly confirmed elapsed-window comparison.
+Salary estimates enter monthly expenditure, not confirmed cost, and retain their own currency.
 Recorded payroll, known-zero employees, and missing pricing remain distinct.
 Financial Close and Financial Revision keep frozen and current figures separate.
 Missing close information means unavailable, not open or ready to close.
@@ -56,6 +56,16 @@ Project-scoped budget categories identify their scope; company totals stay unfil
 Loading or failed recognition data stays loading or unavailable with its error detail in the recognition section, never a clean zero.
 Recognition errors direct reviewers to check their connection and use the existing Refresh control.
 Read-only reviewers receive evidence and navigation, not financial write controls.
+
+The summary uses plain-language labels: **Monthly expenditure**, **Project cost**, **Company overhead**, **Unallocated cost**, and **Salary estimate**.
+The **How costs are calculated** button opens read-only help through click, tap, or keyboard activation.
+Its shadcn-style Radix Popover exposes a named, described dialog and a keyboard-focusable scrolling **Cost definitions** region.
+Escape and the close button restore focus to the trigger.
+Optional Tooltips beside summary terms work on hover and focus and allow the pointer onto their content.
+They never hide essential estimate status or missing-profile warnings.
+The Tooltip provider is scoped to the summary; shared primitives live in `src/components/ui/{popover,tooltip}.tsx`.
+`COST_DEFINITIONS` and `costStatusLabels` in `expenditure/shared.ts` keep UI and Excel wording aligned.
+No financial calculation, recognition, payroll lock, budget, or close rule changes.
 
 Project detail uses existing approved monthly budget comparisons beside confirmed cost.
 Remaining or overspent budget means approved budget minus confirmed monthly Incurred Project Cost.
@@ -73,9 +83,11 @@ Detailed rows and Employee totals carry `missing_salary_profile`; Project totals
 An Employee working on two Projects counts once in the monthly warning, and once in each affected Project's warning.
 
 The Company Expenditure headline and Project rows include available salary estimates.
-The cards reconcile available Project cost, Company Overhead, and available Unallocated Cost.
+The cards reconcile Project cost, Company Overhead, and Unallocated Cost, including applicable salary estimates.
 Confirmed expenditure remains explicit below the headline and beside each estimated Project cost.
-Missing employee pricing marks the headline as **Partial total**, even when every available amount is zero.
+Missing pricing shows **Partial — N employee costs missing**, even when every calculated amount is zero.
+**Includes salary estimates** remains visible alongside that status when applicable.
+An uncombined-currency total instead shows **Salary estimate shown separately**.
 Project rows retain Logged Hours and missing-profile counts, and their evidence state no longer implies recorded payroll.
 An empty confirmed total with a supported currency displays zero with **No confirmed cost recorded yet**.
 Unsupported currencies are not added or converted without evidence; supported native-currency figures remain visible.
