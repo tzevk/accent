@@ -13,6 +13,9 @@ interpretation: recorded employer-cost allocation for finalized payroll,
 and the corrected payroll calculation's estimate otherwise.
 Estimates never become recognized cost, budget variance, or frozen financial-close balances.
 
+For a plain-language explanation, read [How to read Company Monthly Cost](company-monthly-cost-guide.md).
+It explains the current figures, missing-data limits, and recommended end-user help.
+
 Ticket #306 delivers the first complete slice: capture a direct expense with a
 durable identity, recognize it into a month, reconcile it, and drill from a
 Project into its source records. Everything else the parent specification
