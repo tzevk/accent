@@ -1226,6 +1226,8 @@ const EMPTY_PAYROLL_TOTALS: PayrollExpenditure = {
 	estimated_total: 0,
 	allocated_total: 0,
 	unallocated_total: 0,
+	estimated_allocated_total: 0,
+	estimated_unallocated_total: 0,
 	total_logged_hours: 0,
 	project_hours: 0,
 	no_project_hours: 0,
@@ -1236,6 +1238,7 @@ const EMPTY_PAYROLL_TOTALS: PayrollExpenditure = {
 	missing_slip_count: 0,
 	missing_pricing_count: 0,
 	allocation_missing_count: 0,
+	unpriced_count: 0,
 };
 
 /**

@@ -513,9 +513,8 @@ function CompanyMonthlyCostInner() {
 								Company Monthly Cost
 							</h1>
 							<p className="mt-0.5 text-xs text-gray-500">
-								Company Incurred Cost reconciled to Incurred Project Cost,
-								Company Overhead, and Unallocated Cost — with the employee-cost
-								and financial-year views alongside
+								Available monthly expenditure, including salary estimates, with
+								confirmed cost and missing Salary Profiles shown separately
 							</p>
 							{sampleMode && (
 								<p

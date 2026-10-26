@@ -888,6 +888,8 @@ export function summarizePayroll(
 	let estimatedTotal = R(0);
 	let allocated = R(0);
 	let unallocated = R(0);
+	let estimatedAllocated = R(0);
+	let estimatedUnallocated = R(0);
 	let hours = R(0);
 	let projectHours = R(0);
 	let noProjectHours = R(0);
@@ -898,6 +900,7 @@ export function summarizePayroll(
 	let missingSlip = 0;
 	let missingPricing = 0;
 	let allocationMissing = 0;
+	let unpricedCount = 0;
 
 	for (const row of rows) {
 		if (row.recorded_amount !== null) {
@@ -912,6 +915,13 @@ export function summarizePayroll(
 		} else if (row.estimated_amount !== null) {
 			estimatedTotal = add(estimatedTotal, row.estimated_amount);
 			estimatedCount++;
+			for (const share of row.shares) {
+				if (share.basis === 'project')
+					estimatedAllocated = add(estimatedAllocated, share.amount);
+				else estimatedUnallocated = add(estimatedUnallocated, share.amount);
+			}
+		} else {
+			unpricedCount++;
 		}
 		hours = add(hours, row.logged_hours);
 		projectHours = add(projectHours, row.project_hours);
@@ -927,6 +937,8 @@ export function summarizePayroll(
 		estimated_total: round2(estimatedTotal),
 		allocated_total: round2(allocated),
 		unallocated_total: round2(unallocated),
+		estimated_allocated_total: round2(estimatedAllocated),
+		estimated_unallocated_total: round2(estimatedUnallocated),
 		total_logged_hours: round2(hours),
 		project_hours: round2(projectHours),
 		no_project_hours: round2(noProjectHours),
@@ -937,6 +949,7 @@ export function summarizePayroll(
 		missing_slip_count: missingSlip,
 		missing_pricing_count: missingPricing,
 		allocation_missing_count: allocationMissing,
+		unpriced_count: unpricedCount,
 	};
 }
 

@@ -3,12 +3,10 @@
 /**
  * The Project breakdown of the company expenditure report.
  *
- * One row per Project, ranked by the selected ordering: its incurred cost,
- * the approved monthly budget beside it with its approval and comparison
- * state, the remaining or overspent variance on the same basis, the comparable
- * period beside it, the change between them, the cost to date,
- * the reporting-currency figure, the cost still unconfirmed, and the evidence
- * state behind it. Expanding a row opens the source records recognized
+ * One row per Project, ranked by available monthly cost or confirmed change.
+ * Available cost includes salary estimates; budgets, comparable periods, and
+ * cost to date keep their confirmed basis. The reporting-currency figure never
+ * invents a rate for payroll estimates. Expanding a row opens source records
  * against that Project, the evidence still unresolved, the approved period
  * consumption, and the client orders linked to the Project (commercial
  * context only, never revenue, profit or cost).
@@ -19,6 +17,11 @@ import Link from 'next/link';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { formatCurrencyIn, formatDate, formatNumber } from '@/lib/format';
 import { div, gt, isZero, mul } from '@/lib/money';
+import {
+	availableEmployeeCost,
+	availableProjectCost,
+	availableReportingProjectCost,
+} from '@/lib/company-expenditure/available-cost';
 import type {
 	CostRecordJson,
 	PeriodChargeJson,
@@ -156,14 +159,16 @@ export function ProjectBreakdown({
 	return (
 		<div className="mt-3 overflow-x-auto rounded-xl border border-gray-200 bg-white">
 			<p className="border-b border-gray-200 px-3 py-2 text-xs text-gray-600">
-				Remaining or overspent is the approved monthly cost budget minus
-				confirmed monthly Incurred Project Cost: a positive amount is remaining,
-				a negative amount is overspent.
+				Available cost includes salary estimates. Budget variance, period
+				comparisons, and cost to date use confirmed cost only. Remaining or
+				overspent is the approved budget minus confirmed cost.
 			</p>
 			<table className="w-full min-w-[1080px] text-sm">
 				<caption className="sr-only">
-					Incurred Project Cost by Project for {data.month_label}, ordered by{' '}
-					{rankingMode === 'increase' ? 'largest increase' : 'largest cost'}
+					Available monthly cost by Project for {data.month_label}, ordered by{' '}
+					{rankingMode === 'increase'
+						? 'largest confirmed increase'
+						: 'largest available cost'}
 				</caption>
 				<thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
 					<tr>
@@ -177,13 +182,13 @@ export function ProjectBreakdown({
 							Client
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
-							Employee cost
+							Available employee cost
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
 							Logged Hours
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
-							Incurred cost
+							Available cost
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
 							Approved budget
@@ -193,14 +198,14 @@ export function ProjectBreakdown({
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
 							{data.comparison.unfinished
-								? `First ${data.comparison.current_days} day(s)`
-								: 'This month'}
+								? `Confirmed: first ${data.comparison.current_days} day(s)`
+								: 'Confirmed this month'}
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
-							Change
+							Confirmed change
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
-							Cost to date
+							Confirmed cost to date
 						</th>
 						<th scope="col" className="px-3 py-2 text-right">
 							Reporting ({reportingCurrencyCode})
@@ -224,12 +229,30 @@ export function ProjectBreakdown({
 					)}
 					{rankedRows.map(({ row: project, rank }) => {
 						const expanded = expandedProject === project.project_id;
+						const available = availableProjectCost(project);
+						const employeeCost = availableEmployeeCost(project);
+						const reportingCost = availableReportingProjectCost(
+							project,
+							reportingCurrencyCode
+						);
+						const estimatedPayroll =
+							project.estimated_employee_cost > 0 ||
+							project.employee_count >
+								project.recorded_employee_count +
+									project.missing_salary_profile_count;
+						const evidenceState =
+							project.missing_salary_profile_count > 0
+								? 'incomplete'
+								: estimatedPayroll && project.evidence.state === 'recorded'
+									? 'estimated'
+									: project.evidence.state;
 						return (
 							<Fragment key={`${project.project_id}-${project.currency}`}>
 								<tr
 									data-testid="expenditure-project-row"
 									data-project-code={project.project_code}
-									data-project-cost={project.incurred_cost}
+									data-project-cost={available}
+									data-confirmed-project-cost={project.incurred_cost}
 									data-currency={project.currency}
 									data-comparison-cost={project.comparison_cost}
 									data-previous-period-cost={project.previous_period_cost ?? ''}
@@ -237,7 +260,7 @@ export function ProjectBreakdown({
 									data-change-state={project.change_state}
 									data-cost-to-date={project.cost_to_date ?? ''}
 									data-late-count={project.late_entry?.count ?? 0}
-									data-evidence-state={project.evidence.state}
+									data-evidence-state={evidenceState}
 									data-rank-cost={
 										costRanks.get(
 											`${project.project_id}:${project.currency}`
@@ -249,7 +272,7 @@ export function ProjectBreakdown({
 										) ?? ''
 									}
 									data-rank={rank ?? ''}
-									data-employee-cost={String(project.employee_cost)}
+									data-employee-cost={String(employeeCost)}
 									data-logged-hours={String(project.logged_hours)}
 									className="border-t border-gray-100"
 								>
@@ -294,15 +317,10 @@ export function ProjectBreakdown({
 										{project.client_name ?? '—'}
 									</td>
 									<td className="px-3 py-2 text-right text-gray-700">
-										{formatCurrencyIn(project.employee_cost, project.currency)}
-										{project.estimated_employee_cost > 0 && (
-											<span className="ml-1 text-[10px] text-amber-700">
-												+
-												{formatCurrencyIn(
-													project.estimated_employee_cost,
-													project.currency
-												)}{' '}
-												est.
+										{formatCurrencyIn(employeeCost, project.currency)}
+										{estimatedPayroll && (
+											<span className="mt-1 block text-[10px] font-medium text-amber-800">
+												Includes salary estimate
 											</span>
 										)}
 										{project.missing_salary_profile_count > 0 && (
@@ -318,10 +336,20 @@ export function ProjectBreakdown({
 											: formatNumber(project.logged_hours)}
 									</td>
 									<td
-										data-testid="project-incurred-cost"
-										className="px-3 py-2 text-right font-semibold text-gray-900"
+										data-testid="project-available-cost"
+										className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900"
 									>
-										{formatCurrencyIn(project.incurred_cost, project.currency)}
+										{formatCurrencyIn(available, project.currency)}
+										{(estimatedPayroll ||
+											project.missing_salary_profile_count > 0) && (
+											<span className="mt-1 block text-[10px] font-normal text-gray-600">
+												Confirmed{' '}
+												{formatCurrencyIn(
+													project.incurred_cost,
+													project.currency
+												)}
+											</span>
+										)}
 									</td>
 									{(() => {
 										const comparison = budgetByProjectCurrency.get(
@@ -484,12 +512,9 @@ export function ProjectBreakdown({
 										data-conversion-status={project.conversion_status}
 										className="px-3 py-2 text-right font-semibold text-gray-900"
 									>
-										{project.converted_incurred_cost === null
+										{reportingCost === null
 											? `No rate to ${reportingCurrencyCode}`
-											: formatCurrencyIn(
-													project.converted_incurred_cost,
-													reportingCurrencyCode
-												)}
+											: formatCurrencyIn(reportingCost, reportingCurrencyCode)}
 									</td>
 									<td className="px-3 py-2 text-right text-gray-600">
 										{project.not_confirmed_cost === null
@@ -504,12 +529,11 @@ export function ProjectBreakdown({
 									<td className="px-3 py-2 text-xs text-gray-600">
 										<p
 											data-testid="project-evidence"
-											data-state={project.evidence.state}
+											data-state={evidenceState}
 											data-findings={project.evidence.findings.join(',')}
 											className="font-medium text-gray-700"
 										>
-											{EVIDENCE_LABELS[project.evidence.state] ??
-												project.evidence.state}
+											{EVIDENCE_LABELS[evidenceState] ?? evidenceState}
 										</p>
 										{project.evidence.findings.length > 0 && (
 											<p className="text-[10px] text-gray-500">

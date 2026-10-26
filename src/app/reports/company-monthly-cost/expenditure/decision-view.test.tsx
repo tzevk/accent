@@ -137,6 +137,8 @@ function data(): ReconciliationPayload {
 			estimated_total: 4955,
 			allocated_total: 0,
 			unallocated_total: 0,
+			estimated_allocated_total: 4955,
+			estimated_unallocated_total: 0,
 			total_logged_hours: 100,
 			project_hours: 100,
 			no_project_hours: 0,
@@ -147,6 +149,7 @@ function data(): ReconciliationPayload {
 			missing_slip_count: 0,
 			missing_pricing_count: 1,
 			allocation_missing_count: 0,
+			unpriced_count: 1,
 		},
 		petty_cash: {
 			month: null,
@@ -197,8 +200,8 @@ function data(): ReconciliationPayload {
 	};
 }
 
-describe('CompanyReconciliationPanel estimate separation', () => {
-	it('keeps a nonzero payroll estimate with unknown pricing outside the confirmed headline', () => {
+describe('CompanyReconciliationPanel available expenditure', () => {
+	it('includes estimated payroll once and keeps confirmed expenditure explicit', () => {
 		const month = data();
 		month.payroll = {
 			...month.payroll,
@@ -214,7 +217,10 @@ describe('CompanyReconciliationPanel estimate separation', () => {
 		expect(
 			within(estimate).getByText('2 known-zero', { exact: false })
 		).toBeInTheDocument();
-		expect(screen.getByTestId('kpi-incurred-cost')).toHaveTextContent(
+		expect(screen.getByTestId('kpi-available-cost')).toHaveTextContent(
+			'₹26,955.00'
+		);
+		expect(screen.getByTestId('kpi-confirmed-cost')).toHaveTextContent(
 			'₹22,000.00'
 		);
 	});
@@ -257,8 +263,8 @@ describe('ComparisonSummary comparison scope', () => {
 				<ComparisonSummary data={month} />
 			</>
 		);
-		expect(screen.getByTestId('kpi-incurred-cost')).toHaveTextContent(
-			'₹22,000.00'
+		expect(screen.getByTestId('kpi-available-cost')).toHaveTextContent(
+			'₹26,955.00'
 		);
 		const panel = screen.getByTestId('comparison-panel');
 		expect(
@@ -377,9 +383,11 @@ function projectRow(overrides: Partial<ProjectRow>): ProjectRow {
 }
 
 describe('ProjectBreakdown budget variance', () => {
-	it('states an overspent approved budget beside confirmed cost with its percentage', () => {
+	it('compares the budget against confirmed cost while showing available estimated cost', () => {
 		const month = data();
-		month.projects = [projectRow({})];
+		month.projects = [
+			projectRow({ estimated_employee_cost: 4000, employee_count: 1 }),
+		];
 		month.budgets = {
 			...month.budgets,
 			comparisons: [
@@ -435,8 +443,11 @@ describe('ProjectBreakdown budget variance', () => {
 			/>
 		);
 		const row = screen.getByTestId('expenditure-project-row');
-		expect(within(row).getByTestId('project-incurred-cost')).toHaveTextContent(
-			'₹16,000.00'
+		expect(within(row).getByTestId('project-available-cost')).toHaveTextContent(
+			'₹20,000.00'
+		);
+		expect(within(row).getByTestId('project-reporting-cost')).toHaveTextContent(
+			'₹20,000.00'
 		);
 		const cells = within(row).getAllByRole('cell');
 		const budget = cells.find((cell) => within(cell).queryByText('₹10,000.00'));
@@ -1041,8 +1052,8 @@ describe('DecisionView review summary', () => {
 			],
 		};
 		renderDecision(decisionProps({ month }));
-		expect(screen.getByTestId('kpi-incurred-cost')).toHaveTextContent(
-			'₹22,000.00'
+		expect(screen.getByTestId('kpi-available-cost')).toHaveTextContent(
+			'₹26,955.00'
 		);
 		const review = screen.getByRole('region', { name: 'Review summary' });
 		expect(
@@ -1267,7 +1278,7 @@ describe('DecisionView payroll and currency coverage', () => {
 			</>
 		);
 		expect(screen.getByTestId('conversion-warning')).toBeInTheDocument();
-		expect(screen.getByTestId('kpi-incurred-cost')).toHaveTextContent(
+		expect(screen.getByTestId('kpi-available-cost')).toHaveTextContent(
 			'Not combinable'
 		);
 		expect(screen.getByTestId('currency-total-row')).toHaveTextContent('USD');
@@ -1380,7 +1391,7 @@ describe('DecisionView keyboard and separation', () => {
 		render(<CompanyReconciliationPanel data={month} />);
 		const estimate = screen.getByRole('region', { name: 'Estimated payroll' });
 		expect(within(estimate).getByText('$60.00')).toBeInTheDocument();
-		expect(screen.getByTestId('kpi-incurred-cost')).toHaveTextContent(
+		expect(screen.getByTestId('kpi-confirmed-cost')).toHaveTextContent(
 			'₹22,000.00'
 		);
 	});
@@ -1467,8 +1478,8 @@ describe('DecisionView company summary composition', () => {
 		const month = data();
 		renderDecision(decisionProps({ month }));
 		const summary = screen.getByTestId('decision-summary');
-		expect(within(summary).getByTestId('kpi-incurred-cost')).toHaveTextContent(
-			'₹22,000.00'
+		expect(within(summary).getByTestId('kpi-available-cost')).toHaveTextContent(
+			'₹26,955.00'
 		);
 		expect(within(summary).getByTestId('comparison-panel')).toBeInTheDocument();
 		expect(
@@ -1556,7 +1567,7 @@ describe('DecisionView company summary composition', () => {
 		};
 		renderDecision(decisionProps({ month }));
 		expect(screen.getByTestId('kpi-project-cost')).toHaveTextContent(
-			'₹22,000.00'
+			'₹26,955.00'
 		);
 		expect(screen.getByTestId('kpi-project-count')).toHaveTextContent(
 			'company cost stays unfiltered'

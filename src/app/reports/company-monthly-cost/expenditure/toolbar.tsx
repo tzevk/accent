@@ -146,8 +146,8 @@ export function Toolbar({
 						}
 						className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
 					>
-						<option value="cost">Largest cost first</option>
-						<option value="increase">Largest increase first</option>
+						<option value="cost">Largest available cost first</option>
+						<option value="increase">Largest confirmed increase first</option>
 					</select>
 				</label>
 				<label className="text-xs font-medium text-gray-600">

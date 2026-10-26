@@ -16,8 +16,13 @@ import type {
 	ProjectBudgetComparison,
 	RevisionPayload,
 } from '@/lib/company-expenditure';
-import { div, gt, mul, toNumber } from '@/lib/money';
+import { add, div, gt, mul, R, toNumber } from '@/lib/money';
 import { formatCurrencyIn } from '@/lib/format';
+import {
+	availableMonthlyCost,
+	availableProjectCost,
+	availableReportingProjectCost,
+} from '@/lib/company-expenditure/available-cost';
 import {
 	TINT_PURPLE_HDR,
 	TINT_PURPLE_SUB,
@@ -236,7 +241,7 @@ function buildExpenditureReconciliationSheet(
 	ws.mergeCells(2, 1, 2, 6);
 	const s = ws.getCell(2, 1);
 	s.value =
-		'Company Incurred Cost reconciled to Incurred Project Cost, Company Overhead, and Unallocated Cost';
+		'Available monthly expenditure includes salary estimates. Confirmed cost remains separate for budgets, comparisons, and financial close.';
 	setFont(s, { size: 9.5, color: 'FF4B5563' });
 	ws.getRow(2).height = 18;
 
@@ -296,11 +301,11 @@ function buildExpenditureReconciliationSheet(
 		ws.getRow(rNum).height = 20;
 	}
 
-	// Section: Company Incurred Cost
+	// Available headline and the unchanged confirmed-cost reconciliation.
 	rNum += 2;
 	ws.mergeCells(rNum, 1, rNum, 5);
 	const sec1 = ws.getCell(rNum, 1);
-	sec1.value = 'Company Incurred Cost Reconciliation';
+	sec1.value = 'Available Expenditure & Confirmed Cost';
 	setFont(sec1, { bold: true, size: 11, color: 'FFFFFFFF' });
 	setFill(sec1, TINT_PURPLE_HDR);
 	ws.getRow(rNum).height = 22;
@@ -333,6 +338,10 @@ function buildExpenditureReconciliationSheet(
 	const groupsByKey = new Map(
 		reconciliation.company.groups.map((group) => [group.key, group] as const)
 	);
+	const available = availableMonthlyCost(
+		reconciliation.company,
+		reconciliation.payroll
+	);
 	const companyMetrics: Array<{
 		label: string;
 		amount: number | null;
@@ -341,6 +350,39 @@ function buildExpenditureReconciliationSheet(
 		records: number | string;
 		bold?: boolean;
 	}> = [
+		{
+			label: 'Available Monthly Expenditure',
+			amount: available.amount,
+			currency: available.currency,
+			treatment: available.partial
+				? 'Partial; unpriced payroll excluded'
+				: available.estimated
+					? 'Includes salary estimates'
+					: 'Confirmed cost',
+			records: '—',
+			bold: true,
+		},
+		{
+			label: '— Available Project Cost',
+			amount: available.project,
+			currency: available.currency,
+			treatment: 'Confirmed Project cost + estimated payroll shares',
+			records: '—',
+		},
+		{
+			label: '— Available Company Overhead',
+			amount: available.overhead,
+			currency: available.currency,
+			treatment: 'Confirmed Company Overhead',
+			records: '—',
+		},
+		{
+			label: '— Available Unallocated Cost',
+			amount: available.unallocated,
+			currency: available.currency,
+			treatment: 'Confirmed unallocated cost + estimated unallocated payroll',
+			records: '—',
+		},
 		{
 			label: 'Company Incurred Cost',
 			amount: reconciliation.company.incurred_cost,
@@ -435,7 +477,7 @@ function buildExpenditureReconciliationSheet(
 		c5.alignment = { vertical: 'middle', horizontal: 'right' };
 		box(c5);
 	}
-	// Section: Estimated Payroll (separate from confirmed cost)
+	// Payroll estimate is included once above, never in confirmed cost.
 	rNum += 2;
 	ws.mergeCells(rNum, 1, rNum, 5);
 	const secPay = ws.getCell(rNum, 1);
@@ -448,7 +490,7 @@ function buildExpenditureReconciliationSheet(
 	ws.mergeCells(rNum, 1, rNum, 5);
 	const paySub = ws.getCell(rNum, 1);
 	paySub.value =
-		'Payroll-based estimate for employees with no finalized allocation yet. Never part of Company Incurred Cost; no combined headline is stated.';
+		'Payroll estimates are included once in available expenditure when currencies match. They stay excluded from confirmed cost, budget variance, period comparisons, and financial close.';
 	setFont(paySub, { size: 9, color: 'FF4B5563' });
 	ws.getRow(rNum).height = 16;
 
@@ -988,7 +1030,7 @@ function buildExpenditureProjectDetailSheet(
 		{ width: 22 }, // Client Name
 		{ width: 10 }, // Currency
 		{ width: 16 }, // Logged Hours
-		{ width: 20 }, // Incurred Cost (Orig)
+		{ width: 22 }, // Available Cost (Orig)
 		{ width: 18 }, // Conversion Status
 		{ width: 22 }, // Converted Cost
 		{ width: 18 }, // Cost to Date
@@ -999,6 +1041,9 @@ function buildExpenditureProjectDetailSheet(
 		{ width: 14 }, // Variance %
 		{ width: 22 }, // Budget State
 		{ width: 40 }, // Budget Reason
+		{ width: 22 }, // Confirmed Incurred Cost
+		{ width: 22 }, // Recorded Employee Cost
+		{ width: 22 }, // Estimated Employee Cost
 	];
 
 	// Title
@@ -1011,7 +1056,7 @@ function buildExpenditureProjectDetailSheet(
 	ws.mergeCells(2, 1, 2, 12);
 	const s = ws.getCell(2, 1);
 	s.value =
-		'Individual Project Incurred Cost, Logged Hours, Cost to Date, Historical Evidence States, and the approved monthly budget comparison beside each cost row';
+		'Available Project cost includes salary estimates. Budgets and cost to date use confirmed cost. Recorded and estimated payroll remain separate.';
 	setFont(s, { size: 9.5, color: 'FF4B5563' });
 	ws.getRow(2).height = 18;
 
@@ -1029,21 +1074,24 @@ function buildExpenditureProjectDetailSheet(
 		{ col: 4, label: 'Client Name', align: 'left' },
 		{ col: 5, label: 'Currency', align: 'center' },
 		{ col: 6, label: 'Logged Hours', align: 'right' },
-		{ col: 7, label: 'Incurred Cost (Orig)', align: 'right' },
+		{ col: 7, label: 'Available Cost (Orig)', align: 'right' },
 		{ col: 8, label: 'Conversion Status', align: 'center' },
 		{
 			col: 9,
-			label: `Converted (${reconciliation.company.reporting_currency})`,
+			label: `Available (${reconciliation.company.reporting_currency})`,
 			align: 'right',
 		},
-		{ col: 10, label: 'Cost to Date', align: 'right' },
-		{ col: 11, label: 'Evidence State', align: 'center' },
+		{ col: 10, label: 'Confirmed Cost to Date', align: 'right' },
+		{ col: 11, label: 'Cost Basis / Evidence', align: 'center' },
 		{ col: 12, label: 'Records', align: 'right' },
 		{ col: 13, label: 'Approved Monthly Budget', align: 'right' },
 		{ col: 14, label: 'Remaining (+) / Overspent (−)', align: 'right' },
 		{ col: 15, label: 'Variance %', align: 'right' },
 		{ col: 16, label: 'Budget State', align: 'left' },
 		{ col: 17, label: 'Budget Reason', align: 'left' },
+		{ col: 18, label: 'Confirmed Incurred Cost', align: 'right' },
+		{ col: 19, label: 'Recorded Employee Cost', align: 'right' },
+		{ col: 20, label: 'Estimated Employee Cost', align: 'right' },
 	];
 
 	for (const h of cols) {
@@ -1057,7 +1105,7 @@ function buildExpenditureProjectDetailSheet(
 
 	let rNum = 5;
 	let totalHours = 0;
-	let totalConverted = 0;
+	let totalConverted = R(0);
 	let allConverted = true;
 	// Exact Project/currency/month/scope matches from the existing budget
 	// results only; no manufactured comparison or zero-cost row.
@@ -1068,8 +1116,16 @@ function buildExpenditureProjectDetailSheet(
 
 	for (let idx = 0; idx < reconciliation.projects.length; idx++) {
 		const p = reconciliation.projects[idx];
+		const reportingCost = availableReportingProjectCost(
+			p,
+			reconciliation.company.reporting_currency
+		);
+		const estimated =
+			p.estimated_employee_cost > 0 ||
+			p.employee_count >
+				p.recorded_employee_count + p.missing_salary_profile_count;
 		const row = ws.getRow(rNum);
-		row.height = p.missing_salary_profile_count > 0 ? 42 : 18;
+		row.height = p.missing_salary_profile_count > 0 || estimated ? 42 : 18;
 
 		row.getCell(1).value = idx + 1;
 		row.getCell(2).value = p.project_code;
@@ -1077,12 +1133,12 @@ function buildExpenditureProjectDetailSheet(
 		row.getCell(4).value = p.client_name || '—';
 		row.getCell(5).value = p.currency;
 		renderValue(row.getCell(6), p.logged_hours, '#,##0.00');
-		renderValue(row.getCell(7), p.incurred_cost, '#,##0.00');
+		renderValue(row.getCell(7), availableProjectCost(p), '#,##0.00');
 		row.getCell(8).value = p.conversion_status;
-		renderValue(row.getCell(9), p.converted_incurred_cost, '#,##0.00');
+		renderValue(row.getCell(9), reportingCost, '#,##0.00');
 		renderValue(row.getCell(10), p.cost_to_date, '#,##0.00');
 		row.getCell(11).value =
-			`${p.evidence.state}${p.missing_salary_profile_count > 0 ? `; ${p.missing_salary_profile_count} missing Salary Profile(s)` : ''}`;
+			`${p.missing_salary_profile_count > 0 ? 'Partial' : estimated ? 'Estimated' : p.evidence.state}; direct-cost evidence: ${p.evidence.state}${p.missing_salary_profile_count > 0 ? `; ${p.missing_salary_profile_count} missing Salary Profile(s)` : ''}`;
 		renderValue(row.getCell(12), p.record_count);
 		const budget = budgetByRow.get(budgetRowKey(p)) ?? null;
 		renderValue(row.getCell(13), budget?.budget?.amount ?? null, '#,##0.00');
@@ -1097,10 +1153,13 @@ function buildExpenditureProjectDetailSheet(
 			row.getCell(17).value =
 				`No budget comparison covers ${p.project_code} in ${p.currency} for ${reconciliation.month}; the standalone budget section stays the unmatched-comparison surface.`;
 		}
+		renderValue(row.getCell(18), p.incurred_cost, '#,##0.00');
+		renderValue(row.getCell(19), p.employee_cost, '#,##0.00');
+		renderValue(row.getCell(20), p.estimated_employee_cost, '#,##0.00');
 
 		totalHours += p.logged_hours || 0;
-		if (p.converted_incurred_cost !== null) {
-			totalConverted += p.converted_incurred_cost;
+		if (reportingCost !== null) {
+			totalConverted = add(totalConverted, reportingCost);
 		} else {
 			allConverted = false;
 		}
@@ -1111,7 +1170,7 @@ function buildExpenditureProjectDetailSheet(
 			box(c);
 			c.alignment = { vertical: 'middle', horizontal: h.align };
 		}
-		if (p.missing_salary_profile_count > 0) {
+		if (p.missing_salary_profile_count > 0 || estimated) {
 			row.getCell(11).alignment = {
 				...row.getCell(11).alignment,
 				wrapText: true,
@@ -1134,11 +1193,11 @@ function buildExpenditureProjectDetailSheet(
 	renderValue(totRow.getCell(6), totalHours, '#,##0.00');
 	renderValue(
 		totRow.getCell(9),
-		allConverted ? totalConverted : null,
+		allConverted ? toNumber(totalConverted) : null,
 		'#,##0.00'
 	);
 
-	for (let i = 1; i <= 17; i++) {
+	for (let i = 1; i <= cols.length; i++) {
 		const c = totRow.getCell(i);
 		setFont(c, { bold: true, size: 9.5 });
 		setFill(c, TINT_PURPLE_SUB);

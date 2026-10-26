@@ -2,12 +2,16 @@
 
 ## Overview
 
-The report at `/reports/company-monthly-cost` now leads with **Company
-Incurred Cost** for a month, reconciled to **Incurred Project Cost**, **Company
-Overhead**, and **Unallocated Cost**. Each underlying direct cost is counted
-once. The employee-cost Monthly and Financial Year views read the same shared
-interpretation: recorded employer-cost allocation where the month was
-finalized, the corrected payroll calculation's estimate otherwise.
+The report at `/reports/company-monthly-cost` leads with **Available monthly
+expenditure**: confirmed **Company Incurred Cost** plus available payroll estimates.
+Project and Unallocated totals include their estimated payroll shares.
+Company Overhead keeps its confirmed basis.
+Each employee contributes recorded payroll or an estimate, never both.
+
+The employee-cost Monthly and Financial Year views read the same shared
+interpretation: recorded employer-cost allocation for finalized payroll,
+and the corrected payroll calculation's estimate otherwise.
+Estimates never become recognized cost, budget variance, or frozen financial-close balances.
 
 Ticket #306 delivers the first complete slice: capture a direct expense with a
 durable identity, recognize it into a month, reconcile it, and drill from a
@@ -32,8 +36,8 @@ Cost, the Project breakdown, or the evidence summary.
 ### Company-first decision view (#382)
 
 The company position uses the existing reconciliation and Comparable Period payloads.
-The full-month headline stays separate from an unfinished month's elapsed-window comparison.
-Estimated payroll stays outside confirmed cost and retains its own currency.
+The available full-month headline stays separate from the explicitly confirmed elapsed-window comparison.
+Salary estimates enter available expenditure, not confirmed cost, and retain their own currency.
 Recorded payroll, known-zero employees, and missing pricing remain distinct.
 Financial Close and Financial Revision keep frozen and current figures separate.
 Missing close information means unavailable, not open or ready to close.
@@ -41,7 +45,7 @@ Missing close information means unavailable, not open or ready to close.
 The review summary links to existing project, payroll, recognition, evidence, budget, close, and revision sections.
 Links reveal collapsed sections and move keyboard focus to their section heading or region.
 Collapsed section headings show a chevron, and review links stay visibly underlined.
-Estimated payroll has a separate visual group; new financial values use tabular numerals.
+Estimated payroll has a separate breakdown showing that it is included above; new financial values use tabular numerals.
 The evidence link reaches the petty cash, tax, evidence, and coverage detail inside the decision evidence section.
 Project budget categories count each Project once within each category.
 Categories can overlap; the report does not invent a unique issue total.
@@ -65,14 +69,18 @@ Their numeric zero is an **unpriced placeholder**, not a statement that their ac
 Detailed rows and Employee totals carry `missing_salary_profile`; Project totals carry a distinct-Employee `missing_salary_profile_count`.
 An Employee working on two Projects counts once in the monthly warning, and once in each affected Project's warning.
 
-The Company Expenditure view keeps confirmed expenditure separate from payroll estimates.
-Its Project rows show recorded employee cost, available estimates, and missing-profile counts without dropping the hours.
-An empty confirmed total with a supported reporting currency displays zero with **No confirmed cost recorded yet**.
-Unsupported currency conversions still show an unavailable total rather than a false zero.
+The Company Expenditure headline and Project rows include available salary estimates.
+The cards reconcile available Project cost, Company Overhead, and available Unallocated Cost.
+Confirmed expenditure remains explicit below the headline and beside each estimated Project cost.
+Missing employee pricing marks the headline as **Partial total**, even when every available amount is zero.
+Project rows retain Logged Hours and missing-profile counts, and their evidence state no longer implies recorded payroll.
+An empty confirmed total with a supported currency displays zero with **No confirmed cost recorded yet**.
+Unsupported currencies are not added or converted without evidence; supported native-currency figures remain visible.
 Frozen recorded allocations remain valid after profile removal; known-zero recorded cost is never relabelled as missing pricing.
 
 The monthly workbook keeps numeric hours and costs, flags unpriced Employees and partial Projects, and repeats the coverage warning on all three sheets.
-The expenditure workbook also identifies missing Salary Profiles beside each affected Project's evidence.
+The expenditure workbook uses the same available-cost calculation as the web report.
+It retains confirmed cost and separate recorded/estimated payroll columns, with missing-profile evidence beside each Project.
 No missing profile is replaced with a fabricated rate or salary, and neither unpriced salaries nor estimates enter confirmed Company Incurred Cost.
 
 ### Project-owned budget administration
@@ -119,6 +127,7 @@ Financial views: Company Monthly Cost + Project administration (/projects/[id]/c
     records.ts           reads: month records, project cost, options, months, journal, drilldown
     commands.ts          the single write path: recordCost, executeCommand, journal
     payroll.ts           recorded employer-cost allocation: shares, freeze, estimates, drilldown
+    available-cost.ts     pure available-cost presentation: confirmed cost + estimated payroll, with currency guards
     budget-records.ts    reads: budget rows, covering budgets, journal
     budget-commands.ts   the budget write path: recordCostBudget, executeBudgetCommand
     budget-comparison.ts pure builder: the isolated budget section
@@ -324,10 +333,12 @@ route, the drilldown, and the export must read it rather than re-deriving it.
   prior is `new` (absolute change, no percentage), and a Project with no prior
   record at all is `no_prior` with both figures `null` — absence of records is
   never read as zero cost.
-- **Ranking.** `ranking.by_cost` and `ranking.by_increase` order the same rows
-  inside one currency; ties share a position, and a row whose comparison amount
-  is unknown is listed in `ranking.increase_unranked` with its reason instead
-  of being placed by a guess.
+- **Ranking.** `ranking.by_cost` orders available monthly cost, including salary
+  estimates; entries keep both `available_cost` and confirmed `incurred_cost`.
+  `ranking.by_increase` keeps the confirmed Comparable Period basis.
+  Both stay inside one currency and share positions for ties.
+  A row with an unknown comparison amount appears in `ranking.increase_unranked`
+  with its reason, not a guessed increase.
 - **Cost to date.** `cost_to_date` accumulates confirmed cost of every month
   before the reported one plus the reported window, so it is stated through
   `comparison.cost_to_date_through`. The base is every wired source in its own
@@ -490,9 +501,14 @@ so history stays readable and duplicates are impossible.
 
 **Report contract.** The reconciliation payload gains
 `payroll: { currency, recorded_total, estimated_total, allocated_total,
-unallocated_total, total_logged_hours, project_hours, no_project_hours,
-rounding_adjustment, recorded_count, known_zero_count, estimated_count,
-missing_slip_count, missing_pricing_count, allocation_missing_count }`;
+unallocated_total, estimated_allocated_total, estimated_unallocated_total,
+total_logged_hours, project_hours, no_project_hours, rounding_adjustment,
+recorded_count, known_zero_count, estimated_count, missing_slip_count,
+missing_pricing_count, allocation_missing_count, unpriced_count }`.
+Estimated destination totals stay separate from recorded destinations.
+`unpriced_count` counts Employees with neither a recorded nor an estimated amount.
+The available-cost presentation adds only estimates to confirmed cost.
+It uses the unfiltered payroll totals, so a Project filter cannot narrow the company headline.
 Project rows gain `employee_cost`, `estimated_employee_cost`, `logged_hours`,
 and `employee_count`. Recorded employee cost joins the payroll-currency slice
 (Project shares into Incurred Project Cost, unallocated shares into Unallocated
@@ -1570,8 +1586,8 @@ Unauthorized requests receive 403 Forbidden without leaking financial figures.
 
 The workbook contains five distinct sheets matching the web reconciliation:
 
-1. `Company Reconciliation`: Company totals, reconciliation groups, separate payroll estimates, coverage, and Comparable Period bases.
-2. `Project Detail`: Project cost, logged hours, evidence, and supported monthly budgets, variance, and percentages.
+1. `Company Reconciliation`: Available expenditure and destination totals, confirmed reconciliation, payroll breakdown, coverage, and confirmed Comparable Period bases.
+2. `Project Detail`: Available cost, confirmed cost, recorded and estimated payroll, logged hours, evidence, and supported monthly budget comparisons.
 3. `Budgets & Commitments`: Approved cost budgets, supplier orders, and commercial client orders.
 4. `Cash Paid`: Outward cash movements, payment settlements, destinations, and payment references.
 5. `Revisions & Close`: Month close status, frozen snapshot metadata, and post-close revision events.
@@ -1591,6 +1607,13 @@ It also checks read-only source drill-down and a closed month's later revision.
 Four actual workbooks cover INR, unsupported USD, project-filtered detail, and a revised closed month.
 Their values and qualifications are checked against the matching authorized report payloads.
 No browser harness or E2E suite is added for this change.
+
+The available-expenditure correction also uses a production-build browser and disposable MariaDB 10.11.15.
+It checks a draft month with known salary cost and missing profiles, a wholly unpriced month, and company-wide totals under a Project filter.
+It checks the recorded-payroll transition after profile removal and the matching workbooks before and after that transition.
+The page is also checked at 320px without horizontal page overflow.
+Permanent regression coverage lives in `available-cost.test.ts`, `ranking.test.ts`, and the existing report component suites.
+It covers destination reconciliation, no duplicate recorded payroll, unknown pricing, unsupported conversion, cent precision, ranking ties, and the confirmed budget basis.
 
 #### Files (#324)
 

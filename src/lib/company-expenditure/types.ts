@@ -553,6 +553,8 @@ export interface RankingEntry {
 	/** Position inside the entry's currency; ties share a position. */
 	rank: number;
 	incurred_cost: number;
+	/** Confirmed cost plus available estimated payroll, in this entry's currency. */
+	available_cost: number;
 	comparison_cost: number;
 	previous_period_cost: number | null;
 	change_amount: number | null;
@@ -560,7 +562,7 @@ export interface RankingEntry {
 	change_state: ChangeState;
 }
 
-/** Largest-cost and largest-increase orderings, never mixing currencies. */
+/** Largest available-cost and confirmed-increase orderings, never mixing currencies. */
 export interface ProjectRanking {
 	by_cost: RankingEntry[];
 	by_increase: RankingEntry[];
@@ -1241,6 +1243,9 @@ export interface PayrollExpenditure {
 	allocated_total: number;
 	/** Recorded cost left unallocated: No project + No logged hours. */
 	unallocated_total: number;
+	/** Estimated payroll shares, separate from the recorded destinations above. */
+	estimated_allocated_total: number;
+	estimated_unallocated_total: number;
 	total_logged_hours: number;
 	project_hours: number;
 	no_project_hours: number;
@@ -1252,6 +1257,8 @@ export interface PayrollExpenditure {
 	missing_slip_count: number;
 	missing_pricing_count: number;
 	allocation_missing_count: number;
+	/** Employees whose recorded and estimated amounts are both unavailable. */
+	unpriced_count: number;
 }
 
 /** The employee-cost drilldown: the same interpretation, per Employee. */

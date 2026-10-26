@@ -11,8 +11,8 @@
  *    evidence coverage between the two windows is never hidden;
  *  - a Project with no cost in the prior window has an *unknown* prior amount,
  *    not a zero: absence of records is not evidence of no expenditure.
- *  - "Largest cost" and "largest increase" are orderings of the same figures
- *    the reconciliation publishes, ranked inside one currency.
+ *  - "Largest cost" ranks available monthly cost, including salary estimates;
+ *    "largest increase" keeps the confirmed Comparable Period basis.
  *
  * Pure functions only: the records, the as-of date, and the cumulative
  * cost-before base arrive as arguments, so the report, the drilldown, and (an
@@ -21,6 +21,7 @@
 
 import { div, mul, sub } from '@/lib/money';
 import { currencyCodeOf } from './currency';
+import { availableProjectCost } from './available-cost';
 import { isConfirmed, isOpenState } from './recognition';
 import {
 	confirmedAmount,
@@ -773,6 +774,7 @@ function rankingEntry(row: ReconciliationProjectRow): RankingEntry {
 		currency: row.currency,
 		rank: 0,
 		incurred_cost: row.incurred_cost,
+		available_cost: availableProjectCost(row),
 		comparison_cost: row.comparison_cost,
 		previous_period_cost: row.previous_period_cost,
 		change_amount: row.change_amount,
@@ -782,7 +784,7 @@ function rankingEntry(row: ReconciliationProjectRow): RankingEntry {
 }
 
 /**
- * Largest-cost and largest-increase orderings of the same Project rows.
+ * Available monthly cost and confirmed-increase orderings of the same rows.
  *
  * Orderings never mix currencies; the position is the count of strictly larger
  * figures inside the row's currency, so ties share a position and the order
@@ -796,18 +798,21 @@ export function rankProjects(rows: ReconciliationProjectRow[]): ProjectRanking {
 	const unranked: ProjectRanking['increase_unranked'] = [];
 	for (const currency of currencies) {
 		const group = rows.filter((row) => row.currency === currency);
-		const costOrder = [...group].sort(
-			(a, b) =>
-				b.incurred_cost - a.incurred_cost ||
-				a.project_code.localeCompare(b.project_code) ||
-				a.project_id - b.project_id
-		);
-		for (const row of costOrder) {
-			const entry = rankingEntry(row);
+		const costOrder = group
+			.map(rankingEntry)
+			.sort(
+				(a, b) =>
+					b.available_cost - a.available_cost ||
+					a.project_code.localeCompare(b.project_code) ||
+					a.project_id - b.project_id
+			);
+		for (let index = 0; index < costOrder.length; index++) {
+			const entry = costOrder[index];
+			const previous = costOrder[index - 1];
 			entry.rank =
-				1 +
-				costOrder.filter((other) => other.incurred_cost > row.incurred_cost)
-					.length;
+				previous?.available_cost === entry.available_cost
+					? previous.rank
+					: index + 1;
 			byCost.push(entry);
 		}
 		const rankable = group.filter((row) => row.change_amount !== null);

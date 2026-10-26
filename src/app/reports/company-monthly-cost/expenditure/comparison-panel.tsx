@@ -39,7 +39,7 @@ export function ComparisonSummary({
 
 	return (
 		<section
-			aria-label={`Comparable period — ${data.month_label} against ${data.comparison.prior_month_label}`}
+			aria-label={`Confirmed cost comparison — ${data.month_label} against ${data.comparison.prior_month_label}`}
 			data-testid="comparison-panel"
 			data-basis={data.comparison.basis}
 			data-as-of={data.comparison.as_of}
@@ -49,7 +49,7 @@ export function ComparisonSummary({
 		>
 			<div className="flex flex-wrap items-baseline justify-between gap-2">
 				<p className="text-xs font-semibold text-gray-700">
-					Comparable period — {data.month_label} against{' '}
+					Confirmed cost comparison — {data.month_label} against{' '}
 					{data.comparison.prior_month_label}
 				</p>
 				<p className="text-[11px] text-gray-500">
@@ -58,6 +58,10 @@ export function ComparisonSummary({
 						: `Full month compared with the full prior month (measured to ${data.comparison.as_of}).`}
 				</p>
 			</div>
+			<p className="mt-1 text-[11px] text-gray-600">
+				Salary estimates are excluded from both periods. Available monthly
+				expenditure above uses a different basis.
+			</p>
 			{data.comparison.unfinished &&
 				data.company.incurred_cost !== null &&
 				data.company.currency !== null &&
@@ -99,7 +103,7 @@ export function ComparisonSummary({
 									data.comparison.currency
 								)
 							: data.comparison.currency_totals.length === 0
-								? 'No cost recorded'
+								? 'No confirmed cost recorded'
 								: 'See currencies'}
 					</p>
 				</div>

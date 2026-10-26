@@ -1,15 +1,12 @@
 'use client';
 
 /**
- * The company cost reconciliation headline of the company expenditure view.
- *
- * It states what the company incurred for the month: whether every recognized
- * cost can be stated in the reporting currency, the four direct-cost totals,
- * and the warning that some recognized cost has no supported conversion
- * evidence for that basis.
+ * Available monthly expenditure includes confirmed cost and unfinalized payroll
+ * estimates once. Confirmed cost stays explicit for financial review and close.
  */
 
 import { formatCurrencyIn } from '@/lib/format';
+import { availableMonthlyCost } from '@/lib/company-expenditure/available-cost';
 import type { ReconciliationPayload } from './types';
 
 export interface CompanyReconciliationPanelProps {
@@ -20,8 +17,7 @@ export interface CompanyReconciliationPanelProps {
 export function CompanyReconciliationPanel({
 	data,
 }: CompanyReconciliationPanelProps) {
-	const groupAmount = (key: string) =>
-		data.company.groups.find((group) => group.key === key)?.amount ?? null;
+	const available = availableMonthlyCost(data.company, data.payroll);
 	// A month is stated in the requested reporting currency only when every
 	// confirmed record is supported; otherwise its own currency subtotals are
 	// the whole answer and the warning below says so.
@@ -33,12 +29,9 @@ export function CompanyReconciliationPanel({
 	return (
 		<>
 			<p className="mb-1 text-xs text-gray-500">
-				Company Incurred Cost for {data.month_label}
-				{companyStated
-					? `, stated in ${statedCurrency}`
-					: ', shown per currency'}
-				. Each recognized direct cost is counted once; Project filters narrow
-				the detail only.
+				Available expenditure for {data.month_label}, stated in{' '}
+				{available.currency}. Includes confirmed cost and available salary
+				estimates. Project filters narrow the detail only.
 			</p>
 			<p
 				data-testid="conversion-status"
@@ -62,31 +55,46 @@ export function CompanyReconciliationPanel({
 					currency subtotals below are stated.
 				</p>
 			)}
+			{!available.estimate_currency_supported && (
+				<p role="status" className="mb-3 text-xs font-medium text-amber-800">
+					Payroll estimates remain in {data.payroll.currency}. No supported
+					conversion to {available.currency} exists, so totals that need both
+					currencies cannot be combined.
+				</p>
+			)}
 
-			{/* Company reconciliation */}
+			{/* Available cost: confirmed expenses and payroll estimates counted once. */}
 			<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
 				<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-3 shadow-sm">
 					<p className="text-[11px] font-medium uppercase tracking-wide text-[#64126D]">
-						Company Incurred Cost
+						Available monthly expenditure
 					</p>
 					<p
-						data-testid="kpi-incurred-cost"
-						data-amount={
-							data.company.incurred_cost === null
-								? ''
-								: String(data.company.incurred_cost)
-						}
+						data-testid="kpi-available-cost"
+						data-amount={available.amount ?? ''}
 						className="mt-0.5 text-lg font-bold text-[#64126D]"
 					>
-						{data.company.incurred_cost === null && !companyStated
+						{available.amount === null
 							? 'Not combinable'
-							: formatCurrencyIn(
-									data.company.incurred_cost ?? 0,
-									statedCurrency
-								)}
+							: formatCurrencyIn(available.amount, available.currency)}
 					</p>
 					<p className="text-[10px] text-gray-600">
-						{data.company.record_count} recognized record(s)
+						{available.partial
+							? 'Partial total'
+							: available.estimated
+								? 'Includes salary estimates'
+								: 'Confirmed cost'}
+					</p>
+					<p className="text-[10px] text-gray-600">
+						Confirmed:{' '}
+						<span data-testid="kpi-confirmed-cost">
+							{data.company.incurred_cost === null && !companyStated
+								? 'Not combinable'
+								: formatCurrencyIn(
+										data.company.incurred_cost ?? 0,
+										statedCurrency
+									)}
+						</span>
 					</p>
 					{data.company.incurred_cost === null && companyStated && (
 						<p className="text-[10px] text-gray-600">
@@ -96,19 +104,16 @@ export function CompanyReconciliationPanel({
 				</div>
 				<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
 					<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-						Incurred Project Cost
+						Available project cost
 					</p>
 					<p
 						data-testid="kpi-project-cost"
-						data-amount={groupAmount('incurred_project_cost') ?? ''}
+						data-amount={available.project ?? ''}
 						className="mt-0.5 text-lg font-bold text-gray-900"
 					>
-						{groupAmount('incurred_project_cost') === null && !companyStated
+						{available.project === null
 							? 'See currencies'
-							: formatCurrencyIn(
-									groupAmount('incurred_project_cost') ?? 0,
-									statedCurrency
-								)}
+							: formatCurrencyIn(available.project, available.currency)}
 					</p>
 					<p
 						data-testid="kpi-project-count"
@@ -128,15 +133,12 @@ export function CompanyReconciliationPanel({
 					</p>
 					<p
 						data-testid="kpi-overhead"
-						data-amount={groupAmount('company_overhead') ?? ''}
+						data-amount={available.overhead ?? ''}
 						className="mt-0.5 text-lg font-bold text-gray-900"
 					>
-						{groupAmount('company_overhead') === null && !companyStated
+						{available.overhead === null
 							? 'See currencies'
-							: formatCurrencyIn(
-									groupAmount('company_overhead') ?? 0,
-									statedCurrency
-								)}
+							: formatCurrencyIn(available.overhead, available.currency)}
 					</p>
 					<p className="text-[10px] text-gray-600">
 						Deliberately not attributable to one Project
@@ -144,26 +146,23 @@ export function CompanyReconciliationPanel({
 				</div>
 				<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
 					<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-						Unallocated Cost
+						Available unallocated cost
 					</p>
 					<p
 						data-testid="kpi-unallocated"
-						data-amount={groupAmount('unallocated_cost') ?? ''}
+						data-amount={available.unallocated ?? ''}
 						className="mt-0.5 text-lg font-bold text-gray-900"
 					>
-						{groupAmount('unallocated_cost') === null && !companyStated
+						{available.unallocated === null
 							? 'See currencies'
-							: formatCurrencyIn(
-									groupAmount('unallocated_cost') ?? 0,
-									statedCurrency
-								)}
+							: formatCurrencyIn(available.unallocated, available.currency)}
 					</p>
 					<p className="text-[10px] text-gray-600">
 						Awaiting a Project or Overhead destination
 					</p>
 				</div>
 			</div>
-			{/* Estimated payroll: beside confirmed cost, never inside it */}
+			{/* Payroll basis: estimates are included above, never in confirmed cost. */}
 			<section
 				aria-label="Estimated payroll"
 				data-testid="decision-separate-payroll"
@@ -188,13 +187,17 @@ export function CompanyReconciliationPanel({
 					· {data.payroll.known_zero_count} known-zero employee(s)
 				</p>
 				<p className="text-[10px] text-gray-600">
-					Payroll-based estimate only, excluded from Company Incurred Cost.
+					{available.estimate_currency_supported
+						? 'Included once in available expenditure above. Not part of confirmed expenditure.'
+						: 'Not combined with confirmed expenditure: the currencies have no supported conversion.'}
 				</p>
-				{data.payroll.missing_pricing_count > 0 && (
+				{available.partial && (
 					<p role="status" className="mt-1 text-xs font-medium text-amber-800">
-						Partial payroll estimate: {data.payroll.missing_pricing_count}{' '}
-						employee(s) have no Salary Profile covering this month. Monthly
-						expenditure and logged hours stay visible. Unpriced salaries are
+						Partial expenditure: {data.payroll.unpriced_count} employee(s) have
+						no available payroll cost.{' '}
+						{data.payroll.missing_pricing_count > 0 &&
+							`${data.payroll.missing_pricing_count} have no Salary Profile covering this month. `}
+						Known costs and logged hours stay visible. Unpriced salaries are
 						excluded from the available totals; a displayed zero does not mean
 						their actual salary cost is zero.
 					</p>
