@@ -434,35 +434,6 @@ export function DecisionView(props: DecisionViewProps) {
 							(separate categories; one record can appear in more than one)
 						</span>
 					</li>
-					<li data-testid="decision-review-close">
-						{close === null ? (
-							'Financial close: unavailable'
-						) : (
-							<>
-								<DecisionLink section="close">
-									Financial close: {close.status}
-								</DecisionLink>{' '}
-								<span className="text-gray-500">
-									({close.review.blockers.length} blocker(s),{' '}
-									{close.review.warnings.length} warning(s))
-								</span>
-							</>
-						)}
-					</li>
-					<li data-testid="decision-review-revision">
-						{revisions === null ? (
-							'Financial revisions: unavailable'
-						) : (
-							<>
-								<DecisionLink section="revision">
-									Financial revisions: {revisions.status}
-								</DecisionLink>{' '}
-								<span className="text-gray-500">
-									({revisionCount} revision(s))
-								</span>
-							</>
-						)}
-					</li>
 				</ul>
 			</section>
 

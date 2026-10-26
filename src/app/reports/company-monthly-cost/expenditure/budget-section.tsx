@@ -110,14 +110,14 @@ export default function BudgetSection({
 						Budgets are managed from each project&apos;s admin view.
 					</p>
 				</div>
-				{canManageBudgets && (
-					<Link
-						href="/projects"
-						className="text-sm font-medium text-[#64126D] underline underline-offset-2"
-					>
-						Open projects to manage budgets
-					</Link>
-				)}
+				<Link
+					href="/projects"
+					className="text-sm font-medium text-[#64126D] underline underline-offset-2"
+				>
+					{canManageBudgets
+						? 'Open projects to manage budgets'
+						: 'Open projects to view budgets'}
+				</Link>
 			</div>
 
 			{section.notices.length > 0 && (
@@ -146,9 +146,7 @@ export default function BudgetSection({
 							<th className="px-2 py-1 text-right">Approved budget</th>
 							<th className="px-2 py-1 text-right">Variance</th>
 							<th className="px-2 py-1">Basis</th>
-							{canManageBudgets && (
-								<th className="px-2 py-1">Budget administration</th>
-							)}
+							<th className="px-2 py-1">Budgets</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -247,27 +245,24 @@ export default function BudgetSection({
 										</ul>
 									)}
 								</td>
-								{canManageBudgets && (
-									<td className="px-2 py-2">
-										<Link
-											href={`/projects/${row.project_id}/cost-budgets?month=${month}&currency=${encodeURIComponent(row.currency)}`}
-											aria-label={`${row.outcome === 'missing' && canRecordBudget ? 'Add budget' : 'Manage budgets'} for ${row.project_code}`}
-											className="font-medium text-[#64126D] underline underline-offset-2"
-										>
-											{row.outcome === 'missing' && canRecordBudget
-												? 'Add budget'
-												: 'Manage budgets'}
-										</Link>
-									</td>
-								)}
+								<td className="px-2 py-2">
+									<Link
+										href={`/projects/${row.project_id}/cost-budgets?month=${month}&currency=${encodeURIComponent(row.currency)}`}
+										aria-label={`${row.outcome === 'missing' && canRecordBudget ? 'Add budget' : canManageBudgets ? 'Manage budgets' : 'View budgets'} for ${row.project_code}`}
+										className="font-medium text-[#64126D] underline underline-offset-2"
+									>
+										{row.outcome === 'missing' && canRecordBudget
+											? 'Add budget'
+											: canManageBudgets
+												? 'Manage budgets'
+												: 'View budgets'}
+									</Link>
+								</td>
 							</tr>
 						))}
 						{section.comparisons.length === 0 && (
 							<tr>
-								<td
-									colSpan={canManageBudgets ? 7 : 6}
-									className="px-2 py-2 text-xs text-gray-500"
-								>
+								<td colSpan={7} className="px-2 py-2 text-xs text-gray-500">
 									No Project cost or covering budget in this month.
 								</td>
 							</tr>

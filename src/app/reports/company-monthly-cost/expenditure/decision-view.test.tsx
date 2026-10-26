@@ -1151,8 +1151,7 @@ describe('DecisionView review summary', () => {
 		expect(
 			screen.queryByTestId('financial-close-blockers')
 		).not.toBeInTheDocument();
-		const review = screen.getByRole('region', { name: 'Review summary' });
-		const link = within(review).getByRole('link', {
+		const link = screen.getByRole('link', {
 			name: /Financial close: open/,
 		});
 		await user.click(link);
@@ -1294,20 +1293,6 @@ describe('DecisionView review summary', () => {
 			'Unproven comparison evidence'
 		);
 		expect(section).toHaveFocus();
-	});
-
-	it('shows unavailable close data as unavailable, never as ready to close', () => {
-		const month = data();
-		const props = decisionProps({ month, close: null });
-		props.closeLoading = true;
-		renderDecision(props);
-		const review = screen.getByRole('region', { name: 'Review summary' });
-		expect(
-			within(review).getByText('Financial close: unavailable')
-		).toBeInTheDocument();
-		expect(
-			within(review).queryByRole('link', { name: /Financial close/ })
-		).not.toBeInTheDocument();
 	});
 
 	it('keeps a read-only review free of financial write controls', () => {
@@ -1475,16 +1460,6 @@ describe('DecisionView payroll and currency coverage', () => {
 		expect(
 			within(summary).getByText('1 revision(s)', { exact: false })
 		).toBeInTheDocument();
-		const review = screen.getByRole('region', { name: 'Review summary' });
-		expect(
-			within(review).getByRole('link', { name: /Financial close: closed/ })
-		).toBeInTheDocument();
-		expect(
-			within(review).getByRole('link', { name: /Financial revisions: closed/ })
-		).toBeInTheDocument();
-		expect(
-			within(review).getByText('1 revision(s)', { exact: false })
-		).toBeInTheDocument();
 	});
 });
 
@@ -1497,8 +1472,7 @@ describe('DecisionView keyboard and separation', () => {
 		expect(
 			screen.queryByTestId('financial-revision-totals')
 		).not.toBeInTheDocument();
-		const review = screen.getByRole('region', { name: 'Review summary' });
-		const link = within(review).getByRole('link', {
+		const link = screen.getByRole('link', {
 			name: /Financial revisions: open/,
 		});
 		link.focus();
@@ -1596,6 +1570,20 @@ describe('DecisionView keyboard and separation', () => {
 		expect(
 			within(budgetSection).getByRole('row', { name: /Project Seventy/ })
 		).toBeInTheDocument();
+		expect(
+			within(budgetSection).getByRole('link', { name: 'View budgets for P70' })
+		).toHaveAttribute(
+			'href',
+			'/projects/70/cost-budgets?month=2026-09&currency=INR'
+		);
+		expect(
+			within(screen.getByTestId('expenditure-project-row')).getByRole('link', {
+				name: 'View budgets for P60',
+			})
+		).toHaveAttribute(
+			'href',
+			'/projects/60/cost-budgets?month=2026-09&currency=INR'
+		);
 	});
 });
 

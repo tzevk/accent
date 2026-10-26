@@ -101,8 +101,9 @@ No missing profile is replaced with a fabricated rate or salary, and neither unp
 ### Project-owned budget administration
 
 Budget management lives at `/projects/[id]/cost-budgets`, not inside the report.
-Open a Project and select **Manage cost budgets**.
-Report operators can also select **Add budget** or **Manage budgets** beside that Project's comparison.
+Open a Project and select **View cost budgets** with read access, or **Manage cost budgets** with update or approval access.
+Report readers can also select **View budgets** beside a Project's comparison.
+Authorized operators see **Add budget** or **Manage budgets** instead.
 These links carry the selected report month and the row's currency.
 The report's **Budget detail** section stays read-only.
 

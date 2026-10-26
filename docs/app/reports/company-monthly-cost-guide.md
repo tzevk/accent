@@ -4,6 +4,10 @@ Open `/reports/company-monthly-cost` and select **Company Expenditure**.
 This guide explains the current calculations and the October 2026 screenshot.
 The report and Excel export use the plain-language labels described below.
 
+Financial close and revision status appear once in the company summary.
+Use those links to open their detailed sections.
+The **Review summary** lists budget, recognition, payroll, and evidence items without repeating those statuses.
+
 ## What monthly expenditure means
 
 **Monthly expenditure means the cost we can calculate from the records currently present.**
@@ -139,19 +143,19 @@ A missing or incompatible budget does not mean the Project has no cost.
 
 ## What to do when a number looks wrong
 
-| Situation                                | Action                                                                                                                         |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Missing Salary Profile                   | Open **Employee Cost — Month** to identify affected Employees. Review their Salary Profiles in **Employees**.                  |
-| A profile exists but the warning remains | Check the selected month, active profile, and effective dates. The report selects a profile covering the month's first day.    |
-| Historical profile dates are uncertain   | Ask the payroll owner to review the agreement. Do not backdate a profile just to remove a warning.                             |
-| Employee cost seems too low              | Check Logged Hours and payroll settings. The estimate is not automatically the Employee's full monthly CTC.                    |
-| Unallocated payroll is high              | Inspect **Payroll detail** and the Employee's shares for **No project** or **No logged hours**.                                |
-| A Project has no approved budget         | Open the Project and select **Manage cost budgets**, or use its report **Add budget** link.                                    |
-| A real expense is missing                | Use **Record cost** if authorized, then follow its normal review and recognition workflow. A budget cannot replace an expense. |
-| A currency total is unavailable          | Inspect the source currencies and conversion evidence. Do not read an unavailable amount as zero.                              |
-| Confirmed cost remains zero              | Review expense recognition and payroll state. Do not finalize payroll just to populate a report.                               |
-| A finalized cost needs correction        | Use the authorized correction or allocation-revision workflow. Profile edits must not silently reprice frozen payroll.         |
-| Financial close has blockers             | Open its detail and read the stated blockers. The status count alone does not identify the cause.                              |
+| Situation                                | Action                                                                                                                             |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Missing Salary Profile                   | Open **Employee Cost — Month** to identify affected Employees. Review their Salary Profiles in **Employees**.                      |
+| A profile exists but the warning remains | Check the selected month, active profile, and effective dates. The report selects a profile covering the month's first day.        |
+| Historical profile dates are uncertain   | Ask the payroll owner to review the agreement. Do not backdate a profile just to remove a warning.                                 |
+| Employee cost seems too low              | Check Logged Hours and payroll settings. The estimate is not automatically the Employee's full monthly CTC.                        |
+| Unallocated payroll is high              | Inspect **Payroll detail** and the Employee's shares for **No project** or **No logged hours**.                                    |
+| A Project has no approved budget         | Open **View cost budgets** with read access. Authorized operators see **Manage cost budgets** or the report's **Add budget** link. |
+| A real expense is missing                | Use **Record cost** if authorized, then follow its normal review and recognition workflow. A budget cannot replace an expense.     |
+| A currency total is unavailable          | Inspect the source currencies and conversion evidence. Do not read an unavailable amount as zero.                                  |
+| Confirmed cost remains zero              | Review expense recognition and payroll state. Do not finalize payroll just to populate a report.                                   |
+| A finalized cost needs correction        | Use the authorized correction or allocation-revision workflow. Profile edits must not silently reprice frozen payroll.             |
+| Financial close has blockers             | Open its detail and read the stated blockers. The status count alone does not identify the cause.                                  |
 
 Controls depend on your permissions.
 Creating a cost budget does not create expenditure, recognize an expense, or finalize payroll.

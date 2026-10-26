@@ -329,17 +329,17 @@ export function ProjectBreakdown({
 														'Unavailable'}
 												</p>
 											)}
-											{canManageBudgets && (
-												<Link
-													href={`/projects/${project.project_id}/cost-budgets?month=${month}&currency=${encodeURIComponent(project.currency)}`}
-													aria-label={`${comparisonState === 'missing' && canRecordBudget ? 'Add budget' : 'Manage budgets'} for ${project.project_code}`}
-													className="mt-1 inline-block text-xs font-medium text-[#64126D] underline underline-offset-2"
-												>
-													{comparisonState === 'missing' && canRecordBudget
-														? 'Add budget'
-														: 'Manage budgets'}
-												</Link>
-											)}
+											<Link
+												href={`/projects/${project.project_id}/cost-budgets?month=${month}&currency=${encodeURIComponent(project.currency)}`}
+												aria-label={`${comparisonState === 'missing' && canRecordBudget ? 'Add budget' : canManageBudgets ? 'Manage budgets' : 'View budgets'} for ${project.project_code}`}
+												className="mt-1 inline-block text-xs font-medium text-[#64126D] underline underline-offset-2"
+											>
+												{comparisonState === 'missing' && canRecordBudget
+													? 'Add budget'
+													: canManageBudgets
+														? 'Manage budgets'
+														: 'View budgets'}
+											</Link>
 										</td>
 										<td
 											data-testid="project-budget-variance"
