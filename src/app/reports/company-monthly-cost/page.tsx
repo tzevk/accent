@@ -85,7 +85,10 @@ function CompanyMonthlyCostInner() {
 	const [viewMode, setViewMode] = useState<ViewMode>(
 		sampleMode ? 'monthly' : 'expenditure'
 	);
-	const [selectedMonth, setSelectedMonth] = useState('');
+	const [selectedMonth, setSelectedMonth] = useState(() => {
+		const requested = searchParams?.get('month') ?? '';
+		return /^\d{4}-(0[1-9]|1[0-2])$/.test(requested) ? requested : '';
+	});
 	const [selectedFy, setSelectedFy] = useState('');
 	const [metric, setMetric] = useState<Metric>('cost');
 	const [breakdown, setBreakdown] = useState<BreakdownTab>('detailed');

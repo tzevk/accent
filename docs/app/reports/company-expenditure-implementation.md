@@ -56,10 +56,31 @@ Only a valid comparison with a positive budget has a percentage.
 Missing, unapproved, incompatible, ambiguous, and zero-budget states retain their reasons.
 Budget-only Projects remain in the standalone budget section, not the cost rankings.
 
+### Project-owned budget administration
+
+Budget management lives at `/projects/[id]/cost-budgets`, not inside the report.
+Open a Project and select **Manage cost budgets**.
+Report operators can also select **Add budget** or **Manage budgets** beside that Project's comparison.
+These links carry the selected report month and the row's currency.
+The report's **Budget detail** section stays read-only.
+
+The budget page fixes the Project from the route and shows its code and name in the entry dialog.
+There is no hidden Project selector or automatic selection of the first Project.
+New drafts start with the report's exact month and currency; the operator can change their period and currency.
+Select **Record cost budget**, enter the amount and basis, then **Record budget**, **Submit**, and **Approve**.
+Approval requires an evidence reference; withdrawal still requires a reason.
+The return link restores the report month, and successful commands refresh the existing budget and expenditure queries.
+
+Reading needs `other_expenses:read`.
+Recording, submitting, and withdrawing drafts need `other_expenses:update`.
+Approving or withdrawing an approved budget needs `other_expenses:approve`.
+Project edit access alone grants no budget access; financial readers have no write controls.
+The existing budget routes, version checks, approval journal, and comparison rules remain unchanged.
+
 ## Architecture
 
 ```
-Expenditure view (page.tsx → expenditure/expenditure-view.tsx → expenditure/budget-section.tsx)
+Financial views: Company Monthly Cost + Project administration (/projects/[id]/cost-budgets)
   ├─ GET  /api/reports/company-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=]
   ├─ GET  /api/reports/company-monthly-cost/expenses?month=&state=&classification=&project_id=
   ├─ GET  /api/reports/company-monthly-cost/payroll?month=[&employee_id=]
@@ -1281,6 +1302,7 @@ End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
 - `e2e/lib/petty-cash-fixtures.ts`, `e2e/specs/petty-cash-funding.spec.ts`
 - `src/app/api/admin/cost-budgets/route.ts`, `.../[id]/route.ts`, `.../[id]/commands/route.ts` (#321)
 - `src/app/reports/company-monthly-cost/page.tsx`, `src/app/reports/company-monthly-cost/expenditure/expenditure-view.tsx`, `src/app/reports/company-monthly-cost/expenditure/budget-section.tsx`
+- `src/app/projects/[id]/cost-budgets/page.tsx`, `src/app/projects/[id]/cost-budgets/project-cost-budgets.tsx` (project-owned budget administration)
 - `src/lib/format.js` (`formatCurrencyIn`)
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`

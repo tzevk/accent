@@ -480,6 +480,8 @@ export function DecisionView(props: DecisionViewProps) {
 				<ProjectBreakdown
 					data={data}
 					month={props.month}
+					canManageBudgets={props.canEditCost || props.canRecognize}
+					canRecordBudget={props.canEditCost}
 					clientOrdersByProject={props.clientOrdersByProject}
 					costRanks={props.costRanks}
 					increaseRanks={props.increaseRanks}
@@ -577,9 +579,8 @@ export function DecisionView(props: DecisionViewProps) {
 				<BudgetSection
 					month={props.month}
 					section={data.budgets}
-					projectOptions={data.project_options}
-					canManage={props.canEditCost}
-					canApprove={props.canRecognize}
+					canManageBudgets={props.canEditCost || props.canRecognize}
+					canRecordBudget={props.canEditCost}
 				/>
 			</DecisionSection>
 

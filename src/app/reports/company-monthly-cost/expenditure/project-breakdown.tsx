@@ -15,6 +15,7 @@
  */
 
 import { Fragment, useMemo } from 'react';
+import Link from 'next/link';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { formatCurrencyIn, formatDate, formatNumber } from '@/lib/format';
 import { div, gt, isZero, mul } from '@/lib/money';
@@ -94,6 +95,9 @@ export interface ProjectBreakdownProps {
 	data: ReconciliationPayload;
 	/** The month under report (`YYYY-MM`). */
 	month: string;
+	/** Financial operators may open the project-owned budget workflow. */
+	canManageBudgets?: boolean;
+	canRecordBudget?: boolean;
 	/** Client orders by Project, giving each row its commercial context. */
 	clientOrdersByProject: Map<number, ClientOrderRow[]>;
 	/** Position of each row in the cost ordering. */
@@ -125,6 +129,8 @@ export interface ProjectBreakdownProps {
 export function ProjectBreakdown({
 	data,
 	month,
+	canManageBudgets = false,
+	canRecordBudget = false,
 	clientOrdersByProject,
 	costRanks,
 	increaseRanks,
@@ -383,6 +389,17 @@ export function ProjectBreakdown({
 																</p>
 															</details>
 														</>
+													)}
+													{canManageBudgets && (
+														<Link
+															href={`/projects/${project.project_id}/cost-budgets?month=${month}&currency=${encodeURIComponent(project.currency)}`}
+															aria-label={`${comparisonState === 'missing' && canRecordBudget ? 'Add budget' : 'Manage budgets'} for ${project.project_code}`}
+															className="mt-2 inline-block text-xs font-medium text-[#64126D] underline underline-offset-2"
+														>
+															{comparisonState === 'missing' && canRecordBudget
+																? 'Add budget'
+																: 'Manage budgets'}
+														</Link>
 													)}
 												</td>
 												<td

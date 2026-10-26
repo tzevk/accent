@@ -835,6 +835,16 @@ export default function ProjectViewPage() {
 						</div>
 
 						<div className="flex w-full flex-wrap items-center gap-2 border-t border-gray-100 pt-3 lg:w-auto lg:justify-end lg:border-t-0 lg:pt-0">
+							{can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ) &&
+								(can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.UPDATE) ||
+									can(RESOURCES.OTHER_EXPENSES, PERMISSIONS.APPROVE)) && (
+									<Link
+										href={`/projects/${project.project_id ?? project.id}/cost-budgets`}
+										className="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-[#64126D] hover:bg-purple-50"
+									>
+										Manage cost budgets
+									</Link>
+								)}
 							{!isEmployeeWorkspace && canEditProjectContent && (
 								<Link
 									href={`/projects/${project.id ?? project.project_id ?? project.project_code}/edit`}
